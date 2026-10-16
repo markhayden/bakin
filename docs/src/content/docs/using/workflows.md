@@ -94,7 +94,7 @@ Definitions and instances both index into search (table `bakin_workflows`) on na
 | `bakin workflows list` | List workflow definitions. |
 | `bakin workflows start <taskId> <workflowId>` | Start a workflow. |
 | `bakin workflows step <taskId>` | Get current workflow step. |
-| `bakin workflows submit <taskId> <stepId> <json>` | Submit workflow step output. |
+| `bakin workflows submit <taskId> <stepId> <json> [--as=<actor>]` | Submit workflow step output. |
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).

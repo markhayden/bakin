@@ -178,7 +178,7 @@
       },
       {
         "name": "workflows submit",
-        "usage": "bakin workflows submit <taskId> <stepId> <json>",
+        "usage": "bakin workflows submit <taskId> <stepId> <json> [--as=<actor>]",
         "summary": "Submit workflow step output."
       }
     ],

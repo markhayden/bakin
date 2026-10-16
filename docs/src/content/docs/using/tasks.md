@@ -40,7 +40,7 @@ The routing call runs through your agent runtime — no separate API key needed.
   <img src="/docs/media/screenshots/using-tasks--task-detail.webp" alt="Task detail panel showing fields, dependencies, and the activity log." loading="lazy">
 </figure>
 
-Click any card to open the detail panel. From here you can change the title, owner, column, dependencies, and append to the activity log. The log captures every state change and any progress notes from agents. It's the audit trail that survives outside chat history.
+Click any card to open the detail panel. From here you can change the title, owner, column, dependencies, and append to the activity log. The log captures progress notes from agents, every automatic recovery, and every column move you make by hand (`Moved to <column> by operator`). A hand move also restarts the task's automatic-recovery budget, so a card you move back to Todo gets a fresh set of attempts. It's the audit trail that survives outside chat history.
 
 ### Move tasks between columns
 
@@ -52,7 +52,7 @@ When a task can't progress because it needs human input or another dependency, m
 
 ### Add dependencies
 
-A task can depend on another task. The dependent task can't leave `Backlog` or `Todo` until its dependencies hit `Done`. Set this from the detail panel under `Depends on`.
+A task can depend on another task. The dependent task can't leave `Backlog` or `Todo` until its dependencies hit `Done`. Set this from the detail panel under `Depends on`. A dependency can only point at a task that is still open: pointing at a finished, missing or self task is refused, and an agent that tries is told to continue its work instead of waiting.
 
 ### Complete and archive
 
@@ -133,19 +133,19 @@ CLI moves and agent calls go through the same state machine.
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
-Same operations are available from the terminal when you'd rather not click:
+Same operations are available from the terminal when you'd rather not click. Add `--as=human` to act as the operator (a hand move that restarts the task's recovery budget), or `--as=<agent>` to act as an agent; run from inside an agent's dispatch run directory the acting agent is detected automatically.
 
 <!-- docs:cli-commands tasks -->
 | Command | Purpose |
 | --- | --- |
 | `bakin tasks list [--column=<column>]` | List tasks. |
 | `bakin tasks get <id>` | Get task details. |
-| `bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>]` | Create a task. |
-| `bakin tasks move <id> <column>` | Move a task. |
-| `bakin tasks log <id> <message>` | Log task progress. |
-| `bakin tasks block <id> <reason>` | Block a task. |
-| `bakin tasks depend <id> <dependsOn>` | Register a task dependency. |
-| `bakin tasks complete <id> <summary>` | Complete a task. |
+| `bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>] [--as=<actor>]` | Create a task. |
+| `bakin tasks move <id> <column> [--as=<actor>]` | Move a task. |
+| `bakin tasks log <id> <message> [--as=<actor>]` | Log task progress. |
+| `bakin tasks block <id> <reason> [--as=<actor>]` | Block a task. |
+| `bakin tasks depend <id> <dependsOn> [--as=<actor>]` | Register a task dependency. |
+| `bakin tasks complete <id> <summary> [--as=<actor>]` | Complete a task. |
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).

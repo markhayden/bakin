@@ -246,8 +246,10 @@ row and no-ops silently, **by design**. The abort's durable trace is the
   skipped silently (it is working); a live run with a stale heartbeat is
   superseded transactionally (N racing actors → 1 winner) and its turns
   aborted by run id; a stranded task (no live run) recovers or blocks after
-  `maxAutoRecoveries`; a ledger error skips the task that tick (fail closed,
-  no blind recovery). Alert-only mode (`autoRecover: false`) alerts for
+  `maxAutoRecoveries` (the persisted `task.recoveries` counter, reset by an
+  operator move; staleness is `updatedAt`, re-checked on a fresh row before
+  the one-write `recoverTask`); a ledger error skips the task that tick (fail
+  closed, no blind recovery). Alert-only mode (`autoRecover: false`) alerts for
   stranded or stale-heartbeat tasks and stays quiet for a fresh live run.
 
 ## Audit events

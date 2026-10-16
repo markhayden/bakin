@@ -240,8 +240,9 @@ rejects, the settle handler re-reads current task state under the lock:
   leave it alone, remove stale dispatch markers (late gateway errors after
   the agent already called `bakin_exec_tasks_complete`/`_block`).
 - `RuntimeTurnError` → the session-death recovery ladder (above).
-- Still `inProgress` with work evidence (task log grew) → block with a
-  sanitized reason.
+- Still `inProgress` with work evidence (an entry the TARGET AGENT wrote
+  since dispatch — `shouldBlockAfterDispatchFailure`; operator, watchdog and
+  system lines never count, spec D10) → block with a sanitized reason.
 - Otherwise → back to `todo`, record `failedDispatches`, cooldown/retry.
 
 Task logs and audit entries use short sanitized summaries derived from
@@ -252,18 +253,31 @@ runtime trajectories to task logs.
 
 When a `dispatchKind: 'regular'` turn settles SUCCESSFULLY and the task is
 still `inProgress`, the settle handler re-reads the task and parks it in
-`todo` in two cases (one rule, two log lines):
+`todo` — ONE action (`moveStoredTask` + one log line), THREE triggers
+(spec `task-dependency-liveness.md` D2):
 
-- **Decomposition** — the turn ended with the agent creating the subtask
-  chain and stopping (no `tasks_complete`, by design); the `dependsOn` gate
-  holds the parent in todo until the chain completes, then continuation
-  re-dispatches it for final assembly.
+- **Registered dependency** — the turn ended with `dependsOn` set: the agent
+  registered a wait and stopped (margo task 12939a37 idled in progress for
+  30 minutes per cycle until the watchdog noticed). Target still open → log
+  `Waiting on <id> — parked in Todo; re-dispatched when it completes.` and
+  the dependency gate holds the task until continuation fires. Target
+  complete (`isCompleteColumn`) or missing → `clearDependency` + log
+  `Dependency <id> already complete — re-queued for dispatch.` and the next
+  cycle picks it up. The validator (D1) refuses registering on a complete
+  target, so the complete branch is the race where the target finished
+  DURING the turn — continuation leaves `dependsOn` to this park on live runs.
+- **Decomposition** — the recovery turn ended with the agent creating the
+  subtask chain and stopping (no `tasks_complete`, by design). Kept as its
+  own trigger: the chain's last child may finish before the parent registers,
+  the validator then refuses the registration and no `dependsOn` is left to
+  see. Log line `Decomposition complete — parked in Todo …`.
 - **Hand-off** — triage (or the agent) re-assigned the task to another agent
   (`task.agent !== targetAgent`) or to a team (agent cleared, `team` set).
   Nothing is executing it any more, so it queues for the new owner instead
   of idling in progress until the watchdog notices (margo: 35-minute stalls
   on every triaged scheduled task). Log line `Handed off to <agent|team x>;
-  queued for dispatch.` + audit `task.handed_off { id, from, to }`.
+  queued for dispatch.` + audit `task.handed_off { id, from, to }` (the audit
+  is emitted whenever the owner changed, even when a dependency line wins).
 
 Workflow step turns never park: a card owner and a step agent legitimately
 differ (`dispatch-workflow.ts`), parallel steps share one task, and nested
@@ -285,12 +299,17 @@ through a FULL re-dispatch (`dispatchSingleTask(source: 'continuation')`):
 fresh `d<seq>` session and a self-contained prompt carrying a
 `## Completed Dependency` block. (The old bare "resume your task" nudge only
 worked because it landed in the shared session that still held the original
-context.) Blocked dependents are moved to `todo` first. In-progress
-dependents are ledger-aware: a live run ⇒ skipped (the agent sees the
-completion in its own context); NO live run ⇒ the parent delegated and its
-turn ended, so it is parked in `todo` with a log line and re-dispatched
-(margo: the Daily Scramble parent idled 32 min until watchdog recovery).
-Workflow tasks in progress stay with the engine.
+context.) The read-decide-mutate pass runs under `withStateLock` so it
+never interleaves with a settling turn on the same task; the lock is
+released before `dispatchSingleTask` (which takes the same non-reentrant
+lock) runs for each re-queued dependent. Blocked dependents are moved to
+`todo` first. In-progress dependents are ledger-aware: a live run ⇒ skipped
+AND `dependsOn` is left in place (that turn may have just registered it and
+stopped — the settle-time park reads it, parks, and clears it itself); NO
+live run ⇒ the parent delegated and its turn ended, so it is parked in
+`todo` with a log line and re-dispatched (margo: the Daily Scramble parent
+idled 32 min until watchdog recovery). Workflow tasks in progress stay with
+the engine.
 
 ## Task Eligibility
 
@@ -299,7 +318,10 @@ Dispatch only considers `todo` tasks that are actually eligible to run.
 Eligibility checks are centralized in `isTaskDispatchEligible(task, ctx)`:
 
 - `availableAt` is absent or at/before the current time
-- `dependsOn` is absent or already completed
+- `dependsOn` is absent or already completed — "complete" is
+  `isCompleteColumn` (`done` | `archived`, `dispatch-board.ts`), the SAME
+  predicate the `set_dependency` validator uses, so a dependency can never be
+  satisfied for one and open for the other
 - assigned agent exists in the runtime roster
 - concurrency caps have a free slot (checked separately in the loop)
 
@@ -442,8 +464,15 @@ normal dispatch/watchdog loops:
   `countRecoveries()` would count as an attempt). The watchdog skips a task
   while that marker is its LATEST log entry; any newer activity clears the
   hold naturally.
-- Recovery loops share `settings.watchdog.maxAutoRecoveries`; exhausted tasks
-  move to `blocked`.
+- Recovery loops share `settings.watchdog.maxAutoRecoveries` and ONE counter:
+  the persisted `task.recoveries` field (spec D3) — the old `Restart recovery:`
+  / `Auto-recovered:` log-prefix counting is gone; legacy lines are inert
+  history. A recovery is ONE store write (`recoverTask`: todo + `recoveries+1`)
+  followed by the log line. Before every mutation (recover, block, manual
+  hold) the candidate is re-read and re-assessed on the fresh row (spec D9)
+  — a task the operator moved or reset while an earlier candidate was being
+  written is skipped or recovered under its fresh count, never blocked on
+  the stale snapshot. Exhausted tasks move to `blocked`.
 
 When recovery returns tasks to `todo`, `server.ts` starts the loops and then
 immediately triggers one dispatch cycle so recovered work does not wait for the
@@ -466,7 +495,8 @@ one-time scheduled work.
 - `packages/adapter-openclaw/src/trajectory-forensics.ts` — trajectory parsing + diagnosis
 - `packages/adapter-openclaw/src/errors.ts` — the ONE place provider error strings are interpreted
 - `src/core/dispatch.ts` — the public barrel; implementation in the `dispatch-*` modules (see the module map above)
-- `src/core/continuation.ts` — dependency continuation as full re-dispatch
+- `src/core/continuation.ts` — dependency continuation as full re-dispatch (reconciles under the state lock)
+- `src/core/watchdog.ts` — stuck-task scan: `updatedAt` clock, `recoveries` counter, fresh re-read before every mutation (see `agent-system.md` § Watchdog)
 - `src/core/restart-recovery.ts` — post-boot recovery of orphaned `inProgress` tasks
 - `plugins/schedule/index.ts` — Bakin-owned scheduler wiring (see `.claude/knowledge/bakin-owned-scheduler.md`)
 - `.claude/knowledge/session-forensics.md` — trajectory schema, diagnosis flow, ladder walkthroughs
