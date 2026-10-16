@@ -16,6 +16,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 import { checkDeadSelections, deadSelectionRepair, type DeadSelectionDeps, type SelectionsDescription } from '../../../plugins/models/lib/dead-selections'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import type { Proposal } from '../../../src/core/model-selections'
 import { parseHealthCheckRunInput, parseHealthRepairPlanOutput } from '../../../src/core/health-contract'
 
@@ -126,7 +127,10 @@ describe('deadSelectionRepair', () => {
     // The registry NAMESPACES item ids with the action id before apply() —
     // the isolated boot caught a lookup keyed on the raw id ("plan expired").
     const namespaced = items.map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` }))
-    const results = await repair.apply(namespaced)
+    const run = await runRepairContract(repair, namespaced)
+    expectRepairContract(repair, run)
+    expect(run.view.stages[0]!.items).toEqual([{ id: 'agent:enrich:model', label: `agent:enrich:model → ${FIX}`, status: 'done' }])
+    const results = run.results
     expect(results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['models.dead-selections'] })
     expect(applied).toEqual([{ ref: 'agent:enrich:model', from: DEAD, to: FIX, reason: 'no credentials for openai', source: 'same-id-credentialed-provider', revision: 'rev-1' }])
   })

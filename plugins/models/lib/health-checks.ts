@@ -218,6 +218,13 @@ export function recommendedRoutesRepair(
   return {
     id: 'apply-recommended-routes',
     name: 'Apply recommended work-class routes',
+    operationPlan: () => ({
+      stages: [
+        { id: 'recommend', kind: 'preparing', label: 'Compute the recommended routes' },
+        { id: 'save', kind: 'committing', label: 'Save the routes' },
+      ],
+      pointOfNoReturn: 'save',
+    }),
     async plan() {
       const { proposals } = await recommendRoutes(deps)
       if (proposals.length === 0) return []
@@ -238,11 +245,15 @@ export function recommendedRoutesRepair(
         })),
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       try {
+        op?.stage('recommend')
         const { proposals } = await recommendRoutes(deps)
+        op?.stage('save')
+        for (const p of proposals) op?.item('save', { id: p.workClass, label: `${p.workClass} → ${p.model}`, status: 'active' })
         await applyRoutes(proposals.map((p) => ({ workClass: p.workClass, model: p.model })))
+        for (const p of proposals) op?.item('save', { id: p.workClass, label: `${p.workClass} → ${p.model}`, status: 'done' })
         return items.map((item) => ({
           itemId: item.id,
           actionId: item.actionId,
