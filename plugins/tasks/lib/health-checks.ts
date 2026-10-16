@@ -187,6 +187,10 @@ export function taskConsistencyRepair(): HealthRepairActionDefinition {
   return {
     id: 'clear-done-depends-on',
     name: 'Clear completed-task dependencies',
+    operationPlan: () => ({
+      stages: [{ id: 'clear', kind: 'committing', label: 'Clear dependencies from completed tasks' }],
+      pointOfNoReturn: 'clear',
+    }),
     async plan(target) {
       const board = readTaskboard() as unknown as {
         columns: { done: Array<{ id: string; dependsOn?: string }> }
@@ -208,14 +212,19 @@ export function taskConsistencyRepair(): HealthRepairActionDefinition {
         })),
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       try {
         const board = readTaskboard() as unknown as {
           columns: { done: Array<{ id: string; title: string; dependsOn?: string }> }
         }
         const affected = board.columns.done.filter((task): task is typeof task & { dependsOn: string } => !!task.dependsOn)
-        for (const task of affected) await clearDependency(task.id, task.dependsOn)
+        op?.stage('clear')
+        for (const task of affected) {
+          op?.item('clear', { id: task.id, label: task.title, status: 'active' })
+          await clearDependency(task.id, task.dependsOn)
+          op?.item('clear', { id: task.id, label: task.title, status: 'done' })
+        }
         return items.map((item) => ({
           itemId: item.id,
           actionId: item.actionId,
@@ -313,6 +322,10 @@ export function taskOrderRepair(): HealthRepairActionDefinition {
   return {
     id: 'reorder-columns',
     name: 'Rebuild task order values',
+    operationPlan: () => ({
+      stages: [{ id: 'reorder', kind: 'committing', label: 'Rebuild order values per column' }],
+      pointOfNoReturn: 'reorder',
+    }),
     async plan(target) {
       return [{
         id: 'rebuild-task-order',
@@ -329,17 +342,20 @@ export function taskOrderRepair(): HealthRepairActionDefinition {
         }],
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       try {
         const board = readTaskboard()
         const entries = Object.entries(board.columns) as Array<[ColumnId, Task[]]>
         const changes: HealthRepairChange[] = []
+        op?.stage('reorder')
         for (const [column, tasks] of entries) {
           const ordered = [...tasks]
             .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
             .map((task) => task.id)
+          op?.item('reorder', { id: column, label: column, status: 'active' })
           await reorderTasks(column, ordered)
+          op?.item('reorder', { id: column, label: column, status: 'done', message: `${ordered.length} task(s)` })
           changes.push({
             kind: 'task' as const,
             target: column,
