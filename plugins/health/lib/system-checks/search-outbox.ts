@@ -95,6 +95,10 @@ export function searchOutboxRepair(): HealthRepairActionDefinition {
   return {
     id: 'search-outbox-revive',
     name: 'Retry quarantined Search writes',
+    operationPlan: () => ({
+      stages: [{ id: 'revive', kind: 'committing', label: 'Revive quarantined writes' }],
+      pointOfNoReturn: 'revive',
+    }),
     async plan(target) {
       return [{
         id: 'revive-quarantined-writes',
@@ -111,11 +115,13 @@ export function searchOutboxRepair(): HealthRepairActionDefinition {
         }],
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       const { retryQuarantined, nudgeOutboxPump } = await import('../../../../src/core/search-outbox')
       try {
+        op?.stage('revive')
         const revived = retryQuarantined()
+        op?.log(`Revived ${revived} quarantined write(s)`)
         await nudgeOutboxPump()
         return items.map((item) => ({
           itemId: item.id,

@@ -886,6 +886,9 @@ describe('Search write-journal observations', () => {
     const applied = await repair.apply(plan)
     expect(applied[0]?.status).toBe('applied')
     expect(applied[0]?.message).toMatch(/Revived 1/)
+    const run = await runRepairContract(repair, plan)
+    expectRepairContract(repair, run)
+    expect(run.calls).toEqual(['stage:revive', 'log'])
     mockQuarantinedRows = []
     mockOutboxStats = { pending: 0, inflight: 0, quarantined: 0, oldestPendingEnqueuedAt: null }
   })
@@ -1053,6 +1056,39 @@ describe('checkSearchConsistency', () => {
     expect(outcomes).toEqual([
       expect.objectContaining({ status: 'skipped', message: expect.stringContaining('bakin_selected no longer needs rebuilding') }),
     ])
+  })
+
+  it('plans all_actionable from the check\'s recorded evidence with no engine calls (#895)', async () => {
+    mockSearchEnabled = true
+    mockTableStates = [
+      { logical: 'bakin_missing', physical: 'bakin_missing_v2_ff', schemaVersion: 2, state: 'active' },
+      { logical: 'bakin_fine', physical: 'bakin_fine_v2_ff', schemaVersion: 2, state: 'active' },
+      { logical: 'bakin_parked', physical: 'bakin_parked_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_parked_v3_aa', phase: 'parked' },
+    ]
+    mockTableStats = null
+    mockEngineTables = [{ name: 'bakin_fine_v2_ff' }]
+    await checkSearchConsistency()
+
+    // Every engine call throws during planning: the plan must not need one.
+    mockTableStatsError = new Error('engine must not be called while planning')
+    mockEngineTablesError = new Error('engine must not be called while planning')
+    const plan = await searchConsistencyRepair().plan({ type: 'all_actionable', reportId: 'report-test' })
+    expect(plan.map((item) => item.changes[0]!.target).sort()).toEqual(['bakin_missing', 'bakin_parked'])
+    mockTableStatsError = null
+    mockEngineTablesError = null
+    mockTableStates = []
+  })
+
+  it('passes the repair runtime contract: confirm, then one rebuild item per table', async () => {
+    mockSearchEnabled = true
+    mockTableStates = [{ logical: 'bakin_selected', physical: 'bakin_selected_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_selected_v3_aa', phase: 'parked' }]
+    const repair = searchConsistencyRepair()
+    const run = await runRepairContract(repair, await repair.plan(searchConsistencyIncidentTarget('bakin_selected')))
+    expectRepairContract(repair, run)
+    expect(run.view.resources).toEqual(['search-engine'])
+    expect(run.calls).toEqual(['stage:confirm', 'stage:rebuild', 'item:rebuild:bakin_selected', 'item:rebuild:bakin_selected'])
+    expect(run.view.stages[1]!.items).toEqual([{ id: 'bakin_selected', label: 'bakin_selected', status: 'done', message: 'migrated' }])
+    mockTableStates = []
   })
 
   it('retries a failed deep sweep immediately instead of hiding it for an hour', async () => {

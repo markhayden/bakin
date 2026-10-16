@@ -31,6 +31,7 @@ mock.module('../../../src/core/settings', () => ({
 
 import type { SearchEngineStatus } from '../../../packages/core/src/adapters/search'
 import type { HealthCheckRunInput, HealthRepairTarget } from '@makinbakin/sdk'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
 
 // Mutable fixtures the mocked services read on every call.
@@ -319,6 +320,23 @@ describe('engine restart repair', () => {
     expect(restarts).toBe(1) // one bounce serves both detections
     expect(second.status).toBe('applied')
     expect(second.message).toContain('skipped a duplicate bounce')
+  })
+
+  it('passes the repair runtime contract: restart, then verify while waiting on a served query', async () => {
+    restartEngine = async () => {}
+    canaryTables = [t()]
+    const repair = searchCanaryRepair()
+    const run = await runRepairContract(repair, await repair.plan(repairTarget))
+    expectRepairContract(repair, run)
+    expect(run.view.resources).toEqual(['search-engine'])
+    expect(run.calls.slice(0, 3)).toEqual(['stage:restart', 'stage:verify', 'output'])
+    expect(run.results[0]!.status).toBe('applied')
+
+    // Inside the debounce window both stages are skipped, with the reason.
+    const burn = searchEngineBurnRepair()
+    const debounced = await runRepairContract(burn, await burn.plan(repairTarget))
+    expectRepairContract(burn, debounced)
+    expect(debounced.calls).toEqual(['skip:restart', 'skip:verify'])
   })
 
   it('fails honestly when the adapter cannot restart the engine', async () => {

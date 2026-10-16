@@ -135,8 +135,17 @@ function repairResult(
 // sweep only actually executes hourly.
 let lastSweepAt = 0
 
+/**
+ * The check's recorded evidence: logical → physical for every active table
+ * the last run CONFIRMED missing (stats 404 corroborated by the table list).
+ * Planning reads this instead of the engine (#895: plan is bounded and local);
+ * apply re-validates against the engine before rebuilding anything.
+ */
+let confirmedMissingTables = new Map<string, string>()
+
 export function resetSearchConsistencyStateForTests(): void {
   lastSweepAt = 0
+  confirmedMissingTables = new Map()
 }
 
 export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
@@ -172,6 +181,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
   const observations: HealthObservationInput[] = []
   // Fetched lazily on the first null stats read, shared across the loop.
   let listedNames: Set<string> | null | undefined
+  const missingThisRun = new Map<string, string>()
 
   for (const table of listTableStates()) {
     const tableId = stableKeyPart(table.logical)
@@ -270,6 +280,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
             },
           }))
         } else {
+          missingThisRun.set(table.logical, table.physical)
           observations.push(healthError({
             key: `indexes.table:${tableId}`,
             summary: `${table.logical} points to a missing engine table.`,
@@ -309,6 +320,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
       }))
     }
   }
+  confirmedMissingTables = missingThisRun
 
   // Hourly deep sweep: orphaned index rows + tombstoned physicals + stale
   // engine-side table generations the registry no longer references.
@@ -438,7 +450,17 @@ export function searchConsistencyRepair(): HealthRepairActionDefinition {
   return {
     id: SEARCH_CONSISTENCY_ACTION_ID,
     name: 'Rebuild inconsistent Search indexes',
+    resources: ['search-engine'],
+    operationPlan: () => ({
+      stages: [
+        { id: 'confirm', kind: 'verifying', label: 'Confirm which indexes are missing' },
+        { id: 'rebuild', kind: 'building', label: 'Rebuild indexes blue/green' },
+      ],
+      pointOfNoReturn: 'rebuild',
+    }),
     async plan(target) {
+      // Local only: the registry plus the check's recorded evidence — never
+      // the engine. Apply re-validates every table before rebuilding.
       const { listTableStates } = await import('@bakin/core/search/tables')
       const selected = listTableStates().filter((table) => targetSelectsTable(target, table))
 
@@ -447,25 +469,15 @@ export function searchConsistencyRepair(): HealthRepairActionDefinition {
           .filter((table) => table.state === 'active' || (table.state === 'migrating' && table.phase === 'parked'))
           .map(planItemForTable)
       }
-
-      const { getAppServices } = await import('../../../../src/core/app-services')
-      const search = getAppServices().search
-      const listedNames = await engineTableNames(search)
-      const repairable: SearchRepairTableState[] = []
-      for (const table of selected) {
-        if (table.state === 'migrating' && table.phase === 'parked') {
-          repairable.push(table)
-          continue
-        }
-        if (table.state === 'active' && await confirmedMissing(search, table.physical, listedNames)) {
-          repairable.push(table)
-        }
-      }
-      return repairable.map(planItemForTable)
+      return selected
+        .filter((table) => (table.state === 'migrating' && table.phase === 'parked')
+          || (table.state === 'active' && confirmedMissingTables.get(table.logical) === table.physical))
+        .map(planItemForTable)
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       try {
+        op?.stage('confirm')
         const { listTableStates } = await import('@bakin/core/search/tables')
         const { rebuildRegisteredTables } = await import('../../../../src/core/search-registry')
         const { getAppServices } = await import('../../../../src/core/app-services')
@@ -495,13 +507,17 @@ export function searchConsistencyRepair(): HealthRepairActionDefinition {
               needsRebuild = await confirmedMissing(search, table.physical)
             }
             if (!needsRebuild) {
+              op?.item('rebuild', { id: logical, label: logical, status: 'skipped', message: 'no longer needs rebuilding' })
               outcomes.push(repairResult(item, 'skipped', `${logical} no longer needs rebuilding (or is unreadable rather than missing — restart the engine instead).`))
               continue
             }
 
+            op?.stage('rebuild')
+            op?.item('rebuild', { id: logical, label: logical, status: 'active' })
             const [result] = await rebuildRegisteredTables(logical)
             const message = `${logical}: ${result?.error ?? result?.result ?? 'no registered definition'}`
             const failed = !result || Boolean(result.error) || result.result === 'parked' || result.result === 'failed'
+            op?.item('rebuild', { id: logical, label: logical, status: failed ? 'failed' : 'done', message: result?.error ?? result?.result })
             outcomes.push(repairResult(item, failed ? 'failed' : 'applied', message))
           } catch (err) {
             outcomes.push(repairResult(item, 'failed', err instanceof Error ? err.message : String(err)))
