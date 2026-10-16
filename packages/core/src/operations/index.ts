@@ -45,3 +45,19 @@ export {
   type OperationRegistryDeps,
   type StartOperationInput,
 } from './registry'
+export {
+  acquireResources,
+  heldInContext,
+  isResourceHeld,
+  readResourceHolder,
+  releaseResource,
+  resourceLockPath,
+  runHolding,
+  sortResources,
+  tryAcquireResources,
+  type AcquireResourcesOptions,
+  type ResourceHolder,
+  type ResourceHolderIdentity,
+  type ResourceLease,
+  type ResourceWait,
+} from './resources'
