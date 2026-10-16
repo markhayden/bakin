@@ -39,6 +39,8 @@ export interface Task {
   description?: string
   log?: TaskLogEntry[]
   dependsOn?: string
+  /** Auto-recoveries since the last operator move (spec D3). Always set by taskToView; optional so hand-built views (UI fixtures) need not carry it. */
+  recoveries?: number
   parentId?: string
   workflowId?: string
   scheduleJobId?: string
@@ -144,6 +146,7 @@ function taskToView(task: BakinTask): Task {
     description: task.description,
     log: task.log,
     dependsOn: task.dependsOn,
+    recoveries: task.recoveries ?? 0,
     parentId: task.parentId ?? undefined,
     workflowId: task.workflowId,
     scheduleJobId: task.scheduleJobId,
@@ -334,6 +337,27 @@ export function moveTask(identifier: string, to: string, _from?: string, channel
       void cancelWorkflowInstance(task.id)
     }
 
+    return Promise.resolve()
+  } catch (err) {
+    return Promise.reject(err)
+  }
+}
+
+/**
+ * Automatic recovery (watchdog / restart recovery): return a stranded task to
+ * todo AND count the attempt, in ONE write — a reset racing two separate
+ * writes could otherwise be overwritten by a stale increment (spec D3/D9).
+ * Legacy files without the field count from 0. Same transition table as a
+ * system moveTask.
+ */
+export function recoverTask(identifier: string): Promise<void> {
+  try {
+    const task = requireTask(identifier)
+    assertTransitionAllowed(task, 'todo', false)
+    getSharedBakinTaskStore().updateSync(task.id, {
+      ...columnPatch('todo'),
+      recoveries: (task.recoveries ?? 0) + 1,
+    })
     return Promise.resolve()
   } catch (err) {
     return Promise.reject(err)
