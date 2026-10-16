@@ -172,9 +172,12 @@ jobs:
         run: bun install --frozen-lockfile
       # tests/integration/channels boots the REAL server (server.ts embeds
       # the host shell, vendor and plugin bundles with `type: 'file'`), so
-      # the browser assets must exist before the shards run. Sub-second.
+      # the browser assets must exist before the shards run, and the
+      # tracked manifest must be regenerated for THIS platform's
+      # content-hashed sdk-shared chunks (the release pipeline does the
+      # same). Sub-second; nothing is committed from here.
       - name: Build host assets for server-booting tests
-        run: bun run build:host && bun run build:plugins
+        run: bun run build:host && bun run build:plugins && bun run build:assets-manifest
 
       # Both artifacts are needed by the completeness job: junit carries the
       # file attribute for everything that ran, but a file whose tests are ALL
@@ -241,9 +244,12 @@ jobs:
         run: bun install --frozen-lockfile
       # tests/integration/channels boots the REAL server (server.ts embeds
       # the host shell, vendor and plugin bundles with `type: 'file'`), so
-      # the browser assets must exist before the shards run. Sub-second.
+      # the browser assets must exist before the shards run, and the
+      # tracked manifest must be regenerated for THIS platform's
+      # content-hashed sdk-shared chunks (the release pipeline does the
+      # same). Sub-second; nothing is committed from here.
       - name: Build host assets for server-booting tests
-        run: bun run build:host && bun run build:plugins
+        run: bun run build:host && bun run build:plugins && bun run build:assets-manifest
 
       - name: Stamp release version
         run: bun run scripts/stamp-version.ts

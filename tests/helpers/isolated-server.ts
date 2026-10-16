@@ -8,7 +8,7 @@
  * Real HTTP must bypass the happy-dom fetch shim the suite preloads, so
  * every request goes through `Bun.fetch`.
  */
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { createServer } from 'net'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -52,15 +52,21 @@ function freePort(): Promise<number> {
 
 /**
  * server.ts statically embeds the host shell, vendor and plugin bundles
- * (`with { type: 'file' }`), so a checkout that has never been built cannot
- * boot it. Fail fast with the command instead of a cryptic module error
- * from the child.
+ * through the tracked manifest (`with { type: 'file' }`), so a checkout
+ * that has never been built — or whose manifest names another platform's
+ * content-hashed sdk-shared chunks — cannot boot it. Check every manifest
+ * entry up front and fail with the command instead of the child's cryptic
+ * module error.
  */
+const EMBEDDED_MANIFEST = join(REPO_ROOT, 'packages/host/src/api/_embedded-assets-static.ts')
+
 function assertBuiltAssets(): void {
-  const required = ['packages/host/dist/main.js', 'packages/host/public/vendor/react.js', 'plugins/health/dist/client.js']
-  const missing = required.filter((rel) => !existsSync(join(REPO_ROOT, rel)))
+  const manifestDir = join(REPO_ROOT, 'packages/host/src/api')
+  const refs = [...readFileSync(EMBEDDED_MANIFEST, 'utf-8').matchAll(/from '([^']+)' with \{ type: 'file' \}/g)].map((m) => m[1]!)
+  if (refs.length === 0) throw new Error(`no embedded-asset entries found in ${EMBEDDED_MANIFEST}`)
+  const missing = refs.filter((rel) => !existsSync(join(manifestDir, rel)))
   if (missing.length > 0) {
-    throw new Error(`isolated server needs built host assets (missing ${missing.join(', ')}) — run: bun run build:host && bun run build:plugins`)
+    throw new Error(`isolated server needs built host assets — ${missing.length} manifest entr${missing.length === 1 ? 'y is' : 'ies are'} missing (${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ', …' : ''}). Run: bun run build:host && bun run build:plugins && bun run build:assets-manifest`)
   }
 }
 
