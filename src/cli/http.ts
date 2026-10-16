@@ -8,6 +8,7 @@
  * Only `fetch` + the lightweight api-error helpers are imported; nothing here pulls
  * server-core or heavy deps into the binary entry's import graph.
  */
+import { isOperationFinished, type OperationCancelResult, type OperationView } from '@makinbakin/sdk/types'
 import { extractApiErrorMessage, formatApiError } from '../core/cli/api-error'
 
 export const BASE_URL = process.env.BAKIN_URL || `http://localhost:${process.env.PORT || 3737}`
@@ -115,5 +116,154 @@ export async function getCliRoster(): Promise<CliRoster> {
       .map((agent) => agent.id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0),
     mainAgentId: result.mainAgentId,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Operations (#895): follow one operation over SSE with snapshot reconcile
+// ---------------------------------------------------------------------------
+
+export interface OperationFollowUpdate {
+  operation: OperationView
+  /** Child operations in the parent's declared order. */
+  children: OperationView[]
+}
+
+export interface OperationFollowResult {
+  /**
+   * `finished` — terminal view received. `expired` — the same server no longer
+   * has the record. `restarted` — the server's boot changed (outcome
+   * unknown). `detached` — the caller stopped following (Ctrl-C).
+   */
+  phase: 'finished' | 'expired' | 'restarted' | 'detached'
+  operation: OperationView | null
+  children: OperationView[]
+}
+
+export interface FollowOperationOptions {
+  onUpdate?: (update: OperationFollowUpdate) => void
+  /** Stop following (the operation keeps running on the server). */
+  signal?: AbortSignal
+  /** Snapshot cadence while the stream is quiet; ticks are not replayable. */
+  reconcileMs?: number
+  /** Reconnect backoff after the stream drops. */
+  reconnectMs?: { initial: number; max: number }
+  baseUrl?: string
+}
+
+/**
+ * Follows `operationId` until it settles: the shell's SSE stream for live
+ * `operation.updated` events (resuming with Last-Event-ID), plus a snapshot
+ * read on every (re)connect and on a timer. Highest rev wins within the
+ * start's boot; a different boot is `restarted`, a same-boot 404 `expired`.
+ */
+export async function followOperation(
+  start: { operationId: string; bootId: string },
+  opts: FollowOperationOptions = {},
+): Promise<OperationFollowResult> {
+  const base = opts.baseUrl ?? BASE_URL
+  const reconcileMs = opts.reconcileMs ?? 5_000
+  const backoff = opts.reconnectMs ?? { initial: 500, max: 5_000 }
+  let operation: OperationView | null = null
+  const children = new Map<string, OperationView>()
+  let settle!: (result: OperationFollowResult) => void
+  const settled = new Promise<OperationFollowResult>((resolve) => { settle = resolve })
+  let done = false
+  const controller = new AbortController()
+
+  const orderedChildren = () => (operation?.children ?? []).map((id) => children.get(id)).filter((c): c is OperationView => Boolean(c))
+  const end = (phase: OperationFollowResult['phase']) => {
+    if (done) return
+    done = true
+    controller.abort()
+    settle({ phase, operation, children: orderedChildren() })
+  }
+  const apply = (view: OperationView) => {
+    if (done || view.bootId !== start.bootId) return
+    if (view.id === start.operationId) {
+      if (operation && operation.rev >= view.rev) return
+      operation = view
+    } else if (view.parentId === start.operationId) {
+      const held = children.get(view.id)
+      if (held && held.rev >= view.rev) return
+      children.set(view.id, view)
+    } else return
+    if (operation) opts.onUpdate?.({ operation, children: orderedChildren() })
+    if (operation && isOperationFinished(operation.status)) end('finished')
+  }
+
+  const reconcile = async () => {
+    try {
+      const res = await fetch(`${base}/api/operations/${encodeURIComponent(start.operationId)}?children=1`, { signal: controller.signal })
+      const body = jsonObject(await res.json().catch(() => null))
+      if (done || !body) return
+      if (typeof body.bootId === 'string' && body.bootId !== start.bootId) return end('restarted')
+      if (res.status === 404) return end(operation && isOperationFinished(operation.status) ? 'finished' : 'expired')
+      for (const child of (Array.isArray(body.children) ? body.children : []) as OperationView[]) apply(child)
+      if (body.operation) apply(body.operation as OperationView)
+    } catch {
+      // Transport failure: the stream loop reconnects and reconciles again.
+    }
+  }
+
+  const stream = async () => {
+    let lastEventId: string | undefined
+    let delay = backoff.initial
+    while (!done) {
+      try {
+        const res = await fetch(`${base}/api/events`, {
+          signal: controller.signal,
+          headers: { Accept: 'text/event-stream', ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {}) },
+        })
+        if (!res.ok || !res.body) throw new Error(`events stream answered ${res.status}`)
+        delay = backoff.initial
+        void reconcile()
+        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+        let buffer = ''
+        for (;;) {
+          const { value, done: streamDone } = await reader.read()
+          if (streamDone) break
+          buffer += value
+          let boundary: number
+          while ((boundary = buffer.indexOf('\n\n')) >= 0) {
+            const frame = buffer.slice(0, boundary)
+            buffer = buffer.slice(boundary + 2)
+            let data = ''
+            for (const line of frame.split('\n')) {
+              if (line.startsWith('id:')) lastEventId = line.slice(3).trim()
+              else if (line.startsWith('data:')) data += line.slice(5).trim()
+            }
+            const payload = jsonObject(parseJsonText(data))
+            if (payload?.type === 'plugin-event' && payload.event === 'operation.updated' && payload.view) apply(payload.view as OperationView)
+          }
+        }
+      } catch {
+        if (done) return
+      }
+      if (done) return
+      await new Promise((resolve) => setTimeout(resolve, delay))
+      delay = Math.min(delay * 2, backoff.max)
+    }
+  }
+
+  opts.signal?.addEventListener('abort', () => end('detached'), { once: true })
+  if (opts.signal?.aborted) end('detached')
+  const timer = setInterval(() => { void reconcile() }, reconcileMs)
+  void stream()
+  try {
+    return await settled
+  } finally {
+    clearInterval(timer)
+  }
+}
+
+/** Cancel through the server; returns the registry's answer (or `unreachable`). */
+export async function cancelOperationRemote(operationId: string, baseUrl = BASE_URL): Promise<OperationCancelResult | 'unreachable'> {
+  try {
+    const res = await fetch(`${baseUrl}/api/operations/${encodeURIComponent(operationId)}/cancel`, { method: 'POST' })
+    const body = jsonObject(await res.json().catch(() => null))
+    return typeof body?.status === 'string' ? body.status as OperationCancelResult : 'unreachable'
+  } catch {
+    return 'unreachable'
   }
 }
