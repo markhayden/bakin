@@ -12,15 +12,14 @@
  * A failed leg always deletes its partial file; the target path is only ever
  * touched by the final rename.
  */
-import { execFile } from 'child_process'
-import { promisify } from 'util'
+import { spawn } from 'child_process'
 import { createReadStream, createWriteStream, chmodSync, existsSync, mkdirSync, renameSync, rmSync } from 'fs'
 import { createHash } from 'crypto'
 import { dirname, join } from 'path'
+import type { OperationContext } from '@makinbakin/sdk/types'
 import { createLogger } from '../logger'
 
 const log = createLogger('net-download')
-const execFileAsync = promisify(execFile)
 
 const DEFAULT_DOWNLOAD_TIMEOUT_MS = 120_000
 const EXTRACT_TIMEOUT_MS = 15_000
@@ -33,9 +32,20 @@ export async function sha256File(path: string): Promise<string> {
   return hash.digest('hex')
 }
 
-export interface DownloadToFileOptions {
-  /** Lowercase hex sha256 pin. Mismatch deletes the file and throws. */
-  sha256?: string
+/**
+ * Transfer events (#895): the attempt counter, byte progress, a stall noticed
+ * on a body read, and each fresh-request retry with its classified reason.
+ * `opTransfer` maps them onto an operation; the order is pinned by tests.
+ */
+export type DownloadEvent =
+  | { type: 'attempt'; n: number; of: number }
+  | { type: 'bytes'; received: number; total: number | null }
+  | { type: 'stalled'; afterMs: number }
+  | { type: 'retry'; n: number; of: number; reason: DownloadFailureReason; detail: string }
+
+export type DownloadFailureReason = 'stalled' | 'deadline' | 'http' | 'network'
+
+export interface TransferOptions {
   /** Wall-clock deadline for one whole attempt (headers + body). Default 120s. */
   timeoutMs?: number
   /**
@@ -49,8 +59,8 @@ export interface DownloadToFileOptions {
   /**
    * Extra attempts after a failed one — each retry is a FRESH request (a
    * stalled keep-alive connection is the observed production failure mode;
-   * a fresh attempt typically succeeds). Checksum mismatches never retry:
-   * a wrong pin is deterministic. Default 1.
+   * a fresh attempt typically succeeds). Checksum mismatches and aborts never
+   * retry. Default 1.
    */
   retries?: number
   /**
@@ -60,6 +70,14 @@ export interface DownloadToFileOptions {
   fetchImpl?: typeof fetch
   /** Human prefix for error messages, e.g. `Binary "ripgrep"`. */
   label?: string
+  /** Cancels the transfer: no retry, the partial is removed, the abort reason is rethrown. */
+  signal?: AbortSignal
+  onEvent?: (event: DownloadEvent) => void
+}
+
+export interface DownloadToFileOptions extends TransferOptions {
+  /** Lowercase hex sha256 pin. Mismatch deletes the file and throws. */
+  sha256?: string
   /** Called after each chunk with received bytes and the declared total (null when unknown). */
   onProgress?: (receivedBytes: number, totalBytes: number | null) => void
 }
@@ -74,33 +92,64 @@ const DEFAULT_STALL_TIMEOUT_MS = 30_000
 
 class ChecksumMismatchError extends Error {}
 
-/** Reject when a body read outlives its stall window or the attempt deadline. */
+/** A failed attempt, classified for the retry event. */
+class TransferAttemptError extends Error {
+  constructor(message: string, readonly reason: DownloadFailureReason) {
+    super(message)
+  }
+}
+
+class AbortedError extends Error {
+  constructor(readonly reason: unknown) {
+    super('aborted')
+  }
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new AbortedError(signal.reason ?? new Error('Aborted'))
+}
+
+/** Reject when a body read outlives its stall window or the attempt deadline, or the caller aborts. */
 async function readWithDeadlines<T>(
   read: Promise<T>,
   stallTimeoutMs: number,
   deadlineAt: number,
   label: string,
+  signal: AbortSignal | undefined,
+  onStall: () => void,
 ): Promise<T> {
   const remaining = deadlineAt - Date.now()
-  if (remaining <= 0) throw new Error(`${label} download failed: attempt deadline exceeded mid-transfer`)
+  if (remaining <= 0) throw new TransferAttemptError(`${label} download failed: attempt deadline exceeded mid-transfer`, 'deadline')
   let timer: ReturnType<typeof setTimeout> | undefined
+  let onAbort: (() => void) | undefined
   const guard = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
-      reject(new Error(
-        remaining <= stallTimeoutMs
-          ? `${label} download failed: attempt deadline exceeded mid-transfer`
-          : `${label} download stalled: no data for ${Math.round(stallTimeoutMs / 1000)}s — transfer abandoned`,
-      ))
+      if (remaining <= stallTimeoutMs) {
+        reject(new TransferAttemptError(`${label} download failed: attempt deadline exceeded mid-transfer`, 'deadline'))
+        return
+      }
+      onStall()
+      reject(new TransferAttemptError(`${label} download stalled: no data for ${Math.round(stallTimeoutMs / 1000)}s — transfer abandoned`, 'stalled'))
     }, Math.min(stallTimeoutMs, remaining))
+    if (signal) {
+      onAbort = () => reject(new AbortedError(signal.reason ?? new Error('Aborted')))
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
   })
   try {
     return await Promise.race([read, guard])
   } finally {
     clearTimeout(timer)
+    if (onAbort) signal?.removeEventListener('abort', onAbort)
   }
 }
 
-async function downloadAttempt(url: string, destPath: string, options: DownloadToFileOptions): Promise<DownloadResult> {
+/** One attempt: request, then stream every chunk to `onChunk` under the stall/deadline/abort guards. */
+async function transferAttempt(
+  url: string,
+  options: TransferOptions,
+  onChunk: (chunk: Uint8Array, received: number, total: number | null) => Promise<void> | void,
+): Promise<number> {
   const label = options.label ?? 'Download'
   const timeoutMs = options.timeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS
   const stallTimeoutMs = options.stallTimeoutMs ?? DEFAULT_STALL_TIMEOUT_MS
@@ -109,53 +158,95 @@ async function downloadAttempt(url: string, destPath: string, options: DownloadT
     ?? fetch
   const deadlineAt = Date.now() + timeoutMs
 
-  const res = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) })
-  if (!res.ok) {
-    throw new Error(`${label} download failed: ${res.status} ${res.statusText} (${url})`)
-  }
-  if (!res.body) {
-    throw new Error(`${label} download failed: response carried no body (${url})`)
-  }
-  const declaredLength = Number(res.headers.get('content-length'))
-  const totalBytes = Number.isFinite(declaredLength) && declaredLength > 0 ? declaredLength : null
-
-  // Manual chunk loop — never `Bun.write(dest, res)`: it ignores the abort
-  // signal during body streaming, so a wedged connection hangs forever.
-  const reader = (res.body as ReadableStream<Uint8Array>).getReader()
-  const sink = createWriteStream(destPath)
-  const sinkDone = new Promise<void>((resolve, reject) => {
-    sink.once('close', resolve)
-    sink.once('error', reject)
-  })
-  let received = 0
+  // One controller per attempt, linked by hand to the deadline and the
+  // caller's signal (AbortSignal.any is unreliable under the test preload).
+  const controller = new AbortController()
+  const deadline = setTimeout(() => controller.abort(new Error('The operation timed out')), timeoutMs)
+  const forward = () => controller.abort(options.signal?.reason)
+  options.signal?.addEventListener('abort', forward, { once: true })
   try {
-    for (;;) {
-      const chunk = await readWithDeadlines(reader.read(), stallTimeoutMs, deadlineAt, label)
-      if (chunk.done) break
-      if (!sink.write(chunk.value)) {
-        await new Promise<void>((resolve, reject) => {
-          sink.once('drain', resolve)
-          sink.once('error', reject)
-        })
-      }
-      received += chunk.value.byteLength
-      options.onProgress?.(received, totalBytes)
+    let res: Response
+    try {
+      res = await fetchImpl(url, { signal: controller.signal, redirect: 'follow' })
+    } catch (err) {
+      throwIfAborted(options.signal)
+      const timedOut = Date.now() >= deadlineAt - 5
+      throw new TransferAttemptError(
+        `${label} download failed: ${err instanceof Error ? err.message : String(err)} (${url})`,
+        timedOut ? 'deadline' : 'network',
+      )
     }
-    sink.end()
-    await sinkDone
-  } catch (err) {
-    void reader.cancel().catch(() => { /* already broken */ })
-    sink.destroy()
-    throw err
-  }
+    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
+      // A fetch that did not follow (some fakes, `redirect: manual` shims) — follow once here.
+      return await transferAttempt(new URL(res.headers.get('location')!, url).toString(), options, onChunk)
+    }
+    if (!res.ok) {
+      throw new TransferAttemptError(`${label} download failed: ${res.status} ${res.statusText} (${url})`, 'http')
+    }
+    if (!res.body) {
+      throw new TransferAttemptError(`${label} download failed: response carried no body (${url})`, 'http')
+    }
+    const declaredLength = Number(res.headers.get('content-length'))
+    const totalBytes = Number.isFinite(declaredLength) && declaredLength > 0 ? declaredLength : null
 
-  const actual = await sha256File(destPath)
-  if (options.sha256 && actual !== options.sha256.toLowerCase()) {
-    throw new ChecksumMismatchError(
-      `${label} checksum mismatch: expected ${options.sha256.toLowerCase()}, got ${actual} — refusing to install (${url})`,
-    )
+    // Manual chunk loop — never `Bun.write(dest, res)`: it ignores the abort
+    // signal during body streaming, so a wedged connection hangs forever.
+    const reader = (res.body as ReadableStream<Uint8Array>).getReader()
+    let received = 0
+    try {
+      for (;;) {
+        const chunk = await readWithDeadlines(reader.read(), stallTimeoutMs, deadlineAt, label, options.signal, () => {
+          options.onEvent?.({ type: 'stalled', afterMs: stallTimeoutMs })
+        })
+        if (chunk.done) break
+        received += chunk.value.byteLength
+        await onChunk(chunk.value, received, totalBytes)
+        options.onEvent?.({ type: 'bytes', received, total: totalBytes })
+        throwIfAborted(options.signal)
+      }
+    } catch (err) {
+      void reader.cancel().catch(() => { /* already broken */ })
+      throw err
+    }
+    return received
+  } finally {
+    clearTimeout(deadline)
+    options.signal?.removeEventListener('abort', forward)
   }
-  return { sha256: actual, bytes: received }
+}
+
+/**
+ * The retry loop shared by files and text. Each attempt is announced; a
+ * failed one is classified and retried with a fresh request unless it was a
+ * checksum mismatch or an abort. `cleanup` runs after every failed attempt.
+ */
+async function withRetries<T>(options: TransferOptions, attemptFn: () => Promise<T>, cleanup: () => void): Promise<T> {
+  const label = options.label ?? 'Download'
+  const attempts = 1 + Math.max(0, options.retries ?? 1)
+  throwIfAbortedPublic(options.signal)
+  let lastError: unknown
+  for (let n = 1; n <= attempts; n++) {
+    options.onEvent?.({ type: 'attempt', n, of: attempts })
+    try {
+      return await attemptFn()
+    } catch (err) {
+      cleanup()
+      if (err instanceof AbortedError) throw err.reason
+      if (err instanceof ChecksumMismatchError) throw err
+      lastError = err
+      if (n < attempts) {
+        const reason: DownloadFailureReason = err instanceof TransferAttemptError ? err.reason : 'network'
+        const detail = err instanceof Error ? err.message : String(err)
+        log.warn(`${label} download attempt ${n}/${attempts} failed — retrying with a fresh request`, { error: detail, reason })
+        options.onEvent?.({ type: 'retry', n: n + 1, of: attempts, reason, detail })
+      }
+    }
+  }
+  throw lastError
+}
+
+function throwIfAbortedPublic(signal?: AbortSignal): void {
+  if (signal?.aborted) throw signal.reason ?? new Error('Aborted')
 }
 
 /**
@@ -166,32 +257,116 @@ async function downloadAttempt(url: string, destPath: string, options: DownloadT
  */
 export async function downloadToFile(url: string, destPath: string, options: DownloadToFileOptions = {}): Promise<DownloadResult> {
   const label = options.label ?? 'Download'
-  const attempts = 1 + Math.max(0, options.retries ?? 1)
   mkdirSync(dirname(destPath), { recursive: true })
-
-  let lastError: unknown
-  for (let attempt = 1; attempt <= attempts; attempt++) {
+  return withRetries(options, async () => {
+    const sink = createWriteStream(destPath)
+    const sinkDone = new Promise<void>((resolve, reject) => {
+      sink.once('close', resolve)
+      sink.once('error', reject)
+    })
+    let bytes: number
     try {
-      return await downloadAttempt(url, destPath, options)
+      bytes = await transferAttempt(url, options, async (chunk, received, total) => {
+        if (!sink.write(chunk)) {
+          await new Promise<void>((resolve, reject) => {
+            sink.once('drain', resolve)
+            sink.once('error', reject)
+          })
+        }
+        options.onProgress?.(received, total)
+      })
+      sink.end()
+      await sinkDone
     } catch (err) {
-      try { rmSync(destPath, { force: true }) } catch { log.warn(`partial download cleanup failed for ${destPath}`) }
-      if (err instanceof ChecksumMismatchError) throw err
-      lastError = err
-      if (attempt < attempts) {
-        log.warn(`${label} download attempt ${attempt}/${attempts} failed — retrying with a fresh request`, {
-          url,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
+      sink.destroy()
+      throw err
+    }
+    const actual = await sha256File(destPath)
+    if (options.sha256 && actual !== options.sha256.toLowerCase()) {
+      throw new ChecksumMismatchError(
+        `${label} checksum mismatch: expected ${options.sha256.toLowerCase()}, got ${actual} — refusing to install (${url})`,
+      )
+    }
+    return { sha256: actual, bytes }
+  }, () => {
+    try { rmSync(destPath, { force: true }) } catch { log.warn(`partial download cleanup failed for ${destPath}`) }
+  })
+}
+
+/**
+ * Fetch a small text artifact (release indexes, manifests) through the same
+ * stall/deadline/retry/abort machinery. Follows redirects.
+ */
+export async function downloadText(url: string, options: TransferOptions = {}): Promise<string> {
+  return withRetries(options, async () => {
+    const chunks: Uint8Array[] = []
+    await transferAttempt(url, options, (chunk) => { chunks.push(chunk) })
+    return Buffer.concat(chunks).toString('utf-8')
+  }, () => {})
+}
+
+/** Map transfer events onto an operation stage (and item). */
+export function opTransfer(op: Pick<OperationContext, 'bytes' | 'attempt' | 'log'>, stageId: string, itemId?: string): (event: DownloadEvent) => void {
+  return (event) => {
+    switch (event.type) {
+      case 'bytes':
+        op.bytes(stageId, { received: event.received, total: event.total }, itemId)
+        return
+      case 'stalled':
+        op.log(`${itemId ? `${itemId}: ` : ''}no data for ${Math.round(event.afterMs / 1000)}s`, 'warn')
+        return
+      case 'retry':
+        op.attempt(stageId, { n: event.n, of: event.of, reason: event.reason, detail: event.detail })
+        return
+      case 'attempt':
+        return
     }
   }
-  throw lastError
 }
 
-export interface ExtractTarMemberOptions {
+export interface TarOptions {
   timeoutMs?: number
   label?: string
+  signal?: AbortSignal
+  /** Each stderr line from tar (operations route it to `op.output`). */
+  onOutput?: (line: string) => void
 }
+
+/** Run tar with a deadline, an abort signal and line-streamed stderr. */
+function runTar(args: string[], options: TarOptions): Promise<void> {
+  throwIfAbortedPublic(options.signal)
+  return new Promise((resolve, reject) => {
+    const child = spawn('tar', args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    let stderr = ''
+    let pending = ''
+    const timer = setTimeout(() => child.kill('SIGKILL'), options.timeoutMs ?? EXTRACT_TIMEOUT_MS)
+    const onAbort = () => child.kill('SIGTERM')
+    options.signal?.addEventListener('abort', onAbort, { once: true })
+    child.stderr.on('data', (chunk: Buffer) => {
+      const text = chunk.toString()
+      stderr += text
+      pending += text
+      const lines = pending.split('\n')
+      pending = lines.pop() ?? ''
+      for (const line of lines) if (line.trim()) options.onOutput?.(line)
+    })
+    child.once('error', (err) => {
+      clearTimeout(timer)
+      options.signal?.removeEventListener('abort', onAbort)
+      reject(err)
+    })
+    child.once('close', (code, signal) => {
+      clearTimeout(timer)
+      options.signal?.removeEventListener('abort', onAbort)
+      if (pending.trim()) options.onOutput?.(pending)
+      if (options.signal?.aborted) return reject(options.signal.reason ?? new Error('Aborted'))
+      if (code === 0) return resolve()
+      reject(new Error(signal ? `tar killed by ${signal} (timed out)` : `tar exited ${code}: ${stderr.trim()}`))
+    })
+  })
+}
+
+export type ExtractTarMemberOptions = TarOptions
 
 /**
  * Extract ONE member from a tar.gz into `destDir` and return its path.
@@ -206,24 +381,21 @@ export async function extractTarMember(
 ): Promise<string> {
   const label = options.label ?? 'Archive'
   try {
-    await execFileAsync('tar', ['-xzf', archivePath, '-C', destDir, '--', member], {
-      timeout: options.timeoutMs ?? EXTRACT_TIMEOUT_MS,
-    })
+    await runTar(['-xzf', archivePath, '-C', destDir, '--', member], options)
     const memberPath = join(destDir, member)
     if (!existsSync(memberPath)) {
       throw new Error(`member "${member}" not found in archive`)
     }
     return memberPath
   } catch (err) {
+    if (options.signal?.aborted) throw err
     throw new Error(`${label} extraction failed: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
 
-export interface ExtractTarballOptions {
+export interface ExtractTarballOptions extends TarOptions {
   /** Leading path components to strip (npm tarballs nest under `package/`). */
   stripComponents?: number
-  timeoutMs?: number
-  label?: string
 }
 
 /**
@@ -237,11 +409,13 @@ export async function extractTarball(
 ): Promise<void> {
   const label = options.label ?? 'Archive'
   try {
+    throwIfAbortedPublic(options.signal)
     mkdirSync(destDir, { recursive: true })
     const args = ['-xzf', archivePath, '-C', destDir]
     if (options.stripComponents) args.push(`--strip-components=${options.stripComponents}`)
-    await execFileAsync('tar', args, { timeout: options.timeoutMs ?? EXTRACT_TIMEOUT_MS })
+    await runTar(args, options)
   } catch (err) {
+    if (options.signal?.aborted) throw err
     throw new Error(`${label} extraction failed: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
