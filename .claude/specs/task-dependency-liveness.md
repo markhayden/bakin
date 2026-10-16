@@ -1,6 +1,6 @@
 # Spec: Task Dependency Liveness
 
-Status: Rev 2, awaiting approval (2026-10-16). Rev 1 was reviewed independently by Codex (`codex exec --sandbox read-only`); its seven findings are folded in below and marked **(C#)**. Plan: `task-dependency-liveness-plan.md` (written after approval).
+Status: Rev 2 approved and BUILT on branch `fix/task-dependency-liveness` (2026-10-16, ten slice commits — see the plan's commit table); awaiting Mark's live test on 3737 before merge (D8: merge only, no release). Rev 1 was reviewed independently by Codex (`codex exec --sandbox read-only`); its seven findings are folded in below and marked **(C#)**. Plan: `task-dependency-liveness-plan.md` (written after approval).
 
 ## Objective
 

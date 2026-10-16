@@ -2,6 +2,8 @@
 
 Spec: `task-dependency-liveness.md` (rev 2). Branch: `fix/task-dependency-liveness` in the MAIN checkout (3737 serves it for Mark's live test). One PR, merge only — no release in this work (spec D8).
 
+Build status (2026-10-16): all ten slices committed on `fix/task-dependency-liveness` in plan order (C1 7e2e0d6b9 → C10 78d92511a, plus `test(tasks): health-checks mock carries DependencyRejectedError` c78ccf89d folded in after C9). Deviations from the plan as written: the CLI resolver lives in its own module `src/cli/actor.ts` (not `http.ts`) so tests can mock the HTTP client and run the real resolver; the usage token is `[--as=<actor>]` because the CLI reference renderer split `<agent|human>` into a bogus choice row; the tasks/workflows manifests' `contributes.cliCommands` usage strings also carry the flag (the docs validator renders the CLI tables from the manifests, not the registry); the internal `Task` view's `recoveries` is optional (hand-built UI fixtures) while the store record's is required; the roster lookup is not memoized (one CLI invocation = one command). Checkpoint D: typecheck, lint, check:cycles, docs:check green; full suite result recorded in the PR.
+
 Plan rev 2 (2026-10-16): Codex reviewed rev 1 (`codex exec --sandbox read-only`); its eleven findings were verified against the code and folded in, marked **(P#)**. The biggest changes: the author-based heuristics land BEFORE the operator log line (P4), continuation reconciles under the state lock (P3), the recovery mutation is one synchronous write after fresh validation (P2), CLI identity reaches the server contracts (P1), and generated docs ride the slice that changes their source (P10).
 
 ## Overview
