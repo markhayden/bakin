@@ -53,7 +53,8 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { checkScheduleSync, scheduleSyncRepair, checkScheduleCutover, checkSchedulePrompts, scheduleUnrunnableJobsRepair, unrunnableBakinJobs } from '../../../plugins/schedule/lib/health-checks'
+import { checkScheduleSync, scheduleSyncRepair, checkScheduleCutover, checkSchedulePrompts, scheduleCutoverRepair, scheduleUnrunnableJobsRepair, unrunnableBakinJobs } from '../../../plugins/schedule/lib/health-checks'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import { getJob, upsertJob } from '../../../plugins/schedule/lib/sidecar'
 
 const sidecarPath = join(testDir, 'schedule', 'sidecar.json')
@@ -394,5 +395,37 @@ describe('schedule/checkScheduleCutover', () => {
     const failing = { list: async () => { throw new Error('runtime down') } }
     const rows = observations(await checkScheduleCutover(failing, () => ['sch_a']))
     expect(rows[0].status).toBe('unknown')
+  })
+})
+
+describe('repair runtime contract (#895 D10)', () => {
+  it('complete-cutover reports its migrate stage', async () => {
+    const repair = scheduleCutoverRepair(async () => ({ migrated: 2, failed: 0 }))
+    const run = await runRepairContract(repair, await repair.plan(repairTarget))
+    expectRepairContract(repair, run)
+    expect(run.calls).toEqual(['stage:migrate', 'log'])
+    expect(run.results[0]!.status).toBe('applied')
+  })
+
+  it('track-runtime-cron reports scan, then one item per tracked job', async () => {
+    runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
+    writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
+    const repair = scheduleSyncRepair(cronReader, async () => 'boss')
+    const run = await runRepairContract(repair, await repair.plan(repairTarget))
+    expectRepairContract(repair, run)
+    expect(run.calls).toEqual(['stage:scan', 'stage:track', 'item:track:orphan-1', 'item:track:orphan-1'])
+    expect(run.view.stages.find((s) => s.id === 'track')!.items).toEqual([{ id: 'orphan-1', label: 'rogue-cron', status: 'done' }])
+  })
+
+  it('remove-unrunnable-jobs reports one item per frozen job, skipped ones included', async () => {
+    const bakinJob = (jobId: string, taskPrompt: string) => upsertJob({ jobId, isBakinJob: true, source: 'adopted', displayName: jobId, taskPrompt, schedule: { kind: 'cron', expr: '0 3 * * *' }, enabled: true, createdAt: '2026-03-28T00:00:00Z', updatedAt: '2026-03-28T00:00:00Z' })
+    bakinJob('A', 'heartbeat')
+    bakinJob('B', '')
+    const repair = scheduleUnrunnableJobsRepair(() => {})
+    const plan = await repair.plan(repairTarget)
+    bakinJob('B', 'Now a real prompt')
+    const run = await runRepairContract(repair, plan)
+    expectRepairContract(repair, run)
+    expect(run.view.stages[0]!.items?.map((i) => [i.id, i.status])).toEqual([['A', 'done'], ['B', 'skipped']])
   })
 })
