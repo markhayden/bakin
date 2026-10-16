@@ -3,6 +3,7 @@ import { spawn } from 'child_process'
 import { tmpdir } from 'os'
 import { join, resolve, sep } from 'path'
 import { randomUUID } from 'crypto'
+import { gitArgs } from '@bakin/core/net/git-args'
 
 export interface AsyncGitRunner {
   /** Run `git <args>` and return stdout; throw on non-zero exit. */
@@ -24,8 +25,9 @@ const CACHE_TTL_MS = 5 * 60 * 1000
 let cacheRoot: string | null = null
 const cache = new Map<string, CacheEntry>()
 
+// Foreground-only git (#978): cached checkouts are swept by TTL.
 const realGitAsync: AsyncGitRunner = (args) => new Promise((resolvePromise, reject) => {
-  const child = spawn('git', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn('git', gitArgs(args), { stdio: ['ignore', 'pipe', 'pipe'] })
   let stdout = ''
   let stderr = ''
 

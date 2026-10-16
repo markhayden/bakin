@@ -10,7 +10,7 @@
  *  - the loader predicate hides backups, staging dirs and sentinel dirs.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun:test'
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID, createHash } from 'crypto'
@@ -234,7 +234,72 @@ describe('replacePluginDir', () => {
     expect(readPluginLockfile().plugins[ID]).toBeUndefined()
     expect(existsSync(binPath('one'))).toBe(false)
   })
+
+  // #978: a writer the failed step left behind (a detached `git gc`, a build
+  // watcher) can hold or re-populate the broken target while rollback runs —
+  // deleting it and renaming the backup into the hole raced that on CI
+  // (ENOTEMPTY). An undeletable subtree stands in for the writer: the
+  // restore must land and the REAL error must be the one thrown.
+  it('a broken target that cannot be deleted never blocks the restore — previous tree back, real error thrown, leftover hidden then swept', async () => {
+    seedPrevious()
+    const before = { tree: treeDigest(pluginDir()), row: readPluginLockfile().plugins[ID] }
+    await expect(run({
+      build: async (dir) => {
+        const held = join(dir, 'node_modules', '.held')
+        mkdirSync(held, { recursive: true })
+        writeFileSync(join(held, 'busy'), 'still writing\n')
+        chmodSync(held, 0o555)
+        throw new Error('tsc exploded')
+      },
+    })).rejects.toThrow('tsc exploded')
+
+    expect(treeDigest(pluginDir())).toEqual(before.tree)
+    expect(readPluginLockfile().plugins[ID]).toEqual(before.row)
+    expect(existsSync(join(pluginDir(), INSTALL_SENTINEL))).toBe(false)
+    expect(isLoadableUserPluginDir(pluginsRoot(), ID)).toBe(true)
+    // Whatever could not be deleted sits under the backup prefix — never loadable.
+    expect(isLoadableUserPluginDir(pluginsRoot(), `${BACKUP_PREFIX}${ID}`)).toBe(false)
+
+    // The writer finishes; the next boot's sweep finishes the cleanup.
+    unlockTree(pluginBackupDir(pluginsRoot(), ID))
+    recoverInterruptedPluginOps(pluginsRoot())
+    expect(existsSync(pluginBackupDir(pluginsRoot(), ID))).toBe(false)
+    expect(treeDigest(pluginDir())).toEqual(before.tree)
+  })
+
+  it('a committed upgrade whose backup cannot be deleted still commits — the leftover is hidden, then swept at the next boot', async () => {
+    seedPrevious()
+    // Housekeeping still writing in the OLD clone (it was renamed aside into the backup).
+    const held = join(pluginDir(), '.git', 'objects', 'tmp')
+    mkdirSync(held, { recursive: true })
+    writeFileSync(join(held, 'pack'), 'gc in flight\n')
+    chmodSync(held, 0o555)
+
+    const result = await run({})
+
+    expect(result.targetDir).toBe(pluginDir())
+    expect(JSON.parse(readFileSync(join(pluginDir(), 'bakin-plugin.json'), 'utf-8')).version).toBe('2.0.0')
+    expect(readPluginLockfile().plugins[ID]?.version).toBe('2.0.0')
+    expect(existsSync(join(pluginDir(), INSTALL_SENTINEL))).toBe(false)
+    expect(isLoadableUserPluginDir(pluginsRoot(), ID)).toBe(true)
+    expect(isLoadableUserPluginDir(pluginsRoot(), `${BACKUP_PREFIX}${ID}`)).toBe(false)
+
+    unlockTree(pluginBackupDir(pluginsRoot(), ID))
+    recoverInterruptedPluginOps(pluginsRoot())
+    expect(existsSync(pluginBackupDir(pluginsRoot(), ID))).toBe(false)
+    expect(JSON.parse(readFileSync(join(pluginDir(), 'bakin-plugin.json'), 'utf-8')).version).toBe('2.0.0')
+  })
 })
+
+/** Make every directory under `root` writable again (undo a planted read-only subtree). */
+function unlockTree(root: string): void {
+  if (!existsSync(root)) return
+  chmodSync(root, 0o755)
+  for (const name of readdirSync(root)) {
+    const path = join(root, name)
+    if (statSync(path).isDirectory()) unlockTree(path)
+  }
+}
 
 describe('boot recovery from interrupted operations', () => {
   /** Copy the whole home as it is RIGHT NOW — the tree a killed process would leave. */

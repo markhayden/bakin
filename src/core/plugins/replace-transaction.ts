@@ -163,6 +163,25 @@ export function moveContents(from: string, to: string): void {
 }
 
 /**
+ * Delete a directory this operation owns and no longer needs. A writer the
+ * place/build step left behind (a detached `git gc`, a build watcher) may
+ * still be inside it; that must never fail the operation that owns it — the
+ * leftover sits under the backup prefix, hidden from the loader, and
+ * `recoverPluginDir` sweeps it at the next operation or boot (#978).
+ */
+function removeLeftover(path: string, context: { id: string; what: string }): boolean {
+  try {
+    rmSync(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+    return true
+  } catch (err) {
+    log.warn('Could not delete a plugin-operation leftover — hidden from the loader, swept at the next boot', {
+      path, ...context, error: err instanceof Error ? err.message : String(err),
+    })
+    return false
+  }
+}
+
+/**
  * Put the previous state back. THE rollback routine — the in-process failure
  * path and boot recovery both call it, so what a crash leaves behind is
  * exactly what a caught error leaves behind.
@@ -203,12 +222,23 @@ export function restoreFromJournal(
   // the only copy of the previous install — it must not be removed.
   const renamedAside = journal.backup && existsSync(backupPluginDir(backupDir))
   if (renamedAside || !journal.backup) {
-    rmSync(targetDir, { recursive: true, force: true })
+    // Never `rm` the broken target and then rename into the hole: a writer
+    // the failed step left behind (a detached `git gc` after the fetch or
+    // merge, a build watcher) can re-populate the path between the two calls
+    // and the rename fails ENOTEMPTY — the previous install stays stranded
+    // in the backup and the real error is replaced (#978, seen on CI). A
+    // directory rename is atomic whatever is inside it: move the broken
+    // target ASIDE, put the previous one back, delete the discard pile LAST
+    // and best-effort — it lives under the backup prefix the loader hides.
+    mkdirSync(backupDir, { recursive: true })
+    const discard = join(backupDir, `discard-${process.pid}-${Date.now()}`)
+    if (existsSync(targetDir)) renameSync(targetDir, discard)
     if (renamedAside) renameSync(backupPluginDir(backupDir), targetDir)
+    removeLeftover(discard, { id, what: 'broken target' })
   } else {
     rmSync(join(targetDir, INSTALL_SENTINEL), { force: true })
   }
-  rmSync(backupDir, { recursive: true, force: true })
+  removeLeftover(backupDir, { id, what: 'backup dir' })
   if (journal.ledgerBefore !== undefined) {
     const lock = readPluginLockfile()
     const current = lock.plugins[id]
@@ -333,11 +363,23 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
     journal.committed = true
     writeJournalFile(journalPath(backupDir), journal)
     rmSync(join(targetDir, INSTALL_SENTINEL), { force: true })
-    rmSync(backupDir, { recursive: true, force: true })
+    // The previous clone may still have git housekeeping writing inside it
+    // (#978); the commit is durable, so a leftover here is cleanup for boot
+    // recovery, never a failed operation.
+    removeLeftover(backupDir, { id, what: 'committed backup' })
     return { targetDir, installedBins }
   } catch (err) {
-    restoreFromJournal(pluginsRoot, id, journal)
-    log.error(`Plugin ${args.op} failed — previous state restored`, err as Error, { id })
+    // The operation's own error is what the caller must see. A rollback that
+    // stumbles is logged beside it — never thrown over it — and boot recovery
+    // finishes the rollback from the journal.
+    let restored = true
+    try {
+      restoreFromJournal(pluginsRoot, id, journal)
+    } catch (restoreErr) {
+      restored = false
+      log.error(`Plugin ${args.op} rollback failed — boot recovery finishes it from the journal`, restoreErr as Error, { id })
+    }
+    log.error(`Plugin ${args.op} failed — previous state ${restored ? 'restored' : 'NOT fully restored (rollback error above)'}`, err as Error, { id })
     throw err
   }
 }

@@ -6,7 +6,6 @@
  */
 import { existsSync, cpSync, rmSync } from 'fs'
 import { join } from 'path'
-import { execFileSync } from 'child_process'
 import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
 import {
@@ -30,7 +29,7 @@ import {
   installUpgradedPluginAssets,
   manifestVersion,
   readManifest,
-  run,
+  git,
   sweepDroppedBins,
 } from './upgrade-gate'
 
@@ -55,7 +54,7 @@ export function githubCloneUrl(source: string): string {
  * `readManifest` would compute after a checkout.
  */
 function readRemoteManifest(pluginDir: string, ref: string): { manifest: Record<string, unknown>; manifestSha: string } {
-  const raw = run('git', ['show', `origin/${ref}:bakin-plugin.json`], pluginDir)
+  const raw = git(['show', `origin/${ref}:bakin-plugin.json`], pluginDir)
   if (!raw) {
     throw new UpgradeRefusedError(`origin/${ref} has no bakin-plugin.json`)
   }
@@ -92,16 +91,16 @@ export async function upgradeGithub(
   // source of truth for what the user originally installed; reset every
   // time so any in-place tampering is overridden.
   const expectedUrl = githubCloneUrl(entry.source)
-  run('git', ['remote', 'set-url', 'origin', '--', expectedUrl], pluginDir)
+  git(['remote', 'set-url', 'origin', '--', expectedUrl], pluginDir)
 
   // Read-only fetch — updates `.git/` but does not touch the working tree.
   // This lets us inspect the remote manifest before deciding whether to
   // commit the upgrade (consent gate runs against the remote state, not a
   // post-mutation working tree).
-  run('git', ['fetch', 'origin', '--', entry.ref], pluginDir)
+  git(['fetch', 'origin', '--', entry.ref], pluginDir)
 
-  const remoteSha = run('git', ['rev-parse', `origin/${entry.ref}`], pluginDir).toLowerCase()
-  const localSha = run('git', ['rev-parse', 'HEAD'], pluginDir).toLowerCase()
+  const remoteSha = git(['rev-parse', `origin/${entry.ref}`], pluginDir).toLowerCase()
+  const localSha = git(['rev-parse', 'HEAD'], pluginDir).toLowerCase()
 
   // True noop — local HEAD already matches remote AND lockfile commitSha
   // is in sync. Nothing on disk or in the lockfile needs to change.
@@ -130,11 +129,7 @@ export async function upgradeGithub(
   // fetched objects) so a force-push refusal never touches the working tree.
   if (localSha !== remoteSha) {
     try {
-      execFileSync('git', ['merge-base', '--is-ancestor', localSha, remoteSha], {
-        cwd: pluginDir,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        maxBuffer: 10 * 1024 * 1024,
-      })
+      git(['merge-base', '--is-ancestor', localSha, remoteSha], pluginDir)
     } catch {
       auditUpgradeRejected('force_push_detected', id, {
         ref: entry.ref,
@@ -159,7 +154,7 @@ export async function upgradeGithub(
     // In-place lane: the new tree is the OLD clone (with the fetched
     // objects) fast-forwarded — copy the backup in and merge on top.
     cpSync(previousDir!, dir, { recursive: true, dereference: false })
-    if (localSha !== remoteSha) run('git', ['merge', '--ff-only', `origin/${entry.ref}`], dir)
+    if (localSha !== remoteSha) git(['merge', '--ff-only', `origin/${entry.ref}`], dir)
   },
   build: buildUserPlugin,
     bins: gate.bins,
@@ -226,13 +221,9 @@ export async function upgradeGithubSubpath(
   try {
     // `--` ends git option parsing; cloneUrl was Zod-validated upstream
     // and re-validated by parseGithubSource, but defense-in-depth.
-    execFileSync(
-      'git',
-      ['clone', '--depth', '1', '--branch', entry.ref, '--', cloneUrl, stagingDir],
-      { stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 10 * 1024 * 1024 },
-    )
+    git(['clone', '--depth', '1', '--branch', entry.ref, '--', cloneUrl, stagingDir], pluginsRoot)
 
-    const remoteSha = run('git', ['rev-parse', 'HEAD'], stagingDir).toLowerCase()
+    const remoteSha = git(['rev-parse', 'HEAD'], stagingDir).toLowerCase()
 
     // Noop fast-path — remote hasn't moved since last install/upgrade.
     if (remoteSha === entry.commitSha) {

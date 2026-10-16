@@ -331,9 +331,19 @@ journal → backup → sentinel → place → build → bins → ledger → comm
 
 Any failure calls `restoreFromJournal` — intended bins deleted (marker
 FIRST: an extension-less path reads as a directory to the sidecar helper
-once the file is gone), replaced bins and markers moved back, target
-removed, backup renamed back, ledger row restored (or removed for a first
-install). The SAME routine runs at boot (`install-recovery.ts`,
+once the file is gone), replaced bins and markers moved back, the broken
+target renamed ASIDE into `<backup>/discard-*` (a directory rename is
+atomic whatever a straggling writer is doing inside it — `rm` then
+rename-into-the-hole raced a detached `git gc` and failed `ENOTEMPTY` on
+CI, #978), backup renamed back, ledger row restored (or removed for a first
+install), and only then the discard pile and the backup dir deleted
+best-effort (`removeLeftover`: retried, never thrown — a leftover sits under
+the hidden backup prefix and the next operation/boot sweeps it). The
+operation's own error is always what the caller sees; a rollback that
+stumbles is logged beside it. Every git Bakin spawns goes through `gitArgs`
+(`packages/core/src/net/git-args.ts`: `gc.auto=0`, `gc.autoDetach=false`,
+`maintenance.auto=false`) so no git housekeeping outlives the command in a
+directory about to be renamed or deleted. The SAME routine runs at boot (`install-recovery.ts`,
 `recoverInterruptedPluginOps`) BEFORE user-plugin discovery. Because the
 journal precedes the first rename and `committed` precedes the backup
 deletion, no on-disk state is ambiguous: a backup dir with a committed
