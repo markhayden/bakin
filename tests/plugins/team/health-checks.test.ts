@@ -137,6 +137,7 @@ import {
   checkTeamRouting,
   personaRepair,
 } from '../../../plugins/team/lib/health-checks'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 
 const repairTarget = { type: 'all_actionable' as const, reportId: 'test-report' }
 
@@ -334,7 +335,10 @@ describe('checkPersonas', () => {
     const repair = personaRepair(testDir, runtimeAgentReader)
     const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
-    const applied = await repair.apply(plan)
+    const run = await runRepairContract(repair, plan)
+    expectRepairContract(repair, run)
+    expect(run.view.stages[0]!.items?.map((i) => i.id).sort()).toEqual(['main', 'patch', 'pixel'])
+    const applied = run.results
     expect(applied[0].status).toBe('applied')
     expect(existsSync(personasDir)).toBe(true)
     expect(readdirSync(personasDir)).toEqual(expect.arrayContaining(['main.md', 'patch.md', 'pixel.md']))
@@ -369,7 +373,11 @@ describe('checkAgentSync — wrapper', () => {
     const local = plan.find((p) => p.id === 'sync-agents')
     expect(local?.safety).toBe('safe')
 
-    const applied = await repair.apply([local!])
+    const run = await runRepairContract(repair, [local!])
+    expectRepairContract(repair, run)
+    expect(run.view.resources).toEqual(['install-state'])
+    expect(run.calls.slice(0, 2)).toEqual(['stage:context', 'stage:sync'])
+    const applied = run.results
     expect(applied[0].status).toBe('applied')
 
     const after = observations(await checkAgentSync())
@@ -393,9 +401,15 @@ describe('checkAgentSync — wrapper', () => {
     const results = observations(await checkAgentSync())
     expect(results.some((r) => r.summary.includes('migration'))).toBe(true)
 
-    const plan = await agentSyncMigrationRepair().plan(repairTarget)
+    const repair = agentSyncMigrationRepair()
+    const plan = await repair.plan(repairTarget)
     const migrate = plan.find((p) => p.id === 'migrate-agent-blocks')
     expect(migrate?.safety).toBe('destructive')
+
+    const run = await runRepairContract(repair, [migrate!])
+    expectRepairContract(repair, run)
+    expect(run.view.resources).toEqual(['install-state'])
+    expect(run.calls[0]).toBe('stage:migrate')
   })
 })
 
