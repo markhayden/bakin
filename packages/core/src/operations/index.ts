@@ -61,3 +61,4 @@ export {
   type ResourceLease,
   type ResourceWait,
 } from './resources'
+export { runLocal } from './local'

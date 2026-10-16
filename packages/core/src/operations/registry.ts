@@ -29,6 +29,7 @@ import {
   type OperationView,
 } from '@makinbakin/sdk/types'
 import { OperationCancelledError } from './errors'
+import { acquireResources, runHolding, sortResources, type ResourceLease } from './resources'
 
 export type OperationPublishKind = 'milestone' | 'tick'
 
@@ -49,6 +50,8 @@ export interface OperationRegistryDeps {
   maxFinished?: number
   /** Cadence of the stuck sweep; 0 disables the timer (tests call `checkQuiet`). */
   quietCheckIntervalMs?: number
+  /** Backoff while waiting on a held resource. */
+  resourcePollMs?: { initial: number; max: number }
 }
 
 export interface StartOperationInput<B = unknown> {
@@ -63,6 +66,12 @@ export interface StartOperationInput<B = unknown> {
   plan: OperationPlan
   /** Synchronous rejections (today's 4xx). A throw unregisters the operation and reaches the caller. */
   validate?: () => void | Promise<void>
+  /**
+   * Runs after a wait for resources, before `run`: mutable preconditions may
+   * have changed while another operation held them. Returning an outcome
+   * finishes the operation with it instead of running.
+   */
+  revalidate?: (op: OperationContext) => Promise<OperationOutcome<B> | void>
   run: (op: OperationContext) => Promise<OperationOutcome<B>>
 }
 
@@ -312,19 +321,66 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
     if (![...entries.values()].some((e) => e.registered && !isTerminal(e.view.status))) stopQuietTimer()
   }
 
-  async function runEntry<B>(entry: Entry, run: StartOperationInput<B>['run']): Promise<void> {
-    const ctx = createContext(entry)
-    try {
-      const outcome = await run(ctx)
-      finish(entry, outcome.status, outcome, outcome.code, outcome.message)
-    } catch (err) {
-      if (err instanceof OperationCancelledError && entry.cancelRequested) {
-        finish(entry, 'cancelled', null, 'cancelled')
-        return
-      }
-      const message = err instanceof Error ? err.message : String(err)
-      finish(entry, 'failed', { status: 'failed', code: 'unexpected', httpStatus: 500, body: { error: message } }, 'unexpected', message)
+  async function acquireDeclared(entry: Entry): Promise<{ lease: ResourceLease; waited: boolean }> {
+    let waited = false
+    const lease = await acquireResources(entry.view.resources, {
+      identity: { bootId: entry.view.bootId, operationId: entry.view.id, title: entry.view.title },
+      signal: entry.controller.signal,
+      ...(deps.resourcePollMs ? { pollMs: deps.resourcePollMs } : {}),
+      onWait: ({ resource, holder }) => {
+        waited = true
+        const holderTitle = holder.title ?? `process ${holder.pid}`
+        entry.view.waitingFor = {
+          holderTitle,
+          ...(holder.operationId ? { holderOperationId: holder.operationId } : {}),
+          since: iso(),
+        }
+        entry.view.lastLivenessAt = iso()
+        appendLog(entry, 'info', `Waiting for ${holderTitle} (${resource})`)
+        changed(entry, 'milestone')
+      },
+      onReclaim: ({ resource, holder }) => {
+        appendLog(entry, 'warn', `Reclaimed ${resource} from a stale holder (${holder.title ?? `process ${holder.pid}`})`)
+        changed(entry, 'milestone')
+      },
+    })
+    if (entry.view.waitingFor) {
+      delete entry.view.waitingFor
+      progressed(entry)
+      changed(entry, 'milestone')
     }
+    return { lease, waited }
+  }
+
+  async function runEntry<B>(entry: Entry, input: StartOperationInput<B>): Promise<void> {
+    const ctx = createContext(entry)
+    let lease: ResourceLease | undefined
+    let outcome: OperationOutcome<B> | undefined
+    let failure: unknown
+    try {
+      const acquired = await acquireDeclared(entry)
+      lease = acquired.lease
+      for (const r of entry.view.resources) entry.held.add(r)
+      outcome = await runHolding(entry.view.resources, async () => {
+        if (acquired.waited && input.revalidate) {
+          const changedOutcome = await input.revalidate(ctx)
+          if (changedOutcome) return changedOutcome
+        }
+        return input.run(ctx)
+      })
+    } catch (err) {
+      failure = err
+    } finally {
+      entry.held.clear()
+      lease?.release()
+    }
+
+    if (outcome) return finish(entry, outcome.status, outcome, outcome.code, outcome.message)
+    if (entry.cancelRequested && (failure instanceof OperationCancelledError || entry.controller.signal.aborted)) {
+      return finish(entry, 'cancelled', null, 'cancelled')
+    }
+    const message = failure instanceof Error ? failure.message : String(failure)
+    finish(entry, 'failed', { status: 'failed', code: 'unexpected', httpStatus: 500, body: { error: message } }, 'unexpected', message)
   }
 
   function evict(): void {
@@ -369,7 +425,7 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
           title: input.title,
           ...(input.href ? { href: input.href } : {}),
           fingerprint: input.fingerprint,
-          resources: [...(input.resources ?? [])],
+          resources: sortResources(input.resources ?? []),
           status: 'running',
           plan: structuredClone(input.plan),
           stages: input.plan.stages.map((s) => ({ ...structuredClone(s), status: 'pending' as const })),
@@ -402,7 +458,7 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
       appendLog(entry, 'info', `Started: ${input.title}`)
       changed(entry, 'milestone')
       startQuietTimer()
-      void runEntry(entry, input.run)
+      void runEntry(entry, input)
       return { operationId: entry.view.id, bootId: entry.view.bootId }
     },
 
