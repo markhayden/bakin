@@ -167,6 +167,13 @@ describe('prepareImageAttachment', () => {
     }
   })
 
+  it('a tiny, highly compressed huge-dimension raster still passes through untouched', async () => {
+    const original = join(testDir, 'huge-dims.png')
+    writeFileSync(original, await sharp({ create: { width: 10000, height: 10000, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png({ compressionLevel: 9 }).toBuffer())
+    const prepared = await prepareImageAttachment(original, 'image/png')
+    expect(prepared).toEqual({ path: original, mimeType: 'image/png', owned: false })
+  })
+
   it('a malformed SVG fails typed as unrasterizable and leaks no temp dir', async () => {
     const original = join(testDir, 'broken.svg')
     writeFileSync(original, '<svg><nope')

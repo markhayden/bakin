@@ -38,6 +38,8 @@ const JPEG_QUALITY = 85
 const MAX_INPUT_PIXELS = 100_000_000
 /** Small vector art renders at this long edge (density-scaled up; never past MAX_DIMENSION). */
 const VECTOR_TARGET_DIMENSION = 1024
+/** Passthrough validation decodes into a thumbnail this size (bounded memory). */
+const VALIDATE_DIMENSION = 64
 
 export interface PreparedAttachment {
   path: string
@@ -79,7 +81,16 @@ export async function prepareImageAttachment(path: string, mimeType: string): Pr
     // Magic bytes prove a format prefix, not a decodable image: a truncated
     // JPEG would otherwise ride to a billed call that can never succeed.
     // Without sharp there is nothing to validate with — the provider judges.
-    if (sharp) await decodeStep(path, raster, () => sharp(readFileSync(path), { limitInputPixels: MAX_INPUT_PIXELS }).raw().toBuffer())
+    if (sharp) {
+      // Plain fs read OUTSIDE decodeStep: a disk error stays retryable.
+      const bytes = readFileSync(path)
+      // Decode every pixel but shrink while streaming, so a tiny,
+      // highly compressed huge-dimension file never materializes in memory.
+      await decodeStep(path, raster, () => sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS })
+        .resize(VALIDATE_DIMENSION, VALIDATE_DIMENSION, { fit: 'inside' })
+        .raw()
+        .toBuffer())
+    }
     return { path, mimeType: raster, owned: false }
   }
 
