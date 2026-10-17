@@ -58,7 +58,12 @@ mock.module('../../src/core/app-services', () => ({
   maybeGetAppServices: () => undefined,
 }))
 
-import { get, install, preview } from '../../packages/host/src/api/skills'
+import { get, install as installRoute, preview as previewRoute } from '../../packages/host/src/api/skills'
+import { settleRoute } from '../helpers/operation-route'
+
+/** The routes are operations (#895): settle each into the answer it used to give. */
+const preview = (req: Request, _url?: URL) => settleRoute(previewRoute(req))
+const install = (req: Request, _url?: URL) => settleRoute(installRoute(req))
 
 const FIXTURES = join(import.meta.dir, '..', 'fixtures', 'skill-bundles')
 const apiUrl = (path: string) => new URL(`http://localhost${path}`)
@@ -102,7 +107,7 @@ describe('POST /api/skills/preview + /api/skills/install', () => {
     expect(installBody.installed.packageId).toBe('hub-ebay-research')
     expect(skillStore.has('ebay-research')).toBe(true)
 
-    const listRes = await get(new Request(apiUrl('/api/skills')), apiUrl('/api/skills'))
+    const listRes = await get()
     const listBody = await listRes.json() as { managed: Array<{ skillName: string; hub: boolean; upstream?: { source: string } }> }
     const row = listBody.managed.find((r) => r.skillName === 'ebay-research')
     expect(row?.hub).toBe(true)
@@ -136,7 +141,7 @@ describe('GET /api/skills — unmanaged join', () => {
   it('labels runtime skills without markers as unmanaged, hides marker-carrying ones', async () => {
     skillStore.set('hand-rolled', { name: 'hand-rolled', metadata: { scope: 'global' } })
     skillStore.set('plugin-installed', { name: 'plugin-installed', metadata: { installedBy: { pluginId: 'images' } } })
-    const res = await get(new Request(apiUrl('/api/skills')), apiUrl('/api/skills'))
+    const res = await get()
     const body = await res.json() as { managed: unknown[]; unmanaged: Array<{ name: string }> }
     expect(body.unmanaged.map((u) => u.name)).toEqual(['hand-rolled'])
   })

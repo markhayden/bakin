@@ -17,6 +17,8 @@
  */
 import { existsSync, readFileSync, rmSync, statSync } from 'fs'
 import { join } from 'path'
+import type { OperationContext } from '@makinbakin/sdk/types'
+import { OperationCancelledError } from '@bakin/core/operations'
 import { readSkillTree } from '@bakin/core/adapters/runtime'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
 import { computeDirSha } from '../../../packages/core/src/agent-packages/markers'
@@ -32,6 +34,7 @@ import { createClawhubClient } from './clawhub-client'
 import { binPlatformKey } from './bin-installer'
 import { SkillRefusalError } from './errors'
 import { installPackage, type InstallResult } from './installer'
+import { SKILL_STAGES } from './operation-plans'
 
 const log = createLogger('skill-trust')
 
@@ -136,12 +139,16 @@ interface StagedAssessment {
 }
 
 /** Fetch + assemble everything preview/commit share. Caller owns staging teardown. */
-async function assess(input: string): Promise<StagedAssessment> {
+async function assess(input: string, op?: OperationContext): Promise<StagedAssessment> {
   const normalized = normalizeSkillRef(input)
   if (!normalized.ok) throw new Error(normalized.error)
   const ref = normalized.ref
 
+  // The fetch carries the hub verdict: a refused skill throws here (fail closed).
+  op?.stage(SKILL_STAGES.fetch, ref)
   const fetched = await fetchSourceAsync(ref)
+  op?.throwIfCancelled()
+  op?.stage(SKILL_STAGES.verify)
   const staging = fetched.stagingDir
   const manifestRaw = JSON.parse(readFileSync(join(staging, 'bakin-package.json'), 'utf-8')) as Record<string, unknown>
   const parsed = safeParseManifest(manifestRaw)
@@ -261,10 +268,10 @@ function isRefusal(err: unknown): boolean {
 }
 
 /** Phase 1 — preview + consent token. Staging never survives this call. */
-export async function buildSkillPreview(input: string): Promise<PreviewResult> {
+export async function buildSkillPreview(input: string, op?: OperationContext): Promise<PreviewResult> {
   let staged: StagedAssessment | null = null
   try {
-    staged = await assess(input)
+    staged = await assess(input, op)
     const consentToken = signConsentToken({
       source: staged.ref,
       manifestSha: staged.contentSha,
@@ -274,6 +281,7 @@ export async function buildSkillPreview(input: string): Promise<PreviewResult> {
     })
     return { ok: true, preview: { ...staged.preview, consentToken } }
   } catch (err) {
+    if (err instanceof OperationCancelledError) throw err
     const message = err instanceof Error ? err.message : String(err)
     const refused = isRefusal(err)
     if (refused) {
@@ -350,7 +358,7 @@ function forgetSupersededEntries(keys: string[], keepKey: string): void {
  * Content drift bounces to a FRESH preview so stale consent never installs
  * changed content.
  */
-export async function confirmSkillInstall(input: string, token: string): Promise<ConfirmResult> {
+export async function confirmSkillInstall(input: string, token: string, op?: OperationContext): Promise<ConfirmResult> {
   const normalized = normalizeSkillRef(input)
   if (!normalized.ok) return { status: 'error', error: normalized.error }
   const ref = normalized.ref
@@ -363,7 +371,7 @@ export async function confirmSkillInstall(input: string, token: string): Promise
 
   let staged: StagedAssessment | null = null
   try {
-    staged = await assess(input)
+    staged = await assess(input, op)
     if (staged.contentSha !== payload.manifestSha) {
       const freshToken = signConsentToken({
         source: staged.ref,
@@ -385,6 +393,7 @@ export async function confirmSkillInstall(input: string, token: string): Promise
       source: ref,
       prefetched: staged.fetched,
       ...(priorKeys.length > 0 ? { replace: true } : {}),
+      op,
     })
     forgetSupersededEntries(priorKeys, `${result.packageId}@${staged.preview.version}`)
     appendAudit(getContentDir(), 'skill.hub.installed', result.packageId, {
@@ -396,6 +405,7 @@ export async function confirmSkillInstall(input: string, token: string): Promise
     }, 'rest')
     return { status: 'installed', result, warnings: staged.preview.warnings }
   } catch (err) {
+    if (err instanceof OperationCancelledError) throw err
     const message = err instanceof Error ? err.message : String(err)
     if (isRefusal(err)) {
       appendAudit(getContentDir(), 'skill.hub.refused', ref, { ref, reason: message }, 'rest')

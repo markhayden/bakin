@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Download, ShieldAlert, ShieldCheck, Trash } from 'lucide-react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
@@ -8,6 +8,7 @@ import {
   ListRow,
   ListRowActions,
   ListRows,
+  OperationProgress,
   StatusBadge,
   type KeyValueItem,
 } from '@makinbakin/sdk/patterns'
@@ -26,7 +27,6 @@ import {
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
 import { formatSize } from '@makinbakin/sdk/utils'
-import { describeRequestError } from '../lib/request-error'
 import { useInstallOperation } from '../hooks/use-install-operation'
 
 /**
@@ -69,15 +69,11 @@ interface SkillsListResponse {
 }
 
 /**
- * Preview and install reach ClawHub/GitHub, so they get a ceiling rather than
- * an open-ended wait; `AbortSignal.timeout` tears down the whole exchange,
- * body read included, not just the headers.
+ * The installed-skills list is a plain read with a ceiling. Preview and
+ * install reach ClawHub/GitHub and run as operations — followed live, never
+ * guessed at by a deadline (#895).
  */
 const LIST_TIMEOUT_MS = 15_000
-const PREVIEW_TIMEOUT_MS = 60_000
-const INSTALL_TIMEOUT_MS = 120_000
-
-/** Deadline rejections arrive as DOMExceptions — surface them as a real error. */
 
 /**
  * Source is a chip on the installed row, never a grouping. Only the curated
@@ -129,6 +125,7 @@ function PreviewDrawerBody({
   drift,
   busy,
   error,
+  progress,
   onInstall,
   onCancel,
 }: {
@@ -136,6 +133,8 @@ function PreviewDrawerBody({
   drift: boolean
   busy: boolean
   error: string | null
+  /** The install operation, live, while it runs. */
+  progress?: ReactNode
   onInstall: (preview: SkillPreviewWire) => void
   onCancel: () => void
 }) {
@@ -262,6 +261,8 @@ function PreviewDrawerBody({
         />
       </div>
 
+      {progress}
+
       {error && (
         <Alert tone="danger" data-testid="hub-drawer-error">
           <AlertTitle>The skill was not installed</AlertTitle>
@@ -283,11 +284,18 @@ function PreviewDrawerBody({
 export function HubSkillsSection() {
   const { data, error, refresh } = useJsonFetch<SkillsListResponse>('/api/skills', { timeoutMs: LIST_TIMEOUT_MS })
   const [ref, setRef] = useState('')
-  const [previewBusy, setPreviewBusy] = useState(false)
   const [preview, setPreview] = useState<SkillPreviewWire | null>(null)
   const [drift, setDrift] = useState(false)
-  const [installBusy, setInstallBusy] = useState(false)
   const [drawerError, setDrawerError] = useState<string | null>(null)
+  // The trust preview and the install are operations (#895), followed live —
+  // no request deadlines: a slow hub or a large download shows its progress.
+  type PreviewBody = { ok: boolean; refused?: boolean; error?: string; preview?: SkillPreviewWire }
+  type InstallBody = { ok: boolean; refused?: boolean; drift?: boolean; error?: string; warnings?: string[]; preview?: SkillPreviewWire }
+  const previewOp = useInstallOperation<PreviewBody>()
+  const installOp = useInstallOperation<InstallBody>()
+  const previewBusy = previewOp.busy
+  const installBusy = installOp.busy
+  const [installing, setInstalling] = useState<SkillPreviewWire | null>(null)
   const [boxError, setBoxError] = useState<string | null>(null)
   const [removing, setRemoving] = useState<{ skillName: string; packageId: string } | null>(null)
   // Removal is a remove operation (#895); the confirm stays busy until it settles.
@@ -304,72 +312,74 @@ export function HubSkillsSection() {
     const trimmed = ref.trim()
     // Enter can fire while a preview is already staging server-side.
     if (!trimmed || previewBusy) return
-    setPreviewBusy(true)
     setBoxError(null)
-    try {
-      const res = await fetch('/api/skills/preview', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ref: trimmed }),
-        signal: AbortSignal.timeout(PREVIEW_TIMEOUT_MS),
-      })
-      const body = await res.json() as { ok: boolean; refused?: boolean; error?: string; preview?: SkillPreviewWire }
-      if (!body.ok || !body.preview) {
-        setBoxError(body.refused ? `Refused: ${body.error}` : body.error ?? `HTTP ${res.status}`)
-        return
-      }
-      setDrift(false)
-      setPreview(body.preview)
-    } catch (err) {
-      setBoxError(describeRequestError(err))
-    } finally {
-      setPreviewBusy(false)
-    }
+    await previewOp.start(() => fetch('/api/skills/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ref: trimmed }),
+    }))
   }
 
-  const runInstall = async (p: SkillPreviewWire) => {
-    setInstallBusy(true)
-    setDrawerError(null)
-    try {
-      const res = await fetch('/api/skills/install', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ref: ref.trim(), consentToken: p.consentToken }),
-        signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS),
-      })
-      const body = await res.json() as {
-        ok: boolean
-        refused?: boolean
-        drift?: boolean
-        error?: string
-        warnings?: string[]
-        preview?: SkillPreviewWire
-      }
-      if (body.ok) {
-        const needsKey = p.requirements.secrets.some((s) => s.required)
-        toast(
-          needsKey
-            ? `${p.skillName} installed — add its key in Settings → Integrations & Keys to make it ready.`
-            : `${p.skillName} installed.`,
-          'success',
-        )
-        closeDrawer()
-        setRef('')
-        refresh()
-        return
-      }
-      if (body.drift && body.preview) {
-        setPreview(body.preview)
-        setDrift(true)
-        return
-      }
-      setDrawerError(body.refused ? `Refused: ${body.error}` : body.error ?? `HTTP ${res.status}`)
-    } catch (err) {
-      setDrawerError(describeRequestError(err))
-    } finally {
-      setInstallBusy(false)
+  const previewResult = previewOp.result
+  const previewError = previewOp.error
+  const resetPreview = previewOp.reset
+  useEffect(() => {
+    if (previewError) setBoxError(previewError)
+  }, [previewError])
+  useEffect(() => {
+    if (!previewResult) return
+    const body = previewResult.body
+    if (!body?.ok || !body.preview) {
+      setBoxError(body?.refused ? `Refused: ${body.error}` : body?.error ?? `HTTP ${previewResult.httpStatus}`)
+    } else {
+      setDrift(false)
+      setPreview(body.preview)
     }
+    resetPreview()
+  }, [previewResult, resetPreview])
+
+  const runInstall = async (p: SkillPreviewWire) => {
+    setDrawerError(null)
+    setInstalling(p)
+    await installOp.start(() => fetch('/api/skills/install', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ref: ref.trim(), consentToken: p.consentToken }),
+    }))
   }
+
+  const installResult = installOp.result
+  const installError = installOp.error
+  const resetInstall = installOp.reset
+  useEffect(() => {
+    if (installError) setDrawerError(installError)
+  }, [installError])
+  useEffect(() => {
+    if (!installResult) return
+    const body = installResult.body
+    const p = installing
+    resetInstall()
+    if (body?.ok && p) {
+      const needsKey = p.requirements.secrets.some((s) => s.required)
+      toast(
+        needsKey
+          ? `${p.skillName} installed — add its key in Settings → Integrations & Keys to make it ready.`
+          : `${p.skillName} installed.`,
+        'success',
+      )
+      closeDrawer()
+      setRef('')
+      refresh()
+      return
+    }
+    if (body?.drift && body.preview) {
+      setPreview(body.preview)
+      setDrift(true)
+      return
+    }
+    setDrawerError(body?.refused ? `Refused: ${body.error}` : body?.error ?? `HTTP ${installResult.httpStatus}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per settled install
+  }, [installResult])
 
   const runRemove = async () => {
     if (!removing) return
@@ -464,6 +474,13 @@ export function HubSkillsSection() {
             Preview & install
           </Button>
         </div>
+        {previewOp.showProgress && previewOp.operation ? (
+          <OperationProgress
+            operation={previewOp.operation}
+            phase={previewOp.phase ?? undefined}
+            onCancel={() => { void previewOp.cancel() }}
+          />
+        ) : null}
         {boxError && (
           <Alert tone="danger" data-testid="hub-box-error">
             <AlertTitle>That link could not be previewed</AlertTitle>
@@ -496,6 +513,13 @@ export function HubSkillsSection() {
             drift={drift}
             busy={installBusy}
             error={drawerError}
+            progress={installOp.showProgress && installOp.operation ? (
+              <OperationProgress
+                operation={installOp.operation}
+                phase={installOp.phase ?? undefined}
+                onCancel={() => { void installOp.cancel() }}
+              />
+            ) : undefined}
             onInstall={(p) => void runInstall(p)}
             onCancel={closeDrawer}
           />

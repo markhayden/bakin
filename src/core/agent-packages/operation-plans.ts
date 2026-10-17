@@ -84,3 +84,34 @@ export const MIGRATION_PLAN: OperationPlan = {
   ],
   pointOfNoReturn: MIGRATION_STAGES.migrate,
 }
+
+export const SKILL_STAGES = { fetch: 'fetch', verify: 'verify', map: 'map' } as const
+
+const skillTrustStages = [
+  { id: SKILL_STAGES.fetch, kind: 'downloading' as const, label: 'Fetch the skill and its hub verdict' },
+  { id: SKILL_STAGES.verify, kind: 'verifying' as const, label: 'Check the manifest and scan the instructions' },
+]
+
+/** Hub-skill preview: the whole trust assessment, holding nothing, cancellable throughout. */
+export const SKILL_PREVIEW_PLAN: OperationPlan = {
+  stages: skillTrustStages,
+  pointOfNoReturn: null,
+}
+
+/**
+ * Hub-skill install: the trust gate (fails closed) re-runs inside the
+ * operation BEFORE any mutation; placement is the point of no return.
+ */
+export const SKILL_INSTALL_PLAN: OperationPlan = {
+  stages: [
+    ...skillTrustStages,
+    ...PACKAGE_INSTALL_PLAN.stages.filter((stage) => stage.id !== INSTALL_STAGES.fetch),
+  ],
+  pointOfNoReturn: INSTALL_STAGES.install,
+}
+
+/** Skill-map preview: one agent turn — slower than a download, so its stuck threshold is stretched. */
+export const SKILL_MAP_PLAN: OperationPlan = {
+  stages: [{ id: SKILL_STAGES.map, kind: 'verifying', label: 'Map the requirements', quiet: { quietMs: 30_000, stuckMs: 180_000 } }],
+  pointOfNoReturn: null,
+}

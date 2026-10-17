@@ -337,8 +337,8 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     const progress = options.onProgress ?? (() => {})
     const op = options.op
     if (options.prefetched) {
+      // The caller fetched (and verified) it — and reported that on its own stages.
       log.info('Installing pre-fetched (consent-verified) source', { source: options.source })
-      op?.skip(INSTALL_STAGES.fetch, 'already fetched and verified')
       topFetched = options.prefetched
     } else {
       log.info('Fetching package source', { source: options.source })

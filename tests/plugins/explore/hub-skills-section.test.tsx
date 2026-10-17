@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
-import { TEST_BOOT_ID, finishedOperation, operationResponse } from '../../helpers/operation-fetch'
+import { TEST_BOOT_ID, finishedOperation, operationResponse, operationStarted } from '../../helpers/operation-fetch'
 import { settleReact } from '../../rtl-settle'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
 
@@ -60,6 +60,8 @@ let listData: { managed: unknown[]; unmanaged: unknown[] } = { managed: [], unma
 const refreshCalls: string[] = []
 const fetchCalls: Array<{ url: string; body?: unknown }> = []
 let fetchResponses: Record<string, unknown> = {}
+const OPERATION_ROUTES = new Set(['/api/skills/preview', '/api/skills/install', '/api/skills/map/preview'])
+let operationCount = 0
 /** Removal is an operation (#895): the DELETE answers with a start, the outcome is served from here. */
 const operations = new Map([
   ['op-remove', finishedOperation('op-remove', { httpStatus: 200, body: { ok: true, result: { removed: ['hub-weather@2.0.1'] } } })],
@@ -101,6 +103,13 @@ beforeEach(() => {
     const operation = operationResponse(url, operations)
     if (operation) return operation
     const responseBody = fetchResponses[url] ?? { ok: false, error: 'unexpected url' }
+    // The preview / install / map routes are operations (#895): 202 at once,
+    // their old body served as the finished operation's result.
+    if (OPERATION_ROUTES.has(url)) {
+      const id = `op-${url.split('/').pop()}-${++operationCount}`
+      operations.set(id, finishedOperation(id, { httpStatus: 200, body: responseBody }))
+      return operationStarted(id)
+    }
     return new Response(JSON.stringify(responseBody), { status: 200 })
   }) as typeof fetch
 })
