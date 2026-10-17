@@ -116,9 +116,24 @@ modal collects a real reason.
 - **One approval, one execution.** The Health page's `/doctor/repair/apply`
   checks `pendingRepairApprovalFor(selected observationIds)` first: when a
   review task already holds the repair, the page's Apply RESOLVES that record
-  (`resolveApprovalWithResult` returns the kind's apply report) instead of
-  running a second plan — the service's in-flight guard makes a Health-page
-  click and a task-panel/Discord click one execution (review P1, 2026-10-02).
+  (`resolveApprovalWithResult` returns the started repair's
+  `{ operationId, bootId }`, answered as 202) instead of running a second
+  plan — the service's in-flight guard makes a Health-page click and a
+  task-panel/Discord click one execution (review P1, 2026-10-02).
+- **Decision first, outcome after (#895 D24).** `onResolve` validates,
+  writes `applying` BEFORE anything can mutate, starts the repair operation
+  (`startDoctorRepair`, origin from the actor: web / discord / system),
+  appends `operation-started` and returns its id WITHOUT waiting — so the
+  decision is saved, the card updated and `approval.resolved` published at
+  once. The kind's `afterResolve` (run by the service strictly after that,
+  fire-and-forget, errors logged; `settleApprovalFollowUps()` in tests)
+  awaits the operation, judges it (below), records `applied` / `verified` /
+  `apply-failed`, completes or blocks the task, and posts the outcome with
+  `postApprovalOutcome` (feature-detected `RuntimeChannelSurface`
+  member; Discord replies to the card). Boot recovery
+  (`recoverInterruptedApplies`) skips requests whose operation is still live;
+  any other `applying` request is "outcome unknown" — a task log line, a
+  channel follow-up, then the fresh-check judgement.
 - **Targets are concrete.** A repair action's `plan()` must name every real
   target (search-spin / search-scar emit one change per table read from the
   CURRENT report's evidence) and its `apply(items)` must act on the items'

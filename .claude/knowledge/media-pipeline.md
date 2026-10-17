@@ -90,8 +90,18 @@ The download/extract/verify/commit legs ride the shared primitive
 - **Doctor:** `media.sharp` (health plugin, System group). Missing store on a
   binary = **unclassified** incident (never demoted by sensitivity — visible
   in quiet mode), `action_required`, one-click repair `media-install-store`
-  (runs the installer in-process; no restart needed). Unsupported platform =
-  advisory `unsupported_surface` warning.
+  (runs the installer in-process as a child operation; no restart needed).
+  Unsupported platform = advisory `unsupported_surface` warning.
+- **As an operation (#895):** `installMediaStore(op, options)` reports
+  `MEDIA_PLAN` (`packages/core/src/media/install-plan.ts`): prepare →
+  download (one item per pinned tarball, bytes / stalls / retries via
+  `opTransfer`) → extract → bundle → verify → commit, the atomic commit being
+  the point of no return. It ASSERTS the caller holds `media-store`, so every
+  install path is serialized on one resource: the repair declares it;
+  onboarding and other callers with no operation yet go through
+  `installMediaStoreLocally` (`src/core/media-store-install.ts`, a `runLocal`
+  operation that declares it). The failing tarball's item is marked failed
+  before the error propagates.
 - **Runtime hub one-click:** `media` is in the `FIXABLE` whitelist
   (`POST /api/runtime/onboarding/install`).
 - **Errors:** both sharp-missing throws name `bakin install media` / the
@@ -171,7 +181,11 @@ streams instead of buffering and the Whiskit node:http copy is deleted
 (`tests/architecture/operations-transfers.test.ts`). The installer logs
 per-tarball start/done lines and sweeps dead installers' `.staging-*` dirs
 (pid-liveness check). Never reintroduce `Bun.write(dest, res)` for network
-bodies. Follow-up: #896 (cross-process single-flight).
+bodies. The incident is replayed in `tests/core/media/installer.test.ts`: a
+registry stream that stalls is visible (warn log, attempt 2 of 2 `stalled`)
+and recovers on a fresh request; one that stalls on every attempt fails the
+item, the stage and the install and commits nothing. Cross-process
+single-flight is the `media-store` operation resource (`~/.bakin/locks/`).
 
 ## macOS code signing (rc.33 lesson)
 

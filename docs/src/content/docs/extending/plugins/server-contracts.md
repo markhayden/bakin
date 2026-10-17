@@ -254,12 +254,36 @@ Core stamps the plugin owner, full check and observation IDs, execution timestam
 
 ### Repair actions
 
-Register deterministic repairs separately with `ctx.registerHealthRepairAction()`, then reference the owner-local action ID from an observation's repair resolution. A repair action has two phases:
+Register deterministic repairs separately with `ctx.registerHealthRepairAction()`, then reference the owner-local action ID from an observation's repair resolution. A repair action declares:
 
-1. `plan(target)` describes concrete changes, safety (`safe`, `manual`, or `destructive`), and affected evidence without mutating anything.
-2. `apply(items)` performs only the selected plan items and returns applied/skipped/failed results plus affected check IDs.
+1. `plan(target)` — concrete changes, safety (`safe`, `manual`, or `destructive`), and affected evidence, without mutating anything. Keep it bounded and local: no network, no engine calls.
+2. `operationPlan(items)` — the stages applying these items will report, with `pointOfNoReturn` at the first stage that changes anything (or `null` when nothing live changes until an atomic swap at the end).
+3. `resources` (optional) — acquired before `apply` runs. Any plugin may declare its own `<pluginId>:<name>` resources; the core resources (`install-state`, `media-store`, `search-engine`) are reserved for core plugins. Anything else is refused at registration.
+4. `apply(items, op)` — performs only the selected items, reporting through `op` (`op.stage`, `op.item`, `op.bytes`, `op.output`), and returns applied/skipped/failed results plus affected check IDs.
 
-The server stores the opaque plan, binds it to observation execution IDs and resolution keys, and expires it after ten minutes. Manual and destructive items require individual confirmation. If affected evidence changes or resolves before apply, the server returns `STALE_PLAN` and performs zero mutations. After apply, core reruns affected checks so “applied” and “verified” remain distinct.
+```ts
+ctx.registerHealthRepairAction({
+  id: 'clear-cache',
+  name: 'Clear the cache',
+  resources: ['cache-tools:cache'],
+  plan: async (target) => [/* … */],
+  operationPlan: () => ({
+    stages: [
+      { id: 'scan', kind: 'preparing', label: 'Find stale entries' },
+      { id: 'clear', kind: 'cleanup', label: 'Remove stale entries' },
+    ],
+    pointOfNoReturn: 'clear',
+  }),
+  apply: async (items, op) => {
+    op.stage('scan')
+    // …
+    op.stage('clear')   // cancel is refused from here on
+    return items.map((item) => ({ itemId: item.id, actionId: item.actionId, status: 'applied', message: 'Cleared.', affectedCheckIds: [], changes: item.changes }))
+  },
+})
+```
+
+The server stores the opaque plan, binds it to observation execution IDs and resolution keys, and expires it after ten minutes. Manual and destructive items require individual confirmation. If affected evidence changes or resolves before apply, the server returns `STALE_PLAN` and performs zero mutations. Applying runs as an operation: each selected action is a child operation with its own plan and resources, the person sees each stage live (and can cancel before the point of no return), and core then reruns the affected checks so “applied” and “verified” remain distinct. In tests, `harness.applyHealthRepair(actionId, items)` runs your action exactly that way and returns the rows plus the operation view, so you can assert it reports.
 
 Registration validates IDs and lengths, group metadata, same-origin navigation, resource shapes, evidence JSON safety and size, and owner-local repair references. Invalid registration fails plugin activation and appears in the plugin failure registry. Hot reload removes the plugin's checks, repair actions, and cached snapshots together.
 
