@@ -212,6 +212,7 @@ interface Stub {
   dropStreams(): void
   snapshot: { status: number; body: unknown }
   lastEventIds: Array<string | null>
+  snapshotReads: number
   cancels: string[]
   cancelAnswer: { status: number; body: unknown }
   stop(): void
@@ -231,6 +232,7 @@ function stubServer(): Stub {
   const stub = {
     snapshot: { status: 200, body: { bootId: 'boot-a', operation: view(), children: [] } as unknown },
     lastEventIds: [] as Array<string | null>,
+    snapshotReads: 0,
     cancels: [] as string[],
     cancelAnswer: { status: 202, body: { bootId: 'boot-a', status: 'cancelling' } as unknown },
   } as Stub
@@ -250,7 +252,10 @@ function stubServer(): Stub {
         stub.cancels.push(url.pathname)
         return json(stub.cancelAnswer.body, stub.cancelAnswer.status)
       }
-      if (url.pathname.startsWith('/api/operations/')) return json(stub.snapshot.body, stub.snapshot.status)
+      if (url.pathname.startsWith('/api/operations/')) {
+        stub.snapshotReads++
+        return json(stub.snapshot.body, stub.snapshot.status)
+      }
       return new NativeResponse('nope', { status: 404 })
     },
   })
@@ -306,6 +311,9 @@ describe('followOperation', () => {
     await waitFor(() => stub.lastEventIds.length === 1, 'connected')
     stub.push(view({ rev: 2 }), 41)
     await waitFor(() => revs.includes(2), 'event 41 applied')
+    // The startup and post-connect reconciles must have read the running
+    // snapshot first, or a late one ends the follow before the reconnect.
+    await waitFor(() => stub.snapshotReads >= 2, 'both initial reconciles read')
     stub.snapshot = { status: 200, body: { bootId: 'boot-a', operation: view({ rev: 7, status: 'failed', outcome: { code: 'download_failed' } }), children: [] } }
     stub.dropStreams()
     const result = await following
