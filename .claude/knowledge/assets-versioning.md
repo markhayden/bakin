@@ -185,6 +185,21 @@ images and audio files.
 
 **Enrichment health (health trust overhaul, 2026-07-24):** ONE self-healing coverage stat, never a per-asset nag. The assets check emits a single `enrichment-coverage` observation (evidence: total/wanting/enriched/missing/stale/failed/skipped/coveragePct); `skipped` assets leave the denominator. Advisory only below 60% coverage on 5+ enrichable assets (`ENRICHMENT_COVERAGE_ADVISORY_BELOW`); a missing engine stays a small advisory config callout. A daily self-heal pass (`incompleteEnrichmentAssetIds` → `enqueueEnrichmentBackfill`, NO force so nothing re-bills) re-attempts failed/missing/stale enrichment automatically.
 
+**Media preparation (#855):** the QUEUE makes the media sendable right
+after resolving the engine and BEFORE marking the job pending — one
+preparation (`prepareImageAttachment`) for both engines, reused by every
+retry and released in the job's `finally`; scanned PDFs prepare every page
+before page 1 is sent (`prepareScannedPdf`). Engines never prepare media.
+Preparation failures make ZERO provider calls: sharp missing or an untyped
+disk error → `failed` (retryable; the daily pass heals it after
+`bakin install media`); an image sharp cannot decode or shrink (bmp, a
+malformed SVG) → `skipped` with the reason. **Skips are version-scoped:**
+`markEnrichmentSkipped(assetId, forVersion, reason)` records the version
+the job processed, and `isVersionScopedVerdictStale` (asset summary AND the
+self-heal tally) treats a done OR skipped record for an older version as
+stale — a new upload always gets its own verdict; a current skip is never
+retried by self-heal.
+
 ## Live updates
 
 Every mutation rewrites the manifest → the watcher emits `asset.changed`
