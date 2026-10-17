@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Download, ShieldAlert, ShieldCheck, Trash } from 'lucide-react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
@@ -27,6 +27,7 @@ import {
 } from '@makinbakin/sdk/ui'
 import { formatSize } from '@makinbakin/sdk/utils'
 import { describeRequestError } from '../lib/request-error'
+import { useInstallOperation } from '../hooks/use-install-operation'
 
 /**
  * The ecosystem lane inside the Capabilities tab (#687) — NOT a separate
@@ -75,7 +76,6 @@ interface SkillsListResponse {
 const LIST_TIMEOUT_MS = 15_000
 const PREVIEW_TIMEOUT_MS = 60_000
 const INSTALL_TIMEOUT_MS = 120_000
-const REMOVE_TIMEOUT_MS = 60_000
 
 /** Deadline rejections arrive as DOMExceptions — surface them as a real error. */
 
@@ -290,7 +290,9 @@ export function HubSkillsSection() {
   const [drawerError, setDrawerError] = useState<string | null>(null)
   const [boxError, setBoxError] = useState<string | null>(null)
   const [removing, setRemoving] = useState<{ skillName: string; packageId: string } | null>(null)
-  const [removeBusy, setRemoveBusy] = useState(false)
+  // Removal is a remove operation (#895); the confirm stays busy until it settles.
+  const removeOp = useInstallOperation<{ ok?: boolean; error?: string }>()
+  const removeBusy = removeOp.busy
 
   const closeDrawer = () => {
     setPreview(null)
@@ -371,26 +373,26 @@ export function HubSkillsSection() {
 
   const runRemove = async () => {
     if (!removing) return
-    setRemoveBusy(true)
-    try {
-      const res = await fetch(`/api/packages/${encodeURIComponent(removing.packageId)}`, {
-        method: 'DELETE',
-        signal: AbortSignal.timeout(REMOVE_TIMEOUT_MS),
-      })
-      const body = await res.json() as { ok?: boolean; error?: string }
-      if (body.ok === false) {
-        toast(`Remove failed: ${body.error}`, 'error')
-      } else {
-        toast(`${removing.skillName} removed.`, 'success')
-      }
-      setRemoving(null)
-      refresh()
-    } catch (err) {
-      toast(describeRequestError(err), 'error')
-    } finally {
-      setRemoveBusy(false)
-    }
+    await removeOp.start(() => fetch(`/api/packages/${encodeURIComponent(removing.packageId)}`, { method: 'DELETE' }))
   }
+
+  const removeResult = removeOp.result
+  const removeError = removeOp.error
+  const resetRemove = removeOp.reset
+  useEffect(() => {
+    if (!removeResult && !removeError) return
+    if (removeError) {
+      toast(removeError, 'error')
+    } else if (removeResult && (removeResult.httpStatus >= 400 || removeResult.body?.ok === false)) {
+      toast(`Remove failed: ${removeResult.body?.error ?? `HTTP ${removeResult.httpStatus}`}`, 'error')
+    } else {
+      toast(`${removing?.skillName ?? 'Skill'} removed.`, 'success')
+    }
+    setRemoving(null)
+    resetRemove()
+    refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per settled removal
+  }, [removeResult, removeError])
 
   const installed = data?.managed ?? []
 

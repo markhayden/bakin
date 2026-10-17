@@ -6,7 +6,8 @@
  * AgentsCmdFlags / parseAgentsFlags / printPackageActionTui are exported: the
  * packages command module shares the same flag parser and action report.
  */
-import { apiGet, apiPost, apiPostJson, apiDelete } from '../http'
+import { apiGet, apiPost, apiDelete } from '../http'
+import { exitOnFailure, operationBody, startAndFollow } from '../operation-command'
 import { print, printTable } from '../output'
 import { exitUsage, exitUnknownSubcommand, confirmPrompt } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
@@ -215,8 +216,10 @@ async function cmdAgentPackagesInstall(source: string, flags: AgentsCmdFlags): P
   if (flags.adopt) body.adopt = source // installer reads any truthy adopt as the agentId
   if (flags.installAs) body.installAs = flags.installAs
   if (flags.replace) body.replace = true
-  const result = await apiPost('/api/agent-packages/install', body)
+  const operation = await startAndFollow(() => apiPost('/api/agent-packages/install', body), { json: Boolean(flags.json) })
+  const result = operationBody(operation)
   if (!flags.json && process.stdout.isTTY) {
+    exitOnFailure(operation)
     await printPackageActionTui({
       action: 'installed',
       scope: 'agent package',
@@ -226,6 +229,7 @@ async function cmdAgentPackagesInstall(source: string, flags: AgentsCmdFlags): P
     return
   }
   print(result)
+  exitOnFailure(operation)
 }
 
 async function cmdAgentPackagesList(flags: AgentsCmdFlags): Promise<void> {
@@ -260,8 +264,10 @@ async function cmdAgentPackagesRemove(agentId: string, flags: AgentsCmdFlags): P
   if (flags.keepBlocks) body.keepBlocks = true
   if (flags.deleteAgent) body.deleteAgent = true
   if (flags.force) body.force = true
-  const result = await apiDelete(`/api/agent-packages/${encodeURIComponent(agentId)}`, body)
+  const operation = await startAndFollow(() => apiDelete(`/api/agent-packages/${encodeURIComponent(agentId)}`, body), { json: Boolean(flags.json) })
+  const result = operationBody(operation)
   if (!flags.json && process.stdout.isTTY) {
+    exitOnFailure(operation)
     await printPackageActionTui({
       action: 'removed',
       scope: 'agent package',
@@ -271,6 +277,7 @@ async function cmdAgentPackagesRemove(agentId: string, flags: AgentsCmdFlags): P
     return
   }
   print(result)
+  exitOnFailure(operation)
 }
 
 async function cmdAgentPackagesOrphan(agentId: string, flags: AgentsCmdFlags): Promise<void> {
@@ -287,11 +294,13 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
   if (flags.reclaimAll) body.reclaim = 'all'
   else if (flags.reclaim?.length) body.reclaim = flags.reclaim
 
+  const json = Boolean(flags.json)
+  // Each sync (and the migration) is an operation followed to its outcome;
+  // the 409 migrationRequired answer is the sync operation's result body.
+  const runSync = async (id: string): Promise<Record<string, unknown>> =>
+    operationBody(await startAndFollow(() => apiPost(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body), { json }))
   const syncOne = async (id: string): Promise<unknown> => {
-    // apiPostJson (not apiPost) — the 409 migrationRequired response is a
-    // structured payload we branch on, not a transport error to throw.
-    const first = await apiPostJson(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body)
-    let result = first.data as Record<string, unknown>
+    let result = await runSync(id)
     if (result.migrationRequired) {
       const confirmed = flags.yes || await confirmPrompt(
         `Package for "${id}" predates block-based projection. Run the one-time migration?\n` +
@@ -301,10 +310,9 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
       if (!confirmed) {
         return { ok: false, error: 'Migration declined — agent left un-synced.' }
       }
-      const migration = await apiPost('/api/agent-packages/migrate', {}) as Record<string, unknown>
+      const migration = operationBody(await startAndFollow(() => apiPost('/api/agent-packages/migrate', {}), { json }))
       if (!migration.ok) return migration
-      const second = await apiPostJson(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body)
-      result = second.data as Record<string, unknown>
+      result = await runSync(id)
     }
     return result
   }

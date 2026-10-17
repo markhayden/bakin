@@ -5,6 +5,7 @@
  * printPackageActionTui with the agents command module.
  */
 import { apiGet, apiPost, apiDelete } from '../http'
+import { exitOnFailure, operationBody, startAndFollow } from '../operation-command'
 import { print } from '../output'
 import { exitUsage, exitUnknownSubcommand, promptYesNo } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
@@ -134,15 +135,18 @@ async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags, yes: bo
   const body: Record<string, unknown> = { source }
   if (flags.installAs) body.installAs = flags.installAs
   if (flags.replace) body.replace = true
-  const result = await apiPost('/api/packages/install', body) as Record<string, unknown> & {
+  const operation = await startAndFollow(() => apiPost('/api/packages/install', body), { json: Boolean(flags.json) })
+  const result = operationBody(operation) as Record<string, unknown> & {
     ok?: boolean
     capability?: InstallCapabilityInfo
   }
 
   if (flags.json || !process.stdout.isTTY) {
     print(result)
+    exitOnFailure(operation)
     return
   }
+  exitOnFailure(operation)
 
   // Capability packs get the per-leg status + guided key step instead of the
   // generic TUI card.
@@ -168,8 +172,10 @@ async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Prom
   const body: Record<string, unknown> = {}
   if (flags.keepBlocks) body.keepBlocks = true
   if (flags.force) body.force = true
-  const result = await apiDelete(`/api/packages/${encodeURIComponent(packageId)}`, body)
+  const operation = await startAndFollow(() => apiDelete(`/api/packages/${encodeURIComponent(packageId)}`, body), { json: Boolean(flags.json) })
+  const result = operationBody(operation)
   if (!flags.json && process.stdout.isTTY) {
+    exitOnFailure(operation)
     await printPackageActionTui({
       action: 'removed',
       scope: 'package',
@@ -179,13 +185,16 @@ async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Prom
     return
   }
   print(result)
+  exitOnFailure(operation)
 }
 
 async function cmdPackagesSync(packageId: string, flags: AgentsCmdFlags): Promise<void> {
   const body: Record<string, unknown> = {}
   if (flags.check) body.check = true
-  const result = await apiPost(`/api/packages/${encodeURIComponent(packageId)}/sync`, body)
+  const operation = await startAndFollow(() => apiPost(`/api/packages/${encodeURIComponent(packageId)}/sync`, body), { json: Boolean(flags.json) })
+  const result = operationBody(operation)
   if (!flags.json && process.stdout.isTTY) {
+    exitOnFailure(operation)
     await printPackageActionTui({
       action: flags.check ? 'checked' : 'synced',
       scope: 'package',
@@ -195,6 +204,7 @@ async function cmdPackagesSync(packageId: string, flags: AgentsCmdFlags): Promis
     return
   }
   print(result)
+  exitOnFailure(operation)
 }
 
 export async function run(args: string[]): Promise<void> {

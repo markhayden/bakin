@@ -102,13 +102,14 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
           body: JSON.stringify({ enabled: nextEnabled }),
         },
       )
-      const body = (await res.json()) as { ok: boolean; error?: string }
+      const body = (await res.json()) as { ok: boolean; error?: string; message?: string }
       if (!res.ok || !body.ok) {
         // Revert on failure
         setLessons((prev) =>
           prev ? prev.map((l) => (l.lessonId === lessonId ? { ...l, enabled: !nextEnabled } : l)) : prev,
         )
-        setError(body.error ?? `HTTP ${res.status}`)
+        // 409 install_busy carries a human message naming what holds the install state.
+        setError(body.message ?? body.error ?? `HTTP ${res.status}`)
       } else {
         setError(null)
       }

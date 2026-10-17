@@ -23,3 +23,18 @@ export class OperationRejectedError extends Error {
     this.name = 'OperationRejectedError'
   }
 }
+
+/**
+ * A non-blocking writer found a resource held (D23): plugin unlink, skill-map
+ * apply and the lesson toggle never wait. Routes answer 409 `install_busy`
+ * naming the holder.
+ */
+export class ResourceBusyError extends Error {
+  constructor(
+    public readonly resource: string,
+    public readonly holder: { pid: number; title?: string; operationId?: string; acquiredAt: string },
+  ) {
+    super(`${holder.title ?? 'Another operation'} is using ${resource} — try again when it finishes.`)
+    this.name = 'ResourceBusyError'
+  }
+}

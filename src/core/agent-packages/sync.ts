@@ -26,6 +26,7 @@
  */
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
+import type { OperationContext } from '@makinbakin/sdk/types'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
@@ -54,7 +55,8 @@ import { unmarkUserEdited } from '../../../packages/core/src/agent-packages/mark
 import { PackageNotInstalledError } from './errors'
 import { projectPackage, type ProjectorResult } from './projector'
 import { installManifestRequirements } from './requirements-installer'
-import { withInstallLock } from '../install-core/install-lock'
+import { assertInstallLockHeld } from '../install-core/install-lock'
+import { SYNC_STAGES } from './operation-plans'
 import { updatePackageById } from './updater'
 import { checkPackageUpdateAsync } from './checker'
 import {
@@ -94,6 +96,12 @@ export interface SyncOptions {
   reclaim?: string[] | 'all'
   /** Audit source. */
   trigger?: 'cli' | 'rest' | 'system'
+  /**
+   * The sync operation (#895): PACKAGE_SYNC_PLAN (or the check plan with
+   * `check: true`). Callers that run many syncs under one operation (team-wide
+   * sync, migration, repairs) report items themselves and pass no op.
+   */
+  op?: OperationContext
 }
 
 // ─── Internals ───────────────────────────────────────────────────────────────
@@ -195,9 +203,10 @@ async function reclaimTargets(
  * locally); an unchanged on-disk bin never touches the network.
  */
 /** Re-project a pack from its installed source. Writes projections and bins,
- *  so it runs under the install lock (reentrant when an update/install holds it). */
+ *  so the caller must own `install-state` (an operation that declares it). */
 async function applyLocalProjection(packageId: string): Promise<ProjectorResult> {
-  return withInstallLock(() => applyLocalProjectionLocked(packageId))
+  assertInstallLockHeld('applyLocalProjection')
+  return applyLocalProjectionLocked(packageId)
 }
 
 async function applyLocalProjectionLocked(packageId: string): Promise<ProjectorResult> {
@@ -279,8 +288,13 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
   const check = opts.check === true
   const fetch = opts.fetch !== false
   const trigger = opts.trigger ?? 'cli'
+  const op = opts.op
 
   if (!check) {
+    // Every writing sync runs inside an operation that owns install-state —
+    // the sync route, team-wide sync, lesson toggle, migration, the agent-sync
+    // repairs, onboarding and the runtime switch (#895 D23).
+    assertInstallLockHeld('syncAgent')
     seedContextFiles()
     // Refresh the Bakin-shipped role-default blocks BEFORE composing — a
     // sync that composes from stale seeded roles keeps obsolete guidance
@@ -309,6 +323,7 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
 
     if (check) {
       if (fetch) {
+        op?.stage(SYNC_STAGES.check, owner.id)
         try {
           const status = await checkPackageUpdateAsync(owner.id)
           versionAfter = status.latestVersion ?? versionBefore
@@ -316,17 +331,30 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
           changed = status.upgradeAvailable === true
         } catch (err) {
           log.warn('Upstream check failed during --check', { packageId: owner.id, error: String(err) })
+          op?.log(`Upstream check failed: ${String(err)}`, 'warn')
         }
+      } else {
+        op?.skip(SYNC_STAGES.check, 'local check only')
       }
     } else {
-      if (opts.reclaim) reclaimed = await reclaimTargets(owner.entry, opts.reclaim)
-
       if (fetch) {
-        const update = await updatePackageById({ packageId: owner.id })
+        const update = await updatePackageById({ packageId: owner.id, op })
         versionAfter = update.toVersion
         commitAfter = update.toCommitSha
         changed = update.changed
+        // An unchanged package returned without entering `install`.
+        if (!changed) {
+          op?.throwIfCancelled()
+          op?.stage(SYNC_STAGES.install)
+        }
+      } else {
+        op?.skip(SYNC_STAGES.fetch, 'local re-projection only')
+        op?.stage(SYNC_STAGES.install)
       }
+      // Reclaim AFTER the fetch, so the fetch stays cancellable: clearing a
+      // sentinel is a write. The local re-projection below is what writes the
+      // reclaimed targets back, as before.
+      if (opts.reclaim) reclaimed = await reclaimTargets(owner.entry, opts.reclaim)
       // Always re-project locally: context layers / lessons / reclaims can
       // change without the package source moving, and the updater no-ops on
       // an unchanged commit.
@@ -367,6 +395,7 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
       }
     }
 
+    op?.stage(SYNC_STAGES.verify)
     const findings = await verifyAgent(agentId, owner.id)
     receipt = {
       agentId,
@@ -389,7 +418,14 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
     }
   } else {
     // Unmanaged agent — maintain the context-layer AGENTS.md block only.
-    if (!check) await recomposeUnmanagedAgent(agentId)
+    if (check) {
+      op?.skip(SYNC_STAGES.check, 'no package to check')
+    } else {
+      op?.skip(SYNC_STAGES.fetch, 'no package — context layers only')
+      op?.stage(SYNC_STAGES.install)
+      await recomposeUnmanagedAgent(agentId)
+    }
+    op?.stage(SYNC_STAGES.verify)
     const findings = await verifyAgent(agentId)
     receipt = {
       agentId,
@@ -537,12 +573,15 @@ export async function repairPackLocally(packageKey: string): Promise<ProjectorRe
  */
 export async function syncPack(
   packageId: string,
-  opts: { check?: boolean } = {},
+  opts: { check?: boolean; op?: OperationContext } = {},
 ): Promise<PackSyncReceipt> {
   const entry = requirePackEntry(packageId)
+  const op = opts.op
 
   if (opts.check) {
+    op?.stage(SYNC_STAGES.check, packageId)
     const status = await checkPackageUpdateAsync(packageId)
+    op?.skip(SYNC_STAGES.verify, 'packs have no workspace to scan')
     return {
       packageId,
       kind: entry.kind,
@@ -556,8 +595,14 @@ export async function syncPack(
     }
   }
 
-  const update = await updatePackageById({ packageId })
+  assertInstallLockHeld('syncPack')
+  const update = await updatePackageById({ packageId, op })
+  if (!update.changed) {
+    op?.throwIfCancelled()
+    op?.stage(SYNC_STAGES.install)
+  }
   await applyLocalProjection(packageId)
+  op?.skip(SYNC_STAGES.verify, 'packs have no workspace to scan')
   return {
     packageId,
     kind: entry.kind,

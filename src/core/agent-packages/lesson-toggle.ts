@@ -10,6 +10,7 @@
 import { existsSync, readFileSync } from 'fs'
 import { basename, join } from 'path'
 import { parseLessonFrontmatter } from '@bakin/core/format/frontmatter'
+import { holdNow } from '@bakin/core/operations'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
@@ -70,8 +71,21 @@ export interface ToggleResult {
 /**
  * Enable or disable a single lesson. Idempotent — toggling an already-on
  * lesson on returns `changed: false` with no writes.
+ *
+ * A bounded, local, synchronous writer (#895 D23): it takes `install-state`
+ * WITHOUT waiting — before the ledger is even read — and holds it through
+ * the recompose, so it can never interleave with an install or sync. Busy
+ * throws `ResourceBusyError` (the route answers 409 `install_busy`).
  */
 export async function setLessonEnabled(
+  packageId: string,
+  lessonId: string,
+  enabled: boolean,
+): Promise<ToggleResult> {
+  return holdNow(['install-state'], { title: `Toggle lesson ${lessonId}` }, () => setLessonEnabledHeld(packageId, lessonId, enabled))
+}
+
+async function setLessonEnabledHeld(
   packageId: string,
   lessonId: string,
   enabled: boolean,

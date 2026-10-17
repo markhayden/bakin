@@ -11,7 +11,7 @@
  *   - global pseudo-team loads the roster + global context file
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -43,6 +43,7 @@ mock.module('@tanstack/react-router', () => ({
 }))
 
 import { TeamDetail } from '../../../plugins/team/components/team-detail'
+import { finishedOperation, operationResponse, operationStarted } from '../../helpers/operation-fetch'
 
 let fetchCalls: Array<{ url: string; init?: RequestInit }> = []
 
@@ -77,11 +78,19 @@ const SYNC_RESULTS = {
   ],
 }
 
+// The sync is an operation (#895): the POST answers 202 and the result is served from /api/operations.
+const operations = new Map([
+  ['op-media-sync', finishedOperation('op-media-sync', { httpStatus: 200, body: SYNC_RESULTS })],
+  ['op-global-sync', finishedOperation('op-global-sync', { httpStatus: 200, body: { ok: true, teamId: 'global', results: [] } })],
+])
+
 function installFetch() {
   fetchCalls = []
   global.fetch = mock(async (url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url)
     fetchCalls.push({ url: u, init })
+    const operation = operationResponse(u, operations)
+    if (operation) return operation
     if (u.endsWith('/teams/media/members')) return { ok: true, json: async () => MEMBERS } as Response
     if (u.includes('/context/team?id=media') && (!init || init.method === undefined)) {
       return { ok: true, json: async () => ({ ok: true, path: '/x/media.md', content: '# Media Team' }) } as Response
@@ -89,7 +98,8 @@ function installFetch() {
     if (u.includes('/context/team?id=media') && init?.method === 'PUT') {
       return { ok: true, json: async () => ({ ok: true, path: '/x/media.md', content: JSON.parse(String(init.body)).content }) } as Response
     }
-    if (u.endsWith('/teams/media/sync')) return { ok: true, json: async () => SYNC_RESULTS } as Response
+    if (u.endsWith('/teams/media/sync')) return operationStarted('op-media-sync')
+    if (u.endsWith('/teams/global/sync')) return operationStarted('op-global-sync')
     if (u.endsWith('/context/global')) return { ok: true, json: async () => ({ ok: true, path: '/x/global.md', content: '' }) } as Response
     if (u === '/api/plugins/team/') return { ok: true, json: async () => [{ id: 'main', name: 'Roscoe' }, { id: 'pixel', name: 'Pixel' }] } as Response
     return { ok: false, json: async () => ({}) } as Response
@@ -146,6 +156,16 @@ describe('TeamDetail', () => {
     await waitFor(() => expect(screen.getByText('Roscoe')).toBeDefined())
     expect(screen.getByRole('button', { name: /Sync all agents/ })).toBeDefined()
     expect(fetchCalls.some((c) => c.url.endsWith('/context/global'))).toBe(true)
+  })
+
+  it('syncs every agent as ONE team-sync operation, never a per-member request loop (#895)', async () => {
+    render(<TeamDetail teamId="global" />)
+    await waitFor(() => expect(screen.getByText('Roscoe')).toBeDefined())
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Sync all agents/ })) })
+    await waitFor(() => expect(fetchCalls.some((c) => c.url.includes('/api/operations/op-global-sync'))).toBe(true))
+    expect(fetchCalls.filter((c) => c.url.endsWith('/teams/global/sync'))).toHaveLength(1)
+    expect(fetchCalls.some((c) => c.url.includes('/api/agent-packages/'))).toBe(false)
   })
 })
 

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { OperationProgress } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -21,6 +22,7 @@ import {
   Input,
   SubmitButton,
 } from '@makinbakin/sdk/ui'
+import { usePackageOperation } from '../hooks/use-package-operation'
 
 /**
  * Adopt-flow dialog — pre-targets a specific runtime agent. Used from
@@ -38,8 +40,10 @@ export interface AdoptDialogProps {
 
 export function AdoptDialog({ open, onOpenChange, agentId, onAdopted }: AdoptDialogProps) {
   const [source, setSource] = useState('')
-  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The adopt is an install operation (#895), followed live in the dialog.
+  const install = usePackageOperation<{ ok: boolean; error?: string }>()
+  const submitting = install.busy
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -47,31 +51,32 @@ export function AdoptDialog({ open, onOpenChange, agentId, onAdopted }: AdoptDia
       setError('Source is required (github:user/repo[@ref] or a local path)')
       return
     }
-    setSubmitting(true)
     setError(null)
-    try {
-      const res = await fetch('/api/agent-packages/install', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source: source.trim(),
-          adopt: agentId,
-        }),
-      })
-      const body = (await res.json()) as { ok: boolean; error?: string }
-      if (!res.ok || !body.ok) {
-        setError(body.error ?? `HTTP ${res.status}`)
-        return
-      }
-      if (onAdopted) onAdopted()
-      onOpenChange(false)
-      setSource('')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSubmitting(false)
-    }
+    await install.start(() => fetch('/api/agent-packages/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: source.trim(),
+        adopt: agentId,
+      }),
+    }))
   }
+
+  const settled = install.result
+  const resetInstall = install.reset
+  useEffect(() => {
+    if (!settled) return
+    if (settled.httpStatus !== 200 || !settled.body?.ok) {
+      setError(settled.body?.error ?? `HTTP ${settled.httpStatus}`)
+      return
+    }
+    onAdopted?.()
+    onOpenChange(false)
+    setSource('')
+    resetInstall()
+  }, [settled, onAdopted, onOpenChange, resetInstall])
+
+  const shownError = error ?? install.error
 
   return (
     <Dialog busy={submitting} open={open} onOpenChange={onOpenChange}>
@@ -114,10 +119,18 @@ export function AdoptDialog({ open, onOpenChange, agentId, onAdopted }: AdoptDia
             </AlertDescription>
           </Alert>
 
-          {error ? (
+          {install.showProgress && install.operation ? (
+            <OperationProgress
+              operation={install.operation}
+              phase={install.phase ?? undefined}
+              onCancel={() => { void install.cancel() }}
+            />
+          ) : null}
+
+          {shownError ? (
             <Alert tone="danger">
               <AlertTitle>Agent was not adopted</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{shownError}</AlertDescription>
             </Alert>
           ) : null}
 

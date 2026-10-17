@@ -24,10 +24,13 @@
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
+import type { OperationContext } from '@makinbakin/sdk/types'
+import { assertInstallLockHeld } from '../install-core/install-lock'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
 import { getAppServices } from '../app-services'
+import { MIGRATION_STAGES } from './operation-plans'
 import {
   type PackageEntry,
   getLockfilePath,
@@ -131,8 +134,17 @@ async function backupWorkspaces(agentIds: string[]): Promise<string | null> {
 }
 
 export async function migrateToManagedBlocks(
-  opts: { trigger?: 'cli' | 'rest' | 'system' } = {},
+  opts: {
+    trigger?: 'cli' | 'rest' | 'system'
+    /** The migration operation (#895, MIGRATION_PLAN): one item per agent; `migrate` is the point of no return. */
+    op?: OperationContext
+  } = {},
 ): Promise<MigrationResult> {
+  // The whole chain — rewrite → ledger → syncAgent — runs under ONE owner
+  // that took install-state before the first read here (#895 PLAN 4.2).
+  assertInstallLockHeld('migrateToManagedBlocks')
+  const op = opts.op
+  op?.stage(MIGRATION_STAGES.scan)
   const runtime = getAppServices().runtime
   const lock = readLockfile()
   const roster = await runtime.agents.list()
@@ -162,11 +174,25 @@ export async function migrateToManagedBlocks(
   }
 
   if (legacyPackageAgents.length === 0 && unmanagedWithLegacyBlocks.length === 0) {
+    op?.skip(MIGRATION_STAGES.backup, 'already migrated')
+    op?.skip(MIGRATION_STAGES.migrate, 'already migrated')
     return { alreadyMigrated: true, backupPath: null, agents: [] }
   }
 
   const allAgentIds = [...new Set([...roster.map((a) => a.id), ...agentEntryByAgentId.keys()])].sort()
+  op?.stage(MIGRATION_STAGES.backup)
   const backupPath = await backupWorkspaces(allAgentIds)
+  // The point of no return: nothing in any workspace or the ledger has changed yet.
+  op?.throwIfCancelled()
+  op?.stage(MIGRATION_STAGES.migrate)
+  for (const agentId of [...legacyPackageAgents, ...unmanagedWithLegacyBlocks]) {
+    op?.item(MIGRATION_STAGES.migrate, { id: agentId, label: agentId })
+  }
+  const reportItem = (r: MigrationAgentResult) => {
+    op?.item(MIGRATION_STAGES.migrate, r.error
+      ? { id: r.agentId, label: r.agentId, status: 'failed', message: r.error }
+      : { id: r.agentId, label: r.agentId, status: 'done' })
+  }
   log.info('Migration starting', {
     legacyPackages: legacyPackageAgents,
     unmanagedWithLegacyBlocks,
@@ -185,6 +211,7 @@ export async function migrateToManagedBlocks(
       filesOverwritten: [],
       legacyBlocksRemoved: [],
     }
+    op?.item(MIGRATION_STAGES.migrate, { id: agentId, label: agentId, status: 'active' })
     try {
       const pkg = readInstalledManifest(packageId, entry)
       if (!pkg) {
@@ -230,6 +257,7 @@ export async function migrateToManagedBlocks(
       result.error = err instanceof Error ? err.message : String(err)
       log.error('Migration failed for agent', err as Error, { agentId, packageId })
     }
+    reportItem(result)
     results.push(result)
   }
 
@@ -241,6 +269,7 @@ export async function migrateToManagedBlocks(
       filesOverwritten: [],
       legacyBlocksRemoved: [],
     }
+    op?.item(MIGRATION_STAGES.migrate, { id: agentId, label: agentId, status: 'active' })
     try {
       for (const file of COMPOSABLE_FILES) {
         const ws = await runtime.agents.readWorkspaceFile(agentId, file)
@@ -257,6 +286,7 @@ export async function migrateToManagedBlocks(
       result.error = err instanceof Error ? err.message : String(err)
       log.error('Migration failed for unmanaged agent', err as Error, { agentId })
     }
+    reportItem(result)
     results.push(result)
   }
 

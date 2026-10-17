@@ -29,6 +29,7 @@ import { dirname, join } from 'node:path'
 import { CORE_RESOURCES } from '@makinbakin/sdk/types'
 import { getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
+import { ResourceBusyError } from './errors'
 
 const log = createLogger('operations:resources')
 
@@ -329,4 +330,21 @@ export function tryAcquireResources(resources: Iterable<string>, identity: Resou
     taken.push(resource)
   }
   return lease(taken)
+}
+
+/**
+ * Run `fn` holding `resources` RIGHT NOW or not at all — the bounded
+ * synchronous writers' path (lesson toggle, plugin unlink, skill-map apply).
+ * Already-held resources (this call chain owns them) are reused; anything
+ * another holder has throws `ResourceBusyError` before `fn` runs.
+ */
+export async function holdNow<T>(resources: Iterable<string>, identity: ResourceHolderIdentity, fn: () => Promise<T>): Promise<T> {
+  const wanted = [...resources]
+  const result = tryAcquireResources(wanted, identity)
+  if ('busy' in result) throw new ResourceBusyError(result.busy.resource, result.busy.holder)
+  try {
+    return await runHolding(wanted, fn)
+  } finally {
+    result.release()
+  }
 }

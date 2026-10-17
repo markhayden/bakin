@@ -15,8 +15,20 @@
  * ops). The two surfaces are conceptually distinct: the runtime surface
  * controls a live agent; this surface controls the install record + the
  * projection state.
+ *
+ * Remove, sync and migrate run as operations (#895): 202 `{ operationId,
+ * bootId }`, with the body these routes used to answer as the operation's
+ * `result`. The lesson toggle stays synchronous — bounded and local — and
+ * takes install-state without waiting (409 `install_busy`).
  */
 import { z } from 'zod'
+import {
+  OperationCancelledError,
+  OperationRejectedError,
+  ResourceBusyError,
+  operationOriginFromRequest,
+  responseOutcome,
+} from '@bakin/core/operations'
 import { PackageStillRequiredError } from '@/core/agent-packages/errors'
 import { removePackageById } from '@/core/agent-packages/uninstaller'
 import { MigrationRequiredError, syncAgent } from '@/core/agent-packages/sync'
@@ -28,11 +40,21 @@ import {
   listLessons,
   setLessonEnabled,
 } from '@/core/agent-packages/lesson-toggle'
+import {
+  MIGRATION_PLAN,
+  PACKAGE_REMOVE_PLAN,
+  PACKAGE_SYNC_CHECK_PLAN,
+  PACKAGE_SYNC_PLAN,
+} from '@/core/agent-packages/operation-plans'
 import { findAgentPackage, readLockfile } from '@bakin/core/agent-packages/lockfile'
 import { parseJsonBodyWeb } from '@/core/middleware'
 import { createLogger } from '@/core/logger'
+import { startOperationResponse } from '../operations'
 
 const log = createLogger('api:agent-packages:dynamic')
+
+/** The body each route answered before #895 — now the operation's `result`. */
+type RouteBody = Record<string, unknown>
 
 const RemoveBodySchema = z
   .object({
@@ -76,7 +98,7 @@ export async function handler(req: Request, url: URL): Promise<Response> {
   // /api/agent-packages/migrate <- POST (one-time block migration; the
   // caller — CLI prompt or doctor repair confirm — owns user consent)
   if (segments.length === 3 && agentId === 'migrate' && req.method === 'POST') {
-    return handleMigrate()
+    return handleMigrate(req)
   }
 
   // /api/agent-packages/{agentId} <- DELETE = remove
@@ -159,81 +181,102 @@ async function handleRemove(req: Request, agentId: string): Promise<Response> {
   // Lenient parse — body is optional for DELETE; empty/invalid means "no options".
   const raw = await parseJsonBodyWeb(req) ?? {}
   const parsed = RemoveBodySchema.safeParse(raw)
-  if (!parsed.success) {
-    return Response.json(
-      {
-        ok: false,
-        error: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
-      },
-      { status: 400 },
-    )
-  }
+  if (!parsed.success) return invalid(parsed.error.issues)
+  const { keepBlocks, deleteAgent, force } = parsed.data ?? {}
 
-  try {
-    const result = await removePackageById({
-      packageId,
-      keepBlocks: parsed.data?.keepBlocks,
-      deleteAgent: parsed.data?.deleteAgent,
-      force: parsed.data?.force,
-    })
-    return Response.json({ ok: true, result })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    log.error('agents/remove failed', err as Error, { packageId })
-    const isConflict = err instanceof PackageStillRequiredError
-    return Response.json({ ok: false, error: message }, { status: isConflict ? 409 : 500 })
-  }
+  return startOperationResponse<RouteBody>({
+    kind: 'remove',
+    owner: 'core',
+    origin: operationOriginFromRequest(req),
+    title: `Remove ${packageId}`,
+    href: `/team/${encodeURIComponent(agentId)}`,
+    fingerprint: `agent-packages:remove:${packageId}|${deleteAgent ? 'delete-agent' : ''}`,
+    resources: ['install-state'],
+    plan: PACKAGE_REMOVE_PLAN,
+    validate: () => {
+      if (!resolvePackageIdForAgent(agentId)) {
+        throw new OperationRejectedError(404, { ok: false, error: `No package installed for agent "${agentId}".` })
+      }
+    },
+    run: async (op) => {
+      try {
+        const result = await removePackageById({ packageId, keepBlocks, deleteAgent, force, op })
+        return responseOutcome(200, { ok: true, result })
+      } catch (err) {
+        if (err instanceof OperationCancelledError) throw err
+        log.error('agents/remove failed', err as Error, { packageId })
+        const status = err instanceof PackageStillRequiredError ? 409 : 500
+        return responseOutcome(status, { ok: false, error: err instanceof Error ? err.message : String(err) })
+      }
+    },
+  })
 }
 
 async function handleSync(req: Request, agentId: string): Promise<Response> {
   // Lenient parse — empty/invalid body means "no options".
   const raw = await parseJsonBodyWeb(req) ?? {}
   const parsed = SyncBodySchema.safeParse(raw)
-  if (!parsed.success) {
-    return Response.json(
-      {
-        ok: false,
-        error: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
-      },
-      { status: 400 },
-    )
-  }
+  if (!parsed.success) return invalid(parsed.error.issues)
+  const check = parsed.data?.check === true
+  const reclaim = parsed.data?.reclaim
 
-  try {
-    const receipt = await syncAgent(agentId, {
-      check: parsed.data?.check,
-      reclaim: parsed.data?.reclaim,
-      trigger: 'rest',
-    })
-    if (!parsed.data?.check) {
-      await reloadAgentPackageRegistries({ kind: 'synced', agentId })
-    }
-    return Response.json({ ok: true, receipt })
-  } catch (err) {
-    if (err instanceof MigrationRequiredError) {
-      return Response.json(
-        { ok: false, migrationRequired: true, error: err.message },
-        { status: 409 },
-      )
-    }
-    const message = err instanceof Error ? err.message : String(err)
-    log.error('agents/sync failed', err as Error, { agentId })
-    return Response.json({ ok: false, error: message }, { status: 500 })
-  }
+  return startOperationResponse<RouteBody>({
+    kind: 'sync',
+    owner: 'core',
+    origin: operationOriginFromRequest(req),
+    title: `${check ? 'Check' : 'Sync'} ${agentId}`,
+    href: `/team/${encodeURIComponent(agentId)}`,
+    fingerprint: `agent-packages:sync:${agentId}|${check ? 'check' : ''}|${JSON.stringify(reclaim ?? null)}`,
+    // A check is read-only: it holds nothing and never waits on an install.
+    resources: check ? [] : ['install-state'],
+    plan: check ? PACKAGE_SYNC_CHECK_PLAN : PACKAGE_SYNC_PLAN,
+    run: async (op) => {
+      try {
+        const receipt = await syncAgent(agentId, { check, reclaim, trigger: 'rest', op })
+        if (!check) await reloadAgentPackageRegistries({ kind: 'synced', agentId })
+        return responseOutcome(200, { ok: true, receipt })
+      } catch (err) {
+        if (err instanceof OperationCancelledError) throw err
+        if (err instanceof MigrationRequiredError) {
+          return responseOutcome(409, { ok: false, migrationRequired: true, error: err.message }, 'migration_required')
+        }
+        log.error('agents/sync failed', err as Error, { agentId })
+        return responseOutcome(500, { ok: false, error: err instanceof Error ? err.message : String(err) })
+      }
+    },
+  })
 }
 
-async function handleMigrate(): Promise<Response> {
-  try {
-    const result = await migrateToManagedBlocks({ trigger: 'rest' })
-    if (!result.alreadyMigrated) {
-      await reloadAgentPackageRegistries({ kind: 'migrated' })
-    }
-    return Response.json({ ok: true, result })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    log.error('agents/migrate failed', err as Error)
-    return Response.json({ ok: false, error: message }, { status: 500 })
-  }
+async function handleMigrate(req: Request): Promise<Response> {
+  return startOperationResponse<RouteBody>({
+    kind: 'migrate',
+    owner: 'core',
+    origin: operationOriginFromRequest(req),
+    title: 'Migrate agent workspaces to managed blocks',
+    href: '/team',
+    fingerprint: 'agent-packages:migrate',
+    // Acquired before the first read, so rewrite → ledger → sync run under one owner.
+    resources: ['install-state'],
+    plan: MIGRATION_PLAN,
+    run: async (op) => {
+      try {
+        const result = await migrateToManagedBlocks({ trigger: 'rest', op })
+        if (!result.alreadyMigrated) await reloadAgentPackageRegistries({ kind: 'migrated' })
+        return responseOutcome(200, { ok: true, result })
+      } catch (err) {
+        if (err instanceof OperationCancelledError) throw err
+        log.error('agents/migrate failed', err as Error)
+        return responseOutcome(500, { ok: false, error: err instanceof Error ? err.message : String(err) })
+      }
+    },
+  })
+}
+
+function invalid(issues: z.ZodIssue[]): Response {
+  return Response.json(
+    { ok: false, error: issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') },
+    { status: 400 },
+  )
 }
 
 function handleLessonsList(agentId: string): Response {
@@ -284,6 +327,14 @@ async function handleLessonsToggle(
     const result = await setLessonEnabled(packageId, lessonId, parsed.data.enabled)
     return Response.json({ ok: true, result })
   } catch (err) {
+    if (err instanceof ResourceBusyError) {
+      return Response.json({
+        ok: false,
+        error: 'install_busy',
+        message: err.message,
+        holder: { title: err.holder.title, operationId: err.holder.operationId },
+      }, { status: 409 })
+    }
     const message = err instanceof Error ? err.message : String(err)
     log.error('agents/lessons/toggle failed', err as Error, { packageId, lessonId })
     return Response.json({ ok: false, error: message }, { status: 500 })

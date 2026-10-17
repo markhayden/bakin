@@ -24,6 +24,7 @@ import { usePluginEvent, useJsonFetch, useQueryState } from '@makinbakin/sdk/hoo
 import { DisclosurePanel, Grid, Inline, Panel, Section, Stack } from '@makinbakin/sdk/layout'
 import {
   KeyValue,
+  OperationProgress,
   Pagination,
   SegmentedControl,
   StatusBadge,
@@ -51,6 +52,7 @@ import {
 import { formatDuration } from '@makinbakin/sdk/utils'
 import type { HealthReport } from '@makinbakin/sdk/types'
 import type { ScanFinding, TimelineEventView } from '../types'
+import { usePackageOperation } from '../hooks/use-package-operation'
 
 // ── Small shared bits ────────────────────────────────────────────────────────
 
@@ -100,34 +102,6 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T | null> 
 }
 
 const DIAGNOSTICS_REQUEST_TIMEOUT_MS = 15_000
-
-class DiagnosticsRequestTimeoutError extends Error {
-  constructor() {
-    super('Request timed out')
-    this.name = 'DiagnosticsRequestTimeoutError'
-  }
-}
-
-async function fetchWithDeadline(
-  url: string,
-  init: RequestInit,
-  controller: AbortController,
-): Promise<Response> {
-  let timeout: ReturnType<typeof globalThis.setTimeout> | undefined
-  try {
-    return await Promise.race([
-      fetch(url, { ...init, signal: controller.signal }),
-      new Promise<never>((_resolve, reject) => {
-        timeout = globalThis.setTimeout(() => {
-          controller.abort()
-          reject(new DiagnosticsRequestTimeoutError())
-        }, DIAGNOSTICS_REQUEST_TIMEOUT_MS)
-      }),
-    ])
-  } finally {
-    if (timeout !== undefined) globalThis.clearTimeout(timeout)
-  }
-}
 
 export interface AgentAttention {
   loaded: boolean
@@ -232,10 +206,10 @@ function DriftPanel({ agentId }: { agentId: string }) {
   const [scan, setScan] = useState<ScanPayload | null>(null)
   const [receipt, setReceipt] = useState<ReceiptPayload['receipt'] | null>(null)
   const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
-  const [syncError, setSyncError] = useState<string | null>(null)
   const [retryNonce, setRetryNonce] = useState(0)
-  const syncControllerRef = useRef<AbortController | null>(null)
+  // Sync runs as an operation (#895), followed live — no request deadline.
+  const sync = usePackageOperation()
+  const syncing = sync.busy
 
   useEffect(() => {
     const controller = new AbortController()
@@ -284,54 +258,31 @@ function DriftPanel({ agentId }: { agentId: string }) {
     }
   }, [agentId, retryNonce])
 
+  const resetSync = sync.reset
   useEffect(() => {
-    const controller = syncControllerRef.current
-    syncControllerRef.current = null
-    controller?.abort()
-    setSyncing(false)
-    setSyncError(null)
-    return () => {
-      const activeController = syncControllerRef.current
-      syncControllerRef.current = null
-      activeController?.abort()
-    }
-  }, [agentId])
+    resetSync()
+  }, [agentId, resetSync])
 
-  const handleSync = async () => {
-    syncControllerRef.current?.abort()
-    const controller = new AbortController()
-    syncControllerRef.current = controller
-    setSyncing(true)
-    setSyncError(null)
-    try {
-      const res = await fetchWithDeadline(`/api/agent-packages/${encodeURIComponent(agentId)}/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      }, controller)
-      if (syncControllerRef.current !== controller) return
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        if (syncControllerRef.current !== controller) return
-        setSyncError(body.migrationRequired
-          ? 'This agent needs the one-time block migration — run `bakin agents sync` in a terminal.'
-          : (body.error ?? `sync failed (${res.status})`))
-        return
-      }
-      if (syncControllerRef.current !== controller) return
-      setRetryNonce((nonce) => nonce + 1)
-    } catch (cause) {
-      if (syncControllerRef.current !== controller) return
-      setSyncError(cause instanceof DiagnosticsRequestTimeoutError
-        ? 'Sync timed out. Try again.'
-        : 'Sync could not be completed. Try again.')
-    } finally {
-      if (syncControllerRef.current === controller) {
-        syncControllerRef.current = null
-        setSyncing(false)
-      }
-    }
-  }
+  const syncResult = sync.result
+  useEffect(() => {
+    // A finished sync rescans, so Drift shows what the sync left behind.
+    if (syncResult?.httpStatus === 200) setRetryNonce((nonce) => nonce + 1)
+  }, [syncResult])
+
+  const syncError = useMemo(() => {
+    if (sync.error) return sync.error
+    if (!syncResult || syncResult.httpStatus === 200) return null
+    const body = (syncResult.body ?? {}) as { migrationRequired?: boolean; error?: string }
+    return body.migrationRequired
+      ? 'This agent needs the one-time block migration — run `bakin agents sync` in a terminal.'
+      : (body.error ?? `sync failed (${syncResult.httpStatus})`)
+  }, [sync.error, syncResult])
+
+  const handleSync = () => sync.start(() => fetch(`/api/agent-packages/${encodeURIComponent(agentId)}/sync`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  }))
 
   const findings = scan?.findings ?? []
   const locked = findings.filter((f) => f.type === 'user-edited')
@@ -371,6 +322,16 @@ function DriftPanel({ agentId }: { agentId: string }) {
             </Button>
           </div>
         </div>
+
+        {sync.showProgress && sync.operation ? (
+          <div className="mt-bakin-4">
+            <OperationProgress
+              operation={sync.operation}
+              phase={sync.phase ?? undefined}
+              onCancel={() => { void sync.cancel() }}
+            />
+          </div>
+        ) : null}
 
         <div className="mt-bakin-4">
           {loading ? (

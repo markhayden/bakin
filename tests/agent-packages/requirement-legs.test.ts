@@ -56,12 +56,17 @@ mock.module('../../src/core/whiskit/command', () => ({
 
 import { installPackage } from '../../src/core/agent-packages/installer'
 import { updatePackageById } from '../../src/core/agent-packages/updater'
-import { repairPackLocally } from '../../src/core/agent-packages/sync'
+import { repairPackLocally as repairUnowned } from '../../src/core/agent-packages/sync'
 import { removePackageById } from '../../src/core/agent-packages/uninstaller'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { parseManifest } from '../../packages/core/src/agent-packages/manifest'
 import { installManifestRequirements } from '../../src/core/agent-packages/requirements-installer'
 import { settleOperation } from '../helpers/operation-harness'
+import { holdNow } from '../../packages/core/src/operations'
+
+/** Writing syncs run inside an owner of install-state, like every production caller (#895). */
+const owning = <T>(fn: () => Promise<T>): Promise<T> => holdNow(['install-state'], { title: 'test' }, fn)
+const repairPackLocally = (...args: Parameters<typeof repairUnowned>) => owning(() => repairUnowned(...args))
 
 const MODEL_BYTES = 'FAKE-GGUF-MODEL-CONTENT-0123456789'
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')

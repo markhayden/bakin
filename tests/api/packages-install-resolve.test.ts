@@ -70,13 +70,14 @@ mock.module('@/core/curated-catalog/load', () => ({
 }))
 
 import { post } from '../../packages/host/src/api/packages/install'
+import { settleRoute } from '../helpers/operation-route'
 
 const url = new URL('http://localhost/api/packages/install')
 const req = (body: unknown) => new Request(url, { method: 'POST', body: JSON.stringify(body) })
 
 describe('POST /api/packages/install — name resolution', () => {
   it('resolves a bare catalog name to its ref-pinned source and returns capability readiness', async () => {
-    const res = await post(req({ source: 'web-search-brave' }), url)
+    const res = await settleRoute(post(req({ source: 'web-search-brave' })))
     const body = await res.json()
     expect(body.ok).toBe(true)
     expect(body.resolvedSource).toBe('github:markhayden/bakin-bits-official@abc123#packs/web-search-brave')
@@ -86,13 +87,13 @@ describe('POST /api/packages/install — name resolution', () => {
   })
 
   it('404s on an unknown bare name with a helpful message', async () => {
-    const res = await post(req({ source: 'no-such-pack' }), url)
+    const res = await settleRoute(post(req({ source: 'no-such-pack' })))
     expect(res.status).toBe(404)
     expect((await res.json()).error).toContain('curated catalog')
   })
 
   it('passes explicit github: sources through untouched', async () => {
-    const res = await post(req({ source: 'github:someone/some-pack' }), url)
+    const res = await settleRoute(post(req({ source: 'github:someone/some-pack' })))
     expect((await res.json()).ok).toBe(true)
     expect(installedSources.at(-1)).toBe('github:someone/some-pack')
   })

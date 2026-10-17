@@ -15,6 +15,7 @@ import {
   StatusBadge,
   ListRow,
   ListRows,
+  OperationProgress,
 } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -26,6 +27,7 @@ import {
   Text,
 } from '@makinbakin/sdk/ui'
 import { MarkdownEditor, type MarkdownEditorMode } from '@makinbakin/sdk/content'
+import { usePackageOperation } from '../hooks/use-package-operation'
 
 interface TeamInfo {
   id: string
@@ -63,8 +65,9 @@ export function TeamDetail({ teamId }: { teamId: string }) {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [syncing, setSyncing] = useState(false)
-  const [syncResults, setSyncResults] = useState<SyncResultRow[] | null>(null)
+  // One operation for the whole sync (#895) — every member is an item.
+  const sync = usePackageOperation<{ ok: boolean; results?: SyncResultRow[]; error?: string }>()
+  const syncing = sync.busy
   const [loadError, setLoadError] = useState<string | null>(null)
   // Edit vs preview rides `?mode=`; `edit` is the default and omitted, so only
   // `?mode=preview` ever appears. Same pathname ⇒ the unsaved-changes guard
@@ -141,44 +144,20 @@ export function TeamDetail({ teamId }: { teamId: string }) {
     }
   }
 
-  const syncTeam = async () => {
-    setSyncing(true)
-    setSyncResults(null)
-    try {
-      if (isGlobal) {
-        const rows: SyncResultRow[] = []
-        for (const member of members ?? []) {
-          try {
-            const response = await fetch(`/api/agent-packages/${encodeURIComponent(member.id)}/sync`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({}),
-            })
-            const body = await response.json()
-            rows.push(body.ok
-              ? { agentId: member.id, receipt: body.receipt }
-              : { agentId: member.id, error: body.error ?? `sync failed (${response.status})` })
-          } catch (error) {
-            rows.push({ agentId: member.id, error: error instanceof Error ? error.message : String(error) })
-          }
-        }
-        setSyncResults(rows)
-      } else {
-        const response = await fetch(`/api/plugins/team/teams/${encodeURIComponent(teamId)}/sync`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        })
-        const body = await response.json()
-        if (!body.ok) throw new Error(body.error ?? `sync failed (${response.status})`)
-        setSyncResults(body.results ?? [])
-      }
-    } catch (error) {
-      setSyncResults([{ agentId: '(team)', error: error instanceof Error ? error.message : String(error) }])
-    } finally {
-      setSyncing(false)
-    }
-  }
+  // Global and named teams share one route: `global` syncs every agent.
+  const syncTeam = () => sync.start(() => fetch(`/api/plugins/team/teams/${encodeURIComponent(teamId)}/sync`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  }))
+
+  const syncResults = useMemo<SyncResultRow[] | null>(() => {
+    if (sync.error) return [{ agentId: '(team)', error: sync.error }]
+    if (!sync.result) return null
+    const body = sync.result.body
+    if (body?.ok) return body.results ?? []
+    return [{ agentId: '(team)', error: body?.error ?? `sync failed (${sync.result.httpStatus})` }]
+  }, [sync.error, sync.result])
 
   const resultByAgent = useMemo(
     () => new Map((syncResults ?? []).map((result) => [result.agentId, result])),
@@ -241,8 +220,15 @@ export function TeamDetail({ teamId }: { teamId: string }) {
         ) : undefined}
       />
 
-      <PageBody layout="aside" busy={syncing} state={bodyState}>
+      <PageBody layout="aside" state={bodyState}>
         <div className="flex min-w-0 flex-1 flex-col gap-bakin-6">
+          {sync.showProgress && sync.operation ? (
+            <OperationProgress
+              operation={sync.operation}
+              phase={sync.phase ?? undefined}
+              onCancel={() => { void sync.cancel() }}
+            />
+          ) : null}
           <Section spacing="compact">
             <div className="flex min-w-0 flex-wrap items-start justify-between gap-bakin-3">
               <div className="min-w-0">

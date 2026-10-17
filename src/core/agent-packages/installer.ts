@@ -28,6 +28,7 @@
  * is left at its pre-install state, and the install lock is released.
  */
 import { existsSync, rmSync, statSync } from 'fs'
+import type { OperationContext } from '@makinbakin/sdk/types'
 import { commitStaging } from '../install-core/transaction'
 import { createLogger } from '../logger'
 import { SkillRefusalError } from './errors'
@@ -70,6 +71,7 @@ import { installManifestRequirements } from './requirements-installer'
 import { withoutSharedArtifacts } from './uninstaller'
 import { binPlatformKey } from './bin-installer'
 import { getSettings } from '../settings'
+import { INSTALL_STAGES } from './operation-plans'
 
 const log = createLogger('agent-pkg:install')
 
@@ -80,6 +82,12 @@ export interface InstallOptions {
   source: string
   /** Staged progress reporter (#895) — install jobs surface these lines live. */
   onProgress?: import('./install-progress').InstallProgressFn
+  /**
+   * The install operation (#895): reports on PACKAGE_INSTALL_PLAN. Everything
+   * before `install` (fetch, manifest and conflict checks) is cancellable and
+   * leaves no trace; the first projection write is the point of no return.
+   */
+  op?: OperationContext
   /**
    * Force adoption of an existing runtime agent rather than creating a
    * fresh one. Only valid for kind:"agent" packages where the agent id
@@ -327,13 +335,17 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
   try {
     // ─── 1. Fetch top-level source (or adopt a pre-verified staging dir) ────
     const progress = options.onProgress ?? (() => {})
+    const op = options.op
     if (options.prefetched) {
       log.info('Installing pre-fetched (consent-verified) source', { source: options.source })
+      op?.skip(INSTALL_STAGES.fetch, 'already fetched and verified')
       topFetched = options.prefetched
     } else {
       log.info('Fetching package source', { source: options.source })
       progress({ stage: 'fetch-source', message: `Fetching ${options.source}…` })
+      op?.stage(INSTALL_STAGES.fetch, options.source)
       topFetched = await fetchSourceAsync(options.source)
+      op?.throwIfCancelled()
     }
     progress({ stage: 'validate', message: 'Validating package manifest…' })
 
@@ -414,7 +426,9 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
 
     // ─── 4. Resolve dependencies ───────────────────────────────────────────
     progress({ stage: 'dependencies', message: 'Resolving package dependencies…' })
+    op?.stage(INSTALL_STAGES.dependencies)
     const resolved = await resolveDependenciesAsync(manifest)
+    op?.throwIfCancelled()
     for (const r of resolved) depFetched.push(r.fetched)
     for (const r of resolved) {
       assertRuntimePlatformCompatible(r.manifest)
@@ -425,6 +439,7 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     }
 
     // ─── 5. Pre-flight collision check ─────────────────────────────────────
+    op?.stage(INSTALL_STAGES.check)
     const collisions = preflightCollisions(lock, resolvedTopId, resolved)
     if (collisions.length > 0 && !options.replace) {
       const lines = collisions.map(
@@ -437,74 +452,91 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     }
 
     // ─── 6. Project dependencies first (leaves-first) ─────────────────────
+    // The point of no return: a cancel lands before the first projection or never.
+    op?.throwIfCancelled()
+    op?.stage(INSTALL_STAGES.install)
+    const packageItem = (id: string, version: string) => ({ id: `package:${id}`, label: `${id} ${version}` })
+    for (const dep of resolved) op?.item(INSTALL_STAGES.install, packageItem(dep.resolvedId, dep.manifest.version))
+    op?.item(INSTALL_STAGES.install, packageItem(resolvedTopId, manifest.version))
+    const requirementOp = op ? { op, stageId: INSTALL_STAGES.install } : undefined
+    const asPackageItem = async <T>(id: string, version: string, run: () => Promise<T>): Promise<T> => {
+      op?.item(INSTALL_STAGES.install, { ...packageItem(id, version), status: 'active' })
+      try {
+        const value = await run()
+        op?.item(INSTALL_STAGES.install, { ...packageItem(id, version), status: 'done' })
+        return value
+      } catch (err) {
+        op?.item(INSTALL_STAGES.install, { ...packageItem(id, version), status: 'failed', message: err instanceof Error ? err.message : String(err) })
+        throw err
+      }
+    }
     for (const [depIndex, dep] of resolved.entries()) {
       log.info('Projecting dependency', { dep: dep.resolvedId, pulledBy: dep.pulledBy })
       progress({ stage: 'project', message: `Installing dependency ${dep.resolvedId} (${depIndex + 1}/${resolved.length})…`, item: dep.resolvedId, current: depIndex + 1, total: resolved.length })
-      const result = await projectPackage({
-        manifest: dep.manifest,
-        stagingDir: dep.fetched.stagingDir,
-        agentId: undefined,
-        replace: options.replace,
-        installedBy: {
-          package: dep.resolvedId,
-          version: dep.manifest.version,
-          ref: dep.spec.ref,
-          commitSha: dep.fetched.commitSha,
-          installedAt: new Date().toISOString(),
-        },
-      })
-      projected.push({ resolvedId: dep.resolvedId, result })
-      await installManifestRequirements({
-        manifest: dep.manifest,
-        packId: dep.resolvedId,
-        sourceDir: dep.fetched.stagingDir,
-        installedBy: {
-          package: dep.resolvedId,
-          version: dep.manifest.version,
-          ref: dep.spec.ref,
-          commitSha: dep.fetched.commitSha,
-          installedAt: new Date().toISOString(),
-        },
-        result,
-        progress,
+      const installedBy = {
+        package: dep.resolvedId,
+        version: dep.manifest.version,
+        ref: dep.spec.ref,
+        commitSha: dep.fetched.commitSha,
+        installedAt: new Date().toISOString(),
+      }
+      await asPackageItem(dep.resolvedId, dep.manifest.version, async () => {
+        const result = await projectPackage({
+          manifest: dep.manifest,
+          stagingDir: dep.fetched.stagingDir,
+          agentId: undefined,
+          replace: options.replace,
+          installedBy,
+        })
+        projected.push({ resolvedId: dep.resolvedId, result })
+        await installManifestRequirements({
+          manifest: dep.manifest,
+          packId: dep.resolvedId,
+          sourceDir: dep.fetched.stagingDir,
+          installedBy,
+          result,
+          progress,
+          op: requirementOp,
+        })
       })
     }
 
     // ─── 7. Project the parent package ─────────────────────────────────────
     log.info('Projecting parent package', { id: resolvedTopId, kind: manifest.kind, mode })
     progress({ stage: 'project', message: `Installing ${resolvedTopId}…`, item: resolvedTopId })
-    const parentResult = await projectPackage({
-      manifest,
-      stagingDir: topFetched.stagingDir,
-      agentId,
-      replace: options.replace,
-      installedBy: {
-        package: resolvedTopId,
-        version: manifest.version,
-        ref: topFetched.ref,
-        commitSha: topFetched.commitSha,
-        installedAt: new Date().toISOString(),
-      },
-    })
-    projected.push({ resolvedId: resolvedTopId, result: parentResult })
-    await installManifestRequirements({
-      manifest,
-      packId: resolvedTopId,
-      sourceDir: topFetched.stagingDir,
-      installedBy: {
-        package: resolvedTopId,
-        version: manifest.version,
-        ref: topFetched.ref,
-        commitSha: topFetched.commitSha,
-        installedAt: new Date().toISOString(),
-      },
-      result: parentResult,
-      progress,
+    const top = topFetched
+    const parentInstalledBy = {
+      package: resolvedTopId,
+      version: manifest.version,
+      ref: top.ref,
+      commitSha: top.commitSha,
+      installedAt: new Date().toISOString(),
+    }
+    const parentResult = await asPackageItem(resolvedTopId, manifest.version, async () => {
+      const result = await projectPackage({
+        manifest,
+        stagingDir: top.stagingDir,
+        agentId,
+        replace: options.replace,
+        installedBy: parentInstalledBy,
+      })
+      projected.push({ resolvedId: resolvedTopId, result })
+      await installManifestRequirements({
+        manifest,
+        packId: resolvedTopId,
+        sourceDir: top.stagingDir,
+        installedBy: parentInstalledBy,
+        result,
+        progress,
+        op: requirementOp,
+      })
+      return result
     })
 
     // ─── 8. Create runtime agent for kind:"agent" + fresh ────────────────
     if (manifest.kind === 'agent' && mode === 'fresh') {
       progress({ stage: 'agent', message: `Creating runtime agent ${manifest.id}…` })
+      op?.stage(INSTALL_STAGES.agent, manifest.id)
       const input = manifestToCreateAgent(manifest)
       await createRuntimeAgent(input)
       createdAgent = true
@@ -518,6 +550,10 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
 
     // ─── 9. Update lockfile ────────────────────────────────────────────────
     progress({ stage: 'finalize', message: 'Recording install and verifying…' })
+    if (!(manifest.kind === 'agent' && mode === 'fresh')) {
+      op?.skip(INSTALL_STAGES.agent, manifest.kind === 'agent' ? 'adopting the existing agent' : 'not an agent package')
+    }
+    op?.stage(INSTALL_STAGES.record)
     let nextLock = lock
     const installedAt = new Date().toISOString()
 

@@ -10,14 +10,19 @@
  * resolution behind `bakin packages install web-search-brave` and the
  * Explore install button. Successful capability-pack installs carry the
  * pack's readiness (`capability`) so clients can run the guided key step.
+ *
+ * Runs as an operation (#895): 202 `{ operationId, bootId }` at once; the
+ * body this route used to answer is the operation's `result`.
  */
 import { z } from 'zod'
-import { startInstallJob, type InstallProgressFn } from '@/core/agent-packages/install-progress'
+import { OperationCancelledError, operationOriginFromRequest, responseOutcome, type OperationContext } from '@bakin/core/operations'
 import { installPackage } from '@/core/agent-packages/installer'
+import { PACKAGE_INSTALL_PLAN } from '@/core/agent-packages/operation-plans'
 import { listCapabilities, type CapabilityReadiness } from '@/core/agent-packages/capability-readiness'
 import { loadUnifiedCatalog } from '@/core/curated-catalog/load'
 import { sourceWithRef } from '@/lib/package-source'
 import { createLogger } from '@/core/logger'
+import { startOperationResponse } from '../operations'
 
 const log = createLogger('api:packages:install')
 
@@ -44,7 +49,7 @@ async function resolveCatalogSource(name: string): Promise<{ source: string } | 
   return { source: sourceWithRef(entry.source, entry.ref) }
 }
 
-export async function post(req: Request, url: URL): Promise<Response> {
+export async function post(req: Request): Promise<Response> {
   let raw: unknown
   try {
     raw = await req.json()
@@ -70,46 +75,42 @@ export async function post(req: Request, url: URL): Promise<Response> {
     source = resolved.source
   }
 
-  // Async job mode (#895): return a job handle immediately; progress rides
-  // the SSE bus and the final body waits at /api/install-jobs/:id. The
-  // blocking mode stays for the CLI and existing consumers.
-  if (url.searchParams.get('async') === '1') {
-    const job = startInstallJob({
-      kind: 'package',
-      title: source,
-      run: async (progress) => {
-        const outcome = await runPackageInstall(source, parsed.data, progress)
-        return { body: await outcome.json(), status: outcome.status }
-      },
-    })
-    return Response.json({ ok: true, jobId: job.id }, { status: 202 })
-  }
-
-  return runPackageInstall(source, parsed.data, undefined)
+  const { replace, installAs } = parsed.data
+  return startOperationResponse({
+    kind: 'install',
+    owner: 'core',
+    origin: operationOriginFromRequest(req),
+    title: `Install ${installAs ?? source}`,
+    href: '/explore',
+    fingerprint: `packages:install:${source}|${installAs ?? ''}|${replace ? 'replace' : ''}`,
+    resources: ['install-state'],
+    plan: PACKAGE_INSTALL_PLAN,
+    run: async (op) => {
+      const { status, body } = await runPackageInstall(source, parsed.data, op)
+      return responseOutcome(status, body)
+    },
+  })
 }
 
 async function runPackageInstall(
   source: string,
   data: { replace?: boolean; installAs?: string },
-  onProgress: InstallProgressFn | undefined,
-): Promise<Response> {
+  op: OperationContext,
+): Promise<{ status: number; body: Record<string, unknown> }> {
   try {
     const result = await installPackage({
       source,
       replace: data.replace,
       installAs: data.installAs,
-      onProgress,
+      op,
     })
     if (result.kind === 'agent') {
       // Agent packages must go through /api/agents/install — the surfaces
       // are deliberately separate so the adopt path lives in one place.
-      return Response.json(
-        {
-          ok: false,
-          error: 'Source is an agent package — use POST /api/agents/install instead.',
-        },
-        { status: 400 },
-      )
+      return {
+        status: 400,
+        body: { ok: false, error: 'Source is an agent package — use POST /api/agent-packages/install instead.' },
+      }
     }
     // Capability packs: attach readiness so the client can run the guided
     // key step and print honest per-leg status.
@@ -119,11 +120,12 @@ async function runPackageInstall(
     } catch (err) {
       log.warn('capability readiness after install failed', { error: err instanceof Error ? err.message : String(err) })
     }
-    return Response.json({ ok: true, resolvedSource: source, result, ...(capability ? { capability } : {}) })
+    return { status: 200, body: { ok: true, resolvedSource: source, result, ...(capability ? { capability } : {}) } }
   } catch (err) {
+    if (err instanceof OperationCancelledError) throw err
     const message = err instanceof Error ? err.message : String(err)
     log.error('packages/install failed', err as Error, { source })
     const isConflict = /already managed|collision/i.test(message)
-    return Response.json({ ok: false, error: message }, { status: isConflict ? 409 : 500 })
+    return { status: isConflict ? 409 : 500, body: { ok: false, error: message } }
   }
 }

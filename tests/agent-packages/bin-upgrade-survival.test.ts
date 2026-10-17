@@ -49,9 +49,14 @@ mock.module('@/core/task-store', () => ({}))
 
 import { installPackage } from '../../src/core/agent-packages/installer'
 import { updatePackageById } from '../../src/core/agent-packages/updater'
-import { repairPackLocally } from '../../src/core/agent-packages/sync'
+import { repairPackLocally as repairUnowned } from '../../src/core/agent-packages/sync'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { binPlatformKey } from '../../src/core/agent-packages/bin-installer'
+import { holdNow } from '../../packages/core/src/operations'
+
+/** Writing syncs run inside an owner of install-state, like every production caller (#895). */
+const owning = <T>(fn: () => Promise<T>): Promise<T> => holdNow(['install-state'], { title: 'test' }, fn)
+const repairPackLocally = (...args: Parameters<typeof repairUnowned>) => owning(() => repairUnowned(...args))
 
 // Real executables: POSIX sh scripts whose --version exits 0.
 const SCRIPT_V1 = '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "fixture 1.0.0"; exit 0; fi\nexit 1\n'
@@ -181,7 +186,6 @@ describe('capability-pack bins survive projection passes', () => {
   })
 
   it('repairPackLocally never overwrites on the same conflict — bytes and the previous bin row are kept (repair is best-effort, readiness reports)', async () => {
-    const { repairPackLocally } = await import('../../src/core/agent-packages/sync')
     const { addPlugin, readPluginLockfile, writePluginLockfile } = await import('../../packages/core/src/plugins/lockfile')
     const src = seedCapabilityPack('1.0.0', '/v1', SCRIPT_V1)
     await installPackage({ source: src })

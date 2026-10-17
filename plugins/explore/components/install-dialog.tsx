@@ -31,7 +31,9 @@ import {
   Text,
 } from '@makinbakin/sdk/ui'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
+import { OperationProgress } from '@makinbakin/sdk/patterns'
 import { ConsentDialog, type ConsentRequest } from './consent-dialog'
+import { useInstallOperation } from '../hooks/use-install-operation'
 import { sourceWithRef } from '../lib/package-source'
 import type { ExploreCatalogEntry } from '../types'
 import { describeRequestError } from '../lib/request-error'
@@ -203,6 +205,10 @@ export function InstallDialog({
   const [job, setJob] = useState<ActiveInstallJob | null>(null)
   // A job settles exactly once, whether SSE or the poll gets there first.
   const settledJobRef = useRef<string | null>(null)
+  // Agent and pack installs are operations (#895), followed live; the plugin
+  // path still runs as an install job until its own switch.
+  const packageInstall = useInstallOperation<InstallResponseBody>()
+  const busy = submitting || packageInstall.busy
 
   // Curated entries carry a ref pin — honor it exactly like onboarding does
   // (agent/pack specs embed @ref into the source; plugin installs send ref).
@@ -218,6 +224,7 @@ export function InstallDialog({
       setKeyStep(null)
       setKeyDrafts({})
       setJob(null)
+      packageInstall.reset()
     }
     onOpenChange(nextOpen)
   }
@@ -253,7 +260,7 @@ export function InstallDialog({
     return base
   }
 
-  type InstallResponseBody = {
+  interface InstallResponseBody {
     ok?: boolean
     error?: string
     awaitingConsent?: boolean
@@ -265,6 +272,17 @@ export function InstallDialog({
     consentToken?: string
     capability?: Parameters<typeof keyStepFrom>[0]['capability']
   }
+
+  const packageResult = packageInstall.result
+  const packageStartError = packageInstall.error
+  useEffect(() => {
+    if (packageStartError) setError(packageStartError)
+  }, [packageStartError])
+  useEffect(() => {
+    if (!packageResult) return
+    handleInstallOutcome(packageResult.body ?? {}, packageResult.httpStatus < 400, packageResult.httpStatus)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleInstallOutcome is render-scoped; the result settles once
+  }, [packageResult])
 
   /** Shared terminal handling for sync responses AND finished async jobs. */
   const handleInstallOutcome = (responseBody: InstallResponseBody, httpOk: boolean, status: number) => {
@@ -303,8 +321,16 @@ export function InstallDialog({
   }
 
   const postInstall = async (body: Record<string, unknown>) => {
-    setSubmitting(true)
     setError(null)
+    if (kind !== 'plugin') {
+      await packageInstall.start(() => fetch(endpointFor(kind), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }))
+      return
+    }
+    setSubmitting(true)
 
     // Every install runs as an install JOB (#895): the POST asks for
     // `?async=1`, a 202 hands back a job handle, staged progress rides the
@@ -514,7 +540,7 @@ export function InstallDialog({
 
   return (
     <>
-      <Dialog busy={submitting} open={open && consent === null} onOpenChange={close}>
+      <Dialog busy={busy} open={open && consent === null} onOpenChange={close}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{preset ? `Install ${entry.name}` : 'Install from source'}</DialogTitle>
@@ -524,7 +550,7 @@ export function InstallDialog({
                 : 'Fetch a package or plugin from a GitHub repo or local path.'}
             </DialogDescription>
           </DialogHeader>
-          <Form busy={submitting} onSubmit={handleSubmit}>
+          <Form busy={busy} onSubmit={handleSubmit}>
             <FieldGroup>
               {preset ? (
                 <Field name="source">
@@ -624,10 +650,18 @@ export function InstallDialog({
               </Alert>
             ) : null}
 
+            {packageInstall.showProgress && packageInstall.operation ? (
+              <OperationProgress
+                operation={packageInstall.operation}
+                phase={packageInstall.phase ?? undefined}
+                onCancel={() => { void packageInstall.cancel() }}
+              />
+            ) : null}
+
             {job ? <InstallProgressPanel job={job} /> : null}
 
             <FormActions>
-              <Button type="button" variant="outline" onClick={() => close(false)} disabled={submitting}>
+              <Button type="button" variant="outline" onClick={() => close(false)} disabled={busy}>
                 Cancel
               </Button>
               <SubmitButton busyLabel="Installing…" data-testid="install-submit">
