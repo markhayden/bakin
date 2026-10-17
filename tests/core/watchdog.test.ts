@@ -243,6 +243,7 @@ import { appendAudit } from '../../src/core/audit'
 import { broadcast } from '../../src/core/sse'
 import { getSettings } from '../../src/core/settings'
 import { claimRun, getLiveRun, recordCompletion, supersedeStaleRun } from '../../src/core/execution-ledger'
+import { withStateLock } from '../../src/core/dispatch-state'
 import { closeDb } from '../../packages/core/src/storage/db'
 
 describe('watchdog', () => {
@@ -755,6 +756,124 @@ describe('watchdog', () => {
       expect(abortByRunIdsSpy).not.toHaveBeenCalledWith(['task:task-b3:d1'], 'superseded')
       expect(vi.mocked(appendAudit)).not.toHaveBeenCalledWith(tempDir, 'task.run_superseded', 'watchdog', expect.objectContaining({ id: 'task-b3' }))
       expect(mockStoreRecoverTask).not.toHaveBeenCalledWith('task-b3')
+    })
+
+    // #977: a child spawn writes the instance file and the child's own row —
+    // never the parent's — so `version` cannot see it, and the child's run is
+    // keyed on the child id. The decision re-walks the topology under the
+    // dispatch state lock and leaves a changed scope for the next tick.
+    it('a workflow child spawned and claimed during the scan is seen — the parent is never recovered on the stale scope (#977)', async () => {
+      setWatchdogColumns({
+        inProgress: [{ id: 'wf-spawn', title: 'Map parent', agent: 'pixel', workflowId: 'wf', updatedAt: Date.parse('2020-01-01T00:00:00Z'), version: 2 }],
+      })
+      let walks = 0
+      hookInvokeImpl = async (name, data) => {
+        const taskId = (data as { taskId?: string } | undefined)?.taskId
+        if (name === 'workflows.loadInstance') return taskId === 'wf-spawn' ? { status: 'in_progress' } : null
+        if (name !== 'workflows.getActiveAgents') return undefined
+        walks += 1
+        // Scan: the fan-out step has not claimed yet.
+        if (walks === 1) return [{ agent: 'patch', stepId: 'fan' }]
+        // Re-walk under the lock: the engine fanned out a child and the
+        // dispatcher claimed its step — the parent row is untouched.
+        claimRun({ runId: 'child-run', taskId: 'wf-spawn--child-1', execKey: 'wf-spawn--child-1:write', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
+        return [{ agent: 'patch', stepId: 'fan' }, { agent: 'pixel', stepId: 'write', effectiveTaskId: 'wf-spawn--child-1' }]
+      }
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(walks).toBe(2)
+      expect(mockStoreRecoverTask).not.toHaveBeenCalled()
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      expect(getLiveRun('wf-spawn--child-1')?.status).toBe('running')
+    })
+
+    it('the recovery decision waits for the dispatch state lock — a claim made under it lands first (#977)', async () => {
+      setWatchdogColumns({
+        inProgress: [{ id: 'task-lock', title: 'Stranded until claimed', agent: 'pixel', updatedAt: Date.parse('2020-01-01T00:00:00Z'), version: 1 }],
+      })
+      let release!: () => void
+      const held = withStateLock(() => new Promise<void>((resolve) => { release = resolve }))
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+      // The scan saw no live run, but the decision is parked behind the lock.
+      expect(mockStoreRecoverTask).not.toHaveBeenCalled()
+
+      // The lock holder (a dispatch cycle) claims the task's run before releasing.
+      claimRun({ runId: 'task:task-lock:d1', taskId: 'task-lock', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
+      release()
+      await held
+      await vi.advanceTimersByTimeAsync(10)
+
+      expect(mockStoreRecoverTask).not.toHaveBeenCalled()
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      expect(getLiveRun('task-lock')?.status).toBe('running')
+    })
+
+    it('a workflow whose topology changed during the scan is left for the next tick, then recovered once it holds still (#977)', async () => {
+      setWatchdogColumns({
+        inProgress: [{ id: 'wf-shift', title: 'Advancing workflow', agent: 'pixel', workflowId: 'wf', updatedAt: Date.parse('2020-01-01T00:00:00Z'), version: 1 }],
+      })
+      let walks = 0
+      hookInvokeImpl = async (name, data) => {
+        const taskId = (data as { taskId?: string } | undefined)?.taskId
+        if (name === 'workflows.loadInstance') return taskId === 'wf-shift' ? { status: 'in_progress' } : null
+        if (name !== 'workflows.getActiveAgents') return undefined
+        walks += 1
+        // Tick 1: the scan saw step "a"; the engine advanced to "b" before the
+        // re-walk under the lock. Nothing is claimed in either scope.
+        return walks === 1 ? [{ agent: 'patch', stepId: 'a' }] : [{ agent: 'patch', stepId: 'b' }]
+      }
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+      // Stale scope → no verdict this tick, even though no run is live.
+      expect(walks).toBe(2)
+      expect(mockStoreRecoverTask).not.toHaveBeenCalled()
+
+      // Tick 2: both walks see "b" and still nothing live — now it recovers.
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(mockStoreRecoverTask).toHaveBeenCalledWith('wf-shift')
+    })
+
+    it('a claim racing the recovery decision queues behind its lock (#977)', async () => {
+      setWatchdogColumns({
+        inProgress: [{ id: 'wf-hold', title: 'Decided under the lock', agent: 'pixel', workflowId: 'wf', updatedAt: Date.parse('2020-01-01T00:00:00Z'), version: 1 }],
+      })
+      let walks = 0
+      let releaseWalk!: () => void
+      const walkParked = new Promise<void>((resolve) => { releaseWalk = resolve })
+      hookInvokeImpl = async (name, data) => {
+        const taskId = (data as { taskId?: string } | undefined)?.taskId
+        if (name === 'workflows.loadInstance') return taskId === 'wf-hold' ? { status: 'in_progress' } : null
+        if (name !== 'workflows.getActiveAgents') return undefined
+        walks += 1
+        if (walks === 2) await walkParked // the re-walk under the lock parks — the lock stays held
+        return [{ agent: 'patch', stepId: 'a' }]
+      }
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(walks).toBe(2)
+
+      // A dispatch cycle arrives and wants to claim the step under the same lock.
+      let claimed = false
+      const claim = withStateLock(() => {
+        claimRun({ runId: 'wf-hold-a', taskId: 'wf-hold', execKey: 'wf-hold:a', seq: 1, agent: 'patch', bootId: 'boot-wd', now: Date.now() })
+        claimed = true
+      })
+      await vi.advanceTimersByTimeAsync(10)
+      expect(claimed).toBe(false)
+      expect(mockStoreRecoverTask).not.toHaveBeenCalled()
+
+      releaseWalk()
+      await claim
+      // Strict order: the recovery verdict (stranded, nothing live) landed
+      // first, the claim only after the lock was released.
+      expect(claimed).toBe(true)
+      expect(mockStoreRecoverTask).toHaveBeenCalledWith('wf-hold')
     })
 
   })

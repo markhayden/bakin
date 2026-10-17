@@ -485,12 +485,16 @@ normal dispatch/watchdog loops:
   progress), the ledger is re-checked synchronously over the scope the
   assessment read (`assessWorkflowRuns` on the same active steps +
   descendants) right before the recover/block write. Exhausted tasks move
-  to `blocked`. Known residual (both engines): a nested/map child spawned
-  AND claimed between the descendant walk and that synchronous check is not
-  in the scope; closing it needs the workflow engine to share the dispatch
-  state lock. Boot order matters here: `runStartupRecovery` runs inside the
-  `server.listen` callback, so HTTP (gate approvals, `/api/dispatch`) is
-  live during recovery.
+  to `blocked`. **Each candidate is decided and written under
+  `withStateLock`** (#977): every ledger claim is made under that lock
+  (`dispatch-cycle` / `-single` / `-team` → `claimDispatchRun`), so while a
+  candidate is re-assessed no step or child can go live — a claim in flight
+  lands first and the re-assessment sees it. The watchdog's stuck-task scan
+  takes the same lock per task (`recoverStuckTask`): it re-walks the
+  workflow topology inside the lock and leaves a scope that changed since
+  the scan (new step, new child) for the next tick. Boot order matters
+  here: `runStartupRecovery` runs inside the `server.listen` callback, so
+  HTTP (gate approvals, `/api/dispatch`) is live during recovery.
 
 When recovery returns tasks to `todo`, `server.ts` starts the loops and then
 immediately triggers one dispatch cycle so recovered work does not wait for the

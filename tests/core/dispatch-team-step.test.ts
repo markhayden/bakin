@@ -102,6 +102,10 @@ import { TEAM_ROUTING_BLOCK_REASON, TEAM_ROUTING_EXHAUSTED_REASON } from '../../
 import { loadDispatchState, saveDispatchState } from '../../src/core/dispatch-state'
 
 let tempDir: string
+// The dispatch state the lock-holding caller (dispatchWorkflowTask) owns: the
+// ladder is read from and recorded into it; the caller persists (#977 review —
+// a nested withStateLock from inside the holder deadlocked the dispatcher).
+let heldState: ReturnType<typeof loadDispatchState>
 
 const args = (overrides: Partial<Parameters<typeof resolveTeamAssignmentForStep>[0]> = {}) => ({
   task: { id: 'parent-1', title: 'Ship the campaign' },
@@ -111,11 +115,13 @@ const args = (overrides: Partial<Parameters<typeof resolveTeamAssignmentForStep>
   teamId: 'builders',
   instructions: 'Do the thing well',
   contentDir: tempDir,
+  state: heldState,
   ...overrides,
 })
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), 'bakin-dispatch-team-step-'))
+  heldState = loadDispatchState(tempDir)
   paused = false
   hookHasHandler = true
   resolveResult = { ok: true, agentId: 'dev', reason: 'best fit', model: 'inherit' }
@@ -184,14 +190,24 @@ describe('resolveTeamAssignmentForStep', () => {
     const outcome = await resolveTeamAssignmentForStep(args())
     expect(outcome).toEqual({ status: 'skipped' })
     expect(blockTaskSpy).not.toHaveBeenCalled()
-    const state = loadDispatchState(tempDir)
-    expect(state.failedDispatches['parent-1:route-me']?.count).toBe(1)
+    // Recorded into the caller's state, not written to disk — the lock holder saves.
+    expect(heldState.failedDispatches['parent-1:route-me']?.count).toBe(1)
+    expect(loadDispatchState(tempDir).failedDispatches['parent-1:route-me']).toBeUndefined()
+  })
+
+  // #977 review: the resolver runs INSIDE dispatchWorkflowTask's withStateLock;
+  // re-taking the (non-reentrant) lock to record the ladder deadlocked every
+  // cycle that hit a transient routing failure.
+  it('never takes the dispatch state lock itself — a transient failure resolves while the caller holds the lock', async () => {
+    resolveResult = { ok: false, kind: 'transient', message: 'rate limited' }
+    const { withStateLock } = await import('../../src/core/dispatch-state')
+    const outcome = await withStateLock(() => resolveTeamAssignmentForStep(args()))
+    expect(outcome).toEqual({ status: 'skipped' })
+    expect(heldState.failedDispatches['parent-1:route-me']?.count).toBe(1)
   })
 
   it('ladder exhaustion → parent blocked with the EXHAUSTED sentinel, router not billed', async () => {
-    const state = loadDispatchState(tempDir)
-    state.failedDispatches['parent-1:route-me'] = { count: 3, lastAttempt: Date.now() - 60 * 60 * 1000, kind: 'transient' }
-    saveDispatchState(tempDir, state)
+    heldState.failedDispatches['parent-1:route-me'] = { count: 3, lastAttempt: Date.now() - 60 * 60 * 1000, kind: 'transient' }
     const outcome = await resolveTeamAssignmentForStep(args())
     expect(outcome).toEqual({ status: 'blocked' })
     expect(blockTaskSpy).toHaveBeenCalledWith('parent-1', TEAM_ROUTING_EXHAUSTED_REASON)
@@ -199,9 +215,7 @@ describe('resolveTeamAssignmentForStep', () => {
   })
 
   it('ladder cooldown → skipped without billing the router', async () => {
-    const state = loadDispatchState(tempDir)
-    state.failedDispatches['parent-1:route-me'] = { count: 1, lastAttempt: Date.now(), kind: 'transient' }
-    saveDispatchState(tempDir, state)
+    heldState.failedDispatches['parent-1:route-me'] = { count: 1, lastAttempt: Date.now(), kind: 'transient' }
     const outcome = await resolveTeamAssignmentForStep(args())
     expect(outcome).toEqual({ status: 'skipped' })
     expect(resolveSpy).not.toHaveBeenCalled()
@@ -212,7 +226,7 @@ describe('resolveTeamAssignmentForStep', () => {
     const outcome = await resolveTeamAssignmentForStep(args())
     expect(outcome).toEqual({ status: 'skipped' })
     expect(resolveSpy).not.toHaveBeenCalled()
-    expect(loadDispatchState(tempDir).failedDispatches['parent-1:route-me']).toBeUndefined()
+    expect(heldState.failedDispatches['parent-1:route-me']).toBeUndefined()
   })
 
   it('hook not registered → parent blocked honestly', async () => {
@@ -226,7 +240,7 @@ describe('resolveTeamAssignmentForStep', () => {
     resolveResult = Promise.reject(new Error('infra down'))
     const outcome = await resolveTeamAssignmentForStep(args())
     expect(outcome).toEqual({ status: 'skipped' })
-    expect(loadDispatchState(tempDir).failedDispatches['parent-1:route-me']?.count).toBe(1)
+    expect(heldState.failedDispatches['parent-1:route-me']?.count).toBe(1)
   })
 
   it('concurrent calls for the same step JOIN one resolution (single bill)', async () => {

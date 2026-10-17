@@ -233,9 +233,15 @@ Monitors agent and MCP server health:
 - **Fresh validation before mutating** (spec D9): the board snapshot is one
   tick old and the loop awaits between tasks, so before recovering or
   escalating the watchdog re-reads the row (`getTaskWithColumn`), re-checks
-  column / `updatedAt` / liveness / counter, then makes ONE synchronous store
+  column / `version` / liveness / counter, then makes ONE synchronous store
   write (`recoverTask` or `blockTask`), THEN logs. The bypass-pattern scan
   skips the watchdog's own lines by `author`, never by message text.
+- **Decided under the dispatch state lock** (#977): the scan's liveness read
+  is a pre-filter; `recoverStuckTask` runs under `withStateLock`, where every
+  ledger claim is made, re-reads liveness (a workflow's topology is
+  re-walked — a scope that changed since the scan is left for the next tick)
+  and only then validates the row and writes. A child spawned and claimed
+  mid-scan is therefore seen, not recovered over.
 - Auto-recovery: supersede-first via the execution ledger. Recovery requires transactionally superseding the task's live run (`supersedeStaleRun`, heartbeat staleness vs `settings.watchdog.stuckThresholdMs`); a fresh run heartbeat means the agent is genuinely working and recovery is skipped (replaces the old 60 s `updatedAt` guard / `AUTO_RECOVERY_GUARD_MS`, issue #114). Zero live runs = stranded task, recovered as before; ledger errors skip recovery (fail closed). Emits `task.run_superseded`. See `.claude/knowledge/execution-ledger.md`.
 - Detects MCP 5xx outages via a rolling error-rate check on `/mcp` (configurable window/threshold/min-samples/cooldown in `settings.watchdog.mcp*`) — fires SSE alert, audit entry, and optional runtime channel notification
 - Alert delivery via `settings.notifications.channel` (runtime channel ID; blank means in-app only) — configured in the **Channels** settings tab's Routing section (`/settings?tab=channels`)
@@ -265,7 +271,9 @@ nothing):
   `task.recoveries` (log-prefix counting is gone); every candidate is re-read
   and re-assessed on the fresh row before it is recovered, blocked or given a
   manual hold, and the recovery is one store write (`recoverTask`) before
-  its log line. Exhausted tasks move to `blocked`.
+  its log line. Each candidate is decided under `withStateLock` (#977), so a
+  dispatch claim in flight lands before the re-assessment reads the ledger.
+  Exhausted tasks move to `blocked`.
 
 ## Key Files
 

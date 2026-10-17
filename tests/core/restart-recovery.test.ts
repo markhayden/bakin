@@ -146,6 +146,8 @@ import { checkRestartRecovery } from '../../plugins/health/lib/system-checks/res
 import { claimRun, markPriorBootRunsLost } from '../../src/core/execution-ledger'
 import { stepExecKey } from '../../src/core/task-liveness'
 import { closeDb } from '../../packages/core/src/storage/db'
+import { withStateLock } from '../../src/core/dispatch-state'
+import { settleFor } from '../helpers/wait'
 
 const BOOT = 'boot-recovery-1'
 
@@ -545,6 +547,29 @@ describe('restart recovery', () => {
     }
 
     const result = await runRestartRecovery(tempDir)
+
+    expect(mockRecoverTask).not.toHaveBeenCalled()
+    expect(mockBlockTask).not.toHaveBeenCalled()
+    expect(result.skipped).toBe(1)
+  })
+
+  // #977: every ledger claim is made under the dispatch state lock, and HTTP
+  // is live during startup recovery — the decision must queue behind a claim
+  // in flight instead of racing it.
+  it('a candidate is decided under the dispatch state lock — a claim made under it lands first (#977)', async () => {
+    setColumns({ inProgress: [{ id: 'task-r9', title: 'Plain', agent: 'pixel', version: 1 }] })
+    let release!: () => void
+    const held = withStateLock(() => new Promise<void>((resolve) => { release = resolve }))
+
+    const run = runRestartRecovery(tempDir)
+    await settleFor(25, 'the decision must park on the lock, not race it')
+    expect(mockRecoverTask).not.toHaveBeenCalled()
+
+    // The lock holder (a dispatch cycle) claims the task's run before releasing.
+    liveRun('task-r9', 'pixel')
+    release()
+    await held
+    const result = await run
 
     expect(mockRecoverTask).not.toHaveBeenCalled()
     expect(mockBlockTask).not.toHaveBeenCalled()

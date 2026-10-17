@@ -22,6 +22,7 @@ import {
   readTaskboard,
 } from './task-store'
 import { budgetGate } from './dispatch-turns'
+import { withStateLock } from './dispatch-state'
 import { getLiveRun, loseRun, supersedeStaleRun } from './execution-ledger'
 import {
   abortTurnsByRunIds,
@@ -39,6 +40,155 @@ const hooks = () => getHookRegistry()
 let watchdogTimer: NodeJS.Timeout | null = null
 let lastMcpAlertAt = 0
 let lastRestAlertAt = 0
+
+type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; recoveries?: number; version?: number; log?: Array<{ message: string; timestamp: string; author?: string }> }
+
+/** The ledger verdict for one in-progress task, with the workflow scope it was read over. */
+interface Liveness {
+  stranded: boolean
+  liveRun: ReturnType<typeof getLiveRun>
+  /** Workflow tasks only: the active steps + fanned-out task ids `stranded` was judged on. */
+  scope: { activeAgents: WorkflowActiveAgent[]; descendants: string[] } | null
+}
+
+/**
+ * Liveness comes from the ledger only. A plain task holds at most one live
+ * run; a workflow task's active steps each hold their own run, keyed by the
+ * (possibly nested-child) task id + step id. Stranded only when NO execution
+ * remains — a previous step's turn still settling after the engine advanced
+ * counts as live (review P1), as does a completed nested/map child's final
+ * turn (review round 2). Supersede-by-task reaches only runs keyed on THIS
+ * task id; child-keyed steps belong to the child's own task.
+ */
+async function readLiveness(task: WdTask): Promise<Liveness> {
+  if (!task.workflowId) {
+    const liveRun = getLiveRun(task.id)
+    return { stranded: liveRun === null, liveRun, scope: null }
+  }
+  const activeAgents = await hooks().invoke<WorkflowActiveAgent[]>('workflows.getActiveAgents', { taskId: task.id }) ?? []
+  const descendants = await collectWorkflowDescendantTaskIds(task.id, (id) =>
+    hooks().invoke<WorkflowInstanceLike | null>('workflows.loadInstance', { taskId: id }))
+  const runs = assessWorkflowRuns(task.id, activeAgents, descendants)
+  return { stranded: runs.stranded, liveRun: runs.stranded ? null : getLiveRun(task.id), scope: { activeAgents, descendants } }
+}
+
+/** Order-insensitive identity of a workflow scope — equal keys ⇒ the same steps and the same fanned-out tasks. */
+function scopeKey(scope: Liveness['scope']): string {
+  if (!scope) return ''
+  return JSON.stringify([
+    scope.activeAgents.map((entry) => `${entry.effectiveTaskId ?? ''}:${entry.stepId}:${entry.agent}`).sort(),
+    [...scope.descendants].sort(),
+  ])
+}
+
+/**
+ * Auto-recover ONE stuck task. Runs under the dispatch state lock (#977):
+ * every ledger claim is made under that lock (dispatch-cycle / -single /
+ * -team → claimDispatchRun), so while this holds it no step or child can go
+ * live. Inside: the liveness is read again (a workflow's topology re-walked —
+ * a scope that changed since the scan is left for the next tick), then the
+ * row is validated fresh (spec D9: still inProgress, same `version` as the
+ * snapshot — every store write bumps it) and everything from that read to
+ * the store write is synchronous.
+ */
+async function recoverStuckTask(
+  task: WdTask,
+  scanned: Liveness,
+  minutesStuck: number,
+  now: number,
+  settings: ReturnType<typeof getSettings>,
+  contentDir: string,
+): Promise<void> {
+  let live: Liveness
+  try {
+    live = await readLiveness(task)
+  } catch (err) {
+    log.error('Ledger liveness read failed under the lock — skipping this task this tick (fail closed)', err, { id: task.id })
+    return
+  }
+  if (scopeKey(live.scope) !== scopeKey(scanned.scope)) {
+    log.debug('Skipping auto-recovery: workflow topology changed during the scan', { id: task.id })
+    return
+  }
+  const fresh = getTaskWithColumn(task.id)
+  if (!fresh || fresh.column !== 'inProgress') {
+    log.debug('Skipping auto-recovery: task left in-progress during the scan', { id: task.id })
+    return
+  }
+  if (fresh.task.version !== task.version) {
+    log.debug('Skipping auto-recovery: task was written during the scan', { id: task.id })
+    return
+  }
+
+  const { stranded, liveRun } = live
+  if (!stranded) {
+    if (!liveRun) {
+      log.debug('Skipping auto-recovery: a workflow step holds a live run', { id: task.id })
+      return
+    }
+    // Supersede-first: the ledger arbitrates recovery. A live run with
+    // a fresh heartbeat means the agent is genuinely working. A stale
+    // run is superseded transactionally — of N racing recovery actors
+    // exactly one wins; losers skip. Ledger failure = fail closed.
+    try {
+      const supersede = supersedeStaleRun(task.id, now - settings.watchdog.stuckThresholdMs)
+      if (!supersede.superseded) {
+        log.debug('Skipping auto-recovery: live run heartbeat is fresh', { id: task.id, runId: liveRun.runId })
+        return
+      }
+      appendAudit(contentDir, 'task.run_superseded', 'watchdog', {
+        id: task.id,
+        title: task.title,
+        agent: task.agent,
+        runIds: supersede.runIds,
+        minutesStuck,
+      })
+      // Abort the SUPERSEDED runs' turns NOW instead of leaving
+      // zombies running: their late settles would otherwise race the
+      // refired attempt (stale asset saves, ladder re-entry for an
+      // already-recovered task). By runId, NEVER by taskId — parallel
+      // workflow-step siblings share a taskId and a healthy working
+      // step must not be killed for its stale sibling (review F2).
+      abortTurnsByRunIds(supersede.runIds, 'superseded')
+    } catch (err) {
+      log.error('Ledger supersede failed — skipping auto-recovery this tick (fail closed)', err, { id: task.id })
+      return
+    }
+  }
+
+  // Stranded (or just superseded) — auto-recover with ONE synchronous
+  // store write (column + counter together), THEN the log line.
+  const stillStranded = live.scope
+    ? assessWorkflowRuns(task.id, live.scope.activeAgents, live.scope.descendants).stranded
+    : getLiveRun(task.id) === null
+  if (!stillStranded) {
+    log.debug('Skipping auto-recovery: a run went live during the scan', { id: task.id })
+    return
+  }
+  const recoveryCount = fresh.task.recoveries ?? 0
+
+  if (recoveryCount >= settings.watchdog.maxAutoRecoveries) {
+    // Escalate to blocked
+    try {
+      await blockTask(task.id, `Auto-recovery limit reached (${recoveryCount} attempts). No live run for this task.`)
+      await addTaskLog(task.id, 'watchdog', `Escalated to blocked: ${recoveryCount} auto-recoveries exhausted. Manual intervention required.`)
+      appendAudit(contentDir, 'task.auto_recovery_exhausted', 'watchdog', { id: task.id, title: task.title, agent: task.agent, recoveryCount })
+      log.warn('Task escalated to blocked after max recoveries', { id: task.id, title: task.title, recoveryCount })
+    } catch (err) {
+      log.error('Failed to escalate task to blocked', err, { id: task.id })
+    }
+    return
+  }
+  // Back to todo for re-dispatch, counting the attempt in the same write.
+  try {
+    await recoverTask(task.id)
+    await addTaskLog(task.id, 'watchdog', `Auto-recovered: no live run and no activity for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch (attempt ${recoveryCount + 1} of ${settings.watchdog.maxAutoRecoveries}).`)
+    appendAudit(contentDir, 'task.auto_recovered', 'watchdog', { id: task.id, title: task.title, agent: task.agent, minutesStuck, recoveryCount: recoveryCount + 1 })
+    log.info('Task auto-recovered to todo', { id: task.id, title: task.title, minutesStuck, recoveryCount: recoveryCount + 1 })
+  } catch (err) {
+    log.error('Failed to auto-recover task', err, { id: task.id })
+  }
+}
 
 // Bypass detection patterns — agents trying to work around errors instead of blocking
 const BYPASS_PATTERNS = [
@@ -144,7 +294,6 @@ export function start(contentDir: string): void {
     }
 
     try {
-      type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; recoveries?: number; version?: number; log?: Array<{ message: string; timestamp: string; author?: string }> }
       const board = readTaskboard() as unknown as { columns: Record<string, WdTask[]> }
       const { columns } = board
       const inProgressTasks = columns.inProgress || []
@@ -181,121 +330,20 @@ export function start(contentDir: string): void {
 
         const minutesStuck = Math.round(stuckMs / 60000)
 
-        // Liveness comes from the ledger only. A plain task holds at most one
-        // live run; a workflow task's active steps each hold their own run,
-        // keyed by the (possibly nested-child) task id + step id.
-        let stranded: boolean
-        let liveRun: ReturnType<typeof getLiveRun> = null
-        let workflowActiveAgents: WorkflowActiveAgent[] = []
-        let workflowDescendants: string[] = []
+        let verdict: Liveness
         try {
-          if (task.workflowId) {
-            workflowActiveAgents = await hooks().invoke<WorkflowActiveAgent[]>('workflows.getActiveAgents', { taskId: task.id }) ?? []
-            workflowDescendants = await collectWorkflowDescendantTaskIds(task.id, (id) =>
-              hooks().invoke<WorkflowInstanceLike | null>('workflows.loadInstance', { taskId: id }))
-            const runs = assessWorkflowRuns(task.id, workflowActiveAgents, workflowDescendants)
-            // Stranded only when NO execution remains — a previous step's
-            // turn still settling after the engine advanced counts as live
-            // (review P1), as does a completed nested/map child's final turn
-            // (review round 2). Supersede-by-task reaches only runs keyed on
-            // THIS task id; child-keyed steps belong to the child's own task.
-            stranded = runs.stranded
-            if (!stranded) liveRun = getLiveRun(task.id)
-          } else {
-            liveRun = getLiveRun(task.id)
-            stranded = liveRun === null
-          }
+          verdict = await readLiveness(task)
         } catch (err) {
           log.error('Ledger liveness read failed — skipping this task this tick (fail closed)', err, { id: task.id })
           continue
         }
 
         if (settings.watchdog.autoRecover) {
-          // Fresh validation BEFORE anything is superseded, aborted or moved
-          // (spec D9). The board snapshot is one tick old and this loop (and
-          // the workflow hooks above) awaited, so the operator or the engine
-          // may have written this row meanwhile. ANY write bumps `version`;
-          // a changed row is left for the next tick — never judged, never
-          // superseded, on stale evidence. Everything from here to the store
-          // write is synchronous.
-          const fresh = getTaskWithColumn(task.id)
-          if (!fresh || fresh.column !== 'inProgress') {
-            log.debug('Skipping auto-recovery: task left in-progress during the scan', { id: task.id })
-            continue
-          }
-          if (fresh.task.version !== task.version) {
-            log.debug('Skipping auto-recovery: task was written during the scan', { id: task.id })
-            continue
-          }
-
-          if (!stranded) {
-            if (!liveRun) {
-              log.debug('Skipping auto-recovery: a workflow step holds a live run', { id: task.id })
-              continue
-            }
-            // Supersede-first: the ledger arbitrates recovery. A live run with
-            // a fresh heartbeat means the agent is genuinely working. A stale
-            // run is superseded transactionally — of N racing recovery actors
-            // exactly one wins; losers skip. Ledger failure = fail closed.
-            try {
-              const supersede = supersedeStaleRun(task.id, now - settings.watchdog.stuckThresholdMs)
-              if (!supersede.superseded) {
-                log.debug('Skipping auto-recovery: live run heartbeat is fresh', { id: task.id, runId: liveRun.runId })
-                continue
-              }
-              appendAudit(contentDir, 'task.run_superseded', 'watchdog', {
-                id: task.id,
-                title: task.title,
-                agent: task.agent,
-                runIds: supersede.runIds,
-                minutesStuck,
-              })
-              // Abort the SUPERSEDED runs' turns NOW instead of leaving
-              // zombies running: their late settles would otherwise race the
-              // refired attempt (stale asset saves, ladder re-entry for an
-              // already-recovered task). By runId, NEVER by taskId — parallel
-              // workflow-step siblings share a taskId and a healthy working
-              // step must not be killed for its stale sibling (review F2).
-              abortTurnsByRunIds(supersede.runIds, 'superseded')
-            } catch (err) {
-              log.error('Ledger supersede failed — skipping auto-recovery this tick (fail closed)', err, { id: task.id })
-              continue
-            }
-          }
-
-          // Stranded (or just superseded) — auto-recover with ONE synchronous
-          // store write (column + counter together), THEN the log line.
-          const stillStranded = task.workflowId
-            ? assessWorkflowRuns(task.id, workflowActiveAgents, workflowDescendants).stranded
-            : getLiveRun(task.id) === null
-          if (!stillStranded) {
-            log.debug('Skipping auto-recovery: a run went live during the scan', { id: task.id })
-            continue
-          }
-          const recoveryCount = fresh.task.recoveries ?? 0
-
-          if (recoveryCount >= settings.watchdog.maxAutoRecoveries) {
-            // Escalate to blocked
-            try {
-              await blockTask(task.id, `Auto-recovery limit reached (${recoveryCount} attempts). No live run for this task.`)
-              await addTaskLog(task.id, 'watchdog', `Escalated to blocked: ${recoveryCount} auto-recoveries exhausted. Manual intervention required.`)
-              appendAudit(contentDir, 'task.auto_recovery_exhausted', 'watchdog', { id: task.id, title: task.title, agent: task.agent, recoveryCount })
-              log.warn('Task escalated to blocked after max recoveries', { id: task.id, title: task.title, recoveryCount })
-            } catch (err) {
-              log.error('Failed to escalate task to blocked', err, { id: task.id })
-            }
-          } else {
-            // Back to todo for re-dispatch, counting the attempt in the same write.
-            try {
-              await recoverTask(task.id)
-              await addTaskLog(task.id, 'watchdog', `Auto-recovered: no live run and no activity for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch (attempt ${recoveryCount + 1} of ${settings.watchdog.maxAutoRecoveries}).`)
-              appendAudit(contentDir, 'task.auto_recovered', 'watchdog', { id: task.id, title: task.title, agent: task.agent, minutesStuck, recoveryCount: recoveryCount + 1 })
-              log.info('Task auto-recovered to todo', { id: task.id, title: task.title, minutesStuck, recoveryCount: recoveryCount + 1 })
-            } catch (err) {
-              log.error('Failed to auto-recover task', err, { id: task.id })
-            }
-          }
+          // The scan's verdict is a pre-filter; the decision and the write
+          // happen under the dispatch state lock, where claims serialize (#977).
+          await withStateLock(() => recoverStuckTask(task, verdict, minutesStuck, now, settings, contentDir))
         } else {
+          const { stranded, liveRun } = verdict
           // Alert-only mode. A live run with a fresh heartbeat is working —
           // nothing to say. Anything else is worth a human's eyes.
           const heartbeatFresh = liveRun !== null && liveRun.heartbeatAt >= now - settings.watchdog.stuckThresholdMs
