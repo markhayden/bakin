@@ -216,6 +216,11 @@ async function transferAttempt(
       }
     } catch (err) {
       void reader.cancel().catch(() => { /* already broken */ })
+      // The deadline timer and the read guard can come due together; when the
+      // deadline's abort lands first the read rejects with the raw abort reason.
+      if (deadlineFired && !(err instanceof TransferAttemptError) && !(err instanceof AbortedError)) {
+        throw new TransferAttemptError(`${label} download failed: attempt deadline exceeded mid-transfer`, 'deadline')
+      }
       throw err
     }
     return received

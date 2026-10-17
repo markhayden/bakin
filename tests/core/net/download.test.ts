@@ -369,6 +369,32 @@ describe('download events (#895): attempt, bytes, stalled, retry', () => {
     expect(kinds(events).filter((e) => e.type === 'retry').map((e) => e.type === 'retry' && e.reason)).toEqual(['deadline'])
   })
 
+  it('classifies a mid-body deadline whose abort beats the read guard', async () => {
+    // CI flake: during the body read the attempt deadline and the read guard
+    // come due together; when the abort lands first, the read rejects with the
+    // raw abort reason. A lagging wall clock makes the deadline win every time.
+    const frozen = Date.now()
+    const clock = spyOn(Date, 'now').mockImplementation(() => frozen)
+    const headersThenSilence = ((_input: string, init?: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(16))
+          init?.signal?.addEventListener('abort', () => controller.error(init.signal?.reason), { once: true })
+        },
+      })
+      return Promise.resolve(new NativeResponse(body, { headers: { 'content-length': '1000' } }))
+    }) as unknown as typeof fetch
+    const events: DownloadEvent[] = []
+    try {
+      await expect(downloadToFile(url('/payload'), join(testDir, 'ev-body-deadline.bin'), {
+        fetchImpl: headersThenSilence, timeoutMs: 50, stallTimeoutMs: 10_000, retries: 1, onEvent: (e) => events.push(e),
+      })).rejects.toThrow(/deadline/i)
+    } finally {
+      clock.mockRestore()
+    }
+    expect(kinds(events).filter((e) => e.type === 'retry').map((e) => e.type === 'retry' && e.reason)).toEqual(['deadline'])
+  })
+
   it('classifies an HTTP error as an http retry', async () => {
     const events: DownloadEvent[] = []
     await expect(downloadToFile(url('/missing'), join(testDir, 'ev-404.txt'), { fetchImpl: nativeFetch, onEvent: (e) => events.push(e) }))
