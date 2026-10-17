@@ -39,17 +39,26 @@ mock.module('../../../src/core/channel-aliases', () => ({
 const createApproval = mock(async (args: { approvalId: string; channels: string[] }) => ({ deliveries: [{ channelId: args.channels[0], ref: `card-${args.approvalId}`, renderedAt: '2026-10-02T00:00:00.000Z' }] }))
 const resolveApprovalOnChannel = mock(async () => {})
 const cancelApprovalOnChannel = mock(async () => {})
+const postApprovalOutcomeOnChannel = mock(async (_args: unknown) => {})
+let outcomeSupported = true
 let channelsPresent = true
 const runtime = {
   get channels() {
     return channelsPresent
-      ? { createApproval, resolveApproval: resolveApprovalOnChannel, cancelApproval: cancelApprovalOnChannel, list: async () => [], subscribeApprovalResponses: () => () => {} }
+      ? {
+          createApproval,
+          resolveApproval: resolveApprovalOnChannel,
+          cancelApproval: cancelApprovalOnChannel,
+          list: async () => [],
+          subscribeApprovalResponses: () => () => {},
+          ...(outcomeSupported ? { postApprovalOutcome: postApprovalOutcomeOnChannel } : {}),
+        }
       : undefined
   },
 }
 mock.module('../../../src/core/app-services-store', () => ({ maybeGetAppServices: () => ({ runtime }), getAppServices: () => ({ runtime }) }))
 
-import { requestApproval, resolveApproval, cancelApproval, listPendingApprovals } from '../../../src/core/approvals/service'
+import { requestApproval, resolveApproval, cancelApproval, listPendingApprovals, postApprovalOutcome, resolveApprovalWithResult, settleApprovalFollowUps } from '../../../src/core/approvals/service'
 import { registerApprovalKind, clearApprovalKinds, type ApprovalKindHandler } from '../../../src/core/approvals/kinds'
 import { ApprovalKindUnavailableError, ApprovalNotFoundError, ApprovalNotPendingError, ApprovalResolveError } from '../../../src/core/approvals/errors'
 import { getApprovalRecord } from '../../../packages/core/src/approvals'
@@ -73,6 +82,8 @@ beforeEach(() => {
   cancelApprovalOnChannel.mockClear()
   onResolve.mockClear()
   onResolve.mockImplementation(async () => {})
+  postApprovalOutcomeOnChannel.mockClear()
+  outcomeSupported = true
   channelAlerts = false
   channelsPresent = true
   clearApprovalKinds()
@@ -218,5 +229,56 @@ describe('cancelApproval', () => {
     expect(cancelApprovalOnChannel).not.toHaveBeenCalled()
     expect(broadcasts).toEqual([])
     expect(await cancelApproval('missing', 'x')).toBeNull()
+  })
+})
+
+describe('afterResolve and the outcome follow-up (#895 D24)', () => {
+  it('runs strictly after the decision is saved, the channel told and the resolution published', async () => {
+    channelAlerts = true
+    const seen: Array<{ status: string; channelResolved: number; published: boolean; result: unknown }> = []
+    registerGateKind({
+      onResolve: async () => ({ operationId: 'op-42' }),
+      afterResolve: async (record, result) => {
+        seen.push({
+          status: getApprovalRecord(record.approvalId)!.status,
+          channelResolved: resolveApprovalOnChannel.mock.calls.length,
+          published: broadcasts.some((b) => b.event === 'approval.resolved' && b.approvalId === record.approvalId),
+          result,
+        })
+      },
+    })
+    requestApproval({ approvalId: 'a-1', owner: gateOwner, request })
+    await settleFor(20, 'channel render is fire-and-forget')
+    const { result } = await resolveApprovalWithResult('a-1', { option: 'approve', actor: web })
+    expect(result).toEqual({ operationId: 'op-42' })
+    await settleApprovalFollowUps()
+    expect(seen).toEqual([{ status: 'approved', channelResolved: 1, published: true, result: { operationId: 'op-42' } }])
+  })
+
+  it('never delays or fails the resolver: a slow or throwing follow-up is logged', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    registerGateKind({ afterResolve: async () => { await gate; throw new Error('follow-up exploded') } })
+    requestApproval({ approvalId: 'a-2', owner: gateOwner, request })
+    const record = await resolveApproval('a-2', { option: 'approve', actor: web })
+    expect(record.status).toBe('approved')
+    release()
+    await settleApprovalFollowUps()
+  })
+
+  it('posts an outcome only where the runtime supports it and the card was rendered', async () => {
+    channelAlerts = true
+    registerGateKind()
+    requestApproval({ approvalId: 'a-3', owner: gateOwner, request })
+    await settleFor(20, 'channel render is fire-and-forget')
+    const resolved = await resolveApproval('a-3', { option: 'approve', actor: web })
+    expect(await postApprovalOutcome(resolved, { status: 'succeeded', title: 'Repair applied' })).toBe(true)
+    expect(postApprovalOutcomeOnChannel.mock.calls[0]![0]).toMatchObject({ approvalId: 'a-3', outcome: { status: 'succeeded', title: 'Repair applied' } })
+
+    outcomeSupported = false
+    expect(await postApprovalOutcome(resolved, { status: 'failed', title: 'x' })).toBe(false)
+    outcomeSupported = true
+    expect(await postApprovalOutcome({ ...resolved, deliveries: [] }, { status: 'failed', title: 'x' })).toBe(false)
+    expect(postApprovalOutcomeOnChannel).toHaveBeenCalledTimes(1)
   })
 })

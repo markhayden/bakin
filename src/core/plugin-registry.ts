@@ -669,7 +669,7 @@ class PluginRegistryImpl {
         return namespacedId
       },
       registerHealthRepairAction: (def: HealthRepairActionDefinition): string => {
-        const namespacedId = registerPluginHealthRepairAction(pluginId, def, state.plugin.name)
+        const namespacedId = registerPluginHealthRepairAction(pluginId, def, state.plugin.name, { isCorePlugin: isCorePlugin(pluginId) })
         state.healthRepairActionIds.push(namespacedId)
         return namespacedId
       },

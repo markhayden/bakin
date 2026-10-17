@@ -8,6 +8,7 @@
 
 export {
   CORE_RESOURCES,
+  isOperationFinished,
   OPERATION_QUIET_THRESHOLDS,
   OPERATION_STAGE_KINDS,
   operationQuietState,
@@ -44,7 +45,17 @@ export {
 } from '@makinbakin/sdk/types'
 export { OperationCancelledError, OperationRejectedError } from './errors'
 export {
+  CHILD_PARTIAL_CODE,
+  CHILD_SKIPPED_CODE,
+  parentOutcome,
+  tallyChildren,
+  type ChildTally,
+  type ParentOutcome,
+  type ParentOutcomeCode,
+} from './children'
+export {
   createOperationRegistry,
+  type ChildOperationInput,
   type OperationPublishKind,
   type OperationRegistry,
   type OperationRegistryDeps,
@@ -67,6 +78,7 @@ export {
   type ResourceWait,
 } from './resources'
 export { runLocal } from './local'
+export { operationStartResponseSchema } from './schema'
 export { createMemoryResourceAcquirer } from './memory-resources'
 export { operationOriginFromRequest } from './origin'
 export { assertPluginResources, OperationResourceDeniedError, toPluginOperationInput } from './plugin'

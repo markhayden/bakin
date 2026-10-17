@@ -31,7 +31,11 @@ let afterApplyIncidents: HealthIncident[] | null = null
 const delegate = mock(async () => ({ status: 'sent' }))
 const openRepairApproval = mock(async (_input: { incidents: HealthIncident[]; items: HealthRepairPlanItem[] }) => ({ taskId: 'task-repair-approval' }))
 const openNavigateApproval = mock(async (_input: { incident: HealthIncident }) => ({ taskId: `task-nav-${openNavigateApproval.mock.calls.length}` }))
-const applyDoctorRepair = mock(async () => ({ report: report(afterApplyIncidents ?? []), results: [], affectedCheckIds: [], remainingIncidentIds: [], verifiedReportId: 'health-report-2', planId: 'plan-1', basedOnReportId: 'health-report-1' }))
+const startDoctorRepair = mock(async (_options: Record<string, unknown>) => ({ operationId: 'op-repair', bootId: 'boot-1' }))
+const awaitDoctorRepair = mock(async () => ({
+  view: { id: 'op-repair', status: 'succeeded' },
+  report: { report: report(afterApplyIncidents ?? []), results: [], affectedCheckIds: [], remainingIncidentIds: [], verifiedReportId: 'health-report-2', planId: 'plan-1', basedOnReportId: 'health-report-1' },
+}))
 const planDoctorRepair = mock(async () => {
   if (planThrows) throw new Error('action unregistered')
   return { planId: 'plan-1', basedOnReportId: 'health-report-1', target: { type: 'incidents', reportId: 'health-report-1', ids: ['x'] }, createdAt: '', expiresAt: '', items: planItems }
@@ -46,7 +50,7 @@ mock.module('../../src/core/task-service', () => ({
 }))
 mock.module('../../src/core/doctor-delegate', () => ({ delegateDoctorRepair: delegate }))
 mock.module('../../src/core/doctor-approvals', () => ({ openRepairApproval, openNavigateApproval }))
-mock.module('../../src/core/doctor-repair', () => ({ planDoctorRepair, applyDoctorRepair }))
+mock.module('../../src/core/doctor-repair', () => ({ planDoctorRepair, startDoctorRepair, awaitDoctorRepair }))
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }),
 }))
@@ -115,7 +119,7 @@ beforeEach(() => {
   planItems = []
   planThrows = false
   afterApplyIncidents = null
-  for (const fn of [delegate, openRepairApproval, openNavigateApproval, applyDoctorRepair, planDoctorRepair]) fn.mockClear()
+  for (const fn of [delegate, openRepairApproval, openNavigateApproval, startDoctorRepair, awaitDoctorRepair, planDoctorRepair]) fn.mockClear()
   setSystemTime(new Date('2026-07-15T12:00:00.000Z'))
 })
 
@@ -234,7 +238,8 @@ describe('policy', () => {
     planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe', incidentIds: ['health:search:index-corrupt'] })]
     afterApplyIncidents = []
     const outcome = await escalate([repairIncident()])
-    expect(applyDoctorRepair).toHaveBeenCalledWith(expect.objectContaining({ planId: 'plan-1', itemIds: ['search.restart:restart'], confirmedItemIds: [] }))
+    expect(startDoctorRepair).toHaveBeenCalledWith(expect.objectContaining({ planId: 'plan-1', itemIds: ['search.restart:restart'], confirmedItemIds: [], origin: 'system' }))
+    expect(awaitDoctorRepair).toHaveBeenCalledWith('op-repair')
     expect(outcome?.autoApplied).toEqual(['health:search:index-corrupt'])
     expect(openRepairApproval).not.toHaveBeenCalled()
     expect(delegate).not.toHaveBeenCalled()
@@ -244,7 +249,7 @@ describe('policy', () => {
     planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe' })]
     afterApplyIncidents = [repairIncident()]
     const outcome = await escalate([repairIncident()])
-    expect(applyDoctorRepair).toHaveBeenCalledTimes(1)
+    expect(startDoctorRepair).toHaveBeenCalledTimes(1)
     expect(outcome?.autoApplied).toEqual([])
     // No non-safe proposal for it → delegated, against the post-apply report.
     expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:index-corrupt'] }) }))
@@ -281,7 +286,7 @@ describe('policy', () => {
   it('planning failure degrades to delegation for everything uncovered', async () => {
     planThrows = true
     await escalate([repairIncident(), incident()])
-    expect(applyDoctorRepair).not.toHaveBeenCalled()
+    expect(startDoctorRepair).not.toHaveBeenCalled()
     expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:index-corrupt', 'health:search:unavailable'] }) }))
   })
 

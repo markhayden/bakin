@@ -53,8 +53,10 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { checkScheduleSync, scheduleSyncRepair, checkScheduleCutover, checkSchedulePrompts, scheduleUnrunnableJobsRepair, unrunnableBakinJobs } from '../../../plugins/schedule/lib/health-checks'
+import { checkScheduleSync, scheduleSyncRepair, checkScheduleCutover, checkSchedulePrompts, scheduleCutoverRepair, scheduleUnrunnableJobsRepair, unrunnableBakinJobs } from '../../../plugins/schedule/lib/health-checks'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import { getJob, upsertJob } from '../../../plugins/schedule/lib/sidecar'
+import { noopOp } from '../../helpers/operation-harness'
 
 const sidecarPath = join(testDir, 'schedule', 'sidecar.json')
 let runtimeJobs: CronJob[] = []
@@ -160,7 +162,7 @@ describe('checkScheduleSync - repair', () => {
     const repair = scheduleSyncRepair(cronReader, async () => 'boss')
     const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
-    const applied = await repair.apply(plan)
+    const applied = await repair.apply(plan, noopOp())
     expect(applied[0].status).toBe('applied')
     expect(applied[0].message).toMatch(/Tracked/)
 
@@ -180,7 +182,7 @@ describe('checkScheduleSync - repair', () => {
     expect(existsSync(join(testDir, 'schedule'))).toBe(false)
 
     const repair = scheduleSyncRepair(cronReader, async () => 'main')
-    await repair.apply(await repair.plan(repairTarget))
+    await repair.apply(await repair.plan(repairTarget), noopOp())
     expect(existsSync(sidecarPath)).toBe(true)
   })
 })
@@ -211,7 +213,7 @@ describe('checkScheduleSync - runtime-internal crons (spec D5)', () => {
     const repair = scheduleSyncRepair(cronReader, async () => 'main')
     const plan = await repair.plan(repairTarget)
     expect(plan[0]!.reason).toContain('1 runtime cron job(s)')
-    await repair.apply(plan)
+    await repair.apply(plan, noopOp())
     const updated = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
     expect(updated.jobs['orphan-1']).toBeDefined()
     expect(updated.jobs['dream']).toBeUndefined()
@@ -251,7 +253,7 @@ describe('checkSchedulePrompts + remove-unrunnable-jobs (spec D5, plan review R2
     bakinJob('C', 'dream')
     bakinJob('B', 'Now a real prompt')
 
-    const results = await repair.apply(plan)
+    const results = await repair.apply(plan, noopOp())
     expect(results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['schedule.schedule-prompts'] })
     expect(results[0]!.changes.map((c) => c.target)).toEqual(['A'])
     expect(results[0]!.message).toContain('Removed 1 schedule(s): A.')
@@ -266,7 +268,7 @@ describe('checkSchedulePrompts + remove-unrunnable-jobs (spec D5, plan review R2
     const next = await repair.plan(repairTarget)
     expect(next[0]!.changes.map((c) => c.target)).toEqual(['C'])
     // A re-applied stale plan (A already gone) is a skip, never an error.
-    const again = await repair.apply(plan)
+    const again = await repair.apply(plan, noopOp())
     expect(again[0]!.status).toBe('skipped')
   })
 })
@@ -394,5 +396,37 @@ describe('schedule/checkScheduleCutover', () => {
     const failing = { list: async () => { throw new Error('runtime down') } }
     const rows = observations(await checkScheduleCutover(failing, () => ['sch_a']))
     expect(rows[0].status).toBe('unknown')
+  })
+})
+
+describe('repair runtime contract (#895 D10)', () => {
+  it('complete-cutover reports its migrate stage', async () => {
+    const repair = scheduleCutoverRepair(async () => ({ migrated: 2, failed: 0 }))
+    const run = await runRepairContract(repair, await repair.plan(repairTarget))
+    expectRepairContract(repair, run)
+    expect(run.calls).toEqual(['stage:migrate', 'log'])
+    expect(run.results[0]!.status).toBe('applied')
+  })
+
+  it('track-runtime-cron reports scan, then one item per tracked job', async () => {
+    runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
+    writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
+    const repair = scheduleSyncRepair(cronReader, async () => 'boss')
+    const run = await runRepairContract(repair, await repair.plan(repairTarget))
+    expectRepairContract(repair, run)
+    expect(run.calls).toEqual(['stage:scan', 'stage:track', 'item:track:orphan-1', 'item:track:orphan-1'])
+    expect(run.view.stages.find((s) => s.id === 'track')!.items).toEqual([{ id: 'orphan-1', label: 'rogue-cron', status: 'done' }])
+  })
+
+  it('remove-unrunnable-jobs reports one item per frozen job, skipped ones included', async () => {
+    const bakinJob = (jobId: string, taskPrompt: string) => upsertJob({ jobId, isBakinJob: true, source: 'adopted', displayName: jobId, taskPrompt, schedule: { kind: 'cron', expr: '0 3 * * *' }, enabled: true, createdAt: '2026-03-28T00:00:00Z', updatedAt: '2026-03-28T00:00:00Z' })
+    bakinJob('A', 'heartbeat')
+    bakinJob('B', '')
+    const repair = scheduleUnrunnableJobsRepair(() => {})
+    const plan = await repair.plan(repairTarget)
+    bakinJob('B', 'Now a real prompt')
+    const run = await runRepairContract(repair, plan)
+    expectRepairContract(repair, run)
+    expect(run.view.stages[0]!.items?.map((i) => [i.id, i.status])).toEqual([['A', 'done'], ['B', 'skipped']])
   })
 })

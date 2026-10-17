@@ -166,7 +166,13 @@ async function transferAttempt(
   // One controller per attempt, linked by hand to the deadline and the
   // caller's signal (AbortSignal.any is unreliable under the test preload).
   const controller = new AbortController()
-  const deadline = setTimeout(() => controller.abort(new Error('The operation timed out')), timeoutMs)
+  // Classify by the timer having fired, never by comparing clocks: setTimeout
+  // runs on a monotonic clock and can fire before Date.now() reaches deadlineAt.
+  let deadlineFired = false
+  const deadline = setTimeout(() => {
+    deadlineFired = true
+    controller.abort(new Error('The operation timed out'))
+  }, timeoutMs)
   const forward = () => controller.abort(options.signal?.reason)
   options.signal?.addEventListener('abort', forward, { once: true })
   try {
@@ -175,10 +181,9 @@ async function transferAttempt(
       res = await fetchImpl(url, { signal: controller.signal, redirect: 'follow' })
     } catch (err) {
       throwIfAborted(options.signal)
-      const timedOut = Date.now() >= deadlineAt - 5
       throw new TransferAttemptError(
         `${label} download failed: ${err instanceof Error ? err.message : String(err)} (${url})`,
-        timedOut ? 'deadline' : 'network',
+        deadlineFired ? 'deadline' : 'network',
       )
     }
     if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
@@ -211,6 +216,11 @@ async function transferAttempt(
       }
     } catch (err) {
       void reader.cancel().catch(() => { /* already broken */ })
+      // The deadline timer and the read guard can come due together; when the
+      // deadline's abort lands first the read rejects with the raw abort reason.
+      if (deadlineFired && !(err instanceof TransferAttemptError) && !(err instanceof AbortedError)) {
+        throw new TransferAttemptError(`${label} download failed: attempt deadline exceeded mid-transfer`, 'deadline')
+      }
       throw err
     }
     return received

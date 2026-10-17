@@ -28,6 +28,7 @@ import {
   type OperationStartResponse,
   type OperationView,
 } from '@makinbakin/sdk/types'
+import { tallyChildren } from './children'
 import { OperationCancelledError } from './errors'
 import { acquireResources, runHolding, sortResources, type ResourceLease } from './resources'
 
@@ -81,8 +82,31 @@ export interface StartOperationInput<B = unknown> {
   run: (op: OperationContext) => Promise<OperationOutcome<B>>
 }
 
+/**
+ * A child of a running parent (D10, D21 — repair actions only). It inherits
+ * the parent's owner and origin, acquires its own declared resources (the
+ * parent holds none) and settles independently; its fingerprint is
+ * namespaced under the parent's.
+ */
+export interface ChildOperationInput<B = unknown> {
+  kind: string
+  title: string
+  href?: string
+  fingerprint: string
+  resources?: string[]
+  plan: OperationPlan
+  run: (op: OperationContext) => Promise<OperationOutcome<B>>
+}
+
 export interface OperationRegistry {
   start<B>(input: StartOperationInput<B>): Promise<OperationStartResponse>
+  /**
+   * Starts a child under a running parent and resolves with the child's
+   * terminal view. Refuses (OperationCancelledError) once the parent has a
+   * pending cancel. The parent finishes only after every child settles, and
+   * latches non-cancellable when any child passes its point of no return.
+   */
+  startChild<B>(parentId: string, input: ChildOperationInput<B>): Promise<OperationView<B>>
   cancel(id: string): OperationCancelResult
   get(id: string): OperationView | null
   /** Top level: live plus recently finished, newest first. */
@@ -104,6 +128,9 @@ const OUTPUT_PREVIEW_MAX = 500
 
 interface Entry {
   view: OperationView
+  parent?: Entry
+  /** Settles when each started child has finished (the parent waits on all of them). */
+  childSettled: Array<Promise<unknown>>
   validated: Promise<void>
   registered: boolean
   controller: AbortController
@@ -158,10 +185,30 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
     }, Math.min(wait, tickIntervalMs))
   }
 
+  /** A parent's clocks are the max over its own stages and its children. */
   function progressed(entry: Entry): void {
     const at = iso()
     entry.view.lastProgressAt = at
     entry.view.lastLivenessAt = at
+    if (entry.parent && !isTerminal(entry.parent.view.status)) {
+      progressed(entry.parent)
+      changed(entry.parent, 'tick')
+    }
+  }
+
+  function alive(entry: Entry): void {
+    const at = iso()
+    entry.view.lastLivenessAt = at
+    if (entry.parent && !isTerminal(entry.parent.view.status)) entry.parent.view.lastLivenessAt = at
+  }
+
+  /** Once any child passes its point of no return, the parent runs every remaining child to completion. */
+  function latchParent(child: Entry): void {
+    const parent = child.parent
+    if (!parent || !parent.view.cancellable || isTerminal(parent.view.status)) return
+    parent.view.cancellable = false
+    appendLog(parent, 'info', `${child.view.title} passed the point of no return — finishing every remaining step`)
+    changed(parent, 'milestone')
   }
 
   function appendLog(entry: Entry, level: OperationLogLevel, text: string, stageId?: string): void {
@@ -205,7 +252,10 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
         target.status = 'active'
         target.startedAt = at
         if (message !== undefined) target.message = message
-        if (entry.view.plan.pointOfNoReturn === stageId) entry.view.cancellable = false
+        if (entry.view.plan.pointOfNoReturn === stageId) {
+          entry.view.cancellable = false
+          latchParent(entry)
+        }
         progressed(entry)
         appendLog(entry, 'info', message ? `${target.label}: ${message}` : target.label, stageId)
         changed(entry, 'milestone')
@@ -241,7 +291,7 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
         if (!live()) return
         const stage = stageOf(entry, stageId)
         stage.attempt = { ...attempt }
-        entry.view.lastLivenessAt = iso()
+        alive(entry)
         appendLog(entry, 'warn', `Retrying (attempt ${attempt.n} of ${attempt.of}) — ${attempt.reason}${attempt.detail ? `: ${attempt.detail}` : ''}`, stageId)
         changed(entry, 'milestone')
       },
@@ -250,7 +300,7 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
         if (!live()) return
         const text = line.trimEnd()
         entry.view.lastOutput = text.length > OUTPUT_PREVIEW_MAX ? `${text.slice(0, OUTPUT_PREVIEW_MAX)}…` : text
-        entry.view.lastLivenessAt = iso()
+        alive(entry)
         appendLog(entry, 'info', text, entry.view.stages.find((s) => s.status === 'active')?.id)
         changed(entry, 'tick')
       },
@@ -311,6 +361,7 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
     changed(entry, 'milestone')
 
     if (!view.parentId) {
+      const children = view.children.map((id) => entries.get(id)?.view).filter((c): c is OperationView => Boolean(c))
       deps.audit?.(`operation.${status}`, {
         operationId: view.id,
         kind: view.kind,
@@ -319,6 +370,7 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
         title: view.title,
         durationMs: Date.parse(at) - Date.parse(view.startedAt),
         code,
+        ...(children.length > 0 ? { children: tallyChildren(children) } : {}),
       })
     }
     const terminal = snapshot(entry)
@@ -358,7 +410,55 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
     return { lease, waited }
   }
 
-  async function runEntry<B>(entry: Entry, input: StartOperationInput<B>): Promise<void> {
+  function newEntry(fields: {
+    kind: string
+    owner: OperationOwner
+    origin: OperationOrigin
+    title: string
+    href?: string
+    fingerprint: string
+    resources?: string[]
+    plan: OperationPlan
+    parent?: Entry
+  }): Entry {
+    const at = iso()
+    return {
+      view: {
+        id: randomUUID(),
+        ...(fields.parent ? { parentId: fields.parent.view.id } : {}),
+        children: [],
+        rev: 0,
+        bootId: deps.bootId(),
+        kind: fields.kind,
+        owner: fields.owner,
+        origin: fields.origin,
+        title: fields.title,
+        ...(fields.href ? { href: fields.href } : {}),
+        fingerprint: fields.fingerprint,
+        resources: sortResources(fields.resources ?? []),
+        status: 'running',
+        plan: structuredClone(fields.plan),
+        stages: fields.plan.stages.map((s) => ({ ...structuredClone(s), status: 'pending' as const })),
+        cancellable: fields.plan.pointOfNoReturn !== 'start',
+        startedAt: at,
+        lastProgressAt: at,
+        lastLivenessAt: at,
+        log: [],
+      },
+      ...(fields.parent ? { parent: fields.parent } : {}),
+      childSettled: [],
+      validated: Promise.resolve(),
+      registered: false,
+      controller: new AbortController(),
+      cancelRequested: false,
+      held: new Set(),
+      stuckFlagged: new Set(),
+      waiters: [],
+      lastPublishAt: 0,
+    }
+  }
+
+  async function runEntry<B>(entry: Entry, input: Pick<StartOperationInput<B>, 'run' | 'revalidate'>): Promise<void> {
     const ctx = createContext(entry)
     let lease: ResourceLease | undefined
     let outcome: OperationOutcome<B> | undefined
@@ -380,6 +480,8 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
       entry.held.clear()
       lease?.release()
     }
+    // A parent settles only after every child it started has settled.
+    await Promise.allSettled(entry.childSettled)
 
     if (outcome) return finish(entry, outcome.status, outcome, outcome.code, outcome.message)
     if (entry.cancelRequested && (failure instanceof OperationCancelledError || entry.controller.signal.aborted)) {
@@ -395,7 +497,9 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
       .filter((e) => !e.view.parentId && isTerminal(e.view.status))
       .sort((a, b) => Date.parse(b.view.endedAt!) - Date.parse(a.view.endedAt!))
     finished.forEach((e, index) => {
-      if (index >= maxFinished || Date.parse(e.view.endedAt!) < cutoff) entries.delete(e.view.id)
+      if (index < maxFinished && Date.parse(e.view.endedAt!) >= cutoff) return
+      for (const childId of e.view.children) entries.delete(childId)
+      entries.delete(e.view.id)
     })
   }
 
@@ -418,38 +522,16 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
         return { operationId: twin.view.id, bootId: deps.bootId(), attached: true }
       }
 
-      const at = iso()
-      const entry: Entry = {
-        view: {
-          id: randomUUID(),
-          children: [],
-          rev: 0,
-          bootId: deps.bootId(),
-          kind: input.kind,
-          owner: input.owner,
-          origin: input.origin,
-          title: input.title,
-          ...(input.href ? { href: input.href } : {}),
-          fingerprint: input.fingerprint,
-          resources: sortResources(input.resources ?? []),
-          status: 'running',
-          plan: structuredClone(input.plan),
-          stages: input.plan.stages.map((s) => ({ ...structuredClone(s), status: 'pending' as const })),
-          cancellable: input.plan.pointOfNoReturn !== 'start',
-          startedAt: at,
-          lastProgressAt: at,
-          lastLivenessAt: at,
-          log: [],
-        },
-        validated: Promise.resolve(),
-        registered: false,
-        controller: new AbortController(),
-        cancelRequested: false,
-        held: new Set(),
-        stuckFlagged: new Set(),
-        waiters: [],
-        lastPublishAt: 0,
-      }
+      const entry = newEntry({
+        kind: input.kind,
+        owner: input.owner,
+        origin: input.origin,
+        title: input.title,
+        href: input.href,
+        fingerprint: input.fingerprint,
+        resources: input.resources,
+        plan: input.plan,
+      })
       liveByFingerprint.set(input.fingerprint, entry)
       entry.validated = (async () => { await input.validate?.() })()
       try {
@@ -468,6 +550,38 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
       return { operationId: entry.view.id, bootId: entry.view.bootId }
     },
 
+    async startChild<B>(parentId: string, input: ChildOperationInput<B>): Promise<OperationView<B>> {
+      const parent = entries.get(parentId)
+      if (!parent) throw new Error(`Unknown operation: ${parentId}`)
+      if (isTerminal(parent.view.status)) throw new Error(`Operation ${parentId} already finished`)
+      if (cancelPending(parent)) throw new OperationCancelledError(parentId)
+
+      const child = newEntry({
+        kind: input.kind,
+        owner: parent.view.owner,
+        origin: parent.view.origin,
+        title: input.title,
+        href: input.href ?? parent.view.href,
+        fingerprint: `${parent.view.fingerprint}/${input.fingerprint}`,
+        resources: input.resources,
+        plan: input.plan,
+        parent,
+      })
+      entries.set(child.view.id, child)
+      child.registered = true
+      parent.view.children.push(child.view.id)
+      appendLog(parent, 'info', `Started: ${input.title}`)
+      changed(parent, 'milestone')
+      appendLog(child, 'info', `Started: ${input.title}`)
+      changed(child, 'milestone')
+      if (!child.view.cancellable) latchParent(child)
+
+      const done = new Promise<OperationView<B>>((resolve) => child.waiters.push((view) => resolve(view as OperationView<B>)))
+      parent.childSettled.push(done)
+      void runEntry(child, input)
+      return done
+    },
+
     cancel(id) {
       const entry = entries.get(id)
       if (!entry) return 'not_found'
@@ -479,6 +593,11 @@ export function createOperationRegistry(deps: OperationRegistryDeps): OperationR
       appendLog(entry, 'warn', 'Cancel requested')
       entry.controller.abort(new OperationCancelledError(id))
       changed(entry, 'milestone')
+      // Cascade to children that can still stop; the parent settles after them.
+      for (const childId of entry.view.children) {
+        const child = entries.get(childId)
+        if (child && !isTerminal(child.view.status) && child.view.cancellable) registry.cancel(childId)
+      }
       return 'cancelling'
     },
 

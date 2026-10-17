@@ -62,6 +62,8 @@ export type {
   MessageUsage,
   NotificationArgs,
   ResolveApprovalArgs,
+  ApprovalOutcome,
+  PostApprovalOutcomeArgs,
   RuntimeAgent,
   RuntimeAllowlistPatch,
   RuntimeToolActivity,

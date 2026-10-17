@@ -190,6 +190,17 @@ the snapshot instead of probing: the post-channel tool's pre-flight, the
 three channel health checks, the alias resolver, the onboarding check,
 the CLI, the Channels tab, the Runtime page row, the switch report.
 
+## Approval outcomes (#895 D24)
+
+`postApprovalOutcome({ approvalId, deliveries, outcome })` is an OPTIONAL
+`RuntimeChannelSurface` member: after an approved action finishes (a Health
+repair today), the approval service follows up on the card. The Discord
+bridge implements it as a reply to the card message (`message_reference`,
+`allowed_mentions: { parse: [] }` — never a ping), audited as
+`delivery.approval_outcome_posted`. Runtimes without it (OpenClaw) omit the
+member; `postApprovalOutcome(record, outcome)` in `src/core/approvals`
+feature-detects and skips records that were never rendered on a channel.
+
 ## Routes and CLI (D7/D12)
 
 `packages/host/src/api/channels.ts`, dispatched from

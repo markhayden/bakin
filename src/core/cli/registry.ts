@@ -226,7 +226,7 @@ export function renderCliUsage(env: { bakinUrl?: string } = {}, opts: { excludeN
   }
 
   lines.push('Environment:')
-  lines.push(`  BAKIN_URL${' '.repeat(18)}Base URL for the running server (default: ${env.bakinUrl ?? 'http://localhost:3737'})`)
+  lines.push(`  BAKIN_URL${' '.repeat(18)}Server to talk to (default: this home's running server, from server.lock${env.bakinUrl ? ` — now ${env.bakinUrl}` : ''})`)
   lines.push(`  BAKIN_HOME${' '.repeat(17)}Override for ~/.bakin`)
   if (!opts.excludeNames?.has('start')) {
     lines.push(`  PORT${' '.repeat(23)}Port to bind when \`start\` launches (default: 3737)`)

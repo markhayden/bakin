@@ -3,12 +3,12 @@
  * Each function calls the Bakin schedule API and formats output.
  */
 import { formatApiError } from '../core/cli/api-error'
-import { BASE_URL } from './http'
+import { cliFetch } from './http'
 
 type ScheduleActionData = import('../core/cli/ui/readonly').ScheduleActionData
 
 async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}/api/plugins/schedule${path}`, {
+  const res = await cliFetch(`/api/plugins/schedule${path}`, {
     headers: { 'Content-Type': 'application/json' },
   })
   if (!res.ok) {
@@ -19,7 +19,7 @@ async function apiGet<T>(path: string): Promise<T> {
 }
 
 async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
-  const res = await fetch(`${BASE_URL}/api/plugins/schedule${path}`, {
+  const res = await cliFetch(`/api/plugins/schedule${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -32,7 +32,7 @@ async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<
 }
 
 async function apiDelete<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}/api/plugins/schedule${path}`, {
+  const res = await cliFetch(`/api/plugins/schedule${path}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   })

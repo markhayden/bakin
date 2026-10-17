@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { HealthRepairTarget } from '@makinbakin/sdk/types'
-import { StatusBadge } from '@makinbakin/sdk/patterns'
+import { OperationProgress, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
   Alert,
   AlertDescription,
@@ -27,10 +27,8 @@ const SAFETY_TONE = {
   destructive: 'danger',
 } as const
 
-function repairErrorTitle(stale: boolean, outcomeUnknown: boolean): string {
-  if (stale) return 'The evidence changed before apply.'
-  if (outcomeUnknown) return 'The repair outcome needs confirmation.'
-  return 'The repair request failed.'
+function repairErrorTitle(stale: boolean): string {
+  return stale ? 'The evidence changed before apply.' : 'The repair request failed.'
 }
 
 export function RepairDialog({
@@ -88,24 +86,31 @@ export function RepairDialog({
 
   const apply = async () => {
     setAnnouncement('Applying the selected repairs, then verifying affected checks.')
-    const result = await repair.applyRepair([...selected], confirmedItemIds)
-    if (!result) return
-    const failed = result.results.filter((item) => item.status === 'failed').length
-    setAnnouncement(failed > 0
-      ? `${failed} repair${failed === 1 ? '' : 's'} failed. Verification completed.`
-      : result.remainingIncidentIds.length === 0
-        ? 'Repairs applied and the selected issue no longer appears in fresh evidence.'
-        : 'Repairs applied, but verification found that the issue still needs attention.')
-    onApplied?.()
+    await repair.applyRepair([...selected], confirmedItemIds)
   }
 
+  // The repair runs on the server whether or not this dialog stays open (the
+  // operations tray keeps it visible); refresh Health once it settles.
+  const running = repair.operation !== null && repair.phase !== 'finished' && repair.phase !== 'expired' && repair.phase !== 'restarted'
+  const settledRef = useRef<string | null>(null)
+  useEffect(() => {
+    const operation = repair.operation
+    if (!operation || repair.phase !== 'finished' || settledRef.current === operation.id) return
+    settledRef.current = operation.id
+    const result = repair.result
+    const failed = result?.results.filter((item) => item.status === 'failed').length ?? 0
+    setAnnouncement(!result
+      ? `The repair ${operation.status}.`
+      : failed > 0
+        ? `${failed} repair${failed === 1 ? '' : 's'} failed. Verification completed.`
+        : result.remainingIncidentIds.length === 0
+          ? 'Repairs applied and the selected issue no longer appears in fresh evidence.'
+          : 'Repairs applied, but verification found that the issue still needs attention.')
+    onApplied?.()
+  }, [repair.operation, repair.phase, repair.result, onApplied])
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!repair.applying) onOpenChange(nextOpen)
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[min(88vh,52rem)] max-w-2xl overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-bakin-2">
@@ -127,7 +132,7 @@ export function RepairDialog({
 
         {repair.error && (
           <Alert tone="danger">
-            <AlertTitle>{repairErrorTitle(repair.stale, repair.outcomeUnknown)}</AlertTitle>
+            <AlertTitle>{repairErrorTitle(repair.stale)}</AlertTitle>
             <AlertDescription>
               {repair.error}
               {repair.stale && (
@@ -139,7 +144,17 @@ export function RepairDialog({
           </Alert>
         )}
 
-        {!repair.planning && repair.plan && !repair.result && !repair.stale && (
+        {repair.operation && (
+          <OperationProgress
+            operation={repair.operation}
+            childOperations={repair.children}
+            phase={repair.phase ?? undefined}
+            onCancel={() => { void repair.cancel() }}
+            onRecheck={() => { onApplied?.(); void replan() }}
+          />
+        )}
+
+        {!repair.planning && repair.plan && !repair.operation && !repair.stale && (
           <div className="max-h-[min(52vh,28rem)] space-y-bakin-3 overflow-y-auto pr-bakin-1">
             {repair.plan.items.length === 0 && (
               <SystemState
@@ -207,24 +222,23 @@ export function RepairDialog({
         )}
 
         <DialogFooter>
-          {!repair.result ? (
+          {!repair.operation ? (
             <>
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={repair.applying}
-              >
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={repair.starting}>
                 Cancel
               </Button>
               <Button
                 onClick={() => void apply()}
-                disabled={repair.planning || repair.applying || selected.size === 0 || repair.stale}
+                disabled={repair.planning || selected.size === 0 || repair.stale}
+                busy={repair.starting}
                 variant={hasNonSafe ? 'danger' : 'primary'}
               >
-                {repair.applying ? 'Applying and verifying…' : `Apply ${selected.size} repair${selected.size === 1 ? '' : 's'}`}
+                {`Apply ${selected.size} repair${selected.size === 1 ? '' : 's'}`}
               </Button>
             </>
-          ) : <Button onClick={() => onOpenChange(false)}>Done</Button>}
+          ) : running
+            ? <Button variant="outline" onClick={() => onOpenChange(false)}>Close — it keeps running</Button>
+            : <Button onClick={() => onOpenChange(false)}>Done</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -468,6 +468,8 @@ export async function recomposeUnmanagedAgent(agentId: string): Promise<void> {
  */
 export async function syncAllAgents(
   opts: SyncOptions = {},
+  /** Per-agent progress (operations report one item per agent). */
+  onAgent?: (agentId: string, status: 'active' | 'done' | 'failed', message?: string) => void,
 ): Promise<Array<{ agentId: string; receipt?: SyncReceipt; error?: string }>> {
   const runtime = getAppServices().runtime
   const lock = readLockfile()
@@ -479,10 +481,14 @@ export async function syncAllAgents(
 
   const results: Array<{ agentId: string; receipt?: SyncReceipt; error?: string }> = []
   for (const agentId of [...ids].sort()) {
+    onAgent?.(agentId, 'active')
     try {
       results.push({ agentId, receipt: await syncAgent(agentId, opts) })
+      onAgent?.(agentId, 'done')
     } catch (err) {
-      results.push({ agentId, error: err instanceof Error ? err.message : String(err) })
+      const message = err instanceof Error ? err.message : String(err)
+      results.push({ agentId, error: message })
+      onAgent?.(agentId, 'failed', message)
     }
   }
   return results

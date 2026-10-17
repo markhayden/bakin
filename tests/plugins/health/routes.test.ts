@@ -150,10 +150,10 @@ const mockRepairApply = {
   report: freshReport,
 }
 const planDoctorRepairMock = mock(async () => mockRepairPlan)
-const applyDoctorRepairMock = mock(async () => mockRepairApply)
+const startDoctorRepairMock = mock(async (_options: Record<string, unknown>): Promise<{ operationId: string; bootId: string; attached?: true }> => ({ operationId: 'op-repair-1', bootId: 'boot-1' }))
 
 let coveringApproval: { approvalId: string } | null = null
-const resolveApprovalWithResultMock = mock(async () => ({ record: { approvalId: 'health-repair:req-1', status: 'approved' }, result: mockRepairApply }))
+const resolveApprovalWithResultMock = mock(async () => ({ record: { approvalId: 'health-repair:req-1', status: 'approved' }, result: { operationId: 'op-approved-1', bootId: 'boot-1' } as unknown }))
 mock.module('../../../src/core/doctor-approvals', () => ({
   pendingRepairApprovalFor: (observationIds: string[]) => (coveringApproval && observationIds.includes('tasks.taskboard:columns') ? coveringApproval : null),
 }))
@@ -168,7 +168,7 @@ mock.module('../../../src/core/doctor-repair-plans', () => ({
 }))
 mock.module('../../../src/core/doctor-repair', () => ({
   planDoctorRepair: planDoctorRepairMock,
-  applyDoctorRepair: applyDoctorRepairMock,
+  startDoctorRepair: startDoctorRepairMock,
 }))
 
 const mockDelegateRequest = {
@@ -1060,7 +1060,7 @@ describe('Health Plugin Routes', () => {
       expect(body.planId).toBe(mockRepairPlan.planId)
       expect(body.items).toEqual(mockRepairPlan.items)
       expect(planDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({ target }))
-      expect(applyDoctorRepairMock).not.toHaveBeenCalled()
+      expect(startDoctorRepairMock).not.toHaveBeenCalled()
     })
 
     it('rejects the removed accepted=true repair shape', async () => {
@@ -1073,7 +1073,7 @@ describe('Health Plugin Routes', () => {
 
       expect(status).toBe(400)
       expect(body.error).toBe('invalid input')
-      expect(applyDoctorRepairMock).not.toHaveBeenCalled()
+      expect(startDoctorRepairMock).not.toHaveBeenCalled()
     })
 
     it('applies through the covering approval record when a review task already holds this repair (one approval, one execution)', async () => {
@@ -1084,10 +1084,11 @@ describe('Health Plugin Routes', () => {
         const { status, body } = await callRoute(route, activated.ctx, {
           body: { planId: mockRepairPlan.planId, itemIds: [mockRepairPlan.items[0].id], confirmedItemIds: [] },
         })
-        expect(status).toBe(200)
-        expect(body.results).toEqual(mockRepairApply.results)
+        // The decision started the repair (D24); the route answers with its operation.
+        expect(status).toBe(202)
+        expect(body).toEqual({ operationId: 'op-approved-1', bootId: 'boot-1' })
         expect(resolveApprovalWithResultMock).toHaveBeenCalledWith('health-repair:req-1', expect.objectContaining({ option: 'apply', actor: expect.objectContaining({ source: 'web' }) }))
-        expect(applyDoctorRepairMock).not.toHaveBeenCalled()
+        expect(startDoctorRepairMock).not.toHaveBeenCalled()
       } finally {
         coveringApproval = null
       }
@@ -1100,14 +1101,45 @@ describe('Health Plugin Routes', () => {
         body: { planId: mockRepairPlan.planId, itemIds: [mockRepairPlan.items[0].id], confirmedItemIds: [] },
       })
 
-      expect(status).toBe(200)
-      expect(body.verifiedReportId).toBe(freshReport.id)
-      expect(body.results).toEqual(mockRepairApply.results)
-      expect(applyDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({
+      expect(status).toBe(202)
+      expect(body).toEqual({ operationId: 'op-repair-1', bootId: 'boot-1' })
+      expect(startDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({
         planId: mockRepairPlan.planId,
         itemIds: [mockRepairPlan.items[0].id],
         confirmedItemIds: [],
+        origin: 'web',
       }))
+    })
+
+    it('answers 200 when an identical apply is already running (attached)', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/repair/apply')!
+      startDoctorRepairMock.mockImplementationOnce(async () => ({ operationId: 'op-repair-1', bootId: 'boot-1', attached: true as const }))
+      const { status, body } = await callRoute(route, activated.ctx, {
+        body: { planId: mockRepairPlan.planId, itemIds: [mockRepairPlan.items[0].id], confirmedItemIds: [] },
+      })
+      expect(status).toBe(200)
+      expect(body).toEqual({ operationId: 'op-repair-1', bootId: 'boot-1', attached: true })
+    })
+
+    it('keeps today\'s 409 bodies for a stale plan or a missing confirmation', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/repair/apply')!
+      const { OperationRejectedError } = await import('@bakin/core/operations')
+      startDoctorRepairMock.mockImplementationOnce(async () => { throw new OperationRejectedError(409, { error: 'stale', code: 'STALE_PLAN' }) })
+      const stale = await callRoute(route, activated.ctx, { body: { planId: mockRepairPlan.planId, itemIds: [mockRepairPlan.items[0].id], confirmedItemIds: [] } })
+      expect(stale).toMatchObject({ status: 409, body: { error: 'stale', code: 'STALE_PLAN' } })
+      startDoctorRepairMock.mockImplementationOnce(async () => { throw new OperationRejectedError(409, { error: 'confirm', code: 'CONFIRMATION_REQUIRED', itemIds: ['x'] }) })
+      const confirm = await callRoute(route, activated.ctx, { body: { planId: mockRepairPlan.planId, itemIds: [mockRepairPlan.items[0].id], confirmedItemIds: [] } })
+      expect(confirm).toMatchObject({ status: 409, body: { code: 'CONFIRMATION_REQUIRED', itemIds: ['x'] } })
+    })
+
+    it('marks requests from the CLI as cli-origin operations', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/repair/apply')!
+      startDoctorRepairMock.mockClear()
+      await callRoute(route, activated.ctx, {
+        body: { planId: mockRepairPlan.planId, itemIds: [mockRepairPlan.items[0].id], confirmedItemIds: [] },
+        headers: { 'x-bakin-origin': 'cli' },
+      })
+      expect(startDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({ origin: 'cli' }))
     })
   })
 

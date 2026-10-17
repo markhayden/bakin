@@ -175,6 +175,10 @@ export function scheduleCutoverRepair(
   return {
     id: 'complete-cutover',
     name: 'Complete schedule cutover',
+    operationPlan: () => ({
+      stages: [{ id: 'migrate', kind: 'committing', label: 'Move schedules off runtime cron' }],
+      pointOfNoReturn: 'migrate',
+    }),
     async plan() {
       return [{
         id: 'complete-cutover',
@@ -193,10 +197,12 @@ export function scheduleCutoverRepair(
         }],
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       try {
+        op.stage('migrate')
         const summary = await runMigration()
+        op.log(`Migrated ${summary.migrated} schedule(s)${summary.failed > 0 ? `; ${summary.failed} failed` : ''}`, summary.failed > 0 ? 'warn' : 'info')
         return items.map(item => ({
           itemId: item.id,
           actionId: item.actionId,
@@ -227,6 +233,13 @@ export function scheduleSyncRepair(
   return {
     id: 'track-runtime-cron',
     name: 'Track runtime cron jobs for triage',
+    operationPlan: () => ({
+      stages: [
+        { id: 'scan', kind: 'preparing', label: 'Find untracked runtime cron jobs' },
+        { id: 'track', kind: 'committing', label: 'Add them to the schedule sidecar' },
+      ],
+      pointOfNoReturn: 'track',
+    }),
     async plan() {
       let orphans: RuntimeJob[]
       try { orphans = (await orphanRuntimeJobs(cron)).orphans } catch { return [] }
@@ -248,11 +261,13 @@ export function scheduleSyncRepair(
         }],
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       try {
+        op.stage('scan')
         const { orphans } = await orphanRuntimeJobs(cron)
         if (orphans.length === 0) {
+          op.skip('track', 'every runtime cron job is already tracked')
           return items.map(item => ({
             itemId: item.id,
             actionId: item.actionId,
@@ -264,7 +279,9 @@ export function scheduleSyncRepair(
         }
         const defaultOwner = await resolveDefaultOwner()
         const now = new Date().toISOString()
+        op.stage('track')
         for (const orphan of orphans) {
+          op.item('track', { id: orphan.id, label: orphan.name ?? orphan.id, status: 'active' })
           upsertJob({
             jobId: orphan.id,
             isBakinJob: false,
@@ -276,6 +293,7 @@ export function scheduleSyncRepair(
             updatedAt: now,
           })
           log.info('Tracked orphan cron job', { jobId: orphan.id, name: orphan.name })
+          op.item('track', { id: orphan.id, label: orphan.name ?? orphan.id, status: 'done' })
         }
         return items.map(item => ({
           itemId: item.id,
@@ -352,6 +370,10 @@ export function scheduleUnrunnableJobsRepair(onRemoved: (jobId: string) => void)
   return {
     id: 'remove-unrunnable-jobs',
     name: 'Remove Bakin schedules that can never run',
+    operationPlan: () => ({
+      stages: [{ id: 'remove', kind: 'cleanup', label: 'Remove schedules' }],
+      pointOfNoReturn: 'remove',
+    }),
     async plan(target) {
       const jobs = unrunnableBakinJobs()
       if (jobs.length === 0) return []
@@ -370,20 +392,23 @@ export function scheduleUnrunnableJobsRepair(onRemoved: (jobId: string) => void)
         })),
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       const targets = [...new Set(items.flatMap(item => item.changes.map(change => change.target)))]
       const removed: string[] = []
       const skipped: string[] = []
+      op.stage('remove')
       for (const jobId of targets) {
         const job = getJob(jobId)
         if (!job || !job.isBakinJob || isTaskPrompt(job.taskPrompt)) {
           skipped.push(jobId)
+          op.item('remove', { id: jobId, label: jobId, status: 'skipped', message: 'already gone, not a Bakin job, or now runnable' })
           continue
         }
         removeJob(jobId)
         onRemoved(jobId)
         removed.push(jobId)
+        op.item('remove', { id: jobId, label: job.displayName ?? jobId, status: 'done' })
         log.info('Removed unrunnable Bakin schedule', { jobId, name: job.displayName })
       }
       const message = [

@@ -99,3 +99,43 @@ describe('ctx.operations in the testing harness', () => {
     t.dispose()
   })
 })
+
+describe('applyHealthRepair', () => {
+  it('runs a repair action inside a real operation built from its declared plan', async () => {
+    const harness = createTestContext('cache-tools')
+    afterAll(() => harness.dispose())
+    harness.ctx.registerHealthRepairAction({
+      id: 'clear-cache',
+      name: 'Clear the cache',
+      resources: ['cache-tools:cache'],
+      plan: async () => [],
+      operationPlan: () => ({
+        stages: [
+          { id: 'scan', kind: 'preparing', label: 'Find stale entries' },
+          { id: 'clear', kind: 'cleanup', label: 'Remove stale entries' },
+        ],
+        pointOfNoReturn: 'clear',
+      }),
+      apply: async (items, op) => {
+        op?.stage('scan')
+        op?.item('scan', { id: 'a', label: 'entry a', status: 'done' })
+        op?.stage('clear')
+        return items.map((item) => ({ itemId: item.id, actionId: 'clear-cache', status: 'applied' as const, message: 'cleared', affectedCheckIds: [], changes: [] }))
+      },
+    })
+    const item = { id: 'i1', actionId: 'clear-cache' } as never
+    const { results, operation } = await harness.applyHealthRepair('clear-cache', [item])
+    expect(results.map((r) => r.status)).toEqual(['applied'])
+    expect(operation.status).toBe('succeeded')
+    expect(operation.resources).toEqual(['cache-tools:cache'])
+    expect(operation.stages.map((s) => s.status)).toEqual(['done', 'done'])
+    expect(operation.stages[0]!.items?.map((i) => i.label)).toEqual(['entry a'])
+  })
+
+  it('refuses a core resource for a user plugin, as the host does', async () => {
+    const harness = createTestContext('cache-tools')
+    afterAll(() => harness.dispose())
+    harness.ctx.registerHealthRepairAction({ id: 'x', name: 'X', resources: ['media-store'], operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }), plan: async () => [], apply: async () => [] })
+    await expect(harness.applyHealthRepair('x', [])).rejects.toThrow('media-store')
+  })
+})

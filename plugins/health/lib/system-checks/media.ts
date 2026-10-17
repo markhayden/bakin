@@ -15,6 +15,7 @@
 import { healthError, healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
+import { MEDIA_PLAN } from '../../../../packages/core/src/media/install-plan'
 
 export const MEDIA_REPAIR_ACTION_ID = 'media-install-store'
 
@@ -135,6 +136,8 @@ export function mediaStoreRepair(): HealthRepairActionDefinition {
   return {
     id: MEDIA_REPAIR_ACTION_ID,
     name: 'Install the media store (sharp prebuilds)',
+    resources: ['media-store'],
+    operationPlan: () => MEDIA_PLAN,
     async plan(target) {
       return [{
         id: 'install-media-store',
@@ -151,7 +154,7 @@ export function mediaStoreRepair(): HealthRepairActionDefinition {
         }],
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       const { checkMediaStore, installMediaStore } = await import('../../../../packages/core/src/media/installer')
       const { loadSharp } = await import('../../../../packages/core/src/media/sharp-loader')
@@ -159,7 +162,7 @@ export function mediaStoreRepair(): HealthRepairActionDefinition {
         // Receipt present but unloadable = corrupt/fabricated store — the
         // idempotent fast path would skip it; force a clean reinstall.
         const force = checkMediaStore().status === 'ok' && (await loadSharp()) === null
-        const result = await installMediaStore({ force })
+        const result = await installMediaStore(op, { force })
         return items.map((item) => ({
           itemId: item.id,
           actionId: item.actionId,

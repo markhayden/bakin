@@ -14,6 +14,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 import { checkModelRouting, recommendRoutes, recommendedRoutesRepair, type RoutingHealthDeps } from '../../../plugins/models/lib/health-checks'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import type { RunCostSpendRow } from '../../../src/core/execution-ledger'
 import type { WorkClassRoute } from '../../../src/core/model-routing'
 import { recommendPlan, type PlanCandidate } from '../../../src/core/model-plan'
@@ -253,7 +254,11 @@ describe('recommendedRoutesRepair', () => {
     const plan = await repair.plan({ kind: 'check', checkId: 'models.routing' } as never)
     expect(plan).toHaveLength(1)
     expect(plan[0]?.changes.length).toBeGreaterThanOrEqual(4)
-    const results = await repair.apply(plan)
+    const run = await runRepairContract(repair, plan)
+    expectRepairContract(repair, run)
+    expect(run.calls.slice(0, 2)).toEqual(['stage:recommend', 'stage:save'])
+    expect(run.view.stages[1]!.items!.every((i) => i.status === 'done')).toBe(true)
+    const results = run.results
     expect(results[0]?.status).toBe('applied')
     expect(applied[0]?.find((r) => r.workClass === 'auto-title')?.model).toBe('google/gemini-2.5-flash')
   })

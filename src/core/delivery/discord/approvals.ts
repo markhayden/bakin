@@ -22,6 +22,7 @@ import type {
   CancelApprovalArgs,
   CreateApprovalArgs,
   EditApprovalArgs,
+  PostApprovalOutcomeArgs,
   ResolveApprovalArgs,
 } from '@bakin/core/adapters/runtime'
 import { createLogger } from '@/core/logger'
@@ -95,6 +96,7 @@ export interface ApprovalSurface {
   editApproval(args: EditApprovalArgs): Promise<ApprovalRenderResult>
   cancelApproval(args: CancelApprovalArgs): Promise<void>
   resolveApproval(args: ResolveApprovalArgs): Promise<void>
+  postApprovalOutcome(args: PostApprovalOutcomeArgs): Promise<void>
   subscribe(handler: (event: ApprovalResolveEvent) => void): () => void
   handleInteraction(raw: RawInteraction): Promise<void>
 }
@@ -206,6 +208,20 @@ export function createApprovalSurface(deps: ApprovalSurfaceDeps): ApprovalSurfac
         content: `✅ Decision recorded: **${selectedOption === 'approve' ? 'Approve' : selectedOption}** by ${who}`,
         components: [],
       })
+    },
+
+    async postApprovalOutcome(args) {
+      const icon = args.outcome.status === 'succeeded' ? '✅' : args.outcome.status === 'failed' ? '❌' : '⚠️'
+      const content = `${icon} **${args.outcome.title}**${args.outcome.message ? ` — ${args.outcome.message}` : ''}`
+      for (const delivery of args.deliveries) {
+        const channelId = await deps.resolveChannelId(delivery.channelId)
+        await deps.sendApi.createMessage(channelId, {
+          content,
+          message_reference: { message_id: messageIdFromRef(delivery.ref), fail_if_not_exists: false },
+          allowed_mentions: { parse: [] },
+        })
+      }
+      auditDelivery('delivery.approval_outcome_posted', { approvalId: args.approvalId, status: args.outcome.status })
     },
 
     subscribe(handler) {

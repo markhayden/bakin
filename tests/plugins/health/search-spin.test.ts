@@ -34,6 +34,8 @@ mock.module('../../../src/core/search-registry', () => ({
 
 import { detectSpins, rebuildTargets, searchSpinRepair, type SpinLegSnapshot } from '../../../plugins/health/lib/system-checks/search-spin'
 import { searchScarRepair } from '../../../plugins/health/lib/system-checks/search'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { noopOp } from '../../helpers/operation-harness'
 
 const WINDOW = 10 * 60 * 1000
 const leg = (over: Partial<SpinLegSnapshot> = {}): SpinLegSnapshot => ({
@@ -135,7 +137,7 @@ describe('searchSpinRepair — concrete targets (frozen proposals must name real
       changes: [{ kind: 'other' as const, target: 'bakin_tasks', action: 'update' as const, description: 'rebuild' }],
     }
     expect(rebuildTargets([item])).toEqual(['bakin_tasks'])
-    const [result] = await searchSpinRepair().apply([item])
+    const [result] = await searchSpinRepair().apply([item], noopOp())
     expect(rebuilt).toEqual(['bakin_tasks'])
     expect(result).toMatchObject({ status: 'applied', message: 'bakin_tasks: migrated' })
   })
@@ -147,7 +149,26 @@ describe('searchScarRepair — concrete targets', () => {
     const [item] = await searchScarRepair().plan({ type: 'all_actionable', reportId: 'r1' })
     expect(item!.changes.map((change) => change.target)).toEqual(['bakin_assets', 'bakin_chats'])
     rebuilt.length = 0
-    await searchScarRepair().apply([{ ...item!, changes: [item!.changes[1]!] }])
+    await searchScarRepair().apply([{ ...item!, changes: [item!.changes[1]!] }], noopOp())
     expect(rebuilt).toEqual(['bakin_chats'])
+  })
+})
+
+describe('rebuild repairs — runtime contract (#895 D10)', () => {
+  const item = (actionId: string, tables: string[]) => ({
+    id: `${actionId}:x`, actionId, title: 'Rebuild', reason: 'r', safety: 'destructive' as const,
+    incidentIds: [], observationIds: [], preconditions: [],
+    changes: tables.map((target) => ({ kind: 'other' as const, target, action: 'update' as const, description: 'rebuild' })),
+  })
+
+  it('spin and scar rebuild one reported item per table under search-engine', async () => {
+    for (const repair of [searchSpinRepair(), searchScarRepair()]) {
+      rebuilt.length = 0
+      const run = await runRepairContract(repair, [item(repair.id, ['bakin_tasks', 'bakin_assets'])])
+      expectRepairContract(repair, run)
+      expect(run.view.resources).toEqual(['search-engine'])
+      expect(run.view.stages[0]!.items?.map((i) => [i.id, i.status])).toEqual([['bakin_tasks', 'done'], ['bakin_assets', 'done']])
+      expect(rebuilt).toEqual(['bakin_tasks', 'bakin_assets'])
+    }
   })
 })

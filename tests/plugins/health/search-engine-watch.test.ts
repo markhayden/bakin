@@ -31,7 +31,9 @@ mock.module('../../../src/core/settings', () => ({
 
 import type { SearchEngineStatus } from '../../../packages/core/src/adapters/search'
 import type { HealthCheckRunInput, HealthRepairTarget } from '@makinbakin/sdk'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
+import { noopOp } from '../../helpers/operation-harness'
 
 // Mutable fixtures the mocked services read on every call.
 let searchAvailable = true
@@ -299,7 +301,7 @@ describe('engine restart repair', () => {
     restartEngine = async () => { restarted = true }
     canaryTables = [t(), t()] // post-restart probe answers clean
     const plan = await searchCanaryRepair().plan(repairTarget)
-    const [result] = await searchCanaryRepair().apply(plan)
+    const [result] = await searchCanaryRepair().apply(plan, noopOp())
     expect(restarted).toBe(true)
     expect(result.status).toBe('applied')
   })
@@ -309,21 +311,38 @@ describe('engine restart repair', () => {
     restartEngine = async () => { restarts++ }
     canaryTables = [t()]
     const canaryPlan = await searchCanaryRepair().plan(repairTarget)
-    await searchCanaryRepair().apply(canaryPlan)
+    await searchCanaryRepair().apply(canaryPlan, noopOp())
     const burnPlan = await searchEngineBurnRepair().plan({
       type: 'observations',
       reportId: 'report-test',
       ids: ['health.search-engine-burn:engine.burn'],
     })
-    const [second] = await searchEngineBurnRepair().apply(burnPlan)
+    const [second] = await searchEngineBurnRepair().apply(burnPlan, noopOp())
     expect(restarts).toBe(1) // one bounce serves both detections
     expect(second.status).toBe('applied')
     expect(second.message).toContain('skipped a duplicate bounce')
   })
 
+  it('passes the repair runtime contract: restart, then verify while waiting on a served query', async () => {
+    restartEngine = async () => {}
+    canaryTables = [t()]
+    const repair = searchCanaryRepair()
+    const run = await runRepairContract(repair, await repair.plan(repairTarget))
+    expectRepairContract(repair, run)
+    expect(run.view.resources).toEqual(['search-engine'])
+    expect(run.calls.slice(0, 3)).toEqual(['stage:restart', 'stage:verify', 'output'])
+    expect(run.results[0]!.status).toBe('applied')
+
+    // Inside the debounce window both stages are skipped, with the reason.
+    const burn = searchEngineBurnRepair()
+    const debounced = await runRepairContract(burn, await burn.plan(repairTarget))
+    expectRepairContract(burn, debounced)
+    expect(debounced.calls).toEqual(['skip:restart', 'skip:verify'])
+  })
+
   it('fails honestly when the adapter cannot restart the engine', async () => {
     const plan = await searchCanaryRepair().plan(repairTarget)
-    const [result] = await searchCanaryRepair().apply(plan)
+    const [result] = await searchCanaryRepair().apply(plan, noopOp())
     expect(result.status).toBe('failed')
     expect(result.message).toContain('does not support')
   })

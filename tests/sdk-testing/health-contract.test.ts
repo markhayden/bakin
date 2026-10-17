@@ -109,6 +109,7 @@ describe('@makinbakin/sdk/testing Health capture', () => {
     const action: HealthRepairActionDefinition = {
       id: 'restart-search',
       name: 'Restart Search',
+      operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
     }

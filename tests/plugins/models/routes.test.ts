@@ -147,6 +147,7 @@ mock.module('../../../packages/core/src/usage-history/store', () => ({
 
 import { activatePlugin, findRoute, findTool, callRoute, callTool, makeRequest } from '../test-helpers'
 import { setModelsCache } from '../../../plugins/models/lib/available-models'
+import { noopOp } from '../../helpers/operation-harness'
 const modelsPlugin = (await import('../../../plugins/models')).default as typeof import('../../../plugins/models').default
 
 // ---------------------------------------------------------------------------
@@ -466,11 +467,11 @@ describe('GET/POST /selections — the ONE write path (#907)', () => {
     }
     setModelsCache(null)
     try {
-      const registered = (activated.ctx.registerHealthRepairAction as unknown as { mock: { calls: Array<[{ id: string; plan: (t: unknown) => Promise<Array<{ id: string; actionId: string; changes: unknown[] }>>; apply: (items: unknown[]) => Promise<Array<{ status: string; message: string }>> }]> } }).mock.calls
+      const registered = (activated.ctx.registerHealthRepairAction as unknown as { mock: { calls: Array<[{ id: string; plan: (t: unknown) => Promise<Array<{ id: string; actionId: string; changes: unknown[] }>>; apply: (items: unknown[], op: unknown) => Promise<Array<{ status: string; message: string }>> }]> } }).mock.calls
       const repair = registered.map((c) => c[0]).find((def) => def.id === 'apply-model-proposal')!
       const items = await repair.plan({ type: 'incidents', ids: ['models:models:dead-selection:policy:defaultModel'] })
       expect(items).toHaveLength(1)
-      const results = await repair.apply(items.map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` })))
+      const results = await repair.apply(items.map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` })), noopOp())
       expect(results[0]!.status).toBe('applied')
       expect(routingPolicy.defaultModel).not.toBe('xai/grok-4')
       // The repair went through applySelections: the pickers were told.

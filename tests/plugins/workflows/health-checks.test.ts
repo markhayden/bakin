@@ -89,6 +89,7 @@ import {
   staleWorkflowInstancesRepair,
   workflowSkillDriftRepair,
 } from '../../../plugins/workflows/lib/health-checks'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import {
   hashWorkflowSkillContent,
   writeWorkflowSkillInstallMarker,
@@ -234,7 +235,10 @@ Return image_filename and promptAssetFilename after savePromptPacket.
 
     const repair = workflowSkillDriftRepair(testDir)
     const plan = await repair.plan(repairTarget)
-    const applied = await repair.apply(plan)
+    const run = await runRepairContract(repair, plan)
+    expectRepairContract(repair, run)
+    const applied = run.results
+    expect(run.view.stages[0]!.items).toEqual([expect.objectContaining({ label: 'generate-image', status: 'done' })])
 
     expect(plan).toHaveLength(1)
     expect(plan[0].title).toContain('generate-image')
@@ -527,7 +531,10 @@ describe('checkStaleWorkflowInstances', () => {
     const repair = staleWorkflowInstancesRepair(testDir)
     const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
-    const applied = await repair.apply(plan)
+    const run = await runRepairContract(repair, plan)
+    expectRepairContract(repair, run)
+    expect(run.calls).toEqual(['stage:scan', 'stage:remove', `item:remove:${orphanedId}`])
+    const applied = run.results
     expect(applied[0].status).toBe('applied')
     expect(existsSync(join(instancesDir, `${orphanedId}.json`))).toBe(false)
   })

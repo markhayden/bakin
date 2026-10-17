@@ -18,7 +18,7 @@
  * confirm and is the operator's recovery for a conflicted one.
  */
 import { readFileSync } from 'fs'
-import { BASE_URL, apiGet } from '../http'
+import { apiGet, cliFetch } from '../http'
 import { print } from '../output'
 import { exitUnknownSubcommand, exitUsage } from '../help'
 import { buildRestoreOps, type MutationOp } from '../../core/model-mutations'
@@ -35,7 +35,7 @@ interface PlanPayload {
 interface SnapshotFile { takenAt?: number; revision?: string; states: SelectionState[] }
 
 async function postSelections(body: { revision: string; ops: MutationOp[] }): Promise<{ status: number; json: Record<string, unknown> }> {
-  const res = await fetch(`${BASE_URL}/api/plugins/models/selections`, {
+  const res = await cliFetch('/api/plugins/models/selections', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -172,7 +172,7 @@ interface PendingWire { document: string; refs: string[]; state: 'unsettled' | '
  */
 export async function cmdPending(ack: string | undefined, json: boolean): Promise<void> {
   if (ack) {
-    const res = await fetch(`${BASE_URL}/api/plugins/models/selections/pending/acknowledge`, {
+    const res = await cliFetch('/api/plugins/models/selections/pending/acknowledge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ document: ack }),

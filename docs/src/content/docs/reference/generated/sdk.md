@@ -253,6 +253,9 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `Timeline` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `TimelineEntry` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `UnsavedChangesDialog` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `OperationProgress` | Follow a long-running operation: plan, live progress, quiet/stuck, cancel, outcome (#895). |
+| `OperationProgressProps` | — |
+| `OperationProgressVariant` | — |
 | `SearchUnavailable` | Replace an affected result region when search returns no trustworthy result. |
 | `ScoreOverlay` | Show fused and per-leg search relevance as exact, non-color-dependent evidence. |
 | `computeMatchedFields` | Approximate matched fields when the adapter has no exact metadata. |
@@ -585,7 +588,7 @@ import type { BakinPlugin, PluginContext, ExecToolDefinition } from '@makinbakin
 
 | Type | Description |
 | --- | --- |
-| `JsonValue` | Canonical Health contracts shared by plugin authors, adapters, core, HTTP |
+| `JsonValue` | — |
 | `JsonObject` | — |
 | `HealthNonEmptyArray` | A tuple used wherever an empty list would make the contract ambiguous. |
 | `HealthObservationStatus` | — |

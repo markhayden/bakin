@@ -472,6 +472,13 @@ export function assetRepair(contentDir: string): HealthRepairActionDefinition {
   return {
     id: 'repair-store',
     name: 'Repair asset store',
+    operationPlan: () => ({
+      stages: [
+        { id: 'dirs', kind: 'committing', label: 'Create missing store directories' },
+        { id: 'purge', kind: 'cleanup', label: 'Purge expired trash' },
+      ],
+      pointOfNoReturn: 'dirs',
+    }),
     async plan() {
       const changes = pendingAssetRepairChanges(contentDir)
       if (changes.length === 0) return []
@@ -490,14 +497,20 @@ export function assetRepair(contentDir: string): HealthRepairActionDefinition {
         changes,
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       try {
         const assetsRoot = join(contentDir, 'assets')
+        op.stage('dirs')
         mkdirSync(assetsRoot, { recursive: true })
         for (const dirName of REQUIRED_ASSET_DIRS) mkdirSync(join(assetsRoot, dirName), { recursive: true })
         const purged = expiredTrashEntries(join(assetsRoot, '.trash'))
-        for (const file of purged) rmSync(join(assetsRoot, '.trash', file), { recursive: true, force: true })
+        if (purged.length > 0) op.stage('purge')
+        else op.skip('purge', 'no expired trash')
+        for (const file of purged) {
+          rmSync(join(assetsRoot, '.trash', file), { recursive: true, force: true })
+          op.item('purge', { id: file, label: file, status: 'done' })
+        }
         const changes = items.flatMap(item => item.changes)
         return items.map(item => ({
           itemId: item.id,

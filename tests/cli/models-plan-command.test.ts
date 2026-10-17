@@ -20,6 +20,7 @@ let revision = 'rev-1'
 const getCalls: string[] = []
 mock.module('../../src/cli/http', () => ({
   BASE_URL: 'http://bakin.test',
+  cliFetch: (path: string, init?: RequestInit) => fetch(`http://bakin.test${path}`, init),
   apiGet: mock(async (path: string) => {
     getCalls.push(path)
     return {

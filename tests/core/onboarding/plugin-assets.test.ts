@@ -49,9 +49,13 @@ mock.module('../../../bakin.config', () => ({ default: { plugins: [] } }))
 import {
   scanPluginAssets,
   installPluginAssets,
+  PLUGIN_ASSETS_PLAN,
   pluginAssetsComponent,
 } from '@/core/onboarding/plugin-assets'
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
+import { withOperationView } from '../../helpers/operation-harness'
+import { createMemoryResourceAcquirer, createOperationRegistry } from '../../../packages/core/src/operations'
+import { waitUntil } from '../../helpers/wait'
 import { readInstalledBy } from '../../../packages/core/src/agent-packages/markers'
 
 type TestGlobal = typeof globalThis & {
@@ -192,6 +196,54 @@ describe('plugin-assets onboarding component', () => {
       expect(report.installed).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
       expect(report.drifted).toEqual([])
       expect(report.missing).toEqual([])
+    })
+
+    it('reports through op: skills then bins, one item per plugin (#895)', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      const { view } = await withOperationView({ plan: PLUGIN_ASSETS_PLAN, resources: ['install-state'] }, (op) => installPluginAssets([{ id: 'sdr', path: pluginDir }], op))
+      expect(view.stages.map((s) => [s.id, s.status])).toEqual([['skills', 'done'], ['bins', 'done']])
+      expect(view.stages[0]!.items).toEqual([{ id: 'sdr', label: 'sdr', status: 'done', message: '1 skill(s) written' }])
+    })
+
+    it('cancel boundary (#895 SC3): cancellable while waiting for install-state, refused once skills are written', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      let assetsId = ''
+      let cancelAtSkills: string | undefined
+      const reg = createOperationRegistry({
+        bootId: () => 'b',
+        quietCheckIntervalMs: 0,
+        acquireResources: createMemoryResourceAcquirer(1),
+        publish: (view) => {
+          if (cancelAtSkills === undefined && view.id === assetsId && view.stages[0]?.status === 'active') cancelAtSkills = reg.cancel(assetsId)
+        },
+      })
+      const start = (title: string) => reg.start({
+        kind: 'install:plugin-assets', owner: 'core', origin: 'web', title, fingerprint: `${title}:${Math.random()}`,
+        resources: ['install-state'], plan: PLUGIN_ASSETS_PLAN,
+        run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installPluginAssets([{ id: 'sdr', path: pluginDir }], op) }),
+      })
+      // Another install holds install-state: the assets install waits, and cancel stops it with nothing written.
+      let releaseHolder!: () => void
+      const holder = await reg.start({
+        kind: 'install', owner: 'core', origin: 'web', title: 'Install Copywriter', fingerprint: 'holder',
+        resources: ['install-state'], plan: { stages: [{ id: 'x', kind: 'installing', label: 'X' }], pointOfNoReturn: null },
+        run: async () => { await new Promise<void>((r) => { releaseHolder = r }); return { status: 'succeeded', code: 'ok', httpStatus: 200, body: null } },
+      })
+      const waiting = await start('Install plugin assets (first)')
+      await waitUntil(() => reg.get(waiting.operationId)?.waitingFor?.holderTitle === 'Install Copywriter', { label: 'assets install waits' })
+      expect(reg.cancel(waiting.operationId)).toBe('cancelling')
+      releaseHolder()
+      expect((await reg.await(waiting.operationId)).status).toBe('cancelled')
+      await reg.await(holder.operationId)
+      expect(existsSync(join(runtimeSkillHome, 'skills', 'cold-email'))).toBe(false)
+
+      // Running: skills is the point of no return, so cancel is refused there.
+      const running = await start('Install plugin assets (second)')
+      assetsId = running.operationId
+      const done = await reg.await(running.operationId)
+      expect(cancelAtSkills).toBe('not_cancellable')
+      expect(done.status).toBe('succeeded')
+      reg.dispose()
     })
 
     it('reports a skill as drifted when source hash differs from installed hash', async () => {

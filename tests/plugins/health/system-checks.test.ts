@@ -337,6 +337,12 @@ mock.module('../../../src/core/onboarding/plugin-assets', () => ({
     check: async () => mockPluginAssetsResult,
     install: async () => mockPluginAssetsInstall,
   },
+  PLUGIN_ASSETS_PLAN: { stages: [{ id: 'skills', kind: 'installing', label: 'Install plugin skills' }, { id: 'bins', kind: 'installing', label: 'Install plugin binaries' }], pointOfNoReturn: 'skills' },
+  applyPluginAssets: async (op?: { stage(id: string): void }) => {
+    op?.stage('skills')
+    op?.stage('bins')
+    return mockPluginAssetsInstall
+  },
 }))
 
 mock.module('@/core/exec-tools/registry', () => ({
@@ -357,11 +363,13 @@ import {
   searchConsistencyRepair,
 } from '../../../plugins/health/lib/system-checks/search-consistency'
 import { checkAndSyncSkill, syncSkillRepair } from '../../../plugins/health/lib/system-checks/sync-skill'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import { checkPluginAssets, installPluginAssetsRepair } from '../../../plugins/health/lib/system-checks/plugin-assets'
 import { createMockRuntimeAdapter, mockChannels } from '@bakin/core/adapters/runtime/testing'
 import type { AgentRuntimeAdapter, RuntimeSkill } from '@bakin/core/adapters/runtime'
 import type { HealthCheckRunInput, HealthRepairTarget } from '@makinbakin/sdk'
 import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
+import { noopOp } from '../../helpers/operation-harness'
 
 let mockRuntime: AgentRuntimeAdapter
 let runtimeWorkspaceFiles: Map<string, string>
@@ -882,9 +890,12 @@ describe('Search write-journal observations', () => {
     const repair = searchOutboxRepair()
     const plan = await repair.plan(repairTarget)
     expect(plan[0]?.safety).toBe('manual')
-    const applied = await repair.apply(plan)
+    const applied = await repair.apply(plan, noopOp())
     expect(applied[0]?.status).toBe('applied')
     expect(applied[0]?.message).toMatch(/Revived 1/)
+    const run = await runRepairContract(repair, plan)
+    expectRepairContract(repair, run)
+    expect(run.calls).toEqual(['stage:revive', 'log'])
     mockQuarantinedRows = []
     mockOutboxStats = { pending: 0, inflight: 0, quarantined: 0, oldestPendingEnqueuedAt: null }
   })
@@ -974,7 +985,7 @@ describe('checkSearchConsistency', () => {
     mockEngineTables = [{ name: 'bakin_t_v2_ff' }]
 
     const repair = searchConsistencyRepair()
-    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')))
+    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')), noopOp())
 
     expect(mockRebuiltLogicalTables).toEqual([])
     expect(outcomes).toEqual([
@@ -989,7 +1000,7 @@ describe('checkSearchConsistency', () => {
     mockTableStatsError = new Error('engine timed out')
 
     const repair = searchConsistencyRepair()
-    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')))
+    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')), noopOp())
 
     expect(outcomes).toEqual([
       expect.objectContaining({
@@ -1005,7 +1016,7 @@ describe('checkSearchConsistency', () => {
     mockTableStats = null
 
     const repair = searchConsistencyRepair()
-    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')))
+    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')), noopOp())
 
     expect(outcomes[0]?.message).toContain('bakin_t:')
   })
@@ -1019,7 +1030,7 @@ describe('checkSearchConsistency', () => {
 
     const repair = searchConsistencyRepair()
     const plan = await repair.plan(searchConsistencyIncidentTarget('bakin_selected'))
-    const outcomes = await repair.apply(plan)
+    const outcomes = await repair.apply(plan, noopOp())
 
     expect(plan).toHaveLength(1)
     expect(plan[0]?.observationIds).toEqual(['health.search-consistency:indexes.table:bakin_selected'])
@@ -1046,12 +1057,45 @@ describe('checkSearchConsistency', () => {
       { logical: 'bakin_unrelated', physical: 'bakin_unrelated_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_unrelated_v3_aa', phase: 'parked' },
     ]
 
-    const outcomes = await repair.apply(plan)
+    const outcomes = await repair.apply(plan, noopOp())
 
     expect(mockRebuiltLogicalTables).toEqual([])
     expect(outcomes).toEqual([
       expect.objectContaining({ status: 'skipped', message: expect.stringContaining('bakin_selected no longer needs rebuilding') }),
     ])
+  })
+
+  it('plans all_actionable from the check\'s recorded evidence with no engine calls (#895)', async () => {
+    mockSearchEnabled = true
+    mockTableStates = [
+      { logical: 'bakin_missing', physical: 'bakin_missing_v2_ff', schemaVersion: 2, state: 'active' },
+      { logical: 'bakin_fine', physical: 'bakin_fine_v2_ff', schemaVersion: 2, state: 'active' },
+      { logical: 'bakin_parked', physical: 'bakin_parked_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_parked_v3_aa', phase: 'parked' },
+    ]
+    mockTableStats = null
+    mockEngineTables = [{ name: 'bakin_fine_v2_ff' }]
+    await checkSearchConsistency()
+
+    // Every engine call throws during planning: the plan must not need one.
+    mockTableStatsError = new Error('engine must not be called while planning')
+    mockEngineTablesError = new Error('engine must not be called while planning')
+    const plan = await searchConsistencyRepair().plan({ type: 'all_actionable', reportId: 'report-test' })
+    expect(plan.map((item) => item.changes[0]!.target).sort()).toEqual(['bakin_missing', 'bakin_parked'])
+    mockTableStatsError = null
+    mockEngineTablesError = null
+    mockTableStates = []
+  })
+
+  it('passes the repair runtime contract: confirm, then one rebuild item per table', async () => {
+    mockSearchEnabled = true
+    mockTableStates = [{ logical: 'bakin_selected', physical: 'bakin_selected_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_selected_v3_aa', phase: 'parked' }]
+    const repair = searchConsistencyRepair()
+    const run = await runRepairContract(repair, await repair.plan(searchConsistencyIncidentTarget('bakin_selected')))
+    expectRepairContract(repair, run)
+    expect(run.view.resources).toEqual(['search-engine'])
+    expect(run.calls).toEqual(['stage:confirm', 'stage:rebuild', 'item:rebuild:bakin_selected', 'item:rebuild:bakin_selected'])
+    expect(run.view.stages[1]!.items).toEqual([{ id: 'bakin_selected', label: 'bakin_selected', status: 'done', message: 'migrated' }])
+    mockTableStates = []
   })
 
   it('retries a failed deep sweep immediately instead of hiding it for an hour', async () => {
@@ -1121,10 +1165,21 @@ describe('checkAndSyncSkill', () => {
         reportId: 'report-test',
         ids: ['health.skill:runtime-skill'],
       }),
+      noopOp(),
     )
     expect(applied[0].status).toBe('applied')
     expect(applied[0].message).toMatch(/synced/)
     expect(runtimeSkill?.instructions).toContain('<!-- bakin:exec-tools:start -->')
+  })
+
+  it('sync-skill passes the repair runtime contract (render → write)', async () => {
+    const projectRoot = pathJoin(testDir, 'project-contract')
+    mkdirSync(join(projectRoot, 'skill'), { recursive: true })
+    writeFileSync(join(projectRoot, 'skill', 'SKILL.md'), '# Bakin Skill\n<!-- bakin:exec-tools:start -->\n<!-- bakin:exec-tools:end -->\n')
+    const repair = syncSkillRepair(projectRoot, mockRuntime)
+    const run = await runRepairContract(repair, await repair.plan({ type: 'all_actionable', reportId: 'r' }))
+    expectRepairContract(repair, run)
+    expect(run.calls).toEqual(['stage:render', 'stage:write'])
   })
 })
 
@@ -1185,13 +1240,22 @@ describe('installPluginAssetsRepair', () => {
     const action = installPluginAssetsRepair()
     const items = await action.plan(target)
     mockPluginAssetsInstall = { name: 'plugin-assets', status: 'installed', message: 'Installed 1 binary: tmux (terminal)', durationMs: 5 }
-    const applied = await action.apply(items)
+    const applied = await action.apply(items, noopOp())
     expect(applied[0]).toMatchObject({ status: 'applied', message: 'Installed 1 binary: tmux (terminal)', affectedCheckIds: ['health.plugin-assets'] })
     expect(applied[0].changes).toHaveLength(2)
 
     mockPluginAssetsInstall = { name: 'plugin-assets', status: 'failed', message: 'tmux (terminal): pinned differently by pack ocr', durationMs: 5 }
-    const failed = await action.apply(items)
+    const failed = await action.apply(items, noopOp())
     expect(failed[0]).toMatchObject({ status: 'failed', message: 'tmux (terminal): pinned differently by pack ocr', changes: [] })
+  })
+
+  it('declares install-state and passes the repair runtime contract', async () => {
+    const action = installPluginAssetsRepair()
+    mockPluginAssetsInstall = { name: 'plugin-assets', status: 'installed', message: 'Installed 1 skill(s)', durationMs: 5 }
+    const run = await runRepairContract(action, await action.plan(target))
+    expectRepairContract(action, run)
+    expect(run.view.resources).toEqual(['install-state'])
+    expect(run.calls).toEqual(['stage:skills', 'stage:bins'])
   })
 })
 

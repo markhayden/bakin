@@ -201,7 +201,7 @@ Incident IDs derive from owner/check/stable keys, not titles or messages. Resour
 
 ## Explicit repair protocol
 
-Repair actions are separate `HealthRepairActionDefinition` registrations with `plan(target)` and `apply(items)`.
+Repair actions are separate `HealthRepairActionDefinition` registrations with `plan(target)` (bounded and LOCAL — no network, no engine calls; search-consistency plans from the check's recorded evidence and re-validates in apply), a required `operationPlan(items)`, optional `resources` (authorized against the owner at registration: core resources for core code/adapters/core plugins only, `<ownerId>:*` for plugins), and `apply(items, op)` that reports through the op context (#895).
 
 1. A consumer targets incident IDs, observation IDs, or all actionable incidents from a specific report.
 2. Core asks only referenced owner actions to plan concrete `HealthRepairPlanItem`s.
@@ -209,6 +209,9 @@ Repair actions are separate `HealthRepairActionDefinition` registrations with `p
 4. Safe items may be preselected. Each manual/destructive item requires explicit confirmation.
 5. Apply rechecks expiry and only the affected evidence. Changed/resolved evidence returns typed `STALE_PLAN` with zero action calls.
 6. Applied actions report their own success/failure and affected check IDs. Core reruns those checks and returns verification separately.
+7. **Apply is an operation** (`startDoctorRepair`, `src/core/doctor-repair.ts`): a parent (`apply` → `verify`, `REPAIR_PARENT_PLAN`) whose fingerprint `repair:<planId>:<sorted itemIds>` is claimed BEFORE the plan is consumed (two tabs → one run), one child per selected action (its own plan + resources, run in sequence), outcome by the D22 precedence table (`ok` / `nothing_applied` / `partially_applied` / `apply_failed` / `verification_failed` / `cancelled`), and the `DoctorRepairApplyReport` as `result.body` (rows kept on every outcome). `POST /doctor/repair/apply` answers 202 `{ operationId, bootId }` (200 attached; 409 STALE_PLAN / CONFIRMATION_REQUIRED unchanged). The dialog follows it with `useOperation` + `OperationProgress` and can close mid-repair; `bakin doctor --fix` follows it with the CLI renderer; escalation awaits it in-process (`awaitDoctorRepair`, origin `system`). No client deadline, no "outcome unknown" guess.
+
+Every repair action passes the runtime contract (`tests/helpers/repair-contract.ts`: applied inside a real operation built from its own plan — it must report, enter only declared stages in plan order, and never throw from an op call).
 
 Never infer repairability from status or text. Never attach a mutation callback to a check result. Delegated repair records use the v2 store; bytes in the old v1 directory are an immutable archive and are not parsed by current code.
 
@@ -282,7 +285,7 @@ Each completed full sweep appends `doctor.run` with report ID, registered count,
 
 **Cover is per incident** (`coveredIncidentIds`): a request whose task sits in `blocked` or `review` covers indefinitely (a human owns the next step); `todo`/`inProgress` cover until `escalationStaleAfterMs`; `done`/`archived`/missing never cover; the cooldown covers regardless of column. Only uncovered incidents proceed.
 
-**Policy per cycle** (`escalateCronIncidents`, spec D3–D5): plan once for the uncovered set; `safe` items are applied immediately (`applyDoctorRepair`) and the incidents they fix never become tasks; incidents with a NON-SAFE proposal → ONE review task holding a `health-repair` approval whose proposal is frozen (`openRepairApproval`); `navigate` incidents → one review task + `health-navigate` approval each; everything else (instructions, rerun, repair without a plan item) → ONE delegated task for the main agent (`delegateDoctorRepair`, brief with sanctioned fixes + integrity rules). Planning failure degrades to delegation; nothing is dropped silently. Review tasks have no assignee: dispatch pulls from `todo` only and liveness checks read `inProgress` only, so they are never dispatched nor stranded.
+**Policy per cycle** (`escalateCronIncidents`, spec D3–D5): plan once for the uncovered set; `safe` items are applied immediately (`startDoctorRepair` + `awaitDoctorRepair`, origin `system`) and the incidents they fix never become tasks; incidents with a NON-SAFE proposal → ONE review task holding a `health-repair` approval whose proposal is frozen (`openRepairApproval`); `navigate` incidents → one review task + `health-navigate` approval each; everything else (instructions, rerun, repair without a plan item) → ONE delegated task for the main agent (`delegateDoctorRepair`, brief with sanctioned fixes + integrity rules). Planning failure degrades to delegation; nothing is dropped silently. Review tasks have no assignee: dispatch pulls from `todo` only and liveness checks read `inProgress` only, so they are never dispatched nor stranded.
 
 **Repair requests** (`doctor/repair-requests-v2/`): `kind: delegate | approval-repair | approval-navigate`, `status: planned → sent → (applying →) completed | verified | failed | dismissed`, `checkIds` (the fresh-verification target), `approvalId`, frozen `proposal`. `applying` is written BEFORE any mutation so a crash mid-apply is recovered at boot (`recoverInterruptedApplies`: clean checks → verified + task done, else failed + task blocked; the pending record is withdrawn).
 

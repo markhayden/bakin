@@ -37,14 +37,17 @@ import { dispatchRoute } from '@bakin/core/routing'
 import { createConversationTurnService } from '../../../../src/core/conversation-turns'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
-import { createMemoryResourceAcquirer, createOperationRegistry, toPluginOperationInput } from '@bakin/core/operations'
+import { assertPluginResources, createMemoryResourceAcquirer, createOperationRegistry, toPluginOperationInput } from '@bakin/core/operations'
 import type {
   BakinPlugin,
   ExecToolDefinition,
   ExecToolResult,
   HealthCheckRegistrationInput,
   HealthRepairActionDefinition,
+  HealthRepairApplyResult,
+  HealthRepairPlanItem,
   NavItem,
+  OperationView,
   PluginContext,
   PluginNodeTypeInput,
   PluginNotificationChannelInput,
@@ -115,6 +118,13 @@ export interface PluginTestContext {
   seedSearchResults(results: SearchResult[], aggregations?: SearchResponse['aggregations']): void
   /** Build the `PluginToolContext` an exec tool receives as its third arg. */
   toolContext(invocation?: PluginToolContext['invocation']): PluginToolContext
+  /**
+   * Apply a registered repair action the way Health does: inside a real
+   * operation built from its `operationPlan`, holding its declared
+   * `resources`, with the `op` context passed to `apply`. Assert on the
+   * returned rows and on `operation.stages` to prove the action reports.
+   */
+  applyHealthRepair(actionId: string, items: HealthRepairPlanItem[]): Promise<{ results: HealthRepairApplyResult[]; operation: OperationView }>
   /** Delete the temp directory. Call from `afterAll`. Safe to call twice. */
   dispose(): void
 }
@@ -350,6 +360,29 @@ export function createTestContext(
       seededResults = results
       seededAggregations = aggregations
     },
+    applyHealthRepair: async (actionId, items) => {
+      const action = healthRepairActions.find((a) => a.id === actionId)
+      if (!action) throw new Error(`No repair action "${actionId}" was registered by ${pluginId}`)
+      const resources = action.resources ?? []
+      assertPluginResources(pluginId, options.core ?? false, resources)
+      const plan = action.operationPlan(items)
+      let results: HealthRepairApplyResult[] = []
+      const { operationId } = await operations.start({
+        kind: `${pluginId}:repair:${action.id}`,
+        owner: `plugin:${pluginId}`,
+        origin: 'system',
+        title: action.name,
+        fingerprint: `${pluginId}:repair:${action.id}:${items.map((i) => i.id).sort().join(',')}`,
+        resources,
+        plan,
+        run: async (op) => {
+          results = await action.apply(items, op)
+          return { status: 'succeeded', code: 'ok', httpStatus: 200, body: results }
+        },
+      })
+      const operation = await operations.await(operationId)
+      return { results, operation }
+    },
     toolContext: (invocation) => ({
       invocation,
       storage: ctx.storage,
@@ -411,7 +444,7 @@ export function findTool(tools: ExecToolDefinition[], name: string): ExecToolDef
 /** Build a `Request` the way the host's router would. */
 export function makeRequest(
   path: string,
-  opts: { method?: string; body?: unknown; searchParams?: Record<string, string> } = {},
+  opts: { method?: string; body?: unknown; searchParams?: Record<string, string>; headers?: Record<string, string> } = {},
 ): Request {
   const url = new URL(`http://localhost${path}`)
   if (opts.searchParams) {
@@ -425,6 +458,7 @@ export function makeRequest(
     init.body = JSON.stringify(opts.body)
     init.headers = { 'Content-Type': 'application/json' }
   }
+  if (opts.headers) init.headers = { ...(init.headers as Record<string, string> | undefined), ...opts.headers }
   return new Request(url, init)
 }
 
@@ -445,6 +479,8 @@ export async function callRoute(
     path?: string
     body?: unknown
     searchParams?: Record<string, string>
+    /** Extra request headers (e.g. `X-Bakin-Origin: cli`). */
+    headers?: Record<string, string>
     rawResponse?: boolean
   } = {},
 ): Promise<{ status: number; body: Record<string, unknown>; response: Response }> {
@@ -470,6 +506,7 @@ export async function callRoute(
     method: route.method,
     body: opts.body,
     searchParams: queryEntries,
+    ...(opts.headers ? { headers: opts.headers } : {}),
   })
   const params = extractPathParams(route.path, callPath)
 

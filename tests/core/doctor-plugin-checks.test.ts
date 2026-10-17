@@ -135,6 +135,7 @@ describe('validating Health runner', () => {
     registerPluginHealthRepairAction('test-a', {
       id: 'restart',
       name: 'Restart runtime',
+      operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
     })
@@ -159,7 +160,7 @@ describe('validating Health runner', () => {
 
   it('rejects cross-owner or missing repair references as invalid', async () => {
     registerPluginHealthRepairAction('test-b', {
-      id: 'restart', name: 'Restart', plan: async () => [], apply: async () => [],
+      id: 'restart', name: 'Restart', operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }), plan: async () => [], apply: async () => [],
     })
     registerPluginHealthCheck('test-a', registration(async () => healthObserved([
       healthError({

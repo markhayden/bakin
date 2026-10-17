@@ -28,11 +28,13 @@
  */
 import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import type { OperationContext } from '@makinbakin/sdk/types'
 import { getBakinPaths } from '../content-dir'
 import { createLogger } from '../logger'
-import { downloadToFile, extractTarball } from '../net/download'
+import { downloadToFile, extractTarball, opTransfer } from '../net/download'
 import { SHARP_PIN, mediaPlatformKey, pinnedTarballsFor, type MediaPlatformKey } from './pin'
 import { resetSharpModuleCache } from './sharp-loader'
+import { MEDIA_PLAN } from './install-plan'
 import { MEDIA_RECEIPT_SCHEMA, mediaStoreDir, readMediaReceipt, mediaStoreEntry, type MediaReceipt } from './store'
 
 // Store locations + receipt live in ./store (shared with the loader);
@@ -70,6 +72,8 @@ export interface MediaInstallOptions {
   bundle?: (entrypoint: string, outDir: string) => Promise<void>
   /** Probe seam — default imports the staged bundle and runs a real resize. */
   probe?: (bundlePath: string) => Promise<void>
+  /** Transfer seam: the no-bytes window per attempt (production keeps the primitive's 30s). */
+  stallTimeoutMs?: number
 }
 
 export interface MediaInstallResult {
@@ -77,11 +81,16 @@ export interface MediaInstallResult {
   skipped: boolean
 }
 
+export { MEDIA_PLAN } from './install-plan'
+
 /**
  * Download → stage → bundle → place → probe-verify → atomic commit.
  * Idempotent: a receipt already at the pin (for this platform) skips all work.
  */
-export async function installMediaStore(options: MediaInstallOptions = {}): Promise<MediaInstallResult> {
+export async function installMediaStore(op: OperationContext, options: MediaInstallOptions = {}): Promise<MediaInstallResult> {
+  if (!op.holds('media-store')) {
+    throw new Error('installMediaStore requires the media-store resource — run it inside an operation that declares it')
+  }
   const platform = mediaPlatformKey()
   if (!platform) {
     throw new Error(
@@ -95,10 +104,12 @@ export async function installMediaStore(options: MediaInstallOptions = {}): Prom
     const existing = checkMediaStore()
     if (existing.status === 'ok') {
       log.info(`media store already at sharp ${SHARP_PIN.version} — skipping install`)
+      for (const stage of MEDIA_PLAN.stages) op.skip(stage.id, `already installed at sharp ${SHARP_PIN.version}`)
       return { storeDir, skipped: true }
     }
   }
 
+  op.stage('prepare')
   const sharpRoot = join(getBakinPaths().media, 'sharp')
   // Crashed/killed installers strand their staging dirs forever (margo
   // 2026-09-21: three orphans from one afternoon) — sweep the dead before
@@ -112,32 +123,52 @@ export async function installMediaStore(options: MediaInstallOptions = {}): Prom
     // 1. Stage a standard node_modules layout from the pinned tarballs.
     const nodeModules = join(staging, 'node_modules')
     if (options.stage) {
+      op.skip('download', 'staged locally')
+      op.skip('extract', 'staged locally')
       await options.stage(nodeModules)
     } else {
       const tarballDir = join(staging, '.tarballs')
       const tarballs = pinnedTarballsFor(platform)
-      for (const [index, tarball] of tarballs.entries()) {
-        const tarPath = join(tarballDir, `${tarball.name.replace('/', '+')}.tgz`)
-        // Progress lands in the server log — "applying and verifying" must
-        // never again mean minutes of total silence.
-        log.info(`media store: downloading ${tarball.name}@${tarball.version} (${index + 1}/${tarballs.length})`)
+      const tarPath = (name: string) => join(tarballDir, `${name.replace('/', '+')}.tgz`)
+      op.stage('download')
+      for (const tarball of tarballs) op.item('download', { id: tarball.name, label: `${tarball.name}@${tarball.version}` })
+      for (const tarball of tarballs) {
+        const label = `${tarball.name}@${tarball.version}`
+        op.item('download', { id: tarball.name, label, status: 'active' })
         const started = Date.now()
-        const downloaded = await downloadToFile(tarball.url, tarPath, {
-          sha256: tarball.sha256,
-          timeoutMs: DOWNLOAD_TIMEOUT_MS,
-          fetchImpl: options.fetchImpl,
-          label: `Media tarball "${tarball.name}"`,
-        })
-        log.info(`media store: downloaded ${tarball.name} — ${downloaded.bytes} bytes in ${Date.now() - started}ms`)
-        await extractTarball(tarPath, join(nodeModules, tarball.name), {
+        try {
+          const downloaded = await downloadToFile(tarball.url, tarPath(tarball.name), {
+            sha256: tarball.sha256,
+            timeoutMs: DOWNLOAD_TIMEOUT_MS,
+            ...(options.stallTimeoutMs ? { stallTimeoutMs: options.stallTimeoutMs } : {}),
+            fetchImpl: options.fetchImpl,
+            label: `Media tarball "${tarball.name}"`,
+            signal: op.signal,
+            onEvent: opTransfer(op, 'download', tarball.name),
+          })
+          log.info(`media store: downloaded ${tarball.name} — ${downloaded.bytes} bytes in ${Date.now() - started}ms`)
+        } catch (err) {
+          op.item('download', { id: tarball.name, label, status: 'failed', message: err instanceof Error ? err.message : String(err) })
+          throw err
+        }
+        op.item('download', { id: tarball.name, label, status: 'done' })
+      }
+      op.stage('extract')
+      for (const tarball of tarballs) {
+        op.item('extract', { id: tarball.name, label: tarball.name, status: 'active' })
+        await extractTarball(tarPath(tarball.name), join(nodeModules, tarball.name), {
           stripComponents: 1,
           label: `Media tarball "${tarball.name}"`,
+          signal: op.signal,
+          onOutput: (line) => op.output(line),
         })
+        op.item('extract', { id: tarball.name, label: tarball.name, status: 'done' })
       }
     }
 
     // 2. Bundle sharp's JS into one self-contained file — compiled binaries
     //    cannot walk a disk node_modules for bare specifiers.
+    op.stage('bundle')
     const bundle = options.bundle ?? bundleSharp
     await bundle(join(nodeModules, 'sharp', 'dist', 'index.cjs'), join(staging, 'dist'))
 
@@ -146,6 +177,7 @@ export async function installMediaStore(options: MediaInstallOptions = {}): Prom
 
     // 4. Probe-verify: a REAL resize against the staged bundle. This is the
     //    tripwire for sharp changing its candidate paths on a future bump.
+    op.stage('verify')
     const probe = options.probe ?? probeSharpBundle
     try {
       await probe(join(staging, 'dist', 'index.js'))
@@ -166,6 +198,7 @@ export async function installMediaStore(options: MediaInstallOptions = {}): Prom
     }
 
     // 5. Prune build inputs; commit atomically; sweep older versions.
+    op.stage('commit')
     rmSync(nodeModules, { recursive: true, force: true })
     rmSync(join(staging, '.tarballs'), { recursive: true, force: true })
     const receipt: MediaReceipt = {

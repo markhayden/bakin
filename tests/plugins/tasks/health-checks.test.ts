@@ -185,6 +185,8 @@ import {
   taskConsistencyRepair,
   taskOrderRepair,
 } from '../../../plugins/tasks/lib/health-checks'
+import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { noopOp } from '../../helpers/operation-harness'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -286,7 +288,7 @@ describe('checkTaskConsistency', () => {
     expect(plan).toHaveLength(1)
     expect(plan[0].id).toBe('clear-completed-task-dependencies')
 
-    const applied = await repair.apply(plan)
+    const applied = await repair.apply(plan, noopOp())
     expect(applied[0].status).toBe('applied')
     expect(applied[0].actionId).toBe('clear-done-depends-on')
     expect(clearedDependencies).toContain('d2')
@@ -361,10 +363,31 @@ describe('checkTaskPositionIntegrity', () => {
     const repair = taskOrderRepair()
     const plan = await repair.plan({ type: 'all_actionable', reportId: 'report-1' })
     expect(plan).toHaveLength(1)
-    const applied = await repair.apply(plan)
+    const applied = await repair.apply(plan, noopOp())
     expect(applied[0].status).toBe('applied')
     expect(newer.order).toBe(0)
     expect(older.order).toBe(1)
+  })
+})
+
+describe('repair runtime contract (#895 D10)', () => {
+  const target = { type: 'all_actionable' as const, reportId: 'report-1' }
+
+  it('clear-done-depends-on reports one item per cleared task', async () => {
+    storeBoard.columns.done.push({ id: 'd2', title: 'Repair clear', dependsOn: 'orphan' })
+    const repair = taskConsistencyRepair()
+    const run = await runRepairContract(repair, await repair.plan(target))
+    expectRepairContract(repair, run)
+    expect(run.view.stages[0]!.items).toEqual([{ id: 'd2', label: 'Repair clear', status: 'done' }])
+  })
+
+  it('reorder-columns reports one item per column', async () => {
+    storeBoard.columns.todo.push({ id: 'a', title: 'A', updatedAt: 100 })
+    const repair = taskOrderRepair()
+    const run = await runRepairContract(repair, await repair.plan(target))
+    expectRepairContract(repair, run)
+    expect(run.view.stages[0]!.items!.every((i) => i.status === 'done')).toBe(true)
+    expect(run.view.stages[0]!.items!.map((i) => i.id)).toContain('todo')
   })
 })
 

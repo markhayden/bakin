@@ -166,6 +166,6 @@ describe('read-only CLI TTY commands — help and errors', () => {
     await expect(main()).rejects.toThrow('exit:1')
     expect(output()).toBe('')
     expect(errorOutput()).toContain('Error: Cannot connect to Bakin. Is the server running?')
-    expect(errorOutput()).toContain('Run `bakin start` to launch the server.')
+    expect(errorOutput()).toContain('Run `bakin start` to launch the server (or set BAKIN_URL to reach another one).')
   })
 })

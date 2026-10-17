@@ -116,11 +116,18 @@ const repairApplyCallableSchema = z.custom<HealthRepairActionDefinition['apply']
   { message: 'Apply must be a function.' },
 )
 
+const repairOperationPlanCallableSchema = z.custom<NonNullable<HealthRepairActionDefinition['operationPlan']>>(
+  (value) => typeof value === 'function',
+  { message: 'operationPlan must be a function.' },
+)
+
 /** Exact owner-local repair-action schema; core namespaces the action id. */
 export const healthRepairActionDefinitionSchema = z.object({
   id: stableKeySchema,
   name: nonBlankString(120, 'Repair action name'),
   plan: repairPlanCallableSchema,
+  operationPlan: repairOperationPlanCallableSchema,
+  resources: z.array(nonBlankString(200, 'Repair resource')).max(16).optional(),
   apply: repairApplyCallableSchema,
 }).strict()
 

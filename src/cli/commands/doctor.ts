@@ -15,13 +15,14 @@ import type {
   HealthReportStatus,
   SearchReadinessStage,
 } from '@makinbakin/sdk/types'
-import { apiGet, apiPost } from '../http'
+import { apiGet, apiPost, type OperationFollowResult } from '../http'
+import { describeResult, followAndRender, operationExitCode, silentOperationRenderer } from '../operation-renderer'
 import { print } from '../output'
 import { exitUsage, exitUnknownSubcommand, promptYesNo } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 
 type DoctorMode = 'offline' | 'full'
-type DoctorExitCode = 0 | 1 | 2
+type DoctorExitCode = 0 | 1 | 2 | 130
 
 interface CliDoctorRepairApply {
   planId: string
@@ -378,12 +379,28 @@ async function runDoctorRepairPlan(report: HealthReport): Promise<HealthRepairPl
   return await apiPost('/api/plugins/health/doctor/repair/plan', { target }) as HealthRepairPlan
 }
 
-async function runDoctorRepairApply(plan: HealthRepairPlan, itemIds: [string, ...string[]]): Promise<CliDoctorRepairApply> {
-  return await apiPost('/api/plugins/health/doctor/repair/apply', {
+/**
+ * Start the repair operation and follow it (#895): live frames on a TTY,
+ * transition lines in a pipe, silent under --json. Resolves with the report
+ * (the operation's result body) when the run produced one.
+ */
+async function runDoctorRepairApply(
+  plan: HealthRepairPlan,
+  itemIds: [string, ...string[]],
+  json: boolean,
+): Promise<{ report: CliDoctorRepairApply | null; follow: OperationFollowResult }> {
+  const started = await apiPost('/api/plugins/health/doctor/repair/apply', {
     planId: plan.planId,
     itemIds,
     confirmedItemIds: [],
-  }) as CliDoctorRepairApply
+  }) as Partial<{ operationId: string; bootId: string }> | null
+  if (typeof started?.operationId !== 'string' || typeof started.bootId !== 'string') {
+    throw new Error('The server did not start a repair operation — is this CLI newer than the running server? Restart Bakin and try again.')
+  }
+  const start = { operationId: started.operationId, bootId: started.bootId }
+  const follow = await followAndRender(start, json ? { renderer: silentOperationRenderer() } : {})
+  const result = follow.operation?.result
+  return { report: result?.httpStatus === 200 ? result.body as CliDoctorRepairApply : null, follow }
 }
 
 async function runDoctorDelegateApply(report: HealthReport, incidents: [HealthIncident, ...HealthIncident[]]): Promise<CliDoctorDelegateReport> {
@@ -556,7 +573,17 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
     acceptedInteractively = true
   }
 
-  const report = await runDoctorRepairApply(plan, safeItemIds as [string, ...string[]])
+  const { report, follow } = await runDoctorRepairApply(plan, safeItemIds as [string, ...string[]], options.json)
+  if (!report) {
+    // Cancelled, restarted, expired or detached: the renderer already said
+    // which; the exit code says it to scripts.
+    const exitCode = operationExitCode(follow)
+    if (options.json) {
+      const status = follow.phase === 'finished' ? follow.operation?.status ?? 'failed' : follow.phase
+      printDoctorCommandJson('doctor --fix', { status, operation: follow.operation }, exitCode === 0 ? 1 : exitCode, { code: `REPAIR_${status.toUpperCase()}`, message: describeResult(follow) })
+    }
+    process.exit(exitCode === 0 ? 1 : exitCode)
+  }
   const exitCode = repairApplyExitCode(report)
   if (options.json) {
     printDoctorCommandJson(

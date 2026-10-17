@@ -12,7 +12,10 @@
  * never anything that statically pulls react/ink/server-core into the binary
  * entry's import graph.
  */
-import { BASE_URL, apiGet } from './http'
+import { CLI_TARGET, apiGet } from './http'
+
+/** Shown only when there IS a target; with no server running, help states the default rule. */
+const TARGET_URL = CLI_TARGET.source === 'none' ? undefined : CLI_TARGET.baseUrl
 import { print, normalizeUsage, usageLine } from './output'
 import { getCliUsageGroups, renderCliUsage } from '../core/cli/registry'
 import { renderInkReport } from '../core/cli/ui/render-report'
@@ -24,7 +27,7 @@ import type {
 } from '../core/cli/ui/readonly'
 
 export const BINARY_ONLY_COMMANDS = new Set<string>()
-export const USAGE = renderCliUsage({ bakinUrl: BASE_URL }, { excludeNames: BINARY_ONLY_COMMANDS })
+export const USAGE = renderCliUsage({ bakinUrl: TARGET_URL }, { excludeNames: BINARY_ONLY_COMMANDS })
 
 export async function printGenericCommandResultTui(command: string, data: unknown): Promise<void> {
   const [{ renderCliResult }, { okResult }] = await Promise.all([
@@ -42,7 +45,7 @@ export async function printPluginCliCommandResult(command: string, args: string[
 export async function printHelpReportTui(groups: HelpGroupData[], error?: string, errorDetail?: string): Promise<void> {
   return renderInkReport(() => import('../core/cli/ui/readonly'), (m) => m.HelpReport, {
     groups,
-    env: { bakinUrl: BASE_URL },
+    env: { bakinUrl: TARGET_URL },
     error,
     errorDetail,
   })

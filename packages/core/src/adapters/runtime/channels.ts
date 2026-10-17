@@ -143,6 +143,17 @@ export interface ResolveApprovalArgs extends ApprovalRenderRef {
   response: ApprovalResponse
 }
 
+/** What an approved action led to, posted after the decision (#895 D24). */
+export interface ApprovalOutcome {
+  status: 'succeeded' | 'failed' | 'unknown'
+  title: string
+  message?: string
+}
+
+export interface PostApprovalOutcomeArgs extends ApprovalRenderRef {
+  outcome: ApprovalOutcome
+}
+
 export interface ApprovalResolveEvent {
   approvalId: string
   response: ApprovalResponse
@@ -216,4 +227,10 @@ export interface RuntimeChannelSurface {
    * work runs (platform typing states expire — Discord's after ~10s).
    */
   sendTyping?(args: { channel: string }): Promise<void>
+  /**
+   * OPTIONAL follow-up on a resolved approval with what the decision led to
+   * (#895 D24: an approved repair's outcome arrives after the decision).
+   * Providers without a way to follow up omit it; callers feature-detect.
+   */
+  postApprovalOutcome?(args: PostApprovalOutcomeArgs): Promise<void>
 }

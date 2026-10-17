@@ -15,6 +15,7 @@ mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () =>
 let pending: Array<{ document: string; refs: string[]; state: string; detail?: string }> = []
 mock.module('../../src/cli/http', () => ({
   BASE_URL: 'http://bakin.test',
+  cliFetch: (path: string, init?: RequestInit) => fetch(`http://bakin.test${path}`, init),
   apiGet: mock(async () => ({ revision: 'rev-1', states: [], pending })),
 }))
 const printSpy = mock((_v: unknown) => {})

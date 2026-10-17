@@ -8,7 +8,8 @@
  * packages/core/src/media/installer.ts), or big-image enrichment, asset
  * exports, and thumbnails degrade.
  */
-import { checkMediaStore, installMediaStore } from '../../../packages/core/src/media/installer'
+import { checkMediaStore } from '../../../packages/core/src/media/installer'
+import { installMediaStoreLocally } from '../media-store-install'
 import { SHARP_PIN } from '../../../packages/core/src/media/pin'
 import { importBundledSharp } from '../../../packages/core/src/media/sharp-import'
 import { loadSharp } from '../../../packages/core/src/media/sharp-loader'
@@ -81,7 +82,7 @@ async function install(opts: OnboardingOptions): Promise<InstallOutcome> {
   }
 
   try {
-    const result = await installMediaStore({ force: current.status === 'broken' })
+    const result = await installMediaStoreLocally({ force: current.status === 'broken' })
     return {
       name: 'media',
       status: 'installed',

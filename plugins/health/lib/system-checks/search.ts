@@ -9,6 +9,7 @@ import { getSettings } from '../../../../src/core/settings'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition, SearchHealthSnapshot } from '@makinbakin/sdk'
 import { checkSearchOutboxObservations } from './search-outbox'
+import { REBUILD_PLAN } from './search-spin'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 
 export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
@@ -481,6 +482,8 @@ export function searchScarRepair(): HealthRepairActionDefinition {
   return {
     id: 'search-scar-rebuild',
     name: 'Rebuild scarred Search indexes',
+    resources: ['search-engine'],
+    operationPlan: () => REBUILD_PLAN,
     async plan(target) {
       const tables = await scarredTablesFromReport()
       return [{
@@ -498,19 +501,12 @@ export function searchScarRepair(): HealthRepairActionDefinition {
         })),
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
-      const { rebuildRegisteredTables } = await import('../../../../src/core/search-registry')
-      const { rebuildTargets } = await import('./search-spin')
+      const { rebuildTables, rebuildTargets } = await import('./search-spin')
       const targets = rebuildTargets(items)
-      const outcomes: string[] = []
-      let failed = 0
       try {
-        for (const logical of targets) {
-          const [result] = await rebuildRegisteredTables(logical)
-          if (!result || result.error || result.result === 'parked') failed++
-          outcomes.push(`${logical}: ${result?.error ?? result?.result ?? 'no registered definition'}`)
-        }
+        const { outcomes, failed } = await rebuildTables(targets, op)
         return items.map((item) => ({
           itemId: item.id,
           actionId: item.actionId,

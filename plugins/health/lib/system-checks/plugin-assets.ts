@@ -4,7 +4,7 @@
  * one-click `install-plugin-assets` repair that calls the onboarding
  * component's `install()` — the same engine as `bakin install plugin-assets`.
  */
-import { pluginAssetsComponent } from '../../../../src/core/onboarding/plugin-assets'
+import { applyPluginAssets, PLUGIN_ASSETS_PLAN, pluginAssetsComponent } from '../../../../src/core/onboarding/plugin-assets'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
@@ -81,6 +81,8 @@ export function installPluginAssetsRepair(): HealthRepairActionDefinition {
   return {
     id: INSTALL_PLUGIN_ASSETS_ACTION,
     name: 'Install plugin assets',
+    resources: ['install-state'],
+    operationPlan: () => PLUGIN_ASSETS_PLAN,
     async plan(target) {
       return [{
         id: INSTALL_PLUGIN_ASSETS_ACTION,
@@ -95,10 +97,10 @@ export function installPluginAssetsRepair(): HealthRepairActionDefinition {
         ],
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       try {
-        const result = await pluginAssetsComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+        const result = await applyPluginAssets(op)
         const failed = result.status === 'failed'
         return items.map((item) => ({
           itemId: item.id,

@@ -27,6 +27,10 @@ job registry (`install-progress.ts`) and the throw-on-busy lock API.
 | HTTP surface + converted-route start | `packages/host/src/api/operations.ts` |
 | Transfer primitive (events, abort, `opTransfer`) | `packages/core/src/net/download.ts` |
 | Legacy install-lock facade (deleted in PR4) | `src/core/install-core/install-lock.ts` |
+| Children + the D22 precedence | `packages/core/src/operations/children.ts` (`parentOutcome`, `tallyChildren`, `CHILD_SKIPPED_CODE`); `registry.startChild` |
+| CLI follow + renderer + targeting | `src/cli/http.ts` (`followOperation`, `resolveCliTarget`, `cliFetch`), `src/cli/operation-renderer.ts` |
+| Health repair as an operation | `src/core/doctor-repair.ts` (`startDoctorRepair`, `awaitDoctorRepair`, `REPAIR_PARENT_PLAN`) |
+| Converted-route start schema | `packages/core/src/operations/schema.ts` (`operationStartResponseSchema`) |
 | Browser follow hook + start helper | `src/hooks/use-operation.ts` → `@makinbakin/sdk/hooks` (`useOperation`, `startOperation`, `OperationStartError`) |
 | Progress pattern | `packages/sdk/src/patterns/operation-progress.tsx` → `@makinbakin/sdk/patterns` (story `Components/Feedback/OperationProgress`) |
 | Header tray + live list | `packages/host/src/components/operations/{operations-tray.tsx,operations-list.ts}` |
@@ -225,6 +229,60 @@ never touch a real Bakin home.
   never. Only `origin ∈ {web, cli, discord}`; system work and children stay in
   the tray; nothing announces while the person is on the operation's `href`.
 
+## Children (PR3, D10/D21)
+
+`registry.startChild(parentId, input)` — repair actions are the only users.
+A child inherits the parent's owner and origin, namespaces its fingerprint
+under the parent's, acquires its OWN declared resources (the parent holds
+none) and resolves with its terminal view. Children are fetchable by id,
+never listed on their own, and evicted with the parent. The parent latches
+non-cancellable once any child passes its point of no return; cancelling
+the parent cascades to children that can still stop and refuses new ones;
+the parent settles only after every child has settled (allSettled join).
+Child progress and liveness move the parent's clocks; the top-level audit
+carries the child tally. A child that found nothing to do finishes with
+`CHILD_SKIPPED_CODE`; one that changed something before failing finishes
+with `CHILD_PARTIAL_CODE` and tallies as applied AND failed. Work that
+never got a child (a repair action unregistered after validation) is added
+to `failed` by the caller. Precedence (first match wins): cancelled with
+nothing applied → `cancelled`; applied + failed/cancelled →
+`partially_applied`; nothing applied + failed → `apply_failed`; all skipped
+→ `nothing_applied`; applied + verification failed → `verification_failed`;
+else `ok`. A repair's verification is evidence, never absence: every
+affected check must have run fresh (`checkEvaluatedFresh`) and no selected
+observation may still be unhealthy — a check that vanished is not a pass.
+
+## CLI (PR3, D11)
+
+- **Targeting** (`resolveCliTarget`, resolved once): explicit `BAKIN_URL`
+  as given (unreachable is an error) → the live `server.lock` of THIS
+  `BAKIN_HOME` (`readLiveServerLock`: present and pid alive) → no target:
+  server requests throw `BakinNotRunningError` ("Bakin isn't running for
+  <home>") — never a guess at port 3737, which may belong to another home.
+  Every request goes through `serverBaseUrl()` / `cliFetch` and carries
+  `X-Bakin-Origin: cli`. Tests pin `BAKIN_URL` in the preload so no test
+  reads this machine's real lock. In-process fallback for install/onboard
+  is PR6.
+- **`followOperation(start)`**: the SSE stream (`Last-Event-ID` resume,
+  backoff) plus an immediate snapshot and one on a timer; phases `finished`
+  / `expired` / `restarted` / `detached`.
+- **Renderer** (`followAndRender`): `tty` live frame, `plain` transition
+  lines (byte quarters, never a flood), `json` one document. Children
+  render with their own active stage, attempt and per-item bytes (a repair's
+  real transfer lives in its child) in both tty and plain. Ctrl-C once
+  cancels when allowed (otherwise says why), twice detaches (exit 130) — in
+  EVERY mode: a command printing its own JSON passes
+  `silentOperationRenderer()` (notes to stderr) and keeps the handling.
+  `operationExitCode`: 0 succeeded, 130 cancelled/detached, 1 otherwise;
+  the JSON document's `exitCode` is the same number.
+
+## Health repair (PR3, D10/D24)
+
+See `.claude/knowledge/doctor-and-health-checks.md` § Explicit repair
+protocol (the parent/child run, the route, the dialog, the CLI) and
+`.claude/knowledge/approvals.md` § Health decisions (decision first, outcome
+after, `afterResolve`, outcome-unknown recovery).
+
 ## Tests
 
 - `tests/core/operations/` — types, registry (lifecycle, attach, cancel,
@@ -237,6 +295,14 @@ never touch a real Bakin home.
   tar output.
 - `tests/sdk-testing/operations.test.ts` — the published harness, author-style.
 - `tests/architecture/operations-{resources,transfers}.test.ts`.
+- `tests/core/operations/children.test.ts` — precedence rows, startChild,
+  latch, cascade (parent settles last), clocks, audit tally, eviction.
+- `tests/cli/operation-renderer.test.ts`, `tests/cli/cli-target.test.ts`.
+- `tests/core/doctor-repair.test.ts` (attach, accept < 500 ms, rejections,
+  parent/child, parity), `tests/core/doctor-approvals.test.ts` (decision
+  first, old-reader recovery), `tests/plugins/health/repair-dialog.test.tsx`,
+  `tests/cli/doctor-repair.test.ts`; every repair group runs
+  `tests/helpers/repair-contract.ts`.
 - `tests/hooks/use-operation.test.tsx` — rev/boot guards, reconcile, expired,
   restarted (late old-boot answer ignored), unreachable recovery,
   `startOperation`.

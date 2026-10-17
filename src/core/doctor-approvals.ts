@@ -18,7 +18,7 @@
  * Task-service/task-store are imported lazily (same as escalation) to keep
  * this module out of their import cycles.
  */
-import { findPendingApproval, type ApprovalRecord, type RepairProposal } from '@bakin/core/approvals'
+import { findPendingApproval, getApprovalRecord, type ApprovalRecord, type RepairProposal } from '@bakin/core/approvals'
 import type { ApprovalActor } from '@bakin/core/plugin-types'
 import type {
   HealthIncident,
@@ -31,6 +31,7 @@ import {
   ApprovalResolveError,
   bakinBaseUrl,
   cancelApproval,
+  postApprovalOutcome,
   registerApprovalKind,
   requestApproval,
   type ApprovalDecision,
@@ -41,7 +42,9 @@ import {
 import { acknowledgeHealthIncident, getHealthReport } from './doctor-report-cache'
 import { judgeRequest, originatingCheckIds } from './doctor-autoclose'
 import { runTargetedDiagnostics } from './doctor-execution'
-import { applyDoctorRepair, planDoctorRepair } from './doctor-repair'
+import { awaitDoctorRepair, planDoctorRepair, startDoctorRepair } from './doctor-repair'
+import { getOperationRegistry } from './operations'
+import { isOperationFinished, OperationRejectedError, type OperationOrigin } from '@bakin/core/operations'
 import {
   createDoctorRepairRequest,
   getDoctorRepairRequest,
@@ -344,13 +347,31 @@ async function planChanged(request: DoctorRepairRequest, record: RecordOf<'healt
   throw new ApprovalResolveError('The proposed repair changed since this approval was requested; a fresh proposal is waiting on the task.', 409)
 }
 
-export type RepairApplyOutcome = Awaited<ReturnType<typeof applyDoctorRepair>>
+/** What the approval's `onResolve` returns for an applied decision (D24): the running repair. */
+export interface ApprovedRepairStart {
+  operationId: string
+  bootId: string
+}
+
+/** …or why it never started — `afterResolve` still owes the channel its outcome. */
+export interface ApprovedRepairStartFailure {
+  startFailure: string
+}
+
+const ORIGIN_OF_ACTOR: Record<ApprovalDecision['actor']['source'], OperationOrigin> = {
+  web: 'web',
+  channel: 'discord',
+  system: 'system',
+}
 
 /**
- * Apply a granted proposal. Returns the apply report (the Health page's
- * direct apply goes through here too, so one approval = one execution).
+ * Start a granted proposal (D24 step 1): re-plan from fresh evidence, refuse
+ * a changed change-set, record `applying` BEFORE anything can mutate (crash
+ * recovery reads it), start the repair operation and return its id without
+ * waiting. The outcome is judged in `afterResolve`, strictly after the
+ * decision is saved, the card updated and the resolution published.
  */
-async function applyApprovedRepair(request: DoctorRepairRequest, record: RecordOf<'health-repair'>, decision: ApprovalDecision): Promise<RepairApplyOutcome | null> {
+async function startApprovedRepair(request: DoctorRepairRequest, record: RecordOf<'health-repair'>, decision: ApprovalDecision): Promise<ApprovedRepairStart | ApprovedRepairStartFailure> {
   const { contentDir, projectRoot } = requireContext()
   const proposal = record.owner.proposal
   const report = getHealthReport()
@@ -365,27 +386,51 @@ async function applyApprovedRepair(request: DoctorRepairRequest, record: RecordO
   const by = actorLabel(decision.actor)
   const itemIds = plan.items.map((item) => item.id)
   appendEvents(contentDir, request.id, [event('applying', `Approved by ${by}; applying ${itemIds.length} repair item(s).`, { planId: plan.planId, itemIds, actor: decision.actor })], { status: 'applying' })
-  await taskLog(request.taskId, `Approved by ${by}. Applying ${describeProposedChanges(proposal).length} change(s)…`)
 
-  let result: RepairApplyOutcome
+  let started: ApprovedRepairStart
   try {
-    result = await applyDoctorRepair({ contentDir, projectRoot, planId: plan.planId, itemIds, confirmedItemIds: itemIds })
+    started = await startDoctorRepair({ contentDir, projectRoot, planId: plan.planId, itemIds, confirmedItemIds: itemIds, origin: ORIGIN_OF_ACTOR[decision.actor.source] })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    appendEvents(contentDir, request.id, [event('apply-failed', `Repair failed before verification: ${message}`)], { status: 'failed' })
-    await taskLog(request.taskId, `Repair failed: ${message}`)
-    await blockTaskWithReason(request.taskId, `Repair failed: ${message}`)
-    // The decision WAS made and acted on; the outcome lives on the task.
-    return null
+    const message = err instanceof OperationRejectedError
+      ? String((err.body as { error?: unknown })?.error ?? err.message)
+      : err instanceof Error ? err.message : String(err)
+    appendEvents(contentDir, request.id, [event('apply-failed', `Repair could not start: ${message}`)], { status: 'failed' })
+    await taskLog(request.taskId, `Repair could not start: ${message}`)
+    await blockTaskWithReason(request.taskId, `Repair could not start: ${message}`)
+    // The decision WAS made; the outcome follows it to the channel.
+    return { startFailure: `Repair could not start: ${message}` }
+  }
+  appendEvents(contentDir, request.id, [event('operation-started', 'The repair is running.', { operationId: started.operationId, bootId: started.bootId })])
+  await taskLog(request.taskId, `Approved by ${by}. Applying ${describeProposedChanges(proposal).length} change(s)…`)
+  return started
+}
+
+/**
+ * D24 step 3: wait for the repair the decision started, judge it with the
+ * same rule as auto-close (R4), record the outcome on the request and task,
+ * and follow up on the approval's channel card.
+ */
+async function finishApprovedRepair(record: RecordOf<'health-repair'>, started: ApprovedRepairStart): Promise<void> {
+  const { contentDir } = requireContext()
+  const request = getDoctorRepairRequest(contentDir, record.owner.requestId)
+  if (!request) return
+  const { view, report: result } = await awaitDoctorRepair(started.operationId)
+  if (!result) {
+    const message = view.outcome?.message ?? `the repair ${view.status}`
+    const reason = view.status === 'cancelled' ? 'The repair was cancelled before anything changed.' : `Repair failed before verification: ${message}`
+    appendEvents(contentDir, request.id, [event('apply-failed', reason, { operationId: view.id })], { status: 'failed' })
+    await taskLog(request.taskId, reason)
+    await blockTaskWithReason(request.taskId, reason)
+    await postApprovalOutcome(record, { status: 'failed', title: 'Repair did not run', message: reason })
+    return
   }
 
   const failed = result.results.filter((row) => row.status === 'failed')
-  // The SAME judgement as auto-close (R4): every originating check must have
-  // evaluated healthy on the fresh run — an absent incident alone is not a pass.
   const checkIds = [...new Set([...originatingCheckIds(request, result.report), ...result.affectedCheckIds])].sort()
   const verification = judgeRequest(request, result.report, checkIds)
   const applied = event('applied', `Applied ${result.results.filter((row) => row.status === 'applied').length}/${result.results.length} repair item(s).`, {
-    planId: plan.planId,
+    planId: result.planId,
+    operationId: view.id,
     results: result.results.map((row) => ({ itemId: row.itemId, status: row.status, message: row.message })),
     verifiedReportId: result.verifiedReportId,
   })
@@ -393,7 +438,8 @@ async function applyApprovedRepair(request: DoctorRepairRequest, record: RecordO
     appendEvents(contentDir, request.id, [applied, event('verified', 'Fresh targeted checks pass; the incidents no longer reproduce.', { reportId: result.verifiedReportId, checkIds })], { status: 'verified' })
     await taskLog(request.taskId, `Repair applied and verified: ${checkIds.join(', ')} healthy; incidents resolved.`)
     await completeTask(request.taskId)
-    return result
+    await postApprovalOutcome(record, { status: 'succeeded', title: 'Repair applied and verified', message: `${checkIds.length} check(s) healthy; the incidents no longer reproduce.` })
+    return
   }
   const reason = failed.length > 0
     ? `${failed.length} repair step(s) failed: ${failed.map((row) => row.message).join('; ')}`
@@ -403,7 +449,7 @@ async function applyApprovedRepair(request: DoctorRepairRequest, record: RecordO
   appendEvents(contentDir, request.id, [applied, event('apply-failed', reason, { ...verification })], { status: 'failed' })
   await taskLog(request.taskId, `Repair did not resolve the incidents. ${reason}`)
   await blockTaskWithReason(request.taskId, reason)
-  return result
+  await postApprovalOutcome(record, { status: 'failed', title: 'Repair did not resolve the incidents', message: reason })
 }
 
 /**
@@ -423,8 +469,17 @@ export const healthRepairApprovalKind: ApprovalKindHandler<'health-repair'> = {
   async onResolve(record, decision) {
     const request = liveRequestFor(record)
     if (decision.option === 'dismiss') return dismissRequest(request, decision)
-    if (decision.option === 'apply') return applyApprovedRepair(request, record, decision)
+    if (decision.option === 'apply') return startApprovedRepair(request, record, decision)
     throw new ApprovalResolveError(`Unknown repair decision "${decision.option}"`, 400)
+  },
+  async afterResolve(record, result) {
+    const started = result as Partial<ApprovedRepairStart & ApprovedRepairStartFailure> | null
+    if (typeof started?.startFailure === 'string') {
+      await postApprovalOutcome(record, { status: 'failed', title: 'Repair did not run', message: started.startFailure })
+      return
+    }
+    if (typeof started?.operationId !== 'string' || typeof started.bootId !== 'string') return
+    await finishApprovedRepair(record, { operationId: started.operationId, bootId: started.bootId })
   },
 }
 
@@ -446,22 +501,42 @@ export function registerDoctorApprovalKinds(ctx: DoctorApprovalContext): void {
 
 // ─── Boot recovery ───────────────────────────────────────────────────────────
 
+/** The repair operation an `applying` request started, if one was recorded. */
+function startedOperationId(request: DoctorRepairRequest): string | null {
+  const started = [...request.events].reverse().find((row) => row.type === 'operation-started')
+  const id = (started?.data as { operationId?: unknown } | undefined)?.operationId
+  return typeof id === 'string' ? id : null
+}
+
 /**
- * A request left in `applying` was interrupted between mutation and its
- * `applied` event (crash/restart). Verify with fresh targeted checks: clean →
- * verified + task done; otherwise failed + blocked. The pending approval (the
- * handler never got to the record's CAS) is withdrawn either way.
+ * A request left in `applying` with no live repair operation was interrupted
+ * (crash/restart): its outcome is unknown (D24). Say so on the task and the
+ * channel card, then verify with fresh targeted checks: clean → verified +
+ * task done; otherwise failed + blocked. A still-pending approval (the old
+ * flow never reached the record's CAS) is withdrawn either way.
  */
 export async function recoverInterruptedApplies(contentDir: string): Promise<{ recovered: number; verified: number; failed: number }> {
   const summary = { recovered: 0, verified: 0, failed: 0 }
   for (const request of listDoctorRepairRequests(contentDir).filter((row) => row.status === 'applying')) {
+    const operationId = startedOperationId(request)
+    const live = operationId ? getOperationRegistry().get(operationId) : null
+    if (live && !isOperationFinished(live.status)) continue
     summary.recovered += 1
     try {
+      await taskLog(request.taskId, 'Bakin restarted while this repair was applying — the outcome is unknown. Re-checking Health now.')
+      const approval = request.approvalId ? getApprovalRecord(request.approvalId) : null
       const checkIds = originatingCheckIds(request, getHealthReport())
       const report = await runTargetedDiagnostics(checkIds)
       // Same judgement as auto-close (R4): the checks must EVALUATE healthy.
       const verification = judgeRequest(request, report, checkIds)
       if (request.approvalId) await cancelApproval(request.approvalId, 'interrupted')
+      if (approval && approval.status !== 'pending') {
+        await postApprovalOutcome(approval, {
+          status: 'unknown',
+          title: 'Bakin restarted while this repair was applying',
+          message: verification.verified ? 'The outcome is unknown, but fresh Health checks pass.' : 'The outcome is unknown and the incidents still reproduce — check Health.',
+        })
+      }
       if (verification.verified) {
         summary.verified += 1
         appendEvents(contentDir, request.id, [event('recovered', 'Apply was interrupted by a restart; fresh targeted checks pass.', { reportId: report.id, checkIds })], { status: 'verified' })

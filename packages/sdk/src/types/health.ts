@@ -6,6 +6,8 @@
  * and freshness, and publishes the canonical output types in this module.
  */
 
+import type { OperationContext, OperationPlan } from './operations'
+
 // ---------------------------------------------------------------------------
 // JSON evidence
 // ---------------------------------------------------------------------------
@@ -322,12 +324,25 @@ export interface HealthRepairApplyResult {
   changes: HealthRepairChange[]
 }
 
-/** Owner-local repair action registered separately from diagnostic checks. */
+/**
+ * Owner-local repair action registered separately from diagnostic checks.
+ *
+ * Applying runs as a child operation of the repair (#895 D10): the action
+ * declares its stages up front (`operationPlan`, with `pointOfNoReturn` at the
+ * first stage that changes anything) and reports through the `op` context it
+ * receives. `resources` are acquired before `apply` runs: core plugins may
+ * name the core resources (`install-state`, `media-store`, `search-engine`),
+ * any plugin its own `<pluginId>:<name>` resources.
+ */
 export interface HealthRepairActionDefinition {
   id: string
   name: string
+  /** Bounded and local: no network, no engine calls. */
   plan(target: HealthRepairTarget): Promise<HealthRepairPlanItem[]>
-  apply(items: HealthRepairPlanItem[]): Promise<HealthRepairApplyResult[]>
+  /** The stages applying these items will report. */
+  operationPlan(items: HealthRepairPlanItem[]): OperationPlan
+  resources?: string[]
+  apply(items: HealthRepairPlanItem[], op: OperationContext): Promise<HealthRepairApplyResult[]>
 }
 
 // ---------------------------------------------------------------------------

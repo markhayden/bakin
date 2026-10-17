@@ -20,7 +20,7 @@ import type { CommandFailureData, RuntimeActionData } from './cli/ui/readonly'
 import { isOnboarded } from './onboarding/state'
 import { restartChildCommandName, waitForRestartParentExit } from './server-restart'
 
-const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
+const BAKIN_URL = process.env.BAKIN_URL
 const DEV_CHILD_SIGNAL_GRACE_MS = 8000
 
 interface DevChildProcess {

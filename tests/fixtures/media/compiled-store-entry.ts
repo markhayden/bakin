@@ -10,7 +10,8 @@
  */
 import { cpSync, statSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
-import { installMediaStore } from '../../../packages/core/src/media/installer'
+import { installMediaStore, MEDIA_PLAN, type MediaInstallResult } from '../../../packages/core/src/media/installer'
+import { createMemoryResourceAcquirer, createOperationRegistry } from '../../../packages/core/src/operations'
 import { loadSharp } from '../../../packages/core/src/media/sharp-loader'
 
 const PROBE_PNG_BASE64 =
@@ -20,11 +21,31 @@ try {
   const staged = process.env.STAGED_NODE_MODULES
   if (!staged) throw new Error('STAGED_NODE_MODULES not set')
 
-  const result = await installMediaStore({
-    stage: async (nodeModulesDir) => {
-      cpSync(staged, nodeModulesDir, { recursive: true })
-    },
+  // The installer runs inside an operation holding media-store, as in production.
+  const registry = createOperationRegistry({ bootId: () => 'fixture', publish: () => {}, quietCheckIntervalMs: 0, acquireResources: createMemoryResourceAcquirer() })
+  const { operationId } = await registry.start<MediaInstallResult>({
+    kind: 'install:media',
+    owner: 'core',
+    origin: 'system',
+    title: 'Install the media store',
+    fingerprint: 'install:media',
+    resources: ['media-store'],
+    plan: MEDIA_PLAN,
+    run: async (op) => ({
+      status: 'succeeded',
+      code: 'ok',
+      httpStatus: 200,
+      body: await installMediaStore(op, {
+        stage: async (nodeModulesDir) => {
+          cpSync(staged, nodeModulesDir, { recursive: true })
+        },
+      }),
+    }),
   })
+  const view = await registry.await(operationId)
+  registry.dispose()
+  if (view.status !== 'succeeded' || !view.result) throw new Error(view.outcome?.message ?? `install ${view.status}`)
+  const result = view.result.body as MediaInstallResult
   console.log(`STORE INSTALL OK: ${result.storeDir}`)
 
   const sharp = await loadSharp()

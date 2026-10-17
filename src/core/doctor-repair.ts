@@ -19,7 +19,25 @@ import {
 import {
   claimRepairApplication,
   createStoredRepairPlan,
+  DoctorRepairConfirmationError,
+  DoctorRepairStalePlanError,
 } from './doctor-repair-plans'
+import { checkEvaluatedFresh } from './doctor-autoclose'
+import {
+  CHILD_PARTIAL_CODE,
+  CHILD_SKIPPED_CODE,
+  OperationCancelledError,
+  OperationRejectedError,
+  parentOutcome,
+  tallyChildren,
+  type OperationContext,
+  type OperationOrigin,
+  type OperationOutcome,
+  type OperationPlan,
+  type OperationStartResponse,
+  type OperationView,
+} from '@bakin/core/operations'
+import { getOperationRegistry } from './operations'
 
 type IncidentObservation = Exclude<HealthObservation, { status: 'healthy' }>
 
@@ -198,6 +216,10 @@ export async function planDoctorRepair(options: DoctorRepairPlanOptions): Promis
   return plan
 }
 
+function skippedResult(item: HealthRepairPlanItem, message: string): HealthRepairApplyResult {
+  return { itemId: item.id, actionId: item.actionId, status: 'skipped', message, affectedCheckIds: [], changes: [] }
+}
+
 function failedResult(item: HealthRepairPlanItem, error: unknown): HealthRepairApplyResult {
   return {
     itemId: item.id,
@@ -209,16 +231,88 @@ function failedResult(item: HealthRepairPlanItem, error: unknown): HealthRepairA
   }
 }
 
-export async function applyDoctorRepair(options: DoctorRepairApplyOptions): Promise<DoctorRepairApplyReport> {
-  void options.projectRoot
-  const current = getHealthReport()
-  const validated = claimRepairApplication({
-    planId: options.planId,
-    itemIds: options.itemIds,
-    confirmedItemIds: options.confirmedItemIds,
-    report: current,
-  })
+/**
+ * The repair parent's own plan (#895 D10): its children (one per selected
+ * action) run under `apply`, then `verify` re-runs the affected checks. The
+ * parent has no point of no return of its own — it latches non-cancellable as
+ * soon as any child passes its point of no return.
+ */
+export const REPAIR_PARENT_PLAN: OperationPlan = {
+  stages: [
+    { id: 'apply', kind: 'installing', label: 'Apply repairs' },
+    { id: 'verify', kind: 'verifying', label: 'Re-check Health' },
+  ],
+  pointOfNoReturn: null,
+}
 
+export interface DoctorRepairStartOptions extends DoctorRepairApplyOptions {
+  origin: OperationOrigin
+}
+
+/** Validation failures keep today's 409 bodies (D22). */
+function rejectAsToday(error: unknown): never {
+  if (error instanceof DoctorRepairStalePlanError) {
+    throw new OperationRejectedError(409, { error: error.message, code: error.code })
+  }
+  if (error instanceof DoctorRepairConfirmationError) {
+    throw new OperationRejectedError(409, { error: error.message, code: error.code, itemIds: error.itemIds })
+  }
+  throw error
+}
+
+/** Child outcome from an action's validated rows. */
+function childOutcome(results: HealthRepairApplyResult[]): OperationOutcome<HealthRepairApplyResult[]> {
+  const applied = results.some((r) => r.status === 'applied')
+  const failed = results.some((r) => r.status === 'failed')
+  if (failed) return { status: 'failed', code: applied ? CHILD_PARTIAL_CODE : 'apply_failed', message: results.find((r) => r.status === 'failed')?.message, httpStatus: 200, body: results }
+  return { status: 'succeeded', code: applied ? 'ok' : CHILD_SKIPPED_CODE, httpStatus: 200, body: results }
+}
+
+/**
+ * Starts the repair as a parent operation (D10): the request fingerprint is
+ * claimed BEFORE the plan is consumed (two tabs applying the same selection
+ * attach to one run), validation keeps today's 409s, then one child per
+ * selected action runs in sequence with its own plan and resources, and
+ * `verify` re-runs the affected checks. `result.body` is the
+ * `DoctorRepairApplyReport` — rows are kept on every outcome.
+ */
+export async function startDoctorRepair(options: DoctorRepairStartOptions): Promise<OperationStartResponse> {
+  void options.projectRoot
+  const registry = getOperationRegistry()
+  let validated: ReturnType<typeof claimRepairApplication> | undefined
+  let current: HealthReport | undefined
+  return registry.start<DoctorRepairApplyReport>({
+    kind: 'repair',
+    owner: 'core',
+    origin: options.origin,
+    title: options.itemIds.length === 1 ? 'Apply a Health repair' : `Apply ${options.itemIds.length} Health repairs`,
+    href: '/health',
+    fingerprint: `repair:${options.planId}:${[...options.itemIds].sort().join(',')}`,
+    plan: REPAIR_PARENT_PLAN,
+    validate: () => {
+      current = getHealthReport()
+      try {
+        validated = claimRepairApplication({
+          planId: options.planId,
+          itemIds: options.itemIds,
+          confirmedItemIds: options.confirmedItemIds,
+          report: current,
+        })
+      } catch (error) {
+        rejectAsToday(error)
+      }
+    },
+    run: (op) => runDoctorRepair(op, options, validated!, current!),
+  })
+}
+
+async function runDoctorRepair(
+  op: OperationContext,
+  options: DoctorRepairStartOptions,
+  validated: ReturnType<typeof claimRepairApplication>,
+  current: HealthReport,
+): Promise<OperationOutcome<DoctorRepairApplyReport>> {
+  const registry = getOperationRegistry()
   const byAction = new Map<string, HealthRepairPlanItem[]>()
   for (const item of validated.items) {
     const rows = byAction.get(item.actionId) ?? []
@@ -226,26 +320,66 @@ export async function applyDoctorRepair(options: DoctorRepairApplyOptions): Prom
     byAction.set(item.actionId, rows)
   }
 
+  op.stage('apply')
   const results: HealthRepairApplyResult[] = []
+  const children: OperationView[] = []
+  let cancelled = false
+  // Actions unregistered since validation (a plugin unloaded) fail without a child.
+  let missingActions = 0
   for (const [actionId, items] of byAction) {
     const action = getHealthRepairAction(actionId)
     if (!action) {
+      missingActions += 1
       results.push(...items.map((item) => failedResult(item, new Error(`Repair action ${actionId} is no longer registered.`))))
       continue
     }
+    if (cancelled) {
+      results.push(...items.map((item) => skippedResult(item, 'Cancelled before this repair started.')))
+      continue
+    }
     try {
-      results.push(...applyOutput(await action.apply(items), actionId, items))
+      const child = await registry.startChild<HealthRepairApplyResult[]>(op.id, {
+        kind: `repair:${actionId}`,
+        title: action.name,
+        fingerprint: actionId,
+        resources: action.resources ?? [],
+        plan: action.operationPlan(items),
+        run: async (childOp) => childOutcome(applyOutput(await action.apply(items, childOp), actionId, items)),
+      })
+      children.push(child)
+      if (child.result && Array.isArray(child.result.body) && child.status !== 'cancelled') {
+        // The child validated its rows; unexpected throws arrive as a 500 body.
+        const rows = child.result.httpStatus === 200 ? child.result.body : items.map((item) => failedResult(item, new Error(child.outcome?.message ?? 'Repair failed')))
+        results.push(...rows)
+      } else if (child.status === 'cancelled') {
+        results.push(...items.map((item) => skippedResult(item, 'Cancelled before anything was changed.')))
+      } else {
+        results.push(...items.map((item) => failedResult(item, new Error(child.outcome?.message ?? 'Repair failed'))))
+      }
     } catch (error) {
-      results.push(...items.map((item) => failedResult(item, error)))
+      if (!(error instanceof OperationCancelledError)) throw error
+      cancelled = true
+      results.push(...items.map((item) => skippedResult(item, 'Cancelled before this repair started.')))
     }
   }
+
+  const tally = tallyChildren(children)
+  tally.failed += missingActions
+  if (cancelled && tally.applied === 0) throw new OperationCancelledError(op.id)
 
   const selectedObservationIds = new Set(validated.items.flatMap((item) => item.observationIds))
   const inferredCheckIds = current.observations
     .filter((observation) => selectedObservationIds.has(observation.id))
     .map((observation) => observation.checkId)
   const affectedCheckIds = [...new Set([...inferredCheckIds, ...results.flatMap((result) => result.affectedCheckIds)])].sort()
-  const report = await runTargetedDiagnostics(affectedCheckIds)
+  let report: HealthReport
+  if (cancelled) {
+    op.skip('verify', 'cancelled after a repair applied — re-run Health to verify')
+    report = getHealthReport()
+  } else {
+    op.stage('verify')
+    report = await runTargetedDiagnostics(affectedCheckIds)
+  }
   const remainingIncidentIds = report.incidents
     .filter((incident) => incident.observationIds.some((id) => selectedObservationIds.has(id)))
     .map((incident) => incident.id)
@@ -265,7 +399,7 @@ export async function applyDoctorRepair(options: DoctorRepairApplyOptions): Prom
     remainingIncidentIds,
   })
 
-  return {
+  const body: DoctorRepairApplyReport = {
     planId: options.planId,
     basedOnReportId: validated.plan.basedOnReportId,
     results,
@@ -274,4 +408,34 @@ export async function applyDoctorRepair(options: DoctorRepairApplyOptions): Prom
     remainingIncidentIds,
     report,
   }
+  // Verified needs evidence, not absence: every affected check ran fresh and
+  // none of the selected observations is still unhealthy (R4).
+  const verified = remainingIncidentIds.length === 0
+    && affectedCheckIds.every((checkId) => checkEvaluatedFresh(report, checkId))
+    && !report.observations.some((row) => selectedObservationIds.has(row.id) && row.status !== 'healthy')
+  const outcome = parentOutcome(tally, { cancelled, verified: cancelled ? null : verified })
+  const failedRows = results.filter((r) => r.status === 'failed').length
+  const message = outcome.code === 'ok'
+    ? `Applied and verified.`
+    : outcome.code === 'nothing_applied'
+      ? 'Nothing needed changing.'
+      : outcome.code === 'verification_failed'
+        ? remainingIncidentIds.length > 0
+          ? `Applied, but ${remainingIncidentIds.length} related incident(s) remain.`
+          : 'Applied, but Health could not confirm the fix — re-run Health.'
+        : `${failedRows} repair item(s) failed.`
+  return {
+    status: outcome.status === 'cancelled' ? 'failed' : outcome.status,
+    code: outcome.code,
+    message,
+    httpStatus: 200,
+    body,
+  }
+}
+
+/** In-process callers (escalation, approvals): the terminal report, or a throw for a run that produced none. */
+export async function awaitDoctorRepair(operationId: string): Promise<{ view: OperationView; report: DoctorRepairApplyReport | null }> {
+  const view = await getOperationRegistry().await(operationId)
+  const report = view.result?.httpStatus === 200 ? view.result.body as DoctorRepairApplyReport : null
+  return { view, report }
 }

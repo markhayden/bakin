@@ -4,7 +4,7 @@
  * Real-HTTP tests over a local Bun.serve fixture (per CLAUDE.md: real
  * sockets need Bun.fetch — the happy-dom fetch replacement breaks them).
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { join } from 'path'
@@ -348,6 +348,51 @@ describe('download events (#895): attempt, bytes, stalled, retry', () => {
       { type: 'retry', n: 2, of: 2, reason: 'deadline', detail: expect.any(String) },
       { type: 'attempt', n: 2, of: 2 },
     ])
+  })
+
+  it('classifies a deadline by the timer firing, even when the wall clock lags it', async () => {
+    // CI flake: setTimeout (monotonic) fired before Date.now() reached the
+    // deadline, so a clock comparison called the deadline a network error.
+    const frozen = Date.now()
+    const clock = spyOn(Date, 'now').mockImplementation(() => frozen)
+    const hangUntilAborted = ((_input: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true })
+    })) as unknown as typeof fetch
+    const events: DownloadEvent[] = []
+    try {
+      await expect(downloadToFile(url('/payload'), join(testDir, 'ev-lagging-clock.bin'), {
+        fetchImpl: hangUntilAborted, timeoutMs: 50, retries: 1, onEvent: (e) => events.push(e),
+      })).rejects.toThrow(/timed out/i)
+    } finally {
+      clock.mockRestore()
+    }
+    expect(kinds(events).filter((e) => e.type === 'retry').map((e) => e.type === 'retry' && e.reason)).toEqual(['deadline'])
+  })
+
+  it('classifies a mid-body deadline whose abort beats the read guard', async () => {
+    // CI flake: during the body read the attempt deadline and the read guard
+    // come due together; when the abort lands first, the read rejects with the
+    // raw abort reason. A lagging wall clock makes the deadline win every time.
+    const frozen = Date.now()
+    const clock = spyOn(Date, 'now').mockImplementation(() => frozen)
+    const headersThenSilence = ((_input: string, init?: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(16))
+          init?.signal?.addEventListener('abort', () => controller.error(init.signal?.reason), { once: true })
+        },
+      })
+      return Promise.resolve(new NativeResponse(body, { headers: { 'content-length': '1000' } }))
+    }) as unknown as typeof fetch
+    const events: DownloadEvent[] = []
+    try {
+      await expect(downloadToFile(url('/payload'), join(testDir, 'ev-body-deadline.bin'), {
+        fetchImpl: headersThenSilence, timeoutMs: 50, stallTimeoutMs: 10_000, retries: 1, onEvent: (e) => events.push(e),
+      })).rejects.toThrow(/deadline/i)
+    } finally {
+      clock.mockRestore()
+    }
+    expect(kinds(events).filter((e) => e.type === 'retry').map((e) => e.type === 'retry' && e.reason)).toEqual(['deadline'])
   })
 
   it('classifies an HTTP error as an http retry', async () => {

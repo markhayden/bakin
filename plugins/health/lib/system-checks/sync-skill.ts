@@ -73,6 +73,13 @@ export function syncSkillRepair(
   return {
     id: 'sync-skill',
     name: 'Sync Bakin runtime skill',
+    operationPlan: () => ({
+      stages: [
+        { id: 'render', kind: 'preparing', label: 'Render the Bakin skill' },
+        { id: 'write', kind: 'installing', label: 'Write it to the runtime' },
+      ],
+      pointOfNoReturn: 'write',
+    }),
     async plan(target) {
       return [{
         id: 'sync-runtime-skill',
@@ -89,10 +96,12 @@ export function syncSkillRepair(
         }],
       }]
     },
-    async apply(items) {
+    async apply(items, op) {
       if (items.length === 0) return []
       try {
+        op.stage('render')
         const renderedContent = renderBakinRuntimeSkill(projectRoot)
+        op.stage('write')
         await runtime.skills.write({ name: 'bakin', instructions: renderedContent, metadata: { source: 'bakin-doctor' } })
         return items.map((item) => ({
           itemId: item.id,
