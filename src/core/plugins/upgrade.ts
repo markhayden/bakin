@@ -53,6 +53,7 @@ import {
   sweepDroppedBins,
 } from './upgrade-gate'
 import { isArtifactInstall, upgradeArtifact } from './upgrade-artifact'
+import { PLUGIN_STAGES } from './operation-plans'
 import { upgradeGithub, upgradeGithubSubpath } from './upgrade-github'
 
 export { type UpgradeConsent, type UpgradeOptions, type UpgradeResult, UpgradeRefusedError } from './upgrade-gate'
@@ -70,9 +71,13 @@ export async function upgradePlugin(
   opts: UpgradeOptions = {},
 ): Promise<UpgradeResult> {
   opts.progress?.({ stage: 'fetch-source', message: `Checking ${id} for a newer version…` })
-  // ONE install lock around the whole upgrade — the lanes' replace
-  // transactions and bin writers assert it rather than acquiring their own.
-  const result = await withInstallLock(() => upgradePluginResolved(id, opts))
+  opts.op?.stage(PLUGIN_STAGES.fetch, id)
+  // A preview never writes outside staging, so it holds nothing. A commit
+  // runs under ONE install lock — the lanes' replace transactions and bin
+  // writers assert it rather than acquiring their own.
+  const result = opts.previewOnly
+    ? await upgradePluginResolved(id, opts)
+    : await withInstallLock(() => upgradePluginResolved(id, opts))
   opts.progress?.({ stage: 'finalize', message: result.noop ? `${id} is already up to date` : `Upgraded ${id}` })
   return result
 }
@@ -197,6 +202,7 @@ async function upgradeLocal(
     bins: gate.bins,
     binIdentity: { pluginId: id, version: newVersion, ref: '', commitSha: '' },
     progress: opts.progress,
+    operation: opts.op,
     ledger: async (bins) => {
       assets = await installUpgradedPluginAssets(id, pluginDir)
       writePluginLockfile(updatePlugin(readPluginLockfile(), id, {

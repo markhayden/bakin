@@ -157,9 +157,35 @@ afterEach(() => {
   globalThis.fetch = originalFetch
 })
 
+/** The POSTs the dialog made (operation follows are GETs). */
+function posts(): Array<[string, RequestInit]> {
+  return (fetchMock.mock.calls as Array<[string, RequestInit | undefined]>)
+    .filter((call): call is [string, RequestInit] => call[1]?.method === 'POST')
+}
+
 function lastCall(): { url: string; body: Record<string, unknown> } {
-  const call = fetchMock.mock.calls.at(-1) as [string, RequestInit]
+  const call = posts().at(-1)!
   return { url: call[0], body: JSON.parse(String(call[1].body)) }
+}
+
+/**
+ * Plugin installs are preview → commit operations (#895): every POST answers
+ * 202 and its finished operation carries `answer`'s body as the result.
+ */
+function operationFetch(answer: (body: Record<string, unknown>) => { body: unknown; status?: number }): ReturnType<typeof mock> {
+  const operations = new Map<string, ReturnType<typeof finishedOperation>>()
+  let count = 0
+  return mock((url: string, init?: RequestInit) => {
+    const operation = operationResponse(String(url), operations)
+    if (operation) return Promise.resolve(operation)
+    if (init?.method === 'POST') {
+      const reply = answer(JSON.parse(String(init.body)) as Record<string, unknown>)
+      const id = `op-plugin-${++count}`
+      operations.set(id, finishedOperation(id, { httpStatus: reply.status ?? 200, body: reply.body }))
+      return Promise.resolve(operationStarted(id))
+    }
+    return Promise.resolve(jsonResponse({ ok: true }))
+  })
 }
 
 describe('inferSourceType', () => {
@@ -204,20 +230,9 @@ describe('InstallDialog', () => {
 
   it('plugin install runs the two-phase consent flow', async () => {
     const consentToken = 'token-1'
-    fetchMock = mock((_url: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body)) as { accepted?: boolean; consentToken?: string }
-      if (body.accepted !== true) {
-        return Promise.resolve(jsonResponse({
-          ok: false,
-          awaitingConsent: true,
-          id: 'messaging',
-          version: '1.0.0',
-          permissions: ['storage.read', 'events.emit'],
-          consentToken,
-        }))
-      }
-      return Promise.resolve(jsonResponse({ ok: true, id: 'messaging' }))
-    })
+    fetchMock = operationFetch((body) => body.accepted !== true
+      ? { body: { ok: false, awaitingConsent: true, id: 'messaging', version: '1.0.0', permissions: ['storage.read', 'events.emit'], consentToken } }
+      : { body: { ok: true, id: 'messaging' } })
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
     const onInstalled = mock()
@@ -237,25 +252,43 @@ describe('InstallDialog', () => {
     expect(body.type).toBe('github')
   })
 
-  it('plugin commit follows a 202 install job and shows staged progress (bins) before settling', async () => {
-    const jobState = { status: 'running' as 'running' | 'done' }
+  it('a plugin preview with nothing to consent to commits straight away — no consent dialog', async () => {
+    fetchMock = operationFetch((body) => body.accepted !== true
+      ? { body: { ok: true, awaitingConsent: false, ready: true, id: 'messaging', version: '1.0.0', permissions: [], bins: [] } }
+      : { body: { ok: true, id: 'messaging' } })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const onInstalled = mock()
+    render(<InstallDialog open onOpenChange={mock()} entry={pluginEntry} onInstalled={onInstalled} />)
+    fireEvent.click(screen.getByTestId('install-submit'))
+
+    await waitFor(() => expect(onInstalled).toHaveBeenCalled())
+    expect(screen.queryByTestId('consent-accept')).toBeNull()
+    expect(posts().map(([, init]) => (JSON.parse(String(init.body)) as { accepted?: boolean }).accepted)).toEqual([false, true])
+  })
+
+  it('a plugin commit renders its operation live — the binary download as an item (#895)', async () => {
+    const committing = finishedOperation('op-commit', { httpStatus: 200, body: null }, {
+      status: 'running',
+      title: 'Install github:markhayden/bakin-bits-official#plugins/terminal',
+      cancellable: false,
+      endedAt: undefined,
+      outcome: undefined,
+      result: undefined,
+      stages: [{
+        id: 'bins', kind: 'installing', label: 'Install binaries', status: 'active', startedAt: new Date().toISOString(),
+        items: [{ id: 'bin:tmux', label: 'tmux 3.5a', status: 'active', bytes: { received: 1_000_000, total: 2_000_000 } }],
+      }],
+    })
+    const preview = finishedOperation('op-preview', { httpStatus: 200, body: {
+      ok: false, awaitingConsent: true, id: 'terminal', version: '0.2.0', permissions: [],
+      bins: [{ name: 'tmux', version: '3.5a', sha256: 'c'.repeat(64) }], consentToken: 'token-op',
+    } })
     fetchMock = mock((url: string, init?: RequestInit) => {
-      const u = String(url)
-      if (u.startsWith('/api/install-jobs/')) {
-        // Running on first look — SSE progress drives the UI; done after the done event.
-        return Promise.resolve(jsonResponse({ ok: true, job: jobState.status === 'done'
-          ? { status: 'done', resultStatus: 200, result: { ok: true, id: 'terminal' } }
-          : { status: 'running', lastUpdate: { stage: 'bins', message: 'Downloading tmux…', item: 'tmux' } } }))
-      }
+      const operation = operationResponse(String(url), new Map([['op-preview', preview], ['op-commit', committing]]))
+      if (operation) return Promise.resolve(operation)
       const body = JSON.parse(String(init?.body)) as { accepted?: boolean }
-      if (body.accepted !== true) {
-        return Promise.resolve(jsonResponse({
-          ok: false, awaitingConsent: true, id: 'terminal', version: '0.2.0', permissions: [],
-          bins: [{ name: 'tmux', version: '3.5a', sha256: 'c'.repeat(64) }], consentToken: 'token-job',
-        }))
-      }
-      expect(u).toBe('/api/plugins/install?async=1')
-      return Promise.resolve(jsonResponse({ ok: true, jobId: 'job-plugin' }, 202))
+      return Promise.resolve(operationStarted(body.accepted === true ? 'op-commit' : 'op-preview'))
     })
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
@@ -265,30 +298,23 @@ describe('InstallDialog', () => {
     await waitFor(() => expect(screen.getByTestId('consent-download-list')).toBeTruthy())
     await act(async () => { fireEvent.click(screen.getByTestId('consent-accept')) })
 
-    // Consent modal closes; the main dialog carries the staged progress.
-    await waitFor(() => expect(screen.getByText('Downloading tmux…')).toBeTruthy())
+    // Consent modal closes; the main dialog carries the live operation.
+    await waitFor(() => expect(screen.getByText('Install binaries')).toBeTruthy())
+    expect(screen.getByText(/tmux 3\.5a/)).toBeTruthy()
     expect(screen.queryByTestId('consent-accept')).toBeNull()
     expect(onInstalled).not.toHaveBeenCalled()
-
-    jobState.status = 'done'
-    await act(async () => { emitPluginEvent({ event: 'packages.install_done', jobId: 'job-plugin' }) })
-    await waitFor(() => expect(onInstalled).toHaveBeenCalled())
   })
 
   it('binary-only consent (zero permissions) shows the download list and accepts with the token', async () => {
     const consentToken = 'token-bins'
-    fetchMock = mock((_url: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body)) as { accepted?: boolean; consentToken?: string }
-      if (body.accepted !== true) {
-        return Promise.resolve(jsonResponse({
-          ok: false, awaitingConsent: true, id: 'terminal', version: '0.2.0',
-          permissions: [],
-          bins: [{ name: 'tmux', version: '3.7c', sha256: 'a'.repeat(64), sizeBytes: 2_100_000 }],
-          consentToken,
-        }))
-      }
-      return Promise.resolve(jsonResponse({ ok: true, id: 'terminal' }))
-    })
+    fetchMock = operationFetch((body) => body.accepted !== true
+      ? { body: {
+        ok: false, awaitingConsent: true, id: 'terminal', version: '0.2.0',
+        permissions: [],
+        bins: [{ name: 'tmux', version: '3.7c', sha256: 'a'.repeat(64), sizeBytes: 2_100_000 }],
+        consentToken,
+      } }
+      : { body: { ok: true, id: 'terminal' } })
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
     const onInstalled = mock()
@@ -307,14 +333,14 @@ describe('InstallDialog', () => {
   })
 
   it('declining consent installs nothing — no second POST', async () => {
-    fetchMock = mock(() => Promise.resolve(jsonResponse({
+    fetchMock = operationFetch(() => ({ body: {
       ok: false,
       awaitingConsent: true,
       id: 'messaging',
       version: '1.0.0',
       permissions: ['storage.write'],
       consentToken: 'token-2',
-    })))
+    } }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
     const onInstalled = mock()
@@ -324,29 +350,25 @@ describe('InstallDialog', () => {
 
     fireEvent.click(screen.getByText('Decline'))
     await waitFor(() => expect(screen.queryByTestId('consent-permission-list')).toBeNull())
-    expect(fetchMock.mock.calls.length).toBe(1)
+    expect(posts()).toHaveLength(1)
     expect(onInstalled).not.toHaveBeenCalled()
   })
 
   it('manifestChanged bounce re-prompts with the fresh token and notice', async () => {
     let commits = 0
-    fetchMock = mock((_url: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body)) as { accepted?: boolean; consentToken?: string }
+    fetchMock = operationFetch((body) => {
       if (body.accepted !== true) {
-        return Promise.resolve(jsonResponse({
-          ok: false, awaitingConsent: true, id: 'messaging', version: '1.0.0',
-          permissions: ['storage.read'], consentToken: 'token-old',
-        }))
+        return { body: { ok: false, awaitingConsent: true, id: 'messaging', version: '1.0.0', permissions: ['storage.read'], consentToken: 'token-old' } }
       }
       commits += 1
+      // Manifest drifted between preflight and commit — fresh token + new list.
       if (commits === 1) {
-        // Manifest drifted between preflight and commit — fresh token + new list.
-        return Promise.resolve(jsonResponse({
+        return { body: {
           ok: false, awaitingConsent: true, manifestChanged: true, id: 'messaging', version: '1.1.0',
           permissions: ['storage.read', 'runtime.messaging'], consentToken: 'token-fresh',
-        }))
+        } }
       }
-      return Promise.resolve(jsonResponse({ ok: true, id: 'messaging' }))
+      return { body: { ok: true, id: 'messaging' } }
     })
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
@@ -419,17 +441,9 @@ describe('InstallDialog', () => {
   })
 
   it('curated plugin installs carry the ref pin on preflight AND consent commit', async () => {
-    fetchMock = mock((_url: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body)) as { accepted?: boolean; ref?: string }
-      expect(body.ref).toBe('v2.0.0')
-      if (body.accepted !== true) {
-        return Promise.resolve(jsonResponse({
-          ok: false, awaitingConsent: true, id: 'messaging', version: '2.0.0',
-          permissions: ['storage.read'], consentToken: 'token-ref',
-        }))
-      }
-      return Promise.resolve(jsonResponse({ ok: true, id: 'messaging' }))
-    })
+    fetchMock = operationFetch((body) => body.accepted !== true
+      ? { body: { ok: false, awaitingConsent: true, id: 'messaging', version: '2.0.0', permissions: ['storage.read'], consentToken: 'token-ref' } }
+      : { body: { ok: true, id: 'messaging' } })
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
     const onInstalled = mock()
@@ -438,7 +452,8 @@ describe('InstallDialog', () => {
     await waitFor(() => expect(screen.getByTestId('consent-permission-list')).toBeTruthy())
     fireEvent.click(screen.getByTestId('consent-accept'))
     await waitFor(() => expect(onInstalled).toHaveBeenCalled())
-    expect(fetchMock.mock.calls.length).toBe(2)
+    expect(posts()).toHaveLength(2)
+    expect(posts().every(([, init]) => (JSON.parse(String(init.body)) as { ref?: string }).ref === 'v2.0.0')).toBe(true)
   })
 
   it('custom source mode sends adopt with the chosen alias', async () => {

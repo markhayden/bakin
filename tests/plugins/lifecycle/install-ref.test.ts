@@ -34,7 +34,7 @@ mock.module(
   () => ({ buildUserPlugin: async () => {} }),
 )
 
-import { post as installPOST } from '../../../packages/host/src/api/plugins/install'
+import { installPOST } from '../../helpers/plugin-routes'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { createBareRepo, gitAvailable, pushCommit, runGit } from '../../fixtures/plugins/hermetic-git'
 

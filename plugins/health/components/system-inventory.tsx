@@ -7,6 +7,7 @@ import {
   DataTable,
   ListRow,
   ListRows,
+  OperationProgress,
   SearchInput,
   StatTile,
   StatusBadge,
@@ -297,6 +298,9 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
 
   return (
     <div className="space-y-bakin-6">
+      {pluginMutation.status === 'pending' && pluginMutation.operation && (
+        <OperationProgress operation={pluginMutation.operation} />
+      )}
       {pluginMutation.status !== 'idle' && pluginMutation.message && (
         <Banner
           tone={mutationTone(pluginMutation.status)}

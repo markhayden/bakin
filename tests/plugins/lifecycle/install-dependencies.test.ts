@@ -33,7 +33,7 @@ mock.module(
   () => ({ buildUserPlugin: async () => {} }),
 )
 
-import { post as installPOST } from '../../../packages/host/src/api/plugins/install'
+import { installPOST } from '../../helpers/plugin-routes'
 
 function writePluginSource(id: string, dependencies: string[]): string {
   const dir = join(testDir, 'sources', id)

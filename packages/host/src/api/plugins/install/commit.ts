@@ -18,7 +18,9 @@ import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
 import { isInstallLockBusy, withInstallLock } from '@/core/install-core/install-lock'
 import { replacePluginDir, type ReplaceBuildHooks } from '@/core/plugins/replace-transaction'
 import { toInstalledBins } from '@/core/agent-packages/bin-installer'
+import type { OperationContext } from '@makinbakin/sdk/types'
 import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
+import { PLUGIN_STAGES } from '@/core/plugins/operation-plans'
 import {
   activateUserPluginDir,
   isLiveActivationUnavailable,
@@ -133,6 +135,7 @@ export async function commitInstall(args: {
   staged: StagedSource
   validated: ValidatedManifest
   progress?: InstallProgressFn
+  operation?: OperationContext
 }): Promise<Response> {
   // The whole commit — files, binaries, ledger — is ONE operation under the
   // install lock (reentrant when a job runner already holds it).
@@ -146,8 +149,9 @@ async function commitInstallLocked(args: {
   staged: StagedSource
   validated: ValidatedManifest
   progress?: InstallProgressFn
+  operation?: OperationContext
 }): Promise<Response> {
-  const { body, stagingDir, staged, validated, progress } = args
+  const { body, stagingDir, staged, validated, progress, operation } = args
   const { effectivePluginDir, requestedRef, gitProvenance, installedFromArtifact } = staged
   const { id, manifest, parsedPermissions, stagedManifestSha } = validated
 
@@ -179,6 +183,7 @@ async function commitInstallLocked(args: {
       bins: validated.bins,
       binIdentity: { pluginId: id, version, ...(gitProvenance ?? resolveGitProvenance(effectivePluginDir, body.type)) },
       progress,
+      operation,
       ledger: (installedBins) => recordInstall({
         id,
         targetDir: join(args.pluginsRoot, id),
@@ -203,6 +208,7 @@ async function commitInstallLocked(args: {
 
   let runtimeVersion: number | undefined
   let activated = false
+  operation?.stage(PLUGIN_STAGES.activate)
   try {
     const activation = await activateUserPluginDir(targetDir)
     runtimeVersion = activation.runtimeVersion

@@ -11,10 +11,12 @@
  */
 import {
   OperationRejectedError,
+  responseOutcome,
   type OperationCancelResponse,
   type OperationGetResponse,
   type OperationListResponse,
   type OperationNotFoundResponse,
+  type OperationOutcome,
   type StartOperationInput,
 } from '@bakin/core/operations'
 import { getBootId } from '@/core/boot-id'
@@ -78,4 +80,19 @@ export async function startOperationResponse<B>(input: StartOperationInput<B>): 
     if (err instanceof OperationRejectedError) return Response.json(err.body, { status: err.httpStatus })
     throw err
   }
+}
+
+/**
+ * A handler-produced Response as an operation outcome: same status, same
+ * body — for converted routes whose phases already answer with Responses.
+ */
+export async function outcomeFromResponse(res: Response, code?: string): Promise<OperationOutcome<Record<string, unknown>>> {
+  const text = await res.text()
+  let body: Record<string, unknown>
+  try {
+    body = text ? JSON.parse(text) as Record<string, unknown> : {}
+  } catch {
+    body = { ok: false, error: text }
+  }
+  return responseOutcome(res.status, body, code)
 }

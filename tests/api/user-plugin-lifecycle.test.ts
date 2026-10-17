@@ -64,7 +64,7 @@ mock.module('../../src/core/logger', () => ({
   }),
 }))
 
-import { post as installPost } from '../../packages/host/src/api/plugins/install'
+import { installPOST as installPost } from '../helpers/plugin-routes'
 import { post as removePost } from '../../packages/host/src/api/plugins/remove'
 import { get as assetsGet } from '../../packages/host/src/api/plugins/assets'
 

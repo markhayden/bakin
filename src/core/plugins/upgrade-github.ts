@@ -160,6 +160,7 @@ export async function upgradeGithub(
     bins: gate.bins,
     binIdentity: { pluginId: id, version: newVersion, ref: entry.ref, commitSha: remoteSha },
     progress: opts.progress,
+    operation: opts.op,
     ledger: async (bins) => {
       assets = await installUpgradedPluginAssets(id, pluginDir)
       writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
@@ -271,6 +272,7 @@ export async function upgradeGithubSubpath(
       bins: gate.bins,
       binIdentity: { pluginId: id, version: newVersion, ref: entry.ref, commitSha: remoteSha },
       progress: opts.progress,
+      operation: opts.op,
       ledger: async (bins) => {
         assets = await installUpgradedPluginAssets(id, pluginDir)
         writePluginLockfile(updatePlugin(readPluginLockfile(), id, {

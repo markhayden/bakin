@@ -9,6 +9,7 @@ import { usePluginEvent } from '../../../src/hooks/use-plugin-event'
 mock.module('@makinbakin/sdk/hooks', () => ({ usePluginEvent }))
 
 import { useSystemData } from '../../../plugins/health/hooks/use-system-data'
+import { finishedOperation, operationResponse, operationStarted } from '../../helpers/operation-fetch'
 
 const originalFetch = globalThis.fetch
 const OBSERVED_AT = '2026-07-13T11:55:00.000Z'
@@ -68,7 +69,10 @@ describe('useSystemData mutation reconciliation', () => {
 
     globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      if (url === '/api/plugins/upgrade') return new Response('not-json', { status: 200 })
+      // The upgrade starts (#895), then Bakin restarts: the operation's read
+      // answers 404 from another boot, so its outcome is unknown.
+      if (url === '/api/plugins/upgrade') return new Response(JSON.stringify({ operationId: 'op-upgrade', bootId: 'boot-before' }), { status: 202 })
+      if (url.startsWith('/api/operations/op-upgrade')) return new Response(JSON.stringify({ bootId: 'boot-after', error: 'not_found' }), { status: 404 })
       if (url.startsWith('/api/plugins/manifest')) {
         manifestReads += 1
         manifestSignals.push(init?.signal as AbortSignal)
@@ -106,7 +110,7 @@ describe('useSystemData mutation reconciliation', () => {
     await waitFor(() => expect(result.current.pluginManifest.data?.plugins).toHaveLength(1))
 
     await act(async () => { await result.current.upgradePlugin('notes') })
-    expect(result.current.pluginMutation.status).toBe('outcome-unknown')
+    await waitFor(() => expect(result.current.pluginMutation.status).toBe('outcome-unknown'))
 
     act(() => { void result.current.pluginManifest.refresh('background') })
     await waitFor(() => expect(manifestReads).toBe(2))
@@ -123,6 +127,97 @@ describe('useSystemData mutation reconciliation', () => {
     failReconciliation = false
     await act(async () => { await result.current.refreshSystemDetails() })
     expect(result.current.pluginMutation.status).toBe('idle')
+  })
+})
+
+/** Everything the System tab reads, healthy and quiet; `extra` answers anything else first. */
+function systemFetch(extra: (url: string, init?: RequestInit) => Response | null) {
+  const calls: Array<{ url: string; init?: RequestInit }> = []
+  globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    calls.push({ url, init })
+    const answer = extra(url, init)
+    if (answer) return answer
+    if (url.startsWith('/api/plugins/manifest')) {
+      return jsonResponse({ plugins: [{
+        id: 'notes', name: 'Notes', version: '1.0.0', source: 'github', installed: { version: '1.0.0' },
+        upgradeAvailable: true, staleHintDays: null, status: 'active',
+      }] })
+    }
+    if (url === '/api/plugins/health/doctor') return jsonResponse(healthReport())
+    if (url === '/api/plugins/health/summary') {
+      return jsonResponse({ errors1h: { total: 0, byKind: { mcp: 0, rest: 0, agent: 0 } }, activeSessions: [], upSince: OBSERVED_AT, server: null })
+    }
+    if (url === '/api/plugins/health/search-status') return jsonResponse({ enabled: true, tables: [] })
+    if (url === '/api/plugins/health/search-telemetry') {
+      const emptyMetric = { count: 0, errors: 0, medianMs: null }
+      const emptyWindow = { query: emptyMetric, drain: emptyMetric, enrich: emptyMetric }
+      return jsonResponse({ windows: { '1h': emptyWindow, '24h': emptyWindow }, outbox: { pending: 0, quarantined: 0 }, enrichment: null })
+    }
+    if (url === '/api/plugins/health/registry') {
+      return jsonResponse({ plugins: [{ id: 'notes', name: 'Notes', version: '1.0.0', description: 'Notes integration.', source: 'user', status: 'active', routes: 2 }] })
+    }
+    throw new Error(`Unexpected URL: ${url}`)
+  }) as unknown as typeof fetch
+  return calls
+}
+
+describe('useSystemData plugin upgrade operations (#895)', () => {
+  const upgradeBodies = (calls: Array<{ url: string; init?: RequestInit }>) => calls
+    .filter((c) => c.url === '/api/plugins/upgrade')
+    .map((c) => JSON.parse(String(c.init?.body)) as Record<string, unknown>)
+
+  it('a preview with nothing to consent to commits at once with its token, then refreshes and succeeds', async () => {
+    const operations = new Map([
+      ['op-preview', finishedOperation('op-preview', { httpStatus: 200, body: { ok: true, ready: true, awaitingConsent: false, noop: false, newPermissions: [], newBins: [], consentToken: 'tok-ready' } })],
+      ['op-commit', finishedOperation('op-commit', { httpStatus: 200, body: { ok: true, noop: false, awaitingConsent: false, newPermissions: [], newBins: [] } })],
+    ])
+    const calls = systemFetch((url, init) => {
+      const op = operationResponse(url, operations)
+      if (op) return op
+      if (url === '/api/plugins/upgrade') {
+        const body = JSON.parse(String(init?.body)) as { accepted?: boolean }
+        return operationStarted(body.accepted ? 'op-commit' : 'op-preview')
+      }
+      return null
+    })
+
+    const { result } = renderHook(() => useSystemData())
+    await waitFor(() => expect(result.current.pluginManifest.data?.plugins).toHaveLength(1))
+    await act(async () => { await result.current.upgradePlugin('notes') })
+
+    await waitFor(() => expect(result.current.pluginMutation.status).toBe('success'))
+    expect(result.current.pluginMutation.message).toBe('notes was updated and reactivated.')
+    expect(upgradeBodies(calls)).toEqual([{ pluginId: 'notes' }, { pluginId: 'notes', accepted: true, consentToken: 'tok-ready' }])
+  })
+
+  it('a preview that needs consent asks first; approving runs the commit operation', async () => {
+    const operations = new Map([
+      ['op-preview', finishedOperation('op-preview', { httpStatus: 200, body: {
+        ok: false, awaitingConsent: true, noop: false, newPermissions: ['storage.write'], newBins: [], consentToken: 'tok-consent',
+      } })],
+      ['op-commit', finishedOperation('op-commit', { httpStatus: 200, body: { ok: true, noop: false, awaitingConsent: false, newPermissions: ['storage.write'], newBins: [] } })],
+    ])
+    const calls = systemFetch((url, init) => {
+      const op = operationResponse(url, operations)
+      if (op) return op
+      if (url === '/api/plugins/upgrade') {
+        const body = JSON.parse(String(init?.body)) as { accepted?: boolean }
+        return operationStarted(body.accepted ? 'op-commit' : 'op-preview')
+      }
+      return null
+    })
+
+    const { result } = renderHook(() => useSystemData())
+    await waitFor(() => expect(result.current.pluginManifest.data?.plugins).toHaveLength(1))
+    await act(async () => { await result.current.upgradePlugin('notes') })
+    await waitFor(() => expect(result.current.pluginMutation.status).toBe('confirmation'))
+    expect(result.current.pluginMutation.permissions).toEqual(['storage.write'])
+    expect(upgradeBodies(calls)).toHaveLength(1)
+
+    await act(async () => { await result.current.upgradePlugin('notes', result.current.pluginMutation.consentToken) })
+    await waitFor(() => expect(result.current.pluginMutation.status).toBe('success'))
+    expect(upgradeBodies(calls).at(-1)).toEqual({ pluginId: 'notes', accepted: true, consentToken: 'tok-consent' })
   })
 })
 

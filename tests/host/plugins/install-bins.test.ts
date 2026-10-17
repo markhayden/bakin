@@ -29,7 +29,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }) }))
 mock.module('../../../packages/host/src/plugin-host/user-plugin-builder', () => ({ buildUserPlugin: async () => {} }))
 
-import { post as installPOST } from '../../../packages/host/src/api/plugins/install'
+import { installPOST } from '../../helpers/plugin-routes'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { readInstalledBy } from '../../../packages/core/src/agent-packages/markers'
 

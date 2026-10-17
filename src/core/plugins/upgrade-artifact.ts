@@ -128,6 +128,7 @@ export async function upgradeArtifact(
       bins: gate.bins,
       binIdentity: { pluginId: id, version: newVersion, ref: '', commitSha: newCommitSha },
       progress: opts.progress,
+      operation: opts.op,
       ledger: async (bins) => {
         assets = await installUpgradedPluginAssets(id, pluginDir)
         writePluginLockfile(updatePlugin(readPluginLockfile(), id, {

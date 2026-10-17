@@ -94,6 +94,20 @@ export async function runOwning<T>(
   return value as T
 }
 
+/**
+ * In-process callers of a converted route (onboarding, say): a 202
+ * `{ operationId }` is awaited on this process's registry and answered as the
+ * route used to answer — the operation result's status and body. Any other
+ * response (a synchronous 4xx) passes through.
+ */
+export async function awaitOperationResponse(res: Response): Promise<{ status: number; body: Record<string, unknown> }> {
+  const body = await res.json().catch(() => ({})) as Record<string, unknown>
+  if ((res.status !== 202 && res.status !== 200) || typeof body.operationId !== 'string') return { status: res.status, body }
+  const view = await getOperationRegistry().await(body.operationId)
+  if (view.result) return { status: view.result.httpStatus, body: (view.result.body ?? {}) as Record<string, unknown> }
+  return { status: 500, body: { ok: false, error: view.outcome?.message ?? `${view.title} ${view.status}` } }
+}
+
 /** SIGTERM: note "Server stopping" in every live operation. No-op if none ever started. */
 export function noteOperationsShutdown(): void {
   g.__bakinOperationRegistry?.shutdown()

@@ -1,7 +1,9 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ZodType } from 'zod'
+import { isOperationFinished, type OperationStartResponse, type OperationView } from '@makinbakin/sdk/types'
+import { startOperation, useOperation } from '@makinbakin/sdk/hooks'
 import type { HealthSummary, SearchHealthData, SearchTelemetryData } from '../types'
 import { useHealthReport, type UseHealthReportResult } from './use-health-report'
 import {
@@ -51,6 +53,8 @@ export interface SystemMutationState {
   bins?: PluginUpgradeBin[]
   /** Preview token to echo on approval — the server commits only while the target still matches it. */
   consentToken?: string
+  /** The running upgrade (preview or commit), followed live — render it while pending. */
+  operation?: OperationView
 }
 
 export interface SearchReindexResult {
@@ -64,6 +68,8 @@ export interface PluginUpgradeResult {
   bins: PluginUpgradeBin[]
   consentToken?: string
   noop: boolean
+  /** A preview with nothing new to consent to: commit with `consentToken` to apply it. */
+  ready?: boolean
 }
 
 export interface SystemMutationTimeouts {
@@ -224,33 +230,32 @@ function isUpgradeBin(value: unknown): value is PluginUpgradeBin {
 }
 
 /**
- * Two-phase upgrade (spec plugin-managed-binaries S17): the preview answers
- * `awaitingConsent` + a token when permissions or binaries widen; approving
- * re-posts with that token and the server commits only while the target
- * still matches it.
+ * Start a plugin upgrade operation (#895). Two-phase (spec
+ * plugin-managed-binaries S17): without a token this is the PREVIEW — it ends
+ * `awaitingConsent` (permissions or binaries widen) or `ready` (nothing new to
+ * consent to), each with a token; with one it is the COMMIT, which lands only
+ * while the target still matches what was previewed.
  */
-export async function performPluginUpgrade(
+export async function startPluginUpgrade(pluginId: string, consentToken?: string): Promise<OperationStartResponse> {
+  return await startOperation(() => fetch('/api/plugins/upgrade', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pluginId, ...(consentToken ? { accepted: true, consentToken } : {}) }),
+  }))
+}
+
+/** What a settled upgrade operation means — from the body the route answers (its result). */
+export function interpretPluginUpgrade(
   pluginId: string,
-  consentToken?: string,
-  timeouts: SystemMutationTimeouts = {},
-): Promise<PluginUpgradeResult> {
-  const operationMs = timeouts.operationMs ?? SYSTEM_MUTATION_OPERATION_TIMEOUT_MS
-  const responseBodyMs = timeouts.responseBodyMs ?? SYSTEM_REQUEST_TIMEOUT_MS
-  const response = await fetchSystemMutation(
-    '/api/plugins/upgrade',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pluginId, ...(consentToken ? { accepted: true, consentToken } : {}) }),
-    },
-    operationMs,
-    'The plugin update is taking longer than expected. The server may still be updating it; refresh live data to confirm the result.',
-  )
-  const confirmationUnknown = 'The plugin update returned success headers, but Bakin could not read its confirmation. The server may have completed the update; refresh live data to confirm the result.'
-  const body = await mutationResponseJson(response, responseBodyMs, confirmationUnknown)
-  if (isRecord(body) && body.awaitingConsent === true && typeof body.consentToken === 'string') {
+  result: { httpStatus: number; body: unknown } | undefined,
+): PluginUpgradeResult {
+  const body = result?.body
+  if (isRecord(body) && typeof body.consentToken === 'string' && (body.awaitingConsent === true || body.ready === true)) {
     const permissions = Array.isArray(body.newPermissions) ? body.newPermissions.filter((p): p is string => typeof p === 'string') : []
     const bins = Array.isArray(body.newBins) ? body.newBins.filter(isUpgradeBin) : []
+    if (body.ready === true) {
+      return { awaitingConsent: false, ready: true, permissions, bins, consentToken: body.consentToken, noop: false, message: `Updating ${pluginId}…` }
+    }
     return {
       awaitingConsent: true,
       permissions,
@@ -266,8 +271,11 @@ export async function performPluginUpgrade(
             : 'This update requests new permissions.',
     }
   }
-  if (!response.ok || (isRecord(body) && body.ok === false)) {
-    throw responseError(response, body, 'Plugin update failed')
+  if (!result || result.httpStatus >= 400 || (isRecord(body) && body.ok === false)) {
+    const message = isRecord(body) && typeof body.error === 'string' && body.error.length > 0
+      ? body.error
+      : `Plugin update failed (${result?.httpStatus ?? 'no result'})`
+    throw new Error(message)
   }
   if (!isRecord(body)
     || body.ok !== true
@@ -275,7 +283,7 @@ export async function performPluginUpgrade(
     || !Array.isArray(body.newPermissions)
     || !body.newPermissions.every((permission) => typeof permission === 'string')) {
     throw new SystemMutationOutcomeUnknownError(
-      'The plugin update returned success headers, but Bakin could not confirm the result. Refresh live data before trying again.',
+      'The plugin update finished, but Bakin could not confirm the result. Refresh live data before trying again.',
     )
   }
   const noop = body.noop
@@ -370,35 +378,77 @@ export function useSystemData(): UseSystemDataResult {
 
   const checkPluginUpdates = useCallback(() => pluginManifestRefresh('explicit'), [pluginManifestRefresh])
 
+  // Plugin upgrades are operations (#895), followed live: the preview, then
+  // (on approval, or at once when it is `ready`) the commit.
+  const [upgrade, setUpgrade] = useState<{ pluginId: string; start: OperationStartResponse } | null>(null)
+  const followedUpgrade = useOperation(upgrade?.start.operationId ?? null, upgrade ? { bootId: upgrade.start.bootId } : {})
+
   const upgradePlugin = useCallback(async (pluginId: string, consentToken?: string) => {
     setPluginMutation({ status: 'pending', message: null, target: pluginId })
     try {
-      const result = await performPluginUpgrade(pluginId, consentToken)
-      if (result.awaitingConsent) {
-        setPluginMutation({
-          status: 'confirmation',
-          message: result.message,
-          target: pluginId,
-          permissions: result.permissions,
-          bins: result.bins,
-          consentToken: result.consentToken,
-        })
-        return
-      }
-      await Promise.all([
-        registryRefresh('explicit'),
-        pluginManifestRefresh('explicit'),
-        reportRefresh('background'),
-      ])
-      setPluginMutation({ status: 'success', message: result.message, target: pluginId })
+      setUpgrade({ pluginId, start: await startPluginUpgrade(pluginId, consentToken) })
+    } catch (error) {
+      setUpgrade(null)
+      setPluginMutation({ status: 'error', message: error instanceof Error ? error.message : String(error), target: pluginId })
+    }
+  }, [])
+
+  const upgradeView = followedUpgrade.operation
+  const upgradePhase = followedUpgrade.phase
+  useEffect(() => {
+    if (!upgrade) return
+    const { pluginId } = upgrade
+    if (upgradePhase === 'restarted' || upgradePhase === 'expired') {
+      setUpgrade(null)
+      setPluginMutation({
+        status: 'outcome-unknown',
+        message: 'Bakin restarted or lost track of the plugin update. Refresh live data to confirm the result.',
+        target: pluginId,
+      })
+      return
+    }
+    if (!upgradeView) return
+    if (!isOperationFinished(upgradeView.status)) {
+      setPluginMutation({ status: 'pending', message: null, target: pluginId, operation: upgradeView })
+      return
+    }
+    setUpgrade(null)
+    if (upgradeView.status === 'cancelled') {
+      setPluginMutation({ status: 'error', message: `The ${pluginId} update was cancelled before anything changed.`, target: pluginId })
+      return
+    }
+    let result: PluginUpgradeResult
+    try {
+      result = interpretPluginUpgrade(pluginId, upgradeView.result)
     } catch (error) {
       setPluginMutation({
         status: error instanceof SystemMutationOutcomeUnknownError ? 'outcome-unknown' : 'error',
         message: error instanceof Error ? error.message : String(error),
         target: pluginId,
       })
+      return
     }
-  }, [pluginManifestRefresh, registryRefresh, reportRefresh])
+    if (result.ready && result.consentToken) {
+      void upgradePlugin(pluginId, result.consentToken)
+      return
+    }
+    if (result.awaitingConsent) {
+      setPluginMutation({
+        status: 'confirmation',
+        message: result.message,
+        target: pluginId,
+        permissions: result.permissions,
+        bins: result.bins,
+        consentToken: result.consentToken,
+      })
+      return
+    }
+    void Promise.all([
+      registryRefresh('explicit'),
+      pluginManifestRefresh('explicit'),
+      reportRefresh('background'),
+    ]).finally(() => setPluginMutation({ status: 'success', message: result.message, target: pluginId }))
+  }, [upgrade, upgradeView, upgradePhase, upgradePlugin, pluginManifestRefresh, registryRefresh, reportRefresh])
 
   const refreshSystemDetails = useCallback(async () => {
     const results = await Promise.all([

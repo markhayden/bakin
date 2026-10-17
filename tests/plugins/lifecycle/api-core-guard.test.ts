@@ -45,7 +45,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 }))
 
 import { post as removePOST } from '../../../packages/host/src/api/plugins/remove'
-import { post as upgradePOST } from '../../../packages/host/src/api/plugins/upgrade'
+import { upgradePOST } from '../../helpers/plugin-routes'
 
 beforeAll(() => {
   mkdirSync(testDir, { recursive: true })

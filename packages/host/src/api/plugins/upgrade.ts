@@ -19,10 +19,16 @@
  *   { ok: false, error: string, core?: boolean }    on refusal/4xx
  *
  * The upgraded plugin is activated immediately after a successful rebuild.
+ *
+ * Both phases are operations (#895): the preview holds nothing and never
+ * writes outside staging — with nothing new to consent to it ends `ready`
+ * with a token instead of upgrading; the commit holds install-state and its
+ * point of no return is the replace transaction's journal-first rename.
  */
+import { OperationCancelledError, operationOriginFromRequest, type OperationContext, type OperationOutcome } from '@bakin/core/operations'
 import { createLogger } from '@/core/logger'
-import { startInstallJob, type InstallProgressFn } from '@/core/agent-packages/install-progress'
 import { upgradePlugin, UpgradeRefusedError, type UpgradeConsent } from '@/core/plugins/upgrade'
+import { PLUGIN_COMMIT_PLAN, PLUGIN_PREVIEW_PLAN, PLUGIN_STAGES, PREVIEW_CODES } from '@/core/plugins/operation-plans'
 import { auditUpgradeRejected } from '@/core/plugins/upgrade-gate'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
 import { isInstallLockBusy } from '@/core/install-core/install-lock'
@@ -31,6 +37,7 @@ import { appendAudit } from '@/core/audit'
 import { getContentDir } from '@/core/content-dir'
 import { activateUserPluginDir } from '@/core/plugins/live-lifecycle'
 import { join } from 'path'
+import { outcomeFromResponse, startOperationResponse } from '../operations'
 
 const log = createLogger('plugin-upgrade')
 
@@ -43,7 +50,7 @@ interface UpgradeBody {
 /** Token identity for an upgrade: the plugin being upgraded (install binds source+ref). */
 const upgradeConsentSource = (pluginId: string): string => `upgrade:${pluginId}`
 
-export async function post(req: Request, url: URL): Promise<Response> {
+export async function post(req: Request): Promise<Response> {
   let body: UpgradeBody
   try {
     body = await req.json()
@@ -81,70 +88,81 @@ export async function post(req: Request, url: URL): Promise<Response> {
     }, { status: 400 })
   }
 
-  if (url.searchParams.get('async') === '1') {
-    const job = startInstallJob({
-      kind: 'plugin',
-      title: pluginId,
-      run: async (progress) => {
-        const res = await runUpgrade(pluginId, body, progress)
-        return { body: await res.json(), status: res.status }
-      },
-    })
-    return Response.json({ ok: true, jobId: job.id }, { status: 202 })
-  }
-  return runUpgrade(pluginId, body, undefined)
+  const commit = body.accepted === true
+  return startOperationResponse<Record<string, unknown>>({
+    kind: commit ? 'upgrade' : 'fetch',
+    owner: 'core',
+    origin: operationOriginFromRequest(req),
+    title: `${commit ? 'Upgrade' : 'Check for an upgrade to'} ${pluginId}`,
+    href: '/health',
+    fingerprint: commit
+      ? `plugins:upgrade:${pluginId}|${(body.consentToken ?? '').slice(0, 24)}`
+      : `plugins:upgrade-preview:${pluginId}`,
+    resources: commit ? ['install-state'] : [],
+    plan: commit ? PLUGIN_COMMIT_PLAN : PLUGIN_PREVIEW_PLAN,
+    run: (op) => runUpgrade(pluginId, body, op),
+  })
 }
 
-async function runUpgrade(pluginId: string, body: UpgradeBody, progress: InstallProgressFn | undefined): Promise<Response> {
+async function runUpgrade(pluginId: string, body: UpgradeBody, op: OperationContext): Promise<OperationOutcome<Record<string, unknown>>> {
   let accepted: UpgradeConsent | undefined
   if (body.accepted === true) {
     if (!body.consentToken) {
       auditUpgradeRejected('consent_token_missing', pluginId)
-      return Response.json({ ok: false, error: 'upgrade commit requires a consentToken from the preview (re-run upgrade)' }, { status: 400 })
+      return outcomeFromResponse(Response.json({ ok: false, error: 'upgrade commit requires a consentToken from the preview (re-run upgrade)' }, { status: 400 }))
     }
     const token = verifyConsentToken(body.consentToken)
     if (!token) {
       auditUpgradeRejected('consent_token_invalid', pluginId)
-      return Response.json({ ok: false, error: 'consentToken is invalid or expired (re-run upgrade to re-prompt)' }, { status: 400 })
+      return outcomeFromResponse(Response.json({ ok: false, error: 'consentToken is invalid or expired (re-run upgrade to re-prompt)' }, { status: 400 }))
     }
     if (token.source !== upgradeConsentSource(pluginId)) {
       auditUpgradeRejected('consent_source_mismatch', pluginId, { tokenSource: token.source })
-      return Response.json({ ok: false, error: 'consentToken was issued for a different operation — re-run upgrade' }, { status: 400 })
+      return outcomeFromResponse(Response.json({ ok: false, error: 'consentToken was issued for a different operation — re-run upgrade' }, { status: 400 }))
     }
     accepted = { manifestSha: token.manifestSha, permissions: token.permissions, bins: token.bins }
   }
 
   try {
-    const result = await upgradePlugin(pluginId, { accepted, progress })
-    if (result.awaitingConsent && result.consent) {
+    const result = await upgradePlugin(pluginId, { accepted, previewOnly: body.accepted !== true, op })
+    if ((result.awaitingConsent || result.ready) && result.consent) {
+      // A token binds what was previewed; the commit echoes it back. `ready`
+      // (nothing new to consent to) carries one too, so every commit is bound.
       const { consent, ...rest } = result
       const consentToken = signConsentToken({ source: upgradeConsentSource(pluginId), ...consent })
-      return Response.json({ ok: false, ...rest, consentToken })
+      return {
+        status: 'succeeded',
+        code: result.awaitingConsent ? PREVIEW_CODES.awaitingConsent : PREVIEW_CODES.ready,
+        httpStatus: 200,
+        body: { ok: !result.awaitingConsent, ...rest, consentToken },
+      }
     }
     let runtimeVersion: number | undefined
     if (!result.noop && !result.awaitingConsent) {
+      op.stage(PLUGIN_STAGES.activate)
       try {
         const activation = await activateUserPluginDir(join(getContentDir(), 'plugins', pluginId))
         runtimeVersion = activation.runtimeVersion
       } catch (activationErr) {
         const message = activationErr instanceof Error ? activationErr.message : String(activationErr)
         log.error('Plugin upgrade activation failed', activationErr as Error, { pluginId })
-        return Response.json({
+        return outcomeFromResponse(Response.json({
           ok: false,
           error: `Upgraded "${pluginId}" but failed to activate it: ${message}`,
-        }, { status: 500 })
+        }, { status: 500 }))
       }
     }
-    return Response.json({ ok: true, ...result, ...(runtimeVersion !== undefined ? { runtimeVersion } : {}) })
+    return outcomeFromResponse(Response.json({ ok: true, ...result, ...(runtimeVersion !== undefined ? { runtimeVersion } : {}) }))
   } catch (err) {
+    if (err instanceof OperationCancelledError) throw err
     if (err instanceof UpgradeRefusedError) {
-      return Response.json({ ok: false, error: err.message }, { status: 400 })
+      return outcomeFromResponse(Response.json({ ok: false, error: err.message }, { status: 400 }))
     }
     if (isInstallLockBusy(err)) {
-      return Response.json({ ok: false, error: err.message }, { status: 409 })
+      return outcomeFromResponse(Response.json({ ok: false, error: err.message }, { status: 409 }))
     }
     const message = err instanceof Error ? err.message : String(err)
     log.error('Plugin upgrade failed', err as Error, { pluginId })
-    return Response.json({ ok: false, error: message }, { status: 500 })
+    return outcomeFromResponse(Response.json({ ok: false, error: message }, { status: 500 }))
   }
 }
