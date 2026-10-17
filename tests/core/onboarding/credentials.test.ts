@@ -173,6 +173,21 @@ describe('channels.check() — ONE readiness engine, two modes (#908)', () => {
     expect(result.details).toMatchObject({ mode: 'server', via: 'http', state: 'connected' })
   })
 
+  it('no BAKIN_URL and no live server.lock for this home: configuration-only with ZERO requests (never a guess at :3737)', async () => {
+    readinessStarted = false
+    const calls: string[] = []
+    fetchImpl = async (input) => { calls.push(String(input)); return { ok: true, json: async () => snapshot('connected') } as Response }
+    const saved = process.env.BAKIN_URL
+    delete process.env.BAKIN_URL
+    try {
+      const result = await channelsComponent.check()
+      expect(calls).toEqual([])
+      expect(result.details).toMatchObject({ mode: 'configuration-only' })
+    } finally {
+      process.env.BAKIN_URL = saved
+    }
+  })
+
   it('native runtime is ok in server mode and never says "no channel layer"', async () => {
     readinessStarted = true
     readinessSnapshot = snapshot('native', { runtime: { adapter: 'openclaw', deliveryMode: 'native' }, owner: 'runtime', channels: { items: [{ id: 'discord', platform: 'discord', label: 'Discord', capabilities: ['message'] }], source: 'runtime', collectedAt: 'x' } })

@@ -51,7 +51,7 @@ describe('read-only CLI TTY commands — plugins', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'http://localhost:3737/api/plugins/demo/run',
+      `${process.env.BAKIN_URL}/api/plugins/demo/run`,
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ loud: true, target: 'smoke' }),

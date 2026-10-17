@@ -39,8 +39,13 @@ process.env.BAKIN_CONSOLE_FORMAT ??= 'silent'
 // The CLI targets its own home's server through server.lock (#895 D11),
 // resolved once at import. Pin an explicit target for the whole suite so no
 // test ever reads this machine's real lock; tests of the resolution itself
-// call the pure resolveCliTarget with explicit inputs.
-process.env.BAKIN_URL ??= 'http://localhost:3737'
+// call the pure resolveCliTarget with explicit inputs. The target is a DEAD
+// port (discard, refuses instantly) and is forced, never inherited: an
+// unmocked request must fail in the test, never reach the developer's live
+// server (a `localhost:3737` default let the onboarding channels probe hold
+// sockets to the live dev server and wedge a worker). Tests that assert on
+// CLI URLs read process.env.BAKIN_URL.
+process.env.BAKIN_URL = 'http://127.0.0.1:9'
 
 // Disable RTL's auto-registration. Read the block in tests/rtl-settle.ts before
 // changing this — RTL otherwise installs a bare synchronous afterEach(cleanup)

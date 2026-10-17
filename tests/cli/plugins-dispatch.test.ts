@@ -49,7 +49,7 @@ describe('bakin plugins binary dispatch', () => {
     expect(output()).toContain('"error": "cannot upgrade core plugin: tasks"')
     expect(errorOutput()).toBe('')
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost:3737/api/plugins/upgrade',
+      `${process.env.BAKIN_URL}/api/plugins/upgrade`,
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ pluginId: 'tasks' }),

@@ -204,7 +204,7 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
     // ?async=1 requests the 202-job flow; a pre-rc.23 server (this mock)
     // ignores it and answers with the final result — the CLI handles both.
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:3737/api/reindex?async=1&table=tasks&rebuild=true',
+      `${process.env.BAKIN_URL}/api/reindex?async=1&table=tasks&rebuild=true`,
       expect.objectContaining({ method: 'POST' }),
     )
     expect(output()).toContain('Reindex')
