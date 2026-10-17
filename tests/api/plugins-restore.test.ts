@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -40,8 +40,13 @@ mock.module('@/core/plugin-registry', () => ({
     deactivatePlugin: async () => ({ hooks: 0, execTools: 0, contentTypes: 0, skills: 0 }),
   },
 }))
+// Holds activation (after the copy — past the point of no return) when set.
+let activationGate: Promise<void> | null = null
 mock.module('@/core/plugins/live-lifecycle', () => ({
-  activateUserPluginDir: async () => ({ id: 'demo-plugin', version: '1.2.3', runtimeVersion: 1 }),
+  activateUserPluginDir: async () => {
+    if (activationGate) await activationGate
+    return { id: 'demo-plugin', version: '1.2.3', runtimeVersion: 1 }
+  },
   isLiveActivationUnavailable: () => false,
 }))
 mock.module('@bakin/adapter-openclaw/home', () => ({
@@ -50,9 +55,13 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-import { post as restorePOST } from '../../packages/host/src/api/plugins/restore'
+import { restorePOST } from '../helpers/plugin-routes'
 import { snapshotUninstall } from '../../src/core/plugins/uninstall-snapshot'
-import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../packages/core/src/plugins/lockfile'
+import { addPlugin, readPluginLockfile, removePlugin, writePluginLockfile } from '../../packages/core/src/plugins/lockfile'
+import { holdNow } from '../../packages/core/src/operations'
+import { post as restoreRoute } from '../../packages/host/src/api/plugins/restore'
+import { _resetOperationRegistryForTests, getOperationRegistry } from '../../src/core/operations'
+import { waitUntil } from '../helpers/wait'
 
 const pluginEntry: PluginLockEntry = {
   source: 'github:markhayden/example-plugin',
@@ -67,6 +76,8 @@ const pluginEntry: PluginLockEntry = {
 }
 
 beforeEach(() => {
+  _resetOperationRegistryForTests()
+  activationGate = null
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
@@ -133,5 +144,55 @@ describe('POST /api/plugins/restore', () => {
     expect(body.ok).toBe(true)
     expect(body.snapshots).toHaveLength(1)
     expect(body.restored).toBe(false)
+  })
+})
+
+describe('restore as an operation (#895)', () => {
+  /** A removed plugin with its snapshot on disk — what restore exists for. */
+  async function seedRemoved(): Promise<void> {
+    await seedSnapshot()
+    rmSync(join(testDir, 'plugins', 'demo-plugin'), { recursive: true, force: true })
+    writePluginLockfile(removePlugin(readPluginLockfile(), 'demo-plugin'))
+  }
+  async function startRestore(): Promise<string> {
+    const res = await restoreRoute(request({ pluginId: 'demo-plugin' }))
+    expect(res.status).toBe(202)
+    return (await res.json() as { operationId: string }).operationId
+  }
+
+  it('cancelled before the first copy (waiting for install-state) it restores nothing', async () => {
+    await seedRemoved()
+    let release!: () => void
+    let ready!: () => void
+    const heldReady = new Promise<void>((resolve) => { ready = resolve })
+    void holdNow(['install-state'], { title: 'Install plugin notes' }, () => new Promise<void>((resolve) => { release = resolve; ready() }))
+    await heldReady
+
+    const operationId = await startRestore()
+    await waitUntil(() => getOperationRegistry().get(operationId)?.waitingFor !== undefined, { label: 'restore waiting' })
+    expect(getOperationRegistry().cancel(operationId)).toBe('cancelling')
+    release()
+    const view = await getOperationRegistry().await(operationId)
+
+    expect(view.status).toBe('cancelled')
+    expect(existsSync(join(testDir, 'plugins', 'demo-plugin'))).toBe(false)
+    expect(readPluginLockfile().plugins['demo-plugin']).toBeUndefined()
+  })
+
+  it('refuses cancel once the copy has started (a non-force restore\'s point of no return), and completes', async () => {
+    await seedRemoved()
+    let open!: () => void
+    activationGate = new Promise<void>((resolve) => { open = resolve })
+
+    const operationId = await startRestore()
+    await waitUntil(() => getOperationRegistry().get(operationId)?.stages.find((s) => s.id === 'activate')?.status === 'active', { label: 'restore past its copy' })
+    expect(getOperationRegistry().cancel(operationId)).toBe('not_cancellable')
+    open()
+    const view = await getOperationRegistry().await(operationId)
+
+    expect(view.status).toBe('succeeded')
+    expect(view.stages.map((s) => [s.id, s.status])).toEqual([['extract', 'done'], ['place', 'done'], ['activate', 'done']])
+    expect(existsSync(join(testDir, 'plugins', 'demo-plugin', 'bakin-plugin.json'))).toBe(true)
+    expect(readPluginLockfile().plugins['demo-plugin']?.version).toBe('1.2.3')
   })
 })

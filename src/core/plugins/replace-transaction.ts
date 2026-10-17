@@ -146,14 +146,18 @@ const BUILD_STEP_LABELS: Record<WhiskitStage, string> = {
   'css-validate': 'Validate the stylesheet',
 }
 
-/** Whiskit step events → `build` stage items: start = active (named before it runs), ok = done, error = failed. */
-function buildHooksFor(operation: OperationContext | undefined): ReplaceBuildHooks {
+/**
+ * Whiskit step events → items on `stageId`: start = active (named before it
+ * runs), ok = done, error = failed; build output is liveness. Shared by the
+ * replace transaction and link.
+ */
+export function buildHooksFor(operation: OperationContext | undefined, stageId: string = REPLACE_STAGES.build): ReplaceBuildHooks {
   if (!operation) return {}
   return {
     onStage: (event) => {
       const item = { id: event.stage, label: BUILD_STEP_LABELS[event.stage] }
       const status = event.status === 'start' ? 'active' : event.status === 'ok' ? 'done' : 'failed'
-      operation.item(REPLACE_STAGES.build, { ...item, status })
+      operation.item(stageId, { ...item, status })
     },
     onOutput: (line) => operation.output(line),
   }

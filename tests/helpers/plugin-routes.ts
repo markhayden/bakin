@@ -32,3 +32,21 @@ export async function installPOST(req: Request, _url?: URL): Promise<Response> {
 export async function upgradePOST(req: Request, _url?: URL): Promise<Response> {
   return settleRoute(upgradeRoute(req))
 }
+
+/** The remove route settled (a synchronous 400/404/409 passes through). */
+export async function removePOST(req: Request, _url?: URL): Promise<Response> {
+  const { post } = await import('../../packages/host/src/api/plugins/remove')
+  return settleRoute(post(req))
+}
+
+/** The restore route settled (`listOnly` answers synchronously and passes through). */
+export async function restorePOST(req: Request, _url?: URL): Promise<Response> {
+  const { post } = await import('../../packages/host/src/api/plugins/restore')
+  return settleRoute(post(req))
+}
+
+/** The link route settled. */
+export async function linkPOST(req: Request, _url?: URL): Promise<Response> {
+  const { post } = await import('../../packages/host/src/api/plugins/link')
+  return settleRoute(post(req))
+}

@@ -72,7 +72,7 @@ export async function post(req: Request): Promise<Response> {
   if (invalid) return invalid
 
   if (body.dev === true) {
-    return handleDevInstall(body)
+    return handleDevInstall(req, body)
   }
 
   const commit = body.accepted === true

@@ -211,10 +211,10 @@ async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: bo
     if (failed) process.exit(1)
   }
 
-  // Dev installs (link) stay a synchronous request until their own switch.
+  // Dev installs are the link operation (#895).
   if (opts.dev) {
-    const linked = await apiPost('/api/plugins/install', { source, type, ref: opts.ref, accepted: false, dev: true, force: opts.force === true }) as Record<string, unknown>
-    await show(linked, linked.ok === false)
+    const linked = await pluginOperation('/api/plugins/install', { source, type, ref: opts.ref, accepted: false, dev: true, force: opts.force === true }, opts.json === true)
+    await show(linked.body, linked.exitCode !== 0 || linked.body.ok !== true)
     return
   }
 
@@ -266,11 +266,11 @@ async function installImportedPluginLegacy(
 ): Promise<void> {
   if (!opts.quiet) console.log(`Installing ${request.id} from ${request.source}${request.ref ? ` @ ${request.ref.slice(0, 12)}` : ''}`)
   const base = { source: request.source, type: request.type, ref: request.ref, dev: request.dev, force: opts.force }
-  // Dev entries link synchronously; everything else is preview → commit
-  // operations, each followed to its terminal outcome before reporting.
+  // Dev entries are the link operation; everything else is preview → commit
+  // operations — each followed to its terminal outcome before reporting.
   if (request.dev) {
-    const linked = await apiPost('/api/plugins/install', { ...base, accepted: false }) as { ok?: boolean; error?: string; message?: string; id?: string }
-    if (linked.error) throw new Error(linked.error)
+    const linked = (await pluginOperation('/api/plugins/install', { ...base, accepted: false }, true)).body as { ok?: boolean; error?: string; message?: string; id?: string }
+    if (linked.error || linked.ok !== true) throw new Error(linked.error ?? `plugin "${request.id}" did not link`)
     if (!opts.quiet) console.log(linked.message ?? `Linked "${linked.id ?? request.id}".`)
     return
   }
@@ -329,16 +329,18 @@ async function cmdPluginsImport(file: string, opts: { yes: boolean; force: boole
 }
 
 async function cmdPluginsRemove(pluginId: string, opts: { json?: boolean } = {}): Promise<void> {
-  const result = await apiPost('/api/plugins/remove', { pluginId })
+  const { body: result, exitCode } = await pluginOperation('/api/plugins/remove', { pluginId }, opts.json === true)
   if (!opts.json && process.stdout.isTTY) {
     await printPluginActionTui({
       action: 'removed',
       pluginId,
       result,
     })
-    return
+  } else {
+    print(result)
   }
-  print(result)
+  if (result.core === true) process.exit(2)
+  if (exitCode !== 0 || result.ok !== true) process.exit(1)
 }
 
 async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?: boolean } = {}): Promise<void> {
@@ -534,17 +536,24 @@ function printPluginRestoreSnapshots(pluginId: string, snapshots: PluginRestoreS
 }
 
 async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; force: boolean; list: boolean }): Promise<void> {
-  const res = await cliFetch('/api/plugins/restore', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      pluginId,
-      snapshot: opts.snapshot,
-      force: opts.force,
-      listOnly: opts.list,
-    }),
-  })
-  const result = await res.json().catch(() => ({})) as PluginRestoreResult
+  const request = { pluginId, snapshot: opts.snapshot, force: opts.force, listOnly: opts.list }
+  let result: PluginRestoreResult
+  let failed: boolean
+  if (opts.list) {
+    // Listing snapshots is a plain read.
+    const res = await cliFetch('/api/plugins/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    })
+    result = await res.json().catch(() => ({})) as PluginRestoreResult
+    failed = !res.ok
+  } else {
+    // A restore is an operation (#895), followed to its outcome.
+    const followed = await pluginOperation('/api/plugins/restore', request, false)
+    result = followed.body as PluginRestoreResult
+    failed = followed.exitCode !== 0
+  }
   if (opts.list) {
     if (result.error) throw new Error(result.error)
     if (process.stdout.isTTY) {
@@ -554,12 +563,12 @@ async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; fo
     printPluginRestoreSnapshots(pluginId, result.snapshots)
     return
   }
-  if (!res.ok || result.error) {
+  if (failed || result.error) {
     if (result.snapshots && result.snapshots.length > 0) {
       if (process.stdout.isTTY) await printPluginRestoreSnapshotsTui(pluginId, result.snapshots)
       else printPluginRestoreSnapshots(pluginId, result.snapshots)
     }
-    throw new Error(result.error ?? `HTTP ${res.status}`)
+    throw new Error(result.error ?? 'Restore failed')
   }
   if (process.stdout.isTTY) {
     await printPluginRestoreResultTui(pluginId, result)
@@ -576,19 +585,20 @@ async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; fo
 }
 
 async function cmdPluginsLink(localPath: string, opts: { force?: boolean; json?: boolean } = {}): Promise<void> {
-  const result = await apiPost('/api/plugins/link', {
+  const { body: result, exitCode } = await pluginOperation('/api/plugins/link', {
     localPath,
     force: opts.force === true,
-  })
+  }, opts.json === true)
   if (!opts.json && process.stdout.isTTY) {
     await printPluginActionTui({
       action: 'linked',
       source: localPath,
       result,
     })
-    return
+  } else {
+    print(result)
   }
-  print(result)
+  if (exitCode !== 0 || result.ok !== true) process.exit(1)
 }
 
 async function cmdPluginsUnlink(pluginId: string, opts: { json?: boolean } = {}): Promise<void> {

@@ -183,13 +183,13 @@ describe('read-only CLI TTY commands — plugins', () => {
     expect(output()).not.toContain('"id": "messaging"')
 
     harness.log.mockClear()
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    queueOperation('op-remove', {
       ok: true,
       id: 'messaging',
       snapshot: '/Users/roscoe/.bakin/.uninstalled/messaging.tar.gz',
       skills: { removed: 2, kept: 0 },
       message: 'Removed "messaging" and deactivated it.',
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'remove', 'messaging']
     await main()
     expect(output()).toContain('Plugin action')
@@ -198,14 +198,14 @@ describe('read-only CLI TTY commands — plugins', () => {
     expect(output()).not.toContain('"snapshot"')
 
     harness.log.mockClear()
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    queueOperation('op-link', {
       ok: true,
       id: 'local-tools',
       linkedSource: '/Users/roscoe/dev/local-tools',
       pluginDir: '/Users/roscoe/.bakin/plugins/local-tools',
       watching: true,
       message: 'Linked "local-tools" and activated it with dev hot reload.',
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'link', './local-tools', '--force']
     await main()
     expect(output()).toContain('Linked "local-tools" and activated it with dev')
@@ -332,7 +332,7 @@ describe('read-only CLI TTY commands — plugins', () => {
     expect(output()).not.toContain('Uninstall snapshots for')
 
     harness.log.mockClear()
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    queueOperation('op-restore', {
       ok: true,
       message: 'Restored "demo-plugin".',
       snapshotInfo: {
@@ -343,7 +343,7 @@ describe('read-only CLI TTY commands — plugins', () => {
       },
       skills: { restored: 2 },
       activated: false,
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'restore', 'demo-plugin', '--snapshot', 'demo-plugin-2026.tar.gz', '--force']
     await main()
 

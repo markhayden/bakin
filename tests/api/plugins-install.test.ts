@@ -44,8 +44,7 @@ mock.module('@/core/plugins/live-lifecycle', () => ({
   notifyPluginRemoved: () => {},
 }))
 
-import { installPOST } from '../helpers/plugin-routes'
-import { post as removePOST } from '../../packages/host/src/api/plugins/remove'
+import { installPOST, removePOST } from '../helpers/plugin-routes'
 import { resetSettingsCache } from '../../src/core/settings'
 
 // Source plugin lives INSIDE the mocked content dir so it's contained by
