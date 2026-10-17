@@ -84,13 +84,25 @@ function statusWord(view: OperationView): string {
   return view.status
 }
 
+function attemptLine(attempt: NonNullable<OperationStageView['attempt']>): string {
+  return `↻ Attempt ${attempt.n} of ${attempt.of} — ${ATTEMPT_REASON[attempt.reason] ?? attempt.reason}${attempt.detail ? ` (${attempt.detail})` : ''}`
+}
+
+function itemLine(item: NonNullable<OperationStageView['items']>[number]): string {
+  const bytes = item.bytes ? ` ${item.bytes.total ? `${formatSize(item.bytes.received)} of ${formatSize(item.bytes.total)}` : formatSize(item.bytes.received)}` : ''
+  return `${MARK[item.status]} ${item.label}${bytes}${item.message ? ` — ${item.message}` : ''}`
+}
+
 function childLines(child: OperationView, now: number, indent: string): string[] {
   const active = child.stages.find((s) => s.status === 'active')
   const mark = child.status === 'succeeded' ? '✓' : child.status === 'failed' ? '✗' : child.status === 'cancelled' ? '–' : '▸'
   const lines = [`${indent}${mark} ${child.title} · ${statusWord(child)}`]
   if (active && !isOperationFinished(child.status)) {
+    // A repair child carries the real transfer (bytes, retries, items).
     const m = measure(active)
-    lines.push(`${indent}    ${active.label} ${bar(m.fraction, 12)} ${m.text}`)
+    lines.push(`${indent}    ${active.label}${active.message ? `: ${active.message}` : ''} ${bar(m.fraction, 12)} ${m.text}`)
+    if (active.attempt) lines.push(`${indent}    ${attemptLine(active.attempt)}`)
+    for (const item of active.items ?? []) lines.push(`${indent}      ${itemLine(item)}`)
   }
   if (child.status === 'failed') {
     const reason = child.outcome?.message ?? child.stages.find((s) => s.status === 'failed')?.message
@@ -124,9 +136,7 @@ export function renderOperationFrame(view: OperationView, children: readonly Ope
       if (stage.message) lines.push(`      ${stage.message}`)
       const m = measure(stage)
       lines.push(`      ${bar(m.fraction)} ${m.text}`)
-      if (stage.attempt) {
-        lines.push(`      ↻ Attempt ${stage.attempt.n} of ${stage.attempt.of} — ${ATTEMPT_REASON[stage.attempt.reason] ?? stage.attempt.reason}${stage.attempt.detail ? ` (${stage.attempt.detail})` : ''}`)
-      }
+      if (stage.attempt) lines.push(`      ${attemptLine(stage.attempt)}`)
       if (quiet?.state === 'quiet' && quiet.stageId === stage.id) {
         lines.push(`      No measurable progress for ${formatDuration(quiet.sinceProgressMs)} — still working`)
       }
@@ -135,10 +145,7 @@ export function renderOperationFrame(view: OperationView, children: readonly Ope
       }
       if (view.lastOutput) lines.push(`      > ${view.lastOutput} (${formatDuration(now - Date.parse(view.lastLivenessAt))} ago)`)
     }
-    for (const item of stage.items ?? []) {
-      const bytes = item.bytes ? ` ${item.bytes.total ? `${formatSize(item.bytes.received)} of ${formatSize(item.bytes.total)}` : formatSize(item.bytes.received)}` : ''
-      lines.push(`      ${MARK[item.status]} ${item.label}${bytes}${item.message ? ` — ${item.message}` : ''}`)
-    }
+    for (const item of stage.items ?? []) lines.push(`      ${itemLine(item)}`)
     if (index === 0) for (const child of children) lines.push(...childLines(child, now, '      '))
   })
 
@@ -149,6 +156,45 @@ export function renderOperationFrame(view: OperationView, children: readonly Ope
   return lines
 }
 
+/** Plain-mode lines for one view's stage changes; shared by parents and children. */
+function stageTransitions(
+  before: readonly OperationStageView[],
+  stages: readonly OperationStageView[],
+  endOf: (stage: OperationStageView) => number,
+  indent: string,
+): string[] {
+  const out: string[] = []
+  const old = new Map(before.map((s) => [s.id, s]))
+  for (const stage of stages) {
+    const was = old.get(stage.id)
+    if (was?.status !== stage.status && stage.status !== 'pending') {
+      if (stage.status === 'active') out.push(`${indent}${MARK.active} ${stage.label}${stage.message ? `: ${stage.message}` : ''}`)
+      else if (stage.status === 'done') out.push(`${indent}${MARK.done} ${stage.label}${stageDuration(stage, endOf(stage))}`)
+      else if (stage.status === 'failed') out.push(`${indent}${MARK.failed} ${stage.label}${stage.message ? `: ${stage.message}` : ''}`)
+      else out.push(`${indent}${MARK.skipped} ${stage.label} skipped${stage.skippedReason ? ` (${stage.skippedReason})` : ''}`)
+    }
+    if (stage.attempt && (was?.attempt?.n !== stage.attempt.n)) out.push(`${indent}  ${attemptLine(stage.attempt)}`)
+    const oldItems = new Map((was?.items ?? []).map((i) => [i.id, i]))
+    for (const item of stage.items ?? []) {
+      const prevItem = oldItems.get(item.id)
+      if (prevItem?.status !== item.status && item.status !== 'pending') {
+        out.push(`${indent}  ${MARK[item.status]} ${item.label}${item.message ? ` — ${item.message}` : ''}`)
+      }
+    }
+    // Byte progress in quarters, so a pipe sees movement without a flood.
+    const quarter = (b?: { received: number; total: number | null }) => (b?.total ? Math.floor((b.received / b.total) * 4) : -1)
+    const quarterLine = (b: { received: number; total: number | null } | undefined, prevBytes: typeof b, label: string) => {
+      if (!b?.total) return
+      if (quarter(b) > Math.max(quarter(prevBytes), 0) && quarter(b) < 4) {
+        out.push(`${indent}  ${label}${formatSize(b.received)} of ${formatSize(b.total)}`)
+      }
+    }
+    quarterLine(stage.bytes, was?.bytes, '')
+    for (const item of stage.items ?? []) quarterLine(item.bytes, oldItems.get(item.id)?.bytes, `${item.label}: `)
+  }
+  return out
+}
+
 /** Append-only lines describing what changed between two views (pure). */
 export function describeTransitions(
   prev: { view: OperationView; children: readonly OperationView[] } | null,
@@ -157,38 +203,15 @@ export function describeTransitions(
   const out: string[] = []
   const { view } = next
   if (!prev) out.push(`${view.title}`)
-  const before = new Map((prev?.view.stages ?? []).map((s) => [s.id, s]))
-  for (const stage of view.stages) {
-    const old = before.get(stage.id)
-    if (old?.status !== stage.status && stage.status !== 'pending') {
-      if (stage.status === 'active') out.push(`  ${MARK.active} ${stage.label}${stage.message ? `: ${stage.message}` : ''}`)
-      else if (stage.status === 'done') out.push(`  ${MARK.done} ${stage.label}${stageDuration(stage, Date.parse(stage.endedAt ?? view.lastProgressAt))}`)
-      else if (stage.status === 'failed') out.push(`  ${MARK.failed} ${stage.label}${stage.message ? `: ${stage.message}` : ''}`)
-      else out.push(`  ${MARK.skipped} ${stage.label} skipped${stage.skippedReason ? ` (${stage.skippedReason})` : ''}`)
-    }
-    if (stage.attempt && (old?.attempt?.n !== stage.attempt.n)) {
-      out.push(`    ↻ Attempt ${stage.attempt.n} of ${stage.attempt.of} — ${ATTEMPT_REASON[stage.attempt.reason] ?? stage.attempt.reason}${stage.attempt.detail ? ` (${stage.attempt.detail})` : ''}`)
-    }
-    const oldItems = new Map((old?.items ?? []).map((i) => [i.id, i.status]))
-    for (const item of stage.items ?? []) {
-      if (oldItems.get(item.id) !== item.status && item.status !== 'pending') {
-        out.push(`    ${MARK[item.status]} ${item.label}${item.message ? ` — ${item.message}` : ''}`)
-      }
-    }
-    // Byte progress in quarters, so a pipe sees movement without a flood.
-    if (stage.bytes?.total) {
-      const quarter = (b?: { received: number; total: number | null }) => (b?.total ? Math.floor((b.received / b.total) * 4) : -1)
-      if (quarter(stage.bytes) > Math.max(quarter(old?.bytes), 0) && quarter(stage.bytes) < 4) {
-        out.push(`    ${formatSize(stage.bytes.received)} of ${formatSize(stage.bytes.total)}`)
-      }
-    }
-  }
-  const prevChildren = new Map((prev?.children ?? []).map((c) => [c.id, c.status]))
+  out.push(...stageTransitions(prev?.view.stages ?? [], view.stages, (stage) => Date.parse(stage.endedAt ?? view.lastProgressAt), '  '))
+  const prevChildren = new Map((prev?.children ?? []).map((c) => [c.id, c]))
   for (const child of next.children) {
     const was = prevChildren.get(child.id)
-    if (was === child.status) continue
-    if (was === undefined) out.push(`  ${MARK.active} ${child.title}`)
-    if (isOperationFinished(child.status)) {
+    if (!was) out.push(`  ${MARK.active} ${child.title}`)
+    if (!isOperationFinished(child.status)) {
+      out.push(...stageTransitions(was?.stages ?? [], child.stages, (stage) => Date.parse(stage.endedAt ?? child.lastProgressAt), '    '))
+    }
+    if (was?.status !== child.status && isOperationFinished(child.status)) {
       const mark = child.status === 'succeeded' ? MARK.done : child.status === 'failed' ? MARK.failed : MARK.skipped
       out.push(`  ${mark} ${child.title}: ${child.status}${child.outcome?.message ? ` — ${child.outcome.message}` : ''}`)
     }
@@ -222,7 +245,7 @@ export function describeResult(result: OperationFollowResult): string {
 }
 
 /** 0 succeeded, 130 cancelled or detached, 1 for everything else. */
-export function operationExitCode(result: OperationFollowResult): number {
+export function operationExitCode(result: OperationFollowResult): 0 | 1 | 130 {
   if (result.phase === 'detached') return 130
   if (result.phase !== 'finished' || !result.operation) return 1
   if (result.operation.status === 'succeeded') return 0
@@ -298,16 +321,29 @@ export function detectRenderMode(json: boolean, stream: { isTTY?: boolean } = pr
   return stream.isTTY ? 'tty' : 'plain'
 }
 
+/** For commands that print their own document: nothing on stdout, Ctrl-C notes on stderr. */
+export function silentOperationRenderer(writeErr: (text: string) => void = (text) => { process.stderr.write(text) }): OperationRenderer {
+  return { update() {}, note(text) { writeErr(`${text}\n`) }, finish() {} }
+}
+
 /**
  * Follows a started operation and renders it until it settles. Ctrl-C once
  * cancels (when allowed), twice detaches.
  */
 export async function followAndRender(
   start: { operationId: string; bootId: string },
-  opts: { json?: boolean; write?: (text: string) => void; mode?: OperationRenderMode; signals?: Pick<NodeJS.Process, 'on' | 'off'>; baseUrl?: string } = {},
+  opts: {
+    json?: boolean
+    write?: (text: string) => void
+    mode?: OperationRenderMode
+    /** Replaces the built-in renderer (a command printing its own JSON still gets Ctrl-C handling). */
+    renderer?: OperationRenderer
+    signals?: Pick<NodeJS.Process, 'on' | 'off'>
+    baseUrl?: string
+  } = {},
 ): Promise<OperationFollowResult> {
   const write = opts.write ?? ((text: string) => { process.stdout.write(text) })
-  const renderer = createOperationRenderer({ mode: opts.mode ?? detectRenderMode(Boolean(opts.json)), write })
+  const renderer = opts.renderer ?? createOperationRenderer({ mode: opts.mode ?? detectRenderMode(Boolean(opts.json)), write })
   const detach = new AbortController()
   let latest: OperationView | null = null
   let presses = 0

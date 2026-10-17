@@ -15,14 +15,14 @@ import type {
   HealthReportStatus,
   SearchReadinessStage,
 } from '@makinbakin/sdk/types'
-import { apiGet, apiPost, followOperation, type OperationFollowResult } from '../http'
-import { describeResult, followAndRender, operationExitCode } from '../operation-renderer'
+import { apiGet, apiPost, type OperationFollowResult } from '../http'
+import { describeResult, followAndRender, operationExitCode, silentOperationRenderer } from '../operation-renderer'
 import { print } from '../output'
 import { exitUsage, exitUnknownSubcommand, promptYesNo } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 
 type DoctorMode = 'offline' | 'full'
-type DoctorExitCode = 0 | 1 | 2
+type DoctorExitCode = 0 | 1 | 2 | 130
 
 interface CliDoctorRepairApply {
   planId: string
@@ -398,7 +398,7 @@ async function runDoctorRepairApply(
     throw new Error('The server did not start a repair operation — is this CLI newer than the running server? Restart Bakin and try again.')
   }
   const start = { operationId: started.operationId, bootId: started.bootId }
-  const follow = json ? await followOperation(start) : await followAndRender(start)
+  const follow = await followAndRender(start, json ? { renderer: silentOperationRenderer() } : {})
   const result = follow.operation?.result
   return { report: result?.httpStatus === 200 ? result.body as CliDoctorRepairApply : null, follow }
 }
@@ -580,7 +580,7 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
     const exitCode = operationExitCode(follow)
     if (options.json) {
       const status = follow.phase === 'finished' ? follow.operation?.status ?? 'failed' : follow.phase
-      printDoctorCommandJson('doctor --fix', { status, operation: follow.operation }, 1, { code: `REPAIR_${status.toUpperCase()}`, message: describeResult(follow) })
+      printDoctorCommandJson('doctor --fix', { status, operation: follow.operation }, exitCode === 0 ? 1 : exitCode, { code: `REPAIR_${status.toUpperCase()}`, message: describeResult(follow) })
     }
     process.exit(exitCode === 0 ? 1 : exitCode)
   }

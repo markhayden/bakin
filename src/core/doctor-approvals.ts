@@ -353,6 +353,11 @@ export interface ApprovedRepairStart {
   bootId: string
 }
 
+/** …or why it never started — `afterResolve` still owes the channel its outcome. */
+export interface ApprovedRepairStartFailure {
+  startFailure: string
+}
+
 const ORIGIN_OF_ACTOR: Record<ApprovalDecision['actor']['source'], OperationOrigin> = {
   web: 'web',
   channel: 'discord',
@@ -366,7 +371,7 @@ const ORIGIN_OF_ACTOR: Record<ApprovalDecision['actor']['source'], OperationOrig
  * waiting. The outcome is judged in `afterResolve`, strictly after the
  * decision is saved, the card updated and the resolution published.
  */
-async function startApprovedRepair(request: DoctorRepairRequest, record: RecordOf<'health-repair'>, decision: ApprovalDecision): Promise<ApprovedRepairStart | null> {
+async function startApprovedRepair(request: DoctorRepairRequest, record: RecordOf<'health-repair'>, decision: ApprovalDecision): Promise<ApprovedRepairStart | ApprovedRepairStartFailure> {
   const { contentDir, projectRoot } = requireContext()
   const proposal = record.owner.proposal
   const report = getHealthReport()
@@ -392,8 +397,8 @@ async function startApprovedRepair(request: DoctorRepairRequest, record: RecordO
     appendEvents(contentDir, request.id, [event('apply-failed', `Repair could not start: ${message}`)], { status: 'failed' })
     await taskLog(request.taskId, `Repair could not start: ${message}`)
     await blockTaskWithReason(request.taskId, `Repair could not start: ${message}`)
-    // The decision WAS made; the outcome lives on the task.
-    return null
+    // The decision WAS made; the outcome follows it to the channel.
+    return { startFailure: `Repair could not start: ${message}` }
   }
   appendEvents(contentDir, request.id, [event('operation-started', 'The repair is running.', { operationId: started.operationId, bootId: started.bootId })])
   await taskLog(request.taskId, `Approved by ${by}. Applying ${describeProposedChanges(proposal).length} change(s)…`)
@@ -468,7 +473,11 @@ export const healthRepairApprovalKind: ApprovalKindHandler<'health-repair'> = {
     throw new ApprovalResolveError(`Unknown repair decision "${decision.option}"`, 400)
   },
   async afterResolve(record, result) {
-    const started = result as Partial<ApprovedRepairStart> | null
+    const started = result as Partial<ApprovedRepairStart & ApprovedRepairStartFailure> | null
+    if (typeof started?.startFailure === 'string') {
+      await postApprovalOutcome(record, { status: 'failed', title: 'Repair did not run', message: started.startFailure })
+      return
+    }
     if (typeof started?.operationId !== 'string' || typeof started.bootId !== 'string') return
     await finishApprovedRepair(record, { operationId: started.operationId, bootId: started.bootId })
   },

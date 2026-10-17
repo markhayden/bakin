@@ -99,6 +99,48 @@ describe('renderOperationFrame', () => {
   })
 })
 
+describe('repair children carry the real transfer', () => {
+  const mediaChild = (over: Partial<OperationView> = {}) => view({
+    id: 'c-media', parentId: 'op-1', title: 'Install the media store',
+    stages: [
+      {
+        id: 'dl', kind: 'downloading', label: 'Download sharp', status: 'active', startedAt: ago(20), message: 'from registry.npmjs.org',
+        attempt: { n: 2, of: 3, reason: 'stalled', detail: 'no bytes for 30s' },
+        items: [{ id: 'sharp', label: 'sharp.tgz', status: 'done' }, { id: 'vips', label: 'libvips.tgz', status: 'active', bytes: { received: 64_000, total: 8_000_000 } }],
+      },
+      { id: 'commit', kind: 'committing', label: 'Commit', status: 'pending' },
+    ],
+    ...over,
+  })
+
+  it('tty: a running child shows its stage, attempt and per-item bytes', () => {
+    const parent = view({ title: 'Apply a Health repair', stages: [{ id: 'apply', kind: 'installing', label: 'Apply repairs', status: 'active', startedAt: ago(20) }, { id: 'verify', kind: 'verifying', label: 'Re-check Health', status: 'pending' }] })
+    const frame = renderOperationFrame(parent, [mediaChild()], NOW)
+    expect(frame).toContain('      ▸ Install the media store · running')
+    expect(frame).toContain('          Download sharp: from registry.npmjs.org [██████░░░░░░] 1 of 2')
+    expect(frame).toContain('          ↻ Attempt 2 of 3 — the transfer stalled (no bytes for 30s)')
+    expect(frame).toContain('            ▸ libvips.tgz 64.0 KB of 8.0 MB')
+  })
+
+  it('plain: child stage changes, retries and item byte quarters reach a pipe while the child runs', () => {
+    const parent = view({ title: 'Apply a Health repair' })
+    const first = mediaChild({ stages: [{ id: 'dl', kind: 'downloading', label: 'Download sharp', status: 'active', startedAt: ago(20), items: [{ id: 'vips', label: 'libvips.tgz', status: 'active', bytes: { received: 0, total: 100 } }] }, { id: 'commit', kind: 'committing', label: 'Commit', status: 'pending' }] })
+    const moved = mediaChild({ stages: [{ id: 'dl', kind: 'downloading', label: 'Download sharp', status: 'active', startedAt: ago(20), attempt: { n: 2, of: 3, reason: 'stalled' }, items: [{ id: 'vips', label: 'libvips.tgz', status: 'active', bytes: { received: 60, total: 100 } }] }, { id: 'commit', kind: 'committing', label: 'Commit', status: 'pending' }] })
+    const committing = mediaChild({ stages: [{ id: 'dl', kind: 'downloading', label: 'Download sharp', status: 'done', startedAt: ago(20), endedAt: ago(5), items: [{ id: 'vips', label: 'libvips.tgz', status: 'done' }] }, { id: 'commit', kind: 'committing', label: 'Commit', status: 'active', startedAt: ago(5) }] })
+    const base = { view: parent, children: [] as OperationView[] }
+    expect(describeTransitions(base, { view: parent, children: [first] })).toEqual(['  ▸ Install the media store', '    ▸ Download sharp', '      ▸ libvips.tgz'])
+    expect(describeTransitions({ view: parent, children: [first] }, { view: parent, children: [moved] })).toEqual([
+      '      ↻ Attempt 2 of 3 — the transfer stalled',
+      '      libvips.tgz: 60 B of 100 B',
+    ])
+    expect(describeTransitions({ view: parent, children: [moved] }, { view: parent, children: [committing] })).toEqual([
+      '    ✓ Download sharp (15s)',
+      '      ✓ libvips.tgz',
+      '    ▸ Commit',
+    ])
+  })
+})
+
 describe('describeTransitions (plain mode)', () => {
   it('prints one line per transition and byte quarters, never a flood', () => {
     const steps: OperationView[] = [
@@ -129,7 +171,7 @@ describe('describeTransitions (plain mode)', () => {
     expect(describeTransitions(base, { view: view({ waitingFor: { holderTitle: 'Reindex', since: ago(1) } }), children: [] })).toEqual(['  … Waiting for Reindex'])
     expect(describeTransitions(base, { view: view({ status: 'cancelling' }), children: [] })).toEqual(['  Cancelling…'])
     const kid = view({ id: 'c', parentId: 'op-1', title: 'Sync agents' })
-    expect(describeTransitions(base, { view: view(), children: [kid] })).toEqual(['  ▸ Sync agents'])
+    expect(describeTransitions(base, { view: view(), children: [kid] })).toEqual(['  ▸ Sync agents', '    ▸ Download sharp', '      12.4 MB of 40.0 MB'])
     expect(describeTransitions({ view: view(), children: [kid] }, { view: view(), children: [{ ...kid, status: 'succeeded', outcome: { code: 'ok' } }] })).toEqual(['  ✓ Sync agents: succeeded'])
   })
 })

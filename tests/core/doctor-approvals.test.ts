@@ -34,7 +34,10 @@ mock.module('../../src/core/settings', () => ({
 }))
 const broadcasts: Array<Record<string, unknown>> = []
 mock.module('../../src/core/sse', () => ({ broadcast: (d: Record<string, unknown>) => { broadcasts.push(d) } }))
-mock.module('../../src/core/app-services-store', () => ({ maybeGetAppServices: () => undefined, getAppServices: () => { throw new Error('no services') } }))
+// A channel surface for the outcome follow-up; absent unless a test sets it.
+const postApprovalOutcomeOnChannel = mock(async (_args: unknown) => {})
+let channelRuntime: { runtime: { channels: Record<string, unknown> } } | undefined
+mock.module('../../src/core/app-services-store', () => ({ maybeGetAppServices: () => channelRuntime, getAppServices: () => { throw new Error('no services') } }))
 
 const tasks = new Map<string, { column: string; blockedReason?: string; logs: string[] }>()
 let nextTask = 0
@@ -88,6 +91,8 @@ let planTarget = 'search-index'
 let applyThrows: string | null = null
 let applyGate: Promise<void> | null = null
 let applyLeavesUnhealthy = false
+/** The action's planner re-runs Health while planning, so its fresh plan is stale before it can be claimed. */
+let planRefreshesHealth = false
 /** After apply the search check answers this way instead of healthy (R4 probes). */
 let postApplyMode: 'unknown' | 'throw' | null = null
 const applyAction = mock(async (items: HealthRepairPlanItem[]) => {
@@ -111,11 +116,14 @@ async function seed() {
     id: 'rebuild-index',
     name: 'Rebuild search index',
     operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
-    plan: async () => [{
+    plan: async () => {
+      if (planRefreshesHealth) await refresh()
+      return [{
       id: 'rebuild', actionId: 'rebuild-index', title: 'Rebuild search index', reason: 'The index is corrupt.', safety: 'destructive',
       incidentIds: [], observationIds: [], preconditions: [],
       changes: [{ kind: 'file', target: planTarget, action: 'delete', description: 'Drop and rebuild the search index.' }],
-    }],
+    }]
+    },
     apply: applyAction,
   })
   registerPluginHealthCheck('approvals-test', {
@@ -162,6 +170,9 @@ beforeEach(async () => {
   applyThrows = null
   applyGate = null
   applyLeavesUnhealthy = false
+  planRefreshesHealth = false
+  channelRuntime = undefined
+  postApprovalOutcomeOnChannel.mockClear()
   postApplyMode = null
   applyAction.mockClear()
   createTaskWithEffects.mockClear()
@@ -282,6 +293,24 @@ describe('health-repair: apply', () => {
     expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('failed')
     // applyDoctorRepair folds an action's throw into a failed result; the kind reports it as a failed step.
     expect(tasks.get('task-1')).toMatchObject({ column: 'blocked', blockedReason: '1 repair step(s) failed: disk is read-only' })
+  })
+
+  it('a repair that cannot start still follows the decision with exactly one failure outcome on the channel card', async () => {
+    const opened = await openRepair()
+    channelRuntime = { runtime: { channels: { resolveApproval: mock(async () => {}), postApprovalOutcome: postApprovalOutcomeOnChannel } } }
+    const record = { ...getApprovalRecord(opened.approval.approvalId)!, deliveries: [{ channelId: 'general', ref: 'card-1', renderedAt: '2026-10-16T00:00:00.000Z' }] }
+    planRefreshesHealth = true
+    const result = await healthRepairApprovalKind.onResolve(record as never, { option: 'apply', actor: web })
+    // Asserted on a copy: bun's toMatchObject writes asymmetric matchers into the received object.
+    const startFailure = (result as { startFailure?: unknown }).startFailure
+    expect(typeof startFailure).toBe('string')
+    expect(String(startFailure)).toContain('Repair could not start')
+    expect(postApprovalOutcomeOnChannel).not.toHaveBeenCalled()
+    await healthRepairApprovalKind.afterResolve!(record as never, result)
+    expect(postApprovalOutcomeOnChannel).toHaveBeenCalledTimes(1)
+    expect(postApprovalOutcomeOnChannel.mock.calls[0]![0]).toMatchObject({ approvalId: record.approvalId, outcome: { status: 'failed', title: 'Repair did not run', message: expect.stringContaining('Repair could not start') } })
+    expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('failed')
+    expect(applyAction).not.toHaveBeenCalled()
   })
 
   it('a repair that runs but leaves the incident burning is failed + blocked, never verified', async () => {

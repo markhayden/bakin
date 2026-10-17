@@ -12,11 +12,14 @@
  *   6. applied, verified                                → succeeded / ok
  *
  * A child that found nothing to do finishes `succeeded` with the code
- * `CHILD_SKIPPED_CODE`; any other success counts as applied.
+ * `CHILD_SKIPPED_CODE`; any other success counts as applied. A child that
+ * failed with `CHILD_PARTIAL_CODE` changed something before it failed, so it
+ * counts as both applied and failed.
  */
 import type { OperationView } from '@makinbakin/sdk/types'
 
 export const CHILD_SKIPPED_CODE = 'skipped'
+export const CHILD_PARTIAL_CODE = 'partially_applied'
 
 export type ParentOutcomeCode = 'cancelled' | 'partially_applied' | 'apply_failed' | 'nothing_applied' | 'verification_failed' | 'ok'
 
@@ -39,7 +42,10 @@ export function tallyChildren(children: ReadonlyArray<Pick<OperationView, 'statu
     if (child.status === 'succeeded') {
       if (child.outcome?.code === CHILD_SKIPPED_CODE) tally.skipped++
       else tally.applied++
-    } else if (child.status === 'failed') tally.failed++
+    } else if (child.status === 'failed') {
+      tally.failed++
+      if (child.outcome?.code === CHILD_PARTIAL_CODE) tally.applied++
+    }
     else if (child.status === 'cancelled') tally.cancelled++
   }
   return tally

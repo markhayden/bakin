@@ -241,10 +241,16 @@ the parent cascades to children that can still stop and refuses new ones;
 the parent settles only after every child has settled (allSettled join).
 Child progress and liveness move the parent's clocks; the top-level audit
 carries the child tally. A child that found nothing to do finishes with
-`CHILD_SKIPPED_CODE`. Precedence (first match wins): cancelled with nothing
-applied → `cancelled`; applied + failed/cancelled → `partially_applied`;
-nothing applied + failed → `apply_failed`; all skipped → `nothing_applied`;
-applied + verification failed → `verification_failed`; else `ok`.
+`CHILD_SKIPPED_CODE`; one that changed something before failing finishes
+with `CHILD_PARTIAL_CODE` and tallies as applied AND failed. Work that
+never got a child (a repair action unregistered after validation) is added
+to `failed` by the caller. Precedence (first match wins): cancelled with
+nothing applied → `cancelled`; applied + failed/cancelled →
+`partially_applied`; nothing applied + failed → `apply_failed`; all skipped
+→ `nothing_applied`; applied + verification failed → `verification_failed`;
+else `ok`. A repair's verification is evidence, never absence: every
+affected check must have run fresh (`checkEvaluatedFresh`) and no selected
+observation may still be unhealthy — a check that vanished is not a pass.
 
 ## CLI (PR3, D11)
 
@@ -261,9 +267,14 @@ applied + verification failed → `verification_failed`; else `ok`.
   backoff) plus an immediate snapshot and one on a timer; phases `finished`
   / `expired` / `restarted` / `detached`.
 - **Renderer** (`followAndRender`): `tty` live frame, `plain` transition
-  lines (byte quarters, never a flood), `json` one document. Ctrl-C once
-  cancels when allowed (otherwise says why), twice detaches (exit 130).
-  `operationExitCode`: 0 succeeded, 130 cancelled/detached, 1 otherwise.
+  lines (byte quarters, never a flood), `json` one document. Children
+  render with their own active stage, attempt and per-item bytes (a repair's
+  real transfer lives in its child) in both tty and plain. Ctrl-C once
+  cancels when allowed (otherwise says why), twice detaches (exit 130) — in
+  EVERY mode: a command printing its own JSON passes
+  `silentOperationRenderer()` (notes to stderr) and keeps the handling.
+  `operationExitCode`: 0 succeeded, 130 cancelled/detached, 1 otherwise;
+  the JSON document's `exitCode` is the same number.
 
 ## Health repair (PR3, D10/D24)
 

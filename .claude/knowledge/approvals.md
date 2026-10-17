@@ -130,7 +130,10 @@ modal collects a real reason.
   awaits the operation, judges it (below), records `applied` / `verified` /
   `apply-failed`, completes or blocks the task, and posts the outcome with
   `postApprovalOutcome` (feature-detected `RuntimeChannelSurface`
-  member; Discord replies to the card). Boot recovery
+  member; Discord replies to the card). A repair that cannot even start
+  (fresh evidence moved under the plan) records `apply-failed` and blocks
+  the task in `onResolve`, then returns `{ startFailure }` so
+  `afterResolve` still posts exactly one failure outcome. Boot recovery
   (`recoverInterruptedApplies`) skips requests whose operation is still live;
   any other `applying` request is "outcome unknown" — a task log line, a
   channel follow-up, then the fresh-check judgement.

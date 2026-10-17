@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { HealthRepairPlan } from '@makinbakin/sdk/types'
 // Warm Ink before exercising the CLI's lazy TUI import under Bun's module-isolated runner.
 import 'ink'
@@ -272,7 +272,54 @@ describe('canonical CLI doctor repair', () => {
     await expect(main()).rejects.toThrow('exit:130')
     const body = JSON.parse(String(harness.log.mock.calls[0][0]))
     expect(body.error.code).toBe('REPAIR_CANCELLED')
+    expect(body.exitCode).toBe(130)
     expect(body.data.operation.id).toBe('op-repair-1')
+  })
+
+  it('--json: Ctrl-C cancels the server repair (never just abandons it) and stdout stays one document', async () => {
+    let served = repairOperation({ rev: 2, status: 'running', cancellable: true, outcome: undefined, result: undefined, endedAt: undefined })
+    let cancelPosts = 0
+    let interrupted = false
+    // The live stream: the server publishes the cancelled view once the cancel lands.
+    let publish: (view: unknown) => void = () => {}
+    const events = new ReadableStream<Uint8Array>({
+      start(controller) {
+        publish = (view) => controller.enqueue(new TextEncoder().encode(`id: 1\ndata: ${JSON.stringify({ type: 'plugin-event', event: 'operation.updated', view })}\n\n`))
+      },
+    })
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes('/doctor/run')) return response(actionableHealthReport)
+      if (url.includes('/repair/plan')) return response(mockPlan)
+      if (url.includes('/repair/apply')) return response({ operationId: 'op-repair-1', bootId: 'boot-1' })
+      if (url.includes('/api/events')) return { ok: true, status: 200, body: events } as Response
+      if (url.endsWith('/api/operations/op-repair-1/cancel') && init?.method === 'POST') {
+        cancelPosts += 1
+        served = repairOperation({ rev: 6, status: 'cancelled', outcome: { code: 'cancelled' }, result: undefined })
+        setTimeout(() => publish(served), 0)
+        return response({ status: 'cancelling' })
+      }
+      if (url.includes('/api/operations/op-repair-1')) {
+        if (!interrupted) {
+          interrupted = true
+          // The CLI's own SIGINT listener, called directly (a real signal would hit the runner).
+          setTimeout(() => { for (const listener of process.listeners('SIGINT')) (listener as () => void)() }, 0)
+        }
+        return response({ bootId: 'boot-1', operation: served, children: [] })
+      }
+      throw new Error(`unexpected request ${url}`)
+    })
+    const stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--fix', '--json', '--yes']
+    try {
+      const { main } = await import('../../cli/bakin')
+      await expect(main()).rejects.toThrow('exit:130')
+    } finally {
+      stderr.mockRestore()
+    }
+    expect(cancelPosts).toBe(1)
+    expect(harness.log.mock.calls).toHaveLength(1)
+    const body = JSON.parse(String(harness.log.mock.calls[0][0]))
+    expect(body).toMatchObject({ exitCode: 130, error: { code: 'REPAIR_CANCELLED' } })
   })
 
   it('does not apply when interactive confirmation is declined', async () => {

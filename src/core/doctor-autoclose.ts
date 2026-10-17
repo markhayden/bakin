@@ -23,12 +23,17 @@ const log = createLogger('doctor-autoclose')
 const MIN_REQUEST_AGE_MS = 60_000
 const DEFAULT_DEBOUNCE_MS = 30_000
 
-/** A check counts as healthy only when ITS OWN fresh run says so. */
-export function checkEvaluatedHealthy(report: HealthReport, checkId: string): boolean {
+/** The check is registered and its latest run observed a current snapshot (unknown, failed, timed out and stale runs do not count). */
+export function checkEvaluatedFresh(report: HealthReport, checkId: string): boolean {
   const state = report.checks.find((row) => row.checkId === checkId)
   if (!state) return false
   if (state.latestExecution.outcome !== 'observed') return false
-  if (!state.latestValidSnapshot || state.latestValidSnapshot.executionId !== state.latestExecution.id) return false
+  return Boolean(state.latestValidSnapshot && state.latestValidSnapshot.executionId === state.latestExecution.id)
+}
+
+/** A check counts as healthy only when ITS OWN fresh run says so. */
+export function checkEvaluatedHealthy(report: HealthReport, checkId: string): boolean {
+  if (!checkEvaluatedFresh(report, checkId)) return false
   const observations = report.observations.filter((row) => row.checkId === checkId)
   return observations.length > 0 && observations.every((row) => row.status === 'healthy' && row.snapshot === 'current')
 }

@@ -39,6 +39,7 @@ import {
   registerPluginHealthCheck,
   registerPluginHealthRepairAction,
   unregisterHealthCheck,
+  unregisterHealthRepairAction,
   unregisterPluginHealthChecks,
 } from '../../src/core/health-check-registry'
 
@@ -262,6 +263,71 @@ describe('targeted canonical doctor repair', () => {
     expect(view).toMatchObject({ status: 'failed', outcome: { code: 'verification_failed' } })
     expect(body?.results[0]?.status).toBe('applied')
     expect(body?.remainingIncidentIds.length).toBe(1)
+  })
+
+  it('an originating check that disappears during the repair is not verification: verification_failed, never ok (R4)', async () => {
+    applyAction.mockImplementationOnce(async (items: any[]) => {
+      unhealthy = false
+      unregisterHealthCheck('repair-test.search')
+      return items.map((item) => ({
+        itemId: item.id, actionId: item.actionId, status: 'applied' as const, message: 'Restarted Search.', affectedCheckIds: ['repair-test.search'], changes: item.changes,
+      }))
+    })
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const started = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [], origin: 'web' })
+    const { view, report: body } = await awaitDoctorRepair(started.operationId)
+    expect(body?.remainingIncidentIds).toEqual([])
+    expect(view).toMatchObject({ status: 'failed', outcome: { code: 'verification_failed' } })
+    expect(view.outcome?.message).toContain('could not confirm')
+  })
+
+  it('one action applying an item and failing another is partially applied, child and parent alike', async () => {
+    planResultOverride = ['a', 'b'].map((id) => ({
+      id, actionId: 'restart-search', title: `Step ${id}`, reason: 'Search is unavailable.', safety: 'safe',
+      incidentIds: [], observationIds: [], preconditions: [],
+      changes: [{ kind: 'service', target: 'search', action: 'invoke', description: `Step ${id}.` }],
+    }))
+    applyAction.mockImplementationOnce(async (items: any[]) => items.map((item, index) => ({
+      itemId: item.id, actionId: item.actionId, status: index === 0 ? 'applied' as const : 'failed' as const,
+      message: index === 0 ? 'Done.' : 'Broke.', affectedCheckIds: [], changes: item.changes,
+    })))
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const started = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId, itemIds: plan.items.map((item) => item.id), confirmedItemIds: [], origin: 'web' })
+    const { view, report: body } = await awaitDoctorRepair(started.operationId)
+    expect(getOperationRegistry().get(view.children[0]!)).toMatchObject({ status: 'failed', outcome: { code: 'partially_applied' } })
+    expect(view).toMatchObject({ status: 'failed', outcome: { code: 'partially_applied' } })
+    expect(body?.results.map((row) => row.status)).toEqual(['applied', 'failed'])
+  })
+
+  it('an action unregistered between validation and execution fails the parent, never a silent success', async () => {
+    registerPluginHealthRepairAction('repair-test', {
+      id: 'zz-later', name: 'Later repair',
+      operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
+      plan: async () => [{ id: 'later', actionId: 'zz-later', title: 'Later', reason: 'r', safety: 'safe', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
+      apply: async () => { throw new Error('never runs') },
+    })
+    const id = registerPluginHealthCheck('repair-test', {
+      id: 'later-check', name: 'Later check', description: 'd', group: { key: 'system', label: 'System' },
+      run: async () => healthObserved([healthError({ key: 'broken', summary: 'Broken.', incident: {
+        key: 'broken', title: 'Broken', impact: 'i', disposition: 'action_required',
+        resolution: { key: 'later', type: 'repair', label: 'Fix', actionId: 'repair-test.zz-later' },
+      } })]),
+    })
+    applyHealthCheckRun(await runHealthCheck(getHealthCheck(id)!, { executionId: () => 'execution-later' }))
+    // The first action's run unloads the second before its turn comes.
+    applyAction.mockImplementationOnce(async (items: any[]) => {
+      unregisterHealthRepairAction('repair-test.zz-later')
+      return items.map((item) => ({ itemId: item.id, actionId: item.actionId, status: 'applied' as const, message: 'Restarted Search.', affectedCheckIds: [], changes: item.changes }))
+    })
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    expect(plan.items.map((item) => item.actionId)).toEqual(['repair-test.restart-search', 'repair-test.zz-later'])
+    const started = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId, itemIds: plan.items.map((item) => item.id), confirmedItemIds: [], origin: 'web' })
+    const { view, report: body } = await awaitDoctorRepair(started.operationId)
+    expect(body?.results.map((row) => [row.actionId, row.status])).toEqual([['repair-test.restart-search', 'applied'], ['repair-test.zz-later', 'failed']])
+    expect(view).toMatchObject({ status: 'failed', outcome: { code: 'partially_applied' } })
   })
 
   it('cancels before the action passes its point of no return: nothing applied, cancelled', async () => {

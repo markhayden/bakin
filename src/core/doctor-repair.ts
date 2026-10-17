@@ -22,7 +22,9 @@ import {
   DoctorRepairConfirmationError,
   DoctorRepairStalePlanError,
 } from './doctor-repair-plans'
+import { checkEvaluatedFresh } from './doctor-autoclose'
 import {
+  CHILD_PARTIAL_CODE,
   CHILD_SKIPPED_CODE,
   OperationCancelledError,
   OperationRejectedError,
@@ -262,7 +264,7 @@ function rejectAsToday(error: unknown): never {
 function childOutcome(results: HealthRepairApplyResult[]): OperationOutcome<HealthRepairApplyResult[]> {
   const applied = results.some((r) => r.status === 'applied')
   const failed = results.some((r) => r.status === 'failed')
-  if (failed) return { status: 'failed', code: applied ? 'partially_applied' : 'apply_failed', message: results.find((r) => r.status === 'failed')?.message, httpStatus: 200, body: results }
+  if (failed) return { status: 'failed', code: applied ? CHILD_PARTIAL_CODE : 'apply_failed', message: results.find((r) => r.status === 'failed')?.message, httpStatus: 200, body: results }
   return { status: 'succeeded', code: applied ? 'ok' : CHILD_SKIPPED_CODE, httpStatus: 200, body: results }
 }
 
@@ -322,9 +324,12 @@ async function runDoctorRepair(
   const results: HealthRepairApplyResult[] = []
   const children: OperationView[] = []
   let cancelled = false
+  // Actions unregistered since validation (a plugin unloaded) fail without a child.
+  let missingActions = 0
   for (const [actionId, items] of byAction) {
     const action = getHealthRepairAction(actionId)
     if (!action) {
+      missingActions += 1
       results.push(...items.map((item) => failedResult(item, new Error(`Repair action ${actionId} is no longer registered.`))))
       continue
     }
@@ -359,6 +364,7 @@ async function runDoctorRepair(
   }
 
   const tally = tallyChildren(children)
+  tally.failed += missingActions
   if (cancelled && tally.applied === 0) throw new OperationCancelledError(op.id)
 
   const selectedObservationIds = new Set(validated.items.flatMap((item) => item.observationIds))
@@ -402,14 +408,21 @@ async function runDoctorRepair(
     remainingIncidentIds,
     report,
   }
-  const outcome = parentOutcome(tally, { cancelled, verified: cancelled ? null : remainingIncidentIds.length === 0 })
+  // Verified needs evidence, not absence: every affected check ran fresh and
+  // none of the selected observations is still unhealthy (R4).
+  const verified = remainingIncidentIds.length === 0
+    && affectedCheckIds.every((checkId) => checkEvaluatedFresh(report, checkId))
+    && !report.observations.some((row) => selectedObservationIds.has(row.id) && row.status !== 'healthy')
+  const outcome = parentOutcome(tally, { cancelled, verified: cancelled ? null : verified })
   const failedRows = results.filter((r) => r.status === 'failed').length
   const message = outcome.code === 'ok'
     ? `Applied and verified.`
     : outcome.code === 'nothing_applied'
       ? 'Nothing needed changing.'
       : outcome.code === 'verification_failed'
-        ? `Applied, but ${remainingIncidentIds.length} related incident(s) remain.`
+        ? remainingIncidentIds.length > 0
+          ? `Applied, but ${remainingIncidentIds.length} related incident(s) remain.`
+          : 'Applied, but Health could not confirm the fix — re-run Health.'
         : `${failedRows} repair item(s) failed.`
   return {
     status: outcome.status === 'cancelled' ? 'failed' : outcome.status,

@@ -682,7 +682,10 @@ const routes = [
             actor: { source: 'web', id: username, displayName: username },
           })
           const started = operationStartResponseSchema.safeParse(result)
-          if (!started.success) return Response.json({ error: 'The approved repair did not start; the linked task carries the reason.', code: 'APPROVAL_DECISION' }, { status: 500 })
+          if (!started.success) {
+            const failure = (result as { startFailure?: unknown } | null)?.startFailure
+            return Response.json({ error: typeof failure === 'string' ? failure : 'The approved repair did not start; the linked task carries the reason.', code: 'APPROVAL_DECISION' }, { status: 500 })
+          }
           return Response.json(started.data, { status: 202 })
         }
         const started = await startDoctorRepair({

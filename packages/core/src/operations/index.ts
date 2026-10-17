@@ -45,6 +45,7 @@ export {
 } from '@makinbakin/sdk/types'
 export { OperationCancelledError, OperationRejectedError } from './errors'
 export {
+  CHILD_PARTIAL_CODE,
   CHILD_SKIPPED_CODE,
   parentOutcome,
   tallyChildren,

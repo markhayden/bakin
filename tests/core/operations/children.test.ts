@@ -30,6 +30,7 @@ afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 import { afterEach, describe, expect, it } from 'bun:test'
 
 import {
+  CHILD_PARTIAL_CODE,
   CHILD_SKIPPED_CODE,
   createMemoryResourceAcquirer,
   createOperationRegistry,
@@ -123,6 +124,12 @@ describe('parent outcome precedence (first match wins)', () => {
       { status: 'cancelled', outcome: { code: 'cancelled' } },
       { status: 'running' },
     ])).toEqual({ applied: 1, skipped: 1, failed: 1, cancelled: 1 })
+  })
+
+  it('a child that changed something before it failed counts as applied AND failed, so the parent is partially applied', () => {
+    const tally = tallyChildren([{ status: 'failed', outcome: { code: CHILD_PARTIAL_CODE } }])
+    expect(tally).toEqual({ applied: 1, skipped: 0, failed: 1, cancelled: 0 })
+    expect(parentOutcome(tally, { cancelled: false, verified: true })).toEqual({ status: 'failed', code: 'partially_applied' })
   })
 })
 
