@@ -142,6 +142,17 @@ mutation endpoints**:
 - "Install from source…" custom mode: source + kind + installAs/adopt/replace;
   source-type inference matches the CLI heuristic (`inferSourceType`).
 
+Every one of those routes is an **operation** (#895): it answers 202
+`{ operationId, bootId }` and the old body is the operation's result. The
+dialog follows through `useInstallOperation` (SDK `startOperation` +
+`useOperation`, generation-guarded so a stale start after reset is ignored)
+and renders `OperationProgress` while running — fetch, build and bin
+downloads with byte progress — then hides it once a result arrives so the
+dialog's own result/consent rendering is the only message. A plugin preview
+never installs: it ends `awaiting_consent` (consent dialog) or `ready`
+(committed at once with the minted token). Hub-skill preview/install and
+removal follow the same way in `hub-skills-section.tsx`.
+
 Server-owned validation/consent is never re-implemented client-side; the
 dialogs render server responses (including errors) honestly.
 

@@ -289,10 +289,20 @@ commit submits source B):
      a fresh token + the new diff).
    - On full match, commits through the **replace transaction** (below):
      place files → `buildUserPlugin()` → download + verify bins → write
-     the lockfile entry. With `?async=1` the commit runs as an install
-     job (`startInstallJob`, kind `plugin`) and answers 202 + `jobId`;
-     the `bins` stage rides the shared `packages.install_*` progress
-     events, which is how Explore shows download progress.
+     the lockfile entry.
+
+Both phases are **operations** (#895; `.claude/knowledge/operations.md`):
+the route answers 202 `{ operationId, bootId }` and the old JSON body
+becomes the operation's result (`outcomeFromResponse`). The **preview**
+(`PLUGIN_PREVIEW_PLAN`, fetch + check, holds nothing, no point of no
+return) never installs — it ends `awaiting_consent` (permissions/bins to
+disclose) or `ready` (nothing to consent to, token still minted). The
+**commit** (`accepted: true` + token, `PLUGIN_COMMIT_PLAN`) owns
+`install-state`; its point of no return is the replace transaction's
+journal-first rename, and every transaction phase (build output, bin
+downloads as items with byte progress) reports through the operation —
+which is how Explore, Health and the CLI show progress. Clients follow
+with `startOperation`/`useOperation` and render `OperationProgress`.
 
 Plugins with no permissions and no bins skip the consent gate (no token
 needed). `--yes` short-circuits the prompt for scripted/CI installs but the
@@ -301,7 +311,8 @@ token round-trip still runs for the binding check.
 ### Replace transaction + boot recovery — `src/core/plugins/replace-transaction.ts`
 
 THE one way `~/.bakin/plugins/<id>/` changes. Install and every upgrade
-lane run `replacePluginDir(...)` under the install lock:
+lane run `replacePluginDir(...)` inside an operation that owns
+`install-state` (the commit's point of no return is entering `replace`):
 
 ```
 journal → backup → sentinel → place → build → bins → ledger → commit
@@ -368,16 +379,19 @@ backup dir ⇒ restore from the sentinel. The loader
 (backups, staging clones) and any dir still carrying a sentinel. A new
 operation on an id first recovers that id's leftovers.
 
-**Install lock:** `~/.bakin/install.lock` is ONE atomic (O_EXCL) lock — the
+**install-state:** `~/.bakin/install.lock` is ONE atomic (O_EXCL) lock — the
 `install-state` operation resource (`.claude/knowledge/operations.md`
-§ Resources; `install-lock.ts` is now a facade over it, deleted in PR4). The
-outer operation acquires it with `withInstallLock`, which is reentrant only
-within that operation's async continuation (AsyncLocalStorage) — a second
-request arriving while the lock is held is refused like a second process
-(`InstallLockBusyError`, mapped to **409** by the install, upgrade and
-remove routes). Inner writers (`installPluginBins`, `installManifestBins`,
-`replacePluginDir`) call `assertInstallLockHeld`, which only the holding
-operation satisfies.
+§ Resources). The operation that declares it owns it for its whole run;
+ownership is reentrant only within that operation's async continuation
+(AsyncLocalStorage). A second operation needing it **waits visibly**
+(`waitingFor` names the holder) instead of failing. Bounded synchronous
+writers (unlink, lesson toggle, skill-map apply) take it with `holdNow`,
+which never waits and answers **409** `install_busy` naming the holder.
+Inner writers (`installPluginBins`, `installManifestBins`,
+`replacePluginDir`, `upgradePlugin` commits, …) call
+`assertResourceHeld('install-state', …)` — calling one outside an owner
+throws, and `tests/architecture/operations-install-state.test.ts` keeps
+every caller owned.
 
 ### Signature Policy
 
@@ -576,8 +590,9 @@ awaitingConsent: true, newPermissions, newBins, consentToken }` with the
 token bound to `upgrade:<id>` + `manifestSha` + full permissions + bins.
 `{ pluginId, accepted: true, consentToken }` commits only while the target
 still matches (else bounce + fresh token). Tokens for another plugin,
-forged or expired tokens → 400. `?async=1` runs the whole upgrade as an
-install job. Callers round-trip the token: the CLI (`--yes` accepts the
+forged or expired tokens → 400. Like install, both phases are operations:
+the preview holds nothing and ends `awaiting_consent` or `ready` (with a
+token either way); the commit owns `install-state`. Callers round-trip the token: the CLI (`--yes` accepts the
 preview in place of the prompt; a changed target re-prompts, bounded to 3
 rounds) and the Health inventory's "Approve update" button (which lists
 the downloads).
@@ -622,10 +637,11 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
 
 1. Refuse if `isCorePlugin(id)` (returns `{ core: true }` per CLI
    contract)
-2. Take the install lock for the WHOLE teardown (steps 2–7); a busy lock
-   refuses the removal with 409 before any hook, snapshot or deactivation
-   runs — a concurrent install can never leave a plugin deactivated but
-   installed. Then call `plugin.onUninstall(ctx)` if defined — log +
+2. The removal is an operation (`PLUGIN_REMOVE_PLAN`, point of no return
+   at start — no cancel) owning `install-state` for the WHOLE teardown
+   (steps 2–7); a concurrent install makes it wait visibly before any
+   hook, snapshot or deactivation runs — a plugin can never be left
+   deactivated but installed. Then call `plugin.onUninstall(ctx)` if defined — log +
    audit + continue on error (a buggy hook must not trap the user)
 3. Plan runtime skill cleanup — partition by the lockfile entry's
    `installedSkills` allowlist (the authoritative record of what this
@@ -684,6 +700,9 @@ provenance for future list/check/upgrade behavior. Older snapshots that
 lack a lock entry are restored as local plugins using the restored
 manifest as the source of version, permissions, manifest hash, and
 runtime skill ownership.
+
+Restore runs as an operation (`PLUGIN_RESTORE_PLAN`, owns `install-state`,
+point of no return at `place`) — the CLI follows it like install.
 
 **CLI surface details:**
 - The response includes `skillsMissing: string[]` listing skill names
@@ -1558,6 +1577,11 @@ Collision rules:
   `--force` is passed.
 - If the plugin id is already linked/dev-installed, fail even with
   `--force`; unlink it first.
+
+Link (and `install --dev`, which delegates to it) is an operation
+(`PLUGIN_LINK_PLAN`, owns `install-state`, point of no return at `link`);
+unlink is a bounded synchronous writer — `holdNow`, answering 409
+`install_busy` instead of waiting while another install runs.
 
 ### Architecture
 

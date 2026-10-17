@@ -112,7 +112,7 @@ Functions: `injectBlock`, `extractBlock`, `removeBlock`, `listBlocks`, `hasBlock
 
 `src/core/agent-packages/installer.ts` — `installPackage(options)`:
 
-1. **Acquire the install lock** (`~/.bakin/install.lock`, the `install-state` operation resource — `.claude/knowledge/operations.md` § Resources) via `withInstallLock` until PR4 converts installs to operations
+1. **Own `install-state`** (`~/.bakin/install.lock` — `.claude/knowledge/operations.md` § Resources). `installPackage` asserts it (`assertResourceHeld`); the caller is the install operation (`POST /api/packages/install` / `/api/agent-packages/install`, `PACKAGE_INSTALL_PLAN`, point of no return at `install`) or `runOwning` for in-process callers. Fetch, verify, dependency projection and requirement downloads report as stages/items through the optional `op` (§ Installs and lifecycle in operations.md)
 2. **Fetch source** via `source-fetcher.ts` → staging dir + commitSha. github: clones with `--depth 1 --branch <ref>` first; on failure (commit SHAs not accepted by `--branch`), falls back to deeper clone + `git checkout`. Local sources copy with `dereference:false`. `clawhub:@owner/slug[@version]` downloads per-file with sha256 verification (async path only). Bare names refuse. **Raw skill bundles (#687):** a fetched dir with `SKILL.md` but no `bakin-package.json` is synthesized IN STAGING into a skill-pack (id `hub-<name>`, `upstream` provenance stanza, frozen `metadata.openclaw` requirement translation) — see `.claude/knowledge/skill-hub-interop.md`; the runtimes/platforms gate (D14) then refuses incompatible packs server-side before any projection.
 3. **Parse + validate manifest** via the zod schema
 4. **Compute install mode** for `kind: "agent"`:

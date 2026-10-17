@@ -76,11 +76,16 @@ composition and what's actually in the block, attributed per input.
   [--yes]`, `bakin packages sync <id> [--check]`, `bakin check/install
   agent-sync`. Legacy `agents update`, `--refresh-template`, and
   `bakin agent-rules` are deleted.
-- REST: `POST /api/agent-packages/:agentId/sync` (409 + `migrationRequired`
-  on legacy lockfiles), `GET /:agentId/receipt`, `POST
-  /api/agent-packages/migrate`, `POST /api/packages/:packageId/sync`; team
-  plugin: `GET/PUT /api/plugins/team/context[/:scope?id=]`, `POST
-  /api/plugins/team/teams/:teamId/sync`.
+- REST: `POST /api/agent-packages/:agentId/sync` (an operation whose
+  failed result carries 409 + `migrationRequired` on legacy lockfiles),
+  `GET /:agentId/receipt`, `POST /api/agent-packages/migrate`, `POST
+  /api/packages/:packageId/sync`; team plugin: `GET/PUT
+  /api/plugins/team/context[/:scope?id=]`, `POST
+  /api/plugins/team/teams/:teamId/sync` (`global` = every agent). Sync,
+  migrate and team sync are operations owning `install-state` (`--check`
+  holds nothing) — `.claude/knowledge/operations.md` § Installs and
+  lifecycle; in-process callers (onboarding, the runtime switch) use
+  `runOwning`.
 - Doctor: `team.agent-sync` (local-only, every cycle) with a repair handler
   — safe local-sync item + destructive confirm-required migration item.
   Replaced `team.agent-assets`, `health.orchestrator-rules`,

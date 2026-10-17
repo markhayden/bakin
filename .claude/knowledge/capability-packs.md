@@ -129,12 +129,14 @@ rollback, receipts) with two additions:
   (`withoutSharedArtifacts` also consults plugin pins) all keep a binary
   any remaining owner pins. **One lock:** `~/.bakin/install.lock` (the
   `install-state` operation resource, `.claude/knowledge/operations.md`) is a
-  single atomic (O_EXCL) lock the OUTER operation acquires
-  (`withInstallLock` — pack install/update/remove, plugin install/upgrade/
-  remove, the plugin-assets repair; reentrant only within that operation's
-  async continuation, so a concurrent request is refused like a second
-  process); inner writers assert it (`assertInstallLockHeld`) rather than
-  acquiring their own. **Committed provenance only:** the plugin-assets
+  single atomic (O_EXCL) lock the OUTER operation owns (pack
+  install/update/remove/sync, plugin install/upgrade commit/remove/restore/
+  link, the plugin-assets repair; reentrant only within that operation's
+  async continuation — a concurrent operation waits visibly, a bounded
+  synchronous writer gets 409 `install_busy` via `holdNow`); inner writers
+  assert it (`assertResourceHeld('install-state', …)`) rather than
+  acquiring their own. Bin downloads report as operation items with byte
+  progress. **Committed provenance only:** the plugin-assets
   repair discovers user plugins from the lockfile (a row + a loadable dir),
   never from directory listings — abandoned staging dirs and unledgered
   copies can never feed the bin installer; an unreadable ledger is a
