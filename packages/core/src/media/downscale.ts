@@ -13,16 +13,20 @@
  *   Providers reject `image/svg+xml` outright, so sending it raw only ever
  *   bought a billed failure.
  *
+ * The image lane trusts BYTES, not names: passthrough requires the file's
+ * magic bytes to prove a vision-raster format (an SVG renamed `.png` is
+ * rasterized, never sent raw), and the sent mime is the sniffed one.
+ *
  * Failures are typed (`ImageNotSendableError.reason`) — callers branch on the
- * reason, never on message text. Decoding and encoding run in memory through
- * sharp, so a failure there is the IMAGE's fault (`unrasterizable`); the temp
- * file is written with plain fs calls, so a disk error stays a disk error
- * (untyped, retryable) and is never mistaken for a bad image.
+ * reason, never on message text. The source is read and the temp file is
+ * written with plain fs calls, so a disk error stays a disk error (untyped,
+ * retryable); sharp only ever decodes bytes already in memory, so a failure
+ * there is the IMAGE's fault (`unrasterizable`).
  */
-import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs'
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
-import { isVisionRasterMime } from './image-format'
+import { sniffVisionRasterMime } from './raster-sniff'
 import { loadSharp, type Sharp } from './sharp-loader'
 
 export const INLINE_ATTACHMENT_LIMIT_BYTES = 2_000_000
@@ -66,9 +70,9 @@ const INSTALL_MEDIA_FIX = 'Fix: run `bakin install media` (or Health → "Instal
  * cannot be made sendable; never sends an oversized or non-raster file.
  */
 export async function prepareImageAttachment(path: string, mimeType: string): Promise<PreparedAttachment> {
-  const raster = isVisionRasterMime(mimeType)
   const size = statSync(path).size
-  if (raster && size <= INLINE_ATTACHMENT_LIMIT_BYTES) return { path, mimeType, owned: false }
+  const raster = sniffVisionRasterMime(path)
+  if (raster && size <= INLINE_ATTACHMENT_LIMIT_BYTES) return { path, mimeType: raster, owned: false }
 
   const sharp = await loadSharp()
   if (!sharp) {
@@ -77,7 +81,10 @@ export async function prepareImageAttachment(path: string, mimeType: string): Pr
       : `attachment ${path}: ${mimeType} is not an image type vision models accept and sharp is unavailable to convert it. ${INSTALL_MEDIA_FIX}`)
   }
 
-  const encoded = raster ? await downscaleRaster(sharp, path) : await rasterize(sharp, path, mimeType)
+  // Plain fs read: an unreadable source throws its own (untyped, retryable)
+  // error here and never reaches sharp as a "bad image".
+  const bytes = readFileSync(path)
+  const encoded = raster ? await downscaleRaster(sharp, path, bytes) : await rasterize(sharp, path, bytes, mimeType)
   if (encoded.data.length > INLINE_ATTACHMENT_LIMIT_BYTES) {
     throw new ImageNotSendableError('too_large',
       `attachment ${path}: still ${encoded.data.length} bytes after converting to ${MAX_DIMENSION}px — refusing to send (would silently degrade upstream).`)
@@ -108,8 +115,8 @@ async function decodeStep<T>(path: string, mimeType: string, step: () => Promise
   }
 }
 
-async function downscaleRaster(sharp: Sharp, path: string): Promise<Encoded> {
-  const data = await decodeStep(path, 'image', () => sharp(path, { limitInputPixels: MAX_INPUT_PIXELS })
+async function downscaleRaster(sharp: Sharp, path: string, bytes: Buffer): Promise<Encoded> {
+  const data = await decodeStep(path, 'image', () => sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS })
     .rotate() // honor EXIF orientation before stripping metadata
     .resize(MAX_DIMENSION, MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
     .jpeg({ quality: JPEG_QUALITY })
@@ -117,8 +124,8 @@ async function downscaleRaster(sharp: Sharp, path: string): Promise<Encoded> {
   return { data, mimeType: 'image/jpeg' }
 }
 
-async function rasterize(sharp: Sharp, path: string, mimeType: string): Promise<Encoded> {
-  const meta = await decodeStep(path, mimeType, () => sharp(path, { limitInputPixels: MAX_INPUT_PIXELS }).metadata())
+async function rasterize(sharp: Sharp, path: string, bytes: Buffer, mimeType: string): Promise<Encoded> {
+  const meta = await decodeStep(path, mimeType, () => sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS }).metadata())
   // Vector art renders at its declared size by default (often a few dozen
   // px) — scale small art up to a readable size through density. Applied
   // only below the target, and computed to land ON it, so the render is
@@ -129,7 +136,7 @@ async function rasterize(sharp: Sharp, path: string, mimeType: string): Promise<
     : undefined
   // First frame/page only (sharp's default) — animation and multipage
   // extraction are out of scope for a single image-lane attachment.
-  const base = () => sharp(path, { limitInputPixels: MAX_INPUT_PIXELS, ...(density ? { density } : {}) })
+  const base = () => sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS, ...(density ? { density } : {}) })
     .rotate()
     .resize(MAX_DIMENSION, MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
   const png = await decodeStep(path, mimeType, () => base().png().toBuffer())

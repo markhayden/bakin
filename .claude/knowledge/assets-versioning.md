@@ -189,7 +189,11 @@ images and audio files.
 after resolving the engine and BEFORE marking the job pending — one
 preparation (`prepareImageAttachment`) for both engines, reused by every
 retry and released in the job's `finally`; scanned PDFs prepare every page
-before page 1 is sent (`prepareScannedPdf`). Engines never prepare media.
+before page 1 is sent (`prepareScannedPdf`), and per-page results survive
+retries inside the job, so a page-2 failure never re-bills page 1. Engines
+never prepare media. (TIFF/HEIF uploads are not `images` assets today — the
+seam converts them for any caller, but the assets extension map does not
+classify them as images.)
 Preparation failures make ZERO provider calls: sharp missing or an untyped
 disk error → `failed` (retryable; the daily pass heals it after
 `bakin install media`); an image sharp cannot decode or shrink (bmp, a

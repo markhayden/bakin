@@ -33,6 +33,8 @@ export function isPdfPath(absPath: string): boolean {
 export interface PreparedScannedPdf {
   pages: Array<{ page: number; prepared: PreparedAttachment }>
   totalPages: number
+  /** Per-page results that already succeeded — a retry never re-bills them. */
+  results: Map<number, VisionEnrichmentResult>
   release(): void
 }
 
@@ -53,7 +55,7 @@ export async function prepareScannedPdf(absPath: string): Promise<PreparedScanne
     release()
     throw err
   }
-  return { pages, totalPages, release }
+  return { pages, totalPages, results: new Map(), release }
 }
 
 export async function runScannedPdfEnrichment(
@@ -65,13 +67,16 @@ export async function runScannedPdfEnrichment(
   const { totalPages } = scan
   const perPage: Array<{ page: number; result: VisionEnrichmentResult }> = []
   for (const { page, prepared } of scan.pages) {
-    const result = await engine.run({
+    // A retry after page N failed resumes at page N: pages that already
+    // succeeded (and were billed) are reused, never re-sent.
+    const result = scan.results.get(page) ?? await engine.run({
       kind: 'image',
       mediaPath: prepared.path,
       mediaMime: prepared.mimeType,
       jobKey: `${jobKey}:p${page}`,
       ...(existingDescription ? { existingDescription } : {}),
     })
+    scan.results.set(page, result)
     perPage.push({ page, result })
   }
   const first = perPage[0]!.result

@@ -97,6 +97,9 @@ function makeService(
   })
 }
 
+// A real 1×1 PNG: the image lane trusts magic bytes, not names (#855).
+const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+
 describe('conversation turn service', () => {
   test('started event fires at accept, before any runtime chunk (#707)', async () => {
     const h = makeHarness()
@@ -390,7 +393,7 @@ describe('conversation turn service', () => {
   test('attachment-only sends carry the visible placeholder and reach the runtime', async () => {
     mkdirSync(testDir, { recursive: true })
     const filePath = join(testDir, 'pic.png')
-    writeFileSync(filePath, 'tiny-image-bytes')
+    writeFileSync(filePath, PNG_1PX)
     const h = makeHarness()
     const service = makeService(h)
     expect(
@@ -411,7 +414,7 @@ describe('conversation turn service', () => {
     mkdirSync(testDir, { recursive: true })
     const imgPath = join(testDir, 'pic.png')
     const pdfPath = join(testDir, 'doc.pdf')
-    writeFileSync(imgPath, 'tiny-image-bytes')
+    writeFileSync(imgPath, PNG_1PX)
     writeFileSync(pdfPath, 'fake-pdf-bytes')
     const h = makeHarness()
     const service = makeService(h)
@@ -688,7 +691,7 @@ describe('conversation turn service — pending queue', () => {
   test('combined drain after done: FIFO user rows, ONE runtime call with joined content + merged attachments, one meter', async () => {
     mkdirSync(testDir, { recursive: true })
     const filePath = join(testDir, 'queued-pic.png')
-    writeFileSync(filePath, 'tiny')
+    writeFileSync(filePath, PNG_1PX)
     const metered: Array<Record<string, unknown>> = []
     const { h, service, persisted, scripts } = makeQueueHarness({
       hooks: { meter: (info) => { metered.push(info) } },
@@ -974,7 +977,7 @@ describe('conversation turn service — pending queue', () => {
   test('attachment-only queued message gets the visible placeholder at enqueue', async () => {
     mkdirSync(testDir, { recursive: true })
     const filePath = join(testDir, 'q-only.png')
-    writeFileSync(filePath, 'tiny')
+    writeFileSync(filePath, PNG_1PX)
     const { h, service, scripts } = makeQueueHarness()
     const release = gatedScript(scripts)
     scripts.push(async function* () {

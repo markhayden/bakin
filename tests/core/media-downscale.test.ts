@@ -10,7 +10,7 @@
 import { describe, it, expect, afterAll, mock } from 'bun:test'
 import { join, dirname } from 'path'
 import { tmpdir } from 'os'
-import { rmSync, mkdirSync, mkdtempSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'fs'
+import { rmSync, mkdirSync, mkdtempSync, writeFileSync, existsSync, readdirSync, readFileSync, chmodSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-media-downscale-${Date.now()}-${randomUUID()}`)
@@ -61,6 +61,8 @@ const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47]
 const JPEG_MAGIC = [0xff, 0xd8, 0xff]
 const startsWith = (path: string, magic: number[]) => magic.every((byte, i) => readFileSync(path)[i] === byte)
 
+const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+
 // 1×1 24-bit BMP: a real image the pinned sharp build has no decoder for.
 const BMP_1PX = Buffer.from('424d3a0000000000000036000000280000000100000001000000010018000000000004000000130b0000130b00000000000000000000ff000000', 'hex')
 
@@ -68,11 +70,36 @@ mkdirSync(testDir, { recursive: true })
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 describe('prepareImageAttachment', () => {
-  it('under-limit originals pass through as-is (downscaled: false)', async () => {
+  it('an under-limit raster passes through as-is, with the mime its BYTES prove', async () => {
     const original = join(testDir, 'small.png')
-    writeFileSync(original, Buffer.alloc(1024))
+    writeFileSync(original, PNG_1PX)
+    expect(await prepareImageAttachment(original, 'image/png')).toEqual({ path: original, mimeType: 'image/png', owned: false })
+    // A mislabeled declaration is corrected, never trusted.
+    expect(await prepareImageAttachment(original, 'image/jpeg')).toEqual({ path: original, mimeType: 'image/png', owned: false })
+  })
+
+  it('an SVG named .png and declared image/png is rasterized, never passed through (#855)', async () => {
+    const original = join(testDir, 'liar.png')
+    writeFileSync(original, '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16"/></svg>')
     const prepared = await prepareImageAttachment(original, 'image/png')
-    expect(prepared).toEqual({ path: original, mimeType: 'image/png', owned: false })
+    expect(prepared.owned).toBe(true)
+    expect(prepared.path).not.toBe(original)
+    expect(startsWith(prepared.path, PNG_MAGIC)).toBe(true)
+    cleanupPreparedAttachment(prepared)
+  })
+
+  it.skipIf(process.getuid?.() === 0)('an unreadable source is a plain fs error, never a typed bad-image verdict', async () => {
+    const original = join(testDir, 'locked.svg')
+    writeFileSync(original, '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>')
+    chmodSync(original, 0o000)
+    try {
+      const err = await expectNoNewTempDirs(() => prepareImageAttachment(original, 'image/svg+xml'))
+      expect(err).toBeInstanceOf(Error)
+      expect(err).not.toBeInstanceOf(ImageNotSendableError)
+      expect((err as NodeJS.ErrnoException).code).toBe('EACCES')
+    } finally {
+      chmodSync(original, 0o644)
+    }
   })
 
   it('downscales an oversized raster to an owned temp JPEG', async () => {

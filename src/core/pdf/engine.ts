@@ -19,7 +19,7 @@
  * `pdf_unavailable` in compiled binaries — honest, never a cryptic crash.
  * Repo-tree runs (the production box) use the real canvas polyfills.
  */
-import { existsSync, mkdtempSync, openSync, readSync, closeSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, openSync, readSync, closeSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { createLogger } from '../logger'
@@ -274,12 +274,18 @@ export async function renderPdfPages(path: string, pages?: number[]): Promise<Pd
       imageDataUrl: false,
     })
     const outDir = mkdtempSync(join(tmpdir(), 'bakin-pdf-render-'))
-    const files: PdfRenderedFile[] = shot.pages.map((p) => {
-      const filePath = join(outDir, `page-${p.pageNumber}.png`)
-      writeFileSync(filePath, Buffer.from(p.data))
-      // pdfjs scale math yields floats (1567.9999…) — report integer pixels.
-      return { page: p.pageNumber, path: filePath, width: Math.round(p.width), height: Math.round(p.height) }
-    })
-    return { files, outDir, totalPages: total, truncated }
+    try {
+      const files: PdfRenderedFile[] = shot.pages.map((p) => {
+        const filePath = join(outDir, `page-${p.pageNumber}.png`)
+        writeFileSync(filePath, Buffer.from(p.data))
+        // pdfjs scale math yields floats (1567.9999…) — report integer pixels.
+        return { page: p.pageNumber, path: filePath, width: Math.round(p.width), height: Math.round(p.height) }
+      })
+      return { files, outDir, totalPages: total, truncated }
+    } catch (err) {
+      // The caller never receives outDir on failure — release it here.
+      rmSync(outDir, { recursive: true, force: true })
+      throw err
+    }
   })
 }

@@ -53,7 +53,7 @@ export interface SharpPipeline {
   toBuffer(): Promise<Buffer>
 }
 
-export type Sharp = (input: string, options?: SharpInputOptions) => SharpPipeline
+export type Sharp = (input: string | Buffer, options?: SharpInputOptions) => SharpPipeline
 
 let sharpModule: Promise<Sharp | null> | null = null
 /** Store entry the cached FAILURE already tried (null = none existed then). */

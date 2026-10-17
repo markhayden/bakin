@@ -91,9 +91,13 @@ import {
 
 const SAVED_KEY = process.env.ANTHROPIC_API_KEY
 
+// A real 1×1 PNG: the image lane trusts magic bytes (#855), so a fake
+// 'png-bytes' file would (correctly) be treated as not-an-image.
+const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+
 async function makeImageAsset(): Promise<string> {
   const src = join(testDir, `pic-${Date.now()}-${Math.random().toString(36).slice(2)}.png`)
-  writeFileSync(src, 'png-bytes')
+  writeFileSync(src, PNG_1PX)
   const created = await createAsset({ sourceFilePath: src, type: 'images', agent: 'user', op: 'upload', taskId: null, description: 'a picture' })
   return created.assetId
 }
@@ -255,6 +259,9 @@ describe('scanned-PDF vision OCR (#747)', () => {
     const e = getAsset(assetId)?.enrichment
     expect(e?.status).toBe('failed')
     expect(e?.ocrText).toBeUndefined()
+    // Retry resumes at page 2: page 1 succeeded once and is never re-billed.
+    // p1 ok, p2 fail, (retry) p2 fail = 3 calls, not 4.
+    expect(n).toBe(3)
   })
 
   it('text PDFs keep the pure-text path: zero renders, one document call', async () => {
@@ -348,7 +355,7 @@ describe('enrichment activity notifications', () => {
     expect(getAssetSummary(assetId)?.enrichment).toBe('done')
 
     const src = join(testDir, `pic-v2-${Date.now()}.png`)
-    writeFileSync(src, 'png-bytes-v2')
+    writeFileSync(src, PNG_1PX)
     await addVersion(assetId, { sourceFilePath: src, op: 'upload' })
     expect(getAssetSummary(assetId)?.enrichment).toBe('stale')
   })
@@ -436,6 +443,21 @@ describe('media preparation before any billed call (#855)', () => {
     expect(visionCall).not.toHaveBeenCalled()
     expect(getAsset(assetId)?.enrichment?.status).toBe('skipped')
     expect(getAsset(assetId)?.enrichment?.error).toContain('cannot decode')
+  })
+
+  it('an SVG renamed .png is rasterized by its bytes, never sent raw (#855)', async () => {
+    const seen: VisionReq[] = []
+    visionCall.mockImplementation(async (req: VisionReq) => {
+      seen.push({ ...req })
+      expect(readFileSync(req.mediaPath!).subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+      return { caption: 'a red logo', suggestedTags: [] }
+    })
+    const assetId = await makeImageFile('liar.png', SVG)
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(getAsset(assetId)?.enrichment?.status).toBe('done')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.mediaPath).not.toContain(assetId)
   })
 
   it('a malformed SVG is skipped with a reason and never billed', async () => {

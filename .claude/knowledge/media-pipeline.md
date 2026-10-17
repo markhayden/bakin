@@ -35,15 +35,18 @@ devDependency sharp would otherwise satisfy the bundled leg in every test).
 Consumers (all degrade through the loader, never import sharp directly):
 - `packages/core/src/media/downscale.ts` — THE pre-send image seam for
   enrichment AND chat attachments (`prepareImageAttachment`): vision-raster
-  under the 2 MB cap passes through; oversized raster → JPEG; any other image
+  under the 2 MB cap passes through — proven by MAGIC BYTES
+  (`raster-sniff.ts`, shared with chat's Discord inbound), never by name or
+  declared mime, and sent with the sniffed mime; oversized raster → JPEG;
+  any other image
   (SVG, TIFF, HEIF) is RASTERIZED (#855) — PNG first (keeps logo
   transparency), JPEG on white when the PNG would not fit, small vector art
   density-scaled to a 1024px long edge, first frame/page only, 100 MP decode
   bound. Failures are typed `ImageNotSendableError.reason`
   (`sharp_unavailable` | `unrasterizable` | `too_large`) — branch on the
-  reason, never the text; decode/encode run in memory, so only a decode
-  failure is `unrasterizable` and temp-file write errors stay plain fs
-  errors. `PreparedAttachment.owned` marks a temp file the caller releases
+  reason, never the text; the source is READ with fs and sharp decodes
+  bytes in memory, so only a decode failure is `unrasterizable` — an
+  unreadable source or a temp-file write error stays a plain fs error. `PreparedAttachment.owned` marks a temp file the caller releases
   with `cleanupPreparedAttachment` (no leak on any throw path). The pinned
   sharp build decodes jpeg/png/webp/gif/tiff/heif/svg — NOT bmp.
   Which mimes a model's image lane accepts is ONE set:
