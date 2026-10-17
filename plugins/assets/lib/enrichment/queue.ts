@@ -16,7 +16,7 @@ import { createLogger } from '../../../../src/core/logger'
 import { recordUsage } from '../../../../src/core/usage'
 import { getAsset, resolveFile } from '../asset-core'
 import { canExtractAssetContent, extractAssetContent } from '../content-extractor'
-import { isPdfPath, runScannedPdfEnrichment } from './scanned-pdf'
+import { isPdfPath, prepareScannedPdf, runScannedPdfEnrichment, type PreparedScannedPdf } from './scanned-pdf'
 import {
   AssetGoneError,
   applyEnrichmentResult,
@@ -27,15 +27,19 @@ import {
 import type { EnrichmentSettings } from './providers'
 import { resolveEnrichmentEngine } from './engine'
 import type { VisionEnrichmentResult } from '@bakin/core/media'
+import { IMAGE_EXTENSION_TO_MIME } from '@bakin/core/media/image-format'
+import {
+  ImageNotSendableError,
+  cleanupPreparedAttachment,
+  prepareImageAttachment,
+  type PreparedAttachment,
+} from '@bakin/core/media/downscale'
 import { createHash } from 'crypto'
 
 const log = createLogger('asset-enrichment')
 
 const MAX_ATTEMPTS = 2
 
-const IMAGE_MIMES: Record<string, string> = {
-  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp',
-}
 const AUDIO_MIMES: Record<string, string> = {
   mp3: 'audio/mpeg', wav: 'audio/wav', flac: 'audio/flac', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac',
 }
@@ -141,7 +145,10 @@ function pump(): Promise<void> {
 
 function kindFor(manifest: NonNullable<ReturnType<typeof getAsset>>, absPath: string, mimeType: string): { kind: 'image' | 'audio' | 'document'; mime?: string } | null {
   const ext = absPath.split('.').pop()?.toLowerCase() ?? ''
-  const imageMime = IMAGE_MIMES[ext] ?? (mimeType.startsWith('image/') ? mimeType : undefined)
+  // Broad on purpose: ANY image classifies here so it reaches the prep seam,
+  // which decides sendable / rasterize / skip (#855) — eligibility is never
+  // decided by this table.
+  const imageMime = IMAGE_EXTENSION_TO_MIME[`.${ext}`] ?? (mimeType.startsWith('image/') ? mimeType : undefined)
   if (manifest.type === 'images' && imageMime) return { kind: 'image', mime: imageMime }
   const audioMime = AUDIO_MIMES[ext] ?? (mimeType.startsWith('audio/') ? mimeType : undefined)
   if (manifest.type === 'audio' && audioMime) return { kind: 'audio', mime: audioMime }
@@ -149,10 +156,66 @@ function kindFor(manifest: NonNullable<ReturnType<typeof getAsset>>, absPath: st
   return null
 }
 
+interface Prepared {
+  /** Single-file media (image or audio) the engine sends, already sendable. */
+  attachment?: PreparedAttachment
+  /** Scanned-PDF pages, every one prepared before the first send. */
+  scan?: PreparedScannedPdf
+  release(): void
+}
+
+async function prepareMedia(
+  kind: { kind: 'image' | 'audio' | 'document'; mime?: string },
+  scannedPdf: boolean,
+  absPath: string,
+): Promise<Prepared> {
+  if (scannedPdf) {
+    const scan = await prepareScannedPdf(absPath)
+    return { scan, release: () => scan.release() }
+  }
+  if (kind.kind === 'image') {
+    const attachment = await prepareImageAttachment(absPath, kind.mime ?? 'application/octet-stream')
+    return { attachment, release: () => cleanupPreparedAttachment(attachment) }
+  }
+  if (kind.kind === 'audio') {
+    // Audio rides its own transport limits; nothing to convert.
+    return { attachment: { path: absPath, mimeType: kind.mime ?? 'application/octet-stream', owned: false }, release: () => {} }
+  }
+  return { release: () => {} }
+}
+
+/**
+ * Record a preparation failure without billing anything (#855). Missing
+ * sharp is retryable (`failed` — the daily self-heal heals it once
+ * `bakin install media` runs); an image sharp cannot decode or shrink is
+ * terminal for this version (`skipped`); anything untyped (a disk error
+ * writing the temp file) is `failed`, never mistaken for a bad image.
+ * The manifest write comes BEFORE the counter so an asset deleted
+ * mid-flight (AssetGoneError) is booked once, as a skip, by the caller.
+ */
+async function recordPreparationFailure(assetId: string, engineModelId: string, err: unknown): Promise<'failed' | 'skipped'> {
+  const message = err instanceof Error ? err.message : String(err)
+  if (err instanceof ImageNotSendableError && err.reason !== 'sharp_unavailable') {
+    await markEnrichmentSkipped(assetId, message)
+    counters.skipped++
+    return 'skipped'
+  }
+  await markEnrichmentFailed(assetId, message)
+  counters.failed++
+  notifyActivity('asset.enrich_failed', actingAgent(engineModelId), {
+    message: `Enrichment failed for ${assetId} — ${message.slice(0, 160)}`,
+    assetId,
+    engine: engineModelId,
+    error: message.slice(0, 160),
+  })
+  return 'failed'
+}
+
 async function processJob(job: EnrichmentJob): Promise<void> {
   const start = Date.now()
   let status: 'ok' | 'failed' | 'skipped' = 'ok'
   let model = ''
+  let release: (() => void) | null = null
   try {
     const manifest = getAsset(job.assetId)
     if (!manifest) return
@@ -203,6 +266,18 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     const engine = resolution.engine
     model = engine.modelId
 
+    // Make the media sendable BEFORE any billed call (#855): one preparation
+    // for both engines, reused by every retry, released in `finally`. A file
+    // that can never be sent is recorded without a single provider call.
+    let media: Prepared
+    try {
+      media = await prepareMedia(kind, scannedPdf, file.absPath)
+    } catch (err) {
+      status = await recordPreparationFailure(job.assetId, engine.modelId, err)
+      return
+    }
+    release = media.release
+
     await markEnrichmentPending(job.assetId)
     notifyActivity('asset.enrich_started', actingAgent(engine.modelId), {
       message: `Enriching ${job.assetId}${pending.size > 0 ? ` (${pending.size} more queued)` : ''}`,
@@ -215,14 +290,16 @@ async function processJob(job: EnrichmentJob): Promise<void> {
       .update([job.assetId, manifest.currentVersion, engine.modelId].join('|'))
       .digest('hex')
 
-    const callProvider = scannedPdf
+    const scan = media.scan
+    const sendable = media.attachment
+    const callProvider = scan
       ? () => runScannedPdfEnrichment(
-          engine, file.absPath, `${job.assetId}:v${manifest.currentVersion}`, manifest.description ?? undefined,
+          engine, scan, `${job.assetId}:v${manifest.currentVersion}`, manifest.description ?? undefined,
         )
       : () => engine.run({
           kind: kind.kind,
           jobKey: `${job.assetId}:v${manifest.currentVersion}`,
-          ...(kind.kind !== 'document' ? { mediaPath: file.absPath, mediaMime: kind.mime } : {}),
+          ...(sendable ? { mediaPath: sendable.path, mediaMime: sendable.mimeType } : {}),
           ...(extractedText ? { extractedText } : {}),
           ...(manifest.description ? { existingDescription: manifest.description } : {}),
         })
@@ -298,6 +375,7 @@ async function processJob(job: EnrichmentJob): Promise<void> {
       log.error('enrichment job crashed', err instanceof Error ? err : undefined, { assetId: job.assetId })
     }
   } finally {
+    release?.()
     // No parallel stat system: the single usage recorder feeds telemetry.
     // Skips count as 'ok' — they are correct outcomes, not failures.
     recordUsage({

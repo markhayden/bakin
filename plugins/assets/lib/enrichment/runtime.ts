@@ -16,7 +16,6 @@
  */
 import { VisionEnrichmentResultSchema, type VisionEnrichmentResult } from '@bakin/core/media'
 import type { AgentRuntimeAdapter, MessageAttachment } from '@bakin/core/adapters/runtime'
-import { cleanupPreparedAttachment, prepareImageAttachment, type PreparedAttachment } from '@bakin/core/media/downscale'
 import type { EnrichmentEngine, EnrichmentJobInput } from './engine'
 
 export type RuntimeAvailability =
@@ -134,17 +133,12 @@ export function createRuntimeEngine(runtime: AgentRuntimeAdapter, agentId: strin
     modelId: `runtime:${agentId}`,
     async run(input: EnrichmentJobInput): Promise<VisionEnrichmentResult> {
       const threadId = `enrich:${input.jobKey ?? 'adhoc'}`
-      let attachments: MessageAttachment[] | undefined
-      let prepared: PreparedAttachment | null = null
-      if (input.kind !== 'document' && input.mediaPath) {
-        // Oversized images are downscaled to a temp JPEG BEFORE the send —
-        // the gateway's 2MB inline cap otherwise silently degrades them
-        // and the model never sees pixels (bakin#583 territory).
-        prepared = input.kind === 'image'
-          ? await prepareImageAttachment(input.mediaPath, input.mediaMime ?? 'application/octet-stream')
-          : { path: input.mediaPath, mimeType: input.mediaMime ?? 'application/octet-stream', owned: false }
-        attachments = [{ path: prepared.path, mimeType: prepared.mimeType }]
-      }
+      // The queue hands over an ALREADY-sendable file (#855: downscaled,
+      // rasterized, or the original) and owns its cleanup — the engine never
+      // prepares media itself, so both engines send identical bytes.
+      const attachments: MessageAttachment[] | undefined = input.kind !== 'document' && input.mediaPath
+        ? [{ path: input.mediaPath, mimeType: input.mediaMime ?? 'application/octet-stream' }]
+        : undefined
 
       // Work-class route ('enrichment') — DOCUMENT jobs only: attachment
       // turns must stay override-free (the gateway's attachment gate ignores
@@ -178,22 +172,16 @@ export function createRuntimeEngine(runtime: AgentRuntimeAdapter, agentId: strin
         return result
       }
 
-      try {
-        const first = await send(buildPrompt(input))
-        let outcome = parseReply(first.content)
-        if (outcome.ok) return outcome.result
-        if (outcome.noImage) throw new Error(outcome.reason)
+      const first = await send(buildPrompt(input))
+      let outcome = parseReply(first.content)
+      if (outcome.ok) return outcome.result
+      if (outcome.noImage) throw new Error(outcome.reason)
 
-        // ONE corrective re-ask on the same thread, then honest failure.
-        const second = await send(CORRECTIVE_REASK)
-        outcome = parseReply(second.content)
-        if (outcome.ok) return outcome.result
-        throw new Error(outcome.reason)
-      } finally {
-        // The re-ask reuses the downscaled file, so cleanup happens only
-        // after the LAST send — including every throw path above.
-        if (prepared) cleanupPreparedAttachment(prepared)
-      }
+      // ONE corrective re-ask on the same thread, then honest failure.
+      const second = await send(CORRECTIVE_REASK)
+      outcome = parseReply(second.content)
+      if (outcome.ok) return outcome.result
+      throw new Error(outcome.reason)
     },
   }
 }
