@@ -11,6 +11,7 @@ import { existsSync, cpSync, rmSync, realpathSync } from 'fs'
 import { homedir } from 'os'
 import { join, resolve, isAbsolute, sep } from 'path'
 import { execFileSync } from 'child_process'
+import { gitArgs } from '@bakin/core/net/git-args'
 import { getContentDir } from '@/core/content-dir'
 import { materializeCachedGithubSource } from '@/core/github-source-cache'
 import { githubArtifactSource } from '@/core/whiskit/github-resolver'
@@ -38,7 +39,7 @@ export function resolveGitProvenance(
   let ref = requestedRef
   let commitSha = ''
   try {
-    commitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+    commitSha = execFileSync('git', gitArgs(['rev-parse', 'HEAD']), {
       cwd: targetDir,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -49,7 +50,7 @@ export function resolveGitProvenance(
   }
   if (!ref) {
     try {
-      ref = execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], {
+      ref = execFileSync('git', gitArgs(['symbolic-ref', '--short', 'HEAD']), {
         cwd: targetDir,
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],

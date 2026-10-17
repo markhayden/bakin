@@ -20,6 +20,7 @@ import { homedir } from 'os'
 import { join, resolve } from 'path'
 import { promisify } from 'util'
 
+import { gitArgs } from '@bakin/core/net/git-args'
 import { createLogger } from './logger'
 
 const execFileAsync = promisify(execFile)
@@ -34,7 +35,8 @@ function withGitMutex<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 async function git(repo: string, args: string[], timeoutMs = 120_000): Promise<string> {
-  const { stdout } = await execFileAsync('git', ['-C', repo, ...args], { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 })
+  // Foreground-only (#978): worktrees are removed at settle — nothing may outlive the command inside them.
+  const { stdout } = await execFileAsync('git', gitArgs(['-C', repo, ...args]), { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 })
   return stdout.trim()
 }
 

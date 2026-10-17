@@ -16,6 +16,7 @@ import type {
 } from '@bakin/core/plugin-types'
 import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import { healthResourceId } from '@bakin/core/health/observation-builders'
+import { gitArgs } from '@bakin/core/net/git-args'
 import type { PluginContextLite } from '@bakin/core/routing'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { getContentDir } from '../../packages/core/src/content-dir'
@@ -205,7 +206,8 @@ function readSettings(ctx: PluginContextLite): { allowedRepoRoots: string[]; wor
 
 async function runGit(cwd: string, args: string[]): Promise<string> {
   try {
-    const result = await execFileAsync('git', args, {
+    // Foreground-only (#978): Bakin never starts housekeeping in a user's repo.
+    const result = await execFileAsync('git', gitArgs(args), {
       cwd,
       encoding: 'utf-8',
       timeout: 30_000,

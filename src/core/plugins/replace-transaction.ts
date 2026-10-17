@@ -163,6 +163,61 @@ export function moveContents(from: string, to: string): void {
 }
 
 /**
+ * `<pluginsRoot>/.bakin-trash-<id>-<stamp>/`: a backup dir the operation is
+ * DONE with (rolled back, or committed), parked for deletion. Trash carries no
+ * meaning — recovery never reads it — so a partial delete inside it can never
+ * leave an ambiguous state the way a half-deleted backup dir could (its
+ * `journal.json` going first, then an undeletable subtree stopping the rest).
+ */
+export const TRASH_PREFIX = '.bakin-trash-'
+
+/**
+ * Retire a backup dir: rename it WHOLE into the trash (atomic, whatever a
+ * straggling writer — git housekeeping, a build watcher — is still doing
+ * inside), then delete the trash best-effort. The rename frees the
+ * transaction location for the next operation; a delete that fails leaves a
+ * dot-prefixed dir the loader hides and `sweepPluginTrash` retries at the
+ * next operation and at boot. Never throws (#978).
+ */
+function retireBackupDir(pluginsRoot: string, id: string, backupDir: string): void {
+  if (!existsSync(backupDir)) return
+  const trash = join(pluginsRoot, `${TRASH_PREFIX}${id}-${Date.now()}-${process.pid}`)
+  try {
+    renameSync(backupDir, trash)
+  } catch (err) {
+    // The journal is intact in place: recovery still reads an unambiguous state.
+    log.warn('Could not park a finished plugin backup dir for deletion — left in place for boot recovery', {
+      id, backupDir, error: err instanceof Error ? err.message : String(err),
+    })
+    return
+  }
+  removeTrash(trash)
+}
+
+function removeTrash(trash: string): boolean {
+  try {
+    rmSync(trash, { recursive: true, force: true })
+    return true
+  } catch (err) {
+    log.warn('Could not delete plugin trash — hidden from the loader, swept at the next operation or boot', {
+      trash, error: err instanceof Error ? err.message : String(err),
+    })
+    return false
+  }
+}
+
+/** Delete every parked backup dir that could not be removed when it was retired. Best-effort, never throws. */
+export function sweepPluginTrash(pluginsRoot: string): string[] {
+  if (!existsSync(pluginsRoot)) return []
+  const removed: string[] = []
+  for (const entry of readdirSync(pluginsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith(TRASH_PREFIX)) continue
+    if (removeTrash(join(pluginsRoot, entry.name))) removed.push(entry.name)
+  }
+  return removed
+}
+
+/**
  * Put the previous state back. THE rollback routine — the in-process failure
  * path and boot recovery both call it, so what a crash leaves behind is
  * exactly what a caught error leaves behind.
@@ -203,12 +258,25 @@ export function restoreFromJournal(
   // the only copy of the previous install — it must not be removed.
   const renamedAside = journal.backup && existsSync(backupPluginDir(backupDir))
   if (renamedAside || !journal.backup) {
-    rmSync(targetDir, { recursive: true, force: true })
+    // Never `rm` the broken target and then rename into the hole: a writer
+    // the failed step left behind (the suspect on CI: git's detached
+    // `gc --auto` after the lane's fetch/merge; a build watcher would do the
+    // same) can re-populate the path between the two calls and the rename
+    // fails ENOTEMPTY — the previous install stays stranded in the backup and
+    // the real error is replaced (#978). A directory rename is atomic
+    // whatever is inside it: move the broken target ASIDE into the backup
+    // dir, put the previous one back. (Two renames, not an exchange — a
+    // writer using the absolute path could still recreate it in between;
+    // `gitArgs` removes the one writer Bakin itself starts.)
+    mkdirSync(backupDir, { recursive: true })
+    const discard = join(backupDir, `discard-${process.pid}-${Date.now()}`)
+    if (existsSync(targetDir)) renameSync(targetDir, discard)
     if (renamedAside) renameSync(backupPluginDir(backupDir), targetDir)
   } else {
     rmSync(join(targetDir, INSTALL_SENTINEL), { force: true })
   }
-  rmSync(backupDir, { recursive: true, force: true })
+  // Ledger BEFORE cleanup: the journal (and so the ledger row to restore)
+  // stays readable until every restoring write has landed.
   if (journal.ledgerBefore !== undefined) {
     const lock = readPluginLockfile()
     const current = lock.plugins[id]
@@ -218,6 +286,8 @@ export function restoreFromJournal(
       )
     }
   }
+  // Only now is the backup dir (journal + discard pile) finished with.
+  retireBackupDir(pluginsRoot, id, backupDir)
 }
 
 /**
@@ -236,6 +306,12 @@ export function restoreFromJournal(
  *    happened and the target IS the previous install: it stays.
  *  - target with a sentinel but no backup dir → a stray in-flight copy:
  *    restore from the sentinel.
+ * A backup dir is only ever deleted AFTER being renamed whole into
+ * `.bakin-trash-*` (`retireBackupDir`), so it is either present with its
+ * journal or gone — never half-deleted. `backup: true` without a
+ * `backup/plugin` dir therefore also describes a COMPLETED rollback whose
+ * trash rename failed: the target is the restored previous install and the
+ * same keep-the-target rule is right for it.
  */
 export function recoverPluginDir(pluginsRoot: string, id: string): boolean {
   const targetDir = join(pluginsRoot, id)
@@ -246,7 +322,7 @@ export function recoverPluginDir(pluginsRoot: string, id: string): boolean {
     const journal = readJournal(pluginsRoot, id)
     if (journal?.committed) {
       rmSync(sentinelPath, { force: true })
-      rmSync(backupDir, { recursive: true, force: true })
+      retireBackupDir(pluginsRoot, id, backupDir)
       log.info('Finished the cleanup of a committed plugin operation', { id, op: journal.op })
       return true
     }
@@ -273,6 +349,7 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
   const pluginsRoot = pluginsRootDir()
   mkdirSync(pluginsRoot, { recursive: true })
   recoverPluginDir(pluginsRoot, id)
+  sweepPluginTrash(pluginsRoot)
 
   const targetDir = join(pluginsRoot, id)
   const backupDir = pluginBackupDir(pluginsRoot, id)
@@ -333,11 +410,22 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
     journal.committed = true
     writeJournalFile(journalPath(backupDir), journal)
     rmSync(join(targetDir, INSTALL_SENTINEL), { force: true })
-    rmSync(backupDir, { recursive: true, force: true })
+    // The previous clone may still have a writer inside it (#978); the
+    // commit is durable, so retiring the backup can never fail the operation.
+    retireBackupDir(pluginsRoot, id, backupDir)
     return { targetDir, installedBins }
   } catch (err) {
-    restoreFromJournal(pluginsRoot, id, journal)
-    log.error(`Plugin ${args.op} failed — previous state restored`, err as Error, { id })
+    // The operation's own error is what the caller must see. A rollback that
+    // stumbles is logged beside it — never thrown over it — and boot recovery
+    // finishes the rollback from the journal.
+    let restored = true
+    try {
+      restoreFromJournal(pluginsRoot, id, journal)
+    } catch (restoreErr) {
+      restored = false
+      log.error(`Plugin ${args.op} rollback failed — boot recovery finishes it from the journal`, restoreErr as Error, { id })
+    }
+    log.error(`Plugin ${args.op} failed — previous state ${restored ? 'restored' : 'NOT fully restored (rollback error above)'}`, err as Error, { id })
     throw err
   }
 }

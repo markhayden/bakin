@@ -331,9 +331,30 @@ journal → backup → sentinel → place → build → bins → ledger → comm
 
 Any failure calls `restoreFromJournal` — intended bins deleted (marker
 FIRST: an extension-less path reads as a directory to the sidecar helper
-once the file is gone), replaced bins and markers moved back, target
-removed, backup renamed back, ledger row restored (or removed for a first
-install). The SAME routine runs at boot (`install-recovery.ts`,
+once the file is gone), replaced bins and markers moved back, the broken
+target renamed ASIDE into `<backup>/discard-*` (a directory rename is
+atomic whatever a straggling writer is doing inside it — `rm` then
+rename-into-the-hole raced such a writer and failed `ENOTEMPTY` on CI, #978;
+the suspect is git's detached `gc --auto` after the lane's fetch/merge),
+backup renamed back, ledger row restored (or removed for a first install)
+— and ONLY THEN the backup dir retired: renamed WHOLE into
+`.bakin-trash-<id>-<stamp>/` (`retireBackupDir`) and deleted best-effort
+(`removeTrash`, never thrown — Bun ignores `rmSync` retry options, so there
+is no retry, just a later sweep). The committed path retires its backup the
+same way. Trash carries no meaning and is never read, so a partial delete
+can never produce an ambiguous backup dir (a journal gone, a subtree left);
+a backup dir is either whole with its journal or gone, and `backup: true`
+without `backup/plugin` also describes a completed rollback whose trash
+rename failed — the keep-the-target rule is right for both. `sweepPluginTrash`
+runs at boot (`recoverInterruptedPluginOps`) and at the start of every
+operation; the loader hides dot-dirs. The operation's own error is always
+what the caller sees; a rollback that stumbles is logged beside it. The two
+renames are not an atomic exchange — a writer addressing the absolute path
+could still recreate it in between; what Bakin controls is that it starts no
+such writer: every git it spawns goes through `gitArgs`
+(`packages/core/src/net/git-args.ts`: `gc.auto=0`, `gc.autoDetach=false`,
+`maintenance.auto=false`; `tests/architecture/git-foreground-args.test.ts`
+fails on any raw `spawn('git', …)`). The SAME routine runs at boot (`install-recovery.ts`,
 `recoverInterruptedPluginOps`) BEFORE user-plugin discovery. Because the
 journal precedes the first rename and `committed` precedes the backup
 deletion, no on-disk state is ambiguous: a backup dir with a committed

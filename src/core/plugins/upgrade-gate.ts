@@ -7,6 +7,7 @@
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { execFileSync, type ExecFileSyncOptions } from 'child_process'
+import { gitArgs } from '@bakin/core/net/git-args'
 import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
@@ -113,6 +114,15 @@ export function run(cmd: string, args: string[], cwd: string): string {
     maxBuffer: 10 * 1024 * 1024,
   }
   return execFileSync(cmd, args, opts).toString().trim()
+}
+
+/**
+ * `run('git', …)` with the foreground-only config (`gitArgs`): no detached
+ * `gc --auto` may outlive the command inside a directory the replace
+ * transaction is about to rename or delete (#978).
+ */
+export function git(args: string[], cwd: string): string {
+  return run('git', gitArgs(args), cwd)
 }
 
 export function readManifest(pluginDir: string): { manifest: Record<string, unknown>; manifestSha: string } {

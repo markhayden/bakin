@@ -15,7 +15,7 @@ import {
 import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha } from './source-tree-sha'
 import { isArtifactInstall, latestPublishedVersion } from './upgrade-artifact'
 import { githubCloneUrl } from './upgrade-github'
-import { run } from './upgrade-gate'
+import { git } from './upgrade-gate'
 
 export interface UpgradeAvailability {
   id: string
@@ -72,7 +72,7 @@ async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvai
       const remoteUrl = githubCloneUrl(entry.source)
       // `--` ends git option parsing — even though source + ref are
       // Zod-validated to safe shapes, this is a cheap second line of defense.
-      const lsRemote = run('git', ['ls-remote', '--', remoteUrl, entry.ref], getContentDir())
+      const lsRemote = git(['ls-remote', '--', remoteUrl, entry.ref], getContentDir())
       const remoteHeadSha = (lsRemote.split(/\s+/)[0] ?? '').trim().toLowerCase()
       if (!remoteHeadSha) {
         return { id, upgradeAvailable: false, lastChecked, error: `no remote ref: ${entry.ref}` }

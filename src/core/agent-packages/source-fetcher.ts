@@ -36,6 +36,7 @@
  */
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { execFileSync, spawn } from 'child_process'
+import { gitArgs } from '@bakin/core/net/git-args'
 import { homedir, tmpdir } from 'os'
 import { basename, isAbsolute, join, resolve } from 'path'
 import { randomUUID } from 'crypto'
@@ -360,11 +361,12 @@ interface GitRunner {
   (args: string[]): string
 }
 
+// Foreground-only git (#978): staging clones are deleted moments later.
 const realGit: GitRunner = (args) =>
-  execFileSync('git', args, { stdio: ['ignore', 'pipe', 'pipe'] }).toString('utf-8')
+  execFileSync('git', gitArgs(args), { stdio: ['ignore', 'pipe', 'pipe'] }).toString('utf-8')
 
 const realGitAsync: AsyncGitRunner = (args) => new Promise((resolve, reject) => {
-  const child = spawn('git', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn('git', gitArgs(args), { stdio: ['ignore', 'pipe', 'pipe'] })
   let stdout = ''
   let stderr = ''
 
