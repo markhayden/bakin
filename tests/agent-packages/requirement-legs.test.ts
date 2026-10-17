@@ -54,15 +54,22 @@ mock.module('../../src/core/whiskit/command', () => ({
   },
 }))
 
-import { installPackage } from '../../src/core/agent-packages/installer'
-import { updatePackageById } from '../../src/core/agent-packages/updater'
+import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
+import { updatePackageById as updatePackageByIdUnowned } from '../../src/core/agent-packages/updater'
 import { repairPackLocally as repairUnowned } from '../../src/core/agent-packages/sync'
-import { removePackageById } from '../../src/core/agent-packages/uninstaller'
+import { removePackageById as removePackageByIdUnowned } from '../../src/core/agent-packages/uninstaller'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { parseManifest } from '../../packages/core/src/agent-packages/manifest'
-import { installManifestRequirements } from '../../src/core/agent-packages/requirements-installer'
+import { installManifestRequirements as installManifestRequirementsUnowned } from '../../src/core/agent-packages/requirements-installer'
 import { settleOperation } from '../helpers/operation-harness'
 import { holdNow } from '../../packages/core/src/operations'
+import { owned } from '../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const installPackage = owned(installPackageUnowned)
+const updatePackageById = owned(updatePackageByIdUnowned)
+const removePackageById = owned(removePackageByIdUnowned)
+const installManifestRequirements = owned(installManifestRequirementsUnowned)
 
 /** Writing syncs run inside an owner of install-state, like every production caller (#895). */
 const owning = <T>(fn: () => Promise<T>): Promise<T> => holdNow(['install-state'], { title: 'test' }, fn)

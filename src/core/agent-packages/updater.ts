@@ -33,7 +33,7 @@ import { fetchSourceAsync, sourceSpecWithRef, type FetchedSource } from './sourc
 import { projectPackage, unprojectPackage } from './projector'
 import { installManifestRequirements, modelDest, npmPayloadDir } from './requirements-installer'
 import { withoutSharedArtifacts } from './uninstaller'
-import { withInstallLock } from '../install-core/install-lock'
+import { assertResourceHeld } from '@bakin/core/operations'
 import { validatePackageContributionIntegrity } from './package-integrity'
 import { assertRuntimePlatformCompatible } from './installer'
 import { SYNC_STAGES } from './operation-plans'
@@ -65,8 +65,9 @@ export interface UpdateResult {
  * commit SHA hasn't moved.
  */
 export async function updatePackageById(options: UpdateOptions): Promise<UpdateResult> {
-  // ONE install lock around the whole operation; inner writers assert it.
-  return withInstallLock(() => updatePackageByIdLocked(options))
+  // The caller (a sync operation) owns install-state; inner writers assert it too.
+  assertResourceHeld('install-state', 'updatePackageById')
+  return updatePackageByIdLocked(options)
 }
 
 async function updatePackageByIdLocked(options: UpdateOptions): Promise<UpdateResult> {

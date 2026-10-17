@@ -12,6 +12,7 @@
  */
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { installPackage } from '../agent-packages/installer'
+import { runOwning } from '../operations'
 import { listCapabilities } from '../agent-packages/capability-readiness'
 import { loadUnifiedCatalog } from '../curated-catalog/load'
 import { sourceWithRef } from '../../lib/package-source'
@@ -137,7 +138,11 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   for (const cap of selected) {
     try {
       opts.onProgress?.(`Installing capability pack ${cap.id}`)
-      await installPackage({ source: sourceWithRef(cap.source, cap.ref), installAs: cap.id })
+      // A local operation owns install-state until the onboarding switch (#895 PR6).
+      await runOwning(
+        { kind: 'onboarding:install-capability', title: `Install capability pack ${cap.id}`, resources: ['install-state'] },
+        () => installPackage({ source: sourceWithRef(cap.source, cap.ref), installAs: cap.id }),
+      )
       installed.push(cap.id)
     } catch (err) {
       failures.push(`${cap.id}: ${err instanceof Error ? err.message : String(err)}`)

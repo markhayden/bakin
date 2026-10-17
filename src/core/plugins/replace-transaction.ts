@@ -19,7 +19,7 @@
  *   journal) exists only so the loader hides the directory while it is in
  *   flight; recovery reads the journal, never the sentinel, when both exist.
  * - **place / build / bins / ledger** are the caller's steps; bins ride the
- *   shared plugin-bin installer with `stage: 'bins'` progress.
+ *   shared plugin-bin installer (items on the `bins` stage).
  * - **commit**: journal rewritten with `committed: true` (the durable commit
  *   point), then the sentinel and the backup dir are removed.
  *
@@ -46,10 +46,9 @@ import { z } from 'zod'
 import type { OperationContext, OperationStagePlan } from '@makinbakin/sdk/types'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
-import { assertInstallLockHeld } from '@/core/install-core/install-lock'
+import { assertResourceHeld } from '@bakin/core/operations'
 import { installPluginBins, type PluginBinIdentity, type PluginBinInstall } from '@/core/agent-packages/bin-installer'
 import { binTargetPath } from '@/core/plugins/bin-owners'
-import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
 import type { WhiskitStage, WhiskitStageEvent } from '@/core/whiskit/types'
 import { installedByPath, removeInstalledBy } from '@bakin/core/agent-packages/markers'
 import type { BinRequirement } from '@bakin/core/plugins/bin-requirement'
@@ -108,7 +107,6 @@ export interface ReplacePluginDirArgs {
   binIdentity: PluginBinIdentity
   /** Write the ledger row (and any other post-content projection). Throwing rolls everything back. */
   ledger: (installedBins: PluginBinInstall[]) => void | Promise<void>
-  progress?: InstallProgressFn
   /** Report on {@link REPLACE_STAGES}; the caller's plan includes {@link replacePlanStages} with `replace` as its point of no return. */
   operation?: OperationContext
 }
@@ -404,8 +402,8 @@ export function recoverPluginDir(pluginsRoot: string, id: string): boolean {
 }
 
 export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<ReplacePluginDirResult> {
-  assertInstallLockHeld('replacePluginDir')
-  const { id, progress, operation } = args
+  assertResourceHeld('install-state', 'replacePluginDir')
+  const { id, operation } = args
   const pluginsRoot = pluginsRootDir()
   mkdirSync(pluginsRoot, { recursive: true })
   recoverPluginDir(pluginsRoot, id)
@@ -439,11 +437,9 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
   persist(backupDir, targetDir, journal)
 
   try {
-    progress?.({ stage: 'project', message: `Placing ${id} files…` })
     operation?.stage(REPLACE_STAGES.place)
     await args.place(targetDir, hadPrevious ? backupPluginDir(backupDir) : null)
     if (args.build) {
-      progress?.({ stage: 'project', message: `Building ${id}…` })
       operation?.stage(REPLACE_STAGES.build)
       await args.build(targetDir, buildHooksFor(operation))
     } else {
@@ -472,11 +468,9 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
     if (args.bins.length > 0) operation?.stage(REPLACE_STAGES.bins)
     else operation?.skip(REPLACE_STAGES.bins, 'no binaries declared')
     const installedBins = await installPluginBins(args.bins, args.binIdentity, {
-      progress,
       ...(operation ? { op: { op: operation, stageId: REPLACE_STAGES.bins } } : {}),
     })
 
-    progress?.({ stage: 'finalize', message: `Recording ${id}…` })
     operation?.stage(REPLACE_STAGES.record)
     await args.ledger(installedBins)
 

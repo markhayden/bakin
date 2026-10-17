@@ -62,7 +62,7 @@ import {
   type ProjectorResult,
 } from './projector'
 import { getAgentState } from './agent-state'
-import { withInstallLock } from '../install-core/install-lock'
+import { assertResourceHeld } from '@bakin/core/operations'
 import { getAppServices } from '../app-services'
 import { readFileSync } from 'fs'
 import { join } from 'path'
@@ -80,8 +80,6 @@ const log = createLogger('agent-pkg:install')
 export interface InstallOptions {
   /** Source spec — local path or `github:user/repo[@ref][#subpath]`. */
   source: string
-  /** Staged progress reporter (#895) — install jobs surface these lines live. */
-  onProgress?: import('./install-progress').InstallProgressFn
   /**
    * The install operation (#895): reports on PACKAGE_INSTALL_PLAN. Everything
    * before `install` (fetch, manifest and conflict checks) is cancellable and
@@ -318,8 +316,10 @@ function manifestToCreateAgent(manifest: Manifest): AdapterCreateAgentInput {
 // ─── Main install function ───────────────────────────────────────────────────
 
 export async function installPackage(options: InstallOptions): Promise<InstallResult> {
-  // ONE install lock around the whole operation; inner writers assert it.
-  return withInstallLock(() => installPackageLocked(options))
+  // The caller owns install-state — an install operation, or a local one
+  // (runOwning) for in-process callers; inner writers assert it too.
+  assertResourceHeld('install-state', 'installPackage')
+  return installPackageLocked(options)
 }
 
 async function installPackageLocked(options: InstallOptions): Promise<InstallResult> {
@@ -334,7 +334,6 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
 
   try {
     // ─── 1. Fetch top-level source (or adopt a pre-verified staging dir) ────
-    const progress = options.onProgress ?? (() => {})
     const op = options.op
     if (options.prefetched) {
       // The caller fetched (and verified) it — and reported that on its own stages.
@@ -342,12 +341,10 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
       topFetched = options.prefetched
     } else {
       log.info('Fetching package source', { source: options.source })
-      progress({ stage: 'fetch-source', message: `Fetching ${options.source}…` })
       op?.stage(INSTALL_STAGES.fetch, options.source)
       topFetched = await fetchSourceAsync(options.source)
       op?.throwIfCancelled()
     }
-    progress({ stage: 'validate', message: 'Validating package manifest…' })
 
     // ─── 2. Parse + validate manifest ──────────────────────────────────────
     const manifestPath = join(topFetched.stagingDir, 'bakin-package.json')
@@ -425,7 +422,6 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     }
 
     // ─── 4. Resolve dependencies ───────────────────────────────────────────
-    progress({ stage: 'dependencies', message: 'Resolving package dependencies…' })
     op?.stage(INSTALL_STAGES.dependencies)
     const resolved = await resolveDependenciesAsync(manifest)
     op?.throwIfCancelled()
@@ -470,9 +466,8 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
         throw err
       }
     }
-    for (const [depIndex, dep] of resolved.entries()) {
+    for (const dep of resolved) {
       log.info('Projecting dependency', { dep: dep.resolvedId, pulledBy: dep.pulledBy })
-      progress({ stage: 'project', message: `Installing dependency ${dep.resolvedId} (${depIndex + 1}/${resolved.length})…`, item: dep.resolvedId, current: depIndex + 1, total: resolved.length })
       const installedBy = {
         package: dep.resolvedId,
         version: dep.manifest.version,
@@ -495,7 +490,6 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
           sourceDir: dep.fetched.stagingDir,
           installedBy,
           result,
-          progress,
           op: requirementOp,
         })
       })
@@ -503,7 +497,6 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
 
     // ─── 7. Project the parent package ─────────────────────────────────────
     log.info('Projecting parent package', { id: resolvedTopId, kind: manifest.kind, mode })
-    progress({ stage: 'project', message: `Installing ${resolvedTopId}…`, item: resolvedTopId })
     const top = topFetched
     const parentInstalledBy = {
       package: resolvedTopId,
@@ -527,7 +520,6 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
         sourceDir: top.stagingDir,
         installedBy: parentInstalledBy,
         result,
-        progress,
         op: requirementOp,
       })
       return result
@@ -535,7 +527,6 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
 
     // ─── 8. Create runtime agent for kind:"agent" + fresh ────────────────
     if (manifest.kind === 'agent' && mode === 'fresh') {
-      progress({ stage: 'agent', message: `Creating runtime agent ${manifest.id}…` })
       op?.stage(INSTALL_STAGES.agent, manifest.id)
       const input = manifestToCreateAgent(manifest)
       await createRuntimeAgent(input)
@@ -549,7 +540,6 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     }
 
     // ─── 9. Update lockfile ────────────────────────────────────────────────
-    progress({ stage: 'finalize', message: 'Recording install and verifying…' })
     if (!(manifest.kind === 'agent' && mode === 'fresh')) {
       op?.skip(INSTALL_STAGES.agent, manifest.kind === 'agent' ? 'adopting the existing agent' : 'not an agent package')
     }

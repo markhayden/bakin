@@ -31,7 +31,6 @@ import { upgradePlugin, UpgradeRefusedError, type UpgradeConsent } from '@/core/
 import { PLUGIN_COMMIT_PLAN, PLUGIN_PREVIEW_PLAN, PLUGIN_STAGES, PREVIEW_CODES } from '@/core/plugins/operation-plans'
 import { auditUpgradeRejected } from '@/core/plugins/upgrade-gate'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
-import { isInstallLockBusy } from '@/core/install-core/install-lock'
 import { isCorePlugin } from '@/core/plugin-registry'
 import { appendAudit } from '@/core/audit'
 import { getContentDir } from '@/core/content-dir'
@@ -157,9 +156,6 @@ async function runUpgrade(pluginId: string, body: UpgradeBody, op: OperationCont
     if (err instanceof OperationCancelledError) throw err
     if (err instanceof UpgradeRefusedError) {
       return outcomeFromResponse(Response.json({ ok: false, error: err.message }, { status: 400 }))
-    }
-    if (isInstallLockBusy(err)) {
-      return outcomeFromResponse(Response.json({ ok: false, error: err.message }, { status: 409 }))
     }
     const message = err instanceof Error ? err.message : String(err)
     log.error('Plugin upgrade failed', err as Error, { pluginId })

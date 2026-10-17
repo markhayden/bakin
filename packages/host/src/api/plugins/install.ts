@@ -37,7 +37,6 @@ import { join } from 'path'
 import { OperationCancelledError, operationOriginFromRequest, type OperationContext, type OperationOutcome } from '@bakin/core/operations'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
-import { isInstallLockBusy } from '@/core/install-core/install-lock'
 import { PLUGIN_COMMIT_PLAN, PLUGIN_PREVIEW_PLAN, PLUGIN_STAGES, PREVIEW_CODES } from '@/core/plugins/operation-plans'
 import { type InstallBody, validateInstallBody } from './install/body'
 import { handleDevInstall } from './install/dev-install'
@@ -143,7 +142,6 @@ async function runInstall(body: InstallBody, commit: boolean, op: OperationConte
     return outcomeFromResponse(await commitInstall({ body, stagingDir, pluginsRoot, staged, validated, operation: op }))
   } catch (err) {
     if (err instanceof OperationCancelledError) throw err
-    if (isInstallLockBusy(err)) return outcomeFromResponse(Response.json({ ok: false, error: err.message }, { status: 409 }))
     log.error('Plugin install failed', err as Error, { source: body.source })
     return outcomeFromResponse(Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 }))
   } finally {

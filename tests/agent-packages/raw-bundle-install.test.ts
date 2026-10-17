@@ -58,11 +58,17 @@ mock.module('../../src/core/app-services', () => ({
   maybeGetAppServices: () => ({ runtime: runtimeMock }),
 }))
 
-import { installPackage } from '../../src/core/agent-packages/installer'
-import { removePackageById } from '../../src/core/agent-packages/uninstaller'
-import { updatePackageById } from '../../src/core/agent-packages/updater'
+import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
+import { removePackageById as removePackageByIdUnowned } from '../../src/core/agent-packages/uninstaller'
+import { updatePackageById as updatePackageByIdUnowned } from '../../src/core/agent-packages/updater'
 import { listCapabilities } from '../../src/core/agent-packages/capability-readiness'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
+import { owned } from '../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const installPackage = owned(installPackageUnowned)
+const removePackageById = owned(removePackageByIdUnowned)
+const updatePackageById = owned(updatePackageByIdUnowned)
 
 const FIXTURES = join(import.meta.dir, '..', 'fixtures', 'skill-bundles')
 

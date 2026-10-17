@@ -232,8 +232,6 @@ export async function installModelRequirement(
 
 export interface ManifestRequirementsInput {
   manifest: Manifest
-  /** Staged progress reporter (#895) — bins/models/npm legs report live. */
-  progress?: import('./install-progress').InstallProgressFn
   /**
    * The operation stage these legs report into — one item per bin, model and
    * npm payload (the managed bun download is its own item). The caller enters
@@ -272,7 +270,6 @@ export async function installManifestRequirements(input: ManifestRequirementsInp
   // Leg order matters for fail-fast: bins and models are atomic + idempotent
   // (tmp + rename; unchanged pins skip); the npm payload swap mutates live
   // state LAST, after every downloadable leg has already succeeded.
-  const progress = input.progress ?? (() => {})
   const target = input.op
   const models = manifest.requires?.models ?? []
   const npmReqs = manifest.requires?.npm ?? []
@@ -282,25 +279,16 @@ export async function installManifestRequirements(input: ManifestRequirementsInp
     for (const req of models) target.op.item(target.stageId, { id: modelItemId(req.name), label: req.name, bytes: { received: 0, total: req.bytes } })
     for (const req of npmReqs) target.op.item(target.stageId, { id: npmItemId(req.name), label: `${req.name} (npm)` })
   }
-  await installManifestBins(manifest, installedBy, result, { progress, op: target })
-  for (const [index, req] of models.entries()) {
-    progress({ stage: 'models', message: `Downloading model ${req.name} (${index + 1}/${models.length})…`, item: req.name, current: index + 1, total: models.length })
+  await installManifestBins(manifest, installedBy, result, { op: target })
+  for (const req of models) {
     const installed = await asItem<ModelInstallResult>(target, { id: modelItemId(req.name), label: req.name }, (r) => r.skipped, (reportOp) => installModelRequirement(req, installedBy, {
       ...input.modelOptions,
       signal: target?.op.signal,
-      onEvent: (event) => {
-        reportOp?.(event)
-        if (event.type !== 'bytes') return
-        progress({
-          stage: 'models', message: `Downloading model ${req.name} (${index + 1}/${models.length})…`,
-          item: req.name, current: index + 1, total: models.length, receivedBytes: event.received, totalBytes: event.total,
-        })
-      },
+      ...(reportOp ? { onEvent: reportOp } : {}),
     }))
     result.projections.push({ kind: 'model', target: installed.target, sha256: installed.sha256 })
   }
-  for (const [index, req] of npmReqs.entries()) {
-    progress({ stage: 'npm', message: `Installing npm payload ${req.name} (${index + 1}/${npmReqs.length}) — resolving bun runtime…`, item: req.name, current: index + 1, total: npmReqs.length })
+  for (const req of npmReqs) {
     const installed = await asItem<NpmInstallResult>(target, { id: npmItemId(req.name), label: `${req.name} (npm)` }, (r) => r.skipped, () => installNpmRequirement(req, packId, sourceDir, installedBy, { op: target }))
     result.projections.push({ kind: 'npm-payload', target: installed.target })
   }

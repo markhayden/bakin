@@ -25,7 +25,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import type { OperationContext } from '@makinbakin/sdk/types'
-import { assertInstallLockHeld } from '../install-core/install-lock'
+import { assertResourceHeld } from '@bakin/core/operations'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
@@ -142,7 +142,7 @@ export async function migrateToManagedBlocks(
 ): Promise<MigrationResult> {
   // The whole chain — rewrite → ledger → syncAgent — runs under ONE owner
   // that took install-state before the first read here (#895 PLAN 4.2).
-  assertInstallLockHeld('migrateToManagedBlocks')
+  assertResourceHeld('install-state', 'migrateToManagedBlocks')
   const op = opts.op
   op?.stage(MIGRATION_STAGES.scan)
   const runtime = getAppServices().runtime

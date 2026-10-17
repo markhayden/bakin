@@ -180,10 +180,15 @@ function installRuntimeMock(): void {
   ;(globalThis as TestGlobal).__bakinAppServices = { runtime }
 }
 
-import { installPackage } from '../../src/core/agent-packages/installer'
-import { removePackageById } from '../../src/core/agent-packages/uninstaller'
+import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
+import { removePackageById as removePackageByIdUnowned } from '../../src/core/agent-packages/uninstaller'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
+import { owned } from '../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const installPackage = owned(installPackageUnowned)
+const removePackageById = owned(removePackageByIdUnowned)
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

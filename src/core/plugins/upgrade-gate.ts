@@ -13,7 +13,6 @@ import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { appendAudit } from '@/core/audit'
-import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
 import { BinRequirementsSchema, type BinRequirement } from '@bakin/core/plugins/bin-requirement'
 import type { PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { deleteBinsWithoutOwners, samePin } from './bin-owners'
@@ -43,8 +42,6 @@ export interface UpgradeConsent {
 }
 
 export interface UpgradeOptions {
-  /** Staged progress for install jobs (fetch-source / project / bins / finalize). */
-  progress?: InstallProgressFn
   /** Consent verified from the preview token. */
   accepted?: UpgradeConsent
   /**

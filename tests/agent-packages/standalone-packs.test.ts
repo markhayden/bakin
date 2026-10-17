@@ -50,7 +50,7 @@ let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
 
 mock.module('@/core/task-store', () => ({}))
 
-import { installPackage } from '../../src/core/agent-packages/installer'
+import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { readInstalledBy } from '../../packages/core/src/agent-packages/markers'
 import { loadAgentPackageSources } from '../../src/core/agent-packages/load-sources'
@@ -58,6 +58,10 @@ import {
   clearSourceRegistry,
   getDefinition,
 } from '@bakin/core/workflows/source-registry'
+import { owned } from '../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const installPackage = owned(installPackageUnowned)
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

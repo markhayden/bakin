@@ -127,7 +127,6 @@ export async function upgradeArtifact(
       place: (dir) => moveContents(materialized.stagingDir, dir),
       bins: gate.bins,
       binIdentity: { pluginId: id, version: newVersion, ref: '', commitSha: newCommitSha },
-      progress: opts.progress,
       operation: opts.op,
       ledger: async (bins) => {
         assets = await installUpgradedPluginAssets(id, pluginDir)

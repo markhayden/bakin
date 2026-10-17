@@ -67,7 +67,11 @@ function installRuntimeMock(): void {
   }
 }
 
-import { installPackage } from '../../src/core/agent-packages/installer'
+import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
+import { owned } from '../helpers/owning'
+
+/** Test setup installs as an owner of install-state, like every production caller (#895). */
+const installPackage = owned(installPackageUnowned)
 import { syncAllAgents } from '../../src/core/agent-packages/sync'
 import { scanAgentSync } from '../../src/core/agent-packages/sync-scanner'
 import { agentSyncComponent } from '../../src/core/onboarding/agent-sync'
@@ -110,7 +114,7 @@ describe('sync ownership', () => {
     await seedDriftedAgent()
     const results = await syncAllAgents({ fetch: false, trigger: 'system' })
     expect(results.length).toBeGreaterThan(0)
-    expect(results.every((r) => /requires the install lock/.test(r.error ?? ''))).toBe(true)
+    expect(results.every((r) => /requires install-state/.test(r.error ?? ''))).toBe(true)
   })
 
   it("onboarding's agent-sync component runs a real sync inside a local operation that owns install-state", async () => {

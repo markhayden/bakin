@@ -38,7 +38,7 @@ import {
   type OperationView,
   type StartOperationInput,
 } from '@bakin/core/operations'
-import { assertInstallLockHeld, withInstallLock } from '../../../src/core/install-core/install-lock'
+import { assertResourceHeld, holdNow } from '@bakin/core/operations'
 import { waitUntil } from '../../helpers/wait'
 
 const registries: OperationRegistry[] = []
@@ -97,7 +97,7 @@ describe('registry acquires declared resources', () => {
       resources: ['media-store', 'install-state'],
       run: async (op) => {
         let assertOk = true
-        try { assertInstallLockHeld('test writer') } catch { assertOk = false }
+        try { assertResourceHeld('install-state', 'test writer') } catch { assertOk = false }
         seen = { holds: op.holds('install-state') && op.holds('media-store'), holder: readResourceHolder('media-store')?.operationId, assertOk }
         return ok(null)
       },
@@ -214,11 +214,11 @@ describe('runLocal', () => {
     expect(registry.list()).toEqual([])
   })
 
-  it('is reentrant inside an existing withInstallLock holder and never waits on itself', async () => {
+  it('is reentrant inside an existing holdNow holder and never waits on itself', async () => {
     const registry = makeRegistry()
-    const view = await withInstallLock(() => runLocal(registry, input({
+    const view = await holdNow(['install-state'], { title: 'outer' }, () => runLocal(registry, input({
       run: async (op) => {
-        assertInstallLockHeld('nested writer')
+        assertResourceHeld('install-state', 'nested writer')
         return ok(op.holds('install-state'))
       },
     })))

@@ -9,8 +9,8 @@
  *     mutation, naming both owners and the recovery sequence;
  *   - deletion needs zero remaining owners.
  *
- * Callers run these checks under the install lock (the outer operation
- * acquires it); see install-core/install-lock.
+ * Callers run these checks while owning install-state (the outer operation
+ * declares it; the bin writers assert it).
  */
 import { existsSync, readFileSync, rmSync } from 'fs'
 import { basename, join } from 'path'

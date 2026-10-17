@@ -47,12 +47,17 @@ mock.module('@/core/logger', () => ({
 }))
 mock.module('@/core/task-store', () => ({}))
 
-import { installPackage } from '../../src/core/agent-packages/installer'
-import { updatePackageById } from '../../src/core/agent-packages/updater'
+import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
+import { updatePackageById as updatePackageByIdUnowned } from '../../src/core/agent-packages/updater'
 import { repairPackLocally as repairUnowned } from '../../src/core/agent-packages/sync'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { binPlatformKey } from '../../src/core/agent-packages/bin-installer'
 import { holdNow } from '../../packages/core/src/operations'
+import { owned } from '../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const installPackage = owned(installPackageUnowned)
+const updatePackageById = owned(updatePackageByIdUnowned)
 
 /** Writing syncs run inside an owner of install-state, like every production caller (#895). */
 const owning = <T>(fn: () => Promise<T>): Promise<T> => holdNow(['install-state'], { title: 'test' }, fn)

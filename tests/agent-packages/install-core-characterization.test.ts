@@ -52,14 +52,14 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 mock.module('@/core/task-store', () => ({}))
 
-import { installPackage } from '../../src/core/agent-packages/installer'
+import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { readInstalledBy } from '../../packages/core/src/agent-packages/markers'
-import {
-  acquireInstallLock,
-  releaseInstallLock,
-  isInstallLockHeld,
-} from '../../src/core/install-core/install-lock'
+import { ResourceBusyError, holdNow, isResourceHeld } from '../../packages/core/src/operations'
+import { owned } from '../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const installPackage = owned(installPackageUnowned)
 
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
 
@@ -151,22 +151,33 @@ describe('shared install-core characterization gate (P5/P11)', () => {
     expect(marker?.sha256.length).toBeGreaterThan(0)
   })
 
-  it('releases the install lock after a successful install', async () => {
+  it('install-state is free again after a successful install', async () => {
     await installPackage({ source: seedSkillPack() })
-    expect(isInstallLockHeld()).toBe(false)
+    expect(isResourceHeld('install-state')).toBe(false)
   })
 
-  it('provides mutual exclusion: install refuses while the lock is held', async () => {
-    acquireInstallLock()
-    try {
-      expect(isInstallLockHeld()).toBe(true)
-      await expect(installPackage({ source: seedSkillPack() })).rejects.toThrow(
-        /another install is in progress/i,
-      )
-    } finally {
-      releaseInstallLock()
-    }
-    expect(isInstallLockHeld()).toBe(false)
+  it('refuses to run without an owner of install-state — nothing written', async () => {
+    await expect(installPackageUnowned({ source: seedSkillPack() })).rejects.toThrow(/installPackage requires install-state/)
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(existsSync(installDir())).toBe(false)
+  })
+
+  it('provides mutual exclusion: while one owner holds install-state, a sibling cannot own it to install', async () => {
+    let release!: () => void
+    let ready!: () => void
+    const heldReady = new Promise<void>((resolve) => { ready = resolve })
+    const held = holdNow(['install-state'], { title: 'Install pack ocr' }, () => new Promise<void>((resolve) => { release = resolve; ready() }))
+    await heldReady
+
+    const busy = await holdNow(['install-state'], { title: 'A second install' }, () => installPackageUnowned({ source: seedSkillPack() }))
+      .catch((err: unknown) => err)
+    release()
+    await held
+
+    expect(busy).toBeInstanceOf(ResourceBusyError)
+    expect((busy as ResourceBusyError).holder.title).toBe('Install pack ocr')
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(isResourceHeld('install-state')).toBe(false)
   })
 
   it('leaves no partial state when install fails (clean lockfile, no install dir, no projection, lock released)', async () => {
@@ -180,6 +191,6 @@ describe('shared install-core characterization gate (P5/P11)', () => {
     expect(Object.keys(readLockfile().packages)).toEqual([])
     expect(existsSync(installDir())).toBe(false)
     expect(existsSync(skillTarget())).toBe(false)
-    expect(isInstallLockHeld()).toBe(false)
+    expect(isResourceHeld('install-state')).toBe(false)
   })
 })

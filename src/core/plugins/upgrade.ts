@@ -26,7 +26,7 @@ import { existsSync, cpSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { isCorePlugin } from '@/core/plugin-registry'
-import { withInstallLock } from '@/core/install-core/install-lock'
+import { assertResourceHeld } from '@bakin/core/operations'
 import {
   type PluginLockEntry,
   isLinked,
@@ -70,16 +70,12 @@ export async function upgradePlugin(
   id: string,
   opts: UpgradeOptions = {},
 ): Promise<UpgradeResult> {
-  opts.progress?.({ stage: 'fetch-source', message: `Checking ${id} for a newer version…` })
   opts.op?.stage(PLUGIN_STAGES.fetch, id)
   // A preview never writes outside staging, so it holds nothing. A commit
-  // runs under ONE install lock — the lanes' replace transactions and bin
-  // writers assert it rather than acquiring their own.
-  const result = opts.previewOnly
-    ? await upgradePluginResolved(id, opts)
-    : await withInstallLock(() => upgradePluginResolved(id, opts))
-  opts.progress?.({ stage: 'finalize', message: result.noop ? `${id} is already up to date` : `Upgraded ${id}` })
-  return result
+  // runs inside the caller's owner of install-state — the lanes' replace
+  // transactions and bin writers assert it too.
+  if (!opts.previewOnly) assertResourceHeld('install-state', 'upgradePlugin')
+  return upgradePluginResolved(id, opts)
 }
 
 async function upgradePluginResolved(
@@ -201,7 +197,6 @@ async function upgradeLocal(
   build: buildUserPlugin,
     bins: gate.bins,
     binIdentity: { pluginId: id, version: newVersion, ref: '', commitSha: '' },
-    progress: opts.progress,
     operation: opts.op,
     ledger: async (bins) => {
       assets = await installUpgradedPluginAssets(id, pluginDir)

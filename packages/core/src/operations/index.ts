@@ -63,6 +63,7 @@ export {
 } from './registry'
 export {
   acquireResources,
+  assertResourceHeld,
   heldInContext,
   holdNow,
   isResourceHeld,

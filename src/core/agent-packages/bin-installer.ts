@@ -23,7 +23,7 @@ import { verifyInstalledBin } from './bin-verify'
 import { binPlatformKey } from './bin-platform'
 
 export { binPlatformKey } from './bin-platform'
-import { assertInstallLockHeld } from '../install-core/install-lock'
+import { assertResourceHeld } from '@bakin/core/operations'
 import { assertNoBinPinConflict, binTargetPath } from '../plugins/bin-owners'
 import type { Manifest } from '../../../packages/core/src/agent-packages/manifest'
 import type { BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
@@ -167,28 +167,19 @@ export async function installManifestBins(
   manifest: Manifest,
   installedBy: Omit<InstalledByMarker, 'sha256'>,
   result: Pick<ProjectorResult, 'projections'>,
-  options: { progress?: import('./install-progress').InstallProgressFn; op?: RequirementOp } = {},
+  options: { op?: RequirementOp } = {},
 ): Promise<void> {
   if (manifest.kind !== 'skill-pack' || !manifest.requires?.bins?.length) return
   const bins = manifest.requires.bins
   // Every pack writer (install, update, sync/repair) passes through here, so
-  // this is where the shared-bin contract is enforced: under the install
-  // lock, and never overwriting a target another owner pins differently.
-  assertInstallLockHeld('installManifestBins')
+  // this is where the shared-bin contract is enforced: inside an owner of
+  // install-state, and never overwriting a target another owner pins differently.
+  assertResourceHeld('install-state', 'installManifestBins')
   assertNoBinPinConflict(bins, { kind: 'package', id: installedBy.package }, binPlatformKey())
-  const progress = options.progress ?? (() => {})
-  for (const [index, bin] of bins.entries()) {
-    progress({ stage: 'bins', message: `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`, item: bin.name, current: index + 1, total: bins.length })
+  for (const bin of bins) {
     const installed = await withBinItem(options.op, bin, (reportOp) => installBinRequirement(bin, installedBy, {
       signal: options.op?.op.signal,
-      onEvent: (event) => {
-        reportOp?.(event)
-        if (event.type !== 'bytes') return
-        progress({
-          stage: 'bins', message: `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`,
-          item: bin.name, current: index + 1, total: bins.length, receivedBytes: event.received, totalBytes: event.total,
-        })
-      },
+      ...(reportOp ? { onEvent: reportOp } : {}),
     }))
     result.projections.push({ kind: 'bin', target: installed.target, sha256: installed.sha256, ...(installed.member ? { member: installed.member } : {}) })
   }
@@ -250,12 +241,11 @@ export interface PluginBinInstall {
 export async function installPluginBins(
   bins: readonly BinRequirement[],
   identity: PluginBinIdentity,
-  options: { progress?: import('./install-progress').InstallProgressFn; op?: RequirementOp } = {},
+  options: { op?: RequirementOp } = {},
 ): Promise<PluginBinInstall[]> {
   if (bins.length === 0) return []
-  assertInstallLockHeld('installPluginBins')
+  assertResourceHeld('install-state', 'installPluginBins')
   assertNoBinPinConflict(bins, { kind: 'plugin', id: identity.pluginId }, binPlatformKey())
-  const progress = options.progress ?? (() => {})
   const installedBy: Omit<InstalledByMarker, 'sha256'> = {
     package: `plugin:${identity.pluginId}`,
     version: identity.version,
@@ -264,16 +254,10 @@ export async function installPluginBins(
     installedAt: new Date().toISOString(),
   }
   const out: PluginBinInstall[] = []
-  for (const [index, bin] of bins.entries()) {
-    const message = `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`
-    progress({ stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length })
+  for (const bin of bins) {
     const installed = await withBinItem(options.op, bin, (reportOp) => installBinRequirement(bin, installedBy, {
       signal: options.op?.op.signal,
-      onEvent: (event) => {
-        reportOp?.(event)
-        if (event.type !== 'bytes') return
-        progress({ stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length, receivedBytes: event.received, totalBytes: event.total })
-      },
+      ...(reportOp ? { onEvent: reportOp } : {}),
     }))
     out.push({ name: bin.name, sha256: installed.sha256, ...(installed.member ? { member: installed.member } : {}), target: binTargetPath(bin.name), created: !installed.skipped })
   }

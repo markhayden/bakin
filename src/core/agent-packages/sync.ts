@@ -55,7 +55,7 @@ import { unmarkUserEdited } from '../../../packages/core/src/agent-packages/mark
 import { PackageNotInstalledError } from './errors'
 import { projectPackage, type ProjectorResult } from './projector'
 import { installManifestRequirements } from './requirements-installer'
-import { assertInstallLockHeld } from '../install-core/install-lock'
+import { assertResourceHeld } from '@bakin/core/operations'
 import { SYNC_STAGES } from './operation-plans'
 import { updatePackageById } from './updater'
 import { checkPackageUpdateAsync } from './checker'
@@ -205,7 +205,7 @@ async function reclaimTargets(
 /** Re-project a pack from its installed source. Writes projections and bins,
  *  so the caller must own `install-state` (an operation that declares it). */
 async function applyLocalProjection(packageId: string): Promise<ProjectorResult> {
-  assertInstallLockHeld('applyLocalProjection')
+  assertResourceHeld('install-state', 'applyLocalProjection')
   return applyLocalProjectionLocked(packageId)
 }
 
@@ -294,7 +294,7 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
     // Every writing sync runs inside an operation that owns install-state —
     // the sync route, team-wide sync, lesson toggle, migration, the agent-sync
     // repairs, onboarding and the runtime switch (#895 D23).
-    assertInstallLockHeld('syncAgent')
+    assertResourceHeld('install-state', 'syncAgent')
     seedContextFiles()
     // Refresh the Bakin-shipped role-default blocks BEFORE composing — a
     // sync that composes from stale seeded roles keeps obsolete guidance
@@ -595,7 +595,7 @@ export async function syncPack(
     }
   }
 
-  assertInstallLockHeld('syncPack')
+  assertResourceHeld('install-state', 'syncPack')
   const update = await updatePackageById({ packageId, op })
   if (!update.changed) {
     op?.throwIfCancelled()

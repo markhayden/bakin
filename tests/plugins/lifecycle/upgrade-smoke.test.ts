@@ -59,9 +59,14 @@ import {
   readPluginLockfile,
   writePluginLockfile,
 } from '../../../packages/core/src/plugins/lockfile'
-import { installPluginAssets } from '../../../src/core/onboarding/plugin-assets'
+import { installPluginAssets as installPluginAssetsUnowned } from '../../../src/core/onboarding/plugin-assets'
 import { resetSettingsCache } from '../../../src/core/settings'
-import { computeSourceTreeSha, upgradePlugin, UpgradeRefusedError } from '../../../src/core/plugins/upgrade'
+import { computeSourceTreeSha, upgradePlugin as upgradePluginUnowned, UpgradeRefusedError } from '../../../src/core/plugins/upgrade'
+import { owned } from '../../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const installPluginAssets = owned(installPluginAssetsUnowned)
+const upgradePlugin = owned(upgradePluginUnowned)
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

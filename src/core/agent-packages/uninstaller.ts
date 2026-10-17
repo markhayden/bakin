@@ -29,7 +29,7 @@ import { PackageNotInstalledError, PackageStillRequiredError } from './errors'
 import { unprojectPackage } from './projector'
 import { join } from 'path'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
-import { withInstallLock } from '../install-core/install-lock'
+import { assertResourceHeld } from '@bakin/core/operations'
 import { getAppServices } from '../app-services'
 import { REMOVE_STAGES } from './operation-plans'
 
@@ -105,8 +105,9 @@ export function withoutSharedArtifacts(
  * Remove a package + its orphaned dependencies.
  */
 export async function removePackageById(options: RemoveOptions): Promise<RemoveResult> {
-  // ONE install lock around the whole operation; inner writers assert it.
-  return withInstallLock(() => removePackageByIdLocked(options))
+  // The caller (a remove operation) owns install-state; inner writers assert it too.
+  assertResourceHeld('install-state', 'removePackageById')
+  return removePackageByIdLocked(options)
 }
 
 async function removePackageByIdLocked(options: RemoveOptions): Promise<RemoveResult> {
