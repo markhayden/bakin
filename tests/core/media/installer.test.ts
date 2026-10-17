@@ -7,7 +7,7 @@
  * tests/integration/media/compiled-sharp-store.test.ts.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { join } from 'path'
 import { execSync } from 'child_process'
@@ -64,6 +64,10 @@ mock.module('../../../packages/core/src/media/sharp-loader', () => ({
 
 import { checkMediaStore, installMediaStore, MEDIA_PLAN, mediaStoreDir, mediaStoreEntry, readMediaReceipt, type MediaInstallOptions } from '../../../packages/core/src/media/installer'
 import { settleOperation, withOperation, withOperationView } from '../../helpers/operation-harness'
+import { createMemoryResourceAcquirer, createOperationRegistry, resourceLockPath } from '../../../packages/core/src/operations'
+import { installMediaStoreLocally } from '../../../src/core/media-store-install'
+import { _resetOperationRegistryForTests, getOperationRegistry } from '../../../src/core/operations'
+import { waitUntil } from '../../helpers/wait'
 
 /** The installer runs inside an operation that holds media-store, as in production. */
 const mediaInstall = (opts: MediaInstallOptions) =>
@@ -74,7 +78,7 @@ const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('he
 const nativeFetch = (Bun as unknown as { fetch: typeof fetch }).fetch
 const NativeResponse = (await nativeFetch('data:text/plain,x')).constructor as typeof Response
 const bunServe = (Bun as unknown as {
-  serve: (opts: { port: number; fetch: (req: Request) => Response }) => { port: number; stop: (force?: boolean) => void }
+  serve: (opts: { port: number; fetch: (req: Request) => Response | Promise<Response> }) => { port: number; stop: (force?: boolean) => void }
 }).serve
 
 const platform = mediaPlatformKey()
@@ -82,6 +86,9 @@ if (!platform) throw new Error('unsupported test platform')
 
 let server: { port: number; stop: (force?: boolean) => void }
 let stallsLeft = 0
+/** While set, the libvips tarball answers only after it resolves (a slow download to cancel in). */
+let holdLibvips: Promise<void> | null = null
+const tarballRequests: string[] = []
 const fixtures: Record<string, Buffer> = {}
 
 /** Build an npm-shaped tarball (package/ root) holding the given files. */
@@ -99,8 +106,10 @@ function makeTarball(tag: string, files: Record<string, string | Buffer>): Buffe
 beforeAll(() => {
   server = bunServe({
     port: 0,
-    fetch(req: Request) {
+    async fetch(req: Request) {
       const path = new URL(req.url).pathname
+      tarballRequests.push(path)
+      if (path === '/libvips.tgz' && holdLibvips) await holdLibvips
       // The margo signature: the registry answers, sends a little, then the
       // body never moves again. `stallsLeft` counts how many requests do it.
       if (path === '/libvips.tgz' && stallsLeft > 0) {
@@ -295,6 +304,127 @@ describe('installMediaStore as an operation (#895)', () => {
     expect(view.stages.slice(2).every((s) => s.status === 'pending')).toBe(true)
     expect(existsSync(mediaStoreDir())).toBe(false)
     stallsLeft = 0
+  })
+})
+
+describe('media cancel boundaries (#895 SC3)', () => {
+  function registry() {
+    return createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, acquireResources: createMemoryResourceAcquirer(1) })
+  }
+  function deferred() {
+    let resolve!: () => void
+    const promise = new Promise<void>((r) => { resolve = r })
+    return { promise, resolve }
+  }
+  async function startInstall(reg: ReturnType<typeof registry>, opts: MediaInstallOptions) {
+    return reg.start({
+      kind: 'install:media', owner: 'core', origin: 'web', title: 'Install the media store', fingerprint: `m:${Math.random()}`,
+      resources: ['media-store'], plan: MEDIA_PLAN,
+      run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installMediaStore(op, opts) }),
+    })
+  }
+  const settleCancelled = async (reg: ReturnType<typeof registry>, id: string) => {
+    const view = await reg.await(id)
+    expect(view.status).toBe('cancelled')
+    expect(existsSync(mediaStoreDir())).toBe(false)
+    const sharpRoot = join(testDir, 'media', 'sharp')
+    expect(existsSync(sharpRoot) ? readdirSync(sharpRoot).filter((e) => e.startsWith('.staging-')) : []).toEqual([])
+    reg.dispose()
+  }
+
+  it('cancel during the download aborts the transfer, commits nothing and cleans staging', async () => {
+    const reg = registry()
+    const gate = deferred()
+    holdLibvips = gate.promise
+    tarballRequests.length = 0
+    try {
+      const { operationId } = await startInstall(reg, { fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
+      await waitUntil(() => tarballRequests.includes('/libvips.tgz'), { label: 'libvips requested' })
+      expect(reg.cancel(operationId)).toBe('cancelling')
+      gate.resolve()
+      await settleCancelled(reg, operationId)
+    } finally {
+      holdLibvips = null
+    }
+  })
+
+  for (const stage of ['bundle', 'verify'] as const) {
+    it(`cancel during ${stage} stops before the commit`, async () => {
+      const reg = registry()
+      const entered = deferred()
+      const release = deferred()
+      const wait = async () => { entered.resolve(); await release.promise }
+      const { operationId } = await startInstall(reg, {
+        fetchImpl: nativeFetch,
+        bundle: stage === 'bundle' ? async (e, o) => { await wait(); await fakeBundle(e, o) } : fakeBundle,
+        probe: stage === 'verify' ? async () => { await wait() } : okProbe,
+      })
+      await entered.promise
+      expect(reg.cancel(operationId)).toBe('cancelling')
+      release.resolve()
+      await settleCancelled(reg, operationId)
+    })
+  }
+
+  it('once the commit starts, cancel is refused and the install finishes', async () => {
+    let operationId = ''
+    let cancelAnswer: string | undefined
+    // Cancel at the exact moment the commit stage is announced.
+    const reg = createOperationRegistry({
+      bootId: () => 'b',
+      quietCheckIntervalMs: 0,
+      acquireResources: createMemoryResourceAcquirer(1),
+      publish: (view) => {
+        if (cancelAnswer === undefined && view.id === operationId && view.stages.find((s) => s.id === 'commit')?.status === 'active') {
+          cancelAnswer = reg.cancel(operationId)
+        }
+      },
+    })
+    const started = await startInstall(reg, { fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe })
+    operationId = started.operationId
+    const view = await reg.await(operationId)
+    expect(cancelAnswer).toBe('not_cancellable')
+    expect(view.status).toBe('succeeded')
+    expect(existsSync(mediaStoreDir())).toBe(true)
+    reg.dispose()
+  })
+})
+
+describe('media exclusion (#895 SC6)', () => {
+  it('a repair, a local (onboarding) install and another process run one at a time, waiting visibly, never sharing staging', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = nativeFetch
+    const lockPath = resourceLockPath('media-store')
+    mkdirSync(join(lockPath, '..'), { recursive: true })
+    // Another process (alive, not us) holds the store install.
+    writeFileSync(lockPath, JSON.stringify({ pid: process.ppid, acquiredAt: new Date().toISOString(), title: 'bakin install media (another process)' }))
+    tarballRequests.length = 0
+    const repairRegistry = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, resourcePollMs: { initial: 10, max: 20 } })
+    try {
+      const repair = await repairRegistry.start({
+        kind: 'repair:media', owner: 'core', origin: 'web', title: 'Install the media store (repair)', fingerprint: 'repair-media',
+        resources: ['media-store'], plan: MEDIA_PLAN,
+        run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installMediaStore(op, { fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe }) }),
+      })
+      const local = installMediaStoreLocally()
+      await waitUntil(() => repairRegistry.get(repair.operationId)?.waitingFor?.holderTitle === 'bakin install media (another process)', { label: 'repair waits on the other process' })
+      await waitUntil(() => getOperationRegistry().list().some((op) => op.waitingFor !== undefined), { label: 'local install waits visibly' })
+      expect(tarballRequests).toEqual([])
+
+      rmSync(lockPath)
+      const [repairView, localResult] = await Promise.all([repairRegistry.await(repair.operationId), local])
+      expect(repairView.status).toBe('succeeded')
+      // Exactly one of them downloaded; the other found the store installed.
+      expect(tarballRequests.filter((p) => p === '/sharp.tgz')).toHaveLength(1)
+      const repairSkipped = (repairView.result?.body as { skipped: boolean }).skipped
+      expect([repairSkipped, localResult.skipped].sort()).toEqual([false, true])
+      expect(checkMediaStore().status).toBe('ok')
+    } finally {
+      globalThis.fetch = originalFetch
+      repairRegistry.dispose()
+      _resetOperationRegistryForTests()
+      if (existsSync(lockPath)) rmSync(lockPath)
+    }
   })
 })
 
