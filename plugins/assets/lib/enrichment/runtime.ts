@@ -142,7 +142,7 @@ export function createRuntimeEngine(runtime: AgentRuntimeAdapter, agentId: strin
         // and the model never sees pixels (bakin#583 territory).
         prepared = input.kind === 'image'
           ? await prepareImageAttachment(input.mediaPath, input.mediaMime ?? 'application/octet-stream')
-          : { path: input.mediaPath, mimeType: input.mediaMime ?? 'application/octet-stream', downscaled: false }
+          : { path: input.mediaPath, mimeType: input.mediaMime ?? 'application/octet-stream', owned: false }
         attachments = [{ path: prepared.path, mimeType: prepared.mimeType }]
       }
 
