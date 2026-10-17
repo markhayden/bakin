@@ -21,6 +21,7 @@ import { randomUUID } from 'crypto'
 import { join, basename } from 'path'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { InboundChannelMessage } from '@bakin/core/adapters/runtime'
+import { isVisionRasterMime } from '@bakin/core/media/image-format'
 import { createLogger } from '../../../src/core/logger'
 import { getSettings } from '../../../src/core/settings'
 import type { ChatAttachment, ChatTranscriptRow } from '../types'
@@ -36,11 +37,11 @@ const log = createLogger('chat-channel-inbound')
  * item stays in the chat session and fails EVERY later turn
  * (live-validation finding, 2026-07-26). Everything non-raster lands as a
  * FILE in the chat's attachment dir with its path in the message — the
- * agent reads it with its file tools.
+ * agent reads it with its file tools. The raster set itself is shared:
+ * `isVisionRasterMime` / `VISION_RASTER_MIMES` in `@bakin/core/media/image-format`.
+ *
+ * Magic-byte check for the four raster types the image lane accepts.
  */
-const RASTER_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
-
-/** Magic-byte check for the four raster types the image lane accepts. */
 export function sniffIsRaster(path: string): boolean {
   try {
     const fd = openSync(path, 'r')
@@ -184,7 +185,7 @@ export function wireChannelInbound(ctx: WireContext): () => void {
         // Trust bytes, not the Discord-supplied content_type: a renamed
         // non-image labeled image/png would enter the model lane unvalidated
         // and poison the session (the exact class the SVG fix targeted).
-        const isRasterImage = Boolean(file.contentType && RASTER_IMAGE_TYPES.has(file.contentType))
+        const isRasterImage = Boolean(file.contentType && isVisionRasterMime(file.contentType))
           && sniffIsRaster(target)
         if (isRasterImage && imageInput) {
           attachments.push({ name, mimeType: file.contentType!, path: target })
@@ -196,7 +197,7 @@ export function wireChannelInbound(ctx: WireContext): () => void {
           // (fileLaneNote, #742) so this lane and the web composer cannot
           // drift. A raster-labeled file that failed the byte sniff must not
           // carry its lying mime into the model lane — downgrade it.
-          const mime = file.contentType && !RASTER_IMAGE_TYPES.has(file.contentType)
+          const mime = file.contentType && !isVisionRasterMime(file.contentType)
             ? file.contentType
             : 'application/octet-stream'
           attachments.push({ name, mimeType: mime, path: target })

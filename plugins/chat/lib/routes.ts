@@ -6,11 +6,12 @@
  * and the per-agent capability probe the composer gates on.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { basename, extname, join, resolve } from 'path'
+import { basename, join, resolve } from 'path'
 import { randomUUID } from 'crypto'
 import { z } from 'zod'
 
 import { defineRoute } from '@bakin/core/routing'
+import { isVisionRasterMime, mimeTypeForImagePath } from '@bakin/core/media/image-format'
 
 import {
   attachmentsDir,
@@ -202,7 +203,7 @@ export const chatRoutes = [
       // poisoned item stays in the session, failing every later turn (#669
       // finding). PDFs (#742) never enter the model-attachment lane: the turn
       // engine routes them down the file lane (path note + pdf exec tools).
-      if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'].includes(file.type)) {
+      if (!isVisionRasterMime(file.type) && file.type !== 'application/pdf') {
         return Response.json({ error: `Only image and PDF attachments are supported (got ${file.type || 'unknown'})` }, { status: 400 })
       }
       if (file.size === 0) return Response.json({ error: 'File is empty' }, { status: 400 })
@@ -240,9 +241,7 @@ export const chatRoutes = [
       // svg-ish name would be served same-origin as scriptable XML (#669
       // review finding), and file-lane attachments (pdf/csv/...) live in
       // this dir now too.
-      const ext = extname(name).slice(1).toLowerCase()
-      const rasterMime: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' }
-      const mime = rasterMime[ext]
+      const mime = mimeTypeForImagePath(name)
       return new Response(readFileSync(path), {
         headers: {
           'Content-Type': mime ?? 'application/octet-stream',
