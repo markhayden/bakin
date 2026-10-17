@@ -17,7 +17,7 @@ import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { isValidAssetId } from './asset-id'
 import { scanUnmanaged } from './import-unmanaged'
-import { getAsset, listAssets } from './asset-core'
+import { getAsset, isVersionScopedVerdictStale, listAssets } from './asset-core'
 import { reseedUnmanaged } from './unmanaged-tracker'
 import { readManifest } from './manifest'
 import { resolveEnrichmentEngine } from './enrichment/engine'
@@ -142,11 +142,11 @@ function tallyEnrichment(): { tally: EnrichmentTally; incomplete: string[] } {
     } else if (enrichment.status === 'failed') {
       tally.failed++
       incomplete.push(summary.assetId)
-    } else if (enrichment.status === 'skipped') {
-      tally.skipped++
-    } else if (enrichment.status === 'done' && (enrichment.forVersion ?? 0) < manifest.currentVersion) {
+    } else if (isVersionScopedVerdictStale(enrichment, manifest.currentVersion)) {
       tally.stale++
       incomplete.push(summary.assetId)
+    } else if (enrichment.status === 'skipped') {
+      tally.skipped++
     } else if (enrichment.status === 'done') {
       tally.enriched++
     } else {
@@ -162,7 +162,8 @@ function tallyEnrichment(): { tally: EnrichmentTally; incomplete: string[] } {
 }
 
 /** Assets the background self-heal pass should re-attempt: failed +
- *  missing + stale. Skipped is a deliberate opt-out and current is done —
+ *  missing + stale (a done OR skipped verdict for an older version, #855).
+ *  A current skip is a deliberate verdict and a current done is finished —
  *  neither ever re-enqueues. */
 export function incompleteEnrichmentAssetIds(): string[] {
   return tallyEnrichment().incomplete

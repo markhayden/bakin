@@ -193,10 +193,10 @@ async function prepareMedia(
  * The manifest write comes BEFORE the counter so an asset deleted
  * mid-flight (AssetGoneError) is booked once, as a skip, by the caller.
  */
-async function recordPreparationFailure(assetId: string, engineModelId: string, err: unknown): Promise<'failed' | 'skipped'> {
+async function recordPreparationFailure(assetId: string, version: number, engineModelId: string, err: unknown): Promise<'failed' | 'skipped'> {
   const message = err instanceof Error ? err.message : String(err)
   if (err instanceof ImageNotSendableError && err.reason !== 'sharp_unavailable') {
-    await markEnrichmentSkipped(assetId, message)
+    await markEnrichmentSkipped(assetId, version, message)
     counters.skipped++
     return 'skipped'
   }
@@ -236,7 +236,7 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     if (!kind) {
       status = 'skipped'
       counters.skipped++
-      await markEnrichmentSkipped(job.assetId, `unsupported asset kind for enrichment: ${manifest.type}`)
+      await markEnrichmentSkipped(job.assetId, manifest.currentVersion, `unsupported asset kind for enrichment: ${manifest.type}`)
       return
     }
 
@@ -250,7 +250,7 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     if (kind.kind === 'document' && !extractedText && !scannedPdf) {
       status = 'skipped'
       counters.skipped++
-      await markEnrichmentSkipped(job.assetId, 'document has no extractable text to summarize')
+      await markEnrichmentSkipped(job.assetId, manifest.currentVersion, 'document has no extractable text to summarize')
       return
     }
 
@@ -260,7 +260,7 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     if (!resolution.ok) {
       status = 'skipped'
       counters.skipped++
-      await markEnrichmentSkipped(job.assetId, resolution.reason)
+      await markEnrichmentSkipped(job.assetId, manifest.currentVersion, resolution.reason)
       return
     }
     const engine = resolution.engine
@@ -273,7 +273,7 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     try {
       media = await prepareMedia(kind, scannedPdf, file.absPath)
     } catch (err) {
-      status = await recordPreparationFailure(job.assetId, engine.modelId, err)
+      status = await recordPreparationFailure(job.assetId, manifest.currentVersion, engine.modelId, err)
       return
     }
     release = media.release
