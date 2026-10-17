@@ -28,8 +28,9 @@ import { assertNoBinPinConflict, binTargetPath } from '../plugins/bin-owners'
 import type { Manifest } from '../../../packages/core/src/agent-packages/manifest'
 import type { BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
 import { writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
-import { commitFileAtomic, downloadToFile, extractTarMember, sha256File, type DownloadEvent } from '../../../packages/core/src/net/download'
+import { commitFileAtomic, downloadToFile, extractTarMember, opTransfer, sha256File, type DownloadEvent } from '../../../packages/core/src/net/download'
 import type { ProjectorResult } from './projector'
+import type { RequirementOp } from './requirement-op'
 import { getBakinPaths } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 
@@ -59,6 +60,8 @@ export interface BinInstallOptions {
   fetchImpl?: typeof fetch
   /** Transfer events for the download leg (#895). */
   onEvent?: (event: DownloadEvent) => void
+  /** Aborts the download and extraction (an operation's cancel, #895). */
+  signal?: AbortSignal
 }
 
 export async function installBinRequirement(
@@ -106,10 +109,10 @@ export async function installBinRequirement(
       try {
         const tarPath = join(extractDir, 'archive.tar.gz')
         await downloadToFile(download.url, tarPath, {
-          sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label, onEvent: options.onEvent,
+          sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label, onEvent: options.onEvent, signal: options.signal,
         })
         const memberPath = await extractTarMember(tarPath, download.archive.member, extractDir, {
-          timeoutMs: VERIFY_TIMEOUT_MS, label: `${label} archive`,
+          timeoutMs: VERIFY_TIMEOUT_MS, label: `${label} archive`, signal: options.signal,
         })
         copyFileSync(memberPath, tmp)
       } finally {
@@ -117,7 +120,7 @@ export async function installBinRequirement(
       }
     } else {
       await downloadToFile(download.url, tmp, {
-        sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label, onEvent: options.onEvent,
+        sha256: pin, timeoutMs: DOWNLOAD_TIMEOUT_MS, fetchImpl: options.fetchImpl, label, onEvent: options.onEvent, signal: options.signal,
       })
     }
 
@@ -164,7 +167,7 @@ export async function installManifestBins(
   manifest: Manifest,
   installedBy: Omit<InstalledByMarker, 'sha256'>,
   result: Pick<ProjectorResult, 'projections'>,
-  options: { progress?: import('./install-progress').InstallProgressFn } = {},
+  options: { progress?: import('./install-progress').InstallProgressFn; op?: RequirementOp } = {},
 ): Promise<void> {
   if (manifest.kind !== 'skill-pack' || !manifest.requires?.bins?.length) return
   const bins = manifest.requires.bins
@@ -176,16 +179,46 @@ export async function installManifestBins(
   const progress = options.progress ?? (() => {})
   for (const [index, bin] of bins.entries()) {
     progress({ stage: 'bins', message: `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`, item: bin.name, current: index + 1, total: bins.length })
-    const installed = await installBinRequirement(bin, installedBy, {
+    const installed = await withBinItem(options.op, bin, (reportOp) => installBinRequirement(bin, installedBy, {
+      signal: options.op?.op.signal,
       onEvent: (event) => {
+        reportOp?.(event)
         if (event.type !== 'bytes') return
         progress({
           stage: 'bins', message: `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`,
           item: bin.name, current: index + 1, total: bins.length, receivedBytes: event.received, totalBytes: event.total,
         })
       },
-    })
+    }))
     result.projections.push({ kind: 'bin', target: installed.target, sha256: installed.sha256, ...(installed.member ? { member: installed.member } : {}) })
+  }
+}
+
+/** The operation item id of a binary requirement. */
+export const binItemId = (name: string): string => `bin:${name}`
+
+/**
+ * Run one binary install as an operation item: active → done (or skipped when
+ * the pinned file was already in place) → failed with the error, rethrown.
+ */
+async function withBinItem(
+  target: RequirementOp | undefined,
+  bin: BinRequirement,
+  run: (reportOp: ((event: DownloadEvent) => void) | undefined) => Promise<BinInstallResult>,
+): Promise<BinInstallResult> {
+  if (!target) return run(undefined)
+  const { op, stageId } = target
+  const item = { id: binItemId(bin.name), label: `${bin.name} ${bin.version}` }
+  op.item(stageId, { ...item, status: 'active' })
+  try {
+    const installed = await run(opTransfer(op, stageId, item.id))
+    op.item(stageId, installed.skipped
+      ? { ...item, status: 'skipped', message: 'already installed at the pinned sha' }
+      : { ...item, status: 'done' })
+    return installed
+  } catch (err) {
+    op.item(stageId, { ...item, status: 'failed', message: err instanceof Error ? err.message : String(err) })
+    throw err
   }
 }
 
@@ -217,7 +250,7 @@ export interface PluginBinInstall {
 export async function installPluginBins(
   bins: readonly BinRequirement[],
   identity: PluginBinIdentity,
-  options: { progress?: import('./install-progress').InstallProgressFn } = {},
+  options: { progress?: import('./install-progress').InstallProgressFn; op?: RequirementOp } = {},
 ): Promise<PluginBinInstall[]> {
   if (bins.length === 0) return []
   assertInstallLockHeld('installPluginBins')
@@ -234,12 +267,14 @@ export async function installPluginBins(
   for (const [index, bin] of bins.entries()) {
     const message = `Downloading binary ${bin.name} (${index + 1}/${bins.length})…`
     progress({ stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length })
-    const installed = await installBinRequirement(bin, installedBy, {
+    const installed = await withBinItem(options.op, bin, (reportOp) => installBinRequirement(bin, installedBy, {
+      signal: options.op?.op.signal,
       onEvent: (event) => {
+        reportOp?.(event)
         if (event.type !== 'bytes') return
         progress({ stage: 'bins', message, item: bin.name, current: index + 1, total: bins.length, receivedBytes: event.received, totalBytes: event.total })
       },
-    })
+    }))
     out.push({ name: bin.name, sha256: installed.sha256, ...(installed.member ? { member: installed.member } : {}), target: binTargetPath(bin.name), created: !installed.skipped })
   }
   return out

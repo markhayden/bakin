@@ -40,7 +40,8 @@ mock.module('../../../src/core/whiskit/bun-pin', () => ({
   MANAGED_BUN_DOWNLOADS: downloads,
 }))
 
-import { ensureBunAvailable, managedBunPath } from '../../../src/core/whiskit/managed-bun'
+import { ensureBunAvailable, managedBunPath, MANAGED_BUN_ITEM_ID } from '../../../src/core/whiskit/managed-bun'
+import { settleOperation } from '../../helpers/operation-harness'
 import { findSystemBun, wellKnownBunLocations } from '../../../src/core/whiskit/command'
 
 // A real executable standing in for bun: answers --version with exit 0.
@@ -139,6 +140,29 @@ describe('ensureBunAvailable', () => {
     } finally {
       for (const key of Object.keys(downloads)) downloads[key] = { ...downloads[key]!, sha256: good.sha256 }
     }
+  })
+})
+
+describe('operation reporting (#895)', () => {
+  const plan = { stages: [{ id: 'requirements', kind: 'installing' as const, label: 'Install requirements' }], pointOfNoReturn: null }
+  const ensure = () => settleOperation({ plan }, async (op) => {
+    op.stage('requirements')
+    return ensureBunAvailable({ fetchImpl: nativeFetch, locate: () => null, op: { op, stageId: 'requirements' } })
+  })
+
+  it('a managed bun download is its own item with real bytes', async () => {
+    const { error, view } = await ensure()
+    expect(error).toBeUndefined()
+    const item = view.stages[0]!.items?.find((i) => i.id === MANAGED_BUN_ITEM_ID)
+    expect(item?.status).toBe('done')
+    expect(item?.bytes?.received).toBeGreaterThan(0)
+    expect(item?.bytes?.received).toBe(item?.bytes?.total ?? -1)
+  })
+
+  it('no download, no item: a system bun or a working managed one adds nothing', async () => {
+    await ensure()
+    const { view } = await ensure()
+    expect(view.stages[0]!.items ?? []).toEqual([])
   })
 })
 

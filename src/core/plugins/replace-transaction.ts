@@ -23,6 +23,12 @@
  * - **commit**: journal rewritten with `committed: true` (the durable commit
  *   point), then the sentinel and the backup dir are removed.
  *
+ * Inside an operation (#895) the transaction reports on {@link REPLACE_STAGES}:
+ * `replace` (the journal-first rename — every caller's point of no return, so
+ * a cancel never lands mid-transaction) → `place` → `build` (Whiskit steps as
+ * items, each entered BEFORE it runs, so a hung step is named) → `bins` →
+ * `record`. The order above is unchanged; the stages only describe it.
+ *
  * Any failure — and any interruption, via {@link restoreFromJournal} at the
  * next boot — puts the previous state back byte for byte: intended bins that
  * did not exist before are deleted (marker first), replaced bins and their
@@ -37,12 +43,14 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { z } from 'zod'
+import type { OperationContext, OperationStagePlan } from '@makinbakin/sdk/types'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { assertInstallLockHeld } from '@/core/install-core/install-lock'
 import { installPluginBins, type PluginBinIdentity, type PluginBinInstall } from '@/core/agent-packages/bin-installer'
 import { binTargetPath } from '@/core/plugins/bin-owners'
 import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
+import type { WhiskitStage, WhiskitStageEvent } from '@/core/whiskit/types'
 import { installedByPath, removeInstalledBy } from '@bakin/core/agent-packages/markers'
 import type { BinRequirement } from '@bakin/core/plugins/bin-requirement'
 import {
@@ -94,13 +102,61 @@ export interface ReplacePluginDirArgs {
    * the github fast-forward lane copies it in and merges on top.
    */
   place: (targetDir: string, previousDir: string | null) => void | Promise<void>
-  /** Compile step for source installs; artifact lanes omit it. */
-  build?: (targetDir: string) => Promise<void>
+  /** Compile step for source installs; artifact lanes omit it. Forward `hooks` to the Whiskit build. */
+  build?: (targetDir: string, hooks: ReplaceBuildHooks) => Promise<void>
   bins: readonly BinRequirement[]
   binIdentity: PluginBinIdentity
   /** Write the ledger row (and any other post-content projection). Throwing rolls everything back. */
   ledger: (installedBins: PluginBinInstall[]) => void | Promise<void>
   progress?: InstallProgressFn
+  /** Report on {@link REPLACE_STAGES}; the caller's plan includes {@link replacePlanStages} with `replace` as its point of no return. */
+  operation?: OperationContext
+}
+
+/** What the transaction hands its build step — the Whiskit observers that become the `build` stage's items. */
+export interface ReplaceBuildHooks {
+  onStage?: (event: WhiskitStageEvent) => void
+  onOutput?: (line: string) => void
+}
+
+/** The stage ids a replace transaction reports on (#895). */
+export const REPLACE_STAGES = {
+  replace: 'replace',
+  place: 'place',
+  build: 'build',
+  bins: 'bins',
+  record: 'record',
+} as const
+
+/** The replace transaction's part of a plugin install/upgrade plan; its point of no return is `REPLACE_STAGES.replace`. */
+export function replacePlanStages(): OperationStagePlan[] {
+  return [
+    { id: REPLACE_STAGES.replace, kind: 'committing', label: 'Set the current version aside' },
+    { id: REPLACE_STAGES.place, kind: 'committing', label: 'Place the plugin files' },
+    { id: REPLACE_STAGES.build, kind: 'building', label: 'Build the plugin' },
+    { id: REPLACE_STAGES.bins, kind: 'installing', label: 'Install binaries' },
+    { id: REPLACE_STAGES.record, kind: 'committing', label: 'Record the install' },
+  ]
+}
+
+const BUILD_STEP_LABELS: Record<WhiskitStage, string> = {
+  'install': 'Install dependencies',
+  'server-build': 'Build the server bundle',
+  'client-build': 'Build the client bundle',
+  'css-validate': 'Validate the stylesheet',
+}
+
+/** Whiskit step events → `build` stage items: start = active (named before it runs), ok = done, error = failed. */
+function buildHooksFor(operation: OperationContext | undefined): ReplaceBuildHooks {
+  if (!operation) return {}
+  return {
+    onStage: (event) => {
+      const item = { id: event.stage, label: BUILD_STEP_LABELS[event.stage] }
+      const status = event.status === 'start' ? 'active' : event.status === 'ok' ? 'done' : 'failed'
+      operation.item(REPLACE_STAGES.build, { ...item, status })
+    },
+    onOutput: (line) => operation.output(line),
+  }
 }
 
 export interface ReplacePluginDirResult {
@@ -345,7 +401,7 @@ export function recoverPluginDir(pluginsRoot: string, id: string): boolean {
 
 export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<ReplacePluginDirResult> {
   assertInstallLockHeld('replacePluginDir')
-  const { id, progress } = args
+  const { id, progress, operation } = args
   const pluginsRoot = pluginsRootDir()
   mkdirSync(pluginsRoot, { recursive: true })
   recoverPluginDir(pluginsRoot, id)
@@ -354,6 +410,10 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
   const targetDir = join(pluginsRoot, id)
   const backupDir = pluginBackupDir(pluginsRoot, id)
   const hadPrevious = existsSync(targetDir)
+
+  // The point of no return: a cancel is honoured here or never.
+  operation?.throwIfCancelled()
+  operation?.stage(REPLACE_STAGES.replace)
 
   // Journal FIRST — before any rename — so recovery has an authority for
   // every later state, including "target created, sentinel not yet written".
@@ -376,10 +436,14 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
 
   try {
     progress?.({ stage: 'project', message: `Placing ${id} files…` })
+    operation?.stage(REPLACE_STAGES.place)
     await args.place(targetDir, hadPrevious ? backupPluginDir(backupDir) : null)
     if (args.build) {
       progress?.({ stage: 'project', message: `Building ${id}…` })
-      await args.build(targetDir)
+      operation?.stage(REPLACE_STAGES.build)
+      await args.build(targetDir, buildHooksFor(operation))
+    } else {
+      operation?.skip(REPLACE_STAGES.build, 'prebuilt artifact')
     }
 
     // Bin intent BEFORE any binary write: a declared bin that already exists
@@ -401,9 +465,15 @@ export async function replacePluginDir(args: ReplacePluginDirArgs): Promise<Repl
       }
     }
     persist(backupDir, targetDir, journal)
-    const installedBins = await installPluginBins(args.bins, args.binIdentity, { progress })
+    if (args.bins.length > 0) operation?.stage(REPLACE_STAGES.bins)
+    else operation?.skip(REPLACE_STAGES.bins, 'no binaries declared')
+    const installedBins = await installPluginBins(args.bins, args.binIdentity, {
+      progress,
+      ...(operation ? { op: { op: operation, stageId: REPLACE_STAGES.bins } } : {}),
+    })
 
     progress?.({ stage: 'finalize', message: `Recording ${id}…` })
+    operation?.stage(REPLACE_STAGES.record)
     await args.ledger(installedBins)
 
     // Commit point: durable before any cleanup.

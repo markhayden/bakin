@@ -61,6 +61,17 @@ describe('runSystemBun', () => {
     expect(result.timedOut).toBe(false)
   })
 
+  it('streams each stdout and stderr line as it arrives, including an unterminated last line (#895)', async () => {
+    const lines: string[] = []
+    const result = await runSystemBun(
+      ['-e', 'console.log("one"); console.error("two"); process.stdout.write("three")'],
+      { cwd: freshDir(), onLine: (line) => lines.push(line) },
+    )
+    expect(result.exitCode).toBe(0)
+    expect([...lines].sort()).toEqual(['one', 'three', 'two'])
+    expect(result.stdout).toContain('one')
+  })
+
   it('captures stderr and the non-zero exit code without rejecting', async () => {
     const result = await runSystemBun(['-e', 'console.error("boom-detail"); process.exit(3)'], { cwd: freshDir() })
     expect(result.exitCode).toBe(3)

@@ -16,7 +16,7 @@ import {
 import { SOURCE_TREE_SHA_ALGO, computeSourceTreeSha } from '@/core/plugins/source-tree-sha'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
 import { isInstallLockBusy, withInstallLock } from '@/core/install-core/install-lock'
-import { replacePluginDir } from '@/core/plugins/replace-transaction'
+import { replacePluginDir, type ReplaceBuildHooks } from '@/core/plugins/replace-transaction'
 import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
 import {
@@ -35,9 +35,9 @@ const log = createLogger('plugin-install')
  * copied dist also closes the freshness-check mtime race (cpSync stamps
  * everything ~now; a tie would skip the compile).
  */
-export async function buildSourceInstall(targetDir: string): Promise<void> {
+export async function buildSourceInstall(targetDir: string, hooks: ReplaceBuildHooks = {}): Promise<void> {
   rmSync(join(targetDir, 'dist'), { recursive: true, force: true })
-  await buildUserPlugin(targetDir)
+  await buildUserPlugin(targetDir, hooks)
 }
 
 /**

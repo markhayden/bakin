@@ -144,8 +144,9 @@ describe.skipIf(!gitAvailable())('install subpath — happy path', () => {
     expect(existsSync(join(fooDir, 'README.md'))).toBe(false)
     // Subpath installs intentionally drop the cloned repo's `.git/`.
     expect(existsSync(join(fooDir, '.git'))).toBe(false)
-    // github installs build from the import-validated source — no dist trust.
-    expect(buildUserPluginCalls.at(-1)?.options).toBeUndefined()
+    // github installs build from the import-validated source — no dist trust:
+    // the build gets only the (empty, no operation here) progress hooks.
+    expect(buildUserPluginCalls.at(-1)?.options).toEqual({})
   })
 
   it('records the full source string (with #subpath) in the lockfile', async () => {

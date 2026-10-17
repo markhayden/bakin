@@ -30,7 +30,8 @@ mock.module('@/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-import { binPlatformKey, installBinRequirement } from '../../src/core/agent-packages/bin-installer'
+import { binPlatformKey, installBinRequirement, installPluginBins } from '../../src/core/agent-packages/bin-installer'
+import { settleOperation } from '../helpers/operation-harness'
 import type { BinRequirement } from '../../packages/core/src/plugins/bin-requirement'
 
 // A real executable: POSIX sh script. --version exits 0; anything else exits 1.
@@ -203,5 +204,32 @@ describe('installBinRequirement', () => {
     const healed = await installBinRequirement(bin, marker, { fetchImpl: nativeFetch })
     expect(healed.skipped).toBe(false) // re-extracted, not trusted
     expect(readFileSync(healed.target, 'utf-8')).toContain('heal 1.0.0')
+  })
+})
+
+describe('installPluginBins operation reporting (#895)', () => {
+  const plan = { stages: [{ id: 'bins', kind: 'installing' as const, label: 'Install binaries' }], pointOfNoReturn: 'bins' }
+  const identity = { pluginId: 'fixture-plugin', version: '1.0.0', ref: '', commitSha: '' }
+  const run = (bin: BinRequirement) => settleOperation({ plan, resources: ['install-state'] }, async (op) => {
+    op.stage('bins')
+    return installPluginBins([bin], identity, { op: { op, stageId: 'bins' } })
+  })
+
+  it('each binary is an item with its bytes; a re-run at the pin is skipped', async () => {
+    const bin = req('/good', sha256(GOOD_SCRIPT))
+    const first = await run(bin)
+    expect(first.error).toBeUndefined()
+    const item = first.view.stages[0]!.items?.[0]
+    expect(item).toMatchObject({ id: 'bin:fixturebin', label: 'fixturebin 1.0.0', status: 'done' })
+    expect(item?.bytes).toEqual({ received: GOOD_SCRIPT.length, total: GOOD_SCRIPT.length })
+    const again = await run(bin)
+    expect(again.view.stages[0]!.items?.[0]?.status).toBe('skipped')
+  })
+
+  it('a failed binary is a failed item carrying the reason', async () => {
+    const { error, view } = await run(req('/good', sha256('tampered')))
+    expect(String(error)).toMatch(/checksum/i)
+    expect(view.stages[0]!.items?.[0]).toMatchObject({ id: 'bin:fixturebin', status: 'failed' })
+    expect(view.stages[0]!.items?.[0]?.message).toMatch(/checksum/i)
   })
 })
