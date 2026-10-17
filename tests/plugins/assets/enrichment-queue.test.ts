@@ -9,6 +9,10 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-enrich-queue-${Date.now()}`)
+mkdirSync(testDir, { recursive: true })
+// The seam's temp dirs land under os.tmpdir(): point it at this file's own
+// dir so the leak assertions never see another --parallel worker's files.
+process.env.TMPDIR = testDir
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -458,6 +462,14 @@ describe('media preparation before any billed call (#855)', () => {
     expect(getAsset(assetId)?.enrichment?.status).toBe('done')
     expect(seen).toHaveLength(1)
     expect(seen[0]!.mediaPath).not.toContain(assetId)
+  })
+
+  it('a truncated PNG (valid magic, undecodable payload) is skipped and never billed', async () => {
+    const assetId = await makeImageFile('truncated.png', PNG_1PX.subarray(0, 30))
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(visionCall).not.toHaveBeenCalled()
+    expect(getAsset(assetId)?.enrichment?.status).toBe('skipped')
   })
 
   it('a malformed SVG is skipped with a reason and never billed', async () => {

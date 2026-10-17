@@ -15,7 +15,9 @@
  *
  * The image lane trusts BYTES, not names: passthrough requires the file's
  * magic bytes to prove a vision-raster format (an SVG renamed `.png` is
- * rasterized, never sent raw), and the sent mime is the sniffed one.
+ * rasterized, never sent raw), the sent mime is the sniffed one, and — when
+ * sharp is present — the payload must fully decode (a truncated file is
+ * `unrasterizable`, never a billed failure).
  *
  * Failures are typed (`ImageNotSendableError.reason`) — callers branch on the
  * reason, never on message text. The source is read and the temp file is
@@ -72,9 +74,15 @@ const INSTALL_MEDIA_FIX = 'Fix: run `bakin install media` (or Health → "Instal
 export async function prepareImageAttachment(path: string, mimeType: string): Promise<PreparedAttachment> {
   const size = statSync(path).size
   const raster = sniffVisionRasterMime(path)
-  if (raster && size <= INLINE_ATTACHMENT_LIMIT_BYTES) return { path, mimeType: raster, owned: false }
-
   const sharp = await loadSharp()
+  if (raster && size <= INLINE_ATTACHMENT_LIMIT_BYTES) {
+    // Magic bytes prove a format prefix, not a decodable image: a truncated
+    // JPEG would otherwise ride to a billed call that can never succeed.
+    // Without sharp there is nothing to validate with — the provider judges.
+    if (sharp) await decodeStep(path, raster, () => sharp(readFileSync(path), { limitInputPixels: MAX_INPUT_PIXELS }).raw().toBuffer())
+    return { path, mimeType: raster, owned: false }
+  }
+
   if (!sharp) {
     throw new ImageNotSendableError('sharp_unavailable', raster
       ? `attachment ${path}: ${size} bytes exceeds the ${INLINE_ATTACHMENT_LIMIT_BYTES}-byte inline limit and sharp is unavailable to downscale it — larger images silently degrade upstream (the model never sees the pixels). ${INSTALL_MEDIA_FIX}`

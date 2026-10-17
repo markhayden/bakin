@@ -42,6 +42,8 @@ export interface SharpInputOptions {
 
 export interface SharpPipeline {
   rotate(): SharpPipeline
+  /** Decode to raw pixels — used to prove a payload decodes fully. */
+  raw(): SharpPipeline
   flatten(options?: { background?: string }): SharpPipeline
   resize(options: SharpResizeOptions): SharpPipeline
   resize(width?: number, height?: number, options?: SharpResizeOptions): SharpPipeline

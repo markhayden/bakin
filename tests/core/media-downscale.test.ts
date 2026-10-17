@@ -67,6 +67,9 @@ const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUl
 const BMP_1PX = Buffer.from('424d3a0000000000000036000000280000000100000001000000010018000000000004000000130b0000130b00000000000000000000ff000000', 'hex')
 
 mkdirSync(testDir, { recursive: true })
+// The seam's temp dirs land under os.tmpdir(): point it at this file's own
+// dir so the leak assertions never see another --parallel worker's files.
+process.env.TMPDIR = testDir
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 describe('prepareImageAttachment', () => {
@@ -149,6 +152,19 @@ describe('prepareImageAttachment', () => {
     const err = await expectNoNewTempDirs(() => prepareImageAttachment(original, 'image/bmp'))
     expect(err).toBeInstanceOf(ImageNotSendableError)
     expect((err as ImageNotSendableError).reason).toBe('unrasterizable')
+  })
+
+  it('a raster whose magic bytes lie (header-only PNG, truncated JPEG) is unrasterizable, never passed through', async () => {
+    const headerOnly = join(testDir, 'header-only.png')
+    writeFileSync(headerOnly, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40)]))
+    const jpeg = await sharp({ create: { width: 200, height: 200, channels: 3, background: '#c33' } }).jpeg().toBuffer()
+    const truncated = join(testDir, 'truncated.jpg')
+    writeFileSync(truncated, jpeg.subarray(0, Math.floor(jpeg.length / 2)))
+    for (const [file, mime] of [[headerOnly, 'image/png'], [truncated, 'image/jpeg']] as const) {
+      const err = await expectNoNewTempDirs(() => prepareImageAttachment(file, mime))
+      expect(err).toBeInstanceOf(ImageNotSendableError)
+      expect((err as ImageNotSendableError).reason).toBe('unrasterizable')
+    }
   })
 
   it('a malformed SVG fails typed as unrasterizable and leaks no temp dir', async () => {

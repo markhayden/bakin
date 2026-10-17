@@ -37,7 +37,9 @@ Consumers (all degrade through the loader, never import sharp directly):
   enrichment AND chat attachments (`prepareImageAttachment`): vision-raster
   under the 2 MB cap passes through — proven by MAGIC BYTES
   (`raster-sniff.ts`, shared with chat's Discord inbound), never by name or
-  declared mime, and sent with the sniffed mime; oversized raster → JPEG;
+  declared mime, and sent with the sniffed mime; with sharp present the
+  passthrough must also FULLY DECODE (a truncated file with a valid header
+  is `unrasterizable`, never a billed failure); oversized raster → JPEG;
   any other image
   (SVG, TIFF, HEIF) is RASTERIZED (#855) — PNG first (keeps logo
   transparency), JPEG on white when the PNG would not fit, small vector art

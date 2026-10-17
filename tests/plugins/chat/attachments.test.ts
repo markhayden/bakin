@@ -44,9 +44,10 @@ import type { ChatChunk, MessageArgs } from '../../../packages/core/src/adapters
 let activated: ActivatedPlugin
 
 /** PNG magic + padding: the image lane trusts magic bytes, not names (#855). */
+/** A real, decodable 1×1 PNG, padded past IEND to `bytes` (decoders ignore the tail). */
+const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
 function pngFile(name: string, bytes = 128): File {
-  const magic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-  return new File([Buffer.concat([magic, Buffer.alloc(Math.max(0, bytes - magic.length), 7)])], name, { type: 'image/png' })
+  return new File([Buffer.concat([PNG_1PX, Buffer.alloc(Math.max(0, bytes - PNG_1PX.length), 7)])], name, { type: 'image/png' })
 }
 
 async function upload(chatId: string, file: File): Promise<{ status: number; body: Record<string, unknown> }> {
