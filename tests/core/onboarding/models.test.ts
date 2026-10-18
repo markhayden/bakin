@@ -144,14 +144,7 @@ function seedModel(model: string): void {
   writeFileSync(join(dir, 'onnx', 'model.onnx'), 'weights')
 }
 
-const optsAutoYes = {
-  interactive: false,
-  autoApprove: true,
-  json: false,
-  checkOnly: false,
-  force: false,
-  askYesNo: () => Promise.resolve(true),
-}
+const optsAutoYes = { autoApprove: true }
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -266,26 +259,13 @@ describe('installInferenceModels', () => {
     expect(result.message).toContain('reported success but')
   })
 
-  it('skips on decline, noting the degraded-semantic consequence', async () => {
-    installFakeBinary(PULL_OK)
-    const opts = {
-      ...optsAutoYes,
-      interactive: true,
-      autoApprove: false,
-      askYesNo: () => Promise.resolve(false),
-    }
-    const result = await installInferenceModels(opts, undefined, TEST_MODELS)
-    expect(result.status).toBe('skipped')
-    expect(result.message).toContain('semantic indexing is degraded')
-    expect(result.message).toContain('bakin reindex')
-  })
-
-  it('skips non-interactive without --yes, noting the degraded-semantic consequence', async () => {
+  it('skips without approval, noting the degraded-semantic consequence', async () => {
     installFakeBinary(PULL_OK)
     const opts = { ...optsAutoYes, autoApprove: false }
     const result = await installInferenceModels(opts, undefined, TEST_MODELS)
     expect(result.status).toBe('skipped')
-    expect(result.message).toContain('Semantic indexing is degraded')
+    expect(result.message).toContain('semantic indexing is degraded')
+    expect(result.message).toContain('bakin reindex')
   })
 })
 

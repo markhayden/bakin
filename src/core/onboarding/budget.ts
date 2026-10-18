@@ -1,13 +1,13 @@
 /**
  * budget component — spend limits are OPT-IN (spec S8): the out-of-box
  * posture is "recorded, not capped". check() is always ok and states the
- * fact; install() prints one informational line and never prompts or
- * writes — the Spend page (and `bakin budget set`) is where a limit is
- * chosen, ideally after Bakin has observed some history to suggest one.
+ * fact. Nothing is ever installed — the Spend page (and `bakin budget set`)
+ * is where a limit is chosen, ideally after Bakin has observed some history
+ * to suggest one.
  */
 import { readPluginSettings } from '../../../packages/core/src/plugins/settings-store'
 import type { BudgetPolicy, BudgetRule } from '../budget'
-import type { CheckResult, InstallResult, OnboardingComponent } from './types'
+import type { CheckOnlyComponent, CheckResult } from './types'
 
 const SPEND_PLUGIN_ID = 'spend'
 
@@ -29,23 +29,9 @@ async function checkBudget(): Promise<CheckResult> {
   }
 }
 
-async function installBudget(): Promise<InstallResult> {
-  const start = Date.now()
-  const rules = currentRules()
-  if (rules.length > 0) {
-    return { name: 'budget', status: 'noop', message: 'Spend limits already configured.', durationMs: Date.now() - start }
-  }
-  // One line, no prompt, no warning: Bakin records everything from day one
-  // and the Spend page suggests a limit from observed history (D27).
-  console.log('  ℹ Spend limits are off. Bakin records every turn; set a limit in Spend (or `bakin budget set`) once you know what normal looks like.')
-  return { name: 'budget', status: 'noop', message: 'Spend limits are opt-in — none set.', durationMs: Date.now() - start }
-}
-
-export const budgetComponent: OnboardingComponent = {
-  // Limits are opt-in: install states that fact and writes nothing.
-  plan: { stages: [{ id: 'note', kind: 'verifying', label: 'Note spend limits' }], pointOfNoReturn: null },
-  resources: [],
+export const budgetComponent: CheckOnlyComponent = {
+  // Limits are opt-in: the check is always ok, so there is nothing to set up.
+  manualSetup: 'Set a limit in Spend (or `bakin budget set`) once you know what normal looks like.',
   name: 'budget',
   check: checkBudget,
-  install: installBudget,
 }

@@ -105,6 +105,9 @@ function isPidAlive(pid: number): boolean {
 
 export type AcquireResult = { acquired: true } | { acquired: false; holder: ServerLock }
 
+/** The header a CLI presents its home's lock secret in (#895 D11). */
+export const CLI_SECRET_HEADER = 'X-Bakin-Cli-Secret'
+
 /** The secret this process wrote into the lock it holds; null until it acquires one. */
 let ownCliSecret: string | null = null
 

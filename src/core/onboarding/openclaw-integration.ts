@@ -2,7 +2,8 @@ import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { checkBakinRuntimeSkill, syncBakinRuntimeSkill } from '../bakin-skill'
-import type { CheckResult, InstallResult, OnboardingComponent } from './types'
+import type { OperationContext } from '@bakin/core/operations'
+import type { CheckResult, ComponentInstallOptions, InstallableComponent, InstallResult } from './types'
 
 const log = createLogger('onboarding:openclaw-integration')
 
@@ -68,8 +69,9 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-async function install(): Promise<InstallResult> {
+async function install(_opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
   const start = Date.now()
+  op.stage('sync')
   try {
     const runtime = await getRuntimeForOnboarding()
     // Detect drift before provisioning so we can report noop vs. changed.
@@ -105,7 +107,7 @@ async function install(): Promise<InstallResult> {
   }
 }
 
-export const openClawIntegrationComponent: OnboardingComponent = {
+export const openClawIntegrationComponent: InstallableComponent = {
   plan: { stages: [{ id: 'sync', kind: 'installing', label: 'Sync the OpenClaw skill and MCP entries' }], pointOfNoReturn: 'start' },
   resources: [],
   supportedAdapters: ['openclaw'],

@@ -13,9 +13,9 @@
  * has died since the lock was read: the verb runs in-process. Once a request
  * reached a server, nothing falls back — a failure after send is an error.
  */
-import { readLiveServerLock, type ServerLock } from '../core/server-lock'
+import { CLI_SECRET_HEADER, readLiveServerLock, type ServerLock } from '../core/server-lock'
 
-export const CLI_SECRET_HEADER = 'X-Bakin-Cli-Secret'
+export { CLI_SECRET_HEADER }
 
 export type OperationMode =
   | { kind: 'server'; source: 'env' | 'lock'; baseUrl: string; headers: Record<string, string> }

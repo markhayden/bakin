@@ -2,8 +2,8 @@
  * runtime component - detects that the configured agent runtime is available.
  *
  * The runtime is a **hard prerequisite**, not something Bakin manages. This
- * component is check-only — `install()` is a noop that always returns a
- * message pointing at the active runtime adapter setup path. The orchestrator is
+ * component is check-only — it has no install; its `manualSetup` points at
+ * the active runtime adapter setup path. The orchestrator is
  * responsible for using the `missing`/`error` status from `check()` to
  * abort the remaining onboarding steps: without a runtime there is no
  * agent runtime, and everything downstream of this point (LLM keys,
@@ -24,12 +24,9 @@
  * runtime config. The config surface is gone from the contract.
  */
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
-import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
 import { DEFAULT_RUNTIME_ADAPTER_SUPPORT } from '../runtime-adapter-factory'
-import type { CheckResult, InstallResult, OnboardingComponent } from './types'
-
-const log = createLogger('onboarding:runtime')
+import type { CheckOnlyComponent, CheckResult } from './types'
 
 const SETUP_URL = DEFAULT_RUNTIME_ADAPTER_SUPPORT.setupUrl
 const SETUP_MESSAGE = `Bakin requires an active agent runtime such as OpenClaw. Review the prerequisites and setup guide, then rerun onboarding: ${SETUP_URL}`
@@ -193,18 +190,6 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-async function install(): Promise<InstallResult> {
-  // The runtime is never auto-installed by Bakin. Emit a noop with a helpful
-  // message so the orchestrator can log it and exit cleanly.
-  log.info('runtime.install() is a noop - runtime adapter setup is user-managed')
-  return {
-    name: 'runtime',
-    status: 'noop',
-    message: SETUP_MESSAGE,
-    durationMs: 0,
-  }
-}
-
 /**
  * Onboarding-only seeding hook: provisioning is adapter-owned and idempotent
  * (Pi seeds its main orchestrator here; OpenClaw writes MCP entries), and
@@ -216,13 +201,11 @@ export async function provisionRuntimeForOnboarding(): Promise<void> {
   await runtime.provisionToolAccess()
 }
 
-export const runtimeComponent: OnboardingComponent = {
-  // Check-only: the runtime is user-managed, so install changes nothing.
-  plan: { stages: [{ id: 'check', kind: 'verifying', label: 'Check the runtime' }], pointOfNoReturn: null },
-  resources: [],
+export const runtimeComponent: CheckOnlyComponent = {
+  // The runtime is user-managed: Bakin detects it, never installs it.
   name: 'runtime',
+  manualSetup: SETUP_MESSAGE,
   check,
-  install,
 }
 
 export const RUNTIME_SETUP_URL = SETUP_URL

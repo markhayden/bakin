@@ -24,7 +24,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }) }))
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
-import { COMPONENT_ORDER } from '../../../src/core/onboarding/index'
+import { COMPONENT_ORDER, isInstallable } from '../../../src/core/onboarding/index'
 import { INSTALLABLE_COMPONENTS, OnboardingInstallRequestSchema } from '../../../src/core/onboarding/install-request'
 
 describe('OnboardingInstallRequestSchema', () => {
@@ -49,17 +49,16 @@ describe('OnboardingInstallRequestSchema', () => {
     expect(OnboardingInstallRequestSchema.safeParse({ component: 'media', options: { interactive: true } }).success).toBe(false)
   })
 
-  it('names only real components, and every component with work to do', () => {
-    const names = COMPONENT_ORDER.map((c) => c.name)
-    for (const name of INSTALLABLE_COMPONENTS) expect(names).toContain(name)
-    expect(names.filter((n) => !(INSTALLABLE_COMPONENTS as readonly string[]).includes(n)).sort()).toEqual(['budget', 'channels', 'llm', 'runtime'])
+  it('names exactly the components that have an install', () => {
+    expect(COMPONENT_ORDER.filter(isInstallable).map((c) => c.name).sort()).toEqual([...INSTALLABLE_COMPONENTS].sort())
+    expect(COMPONENT_ORDER.filter((c) => !isInstallable(c)).map((c) => c.name).sort()).toEqual(['budget', 'channels', 'llm', 'runtime'])
   })
 })
 
 describe('component plans', () => {
   it('every component declares a plan whose point of no return names one of its stages, and canonical resources', () => {
     const resources = ['install-state', 'media-store', 'search-engine']
-    for (const component of COMPONENT_ORDER) {
+    for (const component of COMPONENT_ORDER.filter(isInstallable)) {
       const plan = component.plan
       expect(plan.stages.length).toBeGreaterThan(0)
       const ids = plan.stages.map((s) => s.id)

@@ -110,25 +110,22 @@ async function inside(): Promise<void> {
 
   // 1. Cancel an engine install during its download.
   {
-    const { getSettings } = await import(`${REPO}/src/core/settings`)
-    const { getSearchAdapterSetup } = await import(`${REPO}/src/core/search-adapter-factory`)
-    const { installSearchComponentLocally } = await import(`${REPO}/src/core/search-setup-install`)
+    const { searchComponent } = await import(`${REPO}/src/core/onboarding/search`)
+    const { componentInstallOperation } = await import(`${REPO}/src/core/onboarding/operation`)
     const { getOperationRegistry } = await import(`${REPO}/src/core/operations`)
-    const setup = getSearchAdapterSetup('antfly', undefined, getSettings().search.settings)
-    const pending = installSearchComponentLocally(setup.dependency, { interactive: false, autoApprove: true, json: true, allowServiceClaim: true }, {
-      kind: 'install:search', title: 'Install the search engine', failureCode: 'engine_install_failed',
-    })
+    // The same operation `bakin install search` runs in-process.
+    const started = await getOperationRegistry().start(componentInstallOperation(searchComponent, { autoApprove: true, allowServiceClaim: true }, 'cli'))
+    const pending = getOperationRegistry().await(started.operationId)
     const registry = getOperationRegistry()
     let cancelled: string | null = null
     for (let i = 0; i < 1200 && !cancelled; i++) {
-      const view = registry.list().find((v: { kind: string }) => v.kind === 'install:search')
+      const view = registry.list().find((v: { kind: string }) => v.kind === 'onboarding:search')
       const download = view?.stages.find((s: { id: string }) => s.id === 'download')
       if (view && (download?.bytes?.received ?? 0) > 0) cancelled = registry.cancel(view.id)
       else await sleep(25)
     }
-    const result = await pending
-    const view = registry.list().find((v: { kind: string }) => v.kind === 'install:search')
-    check('engine install cancelled during download', cancelled === 'cancelling' && view?.status === 'cancelled', `cancel=${cancelled} status=${view?.status} result=${result.status}`)
+    const view = await pending
+    check('engine install cancelled during download', cancelled === 'cancelling' && view.status === 'cancelled', `cancel=${cancelled} status=${view.status}`)
     check('a cancelled engine install leaves nothing behind', !existsSync(engine) && !existsSync(join(env.ANTFLY_HOME, 'tmp')))
   }
 

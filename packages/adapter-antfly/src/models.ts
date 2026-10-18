@@ -273,26 +273,12 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     }
   }
 
-  if (opts.interactive && !opts.autoApprove) {
-    const proceed = await opts.askYesNo?.(
-      `Download ${missing.length} search model${missing.length === 1 ? '' : 's'} (~1GB total) from HuggingFace to ${inferenceModelsRoot()}? (Recommended - semantic indexing is degraded without them.)`,
-      true
-    )
-    if (!proceed) {
-      skipAll('declined')
-      return {
-        name: 'models',
-        status: 'skipped' as const,
-        message: 'User declined model download; semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex` to repair anything indexed meanwhile).',
-        durationMs: Date.now() - start,
-      }
-    }
-  } else if (!opts.autoApprove) {
+  if (!opts.autoApprove) {
     skipAll('not approved')
     return {
       name: 'models',
       status: 'skipped' as const,
-      message: 'Non-interactive run without --yes; skipping model download. Semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex` to repair anything indexed meanwhile).',
+      message: 'Model download not approved; semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex` to repair anything indexed meanwhile).',
       durationMs: Date.now() - start,
     }
   }
@@ -303,10 +289,6 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     return { name: 'models', status: 'failed' as const, message, ...(error === undefined ? {} : { error }), durationMs: Date.now() - start }
   }
   const modelsDir = inferenceModelsRoot()
-  // The CLI's in-process onboarding has no operation renderer until it
-  // follows operations (PR6 of #895); until then a terminal run still sees
-  // antfly's own progress lines.
-  const echo = opts.interactive && !opts.json
   logger.info('Pulling search models', { count: missing.length, antfly, modelsDir })
   op.stage('download')
   for (const m of missing) op.item('download', { id: m.model, label: m.label })
@@ -320,10 +302,7 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
         signal: op.signal,
         pollMs: timings.pollMs,
         killAfterMs: timings.killAfterMs,
-        onLine: (line) => {
-          op.output(line)
-          if (echo) process.stderr.write(`${line}\n`)
-        },
+        onLine: (line) => op.output(line),
         onBytes: (bytes) => op.bytes('download', bytes, m.model),
       })
     } catch (err) {

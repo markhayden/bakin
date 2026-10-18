@@ -59,13 +59,11 @@ mock.module('../../../packages/core/src/media/sharp-loader', () => ({
 }))
 
 import { mediaComponent } from '../../../src/core/onboarding/media'
+import { installInOperation } from '../../helpers/operation-harness'
 
 const opts = (over: Partial<Parameters<typeof mediaComponent.install>[0]> = {}) => ({
-  interactive: false,
   autoApprove: true,
-  json: false,
-  checkOnly: false,
-  force: false,
+  allowServiceClaim: false,
   ...over,
 })
 
@@ -119,20 +117,20 @@ describe('mediaComponent.check', () => {
 describe('mediaComponent.install', () => {
   it('noop when already ok', async () => {
     bundledAvailable = true
-    const result = await mediaComponent.install(opts())
+    const result = await installInOperation(mediaComponent, opts())
     expect(result.status).toBe('noop')
     expect(installCalls).toBe(0)
   })
 
   it('skipped on an unsupported platform', async () => {
     storeStatus = { status: 'unsupported', platform: 'linux-riscv64' }
-    const result = await mediaComponent.install(opts())
+    const result = await installInOperation(mediaComponent, opts())
     expect(result.status).toBe('skipped')
     expect(installCalls).toBe(0)
   })
 
   it('installs when approved', async () => {
-    const result = await mediaComponent.install(opts())
+    const result = await installInOperation(mediaComponent, opts())
     expect(result.status).toBe('installed')
     expect(installCalls).toBe(1)
     expect(lastInstallForce).toBe(false)
@@ -141,25 +139,25 @@ describe('mediaComponent.install', () => {
   it('a broken store reinstalls WITH force (past the fabricated receipt)', async () => {
     storeStatus = { status: 'ok', receipt: { sharpVersion: '0.34.5', platform: 'darwin-arm64' } }
     loaderLoads = false
-    const result = await mediaComponent.install(opts())
+    const result = await installInOperation(mediaComponent, opts())
     expect(result.status).toBe('installed')
     expect(lastInstallForce).toBe(true)
   })
 
   it('installs when the component is in approvedComponents', async () => {
-    const result = await mediaComponent.install(opts({ autoApprove: false, approvedComponents: ['media'] }))
+    const result = await installInOperation(mediaComponent, opts({ autoApprove: false, approvedComponents: ['media'] }))
     expect(result.status).toBe('installed')
   })
 
-  it('skipped when neither approved nor interactive', async () => {
-    const result = await mediaComponent.install(opts({ autoApprove: false }))
+  it('skipped when not approved', async () => {
+    const result = await installInOperation(mediaComponent, opts({ autoApprove: false }))
     expect(result.status).toBe('skipped')
     expect(installCalls).toBe(0)
   })
 
   it('failed (honestly) when the installer throws', async () => {
     installShouldFail = true
-    const result = await mediaComponent.install(opts())
+    const result = await installInOperation(mediaComponent, opts())
     expect(result.status).toBe('failed')
     expect(result.message).toContain('download failed')
   })

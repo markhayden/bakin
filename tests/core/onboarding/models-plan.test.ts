@@ -3,9 +3,9 @@
  * plan exists and both lanes are eligible + suitable (or the install is
  * already on the recommendation); missing when no plan is persisted yet;
  * warn — never auto-repaired — when a persisted plan has a dead lane.
- * install() applies the recommendation ONLY on --yes / explicit approval /
- * an interactive yes (the one permitted auto-apply: fresh install, no
- * plan); none eligible ⇒ skipped. Writes ride the core selections mutator.
+ * install() applies the recommendation ONLY on --yes / explicit approval
+ * (the one permitted auto-apply: fresh install, no plan); none eligible ⇒
+ * skipped. Writes ride the core selections mutator.
  */
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
@@ -21,13 +21,6 @@ const contentDirMock = () => ({
 mock.module('../../../src/core/content-dir', contentDirMock)
 mock.module('../../../packages/core/src/content-dir', contentDirMock)
 mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }) }))
-
-let yesNoAnswers: boolean[] = []
-mock.module('../../../src/core/onboarding/prompts', () => ({
-  readLine: async () => '',
-  askYesNo: async (_q: string, dflt: boolean) => (yesNoAnswers.length ? yesNoAnswers.shift()! : dflt),
-  formatPrompt: (p: string) => p,
-}))
 
 const LUNA = 'openai-codex/gpt-5.6-luna'
 const MINI = 'openai-codex/gpt-5.4-mini'
@@ -54,11 +47,12 @@ mock.module('../../../src/core/app-services', () => ({
 import { modelsComponent } from '../../../src/core/onboarding/models'
 import { readPluginSettings, writePluginSettings } from '../../../packages/core/src/plugins/settings-store'
 import { closeDb } from '../../../packages/core/src/storage/db'
+import { installInOperation } from '../../helpers/operation-harness'
+import type { ComponentInstallOptions } from '../../../src/core/onboarding/types'
 
-const YES = { interactive: false, autoApprove: true, json: false, checkOnly: false, force: false } as never
-const APPROVED = { interactive: false, autoApprove: false, json: false, checkOnly: false, force: false, approvedComponents: ['models'] } as never
-const INTERACTIVE = { interactive: true, autoApprove: false, json: false, checkOnly: false, force: false } as never
-const SILENT = { interactive: false, autoApprove: false, json: false, checkOnly: false, force: false } as never
+const YES: ComponentInstallOptions = { autoApprove: true, allowServiceClaim: false }
+const APPROVED: ComponentInstallOptions = { autoApprove: false, allowServiceClaim: false, approvedComponents: ['models'] }
+const SILENT: ComponentInstallOptions = { autoApprove: false, allowServiceClaim: false }
 
 function routes(): Array<{ workClass: string; model?: string }> {
   return readPluginSettings<{ routing?: { routes: Array<{ workClass: string; model?: string }> } }>('models').routing?.routes ?? []
@@ -67,7 +61,6 @@ function routes(): Array<{ workClass: string; model?: string }> {
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(join(testDir, 'plugin-settings'), { recursive: true })
-  yesNoAnswers = []
   policyWrites.length = 0
   defaultModel = LUNA
   catalog = [
@@ -97,33 +90,24 @@ describe('models onboarding component (S7)', () => {
   })
 
   it('--yes on a fresh install applies the recommendation through the mutator; check() is then ok', async () => {
-    const r = await modelsComponent.install(YES)
+    const r = await installInOperation(modelsComponent, YES)
     expect(r.status).toBe('installed')
     expect(routes().map((x) => `${x.workClass}=${x.model}`).sort()).toEqual(['auto-title', 'relay', 'skill-mapping', 'team-routing'].map((c) => `${c}=${MINI}`))
     expect(policyWrites).toEqual([])
     expect((await modelsComponent.check()).status).toBe('ok')
   })
 
-  it('explicit TUI approval applies; a non-interactive run without approval skips and writes nothing', async () => {
-    expect((await modelsComponent.install(SILENT)).status).toBe('skipped')
+  it('explicit TUI approval applies; a run without approval skips and writes nothing', async () => {
+    expect((await installInOperation(modelsComponent, SILENT)).status).toBe('skipped')
     expect(routes()).toEqual([])
-    expect((await modelsComponent.install(APPROVED)).status).toBe('installed')
-    expect(routes()).toHaveLength(4)
-  })
-
-  it('interactive: asks, applies on yes, skips on no', async () => {
-    yesNoAnswers = [false]
-    expect((await modelsComponent.install(INTERACTIVE)).status).toBe('skipped')
-    expect(routes()).toEqual([])
-    yesNoAnswers = [true]
-    expect((await modelsComponent.install(INTERACTIVE)).status).toBe('installed')
+    expect((await installInOperation(modelsComponent, APPROVED)).status).toBe('installed')
     expect(routes()).toHaveLength(4)
   })
 
   it('a dead default with NO persisted plan is repaired by --yes (the permitted carve-out): nothing dispatches on a dead default, so the policy op lands', async () => {
     defaultModel = 'openai/gpt-6-astra'
     expect((await modelsComponent.check()).status).toBe('missing')
-    const r = await modelsComponent.install(YES)
+    const r = await installInOperation(modelsComponent, YES)
     expect(r.status).toBe('installed')
     expect(policyWrites).toEqual([{ defaultModel: LUNA }])
     expect(routes()).toHaveLength(4)
@@ -132,18 +116,18 @@ describe('models onboarding component (S7)', () => {
 
   it('a WORKING default is never moved by --yes (the recommender keeps an eligible current default); no default at all gets one', async () => {
     defaultModel = TERRA
-    expect((await modelsComponent.install(YES)).status).toBe('installed')
+    expect((await installInOperation(modelsComponent, YES)).status).toBe('installed')
     expect(policyWrites).toEqual([])
 
     rmSync(join(testDir, 'plugin-settings'), { recursive: true, force: true })
     mkdirSync(join(testDir, 'plugin-settings'), { recursive: true })
     defaultModel = null
-    expect((await modelsComponent.install(YES)).status).toBe('installed')
+    expect((await installInOperation(modelsComponent, YES)).status).toBe('installed')
     expect(policyWrites).toEqual([{ defaultModel: LUNA }])
   })
 
   it('every onboarding write leaves an audit trail, like the plugin path does', async () => {
-    await modelsComponent.install(YES)
+    await installInOperation(modelsComponent, YES)
     const audit = readFileSync(join(testDir, 'audit.jsonl'), 'utf8')
     expect(audit).toContain('models.selections_mutated')
   })
@@ -188,7 +172,7 @@ describe('models onboarding component (S7)', () => {
     expect(r.message).toContain('enrichment')
     expect(r.message).toContain('vision-capable')
     // install() has nothing to apply but says so honestly too.
-    const i = await modelsComponent.install(YES)
+    const i = await installInOperation(modelsComponent, YES)
     expect(i.status).toBe('noop')
     expect(i.message).toContain('Needs attention')
   })
@@ -211,7 +195,7 @@ describe('models onboarding component (S7)', () => {
     catalog = [{ id: 'openai/gpt-6-astra', available: false, unavailableReason: 'no_credentials' }]
     defaultModel = 'openai/gpt-6-astra'
     expect((await modelsComponent.check()).status).toBe('missing')
-    const r = await modelsComponent.install(YES)
+    const r = await installInOperation(modelsComponent, YES)
     expect(r.status).toBe('skipped')
     expect(r.message).toContain('credentials')
   })

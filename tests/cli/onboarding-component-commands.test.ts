@@ -51,8 +51,20 @@ mock.module('../../src/core/onboarding/runtime', () => ({
   },
 }))
 
+// A terminal `bakin install <x>` without --yes asks before it starts.
+const askYesNo = mock(async () => true)
+mock.module('../../src/core/onboarding/prompts', () => ({ askYesNo }))
+
+/** Each install runs as an in-process operation (no server.lock in this home — #895 D11). */
+const PLAN = { stages: [{ id: 'run', kind: 'installing' as const, label: 'Run' }], pointOfNoReturn: 'start' as const }
+const installables: Record<string, { name: string; plan: typeof PLAN; resources: never[]; check: () => Promise<unknown>; install: (...args: unknown[]) => Promise<unknown> }> = {
+  'plugin-assets': { name: 'plugin-assets', plan: PLAN, resources: [], check: async () => ({ name: 'plugin-assets', status: 'missing', message: 'Plugin assets missing.' }), install: (...args) => pluginAssetsInstall(...args) },
+  mkdir: { name: 'mkdir', plan: PLAN, resources: [], check: async () => ({ name: 'mkdir', status: 'ok', message: 'Bakin home ready.' }), install: (...args) => mkdirInstall(...args) },
+  settings: { name: 'settings', plan: PLAN, resources: [], check: async () => ({ name: 'settings', status: 'ok', message: 'Settings ready.' }), install: (...args) => settingsInstall(...args) },
+}
 mock.module('../../src/core/onboarding/index', () => ({
   checkAll,
+  installableComponent: (name: string) => installables[name],
 }))
 
 mock.module('../../src/core/onboarding/plugin-assets', () => ({
@@ -79,11 +91,13 @@ mock.module('../../src/core/onboarding/settings', () => ({
   },
 }))
 
-const harness = setupTtyCliHarness({ mockFetch: false })
+// spyStdoutWrite keeps the live progress frames out of the test output.
+const harness = setupTtyCliHarness({ mockFetch: false, spyStdoutWrite: true, saveEnv: ['BAKIN_URL'] })
 const { output } = harness
 
 describe('onboarding component CLI commands', () => {
   beforeEach(() => {
+    delete process.env.BAKIN_URL
     runtimeCheck.mockImplementation(async () => {
       const { createLogger } = await import('../../packages/core/src/logger')
       createLogger('settings').info('Runtime check log')
@@ -180,6 +194,7 @@ describe('onboarding component CLI commands', () => {
     expect(output()).toContain('Onboarding install')
     expect(output()).toContain('RESULT')
     expect(output()).toContain('Installed plugin assets.')
+    expect(askYesNo).toHaveBeenCalledWith('Plugin assets missing. Install plugin-assets now?', true)
     expect(output()).not.toContain('Plugin install log')
     expect(output()).not.toContain('[INSTALLED]')
   })
@@ -190,13 +205,7 @@ describe('onboarding component CLI commands', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    expect(mkdirInstall).toHaveBeenCalledWith({
-      interactive: true,
-      autoApprove: true,
-      json: false,
-      checkOnly: false,
-      force: false,
-    })
+    expect(mkdirInstall).toHaveBeenCalledWith({ autoApprove: true, allowServiceClaim: false }, expect.anything())
     expect(output()).toContain('Onboarding install')
     expect(output()).toContain('RESULT')
     expect(output()).toContain('Already initialized at ~/.bakin')
@@ -210,13 +219,7 @@ describe('onboarding component CLI commands', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    expect(settingsInstall).toHaveBeenCalledWith({
-      interactive: true,
-      autoApprove: true,
-      json: false,
-      checkOnly: false,
-      force: false,
-    })
+    expect(settingsInstall).toHaveBeenCalledWith({ autoApprove: true, allowServiceClaim: false }, expect.anything())
     expect(output()).toContain('Onboarding install')
     expect(output()).toContain('RESULT')
     expect(output()).toContain('Wrote ~/.bakin/settings.json')
@@ -244,13 +247,7 @@ describe('onboarding component CLI commands', () => {
     let body = JSON.parse(output())
     expect(body.component).toBe('mkdir')
     expect(body.status).toBe('noop')
-    expect(mkdirInstall).toHaveBeenCalledWith({
-      interactive: false,
-      autoApprove: true,
-      json: true,
-      checkOnly: false,
-      force: false,
-    })
+    expect(mkdirInstall).toHaveBeenCalledWith({ autoApprove: true, allowServiceClaim: false }, expect.anything())
     expect(output()).not.toContain('Onboarding install')
 
     harness.log.mockClear()
@@ -259,13 +256,7 @@ describe('onboarding component CLI commands', () => {
     body = JSON.parse(output())
     expect(body.component).toBe('settings')
     expect(body.status).toBe('installed')
-    expect(settingsInstall).toHaveBeenCalledWith({
-      interactive: false,
-      autoApprove: true,
-      json: true,
-      checkOnly: false,
-      force: false,
-    })
+    expect(settingsInstall).toHaveBeenCalledWith({ autoApprove: true, allowServiceClaim: false }, expect.anything())
     expect(output()).not.toContain('Onboarding install')
   })
 })

@@ -28,6 +28,7 @@ import { settleReact } from '../rtl-settle'
 
 import { useToastStore } from '@makinbakin/sdk/hooks'
 
+import { finishedOperation, operationResponse, operationStarted } from '../helpers/operation-fetch'
 import { OverviewTab } from '../../packages/host/src/components/runtime/overview-tab'
 import { CapabilitiesTab } from '../../packages/host/src/components/runtime/capabilities-tab'
 import { RuntimesTab } from '../../packages/host/src/components/runtime/runtimes-tab'
@@ -90,14 +91,60 @@ describe('OverviewTab', () => {
     expect(screen.queryByTestId('setup-fix-budget')).toBeNull()
   })
 
-  it('warn rows expose Repair, confirm-gated, posting the install and reporting failure reasons', async () => {
+  it('media is repairable from the hub (#895)', async () => {
+    await act(async () => {
+      render(
+        <OverviewTab
+          report={report}
+          onRefreshOnboarding={() => {}}
+          onboarding={[{ name: 'media', status: 'missing', message: 'no image processing' }]}
+        />,
+      )
+    })
+    expect(within(screen.getByRole('table', { name: 'Setup checks' })).getByTestId('setup-fix-media')).toBeTruthy()
+  })
+
+  it('the open dialog shows the live operation while the repair runs', async () => {
+    const running = finishedOperation('op-media', { httpStatus: 200, body: null }, {
+      kind: 'onboarding:media', title: 'Install the media store', status: 'running', outcome: undefined, result: undefined, endedAt: undefined,
+      stages: [{ id: 'download', kind: 'downloading', label: 'Download pinned sharp packages', status: 'active', startedAt: new Date().toISOString(), bytes: { received: 4_000_000, total: 8_000_000 } }],
+      plan: { stages: [{ id: 'download', kind: 'downloading', label: 'Download pinned sharp packages' }], pointOfNoReturn: 'commit' },
+      cancellable: true,
+    })
+    const operations = new Map([['op-media', running]])
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/runtime/onboarding/install')) return operationStarted('op-media')
+      return operationResponse(String(input), operations) ?? new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    await act(async () => {
+      render(
+        <OverviewTab
+          report={report}
+          onRefreshOnboarding={() => {}}
+          onboarding={[{ name: 'media', status: 'missing', message: 'no image processing' }]}
+        />,
+      )
+    })
+    await act(async () => { fireEvent.click(within(screen.getByRole('table', { name: 'Setup checks' })).getByTestId('setup-fix-media')) })
+    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-repair-confirm')) })
+    await waitFor(() => expect(screen.getByText('Download pinned sharp packages')).toBeTruthy())
+    // The operation's Cancel is live (before the commit); the dialog's own
+    // Cancel is disabled while the repair runs.
+    const cancels = screen.getAllByRole('button', { name: 'Cancel' })
+    expect(cancels.filter((b) => !b.hasAttribute('disabled'))).toHaveLength(1)
+  })
+
+  it('warn rows expose Repair, confirm-gated, starting the install operation and following it to the result', async () => {
     const posts: Array<Record<string, unknown>> = []
+    // The route answers 202 and the result arrives on the operation (#895).
+    const operations = new Map([['op-sync', finishedOperation('op-sync', { httpStatus: 200, body: { ok: true, result: { status: 'installed', message: 'synced 3 agents' } } }, { kind: 'onboarding:agent-sync' })]])
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).includes('/api/runtime/onboarding/install')) {
         posts.push(JSON.parse(String(init?.body)))
-        return new Response(JSON.stringify({ ok: true, result: { status: 'installed', message: 'synced 3 agents' } }), { status: 200 })
+        return operationStarted('op-sync')
       }
-      return new Response('{}', { status: 200 })
+      return operationResponse(String(input), operations) ?? new Response('{}', { status: 200 })
     }) as unknown as typeof fetch
 
     const refreshed: number[] = []
@@ -116,7 +163,8 @@ describe('OverviewTab', () => {
     // Confirmation first — nothing posted yet.
     expect(posts).toEqual([])
     await act(async () => { fireEvent.click(screen.getByTestId('setup-repair-confirm')) })
-    await waitFor(() => expect(posts).toEqual([{ component: 'agent-sync' }]))
+    // Confirming in the dialog IS the approval: explicit options, nothing implied.
+    await waitFor(() => expect(posts).toEqual([{ component: 'agent-sync', options: { autoApprove: true } }]))
     await waitFor(() => expect(refreshed.length).toBe(1))
     // Success feedback reaches the REAL toast store (the one the shell
     // Toaster reads) with the result message.
@@ -126,11 +174,10 @@ describe('OverviewTab', () => {
   })
 
   it('a failed repair surfaces the reason', async () => {
+    const operations = new Map([['op-assets', finishedOperation('op-assets', { httpStatus: 200, body: { ok: false, result: { status: 'failed', message: 'runtime unreachable' } } }, { status: 'failed', outcome: { code: 'component_failed', message: 'runtime unreachable' } })]])
     globalThis.fetch = (async (input: RequestInfo | URL) => {
-      if (String(input).includes('/api/runtime/onboarding/install')) {
-        return new Response(JSON.stringify({ ok: false, result: { status: 'failed', message: 'runtime unreachable' } }), { status: 200 })
-      }
-      return new Response('{}', { status: 200 })
+      if (String(input).includes('/api/runtime/onboarding/install')) return operationStarted('op-assets')
+      return operationResponse(String(input), operations) ?? new Response('{}', { status: 200 })
     }) as unknown as typeof fetch
 
     await act(async () => {

@@ -3,11 +3,11 @@ import { join } from 'path'
 import { getContentDir } from '../content-dir'
 import { readPluginLockfile } from '@bakin/core/plugins/lockfile'
 import { getInstalledPluginIds, planPluginDependencyOrder } from '../plugins/dependencies'
-import { askYesNo } from './prompts'
 import { awaitOperationResponse } from '../operations'
 import { loadUnifiedCatalog, staticCuratedCatalog } from '../curated-catalog/load'
 import type { CatalogEntry } from '../curated-catalog/schema'
-import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { OperationContext } from '@bakin/core/operations'
+import type { CheckResult, ComponentInstallOptions, InstallableComponent, InstallResult } from './types'
 
 export interface RecommendedPlugin {
   id: string
@@ -119,10 +119,11 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-async function install(opts: OnboardingOptions): Promise<InstallResult> {
+async function install(opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
   const start = Date.now()
   const missing = await missingPlugins()
   if (missing.length === 0) {
+    op.skip('install', 'already installed')
     return {
       name: 'recommended-plugins',
       status: 'noop',
@@ -136,22 +137,12 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     : null
   const selected: RecommendedPlugin[] = explicitSelectedIds
     ? missing.filter(plugin => explicitSelectedIds.has(plugin.id))
-    : []
-
-  if (!explicitSelectedIds) {
-    for (const plugin of missing) {
-      if (opts.autoApprove && plugin.defaultSelected) {
-        selected.push(plugin)
-        continue
-      }
-      if (!opts.interactive) continue
-      if (await askYesNo(`Install official plugin ${plugin.name}?`, plugin.defaultSelected)) {
-        selected.push(plugin)
-      }
-    }
-  }
+    : opts.autoApprove
+      ? missing.filter(plugin => plugin.defaultSelected)
+      : []
 
   if (selected.length === 0) {
+    op.skip('install', 'none selected')
     return {
       name: 'recommended-plugins',
       status: 'skipped',
@@ -172,11 +163,21 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     }
   }
 
+  // Each plugin installs as its own operation (preview → commit, the commit
+  // owning install-state); this one lists them as items and holds nothing.
+  op.stage('install')
+  for (const plugin of plan.ordered) op.item('install', { id: plugin.id, label: plugin.name })
   for (const plugin of plan.ordered) {
-    opts.onProgress?.(`Installing official plugin ${plugin.id}`)
+    op.throwIfCancelled()
+    op.item('install', { id: plugin.id, label: plugin.name, status: 'active' })
     const result = await installSource(plugin.source)
-    if (result.ok) installed.push(plugin.id)
-    else failures.push(`${plugin.id}: ${result.error}`)
+    if (result.ok) {
+      installed.push(plugin.id)
+      op.item('install', { id: plugin.id, label: plugin.name, status: 'done' })
+    } else {
+      failures.push(`${plugin.id}: ${result.error}`)
+      op.item('install', { id: plugin.id, label: plugin.name, status: 'failed', message: result.error })
+    }
   }
 
   if (failures.length > 0) {
@@ -196,10 +197,11 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   }
 }
 
-export const recommendedPluginsComponent: OnboardingComponent = {
+export const recommendedPluginsComponent: InstallableComponent = {
   // One item per selection; the first install is the point of no return.
   plan: { stages: [{ id: 'install', kind: 'installing', label: 'Install recommended plugins' }], pointOfNoReturn: 'install' },
-  resources: ['install-state'],
+  // Holds nothing: each plugin's own install operation owns install-state.
+  resources: [],
   name: 'recommended-plugins',
   check,
   install,

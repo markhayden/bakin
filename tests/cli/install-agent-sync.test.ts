@@ -50,6 +50,7 @@ import { owned } from '../helpers/owning'
 /** Test setup installs as an owner of install-state, like every production caller (#895). */
 const installPackage = owned(installPackageUnowned)
 import { getGlobalContextPath } from '../../src/core/team-context'
+import { installInOperation } from '../helpers/operation-harness'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -71,13 +72,7 @@ beforeEach(() => {
   })
 })
 
-const NON_INTERACTIVE = {
-  interactive: false,
-  autoApprove: true,
-  json: false,
-  checkOnly: false,
-  force: false,
-}
+const NON_INTERACTIVE = { autoApprove: true, allowServiceClaim: false }
 
 function seedAgentPackage(): string {
   const dir = join(testDir, 'pixel-pkg')
@@ -117,7 +112,7 @@ describe('agent-sync onboarding component — check()', () => {
     expect(before.status).toBe('warn')
     expect(before.message).toContain('file-missing')
 
-    await agentSyncComponent.install(NON_INTERACTIVE)
+    await installInOperation(agentSyncComponent, NON_INTERACTIVE)
     const after = await agentSyncComponent.check()
     expect(after.status).toBe('ok')
     expect(after.message).toContain('in sync')
@@ -149,9 +144,9 @@ describe('agent-sync onboarding component — install()', () => {
   it('returns noop when everything is already in sync', async () => {
     const src = seedAgentPackage()
     await installPackage({ source: src })
-    await agentSyncComponent.install(NON_INTERACTIVE) // first sync settles main
+    await installInOperation(agentSyncComponent, NON_INTERACTIVE) // first sync settles main
 
-    const result = await agentSyncComponent.install(NON_INTERACTIVE)
+    const result = await installInOperation(agentSyncComponent, NON_INTERACTIVE)
     expect(result.status).toBe('noop')
   })
 
@@ -160,7 +155,7 @@ describe('agent-sync onboarding component — install()', () => {
     await installPackage({ source: src })
     writeFileSync(getGlobalContextPath(), '# House Rules\n\n- Be excellent')
 
-    const result = await agentSyncComponent.install(NON_INTERACTIVE)
+    const result = await installInOperation(agentSyncComponent, NON_INTERACTIVE)
     expect(result.status).toBe('installed')
 
     const after = await agentSyncComponent.check()
@@ -174,7 +169,7 @@ describe('agent-sync onboarding component — install()', () => {
     await installPackage({ source: src })
     rmSync(join(testDir, 'agents', 'pixel', 'avatar.jpg'))
 
-    const result = await agentSyncComponent.install(NON_INTERACTIVE)
+    const result = await installInOperation(agentSyncComponent, NON_INTERACTIVE)
     expect(result.status).toBe('installed')
     expect(readFileSync(join(testDir, 'agents', 'pixel', 'avatar.jpg'), 'utf-8')).toBe('jpg-bytes')
   })

@@ -39,6 +39,7 @@ import * as channelsRoute from '../../../packages/host/src/api/channels'
 import * as approvalsRoute from '../../../packages/host/src/api/approvals'
 import * as operationsRoute from '../../../packages/host/src/api/operations'
 import * as searchMaintenanceRoute from '../../../packages/host/src/api/search/maintenance'
+import * as onboardingRoute from '../../../packages/host/src/api/runtime/onboarding'
 import * as agentsActionRoute from '../../../packages/host/src/api/agents/[action]'
 import * as memoryLogRoute from '../../../packages/host/src/api/memory/log'
 import * as pluginSettingsIdRoute from '../../../packages/host/src/api/plugin-settings/[pluginId]'
@@ -248,22 +249,10 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
-    // One-click setup repair from the runtime hub: run a SAFE onboarding
-    // component's install() headlessly. Whitelisted — components with
-    // interactive prompts or package selection stay CLI/Explore territory.
+    // One onboarding component install as an operation (#895 D11): the
+    // runtime hub's one-click fix and the CLI's server mode.
     if (url.pathname === '/api/runtime/onboarding/install' && req.method === 'POST') {
-      handleJsonPost(req, res, async (body) => {
-        const name = (body as { component?: string } | null)?.component
-        const FIXABLE = new Set(['mkdir', 'settings', 'search', 'search-models', 'media', 'plugin-assets', 'agent-sync'])
-        if (!name || !FIXABLE.has(name)) {
-          throw new Error(`component must be one of: ${[...FIXABLE].join(', ')}`)
-        }
-        const { COMPONENT_ORDER } = require('../onboarding/index') as typeof import('../onboarding/index')
-        const component = COMPONENT_ORDER.find((c) => c.name === name)
-        if (!component) throw new Error(`unknown component: ${name}`)
-        const result = await component.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
-        return { ok: result.status !== 'failed', result }
-      })
+      dispatchWebHandler(req, res, onboardingRoute.install)
       return
     }
 

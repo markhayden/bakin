@@ -85,13 +85,8 @@ describe('CLI: bakin install/check plugin-assets', () => {
 
   it('install() returns noop when nothing needs installing', async () => {
     const { pluginAssetsComponent } = require('@/core/onboarding/plugin-assets') as typeof import('@/core/onboarding/plugin-assets')
-    const result = await pluginAssetsComponent.install({
-      interactive: false,
-      autoApprove: true,
-      json: false,
-      checkOnly: false,
-      force: false,
-    })
+    const { installInOperation } = await import('../helpers/operation-harness')
+    const result = await installInOperation(pluginAssetsComponent, { autoApprove: true, allowServiceClaim: false })
     expect(result.status).toBe('noop')
     expect(result.message).toMatch(/0 plugin assets/i)
   })

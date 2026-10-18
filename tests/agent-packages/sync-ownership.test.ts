@@ -117,10 +117,12 @@ describe('sync ownership', () => {
     expect(results.every((r) => /requires install-state/.test(r.error ?? ''))).toBe(true)
   })
 
-  it("onboarding's agent-sync component runs a real sync inside a local operation that owns install-state", async () => {
+  it("onboarding's agent-sync component runs a real sync inside its operation, which owns install-state", async () => {
     await seedDriftedAgent()
-    const result = await agentSyncComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
-    expect(result.status).toBe('installed')
+    const { componentInstallOperation } = await import('../../src/core/onboarding/operation')
+    const { operationId } = await getOperationRegistry().start(componentInstallOperation(agentSyncComponent, { autoApprove: true, allowServiceClaim: false }, 'cli'))
+    const view = await getOperationRegistry().await(operationId)
+    expect((view.result?.body as { result: { status: string } }).result.status).toBe('installed')
     expect((await scanAgentSync()).findings).toEqual([])
     const owner = ranAs('onboarding:agent-sync')
     expect(owner?.status).toBe('succeeded')

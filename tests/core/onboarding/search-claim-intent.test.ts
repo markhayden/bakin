@@ -3,7 +3,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } fr
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import type { OnboardingComponent, OnboardingOptions } from '../../../src/core/onboarding/types'
+import type { OnboardingComponent } from '../../../src/core/onboarding/types'
+import { noopOp } from '../../helpers/operation-harness'
 
 const sandbox = mkdtempSync(join(tmpdir(), 'bakin-test-search-claim-intent-'))
 const savedEnv = {
@@ -12,7 +13,10 @@ const savedEnv = {
   OPENCLAW_HOME: process.env.OPENCLAW_HOME,
   ANTFLY_HOME: process.env.ANTFLY_HOME,
   ANTFLY_PATH: process.env.ANTFLY_PATH,
+  BAKIN_URL: process.env.BAKIN_URL,
 }
+// No BAKIN_URL and no server.lock: the CLI installs in-process (#895 D11).
+delete process.env.BAKIN_URL
 process.env.HOME = join(sandbox, 'os-home')
 process.env.BAKIN_HOME = sandbox
 process.env.OPENCLAW_HOME = join(sandbox, 'openclaw')
@@ -45,7 +49,7 @@ mock.module('../../../src/core/settings', () => ({
 }))
 mock.module('../../../src/core/onboarding/prompts', () => ({ askYesNo: async () => true }))
 
-type CapturedOptions = OnboardingOptions & { allowServiceClaim?: boolean }
+type CapturedOptions = { autoApprove: boolean; allowServiceClaim?: boolean }
 const searchInstalls: CapturedOptions[] = []
 const modelInstalls: CapturedOptions[] = []
 mock.module('../../../src/core/search-adapter-factory', () => ({
@@ -96,7 +100,9 @@ mock.module('../../../src/core/onboarding/recommended-capabilities', () => ({ re
 mock.module('../../../src/core/onboarding/state', () => ({
   saveState: mock(), clearMarker: mock(), isOnboarded: () => false, loadState: () => null, ONBOARDING_VERSION: 1,
 }))
-mock.module('../../../src/cli/http', () => ({ apiGet: () => { throw new Error('CLI must not contact a server') } }))
+// No server.lock in the sandbox: the CLI runs installs in-process and never reaches a server.
+const realHttp = await import('../../../src/cli/http')
+mock.module('../../../src/cli/http', () => ({ ...realHttp, apiGet: () => { throw new Error('CLI must not contact a server') } }))
 mock.module('../../../src/cli/output', () => ({ print: mock(), statusIcon: () => '' }))
 mock.module('../../../src/cli/help', () => ({ exitUnknownSubcommand: () => { throw new Error('Unexpected CLI target') } }))
 mock.module('../../../src/core/cli/ui/render-report', () => ({ renderInkReport: () => { throw new Error('JSON commands must not mount UI') } }))
@@ -133,13 +139,12 @@ describe('search service claim authority', () => {
 
   it('the actual onboarding runner does not authorize takeover through approval or force flags', async () => {
     const result = await runOnboard({
-      interactive: false,
       autoApprove: true,
       approvedComponents: ['search'],
       force: true,
       json: false,
       checkOnly: false,
-    })
+    }, (component, options) => component.install(options, noopOp()))
 
     expect(result.outcomes.find((outcome) => outcome.name === 'search')?.finalStatus).toBe('ok')
     expect(searchInstalls).toHaveLength(1)

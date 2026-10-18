@@ -10,8 +10,10 @@
 import { apiGet } from '../http'
 import { print, statusIcon } from '../output'
 import { exitUnknownSubcommand } from '../help'
+import { createOperationRenderer, describeResult, operationStatusLine, silentOperationRenderer, type OperationRenderer } from '../operation-renderer'
 import { renderInkReport } from '../../core/cli/ui/render-report'
-import type { CheckResult, InstallResult } from '../../core/onboarding/types'
+import type { InstallableComponent as InstallableName, OnboardingInstallOptions } from '../../core/onboarding/install-request'
+import type { CheckResult, InstallableComponent, InstallResult } from '../../core/onboarding/types'
 
 async function printPathsTui(paths: Record<string, unknown>, isBakinHome: unknown): Promise<void> {
   return renderInkReport(() => import('../../core/cli/ui/readonly'), (m) => m.PathsReport, { paths, isBakinHome })
@@ -73,52 +75,41 @@ async function withTtyRuntimeLogsSilenced<T>(
   }
 }
 
-async function cmdOnboardingMkdir(options: { json?: boolean } = {}): Promise<void> {
+/** The progress renderer for a single install: live on a TTY, plain milestones on stderr when piped, silent for --json. */
+function singleInstallRenderer(json: boolean, isTTY: boolean): OperationRenderer {
+  if (json) return silentOperationRenderer()
+  return isTTY
+    ? createOperationRenderer({ mode: 'tty', write: (text) => { process.stdout.write(text) } })
+    : createOperationRenderer({ mode: 'plain', write: (text) => { process.stderr.write(text) } })
+}
+
+/**
+ * One component install as an operation (#895 D11) — on this home's server
+ * when one runs, in-process otherwise — then the command's result card.
+ */
+async function installAndReport(name: InstallableName, options: OnboardingInstallOptions, flags: { json: boolean; verbose?: boolean }): Promise<void> {
   const isTTY = Boolean(process.stdout.isTTY)
-  const json = options.json === true
-  const opts = {
-    interactive: isTTY && !json,
-    autoApprove: true,
-    json,
-    checkOnly: false,
-    force: false,
-  }
-  const result = await withTtyRuntimeLogsSilenced({ isTTY }, async () => {
-    const { mkdirComponent } = await import('../../core/onboarding/mkdir')
-    return await mkdirComponent.install(opts)
-  })
-  if (json) {
+  const { runComponentInstall } = await import('../component-install')
+  const run = await withTtyRuntimeLogsSilenced({ isTTY, verbose: flags.verbose }, () =>
+    runComponentInstall(name, options, { renderer: singleInstallRenderer(flags.json, isTTY) }))
+  const result: InstallResult = run.result ?? { name, status: 'failed', message: describeResult(run.follow), durationMs: 0 }
+  if (flags.json) {
     console.log(JSON.stringify({ component: result.name, status: result.status, message: result.message, durationMs: result.durationMs }))
   } else if (isTTY) {
     await printOnboardingInstallTui(result)
   } else {
     console.log(`${statusIcon(result.status)} ${result.message}`)
   }
+  if (run.exitCode === 130) process.exit(130)
   if (result.status === 'failed') process.exit(1)
 }
 
+async function cmdOnboardingMkdir(options: { json?: boolean } = {}): Promise<void> {
+  await installAndReport('mkdir', { autoApprove: true, allowServiceClaim: false }, { json: options.json === true })
+}
+
 export async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}): Promise<void> {
-  const isTTY = Boolean(process.stdout.isTTY)
-  const json = options.json === true
-  const opts = {
-    interactive: isTTY && !json,
-    autoApprove: true,
-    json,
-    checkOnly: false,
-    force: false,
-  }
-  const result = await withTtyRuntimeLogsSilenced({ isTTY }, async () => {
-    const { settingsComponent } = await import('../../core/onboarding/settings')
-    return await settingsComponent.install(opts)
-  })
-  if (json) {
-    console.log(JSON.stringify({ component: result.name, status: result.status, message: result.message, durationMs: result.durationMs }))
-  } else if (isTTY) {
-    await printOnboardingInstallTui(result)
-  } else {
-    console.log(`${statusIcon(result.status)} ${result.message}`)
-  }
-  if (result.status === 'failed') process.exit(1)
+  await installAndReport('settings', { autoApprove: true, allowServiceClaim: false }, { json: options.json === true })
 }
 
 async function cmdOnboardingCheckSingle(
@@ -177,41 +168,28 @@ async function cmdOnboardingCheckAll(options: { verbose?: boolean; json?: boolea
   process.exit(hasError ? 1 : hasWarn ? 2 : 0)
 }
 
-async function cmdOnboardingInstallSingle(target: string, args: string[]): Promise<void> {
-  const componentMap: Record<string, () => Promise<import('../../core/onboarding/types').OnboardingComponent>> = {
-    search: async () => (await import('../../core/onboarding/search')).searchComponent,
-    'search-models': async () => (await import('../../core/onboarding/search-models')).searchModelsComponent,
-    media: async () => (await import('../../core/onboarding/media')).mediaComponent,
-    'plugin-assets': async () => (await import('../../core/onboarding/plugin-assets')).pluginAssetsComponent,
-    'agent-sync': async () => (await import('../../core/onboarding/agent-sync')).agentSyncComponent,
-    'recommended-plugins': async () => (await import('../../core/onboarding/recommended-plugins')).recommendedPluginsComponent,
-    'recommended-agents': async () => (await import('../../core/onboarding/recommended-agents')).recommendedAgentsComponent,
-    'capabilities': async () => (await import('../../core/onboarding/recommended-capabilities')).recommendedCapabilitiesComponent,
-  }
+async function cmdOnboardingInstallSingle(target: InstallableName, args: string[]): Promise<void> {
   const isTTY = Boolean(process.stdout.isTTY)
-  const autoApprove = args.includes('--yes')
   const json = args.includes('--json')
   const verbose = args.includes('--verbose')
-  const opts = {
-    interactive: isTTY && !json,
-    autoApprove: autoApprove || (!isTTY && !json),
-    json,
-    checkOnly: false,
-    force: false,
+  // Piped without --json is a script asking for the install (as before);
+  // a terminal without --yes is asked here, before anything starts — the
+  // operation itself never prompts (#895 D11).
+  let autoApprove = args.includes('--yes') || (!isTTY && !json)
+  if (!autoApprove && isTTY && !json) {
+    const { installableComponent } = await import('../../core/onboarding/index')
+    const check = await withTtyRuntimeLogsSilenced({ isTTY, verbose }, () => installableComponent(target).check())
+    if (check.status === 'missing' || check.status === 'broken') {
+      const { askYesNo } = await import('../../core/onboarding/prompts')
+      autoApprove = await askYesNo(`${check.message.replace(/\.$/, '')}. Install ${target} now?`, true)
+    }
+  }
+  await installAndReport(target, {
+    autoApprove,
+    // `bakin install search` is the explicit claim of the search service
+    // for this home; the server honours it only with this home's lock secret.
     allowServiceClaim: target === 'search',
-  }
-  const result = await withTtyRuntimeLogsSilenced({ isTTY, verbose }, async () => {
-    const component = await componentMap[target]()
-    return await component.install(opts)
-  })
-  if (json) {
-    console.log(JSON.stringify({ component: result.name, status: result.status, message: result.message, durationMs: result.durationMs }))
-  } else if (isTTY) {
-    await printOnboardingInstallTui(result)
-  } else {
-    console.log(`${statusIcon(result.status)} ${result.message}`)
-  }
-  if (result.status === 'failed') process.exit(1)
+  }, { json, verbose })
 }
 
 async function cmdOnboard(args: string[]): Promise<void> {
@@ -257,7 +235,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
   }
   try {
     const selections = await collectOnboardingSelections(baseOpts)
-    const opts = { ...baseOpts, ...selections, interactive: false }
+    const opts = { autoApprove: baseOpts.autoApprove, json, checkOnly, force, ...selections }
     const busyShowsBrand = !selections.renderedWizardScreens
 
     let busyFrame = 0
@@ -292,17 +270,36 @@ async function cmdOnboard(args: string[]): Promise<void> {
       }, 80)
     }
 
+    // Each install is an operation (#895 D11): on this home's server when
+    // one runs, in-process otherwise. The busy view shows its live line;
+    // piped runs get plain milestones on stderr; --json stays one line per
+    // component.
+    const renderer: OperationRenderer = busy
+      ? {
+        update(view) {
+          busyDetail = operationStatusLine(view)
+          busyFrame += 1
+          busy.rerender(renderBusy())
+        },
+        note(text) {
+          busyDetail = text
+          busy.rerender(renderBusy())
+        },
+        finish() {},
+      }
+      : json
+        ? silentOperationRenderer()
+        : createOperationRenderer({ mode: 'plain', write: (text) => { process.stderr.write(text) } })
+    const { runComponentInstall } = await import('../component-install')
+    const installComponent = async (component: InstallableComponent, options: OnboardingInstallOptions): Promise<InstallResult> => {
+      const run = await runComponentInstall(component.name as InstallableName, options, { renderer })
+      return run.result ?? { name: component.name, status: 'failed', message: describeResult(run.follow), durationMs: 0 }
+    }
+
     let result: Awaited<ReturnType<typeof runOnboard>>
     try {
       result = await runOnboard({
         ...opts,
-        onProgress: busy
-          ? (detail: string) => {
-            busyDetail = detail
-            busyFrame += 1
-            busy.rerender(renderBusy())
-          }
-          : undefined,
         onOutcome: busy
           ? (outcome) => {
             completedOutcomes.push({
@@ -314,7 +311,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
             busy.rerender(renderBusy())
           }
           : undefined,
-      })
+      }, installComponent)
     } finally {
       if (busyTimer) clearInterval(busyTimer)
       busy?.unmount()

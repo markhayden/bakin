@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import fs from 'fs'
 import path from 'path'
+import { installInOperation } from '../../helpers/operation-harness'
 
 const TEST_CONTENT_DIR = path.join(process.cwd(), 'test-content-onboarding-settings')
 const SETTINGS_FILE = path.join(TEST_CONTENT_DIR, 'settings.json')
@@ -55,11 +56,8 @@ describe('onboarding settings component', () => {
   })
 
   const opts = {
-    interactive: false,
     autoApprove: true,
-    json: false,
-    checkOnly: false,
-    force: false,
+    allowServiceClaim: false
   }
 
   describe('check()', () => {
@@ -93,7 +91,7 @@ describe('onboarding settings component', () => {
 
   describe('install()', () => {
     it('creates settings.json when missing', async () => {
-      const result = await settingsComponent.install(opts)
+      const result = await installInOperation(settingsComponent, opts)
       expect(result.status).toBe('installed')
       expect(fs.existsSync(SETTINGS_FILE)).toBe(true)
       // File must parse and not be empty — updateSettings({}) writes {} or
@@ -106,7 +104,7 @@ describe('onboarding settings component', () => {
     it('leaves existing overrides intact when called on a populated file', async () => {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ dispatch: { intervalMs: 42 } }), 'utf-8')
       resetSettingsCache()
-      await settingsComponent.install(opts)
+      await installInOperation(settingsComponent, opts)
       const onDisk = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'))
       // install() uses updateSettings({}) which deep-merges {} onto the
       // existing override — so our 42 value must survive.
@@ -114,7 +112,7 @@ describe('onboarding settings component', () => {
     })
 
     it('post-install check reports ok', async () => {
-      await settingsComponent.install(opts)
+      await installInOperation(settingsComponent, opts)
       const result = await settingsComponent.check()
       expect(result.status).toBe('ok')
     })

@@ -117,14 +117,7 @@ function mockDownloadFetch(handler?: (url: string) => Response | Promise<Respons
   }) as unknown as typeof fetch
 }
 
-const optsAutoYes = {
-  interactive: false,
-  autoApprove: true,
-  json: false,
-  checkOnly: false,
-  force: false,
-  askYesNo: () => Promise.resolve(true),
-}
+const optsAutoYes = { autoApprove: true }
 
 beforeAll(() => {
   // Build the real release layout: binary + share/ at the archive root
@@ -362,23 +355,11 @@ describe('installAntflyDependency', () => {
     expect(existsSync(managedBinary)).toBe(false)
   })
 
-  it('skips when the user declines the prompt', async () => {
-    const opts = {
-      ...optsAutoYes,
-      interactive: true,
-      autoApprove: false,
-      askYesNo: () => Promise.resolve(false),
-    }
-    const result = await installAntflyDependency(opts, undefined, makePin())
-    expect(result.status).toBe('skipped')
-    expect(fetchCalls).toHaveLength(0)
-  })
-
-  it('skips in non-interactive mode without --yes', async () => {
+  it('skips without approval, downloading nothing', async () => {
     const opts = { ...optsAutoYes, autoApprove: false }
     const result = await installAntflyDependency(opts, undefined, makePin())
     expect(result.status).toBe('skipped')
-    expect(result.message).toContain('Non-interactive')
+    expect(result.message).toContain('not approved')
     expect(fetchCalls).toHaveLength(0)
   })
 

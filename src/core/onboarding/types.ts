@@ -7,7 +7,8 @@
  * aggregates the results into the .onboarded marker file.
  */
 
-import type { CoreResource, OperationPlan } from '@bakin/core/operations'
+import type { CoreResource, OperationContext, OperationPlan } from '@bakin/core/operations'
+import type { OnboardingInstallOptions } from './install-request'
 import type { RuntimeAdapterName } from '../settings'
 
 export type CheckStatus = 'ok' | 'missing' | 'broken' | 'warn' | 'error'
@@ -31,12 +32,15 @@ export interface InstallResult {
   durationMs: number
 }
 
+/**
+ * What one component install gets: the explicit options of the shared request
+ * (`install-request.ts`) — every prompt was resolved by the caller first.
+ */
+export type ComponentInstallOptions = OnboardingInstallOptions
+
+/** `bakin onboard`'s run: which steps, and what the operator already approved. */
 export interface OnboardingOptions {
-  /** Explicit service-transfer authority; generic onboarding must leave this false. */
-  allowServiceClaim?: boolean
-  /** TTY prompts are allowed. False implies --yes or --json. */
-  interactive: boolean
-  /** --yes flag. Skip confirmation prompts, auto-approve installs. */
+  /** --yes flag: approve every component's default selection. */
   autoApprove: boolean
   /** --json flag. Emit one structured line per component to stdout. */
   json: boolean
@@ -44,14 +48,12 @@ export interface OnboardingOptions {
   checkOnly: boolean
   /** --force flag. Delete the existing marker before running. */
   force: boolean
-  /** Explicit official plugin ids selected by the TUI. Undefined means use defaults/prompts. */
+  /** Explicit official plugin ids selected by the TUI. Undefined means use defaults. */
   selectedRecommendedPluginIds?: readonly string[]
-  /** Explicit official agent ids selected by the TUI. Undefined means use defaults/prompts. */
+  /** Explicit official agent ids selected by the TUI. Undefined means use defaults. */
   selectedRecommendedAgentIds?: readonly string[]
   /** Component ids explicitly approved by the human onboarding TUI. */
   approvedComponents?: readonly string[]
-  /** Optional human UI progress callback. Never used for JSON output. */
-  onProgress?: (message: string) => void
   /** Optional human UI completion callback. Never used for JSON output. */
   onOutcome?: (outcome: {
     name: string
@@ -61,7 +63,7 @@ export interface OnboardingOptions {
   }) => void
 }
 
-export interface OnboardingComponent {
+interface ComponentBase {
   /** Stable identifier. Matches the key under components[] in the marker file. */
   readonly name: string
   /**
@@ -71,10 +73,37 @@ export interface OnboardingComponent {
    * integration component is meaningless on the in-process Pi runtime.
    */
   readonly supportedAdapters?: readonly RuntimeAdapterName[]
-  /** The install's stages and point of no return, declared before it starts (#895). */
+  check(): Promise<CheckResult>
+}
+
+/** A component Bakin can set up: its install runs as an operation (#895). */
+export interface InstallableComponent extends ComponentBase {
+  /** The install's stages and point of no return, declared before it starts. */
   readonly plan: OperationPlan
   /** The resources the install owns for its whole run, in the canonical order. */
   readonly resources: readonly CoreResource[]
-  check(): Promise<CheckResult>
-  install(opts: OnboardingOptions): Promise<InstallResult>
+  /**
+   * Inputs beyond the request that define what the install does (search:
+   * the active search settings). Part of the operation's identity, and
+   * rechecked after a wait — an install never runs under an identity that
+   * no longer describes it.
+   */
+  identity?(): unknown
+  /** The outcome code when the install reports `failed` (default `component_failed`). */
+  readonly failureCode?: string
+  /** Runs inside the component's operation, which owns `resources`; reports only through `op`. */
+  install(opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult>
+}
+
+/** A prerequisite the operator sets up outside Bakin (runtime, credentials): checked, never installed. */
+export interface CheckOnlyComponent extends ComponentBase {
+  /** Where the operator sets it up — the outcome message when the check is not ok. */
+  readonly manualSetup: string
+  readonly install?: never
+}
+
+export type OnboardingComponent = InstallableComponent | CheckOnlyComponent
+
+export function isInstallable(component: OnboardingComponent): component is InstallableComponent {
+  return typeof component.install === 'function'
 }

@@ -21,9 +21,8 @@ import { scanAgentSync, type SyncScanReport } from '../agent-packages/sync-scann
 import { repairPackLocally, syncAllAgents } from '../agent-packages/sync'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { refreshRoleContextBlocks } from '../team-context'
-import { runOwning } from '../operations'
-import type { OperationPlan } from '@bakin/core/operations'
-import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { OperationContext, OperationPlan } from '@bakin/core/operations'
+import type { CheckResult, ComponentInstallOptions, InstallableComponent, InstallResult } from './types'
 
 const log = createLogger('onboarding:agent-sync')
 
@@ -87,24 +86,16 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-/**
- * The component's install runs inside a local operation that owns
- * install-state — the sync engine's writers assert it (#895). PR6's
- * onboarding switch replaces this with the component's declared resources.
- */
-function install(opts: OnboardingOptions): Promise<InstallResult> {
-  return runOwning(
-    { kind: 'onboarding:agent-sync', title: 'Sync agents', resources: ['install-state'] },
-    () => installOwned(opts),
-  )
-}
-
-async function installOwned(_opts: OnboardingOptions): Promise<InstallResult> {
+/** Runs inside the component's operation, which owns install-state — the sync engine's writers assert it (#895). */
+async function install(_opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
   const start = Date.now()
   await ensureAppServices()
+  op.stage('scan')
   const before = await scanAgentSync()
 
   if (before.findings.length === 0) {
+    op.skip('sync', 'nothing drifted')
+    op.skip('verify', 'nothing drifted')
     return {
       name: 'agent-sync',
       status: 'noop',
@@ -113,8 +104,12 @@ async function installOwned(_opts: OnboardingOptions): Promise<InstallResult> {
     }
   }
 
+  op.throwIfCancelled()
+  op.stage('sync')
   refreshRoleContextBlocks()
-  const results = await syncAllAgents({ fetch: false, trigger: 'system' })
+  const results = await syncAllAgents({ fetch: false, trigger: 'system' }, (agentId, status, message) => {
+    op.item('sync', { id: `agent:${agentId}`, label: agentId, status, ...(message ? { message } : {}) })
+  })
   const failed = results.filter((r) => r.error)
   for (const f of failed) {
     log.warn('agent-sync repair failed for agent', { agentId: f.agentId, error: f.error })
@@ -133,15 +128,19 @@ async function installOwned(_opts: OnboardingOptions): Promise<InstallResult> {
   )]
   const failedPacks: Array<{ packId: string; error: string }> = []
   for (const packId of packIds) {
+    op.item('sync', { id: `pack:${packId}`, label: packId, status: 'active' })
     try {
       await repairPackLocally(packId)
+      op.item('sync', { id: `pack:${packId}`, label: packId, status: 'done' })
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
       failedPacks.push({ packId, error })
+      op.item('sync', { id: `pack:${packId}`, label: packId, status: 'failed', message: error })
       log.warn('agent-sync repair failed for pack', { packId, error })
     }
   }
 
+  op.stage('verify')
   const after = await scanAgentSync()
   const durationMs = Date.now() - start
   const remaining = after.findings.length
@@ -191,7 +190,7 @@ export const AGENT_SYNC_PLAN: OperationPlan = {
   pointOfNoReturn: 'sync',
 }
 
-export const agentSyncComponent: OnboardingComponent = {
+export const agentSyncComponent: InstallableComponent = {
   plan: AGENT_SYNC_PLAN,
   resources: ['install-state'],
   name: 'agent-sync',

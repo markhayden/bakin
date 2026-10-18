@@ -186,10 +186,10 @@ async function promptConfirm(
 }
 
 export async function collectOnboardingSelections(
-  opts: Pick<
-    OnboardingOptions,
-    "interactive" | "autoApprove" | "json" | "checkOnly"
-  >,
+  opts: Pick<OnboardingOptions, "autoApprove" | "json" | "checkOnly"> & {
+    /** A terminal that can show the wizard. */
+    interactive: boolean;
+  },
 ): Promise<OnboardingSelections> {
   if (!opts.interactive || opts.autoApprove || opts.json || opts.checkOnly)
     return {};

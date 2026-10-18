@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { installInOperation } from '../../helpers/operation-harness'
 
 const testDir = join(tmpdir(), `bakin-test-search-url-${Date.now()}`)
 const settingsFile = join(testDir, 'settings.json')
@@ -46,11 +47,8 @@ const { searchComponent } = await import('../../../src/core/onboarding/search')
 const { resetSettingsCache } = await import('../../../src/core/settings')
 
 const optsAutoYes = {
-  interactive: false,
   autoApprove: true,
-  json: false,
-  checkOnly: false,
-  force: false,
+  allowServiceClaim: false
 }
 
 function writeSettings(overrides: Record<string, unknown>): void {
@@ -85,7 +83,7 @@ describe('search component legacy URL correction', () => {
       search: { settings: { url: 'http://localhost:8080/api/v1' } },
     })
 
-    const result = await searchComponent.install(optsAutoYes)
+    const result = await installInOperation(searchComponent, optsAutoYes)
 
     expect(result.status).toBe('installed')
     expect(result.message).toContain('Updated settings.json search URL')
@@ -104,7 +102,7 @@ describe('search component legacy URL correction', () => {
       search: { settings: { url: 'http://localhost:3738' } },
     })
 
-    const result = await searchComponent.install(optsAutoYes)
+    const result = await installInOperation(searchComponent, optsAutoYes)
 
     expect(result.status).toBe('installed')
     const written = readSettingsFile() as { search: { settings: { url: string } } }
@@ -116,7 +114,7 @@ describe('search component legacy URL correction', () => {
       search: { settings: { url: 'http://search.internal:8080' } },
     })
 
-    const result = await searchComponent.install(optsAutoYes)
+    const result = await installInOperation(searchComponent, optsAutoYes)
 
     expect(result.status).toBe('installed')
     expect(result.message).not.toContain('Updated settings.json')
@@ -127,7 +125,7 @@ describe('search component legacy URL correction', () => {
   it('does nothing when settings carry no explicit URL override', async () => {
     writeSettings({})
 
-    const result = await searchComponent.install(optsAutoYes)
+    const result = await installInOperation(searchComponent, optsAutoYes)
 
     expect(result.status).toBe('installed')
     expect(result.message).not.toContain('Updated settings.json')
@@ -139,7 +137,7 @@ it('resolves active settings and normalizes legacy URLs before setup without ear
   expect((await searchComponent.check()).status).toBe('broken')
   expect(seenSettings?.url).toBe('http://127.0.0.1:3738')
   installFails = true
-  expect((await searchComponent.install(optsAutoYes)).status).toBe('failed')
+  expect((await installInOperation(searchComponent, optsAutoYes)).status).toBe('failed')
   expect(JSON.stringify(readSettingsFile())).toContain('http://localhost:8080/api/v1')
   writeSettings({ search: { settings: { url: 'http://isolated:9000' } } })
   await searchComponent.check()
