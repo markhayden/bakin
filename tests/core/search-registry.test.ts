@@ -92,12 +92,13 @@ import {
   resumeTableMigrations,
   wedgeWatchTick,
   stopMigrationPump,
+  ensureRegisteredTables,
 } from '@/core/search-registry'
 import { sweepOrphanRegistryRows } from '@/core/search-orphan-sweep'
 import { tableStatus, sweepTombstones } from '@bakin/core/search/tables'
 import { enqueueIndex, outboxStats } from '@bakin/core/search/outbox'
 import { broadcast } from '@/core/sse'
-import { createOperationRegistry, readResourceHolder, tryAcquireResources, type ResourceLease } from '@bakin/core/operations'
+import { createOperationRegistry, holdNow, readResourceHolder, tryAcquireResources, type ResourceLease } from '@bakin/core/operations'
 import { resetSearchEngineProgressForTests } from '@bakin/core/search/progress'
 import { settleFor, waitUntil } from '../helpers/wait'
 import { owning } from '../helpers/owning'
@@ -1469,6 +1470,55 @@ describe('background search mutators respect search-engine (#895 D23)', () => {
     if ('busy' in taken) throw new Error(`search-engine unexpectedly held by ${taken.busy.holder.title}`)
     lease = taken
   }
+
+  it('table provisioning (a live plugin install, a hot reload) defers while search-engine is held; the next pump tick provisions', async () => {
+    buildSearchAPI('gateprov-plugin').registerContentType(makeDef('gateprov'))
+    holdEngine('Reset the search engine')
+
+    const deferred = await ensureRegisteredTables()
+
+    expect(deferred).toEqual({ created: 0, failures: [], deferred: true })
+    expect(searchHarness.calls.tablesCreate).not.toHaveBeenCalled()
+    expect(tableStatus('bakin_gateprov')).toBeNull()
+
+    lease!.release()
+    lease = undefined
+    await migrationPumpTick()
+    expect(tableStatus('bakin_gateprov')).toMatchObject({ state: 'active' })
+  })
+
+  it('a provisioning request deferred while a pass runs survives that pass (a re-registration after its turn)', async () => {
+    buildSearchAPI('gateregen-plugin').registerContentType(makeDef('gateregen'))
+    let unblock!: () => void
+    const blocked = new Promise<void>((resolve) => { unblock = resolve })
+    let entered = false
+    const create = searchHarness.calls.tablesCreate.getMockImplementation()!
+    searchHarness.calls.tablesCreate.mockImplementationOnce(async (name, config) => {
+      entered = true
+      await blocked
+      return create(name, config)
+    })
+    const first = ensureRegisteredTables()
+    await waitUntil(() => entered, { label: 'the first pass is creating the v1 table' })
+
+    // Re-registered with a new schema after the pass took its turn here.
+    buildSearchAPI('gateregen-plugin').registerContentType({ ...makeDef('gateregen'), schemaVersion: 2 })
+    expect(await ensureRegisteredTables()).toEqual({ created: 0, failures: [], deferred: true })
+    unblock()
+    await first
+    expect(tableStatus('bakin_gateregen')!.physical).toContain('_v1_')
+
+    await migrationPumpTick()
+    const after = tableStatus('bakin_gateregen')!
+    expect(after.migratingTo ?? after.physical).toContain('_v2_')
+  })
+
+  it('a caller that owns search-engine (a reindex, a reset) provisions in its own pass', async () => {
+    buildSearchAPI('gateown-plugin').registerContentType(makeDef('gateown'))
+    const result = await holdNow(['search-engine'], { title: 'Reindex search' }, () => ensureRegisteredTables())
+    expect(result).toEqual({ created: 1, failures: [] })
+    expect(tableStatus('bakin_gateown')).toMatchObject({ state: 'active' })
+  })
 
   it('the pump tick skips while search-engine is held, and runs once it is free', async () => {
     const green = await migrating('gatepump', 'parked')

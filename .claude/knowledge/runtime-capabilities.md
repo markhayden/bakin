@@ -174,8 +174,17 @@ unsupported.
   `POST /api/runtime/switch { target, dryRun?, copyWorkspaces?, adoptCron? }` +
   `GET /api/runtime/capabilities` + `GET /api/runtime/onboarding` (REST),
   and the `/runtime` host page (capability matrix, confirm-to-switch, live
-  progress via `runtime:switch` SSE events, carry/workspace/stays-behind/
-  credential report, setup-status surfacing). e2e proof:
+  progress, carry/workspace/stays-behind/credential report, setup-status
+  surfacing). The switch and its preview are operations (#895,
+  `runtimeSwitchOperation`): 202 `{ operationId, bootId }`, the phases are
+  stages (`RUNTIME_SWITCH_PLAN`; the preview declares only its read-only
+  stages), never cancellable, the report is the result body (`switch_failed`
+  when it is not ok), and both own `install-state` — a second switch or a
+  preview waits visibly instead of interleaving (the old single-flight flag
+  is gone). A restore after a failure is logged against the failed stage.
+  The CLI follows it with the renderer; the Runtimes tab with `useOperation`
+  + `OperationProgress`. The request schema lives in
+  `runtime-switch-request.ts` (zod only, shared with the route metadata). e2e proof:
   `tests/integration/runtime-switch{,-e2e,-dryrun}.test.ts` — the AGENTS.md
   tool-access section genuinely flips per runtime through the real projector,
   drift-gated (a repeat leg is a projection no-op).
@@ -339,7 +348,7 @@ allowlist — see the contract doc, born of the P5.3 conflation below).
   clicking a runtime opens the ConfirmDialog which owns the WHOLE switch
   flow — options, consequences, preview trigger, typed confirm — per the
   no-inline-actions rule; dry-run preview results render on the page,
-  live SSE steps, grouped result cards). Unknown ?tab= values fall back
+  live `OperationProgress`, grouped result cards). Unknown ?tab= values fall back
   to Overview.
 
 ## concurrency.sameAgentTurns (same-agent concurrency)

@@ -234,27 +234,12 @@ export async function installAntflyDependency(
     } catch (err) { return failed(err) }
   }
 
-  const prompt = existing
-    ? `Antfly v${existingVersion ?? 'unknown'} at ${existing} needs to be replaced with v${pin.version}. Download ${DOWNLOAD_SIZE_HINT} from releases.antfly.io?`
-    : `Download Antfly v${pin.version} (${DOWNLOAD_SIZE_HINT}) from releases.antfly.io to ${targetPath}?`
-
-  if (opts.interactive && !opts.autoApprove) {
-    const proceed = await opts.askYesNo?.(prompt, true)
-    if (!proceed) {
-      skip(ALL.slice(1), 'declined')
-      return {
-        name: 'antfly',
-        status: 'skipped' as const,
-        message: 'User declined Antfly install.',
-        durationMs: Date.now() - start,
-      }
-    }
-  } else if (!opts.autoApprove) {
+  if (!opts.autoApprove) {
     skip(ALL.slice(1), 'not approved')
     return {
       name: 'antfly',
       status: 'skipped' as const,
-      message: 'Non-interactive run without --yes; skipping Antfly install.',
+      message: `Antfly v${pin.version} install not approved (${DOWNLOAD_SIZE_HINT} download from releases.antfly.io).`,
       durationMs: Date.now() - start,
     }
   }

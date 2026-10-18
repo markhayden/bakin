@@ -11,7 +11,9 @@
  * filesystem.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import type { OnboardingInstallOptions } from '../../../src/core/onboarding/install-request'
 import type { CheckResult, InstallResult, OnboardingComponent } from '../../../src/core/onboarding/types'
+import { noopOp } from '../../helpers/operation-harness'
 
 // ---------------------------------------------------------------------------
 // Per-test mock state. The mocks below read these objects on every call,
@@ -32,19 +34,29 @@ let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 let saveStateCalls: Array<{ components: Record<string, string>; bakinVersion: string }>
 let clearMarkerCalls: number
 
+/** Check-only in production: the runtime and credentials are set up outside Bakin. */
+const CHECK_ONLY = new Set<string>(['runtime', 'llm', 'channels', 'budget'])
+
 function makeMock(name: (typeof COMPONENT_NAMES)[number]): OnboardingComponent {
+  const check = async () => {
+    scripts[name].checkCalls++
+    return scripts[name].check
+  }
+  if (CHECK_ONLY.has(name)) return { name, manualSetup: `Set up ${name} outside Bakin.`, check }
   return {
     name,
-    check: async () => {
-      scripts[name].checkCalls++
-      return scripts[name].check
-    },
+    plan: { stages: [{ id: 'run', kind: 'installing', label: name }], pointOfNoReturn: 'start' },
+    resources: [],
+    check,
     install: async () => {
       scripts[name].installCalls++
       return scripts[name].install
     },
   }
 }
+
+/** The options each install was handed — what the CLI would send to the server. */
+let installOptions: Array<{ name: string; options: OnboardingInstallOptions }> = []
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -189,7 +201,12 @@ mock.module('../../../packages/core/src/content-dir', () => ({
 }))
 
 describe('runOnboard orchestrator', () => {
-  let runOnboard: typeof import('../../../src/core/onboarding/index').runOnboard
+  let runOnboardWith: typeof import('../../../src/core/onboarding/index').runOnboard
+  /** Installs run the component in place, as an in-process operation would. */
+  const runOnboard = (o: Parameters<typeof runOnboardWith>[0]) => runOnboardWith(o, (component, options) => {
+    installOptions.push({ name: component.name, options })
+    return component.install(options, noopOp())
+  })
   let checkAll: typeof import('../../../src/core/onboarding/index').checkAll
   let COMPONENT_ORDER: typeof import('../../../src/core/onboarding/index').COMPONENT_ORDER
   let stdoutLines: string[]
@@ -211,6 +228,7 @@ describe('runOnboard orchestrator', () => {
 
   beforeEach(async () => {
     scripts = freshScripts()
+    installOptions = []
     saveStateCalls = []
     clearMarkerCalls = 0
     stdoutLines = []
@@ -220,7 +238,7 @@ describe('runOnboard orchestrator', () => {
     })
     vi.resetModules()
     const mod = await import('../../../src/core/onboarding/index')
-    runOnboard = mod.runOnboard
+    runOnboardWith = mod.runOnboard
     checkAll = mod.checkAll
     COMPONENT_ORDER = mod.COMPONENT_ORDER
   })
@@ -234,7 +252,6 @@ describe('runOnboard orchestrator', () => {
   })
 
   const opts = {
-    interactive: false,
     autoApprove: true,
     json: false,
     checkOnly: false,
@@ -271,6 +288,40 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
   // Happy path — every component ok
   // ---------------------------------------------------------------------------
+
+  describe('installs run through the caller (#895 D11)', () => {
+    it('hands each install explicit options — the wizard selections, never a service claim', async () => {
+      scripts.search.check = { name: 'search', status: 'missing', message: 'missing' }
+      scripts['recommended-plugins'].check = { name: 'recommended-plugins', status: 'missing', message: 'missing' }
+      await runOnboard({ ...opts, approvedComponents: ['search'], selectedRecommendedPluginIds: ['bits'] })
+      expect(installOptions).toEqual([
+        { name: 'search', options: { autoApprove: true, allowServiceClaim: false, approvedComponents: ['search'], selectedRecommendedPluginIds: ['bits'] } },
+        { name: 'recommended-plugins', options: { autoApprove: true, allowServiceClaim: false, approvedComponents: ['search'], selectedRecommendedPluginIds: ['bits'] } },
+      ])
+    })
+
+    it('an interrupted install (Ctrl-C) stops onboarding: nothing after it runs and no marker is written', async () => {
+      const { OnboardingInterruptedError } = await import('../../../src/core/onboarding/index')
+      scripts.search.check = { name: 'search', status: 'missing', message: 'missing' }
+      scripts.media.check = { name: 'media', status: 'missing', message: 'missing' }
+      const started: string[] = []
+      const run = runOnboardWith(opts, async (component) => {
+        started.push(component.name)
+        throw new OnboardingInterruptedError(component.name, 'cancelled')
+      })
+      await expect(run).rejects.toBeInstanceOf(OnboardingInterruptedError)
+      expect(started).toEqual(['search'])
+      expect(saveStateCalls).toEqual([])
+    })
+
+    it('a check-only component that is not set up records its setup pointer and installs nothing', async () => {
+      scripts.llm.check = { name: 'llm', status: 'missing', message: 'no providers' }
+      const result = await runOnboard(opts)
+      const llm = result.outcomes.find((o) => o.name === 'llm')
+      expect(llm).toMatchObject({ finalStatus: 'ok', message: 'Set up llm outside Bakin.' })
+      expect(installOptions).toEqual([])
+    })
+  })
 
   describe('all ok', () => {
     it('returns exit code 0, writes marker, no installs called', async () => {
@@ -309,19 +360,14 @@ describe('runOnboard orchestrator', () => {
       })
     })
 
-    it('emits human progress updates without affecting outcomes', async () => {
-      const progress: string[] = []
+    it('reports each outcome to the human UI without affecting outcomes', async () => {
       const outcomes: string[] = []
       const result = await runOnboard({
         ...opts,
-        onProgress: message => progress.push(message),
         onOutcome: outcome => outcomes.push(`${outcome.finalStatus}:${outcome.name}`),
       })
 
       expect(result.exitCode).toBe(0)
-      expect(progress).toContain('Checking mkdir')
-      expect(progress).toContain('Checking runtime')
-      expect(progress).toContain('Writing onboarding marker')
       expect(outcomes).toContain('ok:mkdir')
       expect(outcomes).toContain('ok:recommended-agents')
     })

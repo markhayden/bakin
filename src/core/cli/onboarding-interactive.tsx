@@ -20,7 +20,8 @@ import { renderToString } from "./ui/render-to-string";
 import { modelsComponent } from "../onboarding/models";
 import { recommendedAgentsComponent } from "../onboarding/recommended-agents";
 import { recommendedPluginsComponent } from "../onboarding/recommended-plugins";
-import { runtimeComponent } from "../onboarding/runtime";
+import { mediaComponent } from "../onboarding/media";
+import { provisionRuntimeForOnboarding, runtimeComponent } from "../onboarding/runtime";
 import { searchComponent } from "../onboarding/search";
 import { searchModelsComponent } from "../onboarding/search-models";
 import type { CheckResult, OnboardingOptions } from "../onboarding/types";
@@ -186,19 +187,26 @@ async function promptConfirm(
 }
 
 export async function collectOnboardingSelections(
-  opts: Pick<
-    OnboardingOptions,
-    "interactive" | "autoApprove" | "json" | "checkOnly"
-  >,
+  opts: Pick<OnboardingOptions, "autoApprove" | "json" | "checkOnly"> & {
+    /** A terminal that can show the wizard. */
+    interactive: boolean;
+  },
 ): Promise<OnboardingSelections> {
   if (!opts.interactive || opts.autoApprove || opts.json || opts.checkOnly)
     return {};
 
-  const runtime = await runtimeComponent.check();
+  let runtime = await runtimeComponent.check();
+  if (runtime.status === "broken" && runtime.details?.emptyRoster === true) {
+    // First run: the roster is empty until provisioning seeds it (the
+    // orchestrator does the same) — seed now, so the wizard can ask.
+    await provisionRuntimeForOnboarding();
+    runtime = await runtimeComponent.check();
+  }
   if (runtime.status !== "ok") return {};
 
   const searchCheck = await searchComponent.check();
   const searchModelsCheck = await searchModelsComponent.check();
+  const mediaCheck = await mediaComponent.check();
   // A gateway flap mid-wizard must skip the plan step, not abort onboarding
   // (the orchestrator guards check() the same way).
   const modelsCheck: CheckResult = await modelsComponent.check().catch((err: unknown) => ({
@@ -211,6 +219,7 @@ export async function collectOnboardingSelections(
   const hasWizardSteps = [
     searchCheck,
     searchModelsCheck,
+    mediaCheck,
     modelsCheck,
     pluginCheck,
     agentCheck,
@@ -225,7 +234,7 @@ export async function collectOnboardingSelections(
   const searchApproved = searchNeedsInstall
     ? await promptConfirm(
         "Search adapter",
-        `${searchCheck.message}. Bakin will install Antfly via Homebrew if you continue.`,
+        `${searchCheck.message}. Bakin will download its pinned search engine if you continue.`,
         "confirm",
         { showBrand: false },
       )
@@ -239,11 +248,21 @@ export async function collectOnboardingSelections(
   ) {
     const approved = await promptConfirm(
       "Search models",
-      `${searchModelsCheck.message}. Bakin will download the required Termite models if you continue.`,
+      `${searchModelsCheck.message}. Bakin will download the required search models if you continue.`,
       "confirm",
       { showBrand: false },
     );
     if (approved) approvedComponents.push("search-models");
+  }
+
+  if (mediaCheck.status === "missing" || mediaCheck.status === "broken") {
+    const approved = await promptConfirm(
+      "Image processing",
+      `${mediaCheck.message.replace(/\.$/, "")}. Bakin will download its pinned image-processing prebuilds (~8 MB) if you continue.`,
+      "confirm",
+      { showBrand: false },
+    );
+    if (approved) approvedComponents.push("media");
   }
 
 

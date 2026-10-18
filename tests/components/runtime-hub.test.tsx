@@ -28,6 +28,7 @@ import { settleReact } from '../rtl-settle'
 
 import { useToastStore } from '@makinbakin/sdk/hooks'
 
+import { finishedOperation, operationResponse, operationStarted } from '../helpers/operation-fetch'
 import { OverviewTab } from '../../packages/host/src/components/runtime/overview-tab'
 import { CapabilitiesTab } from '../../packages/host/src/components/runtime/capabilities-tab'
 import { RuntimesTab } from '../../packages/host/src/components/runtime/runtimes-tab'
@@ -90,14 +91,60 @@ describe('OverviewTab', () => {
     expect(screen.queryByTestId('setup-fix-budget')).toBeNull()
   })
 
-  it('warn rows expose Repair, confirm-gated, posting the install and reporting failure reasons', async () => {
+  it('media is repairable from the hub (#895)', async () => {
+    await act(async () => {
+      render(
+        <OverviewTab
+          report={report}
+          onRefreshOnboarding={() => {}}
+          onboarding={[{ name: 'media', status: 'missing', message: 'no image processing' }]}
+        />,
+      )
+    })
+    expect(within(screen.getByRole('table', { name: 'Setup checks' })).getByTestId('setup-fix-media')).toBeTruthy()
+  })
+
+  it('the open dialog shows the live operation while the repair runs', async () => {
+    const running = finishedOperation('op-media', { httpStatus: 200, body: null }, {
+      kind: 'onboarding:media', title: 'Install the media store', status: 'running', outcome: undefined, result: undefined, endedAt: undefined,
+      stages: [{ id: 'download', kind: 'downloading', label: 'Download pinned sharp packages', status: 'active', startedAt: new Date().toISOString(), bytes: { received: 4_000_000, total: 8_000_000 } }],
+      plan: { stages: [{ id: 'download', kind: 'downloading', label: 'Download pinned sharp packages' }], pointOfNoReturn: 'commit' },
+      cancellable: true,
+    })
+    const operations = new Map([['op-media', running]])
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/runtime/onboarding/install')) return operationStarted('op-media')
+      return operationResponse(String(input), operations) ?? new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    await act(async () => {
+      render(
+        <OverviewTab
+          report={report}
+          onRefreshOnboarding={() => {}}
+          onboarding={[{ name: 'media', status: 'missing', message: 'no image processing' }]}
+        />,
+      )
+    })
+    await act(async () => { fireEvent.click(within(screen.getByRole('table', { name: 'Setup checks' })).getByTestId('setup-fix-media')) })
+    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-repair-confirm')) })
+    await waitFor(() => expect(screen.getByText('Download pinned sharp packages')).toBeTruthy())
+    // The operation's Cancel is live (before the commit); the dialog's own
+    // Cancel is disabled while the repair runs.
+    const cancels = screen.getAllByRole('button', { name: 'Cancel' })
+    expect(cancels.filter((b) => !b.hasAttribute('disabled'))).toHaveLength(1)
+  })
+
+  it('warn rows expose Repair, confirm-gated, starting the install operation and following it to the result', async () => {
     const posts: Array<Record<string, unknown>> = []
+    // The route answers 202 and the result arrives on the operation (#895).
+    const operations = new Map([['op-sync', finishedOperation('op-sync', { httpStatus: 200, body: { ok: true, result: { status: 'installed', message: 'synced 3 agents' } } }, { kind: 'onboarding:agent-sync' })]])
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).includes('/api/runtime/onboarding/install')) {
         posts.push(JSON.parse(String(init?.body)))
-        return new Response(JSON.stringify({ ok: true, result: { status: 'installed', message: 'synced 3 agents' } }), { status: 200 })
+        return operationStarted('op-sync')
       }
-      return new Response('{}', { status: 200 })
+      return operationResponse(String(input), operations) ?? new Response('{}', { status: 200 })
     }) as unknown as typeof fetch
 
     const refreshed: number[] = []
@@ -116,7 +163,8 @@ describe('OverviewTab', () => {
     // Confirmation first — nothing posted yet.
     expect(posts).toEqual([])
     await act(async () => { fireEvent.click(screen.getByTestId('setup-repair-confirm')) })
-    await waitFor(() => expect(posts).toEqual([{ component: 'agent-sync' }]))
+    // Confirming in the dialog IS the approval: explicit options, nothing implied.
+    await waitFor(() => expect(posts).toEqual([{ component: 'agent-sync', options: { autoApprove: true } }]))
     await waitFor(() => expect(refreshed.length).toBe(1))
     // Success feedback reaches the REAL toast store (the one the shell
     // Toaster reads) with the result message.
@@ -125,12 +173,36 @@ describe('OverviewTab', () => {
     expect(String(toasts[0].message)).toContain('synced 3 agents')
   })
 
-  it('a failed repair surfaces the reason', async () => {
+  it('a second Repair click while the first request is pending sends nothing (#895 review)', async () => {
+    const posts: number[] = []
+    let accept!: () => void
+    const accepted = new Promise<void>((resolve) => { accept = resolve })
+    const operations = new Map([['op-assets', finishedOperation('op-assets', { httpStatus: 200, body: { ok: true, result: { status: 'installed', message: 'done' } } })]])
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       if (String(input).includes('/api/runtime/onboarding/install')) {
-        return new Response(JSON.stringify({ ok: false, result: { status: 'failed', message: 'runtime unreachable' } }), { status: 200 })
+        posts.push(1)
+        await accepted
+        return operationStarted('op-assets')
       }
-      return new Response('{}', { status: 200 })
+      return operationResponse(String(input), operations) ?? new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    await act(async () => {
+      render(<OverviewTab report={report} onRefreshOnboarding={() => {}} onboarding={[{ name: 'plugin-assets', status: 'warn', message: '1 drifted' }]} />)
+    })
+    await act(async () => { fireEvent.click(within(screen.getByRole('table', { name: 'Setup checks' })).getByTestId('setup-fix-plugin-assets')) })
+    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-repair-confirm')) })
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-repair-confirm')) })
+    expect(posts).toEqual([1])
+    await act(async () => { accept() })
+    await settleReact()
+  })
+
+  it('a failed repair surfaces the reason', async () => {
+    const operations = new Map([['op-assets', finishedOperation('op-assets', { httpStatus: 200, body: { ok: false, result: { status: 'failed', message: 'runtime unreachable' } } }, { status: 'failed', outcome: { code: 'component_failed', message: 'runtime unreachable' } })]])
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/runtime/onboarding/install')) return operationStarted('op-assets')
+      return operationResponse(String(input), operations) ?? new Response('{}', { status: 200 })
     }) as unknown as typeof fetch
 
     await act(async () => {
@@ -199,6 +271,7 @@ describe('CapabilitiesTab', () => {
 
 describe('RuntimesTab', () => {
   let posts: Array<Record<string, unknown>> = []
+  const operations = new Map<string, ReturnType<typeof finishedOperation>>()
 
   beforeEach(() => {
     posts = []
@@ -206,7 +279,8 @@ describe('RuntimesTab', () => {
       const url = String(input)
       if (url.includes('/api/runtime/switch')) {
         posts.push(JSON.parse(String(init?.body)))
-        return new Response(JSON.stringify({
+        // The switch is an operation (#895): 202, then the report rides its result.
+        operations.set('op-switch', finishedOperation('op-switch', { httpStatus: 200, body: {
           ok: true, from: 'pi', to: 'openclaw', dryRun: true, backupPath: null, restartRequired: false,
           roster: {
             carried: [{ agentId: 'main' }], existing: ['pixel'],
@@ -230,17 +304,31 @@ describe('RuntimesTab', () => {
             ownership: "openclaw's bot token stays in openclaw's own config. pi delivers through Bakin's Discord bridge, which needs its OWN token in Settings → Channels — Bakin never reads the runtime's secret.",
           },
           credentials: { llmProviders: [] }, sync: null,
-        }), { status: 200 })
+        } }, { kind: 'runtime-switch:preview' }))
+        return operationStarted('op-switch')
       }
-      return new Response('{}', { status: 200 })
+      return operationResponse(url, operations) ?? new Response('{}', { status: 200 })
     }) as typeof fetch
-    // EventSource: the tab opens a progress stream before POSTing.
-    ;(globalThis as Record<string, unknown>).EventSource = class {
-      onopen: (() => void) | null = null
-      onmessage: unknown = null
-      constructor() { setTimeout(() => this.onopen?.(), 0) }
-      close() {}
-    }
+  })
+
+  it('while a preview request is pending, nothing else can start a switch (#895 review)', async () => {
+    let accept!: () => void
+    const accepted = new Promise<void>((resolve) => { accept = resolve })
+    const base = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/api/runtime/switch')) await accepted
+      return base(input, init)
+    }) as typeof fetch
+    await act(async () => { render(<RuntimesTab report={report} onSwitched={() => {}} />) })
+    await act(async () => { fireEvent.click(within(screen.getByRole('list', { name: 'Available runtimes' })).getByTestId('switch-target-openclaw')) })
+    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByTestId('switch-preview')) })
+
+    const target = within(screen.getByRole('list', { name: 'Available runtimes' })).getByTestId('switch-target-openclaw') as HTMLButtonElement
+    expect(target.disabled).toBe(true)
+    await act(async () => { accept() })
+    await waitFor(() => screen.getByTestId('switch-result'))
+    expect(posts).toHaveLength(1)
   })
 
   it('preview posts a dry run with the chosen options and renders grouped result cards', async () => {

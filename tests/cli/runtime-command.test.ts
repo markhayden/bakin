@@ -28,6 +28,19 @@ mock.module('../../src/cli/http', () => ({
   getCliRoster: async () => ({ agentIds: [] }),
 }))
 mock.module('../../src/cli/output', () => ({ print: () => {} }))
+// The switch is an operation (#895): the command starts it and follows it to
+// its result — here the report arrives as the operation's body. `detached`
+// stands for Ctrl-C twice (the switch keeps running on the server).
+let detached = false
+mock.module('../../src/cli/operation-command', () => ({
+  startAndFollow: async (start: () => Promise<unknown>) => {
+    await start()
+    if (detached) return { follow: { phase: 'detached', operation: null, children: [] }, body: null, httpStatus: null, exitCode: 130 }
+    const body = postResponse as Record<string, unknown>
+    return { follow: { phase: 'finished', operation: null, children: [] }, body, httpStatus: 200, exitCode: body.ok ? 0 : 1 }
+  },
+  operationBody: (operation: { body: Record<string, unknown> | null }) => operation.body ?? { ok: false, error: 'no result' },
+}))
 
 import { run } from '../../src/cli/commands/runtime'
 
@@ -46,6 +59,7 @@ let logLines: string[] = []
 let errLines: string[] = []
 
 beforeEach(() => {
+  detached = false
   getResponses = {}
   postCalls = []
   postResponse = {}
@@ -321,6 +335,22 @@ describe('bakin runtime use', () => {
     const err = errLines.join('\n')
     expect(err).toContain('Switch failed: forced failure')
     expect(err).toContain('Previous runtime (openclaw) was restored')
+  })
+
+  it('detaching (Ctrl-C twice) exits 130 without a report — the switch keeps running on the server', async () => {
+    detached = true
+    const restore = captureConsole()
+    const exitSpy = spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code}`)
+    }) as never)
+    try {
+      await expect(run(['runtime', 'use', 'pi'])).rejects.toThrow('exit:130')
+      expect(postCalls).toEqual([{ path: '/api/runtime/switch', body: { target: 'pi' } }])
+      expect(errLines.join('\n')).not.toContain('Switch failed')
+    } finally {
+      exitSpy.mockRestore()
+      restore()
+    }
   })
 
   it('rejects unknown flags with exit 1 BEFORE posting — a typo like --dryrun must not run a real switch', async () => {

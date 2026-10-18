@@ -38,9 +38,23 @@ const AUDIT_CHANNEL: Record<OperationOrigin, 'human' | 'cli' | 'system'> = {
   system: 'system',
 }
 
+type UpdateListener = (view: OperationView) => void
+const listeners = new Set<UpdateListener>()
+
 function publish(view: OperationView, kind: 'milestone' | 'tick'): void {
   const send = kind === 'milestone' ? g.__bakinBroadcast : g.__bakinBroadcastEphemeral
   send?.({ type: 'plugin-event', event: OPERATION_UPDATED_EVENT, view, timestamp: new Date().toISOString() })
+  for (const listener of listeners) listener(view)
+}
+
+/**
+ * Every update this process's registry publishes, in-process — how the CLI
+ * renders an operation it runs locally (#895 D11), with no server and no SSE.
+ * Returns the unsubscribe.
+ */
+export function subscribeOperationUpdates(listener: UpdateListener): () => void {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
 }
 
 export function getOperationRegistry(): OperationRegistry {

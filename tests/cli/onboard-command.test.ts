@@ -1,5 +1,17 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { setupTtyCliHarness } from './helpers/tty-cli-harness'
+
+const testDir = join(tmpdir(), `bakin-test-onboard-command-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db') }),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 const outcomes = [
   {
@@ -50,11 +62,13 @@ mock.module('../../src/core/cli/onboarding-interactive', () => ({
 const harness = setupTtyCliHarness({
   mockFetch: false,
   spyStdoutWrite: true,
-  saveEnv: ['BAKIN_CONSOLE_FORMAT'],
+  saveEnv: ['BAKIN_CONSOLE_FORMAT', 'BAKIN_URL'],
 })
 
 describe('CLI onboard command', () => {
   beforeEach(() => {
+    // Onboarding targets this home's own server (via server.lock) or runs in-process.
+    delete process.env.BAKIN_URL
     onboarded = false
     onboardingSelections = {}
     onboardingState = null
@@ -107,6 +121,18 @@ describe('CLI onboard command', () => {
     expect(output).toContain('Already onboarded on 2026-05-19.')
     expect(output).toContain('Run `bakin onboard --force`')
     expect(output).not.toContain('[OK] Already onboarded')
+    expect(runOnboard).not.toHaveBeenCalled()
+  })
+
+  it('refuses when BAKIN_URL points at another server — its checks and marker are this home\'s', async () => {
+    process.env.BAKIN_URL = 'http://10.0.0.9:3737'
+    onboarded = true
+    process.argv = ['bun', 'cli/bakin.ts', 'onboard']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(harness.errorOutput()).toContain('BAKIN_URL points at http://10.0.0.9:3737')
     expect(runOnboard).not.toHaveBeenCalled()
   })
 })

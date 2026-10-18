@@ -48,7 +48,7 @@ mock.module('../../../bakin.config', () => ({ default: { plugins: [] } }))
 
 import { scanPluginAssets, installPluginAssets as installPluginAssetsUnowned, planPluginAssetsRemoval, PLUGIN_ASSETS_PLAN, pluginAssetsComponent } from '@/core/onboarding/plugin-assets'
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
-import { withOperationView } from '../../helpers/operation-harness'
+import { withOperationView, installInOperation } from '../../helpers/operation-harness'
 import { createMemoryResourceAcquirer, createOperationRegistry } from '../../../packages/core/src/operations'
 import { waitUntil } from '../../helpers/wait'
 import { readInstalledBy } from '../../../packages/core/src/agent-packages/markers'
@@ -631,7 +631,7 @@ describe('plugin-assets — binaries', () => {
     const check = await pluginAssetsComponent.check()
     expect(check.status).toBe('error')
     expect(check.message).toMatch(/could not be inspected/)
-    const install = await pluginAssetsComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+    const install = await installInOperation(pluginAssetsComponent, { autoApprove: true, allowServiceClaim: false })
     expect(install.status).toBe('failed')
     expect(existsSync(binPath())).toBe(false)
   })
@@ -653,7 +653,7 @@ describe('plugin-assets — binaries', () => {
     writePluginLockfile(addPlugin(readPluginLockfile(), 'sdr', {
       source: userPluginDir, type: 'local', ref: '', commitSha: '', installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'a'.repeat(64),
     }))
-    await pluginAssetsComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+    await installInOperation(pluginAssetsComponent, { autoApprove: true, allowServiceClaim: false })
     expect((await pluginAssetsComponent.check()).status).toBe('ok')
 
     const installedDir = join(runtimeSkillHome, 'skills', 'cold-email')
@@ -674,7 +674,7 @@ describe('plugin-assets — binaries', () => {
     const check = await pluginAssetsComponent.check()
     expect(check.status).toBe('ok')
     expect(check.message).toMatch(/0 plugin assets/)
-    const install = await pluginAssetsComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+    const install = await installInOperation(pluginAssetsComponent, { autoApprove: true, allowServiceClaim: false })
     expect(install.status).toBe('noop')
     expect(existsSync(binPath())).toBe(false)
   })
@@ -690,7 +690,7 @@ describe('plugin-assets — binaries', () => {
     expect(check.message).toMatch(/1 binary missing: tool \(term\)/)
     expect(check.remediation).toMatch(/bakin install plugin-assets/)
 
-    const install = await pluginAssetsComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+    const install = await installInOperation(pluginAssetsComponent, { autoApprove: true, allowServiceClaim: false })
     expect(install.status).toBe('installed')
     expect(install.message).toMatch(/1 binary: tool \(term\)/)
     expect((await pluginAssetsComponent.check()).status).toBe('ok')
@@ -702,7 +702,7 @@ describe('plugin-assets — binaries', () => {
       source: '/x', type: 'local', ref: '', commitSha: '', installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'b'.repeat(64),
       installedBins: [{ name: 'tool', sha256: sha256(TOOL_V2) }],
     }))
-    const refused = await pluginAssetsComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+    const refused = await installInOperation(pluginAssetsComponent, { autoApprove: true, allowServiceClaim: false })
     expect(refused.status).toBe('failed')
     expect(refused.message).toMatch(/tool \(term\)/)
     expect(refused.message).toMatch(/otherplug/)

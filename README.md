@@ -39,6 +39,8 @@ bakin onboard
 bakin start
 ```
 
+Onboarding works before Bakin is running — each install runs in the CLI with live progress. Once the server is up, `bakin install …` and `bakin onboard` run through it instead, so the same work shows in the app's operations tray.
+
 Open [http://localhost:3737](http://localhost:3737).
 
 ## Running Bakin'

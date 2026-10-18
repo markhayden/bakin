@@ -208,18 +208,10 @@ describe('onboarding runtime component', () => {
     })
   })
 
-  describe('install()', () => {
-    it('is a noop that returns the install URL message', async () => {
-      const result = await runtimeComponent.install({
-        interactive: false,
-        autoApprove: true,
-        json: false,
-        checkOnly: false,
-        force: false,
-      })
-      expect(result.status).toBe('noop')
-      expect(result.message).toContain(RUNTIME_SETUP_URL)
-      expect(result.durationMs).toBe(0)
+  describe('check-only', () => {
+    it('has nothing to install; its setup pointer is the runtime setup guide', () => {
+      expect(runtimeComponent.install).toBeUndefined()
+      expect(runtimeComponent.manualSetup).toContain('runtime')
     })
   })
 })

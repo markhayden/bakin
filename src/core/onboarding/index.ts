@@ -8,11 +8,13 @@
  * For each component:
  *   1. Call `check()`. If it reports `ok` or `warn`, record and move on.
  *   2. If it reports `missing` or `broken`:
- *        - In --check mode: record as `skipped`, never call install()
- *        - Otherwise: call `install(opts)` — the component itself prompts
- *          interactively (via askYesNo in prompts.ts) and respects the
- *          non-interactive-requires-yes rule. The orchestrator never
- *          double-prompts.
+ *        - In --check mode: record as `skipped`, never install
+ *        - A check-only component (runtime, credentials) records its
+ *          `manualSetup` pointer — Bakin never installs those
+ *        - Otherwise: hand the install to the caller's `ComponentInstaller`
+ *          (#895: an operation on the server or in-process — the CLI
+ *          decides, D11) with explicit options; every prompt was resolved
+ *          before onboarding started (the wizard's selections, --yes).
  *   3. Translate the install status into the final component status:
  *        installed | noop → 'ok'
  *        skipped           → 'skipped'
@@ -57,7 +59,9 @@ import { recommendedPluginsComponent } from './recommended-plugins'
 import { recommendedAgentsComponent } from './recommended-agents'
 import { recommendedCapabilitiesComponent } from './recommended-capabilities'
 import { saveState, clearMarker } from './state'
-import type { CheckResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { OnboardingInstallOptions } from './install-request'
+import { isInstallable } from './types'
+import type { CheckResult, InstallableComponent, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 import type { ComponentStatus } from './state'
 
 const log = createLogger('onboarding:orchestrator')
@@ -77,7 +81,23 @@ function componentApplies(component: OnboardingComponent): boolean {
 }
 
 export { isOnboarded, loadState, saveState, clearMarker, ONBOARDING_VERSION } from './state'
-export type { CheckResult, InstallResult, OnboardingOptions, OnboardingComponent, CheckStatus, InstallStatus } from './types'
+export type { CheckResult, InstallResult, OnboardingOptions, OnboardingComponent, InstallableComponent, CheckOnlyComponent, CheckStatus, InstallStatus } from './types'
+export { isInstallable } from './types'
+
+/**
+ * The operator stopped an install (Ctrl-C: cancelled, or detached from a
+ * server run). Onboarding stops there — no later component starts and no
+ * marker is written; the CLI exits 130.
+ */
+export class OnboardingInterruptedError extends Error {
+  constructor(readonly component: string, message: string) {
+    super(message)
+    this.name = 'OnboardingInterruptedError'
+  }
+}
+
+/** Runs one component install as an operation — against the server or in-process (#895 D11). */
+export type ComponentInstaller = (component: InstallableComponent, options: OnboardingInstallOptions) => Promise<InstallResult>
 export type { OnboardingState, ComponentStatus } from './state'
 
 /**
@@ -103,6 +123,13 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   recommendedAgentsComponent,
   recommendedCapabilitiesComponent,
 ] as const
+
+/** The installable component named `name` (the shared request schema already validated it). */
+export function installableComponent(name: string): InstallableComponent {
+  const component = COMPONENT_ORDER.find((c) => c.name === name)
+  if (!component || !isInstallable(component)) throw new Error(`${name} is not an installable onboarding component`)
+  return component
+}
 
 /**
  * Result of a single component's full check+install cycle, as seen by
@@ -174,12 +201,12 @@ function emitOutcome(opts: OnboardingOptions, outcome: ComponentOutcome): void {
  */
 async function runComponent(
   component: OnboardingComponent,
-  opts: OnboardingOptions
+  opts: OnboardingOptions,
+  installComponent: ComponentInstaller,
 ): Promise<ComponentOutcome> {
   const start = Date.now()
   let check: CheckResult
   try {
-    opts.onProgress?.(`Checking ${component.name}`)
     check = await component.check()
   } catch (err) {
     log.error('Component check() threw', { component: component.name, error: String(err) })
@@ -243,9 +270,26 @@ async function runComponent(
     }
   }
 
+  // Set up outside Bakin: say where (the outcome the old noop install gave).
+  if (!isInstallable(component)) {
+    return {
+      name: component.name,
+      finalStatus: 'ok',
+      check,
+      message: component.manualSetup,
+      details: check.details,
+      durationMs: Date.now() - start,
+    }
+  }
+
   try {
-    opts.onProgress?.(`Installing ${component.name}`)
-    const install = await component.install({ ...opts, allowServiceClaim: false })
+    const install = await installComponent(component, {
+      autoApprove: opts.autoApprove,
+      allowServiceClaim: false,
+      ...(opts.approvedComponents ? { approvedComponents: [...opts.approvedComponents] } : {}),
+      ...(opts.selectedRecommendedPluginIds ? { selectedRecommendedPluginIds: [...opts.selectedRecommendedPluginIds] } : {}),
+      ...(opts.selectedRecommendedAgentIds ? { selectedRecommendedAgentIds: [...opts.selectedRecommendedAgentIds] } : {}),
+    })
     const durationMs = Date.now() - start
     switch (install.status) {
       case 'installed':
@@ -280,6 +324,7 @@ async function runComponent(
         }
     }
   } catch (err) {
+    if (err instanceof OnboardingInterruptedError) throw err
     log.error('Component install() threw', { component: component.name, error: String(err) })
     return {
       name: component.name,
@@ -294,23 +339,21 @@ async function runComponent(
 }
 
 /**
- * Special-case handling for runtime. Its install() is always a noop -
- * Bakin does not manage the runtime, it only detects it. So we read the
- * check result directly and translate any non-ok status into the
- * appropriate outcome for the orchestrator to cascade-skip on.
+ * Special-case handling for runtime. It is check-only — Bakin does not
+ * manage the runtime, it only detects it — and unlike the other check-only
+ * components a runtime that is not ok blocks everything after it. So we
+ * translate any non-ok status into an error the orchestrator cascades on.
  */
-async function runRuntimeInline(component: OnboardingComponent, onProgress?: (message: string) => void): Promise<ComponentOutcome> {
+async function runRuntimeInline(component: OnboardingComponent): Promise<ComponentOutcome> {
   const start = Date.now()
   let check: CheckResult
   try {
-    onProgress?.('Checking runtime')
     check = await component.check()
     if (check.status === 'broken' && check.details?.emptyRoster === true) {
       // First-run state: the roster is empty because initialize() is
       // write-free and nothing has provisioned yet. Onboarding IS a
       // sanctioned provisioning call site — seed and re-check. Integrity
       // breakage never carries the marker and is never auto-touched.
-      onProgress?.('Runtime roster is empty — provisioning (first-run seed)')
       const { provisionRuntimeForOnboarding } = await import('./runtime')
       await provisionRuntimeForOnboarding()
       check = await component.check()
@@ -387,13 +430,11 @@ export async function checkAll(): Promise<CheckResult[]> {
  * every component is idempotent and the marker file is only written
  * when no component errored.
  */
-export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardResult> {
+/** Throws `OnboardingInterruptedError` when the installer reports the operator stopped an install. */
+export async function runOnboard(opts: OnboardingOptions, installComponent: ComponentInstaller): Promise<RunOnboardResult> {
   // Clear the marker upfront if --force was passed. The user wants to
   // replay the whole flow regardless of prior state.
-  if (opts.force) {
-    opts.onProgress?.('Clearing previous onboarding marker')
-    clearMarker()
-  }
+  if (opts.force) clearMarker()
 
   const outcomes: ComponentOutcome[] = []
 
@@ -439,14 +480,13 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
       }
     }
 
-    // Runtime setup is a user-managed prerequisite. Its install() is
-    // intentionally a noop, so the
-    // generic runComponent path — which maps install:noop to ok —
-    // would incorrectly mark a missing runtime as ready. Handle it
-    // inline: call check() only, derive the outcome from that, and
-    // cascade-skip downstream if anything other than ok.
+    // Runtime setup is a user-managed prerequisite. The generic path
+    // records a check-only component's setup pointer as ok, which would
+    // mark a missing runtime as ready. Handle it inline: call check()
+    // only, derive the outcome from that, and cascade-skip downstream if
+    // anything other than ok.
     if (component.name === 'runtime') {
-      const outcome = await runRuntimeInline(component, opts.onProgress)
+      const outcome = await runRuntimeInline(component)
       outcomes.push(outcome)
       emitOutcome(opts, outcome)
       if (opts.json) emitJson(outcome)
@@ -475,7 +515,7 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
       continue
     }
 
-    const outcome = await runComponent(component, opts)
+    const outcome = await runComponent(component, opts, installComponent)
     outcomes.push(outcome)
     emitOutcome(opts, outcome)
     if (opts.json) emitJson(outcome)
@@ -492,7 +532,6 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
     const components: Record<string, ComponentStatus> = {}
     for (const o of outcomes) components[o.name] = o.finalStatus
     try {
-      opts.onProgress?.('Writing onboarding marker')
       saveState(components, resolveBakinVersion())
       markerWritten = true
     } catch (err) {

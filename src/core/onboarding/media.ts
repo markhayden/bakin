@@ -8,13 +8,13 @@
  * packages/core/src/media/installer.ts), or big-image enrichment, asset
  * exports, and thumbnails degrade.
  */
-import { checkMediaStore } from '../../../packages/core/src/media/installer'
-import { installMediaStoreLocally } from '../media-store-install'
+import { checkMediaStore, installMediaStore } from '../../../packages/core/src/media/installer'
+import { MEDIA_PLAN } from '../../../packages/core/src/media/install-plan'
 import { SHARP_PIN } from '../../../packages/core/src/media/pin'
 import { importBundledSharp } from '../../../packages/core/src/media/sharp-import'
 import { loadSharp } from '../../../packages/core/src/media/sharp-loader'
-import { askYesNo } from './prompts'
-import type { CheckResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { OperationContext } from '@bakin/core/operations'
+import type { CheckResult, ComponentInstallOptions, InstallResult, InstallableComponent } from './types'
 
 const REMEDIATION = 'Run `bakin install media` (or Health → repair) to download the pinned sharp prebuilds.'
 
@@ -61,28 +61,25 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-async function install(opts: OnboardingOptions): Promise<InstallOutcome> {
+async function install(opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
   const started = Date.now()
+  const skipAll = (reason: string) => { for (const stage of MEDIA_PLAN.stages) op.skip(stage.id, reason) }
   const current = await check()
   if (current.status === 'ok') {
+    skipAll('already working')
     return { name: 'media', status: 'noop', message: current.message, durationMs: Date.now() - started }
   }
   if (current.status === 'warn') {
+    skipAll('no prebuilds for this platform')
     return { name: 'media', status: 'skipped', message: current.message, durationMs: Date.now() - started }
   }
-
-  const approved = opts.autoApprove || opts.approvedComponents?.includes('media') === true
-  if (!approved && opts.interactive) {
-    const yes = await askYesNo(`Download sharp ${SHARP_PIN.version} image-processing prebuilds (~8 MB) into ~/.bakin/media?`)
-    if (!yes) {
-      return { name: 'media', status: 'skipped', message: 'declined — image resize/thumbnails stay degraded on this install', durationMs: Date.now() - started }
-    }
-  } else if (!approved) {
-    return { name: 'media', status: 'skipped', message: 'not approved for non-interactive install', durationMs: Date.now() - started }
+  if (!opts.autoApprove && opts.approvedComponents?.includes('media') !== true) {
+    skipAll('not approved')
+    return { name: 'media', status: 'skipped', message: `sharp ${SHARP_PIN.version} prebuilds (~8 MB) not approved — image resize/thumbnails stay degraded`, durationMs: Date.now() - started }
   }
 
   try {
-    const result = await installMediaStoreLocally({ force: current.status === 'broken' })
+    const result = await installMediaStore(op, { force: current.status === 'broken' })
     return {
       name: 'media',
       status: 'installed',
@@ -92,6 +89,8 @@ async function install(opts: OnboardingOptions): Promise<InstallOutcome> {
       durationMs: Date.now() - started,
     }
   } catch (err) {
+    // A cancel accepted before the commit settles cancelled, not failed.
+    op.throwIfCancelled()
     return {
       name: 'media',
       status: 'failed',
@@ -102,9 +101,9 @@ async function install(opts: OnboardingOptions): Promise<InstallOutcome> {
   }
 }
 
-type InstallOutcome = Awaited<ReturnType<OnboardingComponent['install']>>
-
-export const mediaComponent: OnboardingComponent = {
+export const mediaComponent: InstallableComponent = {
+  plan: MEDIA_PLAN,
+  resources: ['media-store'],
   name: 'media',
   check,
   install,

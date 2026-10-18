@@ -12,12 +12,12 @@
  */
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { installPackage } from '../agent-packages/installer'
-import { runOwning } from '../operations'
 import { listCapabilities } from '../agent-packages/capability-readiness'
 import { loadUnifiedCatalog } from '../curated-catalog/load'
 import { sourceWithRef } from '../../lib/package-source'
 import type { CatalogEntry } from '../curated-catalog/schema'
-import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { OperationContext } from '@bakin/core/operations'
+import type { CheckResult, ComponentInstallOptions, InstallableComponent, InstallResult } from './types'
 
 export interface RecommendedCapability {
   id: string
@@ -104,7 +104,7 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-async function install(opts: OnboardingOptions): Promise<InstallResult> {
+async function install(opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
   const start = Date.now()
   let missing: RecommendedCapability[]
   try {
@@ -123,6 +123,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     // à-la-carte (non-defaultSelected) packs are never auto-installed and
     // never make this component report unfinished work.
     const recommendedRemain = missing.some((c) => c.defaultSelected)
+    op.skip('install', recommendedRemain ? 'none selected' : 'already installed')
     return {
       name: 'capabilities',
       status: recommendedRemain ? 'skipped' : 'noop',
@@ -135,17 +136,20 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
 
   const installed: string[] = []
   const failures: string[] = []
+  op.stage('install')
+  for (const cap of selected) op.item('install', { id: cap.id, label: cap.id })
   for (const cap of selected) {
+    op.throwIfCancelled()
+    op.item('install', { id: cap.id, label: cap.id, status: 'active' })
     try {
-      opts.onProgress?.(`Installing capability pack ${cap.id}`)
-      // A local operation owns install-state until the onboarding switch (#895 PR6).
-      await runOwning(
-        { kind: 'onboarding:install-capability', title: `Install capability pack ${cap.id}`, resources: ['install-state'] },
-        () => installPackage({ source: sourceWithRef(cap.source, cap.ref), installAs: cap.id }),
-      )
+      // This operation owns install-state; the installer's writers assert it.
+      await installPackage({ source: sourceWithRef(cap.source, cap.ref), installAs: cap.id })
       installed.push(cap.id)
+      op.item('install', { id: cap.id, label: cap.id, status: 'done' })
     } catch (err) {
-      failures.push(`${cap.id}: ${err instanceof Error ? err.message : String(err)}`)
+      const error = err instanceof Error ? err.message : String(err)
+      failures.push(`${cap.id}: ${error}`)
+      op.item('install', { id: cap.id, label: cap.id, status: 'failed', message: error })
     }
   }
 
@@ -163,7 +167,10 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   }
 }
 
-export const recommendedCapabilitiesComponent: OnboardingComponent = {
+export const recommendedCapabilitiesComponent: InstallableComponent = {
+  // One item per selection; the first install is the point of no return.
+  plan: { stages: [{ id: 'install', kind: 'installing', label: 'Install capability packs' }], pointOfNoReturn: 'install' },
+  resources: ['install-state'],
   name: 'capabilities',
   check,
   install,

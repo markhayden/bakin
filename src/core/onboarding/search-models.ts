@@ -1,9 +1,8 @@
+import { noteSearchEngineProgress } from '@bakin/core/search/progress'
 import { createLogger } from '../logger'
 import { getSearchAdapterModelsRoot, getSearchAdapterRequiredModels, getSearchAdapterSetup } from '../search-adapter-factory'
-import { installSearchComponentLocally } from '../search-setup-install'
 import { getSettings } from '../settings'
-import { askYesNo } from './prompts'
-import type { OnboardingComponent } from './types'
+import type { InstallableComponent } from './types'
 
 export interface SearchModel {
   label: string
@@ -33,12 +32,16 @@ function setup() {
   return { models: s.models, settings }
 }
 
-export const searchModelsComponent: OnboardingComponent = {
+export const searchModelsComponent: InstallableComponent = {
   name: 'search-models',
+  get plan() { return setup().models.plan },
+  resources: ['search-engine'],
   check: () => setup().models.check().then((result) => ({ ...result, name: 'search-models' })),
-  install: (opts) => installSearchComponentLocally(() => { const current = setup(); return { component: current.models, settings: current.settings } }, {
-    ...opts,
-    autoApprove: opts.autoApprove || opts.approvedComponents?.includes('search-models') === true,
-    askYesNo,
-  }, { kind: 'install:search-models', title: 'Download the search models', failureCode: 'models_install_failed' }).then((result) => ({ ...result, name: 'search-models' })),
+  identity: () => setup().settings,
+  failureCode: 'models_install_failed',
+  install: async (opts, op) => {
+    const result = await setup().models.install({ autoApprove: opts.autoApprove || opts.approvedComponents?.includes('search-models') === true, op })
+    if (result.status === 'installed' || result.status === 'noop') noteSearchEngineProgress()
+    return { ...result, name: 'search-models' }
+  },
 }

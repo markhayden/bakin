@@ -67,6 +67,7 @@ mock.module('../../../src/core/curated-catalog/load', () => ({
 }))
 
 import { recommendedCapabilitiesComponent } from '../../../src/core/onboarding/recommended-capabilities'
+import { installInOperation } from '../../helpers/operation-harness'
 
 beforeEach(() => {
   lockPackages = {}
@@ -106,7 +107,7 @@ describe('capabilities onboarding component', () => {
   })
 
   it('installs defaultSelected packs under autoApprove with the ref pin', async () => {
-    const result = await recommendedCapabilitiesComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+    const result = await installInOperation(recommendedCapabilitiesComponent, { autoApprove: true, allowServiceClaim: false })
     expect(result.status).toBe('installed')
     expect(installCalls).toEqual([{
       source: 'github:markhayden/bakin-bits-official@abc123#packs/web-search-brave',
@@ -115,7 +116,7 @@ describe('capabilities onboarding component', () => {
   })
 
   it('skips (never stalls) without autoApprove', async () => {
-    const result = await recommendedCapabilitiesComponent.install({ interactive: false, autoApprove: false, json: false, checkOnly: false, force: false })
+    const result = await installInOperation(recommendedCapabilitiesComponent, { autoApprove: false, allowServiceClaim: false })
     expect(result.status).toBe('skipped')
     expect(installCalls).toEqual([])
   })

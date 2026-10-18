@@ -223,6 +223,20 @@ export function describeTransitions(
   return out
 }
 
+/** One line for a compact status display (the onboarding busy view): what it waits for or is doing now (pure). */
+export function operationStatusLine(view: OperationView): string {
+  if (view.waitingFor) return `${view.title} — waiting for ${view.waitingFor.holderTitle}`
+  const stage = view.stages.find((s) => s.status === 'active')
+  if (!stage) return view.title
+  const bytes = stage.bytes
+  const amount = !bytes
+    ? ''
+    : bytes.total
+      ? ` ${Math.floor((bytes.received / bytes.total) * 100)}%`
+      : ` ${(bytes.received / 1024 / 1024).toFixed(1)} MB (size unknown)`
+  return `${view.title} — ${stage.label}${amount}`
+}
+
 /** The closing line for a follow result (pure). */
 export function describeResult(result: OperationFollowResult): string {
   const op = result.operation

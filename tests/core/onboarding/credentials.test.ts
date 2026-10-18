@@ -95,7 +95,6 @@ import { setStoredSecret, unsetStoredSecret } from '../../../packages/core/src/m
 import { remediationForState } from '../../../packages/core/src/delivery/copy'
 import type { ChannelReadiness, ChannelReadinessState } from '../../../packages/core/src/delivery'
 
-const opts = { interactive: false, autoApprove: true, json: false, checkOnly: false, force: false }
 
 beforeEach(() => {
   llmProviders = []
@@ -137,11 +136,10 @@ describe('llm.check()', () => {
   })
 })
 
-describe('llm.install()', () => {
-  it('is a noop that returns the runtime docs URL', async () => {
-    const result = await llmComponent.install(opts)
-    expect(result.status).toBe('noop')
-    expect(result.message).toContain('runtime adapter')
+describe('llm is check-only', () => {
+  it('has nothing to install; its setup pointer names the runtime adapter', () => {
+    expect(llmComponent.install).toBeUndefined()
+    expect(llmComponent.manualSetup).toContain('runtime adapter')
   })
 })
 
@@ -258,10 +256,9 @@ describe('channels.check() — ONE readiness engine, two modes (#908)', () => {
   })
 })
 
-describe('channels.install()', () => {
-  it('is a noop that returns the runtime docs URL', async () => {
-    const result = await channelsComponent.install(opts)
-    expect(result.status).toBe('noop')
-    expect(result.message).toContain('runtime adapter')
+describe('channels is check-only', () => {
+  it('has nothing to install; its setup pointer names the runtime adapter', () => {
+    expect(channelsComponent.install).toBeUndefined()
+    expect(channelsComponent.manualSetup).toContain('runtime adapter')
   })
 })

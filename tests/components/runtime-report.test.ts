@@ -15,7 +15,7 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { capabilityRows, reduceSwitchProgress, type SwitchStepRow } from '../../packages/host/src/lib/runtime-report'
+import { capabilityRows } from '../../packages/host/src/lib/runtime-report'
 
 const PI_CAPS = {
   toolCalling: { mode: 'native', access: { style: 'in-process' } },
@@ -44,37 +44,5 @@ describe('capabilityRows', () => {
     expect(rows.find((r) => r.key === 'input')).toEqual({ key: 'input', label: 'Model input', mode: 'unavailable', detail: 'text only' })
     expect(capabilityRows(null)).toEqual([])
     expect(capabilityRows(undefined)).toEqual([])
-  })
-})
-
-describe('reduceSwitchProgress', () => {
-  it('appends running steps and resolves them in place', () => {
-    let steps: SwitchStepRow[] = []
-    steps = reduceSwitchProgress(steps, { type: 'runtime:switch', phase: 'validate', status: 'start' })
-    steps = reduceSwitchProgress(steps, { type: 'runtime:switch', phase: 'validate', status: 'ok', detail: 'openclaw → pi' })
-    steps = reduceSwitchProgress(steps, { type: 'runtime:switch', phase: 'backup', status: 'start' })
-    expect(steps).toEqual([
-      { phase: 'validate', status: 'ok', detail: 'openclaw → pi' },
-      { phase: 'backup', status: 'running' },
-    ])
-  })
-
-  it('resolves a step that never emitted start, marks errors, and ignores foreign events', () => {
-    let steps: SwitchStepRow[] = []
-    steps = reduceSwitchProgress(steps, { type: 'runtime:switch', phase: 'sync-agents', status: 'skip', detail: 'no drift' })
-    steps = reduceSwitchProgress(steps, { type: 'runtime:switch', phase: 'provision', status: 'error', detail: 'boom' })
-    steps = reduceSwitchProgress(steps, { type: 'task:update' })
-    steps = reduceSwitchProgress(steps, { type: 'runtime:switch' })
-    expect(steps).toEqual([
-      { phase: 'sync-agents', status: 'skip', detail: 'no drift' },
-      { phase: 'provision', status: 'error', detail: 'boom' },
-    ])
-  })
-
-  it('a duplicate start is a no-op (idempotent stream)', () => {
-    let steps: SwitchStepRow[] = []
-    steps = reduceSwitchProgress(steps, { type: 'runtime:switch', phase: 'flip', status: 'start' })
-    const again = reduceSwitchProgress(steps, { type: 'runtime:switch', phase: 'flip', status: 'start' })
-    expect(again).toEqual([{ phase: 'flip', status: 'running' }])
   })
 })

@@ -4,7 +4,7 @@
  * lock (dead pid) is replaced; clean shutdown releases.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'fs'
+import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, statSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -29,7 +29,7 @@ const loggerMock = () => ({
 mock.module('../../src/core/logger', loggerMock)
 mock.module('../../packages/core/src/logger', loggerMock)
 
-import { acquireServerLock, releaseServerLock, readServerLock } from '../../src/core/server-lock'
+import { acquireServerLock, cliSecretMatches, releaseServerLock, readServerLock } from '../../src/core/server-lock'
 
 const lockPath = () => join(testDir, 'server.lock')
 
@@ -54,6 +54,23 @@ describe('server singleton lock', () => {
     expect(lock.pid).toBe(process.pid)
     expect(lock.port).toBe(3737)
     expect(lock.bootId).toBe('boot-1')
+    releaseServerLock()
+  })
+
+  it('writes the lock 0600 with a fresh per-boot cliSecret that only this server accepts (#895 D11)', () => {
+    expect(acquireServerLock(3737, 'boot-s1').acquired).toBe(true)
+    expect(statSync(lockPath()).mode & 0o777).toBe(0o600)
+    const first = readServerLock()!.cliSecret!
+    expect(first).toMatch(/^[0-9a-f]{64}$/)
+    expect(cliSecretMatches(first)).toBe(true)
+    expect(cliSecretMatches(`${first.slice(0, -1)}${first.endsWith('0') ? '1' : '0'}`)).toBe(false)
+    expect(cliSecretMatches('')).toBe(false)
+    expect(cliSecretMatches(undefined)).toBe(false)
+    releaseServerLock()
+    expect(cliSecretMatches(first)).toBe(false)
+
+    expect(acquireServerLock(3737, 'boot-s2').acquired).toBe(true)
+    expect(readServerLock()!.cliSecret).not.toBe(first)
     releaseServerLock()
   })
 

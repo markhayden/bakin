@@ -42,7 +42,7 @@ mock.module('@bakin/core/logger', () => ({
 }))
 mock.module('../../src/core/watcher', () => ({ startWatcher: () => {}, stopWatcher: () => {} }))
 
-import { switchRuntime } from '../../src/core/runtime-switch'
+import { switchInOperation, switchWithStages } from '../helpers/runtime-switch'
 import { getSettings, resetSettingsCache, updateSettings } from '../../src/core/settings'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { resetOpenClawConfigCache } from '../../packages/adapter-openclaw/src/config'
@@ -129,7 +129,7 @@ beforeAll(() => {
 // dry-run write; warming it once lets the assertions below hold the dry run
 // to a true zero-writes standard.
 beforeAll(async () => {
-  await switchRuntime('pi', { dryRun: true })
+  await switchInOperation('pi', { dryRun: true })
 })
 
 afterAll(() => {
@@ -147,11 +147,8 @@ describe('switchRuntime — dry run is a full preview with ZERO writes', () => {
     // adapter homes.
     const homeBefore = snapshotTree(testDir, OPENCLAW_CLI_STATE_RE)
 
-    const phases: string[] = []
-    const result = await switchRuntime('pi', {
-      dryRun: true,
-      onProgress: (e) => { if (e.status !== 'start') phases.push(`${e.phase}:${e.status}`) },
-    })
+    // The phases are the preview operation's stages (#895).
+    const { result, stages } = await switchWithStages('pi', { dryRun: true })
 
     // The full preview report.
     expect(result.error).toBeUndefined()
@@ -176,15 +173,15 @@ describe('switchRuntime — dry run is a full preview with ZERO writes', () => {
     expect(result.cantCarry!.map((l) => l.concern)).toContain('sessions')
     expect(result.credentials!.llmProviders).toEqual(['openai-codex'])
     expect(result.capabilities!.toolCalling.access.style).toBe('in-process')
-    expect(phases).toContain('reconcile-roster:ok')
+    expect(stages['reconcile-roster']).toBe('done')
     // S3 (#907): selections evaluated against the TARGET — the fixture's Pi
     // catalog has only openai-codex models, so the target's own default
     // (empty on a fresh Pi) and the source's anthropic pins are not its
     // concern here; the phase runs, reports, and writes nothing.
-    expect(phases).toContain('reconcile-selections:ok')
+    expect(stages['reconcile-selections']).toBe('done')
     expect(result.deadSelections).not.toBeNull()
     expect(Array.isArray(result.deadSelections!.dead)).toBe(true)
-    expect(phases).toContain('carry-workspaces:ok')
+    expect(stages['carry-workspaces']).toBe('done')
 
     // ZERO writes anywhere.
     expect(getSettings().runtime.adapter).toBe('openclaw')
@@ -198,7 +195,7 @@ describe('switchRuntime — dry run is a full preview with ZERO writes', () => {
   })
 
   it('a dry run against the already-active adapter is rejected like a real switch', async () => {
-    const result = await switchRuntime('openclaw', { dryRun: true })
+    const result = await switchInOperation('openclaw', { dryRun: true })
     expect(result.ok).toBe(false)
     expect(result.error).toContain('already active')
   })

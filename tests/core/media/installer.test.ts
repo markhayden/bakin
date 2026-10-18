@@ -65,7 +65,6 @@ mock.module('../../../packages/core/src/media/sharp-loader', () => ({
 import { checkMediaStore, installMediaStore, MEDIA_PLAN, mediaStoreDir, mediaStoreEntry, readMediaReceipt, type MediaInstallOptions } from '../../../packages/core/src/media/installer'
 import { settleOperation, withOperation, withOperationView } from '../../helpers/operation-harness'
 import { createMemoryResourceAcquirer, createOperationRegistry, resourceLockPath } from '../../../packages/core/src/operations'
-import { installMediaStoreLocally } from '../../../src/core/media-store-install'
 import { _resetOperationRegistryForTests, getOperationRegistry } from '../../../src/core/operations'
 import { waitUntil } from '../../helpers/wait'
 
@@ -406,7 +405,13 @@ describe('media exclusion (#895 SC6)', () => {
         resources: ['media-store'], plan: MEDIA_PLAN,
         run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installMediaStore(op, { fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe }) }),
       })
-      const local = installMediaStoreLocally()
+      // This process's registry — where an in-process `bakin install media` runs.
+      const localStart = await getOperationRegistry().start({
+        kind: 'onboarding:media', owner: 'core', origin: 'cli', title: 'Install the media store', fingerprint: 'onboarding-media',
+        resources: ['media-store'], plan: MEDIA_PLAN,
+        run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installMediaStore(op, { fetchImpl: nativeFetch, bundle: fakeBundle, probe: okProbe }) }),
+      })
+      const local = getOperationRegistry().await(localStart.operationId).then((view) => view.result!.body as { skipped: boolean })
       await waitUntil(() => repairRegistry.get(repair.operationId)?.waitingFor?.holderTitle === 'bakin install media (another process)', { label: 'repair waits on the other process' })
       await waitUntil(() => getOperationRegistry().list().some((op) => op.waitingFor !== undefined), { label: 'local install waits visibly' })
       expect(tarballRequests).toEqual([])

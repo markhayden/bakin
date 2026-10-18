@@ -81,7 +81,7 @@ async function host(): Promise<void> {
 // Inside the container: drive the real flows
 // ---------------------------------------------------------------------------
 
-interface OperationsList { operations: Array<{ id: string; kind: string; status: string; waitingFor?: { holderTitle: string }; stages: Array<{ id: string; status: string; items?: unknown[] }> }> }
+interface OperationsList { operations: Array<{ id: string; kind: string; status: string; origin: string; waitingFor?: { holderTitle: string }; stages: Array<{ id: string; status: string; items?: unknown[] }> }> }
 
 async function inside(): Promise<void> {
   if (!existsSync('/.dockerenv')) fail('--inside runs only in the disposable container (no /.dockerenv here).')
@@ -110,25 +110,22 @@ async function inside(): Promise<void> {
 
   // 1. Cancel an engine install during its download.
   {
-    const { getSettings } = await import(`${REPO}/src/core/settings`)
-    const { getSearchAdapterSetup } = await import(`${REPO}/src/core/search-adapter-factory`)
-    const { installSearchComponentLocally } = await import(`${REPO}/src/core/search-setup-install`)
+    const { searchComponent } = await import(`${REPO}/src/core/onboarding/search`)
+    const { componentInstallOperation } = await import(`${REPO}/src/core/onboarding/operation`)
     const { getOperationRegistry } = await import(`${REPO}/src/core/operations`)
-    const setup = getSearchAdapterSetup('antfly', undefined, getSettings().search.settings)
-    const pending = installSearchComponentLocally(setup.dependency, { interactive: false, autoApprove: true, json: true, allowServiceClaim: true }, {
-      kind: 'install:search', title: 'Install the search engine', failureCode: 'engine_install_failed',
-    })
+    // The same operation `bakin install search` runs in-process.
+    const started = await getOperationRegistry().start(componentInstallOperation(searchComponent, { autoApprove: true, allowServiceClaim: true }, 'cli'))
+    const pending = getOperationRegistry().await(started.operationId)
     const registry = getOperationRegistry()
     let cancelled: string | null = null
     for (let i = 0; i < 1200 && !cancelled; i++) {
-      const view = registry.list().find((v: { kind: string }) => v.kind === 'install:search')
+      const view = registry.list().find((v: { kind: string }) => v.kind === 'onboarding:search')
       const download = view?.stages.find((s: { id: string }) => s.id === 'download')
       if (view && (download?.bytes?.received ?? 0) > 0) cancelled = registry.cancel(view.id)
       else await sleep(25)
     }
-    const result = await pending
-    const view = registry.list().find((v: { kind: string }) => v.kind === 'install:search')
-    check('engine install cancelled during download', cancelled === 'cancelling' && view?.status === 'cancelled', `cancel=${cancelled} status=${view?.status} result=${result.status}`)
+    const view = await pending
+    check('engine install cancelled during download', cancelled === 'cancelling' && view.status === 'cancelled', `cancel=${cancelled} status=${view.status}`)
     check('a cancelled engine install leaves nothing behind', !existsSync(engine) && !existsSync(join(env.ANTFLY_HOME, 'tmp')))
   }
 
@@ -189,6 +186,14 @@ async function inside(): Promise<void> {
     const done = (await operations()).find((o) => o.kind === 'search:reindex')
     check('bakin reindex runs once the engine is free', reindexCode === 0 && done?.status === 'succeeded',
       `exit=${reindexCode} status=${done?.status} tables=${done?.stages[0]?.items?.length ?? 0}`)
+
+    // 5. With a server running for this home, an install runs ON it (the CLI
+    // reads server.lock — step 2 ran in-process with none) and the server's
+    // tray lists it as CLI-started.
+    const mkdirCode = await cli(['mkdir', '--json'])
+    const onServer = (await operations()).find((o) => o.kind === 'onboarding:mkdir')
+    check('an install runs on the running server and shows in its tray', mkdirCode === 0 && onServer?.status === 'succeeded' && onServer.origin === 'cli',
+      `exit=${mkdirCode} status=${onServer?.status} origin=${onServer?.origin}`)
   } finally {
     server.kill('SIGTERM')
   }

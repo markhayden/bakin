@@ -54,8 +54,10 @@ mock.module('../../src/core/agent-packages/sync-scanner', () => ({
   },
 }))
 
-import { switchRuntime } from '../../src/core/runtime-switch'
+import { switchInOperation, switchWithStages } from '../helpers/runtime-switch'
 import { getSettings, resetSettingsCache, updateSettings } from '../../src/core/settings'
+import { createMemoryResourceAcquirer, createOperationRegistry } from '@bakin/core/operations'
+import { runtimeSwitchOperation, type RuntimeSwitchResult } from '../../src/core/runtime-switch'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { resetOpenClawConfigCache } from '../../packages/adapter-openclaw/src/config'
 import { resetPiHome } from '../../packages/adapter-pi/src/home'
@@ -140,25 +142,55 @@ afterAll(() => {
 
 describe('switchRuntime — validation', () => {
   it('rejects an unknown adapter without touching anything', async () => {
-    const result = await switchRuntime('hermes')
+    const result = await switchInOperation('hermes')
     expect(result.ok).toBe(false)
     expect(result.error).toContain('Unknown runtime adapter')
     expect(getSettings().runtime.adapter).toBe('openclaw')
   })
 
   it('rejects a switch to the already-active adapter', async () => {
-    const result = await switchRuntime('openclaw')
+    const result = await switchInOperation('openclaw')
     expect(result.ok).toBe(false)
     expect(result.error).toContain('already active')
   })
 })
 
+describe('the runtime switch as an operation (#895)', () => {
+  async function settle(request: Parameters<typeof runtimeSwitchOperation>[0]) {
+    const registry = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, acquireResources: createMemoryResourceAcquirer(1) })
+    try {
+      const { operationId } = await registry.start(runtimeSwitchOperation(request, 'cli'))
+      return await registry.await(operationId)
+    } finally {
+      registry.dispose()
+    }
+  }
+
+  it('a report that is not ok ends switch_failed, the report kept as the body; never cancellable', async () => {
+    const view = await settle({ target: 'openclaw' })
+    expect([view.status, view.outcome?.code]).toEqual(['failed', 'switch_failed'])
+    expect(view.cancellable).toBe(false)
+    expect(view.resources).toEqual(['install-state'])
+    const body = view.result?.body as RuntimeSwitchResult
+    expect(body.ok).toBe(false)
+    expect(body.error).toContain('already active')
+    expect(view.stages.find((s) => s.id === 'validate')?.status).toBe('failed')
+  })
+
+  it('a preview declares only its read-only stages and succeeds with the report', async () => {
+    const view = await settle({ target: 'pi', dryRun: true })
+    expect(view.kind).toBe('runtime-switch:preview')
+    expect(view.stages.map((s) => s.id)).not.toContain('flip')
+    expect([view.status, view.outcome?.code]).toEqual(['succeeded', 'ok'])
+    expect((view.result?.body as RuntimeSwitchResult).dryRun).toBe(true)
+    expect(getSettings().runtime.adapter).toBe('openclaw')
+  })
+})
+
 describe('switchRuntime — OpenClaw → Pi', () => {
   it('runs the full lifecycle with an honest carry report', async () => {
-    const phases: string[] = []
-    const result = await switchRuntime('pi', {
-      onProgress: (e) => { if (e.status !== 'start') phases.push(`${e.phase}:${e.status}`) },
-    })
+    // The phases are the operation's stages (#895).
+    const { result, stages } = await switchWithStages('pi')
 
     expect(result.error).toBeUndefined()
     expect(result.ok).toBe(true)
@@ -189,7 +221,7 @@ describe('switchRuntime — OpenClaw → Pi', () => {
     expect(result.roster!.failed).toEqual([])
 
     // Drift-gated projection skipped (no drift), capabilities + access honest.
-    expect(phases).toContain('sync-agents:skip')
+    expect(stages['sync-agents']).toBe('skipped')
     expect(result.sync).toEqual({ drifted: false, findings: 0, syncedAgents: 0 })
     expect(result.capabilities!.toolCalling.access.style).toBe('in-process')
     expect(result.capabilities!.delivery.mode).toBe('unavailable')
@@ -204,7 +236,7 @@ describe('switchRuntime — OpenClaw → Pi', () => {
     // Workspace content carried for switch-created agents (D2, kind-aware):
     // soul + memory byte-identical on Pi, agent-authored skill at PI's skill
     // location, package-managed skill left to sync, no dead skills/ files.
-    expect(phases).toContain('carry-workspaces:ok')
+    expect(stages['carry-workspaces']).toBe('done')
     const piPixelWs = pathJoin(testDir, 'pi', 'agent', 'agents', 'pixel', 'workspace')
     expect(readFileSync(pathJoin(piPixelWs, 'SOUL.md'), 'utf-8')).toBe(PIXEL_SOUL)
     expect(readFileSync(pathJoin(piPixelWs, 'memory', 'notes.md'), 'utf-8')).toBe(PIXEL_MEMORY)
@@ -230,7 +262,7 @@ describe('switchRuntime — OpenClaw → Pi', () => {
   })
 
   it('round-trip back: OpenClaw roster untouched while inactive (existing, not re-created)', async () => {
-    const result = await switchRuntime('openclaw')
+    const result = await switchInOperation('openclaw')
     expect(result.error).toBeUndefined()
     expect(result.ok).toBe(true)
     expect(getSettings().runtime.adapter).toBe('openclaw')
@@ -267,14 +299,14 @@ describe('switchRuntime — copyWorkspaces: false skips the content carry', () =
     mkdirSync(novaWs, { recursive: true })
     writeFileSync(pathJoin(novaWs, 'SOUL.md'), '# Nova soul')
 
-    const result = await switchRuntime('pi', { copyWorkspaces: false })
+    const result = await switchInOperation('pi', { copyWorkspaces: false })
     expect(result.ok).toBe(true)
     expect(result.roster!.carried.map((c) => c.agentId)).toEqual(['nova'])
     expect(result.workspaces).toBeNull()
     expect(existsSync(pathJoin(testDir, 'pi', 'agent', 'agents', 'nova', 'workspace', 'SOUL.md'))).toBe(false)
 
     // Restore state for the failure-path test below.
-    const back = await switchRuntime('openclaw')
+    const back = await switchInOperation('openclaw')
     expect(back.ok).toBe(true)
   })
 })
@@ -284,7 +316,7 @@ describe('switchRuntime — failure restores the original adapter', () => {
     expect(getSettings().runtime.adapter).toBe('openclaw')
     scanShouldThrow = true
     try {
-      const result = await switchRuntime('pi')
+      const result = await switchInOperation('pi')
       expect(result.ok).toBe(false)
       expect(result.error).toContain('forced scan failure')
       expect(result.restored).toBe(true)

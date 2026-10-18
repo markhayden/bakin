@@ -14,8 +14,8 @@
  *            warn    — a persisted plan has a dead or unsuitable lane; the
  *                      operator repairs it (`bakin models plan`, Models page)
  *                      — NEVER auto-applied, --yes included
- *   install() applies ONLY on --yes, an explicit TUI approval, or an
- *   interactive yes (the one permitted auto-apply: fresh install, no plan);
+ *   install() applies ONLY on --yes, an explicit TUI approval, or a confirmed
+ *   `bakin install models` prompt (the one permitted auto-apply: fresh install, no plan);
  *   nothing eligible ⇒ skipped with the credentials hint. A WORKING default
  *   is never moved (the recommender keeps an eligible current default); the
  *   only default --yes ever touches is a dead one, where nothing dispatches
@@ -38,8 +38,8 @@ import { assemblePlanInput, listPlanCatalogRows } from '../model-plan-input'
 import type { RoutingConfig } from '../model-routing'
 import type { UiMode } from '../model-selections'
 import { isLegacyRouting, migrateLegacyRouting } from '../routing-migration'
-import { askYesNo } from './prompts'
-import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { OperationContext } from '@bakin/core/operations'
+import type { CheckResult, ComponentInstallOptions, InstallResult, InstallableComponent } from './types'
 
 const log = createLogger('onboarding:models')
 
@@ -178,34 +178,30 @@ async function apply(runtime: AgentRuntimeAdapter, ops: PlanRecommendation['ops'
   return { applied: result.applied.length, failed: result.failed.map((f) => `${f.ref}: ${f.error.message}`), pending: result.pending.length }
 }
 
-async function install(opts: OnboardingOptions): Promise<InstallResult> {
+async function install(opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
   const start = Date.now()
+  const skip = (reason: string, message: string, status: 'skipped' | 'noop' = 'skipped'): InstallResult => {
+    op.skip('apply', reason)
+    return { name: 'models', status, message, durationMs: Date.now() - start }
+  }
   const { input, plan, persisted, problems } = await assess()
   if (input.candidates.length === 0) {
-    return { name: 'models', status: 'skipped', message: 'No model can run here yet — add credentials for a provider, then `bakin models plan --apply`.', durationMs: Date.now() - start }
+    return skip('no runnable model', 'No model can run here yet — add credentials for a provider, then `bakin models plan --apply`.')
   }
   if (plan.ops.length === 0) {
     const caveat = problems.length > 0 ? ` Needs attention: ${problems.join('; ')}.` : ''
-    return { name: 'models', status: 'noop', message: `Already on the recommended plan: ${describe(plan)}.${caveat}`, durationMs: Date.now() - start }
+    return skip('already on the plan', `Already on the recommended plan: ${describe(plan)}.${caveat}`, 'noop')
   }
   if (persisted) {
     // Never auto-apply over an existing plan — the operator repairs it.
     const why = problems.length > 0 ? `needs attention (${problems.join('; ')})` : 'is in place'
-    return { name: 'models', status: 'skipped', message: `Your model plan ${why} — review with \`bakin models plan\`; onboarding never changes an existing plan.`, durationMs: Date.now() - start }
+    return skip('a plan exists', `Your model plan ${why} — review with \`bakin models plan\`; onboarding never changes an existing plan.`)
+  }
+  if (!opts.autoApprove && opts.approvedComponents?.includes('models') !== true) {
+    return skip('not approved', `Recommended plan not approved (${describe(plan)}) — pick models on the Models page or run \`bakin models plan --apply\`.`)
   }
 
-  const approved = opts.autoApprove || opts.approvedComponents?.includes('models') === true
-  if (!approved && opts.interactive) {
-    console.log(`  Recommended model plan: ${describe(plan)}.`)
-    for (const note of plan.notes) console.log(`  Note: ${note}`)
-    const yes = await askYesNo('Use this plan? (change it any time on the Models page)')
-    if (!yes) {
-      return { name: 'models', status: 'skipped', message: 'declined — pick models on the Models page or run `bakin models plan --apply`', durationMs: Date.now() - start }
-    }
-  } else if (!approved) {
-    return { name: 'models', status: 'skipped', message: 'not approved for non-interactive install — run `bakin models plan --apply` to use the recommendation', durationMs: Date.now() - start }
-  }
-
+  op.stage('apply', describe(plan))
   try {
     const runtime = await getRuntime()
     const outcome = await apply(runtime, plan.ops)
@@ -220,7 +216,9 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   }
 }
 
-export const modelsComponent: OnboardingComponent = {
+export const modelsComponent: InstallableComponent = {
+  plan: { stages: [{ id: 'apply', kind: 'committing', label: 'Apply the recommended model plan' }], pointOfNoReturn: 'start' },
+  resources: [],
   name: 'models',
   check,
   install,

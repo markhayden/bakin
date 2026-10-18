@@ -13,8 +13,8 @@
  * method (presence-only — names, never secrets). Each adapter parses its own
  * credential shapes internally; core never touches raw runtime config here.
  *
- * Both checks are **warn-only** - they never return `error`, and
- * `install()` is always a noop with a remediation pointer. The
+ * Both checks are **warn-only** - they never return `error`, and both
+ * components are check-only: no install, a `manualSetup` pointer. The
  * orchestrator in T9 writes `components.llm: "warn"` and
  * `components.channels: "warn"` to the .onboarded marker on decline;
  * Bakin still starts.
@@ -28,7 +28,7 @@ import { getChannelReadiness, isChannelReadinessStarted } from '../delivery/read
 import { DEFAULT_RUNTIME_ADAPTER_SUPPORT } from '../runtime-adapter-factory'
 import { liveServerBaseUrl } from '../server-lock'
 import { getSettings } from '../settings'
-import type { CheckResult, InstallResult, OnboardingComponent } from './types'
+import type { CheckOnlyComponent, CheckResult } from './types'
 
 const log = createLogger('onboarding:credentials')
 
@@ -78,20 +78,11 @@ async function checkLlm(): Promise<CheckResult> {
   }
 }
 
-async function installLlm(): Promise<InstallResult> {
-  log.info('llm.install() is a noop - LLM credentials are user-managed by the runtime adapter')
-  return {
-    name: 'llm',
-    status: 'noop',
-    message: `LLM credentials must be configured via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
-    durationMs: 0,
-  }
-}
-
-export const llmComponent: OnboardingComponent = {
+/** Credentials are runtime-managed: onboarding only says where to set them. */
+export const llmComponent: CheckOnlyComponent = {
   name: 'llm',
+  manualSetup: `LLM credentials must be configured via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
   check: checkLlm,
-  install: installLlm,
 }
 
 // ---------------------------------------------------------------------------
@@ -252,20 +243,10 @@ async function checkChannels(): Promise<CheckResult> {
   return configurationOnlyResult()
 }
 
-async function installChannels(): Promise<InstallResult> {
-  log.info('channels.install() is a noop - channel credentials are user-managed by the runtime adapter')
-  return {
-    name: 'channels',
-    status: 'noop',
-    message: `Channel credentials must be configured via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
-    durationMs: 0,
-  }
-}
-
-export const channelsComponent: OnboardingComponent = {
+export const channelsComponent: CheckOnlyComponent = {
+  manualSetup: `Channel credentials must be configured via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
   name: 'channels',
   check: checkChannels,
-  install: installChannels,
 }
 
 export const RUNTIME_DOCS_URL = RUNTIME_DOCS

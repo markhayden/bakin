@@ -6,12 +6,11 @@ and reindex. It answers four questions from the browser or the CLI — what is
 it doing now, what is left, is it stuck, and what happened — and replaces the
 spinner-only and job-specific paths the 2026-09-21 margo incident exposed.
 
-Spec: `.claude/specs/operations-progress/SPEC.md` (decisions D1–D24).
-Plan and rollout order: `.claude/specs/operations-progress/PLAN.md`. PR1 ships
-the primitive below; PR2 adds the browser hook, pattern, tray and attention
-(§ Browser); PR3–PR6 convert
-the flows (repair, installs, search, onboarding/runtime) and delete the legacy
-job registry (`install-progress.ts`) and the throw-on-busy lock API.
+Spec: `.claude/specs/operations-progress/SPEC.md` (decisions D1–D24); the
+delivery plan and its success-criteria evidence: `PLAN.md` beside it. Every
+flow below is converted; the legacy job registry, the throw-on-busy lock API,
+the local-operation wrappers and the private progress streams are gone
+(architecture-test pinned: `tests/architecture/operations-*.test.ts`).
 
 ## Map
 
@@ -143,7 +142,7 @@ the core ones. Adding a fourth core resource is an approval checkpoint.
   throws `<writer> requires install-state — run it inside an operation that
   declares it (or holdNow for a bounded synchronous writer)`. The legacy
   throw-on-busy install-lock API and its job registry (`/api/install-jobs`,
-  `packages.install_*` events, `?async=1`) are gone (PR4).
+  `packages.install_*` events, `?async=1`) are gone.
 - Only `resources.ts` names `install.lock` or `locks/`
   (`tests/architecture/operations-resources.test.ts`). Antfly's own service
   lock under `~/.antfly` is a different lock and stays as it is.
@@ -153,12 +152,12 @@ the core ones. Adding a fourth core resource is an approval checkpoint.
 `runLocal(input)` (app) / `runLocal(registry, input)` (core) runs the same
 machinery and resolves with the terminal view instead of answering 202 —
 same views, events, resources and audit. Validation failures reject. Used by
-in-process callers (onboarding components until PR6, the CLI's in-process
-mode, approvals/escalation) and by in-PR callers of `op`-taking helpers.
+in-process callers (approvals/escalation) and by in-PR callers of
+`op`-taking helpers. The CLI's in-process mode starts operations on the
+process registry and renders them through `subscribeOperationUpdates`.
 
 `runOwning({ kind, title, resources }, fn)` is the thin form for in-process
-callers that only need ownership (onboarding plugin assets, recommended
-agents/capabilities, the runtime switch's drift-gated sync): a one-stage,
+callers that only need ownership (the runtime switch's drift-gated sync): a one-stage,
 non-cancellable local operation that returns `fn`'s value and rethrows its
 error. `awaitOperationResponse(res)` lets an in-process caller of a
 converted route await the 202 and read the old status + body.
@@ -212,12 +211,12 @@ the owner is `plugin:<id>` (separate from origin); origin comes from
 `request` (web/cli), else `system`; any plugin may declare its own
 `<pluginId>:<name>` resources, and the core resources are reserved for core
 plugins (`OperationResourceDeniedError`) — the same rule as repair resource
-declarations (D10, PR3). Not permission-gated: a plugin only ever reaches its
+declarations (D10). Not permission-gated: a plugin only ever reaches its
 own namespace and resources. `@makinbakin/sdk/testing` runs a real registry
 with in-memory resources (`createMemoryResourceAcquirer`) so author tests
 never touch a real Bakin home.
 
-## Browser (PR2)
+## Browser
 
 - **`useOperation(id, { bootId })`** follows one operation over the shell's
   single SSE connection (`operation.updated`) and reconciles from
@@ -251,7 +250,7 @@ never touch a real Bakin home.
   never. Only `origin ∈ {web, cli, discord}`; system work and children stay in
   the tray; nothing announces while the person is on the operation's `href`.
 
-## Children (PR3, D10/D21)
+## Children (D10/D21)
 
 `registry.startChild(parentId, input)` — repair actions are the only users.
 A child inherits the parent's owner and origin, namespaces its fingerprint
@@ -274,7 +273,7 @@ else `ok`. A repair's verification is evidence, never absence: every
 affected check must have run fresh (`checkEvaluatedFresh`) and no selected
 observation may still be unhealthy — a check that vanished is not a pass.
 
-## CLI (PR3, D11)
+## CLI (D11)
 
 - **Targeting** (`resolveCliTarget`, resolved once): explicit `BAKIN_URL`
   as given (unreachable is an error) → the live `server.lock` of THIS
@@ -283,8 +282,22 @@ observation may still be unhealthy — a check that vanished is not a pass.
   <home>") — never a guess at port 3737, which may belong to another home.
   Every request goes through `serverBaseUrl()` / `cliFetch` and carries
   `X-Bakin-Origin: cli`. Tests pin `BAKIN_URL` in the preload so no test
-  reads this machine's real lock. In-process fallback for install/onboard
-  is PR6.
+  reads this machine's real lock.
+- **Mode** (`src/cli/operation-mode.ts`) for install-class verbs
+  (`bakin install *`, `bakin mkdir`, `bakin settings init`, `bakin onboard`):
+  explicit `BAKIN_URL` → server-only (refused = `ServerUnreachableError`);
+  a live lock → that server, with the lock's `cliSecret` as
+  `X-Bakin-Cli-Secret`; no lock → in-process. A lock-chosen server that
+  refuses the connection BEFORE anything was sent (Bun's typed
+  `ConnectionRefused`) has died since the lock was read → in-process; once
+  any request reached a server nothing falls back. In-process Ctrl-C
+  (`followLocalAndRender`): once cancels and waits for the settle (or says
+  it can't stop now), twice force-exits 130 — boot recovery checks the
+  install transactions on the next start.
+- **`cliSecret`**: the server writes `server.lock` 0600 with a fresh
+  per-boot secret (never served over HTTP); `cliSecretMatches` compares in
+  constant time against the lock THIS server holds. It authorizes exactly
+  one thing: `allowServiceClaim` on the onboarding install route.
 - **`followOperation(start)`**: the SSE stream (`Last-Event-ID` resume,
   backoff) plus an immediate snapshot and one on a timer; phases `finished`
   / `expired` / `restarted` / `detached`.
@@ -298,7 +311,7 @@ observation may still be unhealthy — a check that vanished is not a pass.
   `operationExitCode`: 0 succeeded, 130 cancelled/detached, 1 otherwise;
   the JSON document's `exitCode` is the same number.
 
-## Installs and lifecycle (PR4)
+## Installs and lifecycle
 
 Every install-state flow is an operation; the route's old JSON body is the
 operation result (`outcomeFromResponse`), so clients read the same shapes
@@ -342,7 +355,7 @@ every caller of an install-state writer owns it (or is an asserting engine
 module), converted routes start operations, synchronous writers use
 `holdNow`.
 
-## Search (PR5, D12/D15/D23)
+## Search (D12/D15/D23)
 
 Everything that changes the engine or its tables owns `search-engine`.
 
@@ -355,14 +368,10 @@ Everything that changes the engine or its tables owns `search-engine`.
 
 - Installers take the op through `SearchAdapterSetupOptions.op` and assert
   `op.holds('search-engine')`; each setup component declares its `plan`, so
-  core never names an antfly stage. Until onboarding runs as operations
-  (PR6), `installSearchComponentLocally` (`src/core/search-setup-install.ts`)
-  runs them as local operations: the fingerprint covers the settings the
-  install depends on (another endpoint or model list never attaches); once
-  `search-engine` is held it re-reads the settings and, if they moved while
-  it waited, settles `settings_changed` and starts again under the new
-  identity rather than run under a fingerprint that no longer describes it. An installer's failure path rethrows an accepted cancel, so a cancel
-  never surfaces as `engine_install_failed` / `models_install_failed`.
+  core never names an antfly stage. They run as onboarding component
+  operations (§ Onboarding). An installer's failure path rethrows an
+  accepted cancel, so a cancel never surfaces as `engine_install_failed` /
+  `models_install_failed`.
 - Outcomes: reindex `ok` / `tables_parked` (rows kept); reset `ok` /
   `reset_failed` (a failed wipe, or a rebuild that did not converge — the
   `reindex` rows say which tables, or search turned disabled while the reset
@@ -385,7 +394,84 @@ stay gone; no `?async` in the request router; the routes start operations
 and the CLI follows them; the rebuild pass asserts ownership; the pump
 timer, boot resumption and the watchdog go through the background pass.
 
-## Health repair (PR3, D10/D24)
+## Onboarding (D11)
+
+Every onboarding component install is ONE operation, built by
+`componentInstallOperation(component, options, origin)`
+(`src/core/onboarding/operation.ts`) — behind both
+`POST /api/runtime/onboarding/install` and the CLI's in-process mode, so a
+server run and a local run are the same operation (parity-tested for media,
+search, search-models, plugin-assets and agent-sync).
+
+- **Contract** (`onboarding/types.ts`): an `InstallableComponent` declares
+  its `plan`, `resources` (canonical order), optional `identity()` (search:
+  its settings) and `failureCode`, and `install(opts, op)` reports only
+  through `op`. A `CheckOnlyComponent` (runtime, llm, channels, budget) has
+  no install, only a `manualSetup` pointer the orchestrator records when
+  its check is not ok. `isInstallable` tells them apart.
+- **Options** are explicit (`OnboardingInstallRequestSchema` in
+  `install-request.ts`, zod only, shared by the CLI, the web hub and the
+  local path): `autoApprove`, `approvedComponents`, the wizard selections,
+  `allowServiceClaim`. Nothing prompts inside an install — the CLI asks
+  before it starts (`bakin install <x>` on a TTY without `--yes`) and the
+  hub's confirm dialog is the approval. The route never auto-approves and
+  honours `allowServiceClaim` only with a matching `X-Bakin-Cli-Secret`
+  (403 otherwise).
+- **Identity**: kind `onboarding:<name>`, fingerprint = name + options +
+  `identity()`. An identical live request attaches. A request that waited
+  rechecks `identity()` (`revalidate`) and settles `settings_changed`
+  without running if it moved — it never runs under a fingerprint that no
+  longer describes it (the A → B → A case is pinned).
+- **Outcomes**: `{ ok, result }` (the `InstallResult`, JSON-safe); failed →
+  the component's `failureCode` (`component_failed` by default;
+  `engine_install_failed`, `models_install_failed`); skipped →
+  succeeded/`skipped`.
+- **Resources**: search and search-models `search-engine`, media
+  `media-store`, plugin-assets / agent-sync / recommended agents and
+  capability packs `install-state` (their writers run under the component's
+  ownership — no inner `runOwning`). Recommended plugins hold nothing: each
+  plugin installs as its own preview → commit operation, listed as items.
+- **`bakin onboard`**: `runOnboard(opts, installComponent)` — checks run in
+  the CLI process, installs through `runComponentInstall` in the mode D11
+  picks; the Ink busy view shows each install's `operationStatusLine`
+  (waiting-for included — no silent waits). Checks, provisioning and the
+  `.onboarded` marker are this home's, so an explicit `BAKIN_URL` (another
+  server) is refused; without it the installs go to this home's own server
+  (its lock) or run in-process. Ctrl-C on an install (cancelled, or
+  detached from a server run) throws `OnboardingInterruptedError`: nothing
+  after it starts, no marker, exit 130.
+- **Consent lives before the operation.** `bakin onboard`'s wizard
+  (`collectOnboardingSelections`) asks for search, search models, media,
+  the model plan and the recommended plugins/agents, seeding an empty
+  first-run roster first so a fresh Pi home is asked too; its
+  `approvedComponents` approve those installs just like `--yes`.
+  `bakin install <x>` on a terminal without `--yes` asks when the check is
+  not ok — or, with `BAKIN_URL`, always, naming that Bakin (this machine's
+  check says nothing about it); declining starts nothing (not every
+  installer gates on approval).
+- **Cancel always wins**: `componentInstallOperation` rethrows an accepted
+  cancel after the install returns, so a cancel never settles as a success
+  or a failure even when the installer didn't check between steps.
+- **Hub tabs** are busy from the moment a request is sent — a second click,
+  a preview racing a switch, or dismissing the dialog can't race the
+  acceptance.
+- **Runtime hub**: the Overview tab's Repair (mkdir, settings, search,
+  search-models, media, plugin-assets, agent-sync) starts the operation and
+  keeps the dialog open on `OperationProgress` (Cancel while allowed) until
+  it settles.
+
+## Runtime switch
+
+`runtimeSwitchOperation` (`src/core/runtime-switch.ts`): the phases are
+stages (`RUNTIME_SWITCH_PLAN`; the preview declares only its read-only
+stages), never cancellable, owning `install-state` — a second switch or a
+preview waits visibly (no single-flight flag). The report is the result body
+(`switch_failed` when not ok); a restore after a failure is logged against
+the failed stage. `POST /api/runtime/switch` answers 202; `bakin runtime use`
+follows with the renderer; the Runtimes tab with `useOperation` +
+`OperationProgress`. Details: `.claude/knowledge/runtime-capabilities.md`.
+
+## Health repair (D10/D24)
 
 See `.claude/knowledge/doctor-and-health-checks.md` § Explicit repair
 protocol (the parent/child run, the route, the dialog, the CLI) and
@@ -403,8 +489,10 @@ after, `afterResolve`, outcome-unknown recovery).
 - `tests/core/net/download.test.ts` — transfer events, abort, text, opTransfer,
   tar output.
 - `tests/sdk-testing/operations.test.ts` — the published harness, author-style.
-- `tests/architecture/operations-{resources,transfers,install-state}.test.ts`.
-- PR4 routes: `tests/api/{package-operations,skills-operations}.test.ts`,
+- `tests/architecture/operations-{resources,transfers,install-state,search,onboarding,runtime-switch,routes}.test.ts`
+  — `operations-routes` is the final converted/synchronous route list with
+  each route's resource.
+- Install routes: `tests/api/{package-operations,skills-operations}.test.ts`,
   `tests/host/plugins/install-operations.test.ts`,
   `tests/core/plugins/replace-transaction-operation.test.ts`; helpers
   `tests/helpers/{operation-route,operation-fetch,plugin-routes,owning}.ts`
@@ -420,6 +508,17 @@ after, `afterResolve`, outcome-unknown recovery).
 - `tests/hooks/use-operation.test.tsx` — rev/boot guards, reconcile, expired,
   restarted (late old-boot answer ignored), unreachable recovery,
   `startOperation`.
+- Search: `tests/core/search-operations.test.ts`, `tests/api/search-maintenance-routes.test.ts`,
+  the background-mutator block in `tests/core/search-registry.test.ts`,
+  `tests/core/onboarding/{antfly,models}.test.ts`; the real-engine check
+  `scripts/dev/search-container-check.ts` (developer-run, disposable container).
+- Onboarding: `tests/core/onboarding/{operation,install-request,index}.test.ts`,
+  `tests/api/onboarding-install-route.test.ts` (claim authority, CLI
+  attribution, server/local parity), `tests/cli/{operation-mode,component-install}.test.ts`,
+  `tests/core/server-singleton.test.ts` (cliSecret, 0600), the hub in
+  `tests/components/runtime-hub.test.tsx`.
+- Runtime switch: `tests/integration/runtime-switch*.test.ts` (via
+  `tests/helpers/runtime-switch.ts`), `tests/cli/runtime-command.test.ts`.
 - `tests/ui/patterns/operation-progress.test.tsx` + the 23 play-asserted
   stories in `storybook/public/feedback/operation-progress.stories.tsx`
   (five visual baselines).

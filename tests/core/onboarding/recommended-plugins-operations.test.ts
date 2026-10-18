@@ -42,6 +42,7 @@ mock.module('../../../src/core/curated-catalog/load', () => ({
 import { recommendedPluginsComponent } from '../../../src/core/onboarding/recommended-plugins'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { _resetOperationRegistryForTests, getOperationRegistry } from '../../../src/core/operations'
+import { installInOperation } from '../../helpers/operation-harness'
 
 afterAll(() => {
   _resetOperationRegistryForTests()
@@ -59,8 +60,8 @@ beforeEach(() => {
 
 describe('recommended plugins over operations', () => {
   it('preview asks for consent → approval commits with the token → installed once the commit settles', async () => {
-    const result = await recommendedPluginsComponent.install({
-      interactive: false, autoApprove: true, json: false, checkOnly: false, force: false,
+    const result = await installInOperation(recommendedPluginsComponent, {
+      autoApprove: true, allowServiceClaim: false
     })
 
     expect(result.status).toBe('installed')

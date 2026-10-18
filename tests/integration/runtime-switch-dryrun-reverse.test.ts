@@ -45,7 +45,7 @@ mock.module('../../packages/core/src/logger', loggerFactory)
 mock.module('@bakin/core/logger', loggerFactory)
 mock.module('../../src/core/watcher', () => ({ startWatcher: () => {}, stopWatcher: () => {} }))
 
-import { switchRuntime } from '../../src/core/runtime-switch'
+import { switchInOperation } from '../helpers/runtime-switch'
 import { getSettings, resetSettingsCache, updateSettings } from '../../src/core/settings'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { resetPiHome } from '../../packages/adapter-pi/src/home'
@@ -106,7 +106,7 @@ describe('switchRuntime — dry run pi → openclaw (fresh, unauthenticated targ
     const piBefore = snapshotTree(pathJoin(testDir, 'pi'))
     const settingsBefore = readFileSync(pathJoin(testDir, 'settings.json'), 'utf-8')
 
-    const result = await switchRuntime('openclaw', { dryRun: true })
+    const result = await switchInOperation('openclaw', { dryRun: true })
 
     expect(result.error).toBeUndefined()
     expect(result.ok).toBe(true)

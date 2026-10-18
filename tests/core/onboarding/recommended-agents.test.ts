@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { installInOperation } from '../../helpers/operation-harness'
 
 // Installs run inside a local operation (#895): its lock file and audit land
 // under the content dir, so it must be a temp dir.
@@ -72,12 +73,9 @@ describe('recommended agents onboarding component', () => {
   it('passes adopt when installing a selected unmanaged official agent', async () => {
     states.pixel = 'unmanaged'
 
-    const result = await recommendedAgentsComponent.install({
-      interactive: false,
+    const result = await installInOperation(recommendedAgentsComponent, {
       autoApprove: false,
-      json: false,
-      checkOnly: false,
-      force: false,
+      allowServiceClaim: false,
       selectedRecommendedAgentIds: ['pixel'],
     })
 

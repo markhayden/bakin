@@ -7,7 +7,8 @@
 import { existsSync } from 'fs'
 import { createLogger } from '../logger'
 import { getBakinPaths, initBakinHome, getContentDir } from '../content-dir'
-import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { OperationContext } from '@bakin/core/operations'
+import type { CheckResult, ComponentInstallOptions, InstallableComponent, InstallResult } from './types'
 
 const log = createLogger('onboarding:mkdir')
 
@@ -49,8 +50,9 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-async function install(_opts: OnboardingOptions): Promise<InstallResult> {
+async function install(_opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
   const start = Date.now()
+  op.stage('create')
   try {
     const result = initBakinHome(getContentDir())
     const durationMs = Date.now() - start
@@ -81,7 +83,9 @@ async function install(_opts: OnboardingOptions): Promise<InstallResult> {
   }
 }
 
-export const mkdirComponent: OnboardingComponent = {
+export const mkdirComponent: InstallableComponent = {
+  plan: { stages: [{ id: 'create', kind: 'installing', label: 'Create the Bakin home' }], pointOfNoReturn: 'start' },
+  resources: [],
   name: 'mkdir',
   check,
   install,

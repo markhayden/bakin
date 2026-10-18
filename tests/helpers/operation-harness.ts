@@ -83,3 +83,14 @@ export function noopOp(): OperationContext {
     holds: () => true,
   }
 }
+
+/**
+ * An onboarding component's install inside a real operation that owns the
+ * component's declared resources — the way onboarding runs it (#895).
+ */
+export function installInOperation<O, R>(
+  component: { plan: OperationPlan; resources: readonly string[]; install(opts: O, op: OperationContext): Promise<R> },
+  opts: O,
+): Promise<R> {
+  return withOperation({ plan: component.plan, resources: [...component.resources] }, (op) => component.install(opts, op))
+}

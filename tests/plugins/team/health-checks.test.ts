@@ -142,6 +142,7 @@ import {
   personaRepair,
 } from '../../../plugins/team/lib/health-checks'
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { installInOperation } from '../../helpers/operation-harness'
 
 const repairTarget = { type: 'all_actionable' as const, reportId: 'test-report' }
 
@@ -456,11 +457,8 @@ function seedAgentPackage(): string {
 }
 
 const NON_INTERACTIVE = {
-  interactive: false,
   autoApprove: true,
-  json: false,
-  checkOnly: false,
-  force: false,
+  allowServiceClaim: false
 }
 
 describe('agent-sync component integration', () => {
@@ -468,7 +466,7 @@ describe('agent-sync component integration', () => {
     runtimeAgents = [{ id: 'main', name: 'Roscoe', status: 'active' }]
     const src = seedAgentPackage()
     await installPackage({ source: src })
-    await agentSyncComponent.install(NON_INTERACTIVE) // settle unmanaged main
+    await installInOperation(agentSyncComponent, NON_INTERACTIVE) // settle unmanaged main
 
     const result = await agentSyncComponent.check()
     expect(result.status).toBe('ok')
@@ -478,7 +476,7 @@ describe('agent-sync component integration', () => {
     runtimeAgents = [{ id: 'main', name: 'Roscoe', status: 'active' }]
     const src = seedAgentPackage()
     await installPackage({ source: src })
-    await agentSyncComponent.install(NON_INTERACTIVE)
+    await installInOperation(agentSyncComponent, NON_INTERACTIVE)
 
     // Mutate avatar.jpg — non-template projection sha drift
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
@@ -493,7 +491,7 @@ describe('agent-sync component integration', () => {
     runtimeAgents = [{ id: 'main', name: 'Roscoe', status: 'active' }]
     const src = seedAgentPackage()
     await installPackage({ source: src })
-    await agentSyncComponent.install(NON_INTERACTIVE)
+    await installInOperation(agentSyncComponent, NON_INTERACTIVE)
 
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
     rmSync(avatar)
@@ -503,7 +501,7 @@ describe('agent-sync component integration', () => {
     expect(beforeCheck.status).toBe('error')
     expect(beforeCheck.message).toContain('asset-missing')
 
-    const installResult = await agentSyncComponent.install(NON_INTERACTIVE)
+    const installResult = await installInOperation(agentSyncComponent, NON_INTERACTIVE)
     expect(['installed', 'noop']).toContain(installResult.status)
 
     expect(existsSync(avatar)).toBe(true)

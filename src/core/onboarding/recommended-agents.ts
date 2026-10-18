@@ -1,11 +1,11 @@
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { getAgentState, type AgentState } from '../agent-packages/agent-state'
 import { installPackage } from '../agent-packages/installer'
-import { runOwning } from '../operations'
 import { loadUnifiedCatalog, staticCuratedCatalog } from '../curated-catalog/load'
 import { sourceWithRef } from '../../lib/package-source'
 import type { CatalogEntry } from '../curated-catalog/schema'
-import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { OperationContext } from '@bakin/core/operations'
+import type { CheckResult, ComponentInstallOptions, InstallableComponent, InstallResult } from './types'
 
 export interface RecommendedAgent {
   id: string
@@ -118,7 +118,7 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-async function install(opts: OnboardingOptions): Promise<InstallResult> {
+async function install(opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
   const start = Date.now()
   let candidates: AgentInstallCandidate[]
   try {
@@ -133,6 +133,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   }
 
   if (candidates.length === 0) {
+    op.skip('install', 'already installed')
     return {
       name: 'recommended-agents',
       status: 'noop',
@@ -151,6 +152,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
       : []
 
   if (selected.length === 0) {
+    op.skip('install', 'none selected')
     return {
       name: 'recommended-agents',
       status: 'skipped',
@@ -162,24 +164,27 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   const installed: string[] = []
   const adopted: string[] = []
   const failures: string[] = []
-  for (const { agent, state } of selected) {
+  op.stage('install')
+  const label = ({ agent, state }: AgentInstallCandidate) => state === 'unmanaged' ? `Adopt ${agent.id}` : `Install ${agent.id}`
+  for (const candidate of selected) op.item('install', { id: candidate.agent.id, label: label(candidate) })
+  for (const candidate of selected) {
+    const { agent, state } = candidate
+    op.throwIfCancelled()
+    op.item('install', { id: agent.id, label: label(candidate), status: 'active' })
     try {
-      opts.onProgress?.(state === 'unmanaged'
-        ? `Adopting existing agent ${agent.id}`
-        : `Installing official agent ${agent.id}`)
-      // A local operation owns install-state until the onboarding switch (#895 PR6).
-      await runOwning(
-        { kind: 'onboarding:install-agent', title: `Install agent ${agent.id}`, resources: ['install-state'] },
-        () => installPackage({
-          source: sourceWithRef(agent.source, agent.ref),
-          installAs: agent.id,
-          adopt: state === 'unmanaged',
-        }),
-      )
+      // This operation owns install-state; the installer's writers assert it.
+      await installPackage({
+        source: sourceWithRef(agent.source, agent.ref),
+        installAs: agent.id,
+        adopt: state === 'unmanaged',
+      })
       if (state === 'unmanaged') adopted.push(agent.id)
       else installed.push(agent.id)
+      op.item('install', { id: agent.id, label: label(candidate), status: 'done' })
     } catch (err) {
-      failures.push(`${agent.id}: ${err instanceof Error ? err.message : String(err)}`)
+      const error = err instanceof Error ? err.message : String(err)
+      failures.push(`${agent.id}: ${error}`)
+      op.item('install', { id: agent.id, label: label(candidate), status: 'failed', message: error })
     }
   }
 
@@ -205,7 +210,10 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   }
 }
 
-export const recommendedAgentsComponent: OnboardingComponent = {
+export const recommendedAgentsComponent: InstallableComponent = {
+  // One item per selection; the first install is the point of no return.
+  plan: { stages: [{ id: 'install', kind: 'installing', label: 'Install official agents' }], pointOfNoReturn: 'install' },
+  resources: ['install-state'],
   name: 'recommended-agents',
   check,
   install,

@@ -3,12 +3,13 @@
  * plain language), and whether setup is healthy. Every non-native state
  * says what happens instead — the reader never has to decode an enum.
  */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Wrench } from 'lucide-react'
-import { toast, useJsonFetch, usePluginEvent } from '@makinbakin/sdk/hooks'
+import { startOperation, toast, useJsonFetch, useOperation, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { ConfirmDialog, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { ConfirmDialog, OperationProgress, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { isOperationFinished, type OperationStartResponse } from '@makinbakin/sdk/types'
 import { RuntimeTable } from './runtime-table'
 import { Badge, Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { capabilityRows } from '../../lib/runtime-report'
@@ -162,45 +163,72 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
   )
 }
 
-/** Setup checks whose install() is safe to run headlessly from the UI. */
-const FIXABLE_COMPONENTS = new Set(['mkdir', 'settings', 'search', 'search-models', 'plugin-assets', 'agent-sync'])
+/** Setup checks the hub repairs in one click — each runs as an operation (#895). */
+const FIXABLE_COMPONENTS = new Set(['mkdir', 'settings', 'search', 'search-models', 'media', 'plugin-assets', 'agent-sync'])
+
+interface ComponentInstallBody {
+  ok?: boolean
+  result?: { message?: string; status?: string }
+}
 
 function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponentStatus[] | null | undefined; onRescan: () => void }) {
   const [confirmTarget, setConfirmTarget] = useState<OnboardingComponentStatus | null>(null)
-  const [repairing, setRepairing] = useState(false)
+  const [repair, setRepair] = useState<{ name: string; start: OperationStartResponse } | null>(null)
   const [repairError, setRepairError] = useState<string | null>(null)
+  // Busy from the moment the request is sent, so a second click (or closing
+  // the dialog) can't race the first repair's acceptance.
+  const [starting, setStarting] = useState(false)
+  const followed = useOperation<ComponentInstallBody>(repair?.start.operationId ?? null, repair ? { bootId: repair.start.bootId } : {})
+  const repairing = repair !== null || starting
   // The closing dialog keeps rendering during its exit animation — hold the
   // last target so it never flashes "Repair undefined?".
   const lastTargetRef = useRef<OnboardingComponentStatus | null>(null)
   if (confirmTarget) lastTargetRef.current = confirmTarget
   const dialogTarget = confirmTarget ?? lastTargetRef.current
 
-  // The dialog owns the in-flight presentation: it stays OPEN with its busy
-  // spinner while the repair runs, shows failures inline (retry or cancel),
-  // and only closes on success or cancel.
+  // The dialog owns the in-flight presentation: it stays OPEN with the live
+  // operation while the repair runs, shows failures inline (retry or close),
+  // and only closes on success. Confirming in the dialog is the approval.
   const runRepair = async (name: string) => {
-    setRepairing(true)
+    if (repairing) return
+    setStarting(true)
     setRepairError(null)
     try {
-      const res = await fetch('/api/runtime/onboarding/install', {
+      const start = await startOperation(() => fetch('/api/runtime/onboarding/install', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ component: name }),
-      })
-      const body = await res.json().catch(() => null) as { ok?: boolean; result?: { message?: string; status?: string }; error?: string } | null
-      if (!res.ok || body?.ok === false) {
-        setRepairError(body?.result?.message ?? body?.error ?? `HTTP ${res.status}`)
-        return
-      }
-      toast(`Repaired ${name}${body?.result?.message ? ` — ${body.result.message}` : ''}`, 'success')
-      setConfirmTarget(null)
-      onRescan()
+        body: JSON.stringify({ component: name, options: { autoApprove: true } }),
+      }))
+      setRepair({ name, start })
     } catch (err) {
+      // A refusal (OperationStartError) carries the server's own message.
       setRepairError(err instanceof Error ? err.message : String(err))
     } finally {
-      setRepairing(false)
+      setStarting(false)
     }
   }
+
+  const view = followed.operation
+  const phase = followed.phase
+  useEffect(() => {
+    if (!repair) return
+    if (phase === 'restarted' || phase === 'expired') {
+      setRepair(null)
+      setRepairError('Bakin restarted or lost track of the repair. The checks below were re-run — confirm the result there.')
+      onRescan()
+      return
+    }
+    if (!view || !isOperationFinished(view.status)) return
+    setRepair(null)
+    const message = view.result?.body?.result?.message
+    if (view.status === 'succeeded') {
+      toast(`Repaired ${repair.name}${message ? ` — ${message}` : ''}`, 'success')
+      setConfirmTarget(null)
+    } else {
+      setRepairError(view.status === 'cancelled' ? 'The repair was cancelled before anything changed.' : message ?? view.outcome?.message ?? `The repair ${view.status}.`)
+    }
+    onRescan()
+  }, [repair, view, phase, onRescan])
 
   const columns: ReadonlyArray<DataTableColumn<OnboardingComponentStatus>> = [
     {
@@ -299,10 +327,12 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
 
       <ConfirmDialog
         open={confirmTarget !== null}
-        onCancel={() => setConfirmTarget(null)}
+        // Not while the request is in flight; once accepted the repair runs on
+        // (the tray shows it) and the dialog may close.
+        onCancel={() => { if (!starting) setConfirmTarget(null) }}
         title={`Repair ${dialogTarget?.name}?`}
         description={dialogTarget
-          ? `${dialogTarget.message}. This runs the same repair as \`bakin install ${dialogTarget.name}\` and may take a moment.`
+          ? `${dialogTarget.message.replace(/\.$/, '')}. This runs the same repair as \`bakin install ${dialogTarget.name}\` and may take a moment.`
           : ''}
         confirmLabel="Repair"
         confirmVariant="default"
@@ -311,7 +341,15 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
         error={repairError ? `Repair failed: ${repairError}` : null}
         confirmTestId="setup-repair-confirm"
         onConfirm={() => { if (confirmTarget) void runRepair(confirmTarget.name) }}
-      />
+      >
+        {repairing && view ? (
+          <OperationProgress
+            operation={view}
+            phase={phase}
+            onCancel={view.cancellable ? () => { void followed.cancel() } : undefined}
+          />
+        ) : null}
+      </ConfirmDialog>
     </Section>
   )
 }

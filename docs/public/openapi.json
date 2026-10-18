@@ -41325,6 +41325,364 @@
         "x-bakin-full-path": "/api/search/reset"
       }
     },
+    "/api/runtime/onboarding/install": {
+      "post": {
+        "operationId": "core.post.api-runtime-onboarding-install",
+        "summary": "Install an onboarding component (operation)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type — body content type does not match the declared content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "description": "Starts one onboarding component install as an operation (#895 D11) owning the component's resources: 202 { operationId, bootId }, 200 attached for an identical live request. Options are explicit and nothing is auto-approved; allowServiceClaim is honoured only with the X-Bakin-Cli-Secret this server wrote into its server.lock (403 otherwise). The result is { ok, result }; a failed install ends component_failed (search: engine_install_failed, search-models: models_install_failed).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "component": {
+                    "type": "string",
+                    "enum": [
+                      "mkdir",
+                      "settings",
+                      "search",
+                      "search-models",
+                      "media",
+                      "openclaw-integration",
+                      "plugin-assets",
+                      "agent-sync",
+                      "models",
+                      "recommended-plugins",
+                      "recommended-agents",
+                      "capabilities"
+                    ]
+                  },
+                  "options": {
+                    "default": {
+                      "autoApprove": false,
+                      "allowServiceClaim": false
+                    },
+                    "type": "object",
+                    "properties": {
+                      "autoApprove": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "approvedComponents": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "selectedRecommendedPluginIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "selectedRecommendedAgentIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "allowServiceClaim": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "autoApprove",
+                      "allowServiceClaim"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "component",
+                  "options"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/runtime/onboarding/install"
+      }
+    },
+    "/api/runtime/switch": {
+      "post": {
+        "operationId": "core.post.api-runtime-switch",
+        "summary": "Switch the runtime, or preview it (operation)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type — body content type does not match the declared content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "description": "Starts the runtime switch (or, with dryRun, its zero-write preview) as an operation (#895) owning install-state — not cancellable: 202 { operationId, bootId }, 200 attached for an identical live request. The phases are stages; the result is the switch report, and a report that is not ok ends switch_failed. A malformed body answers 400 before anything starts.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "dryRun": {
+                    "type": "boolean"
+                  },
+                  "copyWorkspaces": {
+                    "type": "boolean"
+                  },
+                  "adoptCron": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "target"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/runtime/switch"
+      }
+    },
     "/api/activity": {
       "get": {
         "operationId": "core.get.api-activity",

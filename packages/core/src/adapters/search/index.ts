@@ -118,10 +118,8 @@ export interface SearchAdapterSetupInstallResult {
 export interface SearchAdapterSetupOptions {
   /** Explicit service-transfer authority; generic onboarding must leave this false. */
   allowServiceClaim?: boolean
-  interactive: boolean
+  /** The operator approved the download (the caller resolved any prompt first). */
   autoApprove: boolean
-  json: boolean
-  askYesNo?: (question: string, defaultValue: boolean) => Promise<boolean>
   /** The operation the install reports through; its holder owns `search-engine` (#895). */
   op: OperationContext
 }

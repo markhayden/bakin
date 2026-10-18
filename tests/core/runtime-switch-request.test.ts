@@ -18,7 +18,7 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-import { RuntimeSwitchRequestSchema } from '../../src/core/runtime-switch'
+import { RuntimeSwitchRequestSchema } from '../../src/core/runtime-switch-request'
 
 describe('RuntimeSwitchRequestSchema', () => {
   it('accepts a plain target and boolean flags', () => {

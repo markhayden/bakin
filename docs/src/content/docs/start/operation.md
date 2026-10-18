@@ -109,6 +109,30 @@ bakin paths
 
 Shows where Bakin resolved its home directory, content dir, plugin paths, logs, and lock files. Useful when something feels off and you want to confirm where state actually lives.
 
+## Install or repair a component
+
+```sh
+bakin install media          # or search, search-models, plugin-assets, agent-sync, …
+bakin install media --yes    # skip the confirmation
+```
+
+Each install shows its stages as it runs, with download sizes where they
+are known. When Bakin is running for this home, the install runs on the
+server, so it also appears in the app's operations tray. When Bakin is not
+running, the install runs in the CLI itself. If another install, reset or
+reindex already owns what this one needs, it waits and says what it is
+waiting for.
+
+Ctrl-C cancels when it still can (downloads and other staging), and says so
+when it can't. A second Ctrl-C stops watching: on the server the install
+keeps running; in the CLI it stops at once, and the next start checks
+anything that was interrupted. `BAKIN_URL` always targets that server; if it
+can't be reached, the command fails rather than installing here.
+
+The runtime hub's Overview tab offers the same repairs with a **Repair**
+button that follows the install live. `bakin runtime use <adapter>` shows a
+runtime switch's phases the same way; a switch can't be cancelled.
+
 ## Reindex search
 
 To repair interrupted migrations or missing search indexes:

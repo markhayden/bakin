@@ -38,7 +38,6 @@ import { createAppServices, getAppServices, maybeGetAppServices } from '../app-s
 import { createLogger } from '../logger'
 import { binPlatformKey, installPluginBins, toInstalledBins } from '../agent-packages/bin-installer'
 import { verifyInstalledBin } from '../agent-packages/bin-verify'
-import { runOwning } from '../operations'
 import { binTargetPath } from '../plugins/bin-owners'
 import type { RuntimeSkill } from '@bakin/core/adapters/runtime'
 import type { OperationContext, OperationPlan } from '@bakin/core/operations'
@@ -51,7 +50,7 @@ import {
   writePluginLockfile,
 } from '../../../packages/core/src/plugins/lockfile'
 import { isLoadableUserPluginDir } from '../plugins/install-recovery'
-import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { CheckResult, ComponentInstallOptions, InstallableComponent, InstallResult } from './types'
 
 const log = createLogger('onboarding:plugin-assets')
 
@@ -659,8 +658,8 @@ async function check(): Promise<CheckResult> {
  * operation (#895) — the bin writers assert it. PR6's onboarding switch
  * replaces this with the component's declared resources.
  */
-async function install(_opts: OnboardingOptions): Promise<InstallResult> {
-  return runOwning({ kind: 'onboarding:plugin-assets', title: 'Install plugin assets', resources: ['install-state'] }, () => applyPluginAssets())
+async function install(_opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
+  return applyPluginAssets(op)
 }
 
 /** The component's install, reporting through `op` when run as an operation (the Health repair). */
@@ -723,7 +722,9 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
   }
 }
 
-export const pluginAssetsComponent: OnboardingComponent = {
+export const pluginAssetsComponent: InstallableComponent = {
+  plan: PLUGIN_ASSETS_PLAN,
+  resources: ['install-state'],
   name: 'plugin-assets',
   check,
   install,

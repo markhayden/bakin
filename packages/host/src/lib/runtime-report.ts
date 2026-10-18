@@ -1,7 +1,6 @@
 /**
  * Runtime-management page reducers (P3.3) — pure transforms from the
- * /api/runtime/capabilities payload and the runtime:switch SSE stream into
- * renderable rows. Kept free of React so the matrix/report logic is
+ * /api/runtime/capabilities payload into renderable rows. Kept free of React so the matrix/report logic is
  * unit-testable.
  */
 
@@ -66,55 +65,4 @@ export function capabilityRows(capabilities: CapabilitiesPayload | null | undefi
   }
 
   return rows
-}
-
-// ─── Switch progress stream ─────────────────────────────────────────────────
-
-export interface SwitchProgressEventPayload {
-  type?: string
-  phase?: string
-  status?: 'start' | 'ok' | 'skip' | 'error'
-  detail?: string
-}
-
-export interface SwitchStepRow {
-  phase: string
-  status: 'running' | 'ok' | 'skip' | 'error'
-  detail?: string
-}
-
-export const SWITCH_PHASE_LABELS: Record<string, string> = {
-  validate: 'Validate target',
-  backup: 'Back up settings',
-  'snapshot-roster': 'Snapshot roster',
-  deprovision: 'Deprovision old tool access',
-  flip: 'Flip runtime setting',
-  initialize: 'Initialize target runtime',
-  provision: 'Provision tool access',
-  'reconcile-roster': 'Carry roster over',
-  'adopt-cron': 'Adopt cron jobs',
-  'carry-workspaces': 'Carry workspace content',
-  'sync-agents': 'Re-project agents',
-  'validate-capabilities': 'Validate capabilities',
-  restore: 'Restore previous runtime',
-}
-
-/**
- * Fold a runtime:switch SSE event into the ordered step list: 'start'
- * appends/marks running; a terminal status resolves the step in place.
- */
-export function reduceSwitchProgress(steps: SwitchStepRow[], event: SwitchProgressEventPayload): SwitchStepRow[] {
-  if (event.type !== 'runtime:switch' || !event.phase || !event.status) return steps
-  const existing = steps.findIndex((step) => step.phase === event.phase)
-  if (event.status === 'start') {
-    if (existing >= 0) return steps
-    return [...steps, { phase: event.phase, status: 'running' }]
-  }
-  const resolved: SwitchStepRow = { phase: event.phase, status: event.status, ...(event.detail ? { detail: event.detail } : {}) }
-  if (existing >= 0) {
-    const next = [...steps]
-    next[existing] = resolved
-    return next
-  }
-  return [...steps, resolved]
 }

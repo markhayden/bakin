@@ -59,9 +59,10 @@ mock.module('../../../src/core/agent-packages/sync', () => ({
 }))
 
 import { agentSyncComponent } from '../../../src/core/onboarding/agent-sync'
-import type { OnboardingOptions } from '../../../src/core/onboarding/types'
+import type { ComponentInstallOptions } from '../../../src/core/onboarding/types'
+import { installInOperation } from '../../helpers/operation-harness'
 
-const OPTS: OnboardingOptions = { interactive: false, autoApprove: true, json: false, checkOnly: false, force: false }
+const OPTS: ComponentInstallOptions = { autoApprove: true, allowServiceClaim: false }
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -70,7 +71,7 @@ afterAll(() => {
 describe('agent-sync install() — pack repair honesty', () => {
   it('returns status failed when every repair target failed', async () => {
     repairShouldThrow = true
-    const result = await agentSyncComponent.install!(OPTS)
+    const result = await installInOperation(agentSyncComponent, OPTS)
     expect(result.status).toBe('failed')
     expect(result.message).toContain('websearch@1.0.0')
     expect(result.message).toContain('Installed source missing')
@@ -78,7 +79,7 @@ describe('agent-sync install() — pack repair honesty', () => {
 
   it('reports repaired packs in the success message when repair works', async () => {
     repairShouldThrow = false
-    const result = await agentSyncComponent.install!(OPTS)
+    const result = await installInOperation(agentSyncComponent, OPTS)
     expect(result.status).toBe('installed')
     expect(result.message).toContain('1 pack(s)')
     expect(result.message).not.toContain('failed')

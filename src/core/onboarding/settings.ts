@@ -14,7 +14,8 @@ import { existsSync, readFileSync, statSync } from 'fs'
 import { createLogger } from '../logger'
 import { getBakinPaths } from '../content-dir'
 import { resetSettingsCache, updateSettings } from '../settings'
-import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { OperationContext } from '@bakin/core/operations'
+import type { CheckResult, ComponentInstallOptions, InstallableComponent, InstallResult } from './types'
 
 const log = createLogger('onboarding:settings')
 
@@ -74,8 +75,9 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-async function install(_opts: OnboardingOptions): Promise<InstallResult> {
+async function install(_opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
   const start = Date.now()
+  op.stage('write')
   try {
     // updateSettings({}) writes the current override file (or seeds `{}`
     // if missing), invalidates the cache, and returns a fully merged
@@ -102,7 +104,9 @@ async function install(_opts: OnboardingOptions): Promise<InstallResult> {
   }
 }
 
-export const settingsComponent: OnboardingComponent = {
+export const settingsComponent: InstallableComponent = {
+  plan: { stages: [{ id: 'write', kind: 'installing', label: 'Write settings.json' }], pointOfNoReturn: 'start' },
+  resources: [],
   name: 'settings',
   check,
   install,

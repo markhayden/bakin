@@ -34,7 +34,7 @@ import {
   queryTarget,
   type TableEnsureDef,
 } from '@bakin/core/search/tables'
-import { ResourceBusyError, assertResourceHeld, holdNow, type OperationContext } from '@bakin/core/operations'
+import { ResourceBusyError, assertResourceHeld, heldInContext, holdNow, type OperationContext } from '@bakin/core/operations'
 import { getAppServices } from './app-services-store'
 
 const log = createLogger('search-registry-core')
@@ -501,6 +501,7 @@ export function stopMigrationPump(): void {
   wedgeTimer = null
   pumpAttempts.clear()
   bootResumePending = false
+  tablesPending = false
   lastWedgeRestartAt = 0
   deadShardRestartAttempts = 0
 }
@@ -600,6 +601,10 @@ export async function wedgeWatchTick(): Promise<void> {
 /** The pump's timer tick: one cycle, or nothing while the engine is busy. */
 export async function migrationPumpTick(): Promise<void> {
   await backgroundPass('migration pump cycle', async () => {
+    if (tablesPending) {
+      const { failures } = await provisionRegisteredTables()
+      if (failures.length > 0) log.warn('Deferred search table setup still failing', { failures })
+    }
     if (bootResumePending) {
       await resumeAllMigrations()
       bootResumePending = false
@@ -700,7 +705,16 @@ export async function pumpParkedMigrations(
 export interface EnsureTablesResult {
   created: number
   failures: Array<{ table: string; pluginId: string; error: string }>
+  /** The engine was busy: nothing ran, and the next pump tick provisions instead (#895 D23). */
+  deferred?: true
 }
+
+/**
+ * A provisioning pass deferred while search-engine was held: the next pump
+ * tick runs it (a new registration still gets its table; a changed layout
+ * still migrates — never while a reset or install owns the engine).
+ */
+let tablesPending = false
 
 /**
  * Ensure every registered content type has a corresponding search table.
@@ -712,8 +726,24 @@ export interface EnsureTablesResult {
  * instead of reporting `indexed: 0` for tables that never got created.
  */
 export async function ensureRegisteredTables(): Promise<EnsureTablesResult> {
+  // Provisioning can create tables and migrate changed layouts, so it is a
+  // search-engine mutator (#895 D23): a caller that owns the engine (a
+  // reindex, a reset) runs it in its pass; anyone else takes the background
+  // pass or defers to the next pump tick.
+  if (heldInContext('search-engine')) return provisionRegisteredTables()
+  const result = await backgroundPass('table provisioning', provisionRegisteredTables)
+  if (result) return result
+  tablesPending = true
+  return { created: 0, failures: [], deferred: true }
+}
+
+async function provisionRegisteredTables(): Promise<EnsureTablesResult> {
   const registry = getRegistry()
   const search = getSearchAdapter()
+  // This pass takes the pending request now: one deferred WHILE it runs (a
+  // re-registration after its turn here) survives for the next tick.
+  const wasPending = tablesPending
+  tablesPending = false
 
   let created = 0
   const failures: Array<{ table: string; pluginId: string; error: string }> = []
@@ -736,6 +766,9 @@ export async function ensureRegisteredTables(): Promise<EnsureTablesResult> {
   // them rather than short-circuiting on the cached "done" signal.
   if (failures.length === 0) {
     registry.tablesCreated = true
+  } else if (wasPending) {
+    // A deferred request that failed keeps retrying on the pump tick.
+    tablesPending = true
   }
   return { created, failures }
 }
@@ -747,7 +780,11 @@ export async function ensureRegisteredTables(): Promise<EnsureTablesResult> {
 export async function createRegisteredTables(): Promise<EnsureTablesResult> {
   const registry = getRegistry()
   if (registry.tablesCreated) return { created: 0, failures: [] }
-  const { created, failures } = await ensureRegisteredTables()
+  const { created, failures, deferred } = await ensureRegisteredTables()
+  if (deferred) {
+    log.info('Search table setup deferred — the search engine is busy; the migration pump provisions on its next tick')
+    return { created, failures, deferred }
+  }
   log.info(`Search tables ready: ${registry.contentTypes.size} content types (${created} created)`)
   if (failures.length > 0) {
     log.error(`Search table creation failures: ${failures.length}`, { failures })

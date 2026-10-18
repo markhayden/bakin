@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { existsSync, mkdtempSync, rmSync, rmdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { installInOperation } from '../../helpers/operation-harness'
 
 let testDir: string
 
@@ -86,12 +87,9 @@ describe('onboarding mkdir component', () => {
     })
 
     it('reports ok after install completes', async () => {
-      await mkdirComponent.install({
-        interactive: false,
+      await installInOperation(mkdirComponent, {
         autoApprove: true,
-        json: false,
-        checkOnly: false,
-        force: false,
+        allowServiceClaim: false
       })
       const result = await mkdirComponent.check()
       expect(result.status).toBe('ok')
@@ -99,12 +97,9 @@ describe('onboarding mkdir component', () => {
     })
 
     it('reports missing when a single required subdirectory is removed', async () => {
-      await mkdirComponent.install({
-        interactive: false,
+      await installInOperation(mkdirComponent, {
         autoApprove: true,
-        json: false,
-        checkOnly: false,
-        force: false,
+        allowServiceClaim: false
       })
       // Delete one required subdirectory
       rmdirSync(join(testDir, 'heartbeats'))
@@ -116,15 +111,12 @@ describe('onboarding mkdir component', () => {
 
   describe('install()', () => {
     const opts = {
-      interactive: false,
       autoApprove: true,
-      json: false,
-      checkOnly: false,
-      force: false,
+      allowServiceClaim: false
     }
 
     it('creates the full directory tree on first run', async () => {
-      const result = await mkdirComponent.install(opts)
+      const result = await installInOperation(mkdirComponent, opts)
       expect(result.status).toBe('installed')
       expect(result.durationMs).toBeGreaterThanOrEqual(0)
       expect(existsSync(join(testDir, 'assets', 'store'))).toBe(true)
@@ -135,16 +127,16 @@ describe('onboarding mkdir component', () => {
     })
 
     it('is idempotent — second install is a noop', async () => {
-      await mkdirComponent.install(opts)
-      const second = await mkdirComponent.install(opts)
+      await installInOperation(mkdirComponent, opts)
+      const second = await installInOperation(mkdirComponent, opts)
       expect(second.status).toBe('noop')
       expect(second.message).toContain('Already initialized')
     })
 
     it('re-creates only the missing pieces on partial wipe', async () => {
-      await mkdirComponent.install(opts)
+      await installInOperation(mkdirComponent, opts)
       rmSync(join(testDir, 'workflows'), { recursive: true, force: true })
-      const second = await mkdirComponent.install(opts)
+      const second = await installInOperation(mkdirComponent, opts)
       // Not a noop — something was missing
       expect(second.status).toBe('installed')
       expect(existsSync(join(testDir, 'workflows'))).toBe(true)
