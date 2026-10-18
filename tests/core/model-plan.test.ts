@@ -208,6 +208,15 @@ describe('only proven models are proposed (margo 2026-10-18)', () => {
     expect(plan.routes.find((r) => r.workClass === 'relay')?.model).toBe(mini.id)
   })
 
+  it('a proven text-only default never absorbs an enrichment route when nothing proven can see', () => {
+    const textOnly: PlanCandidate = { ...terra, vision: false, proven: true }
+    const routing = { routes: [{ workClass: 'enrichment' as const, model: luna.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [textOnly, { ...luna, proven: false }], currentDefaultModel: textOnly.id, routing }))
+    expect(plan.enrichment).toBe('unset')
+    expect(plan.routes.find((r) => r.workClass === 'enrichment')).toMatchObject({ model: luna.id, reason: expect.stringContaining('kept on') })
+    expect(plan.ops.some((op) => op.ref === 'route:enrichment')).toBe(false)
+  })
+
   it('an unproven (kept) default never absorbs a working chores route', () => {
     const routing = { routes: [{ workClass: 'relay' as const, model: mini.id }], tagOverrides: [] }
     const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: luna.id, routing }))

@@ -297,6 +297,14 @@ export function recommendPlan(input: PlanInput): PlanRecommendation {
     if (route.model === null && current !== null && !agentProven) {
       return { ...route, model: current, reason: `kept on ${current} — the agent model (${agent.model}) has not been seen running here in the last week, so work is not moved onto it` }
     }
+    // No proven model can see images, but the configured one is still listed
+    // and can (it just has not run lately): clearing it would only guarantee
+    // enrichment fails — keep it. A route to a model that is no longer
+    // listed is cleared as before.
+    const configured = current !== null ? input.candidates.find((c) => c.id === current) : undefined
+    if (route.workClass === 'enrichment' && enrichment === 'unset' && route.model === null && configured && configured.vision !== false) {
+      return { ...route, model: current, reason: `kept on ${current} — no model that has run here in the last week can see images` }
+    }
     return route
   })
   const ops: MutationOp[] = []
