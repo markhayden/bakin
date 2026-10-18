@@ -13,7 +13,6 @@ import { randomUUID } from 'crypto'
 import type { BakinJobMeta, BridgeResult } from '../types'
 import { getPluginCtx } from './plugin-context'
 import { indexJob } from './job-service'
-import { isTaskPrompt } from './prompt-guard'
 import { getSystemTimezone, expandTemplate } from './schedule-util'
 import {
   upsertJob,
@@ -113,13 +112,32 @@ function skipFire(jobId: string, runId: string, reason: SkipReason): ProcessRunR
   return { status: 200, body: { ok: true, skipped: reason } }
 }
 
+/**
+ * Persist this fire's own fields onto the LATEST record. The fire awaits
+ * (team validation, task creation) between reading the job and writing it,
+ * and a whole-record write would undo a prompt fix, pause or edit made in
+ * between. A removed job stays removed.
+ */
+function writeLatest(jobId: string, mutate: (latest: BakinJobMeta) => void): void {
+  const latest = getJob(jobId)
+  if (!latest) return
+  mutate(latest)
+  upsertJob(latest)
+}
+
 export async function runClaimedFire(
-  meta: BakinJobMeta,
+  _loaded: BakinJobMeta,
   jobId: string,
   runId: string,
   opts: { column?: string; blockedReason?: string; firedAtMs?: number } = {},
 ): Promise<ProcessRunResult> {
-  const defaults = withDefaults(meta, await getScheduleDefaultOwner())
+  const owner = await getScheduleDefaultOwner()
+  // Judge the LIVE record: the caller's copy was read before the await
+  // above, and acting on it could undo a prompt fix or an operator's pause
+  // made in between.
+  const meta = getJob(jobId)
+  if (!meta) return skipFire(jobId, runId, 'job-removed')
+  const defaults = withDefaults(meta, owner)
 
   // Check pause state
   const pauseState = isPaused(meta)
@@ -129,19 +147,12 @@ export async function runClaimedFire(
   }
 
   // A Bakin job without a task prompt can never produce a runnable task —
-  // pause it instead of creating a doomed task every occurrence. Judge and
-  // write the LIVE record (read synchronously here): `meta` was loaded before
-  // the await above, and persisting it could undo a prompt fix or an
-  // operator's pause made in between.
-  const live = getJob(jobId)
-  if (!live) return skipFire(jobId, runId, 'job-removed')
-  if (pauseIfUnrunnable(live)) {
-    upsertJob(live)
+  // pause it instead of creating a doomed task every occurrence.
+  if (pauseIfUnrunnable(meta)) {
+    upsertJob(meta)
     indexJob(jobId)
     return skipFire(jobId, runId, 'unrunnable')
   }
-  if (live.isBakinJob && !isTaskPrompt(live.taskPrompt)) return skipFire(jobId, runId, 'paused') // already paused by someone else
-  meta.taskPrompt = live.taskPrompt // a prompt fixed concurrently is the one this fire uses
 
   // Check skip-next-N
   if (shouldSkip(meta)) {
@@ -311,8 +322,7 @@ export async function runClaimedFire(
     // failed), fall through to attach it so the next heal can't duplicate it.
     if (!storedTaskExists(taskId)) {
       log.error('Schedule failed to create task', err)
-      recordFailure(meta)
-      upsertJob(meta)
+      writeLatest(jobId, (latest) => { recordFailure(latest) })
       return { status: 500, body: { ok: false, error: (err as Error).message } }
     }
     log.warn('Scheduled task row created but a post-create effect failed; attaching to claim to avoid a duplicate', {
@@ -320,16 +330,18 @@ export async function runClaimedFire(
     })
   }
 
-  meta.lastTaskId = taskId
-  // A one-shot's single occurrence is now consumed (even a blocked catch-up
-  // materialized a task) — auto-disable + stamp completedAt so the job reads
-  // "completed" instead of pretending a next run exists. Run history stays.
-  if (meta.schedule?.kind === 'at') {
-    meta.enabled = false
-    meta.completedAt = new Date(opts.firedAtMs ?? Date.now()).toISOString()
-  }
   attachCronTask(jobId, runId, taskId)
-  upsertJob(meta)
+  writeLatest(jobId, (latest) => {
+    latest.lastTaskId = taskId
+    latest.consecutiveFailures = meta.consecutiveFailures // recordSuccess above
+    // A one-shot's single occurrence is now consumed (even a blocked catch-up
+    // materialized a task) — auto-disable + stamp completedAt so the job reads
+    // "completed" instead of pretending a next run exists. Run history stays.
+    if (meta.schedule?.kind === 'at') {
+      latest.enabled = false
+      latest.completedAt = new Date(opts.firedAtMs ?? Date.now()).toISOString()
+    }
+  })
 
   // The human-readable dangling-team detail rides the task log (the
   // blockedReason itself is the triage sentinel the outcome check matches).

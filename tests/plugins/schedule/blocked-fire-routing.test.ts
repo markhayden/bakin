@@ -510,6 +510,35 @@ describe('unrunnable Bakin schedules pause instead of firing (spec D5)', () => {
     expect(mockCreateTask).not.toHaveBeenCalled()
   })
 
+  it('a prompt fixed AND paused by the operator before the fire acts: no task, both changes kept', async () => {
+    upsertJob(makeMeta({ taskPrompt: 'heartbeat' }))
+    const stale = getJob('release-notes')!
+    upsertJob({ ...stale, taskPrompt: 'Curate the fixed release notes', paused: true, pauseReason: 'manual', enabled: false })
+
+    await runClaimedFire(stale, 'release-notes', 'run-fixed-held', { firedAtMs: Date.parse('2026-06-08T07:00:00Z') })
+
+    expect(mockCreateTask).not.toHaveBeenCalled()
+    expect(getJob('release-notes')).toMatchObject({ taskPrompt: 'Curate the fixed release notes', paused: true, pauseReason: 'manual' })
+  })
+
+  it('an edit made while the task is being created survives the fire writing lastTaskId', async () => {
+    upsertJob(makeMeta())
+    mockCreateTask.mockImplementationOnce(async (opts?: unknown) => {
+      // The operator pauses and renames the job mid-fire.
+      upsertJob({ ...getJob('release-notes')!, displayName: 'Renamed mid-fire', paused: true, pauseReason: 'manual', enabled: false })
+      const o = (opts ?? {}) as Record<string, unknown>
+      createdTasks.push(o.id as string)
+      createdTaskOpts.push(o)
+      return { id: o.id as string, workflowId: undefined }
+    })
+
+    await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-mid-edit', timestamp: '2026-06-08T07:00:00Z' })
+
+    const job = getJob('release-notes')!
+    expect(job).toMatchObject({ displayName: 'Renamed mid-fire', paused: true, pauseReason: 'manual' })
+    expect(job.lastTaskId).toBe(createdTasks.at(-1))
+  })
+
   it('a runnable prompt still fires normally', async () => {
     upsertJob(makeMeta())
     await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-ok', timestamp: '2026-06-08T07:00:00Z' })
