@@ -470,3 +470,22 @@ describe('dangling teamId fires gracefully (review R6)', () => {
     expect(createdTaskOpts[0]?.blockedReason).toBeUndefined()
   })
 })
+
+describe('unrunnable Bakin schedules pause instead of firing (spec D5)', () => {
+  it('a Bakin job whose prompt is a marker token is paused, no task is created, and the fire is skipped', async () => {
+    upsertJob(makeMeta({ taskPrompt: '__openclaw_memory_core_short_term_promotion_dream__', enabled: true }))
+
+    const result = await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-dream', timestamp: '2026-06-08T07:00:00Z' })
+
+    expect(result.body).toMatchObject({ ok: true, skipped: 'unrunnable' })
+    expect(mockCreateTask).not.toHaveBeenCalled()
+    expect(getJob('release-notes')).toMatchObject({ paused: true, pauseReason: 'unrunnable-prompt', enabled: false })
+  })
+
+  it('a runnable prompt still fires normally', async () => {
+    upsertJob(makeMeta())
+    await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-ok', timestamp: '2026-06-08T07:00:00Z' })
+    expect(mockCreateTask).toHaveBeenCalledTimes(1)
+    expect(getJob('release-notes')!.paused).toBeFalsy()
+  })
+})

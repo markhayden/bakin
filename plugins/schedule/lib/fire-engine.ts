@@ -17,6 +17,7 @@ import {
   upsertJob,
   getJob,
   isPaused,
+  pauseIfUnrunnable,
   shouldSkip,
   recordFailure,
   recordSuccess,
@@ -97,7 +98,7 @@ function storedTaskExists(taskId: string): boolean {
 
 // Every reason a fire can be skipped. 'job-removed' is the only one set outside
 // skipFire() — the healer consumes an orphaned claim with no live ctx to audit.
-type SkipReason = 'paused' | 'skip-count' | 'auto-paused' | 'overlap' | 'job-removed'
+type SkipReason = 'paused' | 'skip-count' | 'auto-paused' | 'unrunnable' | 'overlap' | 'job-removed'
 
 /** Record a skipped fire (ledger disposition + reason) AND surface it on the
  *  activity feed, so an overrunning or paused schedule shows up instead of
@@ -123,6 +124,13 @@ export async function runClaimedFire(
   if (pauseState.paused) {
     upsertJob(meta) // persist any auto-resume changes
     return skipFire(jobId, runId, 'paused') // consumed — never healed into a task
+  }
+
+  // A Bakin job without a task prompt can never produce a runnable task —
+  // pause it instead of creating a doomed task every occurrence.
+  if (pauseIfUnrunnable(meta)) {
+    upsertJob(meta)
+    return skipFire(jobId, runId, 'unrunnable')
   }
 
   // Check skip-next-N

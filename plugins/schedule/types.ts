@@ -48,7 +48,7 @@ export interface BakinJobMeta {
   taskTitle?: string // supports {date}, {agent}, {runNumber} vars
   paused?: boolean
   pauseUntil?: string // ISO date, auto-resume
-  pauseReason?: string // 'manual' | 'auto-failures' | 'skip'
+  pauseReason?: string // 'manual' | 'auto-failures' | 'unrunnable-prompt' | 'skip'
   skipNextN?: number
   skippedCount?: number
   allowOverlap?: boolean // false (default) = skip if prev task still active

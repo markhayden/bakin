@@ -23,7 +23,9 @@ export function JobStatusBadge({ job }: { job: ScheduleJob }) {
   if (job.paused) {
     const label = job.pauseReason === 'auto-failures'
       ? 'Auto-paused'
-      : job.pauseUntil
+      : job.pauseReason === 'unrunnable-prompt'
+        ? 'Needs a prompt'
+        : job.pauseUntil
         ? `Paused until ${new Date(job.pauseUntil).toLocaleDateString()}`
         : 'Paused'
     return <StatusBadge tone="attention" variant="solid" size="xs">{label}</StatusBadge>

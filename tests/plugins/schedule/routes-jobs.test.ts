@@ -431,6 +431,25 @@ describe('schedule routes', () => {
       expect(getJob('keep-prompt')!.displayName).not.toBe('Renamed')
     })
 
+    it('giving an unrunnable-paused job a task prompt lifts that pause', async () => {
+      upsertJob(makeMeta({ jobId: 'job-fixed', taskPrompt: 'heartbeat', paused: true, enabled: false, pauseReason: 'unrunnable-prompt' }))
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      const { status } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-fixed' },
+        body: { taskPrompt: 'Summarize yesterday in the team channel' },
+      })
+      expect(status).toBe(200)
+      expect(getJob('job-fixed')).toMatchObject({ paused: false, enabled: true })
+      expect(getJob('job-fixed')!.pauseReason).toBeUndefined()
+    })
+
+    it('a manual pause survives a prompt edit', async () => {
+      upsertJob(makeMeta({ jobId: 'job-manual', taskPrompt: 'Generate the report', paused: true, enabled: false, pauseReason: 'manual' }))
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-manual' }, body: { taskPrompt: 'Generate the weekly report' } })
+      expect(getJob('job-manual')).toMatchObject({ paused: true, pauseReason: 'manual' })
+    })
+
     it('updates sidecar fields for an existing job', async () => {
       upsertJob(makeMeta({ jobId: 'job-123' }))
 
@@ -824,6 +843,18 @@ describe('schedule routes', () => {
       const meta = getJob('job-pause')
       expect(meta!.paused).toBe(true)
       expect(meta!.pauseReason).toBe('manual')
+    })
+
+    it('refuses to resume a job paused for having no task prompt (it would only re-pause)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-dream', taskPrompt: 'heartbeat', paused: true, enabled: false, pauseReason: 'unrunnable-prompt' }))
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/pause')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-dream' },
+        body: { action: 'resume' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('not a task prompt')
+      expect(getJob('job-dream')).toMatchObject({ paused: true, pauseReason: 'unrunnable-prompt' })
     })
 
     it('pauses with pauseUntil date', async () => {

@@ -11,7 +11,7 @@
 import { runSchedulerTick, DEFAULT_TICK_WINDOW_MS, type SchedulerDeps } from './scheduler'
 import { getPluginCtx } from './plugin-context'
 import { runClaimedFire, healPendingCronClaims, MISSED_WINDOW_REASON } from './fire-engine'
-import { readSidecar, resumeDuePauses } from './sidecar'
+import { pauseUnrunnableJobs, readSidecar, resumeDuePauses } from './sidecar'
 import { getCronFire, claimCronFire, pruneCronFires } from '../../../src/core/execution-ledger'
 import { migrateBakinSchedulesOffOpenClawCron } from './cutover'
 import { getSystemTimezone } from './schedule-util'
@@ -124,10 +124,10 @@ export function startScheduler(): void {
   // Self-rescheduling loop (not setInterval) so each cycle re-reads the tick
   // interval — a settings change takes effect without a restart, and the next
   // cycle is only armed after the previous finishes (no overlap). Each cycle:
-  // resume expired timed-pauses → fire due occurrences → heal stranded claims.
+  // resume expired timed-pauses + pause unrunnable jobs → fire due occurrences → heal stranded claims.
   const cycle = () => {
     Promise.resolve()
-      .then(() => { resumeDuePauses() })
+      .then(() => { resumeDuePauses(); pauseUnrunnableJobs() })
       .then(() => runSchedulerTick(schedulerDeps()))
       .then(() => healPendingCronClaims())
       .then(() => { maybeRunRetentionSweep() })

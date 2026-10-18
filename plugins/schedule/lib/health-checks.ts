@@ -18,7 +18,7 @@ import {
 } from '@makinbakin/sdk/utils'
 import type { BakinJobMeta } from '../types'
 import { isTaskPrompt, NOT_A_PROMPT_REASON } from './prompt-guard'
-import { getJob, getSidecarPath, readSidecar, removeJob, upsertJob } from './sidecar'
+import { getJob, getSidecarPath, readSidecar, removeJob, UNRUNNABLE_PAUSE_REASON, upsertJob } from './sidecar'
 
 const log = createLogger('schedule:health')
 type RuntimeCronReader = Pick<NonNullable<AgentRuntimeAdapter['cron']>, 'list'>
@@ -343,21 +343,28 @@ export async function checkSchedulePrompts(): Promise<HealthCheckRunInput> {
       evidence: { count: bakinJobs.length },
     })])
   }
-  return healthObserved(unrunnable.map(job => healthError({
-    key: `unrunnable-${stablePart(job.jobId)}`,
-    summary: bounded(`Bakin schedule ${job.displayName ?? job.jobId} (${job.jobId}) has no runnable task prompt.`, 500),
-    detail: `Prompt: ${promptPreview(job)} — ${NOT_A_PROMPT_REASON}`,
-    evidence: { jobId: job.jobId, name: job.displayName ?? job.jobId, prompt: promptPreview(job), source: job.source ?? 'bakin' },
-    incident: {
+  return healthObserved(unrunnable.map(job => {
+    // The scheduler pauses these before they fire (pauseUnrunnableJobs); once
+    // paused nothing breaks, so the incident is cleanup, not an alarm.
+    const contained = job.paused === true && job.pauseReason === UNRUNNABLE_PAUSE_REASON
+    const name = job.displayName ?? job.jobId
+    const base = {
       key: `unrunnable-${stablePart(job.jobId)}`,
-      title: bounded(`Schedule ${job.displayName ?? job.jobId} can never run`, 120),
-      impact: 'Every fire creates a task with no actionable prompt; the task fails or blocks and the schedule keeps firing.',
-      disposition: 'action_required' as const,
+      summary: bounded(`Bakin schedule ${name} (${job.jobId}) has no runnable task prompt${contained ? ' and is paused' : ''}.`, 500),
+      detail: `Prompt: ${promptPreview(job)} — ${NOT_A_PROMPT_REASON}`,
+      evidence: { jobId: job.jobId, name, prompt: promptPreview(job), source: job.source ?? 'bakin', paused: contained },
+    }
+    const incident = {
+      key: `unrunnable-${stablePart(job.jobId)}`,
+      title: bounded(`Schedule ${name} can never run`, 120),
       class: 'cleanup_backlog' as const,
-      resources: [{ kind: 'schedule' as const, id: stablePart(job.jobId), label: bounded(job.displayName ?? job.jobId, 120) }],
+      resources: [{ kind: 'schedule' as const, id: stablePart(job.jobId), label: bounded(name, 120) }],
       resolution: { key: 'remove-unrunnable-jobs', type: 'repair' as const, label: 'Remove job', actionId: 'remove-unrunnable-jobs' },
-    },
-  })) as [HealthObservationInput, ...HealthObservationInput[]])
+    }
+    return contained
+      ? healthWarning({ ...base, incident: { ...incident, disposition: 'watch' as const, impact: 'Paused automatically, so it no longer fires. Give it a task prompt to resume it, or remove it.' } })
+      : healthError({ ...base, incident: { ...incident, disposition: 'action_required' as const, impact: 'Every fire creates a task with no actionable prompt; the task fails or blocks and the schedule keeps firing.' } })
+  }) as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
 /**

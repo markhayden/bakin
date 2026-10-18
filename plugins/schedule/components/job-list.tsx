@@ -65,7 +65,7 @@ export function sortJobs(jobs: readonly ScheduleJob[], sort: DataTableSort<JobSo
 
 /** Sort key mirroring JobStatusBadge's precedence, from row data only. */
 function jobStatusKey(job: ScheduleJob): string {
-  if (job.paused) return job.pauseReason === 'auto-failures' ? 'auto-paused' : 'paused'
+  if (job.paused) return job.pauseReason === 'auto-failures' || job.pauseReason === 'unrunnable-prompt' ? 'auto-paused' : 'paused'
   if (job.skipNextN && job.skippedCount !== undefined && job.skippedCount < job.skipNextN) return 'skipping'
   if (job.consecutiveFailures > 0) return 'failures'
   if (job.completed) return 'completed'
