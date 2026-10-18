@@ -4,11 +4,13 @@
  * empty roster (which read as "no agent" and let `--as human` through).
  */
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-const testHome = mkdtempSync(join(tmpdir(), 'bakin-test-oc-workspaces-'))
+const root = mkdtempSync(join(tmpdir(), 'bakin-test-oc-workspaces-'))
+const testHome = join(root, 'openclaw')
+mkdirSync(testHome, { recursive: true })
 mock.module('../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => testHome,
   getOpenClawPath: (...parts: string[]) => join(testHome, ...parts),
@@ -31,7 +33,10 @@ const configPath = join(testHome, 'openclaw.json')
 const runtime = createOpenClawRuntimeAdapter()
 
 beforeEach(() => resetOpenClawConfigCache())
-afterAll(() => rmSync(testHome, { recursive: true, force: true }))
+afterAll(() => {
+  chmodSync(testHome, 0o755)
+  rmSync(root, { recursive: true, force: true })
+})
 
 describe('OpenClaw agents.workspaces', () => {
   it('lists every agent with its workspace', async () => {
@@ -53,5 +58,23 @@ describe('OpenClaw agents.workspaces', () => {
     writeFileSync(configPath, '{ not json')
     resetOpenClawConfigCache()
     await expect(runtime.agents.workspaces!()).rejects.toThrow()
+  })
+
+  it('a config that exists but cannot be read (EACCES) throws — only a missing file is absent (review r4)', async () => {
+    writeFileSync(configPath, JSON.stringify({ agents: { entries: { main: {} } } }))
+    chmodSync(testHome, 0o000)
+    resetOpenClawConfigCache()
+    try {
+      await expect(runtime.agents.workspaces!()).rejects.toThrow()
+    } finally {
+      chmodSync(testHome, 0o755)
+    }
+  })
+
+  it('a missing config is not a failure: it answers the default roster', async () => {
+    rmSync(configPath, { force: true })
+    resetOpenClawConfigCache()
+    const workspaces = await runtime.agents.workspaces!()
+    expect(workspaces.map((w) => w.agentId)).toEqual(['main'])
   })
 })

@@ -13,11 +13,16 @@ mock.module('../../src/core/server-lock', () => ({
 }))
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => '/tmp/bakin-identity-authority-home' }))
 
-// The no-local-server path checks cwd in-process against this home's runtime.
+// The no-local-server path checks cwd in-process against a bare runtime adapter.
 let localAnswer: () => Promise<string | null> = async () => null
-const createAppServices = mock(async () => ({}))
+const bareRuntime = { agents: {} }
+const createRuntimeAdapter = mock(() => bareRuntime)
+const createAppServices = mock(async () => { throw new Error('app services must not be created by the CLI identity check') })
+mock.module('../../src/core/settings', () => ({ getSettings: () => ({ runtime: { adapter: 'pi' } }) }))
+mock.module('../../src/core/runtime-adapter-factory', () => ({ createRuntimeAdapter }))
 mock.module('../../src/core/app-services', () => ({ createAppServices, maybeGetAppServices: () => undefined }))
-mock.module('../../src/core/approvals/agent-context', () => ({ agentContextForPath: () => localAnswer() }))
+const agentContextForPath = mock((_cwd: string, _runtime?: unknown) => localAnswer())
+mock.module('../../src/core/approvals/agent-context', () => ({ agentContextForPath }))
 
 const originalArgv = process.argv
 const originalFetch = globalThis.fetch
@@ -53,7 +58,9 @@ describe('cliIdentity workspace authority', () => {
     localServer = null
     localAnswer = async () => null
     expect((await cliIdentity()).operatorDeclared).toBe(true)
-    expect(createAppServices).toHaveBeenCalled()
+    expect(createRuntimeAdapter).toHaveBeenCalledWith('pi')
+    expect(agentContextForPath.mock.calls[0]?.[1]).toBe(bareRuntime)
+    expect(createAppServices).not.toHaveBeenCalled()
     expect(calls).toHaveLength(0)
 
     resetCliIdentityForTests()

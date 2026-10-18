@@ -71,9 +71,13 @@ function readConfigState(): ConfigReadState {
   let mtimeMs: number
   try {
     mtimeMs = statSync(path).mtimeMs
-  } catch {
+  } catch (err) {
     cachedConfig = null
-    return { kind: 'absent' }
+    // Only a missing file is absent. A config that exists but cannot be
+    // read (EACCES, I/O) is unreadable — strict readers must not mistake it
+    // for "no config" (writers would replace it; #898 review r4).
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return { kind: 'absent' }
+    return { kind: 'corrupt' }
   }
 
   if (cachedConfig && cachedConfig.path === path && cachedConfig.mtimeMs === mtimeMs) {
@@ -148,6 +152,14 @@ export function agentListFrom(config: OpenClawConfig | null): OpenClawAgent[] {
 
 export function getAgentList(): OpenClawAgent[] {
   return agentListFrom(readOpenClawConfig())
+}
+
+/**
+ * The roster from ONE strict snapshot: an unreadable or corrupt config
+ * throws (never an empty roster); an absent one is genuinely no agents.
+ */
+export function getAgentListStrict(): OpenClawAgent[] {
+  return agentListFrom(readOpenClawConfigForMutation())
 }
 
 export function getAgentIds(): string[] {

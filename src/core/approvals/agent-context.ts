@@ -9,6 +9,7 @@
  */
 import { realpathSync } from 'fs'
 import { sep } from 'path'
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { maybeGetAppServices } from '../app-services-store'
 import { createLogger } from '../logger'
 import { runWorkspacesRoot } from '../run-workspace'
@@ -41,16 +42,17 @@ function within(path: string, root: string): boolean {
  * established (services not up, roster or a workspace lookup failing) — a
  * failed lookup is never a negative.
  */
-export async function agentContextForPath(cwd: string): Promise<string | null> {
+export async function agentContextForPath(
+  cwd: string,
+  runtime: Pick<AgentRuntimeAdapter, 'agents'> | undefined = maybeGetAppServices()?.runtime,
+): Promise<string | null> {
   const path = canonical(cwd)
   const runRoot = canonical(runWorkspacesRoot())
   if (within(path, runRoot) && path !== runRoot) {
     const agentId = path.slice(runRoot.length + 1).split(sep)[0]
     if (agentId) return agentId
   }
-  const services = maybeGetAppServices()
-  if (!services) throw new AgentContextUnavailableError('the runtime is not ready to say which agent workspaces exist')
-  const { runtime } = services
+  if (!runtime) throw new AgentContextUnavailableError('the runtime is not ready to say which agent workspaces exist')
   // A runtime without file-backed workspaces genuinely has none to be in.
   if (!runtime.agents.workspaces) return null
   try {

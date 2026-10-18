@@ -65,12 +65,14 @@ export function cliIdentity(): Promise<CliIdentity> {
       const local = liveServerBaseUrl({})
       if (!local) {
         // No server for this home (e.g. BAKIN_URL reaches another machine):
-        // check this cwd in-process against this home's runtime, read-only —
-        // the same strict lookup the server runs. It throws when it cannot tell.
-        const { createAppServices, maybeGetAppServices } = await import('../core/app-services')
-        if (!maybeGetAppServices()) await createAppServices()
+        // run the same strict lookup in-process against a BARE runtime adapter
+        // — constructed, never initialized: no app services, search, secret
+        // migration or settings writes, just the read-only roster. It throws
+        // when it cannot tell.
+        const { getSettings } = await import('../core/settings')
+        const { createRuntimeAdapter } = await import('../core/runtime-adapter-factory')
         const { agentContextForPath } = await import('../core/approvals/agent-context')
-        return agentContextForPath(cwd)
+        return agentContextForPath(cwd, createRuntimeAdapter(getSettings().runtime.adapter))
       }
       const res = await fetch(`${local}/api/approvals/agent-context?cwd=${encodeURIComponent(cwd)}`, { headers: { ...CLI_ORIGIN_HEADER } })
       if (!res.ok) throw new Error(`the workspace check failed (HTTP ${res.status})`)

@@ -64,6 +64,7 @@ import {
   findAgentById,
   getAgentList,
   readOpenClawConfig,
+  getAgentListStrict,
   readOpenClawConfigForMutation,
   resetOpenClawConfigCache,
 } from './config'
@@ -459,11 +460,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return out.sort()
     },
     workspaces: async (): Promise<Array<{ agentId: string; path: string }>> => {
-      // Strict: an unreadable openclaw.json throws here, where the lenient
-      // roster read would answer an empty list (#898 review r3).
-      readOpenClawConfigForMutation()
-      const agents = await this.agents.list()
-      return agents.map((agent) => ({ agentId: agent.id, path: getWorkspacePath(agent.id) }))
+      // ONE strict snapshot: an unreadable openclaw.json throws here, where
+      // the lenient roster read answers an empty list (#898 review r3/r4).
+      return getAgentListStrict().map((agent) => ({ agentId: agent.id, path: getWorkspacePath(agent.id) }))
     },
     workspaceFileStats: async (agentId: string): Promise<WorkspaceFileStat[] | null> => {
       const root = getWorkspacePath(agentId)
