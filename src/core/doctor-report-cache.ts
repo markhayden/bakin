@@ -379,18 +379,15 @@ function applyIncidentAckStates(
 ): HealthIncident[] {
   const nowMs = Date.parse(generatedAt)
   let records: Record<string, HealthAckRecord>
-  let invalidKeys: string[]
   try {
-    const store = inspectAckStore(nowMs)
-    records = store.records
-    invalidKeys = store.invalid.map((entry) => entry.key)
+    records = inspectAckStore(nowMs).records
   } catch (error) {
     log.warn('health ack store unreadable — acks ignored, all incidents re-surface', {
       err: error instanceof Error ? error.message : String(error),
     })
     return incidents
   }
-  if (Object.keys(records).length === 0 && invalidKeys.length === 0) return incidents
+  if (Object.keys(records).length === 0) return incidents
 
   const observationsById = new Map(observations.map((observation) => [observation.id, observation]))
   const invalidated: string[] = []
@@ -398,9 +395,11 @@ function applyIncidentAckStates(
   // resolved (last-known retention keeps flapping checks alive, so absence
   // is evidence of resolution) — prune it, so a recurrence weeks later
   // arrives LOUD, not pre-silenced, and GET /doctor/acks never lists
-  // ghost rows (review finding). Invalid records follow the same rule.
+  // ghost rows (review finding). Records that break the rules are never
+  // pruned here — their key may not even name the incident they claim —
+  // they stay until cleared, so the `acks` check can always name them.
   const liveIds = new Set(incidents.map((incident) => incident.id))
-  for (const recordId of [...Object.keys(records), ...invalidKeys]) {
+  for (const recordId of Object.keys(records)) {
     if (!liveIds.has(recordId)) invalidated.push(recordId)
   }
   const joined = incidents.map((incident) => {

@@ -73,7 +73,7 @@ Some incidents provide navigation, resolution steps, or a re-check instead of de
 
 When you have seen an incident and do not want it to keep calling for attention, **Acknowledge** it (quiet until it changes materially) or **Snooze** it for 24 hours or 7 days. Action-required incidents can only be snoozed, and they return as soon as their evidence changes. Quieted incidents stay listed under **Acknowledged**, one click from un-acknowledging.
 
-Only an acknowledgement made through Health or `bakin doctor ack|snooze` counts. A record that breaks these rules — a permanent acknowledgement of an action-required incident, a snooze longer than 7 days, a future date — quiets nothing, and the **Health acknowledgements** check names it until you clear it with `bakin doctor unack <id>`.
+Every acknowledgement record is checked against these rules each time Health reads it. A record that breaks them — a permanent acknowledgement of an action-required incident, a snooze longer than 7 days, a date in the future — quiets nothing, and the **Health acknowledgements** check names it until you clear it with `bakin doctor unack <id>`.
 
 ## Escalation and repair tasks
 

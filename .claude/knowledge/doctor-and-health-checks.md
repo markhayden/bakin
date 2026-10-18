@@ -139,11 +139,13 @@ lesson) is what every consumer filters on; nobody re-derives.
   `at` is a real time not in the future, `action_required` is snooze-only,
   snoozes run `0 < until − at ≤ 7 days`, and `action_required` snoozes
   carry `evidenceSha`. A failing record suppresses NOTHING (the incident
-  shows) and stays in the file — writes and prunes keep it — so the Health
-  `acks` check (`health.acks`, watch / `evidence_gap`), `GET /doctor/acks`
-  `invalid[]` and `bakin doctor acks` name it until `bakin doctor unack
-  <id>` clears it or its incident resolves. Records carry no `actor` —
-  it would be self-asserted.
+  shows) and stays in the file — writes and prunes never drop it, and the
+  projection never prunes it (its key may not even name the incident it
+  claims) — so the Health `acks` check (`health.acks`, watch /
+  `evidence_gap`), `GET /doctor/acks` `invalid[]` and `bakin doctor acks`
+  name it until `bakin doctor unack <id>` clears it. A valid record says
+  nothing about who wrote it; records carry no `actor` — it would be
+  self-asserted.
 - Surfaces: `POST /doctor/ack` (`action: ack|snooze|clear`),
   `GET /doctor/acks`, card controls, and `bakin doctor
   acks|ack|snooze|unack`. Ack writes republish immediately (ackState rides

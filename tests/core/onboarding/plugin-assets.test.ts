@@ -46,7 +46,7 @@ mock.module('@/core/logger', () => ({
 // branch, so isolate it from whatever runtime-skills core plugins ship.
 mock.module('../../../bakin.config', () => ({ default: { plugins: [] } }))
 
-import { scanPluginAssets, installPluginAssets as installPluginAssetsUnowned, PLUGIN_ASSETS_PLAN, pluginAssetsComponent } from '@/core/onboarding/plugin-assets'
+import { scanPluginAssets, installPluginAssets as installPluginAssetsUnowned, planPluginAssetsRemoval, PLUGIN_ASSETS_PLAN, pluginAssetsComponent } from '@/core/onboarding/plugin-assets'
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { withOperationView } from '../../helpers/operation-harness'
 import { createMemoryResourceAcquirer, createOperationRegistry } from '../../../packages/core/src/operations'
@@ -98,7 +98,13 @@ function readMarker(skillDir: string): unknown {
   }
 }
 
+/** Review r1 probes: count removals; make the next write throw. */
+let removeCalls = 0
+let failNextWrite = false
+
 function installRuntimeMock(): void {
+  removeCalls = 0
+  failNextWrite = false
   const skillRoot = join(runtimeSkillHome, 'skills')
   const skillDir = (name: string) => join(skillRoot, name)
   const runtime = {
@@ -120,6 +126,10 @@ function installRuntimeMock(): void {
         }
       },
       write: async (skill: RuntimeSkill) => {
+        if (failNextWrite) {
+          failNextWrite = false
+          throw new Error('disk full')
+        }
         const dir = skillDir(skill.name)
         const files = skill.files ?? { 'SKILL.md': skill.instructions ?? '' }
         for (const [rel, content] of Object.entries(files)) {
@@ -132,6 +142,7 @@ function installRuntimeMock(): void {
         }
       },
       remove: async (name: string) => {
+        removeCalls++
         rmSync(skillDir(name), { recursive: true, force: true })
       },
     },
@@ -365,6 +376,69 @@ describe('plugin-assets onboarding component', () => {
       expect(report.drifted).toEqual([])
       expect((await installPluginAssets([{ id: 'sdr', path: pluginDir }])).skipped).toEqual([{ pluginId: 'sdr', name: 'cold-email', reason: 'userEdited' }])
       expect(readFileSync(join(installedDir, 'SKILL.md'), 'utf-8')).toBe('My own version.\n')
+    })
+
+    it('a content-only drift is rewritten in place — the skill is never removed first (review r1)', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      await installPluginAssets([{ id: 'sdr', path: pluginDir }])
+      const installedDir = join(runtimeSkillHome, 'skills', 'cold-email')
+      writeFileSync(join(installedDir, 'SKILL.md'), 'Edited.\n')
+      removeCalls = 0
+      expect((await installPluginAssets([{ id: 'sdr', path: pluginDir }])).installed).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
+      expect(removeCalls).toBe(0)
+      expect(readFileSync(join(installedDir, 'SKILL.md'), 'utf-8')).toBe(SKILL_BODY)
+    })
+
+    it('a failed write leaves the previous copy in place, never a deleted skill (review r1)', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      await installPluginAssets([{ id: 'sdr', path: pluginDir }])
+      const installedDir = join(runtimeSkillHome, 'skills', 'cold-email')
+      writeFileSync(join(installedDir, 'SKILL.md'), 'Edited.\n')
+      failNextWrite = true
+      await expect(installPluginAssets([{ id: 'sdr', path: pluginDir }])).rejects.toThrow('disk full')
+      expect(readFileSync(join(installedDir, 'SKILL.md'), 'utf-8')).toBe('Edited.\n')
+    })
+
+    it('a leftover directory without SKILL.md is repaired to exactly the plugin\'s files (review r1)', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      const installedDir = join(runtimeSkillHome, 'skills', 'cold-email')
+      mkdirSync(join(installedDir, 'scripts'), { recursive: true })
+      writeFileSync(join(installedDir, 'scripts', 'stale.sh'), '#!/bin/sh\necho stale\n')
+      expect((await scanPluginAssets([{ id: 'sdr', path: pluginDir }])).missing).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
+      const result = await installPluginAssets([{ id: 'sdr', path: pluginDir }])
+      expect(result.installed).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
+      expect(result.failed).toEqual([])
+      expect(existsSync(join(installedDir, 'scripts', 'stale.sh'))).toBe(false)
+      expect((await scanPluginAssets([{ id: 'sdr', path: pluginDir }])).installed).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
+    })
+
+    it('matching content with a missing ownership marker gets the marker back, so uninstall can remove it (review r1)', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      await installPluginAssets([{ id: 'sdr', path: pluginDir }])
+      const markerPath = join(runtimeSkillHome, 'skills', 'cold-email', '.installedBy')
+      rmSync(markerPath)
+      expect((await scanPluginAssets([{ id: 'sdr', path: pluginDir }])).installed).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
+      expect((await installPluginAssets([{ id: 'sdr', path: pluginDir }])).installed).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
+      expect(readMarker(join(runtimeSkillHome, 'skills', 'cold-email'))).toMatchObject({ pluginId: 'sdr' })
+      expect((await planPluginAssetsRemoval('sdr', ['cold-email'])).toRemove).toEqual(['cold-email'])
+    })
+
+    it('a skill file that is not UTF-8 is never installed and never compares equal (review r1)', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      writeFileSync(join(pluginDir, 'defaults', 'runtime-skills', 'cold-email', 'blob.bin'), Buffer.from([0x80, 0x81, 0xff]))
+      const scan = await scanPluginAssets([{ id: 'sdr', path: pluginDir }])
+      expect(scan.invalidSource).toEqual([{ pluginId: 'sdr', name: 'cold-email', error: 'blob.bin is not UTF-8 text — runtime skills carry text files only' }])
+      expect(scan.missing).toEqual([])
+      const result = await installPluginAssets([{ id: 'sdr', path: pluginDir }])
+      expect(result.failed).toEqual([{ pluginId: 'sdr', name: 'cold-email', error: 'blob.bin is not UTF-8 text — runtime skills carry text files only' }])
+      expect(existsSync(join(runtimeSkillHome, 'skills', 'cold-email'))).toBe(false)
+    })
+
+    it('an upgrade whose skill cannot be installed verified throws — the replace transaction rolls it back (review r1)', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      writeFileSync(join(pluginDir, 'defaults', 'runtime-skills', 'cold-email', 'blob.bin'), Buffer.from([0x80]))
+      const { installUpgradedPluginAssets } = await import('../../../src/core/plugins/upgrade-gate')
+      await expect(owned(installUpgradedPluginAssets)('sdr', pluginDir)).rejects.toThrow(/sdr: runtime skills could not be installed — cold-email: blob\.bin is not UTF-8 text/)
     })
 
     it('copies sibling files in the skill directory (e.g. scripts/)', async () => {

@@ -53,7 +53,7 @@ export async function checkHealthAcks(nowMs = Date.now()): Promise<HealthCheckRu
     incident: {
       key: 'invalid-records',
       title: 'Ignored acknowledgement records',
-      impact: 'These records were not written by Acknowledge or Snooze, so the incidents they name are showing. Something edited the acknowledgement file by hand.',
+      impact: 'These records break the acknowledge rules (for example a permanent acknowledgement of an action-required incident, a snooze longer than 7 days, or a date in the future), so they quiet nothing and the incidents they name are showing.',
       disposition: 'watch',
       class: 'evidence_gap',
       resources: [RESOURCE],

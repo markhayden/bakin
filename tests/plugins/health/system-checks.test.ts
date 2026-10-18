@@ -1234,6 +1234,14 @@ describe('checkPluginAssets — user-edited skills (#898)', () => {
     expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:cold-email', label: 'cold-email (sdr)' }])
   })
 
+  it('a plugin skill that is not text is a watch incident naming the plugin, never the install repair', async () => {
+    warnWith({ userEditedDrifted: [], invalidSource: [{ pluginId: 'sdr', name: 'blobby', error: 'x' }] })
+    const results = observed(await checkPluginAssets())
+    expect(results[0].incident).toMatchObject({ key: 'skill-source-invalid', disposition: 'watch' })
+    expect(results[0].incident?.resolution.type).toBe('instructions')
+    expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:blobby', label: 'blobby (sdr)' }])
+  })
+
   it('with anything else to install, the repair is still offered', async () => {
     warnWith({ drifted: [{ pluginId: 'sdr', name: 'other' }] })
     const results = observed(await checkPluginAssets())

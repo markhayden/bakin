@@ -101,6 +101,8 @@ export interface ScanReport {
   userEdited: SkillRef[]
   /** The locked skills whose content differs from what the plugin ships. */
   userEditedDrifted: SkillRef[]
+  /** Skills whose plugin source is not UTF-8 text — the runtime skill contract is text, so they are never installed. */
+  invalidSource: Array<SkillRef & { error: string }>
   bins: BinScanReport
 }
 
@@ -108,6 +110,8 @@ export interface InstallReport {
   installed: SkillRef[]
   unchanged: SkillRef[]
   skipped: SkillRefSkipped[]
+  /** Skills that could not be laid down verified (non-text source, or still differing after a full rewrite). */
+  failed: Array<SkillRef & { error: string }>
   bins: BinInstallReport
 }
 
@@ -175,10 +179,27 @@ function isUserEditedSkill(skill: RuntimeSkill | null): boolean {
   return skill?.metadata?.userEdited === true
 }
 
+/** A plugin skill file that is not UTF-8 text. */
+export class SkillSourceNotTextError extends Error {
+  constructor(relPath: string) {
+    super(`${relPath} is not UTF-8 text — runtime skills carry text files only`)
+    this.name = 'SkillSourceNotTextError'
+  }
+}
+
+const UTF8 = new TextDecoder('utf-8', { fatal: true })
+
+/** Strict decode: a lossy read would map different bytes to the same U+FFFD
+ *  and let a changed file compare equal (review r1). */
 function readSkillFiles(skill: PluginSkillSource): Record<string, string> {
   const files: Record<string, string> = {}
   for (const file of skill.files) {
-    files[file.relPath] = readFileSync(file.path, 'utf-8')
+    try {
+      files[file.relPath] = UTF8.decode(readFileSync(file.path))
+    } catch (err) {
+      if (err instanceof TypeError) throw new SkillSourceNotTextError(file.relPath)
+      throw err
+    }
   }
   return files
 }
@@ -211,8 +232,11 @@ function sameFiles(a: Record<string, string>, b: Record<string, string>): boolea
  * must equal the expected build of the plugin's skill, file for file.
  */
 function skillVerdict(source: PluginSkillSource, installed: RuntimeSkill | null): 'missing' | 'installed' | 'drifted' {
+  // Read the source first: a skill that is not text is refused whether or
+  // not a copy is installed.
+  const expected = readSkillFiles(source)
   if (!installed) return 'missing'
-  return sameFiles(readSkillFiles(source), installedFiles(installed)) ? 'installed' : 'drifted'
+  return sameFiles(expected, installedFiles(installed)) ? 'installed' : 'drifted'
 }
 
 /**
@@ -269,6 +293,7 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
     installed: [],
     userEdited: [],
     userEditedDrifted: [],
+    invalidSource: [],
     bins: scanPluginBins(plugins),
   }
 
@@ -278,7 +303,14 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
       report.totalAvailable++
       const ref: SkillRef = { pluginId: plugin.id, name: skill.name }
       const installedSkill = await runtime.skills.get(skill.name)
-      const verdict = skillVerdict(skill, installedSkill)
+      let verdict: ReturnType<typeof skillVerdict>
+      try {
+        verdict = skillVerdict(skill, installedSkill)
+      } catch (err) {
+        if (!(err instanceof SkillSourceNotTextError)) throw err
+        report.invalidSource.push({ ...ref, error: err.message })
+        continue
+      }
 
       if (installedSkill && isUserEditedSkill(installedSkill)) {
         report.userEdited.push(ref)
@@ -305,7 +337,7 @@ export const PLUGIN_ASSETS_PLAN: OperationPlan = {
 }
 
 export async function installPluginAssets(plugins: PluginEntry[], op?: OperationContext): Promise<InstallReport> {
-  const report: InstallReport = { installed: [], unchanged: [], skipped: [], bins: { installed: [], unchanged: [], failed: [] } }
+  const report: InstallReport = { installed: [], unchanged: [], skipped: [], failed: [], bins: { installed: [], unchanged: [], failed: [] } }
   const runtime = getAppServices().runtime
 
   op?.stage('skills')
@@ -324,16 +356,38 @@ export async function installPluginAssets(plugins: PluginEntry[], op?: Operation
         continue
       }
 
-      const verdict = skillVerdict(skill, installedSkill)
-      if (verdict === 'installed') {
+      let built: RuntimeSkill
+      let verdict: ReturnType<typeof skillVerdict>
+      try {
+        built = buildRuntimeSkill(skill, { pluginId: plugin.id, sha256: sha256OfFile(skill.skillMdPath) })
+        verdict = skillVerdict(skill, installedSkill)
+      } catch (err) {
+        if (!(err instanceof SkillSourceNotTextError)) throw err
+        report.failed.push({ ...ref, error: err.message })
+        log.warn('Refusing a plugin skill that is not text', { name: skill.name, pluginId: plugin.id, error: err.message })
+        continue
+      }
+      // Content proves the skill is current; the marker is still rewritten
+      // when it no longer names this plugin, or uninstall would orphan it.
+      if (verdict === 'installed' && readMarker(installedSkill)?.pluginId === plugin.id) {
         report.unchanged.push(ref)
         continue
       }
 
-      // A drifted skill is replaced whole: writes never delete, so a file
-      // the plugin does not ship would keep it drifted forever.
-      if (verdict === 'drifted') await runtime.skills.remove(skill.name)
-      await runtime.skills.write(buildRuntimeSkill(skill, { pluginId: plugin.id, sha256: sha256OfFile(skill.skillMdPath) }))
+      // Write over the existing copy first — never delete a usable skill
+      // before its replacement is down. Only when leftovers keep it drifted
+      // (a file the plugin does not ship, a directory without SKILL.md) is
+      // it removed and written fresh; a skill that still differs fails.
+      await runtime.skills.write(built)
+      if (skillVerdict(skill, await runtime.skills.get(skill.name)) !== 'installed') {
+        await runtime.skills.remove(skill.name)
+        await runtime.skills.write(built)
+        if (skillVerdict(skill, await runtime.skills.get(skill.name)) !== 'installed') {
+          report.failed.push({ ...ref, error: 'the installed skill still differs from the plugin after a full rewrite' })
+          log.warn('Plugin skill did not verify after rewrite', { name: skill.name, pluginId: plugin.id })
+          continue
+        }
+      }
       report.installed.push(ref)
       log.info('Installed plugin skill', { name: skill.name, pluginId: plugin.id })
     }
@@ -522,14 +576,25 @@ async function check(): Promise<CheckResult> {
     }
   }
 
-  if (pending === 0 && bins.unsupported.length === 0 && report.userEditedDrifted.length > 0) {
-    // Nothing the repair may touch: the user locked these. Still never ok.
-    const names = report.userEditedDrifted.map((ref) => `${ref.name} (${ref.pluginId})`).join(', ')
+  if (pending === 0 && bins.unsupported.length === 0 && (report.userEditedDrifted.length > 0 || report.invalidSource.length > 0)) {
+    // Nothing the repair can fix: the user locked these, or the plugin
+    // ships a skill that is not text. Still never ok.
+    const label = (ref: SkillRef) => `${ref.name} (${ref.pluginId})`
+    const messages: string[] = []
+    const remediations: string[] = []
+    if (report.userEditedDrifted.length > 0) {
+      messages.push(`${report.userEditedDrifted.length} user-edited skill(s) differ from what the plugin ships: ${report.userEditedDrifted.map(label).join(', ')}`)
+      remediations.push('Keep the edit, or delete the skill\'s .userEdited file and run `bakin install plugin-assets` to restore the plugin\'s version.')
+    }
+    if (report.invalidSource.length > 0) {
+      messages.push(`${report.invalidSource.length} plugin skill(s) are not text and cannot be installed: ${report.invalidSource.map(label).join(', ')}`)
+      remediations.push('Update or remove the plugin that ships them.')
+    }
     return {
       name: 'plugin-assets',
       status: 'warn',
-      message: `${report.userEditedDrifted.length} user-edited skill(s) differ from what the plugin ships: ${names}`,
-      remediation: 'Keep the edit, or delete the skill\'s .userEdited file and run `bakin install plugin-assets` to restore the plugin\'s version.',
+      message: messages.join('; '),
+      remediation: remediations.join(' '),
       details,
     }
   }
@@ -551,6 +616,7 @@ async function check(): Promise<CheckResult> {
   if (report.missing.length > 0) parts.push(`${report.missing.length} skill(s) missing`)
   if (report.drifted.length > 0) parts.push(`${report.drifted.length} skill(s) drifted`)
   if (report.userEditedDrifted.length > 0) parts.push(`${report.userEditedDrifted.length} user-edited skill(s) differ and stay locked`)
+  if (report.invalidSource.length > 0) parts.push(`${report.invalidSource.length} skill(s) are not text and cannot be installed`)
   if (bins.missing.length > 0) parts.push(`${bins.missing.length} binar${bins.missing.length === 1 ? 'y' : 'ies'} missing: ${bins.missing.map(binLabel).join(', ')}`)
   if (bins.drifted.length > 0) parts.push(`${bins.drifted.length} binar${bins.drifted.length === 1 ? 'y' : 'ies'} drifted: ${bins.drifted.map(binLabel).join(', ')}`)
   if (bins.unsupported.length > 0) parts.push(`${bins.unsupported.length} binar${bins.unsupported.length === 1 ? 'y has' : 'ies have'} no build for this platform: ${bins.unsupported.map(binLabel).join(', ')}`)
@@ -591,12 +657,19 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
   const durationMs = Date.now() - start
   const { bins } = report
 
-  if (bins.failed.length > 0) {
-    const failures = bins.failed.map((f) => `${binLabel(f)}: ${f.error}`)
+  if (bins.failed.length > 0 || report.failed.length > 0) {
+    const failures = [
+      ...report.failed.map((f) => `skill ${f.name} (${f.pluginId}): ${f.error}`),
+      ...bins.failed.map((f) => `${binLabel(f)}: ${f.error}`),
+    ]
+    const counts = [
+      report.failed.length > 0 ? `${report.failed.length} plugin skill(s)` : null,
+      bins.failed.length > 0 ? `${bins.failed.length} plugin binar${bins.failed.length === 1 ? 'y' : 'ies'}` : null,
+    ].filter(Boolean).join(' and ')
     return {
       name: 'plugin-assets',
       status: 'failed',
-      message: `${bins.failed.length} plugin binar${bins.failed.length === 1 ? 'y' : 'ies'} could not be installed — ${failures.join('; ')}`,
+      message: `${counts} could not be installed — ${failures.join('; ')}`,
       error: failures,
       durationMs,
     }

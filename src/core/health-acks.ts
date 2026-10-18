@@ -130,9 +130,8 @@ function readRawEntries(): Record<string, unknown> {
 }
 
 /** Valid records plus the ones that fail the write rules. Invalid records
- *  suppress nothing; they stay in the file (writes never silently drop
- *  them) until cleared or their incident resolves, so the health check
- *  can name them. */
+ *  suppress nothing; they stay in the file (writes and prunes never drop
+ *  them) until `clear` removes them, so the health check can name them. */
 export function inspectAckStore(nowMs = Date.now()): { records: Record<string, HealthAckRecord>; invalid: InvalidAckRecord[] } {
   const records: Record<string, HealthAckRecord> = {}
   const invalid: InvalidAckRecord[] = []

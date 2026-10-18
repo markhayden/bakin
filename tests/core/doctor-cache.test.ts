@@ -455,6 +455,33 @@ describe('forged ack records (#898)', () => {
     expect(inspectAckStore(Date.parse('2026-07-24T12:00:20.000Z')).invalid.map((entry) => entry.key)).toEqual([incident.id])
     rmSync(join(testDir, 'health'), { recursive: true, force: true })
   })
+
+  it('a record stored under the wrong key is never pruned by the projection — it stays to be named (review r1)', async () => {
+    rmSync(join(testDir, 'health'), { recursive: true, force: true })
+    const def = register(async () => healthObserved([
+      healthWarning({
+        key: 'latency', summary: 'Slow.',
+        incident: {
+          key: 'latency', title: 'Runtime is slow', impact: 'Turns take longer.', disposition: 'watch',
+          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+        },
+      }),
+    ]), 'misfiled-probe', 'Misfiled probe')
+    await apply(def, '2026-07-24T12:00:00.000Z')
+    const incident = getHealthReport('2026-07-24T12:00:10.000Z').incidents[0]!
+    mkdirSync(join(testDir, 'health'), { recursive: true })
+    writeFileSync(join(testDir, 'health', 'acks.json'), JSON.stringify({
+      'not-a-live-incident': {
+        incidentId: incident.id, mode: 'ack', at: '2026-07-24T12:00:05.000Z',
+        tierAtAck: 'watch', resourceFingerprint: '',
+      },
+    }))
+
+    expect(getHealthReport('2026-07-24T12:00:20.000Z').incidents[0]!.ackState).toBeUndefined()
+    const { inspectAckStore } = require('../../src/core/health-acks') as typeof import('../../src/core/health-acks')
+    expect(inspectAckStore(Date.parse('2026-07-24T12:00:30.000Z')).invalid.map((entry) => entry.key)).toEqual(['not-a-live-incident'])
+    rmSync(join(testDir, 'health'), { recursive: true, force: true })
+  })
 })
 
 describe('vanished-incident ack pruning (review finding)', () => {
