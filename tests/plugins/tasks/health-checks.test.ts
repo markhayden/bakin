@@ -88,6 +88,7 @@ function emptyStoreBoard(): StoreBoard {
 let storeBoard: StoreBoard = emptyStoreBoard()
 
 const clearedDependencies: string[] = []
+const renumberedColumns: string[] = []
 let clearDependencyShouldThrow = false
 
 // task-store mock — taskboard/order checks import it directly, and the plugin
@@ -110,13 +111,8 @@ mock.module('@/core/task-store', () => ({
     clearedDependencies.push(taskId)
     return true
   },
-  reorderTasks: async (_column: string, orderedIds: string[]) => {
-    const tasks = Object.values(storeBoard.columns).flat()
-    orderedIds.forEach((id, order) => {
-      const task = tasks.find((candidate) => candidate.id === id)
-      if (task) task.order = order
-    })
-  },
+  reorderTasks: async () => {},
+  renumberColumn: async (column: string) => { renumberedColumns.push(column) },
   archiveOldTasks: () => 0,
   autoArchiveDoneTasks: () => 0,
 }))
@@ -196,6 +192,7 @@ beforeEach(() => {
   storeBoard = emptyStoreBoard()
   mockKnownAgents = ['main', 'patch', 'pixel']
   clearedDependencies.length = 0
+  renumberedColumns.length = 0
   clearDependencyShouldThrow = false
 })
 
@@ -355,18 +352,15 @@ describe('checkTaskPositionIntegrity', () => {
     expect(older.order).toBeUndefined()
   })
 
-  it('repair handler reassigns order zero-indexed by updatedAt desc', async () => {
-    const older: StoreTask = { id: 'older', title: 'Older', updatedAt: 100 }
-    const newer: StoreTask = { id: 'newer', title: 'Newer', updatedAt: 200 }
-    storeBoard.columns.todo.push(older, newer)
+  it('repair renumbers every column in place', async () => {
+    storeBoard.columns.done.push({ id: 'a', title: 'A', order: 6 }, { id: 'b', title: 'B', order: 6 })
 
     const repair = taskOrderRepair()
     const plan = await repair.plan({ type: 'all_actionable', reportId: 'report-1' })
     expect(plan).toHaveLength(1)
     const applied = await repair.apply(plan, noopOp())
     expect(applied[0].status).toBe('applied')
-    expect(newer.order).toBe(0)
-    expect(older.order).toBe(1)
+    expect(renumberedColumns.sort()).toEqual(Object.keys(storeBoard.columns).sort())
   })
 })
 

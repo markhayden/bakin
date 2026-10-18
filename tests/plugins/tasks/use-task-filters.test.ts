@@ -55,6 +55,7 @@ mock.module('@/core/task-store', () => ({
   clearDependency: mock(),
   findTaskWithColumn: () => null,
   reorderTasks: mock(),
+  renumberColumn: mock(),
   autoArchiveDoneTasks: mock().mockReturnValue(0),
   archiveOldTasks: mock().mockReturnValue(0),
 }))

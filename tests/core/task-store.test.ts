@@ -134,6 +134,8 @@ import {
   clearDependency,
   findTaskWithColumn,
   reorderTasks,
+  renumberColumn,
+  getSharedBakinTaskStore,
   moveTaskToInProgress,
   recoverTask,
   assignTaskToTeam,
@@ -726,6 +728,71 @@ describe('reorderTasks', () => {
     expect(board.columns.todo[0].id).toBe(t3.id)
     expect(board.columns.todo[1].id).toBe(t2.id)
     expect(board.columns.todo[2].id).toBe(t1.id)
+  })
+})
+
+describe('reorderTasks — whole column', () => {
+  const orderOf = (id: string) => getTask(id)?.order
+
+  it('omitted and pending-delete tasks are renumbered after the listed ones, never left colliding', async () => {
+    const hidden = await createTask('hidden') // order 0
+    const omitted = await createTask('omitted') // order 1
+    const listed = await createTask('listed') // order 2
+    getSharedBakinTaskStore().markPendingDeleteSync(hidden.id, true)
+
+    await reorderTasks('todo', [listed.id])
+
+    expect(orderOf(listed.id)).toBe(0)
+    getSharedBakinTaskStore().markPendingDeleteSync(hidden.id, false)
+    const orders = readTaskboard().columns.todo.map((task) => task.order)
+    expect(new Set(orders).size).toBe(3)
+    expect([orderOf(hidden.id), orderOf(omitted.id)]).toEqual([1, 2])
+  })
+
+  it('ignores ids from a stale snapshot that are no longer in the column', async () => {
+    const done = await createTask('already done', 'done') // done order 0
+    const moved = await createTask('moved away') // todo order 0
+    const stays = await createTask('stays') // todo order 1
+    await moveTask(moved.id, 'inProgress')
+    await addTaskLog(moved.id, 'agent-x', 'did it')
+    await moveTask(moved.id, 'done') // done order 1
+
+    await reorderTasks('todo', [moved.id, stays.id])
+
+    expect(orderOf(moved.id)).toBe(1)
+    expect(orderOf(done.id)).toBe(0)
+    expect(orderOf(stays.id)).toBe(0)
+  })
+
+  it('renumberColumn keeps the visible order: newest first among duplicates, missing last', async () => {
+    const first = await createTask('first', 'done')
+    const dupOlder = await createTask('dup older', 'done')
+    const dupNewer = await createTask('dup newer', 'done')
+    const unordered = await createTask('unordered', 'done')
+    // Legacy rows written on disk (rc.40 count rule): explicit timestamps so
+    // "newest" is unambiguous.
+    writeRawTask(first.id, { order: 0, updatedAt: '2026-10-18T10:00:00.000Z' })
+    writeRawTask(dupOlder.id, { order: 6, updatedAt: '2026-10-18T11:00:00.000Z' })
+    writeRawTask(dupNewer.id, { order: 6, updatedAt: '2026-10-18T12:00:00.000Z' })
+    writeRawTask(unordered.id, { order: undefined, updatedAt: '2026-10-18T13:00:00.000Z' })
+    const visibleBefore = readTaskboard().columns.done.map((task) => task.id)
+
+    await renumberColumn('done')
+
+    const after = readTaskboard().columns.done
+    expect(after.map((task) => task.id)).toEqual(visibleBefore.filter((id) => id !== unordered.id).concat(unordered.id))
+    expect(after.map((task) => task.order)).toEqual([0, 1, 2, 3])
+    expect(after.slice(0, 3).map((task) => task.id)).toEqual([first.id, dupNewer.id, dupOlder.id])
+  })
+
+  it('writes only the tasks whose order changed', async () => {
+    const a = await createTask('a')
+    const b = await createTask('b')
+    const versionA = getSharedBakinTaskStore().getSync(a.id)?.version
+
+    await reorderTasks('todo', [a.id, b.id])
+
+    expect(getSharedBakinTaskStore().getSync(a.id)?.version).toBe(versionA)
   })
 })
 

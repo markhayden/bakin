@@ -43,7 +43,8 @@ mock.module('@/core/watcher', () => ({ registerSyncHook: mock(), registerUnlinkH
 mock.module('@/core/task-store', () => ({
   readTaskboard: mock(), createTask: mock(), deleteTask: mock(), assignTask: mock(), addTaskLog: mock(),
   blockTask: mock(), updateTask: mock(), moveTask: mock(), setDependency: mock(), clearDependency: mock(), findTaskWithColumn: mock(),
-  reorderTasks: mock(), autoArchiveDoneTasks: mock().mockReturnValue(0), archiveOldTasks: mock().mockReturnValue(0),
+  reorderTasks: mock(),
+  renumberColumn: mock(), autoArchiveDoneTasks: mock().mockReturnValue(0), archiveOldTasks: mock().mockReturnValue(0),
 }))
 afterAll(() => { rmSync(testDir, { recursive: true, force: true }) })
 

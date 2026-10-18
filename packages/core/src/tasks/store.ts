@@ -183,6 +183,24 @@ export interface SyncBakinTaskStore extends BakinTaskStore {
   nextOrderSync(column: string): number
 }
 
+/**
+ * THE within-column read order: `order` ascending, newest first among equal
+ * orders, id last. A row with no numeric order (legacy data) sorts after
+ * every ordered row — never NaN arithmetic, which made the sort
+ * non-transitive. Renumbering (`reorderTasks`) uses the same comparator so a
+ * repair keeps exactly what the board shows.
+ */
+export function compareTaskOrder(
+  a: Pick<BakinTask, 'order' | 'updatedAt' | 'id'>,
+  b: Pick<BakinTask, 'order' | 'updatedAt' | 'id'>,
+): number {
+  const aOrder = typeof a.order === 'number' ? a.order : Number.POSITIVE_INFINITY
+  const bOrder = typeof b.order === 'number' ? b.order : Number.POSITIVE_INFINITY
+  return (aOrder === bOrder ? 0 : aOrder < bOrder ? -1 : 1)
+    || (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')
+    || a.id.localeCompare(b.id)
+}
+
 export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date().toISOString()): BakinTask {
   return {
     id: input.id ?? `task-${crypto.randomUUID()}`,
@@ -333,18 +351,17 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
   }
 
   function sortTasks(tasks: BakinTask[]): BakinTask[] {
-    return tasks.sort((a, b) => (
-      a.column.localeCompare(b.column)
-      || a.order - b.order
-      || b.updatedAt.localeCompare(a.updatedAt)
-      || a.id.localeCompare(b.id)
-    ))
+    return tasks.sort((a, b) => a.column.localeCompare(b.column) || compareTaskOrder(a, b))
   }
 
   const store: SyncBakinTaskStore = {
     createSync(input) {
       ensureIndex()
-      const task = createEmptyBakinTask(input)
+      // A task without an explicit order goes to the END of its column —
+      // never to 0, which duplicates whatever already sits there.
+      const task = createEmptyBakinTask(input.order === undefined
+        ? { ...input, order: store.nextOrderSync(input.column ?? 'todo') }
+        : input)
       // Index check plus a targeted stat of the path this create would write —
       // no shard walk. An externally hand-placed file for the same id in a
       // DIFFERENT month shard is not detected (store is the single writer).
@@ -457,7 +474,14 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
 
     updateSync(id, patch) {
       const current = requireTask(id)
-      return writeUpdated({ ...current, ...patch })
+      // Landing in a different column without an explicit order appends to
+      // that column. Every writer passes through here (core moves, plugin
+      // ctx.tasks.move/update, any future path); keeping the old column's
+      // order collided with tasks already in the target column.
+      const order = patch.column !== undefined && patch.column !== current.column && patch.order === undefined
+        ? { order: store.nextOrderSync(patch.column) }
+        : {}
+      return writeUpdated({ ...current, ...patch, ...order })
     },
 
     removeSync(id) {

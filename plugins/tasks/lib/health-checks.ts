@@ -16,7 +16,7 @@ import {
 } from '@makinbakin/sdk/utils'
 
 import { maybeGetAppServices } from '../../../src/core/app-services'
-import { clearDependency, readTaskboard, reorderTasks } from '../../../src/core/task-store'
+import { clearDependency, readTaskboard, renumberColumn } from '../../../src/core/task-store'
 import type { ColumnId, Task } from '../types'
 
 type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
@@ -338,7 +338,7 @@ export function taskOrderRepair(): HealthRepairActionDefinition {
           kind: 'task',
           target: 'task columns',
           action: 'update',
-          description: 'Assign contiguous order values within each column using updatedAt descending.',
+          description: 'Assign contiguous order values within each column, keeping the current order.',
         }],
       }]
     },
@@ -350,17 +350,14 @@ export function taskOrderRepair(): HealthRepairActionDefinition {
         const changes: HealthRepairChange[] = []
         op.stage('reorder')
         for (const [column, tasks] of entries) {
-          const ordered = [...tasks]
-            .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-            .map((task) => task.id)
           op.item('reorder', { id: column, label: column, status: 'active' })
-          await reorderTasks(column, ordered)
-          op.item('reorder', { id: column, label: column, status: 'done', message: `${ordered.length} task(s)` })
+          await renumberColumn(column)
+          op.item('reorder', { id: column, label: column, status: 'done', message: `${tasks.length} task(s)` })
           changes.push({
             kind: 'task' as const,
             target: column,
             action: 'update' as const,
-            description: `Rebuilt order values for ${ordered.length} task${ordered.length === 1 ? '' : 's'}.`,
+            description: `Rebuilt order values for ${tasks.length} task${tasks.length === 1 ? '' : 's'}.`,
           })
         }
         return items.map((item) => ({

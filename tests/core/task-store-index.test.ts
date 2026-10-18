@@ -86,6 +86,50 @@ describe('index consistency', () => {
     expect(store.nextOrderSync('todo')).toBe(2)
   })
 
+  it('createSync without an order appends to the end of its column', () => {
+    store.createSync({ id: 'a', title: 'a', column: 'done', order: 0 })
+    store.createSync({ id: 'b', title: 'b', column: 'done', order: 6 })
+    expect(store.createSync({ id: 'c', title: 'c', column: 'done' }).order).toBe(7)
+    expect(store.createSync({ id: 'd', title: 'd' }).order).toBe(0) // first in todo
+    expect(store.createSync({ id: 'e', title: 'e', column: 'done', order: 2 }).order).toBe(2)
+  })
+
+  it('a column change without an order appends to the target column', () => {
+    store.createSync({ id: 'kept', title: 'kept', column: 'done', order: 0 })
+    store.createSync({ id: 'high', title: 'high', column: 'done', order: 5 })
+    store.createSync({ id: 'm1', title: 'm1', column: 'inProgress', order: 0 })
+    store.createSync({ id: 'm2', title: 'm2', column: 'inProgress', order: 1 })
+
+    // The old column's order (0 / 1) must not ride along into done.
+    expect(store.updateSync('m1', { column: 'done' }).order).toBe(6)
+    expect(store.updateSync('m2', { column: 'done' }).order).toBe(7)
+    const orders = store.listSync({ column: 'done' }).map((task) => task.order)
+    expect(new Set(orders).size).toBe(orders.length)
+  })
+
+  it('an explicit order, or an update within the same column, keeps the order given', () => {
+    store.createSync({ id: 'a', title: 'a', column: 'todo', order: 3 })
+    store.createSync({ id: 'b', title: 'b', column: 'done', order: 0 })
+    expect(store.updateSync('a', { title: 'renamed' }).order).toBe(3)
+    expect(store.updateSync('a', { column: 'todo' }).order).toBe(3)
+    expect(store.updateSync('a', { column: 'done', order: 9 }).order).toBe(9)
+  })
+
+  it('reads sort a row with no order after every ordered row (no NaN comparisons)', () => {
+    store.createSync({ id: 'one', title: 'one', column: 'todo', order: 1 })
+    store.createSync({ id: 'zero', title: 'zero', column: 'todo', order: 0 })
+    const path = writeExternalTask('legacy', 'todo')
+    const raw = JSON.parse(fs.readFileSync(path, 'utf-8')) as Record<string, unknown>
+    delete raw.order
+    raw.updatedAt = '2099-01-01T00:00:00.000Z' // newest — must still not jump the line
+    writeFileSync(path, JSON.stringify(raw), 'utf-8')
+
+    // The unfiltered walk discovers the external row (and indexes it); then
+    // the column-bucket read must agree.
+    expect(store.listSync().filter((task) => task.column === 'todo').map((task) => task.id)).toEqual(['zero', 'one', 'legacy'])
+    expect(store.listSync({ column: 'todo' }).map((task) => task.id)).toEqual(['zero', 'one', 'legacy'])
+  })
+
   it('createSync rejects duplicate ids via the index', () => {
     store.createSync({ id: 'dup', title: 'one' })
     expect(() => store.createSync({ id: 'dup', title: 'two' })).toThrow(/already exists/)
@@ -106,8 +150,8 @@ describe('self-healing', () => {
   })
 
   it('tolerates external deletion of a task file', () => {
-    store.createSync({ id: 'gone', title: 'gone', column: 'todo' })
-    store.createSync({ id: 'stays', title: 'stays', column: 'todo' })
+    store.createSync({ id: 'gone', title: 'gone', column: 'todo', order: 5 })
+    store.createSync({ id: 'stays', title: 'stays', column: 'todo', order: 0 })
     expect(store.listSync({ column: 'todo' })).toHaveLength(2)
 
     const raw = store.getSync('gone')

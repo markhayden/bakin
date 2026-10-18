@@ -86,6 +86,7 @@ mock.module('../../src/core/task-store', () => ({
   clearDependency: async () => {},
   findTaskWithColumn: () => null,
   reorderTasks: async () => {},
+  renumberColumn: async () => {},
   moveTaskToInProgress: async () => {},
   assignTaskToTeam: async () => {},
   recordTeamResolution: async () => {},

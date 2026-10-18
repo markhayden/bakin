@@ -8,8 +8,7 @@ import { getAppServices } from './app-services'
 import { createLogger } from './logger'
 import { meterAgentTurn } from './agent-cost'
 import { resolveSystemRoute, routeSendArgs } from './system-route'
-import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
-import { getBakinPaths } from './content-dir'
+import { getSharedBakinTaskStore } from './task-store'
 
 const log = createLogger('agents')
 
@@ -57,8 +56,7 @@ export async function getAgentStatus(agentId: string, contentDir: string): Promi
  */
 export function getAgentTasks(agentId: string, _contentDir: string): AgentTask[] {
   void _contentDir
-  const store = createFileBakinTaskStore(getBakinPaths().tasks)
-  return store.listSync({ agent: agentId }).map((task) => ({
+  return getSharedBakinTaskStore().listSync({ agent: agentId }).map((task) => ({
     id: task.id,
     title: task.title,
     column: task.column === 'inProgress' ? 'in-progress' : task.column,
