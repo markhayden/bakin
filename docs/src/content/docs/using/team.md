@@ -15,7 +15,7 @@ The runtime owns the agents themselves. Bakin reads them, edits them, never copi
 
 Each agent is a card connected by reporting and team structure. Cards show name, role, color, and status at a glance: working, available, offline. Hover any card for a quick read, click in to open the profile.
 
-`+ New Agent` walks you through name, role, model, and identity templates, then registers the agent with the runtime. Reorganize from the `Teams` dialog: add a team, set who it reports to, move agents around.
+`+ New Agent` walks you through name, role, model, and identity templates, then registers the agent with the runtime. Reorganize from `Manage Teams`: `Add team` opens a short form (name, an ID derived from the name, and who the team reports to — your main agent by default). Each team has an `Edit` button to rename it or change who it reports to; the ID can't change once created, because routing and task assignment use it. Closing the form with unsaved changes asks whether to save, discard, or keep editing. If a team reports to an agent that has since been removed, the form says so and asks you to pick a new one.
 
 ## Profile
 
