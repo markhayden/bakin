@@ -345,8 +345,14 @@ export async function runClaimedFire(
     // A one-shot's single occurrence is now consumed (even a blocked catch-up
     // materialized a task) — auto-disable + stamp completedAt so the job reads
     // "completed" instead of pretending a next run exists. Run history stays.
-    // Only if it is still THAT one-shot: a job rescheduled mid-fire stays live.
-    if (consumedSchedule?.kind === 'at' && latest.schedule?.kind === 'at' && latest.schedule.expr === consumedSchedule.expr) {
+    // Only if it is still THAT occurrence: a scheduled/healed claim names its
+    // instant (firedAtMs), so a job rescheduled since — even before a heal
+    // re-drives an old claim — stays live. A manual run-now consumes the
+    // one-shot it was started on.
+    const sameOneShot = latest.schedule?.kind === 'at' && (runId.startsWith('manual-')
+      ? consumedSchedule?.kind === 'at' && latest.schedule.expr === consumedSchedule.expr
+      : opts.firedAtMs !== undefined && Date.parse(latest.schedule.expr) === opts.firedAtMs)
+    if (sameOneShot) {
       latest.enabled = false
       latest.completedAt = new Date(opts.firedAtMs ?? Date.now()).toISOString()
     }

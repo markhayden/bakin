@@ -153,6 +153,17 @@ describe('one-shot completion', () => {
     expect(after.completedAt).toBeUndefined()
   })
 
+  it('a healed claim for the OLD instant never consumes a one-shot rescheduled since', async () => {
+    const claimed = oneShotMeta()
+    upsertJob({ ...claimed, schedule: { kind: 'at', expr: '2099-01-01T00:00:00.000Z' } })
+    // The healer passes the job as it stands now, with the claim's instant.
+    await runClaimedFire(getJob('sch_once')!, 'sch_once', `sch_once:${AT}`, { firedAtMs: Date.parse(AT) })
+    const after = getJob('sch_once')!
+    expect(after.schedule).toEqual({ kind: 'at', expr: '2099-01-01T00:00:00.000Z' })
+    expect(after.enabled).not.toBe(false)
+    expect(after.completedAt).toBeUndefined()
+  })
+
   it('a blocked catch-up fire still completes the one-shot (occurrence consumed)', async () => {
     const meta = oneShotMeta()
     upsertJob(meta)
