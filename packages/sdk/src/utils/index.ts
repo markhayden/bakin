@@ -51,6 +51,9 @@ export type { TurnRecorder } from '../../../../src/components/conversation/turn-
 export { humanizeKey, formatStructured, summarizeStructured, unwrapToolResult, type FormatStructuredOptions } from '@bakin/core/format'
 
 /** Fetch a plugin's own API route (`/api/plugins/<id>/<path>`) with JSON defaults. */
+/** Headers a browser decision client sends with an approval decision (operator-declared, #898). */
+export { OPERATOR_DECLARATION_HEADERS } from '@bakin/core/approvals/provenance'
+
 export { pluginFetch } from './plugin-fetch'
 /** `pluginFetch` + JSON parse under a hard deadline (the plain-function twin of `usePluginJsonFetch`'s `timeoutMs`). */
 export { pluginFetchJson, type PluginFetchJsonOptions } from './plugin-fetch'

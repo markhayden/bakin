@@ -157,10 +157,19 @@ const resolveApprovalWithResultMock = mock(async () => ({ record: { approvalId: 
 mock.module('../../../src/core/doctor-approvals', () => ({
   pendingRepairApprovalFor: (observationIds: string[]) => (coveringApproval && observationIds.includes('tasks.taskboard:columns') ? coveringApproval : null),
 }))
-mock.module('../../../src/core/approvals', () => ({
-  resolveApprovalWithResult: resolveApprovalWithResultMock,
-  approvalErrorStatus: () => null,
-}))
+mock.module('../../../src/core/approvals', () => {
+  // The real policy and errors: the route's guard is what these tests pin.
+  const { approvalRefusal } = require('../../../packages/core/src/approvals/provenance') as typeof import('../../../packages/core/src/approvals/provenance')
+  const { ApprovalRefusedError, approvalErrorStatus } = require('../../../src/core/approvals/errors') as typeof import('../../../src/core/approvals/errors')
+  return {
+    resolveApprovalWithResult: resolveApprovalWithResultMock,
+    approvalErrorStatus,
+    assertOperatorDecision: (provenance: Parameters<typeof approvalRefusal>[0]) => {
+      const refusal = approvalRefusal(provenance, null)
+      if (refusal) throw new ApprovalRefusedError(refusal)
+    },
+  }
+})
 mock.module('../../../src/core/doctor-repair-plans', () => ({
   DoctorRepairStalePlanError: class DoctorRepairStalePlanError extends Error { code = 'STALE_PLAN' },
   DoctorRepairConfirmationError: class DoctorRepairConfirmationError extends Error { code = 'CONFIRMATION_REQUIRED'; itemIds: string[] = [] },
@@ -1087,7 +1096,7 @@ describe('Health Plugin Routes', () => {
         // The decision started the repair (D24); the route answers with its operation.
         expect(status).toBe(202)
         expect(body).toEqual({ operationId: 'op-approved-1', bootId: 'boot-1' })
-        expect(resolveApprovalWithResultMock).toHaveBeenCalledWith('health-repair:req-1', expect.objectContaining({ option: 'apply', actor: expect.objectContaining({ source: 'web' }) }))
+        expect(resolveApprovalWithResultMock).toHaveBeenCalledWith('health-repair:req-1', expect.objectContaining({ option: 'apply', provenance: { channel: 'ui', actor: { kind: 'unknown' }, evidence: 'declared' } }))
         expect(startDoctorRepairMock).not.toHaveBeenCalled()
       } finally {
         coveringApproval = null
@@ -1109,6 +1118,21 @@ describe('Health Plugin Routes', () => {
         confirmedItemIds: [],
         origin: 'web',
       }))
+    })
+
+    it('confirming a non-safe item is the operator\'s word: refused without a declaration or with an agent context, before anything starts (#898)', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/repair/apply')!
+      startDoctorRepairMock.mockClear()
+      const body = { planId: mockRepairPlan.planId, itemIds: [mockRepairPlan.items[0].id], confirmedItemIds: [mockRepairPlan.items[0].id] }
+      for (const headers of [{}, { 'x-bakin-operator': 'declared', 'x-bakin-agent-context': 'researcher' }, { 'x-bakin-origin': 'cli' }] as Array<Record<string, string>>) {
+        const refused = await callRoute(route, activated.ctx, { body, headers })
+        expect(refused.status).toBe(403)
+        expect(refused.body.code).toBe('APPROVAL_DECISION')
+      }
+      expect(startDoctorRepairMock).not.toHaveBeenCalled()
+      const declared = await callRoute(route, activated.ctx, { body, headers: { 'x-bakin-operator': 'declared' } })
+      expect(declared.status).toBe(202)
+      expect(startDoctorRepairMock).toHaveBeenCalledTimes(1)
     })
 
     it('answers 200 when an identical apply is already running (attached)', async () => {

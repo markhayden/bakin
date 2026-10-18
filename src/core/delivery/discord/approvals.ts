@@ -25,6 +25,7 @@ import type {
   PostApprovalOutcomeArgs,
   ResolveApprovalArgs,
 } from '@bakin/core/adapters/runtime'
+import { describeApprovalProvenance } from '@bakin/core/approvals'
 import { createLogger } from '@/core/logger'
 import { auditDelivery } from '../audit'
 import { discordChannelRef } from './refs'
@@ -202,10 +203,9 @@ export function createApprovalSurface(deps: ApprovalSurfaceDeps): ApprovalSurfac
     },
 
     async resolveApproval(args) {
-      const { selectedOption, actor } = args.response
-      const who = actor.displayName ?? actor.id
+      const { selectedOption, provenance } = args.response
       await editCard(args.deliveries, {
-        content: `✅ Decision recorded: **${selectedOption === 'approve' ? 'Approve' : selectedOption}** by ${who}`,
+        content: `✅ Decision recorded: **${selectedOption === 'approve' ? 'Approve' : selectedOption}** — ${describeApprovalProvenance(provenance)}`,
         components: [],
       })
     },
@@ -270,10 +270,11 @@ export function createApprovalSurface(deps: ApprovalSurfaceDeps): ApprovalSurfac
         emit({
           approvalId,
           channelId: channelRef,
-          response: {
+          decision: {
             selectedOption: optionId,
             respondedAt: new Date().toISOString(),
-            actor: { type: 'human', ...actor },
+            channel: 'discord',
+            responder: actor,
           },
         })
         await deps.api.updateComponentMessage(raw.id, raw.token, { components: [] })
@@ -288,10 +289,11 @@ export function createApprovalSurface(deps: ApprovalSurfaceDeps): ApprovalSurfac
       emit({
         approvalId,
         channelId: channelRef,
-        response: {
+        decision: {
           selectedOption: optionId,
           respondedAt: new Date().toISOString(),
-          actor: { type: 'human', ...actor },
+          channel: 'discord',
+          responder: actor,
           ...(comment ? { comment } : {}),
         },
       })

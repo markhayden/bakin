@@ -6,6 +6,7 @@
  * context card + thread and routes the button card into the thread.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { UI_OPERATOR, discordUser } from '../../helpers/approval-provenance'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -88,8 +89,8 @@ import { waitUntil } from '../../helpers/wait'
 
 const audit = mock()
 const activityLog = mock()
-const web = { source: 'web' as const, id: 'mark' }
-const channelActor = { source: 'channel' as const, id: 'u-1', displayName: 'Owner' }
+const web = UI_OPERATOR
+const channelActor = discordUser('u-1', 'Owner')
 
 function reachGate(taskId: string, output: Record<string, unknown> = { text: 'hello' }) {
   createInstance(taskId, 'gate', testDir)
@@ -188,10 +189,10 @@ describe('workflow-gate approval kind', () => {
     reachGate('t-4')
     const resolved = await decideGate('t-4', 'review-gate', 'approve', web)
     expect(resolved.status).toBe('approved')
-    expect(resolved.response?.actor).toEqual({ type: 'human', id: 'mark' })
+    expect(resolved.response?.provenance).toEqual(UI_OPERATOR)
     expect(loadInstance('t-4', testDir)!.currentStepId).toBe('publish')
     expect(audit.mock.calls[0]?.[0]).toBe('gate.approved')
-    expect(audit.mock.calls[0]?.[1]).toBe('web')
+    expect(audit.mock.calls[0]?.[1]).toBe('ui')
     expect(audit.mock.calls[0]?.[2]).toMatchObject({ taskId: 't-4', stepId: 'review-gate', gateLabel: 'Review' })
     expect(triggerDispatch).toHaveBeenCalledTimes(1)
     expect(broadcasts.filter((b) => b.event === 'approval.resolved')).toHaveLength(1)
@@ -221,7 +222,7 @@ describe('workflow-gate approval kind', () => {
     reachGate('t-6')
     await decideGate('t-6', 'review-gate', 'reject', channelActor, '   ')
     expect(loadInstance('t-6', testDir)!.currentStepId).toBe('write-copy')
-    expect(audit.mock.calls[0]?.[1]).toBe('channel')
+    expect(audit.mock.calls[0]?.[1]).toBe('discord')
     expect(audit.mock.calls[0]?.[2]).toMatchObject({ reason: CHANNEL_REJECT_DEFAULT_REASON })
   })
 
@@ -254,13 +255,13 @@ describe('workflow-gate approval kind', () => {
     // Make the current record the newest by touching it after the old one.
     expect(Date.parse(current.updatedAt)).toBeGreaterThanOrEqual(Date.parse(older.createdAt))
     const { resolveApproval } = await import('../../../src/core/approvals/service')
-    const err = await resolveApproval('older-generation', { option: 'approve', actor: web }).catch((e: unknown) => e)
+    const err = await resolveApproval('older-generation', { option: 'approve', provenance: web }).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(ApprovalResolveError)
     expect((err as ApprovalResolveError).status).toBe(409)
     expect(loadInstance('t-7b', testDir)!.status).toBe('pending_approval')
     expect(getApprovalRecord('older-generation')?.status).toBe('pending')
     expect(instance.instanceId).toBe(current.owner.kind === 'workflow-gate' ? current.owner.runId : '')
-    await resolveApproval(current.approvalId, { option: 'approve', actor: web })
+    await resolveApproval(current.approvalId, { option: 'approve', provenance: web })
     expect(loadInstance('t-7b', testDir)!.currentStepId).toBe('publish')
   })
 

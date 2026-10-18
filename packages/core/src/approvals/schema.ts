@@ -18,16 +18,34 @@ const approvalDeliverySchema = z.object({
   renderedAt: z.string(),
 })
 
+export const approvalProvenanceSchema = z.object({
+  channel: z.enum(['ui', 'cli', 'discord', 'mcp', 'runtime', 'hook']),
+  actor: z.object({
+    kind: z.enum(['operator-declared', 'agent', 'channel-user', 'unknown']),
+    id: z.string().optional(),
+    displayName: z.string().optional(),
+  }),
+  evidence: z.enum(['declared', 'runtime-context', 'provider']),
+})
+
+/**
+ * A decision. Records written before provenance (#898) carry an `actor`
+ * that claimed `type: 'human'` for whoever clicked — it is dropped on read,
+ * never translated: such a record shows "Provenance unavailable — legacy
+ * record" (D-H7), and its status/decision/timestamps stay intact so an
+ * idempotent create can never reopen it.
+ */
 const approvalResponseSchema = z.object({
   selectedOption: z.string(),
   respondedAt: z.string(),
-  actor: z.object({
-    type: z.enum(['agent', 'human']),
-    id: z.string(),
-    displayName: z.string().optional(),
-  }),
+  provenance: approvalProvenanceSchema.optional(),
   comment: z.string().optional(),
-})
+}).transform(({ selectedOption, respondedAt, provenance, comment }) => ({
+  selectedOption,
+  respondedAt,
+  ...(provenance ? { provenance } : {}),
+  ...(comment !== undefined ? { comment } : {}),
+}))
 
 const proposedChangeSchema = z.object({
   kind: z.string(),

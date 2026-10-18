@@ -51,13 +51,16 @@ export interface ApprovalRequest {
   context?: RuntimeMetadata
 }
 
+/** A recorded decision; `provenance` is absent only on records from before #898 (legacy). */
+export type StoredApprovalResponse = Omit<ApprovalResponse, 'provenance'> & { provenance?: ApprovalResponse['provenance'] }
+
 export interface ApprovalRecord {
   approvalId: string
   owner: ApprovalOwner
   status: ApprovalStatus
   request: ApprovalRequest
   deliveries: ApprovalDelivery[]
-  response?: ApprovalResponse
+  response?: StoredApprovalResponse
   createdAt: string
   updatedAt: string
   resolvedAt?: string

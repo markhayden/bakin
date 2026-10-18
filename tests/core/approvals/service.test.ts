@@ -5,6 +5,7 @@
  * resolvers: one wins, the other gets 409 and the handler runs once (R1).
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
+import { UI_OPERATOR, agentActor, discordUser } from '../../helpers/approval-provenance'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -60,13 +61,14 @@ mock.module('../../../src/core/app-services-store', () => ({ maybeGetAppServices
 
 import { requestApproval, resolveApproval, cancelApproval, listPendingApprovals, postApprovalOutcome, resolveApprovalWithResult, settleApprovalFollowUps } from '../../../src/core/approvals/service'
 import { registerApprovalKind, clearApprovalKinds, type ApprovalKindHandler } from '../../../src/core/approvals/kinds'
-import { ApprovalKindUnavailableError, ApprovalNotFoundError, ApprovalNotPendingError, ApprovalResolveError } from '../../../src/core/approvals/errors'
+import { ApprovalKindUnavailableError, ApprovalNotFoundError, ApprovalNotPendingError, ApprovalRefusedError, ApprovalResolveError } from '../../../src/core/approvals/errors'
+import { runAsAgentInvocation } from '../../../src/core/agent-invocation'
 import { getApprovalRecord } from '../../../packages/core/src/approvals'
 import { settleFor } from '../../helpers/wait'
 
 const gateOwner = { kind: 'workflow-gate' as const, taskId: 't-1', workflowId: 'publish', runId: 'inst-1', stepId: 'review' }
 const request = { title: 'Gate: review', body: 'Look', options: [{ id: 'approve', label: 'Approve' }, { id: 'reject', label: 'Reject' }] }
-const web = { source: 'web' as const, id: 'mark' }
+const web = UI_OPERATOR
 
 const onResolve = mock(async (_record: unknown, _decision: unknown) => {})
 function registerGateKind(overrides: Partial<ApprovalKindHandler<'workflow-gate'>> = {}): void {
@@ -133,7 +135,7 @@ describe('requestApproval', () => {
   it('re-requesting a resolved id returns it untouched and publishes nothing', async () => {
     registerGateKind()
     requestApproval({ approvalId: 'a5', owner: gateOwner, request })
-    await resolveApproval('a5', { option: 'approve', actor: web })
+    await resolveApproval('a5', { option: 'approve', provenance: web })
     broadcasts.length = 0
     expect(requestApproval({ approvalId: 'a5', owner: gateOwner, request }).status).toBe('approved')
     expect(broadcasts).toEqual([])
@@ -148,29 +150,29 @@ describe('resolveApproval', () => {
     await settleFor(20, 'let the card render so deliveries exist')
     broadcasts.length = 0
 
-    const resolved = await resolveApproval('r1', { option: 'approve', comment: 'ship it', actor: { source: 'web', id: 'mark', displayName: 'Mark' } })
+    const resolved = await resolveApproval('r1', { option: 'approve', comment: 'ship it', provenance: web })
 
     expect(onResolve).toHaveBeenCalledTimes(1)
-    expect(onResolve.mock.calls[0]?.[1]).toMatchObject({ option: 'approve', comment: 'ship it', actor: { source: 'web', id: 'mark' } })
+    expect(onResolve.mock.calls[0]?.[1]).toMatchObject({ option: 'approve', comment: 'ship it', provenance: web })
     expect(resolved.status).toBe('approved')
-    expect(resolved.response).toMatchObject({ selectedOption: 'approve', comment: 'ship it', actor: { type: 'human', id: 'mark', displayName: 'Mark' } })
+    expect(resolved.response).toMatchObject({ selectedOption: 'approve', comment: 'ship it', provenance: web })
     expect(resolveApprovalOnChannel).toHaveBeenCalledWith(expect.objectContaining({ approvalId: 'r1', deliveries: resolved.deliveries }))
     expect(broadcasts).toEqual([expect.objectContaining({ event: 'approval.resolved', approvalId: 'r1', kind: 'workflow-gate', taskId: 't-1', status: 'approved', option: 'approve' })])
   })
 
   it('refuses an unknown id (404 class) and a non-pending record (409 class)', async () => {
     registerGateKind()
-    await expect(resolveApproval('ghost', { option: 'approve', actor: web })).rejects.toBeInstanceOf(ApprovalNotFoundError)
+    await expect(resolveApproval('ghost', { option: 'approve', provenance: web })).rejects.toBeInstanceOf(ApprovalNotFoundError)
     requestApproval({ approvalId: 'r2', owner: gateOwner, request })
-    await resolveApproval('r2', { option: 'reject', comment: 'no', actor: web })
-    await expect(resolveApproval('r2', { option: 'approve', actor: web })).rejects.toBeInstanceOf(ApprovalNotPendingError)
+    await resolveApproval('r2', { option: 'reject', comment: 'no', provenance: web })
+    await expect(resolveApproval('r2', { option: 'approve', provenance: web })).rejects.toBeInstanceOf(ApprovalNotPendingError)
     expect(onResolve).toHaveBeenCalledTimes(1)
   })
 
   it('a handler throw leaves the record pending and surfaces the typed error', async () => {
     registerGateKind({ onResolve: async () => { throw new ApprovalResolveError('gate is not pending any more', 409) } })
     requestApproval({ approvalId: 'r3', owner: gateOwner, request })
-    await expect(resolveApproval('r3', { option: 'approve', actor: web })).rejects.toMatchObject({ status: 409 })
+    await expect(resolveApproval('r3', { option: 'approve', provenance: web })).rejects.toMatchObject({ status: 409 })
     expect(getApprovalRecord('r3')?.status).toBe('pending')
     expect(broadcasts.filter((b) => b.event === 'approval.resolved')).toEqual([])
   })
@@ -181,8 +183,8 @@ describe('resolveApproval', () => {
     registerGateKind({ onResolve: async (record, decision) => { onResolve(record, decision); await gate } })
     requestApproval({ approvalId: 'race', owner: gateOwner, request })
 
-    const first = resolveApproval('race', { option: 'approve', actor: web })
-    const second = resolveApproval('race', { option: 'reject', actor: { source: 'channel', id: 'discord-user' } })
+    const first = resolveApproval('race', { option: 'approve', provenance: web })
+    const second = resolveApproval('race', { option: 'reject', provenance: discordUser('discord-user') })
     release()
     const [a, b] = await Promise.allSettled([first, second])
 
@@ -195,7 +197,7 @@ describe('resolveApproval', () => {
 
   it('refuses a record whose kind has no handler without touching it', async () => {
     requestApproval({ approvalId: 'r4', owner: gateOwner, request })
-    await expect(resolveApproval('r4', { option: 'approve', actor: web })).rejects.toBeInstanceOf(ApprovalKindUnavailableError)
+    await expect(resolveApproval('r4', { option: 'approve', provenance: web })).rejects.toBeInstanceOf(ApprovalKindUnavailableError)
     expect(getApprovalRecord('r4')?.status).toBe('pending')
   })
 
@@ -205,8 +207,30 @@ describe('resolveApproval', () => {
     requestApproval({ approvalId: 'r5', owner: gateOwner, request })
     await settleFor(20, 'let the card render so deliveries exist')
     resolveApprovalOnChannel.mockRejectedValueOnce(new Error('discord down'))
-    const resolved = await resolveApproval('r5', { option: 'approve', actor: web })
+    const resolved = await resolveApproval('r5', { option: 'approve', provenance: web })
     expect(resolved.status).toBe('approved')
+  })
+})
+
+describe('the decision policy (#898)', () => {
+  it('refuses inside an agent tool call, an agent actor, and an undeclared caller — before the record is even read', async () => {
+    registerGateKind()
+    requestApproval({ approvalId: 'guarded', owner: gateOwner, request })
+    const refused = async (run: () => Promise<unknown>, code: ApprovalRefusedError['code']) => {
+      const err = await run().catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(ApprovalRefusedError)
+      expect((err as ApprovalRefusedError).code).toBe(code)
+    }
+    await refused(() => runAsAgentInvocation({ agentId: 'researcher', tool: 'bakin_exec_x' }, async () => await resolveApproval('guarded', { option: 'approve', provenance: web })), 'agent_context')
+    await refused(() => resolveApproval('guarded', { option: 'approve', provenance: agentActor('researcher') }), 'agent_actor')
+    await refused(() => resolveApproval('guarded', { option: 'approve', provenance: { channel: 'ui', actor: { kind: 'unknown' }, evidence: 'declared' } }), 'undeclared')
+    // An unknown id is refused, not 404: a refused caller learns nothing.
+    await refused(() => resolveApproval('no-such-id', { option: 'approve', provenance: agentActor('researcher') }), 'agent_actor')
+    expect(onResolve).not.toHaveBeenCalled()
+    expect(getApprovalRecord('guarded')?.status).toBe('pending')
+    // Outside the agent's call, the same caller's declared decision goes through.
+    await resolveApproval('guarded', { option: 'approve', provenance: web })
+    expect(getApprovalRecord('guarded')?.response?.provenance).toEqual(UI_OPERATOR)
   })
 })
 
@@ -249,7 +273,7 @@ describe('afterResolve and the outcome follow-up (#895 D24)', () => {
     })
     requestApproval({ approvalId: 'a-1', owner: gateOwner, request })
     await settleFor(20, 'channel render is fire-and-forget')
-    const { result } = await resolveApprovalWithResult('a-1', { option: 'approve', actor: web })
+    const { result } = await resolveApprovalWithResult('a-1', { option: 'approve', provenance: web })
     expect(result).toEqual({ operationId: 'op-42' })
     await settleApprovalFollowUps()
     expect(seen).toEqual([{ status: 'approved', channelResolved: 1, published: true, result: { operationId: 'op-42' } }])
@@ -260,7 +284,7 @@ describe('afterResolve and the outcome follow-up (#895 D24)', () => {
     const gate = new Promise<void>((resolve) => { release = resolve })
     registerGateKind({ afterResolve: async () => { await gate; throw new Error('follow-up exploded') } })
     requestApproval({ approvalId: 'a-2', owner: gateOwner, request })
-    const record = await resolveApproval('a-2', { option: 'approve', actor: web })
+    const record = await resolveApproval('a-2', { option: 'approve', provenance: web })
     expect(record.status).toBe('approved')
     release()
     await settleApprovalFollowUps()
@@ -271,7 +295,7 @@ describe('afterResolve and the outcome follow-up (#895 D24)', () => {
     registerGateKind()
     requestApproval({ approvalId: 'a-3', owner: gateOwner, request })
     await settleFor(20, 'channel render is fire-and-forget')
-    const resolved = await resolveApproval('a-3', { option: 'approve', actor: web })
+    const resolved = await resolveApproval('a-3', { option: 'approve', provenance: web })
     expect(await postApprovalOutcome(resolved, { status: 'succeeded', title: 'Repair applied' })).toBe(true)
     expect(postApprovalOutcomeOnChannel.mock.calls[0]![0]).toMatchObject({ approvalId: 'a-3', outcome: { status: 'succeeded', title: 'Repair applied' } })
 

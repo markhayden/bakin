@@ -15,6 +15,14 @@ export { defineCoreRoute } from '@bakin/core/routing'
 /** Compose a plugin's routes into a single definition for the server. */
 export { definePlugin } from '@bakin/core/routing'
 
+/**
+ * Provenance of an approval decision arriving on a plugin route — pass it to
+ * the `workflows.approveGate` / `workflows.rejectGate` hooks. Built from the
+ * transport only; never from request JSON (#898).
+ */
+export { approvalProvenanceFromRequest } from '@bakin/core/approvals/provenance'
+export type { ApprovalProvenance } from '@bakin/core/adapters/runtime'
+
 export type {
   HttpMethod,
   HttpStatus,

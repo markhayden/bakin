@@ -8,7 +8,9 @@
 import type { AgentRuntimeAdapter, ApprovalDelivery } from '@bakin/core/adapters/runtime'
 import type { RuntimeChannelSurface } from '@bakin/core/adapters/runtime/channels'
 import type { ApprovalRecord, ApprovalRequest } from '@bakin/core/approvals'
-import type { ApprovalActor, EventBus } from '@bakin/core/plugin-types'
+import type { EventBus } from '@bakin/core/plugin-types'
+import type { ApprovalProvenance } from '@bakin/core/adapters/runtime'
+import { describeApprovalProvenance } from '@bakin/core/approvals'
 import type { WorkflowInstance } from '../types'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { bakinBaseUrl, requestApproval, taskUrl } from '../../../src/core/approvals'
@@ -95,7 +97,7 @@ export function notifyWorkflowReopened(
   instance: WorkflowInstance,
   reopenedStepId: string,
   reason: string,
-  actor?: ApprovalActor,
+  provenance?: ApprovalProvenance,
 ): void {
   if (!eventBus) return
 
@@ -105,7 +107,7 @@ export function notifyWorkflowReopened(
     workflowId: instance.workflowId,
     stepId: reopenedStepId,
     reason,
-    actor,
+    provenance,
   })
 }
 
@@ -116,7 +118,7 @@ export function notifyGateApproved(
   instance: WorkflowInstance,
   stepId: string,
   label: string,
-  approver?: ApprovalActor,
+  provenance?: ApprovalProvenance,
 ): void {
   if (!eventBus) return
 
@@ -126,7 +128,7 @@ export function notifyGateApproved(
     workflowId: instance.workflowId,
     stepId,
     label,
-    approver,
+    provenance,
   })
 }
 
@@ -138,7 +140,7 @@ export function notifyGateRejected(
   stepId: string,
   label: string,
   reason: string,
-  approver?: ApprovalActor,
+  provenance?: ApprovalProvenance,
 ): void {
   if (!eventBus) return
 
@@ -149,7 +151,7 @@ export function notifyGateRejected(
     stepId,
     label,
     reason,
-    approver,
+    provenance,
   })
 }
 
@@ -407,7 +409,7 @@ export async function sendGateDecisionSummary(
   stepId: string,
   gateLabel: string,
   decision: 'approved' | 'rejected',
-  approver: ApprovalActor,
+  provenance: ApprovalProvenance,
   requestedAt: string | undefined,
   decidedAt: string,
   reason: string | undefined,
@@ -419,7 +421,7 @@ export async function sendGateDecisionSummary(
   if (!channels) return
 
   const decisionLabel = decision === 'approved' ? 'Approved' : 'Rejected'
-  const approverLabel = `${approver.displayName ?? approver.id} (${approver.source})`
+  const approverLabel = describeApprovalProvenance(provenance)
   const fields = [
     { label: 'Decision', value: decisionLabel },
     { label: 'Decided by', value: approverLabel },
@@ -438,10 +440,10 @@ export async function sendGateDecisionSummary(
   // and the reject reason when there is one.
   const icon = decision === 'approved' ? '✅' : '❌'
   const durationText = requestedAt ? humanizeDuration(Date.parse(decidedAt) - Date.parse(requestedAt)) : undefined
-  const decisionLine = `${icon} **${decisionLabel}** by ${approverLabel}${durationText ? ` · took ${durationText}` : ''}`
+  const decisionLine = `${icon} **${decisionLabel}** — ${approverLabel}${durationText ? ` · took ${durationText}` : ''}`
   const body = [
     `${icon} **Approval Gate: ${gateLabel}** — ${decisionLabel}`,
-    `By ${approverLabel}${durationText ? ` · took ${durationText}` : ''}`,
+    `Decided: ${approverLabel}${durationText ? ` · took ${durationText}` : ''}`,
     `Task \`${instance.taskId}\` · \`${instance.workflowId}\``,
     ...(reason ? [`> ${reason}`] : []),
   ].join('\n')

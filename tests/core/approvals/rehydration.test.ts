@@ -73,7 +73,7 @@ afterAll(() => {
 describe('rehydratePendingApprovals', () => {
   it('prunes old resolved records, cancels orphans, skips unknown owners and unreadable states, never cancels those', async () => {
     createApprovalRecord({ approvalId: 'old', owner: owner('t-old'), request, createdAt: '2026-01-01T00:00:00.000Z' })
-    resolveApprovalRecord('old', { selectedOption: 'approve', respondedAt: '2026-01-02T00:00:00.000Z', actor: { type: 'human', id: 'mark' } })
+    resolveApprovalRecord('old', { selectedOption: 'approve', respondedAt: '2026-01-02T00:00:00.000Z', provenance: { channel: 'ui', actor: { kind: 'operator-declared' }, evidence: 'declared' } })
     createApprovalRecord({ approvalId: 'orphan', owner: owner('t-orphan'), request })
     updateApprovalDeliveries('orphan', [{ channelId: 'c', ref: 'm', renderedAt: 'now' }])
     createApprovalRecord({ approvalId: 'unknown', owner: owner('t-unknown'), request })

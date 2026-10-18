@@ -4,7 +4,7 @@
  * Shared by the gate routes and the channel-approval handlers: resolve a
  * gate's description from its definition, and shape the structured audit
  * payload for gate.approved / gate.rejected. The decision record is the
- * source of truth — approver, gateLabel, timestamps, durationMs flow through it.
+ * source of truth — provenance, gateLabel, timestamps, durationMs flow through it.
  */
 import type { GateDecisionRecord } from './runtime'
 import { loadDefinition } from './parser'
@@ -28,7 +28,7 @@ export function buildGateAuditPayload(
     taskId,
     stepId,
     gateLabel: decision?.gateLabel,
-    approver: decision?.approver,
+    provenance: decision?.provenance,
     requestedAt: decision?.requestedAt,
     decidedAt: decision?.decidedAt,
     durationMs: decision?.durationMs,

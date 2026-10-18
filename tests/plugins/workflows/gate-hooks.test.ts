@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
+import { UI_OPERATOR } from '../../helpers/approval-provenance'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -79,6 +80,7 @@ import {
   loadInstance,
 } from '@bakin/workflows/lib/runtime'
 import { getApprovalRecord, listApprovalRecords } from '@bakin/core/approvals'
+import { runAsAgentInvocation } from '../../../src/core/agent-invocation'
 import { createConversationTurnService } from '../../../src/core/conversation-turns'
 
 const gateWorkflow = `name: Gate Hook Test
@@ -220,14 +222,35 @@ describe('workflows gate hooks', () => {
       taskId: 'task-approve-hook',
       stepId: 'review',
       contentDir: testDir,
-      approver: { id: 'mark', source: 'web' },
+      provenance: UI_OPERATOR,
     }) as Record<string, unknown>
 
     expect(result).toEqual({ success: true, approvalId: pending[0]!.approvalId })
-    expect(getApprovalRecord(pending[0]!.approvalId)).toMatchObject({ status: 'approved', response: { actor: { id: 'mark' } } })
+    expect(getApprovalRecord(pending[0]!.approvalId)).toMatchObject({ status: 'approved', response: { provenance: UI_OPERATOR } })
     const instance = loadInstance('task-approve-hook', testDir)!
     expect(instance.currentStepId).toBe('publish')
     expect(instance.status).toBe('in_progress')
+  })
+
+  it('the gate hooks refuse a missing provenance and an agent tool context — nothing changes (#898)', async () => {
+    const hooks = await activateWithHooks()
+    createPendingGate('task-refuse-hook')
+    const [record] = listApprovalRecords({ status: 'pending', taskIds: ['task-refuse-hook'] })
+
+    const undeclared = await hooks.get('workflows.approveGate')!({ taskId: 'task-refuse-hook', stepId: 'review', contentDir: testDir }) as Record<string, unknown>
+    expect(undeclared).toMatchObject({ success: false, status: 403, code: 'undeclared' })
+
+    // A legacy-shaped approver is not provenance — refused, never defaulted.
+    const legacy = await hooks.get('workflows.approveGate')!({ taskId: 'task-refuse-hook', stepId: 'review', contentDir: testDir, approver: { id: 'mark', source: 'web' } }) as Record<string, unknown>
+    expect(legacy).toMatchObject({ success: false, status: 403, code: 'undeclared' })
+
+    // Inside an agent's tool call the claimed provenance does not matter.
+    const inAgent = await runAsAgentInvocation({ agentId: 'researcher', tool: 'bakin_exec_messaging_approve' }, async () =>
+      await hooks.get('workflows.rejectGate')!({ taskId: 'task-refuse-hook', stepId: 'review', reason: 'no', contentDir: testDir, provenance: UI_OPERATOR }) as Record<string, unknown>)
+    expect(inAgent).toMatchObject({ success: false, status: 403, code: 'agent_context' })
+
+    expect(getApprovalRecord(record!.approvalId)?.status).toBe('pending')
+    expect(loadInstance('task-refuse-hook', testDir)!.currentStepId).toBe('review')
   })
 
   it('workflows.rejectGate rejects through the record and rewinds the instance', async () => {
@@ -239,7 +262,7 @@ describe('workflows gate hooks', () => {
       stepId: 'review',
       reason: 'Needs a tighter CTA',
       contentDir: testDir,
-      approver: { id: 'mark', source: 'web' },
+      provenance: UI_OPERATOR,
     }) as Record<string, unknown>
 
     expect(result.success).toBe(true)
@@ -346,7 +369,7 @@ steps:
       taskId: 'task-reopen-hook',
       stepId: 'review',
       contentDir: testDir,
-      approver: { id: 'mark', source: 'web' },
+      provenance: UI_OPERATOR,
     })
 
     const result = await hooks.get('workflows.reopenFromStep')!({
@@ -354,7 +377,7 @@ steps:
       stepId: 'review',
       reason: 'Messaging recovery requested',
       contentDir: testDir,
-      actor: { id: 'mark', source: 'web' },
+      provenance: UI_OPERATOR,
     }) as Record<string, unknown>
 
     expect(result.success).toBe(true)

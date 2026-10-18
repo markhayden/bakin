@@ -890,7 +890,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private markApprovalResponseEmitted(event: ApprovalResolveEvent): boolean {
-    const key = `${event.approvalId}:${event.response.selectedOption}:${event.response.respondedAt}`
+    const key = `${event.approvalId}:${event.decision.selectedOption}:${event.decision.respondedAt}`
     if (this.emittedApprovalResponseKeySet.has(key)) return false
     this.emittedApprovalResponseKeySet.add(key)
     this.emittedApprovalResponseKeys.push(key)

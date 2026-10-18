@@ -6,7 +6,9 @@
  * other plugins reach workflow state through the HookRegistry rather than
  * importing this plugin directly. Extracted verbatim from the activate() body.
  */
-import type { PluginContext, ApprovalActor } from '@bakin/core/plugin-types'
+import type { PluginContext } from '@bakin/core/plugin-types'
+import type { ApprovalProvenance } from '@bakin/core/adapters/runtime'
+import { approvalProvenanceSchema } from '@bakin/core/approvals'
 import {
   loadInstance,
   saveInstance,
@@ -26,7 +28,7 @@ import {
   recordStepTeamResolution,
   type WorkflowToolUseAction,
 } from './runtime'
-import { approvalErrorStatus } from '../../../src/core/approvals'
+import { ApprovalRefusedError, approvalErrorStatus } from '../../../src/core/approvals'
 import { decideGate } from './approval-kind'
 import { createValidatedInstance } from './start-validation'
 import { matchWorkflow } from './matcher'
@@ -45,15 +47,28 @@ async function decideGateViaHook(
   taskId: string,
   stepId: string,
   option: 'approve' | 'reject',
-  approver: ApprovalActor | undefined,
+  rawProvenance: unknown,
   reason?: string,
-): Promise<{ success: boolean; approvalId?: string; errors?: string[] }> {
+): Promise<{ success: boolean; approvalId?: string; errors?: string[]; status?: number; code?: string }> {
+  // The caller passes the provenance of the request it is serving (the SDK's
+  // approvalProvenanceFromRequest); absent or malformed is never defaulted —
+  // the policy refuses it as undeclared (#898 D-H2).
+  const parsed = approvalProvenanceSchema.safeParse(rawProvenance)
+  const provenance: ApprovalProvenance = parsed.success
+    ? parsed.data
+    : { channel: 'hook', actor: { kind: 'unknown' }, evidence: 'declared' }
   try {
-    const record = await decideGate(taskId, stepId, option, approver ?? { source: 'system', id: 'workflows-hook' }, reason)
+    const record = await decideGate(taskId, stepId, option, provenance, reason)
     return { success: true, approvalId: record.approvalId }
   } catch (err) {
-    if (approvalErrorStatus(err) === null) throw err
-    return { success: false, errors: [(err as Error).message] }
+    const status = approvalErrorStatus(err)
+    if (status === null) throw err
+    return {
+      success: false,
+      errors: [(err as Error).message],
+      status,
+      ...(err instanceof ApprovalRefusedError ? { code: err.code } : {}),
+    }
   }
 }
 
@@ -68,13 +83,13 @@ export function registerWorkflowHooks(ctx: PluginContext): void {
     d.resolution as { agentId: string; team: string; reason: string },
     d.contentDir as string | undefined,
   ), { label: 'Record step team resolution.', summary: 'Persists a sticky team:<id> step resolution on the workflow instance (#611); first write wins and the effective resolution is returned. Use it from dispatch after the team plugin picks a member for a team-targeted step.', hookKind: 'rpc' })
-  ctx.hooks.register('workflows.approveGate', (d: Record<string, unknown>) => decideGateViaHook(d.taskId as string, d.stepId as string, 'approve', d.approver as ApprovalActor | undefined), { label: 'Approve workflow gate.', summary: 'Approves the pending approval of a workflow gate through core and advances the instance. Use it from plugins that own an external review surface for workflow-backed tasks.', hookKind: 'rpc' })
-  ctx.hooks.register('workflows.rejectGate', (d: Record<string, unknown>) => decideGateViaHook(d.taskId as string, d.stepId as string, 'reject', d.approver as ApprovalActor | undefined, d.reason === undefined ? undefined : String(d.reason)), { label: 'Reject workflow gate.', summary: 'Rejects the pending approval of a workflow gate through core, records the reason, and rewinds the instance per the workflow gate policy. Use it from plugins that own an external review surface for workflow-backed tasks.', hookKind: 'rpc' })
+  ctx.hooks.register('workflows.approveGate', (d: Record<string, unknown>) => decideGateViaHook(d.taskId as string, d.stepId as string, 'approve', d.provenance), { label: 'Approve workflow gate.', summary: 'Approves the pending approval of a workflow gate through core and advances the instance. Pass `provenance` built from the request you are serving (`approvalProvenanceFromRequest` in `@makinbakin/sdk/routing`); a missing declaration or an agent context is refused with `{ success: false, status: 403, code }` and nothing changes. Use it from plugins that own an external review surface for workflow-backed tasks.', hookKind: 'rpc' })
+  ctx.hooks.register('workflows.rejectGate', (d: Record<string, unknown>) => decideGateViaHook(d.taskId as string, d.stepId as string, 'reject', d.provenance, d.reason === undefined ? undefined : String(d.reason)), { label: 'Reject workflow gate.', summary: 'Rejects the pending approval of a workflow gate through core, records the reason, and rewinds the instance per the workflow gate policy. Pass `provenance` built from the request you are serving; refusals return `{ success: false, status: 403, code }` with nothing changed. Use it from plugins that own an external review surface for workflow-backed tasks.', hookKind: 'rpc' })
   ctx.hooks.register('workflows.reopenFromStep', (d: Record<string, unknown>) => reopenFromStep(d.taskId as string, {
     instanceId: d.instanceId as string | undefined,
     stepId: d.stepId as string | undefined,
     reason: String(d.reason ?? 'Workflow recovery requested'),
-    actor: d.actor as ApprovalActor | undefined,
+    ...(approvalProvenanceSchema.safeParse(d.provenance).success ? { provenance: d.provenance as ApprovalProvenance } : {}),
     contentDir: d.contentDir as string | undefined,
   }), { label: 'Reopen workflow from step.', summary: 'Reopens an existing workflow instance at a prior actionable step. Use it when a plugin needs explicit user recovery without creating a replacement workflow task.', hookKind: 'rpc' })
   ctx.hooks.register('workflows.instances.list', (d: Record<string, unknown>) => listInstances(d.statusFilter as string | undefined, d.contentDir as string | undefined), { label: 'List workflow instances.', summary: 'Returns workflow instances, optionally filtered by status. Use it for dashboards, queues, and maintenance flows that need a broad view of active workflow state.', hookKind: 'rpc' })

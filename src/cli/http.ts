@@ -12,6 +12,7 @@ import { isOperationFinished, type OperationCancelResult, type OperationView } f
 import { extractApiErrorMessage, formatApiError } from '../core/cli/api-error'
 import { getContentDir } from '../core/content-dir'
 import { readLiveServerLock, resolveCliTarget, type CliTarget } from '../core/server-lock'
+import { cliIdentityHeaders } from './identity'
 
 /**
  * Which server this CLI talks to (#895 D11), resolved once at import with the
@@ -49,7 +50,7 @@ export const CLI_ORIGIN_HEADER = { 'X-Bakin-Origin': 'cli' } as const
 
 /** `fetch` against this home's server — for callers that need the raw Response. */
 export function cliFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${serverBaseUrl()}${path}`, { ...init, headers: { ...CLI_ORIGIN_HEADER, ...init?.headers } })
+  return fetch(`${serverBaseUrl()}${path}`, { ...init, headers: { ...CLI_ORIGIN_HEADER, ...cliIdentityHeaders(), ...init?.headers } })
 }
 
 export interface CliRoster {
@@ -66,6 +67,7 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
     headers: {
       'Content-Type': 'application/json',
       ...CLI_ORIGIN_HEADER,
+      ...cliIdentityHeaders(),
       ...options?.headers,
     },
   })

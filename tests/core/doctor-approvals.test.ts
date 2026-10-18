@@ -6,6 +6,7 @@
  * interrupted mid-apply. Real report cache, real repair action, real stores.
  */
 import { afterEach, beforeEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
+import { UI_OPERATOR, discordUser } from '../helpers/approval-provenance'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -101,8 +102,8 @@ const applyAction = mock(async (items: HealthRepairPlanItem[]) => {
   if (!applyLeavesUnhealthy) unhealthy = false
   return items.map((item) => ({ itemId: item.id, actionId: item.actionId, status: 'applied' as const, message: 'Rebuilt the search index.', affectedCheckIds: ['approvals-test.search'], changes: item.changes }))
 })
-const web = { source: 'web' as const, id: 'mark' }
-const channel = { source: 'channel' as const, id: 'u-1', displayName: 'Owner' }
+const web = UI_OPERATOR
+const channel = discordUser('u-1', 'Owner')
 
 async function refresh(executionId = `exec-${randomUUID()}`) {
   for (const id of ['approvals-test.search', 'approvals-test.auth']) {
@@ -228,7 +229,7 @@ describe('health-repair: apply', () => {
     const opened = await openRepair()
     setSystemTime(new Date(Date.now() + PLAN_TTL_MS * 3))
 
-    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web })
 
     await settleApprovalFollowUps()
     expect(resolved.status).toBe('approved')
@@ -246,7 +247,7 @@ describe('health-repair: apply', () => {
     const opened = await openRepair()
     planTarget = 'search-index-v2'
 
-    const err = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web }).catch((e: unknown) => e)
+    const err = await resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web }).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(ApprovalResolveError)
     expect((err as ApprovalResolveError).status).toBe(409)
     expect(applyAction).not.toHaveBeenCalled()
@@ -263,8 +264,8 @@ describe('health-repair: apply', () => {
     expect(tasks.get('task-1')!.column).toBe('review')
 
     // The stale record is dead for good; the fresh one applies.
-    await expect(resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })).rejects.toBeInstanceOf(ApprovalNotPendingError)
-    await resolveApproval(request.approvalId!, { option: 'apply', actor: web })
+    await expect(resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web })).rejects.toBeInstanceOf(ApprovalNotPendingError)
+    await resolveApproval(request.approvalId!, { option: 'apply', provenance: web })
     await settleApprovalFollowUps()
     expect(applyAction).toHaveBeenCalledTimes(1)
     expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('verified')
@@ -275,7 +276,7 @@ describe('health-repair: apply', () => {
     unhealthy = false
     await refresh('exec-2')
 
-    const err = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web }).catch((e: unknown) => e)
+    const err = await resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web }).catch((e: unknown) => e)
     expect((err as ApprovalResolveError).status).toBe(409)
     expect(applyAction).not.toHaveBeenCalled()
     expect(getApprovalRecord(opened.approval.approvalId)?.status).toBe('cancelled')
@@ -287,7 +288,7 @@ describe('health-repair: apply', () => {
   it('a repair step that throws resolves the approval, marks the request failed and blocks the task with the reason', async () => {
     const opened = await openRepair()
     applyThrows = 'disk is read-only'
-    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web })
     await settleApprovalFollowUps()
     expect(resolved.status).toBe('approved')
     expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('failed')
@@ -300,7 +301,7 @@ describe('health-repair: apply', () => {
     channelRuntime = { runtime: { channels: { resolveApproval: mock(async () => {}), postApprovalOutcome: postApprovalOutcomeOnChannel } } }
     const record = { ...getApprovalRecord(opened.approval.approvalId)!, deliveries: [{ channelId: 'general', ref: 'card-1', renderedAt: '2026-10-16T00:00:00.000Z' }] }
     planRefreshesHealth = true
-    const result = await healthRepairApprovalKind.onResolve(record as never, { option: 'apply', actor: web })
+    const result = await healthRepairApprovalKind.onResolve(record as never, { option: 'apply', provenance: web })
     // Asserted on a copy: bun's toMatchObject writes asymmetric matchers into the received object.
     const startFailure = (result as { startFailure?: unknown }).startFailure
     expect(typeof startFailure).toBe('string')
@@ -316,7 +317,7 @@ describe('health-repair: apply', () => {
   it('a repair that runs but leaves the incident burning is failed + blocked, never verified', async () => {
     const opened = await openRepair()
     applyLeavesUnhealthy = true
-    await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    await resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web })
     await settleApprovalFollowUps()
     const request = getDoctorRepairRequest(testDir, opened.request.id)!
     expect(request.status).toBe('failed')
@@ -328,7 +329,7 @@ describe('health-repair: apply', () => {
   it('an absent incident is NOT a pass: a fresh check answering unknown after the repair marks it failed, never verified (R4)', async () => {
     const opened = await openRepair()
     postApplyMode = 'unknown'
-    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web })
     await settleApprovalFollowUps()
     expect(resolved.status).toBe('approved')
     // The original action_required incident is gone from the report (the check
@@ -343,7 +344,7 @@ describe('health-repair: apply', () => {
   it('a fresh check that FAILS after the repair keeps the request failed, never verified (R4)', async () => {
     const opened = await openRepair()
     postApplyMode = 'throw'
-    await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    await resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web })
     await settleApprovalFollowUps()
     expect(getDoctorRepairRequest(testDir, opened.request.id)!.status).toBe('failed')
     expect(tasks.get('task-1')!.column).toBe('blocked')
@@ -353,15 +354,15 @@ describe('health-repair: apply', () => {
     const opened = await openRepair()
     expect(pendingRepairApprovalFor(['approvals-test.search:index'])?.approvalId).toBe(opened.approval.approvalId)
     expect(pendingRepairApprovalFor(['approvals-test.auth:openai'])).toBeNull()
-    await resolveApproval(opened.approval.approvalId, { option: 'dismiss', actor: web })
+    await resolveApproval(opened.approval.approvalId, { option: 'dismiss', provenance: web })
     expect(pendingRepairApprovalFor(['approvals-test.search:index'])).toBeNull()
   })
 
   it('simultaneous Health-card and Discord clicks: one applies, the other is refused, the action runs once', async () => {
     const opened = await openRepair()
     const outcomes = await Promise.allSettled([
-      resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web }),
-      resolveApproval(opened.approval.approvalId, { option: 'apply', actor: channel }),
+      resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web }),
+      resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: channel }),
     ])
     await settleApprovalFollowUps()
     expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1)
@@ -373,7 +374,7 @@ describe('health-repair: apply', () => {
     const opened = await openRepair()
     let release!: () => void
     applyGate = new Promise<void>((resolve) => { release = resolve })
-    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: channel })
+    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: channel })
     // Saved and published before the repair has done anything.
     expect(resolved.status).toBe('approved')
     expect(broadcasts.some((b) => b.event === 'approval.resolved' && b.approvalId === opened.approval.approvalId)).toBe(true)
@@ -402,7 +403,7 @@ describe('health-repair: apply', () => {
 describe('dismiss', () => {
   it('snoozes action_required incidents for 7 days, completes the task and marks the request dismissed', async () => {
     const opened = await openRepair()
-    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'dismiss', comment: 'known, waiting on vendor', actor: web })
+    const resolved = await resolveApproval(opened.approval.approvalId, { option: 'dismiss', comment: 'known, waiting on vendor', provenance: web })
     expect(resolved.status).toBe('rejected')
     const ack = readAckRecords()[opened.incident.id]!
     expect(ack.mode).toBe('snooze')
@@ -417,10 +418,10 @@ describe('dismiss', () => {
     const report = getHealthReport()
     const incident = report.incidents.find((row) => row.id.includes('expired'))!
     const opened = await openNavigateApproval({ contentDir: testDir, report, incident })
-    const err = await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web }).catch((e: unknown) => e)
+    const err = await resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web }).catch((e: unknown) => e)
     expect((err as ApprovalResolveError).status).toBe(400)
     expect(getApprovalRecord(opened.approval.approvalId)?.status).toBe('pending')
-    await resolveApproval(opened.approval.approvalId, { option: 'dismiss', actor: channel })
+    await resolveApproval(opened.approval.approvalId, { option: 'dismiss', provenance: channel })
     expect(readAckRecords()[incident.id]?.mode).toBe('snooze')
     expect(tasks.get('task-1')!.column).toBe('done')
   })
@@ -431,7 +432,7 @@ describe('recoverInterruptedApplies', () => {
     const opened = await openRepair()
     let release!: () => void
     applyGate = new Promise<void>((resolve) => { release = resolve })
-    await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    await resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web })
     // A restart: the in-memory operation is gone, the durable request says applying.
     _resetOperationRegistryForTests()
     unhealthy = false
@@ -450,7 +451,7 @@ describe('recoverInterruptedApplies', () => {
     const opened = await openRepair()
     let release!: () => void
     applyGate = new Promise<void>((resolve) => { release = resolve })
-    await resolveApproval(opened.approval.approvalId, { option: 'apply', actor: web })
+    await resolveApproval(opened.approval.approvalId, { option: 'apply', provenance: web })
     expect(await recoverInterruptedApplies(testDir)).toEqual({ recovered: 0, verified: 0, failed: 0 })
     release()
     await settleApprovalFollowUps()

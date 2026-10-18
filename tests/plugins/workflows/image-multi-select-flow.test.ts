@@ -5,6 +5,7 @@
  * ordered join → select-best → gate → deliver. No live runtime, no billing.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { UI_OPERATOR } from '../../helpers/approval-provenance'
 import { copyFileSync, rmSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -70,7 +71,7 @@ const promptOutput = {
   ],
 }
 
-const approver = { id: 'mark', source: 'web' as const }
+const provenance = UI_OPERATOR
 
 describe('image-multi-select — engine flow over the shipped YAMLs', () => {
   beforeEach(() => {
@@ -100,7 +101,7 @@ describe('image-multi-select — engine flow over the shipped YAMLs', () => {
 
     // 2. Prompt gate approval fans out — ZERO children existed before.
     expect(loadInstance('task-mis--generate-variants--0', testDir)).toBeNull()
-    expect(approveGate('task-mis', 'prompt-gate', { contentDir: testDir, approver }).success).toBe(true)
+    expect(approveGate('task-mis', 'prompt-gate', { contentDir: testDir, provenance }).success).toBe(true)
     inst = loadInstance('task-mis', testDir)!
     expect(inst.currentStepId).toBe('generate-variants')
     const entries = inst.stepStates['generate-variants'].children!
@@ -138,7 +139,7 @@ describe('image-multi-select — engine flow over the shipped YAMLs', () => {
     expect(inst.currentStepId).toBe('selection-gate')
 
     // 5. Selection gate approval → deliver → complete.
-    expect(approveGate('task-mis', 'selection-gate', { contentDir: testDir, approver }).success).toBe(true)
+    expect(approveGate('task-mis', 'selection-gate', { contentDir: testDir, provenance }).success).toBe(true)
     const done = completeStep('task-mis', 'deliver', {
       assetId: 'asset-v1', selectedVersion: 1, summary: 'Delivered the winning variant',
     }, undefined, testDir)
@@ -151,7 +152,7 @@ describe('image-multi-select — engine flow over the shipped YAMLs', () => {
     createInstance('task-mis-reject', 'image-multi-select', testDir, 'pixel')
     completeStep('task-mis-reject', 'develop-prompt', promptOutput, undefined, testDir)
 
-    const rejected = rejectGate('task-mis-reject', 'prompt-gate', 'Directives too similar', { contentDir: testDir, approver })
+    const rejected = rejectGate('task-mis-reject', 'prompt-gate', 'Directives too similar', { contentDir: testDir, provenance })
     expect(rejected.success).toBe(true)
 
     const inst = loadInstance('task-mis-reject', testDir)!
@@ -163,7 +164,7 @@ describe('image-multi-select — engine flow over the shipped YAMLs', () => {
   it('selection-gate rejection reopens select-best with the previous pick as context', () => {
     createInstance('task-mis-reselect', 'image-multi-select', testDir, 'pixel')
     completeStep('task-mis-reselect', 'develop-prompt', promptOutput, undefined, testDir)
-    approveGate('task-mis-reselect', 'prompt-gate', { contentDir: testDir, approver })
+    approveGate('task-mis-reselect', 'prompt-gate', { contentDir: testDir, provenance })
     for (const i of [0, 1, 2]) {
       completeStep(`task-mis-reselect--generate-variants--${i}`, 'generate-variant', {
         assetId: `asset-r${i}`, version: 1, provider: 'openai', model: 'gpt-image-1-mini', promptHash: `sha-${i}`,
@@ -173,7 +174,7 @@ describe('image-multi-select — engine flow over the shipped YAMLs', () => {
       assetId: 'asset-r0', selectedVersion: 1, rationale: 'first pick',
     }, undefined, testDir)
 
-    const rejected = rejectGate('task-mis-reselect', 'selection-gate', 'Prefer the wide shot', { contentDir: testDir, approver })
+    const rejected = rejectGate('task-mis-reselect', 'selection-gate', 'Prefer the wide shot', { contentDir: testDir, provenance })
     expect(rejected.success).toBe(true)
 
     const inst = loadInstance('task-mis-reselect', testDir)!

@@ -18,8 +18,7 @@
  * Task-service/task-store are imported lazily (same as escalation) to keep
  * this module out of their import cycles.
  */
-import { findPendingApproval, getApprovalRecord, type ApprovalRecord, type RepairProposal } from '@bakin/core/approvals'
-import type { ApprovalActor } from '@bakin/core/plugin-types'
+import { describeApprovalProvenance, findPendingApproval, getApprovalRecord, type ApprovalRecord, type RepairProposal } from '@bakin/core/approvals'
 import type {
   HealthIncident,
   HealthRepairChange,
@@ -122,9 +121,6 @@ function incidentLines(incidents: readonly HealthIncident[]): string[] {
   return incidents.flatMap((incident) => [`- ${incident.title} (${incident.id})`, `  Impact: ${incident.impact}`])
 }
 
-function actorLabel(actor: ApprovalActor): string {
-  return `${actor.displayName ?? actor.id} (${actor.source})`
-}
 
 function event(type: string, message: string, data?: Record<string, unknown>): DoctorRepairRequestEvent {
   return { ts: new Date().toISOString(), type, message, ...(data ? { data } : {}) }
@@ -318,10 +314,10 @@ async function dismissRequest(request: DoctorRepairRequest, decision: ApprovalDe
       log.warn('Dismiss could not silence a Health incident', err, { incidentId })
     }
   }
-  const by = actorLabel(decision.actor)
+  const by = describeApprovalProvenance(decision.provenance)
   const note = decision.comment ? ` — ${decision.comment}` : ''
-  appendEvents(contentDir, request.id, [event('dismissed', `Dismissed by ${by}${note}.`, { silenced, actor: decision.actor })], { status: 'dismissed' })
-  await taskLog(request.taskId, `Dismissed by ${by}${note}. Silenced ${silenced.length} incident(s) for 7 days; they re-fire on new evidence.`)
+  appendEvents(contentDir, request.id, [event('dismissed', `Dismissed (${by})${note}.`, { silenced, provenance: decision.provenance })], { status: 'dismissed' })
+  await taskLog(request.taskId, `Dismissed (${by})${note}. Silenced ${silenced.length} incident(s) for 7 days; they re-fire on new evidence.`)
   await completeTask(request.taskId)
 }
 
@@ -358,10 +354,11 @@ export interface ApprovedRepairStartFailure {
   startFailure: string
 }
 
-const ORIGIN_OF_ACTOR: Record<ApprovalDecision['actor']['source'], OperationOrigin> = {
-  web: 'web',
-  channel: 'discord',
-  system: 'system',
+/** Which surface the operation tray attributes an approved repair to. */
+function originOf(provenance: ApprovalDecision['provenance']): OperationOrigin {
+  if (provenance.channel === 'cli') return 'cli'
+  if (provenance.channel === 'discord' || provenance.channel === 'runtime') return 'discord'
+  return 'web'
 }
 
 /**
@@ -383,13 +380,13 @@ async function startApprovedRepair(request: DoctorRepairRequest, record: RecordO
   if (!fresh || !sameChangeSet(proposal.items, fresh.items)) await planChanged(request, record, report, fresh)
   const plan = fresh!
 
-  const by = actorLabel(decision.actor)
+  const by = describeApprovalProvenance(decision.provenance)
   const itemIds = plan.items.map((item) => item.id)
-  appendEvents(contentDir, request.id, [event('applying', `Approved by ${by}; applying ${itemIds.length} repair item(s).`, { planId: plan.planId, itemIds, actor: decision.actor })], { status: 'applying' })
+  appendEvents(contentDir, request.id, [event('applying', `Approved (${by}); applying ${itemIds.length} repair item(s).`, { planId: plan.planId, itemIds, provenance: decision.provenance })], { status: 'applying' })
 
   let started: ApprovedRepairStart
   try {
-    started = await startDoctorRepair({ contentDir, projectRoot, planId: plan.planId, itemIds, confirmedItemIds: itemIds, origin: ORIGIN_OF_ACTOR[decision.actor.source] })
+    started = await startDoctorRepair({ contentDir, projectRoot, planId: plan.planId, itemIds, confirmedItemIds: itemIds, origin: originOf(decision.provenance) })
   } catch (err) {
     const message = err instanceof OperationRejectedError
       ? String((err.body as { error?: unknown })?.error ?? err.message)

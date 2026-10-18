@@ -13,8 +13,8 @@
  */
 import type { ApprovalDelivery } from '@bakin/core/adapters/runtime'
 import type { RuntimeChannelSurface } from '@bakin/core/adapters/runtime/channels'
-import type { ApprovalActor } from '@bakin/core/plugin-types'
-import { findPendingApproval, updateApprovalDeliveries, type ApprovalRecord } from '@bakin/core/approvals'
+import type { ApprovalProvenance } from '@bakin/core/adapters/runtime'
+import { describeApprovalProvenance, findPendingApproval, updateApprovalDeliveries, type ApprovalRecord } from '@bakin/core/approvals'
 import { createLogger } from '@bakin/core/logger'
 import {
   ApprovalResolveError,
@@ -62,7 +62,8 @@ export function pendingGateApproval(taskId: string, stepId: string): ApprovalRec
 function rejectReason(decision: ApprovalDecision): string {
   const typed = decision.comment?.trim()
   if (typed) return typed
-  if (decision.actor.source === 'channel') return CHANNEL_REJECT_DEFAULT_REASON
+  // A channel button with no reason modal answered: the provider decided.
+  if (decision.provenance.channel === 'discord' || decision.provenance.channel === 'runtime') return CHANNEL_REJECT_DEFAULT_REASON
   if (getSettings().approvals.requireRejectReason) throw new ApprovalResolveError('A reject reason is required', 400)
   return WEB_REJECT_DEFAULT_REASON
 }
@@ -87,8 +88,9 @@ async function ownerState(record: GateRecord): Promise<ApprovalOwnerState> {
 
 async function onResolve(record: GateRecord, decision: ApprovalDecision): Promise<void> {
   const { taskId, stepId } = record.owner
-  const approver: ApprovalActor = decision.actor
-  const source = decision.actor.source
+  const { provenance } = decision
+  const source = provenance.channel
+  const by = describeApprovalProvenance(provenance)
   const ctx = getWorkflowPluginContext()
   // A gate reached again (re-run, reopen) gets a fresh record; an older
   // generation's buttons/form must refuse rather than decide the current one.
@@ -98,16 +100,16 @@ async function onResolve(record: GateRecord, decision: ApprovalDecision): Promis
   }
 
   if (decision.option === 'approve') {
-    const result = approveGate(taskId, stepId, { approver })
+    const result = approveGate(taskId, stepId, { provenance })
     if (!result.success || !result.decision) throw new ApprovalResolveError(result.errors?.[0] ?? 'Gate could not be approved', 400)
     ctx?.activity.audit('gate.approved', source, buildGateAuditPayload(taskId, stepId, result.decision))
-    ctx?.activity.log(source, `Gate "${stepId}" approved`, { taskId })
+    ctx?.activity.log(source, `Gate "${stepId}" approved (${by})`, { taskId })
     indexInstance(taskId).catch(() => {})
     // Kick dispatch so the next step's agent starts immediately.
     triggerDispatch()
     const instance = loadInstance(taskId)
     if (instance) {
-      sendGateDecisionSummary(instance, stepId, result.decision.gateLabel, 'approved', approver, result.decision.requestedAt, result.decision.decidedAt, undefined, record.deliveries)
+      sendGateDecisionSummary(instance, stepId, result.decision.gateLabel, 'approved', provenance, result.decision.requestedAt, result.decision.decidedAt, undefined, record.deliveries)
         .catch((err) => log.warn('Gate decision summary failed', err, { taskId, stepId }))
     }
     return
@@ -115,14 +117,14 @@ async function onResolve(record: GateRecord, decision: ApprovalDecision): Promis
 
   if (decision.option === 'reject') {
     const reason = rejectReason(decision)
-    const result = rejectGate(taskId, stepId, reason, { approver })
+    const result = rejectGate(taskId, stepId, reason, { provenance })
     if (!result.success || !result.decision) throw new ApprovalResolveError(result.errors?.[0] ?? 'Gate could not be rejected', 400)
     ctx?.activity.audit('gate.rejected', source, buildGateAuditPayload(taskId, stepId, result.decision, reason))
-    ctx?.activity.log(source, `Gate "${stepId}" rejected: ${reason}`, { taskId })
+    ctx?.activity.log(source, `Gate "${stepId}" rejected (${by}): ${reason}`, { taskId })
     indexInstance(taskId).catch(() => {})
     const instance = loadInstance(taskId)
     if (instance) {
-      sendGateDecisionSummary(instance, stepId, result.decision.gateLabel, 'rejected', approver, result.decision.requestedAt, result.decision.decidedAt, reason, record.deliveries)
+      sendGateDecisionSummary(instance, stepId, result.decision.gateLabel, 'rejected', provenance, result.decision.requestedAt, result.decision.decidedAt, reason, record.deliveries)
         .catch((err) => log.warn('Gate decision summary failed', err, { taskId, stepId }))
     }
     return
@@ -174,12 +176,12 @@ export async function decideGate(
   taskId: string,
   stepId: string,
   option: 'approve' | 'reject',
-  actor: ApprovalActor,
+  provenance: ApprovalProvenance,
   comment?: string,
 ): Promise<ApprovalRecord> {
   const record = pendingGateApproval(taskId, stepId)
   if (!record) throw new ApprovalResolveError(`No pending approval for gate "${stepId}" on task ${taskId}`, 400)
-  return resolveApproval(record.approvalId, { option, actor, ...(comment ? { comment } : {}) })
+  return resolveApproval(record.approvalId, { option, provenance, ...(comment ? { comment } : {}) })
 }
 
 /**

@@ -54,18 +54,17 @@ export function approvalEventFromOpenClawPayload(payload: OpenClawPluginApproval
   const selectedOption = bakinOptionFromOpenClawDecision(payload.decision)
   if (!selectedOption) return null
 
-  const actorId = payload.resolvedBy?.trim() || 'openclaw-channel'
+  // The provider names who decided; with no name the decision carries no
+  // responder, and core refuses it rather than invent one (#898).
+  const resolvedBy = payload.resolvedBy?.trim()
   return {
     approvalId,
     channelId: channelIdFromOpenClawRequest(request),
-    response: {
+    decision: {
       selectedOption,
       respondedAt: typeof payload.ts === 'number' ? new Date(payload.ts).toISOString() : new Date().toISOString(),
-      actor: {
-        type: 'human',
-        id: actorId,
-        displayName: actorId,
-      },
+      channel: 'runtime',
+      ...(resolvedBy ? { responder: { id: resolvedBy, displayName: resolvedBy } } : {}),
     },
   }
 }

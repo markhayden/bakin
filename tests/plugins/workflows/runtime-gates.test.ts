@@ -5,6 +5,7 @@
  * Split from runtime.test.ts (FW7); shared scaffold in helpers/runtime-harness.ts.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { UI_OPERATOR, discordUser } from '../../helpers/approval-provenance'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -181,26 +182,22 @@ describe('runtime — gates', () => {
       expect(new Date(gateState.requestedAt!).getTime()).not.toBeNaN()
     })
 
-    it('approveGate persists decidedAt and approver', () => {
+    it('approveGate persists decidedAt and provenance', () => {
       createInstance('task-gate-app', 'gate', testDir)
       completeStep('task-gate-app', 'write-copy', { text: 'hello' }, undefined, testDir)
 
       approveGate('task-gate-app', 'review-gate', {
         contentDir: testDir,
-        approver: { source: 'channel', id: '999', displayName: 'Approver Person' },
+        provenance: discordUser('999', 'Approver Person'),
       })
 
       const instance = loadInstance('task-gate-app', testDir)
       const gateState = instance!.stepStates['review-gate']
       expect(gateState.decidedAt).toBeTruthy()
-      expect(gateState.approver).toEqual({
-        source: 'channel',
-        id: '999',
-        displayName: 'Approver Person',
-      })
+      expect(gateState.provenance).toEqual(discordUser('999', 'Approver Person'))
     })
 
-    it('approveGate emits the gate approver in the workflow event', () => {
+    it('approveGate emits the decision provenance in the workflow event', () => {
       const emitted: Array<{ event: string; data: Record<string, unknown> }> = []
       setEventBus({
         emit: (event: string, data: Record<string, unknown>) => emitted.push({ event, data }),
@@ -210,25 +207,25 @@ describe('runtime — gates', () => {
 
       approveGate('task-gate-event', 'review-gate', {
         contentDir: testDir,
-        approver: { source: 'web', id: 'roscoe', displayName: 'roscoe' },
+        provenance: UI_OPERATOR,
       })
 
       const approved = emitted.find(item => item.event === 'workflow.gate_approved')
-      expect(approved?.data.approver).toEqual({ source: 'web', id: 'roscoe', displayName: 'roscoe' })
+      expect(approved?.data.provenance).toEqual(UI_OPERATOR)
     })
 
-    it('rejectGate records decidedAt and approver in history (durable across rewind reset)', () => {
+    it('rejectGate records decidedAt and provenance in history (durable across rewind reset)', () => {
       createInstance('task-gate-rej', 'gate', testDir)
       completeStep('task-gate-rej', 'write-copy', { text: 'hello' }, undefined, testDir)
 
       const result = rejectGate('task-gate-rej', 'review-gate', 'Not approved', {
         contentDir: testDir,
-        approver: { source: 'web', id: 'mark', displayName: 'mark' },
+        provenance: UI_OPERATOR,
       })
 
       // Decision is returned in result so callers don't need to reload
       expect(result.decision).toBeDefined()
-      expect(result.decision!.approver).toEqual({ source: 'web', id: 'mark', displayName: 'mark' })
+      expect(result.decision!.provenance).toEqual(UI_OPERATOR)
       expect(result.decision!.decidedAt).toBeTruthy()
       expect(result.decision!.reason).toBe('Not approved')
 
@@ -236,7 +233,7 @@ describe('runtime — gates', () => {
       const instance = loadInstance('task-gate-rej', testDir)
       const rejectionEntry = instance!.history.find(h => h.stepId === 'review-gate' && h.status === 'rejected')
       expect(rejectionEntry).toBeDefined()
-      expect(rejectionEntry!.approver).toEqual({ source: 'web', id: 'mark', displayName: 'mark' })
+      expect(rejectionEntry!.provenance).toEqual(UI_OPERATOR)
       expect(rejectionEntry!.rejectionReason).toBe('Not approved')
     })
 
@@ -250,7 +247,7 @@ describe('runtime — gates', () => {
 
       const result = approveGate('task-gate-dur', 'review-gate', {
         contentDir: testDir,
-        approver: { source: 'channel', id: '999', displayName: 'Approver' },
+        provenance: discordUser('999', 'Approver'),
       })
 
       expect(result.decision).toBeDefined()
@@ -287,7 +284,7 @@ describe('runtime — gates', () => {
       const result = reopenFromStep('task-reopen-gate', {
         stepId: 'review-gate',
         reason: 'Messaging recovery requested',
-        actor: { id: 'mark', source: 'web' },
+        provenance: UI_OPERATOR,
         contentDir: testDir,
       })
 
@@ -319,7 +316,7 @@ describe('runtime — gates', () => {
       const result = reopenFromStep('task-reopen-direct', {
         stepId: 'step-two',
         reason: 'Redo the middle step',
-        actor: { id: 'mark', source: 'web' },
+        provenance: UI_OPERATOR,
         contentDir: testDir,
       })
 
@@ -340,7 +337,7 @@ describe('runtime — gates', () => {
       const result = reopenFromStep('task-reopen-cancelled', {
         stepId: 'step-one',
         reason: 'Try to recover',
-        actor: { id: 'mark', source: 'web' },
+        provenance: UI_OPERATOR,
         contentDir: testDir,
       })
 
@@ -355,7 +352,7 @@ describe('runtime — gates', () => {
         instanceId: 'different-instance',
         stepId: 'step-one',
         reason: 'Try to recover the wrong instance',
-        actor: { id: 'mark', source: 'web' },
+        provenance: UI_OPERATOR,
         contentDir: testDir,
       })
 

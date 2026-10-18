@@ -1,7 +1,7 @@
 /**
  * /api/approvals host routes (plan PR 2 T4): list pending (default) with
- * taskIds filter; resolve with the web actor; typed errors map to 404/409/
- * handler status; bad input is 400.
+ * taskIds filter; resolve with transport-built provenance (#898); typed
+ * errors map to 403/404/409/handler status; bad input is 400.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
@@ -37,9 +37,10 @@ const request = { title: 'Gate', body: '', options: [{ id: 'approve', label: 'Ap
 const onResolve = mock(async (_record: unknown, _decision: unknown) => {})
 
 const GET = (query = '') => get(new Request(`http://bakin.test/api/approvals${query}`), new URL(`http://bakin.test/api/approvals${query}`))
-const POST = (id: string, body: unknown) => {
+const DECLARED = { 'X-Bakin-Operator': 'declared' }
+const POST = (id: string, body: unknown, headers: Record<string, string> = DECLARED) => {
   const url = `http://bakin.test/api/approvals/${encodeURIComponent(id)}/resolve`
-  return resolve(new Request(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) }), new URL(url))
+  return resolve(new Request(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) }), new URL(url))
 }
 
 beforeEach(() => {
@@ -79,16 +80,45 @@ describe('POST /api/approvals/:id/resolve', () => {
     expect(approvalIdFromPath('/api/approvals/x/other')).toBeNull()
   })
 
-  it('resolves with the web actor (OS user) and returns the record', async () => {
+  it('resolves a UI-declared decision and records it as declared — never as a verified human', async () => {
     requestApproval({ approvalId: 'gate:t-1:review', owner: owner('t-1'), request })
     const res = await POST('gate:t-1:review', { option: 'reject', comment: 'needs work' })
     expect(res.status).toBe(200)
-    const body = await res.json() as { ok: boolean; approval: { status: string; response: { actor: { id: string }; comment: string } } }
+    const body = await res.json() as { ok: boolean; approval: { status: string; response: { provenance: unknown; comment: string } } }
     expect(body.ok).toBe(true)
     expect(body.approval.status).toBe('rejected')
     expect(body.approval.response.comment).toBe('needs work')
-    expect(body.approval.response.actor.id.length).toBeGreaterThan(0)
-    expect(onResolve.mock.calls[0]?.[1]).toMatchObject({ option: 'reject', actor: { source: 'web' } })
+    const declared = { channel: 'ui', actor: { kind: 'operator-declared' }, evidence: 'declared' }
+    expect(body.approval.response.provenance).toEqual(declared)
+    expect(onResolve.mock.calls[0]?.[1]).toMatchObject({ option: 'reject', provenance: declared })
+  })
+
+  it('the CLI decides only with --as human (its declaration); provenance says CLI', async () => {
+    requestApproval({ approvalId: 'cli', owner: owner('t-1'), request })
+    const refused = await POST('cli', { option: 'approve' }, { 'X-Bakin-Origin': 'cli' })
+    expect(refused.status).toBe(403)
+    expect(await refused.json()).toMatchObject({ code: 'undeclared', error: expect.stringContaining('--as human') })
+    const ok = await POST('cli', { option: 'approve' }, { 'X-Bakin-Origin': 'cli', ...DECLARED })
+    expect(ok.status).toBe(200)
+    expect(getApprovalRecord('cli')?.response?.provenance).toEqual({ channel: 'cli', actor: { kind: 'operator-declared' }, evidence: 'declared' })
+  })
+
+  it('refuses before any side effect: no declaration, an agent context (even with --as human), a malformed agent marker', async () => {
+    requestApproval({ approvalId: 'guarded', owner: owner('t-1'), request })
+    const cases: Array<[Record<string, string>, string]> = [
+      [{}, 'undeclared'],
+      [{ 'X-Bakin-Origin': 'cli', 'X-Bakin-Agent-Context': 'researcher', ...DECLARED }, 'agent_actor'],
+      [{ 'X-Bakin-Agent-Context': '   ', ...DECLARED }, 'undeclared'],
+    ]
+    for (const [headers, code] of cases) {
+      const res = await POST('guarded', { option: 'approve' }, headers)
+      expect(res.status).toBe(403)
+      expect(await res.json()).toMatchObject({ ok: false, code })
+    }
+    expect(onResolve).not.toHaveBeenCalled()
+    expect(getApprovalRecord('guarded')?.status).toBe('pending')
+    // A refused caller learns nothing: an unknown id is refused, not 404.
+    expect((await POST('no-such-approval', { option: 'approve' }, {})).status).toBe(403)
   })
 
   it('maps typed errors: 404 unknown, 409 already resolved, handler status on refusal, 400 bad input', async () => {
