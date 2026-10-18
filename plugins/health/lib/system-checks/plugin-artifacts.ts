@@ -192,6 +192,14 @@ async function upgradablePlugins(deps: PluginArtifactDeps): Promise<Array<{ id: 
   return offers.flatMap(({ id, offer }) => (offer.kind === 'upgrade' ? [{ id, version: offer.version }] : []))
 }
 
+/** Whether a repair target names this plugin's incident or observation (ids end in their keys). */
+function targetSelects(target: { type: string; ids?: readonly string[] }, pluginId: string): boolean {
+  if (target.type === 'all_actionable') return true
+  const id = stableKeyPart(pluginId)
+  const suffix = target.type === 'incidents' ? `:needs-update:${id}` : `:plugin:${id}`
+  return (target.ids ?? []).some((selected) => selected.endsWith(suffix))
+}
+
 interface UpgradeIdentity {
   id: string
   version: string
@@ -238,7 +246,9 @@ export function upgradePluginArtifactRepair(deps: PluginArtifactDeps = defaultDe
       pointOfNoReturn: 'upgrade',
     }),
     async plan(target) {
-      const upgradable = await upgradablePlugins(deps)
+      // One incident's repair upgrades THAT plugin; only "all actionable"
+      // bundles every stranded plugin.
+      const upgradable = (await upgradablePlugins(deps)).filter((plugin) => targetSelects(target, plugin.id))
       if (upgradable.length === 0) return []
       const { upgradePlugin } = await import('../../../../src/core/plugins/upgrade')
       const changes = []

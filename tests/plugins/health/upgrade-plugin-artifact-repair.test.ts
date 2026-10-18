@@ -98,6 +98,22 @@ describe('upgrade-plugin-artifact repair', () => {
     expect(calls.every((c) => c.previewOnly)).toBe(true) // planning never commits
   })
 
+  it('one plugin\'s incident plans only that plugin; all-actionable plans every stranded plugin', async () => {
+    installStranded('terminal')
+    installStranded('projects')
+    // installStranded rewrites the lockfile per plugin — record both.
+    writeFileSync(join(testDir, 'plugins', 'lock.json'), JSON.stringify({
+      version: 1,
+      plugins: Object.fromEntries(['terminal', 'projects'].map((id) => [id, { source: `github:markhayden/bakin-bits-official#plugins/${id}`, type: 'github', ref: '', commitSha: '', installedAt: '2026-10-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'c'.repeat(64) }])),
+    }))
+    const repair = upgradePluginArtifactRepair(deps)
+    const one = await repair.plan({ type: 'incidents', reportId: 'report-1', ids: ['health:plugins:needs-update:terminal'] })
+    expect(one[0]!.changes.filter((c) => /^plugin:[^:]+@/.test(c.target)).map((c) => c.target.split('@')[0])).toEqual(['plugin:terminal'])
+    const all = await repair.plan(target)
+    expect(all[0]!.changes.filter((c) => /^plugin:[^:]+@/.test(c.target)).map((c) => c.target.split('@')[0]).sort()).toEqual(['plugin:projects', 'plugin:terminal'])
+    expect(await repair.plan({ type: 'observations', reportId: 'report-1', ids: ['health.plugin-artifacts:plugin:projects'] })).toHaveLength(1)
+  })
+
   it('apply commits with the previewed consent and activates the plugin', async () => {
     installStranded('terminal')
     const repair = upgradePluginArtifactRepair(deps)
