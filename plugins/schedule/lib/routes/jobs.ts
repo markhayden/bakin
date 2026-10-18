@@ -8,7 +8,7 @@
 import { z } from 'zod'
 import { defineRoute, searchRoute } from '@bakin/core/routing'
 import type { BakinJobMeta } from '../../types'
-import { getJob, upsertJob } from '../sidecar'
+import { getJob, signalScheduleChanged, upsertJob } from '../sidecar'
 import { isTaskPrompt, NOT_A_PROMPT_REASON } from '../prompt-guard'
 import { parseSchedule } from '../cron-parser'
 import { getSystemTimezone, json, nativeCronTz } from '../schedule-util'
@@ -341,6 +341,8 @@ export const scheduleRoutes = [
       // Bakin owns the schedule now — remove the native cron so it stops firing.
       await cron.remove(jobId)
       indexJob(jobId)
+      // The merged view changes again once the native cron is gone.
+      signalScheduleChanged()
 
       ctx.activity.audit('job.adopted', 'system', { jobId })
       ctx.activity.log('system', `Adopted runtime cron "${displayName}" into Bakin`)

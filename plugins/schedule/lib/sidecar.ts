@@ -89,9 +89,17 @@ export function writeSidecar(sidecar: ScheduleSidecar): void {
     mkdirSync(dir, { recursive: true })
   }
   writeFileSync(path, JSON.stringify(sidecar, null, 2), 'utf-8')
-  // The ONE change signal (#990): every Bakin schedule write — the UI routes,
-  // agents' exec tools, fires, auto-resume, repairs — lands here, so open
-  // schedule views refetch without each writer having to remember to say so.
+  // Every Bakin schedule write — the UI routes, agents' exec tools, fires,
+  // auto-resume, repairs — lands here, so none can forget to signal.
+  signalScheduleChanged()
+}
+
+/**
+ * The ONE change signal open schedule views refetch on (#990). writeSidecar
+ * sends it; the other schedule state — fire dispositions in the execution
+ * ledger, a native cron removed after adoption — signals here once written.
+ */
+export function signalScheduleChanged(): void {
   getPluginCtx()?.events.emit('schedule.changed', {})
 }
 

@@ -49,10 +49,13 @@ ConfirmDialog with a datetime picker; owner rejection shown in-dialog).
 refetches on `schedule.changed`, `taskboard` broadcasts, the documented
 `<pluginId>.scheduled_events_changed` audit convention and reconnects — all
 through `usePluginEvent` on the shell's one stream, coalesced (one request
-in flight, one trailing refresh). `schedule.changed` is emitted by
-`writeSidecar`, the ONE choke point every Bakin schedule write passes
-(the UI routes, agents' exec tools, fires, auto-resume, repairs), so no
-writer can forget to signal. #990 retired the hooks' private EventSources,
+in flight, one trailing refresh). `schedule.changed` (`signalScheduleChanged`) is
+emitted by `writeSidecar`, the ONE choke point every Bakin schedule write
+passes (the UI routes, agents' exec tools, fires, auto-resume, repairs), so
+no writer can forget to signal; the schedule state outside the sidecar
+signals once written — fire dispositions in the execution ledger
+(`skipFire`, attach, heal) and adoption after the native cron is removed.
+A refresh queued behind an in-flight one is dropped on unmount. #990 retired the hooks' private EventSources,
 which matched neither audit events nor agent-tool changes: open calendars
 missed provider changes, agent edits and auto-resumes before. Native
 runtime cron jobs Bakin doesn't own refresh on reconnect / tab wake.

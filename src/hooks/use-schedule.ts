@@ -15,11 +15,18 @@ function auditEventOf(payload: PluginEventPayload): string | undefined {
  * writes (a tick's fires) costs at most two requests, never one per write.
  */
 function useCoalescedRefresh(fetcher: () => Promise<void>): () => void {
-  const state = useRef({ running: false, again: false })
+  const state = useRef({ running: false, again: false, disposed: false })
   const latest = useRef(fetcher)
   latest.current = fetcher
+  useEffect(() => {
+    const s = state.current
+    s.disposed = false
+    // Unmounted: drop any queued run — nothing starts after this.
+    return () => { s.disposed = true; s.again = false }
+  }, [])
   return useCallback(() => {
     const s = state.current
+    if (s.disposed) return
     if (s.running) {
       s.again = true
       return
@@ -30,7 +37,7 @@ function useCoalescedRefresh(fetcher: () => Promise<void>): () => void {
         do {
           s.again = false
           await latest.current()
-        } while (s.again)
+        } while (s.again && !s.disposed)
       } finally {
         s.running = false
       }

@@ -77,6 +77,27 @@ describe('useScheduleJobs', () => {
   })
 })
 
+describe('unmount', () => {
+  it('a refresh queued behind an in-flight one never starts after unmount', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const view = renderHook(() => useScheduleJobs())
+    await waitFor(() => expect(jobFetches).toBe(1))
+    const stub = globalThis.fetch
+    ;(globalThis as { fetch: typeof fetch }).fetch = (async (input: RequestInfo | URL) => {
+      await gate
+      return stub(input)
+    }) as typeof fetch
+    await changed()
+    await changed()
+    await changed()
+    view.unmount()
+    await act(async () => { release() })
+    await settleFor(50, 'the queued refresh was dropped on unmount')
+    expect(jobFetches).toBe(2)
+  })
+})
+
 describe('useOccurrences', () => {
   it('refetches on schedule.changed, board writes and any provider’s scheduled_events_changed — nothing else', async () => {
     renderHook(() => useOccurrences('2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z'))
