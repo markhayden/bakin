@@ -88,6 +88,7 @@ function emptyStoreBoard(): StoreBoard {
 let storeBoard: StoreBoard = emptyStoreBoard()
 
 const clearedDependencies: string[] = []
+const renumberedColumns: string[] = []
 let clearDependencyShouldThrow = false
 
 // task-store mock — taskboard/order checks import it directly, and the plugin
@@ -110,13 +111,8 @@ mock.module('@/core/task-store', () => ({
     clearedDependencies.push(taskId)
     return true
   },
-  reorderTasks: async (_column: string, orderedIds: string[]) => {
-    const tasks = Object.values(storeBoard.columns).flat()
-    orderedIds.forEach((id, order) => {
-      const task = tasks.find((candidate) => candidate.id === id)
-      if (task) task.order = order
-    })
-  },
+  reorderTasks: async () => {},
+  renumberColumn: async (column: string) => { renumberedColumns.push(column) },
   archiveOldTasks: () => 0,
   autoArchiveDoneTasks: () => 0,
 }))
@@ -196,6 +192,7 @@ beforeEach(() => {
   storeBoard = emptyStoreBoard()
   mockKnownAgents = ['main', 'patch', 'pixel']
   clearedDependencies.length = 0
+  renumberedColumns.length = 0
   clearDependencyShouldThrow = false
 })
 
@@ -355,20 +352,15 @@ describe('checkTaskPositionIntegrity', () => {
     expect(older.order).toBeUndefined()
   })
 
-  it('repair keeps the column order: duplicates break oldest first, missing orders go last', async () => {
-    const first: StoreTask = { id: 'first', title: 'First', order: 0, updatedAt: 900 }
-    const dupNewer: StoreTask = { id: 'dup-newer', title: 'Dup newer', order: 6, updatedAt: 300 }
-    const dupOlder: StoreTask = { id: 'dup-older', title: 'Dup older', order: 6, updatedAt: 200 }
-    const last: StoreTask = { id: 'last', title: 'Last', order: 7, updatedAt: 100 }
-    const unordered: StoreTask = { id: 'unordered', title: 'Unordered', updatedAt: 1000 }
-    storeBoard.columns.done.push(unordered, last, dupNewer, first, dupOlder)
+  it('repair renumbers every column in place', async () => {
+    storeBoard.columns.done.push({ id: 'a', title: 'A', order: 6 }, { id: 'b', title: 'B', order: 6 })
 
     const repair = taskOrderRepair()
     const plan = await repair.plan({ type: 'all_actionable', reportId: 'report-1' })
     expect(plan).toHaveLength(1)
     const applied = await repair.apply(plan, noopOp())
     expect(applied[0].status).toBe('applied')
-    expect([first, dupOlder, dupNewer, last, unordered].map((task) => task.order)).toEqual([0, 1, 2, 3, 4])
+    expect(renumberedColumns.sort()).toEqual(Object.keys(storeBoard.columns).sort())
   })
 })
 

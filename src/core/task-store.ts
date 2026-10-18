@@ -585,17 +585,45 @@ export function clearDependency(taskId: string, dependsOn: string): Promise<bool
   }
 }
 
-export function reorderTasks(_columnId: ColumnId, orderedIds: string[]): Promise<void> {
+/**
+ * Renumber a column 0..n-1 with `orderedIds` first. The WHOLE column is
+ * renumbered — pending-delete rows and tasks the caller left out keep their
+ * relative order after the listed ones — so no omitted task can be left
+ * holding an order a listed one now takes. Ids that are no longer in this
+ * column (a stale board snapshot) are ignored, never stamped with an order
+ * from the wrong column. Only changed orders are written.
+ */
+export function reorderTasks(columnId: ColumnId, orderedIds: string[]): Promise<void> {
   try {
     const store = getSharedBakinTaskStore()
-    for (let i = 0; i < orderedIds.length; i++) {
-      const task = store.getSync(orderedIds[i])
-      if (task) store.updateSync(task.id, { order: i })
+    const column = store.listSync({ column: columnId, includePendingDelete: true })
+    const byId = new Map(column.map((task) => [task.id, task]))
+    const listed = [...new Set(orderedIds)].filter((id) => byId.has(id))
+    const listedSet = new Set(listed)
+    // Omitted tasks keep the board's own read order: order ascending, newest
+    // first among duplicates, missing orders last.
+    const rest = column
+      .filter((task) => !listedSet.has(task.id))
+      .sort((a, b) => (
+        (typeof a.order === 'number' ? a.order : Number.POSITIVE_INFINITY)
+          - (typeof b.order === 'number' ? b.order : Number.POSITIVE_INFINITY)
+        || b.updatedAt.localeCompare(a.updatedAt)
+        || a.id.localeCompare(b.id)
+      ))
+      .map((task) => task.id)
+    const sequence = [...listed, ...rest]
+    for (let i = 0; i < sequence.length; i++) {
+      if (byId.get(sequence[i])?.order !== i) store.updateSync(sequence[i], { order: i })
     }
     return Promise.resolve()
   } catch (err) {
     return Promise.reject(err)
   }
+}
+
+/** Renumber a column in its current visible order (the order-integrity repair). */
+export function renumberColumn(columnId: ColumnId): Promise<void> {
+  return reorderTasks(columnId, [])
 }
 
 export function moveTaskToInProgress(identifier: string, agentTag?: string): Promise<void> {

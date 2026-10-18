@@ -21,12 +21,14 @@ mock.module('../../src/core/task-store', () => ({
   clearDependency: mock(async () => undefined),
   findTaskWithColumn: () => null,
   reorderTasks: mock(async () => undefined),
+  renumberColumn: mock(async () => undefined),
 }))
 mock.module('@/core/task-store', () => ({
   readTaskboard: mock(() => ({ columns: {} })),
   clearDependency: mock(async () => undefined),
   findTaskWithColumn: () => null,
   reorderTasks: mock(async () => undefined),
+  renumberColumn: mock(async () => undefined),
 }))
 mock.module('../../src/core/app-services', () => ({
   maybeGetAppServices: () => null,

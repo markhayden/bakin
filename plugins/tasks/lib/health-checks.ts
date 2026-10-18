@@ -16,7 +16,7 @@ import {
 } from '@makinbakin/sdk/utils'
 
 import { maybeGetAppServices } from '../../../src/core/app-services'
-import { clearDependency, readTaskboard, reorderTasks } from '../../../src/core/task-store'
+import { clearDependency, readTaskboard, renumberColumn } from '../../../src/core/task-store'
 import type { ColumnId, Task } from '../types'
 
 type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
@@ -350,24 +350,14 @@ export function taskOrderRepair(): HealthRepairActionDefinition {
         const changes: HealthRepairChange[] = []
         op.stage('reorder')
         for (const [column, tasks] of entries) {
-          // Keep the column's visible order: duplicates break ties oldest
-          // first and missing orders go last, so the rebuild agrees with
-          // append-at-end (max+1) instead of reshuffling the board.
-          const ordered = [...tasks]
-            .sort((a, b) => (
-              (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY)
-              || (a.updatedAt ?? 0) - (b.updatedAt ?? 0)
-              || a.id.localeCompare(b.id)
-            ))
-            .map((task) => task.id)
           op.item('reorder', { id: column, label: column, status: 'active' })
-          await reorderTasks(column, ordered)
-          op.item('reorder', { id: column, label: column, status: 'done', message: `${ordered.length} task(s)` })
+          await renumberColumn(column)
+          op.item('reorder', { id: column, label: column, status: 'done', message: `${tasks.length} task(s)` })
           changes.push({
             kind: 'task' as const,
             target: column,
             action: 'update' as const,
-            description: `Rebuilt order values for ${ordered.length} task${ordered.length === 1 ? '' : 's'}.`,
+            description: `Rebuilt order values for ${tasks.length} task${tasks.length === 1 ? '' : 's'}.`,
           })
         }
         return items.map((item) => ({
