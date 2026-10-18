@@ -344,7 +344,11 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
   const store: SyncBakinTaskStore = {
     createSync(input) {
       ensureIndex()
-      const task = createEmptyBakinTask(input)
+      // A task without an explicit order goes to the END of its column —
+      // never to 0, which duplicates whatever already sits there.
+      const task = createEmptyBakinTask(input.order === undefined
+        ? { ...input, order: store.nextOrderSync(input.column ?? 'todo') }
+        : input)
       // Index check plus a targeted stat of the path this create would write —
       // no shard walk. An externally hand-placed file for the same id in a
       // DIFFERENT month shard is not detected (store is the single writer).
@@ -457,7 +461,14 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
 
     updateSync(id, patch) {
       const current = requireTask(id)
-      return writeUpdated({ ...current, ...patch })
+      // Landing in a different column without an explicit order appends to
+      // that column. Every writer passes through here (core moves, plugin
+      // ctx.tasks.move/update, any future path); keeping the old column's
+      // order collided with tasks already in the target column.
+      const order = patch.column !== undefined && patch.column !== current.column && patch.order === undefined
+        ? { order: store.nextOrderSync(patch.column) }
+        : {}
+      return writeUpdated({ ...current, ...patch, ...order })
     },
 
     removeSync(id) {

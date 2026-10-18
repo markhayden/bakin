@@ -338,7 +338,7 @@ export function taskOrderRepair(): HealthRepairActionDefinition {
           kind: 'task',
           target: 'task columns',
           action: 'update',
-          description: 'Assign contiguous order values within each column using updatedAt descending.',
+          description: 'Assign contiguous order values within each column, keeping the current order.',
         }],
       }]
     },
@@ -350,8 +350,15 @@ export function taskOrderRepair(): HealthRepairActionDefinition {
         const changes: HealthRepairChange[] = []
         op.stage('reorder')
         for (const [column, tasks] of entries) {
+          // Keep the column's visible order: duplicates break ties oldest
+          // first and missing orders go last, so the rebuild agrees with
+          // append-at-end (max+1) instead of reshuffling the board.
           const ordered = [...tasks]
-            .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+            .sort((a, b) => (
+              (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY)
+              || (a.updatedAt ?? 0) - (b.updatedAt ?? 0)
+              || a.id.localeCompare(b.id)
+            ))
             .map((task) => task.id)
           op.item('reorder', { id: column, label: column, status: 'active' })
           await reorderTasks(column, ordered)

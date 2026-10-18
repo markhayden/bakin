@@ -355,18 +355,20 @@ describe('checkTaskPositionIntegrity', () => {
     expect(older.order).toBeUndefined()
   })
 
-  it('repair handler reassigns order zero-indexed by updatedAt desc', async () => {
-    const older: StoreTask = { id: 'older', title: 'Older', updatedAt: 100 }
-    const newer: StoreTask = { id: 'newer', title: 'Newer', updatedAt: 200 }
-    storeBoard.columns.todo.push(older, newer)
+  it('repair keeps the column order: duplicates break oldest first, missing orders go last', async () => {
+    const first: StoreTask = { id: 'first', title: 'First', order: 0, updatedAt: 900 }
+    const dupNewer: StoreTask = { id: 'dup-newer', title: 'Dup newer', order: 6, updatedAt: 300 }
+    const dupOlder: StoreTask = { id: 'dup-older', title: 'Dup older', order: 6, updatedAt: 200 }
+    const last: StoreTask = { id: 'last', title: 'Last', order: 7, updatedAt: 100 }
+    const unordered: StoreTask = { id: 'unordered', title: 'Unordered', updatedAt: 1000 }
+    storeBoard.columns.done.push(unordered, last, dupNewer, first, dupOlder)
 
     const repair = taskOrderRepair()
     const plan = await repair.plan({ type: 'all_actionable', reportId: 'report-1' })
     expect(plan).toHaveLength(1)
     const applied = await repair.apply(plan, noopOp())
     expect(applied[0].status).toBe('applied')
-    expect(newer.order).toBe(0)
-    expect(older.order).toBe(1)
+    expect([first, dupOlder, dupNewer, last, unordered].map((task) => task.order)).toEqual([0, 1, 2, 3, 4])
   })
 })
 
