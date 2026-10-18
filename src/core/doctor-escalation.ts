@@ -56,6 +56,9 @@ export async function coveredIncidentIds(
   const covered = new Set<string>()
   for (const request of listDoctorRepairRequests(contentDir)) {
     const ageMs = now - Date.parse(request.createdAt)
+    // A request dated in the future (or undated) covers nothing — no
+    // clamping: a negative age would read as fresh forever (#898).
+    if (!Number.isFinite(ageMs) || ageMs < 0) continue
     let covers = ageMs < cooldownMs
     if (!covers && request.taskId) {
       const details = await getTaskDetails(request.taskId).catch(() => null)

@@ -36,7 +36,7 @@ const proposedChangeSchema = z.object({
   description: z.string(),
 })
 
-const repairProposalSchema = z.object({
+export const repairProposalSchema = z.object({
   reportId: z.string(),
   observationIds: z.array(z.string()),
   items: z.array(z.object({
