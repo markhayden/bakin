@@ -40,6 +40,7 @@ import * as approvalsRoute from '../../../packages/host/src/api/approvals'
 import * as operationsRoute from '../../../packages/host/src/api/operations'
 import * as searchMaintenanceRoute from '../../../packages/host/src/api/search/maintenance'
 import * as onboardingRoute from '../../../packages/host/src/api/runtime/onboarding'
+import * as runtimeSwitchRoute from '../../../packages/host/src/api/runtime/switch'
 import * as agentsActionRoute from '../../../packages/host/src/api/agents/[action]'
 import * as memoryLogRoute from '../../../packages/host/src/api/memory/log'
 import * as pluginSettingsIdRoute from '../../../packages/host/src/api/plugin-settings/[pluginId]'
@@ -284,30 +285,12 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
-    // Runtime switch (P3.2): runs the full orchestrated lifecycle; progress
-    // streams over the activity SSE channel as runtime:switch events. A
-    // completed switch requires a server restart to rebind plugin contexts —
-    // the result says so, callers surface it.
+    // Runtime switch (P3.2) as an operation (#895): the phases are stages,
+    // followed with useOperation / the CLI renderer. A completed switch
+    // requires a server restart to rebind plugin contexts — the report says
+    // so, callers surface it.
     if (url.pathname === '/api/runtime/switch' && req.method === 'POST') {
-      const { switchRuntime, RuntimeSwitchRequestSchema } = require('../runtime-switch') as typeof import('../runtime-switch')
-      handleJsonPost(req, res, async (body) => {
-        const parsed = RuntimeSwitchRequestSchema.safeParse(body)
-        if (!parsed.success) {
-          // Boundary honesty: a malformed preview request must never fail
-          // open into a real switch (dryRun: "true" is NOT dryRun: true).
-          const detail = parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ')
-          throw new BadRequestError(`Invalid runtime switch request — ${detail}`)
-        }
-        const { target, dryRun, copyWorkspaces, adoptCron } = parsed.data
-        const result = await switchRuntime(target, {
-          ...(dryRun !== undefined ? { dryRun } : {}),
-          ...(copyWorkspaces !== undefined ? { copyWorkspaces } : {}),
-          ...(adoptCron !== undefined ? { adoptCron } : {}),
-          onProgress: (event) => broadcast({ type: 'runtime:switch', ...event }),
-        })
-        broadcast({ type: 'runtime:switch:result', ok: result.ok, to: result.to, restartRequired: result.restartRequired })
-        return result
-      })
+      dispatchWebHandler(req, res, runtimeSwitchRoute.post)
       return
     }
 

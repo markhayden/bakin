@@ -129,14 +129,22 @@ describe('sync ownership', () => {
     expect(owner?.resources).toEqual(['install-state'])
   })
 
-  it("the runtime switch's sync step runs a real sync inside a local operation that owns install-state", async () => {
+  it("the runtime switch's sync step runs a real sync under the switch's operation, which owns install-state", async () => {
     await seedDriftedAgent()
-    const outcome = await syncAgentsIfDrifted()
+    const { withOperation } = await import('../helpers/operation-harness')
+    const { RUNTIME_SWITCH_PLAN } = await import('../../src/core/runtime-switch')
+    const outcome = await withOperation({ plan: RUNTIME_SWITCH_PLAN, resources: ['install-state'] }, () => syncAgentsIfDrifted())
     expect(outcome.drifted).toBe(true)
     expect(outcome.syncedAgents).toBeGreaterThan(0)
     expect((await scanAgentSync()).findings).toEqual([])
-    const owner = ranAs('runtime-switch:sync')
-    expect(owner?.status).toBe('succeeded')
-    expect(owner?.resources).toEqual(['install-state'])
+  })
+
+  it("the switch's sync step outside an install-state owner is refused (no local operation of its own)", async () => {
+    await seedDriftedAgent()
+    const outcome = await syncAgentsIfDrifted()
+    expect(outcome.syncedAgents).toBeGreaterThan(0)
+    // Every agent sync failed its ownership assertion — nothing was written.
+    expect((await scanAgentSync()).findings.length).toBeGreaterThan(0)
+    expect(ranAs('runtime-switch:sync')).toBeUndefined()
   })
 })

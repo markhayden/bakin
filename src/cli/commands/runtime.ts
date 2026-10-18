@@ -6,6 +6,7 @@
  * reuse the same RuntimeActionReport wrapper.
  */
 import { apiGet, apiPost, getCliRoster, type CliRoster } from '../http'
+import { operationBody, startAndFollow } from '../operation-command'
 import { print } from '../output'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 import type { RuntimeActionData } from '../../core/cli/ui/readonly'
@@ -97,12 +98,17 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
   console.log(flags.dryRun
     ? `Dry run — previewing a switch to '${target}' (nothing will be changed)…`
     : `Switching runtime to '${target}'…`)
-  const result = await apiPost('/api/runtime/switch', {
+  // The switch is an operation (#895): its phases render live as stages,
+  // then the report prints as before.
+  const operation = await startAndFollow(() => apiPost('/api/runtime/switch', {
     target,
     ...(flags.dryRun ? { dryRun: true } : {}),
     ...(flags.copyWorkspaces ? {} : { copyWorkspaces: false }),
     ...(flags.adoptCron ? { adoptCron: true } : {}),
-  }) as Record<string, unknown>
+  }), { json: false })
+  // Detached (Ctrl-C twice): it keeps running on the server; the closing line was printed.
+  if (!operation.body && operation.exitCode === 130) process.exit(130)
+  const result = operationBody(operation)
 
   if (!result.ok) {
     console.error(`${flags.dryRun ? 'Dry run' : 'Switch'} failed: ${result.error}`)

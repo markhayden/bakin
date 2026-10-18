@@ -41,7 +41,7 @@ mock.module('../../packages/core/src/logger', loggerFactory)
 mock.module('@bakin/core/logger', loggerFactory)
 mock.module('../../src/core/watcher', () => ({ startWatcher: () => {}, stopWatcher: () => {} }))
 
-import { switchRuntime } from '../../src/core/runtime-switch'
+import { switchInOperation } from '../helpers/runtime-switch'
 import { getSettings, resetSettingsCache, updateSettings } from '../../src/core/settings'
 import { createAppServices } from '../../src/core/app-services'
 import { closeDb } from '../../packages/core/src/storage/db'
@@ -103,7 +103,7 @@ afterAll(() => {
 
 describe('runtime switch e2e round-trip (γ)', () => {
   it('OpenClaw → Pi: re-projects AGENTS.md to the in-process tool-access section', async () => {
-    const result = await switchRuntime('pi')
+    const result = await switchInOperation('pi')
     expect(result.error).toBeUndefined()
     expect(result.ok).toBe(true)
 
@@ -125,7 +125,7 @@ describe('runtime switch e2e round-trip (γ)', () => {
   })
 
   it('Pi → OpenClaw: the section flips to native MCP and provisioning returns', async () => {
-    const result = await switchRuntime('openclaw')
+    const result = await switchInOperation('openclaw')
     expect(result.error).toBeUndefined()
     expect(result.ok).toBe(true)
 
@@ -149,7 +149,7 @@ describe('runtime switch e2e round-trip (γ)', () => {
     // section from the first leg, so this second Pi projection is a no-op —
     // proving the drift gate (projections rewrite only when the section
     // genuinely changed, not on every switch).
-    const result = await switchRuntime('pi')
+    const result = await switchInOperation('pi')
     expect(result.error).toBeUndefined()
     expect(result.ok).toBe(true)
     expect(result.sync!.drifted).toBe(false)

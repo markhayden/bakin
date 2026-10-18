@@ -246,6 +246,7 @@ describe('CapabilitiesTab', () => {
 
 describe('RuntimesTab', () => {
   let posts: Array<Record<string, unknown>> = []
+  const operations = new Map<string, ReturnType<typeof finishedOperation>>()
 
   beforeEach(() => {
     posts = []
@@ -253,7 +254,8 @@ describe('RuntimesTab', () => {
       const url = String(input)
       if (url.includes('/api/runtime/switch')) {
         posts.push(JSON.parse(String(init?.body)))
-        return new Response(JSON.stringify({
+        // The switch is an operation (#895): 202, then the report rides its result.
+        operations.set('op-switch', finishedOperation('op-switch', { httpStatus: 200, body: {
           ok: true, from: 'pi', to: 'openclaw', dryRun: true, backupPath: null, restartRequired: false,
           roster: {
             carried: [{ agentId: 'main' }], existing: ['pixel'],
@@ -277,17 +279,11 @@ describe('RuntimesTab', () => {
             ownership: "openclaw's bot token stays in openclaw's own config. pi delivers through Bakin's Discord bridge, which needs its OWN token in Settings → Channels — Bakin never reads the runtime's secret.",
           },
           credentials: { llmProviders: [] }, sync: null,
-        }), { status: 200 })
+        } }, { kind: 'runtime-switch:preview' }))
+        return operationStarted('op-switch')
       }
-      return new Response('{}', { status: 200 })
+      return operationResponse(url, operations) ?? new Response('{}', { status: 200 })
     }) as typeof fetch
-    // EventSource: the tab opens a progress stream before POSTing.
-    ;(globalThis as Record<string, unknown>).EventSource = class {
-      onopen: (() => void) | null = null
-      onmessage: unknown = null
-      constructor() { setTimeout(() => this.onopen?.(), 0) }
-      close() {}
-    }
   })
 
   it('preview posts a dry run with the chosen options and renders grouped result cards', async () => {

@@ -20,8 +20,6 @@ import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { getMcpCredential } from './mcp-credentials'
 
-import { z } from 'zod'
-
 import type {
   CapabilityMode,
   AgentRuntimeAdapter,
@@ -31,6 +29,7 @@ import type {
   ToolAccessProvisioningStatus,
 } from '@bakin/core/adapters/runtime'
 import type { RuntimeAdapterName } from '@bakin/core/settings'
+import type { OperationContext, OperationOrigin, OperationPlan, OperationStagePlan, StartOperationInput } from '@bakin/core/operations'
 
 import { createAppServices, maybeGetAppServices } from './app-services'
 import { createRuntimeAdapter, getSupportedRuntimeAdapterNames } from './runtime-adapter-factory'
@@ -50,25 +49,11 @@ import { getSettings, updateSettings } from './settings'
 import { snapshotAgentContent, carryAgentContent, previewWorkspaceCarry, type AgentContentSnapshot, type WorkspaceCarryReport } from './workspace-carry'
 import { snapshotSourceCapabilities, buildCantCarryReport, buildChannelSwitchReport, type CantCarryLine, type ChannelSwitchReport, type SourceCapabilitySnapshot, type CronAdoptionOutcome, type SnapshottedCronJob } from './switch-report'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import type { RuntimeSwitchRequest } from './runtime-switch-request'
 
 const log = createLogger('runtime-switch')
 
 export const RUNTIME_ADAPTER_NAMES: readonly RuntimeAdapterName[] = getSupportedRuntimeAdapterNames()
-
-/**
- * REST boundary schema for POST /api/runtime/switch. STRICT + boolean-only:
- * a type-confused body (`dryRun: "true"`, a typo'd key) must 400 — the
- * preview flag failing open into a REAL switch is the one mistake this
- * endpoint cannot make.
- */
-export const RuntimeSwitchRequestSchema = z
-  .object({
-    target: z.string().min(1),
-    dryRun: z.boolean().optional(),
-    copyWorkspaces: z.boolean().optional(),
-    adoptCron: z.boolean().optional(),
-  })
-  .strict()
 
 export type SwitchPhase =
   | 'validate'
@@ -86,10 +71,54 @@ export type SwitchPhase =
   | 'validate-capabilities'
   | 'restore'
 
-export interface SwitchProgressEvent {
+interface SwitchProgressEvent {
   phase: SwitchPhase
   status: 'start' | 'ok' | 'skip' | 'error'
   detail?: string
+}
+
+/** The switch's phases as operation stages, in run order (#895). `restore` is not a stage: it is logged against the stage that failed. */
+const SWITCH_STAGES: Record<Exclude<SwitchPhase, 'restore'>, OperationStagePlan> = {
+  validate: { id: 'validate', kind: 'verifying', label: 'Validate the target runtime' },
+  backup: { id: 'backup', kind: 'preparing', label: 'Back up settings' },
+  'snapshot-roster': { id: 'snapshot-roster', kind: 'preparing', label: 'Snapshot the agent roster' },
+  deprovision: { id: 'deprovision', kind: 'cleanup', label: "Remove the old runtime's tool access" },
+  flip: { id: 'flip', kind: 'committing', label: 'Switch the active runtime' },
+  initialize: { id: 'initialize', kind: 'installing', label: 'Start the new runtime' },
+  provision: { id: 'provision', kind: 'installing', label: 'Provision tool access' },
+  'reconcile-roster': { id: 'reconcile-roster', kind: 'installing', label: 'Carry the roster' },
+  'reconcile-selections': { id: 'reconcile-selections', kind: 'verifying', label: 'Check model selections' },
+  'adopt-cron': { id: 'adopt-cron', kind: 'installing', label: 'Adopt cron jobs' },
+  'carry-workspaces': { id: 'carry-workspaces', kind: 'installing', label: 'Carry workspace content' },
+  'sync-agents': { id: 'sync-agents', kind: 'installing', label: 'Re-project agents' },
+  'validate-capabilities': { id: 'validate-capabilities', kind: 'verifying', label: 'Report capabilities' },
+}
+
+/** Not cancellable: the switch backs up, flips and restores as one unit. */
+export const RUNTIME_SWITCH_PLAN: OperationPlan = {
+  stages: Object.values(SWITCH_STAGES),
+  pointOfNoReturn: 'start',
+}
+
+/** A preview runs only the read-only stages: nothing is backed up, flipped, provisioned or re-projected. */
+export const RUNTIME_SWITCH_DRY_RUN_PLAN: OperationPlan = {
+  stages: (['validate', 'snapshot-roster', 'initialize', 'reconcile-roster', 'reconcile-selections', 'adopt-cron', 'carry-workspaces', 'validate-capabilities'] as const).map((id) => SWITCH_STAGES[id]),
+  pointOfNoReturn: 'start',
+}
+
+/** One phase event onto the operation: start enters the stage, skip skips it, errors and the restore are logged. */
+function reportPhase(op: OperationContext, event: SwitchProgressEvent): void {
+  const detail = event.detail
+  if (event.phase === 'restore') {
+    if (event.status === 'start') op.log('Restoring the previous runtime', 'warn')
+    else if (event.status === 'error') op.log(`Restore failed: ${detail ?? 'unknown error'}`, 'error')
+    else if (detail) op.log(detail, 'warn')
+    return
+  }
+  if (event.status === 'start') op.stage(event.phase, detail)
+  else if (event.status === 'skip') op.skip(event.phase, detail ?? 'skipped')
+  else if (event.status === 'error') op.log(detail ?? `${SWITCH_STAGES[event.phase].label} failed`, 'error')
+  else if (detail) op.log(`${SWITCH_STAGES[event.phase].label}: ${detail}`)
 }
 
 export interface RuntimeSwitchResult {
@@ -136,7 +165,13 @@ export interface RuntimeSwitchResult {
 }
 
 export interface SwitchRuntimeOptions {
-  onProgress?: (event: SwitchProgressEvent) => void
+  /**
+   * The switch's operation (#895): it reports every phase as a stage, and
+   * its holder owns install-state — the drift-gated re-projection writes
+   * under it, and a second switch (or a preview) waits instead of
+   * interleaving.
+   */
+  op: OperationContext
   /**
    * Carry source workspace content (canonical files, memory, agent-authored
    * skills) onto agents the switch creates. Default true — a switch that
@@ -277,27 +312,20 @@ export async function syncAgentsIfDrifted(): Promise<{ drifted: boolean; finding
   const before = await scanAgentSync()
   if (before.findings.length === 0) return { drifted: false, findings: 0, syncedAgents: 0 }
   const { syncAllAgents } = await import('./agent-packages/sync')
-  const { runOwning } = await import('./operations')
-  // Interim owner until the runtime switch is its own operation (#895 PR6).
-  const results = await runOwning(
-    { kind: 'runtime-switch:sync', title: 'Re-project agents for the new runtime', resources: ['install-state'] },
-    () => syncAllAgents({ fetch: false, trigger: 'system' }),
-  )
+  // The switch's operation owns install-state; the sync engine asserts it.
+  const results = await syncAllAgents({ fetch: false, trigger: 'system' })
   return { drifted: true, findings: before.findings.length, syncedAgents: results.length }
 }
 
-/**
- * Single-flight: two interleaved switches would deprovision/flip/provision
- * in arbitrary order. Concurrent callers get an immediate error result.
- */
-let switchInFlight = false
-
 export async function switchRuntime(
   target: string,
-  opts: SwitchRuntimeOptions = {},
+  opts: SwitchRuntimeOptions,
 ): Promise<RuntimeSwitchResult> {
+  // Two interleaved switches would deprovision/flip/provision in arbitrary
+  // order: the caller's operation owns install-state, so they never do.
+  if (!opts.op.holds('install-state')) throw new Error('switchRuntime requires install-state (run it inside its operation)')
   const emit = (event: SwitchProgressEvent) => {
-    opts.onProgress?.(event)
+    reportPhase(opts.op, event)
     log.info(`switch ${event.phase}: ${event.status}`, event.detail ? { detail: event.detail } : undefined)
   }
   const from = getSettings().runtime.adapter
@@ -322,11 +350,6 @@ export async function switchRuntime(
 
   // ── validate ──────────────────────────────────────────────────────────
   emit({ phase: 'validate', status: 'start' })
-  if (switchInFlight) {
-    result.error = 'A runtime switch is already in progress'
-    emit({ phase: 'validate', status: 'error', detail: result.error })
-    return result
-  }
   if (!isRuntimeAdapterName(target)) {
     result.error = `Unknown runtime adapter '${target}' (supported: ${RUNTIME_ADAPTER_NAMES.join(', ')})`
     emit({ phase: 'validate', status: 'error', detail: result.error })
@@ -348,9 +371,6 @@ export async function switchRuntime(
     return result
   }
   emit({ phase: 'validate', status: 'ok', detail: `${from} → ${target}${opts.dryRun ? ' (dry run)' : ''}` })
-  switchInFlight = true
-
-  try {
 
   // ── dry run: full preview, zero writes, no restore semantics ──────────
   if (opts.dryRun) {
@@ -629,8 +649,36 @@ export async function switchRuntime(
     result.restartRequired = teardownRan
     return result
   }
-  } finally {
-    switchInFlight = false
+}
+
+/**
+ * The runtime switch as an operation (#895): the phases are stages, it is
+ * not cancellable, and it owns install-state (a preview too — it waits for
+ * a running switch rather than read a half-flipped state). The result body
+ * is the switch report; a report that is not ok ends `switch_failed`.
+ */
+export function runtimeSwitchOperation(request: RuntimeSwitchRequest, origin: OperationOrigin): StartOperationInput<RuntimeSwitchResult> {
+  const { target, dryRun, copyWorkspaces, adoptCron } = request
+  return {
+    kind: dryRun ? 'runtime-switch:preview' : 'runtime-switch',
+    owner: 'core',
+    origin,
+    title: dryRun ? `Preview switching to ${target}` : `Switch the runtime to ${target}`,
+    href: '/runtime',
+    fingerprint: `runtime-switch:${target}:${dryRun ? 'preview' : 'switch'}:${copyWorkspaces === false ? 'no-copy' : 'copy'}:${adoptCron ? 'adopt-cron' : 'no-cron'}`,
+    resources: ['install-state'],
+    plan: dryRun ? RUNTIME_SWITCH_DRY_RUN_PLAN : RUNTIME_SWITCH_PLAN,
+    run: async (op) => {
+      const result = await switchRuntime(target, {
+        op,
+        ...(dryRun !== undefined ? { dryRun } : {}),
+        ...(copyWorkspaces !== undefined ? { copyWorkspaces } : {}),
+        ...(adoptCron !== undefined ? { adoptCron } : {}),
+      })
+      return result.ok
+        ? { status: 'succeeded', code: 'ok', httpStatus: 200, body: result }
+        : { status: 'failed', code: 'switch_failed', message: result.error ?? 'The runtime switch failed', httpStatus: 200, body: result }
+    },
   }
 }
 

@@ -50,7 +50,7 @@ mock.module('../../src/core/agent-packages/sync-scanner', () => ({
   scanAgentSync: async () => ({ findings: [], agentsScanned: 0, blocksOk: 0, projectionsOk: 0 }),
 }))
 
-import { switchRuntime } from '../../src/core/runtime-switch'
+import { switchInOperation } from '../helpers/runtime-switch'
 import { getSettings, resetSettingsCache, updateSettings } from '../../src/core/settings'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { resetOpenClawConfigCache } from '../../packages/adapter-openclaw/src/config'
@@ -187,7 +187,7 @@ describe('Bakin schedules survive a runtime switch', () => {
   })
 
   it('openclaw → pi: schedule intact, next occurrence fires exactly once', async () => {
-    const result = await switchRuntime('pi', { copyWorkspaces: false })
+    const result = await switchInOperation('pi', { copyWorkspaces: false })
     expect(result.ok).toBe(true)
     expect(getSettings().runtime.adapter).toBe('pi')
 
@@ -203,7 +203,7 @@ describe('Bakin schedules survive a runtime switch', () => {
   })
 
   it('pi → openclaw: schedule still intact, still firing', async () => {
-    const result = await switchRuntime('openclaw', { copyWorkspaces: false })
+    const result = await switchInOperation('openclaw', { copyWorkspaces: false })
     expect(result.ok).toBe(true)
     expect(getSettings().runtime.adapter).toBe('openclaw')
 
@@ -222,7 +222,7 @@ describe('Bakin schedules survive a runtime switch', () => {
     ])
 
     // Dry run first: the listing tells the truth and writes nothing.
-    const preview = await switchRuntime('pi', { copyWorkspaces: false, adoptCron: true, dryRun: true })
+    const preview = await switchInOperation('pi', { copyWorkspaces: false, adoptCron: true, dryRun: true })
     expect(preview.ok).toBe(true)
     expect(preview.cron!.listing.map((row) => [row.jobId, row.outcome]).sort()).toEqual([
       ['dream', 'refuse'], ['heartbeat', 'refuse'], ['native-daily', 'adopt'],
@@ -232,7 +232,7 @@ describe('Bakin schedules survive a runtime switch', () => {
     expect(readSidecar().jobs['native-daily']).toBeUndefined()
     expect(getSettings().runtime.adapter).toBe('openclaw')
 
-    const result = await switchRuntime('pi', { copyWorkspaces: false, adoptCron: true })
+    const result = await switchInOperation('pi', { copyWorkspaces: false, adoptCron: true })
     expect(result.ok).toBe(true)
 
     const adoption = result.cron
@@ -262,7 +262,7 @@ describe('Bakin schedules survive a runtime switch', () => {
   })
 
   it('pi → openclaw: the cutover removes the adopted job\'s native cron, markers stay native, every schedule fires once', async () => {
-    const result = await switchRuntime('openclaw', { copyWorkspaces: false })
+    const result = await switchInOperation('openclaw', { copyWorkspaces: false })
     expect(result.ok).toBe(true)
     // The native file still lists everything: the adopted job would have TWO
     // fire paths without the cutover the schedule plugin runs at activate.

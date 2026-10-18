@@ -4,22 +4,21 @@
  * options, consequences, preview trigger, typed confirm; nothing actionable
  * lives inline on the page (repair-button precedent). Preview is a dry run
  * (zero writes) whose grouped result cards render on the page as read-only
- * output, with live progress steps (Timeline) over the runtime:switch SSE
- * stream.
+ * output. Preview and switch are operations (#895), followed live with
+ * `useOperation` and shown with `OperationProgress`.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { startOperation, useOperation } from '@makinbakin/sdk/hooks'
 import { DisclosurePanel, Inline, Stack } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import {
   ConfirmDialog,
   CopyButton,
+  OperationProgress,
   KeyValue,
   StatGroup,
   StatTile,
   StatusBadge,
-  Timeline,
-  TimelineEntry,
-  type StatusTone,
 } from '@makinbakin/sdk/patterns'
 import {
   Banner,
@@ -37,46 +36,11 @@ import {
   SystemState,
   Text,
 } from '@makinbakin/sdk/ui'
-import { reduceSwitchProgress, SWITCH_PHASE_LABELS, type SwitchStepRow } from '../../lib/runtime-report'
+import { isOperationFinished, type OperationStartResponse } from '@makinbakin/sdk/types'
 import { ExtensionsSection } from './extensions-section'
 import { RuntimeTable } from './runtime-table'
-import { describeRequestError, responseError } from '../../lib/request-error'
+import { describeRequestError } from '../../lib/request-error'
 import type { CapabilityReport, SwitchResultPayload } from './types'
-
-const STEP_TONE: Record<SwitchStepRow['status'], StatusTone> = {
-  ok: 'success',
-  error: 'danger',
-  skip: 'neutral',
-  running: 'accent',
-}
-
-const STEP_MARKER_LABEL: Record<SwitchStepRow['status'], string> = {
-  ok: 'complete',
-  error: 'failed',
-  skip: 'skipped',
-  running: 'running',
-}
-
-function ProgressSteps({ steps }: { steps: SwitchStepRow[] }) {
-  if (steps.length === 0) return null
-  return (
-    <Card data-testid="switch-progress">
-      <CardContent>
-        <Timeline aria-label="Switch progress">
-          {steps.map((step) => (
-            <TimelineEntry
-              key={step.phase}
-              tone={STEP_TONE[step.status]}
-              markerLabel={STEP_MARKER_LABEL[step.status]}
-              title={SWITCH_PHASE_LABELS[step.phase] ?? step.phase}
-              meta={step.detail ? <Text size="meta" tone="muted">{step.detail}</Text> : undefined}
-            />
-          ))}
-        </Timeline>
-      </CardContent>
-    </Card>
-  )
-}
 
 const CRON_OUTCOME_TONE = { adopt: 'success', skip: 'neutral', refuse: 'attention', failed: 'danger' } as const
 const CRON_OUTCOME_LABEL = { adopt: 'Adopted', skip: 'Already Bakin', refuse: 'Refused', failed: 'Failed' } as const
@@ -254,96 +218,75 @@ const RUNTIME_LABELS: Record<string, string> = {
   pi: 'Pi',
 }
 
-/** A dry run only reads; bound it so a wedged server can't pin "Previewing…". */
-const PREVIEW_TIMEOUT_MS = 60_000
-
 export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; onSwitched: () => void }) {
   const [target, setTarget] = useState<string | null>(null)
   const [adoptCron, setAdoptCron] = useState(false)
   const [copyWorkspaces, setCopyWorkspaces] = useState(true)
-  const [running, setRunning] = useState<'preview' | 'switch' | null>(null)
   const [confirming, setConfirming] = useState(false)
-  const [steps, setSteps] = useState<SwitchStepRow[]>([])
   const [result, setResult] = useState<SwitchResultPayload | null>(null)
-  const esRef = useRef<EventSource | null>(null)
-
-  // Without this, navigating away mid-switch leaves the progress stream open
-  // and the settle path calls setState on an unmounted tree.
-  useEffect(() => () => {
-    esRef.current?.close()
-    esRef.current = null
-  }, [])
+  // The preview or switch in flight — an operation (#895), followed live.
+  const [operation, setOperation] = useState<{ dryRun: boolean; target: string; start: OperationStartResponse } | null>(null)
+  const followed = useOperation<SwitchResultPayload>(operation?.start.operationId ?? null, operation ? { bootId: operation.start.bootId } : {})
+  const running: 'preview' | 'switch' | null = operation ? (operation.dryRun ? 'preview' : 'switch') : null
 
   const others = report.adapters.filter((name) => name !== report.adapter)
   const roster = [report.adapter, ...others]
 
+  /** A report for a switch that ended without one (refused, restarted, lost). */
+  const failedResult = useCallback((to: string, dryRun: boolean, error: string): SwitchResultPayload => ({
+    ok: false,
+    from: report.adapter,
+    to,
+    error,
+    backupPath: null,
+    restartRequired: false,
+    roster: null,
+    workspaces: null,
+    cron: null,
+    cantCarry: null,
+    credentials: null,
+    channels: null,
+    sync: null,
+    ...(dryRun ? { dryRun: true } : {}),
+  }), [report.adapter])
+
   const run = useCallback(async (dryRun: boolean) => {
-    if (!target || running !== null) return
-    setRunning(dryRun ? 'preview' : 'switch')
-    setSteps([])
+    if (!target || operation !== null) return
     setResult(null)
-
-    // Dedicated short-lived stream: fresh SSE connections get no replay, so
-    // wait (bounded) for the handshake before firing the POST or a fast
-    // local switch renders only its late phases.
-    const es = new EventSource('/api/events')
-    esRef.current = es
-    es.onmessage = (msg) => {
-      try {
-        const event = JSON.parse(msg.data as string)
-        if (event?.type === 'runtime:switch') setSteps((prev) => reduceSwitchProgress(prev, event))
-      } catch { /* non-JSON keepalives */ }
-    }
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, 2000)
-      es.onopen = () => { clearTimeout(timer); resolve() }
-    })
-
     try {
-      const res = await fetch('/api/runtime/switch', {
+      const start = await startOperation(() => fetch('/api/runtime/switch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // A dry run is read-only by contract (zero writes), so abandoning it is
-        // safe and beats a permanent "Previewing…". A REAL switch is deliberately
-        // unbounded: the client aborting does not stop the server mid-flip, so a
-        // deadline here would report "failed" over a switch still applying and
-        // invite a double-switch retry. Progress stays visible on the SSE stream.
-        ...(dryRun ? { signal: AbortSignal.timeout(PREVIEW_TIMEOUT_MS) } : {}),
         body: JSON.stringify({
           target,
           ...(dryRun ? { dryRun: true } : {}),
           ...(copyWorkspaces ? {} : { copyWorkspaces: false }),
           ...(adoptCron ? { adoptCron: true } : {}),
         }),
-      })
-      // A 5xx can answer with an HTML error page: parsing it first threw and
-      // the catch below reported a real server failure as a network error.
-      if (!res.ok) throw await responseError(res, 'The runtime was not switched')
-      setResult(await res.json() as SwitchResultPayload)
-      if (!dryRun) onSwitched()
+      }))
+      setOperation({ dryRun, target, start })
     } catch (err) {
-      setResult({
-        ok: false,
-        from: report.adapter,
-        to: target,
-        error: describeRequestError(err),
-        backupPath: null,
-        restartRequired: false,
-        roster: null,
-        workspaces: null,
-        cron: null,
-        cantCarry: null,
-        credentials: null,
-        channels: null,
-        sync: null,
-        ...(dryRun ? { dryRun: true } : {}),
-      })
-    } finally {
-      es.close()
-      esRef.current = null
-      setRunning(null)
+      setResult(failedResult(target, dryRun, describeRequestError(err)))
     }
-  }, [target, running, adoptCron, copyWorkspaces, report.adapter, onSwitched])
+  }, [target, operation, adoptCron, copyWorkspaces, failedResult])
+
+  const view = followed.operation
+  const phase = followed.phase
+  useEffect(() => {
+    if (!operation) return
+    // The switch keeps running on the server whatever this tab does; only
+    // its outcome can go missing (a restart, a lost record).
+    if (phase === 'restarted' || phase === 'expired') {
+      setOperation(null)
+      setResult(failedResult(operation.target, operation.dryRun, 'Bakin restarted or lost track of the switch — check the active runtime above.'))
+      if (!operation.dryRun) onSwitched()
+      return
+    }
+    if (!view || !isOperationFinished(view.status)) return
+    setOperation(null)
+    setResult(view.result?.body ?? failedResult(operation.target, operation.dryRun, view.outcome?.message ?? `The switch ${view.status}.`))
+    if (!operation.dryRun) onSwitched()
+  }, [operation, view, phase, failedResult, onSwitched])
 
   if (others.length === 0) {
     return (
@@ -371,12 +314,12 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
         { key: 'action', header: 'Action', narrow: 'trailing', hideLabel: true, cell: name => <Button size="xs" variant="outline"
           disabled={name === report.adapter || running !== null} data-testid={`switch-target-${name}`}
           aria-label={`Preview switch to ${RUNTIME_LABELS[name] ?? name}`}
-          onClick={() => { setTarget(name); setResult(null); setSteps([]); setConfirming(true) }}>Preview switch</Button> },
+          onClick={() => { setTarget(name); setResult(null); setConfirming(true) }}>Preview switch</Button> },
       ]} />
 
       <ExtensionsSection />
 
-      {running !== null && steps.length === 0 && (
+      {running !== null && !view && (
         <SystemState
           kind="loading"
           scope="inline"
@@ -386,7 +329,7 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
           description="Progress appears here as each phase reports in."
         />
       )}
-      <ProgressSteps steps={steps} />
+      {running !== null && view ? <OperationProgress operation={view} phase={phase} data-testid="switch-progress" /> : null}
       {result && <ResultCards result={result} onProceed={() => setConfirming(true)} busy={running !== null} />}
 
       <ConfirmDialog
