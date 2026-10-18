@@ -211,6 +211,12 @@ function stopStrayEngines(): void {
 
 function finish(results: Array<{ ok: boolean }>): never {
   const failed = results.filter((r) => !r.ok).length
+  // The container is discarded on exit: show the engine's own account of a failure.
+  const engineLog = '/work/home/logs/antfly.log'
+  if (failed > 0 && existsSync(engineLog)) {
+    console.log(`\n--- last 60 lines of ${engineLog} ---`)
+    console.log(readFileSync(engineLog, 'utf-8').split('\n').slice(-60).join('\n'))
+  }
   console.log(failed === 0 ? `\nAll ${results.length} checks passed.` : `\n${failed} of ${results.length} checks FAILED.`)
   process.exit(failed === 0 ? 0 : 1)
 }
