@@ -5,8 +5,8 @@
  * - The switch's private progress stream, its step reducer and its
  *   single-flight flag are gone (install-state serializes switches).
  * - `new EventSource` appears only in the shell's one connection
- *   (`use-sse.ts`), the schedule hooks' stream (`use-schedule.ts`, #990)
- *   and the dev-loop client — never a private progress stream again.
+ *   (`use-sse.ts`) and the dev-loop client — every surface subscribes
+ *   through `usePluginEvent` (the schedule hooks moved over in #990).
  *
  * Pure scanner: reads source as text, imports no app modules.
  */
@@ -35,7 +35,6 @@ const code = (text: string): string => text.split('\n').filter((line) => {
 
 const EVENT_SOURCE_ALLOWED = new Set([
   'src/hooks/use-sse.ts',
-  'src/hooks/use-schedule.ts',
   'packages/host/src/dev-client/client.ts',
 ])
 

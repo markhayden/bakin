@@ -1,6 +1,18 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { usePluginEvent, type PluginEventPayload } from './use-plugin-event'
+
+/** The audit event name a `bakin.audit` payload carries. */
+function auditEventOf(payload: PluginEventPayload): string | undefined {
+  const entry = payload.entry as { event?: unknown } | undefined
+  return typeof entry?.event === 'string' ? entry.event : undefined
+}
+
+/** The schedule plugin audits every job change and fire as `schedule.*`. */
+function isScheduleAudit(payload: PluginEventPayload): boolean {
+  return auditEventOf(payload)?.startsWith('schedule.') === true
+}
 
 export interface ScheduleJob {
   id: string
@@ -86,26 +98,12 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
     fetchJobs()
   }, [fetchJobs])
 
-  // Listen for SSE schedule events
-  useEffect(() => {
-    const es = new EventSource('/api/events')
-    const handler = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (
-          (data.type === 'activity' && data.message?.includes('Schedule')) ||
-          data.event?.startsWith('schedule.')
-        ) {
-          fetchJobs()
-        }
-      } catch { /* ignore */ }
-    }
-    es.addEventListener('message', handler)
-    return () => {
-      es.removeEventListener('message', handler)
-      es.close()
-    }
-  }, [fetchJobs])
+  // Schedule changes from anywhere (an agent, another tab, the scheduler's
+  // own fires) arrive as `schedule.*` audit events on the shell's one stream.
+  usePluginEvent('bakin.audit', (payload) => {
+    if (isScheduleAudit(payload)) void fetchJobs()
+  })
+  usePluginEvent('bakin.reconcile', () => { void fetchJobs() })
 
   // Apply client-side filters
   const opts = options
@@ -300,30 +298,14 @@ export function useOccurrences(fromIso: string, toIso: string) {
     fetchOccurrences()
   }, [fetchOccurrences])
 
-  useEffect(() => {
-    const es = new EventSource('/api/events')
-    const handler = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (
-          (data.type === 'activity' && data.message?.includes('Schedule')) ||
-          data.event?.startsWith('schedule.') ||
-          // Task dates feed the domain-event layer; the store broadcasts on
-          // every board write. External providers emit the documented
-          // `<pluginId>.scheduled_events_changed` audit event.
-          data.type === 'taskboard' ||
-          data.event?.endsWith('.scheduled_events_changed')
-        ) {
-          fetchOccurrences()
-        }
-      } catch { /* ignore */ }
-    }
-    es.addEventListener('message', handler)
-    return () => {
-      es.removeEventListener('message', handler)
-      es.close()
-    }
-  }, [fetchOccurrences])
+  // Occurrences move with schedule changes, with task dates (the board
+  // broadcasts every write) and with any provider's documented
+  // `<pluginId>.scheduled_events_changed` audit event (#191).
+  usePluginEvent('bakin.audit', (payload) => {
+    if (isScheduleAudit(payload) || auditEventOf(payload)?.endsWith('.scheduled_events_changed')) void fetchOccurrences()
+  })
+  usePluginEvent('taskboard', () => { void fetchOccurrences() })
+  usePluginEvent('bakin.reconcile', () => { void fetchOccurrences() })
 
   return { occurrences, events, unevaluated, droppedProviders, loading, refresh: fetchOccurrences }
 }
