@@ -322,7 +322,7 @@ describe('TeamManager + TeamFormDialog', () => {
       blocked = blockers[0]!({ currentLocation: { pathname: '/team' }, nextLocation: { pathname: '/tasks' } })
       await screen.findByRole('dialog', { name: 'Unsaved changes' })
     })
-    let settled: boolean | null = null
+    let settled = null as boolean | null
     await act(async () => {
       release(Response.json({ ok: true }))
       settled = await blocked
