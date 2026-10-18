@@ -208,6 +208,14 @@ describe('only proven models are proposed (margo 2026-10-18)', () => {
     expect(plan.routes.find((r) => r.workClass === 'relay')?.model).toBe(mini.id)
   })
 
+  it('an unproven (kept) default never absorbs a working chores route', () => {
+    const routing = { routes: [{ workClass: 'relay' as const, model: mini.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: luna.id, routing }))
+    expect(plan.agent.model).toBe(luna.id)
+    expect(plan.routes.find((r) => r.workClass === 'relay')).toMatchObject({ model: mini.id, reason: expect.stringContaining('kept on') })
+    expect(plan.ops.some((op) => op.ref === 'route:relay')).toBe(false)
+  })
+
   it('with nothing proven yet (a fresh install) the strongest listed model is offered as unverified', () => {
     const pick = pickAgentModel(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: null }))
     expect(pick.model).toBe(luna.id)

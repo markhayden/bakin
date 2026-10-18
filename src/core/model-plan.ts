@@ -288,7 +288,17 @@ export function recommendPlan(input: PlanInput): PlanRecommendation {
     return { agent, chores: { model: null, why: agent.why, suitability: 'none' }, routes, enrichment: input.enrichmentEnabled ? 'unset' : 'disabled', ops: [], notes: [], blocked: agent.why }
   }
   const { pick: chores, enrichment, notes } = pickChoresModel(input, agent)
-  const routes = planRoutes(agent, chores, enrichment)
+  // Clearing a route moves its work onto the agent model, so that is a
+  // change TO the agent model: only when the agent model is proven. An
+  // unproven default (kept, not changed) never absorbs a working route.
+  const agentProven = input.candidates.find((c) => c.id === agent.model)?.proven === true
+  const routes = planRoutes(agent, chores, enrichment).map((route) => {
+    const current = routedModel(input.routing, route.workClass)
+    if (route.model === null && current !== null && !agentProven) {
+      return { ...route, model: current, reason: `kept on ${current} — the agent model (${agent.model}) has not been seen running here in the last week, so work is not moved onto it` }
+    }
+    return route
+  })
   const ops: MutationOp[] = []
   if (agent.model && agent.model !== input.currentDefaultModel) {
     ops.push({ ref: 'policy:defaultModel', set: { model: agent.model } })
