@@ -1212,6 +1212,35 @@ describe('checkPluginAssets', () => {
   })
 })
 
+describe('checkPluginAssets — user-edited skills (#898)', () => {
+  const lockedRef = { pluginId: 'sdr', name: 'cold-email' }
+  function warnWith(details: Record<string, unknown>) {
+    mockPluginAssetsResult = {
+      name: 'plugin-assets',
+      status: 'warn' as unknown as 'ok',
+      message: '1 user-edited skill(s) differ',
+      // @ts-expect-error - extra fields accepted at runtime
+      remediation: 'Keep the edit, or delete .userEdited',
+      details: { missing: [], drifted: [], userEditedDrifted: [lockedRef], bins: { missing: [], drifted: [], unsupported: [] }, ...details },
+    }
+  }
+
+  it('locked-and-drifted alone is a watch warning with instructions — never the install repair that would skip it', async () => {
+    warnWith({})
+    const results = observed(await checkPluginAssets())
+    expect(results[0].status).toBe('warning')
+    expect(results[0].incident).toMatchObject({ key: 'user-edited-drifted', disposition: 'watch' })
+    expect(results[0].incident?.resolution.type).toBe('instructions')
+    expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:cold-email', label: 'cold-email (sdr)' }])
+  })
+
+  it('with anything else to install, the repair is still offered', async () => {
+    warnWith({ drifted: [{ pluginId: 'sdr', name: 'other' }] })
+    const results = observed(await checkPluginAssets())
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'repair', actionId: 'install-plugin-assets' })
+  })
+})
+
 describe('checkPluginAssets — discovery failure', () => {
   it('a failed inspection is unknown with a rerun resolution — never healthy, never an install repair over a broken ledger', async () => {
     mockPluginAssetsResult = {

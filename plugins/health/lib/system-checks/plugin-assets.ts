@@ -39,6 +39,33 @@ export async function checkPluginAssets(): Promise<HealthCheckRunInput> {
         evidence: { inSync: true, ...(result.details ?? {}) },
       })])
     }
+    const scan = result.details as { missing?: unknown[]; drifted?: unknown[]; userEditedDrifted?: Array<{ name: string; pluginId: string }>; bins?: { missing?: unknown[]; drifted?: unknown[]; unsupported?: unknown[] } } | undefined
+    const repairable = (scan?.missing?.length ?? 0) + (scan?.drifted?.length ?? 0)
+      + (scan?.bins?.missing?.length ?? 0) + (scan?.bins?.drifted?.length ?? 0) + (scan?.bins?.unsupported?.length ?? 0)
+    const locked = scan?.userEditedDrifted ?? []
+    if (repairable === 0 && locked.length > 0) {
+      // The user locked these skills; the repair never overwrites them, so
+      // offering it would be a button that does nothing (#898).
+      return healthObserved([healthWarning({
+        key: 'runtime-assets',
+        summary: result.message,
+        detail: result.remediation,
+        evidence: { inSync: false, ...(result.details ?? {}) },
+        incident: {
+          key: 'user-edited-drifted',
+          title: 'User-edited plugin skills differ from the plugin',
+          impact: 'Agents run your edited copy, not the version the plugin ships. Bakin will not overwrite a skill you locked.',
+          disposition: 'watch',
+          resources: locked.map((ref) => ({ kind: 'asset' as const, id: `skill:${ref.name}`, label: `${ref.name} (${ref.pluginId})` })),
+          resolution: {
+            key: 'unlock-user-edited-skills',
+            type: 'instructions',
+            label: 'Keep or restore',
+            steps: ['Keep your edit and acknowledge this, or delete the skill\'s .userEdited file and run `bakin install plugin-assets` to restore the plugin\'s version.'],
+          },
+        },
+      })])
+    }
     const reminder = result.remediation ?? 'Run `bakin install plugin-assets` to apply.'
     return healthObserved([healthWarning({
       key: 'runtime-assets',

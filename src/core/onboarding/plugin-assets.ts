@@ -10,11 +10,14 @@
  * plugin-skill-loader (`src/lib/plugin-skill-loader.ts`) — they never
  * touch this path.
  *
- * Drift detection:
- *   - `.installedBy` JSON marker records {pluginId, sha256(SKILL.md)}.
+ * Drift detection (#898 — verify, never trust a self-asserted file):
+ *   - The installed skill's files are compared with the files the plugin
+ *     ships (`skillVerdict`, the ONE predicate behind scan AND install).
+ *     The `.installedBy` marker records ownership for uninstall; it is
+ *     never evidence the content is current.
  *   - `.userEdited` sentinel (empty file the user creates) blocks
- *     overwrite forever — install() skips and reports.
- *   - SHA256 mismatch between source and recorded marker → drift.
+ *     overwrite forever — install() skips and reports. A locked skill is
+ *     still compared: locked-and-drifted is a warning, never ok.
  *
  * Binaries (spec plugin-managed-binaries §2.7): a plugin manifest's
  * `requires.bins` are scanned with the installer's own verification
@@ -94,7 +97,10 @@ export interface ScanReport {
   missing: SkillRef[]
   drifted: SkillRef[]
   installed: SkillRef[]
+  /** Locked by `.userEdited` (overwrite blocked), content matching or not. */
   userEdited: SkillRef[]
+  /** The locked skills whose content differs from what the plugin ships. */
+  userEditedDrifted: SkillRef[]
   bins: BinScanReport
 }
 
@@ -159,6 +165,7 @@ function isInstalledMarker(value: unknown): value is InstalledMarker {
     && typeof (value as InstalledMarker).sha256 === 'string'
 }
 
+/** Ownership for uninstall (with the lockfile allowlist) — never content evidence. */
 function readMarker(skill: RuntimeSkill | null): InstalledMarker | null {
   const marker = skill?.metadata?.installedBy
   return isInstalledMarker(marker) ? marker : null
@@ -184,6 +191,28 @@ function buildRuntimeSkill(skill: PluginSkillSource, marker: InstalledMarker): R
     files,
     metadata: { installedBy: marker },
   }
+}
+
+/** The installed skill's files as the runtime reports them; SKILL.md from
+ *  `instructions` when an adapter leaves it out of the file map. */
+function installedFiles(skill: RuntimeSkill): Record<string, string> {
+  const files = { ...(skill.files ?? {}) }
+  if (files['SKILL.md'] === undefined && skill.instructions !== undefined) files['SKILL.md'] = skill.instructions
+  return files
+}
+
+function sameFiles(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((key) => b[key] === a[key])
+}
+
+/**
+ * The ONE skill predicate behind scan and install: the installed files
+ * must equal the expected build of the plugin's skill, file for file.
+ */
+function skillVerdict(source: PluginSkillSource, installed: RuntimeSkill | null): 'missing' | 'installed' | 'drifted' {
+  if (!installed) return 'missing'
+  return sameFiles(readSkillFiles(source), installedFiles(installed)) ? 'installed' : 'drifted'
 }
 
 /**
@@ -239,6 +268,7 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
     drifted: [],
     installed: [],
     userEdited: [],
+    userEditedDrifted: [],
     bins: scanPluginBins(plugins),
   }
 
@@ -248,24 +278,14 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
       report.totalAvailable++
       const ref: SkillRef = { pluginId: plugin.id, name: skill.name }
       const installedSkill = await runtime.skills.get(skill.name)
+      const verdict = skillVerdict(skill, installedSkill)
 
-      if (!installedSkill) {
-        report.missing.push(ref)
-        continue
-      }
-
-      if (isUserEditedSkill(installedSkill)) {
+      if (installedSkill && isUserEditedSkill(installedSkill)) {
         report.userEdited.push(ref)
+        if (verdict === 'drifted') report.userEditedDrifted.push(ref)
         continue
       }
-
-      const sourceHash = sha256OfFile(skill.skillMdPath)
-      const marker = readMarker(installedSkill)
-      if (marker && marker.sha256 === sourceHash) {
-        report.installed.push(ref)
-      } else {
-        report.drifted.push(ref)
-      }
+      report[verdict].push(ref)
     }
   }
 
@@ -296,7 +316,6 @@ export async function installPluginAssets(plugins: PluginEntry[], op?: Operation
     const before = report.installed.length
     for (const skill of skills) {
       const ref: SkillRef = { pluginId: plugin.id, name: skill.name }
-      const sourceHash = sha256OfFile(skill.skillMdPath)
       const installedSkill = await runtime.skills.get(skill.name)
 
       if (installedSkill && isUserEditedSkill(installedSkill)) {
@@ -305,13 +324,16 @@ export async function installPluginAssets(plugins: PluginEntry[], op?: Operation
         continue
       }
 
-      const marker = readMarker(installedSkill)
-      if (installedSkill && marker && marker.sha256 === sourceHash) {
+      const verdict = skillVerdict(skill, installedSkill)
+      if (verdict === 'installed') {
         report.unchanged.push(ref)
         continue
       }
 
-      await runtime.skills.write(buildRuntimeSkill(skill, { pluginId: plugin.id, sha256: sourceHash }))
+      // A drifted skill is replaced whole: writes never delete, so a file
+      // the plugin does not ship would keep it drifted forever.
+      if (verdict === 'drifted') await runtime.skills.remove(skill.name)
+      await runtime.skills.write(buildRuntimeSkill(skill, { pluginId: plugin.id, sha256: sha256OfFile(skill.skillMdPath) }))
       report.installed.push(ref)
       log.info('Installed plugin skill', { name: skill.name, pluginId: plugin.id })
     }
@@ -500,6 +522,18 @@ async function check(): Promise<CheckResult> {
     }
   }
 
+  if (pending === 0 && bins.unsupported.length === 0 && report.userEditedDrifted.length > 0) {
+    // Nothing the repair may touch: the user locked these. Still never ok.
+    const names = report.userEditedDrifted.map((ref) => `${ref.name} (${ref.pluginId})`).join(', ')
+    return {
+      name: 'plugin-assets',
+      status: 'warn',
+      message: `${report.userEditedDrifted.length} user-edited skill(s) differ from what the plugin ships: ${names}`,
+      remediation: 'Keep the edit, or delete the skill\'s .userEdited file and run `bakin install plugin-assets` to restore the plugin\'s version.',
+      details,
+    }
+  }
+
   if (pending === 0 && bins.unsupported.length === 0) {
     const userEditedNote = report.userEdited.length > 0
       ? ` (${report.userEdited.length} user-edited, locked)`
@@ -516,6 +550,7 @@ async function check(): Promise<CheckResult> {
   const parts: string[] = []
   if (report.missing.length > 0) parts.push(`${report.missing.length} skill(s) missing`)
   if (report.drifted.length > 0) parts.push(`${report.drifted.length} skill(s) drifted`)
+  if (report.userEditedDrifted.length > 0) parts.push(`${report.userEditedDrifted.length} user-edited skill(s) differ and stay locked`)
   if (bins.missing.length > 0) parts.push(`${bins.missing.length} binar${bins.missing.length === 1 ? 'y' : 'ies'} missing: ${bins.missing.map(binLabel).join(', ')}`)
   if (bins.drifted.length > 0) parts.push(`${bins.drifted.length} binar${bins.drifted.length === 1 ? 'y' : 'ies'} drifted: ${bins.drifted.map(binLabel).join(', ')}`)
   if (bins.unsupported.length > 0) parts.push(`${bins.unsupported.length} binar${bins.unsupported.length === 1 ? 'y has' : 'ies have'} no build for this platform: ${bins.unsupported.map(binLabel).join(', ')}`)
