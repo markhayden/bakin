@@ -28,6 +28,7 @@ job registry (`install-progress.ts`) and the throw-on-busy lock API.
 | Transfer primitive (events, abort, `opTransfer`) | `packages/core/src/net/download.ts` |
 | Owning helpers for in-process callers | `src/core/operations.ts` (`runOwning`, `awaitOperationResponse`) |
 | Install/lifecycle plans | `src/core/agent-packages/operation-plans.ts`, `src/core/plugins/operation-plans.ts` |
+| Search reindex/reset operations + plans | `src/core/search-operations.ts`, `packages/host/src/api/search/maintenance.ts`; engine/model plans in `packages/adapter-antfly/src/{installer,models}.ts`, pull progress in `pull-progress.ts`, `ENGINE_RESET_STAGES` in `packages/core/src/adapters/search` |
 | Route outcome helper | `packages/host/src/api/operations.ts` (`outcomeFromResponse`), `packages/core/src/operations/outcome.ts` (`responseOutcome`) |
 | Children + the D22 precedence | `packages/core/src/operations/children.ts` (`parentOutcome`, `tallyChildren`, `CHILD_SKIPPED_CODE`); `registry.startChild` |
 | CLI follow + renderer + targeting | `src/cli/http.ts` (`followOperation`, `resolveCliTarget`, `cliFetch`), `src/cli/operation-renderer.ts` |
@@ -122,7 +123,10 @@ the core ones. Adding a fourth core resource is an approval checkpoint.
   the waiting operation.
 - `acquireResources` waits abortably (a lease obtained after an abort is
   released at once); `tryAcquireResources` never waits — for background work
-  (pump, boot resumption, wedge watchdog: defer to the next tick).
+  (the search migration pump and boot resumption take `search-engine` this
+  way for their whole pass as "Background index migration", or defer to the
+  next tick; the wedge watchdog acts for a holder running migrations here and
+  defers for any other).
   `holdNow(resources, identity, fn)` wraps it for the bounded synchronous
   writers (lesson toggle, plugin unlink, skill-map apply): it takes the
   resources inside the ownership context or throws `ResourceBusyError`,
@@ -336,6 +340,37 @@ symbols never return, no `?async` branch under `packages/host/src/api`,
 every caller of an install-state writer owns it (or is an asserting engine
 module), converted routes start operations, synchronous writers use
 `holdNow`.
+
+## Search (PR5, D12/D15/D23)
+
+Everything that changes the engine or its tables owns `search-engine`.
+
+| Flow | Entry points | Plan | Point of no return |
+|---|---|---|---|
+| Engine install | `bakin install search`, onboarding | `ANTFLY_ENGINE_PLAN` (the setup component's `plan`): prepare → download → checksum → extract → version → commit → cleanup → ready | `commit` (service stop + swap) |
+| Model pulls | `bakin install search-models`, onboarding | `ANTFLY_MODELS_PLAN`: download (one item per model) → verify; download overrides quiet to 30s/120s | none — cancel keeps the resumable staging dir |
+| Reindex | `POST /api/reindex`, `bakin reindex`, Health, `bakin_exec_search_reindex` (origin `system`) | `REINDEX_PLAN`: one `reindex` stage, a table per item, quiet 60s / stuck 10 min | `start` |
+| Reset | `POST /api/search/reset`, `bakin search:reset` | `SEARCH_RESET_PLAN`: `ENGINE_RESET_STAGES` (stop → wipe → boot) → reindex | `start` |
+
+- Installers take the op through `SearchAdapterSetupOptions.op` and assert
+  `op.holds('search-engine')`; each setup component declares its `plan`, so
+  core never names an antfly stage. Until onboarding runs as operations
+  (PR6), `installSearchComponentLocally` (`src/core/search-setup-install.ts`)
+  runs them as local operations.
+- Outcomes: reindex `ok` / `tables_parked` (rows kept); reset `ok` /
+  `reset_failed` / `tables_parked`; engine `engine_install_failed`; models
+  `models_install_failed`. The result body is `{ ok, errors, parked, total,
+  tables }` (reindex) or `{ ok, message, reindex }` (reset).
+- Background mutators: see Resources above and
+  `.claude/knowledge/search-system.md` § Blue/green.
+- Pull progress and resume facts come from the T0 spike:
+  `tasks/evidence-antfly-pull.md`.
+
+`tests/architecture/operations-search.test.ts` pins it: the reindex job
+registry, its status route, the any-pass coalescer and `search-reset.ts`
+stay gone; no `?async` in the request router; the routes start operations
+and the CLI follows them; the rebuild pass asserts ownership; the pump
+timer, boot resumption and the watchdog go through the background pass.
 
 ## Health repair (PR3, D10/D24)
 

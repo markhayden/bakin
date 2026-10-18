@@ -223,7 +223,15 @@ no state file — each content type declares its own `schemaVersion`.
   migrations counterpart of the outbox safety tick) resumes parked
   migrations automatically, attempt-capped at 5 per table before standing
   down to the doctor. `pumpParkedMigrations()` is also the doctor repair
-  path. Failed target creation, source enumeration, thrown batches, and
+  path. The pump tick and boot resumption are **background mutators of the
+  `search-engine` resource** (#895 D23): each takes it without waiting
+  (`holdNow`, holder title "Background index migration") for its whole
+  pass, or defers to its next tick when an engine install, model pull,
+  reset or reindex holds it — so those operations wait for an in-flight
+  pass visibly instead of racing it. The fast wedge watchdog bounces the
+  engine on behalf of a holder running migrations in this process (a
+  background pass or a reindex — the wedge it exists to heal) and defers
+  for any other holder. Failed target creation, source enumeration, thrown batches, and
   per-document batch rejections also park the recorded target. Partial
   backfill counts are cleared on failure and interrupted `backfilling` rows
   replay the source; only a completed backfill qualifies for the resume fast
@@ -249,7 +257,10 @@ no state file — each content type declares its own `schemaVersion`.
   ~30-minute global stall on 2026-07-21). Rebuild passes run tables with
   bounded concurrency (3).
 - **Rebuild = repair by default:** `POST /api/reindex[?table=t][&force=1]`
-  (the `bakin reindex [--force]` CLI verb) runs `rebuildRegisteredTables()`.
+  (the `bakin reindex [--force]` CLI verb, Health's reindex buttons and the
+  `bakin_exec_search_reindex` tool) starts a **reindex operation** (#895,
+  `src/core/search-operations.ts`; see `.claude/knowledge/operations.md` §
+  Search) that runs `rebuildRegisteredTables()`.
   The DEFAULT pass repairs: parked migrations resume (recorded target, no
   re-embed via the resume fast path), tables whose physical vanished
   engine-side (data-dir wipe) get a fresh nonce'd generation, drifted
@@ -261,11 +272,20 @@ no state file — each content type declares its own `schemaVersion`.
   evidence parks convergence instead of authorizing a flip.
   `--force` mints fresh generations for every targeted table (the old
   always-on behavior — it once churned a healthy table through five
-  generations in one evening). Overlapping calls **single-flight** into the
-  running pass. Progress broadcasts `search.rebuild.{start,progress,complete}`
-  SSE events; the response reports `ok/errors/parked` per table. There is no
-  separate "reset" surface — rebuild IS the repair verb. Resumed work still
-  parked is reported as `parked`, so the job and CLI cannot report success.
+  generations in one evening). Passes never overlap: the operation owns
+  `search-engine` and `rebuildRegisteredTables` asserts its caller does, so
+  an identical request attaches to the running operation and any other
+  waits for it. Each table is an item of the `reindex` stage
+  (pending → active with a live "phase · N indexed" message → done/failed);
+  the result is `{ ok, errors, parked, total, tables }`. Resumed work still
+  parked is reported as `parked` and ends the operation `tables_parked`, so
+  no surface can report success. `search.rebuild.*` SSE events remain only
+  as telemetry.
+- **Engine reset** (`bakin search:reset`, `POST /api/search/reset`) is the
+  clean slate for a corrupted or wedged engine: one non-cancellable
+  operation whose stages are the adapter's `ENGINE_RESET_STAGES` (stop →
+  wipe derived data → boot clean) followed by a repair reindex. A disabled
+  engine or an adapter without `resetEngineData` answers 409 at once.
 - **Engine version change = rebuild event:** `bakin install search`
   re-provisions the OS service unit unconditionally (argv must match the
   binary being installed) and, on a version change, CLEARS the derived
@@ -737,8 +757,17 @@ locally through the engine's embedded inference runtime — no cloud dependency.
 | Visual/media | `visual` | `antflydb/clipclap` (CLIP+CLAP multimodal, GGUF) | 512 |
 
 Models are pulled via `bakin install search-models`
-(`packages/adapter-antfly/src/models.ts` → `antfly inference pull`) into
-`~/.antfly/inference/models/{owner}/{name}/`. Prefetch matters: index-time
+(`packages/adapter-antfly/src/models.ts` → `antfly inference pull <model>
+--models-dir <inferenceModelsRoot()>` — the pull ignores `ANTFLY_HOME`, so the
+flag keeps the pull and the completeness check on one directory) into
+`~/.antfly/inference/models/{owner}/{name}/`. A pull stages into
+`<owner>/.<name>.antfly-download-staging/` (the in-flight file as `.part`) and
+publishes with one rename; an interrupted pull resumes at byte level. The
+install is an operation (#895 D12): one item per model whose bytes come from
+antfly's stderr protocol (file sizes announced as files start, a line every
+16 MiB — `pull-progress.ts`) plus the staged `.part` between lines; cancel is
+allowed throughout (SIGTERM) and keeps the staging dir for the resume.
+Evidence: `tasks/evidence-antfly-pull.md`. Prefetch matters: index-time
 embedding does NOT lazy-download a missing model — the backfill fails.
 Recovery is cheap: once the model is on disk, any write heals the index;
 `bakin install search-models` + `bakin reindex` fully repairs.

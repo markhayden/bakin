@@ -119,6 +119,11 @@ bakin reindex --table=tasks  # one table
 ```
 
 The default repair resumes recorded work and leaves healthy indexes untouched.
+The command shows each table as it rebuilds. A reindex can't be cancelled:
+Ctrl-C stops watching while the rebuild keeps running. If another rebuild,
+reset or engine install is in progress, the reindex waits for it and says
+what it is waiting for. The command exits non-zero when any table fails or
+parks.
 If the engine cannot report an index's status, repair reports the failure and
 preserves the index; retry after the engine recovers. Interrupted backfills
 remain queued for bounded automatic retries while queries use the previous
