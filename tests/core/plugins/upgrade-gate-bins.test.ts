@@ -48,3 +48,33 @@ describe('binary consent identity', () => {
     expect(sameBins(a, b)).toBe(false)
   })
 })
+
+describe('gateUpgradeConsent — a supplied consent always binds the release', () => {
+  it('a commit whose manifest changed since the preview bounces back even when nothing new needs consent', async () => {
+    const { gateUpgradeConsent } = await import('../../../src/core/plugins/upgrade-gate')
+    const entry = {
+      source: 'github:markhayden/bakin-bits-official#plugins/terminal', type: 'github' as const, ref: '', commitSha: '',
+      installedAt: '2026-10-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'c'.repeat(64),
+    }
+    const manifest = { id: 'terminal', version: '1.5.0', permissions: [] }
+    const before = { version: '1.0.0', commitSha: '' }
+    const after = { version: '1.5.0', commitSha: '' }
+    const matching = gateUpgradeConsent({ id: 'terminal', entry, manifest, manifestSha: 'd'.repeat(64), before, after, opts: { accepted: { manifestSha: 'd'.repeat(64), permissions: [], bins: [] } } })
+    expect(matching.proceed).toBe(true)
+    const republished = gateUpgradeConsent({ id: 'terminal', entry, manifest, manifestSha: 'e'.repeat(64), before, after, opts: { accepted: { manifestSha: 'd'.repeat(64), permissions: [], bins: [] } } })
+    expect(republished).toMatchObject({ proceed: false, result: { awaitingConsent: true, manifestChanged: true } })
+  })
+})
+
+describe('computeUpgradeAvailable — artifact rebuilds', () => {
+  it('a compatible rebuild under the installed version is still an upgrade', async () => {
+    const { computeUpgradeAvailable } = await import('../../../packages/core/src/plugins/lockfile')
+    const base = {
+      source: 'github:markhayden/bakin-bits-official#plugins/terminal', type: 'github' as const, ref: '', commitSha: '',
+      installedAt: '2026-10-01T00:00:00.000Z', version: '1.5.0', permissions: [], manifestSha: 'c'.repeat(64), remoteArtifactVersion: '1.5.0',
+    }
+    expect(computeUpgradeAvailable(base)).toBe(false)
+    expect(computeUpgradeAvailable({ ...base, remoteArtifactRebuild: true })).toBe(true)
+    expect(computeUpgradeAvailable({ ...base, remoteArtifactVersion: '1.6.0' })).toBe(true)
+  })
+})

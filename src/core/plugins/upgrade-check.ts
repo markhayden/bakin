@@ -13,7 +13,7 @@ import {
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
 import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha } from './source-tree-sha'
-import { isArtifactInstall, latestPublishedVersion } from './upgrade-artifact'
+import { artifactUpgradeTarget, installedArtifactRuns, isArtifactInstall, publishedVersions } from './upgrade-artifact'
 import { githubCloneUrl } from './upgrade-github'
 import { git } from './upgrade-gate'
 
@@ -24,8 +24,10 @@ export interface UpgradeAvailability {
   lastChecked: string
   /** Github only — last seen remote HEAD sha. */
   remoteHeadSha?: string
-  /** Artifact installs only — latest published artifact version. */
+  /** Artifact installs only — the version an upgrade would install (or the installed one). */
   remoteArtifactVersion?: string
+  /** Artifact installs only — that target is a compatible rebuild of the installed version. */
+  remoteArtifactRebuild?: boolean
   /** Local only — last seen source tree sha. */
   sourceTreeSha?: string
   /**
@@ -35,6 +37,8 @@ export interface UpgradeAvailability {
    * "source changed" (see source-tree-sha.ts).
    */
   sourceTreeShaAlgoMigration?: boolean
+  /** A definitive, persisted answer worth saying (e.g. no release runs on this Bakin yet) — not a failure. */
+  notice?: string
   /** Set when the check itself failed (e.g. network error, missing source). */
   error?: string
 }
@@ -55,15 +59,35 @@ async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvai
       // rate-limited GitHub API).
       const pluginDir = join(getContentDir(), 'plugins', id)
       if (isArtifactInstall(pluginDir)) {
-        const { pluginId, latest } = await latestPublishedVersion(entry.source)
+        const { pluginId, latest, compatible } = await publishedVersions(entry.source)
         if (!latest) {
           return { id, upgradeAvailable: false, lastChecked, error: `no published artifact for ${pluginId}` }
         }
+        // "Available" means a release THIS host can run — a newer publish
+        // for another Bakin is not an upgrade it can take.
+        if (!compatible) {
+          // A definitive answer, so it is PERSISTED (an `error` would keep
+          // a stale "upgrade available" from an earlier check).
+          return {
+            id,
+            upgradeAvailable: false,
+            lastChecked,
+            remoteArtifactVersion: entry.version,
+            remoteArtifactRebuild: false,
+            notice: `no published release of ${pluginId} runs on this Bakin yet (newest is ${latest})`,
+          }
+        }
+        // Same predicate as the upgrade itself, so "available" never names
+        // a release the upgrade would refuse (a published rollback below
+        // the installed version). The recorded remote version is that
+        // target, or the installed version when there is nothing to take.
+        const target = artifactUpgradeTarget(entry.version, installedArtifactRuns(pluginDir), compatible)
         return {
           id,
-          upgradeAvailable: latest !== entry.version,
+          upgradeAvailable: target !== null,
           lastChecked,
-          remoteArtifactVersion: latest,
+          remoteArtifactVersion: target ?? entry.version,
+          remoteArtifactRebuild: target !== null && target === entry.version,
         }
       }
       if (!entry.source || !entry.ref) {
@@ -141,6 +165,7 @@ export async function runChecks(ids: readonly string[]): Promise<UpgradeAvailabi
     const patch: Partial<PluginLockEntry> = { lastChecked: r.lastChecked }
     if (r.remoteHeadSha) patch.remoteHeadSha = r.remoteHeadSha
     if (r.remoteArtifactVersion) patch.remoteArtifactVersion = r.remoteArtifactVersion
+    if (r.remoteArtifactRebuild !== undefined) patch.remoteArtifactRebuild = r.remoteArtifactRebuild
     if (r.sourceTreeSha) patch.lastSourceTreeSha = r.sourceTreeSha
     if (r.sourceTreeShaAlgoMigration && r.sourceTreeSha) {
       // One-time reset: the row held a legacy (algo 1) sha and the source

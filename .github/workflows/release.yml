@@ -43,6 +43,38 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Before the tag exists, on the commit that will SHIP: a release that
+      # changes the plugin contract family must not go out until every
+      # official Bits plugin has a release that runs on it (rc.41 stranded
+      # projects + terminal on margo). A retried dispatch of an existing tag
+      # is judged on that tag's commit, not on main's tip.
+      - name: Plugin contract guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+            version="${version#v}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          tag="v${version}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            git fetch origin "refs/tags/${tag}:refs/tags/${tag}" --force
+            candidate="$(git rev-list -n 1 "${tag}")"
+          else
+            candidate="${GITHUB_SHA}"
+          fi
+          bun run scripts/check-plugin-contract.ts --version "${version}" --at "${candidate}"
+
       - name: Validate release and resolve tag
         id: release
         shell: bash

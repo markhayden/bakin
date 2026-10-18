@@ -276,8 +276,11 @@ export function gateUpgradeConsent(args: {
       ...(manifestChanged ? { manifestChanged: true } : {}),
     },
   })
-  if (widened.length > 0 || newBins.length > 0) {
-    if (!opts.accepted) return awaiting(false)
+  if ((widened.length > 0 || newBins.length > 0) && !opts.accepted) return awaiting(false)
+  // A supplied consent binds THIS release whether or not it needed one: a
+  // commit whose manifest, permissions or binaries differ from what was
+  // consented to (a republish between preview and commit) bounces back.
+  if (opts.accepted) {
     const accepted = opts.accepted
     const samePerms = accepted.permissions.length === newPerms.length && accepted.permissions.every((p) => (newPerms as string[]).includes(p))
     if (accepted.manifestSha !== manifestSha || !samePerms || !sameBins(accepted.bins, consent.bins)) return awaiting(true)

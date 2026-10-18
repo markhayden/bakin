@@ -35,6 +35,48 @@ previous-family artifacts need a rebuild and are refused at install or marked
 `needs-update` by the host. Versions remain additive within a family; neither
 old hosts nor new hosts accept artifacts from a different family.
 
+A family change is therefore a fleet event, and two things keep it from
+stranding users (rc.41 left projects + terminal dark on margo until Bits
+published):
+
+- **Release guard** — `scripts/check-plugin-contract.ts` runs in release prep
+  and in `release.yml`'s gate BEFORE the tag is created. When
+  `EXTERNALS_CONTRACT`'s family differs from the previous release tag's, every
+  official Bits plugin (the curated catalog's non-builtin `github:` plugins)
+  must already have a published release that runs on the new contract and
+  this version (its `bakinRange` may require it) for every release platform,
+  or the release refuses. Publish Bits first, then cut Bakin.
+- **Compatible upgrades** — `src/core/whiskit/compatible-version.ts`
+  (`newestCompatibleVersion`) is the ONE answer to "which published version
+  can THIS host run" (contract + `bakinRange`, newest first, platform then
+  neutral). The artifact upgrade lane, `bakin plugins list --check`
+  (`remoteArtifactVersion` / "upgrade available") and Health all use it — never
+  the index's `latest`, which may target another host. Health's
+  `plugin-artifacts` check offers the one-click `upgrade-plugin-artifact`
+  repair when a stranded plugin's source has a compatible release (any — a
+  rebuild published under the installed version counts, because the
+  installed artifact does not run): `plan()` previews and puts the IDENTITY in
+  the change targets (`plugin:<id>@<version>#<manifestSha>`,
+  `plugin:<id>:bin:<name>@<version>#<sha256>`, one row per new permission) —
+  approvals freeze targets and Apply refuses a re-plan whose targets differ;
+  safety is `manual` so escalation asks for that approval; `apply()`
+  re-previews and commits ONLY when version, manifest and binaries equal what
+  was approved, then activates — and `gateUpgradeConsent` validates a
+  supplied consent EVERY time (manifest, permissions, binaries), not only
+  when something new needed consent, so a republish between preview and
+  commit bounces. Index reads are bounded (8 s, no retries), concurrent
+  across plugins and cached per source (10 min; failures 1 min), so a slow
+  release host never costs the check its local verdict. A compatible rebuild
+  under the installed version persists as `remoteArtifactRebuild` so
+  `computeUpgradeAvailable` keeps reporting it. No compatible release yet ⇒ the incident
+  says so (`await-compatible-release`) instead of pointing at an upgrade that
+  would refuse. `artifactUpgradeTarget` is the one upgrade decision (a working
+  install only moves forward; a stranded one takes any compatible release;
+  "runs" includes the installed artifact's `bakinRange`), shared by the
+  upgrade lane and `--check`, so availability never names a release the
+  upgrade would refuse. The guard judges the commit that SHIPS
+  (`--at <commit>`; the gate resolves an existing tag's commit for a retry).
+
 Cross-plugin communication never goes through direct imports. On the
 server it goes through the HookRegistry
 (`packages/core/src/hooks/hook-registry.ts`). On the client it goes

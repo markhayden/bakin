@@ -16,6 +16,7 @@ import {
   scaffoldVersionSection,
   versionSectionBody,
 } from './release'
+import { reportContractGuard, runContractGuard } from './check-plugin-contract'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const CHANGELOG_PATH = resolve(REPO_ROOT, 'CHANGELOG.md')
@@ -186,6 +187,10 @@ async function main(): Promise<void> {
     console.log('   Fill in the bullets on the release branch before you push the tag.')
     console.log('   CI extracts notes from the committed CHANGELOG and will reject an empty section.')
   }
+
+  // A contract-family change ships only once every official Bits plugin
+  // has a release that runs on it (rc.41 stranded projects + terminal).
+  console.log(reportContractGuard(await runContractGuard(parseReleaseTag(tag)?.version ?? tag.replace(/^v/, ''))))
 
   if (opts.dryRun) return
   if (opts.createBranch) createReleaseBranch(tag)
