@@ -20,8 +20,14 @@ mock.module('child_process', () => ({
   spawn,
 }))
 
+// An installed service file with no recorded BAKIN_HOME runs the default home.
+const defaultServiceFile = (path: unknown, ...rest: unknown[]) =>
+  /\.(plist|service)$/.test(String(path)) ? '<plist/>' : (nodeFs.readFileSync as (...a: unknown[]) => unknown)(path, ...rest)
+const readFileSync = mock(defaultServiceFile)
+
 mock.module('fs', () => ({
   ...nodeFs,
+  readFileSync,
   existsSync,
   mkdirSync,
   unlinkSync,
@@ -33,12 +39,20 @@ mock.module('os', () => ({
   homedir,
 }))
 
-// Lifecycle verbs verify THIS home's server through its live server.lock:
-// none runs before the action; the started/restarted one answers on 3737.
+// Lifecycle verbs act on THIS home (the default, under the mocked homedir)
+// and verify through its live server.lock: the lock names the started server
+// (pid 4242, the spawn mock's), which answers on 3737. `ps` (execFileSync
+// mock → '') shows no Bakin command for it, so nothing is signaled first.
+const contentDirMock = () => ({
+  getContentDir: () => '/Users/tester/.bakin',
+  getBakinPaths: () => ({ home: '/Users/tester/.bakin', root: '/Users/tester/.bakin', logs: '/Users/tester/.bakin/logs', db: '/Users/tester/.bakin/bakin.db', media: '/Users/tester/.bakin/media', antfly: '/Users/tester/.bakin/antfly' }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
 const serverLock = { ...realServerLock }
 mock.module('../../src/core/server-lock', () => ({
   ...serverLock,
-  readLiveServerLock: () => null,
+  readLiveServerLock: () => ({ pid: 4242, port: 3737, startedAt: 0, bootId: 'b' }),
   liveServerBaseUrl: () => 'http://localhost:3737',
 }))
 
@@ -57,6 +71,7 @@ describe('CLI system action TUI commands', () => {
   beforeEach(() => {
     execFileSync.mockImplementation((...args: unknown[]) => args[0] === 'id' ? '501\n' : '')
     existsSync.mockReturnValue(false)
+    readFileSync.mockImplementation(defaultServiceFile)
     spawn.mockReturnValue({ pid: 4242, unref: mock() })
     homedir.mockReturnValue('/Users/tester')
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ version: 'test' }) } as Response)
@@ -143,6 +158,21 @@ describe('CLI system action TUI commands', () => {
     expect(spawn).not.toHaveBeenCalled()
     expect(output()).toContain('Bakin restarted.')
     expect(output()).toContain('Service: com.makinbakin.bakin')
+  })
+
+  it('never restarts a LaunchAgent that runs ANOTHER home — restarts this home\'s server directly', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    existsSync.mockImplementation((path?: unknown) => String(path).endsWith('com.makinbakin.bakin.plist'))
+    readFileSync.mockImplementation((path: unknown, ...rest: unknown[]) => String(path).endsWith('.plist')
+      ? '<key>BAKIN_HOME</key>\n    <string>/Users/tester/other-home</string>'
+      : (nodeFs.readFileSync as (...a: unknown[]) => unknown)(path, ...rest))
+    process.argv = ['bun', 'cli/bakin.ts', 'restart']
+    await main()
+
+    expect(execFileSync).not.toHaveBeenCalledWith('launchctl', expect.anything(), expect.anything())
+    expect(spawn).toHaveBeenCalled()
+    expect(output()).toContain('runs another home (/Users/tester/other-home)')
   })
 
   it('renders setup service uninstall results with the shared runtime action TUI in a TTY', async () => {
