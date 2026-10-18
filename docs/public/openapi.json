@@ -21877,6 +21877,37 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "code": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "itemIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "409": {
             "description": "Conflict.",
             "content": {
@@ -36803,6 +36834,17 @@
           },
           "400": {
             "description": "Invalid input.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
             "content": {
               "text/html": {
                 "schema": {

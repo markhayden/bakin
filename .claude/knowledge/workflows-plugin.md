@@ -356,8 +356,8 @@ alerts and `requireRejectReason`). Deep reference: `.claude/knowledge/approvals.
 - `ownerState` — `live` while the instance (same `runId`) is `pending_approval`
   at that step; `orphaned` once it moved on or was re-run; `unknown` (never
   cancelled) when the instance file is missing.
-- `onResolve` — `approve` → `approveGate` + `gate.approved` audit (actor
-  source) + re-index + dispatch kick; `reject` → `rejectGate` with the typed
+- `onResolve` — `approve` → `approveGate` + `gate.approved` audit (the
+  provenance channel; the activity line says "approved (Declared in UI)") + re-index + dispatch kick; `reject` → `rejectGate` with the typed
   comment (web rejects need one while `requireRejectReason` is on → 400;
   channel rejects fall back to the default reason) + `gate.rejected`. A gate
   that already moved on refuses with 400 and leaves the record for
@@ -375,7 +375,7 @@ alerts and `requireRejectReason`). Deep reference: `.claude/knowledge/approvals.
   failure never re-renders a duplicate root at rehydration. Delivery refs
   encode the structure: `message:<id>` (root), `thread:<id>`,
   `openclaw-plugin-approval:<id>` (native card).
-- `decideGate(taskId, stepId, option, actor, comment?)` — the ONE entry for
+- `decideGate(taskId, stepId, option, provenance, comment?)` — the ONE entry for
   the plugin's own surfaces: `POST /gates/:taskId/{approve,reject}`, the
   `workflows.approveGate`/`rejectGate` hooks. The durable decision page
   (`GET/POST /gates/:taskId/decision`; links omit the approvalId, GET resolves
@@ -409,22 +409,26 @@ Plugins that own their own review UI resolve workflow gates through
 HookRegistry, never by importing workflow runtime internals or calling the
 workflows REST routes from inside the server process:
 
-- `workflows.approveGate` takes `{ taskId, stepId, approver? }` and decides
+- `workflows.approveGate` takes `{ taskId, stepId, provenance }` and decides
   the gate's pending approval record through core (`decideGate`); it returns
-  `{ success: true, approvalId }` or `{ success: false, errors }` — no pending
-  record (gate not waiting) is a clean error, never a throw.
-- `workflows.rejectGate` takes `{ taskId, stepId, reason, approver? }` and
+  `{ success: true, approvalId }` or `{ success: false, errors, status?, code? }`
+  — no pending record (gate not waiting) is a clean error, never a throw; a
+  missing/malformed provenance or an agent context is `status: 403` with the
+  refusal `code` and nothing changed (#898). Callers must check `success`
+  BEFORE changing their own state.
+- `workflows.rejectGate` takes `{ taskId, stepId, reason, provenance }` and
   returns the same shape; the reason rides as the approval comment.
-- `workflows.reopenFromStep` takes `{ taskId, stepId?, reason, actor?,
+- `workflows.reopenFromStep` takes `{ taskId, stepId?, reason, provenance?,
   contentDir? }` and reopens the same workflow instance/task at an actionable
   step. If `stepId` is a gate, the runtime resolves the gate's reject target or
   previous actionable top-level step. This is for explicit user recovery flows;
   it is not a generic background retry mechanism.
 
-`approver` should use the `ApprovalActor` shape from
-`packages/core/src/plugin-types.ts`: `{ id, displayName?, source }`. Passing a
-bare string does not produce a useful decision actor for downstream audit,
-notifications, or UI rendering.
+`provenance` is `ApprovalProvenance` built from the request the plugin is
+serving: `approvalProvenanceFromRequest(req)` from `@makinbakin/sdk/routing`
+— never hand-built, never a default identity. Gate events
+(`workflow.gate_approved/rejected`, `workflow.reopened`) and step state
+carry `provenance` (old instance files keep an unread `approver`).
 
 Workflow-backed tasks should still be spawned by creating a Bakin task with
 `workflowId` set. `src/core/task-service.ts` invokes

@@ -83,7 +83,10 @@ reconciliation, Channels tab — the margo incident where the post tool said
     approvalId (approvalIds exceed the 100-char custom_id cap) so clicks are
     stateless across restarts. Approver allowlist FAILS CLOSED (D4);
     destructive options collect the reason via modal (D5,
-    `requireRejectReason` ⇒ required input). Emits `ApprovalResolveEvent`;
+    `requireRejectReason` ⇒ required input). Emits `ApprovalResolveEvent`
+    with a `ChannelApprovalDecision { channel: 'discord', responder }` — the
+    bridge vouches for the clicking user, core turns it into provenance
+    (#898; cards render "Decision recorded — Discord @user");
     the durable Bakin approval record stays the only authority (D12).
   - `discord/fake-transport.ts` — the deterministic transport for tests
     (D15). Selected by `loadDiscordModules()` ONLY when
