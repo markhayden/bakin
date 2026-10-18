@@ -9,6 +9,7 @@
  * exports, and thumbnails degrade.
  */
 import { checkMediaStore } from '../../../packages/core/src/media/installer'
+import { MEDIA_PLAN } from '../../../packages/core/src/media/install-plan'
 import { installMediaStoreLocally } from '../media-store-install'
 import { SHARP_PIN } from '../../../packages/core/src/media/pin'
 import { importBundledSharp } from '../../../packages/core/src/media/sharp-import'
@@ -105,6 +106,8 @@ async function install(opts: OnboardingOptions): Promise<InstallOutcome> {
 type InstallOutcome = Awaited<ReturnType<OnboardingComponent['install']>>
 
 export const mediaComponent: OnboardingComponent = {
+  plan: MEDIA_PLAN,
+  resources: ['media-store'],
   name: 'media',
   check,
   install,

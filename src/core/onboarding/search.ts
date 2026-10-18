@@ -51,6 +51,9 @@ function correctLegacySettingsUrl(): string | null {
 
 export const searchComponent: OnboardingComponent = {
   name: 'search',
+  // The adapter declares its stages; core never names them (D17).
+  get plan() { return setup().setup.dependency.plan },
+  resources: ['search-engine'],
   check: async () => {
     const current = setup()
     const result = await current.setup.dependency.check()

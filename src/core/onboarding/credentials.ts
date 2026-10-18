@@ -88,7 +88,12 @@ async function installLlm(): Promise<InstallResult> {
   }
 }
 
+/** Credentials are runtime-managed: install only reports where to set them. */
+const CREDENTIALS_PLAN = { stages: [{ id: 'check', kind: 'verifying' as const, label: 'Check credentials' }], pointOfNoReturn: null }
+
 export const llmComponent: OnboardingComponent = {
+  plan: CREDENTIALS_PLAN,
+  resources: [],
   name: 'llm',
   check: checkLlm,
   install: installLlm,
@@ -263,6 +268,8 @@ async function installChannels(): Promise<InstallResult> {
 }
 
 export const channelsComponent: OnboardingComponent = {
+  plan: CREDENTIALS_PLAN,
+  resources: [],
   name: 'channels',
   check: checkChannels,
   install: installChannels,

@@ -221,6 +221,8 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
 }
 
 export const modelsComponent: OnboardingComponent = {
+  plan: { stages: [{ id: 'apply', kind: 'committing', label: 'Apply the recommended model plan' }], pointOfNoReturn: 'start' },
+  resources: [],
   name: 'models',
   check,
   install,

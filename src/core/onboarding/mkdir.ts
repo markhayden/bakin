@@ -82,6 +82,8 @@ async function install(_opts: OnboardingOptions): Promise<InstallResult> {
 }
 
 export const mkdirComponent: OnboardingComponent = {
+  plan: { stages: [{ id: 'create', kind: 'installing', label: 'Create the Bakin home' }], pointOfNoReturn: 'start' },
+  resources: [],
   name: 'mkdir',
   check,
   install,

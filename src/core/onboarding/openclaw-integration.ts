@@ -106,6 +106,8 @@ async function install(): Promise<InstallResult> {
 }
 
 export const openClawIntegrationComponent: OnboardingComponent = {
+  plan: { stages: [{ id: 'sync', kind: 'installing', label: 'Sync the OpenClaw skill and MCP entries' }], pointOfNoReturn: 'start' },
+  resources: [],
   supportedAdapters: ['openclaw'],
   name: 'openclaw-integration',
   check,

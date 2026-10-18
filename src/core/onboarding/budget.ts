@@ -42,6 +42,9 @@ async function installBudget(): Promise<InstallResult> {
 }
 
 export const budgetComponent: OnboardingComponent = {
+  // Limits are opt-in: install states that fact and writes nothing.
+  plan: { stages: [{ id: 'note', kind: 'verifying', label: 'Note spend limits' }], pointOfNoReturn: null },
+  resources: [],
   name: 'budget',
   check: checkBudget,
   install: installBudget,

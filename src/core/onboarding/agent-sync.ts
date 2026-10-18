@@ -22,6 +22,7 @@ import { repairPackLocally, syncAllAgents } from '../agent-packages/sync'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { refreshRoleContextBlocks } from '../team-context'
 import { runOwning } from '../operations'
+import type { OperationPlan } from '@bakin/core/operations'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
 const log = createLogger('onboarding:agent-sync')
@@ -180,7 +181,19 @@ async function installOwned(_opts: OnboardingOptions): Promise<InstallResult> {
   }
 }
 
+/** Local agent sync (#895): one item per agent or pack; the first managed-block write is the point of no return. */
+export const AGENT_SYNC_PLAN: OperationPlan = {
+  stages: [
+    { id: 'scan', kind: 'verifying', label: 'Scan agents for drift' },
+    { id: 'sync', kind: 'installing', label: 'Sync agents and packs' },
+    { id: 'verify', kind: 'verifying', label: 'Re-scan' },
+  ],
+  pointOfNoReturn: 'sync',
+}
+
 export const agentSyncComponent: OnboardingComponent = {
+  plan: AGENT_SYNC_PLAN,
+  resources: ['install-state'],
   name: 'agent-sync',
   check,
   install,

@@ -7,6 +7,7 @@
  * aggregates the results into the .onboarded marker file.
  */
 
+import type { CoreResource, OperationPlan } from '@bakin/core/operations'
 import type { RuntimeAdapterName } from '../settings'
 
 export type CheckStatus = 'ok' | 'missing' | 'broken' | 'warn' | 'error'
@@ -70,6 +71,10 @@ export interface OnboardingComponent {
    * integration component is meaningless on the in-process Pi runtime.
    */
   readonly supportedAdapters?: readonly RuntimeAdapterName[]
+  /** The install's stages and point of no return, declared before it starts (#895). */
+  readonly plan: OperationPlan
+  /** The resources the install owns for its whole run, in the canonical order. */
+  readonly resources: readonly CoreResource[]
   check(): Promise<CheckResult>
   install(opts: OnboardingOptions): Promise<InstallResult>
 }

@@ -35,6 +35,8 @@ let clearMarkerCalls: number
 function makeMock(name: (typeof COMPONENT_NAMES)[number]): OnboardingComponent {
   return {
     name,
+    plan: { stages: [{ id: 'run', kind: 'installing', label: name }], pointOfNoReturn: 'start' },
+    resources: [],
     check: async () => {
       scripts[name].checkCalls++
       return scripts[name].check

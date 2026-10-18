@@ -724,6 +724,8 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
 }
 
 export const pluginAssetsComponent: OnboardingComponent = {
+  plan: PLUGIN_ASSETS_PLAN,
+  resources: ['install-state'],
   name: 'plugin-assets',
   check,
   install,

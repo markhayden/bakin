@@ -103,6 +103,8 @@ async function install(_opts: OnboardingOptions): Promise<InstallResult> {
 }
 
 export const settingsComponent: OnboardingComponent = {
+  plan: { stages: [{ id: 'write', kind: 'installing', label: 'Write settings.json' }], pointOfNoReturn: 'start' },
+  resources: [],
   name: 'settings',
   check,
   install,

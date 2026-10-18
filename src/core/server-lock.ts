@@ -5,11 +5,15 @@
  * loop and doubled work; the lock makes the second process refuse loudly
  * before any side effect starts.
  *
- * Lock file: ~/.bakin/server.lock — { pid, port, startedAt, bootId }.
+ * Lock file: ~/.bakin/server.lock — { pid, port, startedAt, bootId, cliSecret },
+ * written 0600. `cliSecret` is fresh per boot and never served over HTTP: a
+ * CLI that can read this file proves it is this home's operator, which is
+ * what authorizes a service claim (#895 D11).
  * A live holder refuses acquisition; a stale lock (dead pid) or corrupt
  * file is replaced. Acquisition uses exclusive create (wx) with one
  * stale-sweep retry.
  */
+import { randomBytes, timingSafeEqual } from 'crypto'
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from './content-dir'
@@ -22,6 +26,8 @@ export interface ServerLock {
   port: number
   startedAt: number
   bootId: string
+  /** Per-boot local secret (#895 D11); absent in a lock written before it existed. */
+  cliSecret?: string
 }
 
 function lockPath(): string {
@@ -38,6 +44,7 @@ export function readServerLock(): ServerLock | null {
       port: typeof parsed.port === 'number' ? parsed.port : 0,
       startedAt: typeof parsed.startedAt === 'number' ? parsed.startedAt : 0,
       bootId: typeof parsed.bootId === 'string' ? parsed.bootId : '',
+      ...(typeof parsed.cliSecret === 'string' && parsed.cliSecret ? { cliSecret: parsed.cliSecret } : {}),
     }
   } catch {
     return null // corrupt → treated as stale
@@ -98,12 +105,29 @@ function isPidAlive(pid: number): boolean {
 
 export type AcquireResult = { acquired: true } | { acquired: false; holder: ServerLock }
 
+/** The secret this process wrote into the lock it holds; null until it acquires one. */
+let ownCliSecret: string | null = null
+
+/**
+ * True when `presented` is the secret in the lock THIS server holds — the
+ * proof a request came from a CLI that can read this home's server.lock.
+ */
+export function cliSecretMatches(presented: string | null | undefined): boolean {
+  if (!ownCliSecret || !presented) return false
+  const a = Buffer.from(presented)
+  const b = Buffer.from(ownCliSecret)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
 export function acquireServerLock(port: number, bootId: string): AcquireResult {
-  const payload = JSON.stringify({ pid: process.pid, port, startedAt: Date.now(), bootId } satisfies ServerLock, null, 2)
+  const cliSecret = randomBytes(32).toString('hex')
+  const payload = JSON.stringify({ pid: process.pid, port, startedAt: Date.now(), bootId, cliSecret } satisfies ServerLock, null, 2)
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      writeFileSync(lockPath(), payload, { encoding: 'utf-8', flag: 'wx' })
+      // 0600: the secret inside authorizes service claims for this home.
+      writeFileSync(lockPath(), payload, { encoding: 'utf-8', flag: 'wx', mode: 0o600 })
+      ownCliSecret = cliSecret
       return { acquired: true }
     } catch {
       const holder = readServerLock()
@@ -131,6 +155,7 @@ export function acquireServerLock(port: number, bootId: string): AcquireResult {
 export function releaseServerLock(): void {
   const holder = readServerLock()
   if (!holder || holder.pid !== process.pid) return
+  ownCliSecret = null
   try {
     unlinkSync(lockPath())
   } catch (err) {

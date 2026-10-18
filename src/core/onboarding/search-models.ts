@@ -35,6 +35,8 @@ function setup() {
 
 export const searchModelsComponent: OnboardingComponent = {
   name: 'search-models',
+  get plan() { return setup().models.plan },
+  resources: ['search-engine'],
   check: () => setup().models.check().then((result) => ({ ...result, name: 'search-models' })),
   install: (opts) => installSearchComponentLocally(() => { const current = setup(); return { component: current.models, settings: current.settings } }, {
     ...opts,

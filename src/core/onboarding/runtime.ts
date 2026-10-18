@@ -217,6 +217,9 @@ export async function provisionRuntimeForOnboarding(): Promise<void> {
 }
 
 export const runtimeComponent: OnboardingComponent = {
+  // Check-only: the runtime is user-managed, so install changes nothing.
+  plan: { stages: [{ id: 'check', kind: 'verifying', label: 'Check the runtime' }], pointOfNoReturn: null },
+  resources: [],
   name: 'runtime',
   check,
   install,

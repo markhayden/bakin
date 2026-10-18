@@ -206,6 +206,9 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
 }
 
 export const recommendedAgentsComponent: OnboardingComponent = {
+  // One item per selection; the first install is the point of no return.
+  plan: { stages: [{ id: 'install', kind: 'installing', label: 'Install official agents' }], pointOfNoReturn: 'install' },
+  resources: ['install-state'],
   name: 'recommended-agents',
   check,
   install,
