@@ -161,7 +161,9 @@ export async function checkInferenceModels(models: InferenceModel[]) {
  */
 export const ANTFLY_MODELS_PLAN: OperationPlan = {
   stages: [
-    { id: 'download', kind: 'downloading', label: 'Download search models' },
+    // A progress line arrives every 16 MiB (~160s apart at 100 KB/s), and the
+    // .part poll fills the gaps: the spec's model-pull override (30s/120s).
+    { id: 'download', kind: 'downloading', label: 'Download search models', quiet: { quietMs: 30_000, stuckMs: 120_000 } },
     { id: 'verify', kind: 'verifying', label: 'Check the models are complete' },
   ],
   pointOfNoReturn: null,

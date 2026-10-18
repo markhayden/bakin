@@ -298,6 +298,10 @@ describe('the model install as an operation (#895 D12)', () => {
     expect(lastView!.lastOutput).toBe('done.')
   })
 
+  it('overrides the downloading thresholds to the spec\'s model-pull row (30s quiet, 120s stuck)', () => {
+    expect(ANTFLY_MODELS_PLAN.stages.find((stage) => stage.id === 'download')!.quiet).toEqual({ quietMs: 30_000, stuckMs: 120_000 })
+  })
+
   it('skips both stages when every model is already present', async () => {
     installFakeBinary(PULL_OK)
     for (const m of TEST_MODELS) seedModel(m.model)
