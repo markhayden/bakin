@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { UI_OPERATOR, agentActor, discordUser } from '../../helpers/approval-provenance'
-import { mkdirSync, rmSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -157,7 +157,7 @@ describe('resolveApproval', () => {
     expect(resolved.status).toBe('approved')
     expect(resolved.response).toMatchObject({ selectedOption: 'approve', comment: 'ship it', provenance: web })
     expect(resolveApprovalOnChannel).toHaveBeenCalledWith(expect.objectContaining({ approvalId: 'r1', deliveries: resolved.deliveries }))
-    expect(broadcasts).toEqual([expect.objectContaining({ event: 'approval.resolved', approvalId: 'r1', kind: 'workflow-gate', taskId: 't-1', status: 'approved', option: 'approve' })])
+    expect(broadcasts.filter((b) => b.type === 'plugin-event')).toEqual([expect.objectContaining({ event: 'approval.resolved', approvalId: 'r1', kind: 'workflow-gate', taskId: 't-1', status: 'approved', option: 'approve' })])
   })
 
   it('refuses an unknown id (404 class) and a non-pending record (409 class)', async () => {
@@ -231,6 +231,17 @@ describe('the decision policy (#898)', () => {
     // Outside the agent's call, the same caller's declared decision goes through.
     await resolveApproval('guarded', { option: 'approve', provenance: web })
     expect(getApprovalRecord('guarded')?.response?.provenance).toEqual(UI_OPERATOR)
+  })
+
+  it('every decision leaves one audit line saying who decided and how Bakin knows (D-H8)', async () => {
+    registerGateKind()
+    requestApproval({ approvalId: 'audited', owner: gateOwner, request })
+    await resolveApproval('audited', { option: 'reject', comment: 'no', provenance: discordUser('u-9', 'mark') })
+    const lines = readFileSync(join(testDir, 'audit.jsonl'), 'utf-8').trim().split('\n').map((line) => JSON.parse(line) as { event: string; data: Record<string, unknown> })
+    const resolved = lines.filter((line) => line.event === 'approval.resolved')
+    expect(resolved).toHaveLength(1)
+    expect(resolved[0]!.data).toMatchObject({ approvalId: 'audited', option: 'reject', decidedBy: 'Discord @mark', provenance: discordUser('u-9', 'mark') })
+    expect(broadcasts.find((b) => b.event === 'approval.resolved')).toMatchObject({ provenance: discordUser('u-9', 'mark') })
   })
 })
 

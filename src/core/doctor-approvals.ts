@@ -398,7 +398,7 @@ async function startApprovedRepair(request: DoctorRepairRequest, record: RecordO
     return { startFailure: `Repair could not start: ${message}` }
   }
   appendEvents(contentDir, request.id, [event('operation-started', 'The repair is running.', { operationId: started.operationId, bootId: started.bootId })])
-  await taskLog(request.taskId, `Approved by ${by}. Applying ${describeProposedChanges(proposal).length} change(s)…`)
+  await taskLog(request.taskId, `Approved (${by}). Applying ${describeProposedChanges(proposal).length} change(s)…`)
   return started
 }
 

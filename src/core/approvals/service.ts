@@ -9,6 +9,7 @@ import type { ApprovalDelivery, ApprovalOutcome } from '@bakin/core/adapters/run
 import type { RuntimeChannelSurface } from '@bakin/core/adapters/runtime/channels'
 import {
   approvalRefusal,
+  describeApprovalProvenance,
   cancelApprovalRecord,
   createApprovalRecord,
   getApprovalRecord,
@@ -21,6 +22,8 @@ import {
 } from '@bakin/core/approvals'
 import type { ApprovalResponse } from '@bakin/core/adapters/runtime'
 import { currentAgentInvocation } from '../agent-invocation'
+import { appendAudit } from '../audit'
+import { getContentDir } from '../content-dir'
 import { maybeGetAppServices } from '../app-services-store'
 import { resolveRuntimeChannelRef } from '../channel-aliases'
 import { createLogger } from '../logger'
@@ -63,6 +66,7 @@ function publishResolved(record: ApprovalRecord): void {
     taskId: record.owner.taskId,
     status: record.status,
     option: record.response?.selectedOption ?? null,
+    provenance: record.response?.provenance ?? null,
     timestamp: new Date().toISOString(),
   })
 }
@@ -188,6 +192,15 @@ export async function resolveApprovalWithResult(approvalId: string, decision: Ap
       }
     }
     publishResolved(resolved)
+    // The durable "who decided, and how we know" line for every kind (#898 D-H8).
+    appendAudit(getContentDir(), 'approval.resolved', 'approvals', {
+      approvalId,
+      kind: record.owner.kind,
+      taskId: record.owner.taskId,
+      option: decision.option,
+      decidedBy: describeApprovalProvenance(decision.provenance),
+      provenance: decision.provenance,
+    })
     log.info('Approval resolved', { approvalId, kind: record.owner.kind, option: decision.option, channel: decision.provenance.channel, actor: decision.provenance.actor.kind })
     if (handler.afterResolve) {
       const followUp = handler.afterResolve(resolved, result)
