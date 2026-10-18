@@ -1,5 +1,5 @@
 import { spawn } from 'child_process'
-import { existsSync, readdirSync, renameSync, rmSync, statSync } from 'fs'
+import { existsSync, readdirSync, renameSync, rmSync } from 'fs'
 import { basename, dirname, join } from 'path'
 import type { OperationPlan } from '@makinbakin/sdk/types'
 import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
@@ -272,57 +272,72 @@ function runPull(antfly: string, model: string, opts: PullOptions): Promise<{ co
   })
 }
 
+/** The ONE recoverable copy of an install being replaced (one replacement at a time: search-engine). */
+const backupFor = (target: string) => join(dirname(target), `.bakin-replacing-${basename(target)}`)
+/** Retired copies — never read, only deleted (a half-deleted dir lives only here). */
 const trashPrefixFor = (target: string) => `.bakin-trash-${basename(target)}-`
 
-/**
- * Finishes an interrupted replacement (runs under search-engine, before any
- * check or pull). The aside copy's name IS the journal: no model dir plus an
- * aside copy means a crash between the two renames, so the newest copy goes
- * back. Aside copies are only deleted once the model dir is present again —
- * a committed replacement — never while they are the only install.
- */
-function recoverModelInstall(model: string, logger: AdapterLogger): void {
-  const target = modelDir(model)
+function retire(dir: string, target: string): string {
+  const trash = join(dirname(target), `${trashPrefixFor(target)}${process.pid}-${Date.now()}`)
+  renameSync(dir, trash)
+  return trash
+}
+
+function sweepTrash(model: string, target: string, logger: AdapterLogger): void {
   const parent = dirname(target)
   if (!existsSync(parent)) return
-  const asides = readdirSync(parent)
-    .filter((entry) => entry.startsWith(trashPrefixFor(target)))
-    .map((entry) => join(parent, entry))
-    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
-  if (asides.length === 0) return
-  if (!existsSync(target)) {
-    logger.warn('Restoring a model install an interrupted replacement left aside', { model, from: asides[0] })
-    renameSync(asides[0]!, target)
-    asides.shift()
-  }
-  for (const dir of asides) {
+  for (const entry of readdirSync(parent)) {
+    if (!entry.startsWith(trashPrefixFor(target))) continue
     try {
-      rmSync(dir, { recursive: true, force: true })
+      rmSync(join(parent, entry), { recursive: true, force: true })
     } catch (err) {
-      logger.warn('Could not delete a replaced model install', { model, dir, error: err instanceof Error ? err.message : String(err) })
+      logger.warn('Could not delete a replaced model install', { model, dir: join(parent, entry), error: err instanceof Error ? err.message : String(err) })
     }
   }
 }
 
 /**
+ * Finishes an interrupted replacement (runs under search-engine, before any
+ * check or pull). The backup's fixed name is the journal: a backup with no
+ * model dir means a crash between the two renames — it goes back; a backup
+ * next to the model dir means the replacement committed — it is retired to
+ * trash whole. Then trash is swept.
+ */
+function recoverModelInstall(model: string, logger: AdapterLogger): void {
+  const target = modelDir(model)
+  const backup = backupFor(target)
+  if (existsSync(backup)) {
+    if (existsSync(target)) {
+      retire(backup, target)
+    } else {
+      logger.warn('Restoring a model install an interrupted replacement left aside', { model, from: backup })
+      renameSync(backup, target)
+    }
+  }
+  sweepTrash(model, target, logger)
+}
+
+/**
  * Moves a variant pull's `<name>--antfly-<hash>` install to the model's own
- * directory (the name the engine is configured with). The old install is
- * renamed aside first and restored if the move fails; a crash in between is
- * finished by `recoverModelInstall` on the next install.
+ * directory (the name the engine is configured with): old install → backup,
+ * variant → model dir (backup restored if that fails), backup → trash, sweep.
+ * A crash anywhere is finished by `recoverModelInstall` on the next install.
  */
 function adoptVariantInstall(model: string, variant: string, logger: AdapterLogger): string | null {
   const target = modelDir(model)
+  recoverModelInstall(model, logger)
   const pulled = pulledVariantDir(inferenceModelsRoot(), model, variant)
   if (!pulled) return `no ${variant} install appeared next to ${target}`
-  const aside = existsSync(target) ? join(dirname(target), `${trashPrefixFor(target)}${process.pid}-${Date.now()}`) : null
-  if (aside) renameSync(target, aside)
+  const backup = existsSync(target) ? backupFor(target) : null
+  if (backup) renameSync(target, backup)
   try {
     renameSync(pulled, target)
   } catch (err) {
-    if (aside) renameSync(aside, target)
+    if (backup) renameSync(backup, target)
     return `could not move ${pulled} into place: ${err instanceof Error ? err.message : String(err)}`
   }
-  recoverModelInstall(model, logger)
+  if (backup) retire(backup, target)
+  sweepTrash(model, target, logger)
   return null
 }
 

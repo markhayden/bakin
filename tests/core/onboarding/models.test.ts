@@ -430,20 +430,37 @@ mv "$stage" "$5/$owner/$name--antfly-a2cdf31c"
     expect(leftovers()).toEqual([])
   })
 
-  it('a crash between the two renames is finished by the next install — the aside copy is restored, never swept', async () => {
+  it('a crash between the two renames is finished by the next install — the backup is restored, trash never is', async () => {
     seedDefaultLayout()
-    const aside = join(modelsRoot, 'antflydb', '.bakin-trash-clipclap-1-1')
+    const aside = join(modelsRoot, 'antflydb', '.bakin-replacing-clipclap')
     renameSync(target, aside)
+    // A half-deleted copy from an earlier sweep, touched AFTER the backup: trash is never restored.
+    const trash = join(modelsRoot, 'antflydb', '.bakin-trash-clipclap-1-1')
+    mkdirSync(trash, { recursive: true })
+    writeFileSync(join(trash, 'model_manifest.json'), '{"type":"embedder"}')
     expect((await checkInferenceModels([CLIPCLAP])).status).toBe('missing')
     // The retried pull fails: the old install must still come back.
     installFakeBinary(PULL_LIES)
     expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('failed')
     expect(existsSync(join(target, 'text_projection.onnx'))).toBe(true)
+    expect(existsSync(join(target, 'clipclap-clip.Q4_K.gguf'))).toBe(true)
     expect(existsSync(aside)).toBe(false)
+    expect(existsSync(trash)).toBe(false)
     // And the next good pull replaces it and leaves nothing aside.
     installFakeBinary(PULL_VARIANT)
     expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('installed')
     expect(existsSync(join(target, 'text_projection.onnx'))).toBe(false)
+    expect(leftovers()).toEqual([])
+  })
+
+  it('a crash after the variant moved in (backup still present) keeps the new install and retires the backup', async () => {
+    installFakeBinary(PULL_VARIANT)
+    expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('installed')
+    const backup = join(modelsRoot, 'antflydb', '.bakin-replacing-clipclap')
+    mkdirSync(backup)
+    writeFileSync(join(backup, 'text_projection.onnx'), 'old')
+    expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('noop')
+    expect(JSON.parse(readFileSync(join(target, '.antfly-download-complete.json'), 'utf8')).source.variant).toBe('gguf:Q4_K')
     expect(leftovers()).toEqual([])
   })
 
