@@ -332,6 +332,32 @@ describe('TeamManager + TeamFormDialog', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Unsaved changes' })).toBeNull())
   })
 
+  it('Save and exit with a navigation attempted mid-save: the save lands, then that navigation proceeds', async () => {
+    let release: (response: Response) => void = () => {}
+    writeResponse = () => new Promise((resolve) => { release = resolve })
+    const user = userEvent.setup()
+    await renderManager()
+    await user.click(screen.getByRole('button', { name: 'Edit Builders' }))
+    const form = await dialog('Edit team')
+    await user.type(await within(form).findByLabelText(/Team name/), ' 2')
+    await user.keyboard('{Escape}')
+    const decision = await dialog('Unsaved changes')
+    await user.click(within(decision).getByRole('button', { name: 'Save and exit' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    let blocked: Promise<boolean> = Promise.resolve(true)
+    await getConfig().asyncWrapper(async () => {
+      blocked = blockers[0]!({ currentLocation: { pathname: '/team' }, nextLocation: { pathname: '/tasks' } })
+    })
+    let settled = null as boolean | null
+    await act(async () => {
+      release(Response.json({ ok: true }))
+      settled = await blocked
+    })
+    expect(settled).toBe(false) // false = not blocked: the navigation goes through
+    expect(writes()[0]!.body).toEqual({ label: 'Builders 2', reportsTo: null })
+    await settleReact()
+  })
+
   it('a reports-to agent removed from the roster while the dialog is open must be re-picked', async () => {
     rawTeams = [{ id: 'builders', label: 'Builders', reportsTo: 'chef' }]
     seedStore()

@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter as useTanStackRouter, type HistoryLocation } from '@tanstack/react-router'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { UnsavedChangesDialog, type UnsavedChangesDialogProps } from '@bakin/ui/patterns/unsaved-changes-dialog'
 
 type RouteNavigationBlocker =
@@ -57,6 +57,11 @@ export function useUnsavedChangesGuard({
   finalFocus,
 }: UnsavedChangesGuardOptions): UnsavedChangesGuardResult {
   const [routeBlocker, setRouteBlocker] = useState<RouteNavigationBlocker>({ status: 'idle' })
+  // Save-and-exit finishes renders after it started: a navigation attempted
+  // DURING the save must be settled by the continuation, so it reads the
+  // current blocker, never the one captured when Save was clicked.
+  const routeBlockerRef = useRef(routeBlocker)
+  routeBlockerRef.current = routeBlocker
   const [confirmingExit, setConfirmingExit] = useState(false)
   const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null)
   const tanStackRouter = useTanStackRouter()
@@ -123,8 +128,9 @@ export function useUnsavedChangesGuard({
   }, [hasUnsavedChanges])
 
   function completeExit() {
-    if (routeBlocker.status === 'blocked') {
-      routeBlocker.proceed()
+    const blocker = routeBlockerRef.current
+    if (blocker.status === 'blocked') {
+      blocker.proceed()
       return
     }
     const href = pendingNavigationHref
