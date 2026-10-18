@@ -41051,7 +41051,7 @@
     "/api/reindex": {
       "post": {
         "operationId": "core.post.api-reindex",
-        "summary": "Trigger reindex",
+        "summary": "Reindex search (operation)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -41060,15 +41060,53 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
                       "type": "boolean",
                       "const": true
                     }
                   },
                   "required": [
-                    "ok"
+                    "operationId",
+                    "bootId"
                   ],
-                  "additionalProperties": {}
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -41100,7 +41138,149 @@
         "tags": [
           "Core"
         ],
+        "description": "Starts a reindex operation (#895) owning search-engine — not cancellable: 202 { operationId, bootId }, 200 attached for an identical live request. Repair by default (?force=1 mints fresh generations, ?table= narrows to one table). The result is { ok, errors, parked, total, tables }; any failed or parked table ends the operation tables_parked.",
+        "parameters": [
+          {
+            "name": "table",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "const": "1"
+            }
+          }
+        ],
         "x-bakin-full-path": "/api/reindex"
+      }
+    },
+    "/api/search/reset": {
+      "post": {
+        "operationId": "core.post.api-search-reset",
+        "summary": "Reset the search engine (operation)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "reindex": {
+                      "type": "null"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "message",
+                    "reindex"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "description": "Starts a reset operation (#895) owning search-engine — not cancellable: stop → wipe derived engine data → clean start → repair reindex, as stages. 202 { operationId, bootId }; the result is { ok, message, reindex }. Disabled search or an adapter without reset answers 409 { ok: false, message }.",
+        "x-bakin-full-path": "/api/search/reset"
       }
     },
     "/api/activity": {

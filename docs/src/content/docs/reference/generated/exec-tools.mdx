@@ -952,7 +952,7 @@ bakin_exec_schedule_update {
 <p class="mcp-section-description">Search tools query Bakin-indexed content across plugins or inside a specific surface.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="search-facets" name="bakin_exec_search_facets" label="Search facets" description="Get facet value counts for a plugin. Useful for understanding data distribution (e.g., how many tasks per status)." source="src/core/exec-tools/tools/search-tools.ts:157" parameters={[{"name":"plugin","type":"string","required":true,"description":"Plugin id (tasks, assets, projects, etc.)"},{"name":"facets","type":"string","required":true,"description":"Comma-separated facet fields (e.g., \"status,agent\")"}]}>
+<McpToolCard id="search-facets" name="bakin_exec_search_facets" label="Search facets" description="Get facet value counts for a plugin. Useful for understanding data distribution (e.g., how many tasks per status)." source="src/core/exec-tools/tools/search-tools.ts:158" parameters={[{"name":"plugin","type":"string","required":true,"description":"Plugin id (tasks, assets, projects, etc.)"},{"name":"facets","type":"string","required":true,"description":"Comma-separated facet fields (e.g., \"status,agent\")"}]}>
 ```sh frame="terminal"
 bakin_exec_search_facets {
   "plugin": "value",
@@ -960,7 +960,7 @@ bakin_exec_search_facets {
 }
 ```
 </McpToolCard>
-<McpToolCard id="search-lookup" name="bakin_exec_search_lookup" label="Search lookup" description="Look up a specific indexed document by its key and plugin." source="src/core/exec-tools/tools/search-tools.ts:126" parameters={[{"name":"plugin","type":"string","required":true,"description":"Plugin id (tasks, assets, projects, etc.)"},{"name":"key","type":"string","required":true,"description":"Document key to look up"}]}>
+<McpToolCard id="search-lookup" name="bakin_exec_search_lookup" label="Search lookup" description="Look up a specific indexed document by its key and plugin." source="src/core/exec-tools/tools/search-tools.ts:127" parameters={[{"name":"plugin","type":"string","required":true,"description":"Plugin id (tasks, assets, projects, etc.)"},{"name":"key","type":"string","required":true,"description":"Document key to look up"}]}>
 ```sh frame="terminal"
 bakin_exec_search_lookup {
   "plugin": "value",
@@ -968,7 +968,7 @@ bakin_exec_search_lookup {
 }
 ```
 </McpToolCard>
-<McpToolCard id="search-query" name="bakin_exec_search_query" label="Search" description="Search across all Bakin content (tasks, assets, projects, workflows, schedule, team, memory, messaging) or a specific plugin. Returns ranked results with scores." source="src/core/exec-tools/tools/search-tools.ts:48" parameters={[{"name":"q","type":"string","required":false,"description":"Search query text"},{"name":"limit","type":"number","required":false,"description":"Maximum results to return (default: 20)"},{"name":"offset","type":"number","required":false,"description":"Skip this many results (for pagination)"}]}>
+<McpToolCard id="search-query" name="bakin_exec_search_query" label="Search" description="Search across all Bakin content (tasks, assets, projects, workflows, schedule, team, memory, messaging) or a specific plugin. Returns ranked results with scores." source="src/core/exec-tools/tools/search-tools.ts:49" parameters={[{"name":"q","type":"string","required":false,"description":"Search query text"},{"name":"limit","type":"number","required":false,"description":"Maximum results to return (default: 20)"},{"name":"offset","type":"number","required":false,"description":"Skip this many results (for pagination)"}]}>
 ```sh frame="terminal"
 bakin_exec_search_query {
   "q": "value",
@@ -977,7 +977,7 @@ bakin_exec_search_query {
 }
 ```
 </McpToolCard>
-<McpToolCard id="search-reindex" name="bakin_exec_search_reindex" label="Reindex search" description="Trigger a full reindex of all content types (or a specific plugin). Use after bulk data changes." source="src/core/exec-tools/tools/search-tools.ts:220" parameters={[{"name":"plugin","type":"string","required":false,"description":"Specific plugin id to reindex (optional — omit for all)"},{"name":"rebuild","type":"boolean","required":false,"description":"Drop and recreate indexes before reindexing (default: false)"},{"name":"verify","type":"boolean","required":false,"description":"Re-query tables after reindex to verify doc counts (default: false)"}]}>
+<McpToolCard id="search-reindex" name="bakin_exec_search_reindex" label="Reindex search" description="Trigger a full reindex of all content types (or a specific plugin). Use after bulk data changes." source="src/core/exec-tools/tools/search-tools.ts:221" parameters={[{"name":"plugin","type":"string","required":false,"description":"Specific plugin id to reindex (optional — omit for all)"},{"name":"rebuild","type":"boolean","required":false,"description":"Drop and recreate indexes before reindexing (default: false)"},{"name":"verify","type":"boolean","required":false,"description":"Re-query tables after reindex to verify doc counts (default: false)"}]}>
 ```sh frame="terminal"
 bakin_exec_search_reindex {
   "plugin": "value",
@@ -986,7 +986,7 @@ bakin_exec_search_reindex {
 }
 ```
 </McpToolCard>
-<McpToolCard id="search-similar" name="bakin_exec_search_similar" label="Find similar" description="Find documents similar to a given text description. Uses semantic (vector) search for meaning-based matching." source="src/core/exec-tools/tools/search-tools.ts:186" parameters={[{"name":"text","type":"string","required":true,"description":"Text to find similar documents for"},{"name":"plugin","type":"string","required":false,"description":"Limit to a specific plugin id (optional)"},{"name":"limit","type":"number","required":false,"description":"Maximum results (default: 10)"}]}>
+<McpToolCard id="search-similar" name="bakin_exec_search_similar" label="Find similar" description="Find documents similar to a given text description. Uses semantic (vector) search for meaning-based matching." source="src/core/exec-tools/tools/search-tools.ts:187" parameters={[{"name":"text","type":"string","required":true,"description":"Text to find similar documents for"},{"name":"plugin","type":"string","required":false,"description":"Limit to a specific plugin id (optional)"},{"name":"limit","type":"number","required":false,"description":"Maximum results (default: 10)"}]}>
 ```sh frame="terminal"
 bakin_exec_search_similar {
   "text": "value",
@@ -995,12 +995,12 @@ bakin_exec_search_similar {
 }
 ```
 </McpToolCard>
-<McpToolCard id="search-stats" name="bakin_exec_search_stats" label="Search stats" description="Get search system health: enabled status, per-table document counts, and index stats." source="src/core/exec-tools/tools/search-tools.ts:250">
+<McpToolCard id="search-stats" name="bakin_exec_search_stats" label="Search stats" description="Get search system health: enabled status, per-table document counts, and index stats." source="src/core/exec-tools/tools/search-tools.ts:256">
 ```sh frame="terminal"
 bakin_exec_search_stats
 ```
 </McpToolCard>
-<McpToolCard id="search-table" name="bakin_exec_search_table" label="Search plugin" description="Search a specific Bakin plugin with facet filtering. Returns results plus facet counts for filtering." source="src/core/exec-tools/tools/search-tools.ts:90" parameters={[{"name":"q","type":"string","required":false,"description":"Search query text"},{"name":"limit","type":"number","required":false,"description":"Maximum results (default: 20)"}]}>
+<McpToolCard id="search-table" name="bakin_exec_search_table" label="Search plugin" description="Search a specific Bakin plugin with facet filtering. Returns results plus facet counts for filtering." source="src/core/exec-tools/tools/search-tools.ts:91" parameters={[{"name":"q","type":"string","required":false,"description":"Search query text"},{"name":"limit","type":"number","required":false,"description":"Maximum results (default: 20)"}]}>
 ```sh frame="terminal"
 bakin_exec_search_table {
   "q": "value",
