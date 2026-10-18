@@ -434,11 +434,22 @@ describe('plugin-assets onboarding component', () => {
       expect(existsSync(join(runtimeSkillHome, 'skills', 'cold-email'))).toBe(false)
     })
 
-    it('an upgrade whose skill cannot be installed verified throws — the replace transaction rolls it back (review r1)', async () => {
+    it('an upgrade with a non-text skill throws before writing ANY skill — runtime skills are not in the rollback (review r2)', async () => {
+      // 'a-first' sorts before 'cold-email', so a per-skill refusal would
+      // already have written it.
       const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      makePluginWithSkill('sdr', 'a-first', SKILL_BODY)
       writeFileSync(join(pluginDir, 'defaults', 'runtime-skills', 'cold-email', 'blob.bin'), Buffer.from([0x80]))
       const { installUpgradedPluginAssets } = await import('../../../src/core/plugins/upgrade-gate')
-      await expect(owned(installUpgradedPluginAssets)('sdr', pluginDir)).rejects.toThrow(/sdr: runtime skills could not be installed — cold-email: blob\.bin is not UTF-8 text/)
+      await expect(owned(installUpgradedPluginAssets)('sdr', pluginDir)).rejects.toThrow('cold-email/blob.bin is not UTF-8 text')
+      expect(existsSync(join(runtimeSkillHome, 'skills', 'a-first'))).toBe(false)
+    })
+
+    it('a source containing U+FFFD is refused — a lossy installed read could otherwise match it (review r2)', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', 'Broken \uFFFD text\n')
+      const scan = await scanPluginAssets([{ id: 'sdr', path: pluginDir }])
+      expect(scan.invalidSource).toEqual([{ pluginId: 'sdr', name: 'cold-email', error: 'SKILL.md contains U+FFFD — runtime skills carry text files only' }])
+      expect((await installPluginAssets([{ id: 'sdr', path: pluginDir }])).failed).toHaveLength(1)
     })
 
     it('copies sibling files in the skill directory (e.g. scripts/)', async () => {

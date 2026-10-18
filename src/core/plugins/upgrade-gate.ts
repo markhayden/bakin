@@ -24,6 +24,7 @@ import { verifyPluginManifestSignature } from '@bakin/core/plugins/signatures'
 import { PLUGIN_STAGES } from './operation-plans'
 import {
   findSkillsForPlugin,
+  assertPluginSkillsAreText,
   installPluginAssets,
   type InstallReport,
 } from '@/core/onboarding/plugin-assets'
@@ -208,6 +209,7 @@ export async function installUpgradedPluginAssets(
     }
   }
 
+  assertPluginSkillsAreText({ id, path: pluginDir })
   const pluginAssets = await installPluginAssets([{ id, path: pluginDir }])
   // A skill that did not land verified fails the upgrade; the replace
   // transaction restores the previous plugin.

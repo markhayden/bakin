@@ -181,27 +181,50 @@ function isUserEditedSkill(skill: RuntimeSkill | null): boolean {
 
 /** A plugin skill file that is not UTF-8 text. */
 export class SkillSourceNotTextError extends Error {
-  constructor(relPath: string) {
-    super(`${relPath} is not UTF-8 text — runtime skills carry text files only`)
+  constructor(readonly relPath: string, readonly reason = 'is not UTF-8 text') {
+    super(`${relPath} ${reason} — runtime skills carry text files only`)
     this.name = 'SkillSourceNotTextError'
   }
 }
 
 const UTF8 = new TextDecoder('utf-8', { fatal: true })
 
-/** Strict decode: a lossy read would map different bytes to the same U+FFFD
- *  and let a changed file compare equal (review r1). */
+/**
+ * Strict decode (review r1/r2): runtimes read installed skill files as
+ * lossy UTF-8, so any non-text byte comes back as U+FFFD. A source that is
+ * not strict UTF-8, or that itself contains U+FFFD, could compare equal to
+ * a changed installed byte — such a skill is refused, never compared.
+ */
 function readSkillFiles(skill: PluginSkillSource): Record<string, string> {
   const files: Record<string, string> = {}
   for (const file of skill.files) {
+    let text: string
     try {
-      files[file.relPath] = UTF8.decode(readFileSync(file.path))
+      text = UTF8.decode(readFileSync(file.path))
     } catch (err) {
       if (err instanceof TypeError) throw new SkillSourceNotTextError(file.relPath)
       throw err
     }
+    if (text.includes('\uFFFD')) throw new SkillSourceNotTextError(file.relPath, 'contains U+FFFD')
+    files[file.relPath] = text
   }
   return files
+}
+
+/**
+ * Upgrade preflight: every skill the plugin ships must be text BEFORE any
+ * is written — the replace transaction restores the plugin directory, not
+ * runtime skills, so a refusal halfway would leave earlier skills upgraded.
+ */
+export function assertPluginSkillsAreText(plugin: PluginEntry): void {
+  for (const skill of findSkillsForPlugin(plugin)) {
+    try {
+      readSkillFiles(skill)
+    } catch (err) {
+      if (err instanceof SkillSourceNotTextError) throw new SkillSourceNotTextError(`${skill.name}/${err.relPath}`, err.reason)
+      throw err
+    }
+  }
 }
 
 function buildRuntimeSkill(skill: PluginSkillSource, marker: InstalledMarker): RuntimeSkill {
