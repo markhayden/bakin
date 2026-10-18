@@ -197,6 +197,14 @@ jobs:
       # file on one 4-vCPU runner (the ci-main sharding note). Same shard split
       # and --parallel=4 that ci-main runs across 3 runners; sequential here
       # because this is a single pre-publish gate job.
+      # tests/integration/channels boots the REAL server (server.ts embeds
+      # the host shell, vendor and plugin bundles with `type: 'file'`), so the
+      # browser assets must exist before the shards run — the same step
+      # ci-main.yml and ci-pr.yml run (#985). rc.41's first attempt failed
+      # here without it. The production builds below rebuild everything.
+      - name: Build host assets for server-booting tests
+        run: bun run build:host && bun run build:plugins && bun run build:assets-manifest
+
       - name: Test (shard 1/3)
         run: bun run test:ci --shard=1/3
       - name: Test (shard 2/3)
