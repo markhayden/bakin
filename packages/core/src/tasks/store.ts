@@ -183,6 +183,24 @@ export interface SyncBakinTaskStore extends BakinTaskStore {
   nextOrderSync(column: string): number
 }
 
+/**
+ * THE within-column read order: `order` ascending, newest first among equal
+ * orders, id last. A row with no numeric order (legacy data) sorts after
+ * every ordered row — never NaN arithmetic, which made the sort
+ * non-transitive. Renumbering (`reorderTasks`) uses the same comparator so a
+ * repair keeps exactly what the board shows.
+ */
+export function compareTaskOrder(
+  a: Pick<BakinTask, 'order' | 'updatedAt' | 'id'>,
+  b: Pick<BakinTask, 'order' | 'updatedAt' | 'id'>,
+): number {
+  const aOrder = typeof a.order === 'number' ? a.order : Number.POSITIVE_INFINITY
+  const bOrder = typeof b.order === 'number' ? b.order : Number.POSITIVE_INFINITY
+  return (aOrder === bOrder ? 0 : aOrder < bOrder ? -1 : 1)
+    || (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')
+    || a.id.localeCompare(b.id)
+}
+
 export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date().toISOString()): BakinTask {
   return {
     id: input.id ?? `task-${crypto.randomUUID()}`,
@@ -333,12 +351,7 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
   }
 
   function sortTasks(tasks: BakinTask[]): BakinTask[] {
-    return tasks.sort((a, b) => (
-      a.column.localeCompare(b.column)
-      || a.order - b.order
-      || b.updatedAt.localeCompare(a.updatedAt)
-      || a.id.localeCompare(b.id)
-    ))
+    return tasks.sort((a, b) => a.column.localeCompare(b.column) || compareTaskOrder(a, b))
   }
 
   const store: SyncBakinTaskStore = {

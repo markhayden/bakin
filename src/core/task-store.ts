@@ -7,6 +7,7 @@
  * boundary.
  */
 import {
+  compareTaskOrder,
   createFileBakinTaskStore,
   type BakinTask,
   type BakinTaskPatch,
@@ -600,16 +601,10 @@ export function reorderTasks(columnId: ColumnId, orderedIds: string[]): Promise<
     const byId = new Map(column.map((task) => [task.id, task]))
     const listed = [...new Set(orderedIds)].filter((id) => byId.has(id))
     const listedSet = new Set(listed)
-    // Omitted tasks keep the board's own read order: order ascending, newest
-    // first among duplicates, missing orders last.
+    // Omitted tasks keep the board's own read order (the store comparator).
     const rest = column
       .filter((task) => !listedSet.has(task.id))
-      .sort((a, b) => (
-        (typeof a.order === 'number' ? a.order : Number.POSITIVE_INFINITY)
-          - (typeof b.order === 'number' ? b.order : Number.POSITIVE_INFINITY)
-        || b.updatedAt.localeCompare(a.updatedAt)
-        || a.id.localeCompare(b.id)
-      ))
+      .sort(compareTaskOrder)
       .map((task) => task.id)
     const sequence = [...listed, ...rest]
     for (let i = 0; i < sequence.length; i++) {

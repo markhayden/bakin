@@ -115,6 +115,21 @@ describe('index consistency', () => {
     expect(store.updateSync('a', { column: 'done', order: 9 }).order).toBe(9)
   })
 
+  it('reads sort a row with no order after every ordered row (no NaN comparisons)', () => {
+    store.createSync({ id: 'one', title: 'one', column: 'todo', order: 1 })
+    store.createSync({ id: 'zero', title: 'zero', column: 'todo', order: 0 })
+    const path = writeExternalTask('legacy', 'todo')
+    const raw = JSON.parse(fs.readFileSync(path, 'utf-8')) as Record<string, unknown>
+    delete raw.order
+    raw.updatedAt = '2099-01-01T00:00:00.000Z' // newest — must still not jump the line
+    writeFileSync(path, JSON.stringify(raw), 'utf-8')
+
+    // The unfiltered walk discovers the external row (and indexes it); then
+    // the column-bucket read must agree.
+    expect(store.listSync().filter((task) => task.column === 'todo').map((task) => task.id)).toEqual(['zero', 'one', 'legacy'])
+    expect(store.listSync({ column: 'todo' }).map((task) => task.id)).toEqual(['zero', 'one', 'legacy'])
+  })
+
   it('createSync rejects duplicate ids via the index', () => {
     store.createSync({ id: 'dup', title: 'one' })
     expect(() => store.createSync({ id: 'dup', title: 'two' })).toThrow(/already exists/)
