@@ -69,6 +69,10 @@ export function componentInstallOperation(
     },
     run: async (op): Promise<OperationOutcome<ComponentInstallBody>> => {
       const result = publicResult(await component.install(options, op))
+      // An accepted cancel wins over whatever the installer returned — not
+      // every installer checks between steps, and a cancel must never settle
+      // as a success or a failure (onboarding stops on it, exit 130).
+      op.throwIfCancelled()
       if (result.status === 'failed') {
         return { status: 'failed', code: component.failureCode ?? 'component_failed', message: result.message, httpStatus: 200, body: { ok: false, result } }
       }

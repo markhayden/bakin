@@ -740,6 +740,10 @@ export async function ensureRegisteredTables(): Promise<EnsureTablesResult> {
 async function provisionRegisteredTables(): Promise<EnsureTablesResult> {
   const registry = getRegistry()
   const search = getSearchAdapter()
+  // This pass takes the pending request now: one deferred WHILE it runs (a
+  // re-registration after its turn here) survives for the next tick.
+  const wasPending = tablesPending
+  tablesPending = false
 
   let created = 0
   const failures: Array<{ table: string; pluginId: string; error: string }> = []
@@ -762,7 +766,9 @@ async function provisionRegisteredTables(): Promise<EnsureTablesResult> {
   // them rather than short-circuiting on the cached "done" signal.
   if (failures.length === 0) {
     registry.tablesCreated = true
-    tablesPending = false
+  } else if (wasPending) {
+    // A deferred request that failed keeps retrying on the pump tick.
+    tablesPending = true
   }
   return { created, failures }
 }

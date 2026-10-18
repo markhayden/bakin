@@ -177,11 +177,19 @@ async function cmdOnboardingInstallSingle(target: InstallableName, args: string[
   // operation itself never prompts (#895 D11).
   let autoApprove = args.includes('--yes') || (!isTTY && !json)
   if (!autoApprove && isTTY && !json) {
-    const { installableComponent } = await import('../../core/onboarding/index')
-    const check = await withTtyRuntimeLogsSilenced({ isTTY, verbose }, () => installableComponent(target).check())
-    if (check.status !== 'ok') {
-      const { askYesNo } = await import('../../core/onboarding/prompts')
-      if (!await askYesNo(`${check.message.replace(/\.$/, '')}. Install ${target} now?`, true)) {
+    const { askYesNo } = await import('../../core/onboarding/prompts')
+    // An explicit BAKIN_URL installs on ANOTHER home — this machine's check
+    // says nothing about it, so ask by name instead of from local state.
+    const remote = process.env.BAKIN_URL
+    const question = remote
+      ? `Install ${target} on the Bakin at ${remote}?`
+      : await (async () => {
+        const { installableComponent } = await import('../../core/onboarding/index')
+        const check = await withTtyRuntimeLogsSilenced({ isTTY, verbose }, () => installableComponent(target).check())
+        return check.status === 'ok' ? null : `${check.message.replace(/\.$/, '')}. Install ${target} now?`
+      })()
+    if (question) {
+      if (!await askYesNo(question, true)) {
         // Declined: nothing starts — not every installer gates on approval.
         await printOnboardingInstallTui({ name: target, status: 'skipped', message: `Skipped — run \`bakin install ${target}\` when you're ready.`, durationMs: 0 })
         return

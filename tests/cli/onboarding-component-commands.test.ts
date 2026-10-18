@@ -212,6 +212,18 @@ describe('onboarding component CLI commands', () => {
     expect(output()).toContain('Skipped')
   })
 
+  it('with BAKIN_URL the prompt names the remote Bakin, never this machine\'s check — and declining contacts nothing', async () => {
+    process.env.BAKIN_URL = 'http://10.0.0.9:3737'
+    askYesNo.mockImplementationOnce(async () => false)
+    process.argv = ['bun', 'cli/bakin.ts', 'install', 'plugin-assets']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(askYesNo).toHaveBeenCalledWith('Install plugin-assets on the Bakin at http://10.0.0.9:3737?', true)
+    expect(pluginAssetsInstall).not.toHaveBeenCalled()
+  })
+
   it('renders mkdir installs with the shared TUI in a TTY', async () => {
     process.argv = ['bun', 'cli/bakin.ts', 'mkdir']
 

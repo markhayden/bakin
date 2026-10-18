@@ -440,10 +440,18 @@ search, search-models, plugin-assets and agent-sync).
   (its lock) or run in-process. Ctrl-C on an install (cancelled, or
   detached from a server run) throws `OnboardingInterruptedError`: nothing
   after it starts, no marker, exit 130.
-- **`bakin install <x>`** on a terminal without `--yes` asks when the check
-  is not ok; declining starts nothing (not every installer gates on
-  approval). The wizard's `approvedComponents` approve the search downloads
-  just like `--yes`.
+- **Consent lives before the operation.** `bakin onboard`'s wizard
+  (`collectOnboardingSelections`) asks for search, search models, media,
+  the model plan and the recommended plugins/agents, seeding an empty
+  first-run roster first so a fresh Pi home is asked too; its
+  `approvedComponents` approve those installs just like `--yes`.
+  `bakin install <x>` on a terminal without `--yes` asks when the check is
+  not ok — or, with `BAKIN_URL`, always, naming that Bakin (this machine's
+  check says nothing about it); declining starts nothing (not every
+  installer gates on approval).
+- **Cancel always wins**: `componentInstallOperation` rethrows an accepted
+  cancel after the install returns, so a cancel never settles as a success
+  or a failure even when the installer didn't check between steps.
 - **Hub tabs** are busy from the moment a request is sent — a second click,
   a preview racing a switch, or dismissing the dialog can't race the
   acceptance.

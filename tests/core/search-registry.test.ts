@@ -1487,6 +1487,32 @@ describe('background search mutators respect search-engine (#895 D23)', () => {
     expect(tableStatus('bakin_gateprov')).toMatchObject({ state: 'active' })
   })
 
+  it('a provisioning request deferred while a pass runs survives that pass (a re-registration after its turn)', async () => {
+    buildSearchAPI('gateregen-plugin').registerContentType(makeDef('gateregen'))
+    let unblock!: () => void
+    const blocked = new Promise<void>((resolve) => { unblock = resolve })
+    let entered = false
+    const create = searchHarness.calls.tablesCreate.getMockImplementation()!
+    searchHarness.calls.tablesCreate.mockImplementationOnce(async (name, config) => {
+      entered = true
+      await blocked
+      return create(name, config)
+    })
+    const first = ensureRegisteredTables()
+    await waitUntil(() => entered, { label: 'the first pass is creating the v1 table' })
+
+    // Re-registered with a new schema after the pass took its turn here.
+    buildSearchAPI('gateregen-plugin').registerContentType({ ...makeDef('gateregen'), schemaVersion: 2 })
+    expect(await ensureRegisteredTables()).toEqual({ created: 0, failures: [], deferred: true })
+    unblock()
+    await first
+    expect(tableStatus('bakin_gateregen')!.physical).toContain('_v1_')
+
+    await migrationPumpTick()
+    const after = tableStatus('bakin_gateregen')!
+    expect(after.migratingTo ?? after.physical).toContain('_v2_')
+  })
+
   it('a caller that owns search-engine (a reindex, a reset) provisions in its own pass', async () => {
     buildSearchAPI('gateown-plugin').registerContentType(makeDef('gateown'))
     const result = await holdNow(['search-engine'], { title: 'Reindex search' }, () => ensureRegisteredTables())

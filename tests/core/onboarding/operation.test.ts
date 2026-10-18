@@ -105,6 +105,17 @@ describe('componentInstallOperation', () => {
     expect(plain.outcome?.code).toBe('component_failed')
   })
 
+  it('an accepted cancel settles cancelled even when the installer returns a result without checking', async () => {
+    let release!: () => void
+    gate = new Promise((r) => { release = r })
+    const { operationId } = await getOperationRegistry().start(componentInstallOperation(component(), OPTIONS, 'cli'))
+    await waitUntil(() => getOperationRegistry().get(operationId)?.stages[0]?.status === 'active', { label: 'the install runs' })
+    expect(getOperationRegistry().cancel(operationId)).toBe('cancelling')
+    release()
+    const view = await getOperationRegistry().await(operationId)
+    expect(view.status).toBe('cancelled')
+  })
+
   it('an identical request attaches; different options or different identity inputs do not', async () => {
     let release!: () => void
     gate = new Promise((r) => { release = r })
