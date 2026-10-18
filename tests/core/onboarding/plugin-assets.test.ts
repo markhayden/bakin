@@ -653,7 +653,7 @@ describe('plugin-assets — binaries', () => {
     writePluginLockfile(addPlugin(readPluginLockfile(), 'sdr', {
       source: userPluginDir, type: 'local', ref: '', commitSha: '', installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'a'.repeat(64),
     }))
-    await pluginAssetsComponent.install({ interactive: false, autoApprove: true, json: false, checkOnly: false, force: false })
+    await installInOperation(pluginAssetsComponent, { autoApprove: true, allowServiceClaim: false })
     expect((await pluginAssetsComponent.check()).status).toBe('ok')
 
     const installedDir = join(runtimeSkillHome, 'skills', 'cold-email')
