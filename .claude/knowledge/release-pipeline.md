@@ -17,33 +17,40 @@ Canonical reference (the originating spec shipped and was retired).
 
 ## Maintainer Commands
 
-Dry-run first:
+Releases are two steps: prepare the changelog on `main`, then dispatch the
+release workflow. Nothing local creates or pushes tags.
 
-```sh
-bun run release patch --dry-run
-```
+1. Write the notes under `[Unreleased]` in `CHANGELOG.md` (summary line, then
+   Added / Changed / Fixed / Upgrade notes), commit to `main`.
+2. Move them into the versioned section (`scripts/prep-release.ts`, the
+   `release` script; dry-run first):
 
-Cut releases:
+   ```sh
+   bun run release patch --rc --dry-run   # prints the target tag, e.g. v0.0.1-rc.41
+   bun run release patch --rc             # writes CHANGELOG.md (add --create-branch for a PR)
+   ```
 
-```sh
-bun run release patch
-bun run release minor
-bun run release major
-bun run release minor --rc
-bun run release promote
-```
+   Commit as `docs(release): prepare <tag>` on `main` (directly or via a PR).
+3. Dispatch the release from `main`:
 
-The local script requires:
+   ```sh
+   gh workflow run release.yml --ref main -f version=<tag>
+   ```
 
-- Current branch is `main`.
-- Worktree is clean, except generated version output.
-- Local `HEAD` matches `origin/main`.
-- Main CI is green for the exact head SHA.
-- `CHANGELOG.md` has bullets under `[Unreleased]`.
-- Target tag does not exist locally or remotely.
-- First `1.0.0` requires explicit confirmation.
+   The gate job requires `## [<version>]` in CHANGELOG.md, creates the tag
+   at the dispatched commit if it does not exist (or reuses an existing one —
+   it must be on `main` history), and every job builds that tag's commit.
 
-On success, the script moves `[Unreleased]` into a concrete changelog section, commits `chore(release): <tag>`, tags, and pushes `main` plus the tag atomically.
+**Retrying a failed release:** fix the cause on `main` and dispatch again
+with the same version. The existing tag is reused (the workflow file comes
+from the dispatched ref, the code from the tag), so the tag never has to
+move. Never delete and recreate a tag a GitHub release points at — it
+spawns duplicate release objects. A failed post-publish smoke (the npm
+propagation race on `Smoke SDK install`) is `gh run rerun <id> --failed`
+once `npm view @makinbakin/sdk@<version> --prefer-online` resolves.
+
+`scripts/release.ts` holds the shared tag/changelog helpers the prep script
+and its tests use; it is not a separate tagging command.
 
 ## CI Sequence
 
