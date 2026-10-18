@@ -358,9 +358,15 @@ Everything that changes the engine or its tables owns `search-engine`.
   (PR6), `installSearchComponentLocally` (`src/core/search-setup-install.ts`)
   runs them as local operations.
 - Outcomes: reindex `ok` / `tables_parked` (rows kept); reset `ok` /
-  `reset_failed` / `tables_parked`; engine `engine_install_failed`; models
+  `reset_failed` (a failed wipe, or a rebuild that did not converge — the
+  `reindex` rows say which tables); engine `engine_install_failed`; models
   `models_install_failed`. The result body is `{ ok, errors, parked, total,
   tables }` (reindex) or `{ ok, message, reindex }` (reset).
+- A boot resumption deferred by a busy engine is picked up by the next pump
+  tick, which then resumes every in-flight row (not only parked ones). A
+  clean engine start (install, reset) stamps the progress heartbeat so the
+  wedge watchdog never bounces it on a stale pre-reset reading. A cancelled
+  pull escalates SIGTERM → SIGKILL after 10s.
 - Background mutators: see Resources above and
   `.claude/knowledge/search-system.md` § Blue/green.
 - Pull progress and resume facts come from the T0 spike:

@@ -90,6 +90,14 @@ head -c 1024 /dev/zero > "$stage/onnx/model.onnx.part"
 exec sleep 30
 `
 
+/** Stalls and ignores SIGTERM — cancel must still settle. */
+const PULL_IGNORES_TERM = `#!/bin/sh
+trap '' TERM
+echo "pulling $3..." >&2
+echo "  [1/1] onnx/model.onnx (2.0 KiB)..." >&2
+while :; do sleep 1; done
+`
+
 /** Resumes only from a kept staging dir (T0 F6), then publishes. */
 const PULL_RESUMES = `#!/bin/sh
 owner=$(dirname "$3"); name=$(basename "$3")
@@ -318,7 +326,7 @@ describe('the model install as an operation (#895 D12)', () => {
       return reg.start({
         kind: 'install:search-models', owner: 'core', origin: 'cli', title: 'Download the search models', fingerprint: 'install:search-models',
         resources: ['search-engine'], plan: ANTFLY_MODELS_PLAN,
-        run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installModels({ ...optsAutoYes, op }, undefined, [model], { pollMs: 10 }) }),
+        run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installModels({ ...optsAutoYes, op }, undefined, [model], { pollMs: 10, killAfterMs: 200 }) }),
       })
     }
     const received = (reg: ReturnType<typeof registry>, id: string) =>
@@ -337,6 +345,19 @@ describe('the model install as an operation (#895 D12)', () => {
         expect(operationQuietState(view, stall).state).toBe('stuck')
         reg.cancel(operationId)
         await reg.await(operationId)
+      } finally {
+        reg.dispose()
+      }
+    })
+
+    it('a pull that ignores SIGTERM is killed, so the cancel still settles', async () => {
+      installFakeBinary(PULL_IGNORES_TERM)
+      const reg = registry()
+      try {
+        const { operationId } = await startPull(reg)
+        await waitUntil(() => reg.get(operationId)?.lastOutput?.includes('[1/1]') === true, { label: 'the pull announced its file' })
+        expect(reg.cancel(operationId)).toBe('cancelling')
+        expect((await reg.await(operationId)).status).toBe('cancelled')
       } finally {
         reg.dispose()
       }

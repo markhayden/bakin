@@ -21,6 +21,7 @@ import {
   type OperationStagePlan,
   type StartOperationInput,
 } from '@bakin/core/operations'
+import { noteSearchEngineProgress } from '@bakin/core/search/progress'
 import { createLogger } from './logger'
 import { getSearchAdapterSetup } from './search-adapter-factory'
 import { rebuildRegisteredTables, type ReindexTableOutcome } from './search-registry'
@@ -134,12 +135,16 @@ export function searchResetOperation(origin: OperationOrigin): StartOperationInp
       if (reset.status !== 'installed') {
         return { status: 'failed', code: 'reset_failed', message: reset.message, httpStatus: 200, body: { ok: false, message: reset.message, reindex: null } }
       }
+      // A clean engine is progress: the wedge watchdog must not read the
+      // pre-reset (often wedged) heartbeat and bounce it mid-rebuild.
+      noteSearchEngineProgress()
       // Repair-by-default: every registry row whose physical vanished with
       // the wipe regenerates, table by table in product-priority order.
       const reindex = await runReindex(op, undefined, false)
       if (!reindex.ok) {
+        // D22: a reset whose result is not ok is reset_failed; the rows say which tables.
         const message = `${reset.message} The rebuild did not converge: ${describeUnconverged(reindex)}.`
-        return { status: 'failed', code: 'tables_parked', message, httpStatus: 200, body: { ok: false, message, reindex } }
+        return { status: 'failed', code: 'reset_failed', message, httpStatus: 200, body: { ok: false, message, reindex } }
       }
       return { status: 'succeeded', code: 'ok', httpStatus: 200, body: { ok: true, message: reset.message, reindex } }
     },

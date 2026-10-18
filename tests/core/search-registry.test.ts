@@ -1494,6 +1494,18 @@ describe('background search mutators respect search-engine (#895 D23)', () => {
     expect(searchHarness.calls.documentsBatchIndex).not.toHaveBeenCalled()
   })
 
+  it('a deferred boot resumption is picked up by the next pump tick, including non-parked rows', async () => {
+    const green = await migrating('gatebootlater', 'backfill')
+    holdEngine('Reset search')
+    await resumeTableMigrations()
+    expect(tableStatus('bakin_gatebootlater')!.state).toBe('migrating')
+
+    lease!.release()
+    lease = undefined
+    await migrationPumpTick()
+    expect(tableStatus('bakin_gatebootlater')).toMatchObject({ state: 'active', physical: green })
+  })
+
   it('a pump pass holds search-engine for its whole run, named so a waiting reset can say what it waits for', async () => {
     await migrating('gateholder', 'parked')
     const holders: Array<string | undefined> = []

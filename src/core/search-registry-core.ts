@@ -412,14 +412,27 @@ async function backgroundPass<T>(what: string, fn: () => Promise<T>): Promise<T 
   }
 }
 
+/**
+ * Boot deferred its resumption (search-engine was held): the next pump tick
+ * resumes EVERY in-flight row, not only parked ones — a crash leaves rows
+ * mid-backfill or mid-converge that nothing else owns.
+ */
+let bootResumePending = false
+
+async function resumeAllMigrations(): Promise<void> {
+  const registry = getRegistry()
+  const search = getSearchAdapter()
+  const defs = Array.from(registry.contentTypes.values()).map(toVersionedDef)
+  await resumeVersionedMigrations(search, defs, adapterFingerprint(search))
+}
+
 /** Boot-time continuation of crash/park-interrupted migrations (D5). */
 export async function resumeTableMigrations(): Promise<void> {
-  await backgroundPass('boot migration resumption', async () => {
-    const registry = getRegistry()
-    const search = getSearchAdapter()
-    const defs = Array.from(registry.contentTypes.values()).map(toVersionedDef)
-    await resumeVersionedMigrations(search, defs, adapterFingerprint(search))
+  const ran = await backgroundPass('boot migration resumption', async () => {
+    await resumeAllMigrations()
+    return true
   })
+  if (!ran) bootResumePending = true
 }
 
 // ---------------------------------------------------------------------------
@@ -481,6 +494,7 @@ export function stopMigrationPump(): void {
   pumpTimer = null
   wedgeTimer = null
   pumpAttempts.clear()
+  bootResumePending = false
   lastWedgeRestartAt = 0
   deadShardRestartAttempts = 0
 }
@@ -568,7 +582,13 @@ export async function wedgeWatchTick(): Promise<void> {
 
 /** The pump's timer tick: one cycle, or nothing while the engine is busy. */
 export async function migrationPumpTick(): Promise<void> {
-  await backgroundPass('migration pump cycle', () => pumpParkedMigrations())
+  await backgroundPass('migration pump cycle', async () => {
+    if (bootResumePending) {
+      await resumeAllMigrations()
+      bootResumePending = false
+    }
+    await pumpParkedMigrations()
+  })
 }
 
 /** One pump cycle (exported for tests; the timer runs it through migrationPumpTick). */

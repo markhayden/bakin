@@ -105,11 +105,11 @@ describe('search reset', () => {
     expect(rebuild).not.toHaveBeenCalled()
   })
 
-  it('a rebuild that leaves tables parked ends tables_parked, keeping the rows', async () => {
+  it('a rebuild that leaves tables parked ends reset_failed (D22), keeping the rows', async () => {
     tablesOutcome = [{ table: 'bakin_tasks', result: 'parked', indexed: 0 }]
     const view = await settle(searchResetOperation('web'))
     expect(view.status).toBe('failed')
-    expect(view.outcome?.code).toBe('tables_parked')
+    expect(view.outcome?.code).toBe('reset_failed')
     expect((view.result!.body as SearchResetResult).reindex).toMatchObject({ ok: false, parked: 1, tables: tablesOutcome })
   })
 

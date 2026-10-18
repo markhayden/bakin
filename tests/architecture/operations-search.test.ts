@@ -101,7 +101,9 @@ describe('every search mutator owns search-engine', () => {
     const core = code(read(REGISTRY_CORE))
     expect(core).toMatch(/holdNow\(\['search-engine'\], BACKGROUND_MIGRATION/)
     expect(core).toMatch(/pumpTimer = setInterval\(\(\) => \{\s*void migrationPumpTick\(\)/)
-    expect(core).toMatch(/export async function resumeTableMigrations\(\): Promise<void> \{\s*await backgroundPass\(/)
+    expect(core).toMatch(/export async function resumeTableMigrations\(\): Promise<void> \{\s*const ran = await backgroundPass\(/)
+    // A deferred boot resumption is retried by the pump, never dropped.
+    expect(core).toMatch(/if \(!ran\) bootResumePending = true/)
     expect(core).toMatch(/await backgroundPass\('wedge watchdog restart'/)
     // Startup resumes through the gated entry, never the raw resume.
     expect(code(read(SEARCH_STARTUP))).not.toMatch(/resumeVersionedMigrations|resumeMigrations\(/)

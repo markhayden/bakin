@@ -169,6 +169,9 @@ export const ANTFLY_MODELS_PLAN: OperationPlan = {
   pointOfNoReturn: null,
 }
 
+/** A cancelled pull that ignores SIGTERM this long gets SIGKILL. */
+const KILL_AFTER_MS = 10_000
+
 /** How often the in-flight `.part` is read for bytes between the 16 MiB stderr lines. */
 const PART_POLL_MS = 1_000
 
@@ -178,6 +181,7 @@ interface PullOptions {
   /** Each stderr line, as it arrives. */
   onLine: (line: string) => void
   pollMs?: number
+  killAfterMs?: number
   /** Bytes so far, between lines as well as on them. */
   onBytes: (bytes: { received: number; total: number }) => void
 }
@@ -214,11 +218,18 @@ function runPull(antfly: string, model: string, opts: PullOptions): Promise<{ co
       for (const line of lines) take(line)
     })
     const poll = setInterval(report, opts.pollMs ?? PART_POLL_MS)
-    const abort = () => child.kill('SIGTERM')
+    // antfly honours SIGTERM (T0 F4); escalate if a future build does not,
+    // so a cancelled pull can never hold search-engine forever.
+    let escalate: ReturnType<typeof setTimeout> | undefined
+    const abort = () => {
+      child.kill('SIGTERM')
+      escalate = setTimeout(() => child.kill('SIGKILL'), opts.killAfterMs ?? KILL_AFTER_MS)
+    }
     if (opts.signal.aborted) abort()
     else opts.signal.addEventListener('abort', abort, { once: true })
     const settle = () => {
       clearInterval(poll)
+      clearTimeout(escalate)
       opts.signal.removeEventListener('abort', abort)
     }
     child.on('error', (err) => {
@@ -233,7 +244,7 @@ function runPull(antfly: string, model: string, opts: PullOptions): Promise<{ co
   })
 }
 
-export async function installInferenceModels(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger, models: InferenceModel[], timings: { pollMs?: number } = {}) {
+export async function installInferenceModels(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger, models: InferenceModel[], timings: { pollMs?: number; killAfterMs?: number } = {}) {
   const { op } = opts
   if (!op.holds('search-engine')) throw new Error('installInferenceModels requires search-engine (run it inside an operation that declares it)')
   const start = Date.now()
@@ -304,6 +315,7 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
         modelsDir,
         signal: op.signal,
         pollMs: timings.pollMs,
+        killAfterMs: timings.killAfterMs,
         onLine: (line) => {
           op.output(line)
           if (echo) process.stderr.write(`${line}\n`)
