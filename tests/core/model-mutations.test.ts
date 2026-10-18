@@ -172,6 +172,15 @@ describe('mutateSelections — validation', () => {
     expect(f.agents.get('main')!.model).toBeUndefined()
   })
 
+  it('a refused write never suggests an unproven replacement when proof is wired', async () => {
+    const f = fixture()
+    const m = createSelectionMutator({ ...f.deps, proven: async () => () => false })
+    const rev = await currentRevision(f.deps)
+    const err = await m.mutate({ revision: rev, ops: [{ ref: 'agent:main:model', set: { model: DEAD } }] }).catch((e) => e)
+    expect(err).toMatchObject({ status: 400, code: 'model_not_eligible' })
+    expect(err.proposal).toBeUndefined()
+  })
+
   it('refuses ops the runtime cannot persist (Pi: subagent pins even to clear; non-empty fallbacks/aliases)', async () => {
     const f = fixture({ pi: true })
     const m = createSelectionMutator(f.deps)

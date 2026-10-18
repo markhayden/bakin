@@ -461,6 +461,8 @@ describe('GET/POST /selections — the ONE write path (#907)', () => {
     routingPolicy.defaultModel = 'xai/grok-4' // runtime-unavailable ⇒ a dead policy:defaultModel
     // The replacement must have run here (proof gate) — prove the eligible catalog.
     provenForTests = ['anthropic/claude-sonnet-4-6', 'anthropic/claude-opus-4-6', 'anthropic/claude-haiku-4-5', 'google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'openai-codex/gpt-5.5', 'openai-codex/gpt-5.6-luna']
+    const { __resetResolvedProofForTests } = await import('../../../src/core/model-plan-input')
+    __resetResolvedProofForTests()
     // A proposal is only offered for a model whose eligibility is VERIFIED
     // (never on partial/failed credential evidence): give the runtime a
     // complete credential inventory for this test.

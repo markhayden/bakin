@@ -136,6 +136,8 @@ export interface PlanResponse {
     enrichment: 'chores' | 'agent' | 'unset' | 'disabled'
     ops: SelectionOpWire[]
     notes: string[]
+    /** Set when nothing safe can be recommended (dead default, no proven replacement). */
+    blocked?: string
   }
   routeProposals: {
     proposals: Array<{ workClass: string; model: string; reason: string }>

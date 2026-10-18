@@ -93,6 +93,13 @@ export interface PlanRecommendation {
   ops: MutationOp[]
   /** Anything the plan could not satisfy or had to assume, in plain words. */
   notes: string[]
+  /**
+   * Set when the plan cannot recommend ANYTHING safe (a dead default and no
+   * proven replacement): `ops` is empty because nothing should change, not
+   * because the install is already on the plan — surfaces show this instead
+   * of "you are on the recommended plan".
+   */
+  blocked?: string
 }
 
 function tierRank(candidate: PlanCandidate): number {
@@ -273,6 +280,12 @@ function planRoutes(agent: LanePick, chores: LanePick, enrichment: PlanRecommend
 /** Recommend the two-lane plan and the ops that reach it from the current state. */
 export function recommendPlan(input: PlanInput): PlanRecommendation {
   const agent = pickAgentModel(input)
+  if (!agent.model && input.currentDefaultModel && input.candidates.length > 0) {
+    // A dead default with nothing proven to replace it: change NOTHING —
+    // clearing a chores route here would make it inherit the dead default.
+    const routes = CHORES_CLASSES.map((workClass) => ({ workClass, model: routedModel(input.routing, workClass), reason: agent.why }))
+    return { agent, chores: { model: null, why: agent.why, suitability: 'none' }, routes, enrichment: input.enrichmentEnabled ? 'unset' : 'disabled', ops: [], notes: [], blocked: agent.why }
+  }
   const { pick: chores, enrichment, notes } = pickChoresModel(input, agent)
   const routes = planRoutes(agent, chores, enrichment)
   const ops: MutationOp[] = []

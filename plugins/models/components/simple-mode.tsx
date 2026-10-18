@@ -160,7 +160,9 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
             <Stack gap="dense">
               <h2 id="recommended-plan-heading">Recommended plan</h2>
               <Text size="meta" tone="muted">
-                {recommendedOps.length === 0
+                {plan.recommended.blocked
+                  ? plan.recommended.blocked
+                  : recommendedOps.length === 0
                   ? 'You are on the recommended plan.'
                   : `${recommendedOps.length} change${recommendedOps.length === 1 ? '' : 's'} would bring you onto it — review before anything is staged.`}
               </Text>

@@ -35,7 +35,7 @@ mock.module('@bakin/core/usage-history/store', () => ({
 
 import { closeDb } from '../../packages/core/src/storage/db'
 import { recordModelProbeSuccess } from '../../packages/core/src/execution/ledger'
-import { provenModelIds, PROOF_WINDOW_DAYS, resolveProvenModelIds } from '../../src/core/model-plan-input'
+import { provenForRef, provenModelIds, provenModels, PROOF_WINDOW_DAYS, resolveProvenModelIds } from '../../src/core/model-plan-input'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { noteProbeOutcome } from '../../src/core/model-availability'
 
@@ -103,5 +103,21 @@ describe('resolveProvenModelIds', () => {
     usageCells = [{ agent: 'main', day: '2026-10-18', model: 'openai-codex/gpt-6-astra', tokens: tokens(1) }]
     const runtime = { models: {} } as unknown as AgentRuntimeAdapter
     expect([...await resolveProvenModelIds(runtime, Date.parse('2026-10-18T20:00:00Z'))]).toEqual(['openai-codex/gpt-6-astra'])
+  })
+})
+
+describe('provenForRef', () => {
+  it('an agent pin is proven only by THAT agent\'s own usage; install-wide refs by anyone or a probe', () => {
+    usageCells = [
+      { agent: 'main', day: '2026-10-18', model: 'openai-codex/gpt-6-astra', tokens: tokens(100) },
+      { agent: 'jessica', day: '2026-10-18', model: 'openai-codex/gpt-5.5', tokens: tokens(100) },
+    ]
+    recordModelProbeSuccess({ model: 'openai-codex/gpt-5.6-luna' })
+    const proven = provenModels(Date.parse('2026-10-18T20:00:00Z'))
+    expect(provenForRef(proven, 'openai-codex/gpt-6-astra', 'agent:main:model')).toBe(true)
+    expect(provenForRef(proven, 'openai-codex/gpt-6-astra', 'agent:jessica:model')).toBe(false)
+    expect(provenForRef(proven, 'openai-codex/gpt-5.6-luna', 'agent:main:model')).toBe(false) // a probe is not this agent's access
+    expect(provenForRef(proven, 'openai-codex/gpt-5.6-luna', 'route:relay')).toBe(true)
+    expect(provenForRef(proven, 'openai-codex/gpt-5.5', 'policy:defaultModel')).toBe(true)
   })
 })

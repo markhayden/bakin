@@ -118,6 +118,17 @@ describe('models onboarding component (S7)', () => {
     expect(r.message).toContain(LUNA)
   })
 
+  it('a dead default with NOTHING proven is not "already on the plan": --yes writes nothing and says why', async () => {
+    defaultModel = 'openai/gpt-6-astra'
+    catalog = [{ id: 'openai-codex/gpt-9-unseen', available: true, input: 'text,image' }, catalog[3]!]
+    const r = await installInOperation(modelsComponent, YES)
+    expect(r.status).toBe('skipped')
+    expect(r.message).toContain('No model change recommended')
+    expect(r.message).toContain('probe a model or run a task')
+    expect(policyWrites).toEqual([])
+    expect(routes()).toHaveLength(0)
+  })
+
   it('a WORKING default is never moved by --yes (the recommender keeps an eligible current default); no default at all gets one', async () => {
     defaultModel = TERRA
     expect((await installInOperation(modelsComponent, YES)).status).toBe('installed')

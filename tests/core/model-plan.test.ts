@@ -192,6 +192,14 @@ describe('only proven models are proposed (margo 2026-10-18)', () => {
     expect(plan.ops.some((op) => op.ref === 'policy:defaultModel')).toBe(false)
   })
 
+  it('a dead default with nothing proven changes NOTHING — existing chores routes are kept, not cleared onto the dead default', () => {
+    const routing = { routes: [{ workClass: 'relay' as const, model: mini.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }], currentDefaultModel: 'openai/gone', routing }))
+    expect(plan.ops).toEqual([])
+    expect(plan.blocked).toContain('probe a model or run a task')
+    expect(plan.routes.find((r) => r.workClass === 'relay')?.model).toBe(mini.id)
+  })
+
   it('with nothing proven yet (a fresh install) the strongest listed model is offered as unverified', () => {
     const pick = pickAgentModel(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: null }))
     expect(pick.model).toBe(luna.id)

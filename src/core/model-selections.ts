@@ -204,7 +204,7 @@ export interface ProposeOptions {
    * listing) must never be one. Omitted ⇒ eligibility alone (report-only
    * callers such as the runtime switch, judging a target nothing ran on yet).
    */
-  proven?: (model: string) => boolean
+  proven?: (model: string, ref: string) => boolean
 }
 
 /**
@@ -235,7 +235,7 @@ export function proposeRepairs(
     const eligibleIds = eligibleIn(report)
     const entry = report.byModel.get(state.model)
     if (!entry || entry.eligibility.status !== 'ineligible') continue
-    const provenOk = (model: string) => opts.proven === undefined || opts.proven(model)
+    const provenOk = (model: string) => opts.proven === undefined || opts.proven(model, state.ref)
     const sameId = mapModelToCatalog(state.model, eligibleIds)
     if (sameId && sameId !== state.model && provenOk(sameId)) {
       proposals.push({ ref: state.ref, from: state.model, to: sameId, reason: entry.eligibility.detail, source: 'same-id-credentialed-provider', revision: opts.revision })

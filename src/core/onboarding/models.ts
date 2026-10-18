@@ -188,6 +188,9 @@ async function install(opts: ComponentInstallOptions, op: OperationContext): Pro
   if (input.candidates.length === 0) {
     return skip('no runnable model', 'No model can run here yet — add credentials for a provider, then `bakin models plan --apply`.')
   }
+  if (plan.blocked) {
+    return skip('no proven model', `No model change recommended: ${plan.blocked}`)
+  }
   if (plan.ops.length === 0) {
     const caveat = problems.length > 0 ? ` Needs attention: ${problems.join('; ')}.` : ''
     return skip('already on the plan', `Already on the recommended plan: ${describe(plan)}.${caveat}`, 'noop')

@@ -61,44 +61,101 @@ export const PROOF_WINDOW_DAYS = 7
  * still offered a model retired upstream (2026-10-18). Each source fails
  * closed: unreadable evidence proves nothing, it never proves everything.
  */
-export function provenModelIds(now: number = Date.now()): Set<string> {
-  const proven = new Set<string>()
+export interface ProvenModels {
+  /** Proven for the install: any agent ran it, or a probe passed. */
+  any: Set<string>
+  /** Proven for ONE agent: that agent produced tokens on it (its own credentials). */
+  byAgent: Map<string, Set<string>>
+}
+
+export function provenModels(now: number = Date.now()): ProvenModels {
+  const proven: ProvenModels = { any: new Set(), byAgent: new Map() }
   try {
     for (const cell of readUsageByAgentModelDaySince(toLocalDayKey(now - PROOF_WINDOW_DAYS * 86_400_000))) {
-      if (cell.model && cell.tokens.total > 0) proven.add(normalizeModelId(cell.model))
+      if (!cell.model || cell.tokens.total <= 0) continue
+      const id = normalizeModelId(cell.model)
+      proven.any.add(id)
+      let mine = proven.byAgent.get(cell.agent)
+      if (!mine) proven.byAgent.set(cell.agent, mine = new Set())
+      mine.add(id)
     }
   } catch (err) {
     log.warn('Usage history unreadable; no model is proven by usage', { err: err instanceof Error ? err.message : String(err) })
   }
   try {
-    for (const model of listModelProbeSuccessesSince(now - PROOF_WINDOW_DAYS * 86_400_000)) proven.add(normalizeModelId(model))
+    for (const model of listModelProbeSuccessesSince(now - PROOF_WINDOW_DAYS * 86_400_000)) proven.any.add(normalizeModelId(model))
   } catch (err) {
     log.warn('Probe evidence unreadable; no model is proven by probe', { err: err instanceof Error ? err.message : String(err) })
   }
   return proven
 }
 
+/** Install-wide proof (the plan's lanes are install-wide). */
+export function provenModelIds(now: number = Date.now()): Set<string> {
+  return provenModels(now).any
+}
+
 /**
- * `provenModelIds` resolved to catalog ids: usage history records whatever
- * the runtime transcript said (a bare `gpt-5.5` on Pi), so bare ids go
- * through the runtime's own `models.resolveId` when it has one. Unresolvable
- * ids stay as recorded (they still match a catalog row that uses them).
+ * Whether `model` is proven for a selection `ref`. An `agent:<id>:*` pin runs
+ * under THAT agent's credentials, so only that agent's own usage proves it
+ * (a probe or another agent's run says nothing about its access); every
+ * other ref is install-wide.
  */
-export async function resolveProvenModelIds(runtime: AgentRuntimeAdapter, now: number = Date.now()): Promise<Set<string>> {
-  const raw = provenModelIds(now)
-  const resolveId = runtime.models.resolveId?.bind(runtime.models)
-  if (!resolveId) return raw
-  const resolved = new Set(raw)
-  for (const id of raw) {
-    if (id.includes('/')) continue
-    try {
-      const canonical = await resolveId(id)
-      if (canonical) resolved.add(normalizeModelId(canonical))
-    } catch (err) {
-      log.warn('Could not resolve a proven model id', { id, err: err instanceof Error ? err.message : String(err) })
+export function provenForRef(proven: ProvenModels, model: string, ref: string): boolean {
+  const agent = /^agent:([^:]+):/.exec(ref)?.[1]
+  return agent ? proven.byAgent.get(agent)?.has(model) === true : proven.any.has(model)
+}
+
+const RESOLVED_PROOF_TTL_MS = 30_000
+let resolvedProof = new WeakMap<object, { at: number; value: Promise<ProvenModels> }>()
+
+/** Tests only: forget memoized proof (evidence changed within the TTL). */
+export function __resetResolvedProofForTests(): void {
+  resolvedProof = new WeakMap()
+}
+
+/**
+ * `provenModels` resolved to catalog ids: usage history records whatever the
+ * runtime transcript said (a bare `gpt-5.5` on Pi), so bare ids go through
+ * the runtime's own `models.resolveId` (each distinct id once). Memoized per
+ * runtime for a few seconds — one page load computes the plan AND the
+ * selection proposals, and Pi refreshes its registry on every resolve.
+ */
+export function resolveProvenModels(runtime: AgentRuntimeAdapter, now: number = Date.now()): Promise<ProvenModels> {
+  const hit = resolvedProof.get(runtime)
+  if (hit && now - hit.at < RESOLVED_PROOF_TTL_MS) return hit.value
+  const value = (async () => {
+    const raw = provenModels(now)
+    const resolveId = runtime.models.resolveId?.bind(runtime.models)
+    if (!resolveId) return raw
+    const bare = [...raw.any].filter((id) => !id.includes('/'))
+    const canonical = new Map<string, string>()
+    await Promise.all(bare.map(async (id) => {
+      try {
+        const resolved = await resolveId(id)
+        if (resolved) canonical.set(id, normalizeModelId(resolved))
+      } catch (err) {
+        log.warn('Could not resolve a proven model id', { id, err: err instanceof Error ? err.message : String(err) })
+      }
+    }))
+    const widen = (set: Set<string>) => {
+      for (const id of [...set]) {
+        const resolved = canonical.get(id)
+        if (resolved) set.add(resolved)
+      }
     }
-  }
-  return resolved
+    widen(raw.any)
+    for (const set of raw.byAgent.values()) widen(set)
+    return raw
+  })()
+  resolvedProof.set(runtime, { at: now, value })
+  value.catch(() => { resolvedProof.delete(runtime) })
+  return value
+}
+
+/** Install-wide resolved proof. */
+export async function resolveProvenModelIds(runtime: AgentRuntimeAdapter, now: number = Date.now()): Promise<Set<string>> {
+  return (await resolveProvenModels(runtime, now)).any
 }
 
 export interface AssemblePlanInputOptions {
