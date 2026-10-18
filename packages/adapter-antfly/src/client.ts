@@ -189,9 +189,9 @@ export class AntflySearchClient implements SearchAdapter {
     // NOT offered — table creates skip it (keyword-only degrade) and the
     // doctor compares these legs against what content types declare.
     const legs: SearchAdapterCapabilities['legs'] = ['full-text']
-    if (embedderUsable(this.settings.embedders.default)) legs.push('text-embedding')
+    if (embedderUsable(this.settings.embedders.default, this.settings.url)) legs.push('text-embedding')
     // Mirrors embeddingIndexFromLeg's resolution: visual falls back to default.
-    if (embedderUsable(this.settings.embedders.visual ?? this.settings.embedders.default)) legs.push('media-embedding')
+    if (embedderUsable(this.settings.embedders.visual ?? this.settings.embedders.default, this.settings.url)) legs.push('media-embedding')
     return { legs, rerank: true, facets: true, transform: true }
   }
 
@@ -200,7 +200,7 @@ export class AntflySearchClient implements SearchAdapter {
     // so that verdict is part of the layout's identity — and ONLY that one:
     // every other fingerprint stays byte-identical (no migration on upgrade).
     const canonical = Object.entries(this.settings.embedders)
-      .map(([ref, e]) => `${ref}:${e.provider}/${e.model}@${e.dimension}${e.multimodal ? '+mm' : ''}${e.provider === 'antfly' && !modelLoadable(e.model) ? '!unloadable' : ''}`)
+      .map(([ref, e]) => `${ref}:${e.provider}/${e.model}@${e.dimension}${e.multimodal ? '+mm' : ''}${e.provider === 'antfly' && !modelLoadable(e.model, this.settings.url) ? '!unloadable' : ''}`)
       .sort()
       .join('|')
     return createHash('sha256').update(canonical).digest('hex').slice(0, 16)

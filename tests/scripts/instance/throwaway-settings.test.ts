@@ -4,7 +4,7 @@ import { mergeThrowawaySettings } from '../../../scripts/instance/throwaway-sett
 import { RIG_ANTFLY_PORT, rigAntflySearchUrl } from '../../../scripts/instance/modes'
 // Tests are not scanned by the provider-boundary rules — importing the
 // adapter's own predicate pins the guest-mode guarantee against drift.
-import { isLocalDefaultUrl } from '../../../packages/adapter-antfly/src/service'
+import { isLocalDefaultUrl } from '../../../packages/adapter-antfly/src/paths'
 
 describe('mergeThrowawaySettings', () => {
   it('writes adapter + search url into empty settings', () => {

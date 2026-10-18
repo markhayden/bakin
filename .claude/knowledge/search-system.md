@@ -785,14 +785,21 @@ the Linux build, `metal` is macOS-only, `cuda` needs a GPU) while macOS
 Metal loads the same files. `model-load.ts` asks the engine itself
 (`antfly inference embed <dir>`) once per model — after a pull (the
 install's verify stage) and before a start when no current verdict exists
-— and records the verdict in `~/.antfly/bakin-model-load.json`, keyed by
-engine version, platform and download (a re-pull or a repin re-probes;
-unknown = loadable; a hung probe records nothing). A model known not to
-load is left off the preloads and its leg is not offered (`embedderUsable`),
-so the engine boots, text search works and Health warns
-(`checkInferenceModels`: "can't load on this machine", the engine's reason).
-Only that verdict enters `mappingFingerprint()` — every other fingerprint is
-byte-identical, so upgrading migrates nothing.
+— and records one receipt per model under `~/.antfly/bakin-model-load/`
+(atomic replace; homes sharing the models never clobber each other), keyed
+by the engine version the BINARY reports (a probe of anything but the pin
+records nothing), the platform and the download (a re-pull or a repin
+re-probes). Only the engine's own `error.X` diagnostic records "can't
+load"; a spawn failure, signal, timeout or cancel records nothing —
+unknown = loadable. Verdicts judge only the managed engine: a guest
+endpoint (`isLocalDefaultUrl` false) is never judged by them. A model known
+not to load is left off the preloads and its leg is not offered
+(`embedderUsable(embedder, engineUrl)`); queries follow the same offered
+legs (`getIndexNames` filters by `capabilities().legs` — a query naming a
+skipped index is rejected outright), so the engine boots, text search works
+and Health warns (`checkInferenceModels`: "can't load on this machine", the
+engine's reason). Only that verdict enters `mappingFingerprint()` — every
+other fingerprint is byte-identical, so upgrading migrates nothing.
 
 **`dimension` is required** on every embedder entry (the server demands
 declared dims at table-create time). Embedder settings feed

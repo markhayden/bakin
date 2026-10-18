@@ -349,7 +349,8 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     if (!verified.ok) return failed(`antfly inference pull ${m.model} reported success but ${verified.reason}`)
     // Complete is not the same as loadable here (#993): ask the engine now,
     // so the next start leaves an unloadable model off its preloads.
-    const verdict = await probeModelLoad(antfly, m.model)
+    op.throwIfCancelled()
+    const verdict = await probeModelLoad(antfly, m.model, { signal: op.signal })
     if (verdict && !verdict.loadable) {
       unloadable.push(m)
       op.log(`${m.label} can't load on this machine: ${verdict.reason ?? 'the engine could not load it'}`, 'warn')

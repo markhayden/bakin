@@ -93,6 +93,7 @@ import {
   wedgeWatchTick,
   stopMigrationPump,
   ensureRegisteredTables,
+  getIndexNames,
 } from '@/core/search-registry'
 import { sweepOrphanRegistryRows } from '@/core/search-orphan-sweep'
 import { tableStatus, sweepTombstones } from '@bakin/core/search/tables'
@@ -1008,6 +1009,36 @@ describe('search-registry', () => {
       expect(table.legs).toEqual([])
       expect(table.healthy).toBe(false)
     }
+  })
+})
+
+describe('query indexes follow the legs the adapter offers (#993)', () => {
+  beforeEach(() => {
+    resetSearchRegistry()
+  })
+  afterEach(() => clearSearchAdapter())
+
+  it('a media index the adapter does not offer is never named in a query', () => {
+    const harness = createSearchAdapterHarness()
+    installSearchAdapter(harness.adapter)
+    buildSearchAPI('legs-plugin').registerContentType({
+      table: 'legs',
+      schemaVersion: 1,
+      schema: { title: { type: 'text' as const }, url: { type: 'keyword' as const } },
+      searchableFields: ['title'],
+      embeddingTemplate: '{{title}}',
+      indexes: [
+        { name: 'legs_text', embedderRef: 'default', embeddingTemplate: '{{title}}' },
+        { name: 'legs_visual', embedderRef: 'visual', mediaUrlField: 'url' },
+      ],
+      reindex: async function* () {},
+      verifyExists: async () => true,
+    })
+    expect(getIndexNames('bakin_legs')).toEqual(['legs_text', 'legs_visual'])
+
+    // The engine can't load the visual model here (or it is disabled): no media leg.
+    harness.calls.capabilities.mockImplementation(() => ({ legs: ['full-text', 'text-embedding'], rerank: false, facets: true, transform: true }))
+    expect(getIndexNames('bakin_legs')).toEqual(['legs_text'])
   })
 })
 

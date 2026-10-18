@@ -354,18 +354,18 @@ export function buildBatchDeletes(keys: string[]): WireBatchRequest {
  *  media-capable table on the box (2026-07-21 field incident). Neither may
  *  a model the engine is known not to load here (#993): that leg is not
  *  offered, so tables degrade honestly instead of failing every write. */
-export function embedderUsable(embedder: { provider?: string; model?: string; dimension?: number } | undefined): boolean {
+export function embedderUsable(embedder: { provider?: string; model?: string; dimension?: number } | undefined, engineUrl: string): boolean {
   if (!embedder) return false
   if (!embedder.provider || embedder.provider === 'disabled' || embedder.provider === 'none') return false
   if (!embedder.model) return false
-  if (embedder.provider === 'antfly' && !modelLoadable(embedder.model)) return false
+  if (embedder.provider === 'antfly' && !modelLoadable(embedder.model, engineUrl)) return false
   return typeof embedder.dimension === 'number' && embedder.dimension > 0
 }
 
 function embeddingIndexFromLeg(leg: TableLegConfig, settings: AntflySettings): WireIndexConfig | null {
   const ref = leg.capability === 'media-embedding' ? 'visual' : 'default'
   const embedder = settings.embedders[ref] ?? settings.embedders.default
-  if (!embedderUsable(embedder)) return null
+  if (!embedderUsable(embedder, settings.url)) return null
   const template = leg.mediaUrlField
     ? `{{#if ${leg.mediaUrlField}}}{{remoteMedia url=${leg.mediaUrlField}}}{{/if}}`
     : leg.template ?? leg.fields.map((field) => `{{${field}}}`).join(' ')

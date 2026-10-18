@@ -28,7 +28,7 @@ import { getBakinPaths } from '@bakin/core/content-dir'
 import { atomicWriteText } from '@bakin/core/storage/atomic-write'
 import { canonicalPath, evaluateOwnership, type ServiceOwnership, type OwnershipKind } from './service-ownership'
 import { withServiceLock, serviceLockBusy } from './service-lock'
-import { antflyBinaryPath, antflyHome, inferenceModelsRoot } from './paths'
+import { antflyBinaryPath, antflyHome, inferenceModelsRoot, isLocalDefaultUrl } from './paths'
 import { modelStructurallyComplete } from './model-pins'
 import { ensureModelLoadVerdicts, modelLoadable } from './model-load'
 import type { AntflySettings } from './defaults'
@@ -94,11 +94,6 @@ export function isAntflyInstalled(): boolean {
 }
 
 /** The default private-instance URL — anything else is guest mode. */
-export function isLocalDefaultUrl(url: string): boolean {
-  const origin = new URL(url).origin
-  return origin === 'http://127.0.0.1:3738' || origin === 'http://localhost:3738'
-}
-
 export function detectServiceMode(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): ServiceMode {
   if (!isLocalDefaultUrl(settings.url)) return 'guest'
   const override = io.env.BAKIN_SEARCH_SERVICE_MODE
@@ -174,7 +169,7 @@ export function buildServiceArgv(
 ): string[] {
   const url = new URL(settings.url)
   const port = Number(url.port || 3738)
-  const modelReady = opts?.modelReady ?? ((model: string) => modelStructurallyComplete(model).ok && modelLoadable(model))
+  const modelReady = opts?.modelReady ?? ((model: string) => modelStructurallyComplete(model).ok && modelLoadable(model, settings.url))
   const preloads = preloadedModels(settings).filter((model) => modelReady(model)).map((model) => `embedder:${model}`)
   return [
     paths.binary, 'standalone',
