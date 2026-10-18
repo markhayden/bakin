@@ -127,7 +127,11 @@ export function TeamFormDialog({ open, mode, agents, mainAgentId, triggerRef, on
 
   const trimmedLabel = draft?.label.trim() ?? ''
   const teamId = mode.kind === 'edit' ? mode.teamId : (draft?.id ?? '')
-  const needsReportsTo = !draft?.reportsTo
+  // The pick is checked against the CURRENT roster (without resetting the
+  // draft): an agent removed while the dialog is open must be re-picked.
+  const pickedGone = Boolean(draft?.reportsTo) && !agents.some((agent) => agent.id === draft?.reportsTo)
+  const goneAgent = pickedGone ? draft!.reportsTo : !draft?.reportsTo ? missingReportsTo : null
+  const needsReportsTo = !draft?.reportsTo || pickedGone
   const canSave = Boolean(draft && trimmedLabel && teamId && !needsReportsTo && (mode.kind === 'create' || dirty))
 
   async function save(): Promise<boolean> {
@@ -175,9 +179,15 @@ export function TeamFormDialog({ open, mode, agents, mainAgentId, triggerRef, on
     finalFocus: labelRef,
   })
 
+  // The save resolves renders later than the submit that started it: read the
+  // CURRENT guard (its reset sees a blocker opened mid-save), not the stale one.
+  const guardRef = useRef(guard)
+  guardRef.current = guard
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void save().then((saved) => { if (saved) onClose() })
+    // A navigation attempted mid-save opened the guard's decision; the edit
+    // is saved now, so dismiss that decision (the user stays) before closing.
+    void save().then((saved) => { if (saved) { guardRef.current.reset(); onClose() } })
   }
 
   const update = (patch: Partial<Draft>) => setDraft((current) => (current ? { ...current, ...patch } : current))
@@ -220,6 +230,7 @@ export function TeamFormDialog({ open, mode, agents, mainAgentId, triggerRef, on
                     update(mode.kind === 'create' && !idTouched ? { label, id: deriveTeamId(label) } : { label })
                   }}
                   placeholder="e.g. Builders"
+                  disabled={saving}
                   autoFocus
                 />
                 {draft.label !== '' && !trimmedLabel ? <FieldError match>Enter a team name.</FieldError> : null}
@@ -238,6 +249,7 @@ export function TeamFormDialog({ open, mode, agents, mainAgentId, triggerRef, on
                         update({ id: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })
                       }}
                       placeholder="e.g. builders"
+                      disabled={saving}
                       className="font-bakin-typography-family-mono"
                     />
                   </>
@@ -249,7 +261,7 @@ export function TeamFormDialog({ open, mode, agents, mainAgentId, triggerRef, on
                 )}
               </Field>
 
-              <Field name="reportsTo" invalid={missingReportsTo !== null && needsReportsTo}>
+              <Field name="reportsTo" invalid={goneAgent !== null}>
                 <FieldLabel htmlFor="team-reports-to" requirement="required">Reports to</FieldLabel>
                 <FieldDescription>The agent responsible for this team.</FieldDescription>
                 <AgentSelect
@@ -258,11 +270,12 @@ export function TeamFormDialog({ open, mode, agents, mainAgentId, triggerRef, on
                   onValueChange={(value) => update({ reportsTo: value })}
                   agents={agents}
                   placeholder="Select an agent"
+                  disabled={saving}
                   className="w-full"
                 />
-                {missingReportsTo !== null && needsReportsTo ? (
+                {goneAgent !== null ? (
                   <FieldError match>
-                    {`"${missingReportsTo}" no longer exists — pick who this team reports to.`}
+                    {`"${goneAgent}" no longer exists — pick who this team reports to.`}
                   </FieldError>
                 ) : null}
               </Field>

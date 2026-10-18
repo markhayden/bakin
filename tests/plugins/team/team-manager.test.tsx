@@ -290,6 +290,64 @@ describe('TeamManager + TeamFormDialog', () => {
     expect(screen.getByRole('dialog', { name: 'Edit team' })).toBeDefined()
   })
 
+  it('fields are locked while saving — nothing typed mid-save is silently dropped', async () => {
+    let release: (response: Response) => void = () => {}
+    writeResponse = () => new Promise((resolve) => { release = resolve })
+    const user = userEvent.setup()
+    await renderManager()
+    await user.click(screen.getByRole('button', { name: 'Edit Builders' }))
+    const form = await dialog('Edit team')
+    const name = await within(form).findByLabelText(/Team name/) as HTMLInputElement
+    await user.type(name, ' 2')
+    await user.click(within(form).getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(name.disabled).toBe(true))
+    expect((within(form).getByRole('combobox', { name: /Reports to/ }) as HTMLButtonElement).disabled
+      || within(form).getByRole('combobox', { name: /Reports to/ }).getAttribute('data-disabled') !== null).toBe(true)
+    await act(async () => { release(Response.json({ ok: true })) })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit team' })).toBeNull())
+  })
+
+  it('a navigation attempted mid-save is dismissed once the save lands (no dangling blocker)', async () => {
+    let release: (response: Response) => void = () => {}
+    writeResponse = () => new Promise((resolve) => { release = resolve })
+    const user = userEvent.setup()
+    await renderManager()
+    await user.click(screen.getByRole('button', { name: 'Edit Builders' }))
+    const form = await dialog('Edit team')
+    await user.type(await within(form).findByLabelText(/Team name/), ' 2')
+    await user.click(within(form).getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    let blocked: Promise<boolean> = Promise.resolve(false)
+    await getConfig().asyncWrapper(async () => {
+      blocked = blockers[0]!({ currentLocation: { pathname: '/team' }, nextLocation: { pathname: '/tasks' } })
+      await screen.findByRole('dialog', { name: 'Unsaved changes' })
+    })
+    let settled: boolean | null = null
+    await act(async () => {
+      release(Response.json({ ok: true }))
+      settled = await blocked
+    })
+    expect(settled).toBe(true) // resolved (the user stays) — never left pending
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit team' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Unsaved changes' })).toBeNull())
+  })
+
+  it('a reports-to agent removed from the roster while the dialog is open must be re-picked', async () => {
+    rawTeams = [{ id: 'builders', label: 'Builders', reportsTo: 'chef' }]
+    seedStore()
+    const user = userEvent.setup()
+    await renderManager()
+    await user.click(screen.getByRole('button', { name: 'Edit Builders' }))
+    const form = await dialog('Edit team')
+    await user.type(await within(form).findByLabelText(/Team name/), ' 2')
+    await act(async () => {
+      useAgentStore.setState({ agents: AGENTS.filter((agent) => agent.id !== 'chef') } as never)
+    })
+    expect(await within(form).findByText(/"chef" no longer exists/)).toBeDefined()
+    expect((within(form).getByRole('button', { name: 'Save changes' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((within(form).getByLabelText(/Team name/) as HTMLInputElement).value).toBe('Builders 2')
+  })
+
   it('the inline per-row reports-to picker is gone; Add sits at the top of Teams', async () => {
     await renderManager()
     expect(screen.queryByRole('combobox')).toBeNull()
