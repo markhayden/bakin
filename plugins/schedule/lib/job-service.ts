@@ -15,7 +15,7 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { BakinJobMeta, MergedJob } from '../types'
 import { getPluginCtx } from './plugin-context'
-import { getJob, upsertJob, removeJob, readSidecar, newScheduleId, withDefaults } from './sidecar'
+import { getJob, upsertJob, removeJob, readSidecar, newScheduleId, withDefaults, UNRUNNABLE_PAUSE_REASON } from './sidecar'
 import { readMergedJobs } from './jobs-reader'
 import { parseSchedule, cronToHuman } from './cron-parser'
 import { scheduleNextRun } from './cron-eval'
@@ -234,6 +234,9 @@ export function applyPauseAction(
       meta.enabled = false
       break
     case 'resume':
+      // Resuming a job that still has no task prompt would only re-pause on
+      // the next cycle — say why instead (fix the prompt, or remove the job).
+      if (meta.isBakinJob && !isTaskPrompt(meta.taskPrompt)) return { ok: false, error: NOT_A_PROMPT_REASON }
       meta.paused = false
       meta.pauseReason = undefined
       meta.pauseUntil = undefined
@@ -274,6 +277,13 @@ export async function updateScheduleJob(
     if (err instanceof TaskValidationError) return { ok: false, error: err.message }
     throw err
   }
+  // The validation above awaited: apply this edit to the LIVE record, so a
+  // pause (or any edit) made meanwhile is kept, not overwritten by the copy
+  // the caller loaded.
+  const live = getJob(meta.jobId)
+  if (!live) return { ok: false, error: 'Schedule not found' }
+  for (const key of Object.keys(meta)) delete (meta as unknown as Record<string, unknown>)[key]
+  Object.assign(meta, live)
   // Judge the prompt the job WOULD fire with before touching the record (D5):
   // an update that leaves the prompt alone keeps the existing one.
   if (fields.includes('taskPrompt')) {
@@ -304,6 +314,12 @@ export async function updateScheduleJob(
   if (typeof updates.teamId === 'string' && updates.teamId) meta.agentId = undefined
   if (meta.agentId === '') meta.agentId = undefined
   if (meta.teamId === '') meta.teamId = undefined
+  // The only reason this job was paused is gone once it carries a task prompt.
+  if (meta.paused && meta.pauseReason === UNRUNNABLE_PAUSE_REASON && isTaskPrompt(meta.taskPrompt)) {
+    meta.paused = false
+    meta.pauseReason = undefined
+    meta.enabled = true
+  }
   upsertJob(meta)
   return { ok: true, warnings: checkSchedulePrompt(meta.taskPrompt) }
 }

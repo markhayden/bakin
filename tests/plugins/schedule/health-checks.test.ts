@@ -238,6 +238,23 @@ describe('checkSchedulePrompts + remove-unrunnable-jobs (spec D5, plan review R2
     expect(unrunnableBakinJobs().map((j) => j.jobId)).toEqual(['dream', 'empty'])
   })
 
+  it('a job the scheduler already paused is a watch-level cleanup warning, still removable', async () => {
+    bakinJob('dream', '__openclaw_memory_core_short_term_promotion_dream__', 'dream')
+    upsertJob({ ...getJob('dream')!, paused: true, pauseReason: 'unrunnable-prompt', enabled: false })
+    const [row] = observations(await checkSchedulePrompts())
+    expect(row).toMatchObject({ key: 'unrunnable-dream', status: 'warning' })
+    expect(row!.incident).toMatchObject({ disposition: 'watch', class: 'cleanup_backlog', resolution: { actionId: 'remove-unrunnable-jobs' } })
+    expect(row!.incident).toMatchObject({ impact: expect.stringMatching(/Paused automatically/) })
+  })
+
+  it('an operator-paused unrunnable job says it needs a prompt AND a resume', async () => {
+    bakinJob('held', 'heartbeat', 'held')
+    upsertJob({ ...getJob('held')!, paused: true, pauseReason: 'manual', enabled: false })
+    const [row] = observations(await checkSchedulePrompts())
+    expect(row).toMatchObject({ status: 'warning' })
+    expect(row!.incident).toMatchObject({ disposition: 'watch', impact: expect.stringMatching(/task prompt and resume it/) })
+  })
+
   it('the plan freezes the exact job ids; apply removes ONLY those, skips what changed, never touches a job that appeared later', async () => {
     bakinJob('A', 'heartbeat')
     bakinJob('B', '')

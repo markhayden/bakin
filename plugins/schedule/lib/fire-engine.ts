@@ -12,11 +12,14 @@
 import { randomUUID } from 'crypto'
 import type { BakinJobMeta, BridgeResult } from '../types'
 import { getPluginCtx } from './plugin-context'
+import { indexJob } from './job-service'
+import { makeOccurrenceRunId } from './scheduler'
 import { getSystemTimezone, expandTemplate } from './schedule-util'
 import {
   upsertJob,
   getJob,
   isPaused,
+  pauseIfUnrunnable,
   shouldSkip,
   recordFailure,
   recordSuccess,
@@ -97,7 +100,7 @@ function storedTaskExists(taskId: string): boolean {
 
 // Every reason a fire can be skipped. 'job-removed' is the only one set outside
 // skipFire() — the healer consumes an orphaned claim with no live ctx to audit.
-type SkipReason = 'paused' | 'skip-count' | 'auto-paused' | 'overlap' | 'job-removed'
+type SkipReason = 'paused' | 'skip-count' | 'auto-paused' | 'unrunnable' | 'overlap' | 'job-removed'
 
 /** Record a skipped fire (ledger disposition + reason) AND surface it on the
  *  activity feed, so an overrunning or paused schedule shows up instead of
@@ -110,19 +113,46 @@ function skipFire(jobId: string, runId: string, reason: SkipReason): ProcessRunR
   return { status: 200, body: { ok: true, skipped: reason } }
 }
 
+/**
+ * Persist this fire's own fields onto the LATEST record. The fire awaits
+ * (team validation, task creation) between reading the job and writing it,
+ * and a whole-record write would undo a prompt fix, pause or edit made in
+ * between. A removed job stays removed.
+ */
+function writeLatest(jobId: string, mutate: (latest: BakinJobMeta) => void): void {
+  const latest = getJob(jobId)
+  if (!latest) return
+  mutate(latest)
+  upsertJob(latest)
+}
+
 export async function runClaimedFire(
-  meta: BakinJobMeta,
+  _claimed: BakinJobMeta,
   jobId: string,
   runId: string,
   opts: { column?: string; blockedReason?: string; firedAtMs?: number } = {},
 ): Promise<ProcessRunResult> {
-  const defaults = withDefaults(meta, await getScheduleDefaultOwner())
+  const owner = await getScheduleDefaultOwner()
+  // Judge the LIVE record: the caller's copy was read before the await
+  // above, and acting on it could undo a prompt fix or an operator's pause
+  // made in between.
+  const meta = getJob(jobId)
+  if (!meta) return skipFire(jobId, runId, 'job-removed')
+  const defaults = withDefaults(meta, owner)
 
   // Check pause state
   const pauseState = isPaused(meta)
   if (pauseState.paused) {
     upsertJob(meta) // persist any auto-resume changes
     return skipFire(jobId, runId, 'paused') // consumed — never healed into a task
+  }
+
+  // A Bakin job without a task prompt can never produce a runnable task —
+  // pause it instead of creating a doomed task every occurrence.
+  if (pauseIfUnrunnable(meta)) {
+    upsertJob(meta)
+    indexJob(jobId)
+    return skipFire(jobId, runId, 'unrunnable')
   }
 
   // Check skip-next-N
@@ -187,6 +217,12 @@ export async function runClaimedFire(
       }
     }
   }
+
+  // Persist the outcome bookkeeping NOW, while `meta` is still the record
+  // read after the last await: once task creation awaits, only this fire's
+  // own fields may be written (writeLatest), so an operator's Resume or edit
+  // in between survives.
+  upsertJob(meta)
 
   // Create the task. Label by the run's logical OCCURRENCE time, not wall-clock
   // creation time — a catch-up task for a missed run must read as the day it was
@@ -293,8 +329,7 @@ export async function runClaimedFire(
     // failed), fall through to attach it so the next heal can't duplicate it.
     if (!storedTaskExists(taskId)) {
       log.error('Schedule failed to create task', err)
-      recordFailure(meta)
-      upsertJob(meta)
+      writeLatest(jobId, (latest) => { recordFailure(latest) })
       return { status: 500, body: { ok: false, error: (err as Error).message } }
     }
     log.warn('Scheduled task row created but a post-create effect failed; attaching to claim to avoid a duplicate', {
@@ -302,16 +337,25 @@ export async function runClaimedFire(
     })
   }
 
-  meta.lastTaskId = taskId
-  // A one-shot's single occurrence is now consumed (even a blocked catch-up
-  // materialized a task) — auto-disable + stamp completedAt so the job reads
-  // "completed" instead of pretending a next run exists. Run history stays.
-  if (meta.schedule?.kind === 'at') {
-    meta.enabled = false
-    meta.completedAt = new Date(opts.firedAtMs ?? Date.now()).toISOString()
-  }
   attachCronTask(jobId, runId, taskId)
-  upsertJob(meta)
+  writeLatest(jobId, (latest) => {
+    latest.lastTaskId = taskId
+    // A one-shot's single occurrence is now consumed (even a blocked catch-up
+    // materialized a task) — auto-disable + stamp completedAt so the job reads
+    // "completed" instead of pretending a next run exists. Run history stays.
+    // Only the scheduled occurrence itself consumes it, so a job rescheduled
+    // since — even before a heal re-drives an old claim — stays live, and a
+    // manual run-now (an extra on-demand fire) never does.
+    // Identity = the canonical occurrence run id for the job's CURRENT
+    // instant (a manual run's uuid, an old instant, or a job id that merely
+    // looks like a manual prefix never match).
+    const sameOneShot = latest.schedule?.kind === 'at'
+      && runId === makeOccurrenceRunId(jobId, new Date(Date.parse(latest.schedule.expr)))
+    if (sameOneShot) {
+      latest.enabled = false
+      latest.completedAt = new Date(opts.firedAtMs ?? Date.now()).toISOString()
+    }
+  })
 
   // The human-readable dangling-team detail rides the task log (the
   // blockedReason itself is the triage sentinel the outcome check matches).

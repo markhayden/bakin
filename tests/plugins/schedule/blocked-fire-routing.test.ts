@@ -113,18 +113,21 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 import { __scheduleTestInternals, MISSED_WINDOW_REASON } from '@bakin/schedule/index'
-import { TEAM_ROUTING_BLOCK_REASON } from '@bakin/schedule/lib/fire-engine'
+import { runClaimedFire, TEAM_ROUTING_BLOCK_REASON } from '@bakin/schedule/lib/fire-engine'
 import { TEAM_ROUTING_EXHAUSTED_REASON } from '../../../src/core/dispatch-types'
 import { closeDb } from '../../../packages/core/src/storage/db'
+import { waitUntil } from '../../helpers/wait'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 const { fireScheduledRunFromPayload, setPluginCtxForTests } = __scheduleTestInternals
+const mockSearchIndex = mock(async (_key: string, _doc: Record<string, unknown>) => undefined)
 
 function makeCtx() {
   return {
     pluginId: 'schedule',
     runtime: createMockRuntimeAdapter(),
     activity: { log: mock(), audit: mock() },
+    search: { index: mockSearchIndex },
     hooks: { register: mock(), has: mockHookRegistry.has, invoke: mockHookRegistry.invoke },
     getSettings: mock(() => ({})),
     updateSettings: mock(),
@@ -468,5 +471,133 @@ describe('dangling teamId fires gracefully (review R6)', () => {
     expect(createdTaskOpts[0]?.team).toBe('unavailable-team')
     expect(createdTaskOpts[0]?.column).toBe('todo')
     expect(createdTaskOpts[0]?.blockedReason).toBeUndefined()
+  })
+})
+
+describe('unrunnable Bakin schedules pause instead of firing (spec D5)', () => {
+  it('a Bakin job whose prompt is a marker token is paused, no task is created, and the fire is skipped', async () => {
+    upsertJob(makeMeta({ taskPrompt: '__openclaw_memory_core_short_term_promotion_dream__', enabled: true }))
+
+    const result = await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-dream', timestamp: '2026-06-08T07:00:00Z' })
+
+    expect(result.body).toMatchObject({ ok: true, skipped: 'unrunnable' })
+    expect(mockCreateTask).not.toHaveBeenCalled()
+    expect(getJob('release-notes')).toMatchObject({ paused: true, pauseReason: 'unrunnable-prompt', enabled: false })
+    // Search learns it is no longer enabled.
+    await waitUntil(() => mockSearchIndex.mock.calls.some(([key, doc]) => key === 'release-notes' && doc.enabled === 'false'), { label: 'paused job reindexed' })
+  })
+
+  it('judges the LIVE record: a prompt fixed after the fire loaded its meta fires with the new prompt', async () => {
+    upsertJob(makeMeta({ taskPrompt: 'heartbeat' }))
+    const stale = getJob('release-notes')!
+    upsertJob({ ...stale, taskPrompt: 'Curate the fixed release notes' })
+
+    await runClaimedFire(stale, 'release-notes', 'run-fixed', { firedAtMs: Date.parse('2026-06-08T07:00:00Z') })
+
+    expect(getJob('release-notes')).toMatchObject({ taskPrompt: 'Curate the fixed release notes' })
+    expect(getJob('release-notes')!.paused).toBeFalsy()
+    expect(createdTaskOpts.at(-1)).toMatchObject({ description: 'Curate the fixed release notes' })
+  })
+
+  it('never persists a stale record over an operator pause made after the fire loaded its meta', async () => {
+    upsertJob(makeMeta({ taskPrompt: 'heartbeat' }))
+    const stale = getJob('release-notes')!
+    upsertJob({ ...stale, paused: true, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z', enabled: false })
+
+    await runClaimedFire(stale, 'release-notes', 'run-held', { firedAtMs: Date.parse('2026-06-08T07:00:00Z') })
+
+    expect(getJob('release-notes')).toMatchObject({ pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z' })
+    expect(mockCreateTask).not.toHaveBeenCalled()
+  })
+
+  it('a prompt fixed AND paused by the operator before the fire acts: no task, both changes kept', async () => {
+    upsertJob(makeMeta({ taskPrompt: 'heartbeat' }))
+    const stale = getJob('release-notes')!
+    upsertJob({ ...stale, taskPrompt: 'Curate the fixed release notes', paused: true, pauseReason: 'manual', enabled: false })
+
+    await runClaimedFire(stale, 'release-notes', 'run-fixed-held', { firedAtMs: Date.parse('2026-06-08T07:00:00Z') })
+
+    expect(mockCreateTask).not.toHaveBeenCalled()
+    expect(getJob('release-notes')).toMatchObject({ taskPrompt: 'Curate the fixed release notes', paused: true, pauseReason: 'manual' })
+  })
+
+  it('an edit made while the task is being created survives the fire writing lastTaskId', async () => {
+    upsertJob(makeMeta())
+    mockCreateTask.mockImplementationOnce(async (opts?: unknown) => {
+      // The operator pauses and renames the job mid-fire.
+      upsertJob({ ...getJob('release-notes')!, displayName: 'Renamed mid-fire', paused: true, pauseReason: 'manual', enabled: false })
+      const o = (opts ?? {}) as Record<string, unknown>
+      createdTasks.push(o.id as string)
+      createdTaskOpts.push(o)
+      return { id: o.id as string, workflowId: undefined }
+    })
+
+    await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-mid-edit', timestamp: '2026-06-08T07:00:00Z' })
+
+    const job = getJob('release-notes')!
+    expect(job).toMatchObject({ displayName: 'Renamed mid-fire', paused: true, pauseReason: 'manual' })
+    expect(job.lastTaskId).toBe(createdTasks.at(-1))
+  })
+
+  it('a failed creation after a recorded success counts from the reset, not the stale failures', async () => {
+    upsertJob(makeMeta({ lastTaskId: 'task-done', consecutiveFailures: 2, maxFailures: 3 }))
+    emptyBoard.columns.done.push({ id: 'task-done' })
+    mockCreateTask.mockImplementationOnce(async () => { throw new Error('create failed') })
+
+    await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-create-fails', timestamp: '2026-06-08T07:00:00Z' })
+
+    expect(getJob('release-notes')).toMatchObject({ consecutiveFailures: 1 })
+    expect(getJob('release-notes')!.paused).toBeFalsy()
+  })
+
+  it('an operator Resume during task creation keeps its reset failure count', async () => {
+    upsertJob(makeMeta({ consecutiveFailures: 1 }))
+    mockCreateTask.mockImplementationOnce(async (opts?: unknown) => {
+      upsertJob({ ...getJob('release-notes')!, consecutiveFailures: 0 })
+      const o = (opts ?? {}) as Record<string, unknown>
+      createdTasks.push(o.id as string)
+      return { id: o.id as string, workflowId: undefined }
+    })
+
+    await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-resume-mid', timestamp: '2026-06-08T07:00:00Z' })
+
+    expect(getJob('release-notes')!.consecutiveFailures).toBe(0)
+  })
+
+  it('a one-shot rescheduled during task creation stays live', async () => {
+    upsertJob(makeMeta({ schedule: { kind: 'at', expr: '2026-06-08T07:00:00Z' }, enabled: true }))
+    mockCreateTask.mockImplementationOnce(async (opts?: unknown) => {
+      upsertJob({ ...getJob('release-notes')!, schedule: { kind: 'cron', expr: '0 7 * * *' } })
+      const o = (opts ?? {}) as Record<string, unknown>
+      createdTasks.push(o.id as string)
+      return { id: o.id as string, workflowId: undefined }
+    })
+
+    await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-resched', timestamp: '2026-06-08T07:00:00Z' })
+
+    const job = getJob('release-notes')!
+    expect(job.schedule).toEqual({ kind: 'cron', expr: '0 7 * * *' })
+    expect(job.enabled).toBe(true)
+    expect(job.completedAt).toBeUndefined()
+  })
+
+  it('a one-shot rescheduled to a new instant before the fire acts is NOT consumed by the old claim', async () => {
+    upsertJob(makeMeta({ schedule: { kind: 'at', expr: '2026-06-08T07:00:00Z' }, enabled: true }))
+    const claimed = getJob('release-notes')!
+    upsertJob({ ...claimed, schedule: { kind: 'at', expr: '2026-06-09T07:00:00Z' } })
+
+    await runClaimedFire(claimed, 'release-notes', 'run-old-instant', { firedAtMs: Date.parse('2026-06-08T07:00:00Z') })
+
+    const job = getJob('release-notes')!
+    expect(job.schedule).toEqual({ kind: 'at', expr: '2026-06-09T07:00:00Z' })
+    expect(job.enabled).toBe(true)
+    expect(job.completedAt).toBeUndefined()
+  })
+
+  it('a runnable prompt still fires normally', async () => {
+    upsertJob(makeMeta())
+    await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-ok', timestamp: '2026-06-08T07:00:00Z' })
+    expect(mockCreateTask).toHaveBeenCalledTimes(1)
+    expect(getJob('release-notes')!.paused).toBeFalsy()
   })
 })

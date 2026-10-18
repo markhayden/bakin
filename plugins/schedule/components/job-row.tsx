@@ -23,7 +23,9 @@ export function JobStatusBadge({ job }: { job: ScheduleJob }) {
   if (job.paused) {
     const label = job.pauseReason === 'auto-failures'
       ? 'Auto-paused'
-      : job.pauseUntil
+      : job.pauseReason === 'unrunnable-prompt'
+        ? 'Needs a prompt'
+        : job.pauseUntil
         ? `Paused until ${new Date(job.pauseUntil).toLocaleDateString()}`
         : 'Paused'
     return <StatusBadge tone="attention" variant="solid" size="xs">{label}</StatusBadge>
@@ -153,9 +155,12 @@ export function JobActionsMenu({
         )}
         <DropdownMenuSeparator />
         {job.paused ? (
-          <DropdownMenuItem onClick={onResume}>
-            <RotateCcw /> Resume
-          </DropdownMenuItem>
+          // A job paused for having no task prompt can only be fixed (edit) or removed.
+          job.pauseReason !== 'unrunnable-prompt' && (
+            <DropdownMenuItem onClick={onResume}>
+              <RotateCcw /> Resume
+            </DropdownMenuItem>
+          )
         ) : (
           job.enabled ? (
             <DropdownMenuItem onClick={onPause}>

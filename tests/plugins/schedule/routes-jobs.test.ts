@@ -142,6 +142,7 @@ mock.module('@bakin/schedule/lib/cron-parser', () => harness.cronParserModule())
 import { activatePlugin, findRoute, callRoute } from '../test-helpers'
 const schedulePlugin = (await import('@bakin/schedule/index')).default
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
+import { updateScheduleJob } from '@bakin/schedule/lib/job-service'
 import { claimCronFire, attachCronTask, markCronFireSkipped } from '../../../src/core/execution-ledger'
 import { closeDb } from '../../../packages/core/src/storage/db'
 
@@ -429,6 +430,44 @@ describe('schedule routes', () => {
       expect(String(body.error)).toContain('not a task prompt')
       expect(getJob('keep-prompt')).toMatchObject({ taskPrompt: 'Generate the report' })
       expect(getJob('keep-prompt')!.displayName).not.toBe('Renamed')
+    })
+
+    it('giving an unrunnable-paused job a task prompt lifts that pause', async () => {
+      upsertJob(makeMeta({ jobId: 'job-fixed', taskPrompt: 'heartbeat', paused: true, enabled: false, pauseReason: 'unrunnable-prompt' }))
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      const { status } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-fixed' },
+        body: { taskPrompt: 'Summarize yesterday in the team channel' },
+      })
+      expect(status).toBe(200)
+      expect(getJob('job-fixed')).toMatchObject({ paused: false, enabled: true })
+      expect(getJob('job-fixed')!.pauseReason).toBeUndefined()
+    })
+
+    it('fixing the prompt of a manually paused unrunnable job keeps the manual pause and its date', async () => {
+      upsertJob(makeMeta({ jobId: 'job-manual-bad', taskPrompt: 'heartbeat', paused: true, enabled: false, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z' }))
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      const { status } = await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-manual-bad' }, body: { taskPrompt: 'Summarize the weekly report' } })
+      expect(status).toBe(200)
+      expect(getJob('job-manual-bad')).toMatchObject({ taskPrompt: 'Summarize the weekly report', paused: true, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z', enabled: false })
+    })
+
+    it('a pause made while a prompt fix awaits validation is kept (the edit applies to the live record)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-race', taskPrompt: 'heartbeat', paused: true, enabled: false, pauseReason: 'unrunnable-prompt' }))
+      const loaded = getJob('job-race')!
+      // The operator pauses it manually while the save is validating.
+      upsertJob({ ...loaded, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z' })
+      const result = await updateScheduleJob(loaded, { taskPrompt: 'Write the weekly summary' }, ['taskPrompt'])
+      expect(result.ok).toBe(true)
+      expect(getJob('job-race')).toMatchObject({ taskPrompt: 'Write the weekly summary', paused: true, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z', enabled: false })
+    })
+
+    it('a manual pause survives a prompt edit', async () => {
+      upsertJob(makeMeta({ jobId: 'job-manual', taskPrompt: 'Generate the report', paused: true, enabled: false, pauseReason: 'manual' }))
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      const { status } = await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-manual' }, body: { taskPrompt: 'Generate the weekly report' } })
+      expect(status).toBe(200)
+      expect(getJob('job-manual')).toMatchObject({ taskPrompt: 'Generate the weekly report', paused: true, pauseReason: 'manual' })
     })
 
     it('updates sidecar fields for an existing job', async () => {
@@ -824,6 +863,18 @@ describe('schedule routes', () => {
       const meta = getJob('job-pause')
       expect(meta!.paused).toBe(true)
       expect(meta!.pauseReason).toBe('manual')
+    })
+
+    it('refuses to resume a job paused for having no task prompt (it would only re-pause)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-dream', taskPrompt: 'heartbeat', paused: true, enabled: false, pauseReason: 'unrunnable-prompt' }))
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/pause')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-dream' },
+        body: { action: 'resume' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('not a task prompt')
+      expect(getJob('job-dream')).toMatchObject({ paused: true, pauseReason: 'unrunnable-prompt' })
     })
 
     it('pauses with pauseUntil date', async () => {

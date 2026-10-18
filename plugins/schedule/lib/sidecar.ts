@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
 import type { ScheduleSidecar, BakinJobMeta } from '../types'
+import { isTaskPrompt } from './prompt-guard'
 
 const log = createLogger('schedule:sidecar')
 
@@ -172,6 +173,46 @@ export function resumeDuePauses(now: number = Date.now()): number {
   }
   if (resumed > 0) writeSidecar(sidecar)
   return resumed
+}
+
+/**
+ * Pause reason for a Bakin schedule whose prompt is not a task prompt (spec
+ * D5). Create/update/adopt already refuse such prompts; this catches legacy
+ * rows written before that guard, which would otherwise fire a doomed task on
+ * every occurrence. Reversible: fixing the prompt lifts the pause, and
+ * removing the job is the Health repair.
+ */
+export const UNRUNNABLE_PAUSE_REASON = 'unrunnable-prompt'
+
+/** Pause `meta` as unrunnable when it is a Bakin job without a task prompt. Returns true when it was paused now. */
+export function pauseIfUnrunnable(meta: BakinJobMeta): boolean {
+  if (!meta.isBakinJob || isTaskPrompt(meta.taskPrompt)) return false
+  // An existing pause (manual, timed, auto-failures, or this one) already
+  // stops it firing and is the operator's state — never overwrite it. A
+  // timed pause that lapses is re-checked on the same cycle it resumes.
+  if (meta.paused) return false
+  meta.paused = true
+  meta.pauseReason = UNRUNNABLE_PAUSE_REASON
+  meta.pauseUntil = undefined
+  meta.enabled = false // skip at the scheduler gate, like every other pause
+  return true
+}
+
+/**
+ * Pause every Bakin schedule that can never run (boot + each scheduler
+ * cycle, before any fire). Returns the paused job ids.
+ */
+export function pauseUnrunnableJobs(): string[] {
+  const sidecar = readSidecar()
+  const paused: string[] = []
+  for (const meta of Object.values(sidecar.jobs)) {
+    if (pauseIfUnrunnable(meta)) paused.push(meta.jobId)
+  }
+  if (paused.length > 0) {
+    writeSidecar(sidecar)
+    log.warn('Paused Bakin schedules without a runnable task prompt', { jobIds: paused })
+  }
+  return paused
 }
 
 /** Check and handle skip-next-N logic. Returns true if this run should be skipped. */

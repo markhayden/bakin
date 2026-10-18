@@ -24,7 +24,9 @@ export function PauseControls({
   if (job.paused) {
     const description = job.pauseReason === 'auto-failures'
       ? `Auto-paused after ${job.maxFailures} consecutive failures`
-      : job.pauseUntil
+      : job.pauseReason === 'unrunnable-prompt'
+        ? 'Paused automatically: its prompt is not a task an agent can act on. Edit the prompt to resume it, or remove the job.'
+        : job.pauseUntil
         ? `Paused until ${new Date(job.pauseUntil).toLocaleDateString()}`
         : 'Manually paused'
 
@@ -32,9 +34,11 @@ export function PauseControls({
       <Alert tone="attention">
         <AlertTitle>This job is paused</AlertTitle>
         <AlertDescription>{description}</AlertDescription>
-        <Button size="xs" variant="outline" onClick={() => onResume(job.id)}>
-          <Play aria-hidden="true" /> Resume
-        </Button>
+        {job.pauseReason !== 'unrunnable-prompt' && (
+          <Button size="xs" variant="outline" onClick={() => onResume(job.id)}>
+            <Play aria-hidden="true" /> Resume
+          </Button>
+        )}
       </Alert>
     )
   }

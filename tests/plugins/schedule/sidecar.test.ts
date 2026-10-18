@@ -47,6 +47,8 @@ import {
   recordSuccess,
   newScheduleId,
   resumeDuePauses,
+  pauseUnrunnableJobs,
+  UNRUNNABLE_PAUSE_REASON,
 } from '@bakin/schedule/lib/sidecar'
 import type { BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
 
@@ -263,6 +265,33 @@ describe('schedule/sidecar', () => {
       expect(resumed).toBe(0)
       expect(getJob('future')!.enabled).toBe(false)
       expect(getJob('manual')!.paused).toBe(true)
+    })
+  })
+
+  describe('pauseUnrunnableJobs', () => {
+    it('pauses only Bakin jobs without a task prompt, once', () => {
+      upsertJob(makeMeta({ jobId: 'marker', taskPrompt: 'heartbeat', enabled: true }))
+      upsertJob(makeMeta({ jobId: 'empty', taskPrompt: undefined, enabled: true }))
+      upsertJob(makeMeta({ jobId: 'good', taskPrompt: 'Post the daily recipe', enabled: true }))
+      upsertJob(makeMeta({ jobId: 'runtime', isBakinJob: false, taskPrompt: 'heartbeat', enabled: true }))
+
+      expect(pauseUnrunnableJobs().sort()).toEqual(['empty', 'marker'])
+      expect(getJob('marker')).toMatchObject({ paused: true, pauseReason: UNRUNNABLE_PAUSE_REASON, enabled: false })
+      expect(getJob('good')!.paused).toBeFalsy()
+      expect(getJob('runtime')!.paused).toBeFalsy()
+      expect(pauseUnrunnableJobs()).toEqual([]) // idempotent
+    })
+
+    it('never overwrites an existing pause; a lapsed timed pause is re-checked and contained', () => {
+      upsertJob(makeMeta({ jobId: 'manual', taskPrompt: '', paused: true, enabled: false, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z' }))
+      upsertJob(makeMeta({ jobId: 'lapsed', taskPrompt: '', paused: true, enabled: false, pauseReason: 'manual', pauseUntil: '2020-01-01T00:00:00Z' }))
+      expect(pauseUnrunnableJobs()).toEqual([])
+      expect(getJob('manual')).toMatchObject({ pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z' })
+
+      // The scheduler cycle order: resume lapsed pauses, then contain.
+      expect(resumeDuePauses()).toBe(1)
+      expect(pauseUnrunnableJobs()).toEqual(['lapsed'])
+      expect(getJob('lapsed')).toMatchObject({ paused: true, pauseReason: UNRUNNABLE_PAUSE_REASON, enabled: false })
     })
   })
 

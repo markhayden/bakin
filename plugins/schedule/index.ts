@@ -5,7 +5,7 @@
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin } from '@bakin/core/routing'
 import { readMergedJobs } from './lib/jobs-reader'
-import { readSidecar, resumeDuePauses } from './lib/sidecar'
+import { pauseUnrunnableJobs, readSidecar, resumeDuePauses } from './lib/sidecar'
 import { runStartupCatchUp } from './lib/scheduler'
 import { checkScheduleCutover, scheduleCutoverRepair, checkScheduleSync, scheduleSyncRepair, checkSchedulePrompts, scheduleUnrunnableJobsRepair } from './lib/health-checks'
 import { setPluginCtx, getPluginCtx } from './lib/plugin-context'
@@ -27,6 +27,7 @@ import {
 } from './lib/scheduler-loop'
 import {
   ensureBakinJob,
+  indexJob,
   readMergedRuntimeJobs,
   jobToSearchDoc,
 } from './lib/job-service'
@@ -191,6 +192,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
     // caught up rather than left dormant by the enabled-gate.
     try {
       resumeDuePauses()
+      pauseUnrunnableJobs().forEach(indexJob)
       await runStartupCatchUp(schedulerDeps(), catchUpWindowMs())
     } catch (err) {
       log.error('Schedule startup catch-up failed', err)
