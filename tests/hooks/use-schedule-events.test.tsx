@@ -77,6 +77,21 @@ describe('useScheduleJobs', () => {
   })
 })
 
+describe('agent deletion', () => {
+  it('both views refresh when an agent (and so its native cron jobs) is deleted', async () => {
+    renderHook(() => useScheduleJobs())
+    renderHook(() => useOccurrences('2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z'))
+    await waitFor(() => expect([jobFetches, occurrenceFetches]).toEqual([1, 1]))
+    await audit('team.agent.deleted')
+    await waitFor(() => expect([jobFetches, occurrenceFetches]).toEqual([2, 2]))
+    await audit('agent_pkg.removed')
+    await waitFor(() => expect([jobFetches, occurrenceFetches]).toEqual([3, 3]))
+    await audit('team.agent.created')
+    await settleFor(50, 'creating an agent changes no schedule')
+    expect([jobFetches, occurrenceFetches]).toEqual([3, 3])
+  })
+})
+
 describe('unmount', () => {
   it('a refresh queued behind an in-flight one never starts after unmount', async () => {
     let release!: () => void

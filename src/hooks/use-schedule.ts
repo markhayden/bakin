@@ -10,6 +10,18 @@ function auditEventOf(payload: PluginEventPayload): string | undefined {
 }
 
 /**
+ * Deleting an agent removes its native runtime cron jobs (OpenClaw keeps
+ * them per agent) — the runtime's change, so no schedule write signals it;
+ * the deletion's own audit does.
+ */
+const AGENT_REMOVED_AUDITS = new Set(['team.agent.deleted', 'agent_pkg.removed'])
+
+function isAgentRemoval(payload: PluginEventPayload): boolean {
+  const event = auditEventOf(payload)
+  return event !== undefined && AGENT_REMOVED_AUDITS.has(event)
+}
+
+/**
  * Refetch on a signal without stacking requests: one in flight at a time, and
  * one trailing run when signals arrived meanwhile — a burst of schedule
  * writes (a tick's fires) costs at most two requests, never one per write.
@@ -133,6 +145,7 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
   // repairs) signals `schedule.changed` on the shell's one stream (#990).
   const refreshJobs = useCoalescedRefresh(fetchJobs)
   usePluginEvent('schedule.changed', refreshJobs)
+  usePluginEvent('bakin.audit', (payload) => { if (isAgentRemoval(payload)) refreshJobs() })
   usePluginEvent('bakin.reconcile', refreshJobs)
 
   // Apply client-side filters
@@ -335,7 +348,7 @@ export function useOccurrences(fromIso: string, toIso: string) {
   usePluginEvent('schedule.changed', refreshOccurrences)
   usePluginEvent('taskboard', refreshOccurrences)
   usePluginEvent('bakin.audit', (payload) => {
-    if (auditEventOf(payload)?.endsWith('.scheduled_events_changed')) refreshOccurrences()
+    if (auditEventOf(payload)?.endsWith('.scheduled_events_changed') || isAgentRemoval(payload)) refreshOccurrences()
   })
   usePluginEvent('bakin.reconcile', refreshOccurrences)
 
