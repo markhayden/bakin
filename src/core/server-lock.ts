@@ -54,6 +54,37 @@ export function readLiveServerLock(): ServerLock | null {
   return lock && isPidAlive(lock.pid) ? lock : null
 }
 
+/**
+ * Which server a client process talks to (#895 D11) — the ONE rule for the
+ * CLI and every core probe that runs outside the server:
+ * - an explicit `BAKIN_URL` is used as given (unreachable is an error);
+ * - otherwise the live `server.lock` in this home gives the port — a lock
+ *   without a valid port is no target;
+ * - otherwise no server is running for this home. Never a guess at port
+ *   3737, which may belong to another home. (`baseUrl` on `none` is for
+ *   display only.)
+ */
+export interface CliTarget {
+  baseUrl: string
+  source: 'env' | 'lock' | 'none'
+  pid?: number
+}
+
+export function resolveCliTarget(
+  env: Record<string, string | undefined>,
+  lock: Pick<ServerLock, 'pid' | 'port'> | null,
+): CliTarget {
+  if (env.BAKIN_URL) return { baseUrl: env.BAKIN_URL.replace(/\/+$/, ''), source: 'env' }
+  if (lock && Number.isInteger(lock.port) && lock.port > 0) return { baseUrl: `http://localhost:${lock.port}`, source: 'lock', pid: lock.pid }
+  return { baseUrl: `http://localhost:${env.PORT || 3737}`, source: 'none' }
+}
+
+/** This home's server base URL resolved NOW (re-reads the lock), or null when none runs. */
+export function liveServerBaseUrl(env: Record<string, string | undefined> = process.env): string | null {
+  const target = resolveCliTarget(env, readLiveServerLock())
+  return target.source === 'none' ? null : target.baseUrl
+}
+
 function isPidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)

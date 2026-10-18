@@ -88,6 +88,9 @@ export async function startIsolatedServer(options: IsolatedServerOptions = {}): 
     BAKIN_DISABLE_FILE_LOG: '1',
     BAKIN_CONSOLE_FORMAT: 'json',
     PORT: String(port),
+    // The child's own origin: the suite's forced dead BAKIN_URL must not
+    // leak into the links (approval cards, deep links) this server renders.
+    BAKIN_URL: `http://127.0.0.1:${port}`,
     NODE_ENV: 'test',
   })
   for (const [key, value] of Object.entries(options.env ?? {})) {

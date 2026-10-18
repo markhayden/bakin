@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { setupTtyCliHarness } from './helpers/tty-cli-harness'
 import * as nodeFs from 'node:fs'
 import * as nodeOs from 'node:os'
+import * as realServerLock from '../../src/core/server-lock'
 
 const execFileSync = mock((..._args: unknown[]) => '')
 const existsSync = mock(() => false)
@@ -30,6 +31,14 @@ mock.module('fs', () => ({
 mock.module('os', () => ({
   ...nodeOs,
   homedir,
+}))
+
+// Lifecycle verification reads THIS home's live server.lock: the started or
+// restarted server answers on 3737.
+const serverLock = { ...realServerLock }
+mock.module('../../src/core/server-lock', () => ({
+  ...serverLock,
+  liveServerBaseUrl: () => 'http://localhost:3737',
 }))
 
 const harness = setupTtyCliHarness()
