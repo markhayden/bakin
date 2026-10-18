@@ -48,7 +48,7 @@ describe('bakin plugins restore CLI dispatch', () => {
 
     expect(result).toEqual({ startServer: false, exitCode: 0 })
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost:3737/api/plugins/restore',
+      `${process.env.BAKIN_URL}/api/plugins/restore`,
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({

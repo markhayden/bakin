@@ -119,6 +119,8 @@ Assets register with the search system as a file-backed content type, table `bak
 - **Text**: description, tags, generation surface (so "instagram" finds `instagram-feed-portrait` images), and extracted content (PDF text, markdown, plain text, JSON, CSV, YAML).
 - **Visual** (raster images only): a CLIP embedding of the current version's image.
 
+**Vision enrichment** adds a caption, OCR text, and suggested tags to each new version (when enabled in Settings). Vision models only accept PNG, JPEG, WebP, and GIF, so Bakin converts other images first: an SVG logo is rendered to a PNG before it is sent, and Bakin checks a file's actual bytes rather than its name, so a mislabeled file is converted instead of rejected. An image that can't be converted (a BMP, or a broken file) is marked **skipped** with the reason and is never billed; uploading a new version gets it a fresh attempt. If image processing isn't installed yet, run `bakin install media` — enrichment retries on its own once it is.
+
 Facets for filtering: `asset_type`, `agent`, `tool`, `tags_facet`, `provider`, `model` — so "everything made with gpt-image-2" is one facet away. Cross-table search reaches assets, tasks, projects, memory, and everything else in one query. If anything looks stale, reindex from the [Health](/docs/using/health/) page.
 
 ## Trash and recovery

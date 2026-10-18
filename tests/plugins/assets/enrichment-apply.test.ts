@@ -88,8 +88,10 @@ describe('enrichment apply', () => {
     expect(getAsset(assetId)?.enrichment?.status).toBe('failed')
     expect(getAsset(assetId)?.enrichment?.error).toBe('provider exploded')
 
-    await markEnrichmentSkipped(assetId, 'no audio-capable model configured')
+    await markEnrichmentSkipped(assetId, 1, 'no audio-capable model configured')
     expect(getAsset(assetId)?.enrichment?.status).toBe('skipped')
+    // A skip is a verdict on ONE version (#855) — a newer upload is retried.
+    expect(getAsset(assetId)?.enrichment?.forVersion).toBe(1)
 
     await markEnrichmentPending(assetId)
     expect(getAsset(assetId)?.enrichment?.status).toBe('pending')

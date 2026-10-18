@@ -56,6 +56,20 @@ export function mimeTypeForImagePath(path: string): string | null {
   return null
 }
 
+/**
+ * The ONLY image types vision-capable model providers accept as image input
+ * (#855). Everything else — SVG, BMP, TIFF, HEIC — must be converted to one
+ * of these first (`prepareImageAttachment`) or kept off the image lane.
+ * One set for every surface that sends images to a model: chat, channel
+ * inbound, the conversation turn engine, and asset enrichment.
+ */
+export const VISION_RASTER_MIMES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+
+/** True when a model's image lane accepts this mime as-is (parameters and casing ignored). */
+export function isVisionRasterMime(mimeType: string): boolean {
+  return VISION_RASTER_MIMES.has(mimeType.split(';')[0]?.trim().toLowerCase() ?? '')
+}
+
 export function extensionForImageMime(mimeType: string): string {
   const normalized = mimeType.split(';')[0]?.trim().toLowerCase() ?? ''
   return MIME_TO_EXTENSION[normalized] ?? 'png'

@@ -22,10 +22,12 @@
 import type { AgentRuntimeAdapter, RuntimeCredentialStatus } from '@bakin/core/adapters/runtime'
 import { CHANNELS_SETTINGS_HREF, projectChannelReadiness, type ChannelReadiness } from '@bakin/core/delivery'
 import { SECRET_SLOT, resolveSecretSlotStatus } from '@bakin/core/secrets'
+import { resolveCliTarget } from '../../cli/http'
 import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
 import { getChannelReadiness, isChannelReadinessStarted } from '../delivery/readiness'
 import { DEFAULT_RUNTIME_ADAPTER_SUPPORT } from '../runtime-adapter-factory'
+import { readLiveServerLock } from '../server-lock'
 import { getSettings } from '../settings'
 import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 
@@ -112,8 +114,14 @@ export const llmComponent: OnboardingComponent = {
  */
 const SERVER_PROBE_TIMEOUT_MS = 3_000
 
-function channelsBaseUrl(): string {
-  return process.env.BAKIN_URL || `http://localhost:${process.env.PORT || 3737}`
+/**
+ * The CLI's own target rule (#895 D11): BAKIN_URL, else THIS home's live
+ * server.lock — never a guess at port 3737, which may be another home's
+ * server. Null = no server for this home → configuration-only mode.
+ */
+function channelsBaseUrl(): string | null {
+  const target = resolveCliTarget(process.env, readLiveServerLock())
+  return target.source === 'none' ? null : target.baseUrl
 }
 
 function serverModeResult(readiness: ChannelReadiness, via: 'in-process' | 'http'): CheckResult {
@@ -231,8 +239,10 @@ async function configurationOnlyResult(): Promise<CheckResult> {
 }
 
 async function fetchServerReadiness(): Promise<ChannelReadiness | null> {
+  const baseUrl = channelsBaseUrl()
+  if (!baseUrl) return null
   try {
-    const response = await fetch(`${channelsBaseUrl()}/api/channels`, { signal: AbortSignal.timeout(SERVER_PROBE_TIMEOUT_MS) })
+    const response = await fetch(`${baseUrl}/api/channels`, { signal: AbortSignal.timeout(SERVER_PROBE_TIMEOUT_MS) })
     if (!response.ok) return null
     return await response.json() as ChannelReadiness
   } catch (err) {

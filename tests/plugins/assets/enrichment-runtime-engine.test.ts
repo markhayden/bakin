@@ -68,8 +68,8 @@ function scriptedRuntime(replies: Array<string | Error>): { runtime: AgentRuntim
   return { runtime, sent }
 }
 
-// Real file on disk: the engine stats + downscale-gates attachments before
-// sending (fake paths would fail the size check, correctly).
+// The queue prepares media before the engine runs (#855); the engine sends
+// the path it is given as-is. A real file keeps the fixture honest.
 const fixtureImage = join(testDir, 'v1.png')
 mkdirSync(testDir, { recursive: true })
 writeFileSync(fixtureImage, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))

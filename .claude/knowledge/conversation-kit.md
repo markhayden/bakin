@@ -80,6 +80,6 @@ Server helpers (`@makinbakin/sdk/utils`): `conversationThreadId(scope, entityId,
 ## Related
 
 - `MarkdownContent` (used by text items): rehype-highlight (lowlight common subset) with language label + copy button, lazy images + lightbox portal, `<video>` for video URLs, safe external links.
-- Media downscale for attachments: `@bakin/core/media/downscale` (2 MB inline-cap shim shared with assets enrichment); loader `@bakin/core/media/sharp-loader`.
+- Media prep for attachments: `@bakin/core/media/downscale` (`prepareImageAttachment` — the ONE pre-send seam shared with assets enrichment; 2 MB inline cap, rasterizes non-raster images, typed `ImageNotSendableError`, `owned` temp files); raster lane eligibility is `isVisionRasterMime` from `@bakin/core/media/image-format` (the engine's `isRasterAttachment` uses it); loader `@bakin/core/media/sharp-loader`.
 - Consumers: chat plugin (`.claude/knowledge/chat-plugin.md`), bits messaging/projects (external repo), task step viewer + workflow step drawer (via `TurnOutputView` wrapper).
 - Testing: kit component suites under `tests/components/` (`conversation-kit`, `activity-group-drawer`, `composer`, `conversation-panel`), fold/stream units under `tests/sdk/`.

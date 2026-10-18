@@ -33,8 +33,29 @@ per-case (a `mock.module('sharp', …)` factory evaluates eagerly and the repo's
 devDependency sharp would otherwise satisfy the bundled leg in every test).
 
 Consumers (all degrade through the loader, never import sharp directly):
-- `packages/core/src/media/downscale.ts` — pre-send downscale for enrichment
-  AND chat attachments; throws with remediation when sharp is missing.
+- `packages/core/src/media/downscale.ts` — THE pre-send image seam for
+  enrichment AND chat attachments (`prepareImageAttachment`): vision-raster
+  under the 2 MB cap passes through — proven by MAGIC BYTES
+  (`raster-sniff.ts`, shared with chat's Discord inbound), never by name or
+  declared mime, and sent with the sniffed mime; with sharp present the
+  passthrough must also FULLY DECODE — streamed into a 64px shrink so memory
+  stays bounded (a truncated file with a valid header is `unrasterizable`,
+  never a billed failure; a read error stays untyped/retryable); oversized
+  raster → JPEG;
+  any other image
+  (SVG, TIFF, HEIF) is RASTERIZED (#855) — PNG first (keeps logo
+  transparency), JPEG on white when the PNG would not fit, small vector art
+  density-scaled to a 1024px long edge, first frame/page only, 100 MP decode
+  bound. Failures are typed `ImageNotSendableError.reason`
+  (`sharp_unavailable` | `unrasterizable` | `too_large`) — branch on the
+  reason, never the text; the source is READ with fs and sharp decodes
+  bytes in memory, so only a decode failure is `unrasterizable` — an
+  unreadable source or a temp-file write error stays a plain fs error. `PreparedAttachment.owned` marks a temp file the caller releases
+  with `cleanupPreparedAttachment` (no leak on any throw path). The pinned
+  sharp build decodes jpeg/png/webp/gif/tiff/heif/svg — NOT bmp.
+  Which mimes a model's image lane accepts is ONE set:
+  `VISION_RASTER_MIMES` / `isVisionRasterMime` in `image-format.ts` — never
+  hand-copy it.
 - `plugins/assets/lib/asset-media.ts` — thumbnails (ffmpeg fallback), dimensions.
 - `plugins/assets/lib/asset-mutations.ts` — image exports; throws with remediation.
 - `plugins/images/lib/tools.ts` — generated-image dimension probing.

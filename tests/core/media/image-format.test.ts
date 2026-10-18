@@ -2,7 +2,10 @@ import { describe, expect, it } from 'bun:test'
 import {
   IMAGE_EXTENSION_TO_MIME,
   IMAGE_PROVIDER_ENV_VARS,
+  VISION_RASTER_MIMES,
   extensionForImageMime,
+  isVisionRasterMime,
+  mimeTypeForImagePath,
 } from '../../../packages/core/src/media/image-format'
 
 describe('image-format (shared mime/ext + provider env-var source of truth)', () => {
@@ -38,6 +41,31 @@ describe('image-format (shared mime/ext + provider env-var source of truth)', ()
     it('declares each provider’s credential env-var names exactly once', () => {
       expect(IMAGE_PROVIDER_ENV_VARS.openai).toEqual(['OPENAI_API_KEY'])
       expect(IMAGE_PROVIDER_ENV_VARS.google).toEqual(['GEMINI_API_KEY', 'GOOGLE_AI_API_KEY'])
+    })
+  })
+
+  describe('vision raster eligibility (#855)', () => {
+    it('is exactly the four types vision providers accept', () => {
+      expect([...VISION_RASTER_MIMES].sort()).toEqual(['image/gif', 'image/jpeg', 'image/png', 'image/webp'])
+    })
+
+    it('accepts raster mimes regardless of casing and parameters', () => {
+      expect(isVisionRasterMime('image/png')).toBe(true)
+      expect(isVisionRasterMime('IMAGE/JPEG; charset=binary')).toBe(true)
+    })
+
+    it('rejects non-raster images and everything else', () => {
+      for (const mime of ['image/svg+xml', 'image/bmp', 'image/tiff', 'image/heic', 'application/pdf', '']) {
+        expect(isVisionRasterMime(mime)).toBe(false)
+      }
+    })
+
+    it('agrees with the raster path helper', () => {
+      for (const ext of ['png', 'jpg', 'jpeg', 'gif', 'webp']) {
+        expect(isVisionRasterMime(mimeTypeForImagePath(`a.${ext}`) ?? '')).toBe(true)
+      }
+      expect(mimeTypeForImagePath('a.svg')).toBeNull()
+      expect(mimeTypeForImagePath('a.bmp')).toBeNull()
     })
   })
 })

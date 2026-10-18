@@ -16,11 +16,13 @@
  * BOUND chat post back to its channel regardless of where the user message
  * came from — that is the point, not a bug.
  */
-import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readSync, rmSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, rmSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { join, basename } from 'path'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { InboundChannelMessage } from '@bakin/core/adapters/runtime'
+import { isVisionRasterMime } from '@bakin/core/media/image-format'
+import { sniffVisionRasterMime } from '@bakin/core/media/raster-sniff'
 import { createLogger } from '../../../src/core/logger'
 import { getSettings } from '../../../src/core/settings'
 import type { ChatAttachment, ChatTranscriptRow } from '../types'
@@ -29,33 +31,17 @@ import { startChatTurn } from './stream-bridge'
 
 const log = createLogger('chat-channel-inbound')
 
-/**
+/*
  * RASTER types ride the model's image-input lane. `image/*` is NOT enough:
  * Discord reports SVGs as image/svg+xml, small files skip downscaling, and
  * an svg+xml data URL is rejected by model providers — worse, the poisoned
  * item stays in the chat session and fails EVERY later turn
  * (live-validation finding, 2026-07-26). Everything non-raster lands as a
  * FILE in the chat's attachment dir with its path in the message — the
- * agent reads it with its file tools.
+ * agent reads it with its file tools. The raster set and the magic-byte
+ * sniff are shared core: `isVisionRasterMime` (`@bakin/core/media/image-format`)
+ * and `sniffVisionRasterMime` (`@bakin/core/media/raster-sniff`).
  */
-const RASTER_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
-
-/** Magic-byte check for the four raster types the image lane accepts. */
-export function sniffIsRaster(path: string): boolean {
-  try {
-    const fd = openSync(path, 'r')
-    const head = Buffer.alloc(12)
-    readSync(fd, head, 0, 12, 0)
-    closeSync(fd)
-    if (head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47) return true // PNG
-    if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return true // JPEG
-    if (head.toString('latin1', 0, 4) === 'GIF8') return true // GIF
-    if (head.toString('latin1', 0, 4) === 'RIFF' && head.toString('latin1', 8, 12) === 'WEBP') return true // WebP
-    return false
-  } catch {
-    return false
-  }
-}
 
 /** Discord's typing state expires after ~10s — pulse well inside that. */
 const TYPING_PULSE_MS = 8_000
@@ -184,8 +170,8 @@ export function wireChannelInbound(ctx: WireContext): () => void {
         // Trust bytes, not the Discord-supplied content_type: a renamed
         // non-image labeled image/png would enter the model lane unvalidated
         // and poison the session (the exact class the SVG fix targeted).
-        const isRasterImage = Boolean(file.contentType && RASTER_IMAGE_TYPES.has(file.contentType))
-          && sniffIsRaster(target)
+        const isRasterImage = Boolean(file.contentType && isVisionRasterMime(file.contentType))
+          && sniffVisionRasterMime(target) !== null
         if (isRasterImage && imageInput) {
           attachments.push({ name, mimeType: file.contentType!, path: target })
         } else if (isRasterImage) {
@@ -196,7 +182,7 @@ export function wireChannelInbound(ctx: WireContext): () => void {
           // (fileLaneNote, #742) so this lane and the web composer cannot
           // drift. A raster-labeled file that failed the byte sniff must not
           // carry its lying mime into the model lane — downgrade it.
-          const mime = file.contentType && !RASTER_IMAGE_TYPES.has(file.contentType)
+          const mime = file.contentType && !isVisionRasterMime(file.contentType)
             ? file.contentType
             : 'application/octet-stream'
           attachments.push({ name, mimeType: mime, path: target })

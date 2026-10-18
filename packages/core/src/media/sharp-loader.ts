@@ -33,18 +33,29 @@ export interface SharpResizeOptions {
   withoutEnlargement?: boolean
 }
 
+export interface SharpInputOptions {
+  /** Refuse to decode inputs above this many pixels (width × height). */
+  limitInputPixels?: number
+  /** Vector input render DPI (SVG); sharp's default is 72. */
+  density?: number
+}
+
 export interface SharpPipeline {
   rotate(): SharpPipeline
+  /** Raw pixel output — used (after a shrink) to prove a payload decodes fully. */
+  raw(): SharpPipeline
+  flatten(options?: { background?: string }): SharpPipeline
   resize(options: SharpResizeOptions): SharpPipeline
   resize(width?: number, height?: number, options?: SharpResizeOptions): SharpPipeline
   jpeg(options?: { quality?: number }): SharpPipeline
   png(options?: { quality?: number }): SharpPipeline
   webp(options?: { quality?: number }): SharpPipeline
-  metadata(): Promise<{ width?: number; height?: number; format?: string }>
+  metadata(): Promise<{ width?: number; height?: number; format?: string; density?: number }>
   toFile(path: string): Promise<unknown>
+  toBuffer(): Promise<Buffer>
 }
 
-export type Sharp = (input: string) => SharpPipeline
+export type Sharp = (input: string | Buffer, options?: SharpInputOptions) => SharpPipeline
 
 let sharpModule: Promise<Sharp | null> | null = null
 /** Store entry the cached FAILURE already tried (null = none existed then). */

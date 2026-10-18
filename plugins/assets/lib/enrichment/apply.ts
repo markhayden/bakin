@@ -87,13 +87,21 @@ export async function markEnrichmentFailed(assetId: string, error: string): Prom
   }))
 }
 
-/** No capable provider/model for this asset type — recorded, not retried. */
-export async function markEnrichmentSkipped(assetId: string, reason: string): Promise<AssetManifest> {
+/**
+ * A deliberate no-op verdict for ONE version (no capable model, nothing to
+ * summarize, an image that can never be sent — #855). Self-heal never
+ * retries a current skip; a newer version makes it stale, so the new bytes
+ * get their own verdict. The version is the one the job PROCESSED, passed
+ * in — never re-read here, where a concurrent upload could already have
+ * moved `currentVersion`.
+ */
+export async function markEnrichmentSkipped(assetId: string, forVersion: number, reason: string): Promise<AssetManifest> {
   return mutateEnrichment(assetId, (manifest) => ({
     ...manifest.enrichment,
     status: 'skipped',
     error: reason.slice(0, 500),
     at: nowIso(),
+    forVersion,
   }))
 }
 

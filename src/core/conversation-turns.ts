@@ -35,6 +35,7 @@ import type { ChatChunk, MessageUsage, RuntimeToolAccess } from '@bakin/core/ada
 // and a static import would pull the sharp loader's module graph into the
 // npm package's declaration dependency graph.
 import type { PreparedAttachment } from '@bakin/core/media/downscale'
+import { isVisionRasterMime } from '@bakin/core/media/image-format'
 
 import { createTurnRecorder } from '../components/conversation/turn-recorder'
 import { createLogger } from './logger'
@@ -52,12 +53,11 @@ export interface TurnAttachment {
   path: string
 }
 
-/** The model-attachment lane is raster-only (the #669 SVG-poisoning guard);
- * everything else rides the file lane as a path note. */
-const RASTER_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
-
+/** The model-attachment lane is raster-only (the #669 SVG-poisoning guard;
+ * the set is shared — `VISION_RASTER_MIMES`); everything else rides the file
+ * lane as a path note. */
 export function isRasterAttachment(a: TurnAttachment): boolean {
-  return RASTER_IMAGE_TYPES.has(a.mimeType)
+  return isVisionRasterMime(a.mimeType)
 }
 
 /**

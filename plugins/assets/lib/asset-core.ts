@@ -201,10 +201,23 @@ function toSummary(manifest: AssetManifest): AssetSummary {
     hasThumb: current.thumb !== null,
     enrichment: !manifest.enrichment
       ? 'none'
-      : manifest.enrichment.status === 'done' && manifest.enrichment.forVersion !== manifest.currentVersion
+      : isVersionScopedVerdictStale(manifest.enrichment, manifest.currentVersion)
         ? 'stale'
         : manifest.enrichment.status,
   }
+}
+
+/**
+ * A `done` result or a `skipped` verdict speaks for ONE version (#855); once
+ * the asset moves past it, the record is stale and the new bytes need
+ * their own pass. A record without a version predates version scoping and
+ * is stale too — re-deciding it is free.
+ */
+export function isVersionScopedVerdictStale(
+  enrichment: { status: string; forVersion?: number },
+  currentVersion: number,
+): boolean {
+  return (enrichment.status === 'done' || enrichment.status === 'skipped') && enrichment.forVersion !== currentVersion
 }
 
 /** Read one asset's current-version summary by id, or null if missing/invalid. */

@@ -363,7 +363,7 @@ describe('enrichment coverage — one stat, never a per-asset nag', () => {
   it('skipped assets leave the denominator — deliberate opt-outs never count against coverage', () => {
     seedFullAssetsTree()
     for (let i = 0; i < 2; i++) seedEnrichedAsset(`ok-${i}`, { status: 'done', forVersion: 1 })
-    for (let i = 0; i < 8; i++) seedEnrichedAsset(`skipped-${i}`, { status: 'skipped', reason: 'unsupported' })
+    for (let i = 0; i < 8; i++) seedEnrichedAsset(`skipped-${i}`, { status: 'skipped', error: 'unsupported', forVersion: 1 })
     const coverage = observations().filter((r) => r.key === 'enrichment-coverage')
     expect(coverage[0].status).toBe('healthy')
     expect(coverage[0].evidence).toMatchObject({ wanting: 2, skipped: 8 })
@@ -371,16 +371,25 @@ describe('enrichment coverage — one stat, never a per-asset nag', () => {
 })
 
 describe('incompleteEnrichmentAssetIds — the self-heal selector', () => {
-  it('selects failed + missing + stale, never skipped or current', () => {
+  it('selects failed + missing + stale, never a current skip or current done', () => {
     seedFullAssetsTree()
     seedEnrichedAsset('current', { status: 'done', forVersion: 1 })
     seedEnrichedAsset('stale-1', { status: 'done', forVersion: 1 }, 2)
     seedEnrichedAsset('failed-1', { status: 'failed', error: 'x' })
     seedEnrichedAsset('missing-1')
-    seedEnrichedAsset('skipped-1', { status: 'skipped', reason: 'unsupported' })
+    seedEnrichedAsset('skipped-1', { status: 'skipped', error: 'unsupported', forVersion: 1 })
 
     const names = incompleteEnrichmentAssetIds().map((id) => id.split('-').slice(1, -1).join('-')).sort()
     expect(names).toEqual(['failed-1', 'missing-1', 'stale-1'])
+  })
+
+  it('a skip for an OLDER version is stale and retried (#855) — the verdict was about other bytes', () => {
+    seedFullAssetsTree()
+    seedEnrichedAsset('oldskip', { status: 'skipped', error: 'cannot decode image/bmp', forVersion: 1 }, 2)
+    const names = incompleteEnrichmentAssetIds().map((id) => id.split('-').slice(1, -1).join('-'))
+    expect(names).toEqual(['oldskip'])
+    const coverage = observations().filter((r) => r.key === 'enrichment-coverage')
+    expect(coverage[0].evidence).toMatchObject({ stale: 1, skipped: 0 })
   })
 })
 

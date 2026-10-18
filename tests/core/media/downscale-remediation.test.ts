@@ -28,7 +28,7 @@ mock.module('../../../packages/core/src/media/sharp-loader', () => ({
   loadSharp: async () => null,
 }))
 
-import { INLINE_ATTACHMENT_LIMIT_BYTES, prepareImageAttachment } from '../../../packages/core/src/media/downscale'
+import { INLINE_ATTACHMENT_LIMIT_BYTES, ImageNotSendableError, prepareImageAttachment } from '../../../packages/core/src/media/downscale'
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
@@ -36,11 +36,33 @@ describe('prepareImageAttachment without sharp (#889)', () => {
   it('the oversized-attachment error names the remediation, not a hopeless retry', async () => {
     mkdirSync(testDir, { recursive: true })
     const big = join(testDir, 'big.png')
-    writeFileSync(big, Buffer.alloc(INLINE_ATTACHMENT_LIMIT_BYTES + 1))
+    // PNG magic + padding: an oversized file the bytes prove is raster.
+    writeFileSync(big, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(INLINE_ATTACHMENT_LIMIT_BYTES)]))
 
     const rejection = prepareImageAttachment(big, 'image/png')
     await expect(rejection).rejects.toThrow(/inline limit/)
     await expect(rejection).rejects.toThrow(/bakin install media/)
     await expect(rejection).rejects.toThrow(/retrying without it can never succeed/i)
+    await expect(rejection).rejects.toBeInstanceOf(ImageNotSendableError)
+    await rejection.catch((err: ImageNotSendableError) => expect(err.reason).toBe('sharp_unavailable'))
+  })
+
+  it('a non-raster image without sharp fails typed as sharp_unavailable, naming the fix (#855)', async () => {
+    mkdirSync(testDir, { recursive: true })
+    const svg = join(testDir, 'logo.svg')
+    writeFileSync(svg, '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>')
+
+    const rejection = prepareImageAttachment(svg, 'image/svg+xml')
+    await expect(rejection).rejects.toBeInstanceOf(ImageNotSendableError)
+    await expect(rejection).rejects.toThrow(/not an image type vision models accept/)
+    await expect(rejection).rejects.toThrow(/bakin install media/)
+    await rejection.catch((err: ImageNotSendableError) => expect(err.reason).toBe('sharp_unavailable'))
+  })
+
+  it('a small raster still passes through without sharp', async () => {
+    mkdirSync(testDir, { recursive: true })
+    const small = join(testDir, 'small.png')
+    writeFileSync(small, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
+    expect(await prepareImageAttachment(small, 'image/png')).toEqual({ path: small, mimeType: 'image/png', owned: false })
   })
 })

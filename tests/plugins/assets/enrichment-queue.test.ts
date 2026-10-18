@@ -4,11 +4,15 @@
  * missing capability records `skipped`, and nothing ever blocks a write.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-enrich-queue-${Date.now()}`)
+mkdirSync(testDir, { recursive: true })
+// The seam's temp dirs land under os.tmpdir(): point it at this file's own
+// dir so the leak assertions never see another --parallel worker's files.
+process.env.TMPDIR = testDir
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -47,6 +51,32 @@ mock.module('@bakin/core/media', () => ({
   callDirectVisionProvider: visionCall,
 }))
 
+// #855 seams: sharp can be made unavailable, and preparation can be made to
+// throw (typed or untyped) for chosen calls — both wrap the REAL modules.
+// Capture the real functions FIRST: mock.module rewrites the module's
+// exports in place, so reading them through the namespace later would
+// call the mock itself.
+const realSharpLoader = require('../../../packages/core/src/media/sharp-loader')
+const realLoadSharp = realSharpLoader.loadSharp
+let sharpAvailable = true
+mock.module('../../../packages/core/src/media/sharp-loader', () => ({
+  ...realSharpLoader,
+  loadSharp: async () => (sharpAvailable ? realLoadSharp() : null),
+}))
+const realDownscale = require('../../../packages/core/src/media/downscale')
+const realPrepare = realDownscale.prepareImageAttachment
+const { ImageNotSendableError } = realDownscale
+let prepCalls = 0
+let prepFailure: { onCall: number; error: () => Error } | null = null
+mock.module('../../../packages/core/src/media/downscale', () => ({
+  ...realDownscale,
+  prepareImageAttachment: async (path: string, mimeType: string) => {
+    prepCalls++
+    if (prepFailure && prepCalls === prepFailure.onCall) throw prepFailure.error()
+    return realPrepare(path, mimeType)
+  },
+}))
+
 // The direct engine meters spend (#747 rider) — keep the ledger out of
 // these tests; metering itself is covered by enrichment-direct-metering.
 mock.module('../../../src/core/agent-cost', () => ({
@@ -65,14 +95,21 @@ import {
 
 const SAVED_KEY = process.env.ANTHROPIC_API_KEY
 
+// A real 1×1 PNG: the image lane trusts magic bytes (#855), so a fake
+// 'png-bytes' file would (correctly) be treated as not-an-image.
+const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+
 async function makeImageAsset(): Promise<string> {
   const src = join(testDir, `pic-${Date.now()}-${Math.random().toString(36).slice(2)}.png`)
-  writeFileSync(src, 'png-bytes')
+  writeFileSync(src, PNG_1PX)
   const created = await createAsset({ sourceFilePath: src, type: 'images', agent: 'user', op: 'upload', taskId: null, description: 'a picture' })
   return created.assetId
 }
 
 beforeEach(() => {
+  sharpAvailable = true
+  prepCalls = 0
+  prepFailure = null
   mkdirSync(join(testDir, 'assets'), { recursive: true })
   process.env.ANTHROPIC_API_KEY = 'sk-test'
   visionCall.mockClear()
@@ -226,6 +263,9 @@ describe('scanned-PDF vision OCR (#747)', () => {
     const e = getAsset(assetId)?.enrichment
     expect(e?.status).toBe('failed')
     expect(e?.ocrText).toBeUndefined()
+    // Retry resumes at page 2: page 1 succeeded once and is never re-billed.
+    // p1 ok, p2 fail, (retry) p2 fail = 3 calls, not 4.
+    expect(n).toBe(3)
   })
 
   it('text PDFs keep the pure-text path: zero renders, one document call', async () => {
@@ -319,7 +359,7 @@ describe('enrichment activity notifications', () => {
     expect(getAssetSummary(assetId)?.enrichment).toBe('done')
 
     const src = join(testDir, `pic-v2-${Date.now()}.png`)
-    writeFileSync(src, 'png-bytes-v2')
+    writeFileSync(src, PNG_1PX)
     await addVersion(assetId, { sourceFilePath: src, op: 'upload' })
     expect(getAssetSummary(assetId)?.enrichment).toBe('stale')
   })
@@ -335,5 +375,172 @@ describe('enrichment activity notifications', () => {
     expect(failed?.agent).toBe('system')
     expect(String(failed?.detail.message)).toContain(assetId)
     expect(String(failed?.detail.message)).toContain('provider down')
+  })
+})
+
+describe('media preparation before any billed call (#855)', () => {
+  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32"><rect width="64" height="32" fill="#c33"/></svg>'
+  // 1×1 24-bit BMP: a real image the pinned sharp build cannot decode.
+  const BMP_1PX = Buffer.from('424d3a0000000000000036000000280000000100000001000000010018000000000004000000130b0000130b00000000000000000000ff000000', 'hex')
+
+  async function makeImageFile(name: string, bytes: string | Buffer): Promise<string> {
+    const src = join(testDir, `${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`)
+    writeFileSync(src, bytes)
+    const created = await createAsset({ sourceFilePath: src, type: 'images', agent: 'user', op: 'upload', taskId: null, description: name })
+    return created.assetId
+  }
+
+  const seamTempDirs = () => new Set(readdirSync(tmpdir()).filter((n) => n.startsWith('bakin-downscale-')))
+
+  it('direct engine: an SVG is sent as a rasterized PNG, never as image/svg+xml', async () => {
+    const seen: VisionReq[] = []
+    visionCall.mockImplementation(async (req: VisionReq) => {
+      seen.push({ ...req, mediaMime: req.mediaMime, mediaPath: req.mediaPath })
+      expect(readFileSync(req.mediaPath!).subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+      return { caption: 'a red logo', suggestedTags: ['logo'] }
+    })
+    const before = seamTempDirs()
+    const assetId = await makeImageFile('logo.svg', SVG)
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(getAsset(assetId)?.enrichment?.status).toBe('done')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.mediaMime).toBe('image/png')
+    expect(seen[0]!.mediaPath).not.toContain(assetId)
+    expect([...seamTempDirs()].filter((n) => !before.has(n))).toEqual([])
+  })
+
+  it('runtime engine: the attachment it sends is the same rasterized PNG', async () => {
+    delete process.env.ANTHROPIC_API_KEY
+    const attachments: Array<{ path: string; mimeType: string }> = []
+    const runtime = {
+      capabilities: async () => ({
+        toolCalling: { mode: 'native' as const, access: { style: 'cli-shim' as const } },
+        delivery: { mode: 'native' as const },
+        imageGen: { mode: 'unavailable' as const },
+        memory: { mode: 'native' as const },
+        sessions: { mode: 'native' as const },
+        workspaceFiles: { mode: 'native' as const },
+        concurrency: { sameAgentTurns: 'serialized' as const },
+        input: { imageInput: true, audioInput: false },
+      }),
+      messaging: {
+        send: async (args: { attachments?: Array<{ path: string; mimeType: string }> }) => {
+          attachments.push(...(args.attachments ?? []))
+          return { id: 'm1', content: '{"caption":"a red logo","ocrText":"","suggestedTags":["logo"]}' }
+        },
+      },
+    }
+    initEnrichmentQueue(() => ({}), { getRuntime: () => runtime as never })
+    const assetId = await makeImageFile('logo.svg', SVG)
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(getAsset(assetId)?.enrichment?.status).toBe('done')
+    expect(attachments).toHaveLength(1)
+    expect(attachments[0]!.mimeType).toBe('image/png')
+  })
+
+  it('a codec sharp cannot decode (BMP) is skipped with a reason and never billed', async () => {
+    const assetId = await makeImageFile('pixel.bmp', BMP_1PX)
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(visionCall).not.toHaveBeenCalled()
+    expect(getAsset(assetId)?.enrichment?.status).toBe('skipped')
+    expect(getAsset(assetId)?.enrichment?.error).toContain('cannot decode')
+  })
+
+  it('an SVG renamed .png is rasterized by its bytes, never sent raw (#855)', async () => {
+    const seen: VisionReq[] = []
+    visionCall.mockImplementation(async (req: VisionReq) => {
+      seen.push({ ...req })
+      expect(readFileSync(req.mediaPath!).subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+      return { caption: 'a red logo', suggestedTags: [] }
+    })
+    const assetId = await makeImageFile('liar.png', SVG)
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(getAsset(assetId)?.enrichment?.status).toBe('done')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.mediaPath).not.toContain(assetId)
+  })
+
+  it('a truncated PNG (valid magic, undecodable payload) is skipped and never billed', async () => {
+    const assetId = await makeImageFile('truncated.png', PNG_1PX.subarray(0, 30))
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(visionCall).not.toHaveBeenCalled()
+    expect(getAsset(assetId)?.enrichment?.status).toBe('skipped')
+  })
+
+  it('a malformed SVG is skipped with a reason and never billed', async () => {
+    const assetId = await makeImageFile('broken.svg', '<svg><nope')
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(visionCall).not.toHaveBeenCalled()
+    expect(getAsset(assetId)?.enrichment?.status).toBe('skipped')
+  })
+
+  it('without sharp an SVG is failed (retryable) with the install fix, never billed', async () => {
+    sharpAvailable = false
+    const failedBefore = enrichmentQueueStats().failed
+    const assetId = await makeImageFile('logo.svg', SVG)
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(visionCall).not.toHaveBeenCalled()
+    expect(getAsset(assetId)?.enrichment?.status).toBe('failed')
+    expect(getAsset(assetId)?.enrichment?.error).toContain('bakin install media')
+    expect(enrichmentQueueStats().failed).toBe(failedBefore + 1)
+  })
+
+  it('an untyped preparation error (disk) is failed and counted, never billed or skipped', async () => {
+    prepFailure = { onCall: 1, error: () => Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' }) }
+    const failedBefore = enrichmentQueueStats().failed
+    const assetId = await makeImageFile('logo.svg', SVG)
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(visionCall).not.toHaveBeenCalled()
+    expect(getAsset(assetId)?.enrichment?.status).toBe('failed')
+    expect(getAsset(assetId)?.enrichment?.error).toContain('ENOSPC')
+    expect(enrichmentQueueStats().failed).toBe(failedBefore + 1)
+  })
+
+  it('the prepared file is released after retries are exhausted', async () => {
+    visionCall.mockImplementation(async () => { throw new Error('provider down') })
+    const before = seamTempDirs()
+    const assetId = await makeImageFile('logo.svg', SVG)
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(visionCall).toHaveBeenCalledTimes(2)
+    expect(getAsset(assetId)?.enrichment?.status).toBe('failed')
+    expect([...seamTempDirs()].filter((n) => !before.has(n))).toEqual([])
+  })
+
+  it('the direct engine downscales an image over the 2 MB inline cap', async () => {
+    const sharp = (await import('sharp')).default
+    const width = 2400
+    const raw = Buffer.alloc(width * width * 3)
+    for (let i = 0; i < raw.length; i++) raw[i] = (i * 2654435761) >>> 24
+    const big = await sharp(raw, { raw: { width, height: width, channels: 3 } }).png({ compressionLevel: 0 }).toBuffer()
+    expect(big.length).toBeGreaterThan(2_000_000)
+    const seen: VisionReq[] = []
+    visionCall.mockImplementation(async (req: VisionReq) => {
+      seen.push({ ...req })
+      return { caption: 'noise', suggestedTags: [] }
+    })
+    const assetId = await makeImageFile('big.png', big)
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(seen[0]!.mediaMime).toBe('image/jpeg')
+  })
+
+  it('scanned PDF: a page-2 preparation failure happens before page 1 is ever sent', async () => {
+    prepFailure = { onCall: 2, error: () => new ImageNotSendableError('too_large', 'page 2 too large') }
+    const src = join(testDir, `scan-${Date.now()}.pdf`)
+    writeFileSync(src, readFileSync(join(import.meta.dir, '../../fixtures/pdf/scanned.pdf')))
+    const created = await createAsset({ sourceFilePath: src, type: 'pdf', agent: 'user', op: 'upload', taskId: null, description: 'a pdf' })
+    enqueueEnrichment(created.assetId)
+    await drainEnrichmentQueue()
+    expect(visionCall).not.toHaveBeenCalled()
+    expect(getAsset(created.assetId)?.enrichment?.status).toBe('skipped')
   })
 })
