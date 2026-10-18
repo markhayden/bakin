@@ -1,6 +1,6 @@
 /** Which published artifact a host can run: contract AND Bakin range, newest first. */
 import { describe, expect, it } from 'bun:test'
-import { newestCompatibleVersion, artifactRunsOn } from '../../../src/core/whiskit/compatible-version'
+import { newestCompatibleVersion, artifactRunsOn, artifactUpgradeTarget } from '../../../src/core/whiskit/compatible-version'
 import type { ArtifactsIndex } from '../../../src/core/whiskit/artifacts-index'
 
 const SHA = 'a'.repeat(64)
@@ -48,5 +48,24 @@ describe('newestCompatibleVersion', () => {
   it('an additive newer contract version within the family is not runnable on an older host', () => {
     expect(artifactRunsOn(entry('react19-sdk-focused-v2', '>=0.0.1-rc.1'), { hostContract: 'react19-sdk-focused-v1', hostVersion: '0.0.1-rc.41' })).toBe(false)
     expect(artifactRunsOn(entry('react19-sdk-focused-v1', '>=0.0.1-rc.1'), { hostContract: 'react19-sdk-focused-v2', hostVersion: '0.0.1-rc.41' })).toBe(true)
+  })
+})
+
+describe('artifactUpgradeTarget (the one upgrade decision)', () => {
+  it('a working install only moves forward; a published rollback below it is not an upgrade', () => {
+    expect(artifactUpgradeTarget('1.5.0', true, '1.6.0')).toBe('1.6.0')
+    expect(artifactUpgradeTarget('1.5.0', true, '1.5.0')).toBeNull()
+    expect(artifactUpgradeTarget('1.5.0', true, '1.4.0')).toBeNull()
+    expect(artifactUpgradeTarget('1.5.0', true, null)).toBeNull()
+  })
+
+  it('a stranded install takes ANY compatible release, including a same-version rebuild or an older one', () => {
+    expect(artifactUpgradeTarget('1.5.0', false, '1.5.0')).toBe('1.5.0')
+    expect(artifactUpgradeTarget('1.5.0', false, '1.4.0')).toBe('1.4.0')
+    expect(artifactUpgradeTarget('1.5.0', false, null)).toBeNull()
+  })
+
+  it('an installed artifact out of its Bakin range does not run, even with a matching contract', () => {
+    expect(artifactRunsOn({ externalsContract: 'react19-sdk-focused-v1', bakinRange: '>=0.0.1-rc.50' }, { hostContract: 'react19-sdk-focused-v1', hostVersion: '0.0.1-rc.41' })).toBe(false)
   })
 })

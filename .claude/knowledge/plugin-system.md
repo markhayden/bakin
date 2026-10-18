@@ -53,13 +53,24 @@ published):
   (`remoteArtifactVersion` / "upgrade available") and Health all use it — never
   the index's `latest`, which may target another host. Health's
   `plugin-artifacts` check offers the one-click `upgrade-plugin-artifact`
-  repair when a stranded plugin's source has a compatible release: `plan()`
-  previews (version, manifest sha, every new permission and binary), safety is
-  `manual` so escalation asks for approval with exactly that change set, and
-  `apply()` re-previews and commits with that consent (a changed manifest
-  fails the item), then activates. No compatible release yet ⇒ the incident
+  repair when a stranded plugin's source has a compatible release (any — a
+  rebuild published under the installed version counts, because the
+  installed artifact does not run): `plan()` previews and puts the IDENTITY in
+  the change targets (`plugin:<id>@<version>#<manifestSha>`,
+  `plugin:<id>:bin:<name>@<version>#<sha256>`, one row per new permission) —
+  approvals freeze targets and Apply refuses a re-plan whose targets differ;
+  safety is `manual` so escalation asks for that approval; `apply()`
+  re-previews and commits ONLY when version, manifest and binaries equal what
+  was approved, then activates. Index reads are bounded (8 s, no retries) and
+  cached per source (10 min; failures 1 min), so a slow release host never
+  costs the check its local verdict. No compatible release yet ⇒ the incident
   says so (`await-compatible-release`) instead of pointing at an upgrade that
-  would refuse.
+  would refuse. `artifactUpgradeTarget` is the one upgrade decision (a working
+  install only moves forward; a stranded one takes any compatible release;
+  "runs" includes the installed artifact's `bakinRange`), shared by the
+  upgrade lane and `--check`, so availability never names a release the
+  upgrade would refuse. The guard judges the commit that SHIPS
+  (`--at <commit>`; the gate resolves an existing tag's commit for a retry).
 
 Cross-plugin communication never goes through direct imports. On the
 server it goes through the HookRegistry

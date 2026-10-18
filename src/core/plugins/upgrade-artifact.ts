@@ -14,10 +14,11 @@ import {
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
 import { githubArtifactSource } from '@/core/whiskit/github-resolver'
-import { downloadText } from '@bakin/core/net/download'
-import { semver } from 'bun'
+import { downloadText, type TransferOptions } from '@bakin/core/net/download'
 import { parseArtifactsIndex, INDEX_FILENAME } from '@/core/whiskit/artifacts-index'
-import { hostPlatform, newestCompatibleVersion } from '@/core/whiskit/compatible-version'
+import { artifactRunsOn, artifactUpgradeTarget, hostPlatform, newestCompatibleVersion } from '@/core/whiskit/compatible-version'
+
+export { artifactUpgradeTarget }
 import { verifyInstalledArtifact } from '@/core/whiskit/verify'
 import { materializeArtifact } from '@/core/whiskit/consumer-install'
 import { isExternalsContractCompatible, PROVENANCE_FILENAME } from '@/core/whiskit/provenance'
@@ -50,6 +51,15 @@ export function isArtifactInstall(pluginDir: string): boolean {
   return existsSync(join(pluginDir, '.whiskit', PROVENANCE_FILENAME))
 }
 
+/**
+ * Whether the INSTALLED artifact runs on this host — its contract AND its
+ * Bakin range (a host rollback can leave a matching contract out of range).
+ */
+export function installedArtifactRuns(pluginDir: string): boolean {
+  const verification = verifyInstalledArtifact(pluginDir)
+  return verification.status === 'compatible' && artifactRunsOn(verification.provenance)
+}
+
 export interface PublishedVersions {
   pluginId: string
   /** The newest publish, whatever host it targets. */
@@ -59,10 +69,10 @@ export interface PublishedVersions {
 }
 
 /** Fetch the published versions for an artifact install's source. */
-export async function publishedVersions(source: string): Promise<PublishedVersions> {
+export async function publishedVersions(source: string, transfer: TransferOptions = {}): Promise<PublishedVersions> {
   const gh = githubArtifactSource(source)
   const index = parseArtifactsIndex(
-    JSON.parse(await downloadText(`${gh.baseUrl}/${INDEX_FILENAME}`)),
+    JSON.parse(await downloadText(`${gh.baseUrl}/${INDEX_FILENAME}`, transfer)),
   )
   return {
     pluginId: gh.pluginId,
@@ -101,9 +111,8 @@ export async function upgradeArtifact(
   }
   // The target is the newest release THIS host can run, not the index's
   // `latest` (which may target a newer or different host contract).
-  const latest = compatible
-  const installedRuns = verifyInstalledArtifact(pluginDir).status === 'compatible'
-  if (latest === entry.version || (installedRuns && semver.order(latest, entry.version) <= 0)) {
+  const target = artifactUpgradeTarget(entry.version, installedArtifactRuns(pluginDir), compatible)
+  if (!target) {
     return {
       id,
       before,
@@ -119,6 +128,7 @@ export async function upgradeArtifact(
   const stagingRoot = join(contentDir, '.whiskit-staging')
   const platform = hostPlatform()
 
+  const latest = target
   const materialized = await materializeArtifact(gh.resolver, gh.pluginId, latest, platform, stagingRoot)
   try {
     const { manifest, manifestSha } = readManifest(materialized.stagingDir)

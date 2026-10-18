@@ -32,7 +32,7 @@ function entryFor(index: ArtifactsIndex, pluginId: string, version: string, plat
 }
 
 /** Whether `entry` runs on the target host: its externals contract AND its Bakin range. */
-export function artifactRunsOn(entry: ArtifactEntry, target: Omit<CompatibilityTarget, 'platform'> = {}): boolean {
+export function artifactRunsOn(entry: Pick<ArtifactEntry, 'externalsContract' | 'bakinRange'>, target: Omit<CompatibilityTarget, 'platform'> = {}): boolean {
   return supportsExternalsContract(entry.externalsContract, target.hostContract ?? EXTERNALS_CONTRACT)
     && checkBakinRangeCompatibility(entry.bakinRange, target.hostVersion ?? APP_VERSION).ok
 }
@@ -47,6 +47,17 @@ export function newestCompatibleVersion(index: ArtifactsIndex, pluginId: string,
     if (entry && artifactRunsOn(entry, target)) return { version, entry }
   }
   return null
+}
+
+/**
+ * THE upgrade decision, shared by the upgrade lane and availability checks:
+ * a stranded install takes ANY compatible release (even a rebuild published
+ * under its own version number); a working install only moves forward.
+ */
+export function artifactUpgradeTarget(installedVersion: string, installedRuns: boolean, compatible: string | null): string | null {
+  if (!compatible) return null
+  if (!installedRuns) return compatible
+  return semver.order(compatible, installedVersion) > 0 ? compatible : null
 }
 
 /** The platform key this process installs for. */

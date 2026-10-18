@@ -122,7 +122,7 @@ describe('checkPluginArtifacts — what the source offers this host', () => {
     installPlugin('stale', 'react18-old-vX')
     lockEntry('stale')
     const [row] = observed(await checkPluginArtifacts(offering('1.5.0')))
-    expect(row.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'upgrade-plugin-artifact', label: 'Upgrade to 1.5.0' })
+    expect(row.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'upgrade-plugin-artifact', label: 'Install 1.5.0 for this Bakin' })
     expect(row.evidence).toMatchObject({ compatibleVersion: '1.5.0' })
   })
 
@@ -141,10 +141,10 @@ describe('checkPluginArtifacts — what the source offers this host', () => {
     expect(row.incident?.resolution).toMatchObject({ type: 'instructions', key: 'upgrade-plugin' })
   })
 
-  it('the installed version being the compatible one is not an upgrade offer', async () => {
+  it('a compatible rebuild published under the installed version number is still offered (the installed artifact does not run)', async () => {
     installPlugin('stale', 'react18-old-vX')
     lockEntry('stale', '1.5.0')
     const [row] = observed(await checkPluginArtifacts(offering('1.5.0')))
-    expect(row.incident?.resolution).toMatchObject({ key: 'await-compatible-release' })
+    expect(row.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'upgrade-plugin-artifact' })
   })
 })

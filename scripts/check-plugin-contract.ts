@@ -9,7 +9,7 @@
  * only a family change is checked. Runs from `bun run release` prep and from
  * the release workflow's gate BEFORE the tag is created.
  *
- *   bun run scripts/check-plugin-contract.ts --version 0.0.1-rc.42 [--since v0.0.1-rc.41]
+ *   bun run scripts/check-plugin-contract.ts --version 0.0.1-rc.42 [--at <commit>] [--since v0.0.1-rc.41]
  */
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -92,13 +92,18 @@ function git(args: string[]): { status: number | null; stdout: string } {
   return { status: result.status, stdout: (result.stdout ?? '').trim() }
 }
 
-/** The release before this one: the newest v* tag reachable from HEAD that is not the one being cut. */
-function previousReleaseTag(version: string): string | null {
-  const described = git(['describe', '--tags', '--abbrev=0', '--match', 'v*', 'HEAD'])
+/** The release before this one: the newest v* tag reachable from `at` that is not the one being cut. */
+function previousReleaseTag(version: string, at: string): string | null {
+  const described = git(['describe', '--tags', '--abbrev=0', '--match', 'v*', at])
   if (described.status !== 0 || !described.stdout) return null
   if (described.stdout !== `v${version}`) return described.stdout
   const before = git(['describe', '--tags', '--abbrev=0', '--match', 'v*', `${described.stdout}^`])
   return before.status === 0 && before.stdout ? before.stdout : null
+}
+
+function contractAt(rev: string): string | null {
+  const source = git(['show', `${rev}:${EXTERNALS_PATH}`])
+  return source.status === 0 ? contractFromSource(source.stdout) : null
 }
 
 async function fetchIndex(source: string): Promise<ArtifactsIndex> {
@@ -106,29 +111,38 @@ async function fetchIndex(source: string): Promise<ArtifactsIndex> {
   return parseArtifactsIndex(JSON.parse(await downloadText(`${gh.baseUrl}/${INDEX_FILENAME}`)))
 }
 
-export async function runContractGuard(version: string, since?: string): Promise<ContractCheckResult> {
-  const previousTag = since ?? previousReleaseTag(version)
-  const previousSource = previousTag ? git(['show', `${previousTag}:${EXTERNALS_PATH}`]) : null
-  const previousContract = previousSource?.status === 0 ? contractFromSource(previousSource.stdout) : null
-  const catalog = JSON.parse(readFileSync(resolve(REPO_ROOT, CATALOG_PATH), 'utf-8')) as unknown
-  return checkContractTransition({
+/**
+ * Judge the commit that will SHIP (`at`, default HEAD): its contract and its
+ * catalog, against the release before it — never the working tree, so a
+ * retried dispatch of an existing tag is judged on that tag's commit.
+ */
+export async function runContractGuard(version: string, opts: { since?: string; at?: string } = {}): Promise<ContractCheckResult & { contract: string }> {
+  const at = opts.at ?? 'HEAD'
+  const currentContract = (at === 'HEAD' ? null : contractAt(at)) ?? EXTERNALS_CONTRACT
+  const previousTag = opts.since ?? previousReleaseTag(version, at)
+  const previousContract = previousTag ? contractAt(previousTag) : null
+  const catalogSource = at === 'HEAD' ? { status: 0, stdout: readFileSync(resolve(REPO_ROOT, CATALOG_PATH), 'utf-8') } : git(['show', `${at}:${CATALOG_PATH}`])
+  if (catalogSource.status !== 0) throw new Error(`Could not read ${CATALOG_PATH} at ${at}`)
+  const result = await checkContractTransition({
     previousContract,
-    currentContract: EXTERNALS_CONTRACT,
+    currentContract,
     hostVersion: version,
-    plugins: officialPlugins(catalog),
+    plugins: officialPlugins(JSON.parse(catalogSource.stdout) as unknown),
     fetchIndex,
   })
+  return { ...result, contract: currentContract }
 }
 
 /** Plain words for the release log; throws when the release must not ship. */
-export function reportContractGuard(result: ContractCheckResult): string {
+export function reportContractGuard(result: ContractCheckResult & { contract?: string }): string {
+  const contract = result.contract ?? EXTERNALS_CONTRACT
   if (result.ok) {
     return result.reason === 'same-family'
-      ? `Plugin contract: unchanged family (${EXTERNALS_CONTRACT}).`
-      : `Plugin contract: family changed to ${EXTERNALS_CONTRACT}; every official plugin has a compatible release (${result.checked.join(', ')}).`
+      ? `Plugin contract: unchanged family (${contract}).`
+      : `Plugin contract: family changed to ${contract}; every official plugin has a compatible release (${result.checked.join(', ')}).`
   }
   throw new Error([
-    `Plugin contract family changed to ${EXTERNALS_CONTRACT}, but not every official plugin has a release that runs on it:`,
+    `Plugin contract family changed to ${contract}, but not every official plugin has a release that runs on it:`,
     ...result.missing.map((m) => `  - ${m.id}: ${m.detail}`),
     'Publish compatible Bits releases first (bakinRange may already require this version), then cut this release.',
   ].join('\n'))
@@ -142,10 +156,10 @@ if (import.meta.main) {
   }
   const version = value('--version')?.replace(/^v/, '')
   if (!version) {
-    console.error('usage: check-plugin-contract.ts --version <x.y.z[-rc.n]> [--since <tag>]')
+    console.error('usage: check-plugin-contract.ts --version <x.y.z[-rc.n]> [--at <commit>] [--since <tag>]')
     process.exit(2)
   }
-  runContractGuard(version, value('--since'))
+  runContractGuard(version, { since: value('--since'), at: value('--at') })
     .then((result) => console.log(reportContractGuard(result)))
     .catch((err) => {
       console.error(err instanceof Error ? err.message : String(err))

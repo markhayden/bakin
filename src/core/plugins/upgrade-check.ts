@@ -13,7 +13,7 @@ import {
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
 import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha } from './source-tree-sha'
-import { isArtifactInstall, publishedVersions } from './upgrade-artifact'
+import { artifactUpgradeTarget, installedArtifactRuns, isArtifactInstall, publishedVersions } from './upgrade-artifact'
 import { githubCloneUrl } from './upgrade-github'
 import { git } from './upgrade-gate'
 
@@ -64,11 +64,16 @@ async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvai
         if (!compatible) {
           return { id, upgradeAvailable: false, lastChecked, error: `no published release of ${pluginId} runs on this Bakin yet (newest is ${latest})` }
         }
+        // Same predicate as the upgrade itself, so "available" never names
+        // a release the upgrade would refuse (a published rollback below
+        // the installed version). The recorded remote version is that
+        // target, or the installed version when there is nothing to take.
+        const target = artifactUpgradeTarget(entry.version, installedArtifactRuns(pluginDir), compatible)
         return {
           id,
-          upgradeAvailable: compatible !== entry.version,
+          upgradeAvailable: target !== null,
           lastChecked,
-          remoteArtifactVersion: compatible,
+          remoteArtifactVersion: target ?? entry.version,
         }
       }
       if (!entry.source || !entry.ref) {
