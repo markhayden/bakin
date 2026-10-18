@@ -57,6 +57,9 @@ async function host(): Promise<void> {
     const bunVersion = readFileSync(join(REPO, '.bun-version'), 'utf-8').trim()
     const setup = [
       'set -euo pipefail',
+      // The slim image has no system CA bundle; bun ships its own, antfly's
+      // model pulls (HuggingFace over TLS) need the system one.
+      'apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates >/dev/null',
       'mkdir -p /work/bakin /work/bakin-bits-official',
       'tar -xf /check/bakin.tar -C /work/bakin',
       'tar -xf /check/bits.tar -C /work/bakin-bits-official',
@@ -129,7 +132,22 @@ async function inside(): Promise<void> {
   }
 
   // 2. Real installs through the CLI.
-  check('bakin install search', (await cli(['install', 'search', '--yes'])) === 0 && existsSync(engine))
+  // In strict-child mode the CLI starts the engine as ITS child, which keeps
+  // the CLI alive after the install finishes (true on main too) — stop the
+  // engine once the binary is in place so the CLI can exit; the server
+  // starts its own.
+  const install = cli(['install', 'search', '--yes'])
+  // Only once the engine answers: the install's own ready stage waits for it.
+  let answered = 0
+  const reaper = setInterval(() => {
+    void fetch('http://127.0.0.1:3739/readyz', { signal: AbortSignal.timeout(1_000) }).then(
+      (res) => { answered = res.ok ? answered + 1 : 0; if (answered >= 3) stopStrayEngines() },
+      () => { answered = 0 },
+    )
+  }, 1_000)
+  const installCode = await install
+  clearInterval(reaper)
+  check('bakin install search', installCode === 0 && existsSync(engine))
   stopStrayEngines()
   check('bakin install search-models', (await cli(['install', 'search-models', '--yes'])) === 0)
   stopStrayEngines()
