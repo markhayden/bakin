@@ -105,6 +105,12 @@ Branch `fix/approval-provenance`
 | H4 | `feat(approvals): honest provenance display` | decision surfaces render declared provenance (UI conformance: existing badge/text patterns) | RTL tests; `ui:conformance --quick` |
 | H5 | `docs(approvals): provenance and its limits` | `approvals.md` (documented no-auth limit), `delivery-bridge.md` | — |
 
+H decisions D-H4..D-H9 (spec) were added 2026-10-18 after a Codex design
+review and owner confirmation: header transport, Pi `spawnHook` env marker +
+workspace fallback, one policy at every mutation boundary incl. Health direct
+non-safe apply, legacy-record reads, activity/Health-request display, and a
+Bits messaging companion PR (`fix/gate-provenance`) shipped with H.
+
 ## PR G — bounded repair coverage, task reuse
 Branch `fix/repair-coverage-bounded` (after C, H)
 
