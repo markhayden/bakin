@@ -50,6 +50,8 @@ I (upgrade consent) ── independent; before D's rollout
 D (archive pins) ── Bits PR first ─> reinstall on boxes ─> D merges
 F (npm proof) ── after D (shares capability-readiness edits)
 E (model hashing) ── after D/F (same readiness + installer files)
+J (#986, no guessed :3737) ── stacked on A
+K (multi-home stop/restart) ── after J (same lifecycle + server-lock files)
 ```
 
 ---
@@ -157,6 +159,35 @@ Branch `fix/model-hash-before-skip` · `Closes #898`
 | E2 | `fix(packages): capability models hash before reuse` | `requirements-installer.ts`; readiness wording | same-size corruption defeats skip |
 | E3 | `fix(search): antfly models hash before skip; mismatch fails` | `packages/adapter-antfly/src/models.ts`, `packages/adapter-antfly/src/model-pins.ts` (tokenizer pins, metadata cache no longer proof) | antfly model tests: same-size same-mtime corruption after a warmed cache defeats the skip; post-pull mismatch returns failure; tokenizer pin enforced; doctor wording structural-only; adapter-boundary arch test green |
 | E4 | `docs(search): model integrity policy` | `search-system.md`, `capability-packs.md` | — |
+
+## PR J — nothing reaches a guessed :3737 server (#986, added 2026-10-17)
+Branch `fix/no-guessed-server`, stacked on A. Found while building A: the suite
+defaulted `BAKIN_URL` to `localhost:3737` and several paths guessed `:3737`,
+so tests reached the developer's live server and wedged a worker. Scope is
+HTTP targeting ONLY: in-process dispatch kicks, the ONE target rule in
+`src/core/server-lock.ts`, lock-only lifecycle verification polls, the
+validate scripts, the suite's dead target (port 0). Process control
+(`stop`/`restart` signaling) stays as on main — see K.
+
+## PR K — multi-home `stop` / `restart` (added 2026-10-17)
+Branch `fix/lifecycle-home-scope`, after J. Codex rounds 2–4 on J showed
+the existing process control is home-blind: `stop`/`restart` SIGTERM every
+`pgrep`-matched Bakin server machine-wide; restart drives the shared
+LaunchAgent/systemd unit without checking which home it runs; a 2 s wait
+races the lock handoff. A command-line identity check is NOT enough (misses
+the compiled `bakin start`, `scripts/dev.ts`, the restart child; accepts
+look-alikes). Design to settle in its own spec pass (Codex first, owner
+confirms):
+- **Identity by handshake:** the server reports `{ pid, bootId }` on its own
+  port; signal a lock pid only when that answer matches the lock's
+  `bootId`. Decide the wedged-server path (no answer) explicitly.
+- **Service ownership from the LOADED service** (`launchctl print` /
+  `systemctl show -p Environment,MainPID`), not the file on disk; setup
+  records `BAKIN_HOME` always.
+- **Handoff:** wait for the old pid to exit, then verify a NEW bootId.
+- Unnamed servers are reported in BOTH output modes, never signaled.
+- Tests fake discovery and forward signals only to owned children.
+Codex findings to cover, in the order they were raised: J r2 #2, r3 #1–#4, r4 #1–#6.
 
 ---
 

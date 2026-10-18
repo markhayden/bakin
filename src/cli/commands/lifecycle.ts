@@ -5,12 +5,7 @@
  * setup. Relocated verbatim from cli/bakin.ts (B5.3 command-module split);
  * the src/core/cli dependency stays a dynamic import (mutual-lazy contract).
  */
-import { execFileSync } from 'child_process'
-import { readFileSync } from 'fs'
-import { homedir } from 'os'
-import { join, resolve } from 'path'
-import { getContentDir } from '../../core/content-dir'
-import { liveServerBaseUrl, readLiveServerLock } from '../../core/server-lock'
+import { liveServerBaseUrl } from '../../core/server-lock'
 import { jsonObject } from '../http'
 import {
   printCommandFailureTui,
@@ -74,45 +69,20 @@ function serviceEnvironment(): Record<string, string> {
   const env: Record<string, string> = {
     PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
   }
-  // The home is ALWAYS recorded: `restart` controls the service only when it
-  // runs THIS home (one service label is shared machine-wide).
-  env.BAKIN_HOME = getContentDir()
-  if (process.env.PORT) env.PORT = process.env.PORT
+  for (const key of ['BAKIN_HOME', 'PORT'] as const) {
+    const value = process.env[key]
+    if (value) env[key] = value
+  }
   return env
 }
 
-/** The home a LaunchAgent plist / systemd unit runs (default home when unrecorded — pre-2026-10 files). */
-function serviceHome(unitText: string): string {
-  const plist = /<key>BAKIN_HOME<\/key>\s*<string>([^<]*)<\/string>/.exec(unitText)
-  if (plist) {
-    return plist[1]!.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&apos;', "'").replaceAll('&amp;', '&')
-  }
-  const unit = /^Environment="BAKIN_HOME=((?:[^"\\]|\\.)*)"$/m.exec(unitText)
-  if (unit) return unit[1]!.replace(/\\(.)/g, '$1')
-  return join(homedir(), '.bakin')
-}
-
-/** Does this installed service run THIS CLI's home? Never control another home's server. */
-function serviceRunsThisHome(unitPath: string): boolean {
-  try {
-    return resolve(serviceHome(readFileSync(unitPath, 'utf-8'))) === resolve(getContentDir())
-  } catch {
-    return false
-  }
-}
-
-/**
- * Wait for THIS home's server to answer. Re-resolves the live lock each poll
- * (the server just started writes its own; another home's server on a default
- * port must never answer for this one). `replacing` = the pid being replaced:
- * a lock still naming it is the dying server, not the new one.
- */
-async function waitForServerVersion(timeoutSeconds = 15, replacing: number | null = null): Promise<{ ok: true; version: string } | { ok: false }> {
+async function waitForServerVersion(timeoutSeconds = 15): Promise<{ ok: true; version: string } | { ok: false }> {
   for (let i = 0; i < timeoutSeconds; i++) {
     await new Promise(r => setTimeout(r, 1000))
-    const lock = readLiveServerLock()
-    if (!lock || lock.pid === replacing) continue
-    const baseUrl = thisHomeServerUrl()
+    // Re-resolve each poll from THIS home's live lock only (the server just
+    // started writes its own): never a guessed default port another home may
+    // own, and never BAKIN_URL — a remote target can't verify a local start.
+    const baseUrl = liveServerBaseUrl({})
     if (!baseUrl) continue
     try {
       const res = await fetch(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(2000) })
@@ -195,68 +165,8 @@ WantedBy=default.target
 `
 }
 
-/**
- * Local lifecycle verbs act on THIS home's server only: its live
- * `server.lock` names the pid and port. Never a machine-wide process match
- * (that SIGTERMed every home's server) and never `BAKIN_URL` (a remote
- * target can't verify a local start/stop).
- */
-const SERVER_COMMAND_RE = /tsx.*server\.ts|bun.*server\.ts.*serve|bakin.*serve/
-
-/** A pid's command line, or null when it is gone. */
-function commandOf(pid: number): string | null {
-  try {
-    return execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf-8' }).trim() || null
-  } catch {
-    return null
-  }
-}
-
-/**
- * This home's server pid: named by its live lock AND still running a Bakin
- * server command — a pid recycled by an unrelated process after a crash is
- * never signaled.
- */
-function thisHomeServerPid(): number | null {
-  const lock = readLiveServerLock()
-  if (!lock || lock.pid === process.pid) return null
-  const command = commandOf(lock.pid)
-  return command && SERVER_COMMAND_RE.test(command) ? lock.pid : null
-}
-
-/**
- * Bakin servers running on this machine that this home's lock does NOT name
- * (other homes, or a server that lost its lock). Reported, never signaled —
- * nothing proves they belong to this home.
- */
-function unnamedServerPids(named: number | null): number[] {
-  try {
-    return execFileSync('pgrep', ['-f', SERVER_COMMAND_RE.source], { encoding: 'utf-8' })
-      .trim().split('\n').map(Number)
-      .filter((pid) => pid > 0 && pid !== process.pid && pid !== named)
-  } catch {
-    return []
-  }
-}
-
-function unnamedServersDetail(named: number | null): string | null {
-  const pids = unnamedServerPids(named)
-  return pids.length > 0
-    ? `Not signaled: ${pids.length} other Bakin server process(es) (pid ${pids.join(', ')}) that ${getContentDir()}/server.lock does not name — another home's, or a server that lost its lock. Stop one by pid only if it is this home's.`
-    : null
-}
-
-/** Wait for a signaled server to actually exit (it releases the lock on the way out). */
-async function waitForExit(pid: number, timeoutMs = 15_000): Promise<boolean> {
-  for (let waited = 0; waited < timeoutMs; waited += 250) {
-    try { process.kill(pid, 0) } catch { return true }
-    await new Promise(r => setTimeout(r, 250))
-  }
-  return false
-}
-
-function thisHomeServerUrl(): string | null {
-  return liveServerBaseUrl({})
+function serverProcessPattern(): string {
+  return 'tsx.*server\\.ts|bun.*server\\.ts.*serve|bakin.*serve'
 }
 
 async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): Promise<void> {
@@ -491,18 +401,9 @@ async function cmdReboot(): Promise<void> {
     else console.log(message)
   }
 
-  // The pid being replaced: verification must see a DIFFERENT server answer.
-  const replacing = thisHomeServerPid()
-  const serviceFor = (unitPath: string): boolean => {
-    if (!existsSync(unitPath)) return false
-    if (serviceRunsThisHome(unitPath)) return true
-    details.push(`Service ${SERVICE_LABEL} runs another home (${serviceHome(readFileSync(unitPath, 'utf-8'))}) — restarting ${getContentDir()}'s server directly.`)
-    return false
-  }
-
   if (process.platform === 'darwin') {
     const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
-    if (serviceFor(plistPath)) {
+    if (existsSync(plistPath)) {
       const uid = execFileSync('id', ['-u'], { encoding: 'utf-8' }).trim()
       if (!isTTY) console.log('[..] Restarting Bakin LaunchAgent...')
       try {
@@ -517,7 +418,7 @@ async function cmdReboot(): Promise<void> {
       if (!isTTY) console.log('[OK] Bakin LaunchAgent restart requested')
 
       if (!isTTY) console.log('[..] Waiting for server to come up...')
-      const started = await waitForServerVersion(15, replacing)
+      const started = await waitForServerVersion()
       if (started.ok) {
         if (!isTTY) {
           console.log(`[OK] Bakin is up (${started.version})`)
@@ -551,7 +452,7 @@ async function cmdReboot(): Promise<void> {
 
   if (process.platform === 'linux') {
     const unitPath = join(homedir(), '.config', 'systemd', 'user', `${SERVICE_LABEL}.service`)
-    if (serviceFor(unitPath)) {
+    if (existsSync(unitPath)) {
       if (!isTTY) console.log('[..] Restarting Bakin user service...')
       execFileSync('systemctl', ['--user', 'restart', `${SERVICE_LABEL}.service`], { stdio: 'pipe' })
       details.push(`Service: ${SERVICE_LABEL}.service`)
@@ -559,7 +460,7 @@ async function cmdReboot(): Promise<void> {
       if (!isTTY) console.log('[OK] Bakin user service restart requested')
 
       if (!isTTY) console.log('[..] Waiting for server to come up...')
-      const started = await waitForServerVersion(15, replacing)
+      const started = await waitForServerVersion()
       if (started.ok) {
         if (!isTTY) {
           console.log(`[OK] Bakin is up (${started.version})`)
@@ -593,24 +494,23 @@ async function cmdReboot(): Promise<void> {
 
   // Kill any running Bakin server processes
   if (!isTTY) console.log('[..] Stopping Bakin server...')
-  if (replacing) {
-    try { process.kill(replacing, 'SIGTERM') } catch { /* exited on its own */ }
-    details.push(`Sent SIGTERM to pid ${replacing}.`)
-    if (!isTTY) console.log('[OK] Sent SIGTERM to Bakin server')
-    if (!isTTY) console.log('[..] Waiting for shutdown...')
-    // Wait for the real exit (lock released) — a replacement launched while the
-    // old server still holds the lock refuses to start.
-    if (!await waitForExit(replacing)) {
-      process.exitCode = 1
-      const message = `Pid ${replacing} is still shutting down after 15s — not starting a second server. Retry \`bakin restart\` once it exits.`
-      if (!isTTY) { console.log(`[WARN] ${message}`); return }
-      await printRestartResult({ ok: false, status: 'warn', message, pid: replacing })
-      return
+  try {
+    const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
+    if (pids) {
+      let signaled = 0
+      for (const pid of pids.split('\n')) {
+        if (pid && pid !== String(process.pid)) {
+          process.kill(Number(pid), 'SIGTERM')
+          signaled++
+        }
+      }
+      details.push(`Sent SIGTERM to ${signaled} process(es).`)
+      if (!isTTY) console.log('[OK] Sent SIGTERM to Bakin server')
+      if (!isTTY) console.log('[..] Waiting for shutdown...')
+      await new Promise(r => setTimeout(r, 2000))
     }
-  } else {
+  } catch {
     details.push('No running Bakin process found before restart.')
-    const unnamed = unnamedServersDetail(null)
-    if (unnamed) details.push(unnamed)
     if (!isTTY) console.log('[..] No running Bakin process found')
   }
 
@@ -631,7 +531,7 @@ async function cmdReboot(): Promise<void> {
 
   // Wait and verify
   if (!isTTY) console.log('[..] Waiting for server to come up...')
-  const started = await waitForServerVersion(15, replacing)
+  const started = await waitForServerVersion()
   if (started.ok) {
     if (!isTTY) {
       console.log(`[OK] Bakin is up (${started.version})`)
@@ -862,6 +762,8 @@ async function cmdLogs(options: LogsOptions = {}): Promise<void> {
 }
 
 async function cmdStop(): Promise<void> {
+  const { execFileSync } = await import('child_process')
+
   const printStopResult = async (result: Record<string, unknown>, detail?: string): Promise<void> => {
     // Antfly dies ONLY after Bakin is down/absent: killing it while a Bakin
     // server still runs would trip that server's takeover supervision, which
@@ -914,18 +816,22 @@ async function cmdStop(): Promise<void> {
 
   if (!process.stdout.isTTY) console.log('[..] Stopping Bakin server...')
   try {
-    const pid = thisHomeServerPid()
-    if (pid) {
+    const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
+    if (pids) {
       const signaled: string[] = []
-      process.kill(pid, 'SIGTERM')
-      signaled.push(String(pid))
+      for (const pid of pids.split('\n')) {
+        if (pid && pid !== String(process.pid)) {
+          process.kill(Number(pid), 'SIGTERM')
+          signaled.push(pid)
+        }
+      }
       if (!process.stdout.isTTY) console.log('[OK] Sent SIGTERM to Bakin server')
 
       // Wait and verify it's actually down
       for (let i = 0; i < 10; i++) {
         await new Promise(r => setTimeout(r, 500))
         // No live server for this home (its lock is gone) or no answer = down.
-        const baseUrl = thisHomeServerUrl()
+        const baseUrl = liveServerBaseUrl({})
         try {
           if (!baseUrl) throw new Error('no live server for this home')
           await fetch(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(1000) })
@@ -951,7 +857,7 @@ async function cmdStop(): Promise<void> {
         status: 'ok',
         message: 'No running Bakin process found.',
         signaled: 0,
-      }, unnamedServersDetail(null) ?? undefined)
+      })
     }
   } catch {
     await printStopResult({
