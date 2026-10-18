@@ -32,6 +32,7 @@ mock.module('../../../src/core/search-adapter-factory', () => ({
     return ({
     dependency: {
       name: 'antfly',
+      plan: { stages: [{ id: 'install', kind: 'installing', label: 'Install' }], pointOfNoReturn: null },
       check: async () => ({ name: 'antfly', status: 'ok', message: 'stub' }),
       install: async () => ({ name: 'antfly', status: installFails ? 'failed' : 'installed', message: 'stub install', durationMs: 1 }),
     },

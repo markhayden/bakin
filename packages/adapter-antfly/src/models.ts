@@ -1,9 +1,11 @@
 import { spawn } from 'child_process'
+import type { OperationPlan } from '@makinbakin/sdk/types'
 import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import type { AntflySettings } from './defaults'
 import { modelDir, modelStructurallyComplete, unverifiedModelFiles } from './model-pins'
 import { inferenceModelsRoot } from './paths'
+import { createPullTracker, pullStagingDir } from './pull-progress'
 import { findAntflyBinary } from './service'
 
 /**
@@ -151,28 +153,91 @@ export async function checkInferenceModels(models: InferenceModel[]) {
   }
 }
 
-function runPull(
-  antfly: string,
-  model: string,
-  interactive: boolean
-): Promise<{ code: number | null; stderr: string }> {
+/**
+ * The model install as an operation (#895 D12). No point of no return: a pull
+ * stages into a dot-dir and publishes with one atomic rename, and an
+ * interrupted pull resumes at byte level, so cancel (SIGTERM) is allowed
+ * throughout and keeps the staging dir for the next run.
+ */
+export const ANTFLY_MODELS_PLAN: OperationPlan = {
+  stages: [
+    { id: 'download', kind: 'downloading', label: 'Download search models' },
+    { id: 'verify', kind: 'verifying', label: 'Check the models are complete' },
+  ],
+  pointOfNoReturn: null,
+}
+
+/** How often the in-flight `.part` is read for bytes between the 16 MiB stderr lines. */
+const PART_POLL_MS = 1_000
+
+interface PullOptions {
+  modelsDir: string
+  signal: AbortSignal
+  /** Each stderr line, as it arrives. */
+  onLine: (line: string) => void
+  pollMs?: number
+  /** Bytes so far, between lines as well as on them. */
+  onBytes: (bytes: { received: number; total: number }) => void
+}
+
+/**
+ * `antfly inference pull <model> --models-dir <root>`: the pull ignores
+ * ANTFLY_HOME (T0 F1), so the flag keeps the pull and the completeness
+ * check on one directory under every home. Abort sends SIGTERM.
+ */
+function runPull(antfly: string, model: string, opts: PullOptions): Promise<{ code: number | null; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(antfly, ['inference', 'pull', model], {
-      stdio: interactive ? 'inherit' : ['ignore', 'pipe', 'pipe'],
-    })
-    let stderr = ''
-    if (!interactive) {
-      child.stderr?.on('data', (chunk) => {
-        stderr += chunk.toString()
-      })
+    const child = spawn(antfly, ['inference', 'pull', model, '--models-dir', opts.modelsDir], { stdio: ['ignore', 'ignore', 'pipe'] })
+    const tracker = createPullTracker(pullStagingDir(opts.modelsDir, model))
+    const tail: string[] = []
+    let pending = ''
+    let last = ''
+    const report = () => {
+      const bytes = tracker.snapshot()
+      const key = `${bytes.received}/${bytes.total}`
+      if (key === last) return
+      last = key
+      opts.onBytes(bytes)
     }
-    child.on('error', (err) => reject(err))
-    child.on('close', (code) => resolve({ code, stderr }))
+    const take = (line: string) => {
+      if (!line.trim()) return
+      tail.push(line.trim())
+      if (tail.length > 20) tail.shift()
+      opts.onLine(line)
+      if (tracker.line(line)) report()
+    }
+    child.stderr?.on('data', (chunk: Buffer) => {
+      const lines = (pending + chunk.toString()).split(/\r\n|\r|\n/)
+      pending = lines.pop() ?? ''
+      for (const line of lines) take(line)
+    })
+    const poll = setInterval(report, opts.pollMs ?? PART_POLL_MS)
+    const abort = () => child.kill('SIGTERM')
+    if (opts.signal.aborted) abort()
+    else opts.signal.addEventListener('abort', abort, { once: true })
+    const settle = () => {
+      clearInterval(poll)
+      opts.signal.removeEventListener('abort', abort)
+    }
+    child.on('error', (err) => {
+      settle()
+      reject(err)
+    })
+    child.on('close', (code) => {
+      settle()
+      take(pending)
+      resolve({ code, stderr: tail.join('\n') })
+    })
   })
 }
 
-export async function installInferenceModels(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger, models: InferenceModel[]) {
+export async function installInferenceModels(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger, models: InferenceModel[], timings: { pollMs?: number } = {}) {
+  const { op } = opts
+  if (!op.holds('search-engine')) throw new Error('installInferenceModels requires search-engine (run it inside an operation that declares it)')
   const start = Date.now()
+  const skipAll = (reason: string) => {
+    for (const stage of ANTFLY_MODELS_PLAN.stages) op.skip(stage.id, reason)
+  }
 
   const antfly = findAntflyBinary()
   if (!antfly) {
@@ -186,6 +251,7 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
 
   const missing = missingModels(models)
   if (missing.length === 0) {
+    skipAll('already downloaded')
     return {
       name: 'models',
       status: 'noop' as const,
@@ -200,6 +266,7 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
       true
     )
     if (!proceed) {
+      skipAll('declined')
       return {
         name: 'models',
         status: 'skipped' as const,
@@ -208,6 +275,7 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
       }
     }
   } else if (!opts.autoApprove) {
+    skipAll('not approved')
     return {
       name: 'models',
       status: 'skipped' as const,
@@ -216,47 +284,56 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     }
   }
 
-  logger.info('Pulling search models', { count: missing.length, antfly })
-  const pulledLabels: string[] = []
+  const failed = (message: string, error?: unknown) => ({ name: 'models', status: 'failed' as const, message, ...(error === undefined ? {} : { error }), durationMs: Date.now() - start })
+  const modelsDir = inferenceModelsRoot()
+  // The CLI's in-process onboarding has no operation renderer until it
+  // follows operations (PR6 of #895); until then a terminal run still sees
+  // antfly's own progress lines.
+  const echo = opts.interactive && !opts.json
+  logger.info('Pulling search models', { count: missing.length, antfly, modelsDir })
+  op.stage('download')
+  for (const m of missing) op.item('download', { id: m.model, label: m.label })
   for (const m of missing) {
     logger.info('Pulling model', { model: m.model, label: m.label })
+    op.item('download', { id: m.model, label: m.label, status: 'active' })
+    let result: { code: number | null; stderr: string }
     try {
-      const { code, stderr } = await runPull(antfly, m.model, opts.interactive && !opts.json)
-      if (code !== 0) {
-        return {
-          name: 'models',
-          status: 'failed' as const,
-          message: `antfly inference pull ${m.model} exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`,
-          durationMs: Date.now() - start,
-        }
-      }
-
-      const verified = modelComplete(m)
-      if (!verified.ok) {
-        return {
-          name: 'models',
-          status: 'failed' as const,
-          message: `antfly inference pull ${m.model} reported success but ${verified.reason}`,
-          durationMs: Date.now() - start,
-        }
-      }
-      const drifted = await unverifiedModelFiles(m.model)
-      if (drifted.length > 0) {
-        logger.warn('Pulled model differs from the pinned verified distribution', { model: m.model, files: drifted })
-      }
-      pulledLabels.push(m.label)
+      result = await runPull(antfly, m.model, {
+        modelsDir,
+        signal: op.signal,
+        pollMs: timings.pollMs,
+        onLine: (line) => {
+          op.output(line)
+          if (echo) process.stderr.write(`${line}\n`)
+        },
+        onBytes: (bytes) => op.bytes('download', bytes, m.model),
+      })
     } catch (err) {
       logger.error('Failed to spawn antfly inference pull', err)
-      return {
-        name: 'models',
-        status: 'failed' as const,
-        message: `Failed to pull ${m.model}: ${err instanceof Error ? err.message : String(err)}`,
-        error: err,
-        durationMs: Date.now() - start,
-      }
+      op.item('download', { id: m.model, label: m.label, status: 'failed' })
+      return failed(`Failed to pull ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)
+    }
+    // Cancelled: the staging dir stays, so the next pull resumes (T0 F4/F6).
+    op.throwIfCancelled()
+    if (result.code !== 0) {
+      op.item('download', { id: m.model, label: m.label, status: 'failed', message: `exited with code ${result.code}` })
+      return failed(`antfly inference pull ${m.model} exited with code ${result.code}${result.stderr ? `: ${result.stderr}` : ''}`)
+    }
+    op.item('download', { id: m.model, label: m.label, status: 'done' })
+  }
+
+  op.stage('verify')
+  for (const m of missing) {
+    const verified = modelComplete(m)
+    if (!verified.ok) return failed(`antfly inference pull ${m.model} reported success but ${verified.reason}`)
+    const drifted = await unverifiedModelFiles(m.model)
+    if (drifted.length > 0) {
+      logger.warn('Pulled model differs from the pinned verified distribution', { model: m.model, files: drifted })
+      op.log(`${m.model}: differs from the pinned distribution (${drifted.join(', ')})`, 'warn')
     }
   }
 
+  const pulledLabels = missing.map((m) => m.label)
   const durationMs = Date.now() - start
   logger.info('Search models installed', { pulled: pulledLabels, durationMs })
   return {

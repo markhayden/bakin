@@ -1,5 +1,6 @@
 import { createLogger } from '../logger'
 import { getSearchAdapterModelsRoot, getSearchAdapterRequiredModels, getSearchAdapterSetup } from '../search-adapter-factory'
+import { installSearchComponentLocally } from '../search-setup-install'
 import { getSettings } from '../settings'
 import { askYesNo } from './prompts'
 import type { OnboardingComponent } from './types'
@@ -34,9 +35,9 @@ function setup() {
 export const searchModelsComponent: OnboardingComponent = {
   name: 'search-models',
   check: () => setup().models!.check().then((result) => ({ ...result, name: 'search-models' })),
-  install: (opts) => setup().models!.install({
+  install: (opts) => installSearchComponentLocally(setup().models!, {
     ...opts,
     autoApprove: opts.autoApprove || opts.approvedComponents?.includes('search-models') === true,
     askYesNo,
-  }).then((result) => ({ ...result, name: 'search-models' })),
+  }, { kind: 'install:search-models', title: 'Download the search models', failureCode: 'models_install_failed' }).then((result) => ({ ...result, name: 'search-models' })),
 }

@@ -1,5 +1,6 @@
 import { createLogger } from '../logger'
 import { getSearchAdapterSetup } from '../search-adapter-factory'
+import { installSearchComponentLocally } from '../search-setup-install'
 import { getSettings, updateSettings } from '../settings'
 import { askYesNo } from './prompts'
 import type { OnboardingComponent } from './types'
@@ -54,11 +55,11 @@ export const searchComponent: OnboardingComponent = {
     const result = await current.setup.dependency.check()
     return { ...result, name: 'search', ...(current.legacy && result.status === 'ok' ? { status: 'broken' as const, message: 'Search URL needs correction during installation.' } : {}) }
   },
-  install: (opts) => setup().setup.dependency.install({
+  install: (opts) => installSearchComponentLocally(setup().setup.dependency, {
     ...opts,
     autoApprove: opts.autoApprove || opts.approvedComponents?.includes('search') === true,
     askYesNo,
-  }).then((result) => {
+  }, { kind: 'install:search', title: 'Install the search engine', failureCode: 'engine_install_failed' }).then((result) => {
     if (result.status !== 'installed' && result.status !== 'noop') {
       return { ...result, name: 'search' }
     }

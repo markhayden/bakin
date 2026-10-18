@@ -33,10 +33,14 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
+import { createMemoryResourceAcquirer, createOperationRegistry, type OperationView } from '@bakin/core/operations'
 import {
+  ANTFLY_ENGINE_PLAN,
   checkAntflyDependency as checkDependency,
   installAntflyDependency as installDependency,
 } from '../../../packages/adapter-antfly/src/installer'
+import { withOperationView } from '../../helpers/operation-harness'
+import { waitUntil } from '../../helpers/wait'
 import { DEFAULT_SETTINGS } from '../../../packages/adapter-antfly/src/defaults'
 import { launchdPlistPath, renderLaunchdPlist, buildServiceArgv, servicePaths, type ServiceIo } from '../../../packages/adapter-antfly/src/service'
 import { antflyPlatformKey, type AntflyPin } from '../../../packages/adapter-antfly/src/pin'
@@ -56,8 +60,15 @@ const serviceIo: ServiceIo = {
     return { code: 0, stdout: '', stderr: '' }
   },
 }
-const installAntflyDependency: typeof installDependency = (opts, logger, pin, timings, settings) =>
-  installDependency(opts, logger, pin, { readyBudgetMs: 100, pollMs: 1, ...timings, io: serviceIo }, settings)
+type InstallArgs = Parameters<typeof installDependency>
+/** The engine install the way production runs it: inside an operation holding search-engine. */
+let lastView: OperationView | undefined
+const installAntflyDependency = async (opts: Omit<InstallArgs[0], 'op'>, logger?: InstallArgs[1], pin?: InstallArgs[2], timings?: InstallArgs[3], settings?: InstallArgs[4]) => {
+  const { value, view } = await withOperationView({ plan: ANTFLY_ENGINE_PLAN, resources: ['search-engine'] }, (op) =>
+    installDependency({ ...opts, op }, logger, pin, { readyBudgetMs: 100, pollMs: 1, ...timings, io: serviceIo }, settings))
+  lastView = view
+  return value
+}
 const checkAntflyDependency = (pin: AntflyPin) => checkDependency(pin, DEFAULT_SETTINGS, serviceIo)
 mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => join(testDir, 'openclaw'), getOpenClawPath: (...p: string[]) => join(testDir, 'openclaw', ...p), resetOpenClawHome: () => {} }))
 mock.module('../../../packages/core/src/logger', () => ({ createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }) }))
@@ -437,9 +448,13 @@ it('guest setup requires no local binary or model installation and refuses reset
   const { createAntflySearchSetup } = await import('../../../packages/adapter-antfly/src/setup')
   const setup = createAntflySearchSetup(undefined, { ...DEFAULT_SETTINGS, url: 'http://isolated:9000' })
   expect((await setup.dependency.check()).status).toBe('ok')
-  expect((await setup.dependency.install(optsAutoYes)).status).toBe('noop')
+  const engine = await withOperationView({ plan: setup.dependency.plan, resources: ['search-engine'] }, (op) => setup.dependency.install({ ...optsAutoYes, op }))
+  expect(engine.value.status).toBe('noop')
+  expect(engine.view.stages.every((stage) => stage.status === 'skipped')).toBe(true)
   expect((await setup.models!.check()).status).toBe('ok')
-  expect((await setup.models!.install(optsAutoYes)).status).toBe('noop')
+  const models = await withOperationView({ plan: setup.models!.plan, resources: ['search-engine'] }, (op) => setup.models!.install({ ...optsAutoYes, op }))
+  expect(models.value.status).toBe('noop')
+  expect(models.view.stages.every((stage) => stage.status === 'skipped')).toBe(true)
   expect((await setup.resetEngineData!()).status).toBe('failed')
   expect(fetchCalls).toEqual([])
   expect(commands).toEqual([])
@@ -493,4 +508,66 @@ it('generic setup cannot claim an owner that appeared while its binary was downl
   expect(readFileSync(launchdPlistPath(serviceIo), 'utf8')).toBe(foreignUnit)
   expect(commands).toEqual([])
   expect(existsSync(managedBinary)).toBe(false)
+})
+
+describe('the engine install as an operation (#895)', () => {
+  it('a fresh install reports every stage, with download bytes, and skips the cleanup it does not need', async () => {
+    mockDownloadFetch()
+    expect((await installAntflyDependency(optsAutoYes, undefined, makePin())).status).toBe('installed')
+    const stages = Object.fromEntries(lastView!.stages.map((stage) => [stage.id, stage.status]))
+    expect(stages).toEqual({ prepare: 'done', download: 'done', checksum: 'done', extract: 'done', version: 'done', commit: 'done', cleanup: 'skipped', ready: 'done' })
+    expect(lastView!.stages.find((stage) => stage.id === 'download')!.bytes?.received).toBe(tarballBytes.byteLength)
+  })
+
+  it('a version change clears the derived engine data in the cleanup stage', async () => {
+    writeBinary(managedBinary, '0.1.1')
+    mkdirSync(servicePaths().dataDir, { recursive: true })
+    const table = join(servicePaths().dataDir, 'table.db')
+    writeFileSync(table, 'old engine format')
+    mockDownloadFetch()
+    expect((await installAntflyDependency(optsAutoYes, undefined, makePin())).status).toBe('installed')
+    expect(lastView!.stages.find((stage) => stage.id === 'cleanup')!.status).toBe('done')
+    expect(existsSync(table)).toBe(false)
+  })
+
+  it('an engine already at the pin skips the staging stages and restarts the service', async () => {
+    writeBinary(managedBinary, PIN_VERSION)
+    mockDownloadFetch()
+    expect((await installAntflyDependency(optsAutoYes, undefined, makePin())).status).toBe('noop')
+    const stages = Object.fromEntries(lastView!.stages.map((stage) => [stage.id, stage.status]))
+    expect(stages).toMatchObject({ download: 'skipped', checksum: 'skipped', extract: 'skipped', version: 'skipped', commit: 'done', cleanup: 'skipped', ready: 'done' })
+  })
+
+  it('cancel during the engine download leaves the old engine running and its binary intact', async () => {
+    writeBinary(managedBinary, '0.1.1')
+    loaded = true
+    let cancelled = false
+    mockDownloadFetch((url) => {
+      if (!url.endsWith('.tar.gz')) throw new Error(`unexpected URL: ${url}`)
+      // Half the archive, then nothing until the reader gives up.
+      return new Response(new ReadableStream<Uint8Array>({
+        start: (controller) => controller.enqueue(tarballBytes.slice(0, tarballBytes.byteLength >> 1)),
+        cancel: () => { cancelled = true },
+      }), { status: 200 })
+    })
+    const reg = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, acquireResources: createMemoryResourceAcquirer(1) })
+    try {
+      const { operationId } = await reg.start({
+        kind: 'install:search', owner: 'core', origin: 'cli', title: 'Install the search engine', fingerprint: 'install:search',
+        resources: ['search-engine'], plan: ANTFLY_ENGINE_PLAN,
+        run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installDependency({ ...optsAutoYes, op }, undefined, makePin(), { readyBudgetMs: 100, pollMs: 1, io: serviceIo }) }),
+      })
+      await waitUntil(() => (reg.get(operationId)?.stages.find((stage) => stage.id === 'download')?.bytes?.received ?? 0) > 0, { label: 'the download is streaming' })
+      expect(reg.cancel(operationId)).toBe('cancelling')
+      const view = await reg.await(operationId)
+      expect(view.status).toBe('cancelled')
+      expect(cancelled).toBe(true)
+      expect(loaded).toBe(true)
+      expect(commands).toEqual([])
+      expect(readFileSync(managedBinary, 'utf8')).toContain('0.1.1')
+      expect(existsSync(join(antflyHomeDir, 'tmp'))).toBe(false)
+    } finally {
+      reg.dispose()
+    }
+  })
 })

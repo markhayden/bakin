@@ -1,9 +1,9 @@
-import type { SearchAdapterSetup } from '@bakin/core/adapters/search'
+import type { SearchAdapterSetup, SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import { isLocalDefaultUrl } from './service'
 import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
-import { checkAntflyDependency, installAntflyDependency, resetAntflyEngineData } from './installer'
-import { checkInferenceModels, installInferenceModels, requiredModelsForSettings } from './models'
+import { ANTFLY_ENGINE_PLAN, checkAntflyDependency, installAntflyDependency, resetAntflyEngineData } from './installer'
+import { ANTFLY_MODELS_PLAN, checkInferenceModels, installInferenceModels, requiredModelsForSettings } from './models'
 
 /**
  * Composition layer wiring the antfly setup surface for onboarding:
@@ -27,16 +27,22 @@ export function createAntflySearchSetup(
   // when reranking is disabled (the default), so onboarding doesn't flag a
   // disabled reranker as a missing/degraded dependency.
   const models = requiredModelsForSettings(settings)
+  const external = (opts: SearchAdapterSetupOptions) => {
+    for (const stage of ANTFLY_MODELS_PLAN.stages) opts.op.skip(stage.id, 'managed at the configured external endpoint')
+    return Promise.resolve({ name: 'models', status: 'noop' as const, message: 'Search models are managed at the configured external endpoint.', durationMs: 0 })
+  }
   return {
     dependency: {
       name: 'antfly',
+      plan: ANTFLY_ENGINE_PLAN,
       check: () => checkAntflyDependency(undefined, settings),
       install: (opts) => installAntflyDependency(opts, logger, undefined, {}, settings),
     },
     models: {
       name: 'models',
+      plan: ANTFLY_MODELS_PLAN,
       check: () => isLocalDefaultUrl(settings.url) ? checkInferenceModels(models) : Promise.resolve({ name: 'models', status: 'ok', message: 'Search models are managed at the configured external endpoint.' }),
-      install: (opts) => isLocalDefaultUrl(settings.url) ? installInferenceModels(opts, logger, models) : Promise.resolve({ name: 'models', status: 'noop', message: 'Search models are managed at the configured external endpoint.', durationMs: 0 }),
+      install: (opts) => isLocalDefaultUrl(settings.url) ? installInferenceModels(opts, logger, models) : external(opts),
     },
     resetEngineData: () => resetAntflyEngineData(logger, settings),
   }

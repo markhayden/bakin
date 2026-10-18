@@ -1,3 +1,4 @@
+import type { OperationContext, OperationPlan } from '@makinbakin/sdk/types'
 import type { AdapterInitOpts } from '../shared'
 import type {
   BatchResult,
@@ -121,10 +122,14 @@ export interface SearchAdapterSetupOptions {
   autoApprove: boolean
   json: boolean
   askYesNo?: (question: string, defaultValue: boolean) => Promise<boolean>
+  /** The operation the install reports through; its holder owns `search-engine` (#895). */
+  op: OperationContext
 }
 
 export interface SearchAdapterSetupComponent {
   readonly name: string
+  /** The install's stages and point of no return, declared before it starts. */
+  readonly plan: OperationPlan
   check(): Promise<SearchAdapterSetupCheckResult>
   install(opts: SearchAdapterSetupOptions): Promise<SearchAdapterSetupInstallResult>
 }
