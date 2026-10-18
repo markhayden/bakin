@@ -383,6 +383,8 @@ async function repairOneTable(
 
 /** Passes running migrations in this process right now (the wedge watchdog acts for them). */
 let migrationRunners = 0
+/** Engine bounces the watchdog started on a running pass's behalf. */
+const bouncesForRunners = new Set<Promise<boolean>>()
 
 async function runningMigrations<T>(fn: () => Promise<T>): Promise<T> {
   migrationRunners += 1
@@ -390,6 +392,10 @@ async function runningMigrations<T>(fn: () => Promise<T>): Promise<T> {
     return await fn()
   } finally {
     migrationRunners -= 1
+    // A bounce made for this pass runs under its ownership: the pass keeps
+    // search-engine until the engine is back, so nothing queued behind it
+    // starts against a restarting engine.
+    while (bouncesForRunners.size > 0) await Promise.allSettled([...bouncesForRunners])
   }
 }
 
@@ -575,7 +581,18 @@ export async function wedgeWatchTick(): Promise<void> {
   // migration, and its wedge is exactly what this watchdog heals — so it
   // bounces on that holder's behalf. Anything else holding the engine (an
   // install, a model pull, a reset's stop/wipe) defers the bounce.
-  const bounced = migrationRunners > 0 ? await bounce() : await backgroundPass('wedge watchdog restart', bounce)
+  let bounced: boolean | undefined
+  if (migrationRunners > 0) {
+    const forRunner = bounce()
+    bouncesForRunners.add(forRunner)
+    try {
+      bounced = await forRunner
+    } finally {
+      bouncesForRunners.delete(forRunner)
+    }
+  } else {
+    bounced = await backgroundPass('wedge watchdog restart', bounce)
+  }
   // Parked work resumes right away instead of waiting for the slow tick.
   if (bounced) void migrationPumpTick().catch(() => {})
 }

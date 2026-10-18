@@ -125,8 +125,9 @@ the core ones. Adding a fourth core resource is an approval checkpoint.
   released at once); `tryAcquireResources` never waits — for background work
   (the search migration pump and boot resumption take `search-engine` this
   way for their whole pass as "Background index migration", or defer to the
-  next tick; the wedge watchdog acts for a holder running migrations here and
-  defers for any other).
+  next tick; the wedge watchdog acts for a holder running migrations here —
+  that holder keeps the resource until the bounce settles — and defers for
+  any other).
   `holdNow(resources, identity, fn)` wraps it for the bounded synchronous
   writers (lesson toggle, plugin unlink, skill-map apply): it takes the
   resources inside the ownership context or throws `ResourceBusyError`,
@@ -359,7 +360,8 @@ Everything that changes the engine or its tables owns `search-engine`.
   runs them as local operations.
 - Outcomes: reindex `ok` / `tables_parked` (rows kept); reset `ok` /
   `reset_failed` (a failed wipe, or a rebuild that did not converge — the
-  `reindex` rows say which tables); engine `engine_install_failed`; models
+  `reindex` rows say which tables, or search turned disabled while the reset
+  waited — it revalidates before stopping anything); engine `engine_install_failed`; models
   `models_install_failed`. The result body is `{ ok, errors, parked, total,
   tables }` (reindex) or `{ ok, message, reindex }` (reset).
 - A boot resumption deferred by a busy engine is picked up by the next pump

@@ -572,6 +572,30 @@ describe('the engine install as an operation (#895)', () => {
       reg.dispose()
     }
   })
+  it('cancel before the commit of an engine already at the pin settles cancelled, not failed', async () => {
+    // The version probe announces itself, then waits for the test to cancel.
+    const asked = join(testDir, 'version-asked')
+    const release = join(testDir, 'version-release')
+    mkdirSync(join(managedBinary, '..'), { recursive: true })
+    writeFileSync(managedBinary, `#!/bin/sh\ntouch "${asked}"\nn=0\nwhile [ ! -f "${release}" ] && [ $n -lt 100 ]; do sleep 0.05; n=$((n+1)); done\necho "antfly ${PIN_VERSION} (zig)"\n`, { mode: 0o755 })
+    mockDownloadFetch()
+    const reg = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, acquireResources: createMemoryResourceAcquirer(1) })
+    try {
+      const { operationId } = await reg.start({
+        kind: 'install:search', owner: 'core', origin: 'cli', title: 'Install the search engine', fingerprint: 'install:search',
+        resources: ['search-engine'], plan: ANTFLY_ENGINE_PLAN,
+        run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installDependency({ ...optsAutoYes, op }, undefined, makePin(), { readyBudgetMs: 100, pollMs: 1, io: serviceIo }) }),
+      })
+      await waitUntil(() => existsSync(asked), { label: 'the install is probing the existing engine' })
+      expect(reg.cancel(operationId)).toBe('cancelling')
+      writeFileSync(release, '')
+      const view = await reg.await(operationId)
+      expect(view.status).toBe('cancelled')
+      expect(commands).toEqual([])
+    } finally {
+      reg.dispose()
+    }
+  })
 })
 
 describe('the engine reset as operation stages (#895)', () => {

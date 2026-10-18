@@ -127,6 +127,11 @@ export function searchResetOperation(origin: OperationOrigin): StartOperationInp
       const refusal = resetRefusal()
       if (refusal) throw new OperationRejectedError(409, { ok: false, message: refusal, reindex: null } satisfies SearchResetResult)
     },
+    // Settings can change while the reset waits for search-engine (D7).
+    revalidate: async () => {
+      const refusal = resetRefusal()
+      if (refusal) return { status: 'failed', code: 'reset_failed', message: refusal, httpStatus: 200, body: { ok: false, message: refusal, reindex: null } }
+    },
     run: async (op): Promise<OperationOutcome<SearchResetResult>> => {
       const settings = getSettings()
       const setup = getSearchAdapterSetup(settings.search.adapter, undefined, settings.search.settings)

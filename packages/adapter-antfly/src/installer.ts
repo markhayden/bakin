@@ -227,7 +227,11 @@ export async function installAntflyDependency(
         await finish()
         return { name: 'antfly', status: 'noop' as const, message: `Antfly v${pin.version} is already installed at ${existing}; service provisioned and running. Restart Bakin if it started with search unavailable.`, durationMs: Date.now() - start }
       })
-    } catch (err) { return failed(err) }
+    } catch (err) {
+      // A cancel accepted before the commit settles cancelled, not failed.
+      op.throwIfCancelled()
+      return failed(err)
+    }
   }
 
   const prompt = existing

@@ -141,6 +141,23 @@ describe('search reset', () => {
     expect((await registry.await(operationId)).status).toBe('succeeded')
     expect(resetCalls).toEqual(['stop', 'wipe', 'boot'])
   })
+
+  it('a reset queued behind a holder rechecks its preconditions before touching the engine (D7)', async () => {
+    let release!: () => void
+    const held = holdNow(['search-engine'], { title: 'Background index migration' }, () => new Promise<void>((resolve) => { release = resolve }))
+    const { operationId } = await registry.start(searchResetOperation('web'))
+    await waitUntil(() => registry.get(operationId)?.waitingFor !== undefined, { label: 'the reset waits for search-engine' })
+    searchEnabled = false
+
+    release()
+    await held
+    const view = await registry.await(operationId)
+    expect(view.status).toBe('failed')
+    expect(view.outcome?.code).toBe('reset_failed')
+    expect(view.result!.body).toEqual({ ok: false, message: 'Search is disabled in settings — enable it before resetting.', reindex: null })
+    expect(resetCalls).toEqual([])
+    expect(rebuild).not.toHaveBeenCalled()
+  })
 })
 
 describe('reindex', () => {

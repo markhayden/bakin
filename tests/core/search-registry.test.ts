@@ -99,7 +99,7 @@ import { enqueueIndex, outboxStats } from '@bakin/core/search/outbox'
 import { broadcast } from '@/core/sse'
 import { createOperationRegistry, readResourceHolder, tryAcquireResources, type ResourceLease } from '@bakin/core/operations'
 import { resetSearchEngineProgressForTests } from '@bakin/core/search/progress'
-import { waitUntil } from '../helpers/wait'
+import { settleFor, waitUntil } from '../helpers/wait'
 import { owning } from '../helpers/owning'
 import { reindexOperation, type ReindexReport } from '@/core/search-operations'
 
@@ -1563,5 +1563,34 @@ describe('background search mutators respect search-engine (#895 D23)', () => {
     expect(searchHarness.adapter.restartEngine).toHaveBeenCalledTimes(1)
     unblock()
     await pass
+  })
+
+  it('a bounce started for a migration holder settles before that holder releases search-engine', async () => {
+    await migrating('gatebounce', 'parked')
+    let unblock!: () => void
+    const blocked = new Promise<void>((resolve) => { unblock = resolve })
+    let entered = false
+    searchHarness.calls.documentsBatchIndex.mockImplementation(async (name, items) => {
+      entered = true
+      await blocked
+      for (const item of items) await searchHarness.adapter.documents.index(name, item.key, item.doc)
+      return { indexed: items.length, failed: [] }
+    })
+    let finishRestart!: () => void
+    searchHarness.calls.restartEngine.mockImplementation(() => new Promise<void>((resolve) => { finishRestart = resolve }))
+    const pump = migrationPumpTick()
+    await waitUntil(() => entered, { label: 'the pump backfill is in flight' })
+    resetSearchEngineProgressForTests(0)
+
+    const tick = wedgeWatchTick()
+    await waitUntil(() => searchHarness.calls.restartEngine.mock.calls.length === 1, { label: 'the bounce started' })
+    unblock()
+    await settleFor(50, 'the pass ends while its bounce is still restarting the engine')
+
+    expect(readResourceHolder('search-engine')?.title).toBe('Background index migration')
+    finishRestart()
+    await pump
+    await tick
+    await waitUntil(() => readResourceHolder('search-engine') === null, { label: 'search-engine released' })
   })
 })
