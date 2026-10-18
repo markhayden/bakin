@@ -24,14 +24,23 @@ export interface ResolvedSearchSetupComponent {
   settings: unknown
 }
 
+/** Settled when the settings moved while the install waited; the caller starts again under the new identity. */
+const SETTINGS_CHANGED = 'settings_changed'
+const MAX_SETTINGS_RETRIES = 3
+
+function settingsKeyOf(settings: unknown): string {
+  return createHash('sha256').update(JSON.stringify(settings ?? null)).digest('hex').slice(0, 16)
+}
+
 export async function installSearchComponentLocally(
   resolve: () => ResolvedSearchSetupComponent,
   opts: Omit<SearchAdapterSetupOptions, 'op'>,
   meta: SearchSetupInstallMeta,
+  attempt = 1,
 ): Promise<SearchAdapterSetupInstallResult> {
   const started = Date.now()
   const requested = resolve()
-  const settingsKey = createHash('sha256').update(JSON.stringify(requested.settings ?? null)).digest('hex').slice(0, 16)
+  const settingsKey = settingsKeyOf(requested.settings)
   const view = await runLocal<SearchAdapterSetupInstallResult>({
     kind: meta.kind,
     owner: 'core',
@@ -44,9 +53,15 @@ export async function installSearchComponentLocally(
     resources: ['search-engine'],
     plan: requested.component.plan,
     run: async (op) => {
-      // Built again once search-engine is held: settings may have changed while it waited.
-      const { component } = resolve()
-      const result = await component.install({ ...opts, op })
+      // Settings may have changed while this waited for search-engine. Running
+      // anyway would install under an identity that no longer describes it, so
+      // a request for the old settings could attach and take this result.
+      const current = resolve()
+      if (settingsKeyOf(current.settings) !== settingsKey) {
+        const message = 'Search settings changed while the install waited; starting again with the current settings.'
+        return { status: 'failed', code: SETTINGS_CHANGED, message, httpStatus: 200, body: { name: current.component.name, status: 'failed', message, durationMs: Date.now() - started } }
+      }
+      const result = await current.component.install({ ...opts, op })
       // A freshly (re)started engine is progress for the wedge watchdog.
       if (result.status === 'installed' || result.status === 'noop') noteSearchEngineProgress()
       return result.status === 'failed'
@@ -54,6 +69,9 @@ export async function installSearchComponentLocally(
         : { status: 'succeeded', code: result.status === 'skipped' ? 'skipped' : 'ok', httpStatus: 200, body: result }
     },
   })
+  if (view.outcome?.code === SETTINGS_CHANGED && attempt < MAX_SETTINGS_RETRIES) {
+    return installSearchComponentLocally(resolve, opts, meta, attempt + 1)
+  }
   // A thrown install settles `unexpected` with an `{ error }` body — not an install result.
   if (view.result && view.outcome?.code !== 'unexpected') return view.result.body
   return {
