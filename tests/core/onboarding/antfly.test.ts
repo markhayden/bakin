@@ -596,6 +596,41 @@ describe('the engine install as an operation (#895)', () => {
       reg.dispose()
     }
   })
+  it('cancel while the downloaded binary reports its version settles cancelled, even when the version is wrong', async () => {
+    // A release whose binary announces its version probe, waits for the
+    // test to cancel, then reports a version that does not match the pin.
+    const asked = join(testDir, 'staged-version-asked')
+    const release = join(testDir, 'staged-version-release')
+    const srcDir = join(testDir, 'gated-tarball-src')
+    mkdirSync(srcDir, { recursive: true })
+    writeFileSync(join(srcDir, 'antfly'), `#!/bin/sh\ntouch "${asked}"\nn=0\nwhile [ ! -f "${release}" ] && [ $n -lt 100 ]; do sleep 0.05; n=$((n+1)); done\necho "antfly 9.9.9 (zig)"\n`, { mode: 0o755 })
+    const gatedPath = join(testDir, 'gated-release.tar.gz')
+    execSync(`tar -czf ${JSON.stringify(gatedPath)} -C ${JSON.stringify(srcDir)} .`)
+    const gatedBytes = new Uint8Array(readFileSync(gatedPath))
+    const gatedSum = createHash('sha256').update(gatedBytes).digest('hex')
+    mockDownloadFetch((url) => {
+      if (url.endsWith('.tar.gz')) return new Response(gatedBytes.slice().buffer as ArrayBuffer, { status: 200 })
+      throw new Error(`unexpected URL: ${url}`)
+    })
+    const pin = makePin({ checksums: { 'darwin-arm64': gatedSum, 'linux-x64': gatedSum, 'linux-arm64': gatedSum } })
+    const reg = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, acquireResources: createMemoryResourceAcquirer(1) })
+    try {
+      const { operationId } = await reg.start({
+        kind: 'install:search', owner: 'core', origin: 'cli', title: 'Install the search engine', fingerprint: 'install:search',
+        resources: ['search-engine'], plan: ANTFLY_ENGINE_PLAN,
+        run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installDependency({ ...optsAutoYes, op }, undefined, pin, { readyBudgetMs: 100, pollMs: 1, io: serviceIo }) }),
+      })
+      await waitUntil(() => existsSync(asked), { label: 'the install is probing the downloaded binary' })
+      expect(reg.cancel(operationId)).toBe('cancelling')
+      writeFileSync(release, '')
+      const view = await reg.await(operationId)
+      expect(view.status).toBe('cancelled')
+      expect(commands).toEqual([])
+      expect(existsSync(managedBinary)).toBe(false)
+    } finally {
+      reg.dispose()
+    }
+  })
 })
 
 describe('the engine reset as operation stages (#895)', () => {

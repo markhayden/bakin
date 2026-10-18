@@ -27,15 +27,16 @@ export function searchModelsRoot(): string {
 const log = createLogger('onboarding:search-models')
 
 function setup() {
-  const s = getSearchAdapterSetup('antfly', log, getSettings().search.settings)
+  const settings = getSettings().search.settings
+  const s = getSearchAdapterSetup('antfly', log, settings)
   if (!s.models) throw new Error('Configured search adapter does not expose a model setup component')
-  return s
+  return { models: s.models, settings }
 }
 
 export const searchModelsComponent: OnboardingComponent = {
   name: 'search-models',
-  check: () => setup().models!.check().then((result) => ({ ...result, name: 'search-models' })),
-  install: (opts) => installSearchComponentLocally(setup().models!, {
+  check: () => setup().models.check().then((result) => ({ ...result, name: 'search-models' })),
+  install: (opts) => installSearchComponentLocally(() => { const current = setup(); return { component: current.models, settings: current.settings } }, {
     ...opts,
     autoApprove: opts.autoApprove || opts.approvedComponents?.includes('search-models') === true,
     askYesNo,

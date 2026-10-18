@@ -6,6 +6,7 @@
  * shows in the operations tray, and reports its stages. Always resolves with
  * the install result — a cancelled or crashed operation becomes a failed one.
  */
+import { createHash } from 'crypto'
 import type { SearchAdapterSetupComponent, SearchAdapterSetupInstallResult, SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import { noteSearchEngineProgress } from '@bakin/core/search/progress'
 import { runLocal } from './operations'
@@ -17,23 +18,34 @@ export interface SearchSetupInstallMeta {
   failureCode: string
 }
 
+/** The component built from the settings in force right now, and those settings. */
+export interface ResolvedSearchSetupComponent {
+  component: SearchAdapterSetupComponent
+  settings: unknown
+}
+
 export async function installSearchComponentLocally(
-  component: SearchAdapterSetupComponent,
+  resolve: () => ResolvedSearchSetupComponent,
   opts: Omit<SearchAdapterSetupOptions, 'op'>,
   meta: SearchSetupInstallMeta,
 ): Promise<SearchAdapterSetupInstallResult> {
   const started = Date.now()
+  const requested = resolve()
+  const settingsKey = createHash('sha256').update(JSON.stringify(requested.settings ?? null)).digest('hex').slice(0, 16)
   const view = await runLocal<SearchAdapterSetupInstallResult>({
     kind: meta.kind,
     owner: 'core',
     origin: 'system',
     title: meta.title,
     href: '/health',
-    // Options are part of identity: an unapproved run must never answer for an approved one.
-    fingerprint: `${meta.kind}:${opts.autoApprove ? 'approved' : 'ask'}:${opts.allowServiceClaim ? 'claim' : 'setup'}`,
+    // Options and settings are part of identity: an unapproved run must never
+    // answer for an approved one, nor an install for other models or another endpoint.
+    fingerprint: `${meta.kind}:${opts.autoApprove ? 'approved' : 'ask'}:${opts.allowServiceClaim ? 'claim' : 'setup'}:${settingsKey}`,
     resources: ['search-engine'],
-    plan: component.plan,
+    plan: requested.component.plan,
     run: async (op) => {
+      // Built again once search-engine is held: settings may have changed while it waited.
+      const { component } = resolve()
       const result = await component.install({ ...opts, op })
       // A freshly (re)started engine is progress for the wedge watchdog.
       if (result.status === 'installed' || result.status === 'noop') noteSearchEngineProgress()
@@ -45,7 +57,7 @@ export async function installSearchComponentLocally(
   // A thrown install settles `unexpected` with an `{ error }` body — not an install result.
   if (view.result && view.outcome?.code !== 'unexpected') return view.result.body
   return {
-    name: component.name,
+    name: requested.component.name,
     status: 'failed',
     message: view.outcome?.message ?? `${meta.title} ${view.status}`,
     durationMs: Date.now() - started,

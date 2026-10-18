@@ -26,7 +26,8 @@ const CURRENT_DEFAULT_URL = 'http://127.0.0.1:3738'
 function setup() {
   const settings = getSettings().search.settings
   const legacy = typeof settings.url === 'string' && LEGACY_DEFAULT_URLS.has(settings.url)
-  return { legacy, setup: getSearchAdapterSetup('antfly', log, legacy ? { ...settings, url: CURRENT_DEFAULT_URL } : settings) }
+  const effective = legacy ? { ...settings, url: CURRENT_DEFAULT_URL } : settings
+  return { legacy, settings: effective, setup: getSearchAdapterSetup('antfly', log, effective) }
 }
 
 function correctLegacySettingsUrl(): string | null {
@@ -55,7 +56,7 @@ export const searchComponent: OnboardingComponent = {
     const result = await current.setup.dependency.check()
     return { ...result, name: 'search', ...(current.legacy && result.status === 'ok' ? { status: 'broken' as const, message: 'Search URL needs correction during installation.' } : {}) }
   },
-  install: (opts) => installSearchComponentLocally(setup().setup.dependency, {
+  install: (opts) => installSearchComponentLocally(() => { const current = setup(); return { component: current.setup.dependency, settings: current.settings } }, {
     ...opts,
     autoApprove: opts.autoApprove || opts.approvedComponents?.includes('search') === true,
     askYesNo,

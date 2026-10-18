@@ -193,7 +193,7 @@ async function inside(): Promise<void> {
     server.kill('SIGTERM')
   }
 
-  // Models LAST: on Linux the default visual embedder (antflydb/clipclap)
+  // Models LAST: on Linux the default visual embedder
   // has no loadable weight for the native backend (error.MissingWeight), so
   // an engine that preloads it crash-loops at startup — a platform limit of
   // the default settings, not of these flows. The pull itself is the check.

@@ -357,7 +357,11 @@ Everything that changes the engine or its tables owns `search-engine`.
   `op.holds('search-engine')`; each setup component declares its `plan`, so
   core never names an antfly stage. Until onboarding runs as operations
   (PR6), `installSearchComponentLocally` (`src/core/search-setup-install.ts`)
-  runs them as local operations.
+  runs them as local operations: the fingerprint covers the settings the
+  install depends on (another endpoint or model list never attaches), and
+  the component is rebuilt from current settings once `search-engine` is
+  held. An installer's failure path rethrows an accepted cancel, so a cancel
+  never surfaces as `engine_install_failed` / `models_install_failed`.
 - Outcomes: reindex `ok` / `tables_parked` (rows kept); reset `ok` /
   `reset_failed` (a failed wipe, or a rebuild that did not converge — the
   `reindex` rows say which tables, or search turned disabled while the reset

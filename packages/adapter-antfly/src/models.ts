@@ -297,7 +297,11 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     }
   }
 
-  const failed = (message: string, error?: unknown) => ({ name: 'models', status: 'failed' as const, message, ...(error === undefined ? {} : { error }), durationMs: Date.now() - start })
+  const failed = (message: string, error?: unknown) => {
+    // A cancel accepted before the failure settles cancelled, not failed.
+    op.throwIfCancelled()
+    return { name: 'models', status: 'failed' as const, message, ...(error === undefined ? {} : { error }), durationMs: Date.now() - start }
+  }
   const modelsDir = inferenceModelsRoot()
   // The CLI's in-process onboarding has no operation renderer until it
   // follows operations (PR6 of #895); until then a terminal run still sees

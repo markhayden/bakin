@@ -185,7 +185,11 @@ export async function installAntflyDependency(
   const start = Date.now()
   op.stage('prepare')
   const io = timings.io ?? defaultServiceIo()
-  const failed = (err: unknown) => ({ name: 'antfly', status: 'failed' as const, message: `Antfly install failed: ${err instanceof Error ? err.message : String(err)}`, durationMs: Date.now() - start })
+  const failed = (err: unknown) => {
+    // A cancel accepted before the failure settles cancelled, not failed.
+    op.throwIfCancelled()
+    return { name: 'antfly', status: 'failed' as const, message: `Antfly install failed: ${err instanceof Error ? err.message : String(err)}`, durationMs: Date.now() - start }
+  }
   try {
     const access = getServiceAccess(settings, io)
     if (access.mode === 'guest') {
@@ -227,11 +231,7 @@ export async function installAntflyDependency(
         await finish()
         return { name: 'antfly', status: 'noop' as const, message: `Antfly v${pin.version} is already installed at ${existing}; service provisioned and running. Restart Bakin if it started with search unavailable.`, durationMs: Date.now() - start }
       })
-    } catch (err) {
-      // A cancel accepted before the commit settles cancelled, not failed.
-      op.throwIfCancelled()
-      return failed(err)
-    }
+    } catch (err) { return failed(err) }
   }
 
   const prompt = existing
@@ -334,6 +334,8 @@ export async function installAntflyDependency(
     op.stage('version')
     chmodSync(extractedBinary, 0o755)
     const installedVersion = await antflyBinaryVersion(extractedBinary)
+    // A cancel accepted during the probe wins over whatever it reported.
+    op.throwIfCancelled()
     if (installedVersion !== pin.version) {
       return {
         name: 'antfly',
@@ -343,7 +345,6 @@ export async function installAntflyDependency(
       }
     }
 
-    op.throwIfCancelled()
     return await withServiceOperation(settings, io, intent, async () => {
       op.stage('commit')
       // Staging did not hold the lock: another home may have installed meanwhile.
