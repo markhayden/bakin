@@ -20,11 +20,11 @@
     "private-import"
   ],
   "summary": {
-    "paths": 162,
+    "paths": 161,
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 77,
-      "raw-scale": 423,
+      "raw-scale": 422,
       "raw-control": 17,
       "inline-style": 33,
       "generic-token": 72,
@@ -2346,22 +2346,6 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-scale": 5
-      }
-    },
-    {
-      "path": "plugins/team/components/team-manager.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "team"
-      },
-      "censusEntryId": "plugin-slot:team:page:/team",
-      "migrationTask": "T57-T58",
-      "archetype": "detail",
-      "target": "team/agent list/detail/form archetypes and supported SDK UI",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
       }
     },
     {

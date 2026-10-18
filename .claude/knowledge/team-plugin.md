@@ -96,6 +96,17 @@ Read path degrades too: in the GET / handler, `degradeUnknownReportsTo()` rewrit
 
 `OrgTeam.reportsTo` in `plugins/team/types.ts` is typed `string | null` to match.
 
+`PUT /teams/:teamId` validates its body with zod (#758): `label` a trimmed non-empty string, `reportsTo` string|null, `color` string, `order` int, every field optional, unknown fields rejected — 400 with the first issue's message, the team untouched. POST stays as it was (id slugged, label required).
+
+### Manage Teams UI (#758)
+
+`team-manager.tsx` (the Manage Teams drawer) is a LIST: "Add team" in the Teams section's actions, Edit + Delete per row — no inline form, no per-row picker. Create and edit both happen in ONE `TeamFormDialog` (`team-form-dialog.tsx`):
+
+- Create: name, ID (derived from the name until the ID is touched), reports-to (defaults to main). Edit: name + reports-to; the ID is read-only (routing paths and `team:<id>` assignment tokens key on it).
+- Dirty exits go through `useUnsavedChangesGuard` (`@makinbakin/sdk/navigation`): the Dialog's `onOpenChange(false)` and Cancel call `requestExit()`; `guard.dialog` renders INSIDE `DialogContent` so it nests; `finalFocus` = the name input ("Stay"), the form dialog's own `finalFocus` = the Add/Edit trigger (exit). The Dialog is `busy` while saving; save errors render in the dialog, delete errors on the drawer.
+- `reportsTo: null` displays as the main agent and is compared/saved as `null`. Edit loads the RAW record from `GET /teams` — the roster route's `degradeUnknownReportsTo()` would show a deleted reports-to agent as main; the dialog shows it as missing and requires a re-pick.
+- The baseline is captured once per opening (a roster refresh mid-edit never resets the draft). `useAgentStore.load()` resolves `false` when the roster could not refresh, so a save that landed but failed to refresh raises the drawer alert instead of looking like a failed save.
+
 ## Runtime Agent Mutations
 
 All lifecycle writes go through `ctx.runtime.agents` / `AgentRuntimeAdapter`.
@@ -310,7 +321,8 @@ If a future iteration restores any of these, prefer adding back via new componen
 | Runtime main-agent resolver | `tests/core/runtime-main-agent.test.ts`, `tests/core/main-agent.test.ts` |
 | Adapter-private OpenClaw config/home helpers | `tests/core/openclaw-config.test.ts`, `tests/core/openclaw-home.test.ts` |
 | Pyramid graph builder | `tests/plugins/team/build-graph.test.ts` |
-| Write normalization + read degradation + lifecycle routes | `tests/plugins/team/routes.test.ts` |
+| Write normalization + read degradation + lifecycle routes + PUT body validation | `tests/plugins/team/routes.test.ts` |
+| Manage Teams list + TeamFormDialog (create/edit, guard, focus, missing reports-to) | `tests/plugins/team/team-manager.test.tsx` |
 | Agent lifecycle MCP exec tools | `tests/plugins/team/exec-tools.test.ts` |
 | Doctor integrity check | `tests/core/onboarding/runtime.test.ts` |
 | Owned health checks (agent-roster / personas / agent-assets) | `tests/plugins/team/health-checks.test.ts` |

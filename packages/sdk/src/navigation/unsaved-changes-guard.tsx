@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter as useTanStackRouter, type HistoryLocation } from '@tanstack/react-router'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { UnsavedChangesDialog, type UnsavedChangesDialogProps } from '@bakin/ui/patterns/unsaved-changes-dialog'
 
 type RouteNavigationBlocker =
@@ -56,7 +56,13 @@ export function useUnsavedChangesGuard({
   saveLabel = 'Save and exit',
   finalFocus,
 }: UnsavedChangesGuardOptions): UnsavedChangesGuardResult {
+  // `routeBlocker` (state) drives the decision dialog; `activeBlocker` (ref,
+  // written synchronously when a navigation blocks) is the AUTHORITY every
+  // settle path uses. A save that finishes before React renders the blocker
+  // — or a continuation holding an older render's closure — still settles
+  // the navigation that is actually pending, never a stale/idle copy.
   const [routeBlocker, setRouteBlocker] = useState<RouteNavigationBlocker>({ status: 'idle' })
+  const activeBlocker = useRef<Extract<RouteNavigationBlocker, { status: 'blocked' }> | null>(null)
   const [confirmingExit, setConfirmingExit] = useState(false)
   const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null)
   const tanStackRouter = useTanStackRouter()
@@ -73,7 +79,7 @@ export function useUnsavedChangesGuard({
 
   useEffect(() => {
     if (!hasUnsavedChanges) return
-    return tanStackRouter.history.block({
+    const unblock = tanStackRouter.history.block({
       enableBeforeUnload: false,
       blockerFn: async ({
         currentLocation,
@@ -86,18 +92,51 @@ export function useUnsavedChangesGuard({
         const next = tanStackRouter.parseLocation(nextLocation)
         if (current.pathname === next.pathname) return false
 
+        // A newer navigation supersedes a pending one: the older stays blocked
+        // (settled now, never orphaned) and the decision is about the newer.
+        settleBlocker('reset')
+        let blocker!: Extract<RouteNavigationBlocker, { status: 'blocked' }>
         const shouldBlock = await new Promise<boolean>((resolve) => {
-          setRouteBlocker({
+          blocker = {
             status: 'blocked',
             proceed: () => resolve(false),
             reset: () => resolve(true),
-          })
+          }
+          activeBlocker.current = blocker
+          setRouteBlocker(blocker)
         })
-        setRouteBlocker({ status: 'idle' })
+        // Only clear the dialog state this blocker owns — a newer blocker's
+        // prompt must stay open.
+        setRouteBlocker((state) => (state === blocker ? { status: 'idle' } : state))
         return shouldBlock
       },
     })
+    // Teardown only unsubscribes: it also runs when the router identity
+    // changes or StrictMode replays effects while edits are still unsaved,
+    // and a pending navigation must not slip through then. TanStack's
+    // unsubscribe never resolves an in-flight blocker call; the ref still
+    // holds it, so the decision dialog can still settle it.
+    return unblock
   }, [hasUnsavedChanges, tanStackRouter])
+
+  // Clean again (saved or discarded): nothing is left to lose, so a
+  // navigation still waiting on the decision goes through.
+  useEffect(() => {
+    if (!hasUnsavedChanges && settleBlocker('proceed')) setRouteBlocker({ status: 'idle' })
+  }, [hasUnsavedChanges])
+
+  // Unmounting with a navigation still waiting: let it go through rather than
+  // leave its promise pending forever. StrictMode replays this cleanup and the
+  // effect back-to-back on a live component, so the settle waits a microtask
+  // and runs only if nothing re-mounted.
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      queueMicrotask(() => { if (!mounted.current) settleBlocker('proceed') })
+    }
+  }, [])
 
   useEffect(() => {
     if (!hasUnsavedChanges) return
@@ -122,11 +161,17 @@ export function useUnsavedChangesGuard({
     return () => document.removeEventListener('click', handleDocumentClick, true)
   }, [hasUnsavedChanges])
 
+  /** Settle the pending navigation (if any) exactly once: proceed or stay. */
+  function settleBlocker(outcome: 'proceed' | 'reset'): boolean {
+    const blocker = activeBlocker.current
+    if (!blocker) return false
+    activeBlocker.current = null
+    blocker[outcome]()
+    return true
+  }
+
   function completeExit() {
-    if (routeBlocker.status === 'blocked') {
-      routeBlocker.proceed()
-      return
-    }
+    if (settleBlocker('proceed')) return
     const href = pendingNavigationHref
     setPendingNavigationHref(null)
     if (href) {
@@ -137,7 +182,7 @@ export function useUnsavedChangesGuard({
   }
 
   function cancelExitPrompt() {
-    if (routeBlocker.status === 'blocked') routeBlocker.reset()
+    settleBlocker('reset')
     setPendingNavigationHref(null)
     setConfirmingExit(false)
   }
@@ -153,7 +198,7 @@ export function useUnsavedChangesGuard({
   }
 
   function reset() {
-    if (routeBlocker.status === 'blocked') routeBlocker.reset()
+    settleBlocker('reset')
     setRouteBlocker({ status: 'idle' })
     setConfirmingExit(false)
     setPendingNavigationHref(null)

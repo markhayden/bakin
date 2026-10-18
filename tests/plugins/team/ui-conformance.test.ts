@@ -23,6 +23,7 @@ const migratedComponents = [
   'plugins/team/components/team-detail.tsx',
   'plugins/team/components/team-grid.tsx',
   'plugins/team/components/team-manager.tsx',
+  'plugins/team/components/team-form-dialog.tsx',
 ] as const
 
 describe('Team UI conformance', () => {
@@ -96,9 +97,16 @@ describe('Team UI conformance', () => {
     expect(agentForm).toContain('<Form')
     expect(agentForm).toContain('<Field')
     expect(agentForm).toContain('<FormActions')
+    const teamForm = source('plugins/team/components/team-form-dialog.tsx')
     expect(manager).toContain('<DrawerSection')
-    expect(manager).toContain('<AgentSelect')
     expect(manager).toContain('<ConfirmDialog')
+    expect(manager).toContain('<TeamFormDialog')
+    // Create + edit live in ONE dialog behind the kit's dirty-exit guard (#758).
+    expect(teamForm).toContain('<Dialog')
+    expect(teamForm).toContain('<Form')
+    expect(teamForm).toContain('<AgentSelect')
+    expect(teamForm).toContain('useUnsavedChangesGuard')
+    expect(teamForm).toContain('{guard.dialog}')
     expect(adopt).toContain('<Form')
     expect(adopt).toContain('<Alert')
   })

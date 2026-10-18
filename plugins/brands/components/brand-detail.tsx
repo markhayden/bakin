@@ -344,7 +344,10 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   // In-app navigation guard: staged edits must never be silently dropped by a
   // route change (tab switches don't navigate — the draft spans them freely).
   const unsavedGuard = useUnsavedChangesGuard({
-    hasUnsavedChanges: dirty,
+    // A deleted brand has nothing left to save: the not-found screen drops
+    // the decision dialog, so staying "dirty" there would strand a pending
+    // navigation with no prompt to settle it.
+    hasUnsavedChanges: dirty && !notFound,
     saving,
     title: 'Unsaved brand changes',
     description: 'You have unsaved changes to this brand. Save them before leaving, discard them, or stay here.',

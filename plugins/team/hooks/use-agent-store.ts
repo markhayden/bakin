@@ -34,7 +34,8 @@ interface AgentStore {
   loaded: boolean
 
   /** Fetch agents + display settings + package states from the API */
-  load: () => Promise<void>
+  /** Reload the roster; resolves false when it could not be refreshed (the previous roster stays). */
+  load: () => Promise<boolean>
   /** Re-fetch only `/api/agent-packages` — used after Adopt to invalidate staleness */
   refreshPackageStates: () => Promise<void>
   /** Update display settings for a single agent */
@@ -133,7 +134,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       ])
       if (!rosterRes.ok) {
         set({ loaded: true })
-        return
+        return false
       }
       const data = await rosterRes.json() as {
         agents: AgentWithStatus[]
@@ -169,8 +170,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         displaySettings: data.displaySettings,
         mainAgentId: data.mainAgentId ?? null,
       })
+      return true
     } catch {
       set({ loaded: true })
+      return false
     }
   },
 
