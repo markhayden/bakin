@@ -237,13 +237,6 @@ function buildRuntimeSkill(skill: PluginSkillSource, marker: InstalledMarker): R
   }
 }
 
-/** The installed skill's files as the runtime reports them; SKILL.md from
- *  `instructions` when an adapter leaves it out of the file map. */
-function installedFiles(skill: RuntimeSkill): Record<string, string> {
-  const files = { ...(skill.files ?? {}) }
-  if (files['SKILL.md'] === undefined && skill.instructions !== undefined) files['SKILL.md'] = skill.instructions
-  return files
-}
 
 function sameFiles(a: Record<string, string>, b: Record<string, string>): boolean {
   const keys = Object.keys(a)
@@ -259,7 +252,12 @@ function skillVerdict(source: PluginSkillSource, installed: RuntimeSkill | null)
   // not a copy is installed.
   const expected = readSkillFiles(source)
   if (!installed) return 'missing'
-  return sameFiles(expected, installedFiles(installed)) ? 'installed' : 'drifted'
+  // Runtimes return SKILL.md inside the file map; a map without it means
+  // the tree read failed (readSkillTree answers {} on any error) — that is
+  // unverified, never rebuilt from `instructions` into a pass (review r3).
+  const files = installed.files ?? {}
+  if (files['SKILL.md'] === undefined) return 'drifted'
+  return sameFiles(expected, files) ? 'installed' : 'drifted'
 }
 
 /**

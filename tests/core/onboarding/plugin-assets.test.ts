@@ -102,9 +102,13 @@ function readMarker(skillDir: string): unknown {
 let removeCalls = 0
 let failNextWrite = false
 
+/** Review r3 probe: the runtime's tree read fails and answers {}. */
+let treeReadFails = false
+
 function installRuntimeMock(): void {
   removeCalls = 0
   failNextWrite = false
+  treeReadFails = false
   const skillRoot = join(runtimeSkillHome, 'skills')
   const skillDir = (name: string) => join(skillRoot, name)
   const runtime = {
@@ -118,7 +122,7 @@ function installRuntimeMock(): void {
           name,
           path: skillPath,
           instructions: readFileSync(skillPath, 'utf-8'),
-          files: readSkillTree(dir),
+          files: treeReadFails ? {} : readSkillTree(dir),
           metadata: {
             installedBy: readMarker(dir),
             userEdited: existsSync(join(dir, '.userEdited')),
@@ -450,6 +454,20 @@ describe('plugin-assets onboarding component', () => {
       const scan = await scanPluginAssets([{ id: 'sdr', path: pluginDir }])
       expect(scan.invalidSource).toEqual([{ pluginId: 'sdr', name: 'cold-email', error: 'SKILL.md contains U+FFFD — runtime skills carry text files only' }])
       expect((await installPluginAssets([{ id: 'sdr', path: pluginDir }])).failed).toHaveLength(1)
+    })
+
+    it('a failed tree read is never rebuilt into a pass from instructions (review r3)', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      await installPluginAssets([{ id: 'sdr', path: pluginDir }])
+      writeFileSync(join(runtimeSkillHome, 'skills', 'cold-email', 'planted.sh'), '#!/bin/sh\necho planted\n')
+      treeReadFails = true
+      const scan = await scanPluginAssets([{ id: 'sdr', path: pluginDir }])
+      expect(scan.installed).toEqual([])
+      expect(scan.drifted).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
+      // A repair that still cannot verify the copy fails honestly.
+      expect((await installPluginAssets([{ id: 'sdr', path: pluginDir }])).failed).toEqual([
+        { pluginId: 'sdr', name: 'cold-email', error: 'the installed skill still differs from the plugin after a full rewrite' },
+      ])
     })
 
     it('copies sibling files in the skill directory (e.g. scripts/)', async () => {
