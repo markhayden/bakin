@@ -867,12 +867,14 @@ export interface AgentRuntimeAdapter {
      */
     workspaceFileStats?(agentId: string): Promise<WorkspaceFileStat[] | null>
     /**
-     * Absolute path of the agent's workspace directory — where its shells
-     * may run outside a run dir — or null when it has none. Read-only.
-     * Optional: Bakin uses it to recognise a CLI call made from inside an
-     * agent's workspace (#898); runtimes without a file-backed workspace omit it.
+     * Every agent's workspace directory — where its shells may run outside
+     * a run dir. Read-only. STRICT: throws when the roster or its config
+     * cannot be read; an empty list means genuinely no workspaces, never a
+     * failed read. Optional: Bakin uses it to recognise a CLI call made from
+     * inside an agent's workspace (#898); runtimes without a file-backed
+     * workspace omit it.
      */
-    workspacePath?(agentId: string): Promise<string | null>
+    workspaces?(): Promise<Array<{ agentId: string; path: string }>>
     /**
      * The SUBAGENT-DISPATCH allowlist: the patch strings are AGENT IDS this
      * agent may dispatch subtasks to (P5.3 live incident: these were once fed

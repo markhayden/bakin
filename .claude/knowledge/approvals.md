@@ -125,9 +125,11 @@ actor, an undeclared/unknown caller, and `mcp`/`hook` channels.
 `packages/adapter-pi/src/agent-shell.ts`); the CLI resolves ONE identity per
 invocation in the shared http plumbing (`src/cli/identity.ts`): env marker →
 run-dir sidecar → (only for `--as human`) the run-dir/workspace check via the
-runtime's optional `agents.workspacePath` (OpenClaw can't mark its shells),
-asked of THIS home's server (server.lock) — never a `BAKIN_URL` target, which
-cannot vouch for a local cwd. A check that cannot answer is not a negative:
+runtime's optional, STRICT `agents.workspaces()` (OpenClaw can't mark its
+shells; an unreadable openclaw.json throws rather than listing none), asked
+of THIS home's server (server.lock) — never a `BAKIN_URL` target, which
+cannot vouch for a local cwd; with no local server the CLI runs the same
+check in-process. A check that cannot answer is not a negative:
 the server answers 503 when services, the roster or a workspace lookup fail
 (`AgentContextUnavailableError`), and the CLI then does not honor `--as
 human` (stderr says why) — task commands fail rather than act as an

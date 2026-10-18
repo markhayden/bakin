@@ -52,11 +52,10 @@ export async function agentContextForPath(cwd: string): Promise<string | null> {
   if (!services) throw new AgentContextUnavailableError('the runtime is not ready to say which agent workspaces exist')
   const { runtime } = services
   // A runtime without file-backed workspaces genuinely has none to be in.
-  if (!runtime.agents.workspacePath) return null
+  if (!runtime.agents.workspaces) return null
   try {
-    for (const agent of await runtime.agents.list()) {
-      const workspace = await runtime.agents.workspacePath(agent.id)
-      if (workspace && within(path, canonical(workspace))) return agent.id
+    for (const workspace of await runtime.agents.workspaces()) {
+      if (within(path, canonical(workspace.path))) return workspace.agentId
     }
   } catch (err) {
     log.warn('Agent workspace lookup failed', { err: err instanceof Error ? err.message : String(err) })

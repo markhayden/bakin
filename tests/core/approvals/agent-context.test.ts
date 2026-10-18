@@ -23,14 +23,11 @@ mock.module('../../../src/core/app-services-store', () => ({
   maybeGetAppServices: () => (servicesUp ? {
     runtime: {
       agents: {
-        list: async () => {
-          if (listFails) throw new Error('roster unavailable')
-          return Object.keys(workspaces).map((id) => ({ id, name: id }))
-        },
         ...(withWorkspaces ? {
-          workspacePath: async (id: string) => {
+          workspaces: async () => {
+            if (listFails) throw new Error('roster unavailable')
             if (lookupFails) throw new Error('config unreadable')
-            return workspaces[id] ?? null
+            return Object.entries(workspaces).map(([agentId, path]) => ({ agentId, path }))
           },
         } : {}),
       },
@@ -73,7 +70,7 @@ describe('agentContextForPath', () => {
     expect(await agentContextForPath(home)).toBeNull()
   })
 
-  it('a runtime without workspacePath answers none for workspaces (run dirs still count)', async () => {
+  it('a runtime without file-backed workspaces answers none (run dirs still count)', async () => {
     withWorkspaces = false
     expect(await agentContextForPath(join(workspaces.writer, 'notes'))).toBeNull()
     expect(await agentContextForPath(join(testDir, 'run-workspaces', 'researcher'))).toBe('researcher')

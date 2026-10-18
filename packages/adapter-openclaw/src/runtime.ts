@@ -458,7 +458,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       walk(root, '')
       return out.sort()
     },
-    workspacePath: async (agentId: string): Promise<string | null> => getWorkspacePath(agentId),
+    workspaces: async (): Promise<Array<{ agentId: string; path: string }>> => {
+      // Strict: an unreadable openclaw.json throws here, where the lenient
+      // roster read would answer an empty list (#898 review r3).
+      readOpenClawConfigForMutation()
+      const agents = await this.agents.list()
+      return agents.map((agent) => ({ agentId: agent.id, path: getWorkspacePath(agent.id) }))
+    },
     workspaceFileStats: async (agentId: string): Promise<WorkspaceFileStat[] | null> => {
       const root = getWorkspacePath(agentId)
       if (!existsSync(root)) return null

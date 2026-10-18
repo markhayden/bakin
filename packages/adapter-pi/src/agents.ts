@@ -179,9 +179,9 @@ export function createAgentsSurface(): AgentRuntimeAdapter['agents'] {
       rmSync(abs, { force: true })
     },
 
-    async workspacePath(agentId: string): Promise<string | null> {
-      assertValidAgentId(agentId)
-      return getAgentWorkspaceDir(agentId)
+    // readRegistry throws on a corrupt roster — never an empty list for a failure.
+    async workspaces(): Promise<Array<{ agentId: string; path: string }>> {
+      return readRegistry().agents.map((record) => ({ agentId: record.id, path: getAgentWorkspaceDir(record.id) }))
     },
 
     async workspaceFileStats(agentId: string): Promise<WorkspaceFileStat[] | null> {

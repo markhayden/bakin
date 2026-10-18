@@ -13,6 +13,12 @@ mock.module('../../src/core/server-lock', () => ({
 }))
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => '/tmp/bakin-identity-authority-home' }))
 
+// The no-local-server path checks cwd in-process against this home's runtime.
+let localAnswer: () => Promise<string | null> = async () => null
+const createAppServices = mock(async () => ({}))
+mock.module('../../src/core/app-services', () => ({ createAppServices, maybeGetAppServices: () => undefined }))
+mock.module('../../src/core/approvals/agent-context', () => ({ agentContextForPath: () => localAnswer() }))
+
 const originalArgv = process.argv
 const originalFetch = globalThis.fetch
 const calls: string[] = []
@@ -42,20 +48,33 @@ describe('cliIdentity workspace authority', () => {
     expect(calls[0]).toStartWith('http://127.0.0.1:3737/api/approvals/agent-context?cwd=')
   })
 
-  it('with no local server it cannot confirm, so the declaration is withheld (and nothing is asked)', async () => {
+  it('with no local server (a remote BAKIN_URL), it checks cwd in-process and asks no server (review r3)', async () => {
+    process.argv = ['bun', 'bakin', 'tasks', 'move', 't-1', 'done', '--as', 'human']
+    localServer = null
+    localAnswer = async () => null
+    expect((await cliIdentity()).operatorDeclared).toBe(true)
+    expect(createAppServices).toHaveBeenCalled()
+    expect(calls).toHaveLength(0)
+
+    resetCliIdentityForTests()
+    localAnswer = async () => 'writer'
+    expect((await cliIdentity()).agentContext).toBe('writer')
+  })
+
+  it('an in-process check that cannot tell withholds the declaration', async () => {
     process.argv = ['bun', 'bakin', 'doctor', '--fix', '--as', 'human']
     localServer = null
+    localAnswer = async () => { throw new Error('agent workspaces could not be listed: config unreadable') }
     const errors = mock((..._args: unknown[]) => {})
     const original = console.error
     console.error = errors
     try {
       const identity = await cliIdentity()
       expect(identity.operatorDeclared).toBe(false)
-      expect(identity.declarationWithheld).toContain('no Bakin server is running')
+      expect(identity.declarationWithheld).toContain('config unreadable')
     } finally {
       console.error = original
     }
-    expect(calls).toHaveLength(0)
     expect(String(errors.mock.calls[0]?.[0])).toContain('--as human is not honored')
   })
 

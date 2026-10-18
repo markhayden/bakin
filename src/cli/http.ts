@@ -63,7 +63,15 @@ export function cliIdentity(): Promise<CliIdentity> {
     // BAKIN_URL target: another machine cannot vouch for this cwd.
     probeWorkspace: async (cwd) => {
       const local = liveServerBaseUrl({})
-      if (!local) throw new Error(`no Bakin server is running for ${getContentDir()} to confirm this directory is not an agent's workspace`)
+      if (!local) {
+        // No server for this home (e.g. BAKIN_URL reaches another machine):
+        // check this cwd in-process against this home's runtime, read-only —
+        // the same strict lookup the server runs. It throws when it cannot tell.
+        const { createAppServices, maybeGetAppServices } = await import('../core/app-services')
+        if (!maybeGetAppServices()) await createAppServices()
+        const { agentContextForPath } = await import('../core/approvals/agent-context')
+        return agentContextForPath(cwd)
+      }
       const res = await fetch(`${local}/api/approvals/agent-context?cwd=${encodeURIComponent(cwd)}`, { headers: { ...CLI_ORIGIN_HEADER } })
       if (!res.ok) throw new Error(`the workspace check failed (HTTP ${res.status})`)
       const body = await res.json() as { agentId?: unknown }
