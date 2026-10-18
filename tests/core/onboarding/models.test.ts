@@ -4,14 +4,18 @@
  * Strategy — same real-fs approach as the installer tests:
  *   - ANTFLY_HOME points at a temp dir; models land under
  *     $ANTFLY_HOME/inference/models/{owner}/{name}
- *   - The fake antfly binary is a shell script whose `inference pull`
- *     actually creates the model directory (manifest + onnx weight), so the
- *     real spawn → verify pipeline runs end to end with zero module mocks
+ *   - The fake antfly binary is a shell script that behaves like the real
+ *     `inference pull` (T0, tasks/evidence-antfly-pull.md): it takes
+ *     `--models-dir`, stages into `<owner>/.<name>.antfly-download-staging`
+ *     with a `.part` for the in-flight file, speaks the stderr protocol, and
+ *     publishes with one rename — so the real spawn → progress → verify
+ *     pipeline runs end to end with zero module mocks
+ *   - Every install runs inside a real operation holding search-engine
  *   - Failure modes are scripted binary variants (exit non-zero, or exit 0
  *     without creating files)
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -33,10 +37,14 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 import {
+  ANTFLY_MODELS_PLAN,
   checkInferenceModels,
-  installInferenceModels,
+  installInferenceModels as installModels,
   type InferenceModel,
 } from '../../../packages/adapter-antfly/src/models'
+import { createMemoryResourceAcquirer, createOperationRegistry, operationQuietState, type OperationView } from '@bakin/core/operations'
+import { withOperationView } from '../../helpers/operation-harness'
+import { waitUntil } from '../../helpers/wait'
 
 // UNPINNED model names: this file exercises the pull → verify PIPELINE
 // mechanics (spawn, layout, failure modes) via the generic weight-file
@@ -49,16 +57,58 @@ const TEST_MODELS: InferenceModel[] = [
   { label: 'reranker', model: 'testorg/reranker', kind: 'reranker' },
 ]
 
-/** A pull that actually creates the model dir, like the real CLI. */
+/**
+ * The real CLI's shape: `inference pull <model> --models-dir <root>`, files
+ * staged in a dot-dir (the in-flight one as `.part`), the stderr protocol,
+ * then one rename into `<root>/<model>`. Refuses to run without the flag.
+ */
 const PULL_OK = `#!/bin/sh
-if [ "$1" = "inference" ] && [ "$2" = "pull" ]; then
-  dir="$ANTFLY_HOME/inference/models/$3"
-  mkdir -p "$dir/onnx"
-  echo '{"type":"embedder","tasks":["embed"]}' > "$dir/model_manifest.json"
-  echo "fake-weights" > "$dir/onnx/model.onnx"
-  exit 0
-fi
-exit 1
+[ "$1" = "inference" ] && [ "$2" = "pull" ] && [ "$4" = "--models-dir" ] || exit 9
+echo "$*" >> "$(dirname "$0")/argv.log"
+owner=$(dirname "$3"); name=$(basename "$3")
+stage="$5/$owner/.$name.antfly-download-staging"
+mkdir -p "$stage/onnx"
+echo "pulling $3..." >&2
+echo "  [1/2] model_manifest.json (38 B)..." >&2
+echo '{"type":"embedder","tasks":["embed"]}' > "$stage/model_manifest.json"
+echo "  [1/2] model_manifest.json done (38 B, 1.0 KiB/s, 0.1s)" >&2
+echo "  [2/2] onnx/model.onnx (2.0 KiB)..." >&2
+head -c 2048 /dev/zero > "$stage/onnx/model.onnx"
+echo "  [2/2] onnx/model.onnx done (2.0 KiB, 1.0 KiB/s, 0.1s)" >&2
+echo "done." >&2
+mv "$stage" "$5/$3"
+`
+
+/** Stages half the weight as a `.part`, then stops talking (a stalled pull). */
+const PULL_STALLS = `#!/bin/sh
+owner=$(dirname "$3"); name=$(basename "$3")
+stage="$5/$owner/.$name.antfly-download-staging"
+mkdir -p "$stage/onnx"
+echo "pulling $3..." >&2
+echo "  [1/1] onnx/model.onnx (2.0 KiB)..." >&2
+head -c 1024 /dev/zero > "$stage/onnx/model.onnx.part"
+exec sleep 30
+`
+
+/** Stalls and ignores SIGTERM — cancel must still settle. */
+const PULL_IGNORES_TERM = `#!/bin/sh
+trap '' TERM
+echo "pulling $3..." >&2
+echo "  [1/1] onnx/model.onnx (2.0 KiB)..." >&2
+while :; do sleep 1; done
+`
+
+/** Resumes only from a kept staging dir (T0 F6), then publishes. */
+const PULL_RESUMES = `#!/bin/sh
+owner=$(dirname "$3"); name=$(basename "$3")
+stage="$5/$owner/.$name.antfly-download-staging"
+[ -f "$stage/onnx/model.onnx.part" ] || { echo "no staging to resume" >&2; exit 7; }
+echo "  [1/1] onnx/model.onnx (2.0 KiB)..." >&2
+echo "  [1/1] onnx/model.onnx 1.0 KiB/2.0 KiB (50%) 1.0 KiB/s 1.0s eta 1.0s" >&2
+head -c 2048 /dev/zero > "$stage/onnx/model.onnx" && rm "$stage/onnx/model.onnx.part"
+echo '{"type":"embedder","tasks":["embed"]}' > "$stage/model_manifest.json"
+echo "  [1/1] onnx/model.onnx done (2.0 KiB, 1.0 KiB/s, 2.0s)" >&2
+mv "$stage" "$5/$3"
 `
 
 /** A pull that exits non-zero. */
@@ -71,6 +121,16 @@ exit 2
 const PULL_LIES = `#!/bin/sh
 exit 0
 `
+
+/** The model install the way production runs it: inside an operation holding search-engine. */
+let lastView: OperationView | undefined
+async function installInferenceModels(opts: Omit<Parameters<typeof installModels>[0], 'op'>, _logger: undefined, models: InferenceModel[]) {
+  const { value, view } = await withOperationView({ plan: ANTFLY_MODELS_PLAN, resources: ['search-engine'] }, (op) => installModels({ ...opts, op }, undefined, models, { pollMs: 10 }))
+  lastView = view
+  return value
+}
+
+const stagingDir = (model: string) => join(modelsRoot, model.split('/')[0]!, `.${model.split('/')[1]}.antfly-download-staging`)
 
 function installFakeBinary(script: string): void {
   writeFileSync(fakeBinary, script, { mode: 0o755 })
@@ -226,5 +286,101 @@ describe('installInferenceModels', () => {
     const result = await installInferenceModels(opts, undefined, TEST_MODELS)
     expect(result.status).toBe('skipped')
     expect(result.message).toContain('Semantic indexing is degraded')
+  })
+})
+
+describe('the model install as an operation (#895 D12)', () => {
+  it('passes --models-dir set to the inference models root', async () => {
+    installFakeBinary(PULL_OK)
+    expect((await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])).status).toBe('installed')
+    expect(readFileSync(join(testDir, 'argv.log'), 'utf8').trim()).toBe(`inference pull ${TEST_MODELS[0]!.model} --models-dir ${modelsRoot}`)
+  })
+
+  it('reports one download item per model with bytes against the announced sizes, then verifies', async () => {
+    installFakeBinary(PULL_OK)
+    await installInferenceModels(optsAutoYes, undefined, TEST_MODELS)
+    const download = lastView!.stages.find((stage) => stage.id === 'download')!
+    expect(download.items!.map((item) => [item.id, item.status])).toEqual(TEST_MODELS.map((m) => [m.model, 'done']))
+    for (const item of download.items!) expect(item.bytes).toEqual({ received: 38 + 2048, total: 38 + 2048 })
+    expect(lastView!.stages.find((stage) => stage.id === 'verify')!.status).toBe('done')
+    expect(lastView!.lastOutput).toBe('done.')
+  })
+
+  it('overrides the downloading thresholds to the spec\'s model-pull row (30s quiet, 120s stuck)', () => {
+    expect(ANTFLY_MODELS_PLAN.stages.find((stage) => stage.id === 'download')!.quiet).toEqual({ quietMs: 30_000, stuckMs: 120_000 })
+  })
+
+  it('skips both stages when every model is already present', async () => {
+    installFakeBinary(PULL_OK)
+    for (const m of TEST_MODELS) seedModel(m.model)
+    await installInferenceModels(optsAutoYes, undefined, TEST_MODELS)
+    expect(lastView!.stages.map((stage) => stage.status)).toEqual(['skipped', 'skipped'])
+  })
+
+  describe('a stalled pull', () => {
+    const model = TEST_MODELS[0]!
+    function registry() {
+      return createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, acquireResources: createMemoryResourceAcquirer(1) })
+    }
+    async function startPull(reg: ReturnType<typeof registry>) {
+      return reg.start({
+        kind: 'install:search-models', owner: 'core', origin: 'cli', title: 'Download the search models', fingerprint: 'install:search-models',
+        resources: ['search-engine'], plan: ANTFLY_MODELS_PLAN,
+        run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installModels({ ...optsAutoYes, op }, undefined, [model], { pollMs: 10, killAfterMs: 200 }) }),
+      })
+    }
+    const received = (reg: ReturnType<typeof registry>, id: string) =>
+      reg.get(id)?.stages.find((stage) => stage.id === 'download')?.items?.[0]?.bytes?.received ?? 0
+
+    it('reads the staged .part between protocol lines, then goes quiet and stuck while staying live', async () => {
+      installFakeBinary(PULL_STALLS)
+      const reg = registry()
+      try {
+        const { operationId } = await startPull(reg)
+        await waitUntil(() => received(reg, operationId) === 1024, { label: 'the .part bytes are read' })
+        const view = reg.get(operationId)!
+        expect(view.status).toBe('running')
+        expect(view.stages[0]!.items![0]!.bytes).toEqual({ received: 1024, total: 2048 })
+        const stall = Date.parse(view.lastProgressAt) + 60 * 60 * 1000
+        expect(operationQuietState(view, stall).state).toBe('stuck')
+        reg.cancel(operationId)
+        await reg.await(operationId)
+      } finally {
+        reg.dispose()
+      }
+    })
+
+    it('a pull that ignores SIGTERM is killed, so the cancel still settles', async () => {
+      installFakeBinary(PULL_IGNORES_TERM)
+      const reg = registry()
+      try {
+        const { operationId } = await startPull(reg)
+        await waitUntil(() => reg.get(operationId)?.lastOutput?.includes('[1/1]') === true, { label: 'the pull announced its file' })
+        expect(reg.cancel(operationId)).toBe('cancelling')
+        expect((await reg.await(operationId)).status).toBe('cancelled')
+      } finally {
+        reg.dispose()
+      }
+    })
+
+    it('cancel stops the pull, keeps the staging dir, leaves the model dir untouched, and the next pull resumes', async () => {
+      installFakeBinary(PULL_STALLS)
+      const reg = registry()
+      try {
+        const { operationId } = await startPull(reg)
+        await waitUntil(() => received(reg, operationId) === 1024, { label: 'the pull is mid-file' })
+        expect(reg.cancel(operationId)).toBe('cancelling')
+        expect((await reg.await(operationId)).status).toBe('cancelled')
+      } finally {
+        reg.dispose()
+      }
+      expect(existsSync(join(stagingDir(model.model), 'onnx', 'model.onnx.part'))).toBe(true)
+      expect(existsSync(join(modelsRoot, model.model))).toBe(false)
+
+      installFakeBinary(PULL_RESUMES)
+      expect((await installInferenceModels(optsAutoYes, undefined, [model])).status).toBe('installed')
+      expect(existsSync(stagingDir(model.model))).toBe(false)
+      expect((await checkInferenceModels([model])).status).toBe('ok')
+    })
   })
 })

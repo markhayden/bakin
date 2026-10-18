@@ -51,6 +51,8 @@ const modelInstalls: CapturedOptions[] = []
 mock.module('../../../src/core/search-adapter-factory', () => ({
   getSearchAdapterSetup: () => ({
     dependency: {
+      name: 'antfly',
+      plan: { stages: [{ id: 'install', kind: 'installing', label: 'Install' }], pointOfNoReturn: null },
       check: async () => ({ name: 'search', status: 'missing', message: 'Managed search needs installation' }),
       install: async (options: CapturedOptions) => {
         searchInstalls.push(options)

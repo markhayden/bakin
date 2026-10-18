@@ -11,7 +11,6 @@ import {
   type HealthResourceRequestContext,
   type UseHealthResourceResult,
 } from './use-health-resource'
-import { withDeadline } from '../lib/request-deadline'
 import { healthLiveSummaryClientSchema } from '../lib/route-schemas'
 import {
   searchStatusResponseSchema,
@@ -33,7 +32,6 @@ export type {
 
 export const SYSTEM_REFRESH_MS = 60_000
 export const SYSTEM_REQUEST_TIMEOUT_MS = 15_000
-export const SYSTEM_MUTATION_OPERATION_TIMEOUT_MS = 5 * 60_000
 
 export type SystemMutationStatus = 'idle' | 'pending' | 'success' | 'error' | 'confirmation' | 'outcome-unknown'
 
@@ -57,10 +55,6 @@ export interface SystemMutationState {
   operation?: OperationView
 }
 
-export interface SearchReindexResult {
-  message: string
-}
-
 export interface PluginUpgradeResult {
   message: string
   awaitingConsent: boolean
@@ -70,13 +64,6 @@ export interface PluginUpgradeResult {
   noop: boolean
   /** A preview with nothing new to consent to: commit with `consentToken` to apply it. */
   ready?: boolean
-}
-
-export interface SystemMutationTimeouts {
-  /** Maximum wait for the server operation to return response headers. */
-  operationMs?: number
-  /** Maximum wait to consume the response body after the operation returns. */
-  responseBodyMs?: number
 }
 
 export class SystemMutationOutcomeUnknownError extends Error {
@@ -101,44 +88,6 @@ function responseError(response: Response, body: unknown, fallback: string): Err
     ? body.error
     : `${fallback} (${response.status})`
   return new Error(message)
-}
-
-async function responseJsonWithTimeout(response: Response, timeoutMs: number): Promise<unknown> {
-  return await withDeadline(
-    responseJson(response),
-    timeoutMs,
-    { timeoutError: () => new Error(`System response body timed out after ${timeoutMs}ms`) },
-  )
-}
-
-async function mutationResponseJson(
-  response: Response,
-  timeoutMs: number,
-  outcomeUnknownMessage: string,
-): Promise<unknown> {
-  try {
-    return await responseJsonWithTimeout(response, timeoutMs)
-  } catch (error) {
-    if (response.ok) throw new SystemMutationOutcomeUnknownError(outcomeUnknownMessage)
-    throw error
-  }
-}
-
-async function fetchSystemMutation(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-  timeoutMessage: string,
-): Promise<Response> {
-  const controller = new AbortController()
-  return await withDeadline(
-    fetch(url, { ...init, signal: controller.signal }),
-    timeoutMs,
-    {
-      timeoutError: () => new SystemMutationOutcomeUnknownError(timeoutMessage),
-      onTimeout: () => controller.abort(),
-    },
-  )
 }
 
 async function requestJson(url: string, context: HealthResourceRequestContext): Promise<unknown> {
@@ -183,46 +132,23 @@ async function requestPluginManifest(
   )
 }
 
-/**
- * Validate the reindex response before asking the server to refresh canonical
- * Search readiness. This ordering prevents a rejected mutation from looking
- * successful merely because a later status read happened to work.
- */
-export async function performSearchReindex(
-  table: string | undefined,
-  refreshReadiness: () => Promise<void>,
-  timeouts: SystemMutationTimeouts = {},
-): Promise<SearchReindexResult> {
-  const operationMs = timeouts.operationMs ?? SYSTEM_MUTATION_OPERATION_TIMEOUT_MS
-  const responseBodyMs = timeouts.responseBodyMs ?? SYSTEM_REQUEST_TIMEOUT_MS
-  const url = `/api/reindex${table ? `?table=${encodeURIComponent(table)}` : ''}`
-  const response = await fetchSystemMutation(
-    url,
-    { method: 'POST' },
-    operationMs,
-    'Search reindex is taking longer than expected. The server may still be rebuilding indexes; refresh live data to confirm the result.',
-  )
-  const confirmationUnknown = 'Search reindex returned success headers, but Bakin could not read its confirmation. The server may have completed the rebuild; refresh live data to confirm the result.'
-  const body = await mutationResponseJson(response, responseBodyMs, confirmationUnknown)
-  if (!response.ok || (isRecord(body) && body.ok === false)) {
-    throw responseError(response, body, 'Search reindex failed')
+/** Start a search reindex operation (#895): all tables, or one with `table`. Not cancellable. */
+export async function startSearchReindex(table?: string): Promise<OperationStartResponse> {
+  return await startOperation(() => fetch(`/api/reindex${table ? `?table=${encodeURIComponent(table)}` : ''}`, { method: 'POST' }))
+}
+
+/** What a settled reindex means, from its view: converged, or the tables that failed or parked. */
+export function interpretSearchReindex(target: string, view: OperationView): { ok: boolean; message: string } {
+  const label = target === 'all' ? 'all Search indexes' : target
+  if (view.status === 'succeeded') return { ok: true, message: `Reindex finished for ${label}.` }
+  const body = view.result?.body
+  if (view.outcome?.code === 'tables_parked' && isRecord(body)) {
+    const errors = typeof body.errors === 'number' ? body.errors : 0
+    const parked = typeof body.parked === 'number' ? body.parked : 0
+    const parts = [errors > 0 ? `${errors} failed` : null, parked > 0 ? `${parked} parked` : null].filter(Boolean).join(', ')
+    return { ok: false, message: `Reindex for ${label} did not converge (${parts}). The current indexes keep serving; parked work resumes automatically.` }
   }
-  if (!isRecord(body) || body.ok !== true) {
-    throw new SystemMutationOutcomeUnknownError(
-      'Search reindex returned success headers, but Bakin could not confirm the result. Refresh live data before trying again.',
-    )
-  }
-  try {
-    await refreshReadiness()
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    throw new Error(`Reindex started, but Search readiness could not be refreshed: ${detail}`)
-  }
-  return {
-    message: table
-      ? `Reindex started for ${table}. Readiness was refreshed.`
-      : 'Reindex started for all Search indexes. Readiness was refreshed.',
-  }
+  return { ok: false, message: view.outcome?.message ? `Reindex failed: ${view.outcome.message}` : `Reindex ${view.status}.` }
 }
 
 function isUpgradeBin(value: unknown): value is PluginUpgradeBin {
@@ -361,20 +287,52 @@ export function useSystemData(): UseSystemDataResult {
     ])
   }, [reportRefresh, searchStatusRefresh, searchTelemetryRefresh])
 
+  // A reindex is an operation (#895), followed live until it settles; only
+  // then is canonical Search readiness refreshed.
+  const [reindex, setReindex] = useState<{ target: string; start: OperationStartResponse } | null>(null)
+  const followedReindex = useOperation(reindex?.start.operationId ?? null, reindex ? { bootId: reindex.start.bootId } : {})
+
   const reindexSearch = useCallback(async (table?: string) => {
     const target = table ?? 'all'
     setSearchMutation({ status: 'pending', message: null, target })
     try {
-      const result = await performSearchReindex(table, refreshCanonicalSearchReadiness)
-      setSearchMutation({ status: 'success', message: result.message, target })
+      setReindex({ target, start: await startSearchReindex(table) })
     } catch (error) {
+      setReindex(null)
+      setSearchMutation({ status: 'error', message: error instanceof Error ? error.message : String(error), target })
+    }
+  }, [])
+
+  const reindexView = followedReindex.operation
+  const reindexPhase = followedReindex.phase
+  useEffect(() => {
+    if (!reindex) return
+    const { target } = reindex
+    if (reindexPhase === 'restarted' || reindexPhase === 'expired') {
+      setReindex(null)
       setSearchMutation({
-        status: error instanceof SystemMutationOutcomeUnknownError ? 'outcome-unknown' : 'error',
-        message: error instanceof Error ? error.message : String(error),
+        status: 'outcome-unknown',
+        message: 'Bakin restarted or lost track of the reindex. Refresh live data to confirm the result.',
         target,
       })
+      return
     }
-  }, [refreshCanonicalSearchReadiness])
+    if (!reindexView) return
+    if (!isOperationFinished(reindexView.status)) {
+      setSearchMutation({ status: 'pending', message: null, target, operation: reindexView })
+      return
+    }
+    setReindex(null)
+    const outcome = interpretSearchReindex(target, reindexView)
+    void refreshCanonicalSearchReadiness().then(
+      () => setSearchMutation({ status: outcome.ok ? 'success' : 'error', message: `${outcome.message} Readiness was refreshed.`, target }),
+      (error: unknown) => setSearchMutation({
+        status: 'error',
+        message: `${outcome.message} Search readiness could not be refreshed: ${error instanceof Error ? error.message : String(error)}`,
+        target,
+      }),
+    )
+  }, [reindex, reindexView, reindexPhase, refreshCanonicalSearchReadiness])
 
   const checkPluginUpdates = useCallback(() => pluginManifestRefresh('explicit'), [pluginManifestRefresh])
 

@@ -8,10 +8,11 @@
  */
 import { z } from 'zod'
 import { getAppServices } from '../../../core/app-services'
+import { getOperationRegistry } from '../../../core/operations'
+import { reindexOperation, type ReindexReport } from '../../../core/search-operations'
 import { addExecTool } from '../registry'
 import {
   crossTableSearch,
-  rebuildRegisteredTables,
   getContentTypes,
   getTableForPlugin,
   resolvePhysicalTable,
@@ -235,10 +236,15 @@ addExecTool({
       tableParam = resolved.table
     }
 
-    const results = await rebuildRegisteredTables(tableParam)
-    const errors = results.filter(r => r.error).length
-    const parked = results.filter(r => r.result === 'parked').length
-    return { ok: errors === 0 && parked === 0, errors, parked, tables: results }
+    // A normal reindex operation (#895 D23): it waits for search-engine like
+    // any other, shows in the operations tray, and attaches to an identical
+    // running reindex.
+    const registry = getOperationRegistry()
+    const { operationId } = await registry.start(reindexOperation({ table: tableParam, origin: 'system' }))
+    const view = await registry.await(operationId)
+    const report = view.result?.body as ReindexReport | undefined
+    if (!report || view.outcome?.code === 'unexpected') return { ok: false, error: view.outcome?.message ?? `reindex ${view.status}` }
+    return { ok: report.ok, errors: report.errors, parked: report.parked, tables: report.tables }
   },
 })
 

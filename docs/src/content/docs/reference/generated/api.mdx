@@ -468,7 +468,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/reindex'
+  'http://localhost:3737/api/reindex?table=<table>&force=<force>'
 ```
 </OpenApiReference>
 
@@ -476,6 +476,14 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/search?q=<q>&table=<table>&limit=<limit>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core.post.api-search-reset">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/search/reset'
 ```
 </OpenApiReference>
 

@@ -1,9 +1,10 @@
 import { spawn } from 'child_process'
 import { chmodSync, existsSync, mkdirSync, renameSync, rmdirSync, rmSync } from 'fs'
 import { dirname, join } from 'path'
+import type { OperationContext, OperationPlan } from '@makinbakin/sdk/types'
 import type { SearchAdapterSetupOptions, SearchAdapterSetupCheckResult } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
-import { DownloadChecksumError, downloadToFile } from '@bakin/core/net/download'
+import { DownloadChecksumError, downloadToFile, extractTarball, opTransfer } from '@bakin/core/net/download'
 import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
 import { antflyBinaryPath, antflyHome } from './paths'
 import { ANTFLY_PIN, antflyDownloadUrl, antflyPlatformKey, type AntflyPin } from './pin'
@@ -26,6 +27,25 @@ const noopLogger: AdapterLogger = {
 }
 
 const DOWNLOAD_SIZE_HINT = '~20 MB'
+
+/**
+ * The engine install as an operation (#895). Everything before `commit`
+ * happens in a private tmp dir, so cancel is safe until the service stops
+ * for the swap.
+ */
+export const ANTFLY_ENGINE_PLAN: OperationPlan = {
+  stages: [
+    { id: 'prepare', kind: 'preparing', label: 'Check the engine' },
+    { id: 'download', kind: 'downloading', label: 'Download the pinned engine' },
+    { id: 'checksum', kind: 'verifying', label: 'Verify the checksum' },
+    { id: 'extract', kind: 'extracting', label: 'Unpack the engine' },
+    { id: 'version', kind: 'verifying', label: 'Verify the engine version' },
+    { id: 'commit', kind: 'committing', label: 'Stop the service and swap the engine' },
+    { id: 'cleanup', kind: 'cleanup', label: 'Clear engine data for a version change' },
+    { id: 'ready', kind: 'verifying', label: 'Wait for the engine to answer' },
+  ],
+  pointOfNoReturn: 'commit',
+}
 
 function runCommand(
   cmd: string,
@@ -95,19 +115,24 @@ const ENGINE_DEAD_AFTER_START = (budgetMs: number) =>
  * someone else (dev-rig lesson, 2026-07-11 hijack incident).
  */
 export async function resetAntflyEngineData(
+  op: OperationContext,
   logger: AdapterLogger = noopLogger,
   settings: AntflySettings = DEFAULT_SETTINGS,
   io: ServiceIo = defaultServiceIo(),
 ): Promise<{ name: string; status: 'installed' | 'failed'; message: string; durationMs: number; error?: unknown }> {
+  if (!op.holds('search-engine')) throw new Error('resetAntflyEngineData requires search-engine (run it inside an operation that declares it)')
   const start = Date.now()
   try {
     return await withServiceOperation(settings, io, {}, async () => {
       const dataDir = servicePaths().dataDir
+      op.stage('stop')
       await stopService(settings, io)
+      op.stage('wipe')
       rmSync(dataDir, { recursive: true, force: true })
+      op.stage('boot')
       await startService(settings, io)
       if (!await waitForEngineReady(settings, 30_000)) throw new Error(ENGINE_DEAD_AFTER_START(30_000))
-      return { name: 'reset', status: 'installed', message: 'Engine reset clean and responding. Run a repair reindex to regenerate search tables from source.', durationMs: Date.now() - start }
+      return { name: 'reset', status: 'installed', message: 'Engine reset clean and responding.', durationMs: Date.now() - start }
     })
   } catch (err) {
     logger.error('Engine reset failed', err)
@@ -150,17 +175,33 @@ export async function installAntflyDependency(
   // cold start with headroom. Tests inject tiny budgets.
   const readyBudgetMs = timings.readyBudgetMs ?? 60_000
   const pollMs = timings.pollMs ?? 1_000
+  const { op } = opts
+  if (!op.holds('search-engine')) throw new Error('installAntflyDependency requires search-engine (run it inside an operation that declares it)')
+  const skip = (stageIds: string[], reason: string) => {
+    for (const id of stageIds) op.skip(id, reason)
+  }
+  const ALL = ANTFLY_ENGINE_PLAN.stages.map((stage) => stage.id)
+  const STAGING = ['download', 'checksum', 'extract', 'version']
   const start = Date.now()
+  op.stage('prepare')
   const io = timings.io ?? defaultServiceIo()
-  const failed = (err: unknown) => ({ name: 'antfly', status: 'failed' as const, message: `Antfly install failed: ${err instanceof Error ? err.message : String(err)}`, durationMs: Date.now() - start })
+  const failed = (err: unknown) => {
+    // A cancel accepted before the failure settles cancelled, not failed.
+    op.throwIfCancelled()
+    return { name: 'antfly', status: 'failed' as const, message: `Antfly install failed: ${err instanceof Error ? err.message : String(err)}`, durationMs: Date.now() - start }
+  }
   try {
     const access = getServiceAccess(settings, io)
-    if (access.mode === 'guest') return { name: 'antfly', status: 'noop' as const, message: access.detail, durationMs: Date.now() - start }
+    if (access.mode === 'guest') {
+      skip(ALL, 'the engine is managed elsewhere')
+      return { name: 'antfly', status: 'noop' as const, message: access.detail, durationMs: Date.now() - start }
+    }
     if ((!access.allowed && (!access.ownership?.claimable || (access.reason !== 'unclaimed-home' && !opts.allowServiceClaim))) || access.reason === 'busy') return failed(access.detail)
   } catch (err) { return failed(err) }
   const intent = { intent: opts.allowServiceClaim ? 'install' as const : 'setup' as const }
   const finish = async () => {
     await startService(settings, io, intent)
+    op.stage('ready')
     if (!await waitForEngineReady(settings, readyBudgetMs, pollMs)) throw new Error(ENGINE_DEAD_AFTER_START(readyBudgetMs))
   }
   const targetPath = antflyBinaryPath()
@@ -181,9 +222,12 @@ export async function installAntflyDependency(
   if (existing && existing !== targetPath) return failed(`ANTFLY_PATH points at ${existing}; managed search launches ${targetPath}. Unset ANTFLY_PATH before installing.`)
   if (existing && existingVersion === pin.version) {
     try {
+      skip(STAGING, `already at v${pin.version}`)
       return await withServiceOperation(settings, io, intent, async () => {
         if (await antflyBinaryVersion(targetPath) !== pin.version) throw new Error('The shared engine binary changed during installation. Retry bakin install search.')
+        op.stage('commit', 'Restart the service')
         await stopService(settings, io, intent)
+        op.skip('cleanup', 'engine version unchanged')
         await finish()
         return { name: 'antfly', status: 'noop' as const, message: `Antfly v${pin.version} is already installed at ${existing}; service provisioned and running. Restart Bakin if it started with search unavailable.`, durationMs: Date.now() - start }
       })
@@ -197,6 +241,7 @@ export async function installAntflyDependency(
   if (opts.interactive && !opts.autoApprove) {
     const proceed = await opts.askYesNo?.(prompt, true)
     if (!proceed) {
+      skip(ALL.slice(1), 'declined')
       return {
         name: 'antfly',
         status: 'skipped' as const,
@@ -205,6 +250,7 @@ export async function installAntflyDependency(
       }
     }
   } else if (!opts.autoApprove) {
+    skip(ALL.slice(1), 'not approved')
     return {
       name: 'antfly',
       status: 'skipped' as const,
@@ -224,16 +270,21 @@ export async function installAntflyDependency(
     // retry, and the sha256 pin verified before anything is extracted.
     mkdirSync(tmpDir, { recursive: true })
     const archivePath = join(tmpDir, 'antfly.tar.gz')
+    op.stage('download')
     try {
       await downloadToFile(url, archivePath, {
         sha256: expectedChecksum,
         timeoutMs: 120_000,
         label: 'Antfly',
+        signal: op.signal,
+        onEvent: opTransfer(op, 'download'),
         // Resolved per call: the global fetch is the seam the installer tests stub.
         fetchImpl: ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init)) as typeof fetch,
       })
     } catch (err) {
+      op.throwIfCancelled()
       if (err instanceof DownloadChecksumError) {
+        op.stage('checksum')
         return {
           name: 'antfly',
           status: 'failed' as const,
@@ -249,12 +300,17 @@ export async function installAntflyDependency(
       }
     }
 
-    const tar = await runCommand('tar', ['-xzf', archivePath, '-C', tmpDir])
-    if (tar.code !== 0) {
+    // The pin was checked as the bytes streamed in (downloadToFile).
+    op.stage('checksum', 'sha256 matches the pin')
+    op.stage('extract')
+    try {
+      await extractTarball(archivePath, tmpDir, { label: 'Antfly archive', signal: op.signal, onOutput: (line) => op.output(line) })
+    } catch (err) {
+      op.throwIfCancelled()
       return {
         name: 'antfly',
         status: 'failed' as const,
-        message: `Failed to extract Antfly archive: tar exited ${tar.code}${tar.stderr ? `: ${tar.stderr.trim()}` : ''}`,
+        message: `Failed to extract Antfly archive: ${err instanceof Error ? err.message : String(err)}`,
         durationMs: Date.now() - start,
       }
     }
@@ -275,8 +331,11 @@ export async function installAntflyDependency(
     // Verify-then-commit: run --version against the extracted binary in the
     // temp dir BEFORE anything is moved into place, so a verification failure
     // leaves the existing install (binary + share/) untouched.
+    op.stage('version')
     chmodSync(extractedBinary, 0o755)
     const installedVersion = await antflyBinaryVersion(extractedBinary)
+    // A cancel accepted during the probe wins over whatever it reported.
+    op.throwIfCancelled()
     if (installedVersion !== pin.version) {
       return {
         name: 'antfly',
@@ -287,6 +346,7 @@ export async function installAntflyDependency(
     }
 
     return await withServiceOperation(settings, io, intent, async () => {
+      op.stage('commit')
       // Staging did not hold the lock: another home may have installed meanwhile.
       const previousVersion = existsSync(targetPath) ? await antflyBinaryVersion(targetPath) : null
       const hadBinary = existsSync(targetPath)
@@ -313,6 +373,7 @@ export async function installAntflyDependency(
       if (hadBinary && previousVersion !== pin.version) {
         const dataDir = servicePaths().dataDir
         if (existsSync(dataDir)) {
+          op.stage('cleanup')
           logger.info('Engine version changed — clearing derived engine data for a clean rebuild', {
             from: previousVersion ?? 'unknown',
             to: pin.version,
@@ -322,6 +383,7 @@ export async function installAntflyDependency(
           dataCleared = true
         }
       }
+      if (!dataCleared) op.skip('cleanup', 'no engine data to clear')
 
       await finish()
       const durationMs = Date.now() - start
@@ -336,6 +398,7 @@ export async function installAntflyDependency(
       }
     })
   } catch (err) {
+    op.throwIfCancelled()
     logger.error('Antfly install failed', err)
     return {
       name: 'antfly',

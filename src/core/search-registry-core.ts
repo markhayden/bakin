@@ -7,7 +7,6 @@
  *
  * Uses globalThis so every reach into this module shares one registry.
  */
-import { randomUUID } from 'crypto'
 import type {
   SearchContentTypeDefinition,
   SearchIndexDefinition,
@@ -35,6 +34,7 @@ import {
   queryTarget,
   type TableEnsureDef,
 } from '@bakin/core/search/tables'
+import { ResourceBusyError, assertResourceHeld, holdNow, type OperationContext } from '@bakin/core/operations'
 import { getAppServices } from './app-services-store'
 
 const log = createLogger('search-registry-core')
@@ -234,86 +234,23 @@ export interface RebuildOpts {
  * in their (cheap, off-chain) converge phase simultaneously. */
 const REBUILD_CONCURRENCY = 3
 
-let rebuildInFlight: Promise<ReindexTableOutcome[]> | null = null
+/** Where a rebuild pass reports its tables: one item per table in `stageId`. */
+export interface RebuildReport {
+  op: OperationContext
+  stageId: string
+}
 
 /**
- * Blue/green rebuild pass (the /api/reindex + `bakin reindex` path).
- * Queries keep answering from the old physical throughout; SSE
- * `search.rebuild.*` events drive the health page's live progress.
- * SINGLE-FLIGHT: overlapping calls coalesce into the running pass —
- * stacked passes used to regenerate every table once per kick.
+ * Blue/green rebuild pass (the reindex operation, the doctor's search
+ * repairs, a reset's reindex stage). Queries keep answering from the old
+ * physical throughout. The caller owns `search-engine`, so passes never
+ * overlap: an identical reindex attaches to the running operation and any
+ * other waits for it, visibly (#895 D15). With `report`, every targeted
+ * table is an item that runs pending → active → done/failed.
  */
-export function rebuildRegisteredTables(tableName?: string, opts?: RebuildOpts): Promise<ReindexTableOutcome[]> {
-  if (rebuildInFlight) {
-    log.info('reindex requested while a pass is running — attaching to it')
-    return rebuildInFlight
-  }
-  const pass = runRebuildPass(tableName, opts).finally(() => {
-    rebuildInFlight = null
-  })
-  rebuildInFlight = pass
-  return pass
-}
-
-// ---------------------------------------------------------------------------
-// Reindex as a job (202 + poll)
-// ---------------------------------------------------------------------------
-
-export interface ReindexJobStatus {
-  id: string
-  state: 'running' | 'done' | 'failed'
-  target: string | null
-  force: boolean
-  startedAt: number
-  finishedAt: number | null
-  ok?: boolean
-  errors?: number
-  parked?: number
-  total?: number
-  tables?: ReindexTableOutcome[]
-  error?: string
-}
-
-let lastReindexJob: ReindexJobStatus | null = null
-
-/**
- * Job wrapper over the single-flight rebuild: callers get a 202-style
- * handle immediately and poll for the outcome instead of holding an HTTP
- * socket across a multi-minute blue/green pass (the old sync-only shape
- * made every long rebuild look like a hang — the CLI had no timeout and
- * no progress, just a dead prompt). A start while a job is running
- * attaches to it, mirroring the underlying single-flight.
- */
-export function startReindexJob(tableName?: string, opts?: RebuildOpts): ReindexJobStatus {
-  if (lastReindexJob?.state === 'running') return lastReindexJob
-  const job: ReindexJobStatus = {
-    id: randomUUID(),
-    state: 'running',
-    target: tableName ?? null,
-    force: Boolean(opts?.force),
-    startedAt: Date.now(),
-    finishedAt: null,
-  }
-  lastReindexJob = job
-  rebuildRegisteredTables(tableName, opts).then((results) => {
-    job.errors = results.filter((r) => r.error).length
-    job.parked = results.filter((r) => r.result === 'parked').length
-    job.ok = job.errors === 0 && job.parked === 0
-    job.total = results.reduce((sum, r) => sum + (r.indexed ?? 0), 0)
-    job.tables = results
-    job.state = 'done'
-    job.finishedAt = Date.now()
-  }).catch((err: unknown) => {
-    job.error = err instanceof Error ? err.message : String(err)
-    job.state = 'failed'
-    job.finishedAt = Date.now()
-    log.error('reindex job failed', err instanceof Error ? err : undefined, { target: tableName ?? 'all' })
-  })
-  return job
-}
-
-export function getReindexJobStatus(): ReindexJobStatus | null {
-  return lastReindexJob
+export function rebuildRegisteredTables(tableName?: string, opts?: RebuildOpts, report?: RebuildReport): Promise<ReindexTableOutcome[]> {
+  assertResourceHeld('search-engine', 'rebuildRegisteredTables')
+  return runningMigrations(() => rebuildPass(tableName, opts, report))
 }
 
 /**
@@ -340,7 +277,7 @@ const REBUILD_ORDER: Record<string, number> = {
 }
 const REBUILD_ORDER_DEFAULT = 50
 
-async function runRebuildPass(tableName?: string, opts?: RebuildOpts): Promise<ReindexTableOutcome[]> {
+async function rebuildPass(tableName?: string, opts?: RebuildOpts, report?: RebuildReport): Promise<ReindexTableOutcome[]> {
   const registry = getRegistry()
   const search = getSearchAdapter()
   const targets = Array.from(registry.contentTypes.entries())
@@ -351,13 +288,14 @@ async function runRebuildPass(tableName?: string, opts?: RebuildOpts): Promise<R
       return pa === pb ? (a < b ? -1 : 1) : pa - pb
     })
 
+  for (const [logical] of targets) report?.op.item(report.stageId, { id: logical, label: logical })
   const results: ReindexTableOutcome[] = []
   const queue = [...targets]
   const workers = Array.from({ length: Math.min(REBUILD_CONCURRENCY, queue.length) }, async () => {
     for (;;) {
       const next = queue.shift()
       if (!next) return
-      results.push(await rebuildOneTable(search, next[0], next[1], opts))
+      results.push(await rebuildOneTable(search, next[0], next[1], opts, report))
     }
   })
   await Promise.all(workers)
@@ -369,14 +307,19 @@ async function rebuildOneTable(
   logical: string,
   def: SearchContentTypeDefinition & { pluginId: string },
   opts?: RebuildOpts,
+  report?: RebuildReport,
 ): Promise<ReindexTableOutcome> {
+  const item = (status: 'active' | 'done' | 'failed', message?: string) =>
+    report?.op.item(report.stageId, { id: logical, label: logical, status, ...(message ? { message } : {}) })
   broadcastRebuild('search.rebuild.start', logical)
+  item('active')
   try {
     let indexed = 0
     const ensureOpts = {
       onProgress: (phase: string, backfillDone?: number) => {
         if (backfillDone !== undefined) indexed = backfillDone
         broadcastRebuild('search.rebuild.progress', logical, { phase, indexed: backfillDone ?? 0 })
+        item('active', backfillDone !== undefined ? `${phase} · ${backfillDone} indexed` : phase)
       },
     }
     const vdef = toVersionedDef(def)
@@ -388,10 +331,13 @@ async function rebuildOneTable(
       result = await repairOneTable(search, vdef, fingerprint, ensureOpts)
     }
     broadcastRebuild('search.rebuild.complete', logical, { result, indexed })
+    if (result === 'parked') item('failed', 'parked — the old table keeps serving; the migration pump resumes it')
+    else item('done', `${result} · ${indexed} indexed`)
     return { table: logical, result, indexed }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     broadcastRebuild('search.rebuild.complete', logical, { error: message })
+    item('failed', message)
     return { table: logical, result: 'failed', error: message }
   }
 }
@@ -435,12 +381,64 @@ async function repairOneTable(
   return ensureVersionedTable(search, vdef, fingerprint, ensureOpts)
 }
 
-/** Boot-time continuation of crash/park-interrupted migrations (D5). */
-export async function resumeTableMigrations(): Promise<void> {
+/** Passes running migrations in this process right now (the wedge watchdog acts for them). */
+let migrationRunners = 0
+/** Engine bounces the watchdog started on a running pass's behalf. */
+const bouncesForRunners = new Set<Promise<boolean>>()
+
+async function runningMigrations<T>(fn: () => Promise<T>): Promise<T> {
+  migrationRunners += 1
+  try {
+    return await fn()
+  } finally {
+    migrationRunners -= 1
+    // A bounce made for this pass runs under its ownership: the pass keeps
+    // search-engine until the engine is back, so nothing queued behind it
+    // starts against a restarting engine.
+    while (bouncesForRunners.size > 0) await Promise.allSettled([...bouncesForRunners])
+  }
+}
+
+/** How a background mutator names itself to a reset or reindex waiting on it. */
+const BACKGROUND_MIGRATION = { title: 'Background index migration' }
+
+/**
+ * Background search mutators never wait for `search-engine` (#895 D23): the
+ * resource is taken now or the pass defers to its next tick, so an engine
+ * install, reset or reindex never races a background migration — and those
+ * foreground operations wait for an in-flight pass, visibly.
+ */
+async function backgroundPass<T>(what: string, fn: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await holdNow(['search-engine'], BACKGROUND_MIGRATION, () => runningMigrations(fn))
+  } catch (err) {
+    if (!(err instanceof ResourceBusyError) || err.resource !== 'search-engine') throw err
+    log.info(`${what} deferred — the search engine is busy`, { holder: err.holder.title ?? null })
+    return undefined
+  }
+}
+
+/**
+ * Boot deferred its resumption (search-engine was held): the next pump tick
+ * resumes EVERY in-flight row, not only parked ones — a crash leaves rows
+ * mid-backfill or mid-converge that nothing else owns.
+ */
+let bootResumePending = false
+
+async function resumeAllMigrations(): Promise<void> {
   const registry = getRegistry()
   const search = getSearchAdapter()
   const defs = Array.from(registry.contentTypes.values()).map(toVersionedDef)
   await resumeVersionedMigrations(search, defs, adapterFingerprint(search))
+}
+
+/** Boot-time continuation of crash/park-interrupted migrations (D5). */
+export async function resumeTableMigrations(): Promise<void> {
+  const ran = await backgroundPass('boot migration resumption', async () => {
+    await resumeAllMigrations()
+    return true
+  })
+  if (!ran) bootResumePending = true
 }
 
 // ---------------------------------------------------------------------------
@@ -483,7 +481,7 @@ let deadShardRestartAttempts = 0
 export function startMigrationPump(): void {
   if (pumpTimer) return
   pumpTimer = setInterval(() => {
-    void pumpParkedMigrations().catch((err: unknown) => {
+    void migrationPumpTick().catch((err: unknown) => {
       log.warn('migration pump cycle failed', { err: err instanceof Error ? err.message : String(err) })
     })
   }, MIGRATION_PUMP_INTERVAL_MS)
@@ -502,6 +500,7 @@ export function stopMigrationPump(): void {
   pumpTimer = null
   wedgeTimer = null
   pumpAttempts.clear()
+  bootResumePending = false
   lastWedgeRestartAt = 0
   deadShardRestartAttempts = 0
 }
@@ -552,7 +551,7 @@ async function handleDeadShards(
  * supervise their engine (guest/child modes return restartEngine
  * undefined).
  */
-async function wedgeWatchTick(): Promise<void> {
+export async function wedgeWatchTick(): Promise<void> {
   const inFlight = listVersionedTableStates().some(
     (s) => s.state === 'migrating' && s.phase !== 'parked',
   )
@@ -564,21 +563,52 @@ async function wedgeWatchTick(): Promise<void> {
 
   const search = getSearchAdapter()
   if (!search.restartEngine) return
-  lastWedgeRestartAt = Date.now()
-  log.warn('engine wedged under migration load — bouncing it', { staleForMs: staleFor })
-  try {
-    await search.restartEngine()
-  } catch (err) {
-    log.warn('wedge watchdog engine restart failed', { err: err instanceof Error ? err.message : String(err) })
-    return
+  const restartEngine = search.restartEngine.bind(search)
+  const bounce = async (): Promise<boolean> => {
+    lastWedgeRestartAt = Date.now()
+    log.warn('engine wedged under migration load — bouncing it', { staleForMs: staleFor })
+    try {
+      await restartEngine()
+    } catch (err) {
+      log.warn('wedge watchdog engine restart failed', { err: err instanceof Error ? err.message : String(err) })
+      return false
+    }
+    const { noteSearchEngineProgress } = await import('@bakin/core/search/progress')
+    noteSearchEngineProgress()
+    return true
   }
-  const { noteSearchEngineProgress } = await import('@bakin/core/search/progress')
-  noteSearchEngineProgress()
+  // A pass running migrations here holds search-engine for the whole
+  // migration, and its wedge is exactly what this watchdog heals — so it
+  // bounces on that holder's behalf. Anything else holding the engine (an
+  // install, a model pull, a reset's stop/wipe) defers the bounce.
+  let bounced: boolean | undefined
+  if (migrationRunners > 0) {
+    const forRunner = bounce()
+    bouncesForRunners.add(forRunner)
+    try {
+      bounced = await forRunner
+    } finally {
+      bouncesForRunners.delete(forRunner)
+    }
+  } else {
+    bounced = await backgroundPass('wedge watchdog restart', bounce)
+  }
   // Parked work resumes right away instead of waiting for the slow tick.
-  void pumpParkedMigrations().catch(() => {})
+  if (bounced) void migrationPumpTick().catch(() => {})
 }
 
-/** One pump cycle (exported for tests + the doctor's repair path). */
+/** The pump's timer tick: one cycle, or nothing while the engine is busy. */
+export async function migrationPumpTick(): Promise<void> {
+  await backgroundPass('migration pump cycle', async () => {
+    if (bootResumePending) {
+      await resumeAllMigrations()
+      bootResumePending = false
+    }
+    await pumpParkedMigrations()
+  })
+}
+
+/** One pump cycle (exported for tests; the timer runs it through migrationPumpTick). */
 export async function pumpParkedMigrations(
   opts?: { convergePollMs?: number; zeroProgressParkMs?: number },
 ): Promise<Array<{ logical: string; result: string }>> {

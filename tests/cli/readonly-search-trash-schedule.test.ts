@@ -6,6 +6,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { setupTtyCliHarness } from './helpers/tty-cli-harness'
+import { TEST_BOOT_ID, finishedOperation } from '../helpers/operation-fetch'
 
 // These flows are HTTP-only (fetch is mocked), but the isolation mocks are
 // mandatory insurance: nothing this test transitively imports may ever
@@ -19,7 +20,7 @@ mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 const harness = setupTtyCliHarness({ defaultFetchJson: { ok: true } })
-const { fetchMock, output, jsonResponse } = harness
+const { fetchMock, output, errorOutput, jsonResponse } = harness
 
 describe('read-only CLI TTY commands — schedule, trash, search', () => {
   it('renders schedule list and run history with shared TUI screens in a TTY', async () => {
@@ -185,10 +186,10 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
     expect(output()).not.toContain('Search: enabled')
   })
 
-  it('renders reindex results with the shared TUI screen in a TTY', async () => {
+  it('follows the reindex operation, then renders its results with the shared TUI screen in a TTY', async () => {
     const { main } = await import('../../cli/bakin')
 
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    const report = {
       ok: false,
       total: 12,
       errors: 1,
@@ -197,14 +198,20 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
         { table: 'bakin_tasks', indexed: 12, result: 'migrated' },
         { table: 'agent_lessons', indexed: 0, error: 'schema missing' },
       ],
-    }))
+    }
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ operationId: 'op-reindex', bootId: TEST_BOOT_ID }), { status: 202 }))
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      bootId: TEST_BOOT_ID,
+      operation: finishedOperation('op-reindex', { httpStatus: 200, body: report }, { status: 'failed', outcome: { code: 'tables_parked', message: '1 failed of 2 tables' } }),
+      children: [],
+    }), { status: 200 }))
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'unavailable' }), { status: 503 }))
     process.argv = ['bun', 'cli/bakin.ts', 'reindex', '--table', 'tasks', '--rebuild']
-    await main()
+    // A table that did not converge fails the command after its report.
+    await expect(main()).rejects.toThrow('exit:1')
 
-    // ?async=1 requests the 202-job flow; a pre-rc.23 server (this mock)
-    // ignores it and answers with the final result — the CLI handles both.
     expect(fetchMock).toHaveBeenCalledWith(
-      `${process.env.BAKIN_URL}/api/reindex?async=1&table=tasks&rebuild=true`,
+      `${process.env.BAKIN_URL}/api/reindex?table=tasks`,
       expect.objectContaining({ method: 'POST' }),
     )
     expect(output()).toContain('Reindex')
@@ -214,5 +221,29 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
     expect(output()).toContain('agent_lessons')
     expect(output()).toContain('schema missing')
     expect(output()).not.toContain('Reindexing tasks into search')
+  })
+
+  it('follows the reset operation and reports its rebuild', async () => {
+    const { main } = await import('../../cli/bakin')
+    const result = { ok: true, message: 'Engine reset clean and responding.', reindex: { ok: true, errors: 0, parked: 0, total: 5, tables: [] } }
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ operationId: 'op-reset', bootId: TEST_BOOT_ID }), { status: 202 }))
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ bootId: TEST_BOOT_ID, operation: finishedOperation('op-reset', { httpStatus: 200, body: result }), children: [] }), { status: 200 }))
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'unavailable' }), { status: 503 }))
+    process.argv = ['bun', 'cli/bakin.ts', 'search:reset', '--yes']
+    await main()
+
+    expect(fetchMock).toHaveBeenCalledWith(`${process.env.BAKIN_URL}/api/search/reset`, expect.objectContaining({ method: 'POST' }))
+    expect(output()).toContain('Engine reset clean and responding.')
+    expect(output()).toContain('Done. 5 documents reindexed.')
+  })
+
+  it('answers a refused reset at once, without following anything', async () => {
+    const { main } = await import('../../cli/bakin')
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, message: 'Search is disabled in settings — enable it before resetting.', reindex: null }), { status: 409 }))
+    process.argv = ['bun', 'cli/bakin.ts', 'search:reset', '--yes']
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(errorOutput()).toContain('Reset failed: Search is disabled in settings')
   })
 })

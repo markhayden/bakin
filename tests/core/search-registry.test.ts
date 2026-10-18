@@ -86,17 +86,25 @@ import {
   crossTableSearch,
   getSearchHealth,
   purgeContentType,
-  rebuildRegisteredTables,
+  rebuildRegisteredTables as rebuildUnowned,
   pumpParkedMigrations,
-  startReindexJob,
-  getReindexJobStatus,
+  migrationPumpTick,
+  resumeTableMigrations,
+  wedgeWatchTick,
   stopMigrationPump,
 } from '@/core/search-registry'
 import { sweepOrphanRegistryRows } from '@/core/search-orphan-sweep'
 import { tableStatus, sweepTombstones } from '@bakin/core/search/tables'
 import { enqueueIndex, outboxStats } from '@bakin/core/search/outbox'
 import { broadcast } from '@/core/sse'
-import { waitUntil } from '../helpers/wait'
+import { createOperationRegistry, readResourceHolder, tryAcquireResources, type ResourceLease } from '@bakin/core/operations'
+import { resetSearchEngineProgressForTests } from '@bakin/core/search/progress'
+import { settleFor, waitUntil } from '../helpers/wait'
+import { owning } from '../helpers/owning'
+import { reindexOperation, type ReindexReport } from '@/core/search-operations'
+
+/** A rebuild pass the way its callers run it: as an owner of search-engine. */
+const rebuildRegisteredTables = (...args: Parameters<typeof rebuildUnowned>) => owning(() => rebuildUnowned(...args), ['search-engine'])
 import { closeAllDbs } from '../../packages/core/src/storage/db'
 
 afterAll(() => {
@@ -1030,16 +1038,13 @@ describe('rebuild pass semantics (2026-07-21 redesign)', () => {
     }
   }
 
-  it('overlapping rebuild calls single-flight into ONE pass', async () => {
+  it('a rebuild pass refuses to run unless its caller owns search-engine', async () => {
     buildSearchAPI('sf-plugin').registerContentType(makeDef('sfone'))
     await createRegisteredTables()
-
-    const first = rebuildRegisteredTables(undefined, { force: true })
-    const second = rebuildRegisteredTables(undefined, { force: true })
-    // The second call attaches to the running pass — same promise, no
-    // stacked generations (the 5-generations-of-team incident).
-    expect(second).toBe(first)
-    await first
+    // Passes never overlap: every caller is an operation (or repair) that
+    // owns search-engine, so a second reindex attaches or waits instead of
+    // stacking generations (the 5-generations-of-team incident).
+    expect(() => rebuildUnowned(undefined, { force: true })).toThrow(/rebuildRegisteredTables requires search-engine/)
   })
 
   it('default (repair) pass leaves a healthy table completely untouched', async () => {
@@ -1170,17 +1175,25 @@ describe('rebuild pass semantics (2026-07-21 redesign)', () => {
     expect(tableStatus('bakin_failed-backfill')!.phase).toBe('parked')
   })
 
-  it('a reindex job reports a resumed backfill failure as parked, never successful', async () => {
+  it('a reindex operation reports a resumed backfill failure as parked, never successful', async () => {
     buildSearchAPI('job-failure-plugin').registerContentType(makeDef('job-failure'))
     await createRegisteredTables()
     searchHarness.calls.documentsBatchIndex.mockRejectedValue(new Error('backfill unavailable'))
     await rebuildRegisteredTables('bakin_job-failure', { force: true })
 
-    const job = startReindexJob('bakin_job-failure')
-    await waitUntil(() => job.state !== 'running', { label: 'failed resume result' })
-    expect(job.ok).toBe(false)
-    expect(job.parked).toBe(1)
-    expect(job.tables?.[0].result).toBe('parked')
+    const registry = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0 })
+    try {
+      const { operationId } = await registry.start(reindexOperation({ table: 'bakin_job-failure', origin: 'cli' }))
+      const view = await registry.await(operationId)
+      expect(view.status).toBe('failed')
+      expect(view.outcome?.code).toBe('tables_parked')
+      const report = view.result!.body as ReindexReport
+      expect(report).toMatchObject({ ok: false, parked: 1 })
+      expect(report.tables[0]!.result).toBe('parked')
+      expect(view.stages[0]!.items).toEqual([expect.objectContaining({ id: 'bakin_job-failure', status: 'failed' })])
+    } finally {
+      registry.dispose()
+    }
   })
 })
 
@@ -1328,23 +1341,27 @@ describe('migration pump — dead shards inside a live engine (2026-07-21 field 
   })
 })
 
-describe('reindex job (202 + poll contract)', () => {
+describe('reindex as an operation (#895 D15)', () => {
   let searchHarness: ReturnType<typeof createSearchAdapterHarness>
+  let registry: ReturnType<typeof createOperationRegistry>
 
   beforeEach(() => {
+    stopMigrationPump()
     resetSearchRegistry()
     searchHarness = createSearchAdapterHarness()
     installSearchAdapter(searchHarness.adapter)
+    registry = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0 })
     mock.clearAllMocks()
   })
 
   afterEach(() => {
+    registry.dispose()
     clearSearchAdapter()
   })
 
-  it('startReindexJob returns immediately, attaches while running, and lands the final outcome', async () => {
-    buildSearchAPI('job-plugin').registerContentType({
-      table: 'jobone',
+  function makeDef(table: string) {
+    return {
+      table,
       schemaVersion: 1,
       schema: { title: { type: 'text' as const } },
       searchableFields: ['title'],
@@ -1352,20 +1369,228 @@ describe('reindex job (202 + poll contract)', () => {
       facets: [],
       reindex: async function* () { yield { key: 'k1', doc: { title: 'row' } } },
       verifyExists: async () => true,
+    }
+  }
+
+  it('shows every table as an item, is not cancellable, and attaches an identical request', async () => {
+    buildSearchAPI('op-plugin').registerContentType(makeDef('opone'))
+    buildSearchAPI('op-plugin-2').registerContentType(makeDef('optwo'))
+    await createRegisteredTables()
+
+    const first = await registry.start(reindexOperation({ force: true, origin: 'web' }))
+    const second = await registry.start(reindexOperation({ force: true, origin: 'cli' }))
+    expect(second).toMatchObject({ operationId: first.operationId, attached: true })
+    expect(registry.cancel(first.operationId)).toBe('not_cancellable')
+
+    const view = await registry.await(first.operationId)
+    expect(view.status).toBe('succeeded')
+    expect(view.resources).toEqual(['search-engine'])
+    expect(view.stages[0]!.items!.map((item) => [item.id, item.status]).sort()).toEqual([['bakin_opone', 'done'], ['bakin_optwo', 'done']])
+    expect(view.result!.body).toMatchObject({ ok: true, errors: 0, parked: 0 })
+  })
+
+  it('waits visibly for an in-flight background migration pass, then runs', async () => {
+    buildSearchAPI('wait-plugin').registerContentType(makeDef('waitone'))
+    await createRegisteredTables()
+    const { openNamedDb } = require('../../packages/core/src/storage/db') as typeof import('../../packages/core/src/storage/db')
+    openNamedDb('search', () => join(testDir, 'search.db')).db().prepare(
+      "UPDATE search_tables SET state = 'migrating', migrating_to = 'bakin_waitone_v1_feedf00d', migrating_fp = 'feedf00d-full', migration_phase = 'parked' WHERE logical = 'bakin_waitone'",
+    ).run()
+    let unblock!: () => void
+    const blocked = new Promise<void>((resolve) => { unblock = resolve })
+    let passIndexing = false
+    searchHarness.calls.documentsBatchIndex.mockImplementation(async (name, items) => {
+      passIndexing = true
+      await blocked
+      for (const item of items) await searchHarness.adapter.documents.index(name, item.key, item.doc)
+      return { indexed: items.length, failed: [] }
+    })
+    const pass = migrationPumpTick()
+    await waitUntil(() => passIndexing, { label: 'the pump pass is backfilling' })
+
+    const { operationId } = await registry.start(reindexOperation({ origin: 'web' }))
+    await waitUntil(() => registry.get(operationId)?.waitingFor !== undefined, { label: 'the reindex waits for search-engine' })
+    expect(registry.get(operationId)!.waitingFor!.holderTitle).toBe('Background index migration')
+
+    unblock()
+    await pass
+    expect((await registry.await(operationId)).status).toBe('succeeded')
+  })
+})
+
+describe('background search mutators respect search-engine (#895 D23)', () => {
+  let searchHarness: ReturnType<typeof createSearchAdapterHarness>
+  let lease: ResourceLease | undefined
+
+  beforeEach(() => {
+    stopMigrationPump()
+    resetSearchRegistry()
+    searchHarness = createSearchAdapterHarness()
+    installSearchAdapter(searchHarness.adapter)
+    mock.clearAllMocks()
+  })
+
+  afterEach(() => {
+    lease?.release()
+    lease = undefined
+    resetSearchEngineProgressForTests()
+    clearSearchAdapter()
+  })
+
+  function makeDef(table: string) {
+    return {
+      table,
+      schemaVersion: 1,
+      schema: { title: { type: 'text' as const } },
+      searchableFields: ['title'],
+      embeddingTemplate: '{{title}}',
+      facets: [],
+      reindex: async function* () { yield { key: 'k1', doc: { title: 'row' } } },
+      verifyExists: async () => true,
+    }
+  }
+
+  /** Register a table and hand-move its row into a migration toward a recorded green. */
+  async function migrating(name: string, phase: 'parked' | 'backfill'): Promise<string> {
+    buildSearchAPI(`${name}-plugin`).registerContentType(makeDef(name))
+    await createRegisteredTables()
+    const { openNamedDb } = require('../../packages/core/src/storage/db') as typeof import('../../packages/core/src/storage/db')
+    const store = openNamedDb('search', () => join(testDir, 'search.db'))
+    const green = `bakin_${name}_v1_feedf00d`
+    store.db().prepare(
+      "UPDATE search_tables SET state = 'migrating', migrating_to = ?, migrating_fp = 'feedf00d-full', migration_phase = ? WHERE logical = ?",
+    ).run(green, phase, `bakin_${name}`)
+    mock.clearAllMocks()
+    return green
+  }
+
+  function holdEngine(title: string): void {
+    const taken = tryAcquireResources(['search-engine'], { title })
+    if ('busy' in taken) throw new Error(`search-engine unexpectedly held by ${taken.busy.holder.title}`)
+    lease = taken
+  }
+
+  it('the pump tick skips while search-engine is held, and runs once it is free', async () => {
+    const green = await migrating('gatepump', 'parked')
+    holdEngine('Install the search engine')
+
+    await migrationPumpTick()
+    expect(tableStatus('bakin_gatepump')!.phase).toBe('parked')
+    expect(searchHarness.calls.documentsBatchIndex).not.toHaveBeenCalled()
+
+    lease!.release()
+    lease = undefined
+    await migrationPumpTick()
+    expect(tableStatus('bakin_gatepump')).toMatchObject({ state: 'active', physical: green })
+  })
+
+  it('boot resumption skips while search-engine is held', async () => {
+    await migrating('gateboot', 'parked')
+    holdEngine('Reset search')
+
+    await resumeTableMigrations()
+
+    expect(tableStatus('bakin_gateboot')!.phase).toBe('parked')
+    expect(searchHarness.calls.documentsBatchIndex).not.toHaveBeenCalled()
+  })
+
+  it('a deferred boot resumption is picked up by the next pump tick, including non-parked rows', async () => {
+    const green = await migrating('gatebootlater', 'backfill')
+    holdEngine('Reset search')
+    await resumeTableMigrations()
+    expect(tableStatus('bakin_gatebootlater')!.state).toBe('migrating')
+
+    lease!.release()
+    lease = undefined
+    await migrationPumpTick()
+    expect(tableStatus('bakin_gatebootlater')).toMatchObject({ state: 'active', physical: green })
+  })
+
+  it('a pump pass holds search-engine for its whole run, named so a waiting reset can say what it waits for', async () => {
+    await migrating('gateholder', 'parked')
+    const holders: Array<string | undefined> = []
+    searchHarness.calls.documentsBatchIndex.mockImplementation(async (name, items) => {
+      holders.push(readResourceHolder('search-engine')?.title)
+      for (const item of items) await searchHarness.adapter.documents.index(name, item.key, item.doc)
+      return { indexed: items.length, failed: [] }
     })
 
-    const job = startReindexJob()
-    expect(job.state).toBe('running')
-    // A second start while running ATTACHES (single-flight), same job id.
-    expect(startReindexJob().id).toBe(job.id)
-    expect(getReindexJobStatus()!.id).toBe(job.id)
+    await migrationPumpTick()
 
-    // Poll to completion like the CLI does.
-    await waitUntil(() => getReindexJobStatus()!.state !== 'running',
-      { label: 'the reindex job to leave the running state', timeoutMs: 10_000 })
-    const done = getReindexJobStatus()!
-    expect(done.state).toBe('done')
-    expect(done.finishedAt).toBeGreaterThan(0)
-    expect(done.tables!.length).toBeGreaterThan(0)
+    expect(holders.length).toBeGreaterThan(0)
+    expect(new Set(holders)).toEqual(new Set(['Background index migration']))
+    expect(readResourceHolder('search-engine')).toBeNull()
+  })
+
+  it('the wedge watchdog defers its bounce while an install or reset holds the engine', async () => {
+    await migrating('gatewedge', 'backfill')
+    resetSearchEngineProgressForTests(0)
+    holdEngine('Install the search engine')
+
+    await wedgeWatchTick()
+
+    expect(searchHarness.adapter.restartEngine).not.toHaveBeenCalled()
+  })
+
+  it('the wedge watchdog bounces a wedged engine when search-engine is free', async () => {
+    await migrating('gatefree', 'backfill')
+    resetSearchEngineProgressForTests(0)
+
+    await wedgeWatchTick()
+
+    expect(searchHarness.adapter.restartEngine).toHaveBeenCalledTimes(1)
+  })
+
+  it('the wedge watchdog bounces on behalf of the holder running the migration', async () => {
+    buildSearchAPI('gaterun-plugin').registerContentType(makeDef('gaterun'))
+    await createRegisteredTables()
+    let unblock!: () => void
+    const blocked = new Promise<void>((resolve) => { unblock = resolve })
+    let entered = false
+    searchHarness.calls.documentsBatchIndex.mockImplementation(async (name, items) => {
+      entered = true
+      await blocked
+      for (const item of items) await searchHarness.adapter.documents.index(name, item.key, item.doc)
+      return { indexed: items.length, failed: [] }
+    })
+    // The reindex holds search-engine for its whole pass.
+    const pass = rebuildRegisteredTables('bakin_gaterun', { force: true })
+    await waitUntil(() => entered, { label: 'the reindex backfill is in flight' })
+    resetSearchEngineProgressForTests(0)
+
+    await wedgeWatchTick()
+
+    expect(searchHarness.adapter.restartEngine).toHaveBeenCalledTimes(1)
+    unblock()
+    await pass
+  })
+
+  it('a bounce started for a migration holder settles before that holder releases search-engine', async () => {
+    await migrating('gatebounce', 'parked')
+    let unblock!: () => void
+    const blocked = new Promise<void>((resolve) => { unblock = resolve })
+    let entered = false
+    searchHarness.calls.documentsBatchIndex.mockImplementation(async (name, items) => {
+      entered = true
+      await blocked
+      for (const item of items) await searchHarness.adapter.documents.index(name, item.key, item.doc)
+      return { indexed: items.length, failed: [] }
+    })
+    let finishRestart!: () => void
+    searchHarness.calls.restartEngine.mockImplementation(() => new Promise<void>((resolve) => { finishRestart = resolve }))
+    const pump = migrationPumpTick()
+    await waitUntil(() => entered, { label: 'the pump backfill is in flight' })
+    resetSearchEngineProgressForTests(0)
+
+    const tick = wedgeWatchTick()
+    await waitUntil(() => searchHarness.calls.restartEngine.mock.calls.length === 1, { label: 'the bounce started' })
+    unblock()
+    await settleFor(50, 'the pass ends while its bounce is still restarting the engine')
+
+    expect(readResourceHolder('search-engine')?.title).toBe('Background index migration')
+    finishRestart()
+    await pump
+    await tick
+    await waitUntil(() => readResourceHolder('search-engine') === null, { label: 'search-engine released' })
   })
 })
