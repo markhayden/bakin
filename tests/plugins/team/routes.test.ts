@@ -1035,3 +1035,51 @@ describe('team plugin — DELETE /teams/:teamId guard (review R6)', () => {
     expect(status).toBe(200)
   })
 })
+
+// ---------------------------------------------------------------------------
+// PUT /teams/:teamId — validated body (#758)
+// ---------------------------------------------------------------------------
+
+describe('team plugin — PUT /teams/:teamId validation (#758)', () => {
+  const teamJsonPath = join(testDir, 'plugin-settings', 'team.json')
+  const readTeam = (id: string) =>
+    (JSON.parse(readFileSync(teamJsonPath, 'utf-8')) as { teams: Array<Record<string, unknown>> }).teams.find((t) => t.id === id)
+
+  async function withTeam(id: string) {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    await callRoute(findRoute(activated.routes, 'POST', '/teams')!, activated.ctx, { body: { id, label: 'Original', reportsTo: 'chef' } })
+    const put = (body: unknown) => callRoute(findRoute(activated.routes, 'PUT', '/teams/:teamId')!, activated.ctx, { searchParams: { teamId: id }, body })
+    return { put }
+  }
+
+  it('renames with a trimmed label', async () => {
+    const { put } = await withTeam('rename-me')
+    const { status } = await put({ label: '  Builders  ' })
+    expect(status).toBe(200)
+    expect(readTeam('rename-me')?.label).toBe('Builders')
+    expect(readTeam('rename-me')?.reportsTo).toBe('chef')
+  })
+
+  it.each([
+    ['empty label', { label: '' }],
+    ['whitespace label', { label: '   ' }],
+    ['non-string label', { label: 42 }],
+    ['non-string reportsTo', { reportsTo: 7 }],
+    ['unknown field', { id: 'other' }],
+  ])('400s on %s and leaves the team untouched', async (_name, body) => {
+    const id = `bad-${Math.random().toString(36).slice(2, 8)}`
+    const { put } = await withTeam(id)
+    const { status } = await put(body)
+    expect(status).toBe(400)
+    expect(readTeam(id)).toMatchObject({ label: 'Original', reportsTo: 'chef' })
+  })
+
+  it('reportsTo null and "main" both persist as null (the main-agent sentinel)', async () => {
+    const { put } = await withTeam('to-main')
+    expect((await put({ reportsTo: null })).status).toBe(200)
+    expect(readTeam('to-main')?.reportsTo).toBeNull()
+    await put({ reportsTo: 'chef' })
+    expect((await put({ reportsTo: 'main' })).status).toBe(200)
+    expect(readTeam('to-main')?.reportsTo).toBeNull()
+  })
+})

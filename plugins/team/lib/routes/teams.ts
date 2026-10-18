@@ -33,6 +33,14 @@ import { readTaskboard } from '../../../../src/core/task-store'
 import type { OrgTeam } from '../../types'
 import { passthroughTeam, errorResponseTeam } from './shared'
 
+/** PUT /teams/:teamId body (#758): every field optional, none unchecked. */
+const TeamUpdateBody = z.object({
+  label: z.string().trim().min(1, 'label must be a non-empty string').optional(),
+  reportsTo: z.string().nullable().optional(),
+  color: z.string().optional(),
+  order: z.number().int().optional(),
+}).strict()
+
 /** The Global context page's pseudo-team: every runtime agent. */
 const GLOBAL_TEAM_ID = 'global'
 
@@ -101,13 +109,18 @@ export function populateOrgTeamRoutes(arr: any[]): void {
       const idx = teams.findIndex((t) => t.id === teamId)
       if (idx === -1) return Response.json({ error: 'Team not found' }, { status: 404 })
 
-      const body = await req.json() as Record<string, unknown>
-      if (body.label !== undefined) teams[idx].label = body.label as string
+      const raw = await req.json().catch(() => null)
+      const parsed = TeamUpdateBody.safeParse(raw)
+      if (!parsed.success) {
+        return Response.json({ error: parsed.error.issues[0]?.message ?? 'invalid body' }, { status: 400 })
+      }
+      const body = parsed.data
+      if (body.label !== undefined) teams[idx].label = body.label
       if (body.reportsTo !== undefined) {
         teams[idx].reportsTo = normalizeReportsTo(body.reportsTo, await getRuntimeMainAgentId(ctx.runtime))
       }
-      if (body.color !== undefined) teams[idx].color = body.color as string
-      if (body.order !== undefined) teams[idx].order = body.order as number
+      if (body.color !== undefined) teams[idx].color = body.color
+      if (body.order !== undefined) teams[idx].order = body.order
 
       writeTeams(teams)
       return Response.json({ ok: true, team: teams[idx] })
