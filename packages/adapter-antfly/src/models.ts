@@ -1,13 +1,15 @@
 import { spawn } from 'child_process'
+import { existsSync, readdirSync, renameSync, rmSync } from 'fs'
+import { basename, dirname, join } from 'path'
 import type { OperationPlan } from '@makinbakin/sdk/types'
 import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import type { AntflySettings } from './defaults'
-import { modelDir, modelStructurallyComplete, unverifiedModelFiles } from './model-pins'
+import { MODEL_PULL_VARIANTS, modelDir, modelStructurallyComplete, modelVariantMismatch, pulledVariantDir, unverifiedModelFiles } from './model-pins'
 import { modelLoadVerdict, probeModelLoad } from './model-load'
 import { inferenceModelsRoot } from './paths'
 import { ANTFLY_PIN } from './pin'
-import { createPullTracker, pullStagingDir } from './pull-progress'
+import { createPullTracker, pullStagingDir, variantPullStagingDir } from './pull-progress'
 import { findAntflyBinary } from './service'
 
 /**
@@ -138,7 +140,9 @@ export async function checkInferenceModels(models: InferenceModel[]) {
       name: 'models',
       status: 'warn' as const,
       message: `${names} can't load on this machine (engine ${ANTFLY_PIN.version}, ${process.platform}-${process.arch}) — the search that relies on ${unloadable.length === 1 ? 'it is' : 'them is'} unavailable here. Everything else is unaffected.`,
-      remediation: 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
+      remediation: unloadable.some((u) => modelVariantMismatch(u.model.model) !== null)
+        ? 'Run `bakin install search-models`: it re-downloads the model in the form that loads on this machine.'
+        : 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
       details: {
         root: inferenceModelsRoot(),
         unloadable: unloadable.map((u) => ({ label: u.model.label, model: u.model.model, reason: u.reason })),
@@ -215,9 +219,10 @@ interface PullOptions {
  * check on one directory under every home. Abort sends SIGTERM.
  */
 function runPull(antfly: string, model: string, opts: PullOptions): Promise<{ code: number | null; stderr: string }> {
+  const variant = MODEL_PULL_VARIANTS[model]
   return new Promise((resolve, reject) => {
-    const child = spawn(antfly, ['inference', 'pull', model, '--models-dir', opts.modelsDir], { stdio: ['ignore', 'ignore', 'pipe'] })
-    const tracker = createPullTracker(pullStagingDir(opts.modelsDir, model))
+    const child = spawn(antfly, ['inference', 'pull', variant ? `${model}:${variant}` : model, '--models-dir', opts.modelsDir], { stdio: ['ignore', 'ignore', 'pipe'] })
+    const tracker = createPullTracker(variant ? () => variantPullStagingDir(opts.modelsDir, model) : pullStagingDir(opts.modelsDir, model))
     const tail: string[] = []
     let pending = ''
     let last = ''
@@ -267,6 +272,38 @@ function runPull(antfly: string, model: string, opts: PullOptions): Promise<{ co
   })
 }
 
+/**
+ * Moves a variant pull's `<name>--antfly-<hash>` install to the model's own
+ * directory (the name the engine is configured with). The old install is
+ * renamed aside first and restored if the move fails; the aside copy is
+ * deleted best-effort and swept on the next adoption.
+ */
+function adoptVariantInstall(model: string, variant: string, logger: AdapterLogger): string | null {
+  const target = modelDir(model)
+  const parent = dirname(target)
+  const trashPrefix = `.bakin-trash-${basename(target)}-`
+  const sweep = (dir: string) => {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+    } catch (err) {
+      logger.warn('Could not delete a replaced model install', { model, dir, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+  if (existsSync(parent)) for (const entry of readdirSync(parent)) if (entry.startsWith(trashPrefix)) sweep(join(parent, entry))
+  const pulled = pulledVariantDir(inferenceModelsRoot(), model, variant)
+  if (!pulled) return `no ${variant} install appeared next to ${target}`
+  const aside = existsSync(target) ? join(parent, `${trashPrefix}${process.pid}-${Date.now()}`) : null
+  if (aside) renameSync(target, aside)
+  try {
+    renameSync(pulled, target)
+  } catch (err) {
+    if (aside) renameSync(aside, target)
+    return `could not move ${pulled} into place: ${err instanceof Error ? err.message : String(err)}`
+  }
+  if (aside) sweep(aside)
+  return null
+}
+
 export async function installInferenceModels(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger, models: InferenceModel[], timings: { pollMs?: number; killAfterMs?: number } = {}) {
   const { op } = opts
   if (!op.holds('search-engine')) throw new Error('installInferenceModels requires search-engine (run it inside an operation that declares it)')
@@ -285,7 +322,9 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     }
   }
 
-  const missing = missingModels(models)
+  // A complete install of the wrong distribution is re-pulled as the pinned
+  // variant (#993) — the old clipclap layout can't load on Linux.
+  const missing = models.filter((m) => !modelComplete(m).ok || modelVariantMismatch(m.model) !== null)
   if (missing.length === 0) {
     skipAll('already downloaded')
     return {
@@ -338,6 +377,12 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     if (result.code !== 0) {
       op.item('download', { id: m.model, label: m.label, status: 'failed', message: `exited with code ${result.code}` })
       return failed(`antfly inference pull ${m.model} exited with code ${result.code}${result.stderr ? `: ${result.stderr}` : ''}`)
+    }
+    const variant = MODEL_PULL_VARIANTS[m.model]
+    const adoptError = variant ? adoptVariantInstall(m.model, variant, logger) : null
+    if (adoptError) {
+      op.item('download', { id: m.model, label: m.label, status: 'failed', message: adoptError })
+      return failed(`antfly inference pull ${m.model}:${variant} reported success but ${adoptError}`)
     }
     op.item('download', { id: m.model, label: m.label, status: 'done' })
   }

@@ -778,11 +778,20 @@ Recovery is cheap: once the model is on disk, any write heals the index;
 The service argv preloads every configured antfly-provider embedder
 (`--preload-model`) so first embeds never race a cold model load — except
 one that can't load here. The engine EXITS when a preload fails to warm,
-so a complete download is not enough (#993): on Linux the pinned 0.2.2
-engine cannot run `antflydb/clipclap` with any backend (`native` fails on
-its ONNX projection with `error.MissingWeight`, the `onnx` runtime isn't in
-the Linux build, `metal` is macOS-only, `cuda` needs a GPU) while macOS
-Metal loads the same files. `model-load.ts` asks the engine itself
+so a complete download is not enough (#993). The incident: clipclap's
+default 0.2.x pull also fetches an ONNX set (~1.4 GB) that the static Linux
+build picks first and fails on (`error.MissingWeight`; the `onnx` backend
+isn't in that build and is gone entirely in 0.3), while macOS Metal loads
+the GGUFs. **The fix is the distribution:** `MODEL_PULL_VARIANTS` pulls
+clipclap as `gguf:Q4_K` — GGUF only, which loads on every build and version
+tried (0.2.2/0.2.5/0.3.0-rc.1, static and glibc, identical vectors) and is
+what 0.3's default pull already fetches. A variant pull installs as
+`<name>--antfly-<hash>`; the installer moves it to `antflydb/clipclap` (old
+install renamed aside, restored on failure, swept after), and an existing
+default-layout install counts as needing a re-pull (`modelVariantMismatch`).
+Pruning the ONNX files in place does NOT work — the engine checks the
+download marker (`error.InvalidManagedDownload`). The safety net stays for
+the next model that can't load: `model-load.ts` asks the engine itself
 (`antfly inference embed <dir>`) once per model — after a pull (the
 install's verify stage) and before a start when no current verdict exists
 — and records one receipt per model under `~/.antfly/bakin-model-load/`

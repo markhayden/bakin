@@ -18,7 +18,8 @@
  *   4. `bakin reindex` while this driver holds search-engine the way a
  *      background migration pass does — the reindex must wait VISIBLY
  *      (naming the holder), then run once the engine is free;
- *   5. `bakin install search-models` (last: see the note there).
+ *   5. `bakin install search-models` before the server: the visual embedder
+ *      must load on the pinned Linux engine (#993).
  *
  * The container has its own BAKIN_HOME, ANTFLY_HOME and HOME, and antfly runs
  * in strict-child mode, so this Mac's `io.bakin.antfly` unit and `~/.antfly`
@@ -155,16 +156,18 @@ async function inside(): Promise<void> {
   check('bakin install search', installCode === 0 && existsSync(engine))
   stopStrayEngines()
 
-  // Models BEFORE the server (#993): on Linux the pinned engine cannot load
-  // the default visual embedder — the install probes it, Health says so, and
-  // the server must still boot with every other search leg working.
+  // Models BEFORE the server (#993): the visual embedder is pulled as its
+  // GGUF variant, which the pinned static Linux engine loads — the install's
+  // own load probe must say so, and Health must be clean.
   check('bakin install search-models', (await cli(['install', 'search-models', '--yes'])) === 0)
   stopStrayEngines()
   const modelsCheck = await capture(['check', 'search-models', '--json'])
   const modelsStatus = (() => { try { return (JSON.parse(modelsCheck) as { status?: string; message?: string }) } catch { return {} } })()
-  check('a model that cannot load here is reported as degraded, not broken',
-    modelsStatus.status === 'ok' || (modelsStatus.status === 'warn' && /can't load on this machine/.test(modelsStatus.message ?? '')),
-    `status=${modelsStatus.status} message=${modelsStatus.message}`)
+  check('every search model is present and loads here', modelsStatus.status === 'ok', `status=${modelsStatus.status} message=${modelsStatus.message}`)
+  const receipt = (() => {
+    try { return JSON.parse(readFileSync(join(env.ANTFLY_HOME, 'bakin-model-load', 'antflydb__clipclap.json'), 'utf8')) as { loadable?: boolean; reason?: string } } catch { return null }
+  })()
+  check('the engine itself loaded the visual embedder', receipt?.loadable === true, `receipt=${JSON.stringify(receipt)}`)
 
   // 3. Boot the server, then reset.
   const server = spawn('bun', ['server.ts', 'serve'], { cwd: REPO, env: childEnv, stdio: ['ignore', 'inherit', 'inherit'] })

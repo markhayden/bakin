@@ -15,7 +15,7 @@
  *     without creating files)
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -368,5 +368,74 @@ describe('the model install as an operation (#895 D12)', () => {
       expect(existsSync(stagingDir(model.model))).toBe(false)
       expect((await checkInferenceModels([model])).status).toBe('ok')
     })
+  })
+})
+
+describe('clipclap is pulled as its GGUF variant (#993)', () => {
+  const CLIPCLAP: InferenceModel = { label: 'visual embedder', model: 'antflydb/clipclap', kind: 'embedder' }
+  const target = join(modelsRoot, 'antflydb', 'clipclap')
+
+  /** The real variant pull: installs as `<name>--antfly-<hash>` with the variant in its marker. */
+  const PULL_VARIANT = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
+[ "$1" = "inference" ] && [ "$2" = "pull" ] && [ "$4" = "--models-dir" ] || exit 9
+echo "$*" >> "$(dirname "$0")/argv.log"
+ref="\${3%%:*}"; variant="\${3#*:}"
+owner=$(dirname "$ref"); name=$(basename "$ref")
+stage="$5/$owner/.$name--antfly-a2cdf31c.antfly-download-staging"
+mkdir -p "$stage"
+echo "  [1/1] clipclap-clip.Q4_K.gguf (64.0 MiB)..." >&2
+truncate -s 60000000 "$stage/clipclap-clip.Q4_K.gguf"
+truncate -s 30000000 "$stage/clipclap-clap.Q4_K.gguf"
+echo '{}' > "$stage/tokenizer.json"
+echo '{"type":"embedder"}' > "$stage/model_manifest.json"
+echo "{\\"version\\":2,\\"source\\":{\\"owner\\":\\"$owner\\",\\"name\\":\\"$name\\",\\"variant\\":\\"$variant\\"},\\"artifacts\\":[]}" > "$stage/.antfly-download-complete.json"
+echo "done." >&2
+mv "$stage" "$5/$owner/$name--antfly-a2cdf31c"
+`
+
+  /** The 0.2.x default layout: GGUFs plus the ONNX set, no variant recorded. */
+  function seedDefaultLayout(): void {
+    mkdirSync(target, { recursive: true })
+    writeFileSync(join(target, 'clipclap-clip.Q4_K.gguf'), Buffer.alloc(60_000_000))
+    writeFileSync(join(target, 'clipclap-clap.Q4_K.gguf'), Buffer.alloc(30_000_000))
+    writeFileSync(join(target, 'tokenizer.json'), '{}')
+    writeFileSync(join(target, 'model_manifest.json'), '{"type":"embedder"}')
+    writeFileSync(join(target, 'text_projection.onnx'), 'onnx')
+    writeFileSync(join(target, '.antfly-download-complete.json'), JSON.stringify({ version: 2, source: { owner: 'antflydb', name: 'clipclap' }, artifacts: [] }))
+  }
+
+  const leftovers = () => readdirSync(join(modelsRoot, 'antflydb')).filter((entry) => entry !== 'clipclap')
+
+  it('pulls `antflydb/clipclap:gguf:Q4_K` and moves the install to the name the engine is configured with', async () => {
+    installFakeBinary(PULL_VARIANT)
+    const result = await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])
+    expect(result.status).toBe('installed')
+    expect(readFileSync(join(testDir, 'argv.log'), 'utf8').trim()).toBe(`inference pull antflydb/clipclap:gguf:Q4_K --models-dir ${modelsRoot}`)
+    expect(JSON.parse(readFileSync(join(target, '.antfly-download-complete.json'), 'utf8')).source.variant).toBe('gguf:Q4_K')
+    expect(leftovers()).toEqual([])
+    expect((await checkInferenceModels([CLIPCLAP])).status).toBe('ok')
+    // Installed as pinned: a second run has nothing to do.
+    expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('noop')
+  })
+
+  it('an existing default-layout install (the ONNX set Linux cannot load) is re-pulled and replaced', async () => {
+    installFakeBinary(PULL_VARIANT)
+    seedDefaultLayout()
+    expect((await checkInferenceModels([CLIPCLAP])).status).toBe('ok')
+    const result = await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])
+    expect(result.status).toBe('installed')
+    expect(existsSync(join(target, 'text_projection.onnx'))).toBe(false)
+    expect(JSON.parse(readFileSync(join(target, '.antfly-download-complete.json'), 'utf8')).source.variant).toBe('gguf:Q4_K')
+    expect(leftovers()).toEqual([])
+  })
+
+  it('a pull that reports success without the variant install fails and leaves the existing install in place', async () => {
+    installFakeBinary(PULL_LIES)
+    seedDefaultLayout()
+    const result = await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])
+    expect(result.status).toBe('failed')
+    expect(result.message).toContain('no gguf:Q4_K install appeared')
+    expect(existsSync(join(target, 'text_projection.onnx'))).toBe(true)
   })
 })

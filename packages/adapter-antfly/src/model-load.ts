@@ -1,12 +1,12 @@
 /**
  * Whether a model actually LOADS on this machine's pinned engine (#993).
  *
- * A complete, pin-verified download can still fail to load: on Linux the
- * 0.2.2 engine's native backend can't run `antflydb/clipclap` (its ONNX
- * projection fails with error.MissingWeight, and the ONNX runtime isn't in
- * the Linux build) while the same files load on macOS Metal. The engine
- * EXITS when a preloaded model fails to warm, so one unloadable model took
- * every search leg down with it.
+ * A complete, pin-verified download can still fail to load: clipclap's
+ * default distribution (GGUFs + an ONNX set) failed on the static Linux
+ * engine with error.MissingWeight while macOS Metal loaded it — fixed by
+ * pulling the GGUF variant (`MODEL_PULL_VARIANTS`). The engine EXITS when a
+ * preloaded model fails to warm, so one unloadable model took every search
+ * leg down with it; this probe is the net for the next one.
  *
  * The engine itself is the only authority: `antfly inference embed <dir>`
  * loads the model the way the server would. Verdicts:

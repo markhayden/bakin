@@ -1,4 +1,4 @@
-import { statSync } from 'fs'
+import { readdirSync, statSync } from 'fs'
 import { dirname, join } from 'path'
 
 /**
@@ -52,8 +52,24 @@ export function pullStagingDir(modelsRoot: string, model: string): string {
   return join(dirname(owned), `.${name}.antfly-download-staging`)
 }
 
+/**
+ * Where a variant pull (`<model>:<variant>`) stages: the engine names that
+ * install `<name>--antfly-<hash>`, so its staging dir is found, not derived.
+ */
+export function variantPullStagingDir(modelsRoot: string, model: string): string | null {
+  const owned = join(modelsRoot, model)
+  const parent = dirname(owned)
+  const prefix = `.${owned.slice(parent.length + 1)}--antfly-`
+  try {
+    const hit = readdirSync(parent).find((entry) => entry.startsWith(prefix) && entry.endsWith('.antfly-download-staging'))
+    return hit ? join(parent, hit) : null
+  } catch {
+    return null
+  }
+}
+
 /** Bytes for one model's pull: finished files plus the current file's progress. */
-export function createPullTracker(stagingDir: string) {
+export function createPullTracker(stagingDir: string | (() => string | null)) {
   const announced = new Map<string, number>()
   const finished = new Set<string>()
   let current: string | null = null
@@ -61,7 +77,8 @@ export function createPullTracker(stagingDir: string) {
 
   const partSize = (path: string): number => {
     try {
-      return statSync(join(stagingDir, `${path}.part`)).size
+      const dir = typeof stagingDir === 'string' ? stagingDir : stagingDir()
+      return dir ? statSync(join(dir, `${path}.part`)).size : 0
     } catch {
       return 0
     }

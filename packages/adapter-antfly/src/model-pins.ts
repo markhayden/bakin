@@ -25,8 +25,8 @@
  * it and refresh the hashes in the same commit.
  */
 import { createHash } from 'crypto'
-import { createReadStream, existsSync, readdirSync, statSync } from 'fs'
-import { join } from 'path'
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'fs'
+import { dirname, join } from 'path'
 import { inferenceModelsRoot } from './paths'
 
 export interface ModelFilePin {
@@ -51,6 +51,63 @@ export const MODEL_PINS: Record<string, ModelFilePin[]> = {
     { file: 'model.safetensors', sha256: 'd9db29f75d900055e9ce4f9a79c841d13384fdc3ca144404f9eecb873fc4fcbd', minBytes: 200_000_000 },
     { file: 'tokenizer.json' },
   ],
+}
+
+/**
+ * The distribution a pinned model is pulled AS (#993). clipclap's default
+ * pull on 0.2.x also fetches an ONNX set (~1.4 GB) the engine never needs:
+ * macOS Metal loads the GGUFs, while the static Linux build picks the ONNX
+ * projection, fails (error.MissingWeight) and the engine exits on the failed
+ * warm. The GGUF variant alone loads on every build and version tried
+ * (0.2.2, 0.2.5, 0.3.0-rc.1; static and glibc) with identical vectors, and is
+ * what 0.3's default pull fetches (tasks/evidence-antfly-0.2.2.md).
+ *
+ * A variant pull installs as `<name>--antfly-<hash>`; the installer moves it
+ * to `modelDir(model)`, the name the engine is configured with.
+ */
+export const MODEL_PULL_VARIANTS: Readonly<Record<string, string>> = {
+  'antflydb/clipclap': 'gguf:Q4_K',
+}
+
+/** The variant an install's download marker records (null: none recorded or unreadable). */
+function recordedVariant(dir: string): string | null {
+  try {
+    const marker = JSON.parse(readFileSync(join(dir, '.antfly-download-complete.json'), 'utf8')) as { source?: { variant?: unknown } }
+    return typeof marker.source?.variant === 'string' ? marker.source.variant : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Why an installed model is not the pinned variant — null when it is, or
+ * when the model pins none. A mismatch is not "missing" (the files may load,
+ * e.g. on macOS); the installer re-pulls it as the pinned variant.
+ */
+export function modelVariantMismatch(model: string): string | null {
+  const variant = MODEL_PULL_VARIANTS[model]
+  if (!variant || !existsSync(modelDir(model))) return null
+  const recorded = recordedVariant(modelDir(model))
+  return recorded === variant ? null : `installed as the ${recorded ?? 'default'} distribution, not ${variant}`
+}
+
+/** The install a `<model>:<variant>` pull just produced, under `modelsRoot`. */
+export function pulledVariantDir(modelsRoot: string, model: string, variant: string): string | null {
+  const owned = join(modelsRoot, model)
+  const parent = dirname(owned)
+  const prefix = `${owned.slice(parent.length + 1)}--antfly-`
+  let entries: string[]
+  try {
+    entries = readdirSync(parent)
+  } catch {
+    return null
+  }
+  const hits = entries
+    .filter((entry) => entry.startsWith(prefix))
+    .map((entry) => join(parent, entry))
+    .filter((dir) => recordedVariant(dir) === variant)
+    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+  return hits[0] ?? null
 }
 
 export function modelDir(model: string): string {

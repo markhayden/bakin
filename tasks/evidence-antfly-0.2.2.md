@@ -109,8 +109,30 @@ variant). `antfly inference embed <dir> --text …`:
 
 `BAAI/bge-small-en-v1.5` embeds fine on `native` in the same container.
 The server preloads every embedder and exits on a failed warm, so before
-#993 the whole engine crash-looped. Bakin now probes and leaves an
-unloadable model off (`model-load.ts`). Re-run this ladder on the next
-repin: a build that loads clipclap on Linux makes the warning disappear by
-itself (new engine version → fresh probe).
+#993 the whole engine crash-looped.
+
+### Root cause: the distribution, not the engine (2026-10-18 matrix)
+
+Same container, CA certificates installed, every Linux arm64 build of
+0.2.2, 0.2.5 and 0.3.0-rc.1 (static and `_gnu` glibc), every backend:
+
+| Install | static build (what Bakin pins) | `_gnu` build |
+|---|---|---|
+| default pull (GGUFs + ONNX set) | `MissingWeight` on all three versions | loads |
+| `antflydb/clipclap:gguf:Q4_K` (GGUFs only) | loads on all three | loads |
+| 0.3.0-rc.1 default pull (GGUF only) | loads, even on 0.2.2 | loads |
+
+Every loading cell gives the same vectors (512-d, unit norm, identical
+cosines), so the GGUF path is what the glibc build uses anyway. The engine
+server agrees: `standalone --preload-model embedder:antflydb/clipclap` on
+static 0.2.2 warms the GGUF install in 548 ms and serves 512-d embeddings;
+with the default install it exits at `warm_inference_models`
+(`error.MissingWeight`). Deleting the ONNX files from a default install
+fails `error.InvalidManagedDownload` (the marker lists them). A variant pull
+lands in `<name>--antfly-<hash>` and loads after a move to
+`antflydb/clipclap`. Bakin now pulls clipclap as `gguf:Q4_K`
+(`MODEL_PULL_VARIANTS`) and moves it into place; the load probe and degraded
+mode remain as the net for the next model that can't load. 0.3 removes the
+`onnx` backend entirely (`--backend onnx` → `error.InvalidBackend`).
+Not covered: linux-x64 (no emulation run).
 
