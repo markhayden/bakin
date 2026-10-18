@@ -6,6 +6,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+Long-running work now shows real progress everywhere, approvals are one system that records honestly who decided, and Health stops trusting files an agent could write.
+
+### Added
+- **Operations: one progress system for long-running work (#895).** Installs, plugin install/upgrade/remove, package and agent syncs, Health repairs, hub skills, search engine installs, model pulls, reindex and search reset all run as operations. Each shows its plan and real progress, can be cancelled until its point of no return, and survives a browser reload. A header tray lists running and just-finished work, and you get a toast and OS notification when something you started finishes, fails or stalls. The CLI follows the same operations live (Ctrl-C cancels), and plugins get `ctx.operations` and the `OperationProgress` pattern.
+- **Approvals in core (#942).** Workflow gates and Health decisions share one approval record, one place to decide (the task's approval panel; the board marks cards **Needs approval**), and one channel subscription. Health escalation is rewritten: safe repairs apply on their own, risky ones open one review task with the exact frozen change set, operator-only incidents open a review task you can dismiss, and repair tasks close themselves once fresh checks pass.
+- **Channel readiness (#908).** One readiness snapshot drives the post tool, `bakin check channels`, `bakin channels status|verify|reconnect`, Health and the new **Settings → Channels** tab (status, bot token, servers and channels, routing, Reconnect, Verify). The Discord bridge reconnects in-process when settings or the token change; no restart. The bot token is a declared secret slot, never logged or shown.
+- **Team create/edit dialog (#758).** Manage Teams lists teams with Add, Edit and Delete; creating and editing happen in a dialog that asks before discarding unsaved changes.
+- **Keyboard-aware workspace inputs.** Workspace pages can size to the visible viewport and reserve an input-accessory row, for touch controls that stay above a phone keyboard (used by Terminal).
+- **Schedule safety.** A Bakin schedule must carry a real task prompt. Runtime-internal crons are never adopted on a runtime switch (each refused job is listed), and a new `schedule-prompts` Health check offers to remove unrunnable jobs.
+
+### Changed
+- **Approvals record honest provenance (#898).** A decision is recorded as **Declared in UI**, **CLI --as human** or **Discord @user**, never "verified human" (Bakin has no login). Decisions from agents, from inside an agent's tool call or shell, or from undeclared callers are refused before anything happens. From the CLI, add `--as human` to decide; inside an agent's run directory, shell or workspace, `--as human` is not honored. Older records show "Provenance unavailable — legacy record".
+- **Health verifies instead of trusting files (#898).** Acknowledgements and snoozes are validated on every read: a hand-written, future-dated, over-long or evidence-less one quiets nothing, and the new **Health acknowledgements** check names it. Malformed repair-request files are skipped instead of stopping escalation, plugin runtime skills are checked by comparing their actual files, and delegated repair agents are told never to silence an incident.
+- **Task liveness comes from the execution ledger.** A task is stranded only when it is in progress with no running ledger row; agent heartbeat files no longer decide anything. A turn that hands a task to another agent or team parks it in Todo right away, and continuation re-queues a parent with no live run.
+- **The CLI never guesses a server.** It targets this home's server through `server.lock` (or `BAKIN_URL`); with neither it says "Bakin isn't running" instead of trying port 3737.
+- **Dependency sweep.** React 19.3, Base UI 1.8, TypeScript 6, ESLint 10, zod 4.6, Vite 8, Vitest 5, Storybook 10.6, Playwright 1.63, sharp 0.35.5, lucide 1.52, js-yaml 5, Astro 7 docs, Pi SDK 1.0.2. Bun stays pinned at 1.3.13.
+- **SDK:** the `@makinbakin/sdk/metadata` entrypoint is removed (it was a pass-through; HTTP authoring stays on the root and `/routing`). Plugin builds reject imports of it.
+- The chat composer has one rounded focus outline; settings rows compose whole fields.
+
+### Fixed
+- **Task dependency loop (#975).** Waiting on a task that is already done, missing or itself is refused with a clear message; a registered wait parks the task instead of idling until the watchdog. The watchdog keeps an honest recovery count, and a manual move back to Todo is no longer re-blocked within one tick.
+- **Recovery could act on a task whose child was starting (#977),** and a team-routing retry could deadlock a dispatch cycle. Both now decide under the dispatch lock.
+- **A failed plugin install could leave the previous version stranded (#978).** Rollback moves the broken copy aside before restoring, and every git process Bakin starts runs in the foreground.
+- **SVG and other non-raster assets were sent raw to the vision API (#855).** SVGs are rasterized first, and anything still unsendable is skipped with a reason instead of being re-billed every day.
+- **Search across Bakin homes.** A temporary or second `BAKIN_HOME` can no longer take over the shared search service or write another home's indexes; interrupted index migrations recover into their recorded target, and repair no longer rebuilds an index just because its status was briefly unreadable.
+- Agents on compiled binaries could get `bakin: command not found`; the server's PATH now includes the binary's directory.
+- Dispatch prompts no longer reference a missing `CONTACTS.md`.
+
+### Upgrade notes
+- **Install the companion Messaging 0.12.0 after upgrading.** Older Messaging versions' workflow-gate approvals are refused by this release (nothing changes when they are). Messaging 0.12.0 requires rc.41.
+- From the CLI, decisions now need `--as human` (for example `bakin doctor --fix` when it would decide a pending approval).
+- With OpenClaw native channels, an approval decision without a reported `resolvedBy` is refused.
+- Run `bakin agents sync` so agents get the updated dependency guidance.
+- No data migration is required. Older approval records stay readable.
+
 ## [0.0.1-rc.40] - 2026-09-25
 
 Plugins can now bring their own binaries, and every plugin install or upgrade either lands completely or leaves nothing behind.
