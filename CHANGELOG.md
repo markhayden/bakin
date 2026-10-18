@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.41] - 2026-10-18
+
 Long-running work now shows real progress everywhere, approvals are one system that records honestly who decided, and Health stops trusting files an agent could write.
 
 ### Added
@@ -785,5 +787,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.38]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.38
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.40...HEAD
 [0.0.1-rc.40]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.40
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.41...HEAD
+[0.0.1-rc.41]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.41
