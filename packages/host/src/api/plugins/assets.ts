@@ -1,7 +1,7 @@
 /**
  * GET /api/plugins/:pluginId/assets/:path* — serves a plugin's client bundle.
  *
- * Resolution order:
+ * Resolution (shared with the manifest's versions — `asset-version.ts`):
  *   1. ~/.bakin/plugins/<id>/dist/<path>   (user-installed; always on disk)
  *   2. EMBEDDED_ASSETS map                 (core plugins embedded at build time)
  *   3. plugins/<id>/dist/<path>            (repo core plugins, dev fallback)
@@ -9,11 +9,10 @@
  * User plugins always win over embedded/core assets so installed plugins can
  * override their own rebuilt bundles after startup.
  */
-import { readFileSync, existsSync, statSync } from 'fs'
-import { join, extname } from 'path'
-import { getContentDir } from '@/core/content-dir'
-import { EMBEDDED_ASSETS } from '../_embedded-assets'
+import { readFileSync } from 'fs'
+import { extname } from 'path'
 import { stampPluginResponse } from '@/core/plugin-host/version-stamp'
+import { assetVersion, resolvePluginAsset } from './asset-version'
 
 const MIME: Record<string, string> = {
   '.js': 'application/javascript; charset=utf-8',
@@ -28,13 +27,14 @@ function mimeFor(path: string): string {
 }
 
 /**
- * Dev-mode keeps unversioned URLs no-store so direct asset requests pick up
- * rebuilt plugin bundles that overwrite the same URL path. PluginHost imports
- * client.js with ?v=<mtime>, so those URLs are content-addressed enough to
- * cache aggressively even in dev; the next rebuild changes the URL.
+ * Only the asset's CURRENT version is cached immutably. An old tab asking for
+ * `?v=<old>` after an upgrade gets today's bytes, which must never be pinned
+ * under the old version's URL (a rollback would then load them against the
+ * old SDK). Dev serves everything else no-store so rebuilt bundles show up.
  */
-function cacheControl(url: URL): string {
-  if (url.searchParams.has('v')) return 'public, max-age=31536000, immutable'
+function cacheControl(url: URL, currentVersion: string | null): string {
+  const v = url.searchParams.get('v')
+  if (v !== null && currentVersion !== null && v === currentVersion) return 'public, max-age=31536000, immutable'
   return process.env.BAKIN_DEV === '1' ? 'no-store' : 'public, max-age=300'
 }
 
@@ -66,49 +66,17 @@ export async function get(_req: Request, url: URL): Promise<Response> {
     )
   }
 
-  // 1) User-installed plugin — always on disk.
-  const userPath = join(getContentDir(), 'plugins', pluginId, 'dist', relPath)
-  if (existsSync(userPath) && statSync(userPath).isFile()) {
-    const body = readFileSync(userPath)
-    return stampPluginResponse(pluginId, new Response(body, {
+  const asset = await resolvePluginAsset(pluginId, relPath)
+  if (asset) {
+    const bytes = asset.kind === 'embedded'
+      ? new Uint8Array(await Bun.file(asset.path).arrayBuffer())
+      : new Uint8Array(readFileSync(asset.path))
+    return stampPluginResponse(pluginId, new Response(bytes, {
       status: 200,
       headers: {
-        'Content-Type': mimeFor(userPath),
-        'Content-Length': statSync(userPath).size.toString(),
-        'Cache-Control': cacheControl(url),
-      },
-    }))
-  }
-
-  // 2) Embedded core plugin (compiled binary wins here; dev mode lands on
-  //    the same absolute on-disk path and works identically).
-  const embeddedPath = EMBEDDED_ASSETS.get(url.pathname)
-  if (embeddedPath) {
-    const file = Bun.file(embeddedPath)
-    if (await file.exists()) {
-      const bytes = new Uint8Array(await file.arrayBuffer())
-      return stampPluginResponse(pluginId, new Response(bytes, {
-        status: 200,
-        headers: {
-          'Content-Type': mimeFor(relPath),
-          'Content-Length': String(bytes.length),
-          'Cache-Control': cacheControl(url),
-        },
-      }))
-    }
-  }
-
-  // 3) Dev fallback — repo core plugin that wasn't in the embed map yet
-  //    (e.g. generator hasn't re-run since last dist rebuild).
-  const repoPath = join(process.cwd(), 'plugins', pluginId, 'dist', relPath)
-  if (existsSync(repoPath) && statSync(repoPath).isFile()) {
-    const body = readFileSync(repoPath)
-    return stampPluginResponse(pluginId, new Response(body, {
-      status: 200,
-      headers: {
-        'Content-Type': mimeFor(repoPath),
-        'Content-Length': statSync(repoPath).size.toString(),
-        'Cache-Control': cacheControl(url),
+        'Content-Type': mimeFor(relPath),
+        'Content-Length': String(bytes.length),
+        'Cache-Control': cacheControl(url, await assetVersion(asset)),
       },
     }))
   }

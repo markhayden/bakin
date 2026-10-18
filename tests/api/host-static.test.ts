@@ -169,7 +169,7 @@ describe('serveHostClient compression', () => {
  * Dev forces no-store so location.reload() picks up rebuilt bundles;
  * prod keeps the 5-minute cache.
  */
-import { cacheControlFor } from '../../packages/host/src/api/_static'
+import { __resetAssetVersionForTests, assetVersionToken, cacheControlFor, versionShellAssetUrls } from '../../packages/host/src/api/_static'
 
 describe('cacheControlFor', () => {
   const prev = process.env.BAKIN_DEV
@@ -193,10 +193,118 @@ describe('cacheControlFor', () => {
     expect(cacheControlFor('/vendor/react.js', 200)).toBe('public, max-age=300')
   })
 
+  it('caches the current-version asset immutably in prod, never in dev', () => {
+    delete process.env.BAKIN_DEV
+    expect(cacheControlFor('/vendor/sdk-utils.js', 200, true)).toBe('public, max-age=31536000, immutable')
+    expect(cacheControlFor('/vendor/sdk-utils.js', 200, false)).toBe('public, max-age=300')
+    process.env.BAKIN_DEV = '1'
+    expect(cacheControlFor('/vendor/sdk-utils.js', 200, true)).toBe('no-store')
+  })
+
   it('falls back to the prod policy for non-200 responses regardless of env', () => {
     process.env.BAKIN_DEV = '1'
     expect(cacheControlFor('/missing.js', 404)).toBe('public, max-age=300')
     delete process.env.BAKIN_DEV
     expect(cacheControlFor('/missing.js', 404)).toBe('public, max-age=300')
+  })
+})
+
+describe('versioned shell asset URLs', () => {
+  const prev = process.env.BAKIN_DEV
+  afterEach(() => {
+    if (prev === undefined) delete process.env.BAKIN_DEV
+    else process.env.BAKIN_DEV = prev
+  })
+
+  const HTML = `<link rel="stylesheet" href="/globals.css" />
+<script type="importmap">{"imports":{"react":"/vendor/react.js","@makinbakin/sdk/utils":"/vendor/sdk-utils.js"}}</script>
+<script type="module" src="/_app/main.js"></script>
+<link rel="icon" href="/bakin-logo.svg" />`
+
+  it('stamps every vendor, app-entry and stylesheet URL in prod and leaves other URLs alone', () => {
+    delete process.env.BAKIN_DEV
+    const out = versionShellAssetUrls(Buffer.from(HTML), 'v1.2.3').toString('utf-8')
+    expect(out).toContain('"/vendor/react.js?v=v1.2.3"')
+    expect(out).toContain('"/vendor/sdk-utils.js?v=v1.2.3"')
+    expect(out).toContain('src="/_app/main.js?v=v1.2.3"')
+    expect(out).toContain('href="/globals.css?v=v1.2.3"')
+    expect(out).toContain('href="/bakin-logo.svg"')
+  })
+
+  it('returns dev HTML unchanged (reference equality)', () => {
+    process.env.BAKIN_DEV = '1'
+    const input = Buffer.from(HTML)
+    expect(versionShellAssetUrls(input, 'v1')).toBe(input)
+  })
+
+  it('stamps the real index.html: every import-map entry is versioned', () => {
+    delete process.env.BAKIN_DEV
+    const html = readFileSync(join(import.meta.dir, '../../packages/host/public/index.html'))
+    const out = versionShellAssetUrls(html, 'v9').toString('utf-8')
+    const map = JSON.parse(/<script type="importmap">([\s\S]*?)<\/script>/.exec(out)?.[1] ?? '{}') as { imports: Record<string, string> }
+    const urls = Object.values(map.imports)
+    expect(urls.length).toBeGreaterThan(5)
+    expect(urls.every((u) => u.endsWith('?v=v9'))).toBe(true)
+    expect(out).toContain('/_app/main.js?v=v9')
+  })
+
+  it('serves the SPA shell with versioned URLs and the current-version asset immutably', async () => {
+    delete process.env.BAKIN_DEV
+    const token = await assetVersionToken()
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-static-version-'))
+    try {
+      const indexPath = join(dir, 'index.html')
+      const vendorPath = join(dir, 'sdk-utils.js')
+      writeFileSync(indexPath, HTML)
+      writeFileSync(vendorPath, 'export const x = 1\n')
+      setEmbeddedAssets(new Map([['/index.html', indexPath], ['/vendor/sdk-utils.js', vendorPath]]))
+
+      const headerOf = (res: ReturnType<typeof mockRes>, name: string) =>
+        (res.writeHead.mock.calls.at(-1)?.[1] as Record<string, string> | undefined)?.[name]
+
+      for (const path of ['/', '/index.html']) {
+        const res = mockRes()
+        await serveHostClient(mockReq(path), res, new URL(`http://localhost${path}`))
+        expect(res._rawBody.toString('utf-8')).toContain(`/vendor/sdk-utils.js?v=${encodeURIComponent(token)}`)
+      }
+
+      const current = mockRes()
+      await serveHostClient(mockReq('/vendor/sdk-utils.js'), current, new URL(`http://localhost/vendor/sdk-utils.js?v=${encodeURIComponent(token)}`))
+      expect(headerOf(current, 'Cache-Control')).toBe('public, max-age=31536000, immutable')
+
+      const stale = mockRes()
+      await serveHostClient(mockReq('/vendor/sdk-utils.js'), stale, new URL('http://localhost/vendor/sdk-utils.js?v=some-old-release'))
+      expect(headerOf(stale, 'Cache-Control')).toBe('public, max-age=300')
+    } finally {
+      setEmbeddedAssets(new Map())
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('shell asset fingerprint', () => {
+  it('follows the bytes, not a version string: same bytes same token, changed bytes new token', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-static-fingerprint-'))
+    try {
+      const vendor = join(dir, 'sdk-utils.js')
+      const main = join(dir, 'main.js')
+      writeFileSync(vendor, 'export const a = 1\n')
+      writeFileSync(main, 'import "@makinbakin/sdk/utils"\n')
+      setEmbeddedAssets(new Map([['/vendor/sdk-utils.js', vendor], ['/_app/main.js', main], ['/bakin-logo.svg', main]]))
+
+      __resetAssetVersionForTests()
+      const first = await assetVersionToken()
+      __resetAssetVersionForTests()
+      expect(await assetVersionToken()).toBe(first)
+      expect(first).toMatch(/^[0-9a-f]{16}$/)
+
+      writeFileSync(vendor, 'export const a = 1\nexport const OPERATOR_DECLARATION_HEADERS = {}\n')
+      __resetAssetVersionForTests()
+      expect(await assetVersionToken()).not.toBe(first)
+    } finally {
+      setEmbeddedAssets(new Map())
+      __resetAssetVersionForTests()
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

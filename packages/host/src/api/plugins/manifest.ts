@@ -11,15 +11,11 @@
  * registered by the plugin's `client.mjs` at runtime via `registerPlugin`,
  * so they don't live in the manifest.
  */
-import { existsSync, statSync } from 'fs'
-import { join } from 'path'
 import { isCorePlugin, pluginRegistry } from '@/core/plugin-registry'
-import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { computeUpgradeAvailable, readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { runChecks } from '@/core/plugins/upgrade'
-import { EMBEDDED_ASSETS } from '../_embedded-assets'
-import { APP_VERSION } from '@bakin/core/constants'
+import { pluginAssetVersion } from './asset-version'
 import type { PluginContributions } from '@makinbakin/sdk/types'
 import { startStartupSpan } from '@/core/startup-diagnostics'
 
@@ -35,6 +31,8 @@ interface ManifestPlugin {
   clientVersion?: string
   /** Optional stylesheet URL — present only if the plugin build emitted one. */
   clientCss?: string
+  /** Cache key for `clientCss` (same scheme as `clientVersion`); the host appends it as `?v=`. */
+  cssVersion?: string
   /** Where the plugin came from. `core` ships with the binary; `github`/`local` are user-installed. */
   source: 'core' | 'github' | 'local'
   /** Lockfile entry for user-installed plugins; null for core. */
@@ -65,49 +63,6 @@ interface ManifestResponse {
 function daysSince(iso: string): number {
   const ms = Date.now() - new Date(iso).getTime()
   return Math.floor(ms / (1000 * 60 * 60 * 24))
-}
-
-function pluginAssetPath(pluginId: string, relPath: string): string | null {
-  const userPath = join(getContentDir(), 'plugins', pluginId, 'dist', relPath)
-  if (existsSync(userPath)) return userPath
-
-  const repoPath = join(process.cwd(), 'plugins', pluginId, 'dist', relPath)
-  if (existsSync(repoPath)) return repoPath
-
-  return null
-}
-
-async function hasEmbeddedPluginAsset(pluginId: string, relPath: string): Promise<boolean> {
-  const embeddedPath = EMBEDDED_ASSETS.get(`/api/plugins/${pluginId}/assets/${relPath}`)
-  if (!embeddedPath) return false
-  try {
-    return await Bun.file(embeddedPath).exists()
-  } catch {
-    return false
-  }
-}
-
-async function pluginAssetVersion(pluginId: string, relPath: string): Promise<string | null> {
-  const path = pluginAssetPath(pluginId, relPath)
-  if (path) {
-    try {
-      const stat = statSync(path)
-      if (!stat.isFile()) return null
-      return String(Math.trunc(stat.mtimeMs))
-    } catch {
-      return null
-    }
-  }
-
-  if (await hasEmbeddedPluginAsset(pluginId, relPath)) {
-    return `embedded-${APP_VERSION}`
-  }
-
-  return null
-}
-
-async function hasClientCss(pluginId: string): Promise<boolean> {
-  return (await pluginAssetVersion(pluginId, 'client.css')) !== null
 }
 
 export async function get(req: Request): Promise<Response> {
@@ -212,13 +167,14 @@ export async function get(req: Request): Promise<Response> {
           pluginSource: isCore ? 'core' : 'user',
           debug: false,
         })
-        const clientCss = await hasClientCss(entry.id)
+        const cssVersion = await pluginAssetVersion(entry.id, 'client.css')
         cssAssetSpan.end({
-          status: clientCss ? 'ok' : 'skipped',
+          status: cssVersion ? 'ok' : 'skipped',
           asset: 'client.css',
         })
-        if (clientCss) {
+        if (cssVersion) {
           plugin.clientCss = `/api/plugins/${entry.id}/assets/client.css`
+          plugin.cssVersion = cssVersion
         }
       }
       plugins.push(plugin)

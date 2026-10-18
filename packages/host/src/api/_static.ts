@@ -25,7 +25,8 @@
  *      without re-running the embedded-assets generator during inner loops.
  */
 import type { IncomingMessage, ServerResponse } from 'http'
-import { createReadStream, existsSync, readFileSync, statSync } from 'fs'
+import { createHash } from 'crypto'
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { join, extname, resolve } from 'path'
 
 import { EMBEDDED_ASSETS } from './_embedded-assets'
@@ -79,6 +80,74 @@ function mimeFor(path: string): string {
 }
 
 /**
+ * The version stamped onto every shell asset URL index.html references
+ * (`/vendor/*.js`, `/_app/main.js`, `/globals.css`): a hash of those assets'
+ * bytes, computed once per process. A version string is not enough — a
+ * rebuilt dev or dirty build keeps its version while its bytes change, and
+ * the browser caches `?v=` URLs immutably. (Rebuilding in place without a
+ * restart is the dev loop's job: BAKIN_DEV serves everything no-store.)
+ */
+let shellVersion: Promise<string> | null = null
+
+function shellAssetFiles(): Array<[string, string]> {
+  const embedded = [...EMBEDDED_ASSETS.keys()].filter(isShellAsset).map((key): [string, string] => [key, EMBEDDED_ASSETS.get(key)!])
+  if (embedded.length > 0) return embedded
+  const files: Array<[string, string]> = []
+  const vendorDir = join(PUBLIC_DIR, 'vendor')
+  if (existsSync(vendorDir)) {
+    for (const name of readdirSync(vendorDir)) {
+      if (name.endsWith('.js')) files.push([`/vendor/${name}`, join(vendorDir, name)])
+    }
+  }
+  files.push(['/_app/main.js', join(DIST_DIR, 'main.js')], ['/globals.css', SDK_STYLES_PATH])
+  return files
+}
+
+function isShellAsset(key: string): boolean {
+  return (key.startsWith('/vendor/') && key.endsWith('.js')) || key === '/_app/main.js' || key === '/globals.css'
+}
+
+/** Tests only: forget the memoized fingerprint so a changed asset set is re-hashed. */
+export function __resetAssetVersionForTests(): void {
+  shellVersion = null
+}
+
+export function assetVersionToken(): Promise<string> {
+  shellVersion ??= (async () => {
+    const hasher = createHash('sha256')
+    for (const [key, path] of shellAssetFiles().sort(([a], [b]) => a.localeCompare(b))) {
+      const file = Bun.file(path)
+      if (!(await file.exists())) continue
+      hasher.update(key)
+      hasher.update(new Uint8Array(await file.arrayBuffer()))
+    }
+    return hasher.digest('hex').slice(0, 16)
+  })()
+  // A failed read must not poison the token for the life of the process.
+  shellVersion.catch(() => { shellVersion = null })
+  return shellVersion
+}
+
+/** Shell asset URLs inside index.html — the import map entries, the app entry, the stylesheet. */
+const SHELL_ASSET_REF = /(["'])(\/vendor\/[^"'?#]+\.js|\/_app\/main\.js|\/globals\.css)\1/g
+
+/**
+ * Version every shell asset URL in index.html (production only). Stable URLs
+ * plus a max-age let a reload right after an upgrade mix a new plugin bundle
+ * with the old SDK vendor bundle ("does not provide an export named …",
+ * margo 2026-10-18); a versioned URL is a different resource, so it can be
+ * cached immutably and an upgrade can never serve stale bytes. In dev every
+ * asset is no-store and the dev client swaps them in place, so dev HTML is
+ * untouched (reference equality preserved).
+ */
+export function versionShellAssetUrls(bytes: Buffer, version: string): Buffer {
+  if (process.env.BAKIN_DEV === '1') return bytes
+  const html = bytes.toString('utf-8')
+  const stamped = html.replace(SHELL_ASSET_REF, (_m, quote: string, url: string) => `${quote}${url}?v=${encodeURIComponent(version)}${quote}`)
+  return stamped === html ? bytes : Buffer.from(stamped, 'utf-8')
+}
+
+/**
  * Pick the Cache-Control header for a response. In dev we force no-store on
  * every asset — the watcher rebuilds main.js / client.js / vendor bundles
  * in place, and location.reload() won't pick up the new bytes if the
@@ -87,14 +156,24 @@ function mimeFor(path: string): string {
  * fine and cuts the number of HEAD requests the browser makes. Exported
  * for unit-testing.
  */
-export function cacheControlFor(urlOrPath: string, status: number): string {
+export function cacheControlFor(urlOrPath: string, status: number, versioned = false): string {
   if (status !== 200) return 'public, max-age=300'
   if (process.env.BAKIN_DEV === '1') return 'no-store'
   if (urlOrPath.endsWith('.html')) return 'no-cache'
+  // Only the CURRENT version is immutable: an old tab asking for `?v=<old>`
+  // after an upgrade gets today's bytes, which must never be pinned under
+  // the old version's URL.
+  if (versioned) return 'public, max-age=31536000, immutable'
   return 'public, max-age=300'
 }
 
-async function sendEmbedded(req: IncomingMessage, res: ServerResponse, urlPath: string, status = 200): Promise<boolean> {
+/** Whether a request names the current shell asset version. */
+async function isCurrentVersion(url: URL): Promise<boolean> {
+  const v = url.searchParams.get('v')
+  return v !== null && process.env.BAKIN_DEV !== '1' && v === await assetVersionToken()
+}
+
+async function sendEmbedded(req: IncomingMessage, res: ServerResponse, urlPath: string, status = 200, versioned = false): Promise<boolean> {
   const embeddedPath = EMBEDDED_ASSETS.get(urlPath)
   if (!embeddedPath) return false
   try {
@@ -104,7 +183,7 @@ async function sendEmbedded(req: IncomingMessage, res: ServerResponse, urlPath: 
     await writeEncodedResponseBody(req, res, status, {
       'Content-Type': mimeFor(urlPath),
       'Content-Length': String(bytes.length),
-      'Cache-Control': cacheControlFor(urlPath, status),
+      'Cache-Control': cacheControlFor(urlPath, status, versioned),
     }, bytes)
     return true
   } catch {
@@ -112,14 +191,14 @@ async function sendEmbedded(req: IncomingMessage, res: ServerResponse, urlPath: 
   }
 }
 
-async function sendDiskFile(req: IncomingMessage, res: ServerResponse, path: string, status = 200): Promise<boolean> {
+async function sendDiskFile(req: IncomingMessage, res: ServerResponse, path: string, status = 200, versioned = false): Promise<boolean> {
   if (!existsSync(path)) return false
   const stat = statSync(path)
   if (!stat.isFile()) return false
   const headers = {
     'Content-Type': mimeFor(path),
     'Content-Length': stat.size,
-    'Cache-Control': cacheControlFor(path, status),
+    'Cache-Control': cacheControlFor(path, status, versioned),
   }
   if (canCompressResponse(req, status, headers, stat.size)) {
     await writeEncodedResponseBody(req, res, status, headers, readFileSync(path))
@@ -162,13 +241,17 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
     return true
   }
 
+  const versioned = await isCurrentVersion(url)
+
   // Exact-match lookup for anything embedded first (assets, vendor, public).
-  if (await sendEmbedded(req, res, pathname)) return true
+  // index.html itself always takes the SPA path below so its asset URLs get
+  // versioned — never served raw.
+  if (pathname !== '/index.html' && await sendEmbedded(req, res, pathname, 200, versioned)) return true
 
   // Disk fallback for dev — mirrors the old resolution logic.
   if (pathname.startsWith('/_app/')) {
     const rel = pathname.slice('/_app/'.length)
-    if (await sendDiskFile(req, res, join(DIST_DIR, rel))) return true
+    if (await sendDiskFile(req, res, join(DIST_DIR, rel), 200, versioned)) return true
     res.writeHead(404, { 'Content-Type': 'text/plain' })
     res.end('Not found')
     return true
@@ -176,14 +259,14 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
 
   if (pathname.startsWith('/vendor/')) {
     const rel = pathname.slice('/vendor/'.length)
-    if (await sendDiskFile(req, res, join(PUBLIC_DIR, 'vendor', rel))) return true
+    if (await sendDiskFile(req, res, join(PUBLIC_DIR, 'vendor', rel), 200, versioned)) return true
     res.writeHead(404, { 'Content-Type': 'text/plain' })
     res.end('Not found')
     return true
   }
 
   if (pathname === '/globals.css') {
-    if (await sendDiskFile(req, res, SDK_STYLES_PATH)) return true
+    if (await sendDiskFile(req, res, SDK_STYLES_PATH, 200, versioned)) return true
     res.writeHead(404, { 'Content-Type': 'text/plain' })
     res.end('Not found')
     return true
@@ -198,10 +281,12 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
 
   // SPA fallback — every other GET returns index.html so TanStack Router
   // handles the route client-side. In dev the bytes are transformed to
-  // inject the dev-client script; in prod they pass through unchanged.
+  // inject the dev-client script; in prod every shell asset URL is versioned.
   const indexBytes = await loadIndexHtml()
   if (indexBytes) {
-    const body = transformIndexHtmlForDev(indexBytes)
+    const body = process.env.BAKIN_DEV === '1'
+      ? transformIndexHtmlForDev(indexBytes)
+      : versionShellAssetUrls(indexBytes, await assetVersionToken())
     await writeEncodedResponseBody(req, res, 200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Content-Length': String(body.length),
