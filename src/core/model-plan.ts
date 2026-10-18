@@ -280,9 +280,10 @@ function planRoutes(agent: LanePick, chores: LanePick, enrichment: PlanRecommend
 /** Recommend the two-lane plan and the ops that reach it from the current state. */
 export function recommendPlan(input: PlanInput): PlanRecommendation {
   const agent = pickAgentModel(input)
-  if (!agent.model && input.currentDefaultModel && input.candidates.length > 0) {
-    // A dead default with nothing proven to replace it: change NOTHING —
-    // clearing a chores route here would make it inherit the dead default.
+  if (!agent.model) {
+    // No agent model can be recommended (a dead default with nothing proven,
+    // or nothing can run at all): change NOTHING — clearing a chores route
+    // here would make it inherit a default that cannot run.
     const routes = CHORES_CLASSES.map((workClass) => ({ workClass, model: routedModel(input.routing, workClass), reason: agent.why }))
     return { agent, chores: { model: null, why: agent.why, suitability: 'none' }, routes, enrichment: input.enrichmentEnabled ? 'unset' : 'disabled', ops: [], notes: [], blocked: agent.why }
   }

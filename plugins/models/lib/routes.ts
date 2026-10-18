@@ -13,6 +13,7 @@ import {
   writePersistedCache,
 } from './models-cache'
 import { probeModels } from './probe'
+import { invalidateResolvedProof } from '../../../src/core/model-plan-input'
 import { applySelections, describeSelections, getSelectionMutator } from './selections'
 import { MutationRefused } from '../../../src/core/model-mutations'
 import type { SelectionDocument } from '../../../src/core/model-selections'
@@ -83,6 +84,8 @@ export const modelsRoutes = [
           : null
         // Every catalog-changing path announces itself so pickers everywhere
         // (Team's model options, the Models page) refetch instead of caching.
+        // A probe pass is new proof: the next plan must see it, not a memo.
+        if (probeResult) invalidateResolvedProof()
         ctx.events.emit('models.catalog_changed', { reason: probeResult ? 'probe' : 'refresh' })
         return Response.json({
           ok: true,

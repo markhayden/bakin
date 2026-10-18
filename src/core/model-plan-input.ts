@@ -109,8 +109,8 @@ export function provenForRef(proven: ProvenModels, model: string, ref: string): 
 const RESOLVED_PROOF_TTL_MS = 30_000
 let resolvedProof = new WeakMap<object, { at: number; value: Promise<ProvenModels> }>()
 
-/** Tests only: forget memoized proof (evidence changed within the TTL). */
-export function __resetResolvedProofForTests(): void {
+/** Forget memoized proof — new evidence landed (a probe pass) within the TTL. */
+export function invalidateResolvedProof(): void {
   resolvedProof = new WeakMap()
 }
 

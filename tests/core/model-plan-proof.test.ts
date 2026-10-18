@@ -35,7 +35,7 @@ mock.module('@bakin/core/usage-history/store', () => ({
 
 import { closeDb } from '../../packages/core/src/storage/db'
 import { recordModelProbeSuccess } from '../../packages/core/src/execution/ledger'
-import { provenForRef, provenModelIds, provenModels, PROOF_WINDOW_DAYS, resolveProvenModelIds } from '../../src/core/model-plan-input'
+import { invalidateResolvedProof, provenForRef, provenModelIds, provenModels, PROOF_WINDOW_DAYS, resolveProvenModelIds } from '../../src/core/model-plan-input'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { noteProbeOutcome } from '../../src/core/model-availability'
 
@@ -119,5 +119,17 @@ describe('provenForRef', () => {
     expect(provenForRef(proven, 'openai-codex/gpt-5.6-luna', 'agent:main:model')).toBe(false) // a probe is not this agent's access
     expect(provenForRef(proven, 'openai-codex/gpt-5.6-luna', 'route:relay')).toBe(true)
     expect(provenForRef(proven, 'openai-codex/gpt-5.5', 'policy:defaultModel')).toBe(true)
+  })
+})
+
+describe('resolved proof memo', () => {
+  it('serves the memo within the TTL, and invalidateResolvedProof makes new proof visible at once', async () => {
+    const runtime = { models: {} } as unknown as AgentRuntimeAdapter
+    const now = Date.now()
+    expect((await resolveProvenModelIds(runtime, now)).has('openai-codex/gpt-5.6-terra')).toBe(false)
+    recordModelProbeSuccess({ model: 'openai-codex/gpt-5.6-terra' })
+    expect((await resolveProvenModelIds(runtime, now + 1_000)).has('openai-codex/gpt-5.6-terra')).toBe(false) // memo
+    invalidateResolvedProof()
+    expect((await resolveProvenModelIds(runtime, now + 1_000)).has('openai-codex/gpt-5.6-terra')).toBe(true)
   })
 })
