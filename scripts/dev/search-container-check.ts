@@ -12,12 +12,13 @@
  *
  *   1. an engine install cancelled during its download (nothing installed,
  *      staging cleaned);
- *   2. `bakin install search` and `bakin install search-models`;
+ *   2. `bakin install search`;
  *   3. a server boot, then `bakin search:reset --yes` (stop → wipe → boot →
  *      reindex as stages of one operation);
  *   4. `bakin reindex` while this driver holds search-engine the way a
  *      background migration pass does — the reindex must wait VISIBLY
- *      (naming the holder), then run once the engine is free.
+ *      (naming the holder), then run once the engine is free;
+ *   5. `bakin install search-models` (last: see the note there).
  *
  * The container has its own BAKIN_HOME, ANTFLY_HOME and HOME, and antfly runs
  * in strict-child mode, so this Mac's `io.bakin.antfly` unit and `~/.antfly`
@@ -149,8 +150,6 @@ async function inside(): Promise<void> {
   clearInterval(reaper)
   check('bakin install search', installCode === 0 && existsSync(engine))
   stopStrayEngines()
-  check('bakin install search-models', (await cli(['install', 'search-models', '--yes'])) === 0)
-  stopStrayEngines()
 
   // 3. Boot the server, then reset.
   const server = spawn('bun', ['server.ts', 'serve'], { cwd: REPO, env: childEnv, stdio: ['ignore', 'inherit', 'inherit'] })
@@ -193,6 +192,14 @@ async function inside(): Promise<void> {
   } finally {
     server.kill('SIGTERM')
   }
+
+  // Models LAST: on Linux the default visual embedder (antflydb/clipclap)
+  // has no loadable weight for the native backend (error.MissingWeight), so
+  // an engine that preloads it crash-loops at startup — a platform limit of
+  // the default settings, not of these flows. The pull itself is the check.
+  await sleep(2_000)
+  stopStrayEngines()
+  check('bakin install search-models', (await cli(['install', 'search-models', '--yes'])) === 0)
   finish(results)
 }
 
