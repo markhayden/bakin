@@ -111,13 +111,23 @@ export function useUnsavedChangesGuard({
         return shouldBlock
       },
     })
-    return () => {
-      unblock()
-      // Clean again (saved) or unmounting: nothing is left to lose, so a
-      // navigation still waiting on the decision goes through.
-      if (settleBlocker('proceed')) setRouteBlocker({ status: 'idle' })
-    }
+    // Teardown only unsubscribes: it also runs when the router identity
+    // changes or StrictMode replays effects while edits are still unsaved,
+    // and a pending navigation must not slip through then. TanStack's
+    // unsubscribe never resolves an in-flight blocker call; the ref still
+    // holds it, so the decision dialog can still settle it.
+    return unblock
   }, [hasUnsavedChanges, tanStackRouter])
+
+  // Clean again (saved or discarded): nothing is left to lose, so a
+  // navigation still waiting on the decision goes through.
+  useEffect(() => {
+    if (!hasUnsavedChanges && settleBlocker('proceed')) setRouteBlocker({ status: 'idle' })
+  }, [hasUnsavedChanges])
+
+  // Unmounting with a navigation still waiting: let it go through rather than
+  // leave its promise pending forever.
+  useEffect(() => () => { settleBlocker('proceed') }, [])
 
   useEffect(() => {
     if (!hasUnsavedChanges) return

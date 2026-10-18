@@ -17,9 +17,10 @@ const router = {
   history: { block: ({ blockerFn }: { blockerFn: Blocker }) => { blockers.push(blockerFn); return () => { blockers = blockers.filter((b) => b !== blockerFn) } } },
   parseLocation: (location: unknown) => location,
 }
+let currentRouter = router
 mock.module('@tanstack/react-router', () => ({
   ...require('../shims/tanstack-router'),
-  useRouter: () => router,
+  useRouter: () => currentRouter,
 }))
 
 import { render, renderHook, screen } from '@testing-library/react'
@@ -49,6 +50,7 @@ afterEach(async () => {
   await settleReact()
   cleanup()
   blockers = []
+  currentRouter = router
 })
 
 describe('useUnsavedChangesGuard route blockers', () => {
@@ -66,6 +68,20 @@ describe('useUnsavedChangesGuard route blockers', () => {
     await act(async () => { result.current.reset() })
     await settleReact()
     expect(second.value).toBe(true)
+  })
+
+  it('re-subscribing while still dirty (router identity change) never lets a pending navigation through', async () => {
+    const { result, rerender } = await renderGuard()
+    let pending = track(Promise.resolve(false))
+    await act(async () => { pending = track(blockers[0]!(nav('/a'))) })
+    currentRouter = { ...router }
+    await act(async () => { rerender({ hasUnsavedChanges: true }) })
+    await settleReact()
+    expect(pending.value).toBe('pending')
+    expect(blockers).toHaveLength(1) // re-registered once, the old one removed
+    await act(async () => { result.current.reset() })
+    await settleReact()
+    expect(pending.value).toBe(true)
   })
 
   it('a navigation still waiting when the surface goes clean goes through', async () => {
