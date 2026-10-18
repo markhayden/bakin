@@ -133,6 +133,17 @@ lesson) is what every consumer filters on; nobody re-derives.
   away, and they are excluded from `overallStatus` (an all-acked box reads
   calm). A corrupt ack store FAILS OPEN toward visibility: acks ignored,
   everything re-surfaces, warn logged.
+- **Verified, never trusted (#898):** `acks.json` is a plain file anything
+  running as this user can write, so ONE validator (`ackRecordProblem`)
+  gates both `writeAckRecord` and every read: key equals `incidentId`,
+  `at` is a real time not in the future, `action_required` is snooze-only,
+  snoozes run `0 < until − at ≤ 7 days`, and `action_required` snoozes
+  carry `evidenceSha`. A failing record suppresses NOTHING (the incident
+  shows) and stays in the file — writes and prunes keep it — so the Health
+  `acks` check (`health.acks`, watch / `evidence_gap`), `GET /doctor/acks`
+  `invalid[]` and `bakin doctor acks` name it until `bakin doctor unack
+  <id>` clears it or its incident resolves. Records carry no `actor` —
+  it would be self-asserted.
 - Surfaces: `POST /doctor/ack` (`action: ack|snooze|clear`),
   `GET /doctor/acks`, card controls, and `bakin doctor
   acks|ack|snooze|unack`. Ack writes republish immediately (ackState rides
@@ -239,7 +250,7 @@ There are 41 direct first-party plugin registration sites after the two approved
 - Schedule: 3
 - Assets, Brands, Git, Images, Models, Spend: 1 each (Spend's `spend.budget` moved out of Health in the spend ownership series; Health gained `spend.policy-available`, which names the gate's fail-closed state when the spend plugin is not answering — a plugin cannot report its own activation failure)
 
-Health's local IDs are `content-dir`, `media.sharp` (#889 — image processing; one-click store install repair `media-install-store`), `capabilities`, `github-readiness`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `spend.policy-available`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
+Health's local IDs are `content-dir`, `acks` (#898 — names ack records that broke the acknowledge rules), `media.sharp` (#889 — image processing; one-click store install repair `media-install-store`), `capabilities`, `github-readiness`, `service`, `runtime`, `session-store`, `channel-approvals`, `channel-aliases`, `restart-recovery`, `execution-safety`, `context.startup-size`, `spend.policy-available`, `usage.agent-burn`, `search`, `search-consistency`, `search-spin`, `search-canary`, `search-engine-burn`, `skill`, `plugin-assets`, `plugin-artifacts`, and `plugin-registry`.
 
 `restart-recovery` raises the `stale-tasks` incident ("In-progress tasks have no live run") from the ledger-only stranded predicate in `src/core/task-liveness.ts` — a task with a live run is never listed, so a repair task running the doctor can no longer flag itself (the 2026-09-28 margo false positive). The tasks plugin's file-based `heartbeat-missing` observation was deleted with it; heartbeat files are Team-page status notes.
 
@@ -282,6 +293,10 @@ Each completed full sweep appends `doctor.run` with report ID, registered count,
 - `escalation` — boolean (default true); legacy `off|notify|task` strings coerce until the one-shot upgrade is deleted
 - `escalationCooldownMs` — any repair request younger than this covers its incidents (no one-task-per-cycle churn)
 - `escalationStaleAfterMs` — how long an open todo/inProgress task covers a still-burning incident
+
+**Request files are validated on read (#898):** every repair-request file passes a zod schema (`src/core/doctor-repair-store.ts`); a malformed one is skipped and logged on its own — it never aborts the listing (which would silently stop escalation) and reads as absent for get/update. A request whose `createdAt` is in the future covers nothing, checked before cooldown or column logic (no clamping). The legacy `kind`/`checkIds` defaults stay until #945.
+
+**Repair brief:** besides the sanctioned fixes, the delegated brief's integrity rules forbid fabricating Bakin-internal state AND silencing — no ack/snooze, no doctor/escalation settings changes, no moving the task to review to go quiet; a blocked, clearly reported task is the success path.
 
 **Cover is per incident** (`coveredIncidentIds`): a request whose task sits in `blocked` or `review` covers indefinitely (a human owns the next step); `todo`/`inProgress` cover until `escalationStaleAfterMs`; `done`/`archived`/missing never cover; the cooldown covers regardless of column. Only uncovered incidents proceed.
 

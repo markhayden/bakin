@@ -109,7 +109,9 @@ modal collects a real reason.
 - Doctor: `src/core/doctor-approvals.ts` — `openRepairApproval` /
   `openNavigateApproval` (ONE unassigned review task + request + record),
   the two kind handlers, `recoverInterruptedApplies`. Policy and auto-close:
-  `.claude/knowledge/doctor-and-health-checks.md` § Escalation.
+  `.claude/knowledge/doctor-and-health-checks.md` § Escalation. Coverage
+  reads only schema-valid repair-request files, and a future-dated request
+  covers nothing (#898).
 
 ## Health decisions
 
