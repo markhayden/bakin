@@ -142,6 +142,7 @@ mock.module('@bakin/schedule/lib/cron-parser', () => harness.cronParserModule())
 import { activatePlugin, findRoute, callRoute } from '../test-helpers'
 const schedulePlugin = (await import('@bakin/schedule/index')).default
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
+import { updateScheduleJob } from '@bakin/schedule/lib/job-service'
 import { claimCronFire, attachCronTask, markCronFireSkipped } from '../../../src/core/execution-ledger'
 import { closeDb } from '../../../packages/core/src/storage/db'
 
@@ -449,6 +450,16 @@ describe('schedule routes', () => {
       const { status } = await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-manual-bad' }, body: { taskPrompt: 'Summarize the weekly report' } })
       expect(status).toBe(200)
       expect(getJob('job-manual-bad')).toMatchObject({ taskPrompt: 'Summarize the weekly report', paused: true, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z', enabled: false })
+    })
+
+    it('a pause made while a prompt fix awaits validation is kept (the edit applies to the live record)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-race', taskPrompt: 'heartbeat', paused: true, enabled: false, pauseReason: 'unrunnable-prompt' }))
+      const loaded = getJob('job-race')!
+      // The operator pauses it manually while the save is validating.
+      upsertJob({ ...loaded, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z' })
+      const result = await updateScheduleJob(loaded, { taskPrompt: 'Write the weekly summary' }, ['taskPrompt'])
+      expect(result.ok).toBe(true)
+      expect(getJob('job-race')).toMatchObject({ taskPrompt: 'Write the weekly summary', paused: true, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z', enabled: false })
     })
 
     it('a manual pause survives a prompt edit', async () => {

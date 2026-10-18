@@ -277,6 +277,13 @@ export async function updateScheduleJob(
     if (err instanceof TaskValidationError) return { ok: false, error: err.message }
     throw err
   }
+  // The validation above awaited: apply this edit to the LIVE record, so a
+  // pause (or any edit) made meanwhile is kept, not overwritten by the copy
+  // the caller loaded.
+  const live = getJob(meta.jobId)
+  if (!live) return { ok: false, error: 'Schedule not found' }
+  for (const key of Object.keys(meta)) delete (meta as unknown as Record<string, unknown>)[key]
+  Object.assign(meta, live)
   // Judge the prompt the job WOULD fire with before touching the record (D5):
   // an update that leaves the prompt alone keeps the existing one.
   if (fields.includes('taskPrompt')) {
