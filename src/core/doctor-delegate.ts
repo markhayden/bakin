@@ -82,6 +82,7 @@ function buildRepairBrief(request: DoctorRepairRequest, incidents: readonly Heal
     '- NEVER create, edit, or fabricate Bakin-internal state by hand: receipts, stores under ~/.bakin (media/, packages/, bin/, models/), lockfiles, .installedBy/.userEdited sidecars, the .onboarded marker, health acks, or databases. A hand-built artifact poisons health reporting and bricks the real repair.',
     '- If a sanctioned fix fails, hangs, or cannot be verified: STOP and block this task with exactly what you ran and what happened. A clearly reported failure is a SUCCESS outcome for this task; a fabricated fix is the worst possible outcome.',
     '- Verification means fresh Health checks passing on their own. Never edit anything to make a check pass without fixing the underlying cause.',
+    '- NEVER silence an incident instead of fixing it: do not acknowledge or snooze Health incidents, do not change doctor or escalation settings, and do not move this task to review to make it go quiet. If you cannot fix it, block this task and report why.',
     '',
     'When the root causes are addressed, run fresh Health checks and complete this task with a short summary.',
   ].join('\n')
