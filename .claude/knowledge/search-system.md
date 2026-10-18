@@ -231,7 +231,11 @@ no state file — each content type declares its own `schemaVersion`.
   pass visibly instead of racing it. The fast wedge watchdog bounces the
   engine on behalf of a holder running migrations in this process (a
   background pass or a reindex — the wedge it exists to heal) and defers
-  for any other holder. Failed target creation, source enumeration, thrown batches, and
+  for any other holder. Table provisioning (`ensureRegisteredTables`: boot,
+  live plugin activation, hot reload) is a background mutator too — it
+  creates tables and migrates changed layouts — so it runs in the pass of a
+  caller that owns the engine, takes the background pass, or defers to the
+  next pump tick (`deferred: true`). Failed target creation, source enumeration, thrown batches, and
   per-document batch rejections also park the recorded target. Partial
   backfill counts are cleared on failure and interrupted `backfilling` rows
   replay the source; only a completed backfill qualifies for the resume fast
