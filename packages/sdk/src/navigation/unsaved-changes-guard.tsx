@@ -126,8 +126,17 @@ export function useUnsavedChangesGuard({
   }, [hasUnsavedChanges])
 
   // Unmounting with a navigation still waiting: let it go through rather than
-  // leave its promise pending forever.
-  useEffect(() => () => { settleBlocker('proceed') }, [])
+  // leave its promise pending forever. StrictMode replays this cleanup and the
+  // effect back-to-back on a live component, so the settle waits a microtask
+  // and runs only if nothing re-mounted.
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      queueMicrotask(() => { if (!mounted.current) settleBlocker('proceed') })
+    }
+  }, [])
 
   useEffect(() => {
     if (!hasUnsavedChanges) return

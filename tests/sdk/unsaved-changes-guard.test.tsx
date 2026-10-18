@@ -4,6 +4,7 @@
  * waiting when the surface goes clean or unmounts goes through, and an older
  * blocker's continuation never closes a newer blocker's prompt.
  */
+import { StrictMode, useEffect } from 'react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup } from '@testing-library/react'
 import { actRender, settleReact } from '../rtl-settle'
@@ -92,6 +93,25 @@ describe('useUnsavedChangesGuard route blockers', () => {
     await settleReact()
     expect(pending.value).toBe(false)
     expect(blockers).toHaveLength(0)
+  })
+
+  it('StrictMode replay of a live dirty guard never lets a waiting navigation through', async () => {
+    const outcome: { value: boolean | 'pending' } = { value: 'pending' }
+    let started = false
+    function Surface() {
+      const guard = useUnsavedChangesGuard({ hasUnsavedChanges: true, saving: false, onCancel: () => {}, onSaveAndExit: async () => true, onDiscardAndExit: () => {} })
+      // A navigation that starts during the first mount, before the replay.
+      useEffect(() => {
+        if (started) return
+        started = true
+        void blockers[0]!(nav('/a')).then((value) => { outcome.value = value })
+      }, [])
+      return <>{guard.dialog}</>
+    }
+    await actRender(() => render(<StrictMode><Surface /></StrictMode>))
+    await settleReact()
+    expect(outcome.value).toBe('pending')
+    expect(screen.getByRole('dialog', { name: 'Unsaved changes' })).toBeDefined()
   })
 
   it('a navigation still waiting when the guard unmounts goes through', async () => {
