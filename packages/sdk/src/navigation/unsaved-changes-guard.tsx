@@ -56,12 +56,13 @@ export function useUnsavedChangesGuard({
   saveLabel = 'Save and exit',
   finalFocus,
 }: UnsavedChangesGuardOptions): UnsavedChangesGuardResult {
+  // `routeBlocker` (state) drives the decision dialog; `activeBlocker` (ref,
+  // written synchronously when a navigation blocks) is the AUTHORITY every
+  // settle path uses. A save that finishes before React renders the blocker
+  // — or a continuation holding an older render's closure — still settles
+  // the navigation that is actually pending, never a stale/idle copy.
   const [routeBlocker, setRouteBlocker] = useState<RouteNavigationBlocker>({ status: 'idle' })
-  // Save-and-exit finishes renders after it started: a navigation attempted
-  // DURING the save must be settled by the continuation, so it reads the
-  // current blocker, never the one captured when Save was clicked.
-  const routeBlockerRef = useRef(routeBlocker)
-  routeBlockerRef.current = routeBlocker
+  const activeBlocker = useRef<Extract<RouteNavigationBlocker, { status: 'blocked' }> | null>(null)
   const [confirmingExit, setConfirmingExit] = useState(false)
   const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null)
   const tanStackRouter = useTanStackRouter()
@@ -92,11 +93,13 @@ export function useUnsavedChangesGuard({
         if (current.pathname === next.pathname) return false
 
         const shouldBlock = await new Promise<boolean>((resolve) => {
-          setRouteBlocker({
-            status: 'blocked',
+          const blocker = {
+            status: 'blocked' as const,
             proceed: () => resolve(false),
             reset: () => resolve(true),
-          })
+          }
+          activeBlocker.current = blocker
+          setRouteBlocker(blocker)
         })
         setRouteBlocker({ status: 'idle' })
         return shouldBlock
@@ -127,12 +130,17 @@ export function useUnsavedChangesGuard({
     return () => document.removeEventListener('click', handleDocumentClick, true)
   }, [hasUnsavedChanges])
 
+  /** Settle the pending navigation (if any) exactly once: proceed or stay. */
+  function settleBlocker(outcome: 'proceed' | 'reset'): boolean {
+    const blocker = activeBlocker.current
+    if (!blocker) return false
+    activeBlocker.current = null
+    blocker[outcome]()
+    return true
+  }
+
   function completeExit() {
-    const blocker = routeBlockerRef.current
-    if (blocker.status === 'blocked') {
-      blocker.proceed()
-      return
-    }
+    if (settleBlocker('proceed')) return
     const href = pendingNavigationHref
     setPendingNavigationHref(null)
     if (href) {
@@ -143,7 +151,7 @@ export function useUnsavedChangesGuard({
   }
 
   function cancelExitPrompt() {
-    if (routeBlocker.status === 'blocked') routeBlocker.reset()
+    settleBlocker('reset')
     setPendingNavigationHref(null)
     setConfirmingExit(false)
   }
@@ -159,7 +167,7 @@ export function useUnsavedChangesGuard({
   }
 
   function reset() {
-    if (routeBlocker.status === 'blocked') routeBlocker.reset()
+    settleBlocker('reset')
     setRouteBlocker({ status: 'idle' })
     setConfirmingExit(false)
     setPendingNavigationHref(null)

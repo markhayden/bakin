@@ -358,6 +358,35 @@ describe('TeamManager + TeamFormDialog', () => {
     await settleReact()
   })
 
+  it.each([
+    ['normal submit', false, true],
+    ['Save and exit', true, false],
+  ] as const)('%s: a navigation that blocks in the same tick the save lands is still settled', async (_path, viaGuard, expected) => {
+    let release: (response: Response) => void = () => {}
+    writeResponse = () => new Promise((resolve) => { release = resolve })
+    const user = userEvent.setup()
+    await renderManager()
+    await user.click(screen.getByRole('button', { name: 'Edit Builders' }))
+    const form = await dialog('Edit team')
+    await user.type(await within(form).findByLabelText(/Team name/), ' 2')
+    if (viaGuard) {
+      await user.keyboard('{Escape}')
+      await user.click(within(await dialog('Unsaved changes')).getByRole('button', { name: 'Save and exit' }))
+    } else {
+      await user.click(within(form).getByRole('button', { name: 'Save changes' }))
+    }
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    let settled = null as boolean | null
+    await getConfig().asyncWrapper(async () => {
+      // No render between the block and the save landing.
+      const blocked = blockers[0]!({ currentLocation: { pathname: '/team' }, nextLocation: { pathname: '/tasks' } })
+      release(Response.json({ ok: true }))
+      settled = await blocked
+    })
+    expect(settled).toBe(expected) // true = stays (normal save), false = proceeds (Save and exit)
+    await settleReact()
+  })
+
   it('a reports-to agent removed from the roster while the dialog is open must be re-picked', async () => {
     rawTeams = [{ id: 'builders', label: 'Builders', reportsTo: 'chef' }]
     seedStore()
