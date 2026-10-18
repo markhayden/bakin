@@ -64,6 +64,7 @@ interface ManifestPlugin {
   clientEntry?: string
   clientVersion?: string
   clientCss?: string
+  cssVersion?: string
   status?: 'active' | 'failed'
   contributes?: PluginContributions
 }
@@ -239,7 +240,9 @@ function injectPluginCss(plugin: ManifestPlugin): void {
   if (pluginCssLink(plugin.id)) return
   const link = document.createElement('link')
   link.rel = 'stylesheet'
-  link.href = plugin.clientCss
+  // Versioned like client.js — a stable URL would serve the old stylesheet
+  // for up to 5 minutes beside the new bundle after an upgrade.
+  link.href = plugin.cssVersion ? `${plugin.clientCss}?v=${plugin.cssVersion}` : plugin.clientCss
   link.setAttribute('data-bakin-plugin-css', plugin.id)
   document.head.appendChild(link)
 }

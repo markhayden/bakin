@@ -25,10 +25,9 @@
  *      without re-running the embedded-assets generator during inner loops.
  */
 import type { IncomingMessage, ServerResponse } from 'http'
-import { createReadStream, existsSync, readFileSync, statSync } from 'fs'
+import { createHash } from 'crypto'
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { join, extname, resolve } from 'path'
-
-import { APP_VERSION } from '@bakin/core/constants'
 
 import { EMBEDDED_ASSETS } from './_embedded-assets'
 import {
@@ -82,14 +81,49 @@ function mimeFor(path: string): string {
 
 /**
  * The version stamped onto every shell asset URL index.html references
- * (`/vendor/*.js`, `/_app/main.js`, `/globals.css`). A release build uses its
- * version; a dev-version build (`0.0.0-dev`, a source checkout) uses a
- * per-process token, so a restart on new bytes is a new URL too.
+ * (`/vendor/*.js`, `/_app/main.js`, `/globals.css`): a hash of those assets'
+ * bytes, computed once per process. A version string is not enough — a
+ * rebuilt dev or dirty build keeps its version while its bytes change, and
+ * the browser caches `?v=` URLs immutably. (Rebuilding in place without a
+ * restart is the dev loop's job: BAKIN_DEV serves everything no-store.)
  */
-const ASSET_VERSION = APP_VERSION !== '0.0.0-dev' ? APP_VERSION : `dev-${Date.now().toString(36)}`
+let shellVersion: Promise<string> | null = null
 
-export function assetVersionToken(): string {
-  return ASSET_VERSION
+function shellAssetFiles(): Array<[string, string]> {
+  const embedded = [...EMBEDDED_ASSETS.keys()].filter(isShellAsset).map((key): [string, string] => [key, EMBEDDED_ASSETS.get(key)!])
+  if (embedded.length > 0) return embedded
+  const files: Array<[string, string]> = []
+  const vendorDir = join(PUBLIC_DIR, 'vendor')
+  if (existsSync(vendorDir)) {
+    for (const name of readdirSync(vendorDir)) {
+      if (name.endsWith('.js')) files.push([`/vendor/${name}`, join(vendorDir, name)])
+    }
+  }
+  files.push(['/_app/main.js', join(DIST_DIR, 'main.js')], ['/globals.css', SDK_STYLES_PATH])
+  return files
+}
+
+function isShellAsset(key: string): boolean {
+  return (key.startsWith('/vendor/') && key.endsWith('.js')) || key === '/_app/main.js' || key === '/globals.css'
+}
+
+/** Tests only: forget the memoized fingerprint so a changed asset set is re-hashed. */
+export function __resetAssetVersionForTests(): void {
+  shellVersion = null
+}
+
+export function assetVersionToken(): Promise<string> {
+  shellVersion ??= (async () => {
+    const hasher = createHash('sha256')
+    for (const [key, path] of shellAssetFiles().sort(([a], [b]) => a.localeCompare(b))) {
+      const file = Bun.file(path)
+      if (!(await file.exists())) continue
+      hasher.update(key)
+      hasher.update(new Uint8Array(await file.arrayBuffer()))
+    }
+    return hasher.digest('hex').slice(0, 16)
+  })()
+  return shellVersion
 }
 
 /** Shell asset URLs inside index.html — the import map entries, the app entry, the stylesheet. */
@@ -104,7 +138,7 @@ const SHELL_ASSET_REF = /(["'])(\/vendor\/[^"'?#]+\.js|\/_app\/main\.js|\/global
  * asset is no-store and the dev client swaps them in place, so dev HTML is
  * untouched (reference equality preserved).
  */
-export function versionShellAssetUrls(bytes: Buffer, version = assetVersionToken()): Buffer {
+export function versionShellAssetUrls(bytes: Buffer, version: string): Buffer {
   if (process.env.BAKIN_DEV === '1') return bytes
   const html = bytes.toString('utf-8')
   const stamped = html.replace(SHELL_ASSET_REF, (_m, quote: string, url: string) => `${quote}${url}?v=${encodeURIComponent(version)}${quote}`)
@@ -132,8 +166,9 @@ export function cacheControlFor(urlOrPath: string, status: number, versioned = f
 }
 
 /** Whether a request names the current shell asset version. */
-function isCurrentVersion(url: URL): boolean {
-  return url.searchParams.get('v') === assetVersionToken()
+async function isCurrentVersion(url: URL): Promise<boolean> {
+  const v = url.searchParams.get('v')
+  return v !== null && process.env.BAKIN_DEV !== '1' && v === await assetVersionToken()
 }
 
 async function sendEmbedded(req: IncomingMessage, res: ServerResponse, urlPath: string, status = 200, versioned = false): Promise<boolean> {
@@ -204,7 +239,7 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
     return true
   }
 
-  const versioned = isCurrentVersion(url)
+  const versioned = await isCurrentVersion(url)
 
   // Exact-match lookup for anything embedded first (assets, vendor, public).
   // index.html itself always takes the SPA path below so its asset URLs get
@@ -247,7 +282,9 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
   // inject the dev-client script; in prod every shell asset URL is versioned.
   const indexBytes = await loadIndexHtml()
   if (indexBytes) {
-    const body = transformIndexHtmlForDev(versionShellAssetUrls(indexBytes))
+    const body = process.env.BAKIN_DEV === '1'
+      ? transformIndexHtmlForDev(indexBytes)
+      : versionShellAssetUrls(indexBytes, await assetVersionToken())
     await writeEncodedResponseBody(req, res, 200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Content-Length': String(body.length),

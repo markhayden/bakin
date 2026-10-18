@@ -88,6 +88,7 @@ describe('plugin manifest embedded assets', () => {
     ]))
     Bun.file = ((path: string) => ({
       exists: async () => path === '/$bunfs/tasks-client.js',
+      arrayBuffer: async () => new TextEncoder().encode('registerPlugin({ id: "tasks" })').buffer,
     })) as unknown as typeof Bun.file
 
     const res = await get(new Request('http://localhost/api/plugins/manifest'))
@@ -97,7 +98,8 @@ describe('plugin manifest embedded assets', () => {
 
     expect(body.plugins[0]?.id).toBe('tasks')
     expect(body.plugins[0]?.clientEntry).toBe('/api/plugins/tasks/assets/client.js')
-    expect(body.plugins[0]?.clientVersion?.startsWith('embedded-')).toBe(true)
+    // A content hash — a rebuilt binary with the same version string still gets a new URL.
+    expect(body.plugins[0]?.clientVersion).toMatch(/^embedded-[0-9a-f]{16}$/)
 
     rmSync(cwdWithoutRepoFallback, { recursive: true, force: true })
   })
@@ -111,6 +113,7 @@ describe('plugin manifest embedded assets', () => {
     ]))
     Bun.file = ((path: string) => ({
       exists: async () => path === '/$bunfs/tasks-client.js',
+      arrayBuffer: async () => new TextEncoder().encode('registerPlugin({ id: "tasks" })').buffer,
     })) as unknown as typeof Bun.file
 
     try {

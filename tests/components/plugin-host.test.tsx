@@ -247,6 +247,36 @@ describe('PluginHost — boot', () => {
     expect(screen.queryByTestId('plugin-boot-failures')).toBeNull()
   })
 
+  it('links an eager plugin stylesheet with its cssVersion (never a stable URL)', async () => {
+    vi.stubGlobal('fetch', mock(async (url: string) => {
+      if (url === '/api/plugins/manifest') {
+        return new Response(JSON.stringify({
+          plugins: [{
+            id: 'x',
+            name: 'X',
+            status: 'active',
+            clientEntry: pathToFileURL(join(tmpdir(), 'bakin-nonexistent-bundle.mjs')).href,
+            clientCss: '/api/plugins/x/assets/client.css',
+            cssVersion: 'embedded-abc123',
+          }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response('not found', { status: 404 })
+    }))
+
+    render(
+      <PluginHost>
+        <ProbeTree />
+      </PluginHost>,
+    )
+
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+    const link = document.head.querySelector<HTMLLinkElement>('link[data-bakin-plugin-css="x"]')
+    expect(link?.getAttribute('href')).toBe('/api/plugins/x/assets/client.css?v=embedded-abc123')
+    link?.remove()
+    await screen.findByTestId('plugin-boot-failures')
+  })
+
   it('shares in-flight boot work during React StrictMode remounts', async () => {
     const fetchMock = mock(async (url: string) => {
       if (url === '/api/plugins/manifest') {

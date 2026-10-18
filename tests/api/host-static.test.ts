@@ -169,7 +169,7 @@ describe('serveHostClient compression', () => {
  * Dev forces no-store so location.reload() picks up rebuilt bundles;
  * prod keeps the 5-minute cache.
  */
-import { assetVersionToken, cacheControlFor, versionShellAssetUrls } from '../../packages/host/src/api/_static'
+import { __resetAssetVersionForTests, assetVersionToken, cacheControlFor, versionShellAssetUrls } from '../../packages/host/src/api/_static'
 
 describe('cacheControlFor', () => {
   const prev = process.env.BAKIN_DEV
@@ -250,7 +250,7 @@ describe('versioned shell asset URLs', () => {
 
   it('serves the SPA shell with versioned URLs and the current-version asset immutably', async () => {
     delete process.env.BAKIN_DEV
-    const token = assetVersionToken()
+    const token = await assetVersionToken()
     const dir = mkdtempSync(join(tmpdir(), 'bakin-static-version-'))
     try {
       const indexPath = join(dir, 'index.html')
@@ -277,6 +277,33 @@ describe('versioned shell asset URLs', () => {
       expect(headerOf(stale, 'Cache-Control')).toBe('public, max-age=300')
     } finally {
       setEmbeddedAssets(new Map())
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('shell asset fingerprint', () => {
+  it('follows the bytes, not a version string: same bytes same token, changed bytes new token', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-static-fingerprint-'))
+    try {
+      const vendor = join(dir, 'sdk-utils.js')
+      const main = join(dir, 'main.js')
+      writeFileSync(vendor, 'export const a = 1\n')
+      writeFileSync(main, 'import "@makinbakin/sdk/utils"\n')
+      setEmbeddedAssets(new Map([['/vendor/sdk-utils.js', vendor], ['/_app/main.js', main], ['/bakin-logo.svg', main]]))
+
+      __resetAssetVersionForTests()
+      const first = await assetVersionToken()
+      __resetAssetVersionForTests()
+      expect(await assetVersionToken()).toBe(first)
+      expect(first).toMatch(/^[0-9a-f]{16}$/)
+
+      writeFileSync(vendor, 'export const a = 1\nexport const OPERATOR_DECLARATION_HEADERS = {}\n')
+      __resetAssetVersionForTests()
+      expect(await assetVersionToken()).not.toBe(first)
+    } finally {
+      setEmbeddedAssets(new Map())
+      __resetAssetVersionForTests()
       rmSync(dir, { recursive: true, force: true })
     }
   })
