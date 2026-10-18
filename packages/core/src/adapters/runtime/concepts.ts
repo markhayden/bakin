@@ -275,6 +275,9 @@ export interface RuntimeSkill {
   name: string
   path?: string
   instructions?: string
+  /** The COMPLETE skill tree on read, SKILL.md included (sidecars excluded).
+   *  A read without SKILL.md here is treated as a failed read — content
+   *  verification never rebuilds it from `instructions`. */
   files?: Record<string, string>
   metadata?: RuntimeMetadata
 }

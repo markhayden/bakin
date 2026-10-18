@@ -1212,6 +1212,43 @@ describe('checkPluginAssets', () => {
   })
 })
 
+describe('checkPluginAssets — user-edited skills (#898)', () => {
+  const lockedRef = { pluginId: 'sdr', name: 'cold-email' }
+  function warnWith(details: Record<string, unknown>) {
+    mockPluginAssetsResult = {
+      name: 'plugin-assets',
+      status: 'warn' as unknown as 'ok',
+      message: '1 user-edited skill(s) differ',
+      // @ts-expect-error - extra fields accepted at runtime
+      remediation: 'Keep the edit, or delete .userEdited',
+      details: { missing: [], drifted: [], userEditedDrifted: [lockedRef], bins: { missing: [], drifted: [], unsupported: [] }, ...details },
+    }
+  }
+
+  it('locked-and-drifted alone is a watch warning with instructions — never the install repair that would skip it', async () => {
+    warnWith({})
+    const results = observed(await checkPluginAssets())
+    expect(results[0].status).toBe('warning')
+    expect(results[0].incident).toMatchObject({ key: 'user-edited-drifted', disposition: 'watch' })
+    expect(results[0].incident?.resolution.type).toBe('instructions')
+    expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:cold-email', label: 'cold-email (sdr)' }])
+  })
+
+  it('a plugin skill that is not text is a watch incident naming the plugin, never the install repair', async () => {
+    warnWith({ userEditedDrifted: [], invalidSource: [{ pluginId: 'sdr', name: 'blobby', error: 'x' }] })
+    const results = observed(await checkPluginAssets())
+    expect(results[0].incident).toMatchObject({ key: 'skill-source-invalid', disposition: 'watch' })
+    expect(results[0].incident?.resolution.type).toBe('instructions')
+    expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:blobby', label: 'blobby (sdr)' }])
+  })
+
+  it('with anything else to install, the repair is still offered', async () => {
+    warnWith({ drifted: [{ pluginId: 'sdr', name: 'other' }] })
+    const results = observed(await checkPluginAssets())
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'repair', actionId: 'install-plugin-assets' })
+  })
+})
+
 describe('checkPluginAssets — discovery failure', () => {
   it('a failed inspection is unknown with a rerun resolution — never healthy, never an install repair over a broken ledger', async () => {
     mockPluginAssetsResult = {
@@ -1296,10 +1333,10 @@ describe('plugin registration', () => {
     }
     await healthPlugin.activate(ctx as unknown as Parameters<typeof healthPlugin.activate>[0])
 
-    expect(registeredIds).toHaveLength(25)
+    expect(registeredIds).toHaveLength(26)
     expect(registeredIds).not.toContain('search-outbox')
     expect(registeredIds).toEqual(expect.arrayContaining([
-      'content-dir', 'media.sharp', 'capabilities', 'github-readiness', 'service', 'runtime', 'session-store',
+      'content-dir', 'acks', 'media.sharp', 'capabilities', 'github-readiness', 'service', 'runtime', 'session-store',
       'channel-approvals', 'channel-aliases', 'delivery-discord', 'restart-recovery', 'execution-safety',
       'context.startup-size', 'spend.policy-available', 'usage.agent-burn', 'search', 'dispatch.run-dirs',
       'search-consistency', 'search-spin', 'search-canary', 'search-engine-burn',

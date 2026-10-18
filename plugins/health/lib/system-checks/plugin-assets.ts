@@ -39,6 +39,45 @@ export async function checkPluginAssets(): Promise<HealthCheckRunInput> {
         evidence: { inSync: true, ...(result.details ?? {}) },
       })])
     }
+    type SkillRef = { name: string; pluginId: string }
+    const scan = result.details as { missing?: unknown[]; drifted?: unknown[]; userEditedDrifted?: SkillRef[]; invalidSource?: SkillRef[]; bins?: { missing?: unknown[]; drifted?: unknown[]; unsupported?: unknown[] } } | undefined
+    const repairable = (scan?.missing?.length ?? 0) + (scan?.drifted?.length ?? 0)
+      + (scan?.bins?.missing?.length ?? 0) + (scan?.bins?.drifted?.length ?? 0) + (scan?.bins?.unsupported?.length ?? 0)
+    const locked = scan?.userEditedDrifted ?? []
+    const invalid = scan?.invalidSource ?? []
+    if (repairable === 0 && (locked.length > 0 || invalid.length > 0)) {
+      // Nothing the repair can fix — the user locked these skills, or the
+      // plugin ships one that is not text — so offering it would be a
+      // button that does nothing (#898).
+      const skillResource = (ref: SkillRef) => ({ kind: 'asset' as const, id: `skill:${ref.name}`, label: `${ref.name} (${ref.pluginId})` })
+      return healthObserved([healthWarning({
+        key: 'runtime-assets',
+        summary: result.message,
+        detail: result.remediation,
+        evidence: { inSync: false, ...(result.details ?? {}) },
+        incident: {
+          key: locked.length > 0 ? 'user-edited-drifted' : 'skill-source-invalid',
+          title: locked.length > 0 ? 'User-edited plugin skills differ from the plugin' : 'A plugin ships a skill Bakin cannot install',
+          impact: [
+            locked.length > 0 ? 'Agents run your edited copy, not the version the plugin ships. Bakin will not overwrite a skill you locked.' : null,
+            invalid.length > 0 ? 'Skills whose files are not text are never installed, so agents cannot use them.' : null,
+          ].filter(Boolean).join(' '),
+          disposition: 'watch',
+          resources: [...locked, ...invalid].map(skillResource),
+          resolution: {
+            key: locked.length > 0 ? 'unlock-user-edited-skills' : 'replace-plugin',
+            type: 'instructions',
+            label: locked.length > 0 ? 'Keep or restore' : 'Update the plugin',
+            steps: [
+              locked.length > 0
+                ? 'Keep your edit and acknowledge this, or delete the skill\'s .userEdited file and run `bakin install plugin-assets` to restore the plugin\'s version.'
+                : 'Update or remove the plugin that ships a skill with non-text files.',
+              ...(locked.length > 0 && invalid.length > 0 ? ['Update or remove the plugin that ships a skill with non-text files.'] : []),
+            ],
+          },
+        },
+      })])
+    }
     const reminder = result.remediation ?? 'Run `bakin install plugin-assets` to apply.'
     return healthObserved([healthWarning({
       key: 'runtime-assets',

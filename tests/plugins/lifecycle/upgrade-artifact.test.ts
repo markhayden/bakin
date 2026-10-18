@@ -46,6 +46,7 @@ mock.module('@/core/plugin-registry', () => ({
 const assets = { fail: false }
 mock.module('@/core/onboarding/plugin-assets', () => ({
   findSkillsForPlugin: () => (assets.fail ? [{ name: 'boom' }] : []),
+  assertPluginSkillsAreText: () => {},
   installPluginAssets: async () => { throw new Error('skill projection failed') },
 }))
 // Point the github resolver at the local artifact host. `currentBaseUrl` is

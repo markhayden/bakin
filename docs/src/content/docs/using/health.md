@@ -69,6 +69,12 @@ Plans are short-lived and tied to the evidence they were created from. If the af
 
 Some incidents provide navigation, resolution steps, or a re-check instead of deterministic repair. Technical evidence is collapsed by default and remains available when you need it.
 
+### Acknowledge or snooze
+
+When you have seen an incident and do not want it to keep calling for attention, **Acknowledge** it (quiet until it changes materially) or **Snooze** it for 24 hours or 7 days. Action-required incidents can only be snoozed, and they return as soon as their evidence changes. Quieted incidents stay listed under **Acknowledged**, one click from un-acknowledging.
+
+Every acknowledgement record is checked against these rules each time Health reads it. A record that breaks them — a permanent acknowledgement of an action-required incident, a snooze longer than 7 days, a date in the future — quiets nothing, and the **Health acknowledgements** check names it until you clear it with `bakin doctor unack <id>`.
+
 ## Escalation and repair tasks
 
 Between your visits, the doctor cycle acts on every incident that needs attention and is not already covered by an open repair task:
@@ -76,7 +82,7 @@ Between your visits, the doctor cycle acts on every incident that needs attentio
 - **Safe repairs run on their own.** Deterministic, non-destructive fixes are applied right away; the incident never becomes a task.
 - **Destructive repairs ask first.** One task lands in **Review** with the exact proposed changes; approve it from the task panel, the Health card or a channel button (see [Tasks → Approvals](/docs/using/tasks/#approvals)).
 - **Operator-only incidents** (an expired key, a setting only you can change) get a Review task that opens the right place and can be dismissed.
-- **Everything else** becomes one task for your main agent with the sanctioned fix spelled out.
+- **Everything else** becomes one task for your main agent with the sanctioned fix spelled out. The task forbids the agent from quieting the incident instead of fixing it: no acknowledging or snoozing, no changing doctor settings, no parking the task in Review.
 
 Repair tasks close automatically once Health re-runs their checks and they pass — never merely because an incident stopped appearing. A task whose repair failed is blocked with the reason so you decide what happens next. Escalation can be turned off entirely in `System & Alerts → Doctor`.
 

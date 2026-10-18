@@ -783,20 +783,25 @@ function printPlainDoctor(report: HealthReport): void {
 async function cmdDoctorAck(args: string[], opts: { json: boolean }): Promise<void> {
   const verb = args[0]!
   if (verb === 'acks') {
-    const { records } = await apiGet('/api/plugins/health/doctor/acks') as {
+    const { records, invalid = [] } = await apiGet('/api/plugins/health/doctor/acks') as {
       records: Array<{ incidentId: string; mode: string; at: string; until?: string; tierAtAck: string }>
+      invalid?: Array<{ key: string; reason: string }>
     }
     if (opts.json) {
-      console.log(JSON.stringify({ records }, null, 2))
+      console.log(JSON.stringify({ records, invalid }, null, 2))
       return
     }
-    if (records.length === 0) {
+    if (records.length === 0 && invalid.length === 0) {
       console.log('No acknowledged or snoozed incidents.')
       return
     }
     for (const record of records) {
       const window = record.mode === 'snooze' && record.until ? ` until ${record.until}` : ''
       console.log(`  ${record.incidentId} — ${record.mode}${window} (was ${record.tierAtAck}, ${record.at})`)
+    }
+    if (invalid.length > 0) {
+      console.log('Ignored (not written by ack/snooze — the incident shows; clear with bakin doctor unack <id>):')
+      for (const entry of invalid) console.log(`  ${entry.key} — ${entry.reason}`)
     }
     return
   }

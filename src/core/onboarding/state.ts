@@ -1,10 +1,11 @@
 /**
  * .onboarded marker file — "this machine has been through first-run setup."
  *
- * Lives at {BAKIN_HOME}/.onboarded. Doctor refuses to run its normal checks
- * when the marker is missing and `settings.doctor.requireOnboard` is true —
- * instead it returns a single actionable error pointing the user at
- * `bakin onboard`.
+ * Lives at {BAKIN_HOME}/.onboarded. When the marker is missing and
+ * `settings.doctor.requireOnboard` is true, the doctor's `core.onboarded`
+ * check raises an action-required incident pointing at `bakin onboard`.
+ * Every other check still runs — the marker gates nothing else, so a
+ * hand-written marker can only quiet that one incident, never the rest.
  *
  * Bump ONBOARDING_VERSION when onboarding requirements change. A marker with
  * a lower version is treated as missing, forcing users through `bakin onboard`

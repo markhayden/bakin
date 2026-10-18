@@ -24,6 +24,7 @@ import { verifyPluginManifestSignature } from '@bakin/core/plugins/signatures'
 import { PLUGIN_STAGES } from './operation-plans'
 import {
   findSkillsForPlugin,
+  assertPluginSkillsAreText,
   installPluginAssets,
   type InstallReport,
 } from '@/core/onboarding/plugin-assets'
@@ -204,11 +205,17 @@ export async function installUpgradedPluginAssets(
   if (installedSkills.length === 0) {
     return {
       installedSkills,
-      pluginAssets: { installed: [], unchanged: [], skipped: [], bins: { installed: [], unchanged: [], failed: [] } },
+      pluginAssets: { installed: [], unchanged: [], skipped: [], failed: [], bins: { installed: [], unchanged: [], failed: [] } },
     }
   }
 
+  assertPluginSkillsAreText({ id, path: pluginDir })
   const pluginAssets = await installPluginAssets([{ id, path: pluginDir }])
+  // A skill that did not land verified fails the upgrade; the replace
+  // transaction restores the previous plugin.
+  if (pluginAssets.failed.length > 0) {
+    throw new Error(`${id}: runtime skills could not be installed — ${pluginAssets.failed.map((f) => `${f.name}: ${f.error}`).join('; ')}`)
+  }
   return { installedSkills, pluginAssets }
 }
 

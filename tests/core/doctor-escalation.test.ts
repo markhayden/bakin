@@ -221,6 +221,17 @@ describe('per-incident cover', () => {
     }))
     expect(await coveredIncidentIds('/tmp/content', Date.now(), cooldownMs, staleAfterMs)).toEqual(new Set(['health:search:unavailable']))
   })
+
+  it('a future-dated request covers nothing — not even one a human owns (#898)', async () => {
+    requests = [
+      coveringRequest(-24 * 60 * 60_000, { id: 'r-future', taskId: 't-blocked' }),
+      coveringRequest(0, { id: 'r-undated', taskId: 't-review', incidentIds: ['health:runtime:auth-expired'], createdAt: 'whenever' }),
+    ]
+    taskColumns = { 't-blocked': 'blocked', 't-review': 'review' }
+    expect(await coveredIncidentIds('/tmp/content', Date.now(), cooldownMs, staleAfterMs)).toEqual(new Set())
+    await escalate([incident()])
+    expect(delegate).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('policy', () => {

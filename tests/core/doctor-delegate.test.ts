@@ -73,5 +73,9 @@ describe('structured Health delegation', () => {
     expect(brief).toContain('NEVER create, edit, or fabricate Bakin-internal state by hand')
     expect(brief).toContain('A clearly reported failure is a SUCCESS outcome')
     expect(brief).toContain('Never edit anything to make a check pass')
+    // Silencing is not fixing (#898).
+    expect(brief).toContain('do not acknowledge or snooze Health incidents')
+    expect(brief).toContain('do not change doctor or escalation settings')
+    expect(brief).toContain('do not move this task to review to make it go quiet')
   })
 })
