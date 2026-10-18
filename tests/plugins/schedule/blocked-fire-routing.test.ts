@@ -581,6 +581,19 @@ describe('unrunnable Bakin schedules pause instead of firing (spec D5)', () => {
     expect(job.completedAt).toBeUndefined()
   })
 
+  it('a one-shot rescheduled to a new instant before the fire acts is NOT consumed by the old claim', async () => {
+    upsertJob(makeMeta({ schedule: { kind: 'at', expr: '2026-06-08T07:00:00Z' }, enabled: true }))
+    const claimed = getJob('release-notes')!
+    upsertJob({ ...claimed, schedule: { kind: 'at', expr: '2026-06-09T07:00:00Z' } })
+
+    await runClaimedFire(claimed, 'release-notes', 'run-old-instant', { firedAtMs: Date.parse('2026-06-08T07:00:00Z') })
+
+    const job = getJob('release-notes')!
+    expect(job.schedule).toEqual({ kind: 'at', expr: '2026-06-09T07:00:00Z' })
+    expect(job.enabled).toBe(true)
+    expect(job.completedAt).toBeUndefined()
+  })
+
   it('a runnable prompt still fires normally', async () => {
     upsertJob(makeMeta())
     await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-ok', timestamp: '2026-06-08T07:00:00Z' })

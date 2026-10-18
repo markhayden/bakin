@@ -126,11 +126,14 @@ function writeLatest(jobId: string, mutate: (latest: BakinJobMeta) => void): voi
 }
 
 export async function runClaimedFire(
-  _loaded: BakinJobMeta,
+  claimed: BakinJobMeta,
   jobId: string,
   runId: string,
   opts: { column?: string; blockedReason?: string; firedAtMs?: number } = {},
 ): Promise<ProcessRunResult> {
+  // The schedule this claim fires — captured BEFORE any await. A one-shot
+  // rescheduled mid-fire is a new occurrence and must not be consumed here.
+  const consumedSchedule = claimed.schedule ? { ...claimed.schedule } : undefined
   const owner = await getScheduleDefaultOwner()
   // Judge the LIVE record: the caller's copy was read before the await
   // above, and acting on it could undo a prompt fix or an operator's pause
@@ -222,7 +225,6 @@ export async function runClaimedFire(
   // own fields may be written (writeLatest), so an operator's Resume or edit
   // in between survives.
   upsertJob(meta)
-  const consumedSchedule = meta.schedule
 
   // Create the task. Label by the run's logical OCCURRENCE time, not wall-clock
   // creation time — a catch-up task for a missed run must read as the day it was
