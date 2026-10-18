@@ -133,6 +133,12 @@ export const PluginLockEntrySchema = z.object({
    */
   remoteArtifactVersion: z.string().optional(),
   /**
+   * `--check` found a compatible REBUILD published under the installed
+   * version while the installed artifact cannot run on this host (a contract
+   * change) — an upgrade even though the version numbers match.
+   */
+  remoteArtifactRebuild: z.boolean().optional(),
+  /**
    * Local source-tree sha at install/upgrade time (local only). Symmetric
    * with `commitSha` for github sources — captures what was on disk when
    * the plugin was last installed/rebuilt.
@@ -386,7 +392,7 @@ export function computeUpgradeAvailable(entry: PluginLockEntry): boolean {
   if (entry.type === 'github' && entry.remoteArtifactVersion) {
     // Whiskit artifact installs are version-based — `--check` records the
     // latest published artifact version instead of a remote sha.
-    return entry.remoteArtifactVersion !== entry.version
+    return entry.remoteArtifactRebuild === true || entry.remoteArtifactVersion !== entry.version
   }
   if (entry.type === 'github' && entry.remoteHeadSha) {
     return entry.remoteHeadSha !== entry.commitSha

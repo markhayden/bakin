@@ -171,6 +171,7 @@ export async function upgradeArtifact(
           version: newVersion,
         commitSha: newCommitSha,
         remoteArtifactVersion: latest,
+          remoteArtifactRebuild: false,
           manifestSha,
           permissions: gate.newPerms,
           installedSkills: assets.installedSkills,

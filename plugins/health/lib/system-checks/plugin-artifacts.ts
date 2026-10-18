@@ -107,8 +107,8 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
     })])
   }
 
-  const observations: HealthObservationInput[] = []
   let installed = 0
+  const pending: Array<Promise<HealthObservationInput>> = []
   for (const entry of entries) {
     const name = String(entry.name)
     if (!entry.isDirectory() || name.startsWith('.')) continue
@@ -116,11 +116,14 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
     const pluginDir = join(pluginsDir, name)
     const verification = verifyInstalledArtifact(pluginDir)
     if (verification.status === 'needs-update') {
-      observations.push(pluginArtifactWarning(name, 'needs-update', verification.reason, await offerFor(name, pluginDir, deps)))
+      // Index reads run concurrently (each bounded), so N stranded plugins
+      // cost one read's time, not N — the check budget is shared.
+      pending.push(offerFor(name, pluginDir, deps).then((offer) => pluginArtifactWarning(name, 'needs-update', verification.reason, offer)))
     } else if (verification.status === 'invalid') {
-      observations.push(pluginArtifactWarning(name, 'invalid', verification.reason, { kind: 'unknown' }))
+      pending.push(Promise.resolve(pluginArtifactWarning(name, 'invalid', verification.reason, { kind: 'unknown' })))
     }
   }
+  const observations: HealthObservationInput[] = await Promise.all(pending)
 
   if (observations.length === 0) {
     return healthObserved([healthHealthy({
@@ -182,16 +185,11 @@ function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid',
 async function upgradablePlugins(deps: PluginArtifactDeps): Promise<Array<{ id: string; version: string }>> {
   const pluginsDir = join(getContentDir(), 'plugins')
   if (!existsSync(pluginsDir)) return []
-  const out: Array<{ id: string; version: string }> = []
-  for (const entry of readdirSync(pluginsDir, { withFileTypes: true }) as Dirent[]) {
-    const name = String(entry.name)
-    if (!entry.isDirectory() || name.startsWith('.')) continue
-    const pluginDir = join(pluginsDir, name)
-    if (verifyInstalledArtifact(pluginDir).status !== 'needs-update') continue
-    const offer = await offerFor(name, pluginDir, deps)
-    if (offer.kind === 'upgrade') out.push({ id: name, version: offer.version })
-  }
-  return out
+  const stranded = (readdirSync(pluginsDir, { withFileTypes: true }) as Dirent[])
+    .map((entry) => String(entry.name))
+    .filter((name) => !name.startsWith('.') && verifyInstalledArtifact(join(pluginsDir, name)).status === 'needs-update')
+  const offers = await Promise.all(stranded.map(async (name) => ({ id: name, offer: await offerFor(name, join(pluginsDir, name), deps) })))
+  return offers.flatMap(({ id, offer }) => (offer.kind === 'upgrade' ? [{ id, version: offer.version }] : []))
 }
 
 interface UpgradeIdentity {

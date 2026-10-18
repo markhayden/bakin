@@ -61,9 +61,14 @@ published):
   approvals freeze targets and Apply refuses a re-plan whose targets differ;
   safety is `manual` so escalation asks for that approval; `apply()`
   re-previews and commits ONLY when version, manifest and binaries equal what
-  was approved, then activates. Index reads are bounded (8 s, no retries) and
-  cached per source (10 min; failures 1 min), so a slow release host never
-  costs the check its local verdict. No compatible release yet ⇒ the incident
+  was approved, then activates — and `gateUpgradeConsent` validates a
+  supplied consent EVERY time (manifest, permissions, binaries), not only
+  when something new needed consent, so a republish between preview and
+  commit bounces. Index reads are bounded (8 s, no retries), concurrent
+  across plugins and cached per source (10 min; failures 1 min), so a slow
+  release host never costs the check its local verdict. A compatible rebuild
+  under the installed version persists as `remoteArtifactRebuild` so
+  `computeUpgradeAvailable` keeps reporting it. No compatible release yet ⇒ the incident
   says so (`await-compatible-release`) instead of pointing at an upgrade that
   would refuse. `artifactUpgradeTarget` is the one upgrade decision (a working
   install only moves forward; a stranded one takes any compatible release;

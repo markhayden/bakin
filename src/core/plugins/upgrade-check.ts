@@ -24,8 +24,10 @@ export interface UpgradeAvailability {
   lastChecked: string
   /** Github only — last seen remote HEAD sha. */
   remoteHeadSha?: string
-  /** Artifact installs only — latest published artifact version. */
+  /** Artifact installs only — the version an upgrade would install (or the installed one). */
   remoteArtifactVersion?: string
+  /** Artifact installs only — that target is a compatible rebuild of the installed version. */
+  remoteArtifactRebuild?: boolean
   /** Local only — last seen source tree sha. */
   sourceTreeSha?: string
   /**
@@ -74,6 +76,7 @@ async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvai
           upgradeAvailable: target !== null,
           lastChecked,
           remoteArtifactVersion: target ?? entry.version,
+          remoteArtifactRebuild: target !== null && target === entry.version,
         }
       }
       if (!entry.source || !entry.ref) {
@@ -151,6 +154,7 @@ export async function runChecks(ids: readonly string[]): Promise<UpgradeAvailabi
     const patch: Partial<PluginLockEntry> = { lastChecked: r.lastChecked }
     if (r.remoteHeadSha) patch.remoteHeadSha = r.remoteHeadSha
     if (r.remoteArtifactVersion) patch.remoteArtifactVersion = r.remoteArtifactVersion
+    if (r.remoteArtifactRebuild !== undefined) patch.remoteArtifactRebuild = r.remoteArtifactRebuild
     if (r.sourceTreeSha) patch.lastSourceTreeSha = r.sourceTreeSha
     if (r.sourceTreeShaAlgoMigration && r.sourceTreeSha) {
       // One-time reset: the row held a legacy (algo 1) sha and the source
