@@ -38,6 +38,7 @@ import {
 import { recordUsage } from '@/core/usage'
 import { getAllExecTools, getExecTool, getToolContext } from './exec-tools/registry'
 import { bumpTaskRunHeartbeat } from './task-liveness'
+import { runAsAgentInvocation } from './agent-invocation'
 import {
   describeMcpToolDenial,
   isToolAllowedByPolicy,
@@ -153,7 +154,8 @@ export function registerTools(server: McpServer, getAgent: () => string, verifie
 
         try {
           const toolCtx = getToolContext(tool.name, verified ? { agentId: agent } : undefined)
-          const result = await tool.handler(params as Record<string, unknown>, agent, toolCtx)
+          // Inside the agent's invocation context — never the operator (#898).
+          const result = await runAsAgentInvocation({ agentId: agent, tool: tool.name }, () => tool.handler(params as Record<string, unknown>, agent, toolCtx))
           const durationMs = Date.now() - start
 
           recordUsage({

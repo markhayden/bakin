@@ -19,6 +19,12 @@ export const APPROVAL_OPERATOR_HEADER = 'X-Bakin-Operator'
 export const APPROVAL_OPERATOR_DECLARED = 'declared'
 /** The CLI sends this whenever it runs in a detected agent context. */
 export const APPROVAL_AGENT_CONTEXT_HEADER = 'X-Bakin-Agent-Context'
+/**
+ * Set per command on an agent's shell by runtimes that can (Pi's bash
+ * spawnHook); the CLI turns it into the agent-context header.
+ */
+export const AGENT_CONTEXT_ENV = 'BAKIN_AGENT_CONTEXT'
+
 /** The server-rendered gate decision form posts this exact scalar field. */
 export const APPROVAL_OPERATOR_FORM_FIELD = 'operator'
 

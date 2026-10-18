@@ -26,7 +26,7 @@ mock.module('../../src/core/settings', () => ({
 mock.module('../../src/core/sse', () => ({ broadcast: () => {} }))
 mock.module('../../src/core/app-services-store', () => ({ maybeGetAppServices: () => undefined, getAppServices: () => { throw new Error('no services') } }))
 
-import { get, resolve, approvalIdFromPath } from '../../packages/host/src/api/approvals'
+import { agentContext, get, resolve, approvalIdFromPath } from '../../packages/host/src/api/approvals'
 import { requestApproval } from '../../src/core/approvals/service'
 import { registerApprovalKind, clearApprovalKinds } from '../../src/core/approvals/kinds'
 import { ApprovalResolveError } from '../../src/core/approvals/errors'
@@ -136,5 +136,14 @@ describe('POST /api/approvals/:id/resolve', () => {
 
     expect((await POST('refused', { nope: true })).status).toBe(400)
     expect((await POST('refused', '{ not json')).status).toBe(400)
+  })
+})
+
+describe('GET /api/approvals/agent-context', () => {
+  it('needs an absolute cwd and answers null outside any agent context', async () => {
+    const ask = (query: string) => agentContext(new Request(`http://bakin.test/api/approvals/agent-context${query}`), new URL(`http://bakin.test/api/approvals/agent-context${query}`))
+    expect((await ask('')).status).toBe(400)
+    expect((await ask('?cwd=relative/path')).status).toBe(400)
+    expect(await (await ask(`?cwd=${encodeURIComponent(testDir)}`)).json()).toEqual({ agentId: null })
   })
 })

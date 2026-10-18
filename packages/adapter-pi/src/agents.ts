@@ -179,6 +179,11 @@ export function createAgentsSurface(): AgentRuntimeAdapter['agents'] {
       rmSync(abs, { force: true })
     },
 
+    async workspacePath(agentId: string): Promise<string | null> {
+      assertValidAgentId(agentId)
+      return getAgentWorkspaceDir(agentId)
+    },
+
     async workspaceFileStats(agentId: string): Promise<WorkspaceFileStat[] | null> {
       assertValidAgentId(agentId)
       const root = getAgentWorkspaceDir(agentId)

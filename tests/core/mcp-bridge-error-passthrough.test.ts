@@ -132,4 +132,32 @@ describe('MCP bridge error passthrough', () => {
       await server.close()
     }
   })
+
+  it('runs a tool handler inside the calling agent\'s invocation context (#898)', async () => {
+    const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
+    const { addExecTool } = await import('@/core/exec-tools/registry')
+    const { currentAgentInvocation } = await import('../../src/core/agent-invocation')
+    addExecTool({
+      name: 'bakin_exec_test_whoami_mcp',
+      label: 'Test whoami',
+      description: 'Reports the invocation context its handler runs in.',
+      source: 'core',
+      parameters: {},
+      handler: async () => ({ ok: true, invocation: currentAgentInvocation() }),
+    })
+    const server = new McpServer({ name: 'bakin-invocation-test', version: '1.0.0' })
+    registerTools(server, () => 'agent-7')
+    const client = new Client({ name: 'invocation-test-client', version: '1.0.0' })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
+    try {
+      const result = await client.callTool({ name: 'bakin_exec_test_whoami_mcp', arguments: {} })
+      const text = (result.content as Array<{ text?: string }>).map((c) => c.text || '').join('')
+      expect(JSON.parse(text)).toMatchObject({ invocation: { agentId: 'agent-7', tool: 'bakin_exec_test_whoami_mcp' } })
+      expect(currentAgentInvocation()).toBeNull()
+    } finally {
+      await client.close()
+      await server.close()
+    }
+  })
 })

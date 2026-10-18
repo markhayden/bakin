@@ -12,7 +12,7 @@ import { isOperationFinished, type OperationCancelResult, type OperationView } f
 import { extractApiErrorMessage, formatApiError } from '../core/cli/api-error'
 import { getContentDir } from '../core/content-dir'
 import { readLiveServerLock, resolveCliTarget, type CliTarget } from '../core/server-lock'
-import { cliIdentityHeaders } from './identity'
+import { identityHeaders, resolveCliIdentity, type CliIdentity } from './identity'
 
 /**
  * Which server this CLI talks to (#895 D11), resolved once at import with the
@@ -48,9 +48,36 @@ export function describeCliTarget(target: CliTarget = CLI_TARGET): string {
 /** Operations started by the CLI are attributed to it (#895 D14 attention routing). */
 export const CLI_ORIGIN_HEADER = { 'X-Bakin-Origin': 'cli' } as const
 
+let identity: Promise<CliIdentity> | null = null
+
+/**
+ * This invocation's identity (#898), resolved once: env marker, run-dir
+ * sidecar, and — only for `--as human` — the server's workspace check.
+ */
+export function cliIdentity(): Promise<CliIdentity> {
+  identity ??= resolveCliIdentity({
+    argv: process.argv.slice(2),
+    cwd: process.cwd(),
+    env: process.env,
+    probeWorkspace: async (cwd) => {
+      const res = await fetch(`${serverBaseUrl()}/api/approvals/agent-context?cwd=${encodeURIComponent(cwd)}`, { headers: { ...CLI_ORIGIN_HEADER } })
+      if (!res.ok) return null
+      const body = await res.json() as { agentId?: unknown }
+      return typeof body.agentId === 'string' ? body.agentId : null
+    },
+  })
+  return identity
+}
+
+/** Test seam: forget the resolved identity. */
+export function resetCliIdentityForTests(): void {
+  identity = null
+}
+
 /** `fetch` against this home's server — for callers that need the raw Response. */
-export function cliFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${serverBaseUrl()}${path}`, { ...init, headers: { ...CLI_ORIGIN_HEADER, ...cliIdentityHeaders(), ...init?.headers } })
+export async function cliFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = identityHeaders(await cliIdentity())
+  return fetch(`${serverBaseUrl()}${path}`, { ...init, headers: { ...CLI_ORIGIN_HEADER, ...headers, ...init?.headers } })
 }
 
 export interface CliRoster {
@@ -62,12 +89,13 @@ export interface CliRoster {
 // HTTP helpers
 // ---------------------------------------------------------------------------
 export async function api(path: string, options?: RequestInit): Promise<unknown> {
+  const identityHeaderSet = identityHeaders(await cliIdentity())
   const res = await fetch(`${serverBaseUrl()}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...CLI_ORIGIN_HEADER,
-      ...cliIdentityHeaders(),
+      ...identityHeaderSet,
       ...options?.headers,
     },
   })

@@ -9,20 +9,17 @@
  *      the request carries `agent: 'human'` + `channel: 'human'`, exactly what
  *      the board UI sends, so `bakin tasks move <id> todo --as human` is an
  *      operator move (resets the recovery budget, spec D4).
- *   2. The `.bakin-run.json` sidecar found walking up from cwd: an agent's
- *      dispatch shell runs inside `~/.bakin/run-workspaces/<agent>/<run>/`
- *      (a bound-repo worktree one level below), so a `bakin` call from there
- *      attributes to that agent with no flag. Identity rides the sidecar
- *      because the Pi SDK has no per-session env to carry it.
+ *   2. The detected agent context (`./identity`): the env marker an agent's
+ *      shell carries, or the `.bakin-run.json` sidecar found walking up
+ *      from cwd — a `bakin` call from an agent's shell attributes to that
+ *      agent with no flag, and `--as human` there is NOT honored (#898).
  *   3. The roster's main agent — today's default, so existing scripts keep
  *      their behavior.
  *
  * Only `apiGet` and a lazy import of the sidecar reader are pulled in; the
  * binary entry's import graph stays light.
  */
-import { dirname, resolve } from 'path'
-
-import { apiGet } from './http'
+import { apiGet, cliIdentity } from './http'
 
 export interface CliActor {
   agent: string
@@ -39,22 +36,16 @@ async function rosterMainAgent(): Promise<string> {
   return roster.mainAgentId ?? ids[0] ?? 'main'
 }
 
-async function agentFromRunDir(start: string): Promise<string | null> {
-  const { readRunSidecar } = await import('../core/run-workspace')
-  let dir = resolve(start)
-  for (;;) {
-    const sidecar = readRunSidecar(dir)
-    if (sidecar) return sidecar.agentId
-    const parent = dirname(dir)
-    if (parent === dir) return null
-    dir = parent
-  }
-}
-
 export async function resolveCliActor(as: string | undefined): Promise<CliActor> {
-  if (as === 'human') return { agent: 'human', channel: 'human' }
+  // The agent context is detected BEFORE `--as` is honored (#898): an agent
+  // shell cannot claim the operator with `--as human`.
+  const { agentContext } = await cliIdentity()
+  if (as === 'human') {
+    if (agentContext === null) return { agent: 'human', channel: 'human' }
+    console.error(`Running in agent "${agentContext}"'s context — --as human is not honored here; acting as ${agentContext}.`)
+    return { agent: agentContext }
+  }
   if (as) return { agent: as }
-  const fromRun = await agentFromRunDir(process.cwd())
-  if (fromRun) return { agent: fromRun }
+  if (agentContext !== null) return { agent: agentContext }
   return { agent: await rosterMainAgent() }
 }

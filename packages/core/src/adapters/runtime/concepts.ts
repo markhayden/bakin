@@ -867,6 +867,13 @@ export interface AgentRuntimeAdapter {
      */
     workspaceFileStats?(agentId: string): Promise<WorkspaceFileStat[] | null>
     /**
+     * Absolute path of the agent's workspace directory — where its shells
+     * may run outside a run dir — or null when it has none. Read-only.
+     * Optional: Bakin uses it to recognise a CLI call made from inside an
+     * agent's workspace (#898); runtimes without a file-backed workspace omit it.
+     */
+    workspacePath?(agentId: string): Promise<string | null>
+    /**
      * The SUBAGENT-DISPATCH allowlist: the patch strings are AGENT IDS this
      * agent may dispatch subtasks to (P5.3 live incident: these were once fed
      * into an exec-tool name filter — they are never tool names). OpenClaw

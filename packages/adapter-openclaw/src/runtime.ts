@@ -458,6 +458,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       walk(root, '')
       return out.sort()
     },
+    workspacePath: async (agentId: string): Promise<string | null> => getWorkspacePath(agentId),
     workspaceFileStats: async (agentId: string): Promise<WorkspaceFileStat[] | null> => {
       const root = getWorkspacePath(agentId)
       if (!existsSync(root)) return null

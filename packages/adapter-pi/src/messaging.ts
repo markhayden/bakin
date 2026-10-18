@@ -45,6 +45,7 @@ import { recoverSeededLinks, seedRunWorkspace } from './run-workspace'
 import { recordThreadSession, sessionManagerForThread, withThreadLock } from './sessions'
 import { buildAppendSystemPrompt } from './system-prompt'
 import { bridgeExecTools, filterExecToolDescriptors } from './tool-bridge'
+import { agentBashTool } from './agent-shell'
 
 const THINKING_LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
 
@@ -372,7 +373,12 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   // record.allowlist is the SUBAGENT dispatch allowlist (agent ids) — never
   // a tool filter. Tool exposure is policy-driven only (args.tools*).
   const descriptors = execProvider ? filterExecToolDescriptors(execProvider.list(), args) : []
-  const customTools = execProvider ? bridgeExecTools(execProvider, record.id, descriptors) : []
+  const customTools = [
+    ...(execProvider ? bridgeExecTools(execProvider, record.id, descriptors) : []),
+    // The agent's shell names its agent on every command (#898) — overrides
+    // the built-in bash by name; absent when the turn has no tools at all.
+    ...(args.toolsMode === 'none' ? [] : [agentBashTool(executionCwd, settingsManager, record.id)]),
+  ]
 
   const model = findPiModel(resolveModelRef(args.model, record.model))
   const thinking = args.thinking && THINKING_LEVELS.has(args.thinking) ? args.thinking : undefined

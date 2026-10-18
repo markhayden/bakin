@@ -9,7 +9,7 @@
  */
 import { z } from 'zod'
 import { approvalProvenanceFromRequest, listApprovalRecords, type ApprovalStatus } from '@bakin/core/approvals'
-import { ApprovalRefusedError, approvalErrorStatus, resolveApproval } from '@/core/approvals'
+import { ApprovalRefusedError, agentContextForPath, approvalErrorStatus, resolveApproval } from '@/core/approvals'
 
 const statusSchema = z.enum(['pending', 'approved', 'rejected', 'cancelled', 'expired'])
 const resolveBody = z.object({
@@ -62,4 +62,15 @@ export async function resolve(req: Request, url: URL): Promise<Response> {
     if (status === null) throw err
     return Response.json({ ok: false, error: (err as Error).message, ...(err instanceof ApprovalRefusedError ? { code: err.code } : {}) }, { status })
   }
+}
+
+/**
+ * GET /api/approvals/agent-context?cwd=<absolute path> → { agentId | null }.
+ * The CLI asks before honoring `--as human` (#898 D-H5): a cwd inside an
+ * agent's run dir or workspace is that agent's context.
+ */
+export async function agentContext(_req: Request, url: URL): Promise<Response> {
+  const cwd = url.searchParams.get('cwd')
+  if (!cwd || !cwd.startsWith('/')) return Response.json({ ok: false, error: 'cwd must be an absolute path' }, { status: 400 })
+  return Response.json({ agentId: await agentContextForPath(cwd) })
 }

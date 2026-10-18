@@ -22,6 +22,7 @@ import { recordUsage } from '../usage'
 // export sets; named imports would fail the whole import graph.
 import * as registry from './registry'
 import { bumpTaskRunHeartbeat } from '../task-liveness'
+import { runAsAgentInvocation } from '../agent-invocation'
 
 const log = createLogger('exec-tool-provider')
 
@@ -72,11 +73,13 @@ export function createRuntimeExecToolProvider(): RuntimeExecToolProvider {
         return { ok: false, text: `ERROR: invalid parameters for ${name}: ${detail}` }
       }
       try {
-        const result = await tool.handler(
+        // The agent's call runs inside its invocation context: nothing in it
+        // may act as the operator (an approval decision is refused, #898).
+        const result = await runAsAgentInvocation({ agentId, tool: name }, () => tool.handler(
           parsedParams.data as Record<string, unknown>,
           agentId,
           typeof registry.getToolContext === 'function' ? registry.getToolContext(name, { agentId }) : undefined,
-        )
+        ))
         const durationMs = Date.now() - start
         recordUsage({
           kind: 'mcp',
