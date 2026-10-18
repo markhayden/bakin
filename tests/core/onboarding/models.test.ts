@@ -15,7 +15,7 @@
  *     without creating files)
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -427,6 +427,23 @@ mv "$stage" "$5/$owner/$name--antfly-a2cdf31c"
     expect(result.status).toBe('installed')
     expect(existsSync(join(target, 'text_projection.onnx'))).toBe(false)
     expect(JSON.parse(readFileSync(join(target, '.antfly-download-complete.json'), 'utf8')).source.variant).toBe('gguf:Q4_K')
+    expect(leftovers()).toEqual([])
+  })
+
+  it('a crash between the two renames is finished by the next install — the aside copy is restored, never swept', async () => {
+    seedDefaultLayout()
+    const aside = join(modelsRoot, 'antflydb', '.bakin-trash-clipclap-1-1')
+    renameSync(target, aside)
+    expect((await checkInferenceModels([CLIPCLAP])).status).toBe('missing')
+    // The retried pull fails: the old install must still come back.
+    installFakeBinary(PULL_LIES)
+    expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('failed')
+    expect(existsSync(join(target, 'text_projection.onnx'))).toBe(true)
+    expect(existsSync(aside)).toBe(false)
+    // And the next good pull replaces it and leaves nothing aside.
+    installFakeBinary(PULL_VARIANT)
+    expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('installed')
+    expect(existsSync(join(target, 'text_projection.onnx'))).toBe(false)
     expect(leftovers()).toEqual([])
   })
 
