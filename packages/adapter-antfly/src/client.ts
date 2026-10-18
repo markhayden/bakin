@@ -33,6 +33,7 @@ import {
   buildBatchInserts,
   buildFacetCountRequest,
   buildQueryRequest,
+  scopeQueryToIndexes,
   buildTableProvisioning,
   embedderUsable,
   mapIndexStatuses,
@@ -42,6 +43,9 @@ import {
 import { paths, type WireBatchResponse, type WireIndexStatusEntry, type WireQueryEnvelope, type WireQueryRequest } from './wire'
 
 const log = createLogger('antfly-client')
+
+/** The most a query spends learning its table's indexes (once per table). */
+const INDEX_READ_BUDGET_MS = 1_000
 
 const QUERY_TIMEOUT_MS = 15_000
 /** Client-side grace past a query's cooperative deadline (see runQuery). */
@@ -224,6 +228,7 @@ export class AntflySearchClient implements SearchAdapter {
     // 9,843 batches) AND concurrent structural create/drop pipelines —
     // both probed on the target hardware (tasks/evidence-antfly-0.2.0.md).
     create: async (name: string, config: TableConfig): Promise<void> => {
+      this.indexNames.delete(name)
       const plan = buildTableProvisioning(config, this.settings)
       await this.request('POST', paths.table(name), plan.table)
       // Embeddings legs ride the per-index endpoint — the only create path
@@ -234,6 +239,7 @@ export class AntflySearchClient implements SearchAdapter {
       }
     },
     drop: async (name: string): Promise<void> => {
+      this.indexNames.delete(name)
       await this.request('DELETE', paths.table(name))
     },
     stats: async (name: string): Promise<TableStats | null> => {
@@ -249,9 +255,28 @@ export class AntflySearchClient implements SearchAdapter {
     },
   }
 
-  private async indexStatuses(name: string): Promise<WireIndexStatusEntry[] | null> {
+  /** A physical's index names. Legs land at create and never change after, so one read per table suffices. */
+  private readonly indexNames = new Map<string, ReadonlySet<string>>()
+
+  private async existingIndexNames(table: string, timeoutMs: number): Promise<ReadonlySet<string> | null> {
+    const cached = this.indexNames.get(table)
+    if (cached) return cached
     try {
-      const raw = await this.requestJson<WireIndexStatusEntry[]>('GET', paths.indexes(name))
+      const entries = await this.indexStatuses(table, timeoutMs)
+      if (entries === null) return null
+      const names = new Set(entries.map((entry) => entry.config.name))
+      this.indexNames.set(table, names)
+      return names
+    } catch (err) {
+      // Unknown: query as asked — the engine's own answer still decides.
+      log.debug('could not read a table\'s indexes before querying it', { table, error: err instanceof Error ? err.message : String(err) })
+      return null
+    }
+  }
+
+  private async indexStatuses(name: string, timeoutMs?: number): Promise<WireIndexStatusEntry[] | null> {
+    try {
+      const raw = await this.requestJson<WireIndexStatusEntry[]>('GET', paths.indexes(name), undefined, timeoutMs)
       return Array.isArray(raw) ? raw : []
     } catch (err) {
       // ONLY a 404 means "no such table". Any other 4xx (malformed leg,
@@ -306,9 +331,21 @@ export class AntflySearchClient implements SearchAdapter {
     },
   }
 
-  async query(table: string, q: Query): Promise<QueryResult> {
+  async query(table: string, asked: Query): Promise<QueryResult> {
     const started = Date.now()
+    // Name only the vector legs this physical really has (#993). Read once
+    // per table, inside a small slice of the query's own budget — a slow
+    // read never costs the query its deadline; unknown queries as asked.
+    const wantsVectors = Array.isArray(asked.adapterOptions?.indexes) && (asked.adapterOptions.indexes as unknown[]).length > 0
+    const existing = wantsVectors
+      ? await this.existingIndexNames(table, Math.min(INDEX_READ_BUDGET_MS, Math.max(1, Math.floor((asked.deadlineMs ?? QUERY_TIMEOUT_MS) / 4))))
+      : null
+    const q = existing ? scopeQueryToIndexes(asked, existing) : asked
     const request = buildQueryRequest(table, q, this.settings)
+    // Semantic was asked for but the table has no vector leg to search:
+    // keyword answered instead — labelled, never silent.
+    const noSemanticLeg = Array.isArray(asked.adapterOptions?.indexes) && (asked.adapterOptions.indexes as unknown[]).length > 0
+      && q.adapterOptions?.indexes === undefined && (q.text ?? '').trim().length > 0
     // #930: facets never ride a semantic request (the engine rejects the
     // aggregation rerun as soon as the vector leg is approximate). Run the
     // hits query without aggregations and a match-all count companion for
@@ -357,6 +394,12 @@ export class AntflySearchClient implements SearchAdapter {
         strategy: 'fts',
         budget: 'degraded',
         adapter: { ...(result.diagnostics?.adapter ?? {}), degraded: 'semantic-embed-timeout' },
+      }
+    } else if (noSemanticLeg) {
+      result.diagnostics = {
+        ...(result.diagnostics ?? { strategy: 'fts' }),
+        strategy: 'fts',
+        adapter: { ...(result.diagnostics?.adapter ?? {}), degraded: 'no-semantic-leg' },
       }
     }
     if (facetCompanion) {

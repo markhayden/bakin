@@ -185,3 +185,63 @@ describe('wiring', () => {
     expect(new AntflySearchClient(settings).capabilities().legs).not.toContain('media-embedding')
   })
 })
+
+describe('queries name only the legs a table has (#993)', () => {
+  const settings = { ...DEFAULT_SETTINGS, url: LOCAL } as typeof DEFAULT_SETTINGS
+  const indexEntry = (name: string, type: string) => ({ config: { name, type }, status: { index_type: type, rebuilding: false, total_indexed: 0, backfill_active: false, backfill_state: 'ready', doc_count: 0 } })
+
+  function fakeEngine(indexes: string[]) {
+    const queries: Array<Record<string, unknown>> = []
+    let indexReads = 0
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/indexes')) {
+        indexReads += 1
+        return Response.json([indexEntry('full_text', 'full_text'), ...indexes.map((n) => indexEntry(n, 'embeddings'))])
+      }
+      if (url.endsWith('/query')) {
+        queries.push(JSON.parse(String(init?.body)))
+        return Response.json({ responses: [{ hits: { total: 0, max_score: 0, hits: [] }, aggregations: null, took: 1, status: 200, error: null, table: 't_v1' }] })
+      }
+      return new Response('{}', { status: 404 })
+    }) as unknown as typeof fetch
+    return { client: new AntflySearchClient(settings, { fetchImpl }), queries, reads: () => indexReads }
+  }
+
+  const asked = {
+    text: 'red apple',
+    adapterOptions: { searchableFields: ['title'], indexes: ['assets_text', 'assets_visual'], indexWeights: { assets_text: 1, assets_visual: 2 } },
+  }
+
+  it('drops the leg the physical lacks and its weight, reading the table’s indexes once', async () => {
+    const engine = fakeEngine(['assets_text'])
+    await engine.client.query('t_v1', asked)
+    await engine.client.query('t_v1', asked)
+    expect(engine.queries[0]).toMatchObject({ indexes: ['assets_text'], merge_config: { weights: { assets_text: 1 } } })
+    expect(engine.reads()).toBe(1)
+  })
+
+  it('no vector leg on the table: keyword answers, labelled no-semantic-leg — never match-all', async () => {
+    const engine = fakeEngine([])
+    const result = await engine.client.query('t_v1', { ...asked, strategy: 'vector' })
+    expect(engine.queries[0]).not.toHaveProperty('semantic_search')
+    expect(engine.queries[0]).toHaveProperty('full_text_search')
+    expect(result.diagnostics?.adapter).toMatchObject({ degraded: 'no-semantic-leg' })
+  })
+
+  it('a hung index read costs the query only a slice of its budget, then queries as asked', async () => {
+    const queries: Array<Record<string, unknown>> = []
+    const fetchImpl = (async (url: string, init?: RequestInit & { signal?: AbortSignal }) => {
+      if (url.endsWith('/indexes')) {
+        await new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))))
+      }
+      queries.push(JSON.parse(String(init?.body)))
+      return Response.json({ responses: [{ hits: { total: 0, max_score: 0, hits: [] }, aggregations: null, took: 1, status: 200, error: null, table: 't_v1' }] })
+    }) as unknown as typeof fetch
+    const client = new AntflySearchClient(settings, { fetchImpl })
+    const started = Date.now()
+    await client.query('t_v1', { ...asked, deadlineMs: 400 })
+    expect(Date.now() - started).toBeLessThan(1_500)
+    expect(queries[0]).toMatchObject({ indexes: ['assets_text', 'assets_visual'] })
+  })
+})
+

@@ -94,6 +94,7 @@ import {
   stopMigrationPump,
   ensureRegisteredTables,
   getIndexNames,
+  getIndexWeights,
 } from '@/core/search-registry'
 import { sweepOrphanRegistryRows } from '@/core/search-orphan-sweep'
 import { tableStatus, sweepTombstones } from '@bakin/core/search/tables'
@@ -1028,8 +1029,8 @@ describe('query indexes follow the legs the adapter offers (#993)', () => {
       searchableFields: ['title'],
       embeddingTemplate: '{{title}}',
       indexes: [
-        { name: 'legs_text', embedderRef: 'default', embeddingTemplate: '{{title}}' },
-        { name: 'legs_visual', embedderRef: 'visual', mediaUrlField: 'url' },
+        { name: 'legs_text', embedderRef: 'default', embeddingTemplate: '{{title}}', weight: 1 },
+        { name: 'legs_visual', embedderRef: 'visual', mediaUrlField: 'url', weight: 2 },
       ],
       reindex: async function* () {},
       verifyExists: async () => true,
@@ -1039,6 +1040,7 @@ describe('query indexes follow the legs the adapter offers (#993)', () => {
     // The engine can't load the visual model here (or it is disabled): no media leg.
     harness.calls.capabilities.mockImplementation(() => ({ legs: ['full-text', 'text-embedding'], rerank: false, facets: true, transform: true }))
     expect(getIndexNames('bakin_legs')).toEqual(['legs_text'])
+    expect(getIndexWeights('bakin_legs')).toEqual({ legs_text: 1 })
   })
 })
 

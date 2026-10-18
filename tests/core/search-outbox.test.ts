@@ -261,7 +261,7 @@ describe('drain failure handling', () => {
 })
 
 describe('dual-write and crash recovery', () => {
-  it('writes to every resolved target and acks only when ALL succeed', async () => {
+  it('writes to every resolved target; the destination failing keeps the row pending', async () => {
     const blue = createMockSearchAdapter()
     await blue.tables.create('t_v1', { fields: {} })
     // green table missing → its write fails → row must stay pending
@@ -288,6 +288,26 @@ describe('dual-write and crash recovery', () => {
     await blue.tables.create('t_v2_real', { fields: {} })
     await drainOnce(makeTarget(ok, { bakin_t: ['t_v1', 't_v2'] }), { ignoreBackoff: true })
     expect(outboxStats().pending).toBe(0)
+  })
+
+  it('the table being replaced rejecting a write never keeps it from its replacement (#993)', async () => {
+    const engine = createMockSearchAdapter()
+    await engine.tables.create('t_v2', { fields: {} })
+    // The old table has a leg whose model can't load here any more: its
+    // writes fail for good, while the replacement (without that leg) works.
+    const blueRejects = createMockSearchAdapter({
+      documents: {
+        ...engine.documents,
+        batchIndex: async (table, items) => {
+          if (table === 't_v1') throw new Error('embedder unavailable')
+          return engine.documents.batchIndex(table, items)
+        },
+      },
+    })
+    enqueueIndex('bakin_t', 'k1', { title: 'lands in green' })
+    await drainOnce(makeTarget(blueRejects, { bakin_t: ['t_v1', 't_v2'] }))
+    expect(outboxStats().pending).toBe(0)
+    expect(await engine.documents.get('t_v2', 'k1')).toMatchObject({ title: 'lands in green' })
   })
 
   it('stale inflight rows are reset to pending at the next drain (crash recovery)', async () => {

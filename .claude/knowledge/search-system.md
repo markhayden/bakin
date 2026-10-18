@@ -795,8 +795,16 @@ unknown = loadable. Verdicts judge only the managed engine: a guest
 endpoint (`isLocalDefaultUrl` false) is never judged by them. A model known
 not to load is left off the preloads and its leg is not offered
 (`embedderUsable(embedder, engineUrl)`); queries follow the same offered
-legs (`getIndexNames` filters by `capabilities().legs` — a query naming a
-skipped index is rejected outright), so the engine boots, text search works
+legs (`getIndexNames`/`getIndexWeights` filter by `capabilities().legs`),
+and the adapter narrows each query to the indexes the target PHYSICAL
+really has (`scopeQueryToIndexes`; one bounded read per table, cached —
+physicals never change legs) so a table mid-migration is never asked for a
+leg it lacks: naming or weighting a missing index is a hard 400 that loses
+every leg. A semantic-only query with no vector leg left answers by keyword,
+labelled `no-semantic-leg` — never an unconstrained match-all. During a
+migration the outbox lets the DESTINATION decide each row (`deliver`): the
+table being replaced rejecting a write (its leg's model can no longer load)
+never keeps the write from its replacement. So the engine boots, text search works
 and Health warns (`checkInferenceModels`: "can't load on this machine", the
 engine's reason). Only that verdict enters `mappingFingerprint()` — every
 other fingerprint is byte-identical, so upgrading migrates nothing.

@@ -152,6 +152,32 @@ function readNumberRecord(value: unknown): Record<string, number> | null {
   return entries.length > 0 ? Object.fromEntries(entries) : null
 }
 
+/**
+ * Narrow a query's vector legs to the indexes the target physical really
+ * has. Queries name the content type's legs, but a table may lack one — a
+ * leg the adapter skipped (a disabled embedder, a model the engine can't
+ * load here, #993), or one added by a migration that hasn't flipped yet —
+ * and naming a missing index (or weighting one) is a hard 400 that loses
+ * every leg. Pure: `existing` comes from the client's per-table cache.
+ */
+export function scopeQueryToIndexes(q: Query, existing: ReadonlySet<string>): Query {
+  const indexes = readStringArray(q.adapterOptions?.indexes)
+  if (!indexes) return q
+  const kept = indexes.filter((name) => existing.has(name))
+  if (kept.length === indexes.length) return q
+  const weights = readNumberRecord(q.adapterOptions?.indexWeights)
+  const keptWeights = weights ? Object.fromEntries(Object.entries(weights).filter(([name]) => existing.has(name))) : null
+  const { indexes: _indexes, indexWeights: _weights, ...rest } = q.adapterOptions ?? {}
+  return {
+    ...q,
+    adapterOptions: {
+      ...rest,
+      ...(kept.length > 0 ? { indexes: kept } : {}),
+      ...(keptWeights && Object.keys(keptWeights).length > 0 ? { indexWeights: keptWeights } : {}),
+    },
+  }
+}
+
 export function buildQueryRequest(table: string, q: Query, settings: AntflySettings): WireQueryRequest {
   const strategy = resolveStrategy(q.strategy, settings)
   const text = (q.text ?? '').trim()
@@ -177,7 +203,9 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
 
   if (isMatchAll || listFlow) {
     request.full_text_search = { match_all: {} }
-  } else if (text.length > 0 && effectiveStrategy !== 'semantic_only') {
+  } else if (text.length > 0 && (effectiveStrategy !== 'semantic_only' || !readStringArray(q.adapterOptions?.indexes))) {
+    // A semantic-only query with no vector leg to search falls back to
+    // keyword — never to an unconstrained match-all (the client labels it).
     request.full_text_search = fullTextNode(text, readStringArray(q.adapterOptions?.searchableFields))
   }
 
