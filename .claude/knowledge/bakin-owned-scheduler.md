@@ -39,8 +39,8 @@ runId, catch-up into `todo` within the window, blocked triage beyond it.
   cleared; the consumed occurrence stays in history). Edge: a paused
   one-shot's occurrence is claim-consumed as a skip — visible in run
   history; the job never auto-completes (it never ran). Completion is keyed
-  to the OCCURRENCE: only a claim whose instant (`firedAtMs`) equals the
-  job's CURRENT `at` instant completes it — a one-shot rescheduled while a
+  to the OCCURRENCE: only a claim whose run id IS the canonical occurrence id
+  (`makeOccurrenceRunId`) for the job's CURRENT `at` instant completes it — a one-shot rescheduled while a
   fire (or a later heal of a failed claim) was in flight stays live — and a
   manual Run now is an extra fire that never completes it. A fire re-reads
   the live job after its owner lookup and, after task creation, writes back

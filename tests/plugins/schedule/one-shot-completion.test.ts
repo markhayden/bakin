@@ -173,6 +173,12 @@ describe('one-shot completion', () => {
     expect(after.completedAt).toBeUndefined()
   })
 
+  it('a job whose id merely starts with "manual-" still completes on its scheduled occurrence', async () => {
+    upsertJob(oneShotMeta({ jobId: 'manual-report' }))
+    await runClaimedFire(getJob('manual-report')!, 'manual-report', `manual-report:${AT}`, { firedAtMs: Date.parse(AT) })
+    expect(getJob('manual-report')).toMatchObject({ enabled: false, completedAt: AT })
+  })
+
   it('a blocked catch-up fire still completes the one-shot (occurrence consumed)', async () => {
     const meta = oneShotMeta()
     upsertJob(meta)

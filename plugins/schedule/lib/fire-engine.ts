@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto'
 import type { BakinJobMeta, BridgeResult } from '../types'
 import { getPluginCtx } from './plugin-context'
 import { indexJob } from './job-service'
+import { makeOccurrenceRunId } from './scheduler'
 import { getSystemTimezone, expandTemplate } from './schedule-util'
 import {
   upsertJob,
@@ -342,12 +343,14 @@ export async function runClaimedFire(
     // A one-shot's single occurrence is now consumed (even a blocked catch-up
     // materialized a task) — auto-disable + stamp completedAt so the job reads
     // "completed" instead of pretending a next run exists. Run history stays.
-    // Only the scheduled occurrence itself consumes it: its claim names the
-    // instant (firedAtMs), so a job rescheduled since — even before a heal
-    // re-drives an old claim — stays live. A manual run-now is an extra
-    // on-demand fire, never the scheduled one.
-    const sameOneShot = !runId.startsWith('manual-') && latest.schedule?.kind === 'at'
-      && opts.firedAtMs !== undefined && Date.parse(latest.schedule.expr) === opts.firedAtMs
+    // Only the scheduled occurrence itself consumes it, so a job rescheduled
+    // since — even before a heal re-drives an old claim — stays live, and a
+    // manual run-now (an extra on-demand fire) never does.
+    // Identity = the canonical occurrence run id for the job's CURRENT
+    // instant (a manual run's uuid, an old instant, or a job id that merely
+    // looks like a manual prefix never match).
+    const sameOneShot = latest.schedule?.kind === 'at'
+      && runId === makeOccurrenceRunId(jobId, new Date(Date.parse(latest.schedule.expr)))
     if (sameOneShot) {
       latest.enabled = false
       latest.completedAt = new Date(opts.firedAtMs ?? Date.now()).toISOString()
