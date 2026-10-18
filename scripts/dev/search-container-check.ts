@@ -81,7 +81,7 @@ async function host(): Promise<void> {
 // Inside the container: drive the real flows
 // ---------------------------------------------------------------------------
 
-interface OperationsList { operations: Array<{ id: string; kind: string; status: string; waitingFor?: { holderTitle: string }; stages: Array<{ id: string; status: string; items?: unknown[] }> }> }
+interface OperationsList { operations: Array<{ id: string; kind: string; status: string; origin: string; waitingFor?: { holderTitle: string }; stages: Array<{ id: string; status: string; items?: unknown[] }> }> }
 
 async function inside(): Promise<void> {
   if (!existsSync('/.dockerenv')) fail('--inside runs only in the disposable container (no /.dockerenv here).')
@@ -186,6 +186,14 @@ async function inside(): Promise<void> {
     const done = (await operations()).find((o) => o.kind === 'search:reindex')
     check('bakin reindex runs once the engine is free', reindexCode === 0 && done?.status === 'succeeded',
       `exit=${reindexCode} status=${done?.status} tables=${done?.stages[0]?.items?.length ?? 0}`)
+
+    // 5. With a server running for this home, an install runs ON it (the CLI
+    // reads server.lock — step 2 ran in-process with none) and the server's
+    // tray lists it as CLI-started.
+    const mkdirCode = await cli(['mkdir', '--json'])
+    const onServer = (await operations()).find((o) => o.kind === 'onboarding:mkdir')
+    check('an install runs on the running server and shows in its tray', mkdirCode === 0 && onServer?.status === 'succeeded' && onServer.origin === 'cli',
+      `exit=${mkdirCode} status=${onServer?.status} origin=${onServer?.origin}`)
   } finally {
     server.kill('SIGTERM')
   }
