@@ -53,8 +53,9 @@ in flight, one trailing refresh). `schedule.changed` (`signalScheduleChanged`) i
 emitted by `writeSidecar`, the ONE choke point every Bakin schedule write
 passes (the UI routes, agents' exec tools, fires, auto-resume, repairs), so
 no writer can forget to signal; the schedule state outside the sidecar
-signals once written — fire dispositions in the execution ledger
-(`skipFire`, attach, heal) and adoption after the native cron is removed.
+signals once written — fire claims and dispositions in the execution
+ledger (claim, `skipFire`, attach, heal, a retention prune that deleted
+rows) and adoption / cutover after the native cron is removed.
 A refresh queued behind an in-flight one is dropped on unmount. #990 retired the hooks' private EventSources,
 which matched neither audit events nor agent-tool changes: open calendars
 missed provider changes, agent edits and auto-resumes before. Native

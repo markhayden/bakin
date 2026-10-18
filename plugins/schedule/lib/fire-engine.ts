@@ -64,6 +64,7 @@ async function getScheduleDefaultOwner(): Promise<string> {
  *  ledger key is the lock. */
 async function fireScheduledRun(meta: BakinJobMeta, jobId: string, runId: string, firedAtMs: number): Promise<ProcessRunResult> {
   const claim = claimCronFire(jobId, runId, firedAtMs)
+  if (claim.claimed) signalScheduleChanged()
   if (!claim.claimed) {
     getPluginCtx()?.activity.audit('fire_suppressed', 'system', {
       jobId,

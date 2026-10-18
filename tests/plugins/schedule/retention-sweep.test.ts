@@ -44,12 +44,15 @@ mock.module('../../../src/core/execution-ledger', () => ({
   claimCronFire: () => ({ claimed: true }),
 }))
 
-import { maybeRunRetentionSweep } from '../../../plugins/schedule/lib/scheduler-loop'
+import { maybeRunRetentionSweep, schedulerDeps } from '../../../plugins/schedule/lib/scheduler-loop'
 import { setPluginCtx } from '../../../plugins/schedule/lib/plugin-context'
 
 const auditEvents: Array<{ event: string; data: Record<string, unknown> }> = []
+const emitted: string[] = []
 setPluginCtx({
   getSettings: () => ({ catchUpWindowMinutes: 60 }),
+  // A prune moves past occurrences' dispositions: open calendars refetch (#990).
+  events: { emit: (event: string) => { emitted.push(event) } },
   activity: {
     log: () => {},
     audit: (event: string, _actor: string, data: Record<string, unknown>) => {
@@ -75,6 +78,7 @@ describe('maybeRunRetentionSweep', () => {
       now: NOW,
     })
     expect(auditEvents).toHaveLength(1)
+    expect(emitted).toEqual(['schedule.changed'])
     expect(auditEvents[0].event).toBe('retention_swept')
     expect(auditEvents[0].data.pruned).toBe(3)
   })
@@ -89,5 +93,15 @@ describe('maybeRunRetentionSweep', () => {
     maybeRunRetentionSweep(NOW + 25 * 60 * 60 * 1000)
     expect(pruneCalls).toHaveLength(2)
     expect(auditEvents).toHaveLength(1) // no new audit for a 0-row sweep
+    expect(emitted).toEqual(['schedule.changed']) // and no signal
   })
 })
+
+describe('the scheduler claim signals (#990)', () => {
+  it('a won claim tells open calendars the occurrence is pending, before the fire path can fail', () => {
+    emitted.length = 0
+    expect(schedulerDeps().claimCronFire('signal-job', 'run-claim-1', Date.now()).claimed).toBe(true)
+    expect(emitted).toEqual(['schedule.changed'])
+  })
+})
+
