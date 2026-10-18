@@ -200,4 +200,10 @@ describe('isNoisyEvent', () => {
       eventName: 'exec.bakin_exec_tasks_get.fail',
     }))).toBe(false)
   })
+
+  it('renders an approval decision with how Bakin knows who decided (#898)', () => {
+    expect(mapAuditMessage('approval.resolved', { option: 'approve', decidedBy: 'Declared in UI' })).toBe('Approved — Declared in UI')
+    expect(mapAuditMessage('approval.resolved', { option: 'reject', decidedBy: 'Discord @mark' })).toBe('Rejected — Discord @mark')
+    expect(mapAuditMessage('approval.resolved', { option: 'dismiss', decidedBy: 'CLI --as human' })).toBe('Dismissed — CLI --as human')
+  })
 })

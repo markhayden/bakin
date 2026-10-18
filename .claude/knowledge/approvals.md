@@ -124,10 +124,16 @@ actor, an undeclared/unknown caller, and `mcp`/`hook` channels.
 `BAKIN_AGENT_CONTEXT=<agent>` per command (bash `spawnHook`,
 `packages/adapter-pi/src/agent-shell.ts`); the CLI resolves ONE identity per
 invocation in the shared http plumbing (`src/cli/identity.ts`): env marker →
-run-dir sidecar → (only for `--as human`) the server's run-dir/workspace
-check via the runtime's optional `agents.workspacePath` (OpenClaw can't mark
-its shells). Task commands' `--as human` inside an agent context resolves
-to that agent.
+run-dir sidecar → (only for `--as human`) the run-dir/workspace check via the
+runtime's optional `agents.workspacePath` (OpenClaw can't mark its shells),
+asked of THIS home's server (server.lock) — never a `BAKIN_URL` target, which
+cannot vouch for a local cwd. A check that cannot answer is not a negative:
+`--as human` is then not honored (stderr says why). Task commands' `--as
+human` inside an agent context resolves to that agent. Pi's replacement bash
+is `defaultActive: false` — active exactly when the session selects bash.
+Refusal codes stay machine-readable everywhere: JSON `code`, Health
+`refusalCode`, the decision page's `X-Bakin-Refusal-Code` header; the
+activity feed renders `approval.resolved` as "Approved — Declared in UI".
 
 **Words** (`describeApprovalProvenance`): "Declared in UI", "CLI --as
 human", "Discord @user", "Runtime channel user X", "Agent X (channel)",

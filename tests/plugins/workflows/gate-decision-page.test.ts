@@ -175,12 +175,14 @@ describe('gate decision page', () => {
     bare.set('decision', 'approve')
     const undeclared = await actionRoute.handler(new Request('http://localhost:3737/api/plugins/workflows/gates/task-42/decision?taskId=task-42', { method: 'POST', body: bare }), ctx, routeParams)
     expect(undeclared.status).toBe(403)
+    expect(undeclared.headers.get('X-Bakin-Refusal-Code')).toBe('undeclared')
     expect(await undeclared.text()).toContain('Approval Failed')
 
     const declared = new FormData()
     for (const [key, value] of Object.entries({ operator: 'declared', stepId: 'review-gate', decision: 'approve' })) declared.set(key, value)
     const agent = await actionRoute.handler(new Request('http://localhost:3737/api/plugins/workflows/gates/task-42/decision?taskId=task-42', { method: 'POST', body: declared, headers: { 'X-Bakin-Agent-Context': 'researcher' } }), ctx, routeParams)
     expect(agent.status).toBe(403)
+    expect(agent.headers.get('X-Bakin-Refusal-Code')).toBe('agent_actor')
 
     expect(onResolve).not.toHaveBeenCalled()
     expect(getApprovalRecord('workflow-gate:task-42:review-gate:wf_abc123:t1')!.status).toBe('pending')

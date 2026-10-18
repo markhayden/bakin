@@ -164,6 +164,7 @@ mock.module('../../../src/core/approvals', () => {
   return {
     resolveApprovalWithResult: resolveApprovalWithResultMock,
     approvalErrorStatus,
+    ApprovalRefusedError,
     assertOperatorDecision: (provenance: Parameters<typeof approvalRefusal>[0]) => {
       const refusal = approvalRefusal(provenance, null)
       if (refusal) throw new ApprovalRefusedError(refusal)
@@ -1128,6 +1129,7 @@ describe('Health Plugin Routes', () => {
         const refused = await callRoute(route, activated.ctx, { body, headers })
         expect(refused.status).toBe(403)
         expect(refused.body.code).toBe('APPROVAL_DECISION')
+        expect(refused.body.refusalCode).toBe(headers['x-bakin-agent-context'] ? 'agent_actor' : 'undeclared')
       }
       expect(startDoctorRepairMock).not.toHaveBeenCalled()
       const declared = await callRoute(route, activated.ctx, { body, headers: { 'x-bakin-operator': 'declared' } })

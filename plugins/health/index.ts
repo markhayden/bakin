@@ -35,7 +35,7 @@ import { OperationRejectedError, operationOriginFromRequest, operationStartRespo
 import { HealthContractError } from '../../src/core/health-contract'
 import { getStoredRepairPlan } from '../../src/core/doctor-repair-plans'
 import { pendingRepairApprovalFor } from '../../src/core/doctor-approvals'
-import { approvalErrorStatus, assertOperatorDecision, resolveApprovalWithResult } from '../../src/core/approvals'
+import { ApprovalRefusedError, approvalErrorStatus, assertOperatorDecision, resolveApprovalWithResult } from '../../src/core/approvals'
 import { approvalProvenanceFromRequest } from '@bakin/core/approvals'
 import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/doctor-delegate'
 import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
@@ -703,7 +703,12 @@ const routes = [
         if (err instanceof OperationRejectedError) return Response.json(err.body, { status: err.httpStatus })
         const approvalStatus = approvalErrorStatus(err)
         if (approvalStatus !== null) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err), code: 'APPROVAL_DECISION' }, { status: approvalStatus === 404 || approvalStatus === 503 ? 500 : approvalStatus })
+          return Response.json({
+            error: err instanceof Error ? err.message : String(err),
+            code: 'APPROVAL_DECISION',
+            // Agent refusal vs a missing declaration, machine-readable (#898 D-H6).
+            ...(err instanceof ApprovalRefusedError ? { refusalCode: err.code } : {}),
+          }, { status: approvalStatus === 404 || approvalStatus === 503 ? 500 : approvalStatus })
         }
         log.error('Health repair apply failed to start', err)
         return Response.json({

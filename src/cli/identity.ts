@@ -52,8 +52,10 @@ export function stripActorFlag(args: string[]): { as: string | undefined; rest: 
 export interface CliIdentity {
   /** The agent whose context this CLI runs in, if detected. */
   agentContext: string | null
-  /** `--as human` was given. */
+  /** `--as human` was given AND nothing contradicts or prevents confirming it. */
   operatorDeclared: boolean
+  /** Why `--as human` was not honored when the workspace check could not answer. */
+  declarationWithheld?: string
 }
 
 /** Walk up from `start` to the nearest run-dir sidecar (lazy import keeps the binary entry light). */
@@ -79,6 +81,7 @@ export async function resolveCliIdentity(opts: {
   argv: string[]
   cwd: string
   env: Record<string, string | undefined>
+  /** This home's server answers for cwd: the agent, or null for none. Throws when it cannot answer. */
   probeWorkspace: (cwd: string) => Promise<string | null>
 }): Promise<CliIdentity> {
   const operatorDeclared = stripActorFlag(opts.argv).as === 'human'
@@ -87,7 +90,14 @@ export async function resolveCliIdentity(opts: {
   const fromRunDir = await agentFromRunDir(opts.cwd)
   if (fromRunDir) return { agentContext: fromRunDir, operatorDeclared }
   if (operatorDeclared) {
-    const fromWorkspace = await opts.probeWorkspace(opts.cwd).catch(() => null)
+    // A failed check is not a negative: an operator declaration is only
+    // sent once this home's server has said cwd is no agent's workspace.
+    let fromWorkspace: string | null
+    try {
+      fromWorkspace = await opts.probeWorkspace(opts.cwd)
+    } catch (err) {
+      return { agentContext: null, operatorDeclared: false, declarationWithheld: err instanceof Error ? err.message : String(err) }
+    }
     if (fromWorkspace) return { agentContext: fromWorkspace, operatorDeclared }
   }
   return { agentContext: null, operatorDeclared }

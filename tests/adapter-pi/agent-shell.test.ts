@@ -7,6 +7,8 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+// The Pi SDK resolves inside the adapter package only (isolated linker).
+import { createAgentSession, SessionManager, SettingsManager } from '../../packages/adapter-pi/node_modules/@earendil-works/pi-coding-agent'
 import { agentBashTool } from '../../packages/adapter-pi/src/agent-shell'
 
 const cwd = mkdtempSync(join(tmpdir(), 'bakin-agent-shell-'))
@@ -33,5 +35,25 @@ describe('agentBashTool', () => {
   it('never touches the shared process environment', async () => {
     await run('true')
     expect(process.env.BAKIN_AGENT_CONTEXT).toBeUndefined()
+  })
+
+  it('is active exactly when the session selects bash — a session without a shell never gains one (review r1)', async () => {
+    const activeTools = async (defaultTools?: string[]) => {
+      const settingsManager = SettingsManager.inMemory(defaultTools ? { defaultTools } : {})
+      const { session } = await createAgentSession({
+        cwd,
+        agentDir: join(cwd, 'agent'),
+        settingsManager,
+        sessionManager: SessionManager.inMemory(),
+        customTools: [agentBashTool(cwd, settingsManager, 'researcher')],
+      })
+      try {
+        return session.getActiveToolNames()
+      } finally {
+        session.dispose()
+      }
+    }
+    expect(await activeTools()).toContain('bash')
+    expect(await activeTools(['read'])).toEqual(['read'])
   })
 })

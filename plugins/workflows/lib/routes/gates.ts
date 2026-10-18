@@ -170,7 +170,10 @@ const gateDecisionActionHandler = async (req: Request, _ctx: PluginContextLite) 
     const status = approvalErrorStatus(err)
     if (status === null) throw err
     const title = decision === 'approve' ? 'Approval Failed' : 'Reject Failed'
-    return gateDecisionHtmlResponse(title, `<p>${escapeHtml((err as Error).message)}</p>`, status === 403 || status === 409 ? status : 400)
+    const page = gateDecisionHtmlResponse(title, `<p>${escapeHtml((err as Error).message)}</p>`, status === 403 || status === 409 ? status : 400)
+    // The refusal stays machine-readable on the HTML surface too (#898 D-H6).
+    if (err instanceof ApprovalRefusedError) page.headers.set('X-Bakin-Refusal-Code', err.code)
+    return page
   }
   return decision === 'approve'
     ? gateDecisionHtmlResponse('Gate Approved', '<p>The workflow gate was approved. You can close this tab.</p>')

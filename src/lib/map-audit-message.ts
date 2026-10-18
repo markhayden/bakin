@@ -17,6 +17,11 @@ export function mapAuditMessage(event: string, data: Record<string, unknown>): s
       return `Dispatch failed: ${data.error || 'unknown error'}`
     }
     case 'task.updated': return `Updated: ${data.title}`
+    // Every approval decision (#898 D-H8): what was decided, and how Bakin knows who decided it.
+    case 'approval.resolved': {
+      const verb = data.option === 'approve' || data.option === 'apply' ? 'Approved' : data.option === 'reject' ? 'Rejected' : data.option === 'dismiss' ? 'Dismissed' : `Decided "${data.option}"`
+      return `${verb} — ${typeof data.decidedBy === 'string' ? data.decidedBy : 'Provenance unavailable — legacy record'}`
+    }
     // Route receipt (work-class routing): what the matrix chose and why.
     case 'task.routed': {
       const parts = [data.model, data.thinking ? `thinking ${data.thinking}` : null].filter(Boolean)

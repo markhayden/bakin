@@ -11,7 +11,7 @@
 import { isOperationFinished, type OperationCancelResult, type OperationView } from '@makinbakin/sdk/types'
 import { extractApiErrorMessage, formatApiError } from '../core/cli/api-error'
 import { getContentDir } from '../core/content-dir'
-import { readLiveServerLock, resolveCliTarget, type CliTarget } from '../core/server-lock'
+import { liveServerBaseUrl, readLiveServerLock, resolveCliTarget, type CliTarget } from '../core/server-lock'
 import { identityHeaders, resolveCliIdentity, type CliIdentity } from './identity'
 
 /**
@@ -59,12 +59,20 @@ export function cliIdentity(): Promise<CliIdentity> {
     argv: process.argv.slice(2),
     cwd: process.cwd(),
     env: process.env,
+    // The workspace authority is THIS home's server (server.lock), never a
+    // BAKIN_URL target: another machine cannot vouch for this cwd.
     probeWorkspace: async (cwd) => {
-      const res = await fetch(`${serverBaseUrl()}/api/approvals/agent-context?cwd=${encodeURIComponent(cwd)}`, { headers: { ...CLI_ORIGIN_HEADER } })
-      if (!res.ok) return null
+      const local = liveServerBaseUrl({})
+      if (!local) throw new Error(`no Bakin server is running for ${getContentDir()} to confirm this directory is not an agent's workspace`)
+      const res = await fetch(`${local}/api/approvals/agent-context?cwd=${encodeURIComponent(cwd)}`, { headers: { ...CLI_ORIGIN_HEADER } })
+      if (!res.ok) throw new Error(`the workspace check failed (HTTP ${res.status})`)
       const body = await res.json() as { agentId?: unknown }
-      return typeof body.agentId === 'string' ? body.agentId : null
+      if (body.agentId !== null && typeof body.agentId !== 'string') throw new Error('the workspace check answered in an unexpected shape')
+      return body.agentId
     },
+  }).then((resolved) => {
+    if (resolved.declarationWithheld) console.error(`--as human is not honored: ${resolved.declarationWithheld}.`)
+    return resolved
   })
   return identity
 }

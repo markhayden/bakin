@@ -47,9 +47,10 @@ describe('resolveCliIdentity', () => {
     expect(identityHeaders(identity)).toEqual({ 'X-Bakin-Agent-Context': 'writer' })
   })
 
-  it('an unreachable workspace check never blocks the operator', async () => {
-    const identity = await resolveCliIdentity({ argv: ['--as', 'human'], cwd: plain, env: {}, probeWorkspace: async () => { throw new Error('down') } })
-    expect(identity).toEqual({ agentContext: null, operatorDeclared: true })
+  it('a workspace check that cannot answer withholds the declaration — a failure is not a negative (review r1)', async () => {
+    const identity = await resolveCliIdentity({ argv: ['--as', 'human'], cwd: plain, env: {}, probeWorkspace: async () => { throw new Error('no local server') } })
+    expect(identity).toEqual({ agentContext: null, operatorDeclared: false, declarationWithheld: 'no local server' })
+    expect(identityHeaders(identity)).toEqual({})
   })
 
   it('no flag and no context sends nothing', async () => {
