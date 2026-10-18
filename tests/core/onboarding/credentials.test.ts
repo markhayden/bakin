@@ -188,6 +188,24 @@ describe('channels.check() — ONE readiness engine, two modes (#908)', () => {
     }
   })
 
+  it('a live server.lock without a valid port is no target: configuration-only, ZERO requests', async () => {
+    readinessStarted = false
+    const calls: string[] = []
+    fetchImpl = async (input) => { calls.push(String(input)); return { ok: true, json: async () => snapshot('connected') } as Response }
+    const saved = process.env.BAKIN_URL
+    delete process.env.BAKIN_URL
+    const lock = join(testDir, 'server.lock')
+    writeFileSync(lock, JSON.stringify({ pid: process.pid, startedAt: Date.now(), bootId: 'b' }))
+    try {
+      const result = await channelsComponent.check()
+      expect(calls).toEqual([])
+      expect(result.details).toMatchObject({ mode: 'configuration-only' })
+    } finally {
+      rmSync(lock, { force: true })
+      process.env.BAKIN_URL = saved
+    }
+  })
+
   it('native runtime is ok in server mode and never says "no channel layer"', async () => {
     readinessStarted = true
     readinessSnapshot = snapshot('native', { runtime: { adapter: 'openclaw', deliveryMode: 'native' }, owner: 'runtime', channels: { items: [{ id: 'discord', platform: 'discord', label: 'Discord', capabilities: ['message'] }], source: 'runtime', collectedAt: 'x' } })

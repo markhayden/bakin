@@ -5,7 +5,8 @@
  * setup. Relocated verbatim from cli/bakin.ts (B5.3 command-module split);
  * the src/core/cli dependency stays a dynamic import (mutual-lazy contract).
  */
-import { BASE_URL, jsonObject } from '../http'
+import { liveServerBaseUrl } from '../../core/server-lock'
+import { jsonObject } from '../http'
 import {
   printCommandFailureTui,
   exitCommandIssue,
@@ -78,8 +79,12 @@ function serviceEnvironment(): Record<string, string> {
 async function waitForServerVersion(timeoutSeconds = 15): Promise<{ ok: true; version: string } | { ok: false }> {
   for (let i = 0; i < timeoutSeconds; i++) {
     await new Promise(r => setTimeout(r, 1000))
+    // Re-resolve each poll: the server just started writes its own lock, and
+    // another home's server on a default port must never answer for this one.
+    const baseUrl = liveServerBaseUrl()
+    if (!baseUrl) continue
     try {
-      const res = await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(2000) })
+      const res = await fetch(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(2000) })
       if (res.ok) {
         const data = await res.json() as { version?: unknown }
         return { ok: true, version: typeof data.version === 'string' ? data.version : 'unknown' }
@@ -824,8 +829,11 @@ async function cmdStop(): Promise<void> {
       // Wait and verify it's actually down
       for (let i = 0; i < 10; i++) {
         await new Promise(r => setTimeout(r, 500))
+        // No live server for this home (its lock is gone) or no answer = down.
+        const baseUrl = liveServerBaseUrl()
         try {
-          await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(1000) })
+          if (!baseUrl) throw new Error('no live server for this home')
+          await fetch(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(1000) })
         } catch {
           await printStopResult({
             ok: true,

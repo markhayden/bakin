@@ -3,6 +3,7 @@
  * immediately. Shared by the step/gate routes and the activate-body exec tools.
  */
 export function triggerDispatch(): void {
-  const port = Number(process.env.PORT || 3737)
-  fetch(`http://localhost:${port}/api/dispatch`, { method: 'POST' }).catch(() => {})
+  // In-process (a no-op until the dispatcher starts) — never an HTTP call to
+  // a guessed port, which from a test reached the live server's dispatcher.
+  void import('../../../src/core/task-service').then(({ triggerDispatch: kick }) => kick(), () => {})
 }

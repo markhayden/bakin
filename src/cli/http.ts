@@ -11,32 +11,13 @@
 import { isOperationFinished, type OperationCancelResult, type OperationView } from '@makinbakin/sdk/types'
 import { extractApiErrorMessage, formatApiError } from '../core/cli/api-error'
 import { getContentDir } from '../core/content-dir'
-import { readLiveServerLock, type ServerLock } from '../core/server-lock'
+import { readLiveServerLock, resolveCliTarget, type CliTarget } from '../core/server-lock'
 
 /**
- * Which server this CLI talks to (#895 D11), resolved once:
- * - an explicit `BAKIN_URL` is used as given (unreachable is an error);
- * - otherwise the live `server.lock` in this CLI's own `BAKIN_HOME` gives the
- *   port of the server running for THIS home;
- * - otherwise no server is running for this home, and server-only verbs fail
- *   with `BakinNotRunningError` — never a guess at port 3737, which may belong
- *   to another home.
+ * Which server this CLI talks to (#895 D11), resolved once at import with the
+ * ONE rule (`resolveCliTarget`, src/core/server-lock.ts); server-only verbs
+ * fail with `BakinNotRunningError` when no server runs for this home.
  */
-export interface CliTarget {
-  baseUrl: string
-  source: 'env' | 'lock' | 'none'
-  pid?: number
-}
-
-export function resolveCliTarget(
-  env: Record<string, string | undefined>,
-  lock: Pick<ServerLock, 'pid' | 'port'> | null,
-): CliTarget {
-  if (env.BAKIN_URL) return { baseUrl: env.BAKIN_URL.replace(/\/+$/, ''), source: 'env' }
-  if (lock) return { baseUrl: `http://localhost:${lock.port || env.PORT || 3737}`, source: 'lock', pid: lock.pid }
-  return { baseUrl: `http://localhost:${env.PORT || 3737}`, source: 'none' }
-}
-
 export const CLI_TARGET = resolveCliTarget(process.env, readLiveServerLock())
 
 /** For display and probes (`bakin status`, help). Requests go through `serverBaseUrl()`. */

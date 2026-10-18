@@ -704,9 +704,13 @@ export async function getTaskDetails(taskId: string): Promise<{
 }
 
 /**
- * Trigger the dispatch cycle. Fire-and-forget.
+ * Trigger the dispatch cycle. Fire-and-forget, IN-PROCESS: a no-op until the
+ * server's dispatcher has started (never an HTTP call to a guessed port,
+ * which from a test or another home reached a live server's dispatcher).
+ * Lazy import: dispatch-cycle depends on this module.
  */
 export function triggerDispatch(): void {
-  const port = getPort()
-  fetch(`http://localhost:${port}/api/dispatch`, { method: 'POST' }).catch(() => {})
+  import('./dispatch-cycle')
+    .then(({ requestImmediateDispatch }) => requestImmediateDispatch('task-service'))
+    .catch((err) => log.error('Dispatch trigger failed', err))
 }

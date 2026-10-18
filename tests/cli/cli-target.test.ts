@@ -19,12 +19,11 @@ mock.module('../../src/core/logger', loggerMock)
 mock.module('../../packages/core/src/logger', loggerMock)
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
-import { readLiveServerLock } from '../../src/core/server-lock'
+import { liveServerBaseUrl, readLiveServerLock, resolveCliTarget } from '../../src/core/server-lock'
 import {
   BakinNotRunningError,
   describeCliTarget,
   isServerConnectionError,
-  resolveCliTarget,
   serverBaseUrl,
 } from '../../src/cli/http'
 
@@ -58,6 +57,19 @@ describe('resolveCliTarget', () => {
     expect(target.source).toBe('none')
     expect(() => serverBaseUrl(target)).toThrow(BakinNotRunningError)
     expect(describeCliTarget(target)).toContain(testDir)
+  })
+
+  it('a live lock without a valid port is no target (never a fallback to PORT or 3737)', () => {
+    expect(resolveCliTarget({ PORT: '3737' }, { pid: 42, port: 0 }).source).toBe('none')
+  })
+
+  it('liveServerBaseUrl re-reads this home\'s lock on every call', () => {
+    expect(liveServerBaseUrl({})).toBeNull()
+    writeLock(process.pid, 3797)
+    expect(liveServerBaseUrl({})).toBe('http://localhost:3797')
+    writeLock(process.pid, 0)
+    expect(liveServerBaseUrl({})).toBeNull()
+    expect(liveServerBaseUrl({ BAKIN_URL: 'http://127.0.0.1:4100' })).toBe('http://127.0.0.1:4100')
   })
 
   it('an explicit BAKIN_URL wins over the lock, even a loopback URL pointing elsewhere', () => {
