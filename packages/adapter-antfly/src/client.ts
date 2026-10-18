@@ -33,6 +33,7 @@ import {
   buildBatchInserts,
   buildFacetCountRequest,
   buildQueryRequest,
+  resolveStrategy,
   scopeQueryToIndexes,
   buildTableProvisioning,
   embedderUsable,
@@ -46,6 +47,8 @@ const log = createLogger('antfly-client')
 
 /** The most a query spends learning its table's indexes (once per table). */
 const INDEX_READ_BUDGET_MS = 1_000
+/** How long a table's index names are trusted — another process can recreate the same physical. */
+const INDEX_CACHE_TTL_MS = 60_000
 
 const QUERY_TIMEOUT_MS = 15_000
 /** Client-side grace past a query's cooperative deadline (see runQuery). */
@@ -228,7 +231,7 @@ export class AntflySearchClient implements SearchAdapter {
     // 9,843 batches) AND concurrent structural create/drop pipelines —
     // both probed on the target hardware (tasks/evidence-antfly-0.2.0.md).
     create: async (name: string, config: TableConfig): Promise<void> => {
-      this.indexNames.delete(name)
+      this.invalidateIndexNames(name)
       const plan = buildTableProvisioning(config, this.settings)
       await this.request('POST', paths.table(name), plan.table)
       // Embeddings legs ride the per-index endpoint — the only create path
@@ -239,7 +242,7 @@ export class AntflySearchClient implements SearchAdapter {
       }
     },
     drop: async (name: string): Promise<void> => {
-      this.indexNames.delete(name)
+      this.invalidateIndexNames(name)
       await this.request('DELETE', paths.table(name))
     },
     stats: async (name: string): Promise<TableStats | null> => {
@@ -255,17 +258,30 @@ export class AntflySearchClient implements SearchAdapter {
     },
   }
 
-  /** A physical's index names. Legs land at create and never change after, so one read per table suffices. */
-  private readonly indexNames = new Map<string, ReadonlySet<string>>()
+  /**
+   * A physical's index names. Legs land at create and never change after,
+   * so one read per table usually suffices — but another process can drop
+   * and recreate the same physical, so entries expire, a rejected query
+   * drops its table's entry, and a read that raced an invalidation never
+   * writes back (generation check).
+   */
+  private readonly indexNames = new Map<string, { names: ReadonlySet<string>; at: number }>()
+  private readonly indexGeneration = new Map<string, number>()
+
+  private invalidateIndexNames(table: string): void {
+    this.indexNames.delete(table)
+    this.indexGeneration.set(table, (this.indexGeneration.get(table) ?? 0) + 1)
+  }
 
   private async existingIndexNames(table: string, timeoutMs: number): Promise<ReadonlySet<string> | null> {
     const cached = this.indexNames.get(table)
-    if (cached) return cached
+    if (cached && Date.now() - cached.at < INDEX_CACHE_TTL_MS) return cached.names
+    const generation = this.indexGeneration.get(table) ?? 0
     try {
       const entries = await this.indexStatuses(table, timeoutMs)
       if (entries === null) return null
       const names = new Set(entries.map((entry) => entry.config.name))
-      this.indexNames.set(table, names)
+      if ((this.indexGeneration.get(table) ?? 0) === generation) this.indexNames.set(table, { names, at: Date.now() })
       return names
     } catch (err) {
       // Unknown: query as asked — the engine's own answer still decides.
@@ -332,7 +348,7 @@ export class AntflySearchClient implements SearchAdapter {
   }
 
   async query(table: string, asked: Query): Promise<QueryResult> {
-    const started = Date.now()
+    const discoveryStarted = Date.now()
     // Name only the vector legs this physical really has (#993). Read once
     // per table, inside a small slice of the query's own budget — a slow
     // read never costs the query its deadline; unknown queries as asked.
@@ -340,12 +356,18 @@ export class AntflySearchClient implements SearchAdapter {
     const existing = wantsVectors
       ? await this.existingIndexNames(table, Math.min(INDEX_READ_BUDGET_MS, Math.max(1, Math.floor((asked.deadlineMs ?? QUERY_TIMEOUT_MS) / 4))))
       : null
-    const q = existing ? scopeQueryToIndexes(asked, existing) : asked
+    const scoped = existing ? scopeQueryToIndexes(asked, existing) : asked
+    // One absolute deadline: what discovery spent comes off the query's own.
+    const started = Date.now()
+    const q = asked.deadlineMs !== undefined ? { ...scoped, deadlineMs: Math.max(1, asked.deadlineMs - (started - discoveryStarted)) } : scoped
     const request = buildQueryRequest(table, q, this.settings)
-    // Semantic was asked for but the table has no vector leg to search:
-    // keyword answered instead — labelled, never silent.
-    const noSemanticLeg = Array.isArray(asked.adapterOptions?.indexes) && (asked.adapterOptions.indexes as unknown[]).length > 0
-      && q.adapterOptions?.indexes === undefined && (q.text ?? '').trim().length > 0
+    // Semantic was intended but no vector leg is left to search (skipped by
+    // the adapter, or missing from this physical): keyword answered — labelled.
+    const text = (q.text ?? '').trim()
+    const noSemanticLeg = text.length > 0 && text !== '*'
+      && resolveStrategy(asked.strategy, this.settings) !== 'full_text_only'
+      && Array.isArray(asked.adapterOptions?.indexes)
+      && request.semantic_search === undefined
     // #930: facets never ride a semantic request (the engine rejects the
     // aggregation rerun as soon as the vector leg is approximate). Run the
     // hits query without aggregations and a match-all count companion for
@@ -363,6 +385,8 @@ export class AntflySearchClient implements SearchAdapter {
     try {
       main = await this.runQuery(table, request, q.deadlineMs)
     } catch (err) {
+      // A rejected query may mean this table's legs changed under us.
+      if (err instanceof SearchRequestRejectedError) this.invalidateIndexNames(table)
       // D11's sanctioned degrade, implemented client-side: while a large
       // embeddings backfill saturates the inference queue, the QUERY's own
       // embed job starves and the request times out — client-side abort,
@@ -399,6 +423,7 @@ export class AntflySearchClient implements SearchAdapter {
       result.diagnostics = {
         ...(result.diagnostics ?? { strategy: 'fts' }),
         strategy: 'fts',
+        budget: 'degraded',
         adapter: { ...(result.diagnostics?.adapter ?? {}), degraded: 'no-semantic-leg' },
       }
     }

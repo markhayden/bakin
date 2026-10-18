@@ -48,7 +48,7 @@ import type {
 
 type Strategy = 'rrf' | 'semantic_only' | 'full_text_only'
 
-function resolveStrategy(requested: Query['strategy'], settings: AntflySettings): Strategy {
+export function resolveStrategy(requested: Query['strategy'], settings: AntflySettings): Strategy {
   if (requested === 'fts') return 'full_text_only'
   if (requested === 'vector') return 'semantic_only'
   if (requested === 'hybrid') return 'rrf'

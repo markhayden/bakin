@@ -225,7 +225,75 @@ describe('queries name only the legs a table has (#993)', () => {
     const result = await engine.client.query('t_v1', { ...asked, strategy: 'vector' })
     expect(engine.queries[0]).not.toHaveProperty('semantic_search')
     expect(engine.queries[0]).toHaveProperty('full_text_search')
-    expect(result.diagnostics?.adapter).toMatchObject({ degraded: 'no-semantic-leg' })
+    expect(result.diagnostics).toMatchObject({ budget: 'degraded', adapter: { degraded: 'no-semantic-leg' } })
+  })
+
+  it('the index names are re-read after a rejected query and once they expire — another process can recreate the table', async () => {
+    let legs = ['assets_text']
+    let reject = false
+    let reads = 0
+    const queries: Array<Record<string, unknown>> = []
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/indexes')) {
+        reads += 1
+        return Response.json([indexEntry('full_text', 'full_text'), ...legs.map((n) => indexEntry(n, 'embeddings'))])
+      }
+      queries.push(JSON.parse(String(init?.body)))
+      if (reject) return new Response('no such index', { status: 400 })
+      return Response.json({ responses: [{ hits: { total: 0, max_score: 0, hits: [] }, aggregations: null, took: 1, status: 200, error: null, table: 't_v1' }] })
+    }) as unknown as typeof fetch
+    const client = new AntflySearchClient(settings, { fetchImpl })
+    await client.query('t_v1', asked)
+    // Recreated elsewhere WITH the visual leg, then the old leg set is rejected.
+    legs = ['assets_visual']
+    reject = true
+    await client.query('t_v1', asked).catch(() => undefined)
+    reject = false
+    await client.query('t_v1', asked)
+    expect(reads).toBe(2)
+    expect(queries.at(-1)).toMatchObject({ indexes: ['assets_visual'] })
+    // Expiry: a minute later the names are read again even without a rejection.
+    legs = ['assets_text', 'assets_visual']
+    const realNow = Date.now
+    Date.now = () => realNow() + 61_000
+    try {
+      await client.query('t_v1', asked)
+    } finally {
+      Date.now = realNow
+    }
+    expect(reads).toBe(3)
+    expect(queries.at(-1)).toMatchObject({ indexes: ['assets_text', 'assets_visual'] })
+  })
+
+  it('discovery spends the query’s own budget — the engine gets what is left, not the full deadline', async () => {
+    const queries: Array<Record<string, unknown>> = []
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/indexes')) {
+        await new Promise((resolve) => setTimeout(resolve, 60))
+        return Response.json([indexEntry('full_text', 'full_text'), indexEntry('assets_text', 'embeddings')])
+      }
+      queries.push(JSON.parse(String(init?.body)))
+      return Response.json({ responses: [{ hits: { total: 0, max_score: 0, hits: [] }, aggregations: null, took: 1, status: 200, error: null, table: 't_v1' }] })
+    }) as unknown as typeof fetch
+    await new AntflySearchClient(settings, { fetchImpl }).query('t_v1', { ...asked, deadlineMs: 400 })
+    const sent = (queries[0] as { timeout_ms?: number }).timeout_ms ?? 0
+    expect(sent).toBeLessThanOrEqual(345)
+    expect(sent).toBeGreaterThan(0)
+  })
+
+  it('semantic intended with no legs offered at all: keyword answers, and the response says so (adapter AND budget)', async () => {
+    const engine = fakeEngine(['assets_text'])
+    const result = await engine.client.query('t_v1', { text: 'red apple', strategy: 'vector', adapterOptions: { searchableFields: ['title'], indexes: [] } })
+    expect(engine.queries[0]).toHaveProperty('full_text_search')
+    expect(engine.queries[0]).not.toHaveProperty('semantic_search')
+    expect(result.diagnostics).toMatchObject({ strategy: 'fts', budget: 'degraded', adapter: { degraded: 'no-semantic-leg' } })
+  })
+
+  it('an explicit keyword query is never labelled degraded', async () => {
+    const engine = fakeEngine([])
+    const result = await engine.client.query('t_v1', { ...asked, strategy: 'fts' })
+    expect(result.diagnostics?.adapter?.degraded).toBeUndefined()
+    expect(result.diagnostics?.budget).not.toBe('degraded')
   })
 
   it('a hung index read costs the query only a slice of its budget, then queries as asked', async () => {
