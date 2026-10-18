@@ -17,6 +17,7 @@ mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir,
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db') }) }))
 
 import { CHORES_CLASSES, choresLaneState, pickAgentModel, rankCandidates, recommendPlan, type PlanCandidate, type PlanInput } from '../../src/core/model-plan'
+import { recommendForRef } from '../../src/core/model-plan-input'
 
 const luna: PlanCandidate = { id: 'openai-codex/gpt-5.6-luna', tier: 'premium', lane: 'subscription', contextWindow: 400_000, vision: true, proven: true }
 const terra: PlanCandidate = { id: 'openai-codex/gpt-5.6-terra', tier: 'standard', lane: 'subscription', contextWindow: 400_000, vision: true, proven: true }
@@ -212,9 +213,12 @@ describe('only proven models are proposed (margo 2026-10-18)', () => {
     const textOnly: PlanCandidate = { ...terra, vision: false, proven: true }
     const routing = { routes: [{ workClass: 'enrichment' as const, model: luna.id }], tagOverrides: [] }
     const plan = recommendPlan(input({ candidates: [textOnly, { ...luna, proven: false }], currentDefaultModel: textOnly.id, routing }))
-    expect(plan.enrichment).toBe('unset')
+    expect(plan.enrichment).toBe('kept')
     expect(plan.routes.find((r) => r.workClass === 'enrichment')).toMatchObject({ model: luna.id, reason: expect.stringContaining('kept on') })
     expect(plan.ops.some((op) => op.ref === 'route:enrichment')).toBe(false)
+    expect(plan.notes.join(' ')).not.toContain('enrichment will fail')
+    expect(plan.notes.join(' ')).toContain(`Enrichment stays on ${luna.id}`)
+    expect(recommendForRef(plan, 'route:enrichment')).toBe(luna.id)
   })
 
   it('an unproven (kept) default never absorbs a working chores route', () => {

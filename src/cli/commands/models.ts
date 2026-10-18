@@ -48,6 +48,7 @@ function enrichmentLine(plan: PlanRecommendation): string {
     case 'chores': return 'runs on the chores model'
     case 'agent': return `runs on the agent model (${plan.agent.model}) — the chores model cannot see images`
     case 'unset': return 'will fail until a vision-capable model is available'
+    case 'kept': return `stays on ${plan.routes.find((r) => r.workClass === 'enrichment')?.model ?? 'its configured model'} (can see images; not run here in the last week)`
     case 'disabled': return 'off (assets enrichment is disabled)'
   }
 }

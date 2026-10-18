@@ -123,7 +123,8 @@ function describe(plan: PlanRecommendation): string {
   const chores = plan.chores.model ?? '(none)'
   const enrichment = plan.enrichment === 'agent'
     ? `; enrichment on ${agent}`
-    : plan.enrichment === 'unset' ? '; enrichment will fail until a vision-capable model is available' : ''
+    : plan.enrichment === 'unset' ? '; enrichment will fail until a vision-capable model is available'
+    : plan.enrichment === 'kept' ? `; enrichment stays on ${plan.routes.find((r) => r.workClass === 'enrichment')?.model ?? 'its configured model'}` : ''
   return `agent model ${agent}, background chores ${chores} (${plan.chores.why})${enrichment}`
 }
 

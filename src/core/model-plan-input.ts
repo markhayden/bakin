@@ -241,6 +241,7 @@ export function recommendForRef(plan: PlanRecommendation, ref: string): string |
     // Inherit ⇒ the chores model reads through — except enrichment when only
     // the agent model can see; an unset enrichment (nobody sees) has no honest answer.
     if (name === 'enrichment' && plan.enrichment === 'unset') return null
+    if (name === 'enrichment' && plan.enrichment === 'kept') return route?.model ?? null
     if (name === 'enrichment' && plan.enrichment === 'agent') return plan.agent.model
     return plan.chores.model ?? plan.agent.model
   }

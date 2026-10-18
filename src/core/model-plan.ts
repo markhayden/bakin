@@ -85,10 +85,12 @@ export interface PlanRecommendation {
   /**
    * Where enrichment goes: `chores` (the chores model can see), `agent` (only
    * the agent model can — the route stays unrouted and inherits it), `unset` (no
-   * eligible model has vision — enrichment will fail until one is), or
-   * `disabled` (enrichment is off; no vision requirement).
+   * eligible model has vision — enrichment will fail until one is), `kept`
+   * (no PROVEN model can see, but the configured enrichment route's model is
+   * still listed and can — it stays where it is), or `disabled` (enrichment
+   * is off; no vision requirement).
    */
-  enrichment: 'chores' | 'agent' | 'unset' | 'disabled'
+  enrichment: 'chores' | 'agent' | 'unset' | 'kept' | 'disabled'
   /** Ops that move the persisted state to this plan (empty = already there). Derived from `routes` + the agent pick. */
   ops: MutationOp[]
   /** Anything the plan could not satisfy or had to assume, in plain words. */
@@ -292,6 +294,7 @@ export function recommendPlan(input: PlanInput): PlanRecommendation {
   // change TO the agent model: only when the agent model is proven. An
   // unproven default (kept, not changed) never absorbs a working route.
   const agentProven = input.candidates.find((c) => c.id === agent.model)?.proven === true
+  let finalEnrichment: PlanRecommendation['enrichment'] = enrichment
   const routes = planRoutes(agent, chores, enrichment).map((route) => {
     const current = routedModel(input.routing, route.workClass)
     if (route.model === null && current !== null && !agentProven) {
@@ -303,10 +306,15 @@ export function recommendPlan(input: PlanInput): PlanRecommendation {
     // listed is cleared as before.
     const configured = current !== null ? input.candidates.find((c) => c.id === current) : undefined
     if (route.workClass === 'enrichment' && enrichment === 'unset' && route.model === null && configured && configured.vision !== false) {
+      finalEnrichment = 'kept'
       return { ...route, model: current, reason: `kept on ${current} — no model that has run here in the last week can see images` }
     }
     return route
   })
+  // The kept route means enrichment still runs: drop the "will fail" note.
+  const finalNotes = finalEnrichment === 'kept'
+    ? [...notes.filter((n) => !n.startsWith('No eligible model can see images')), `Enrichment stays on ${routedModel(input.routing, 'enrichment')}, which can see images but has not run here in the last week.`]
+    : notes
   const ops: MutationOp[] = []
   if (agent.model && agent.model !== input.currentDefaultModel) {
     ops.push({ ref: 'policy:defaultModel', set: { model: agent.model } })
@@ -316,7 +324,7 @@ export function recommendPlan(input: PlanInput): PlanRecommendation {
       ops.push({ ref: `route:${route.workClass}`, set: { model: route.model } })
     }
   }
-  return { agent, chores, routes, enrichment, ops, notes }
+  return { agent, chores, routes, enrichment: finalEnrichment, ops, notes: finalNotes }
 }
 
 /** What Simple shows for the chores lane today. */
