@@ -1,6 +1,8 @@
 # Implementation plan — Operations (#895)
 
-Status: **revision 6, approved by the maintainer 2026-10-16.**
+Status: **done (2026-10-18).** Revision 6, approved by the maintainer 2026-10-16;
+delivered as PRs #976, #979, #982, #984, #988 and PR6 — the evidence table
+is at the end.
 - Revision 1 was reviewed by Codex (`gpt-6-astra`) with the verdict
   **rework**. Its 15 findings were spot-checked (26 repair registrations,
   8 install-lock callers, guest-mode reset refusal, Antfly's own `'wx'`
@@ -901,3 +903,25 @@ the final converted/synchronous lists pinned with each writer's resource.
 
 None blocking. T0 may refine D12 and Task 5.2. The baseline and
 performance approvals are scheduled for PR2.
+
+## Success-criteria evidence (done 2026-10-18)
+
+PRs: #976 (PR1), #979 (PR2), #982 (PR3), #984 (PR4), #988 (PR5), PR6
+(onboarding, runtime switch, final sweep). CI was green on every merge.
+
+| # | Criterion | Evidence |
+|---|---|---|
+| 1 | 202/200 within 500ms; invalid requests keep their codes | `tests/api/operations.test.ts` (the accept harness); per flow: `tests/core/doctor-repair.test.ts`, `tests/api/{package,skills}-operations.test.ts`, `tests/host/plugins/install-operations.test.ts`, `tests/api/search-maintenance-routes.test.ts`, `tests/api/onboarding-install-route.test.ts` (400s), `tests/core/runtime-switch-request.test.ts` |
+| 2 | The margo replay | `tests/plugins/health/repair-dialog.test.tsx`, `tests/core/media/installer.test.ts`, `tests/core/net/download.test.ts` |
+| 3 | Cancel before the first mutation, cancelled only after settle | `tests/api/package-operations.test.ts` + `tests/host/plugins/install-operations.test.ts` (route matrix), `tests/core/media/installer.test.ts`, `tests/core/onboarding/antfly.test.ts` (engine, already-at-pin, version probe), `tests/core/onboarding/models.test.ts` (pull cancel/resume), `tests/cli/component-install.test.ts` (in-process Ctrl-C), `tests/cli/operation-renderer.test.ts` |
+| 4 | Restarted / expired / unreachable | `tests/hooks/use-operation.test.tsx`, `tests/api/operations.test.ts`, `tests/components/runtime-hub.test.tsx` |
+| 5 | CLI parity, claim authority, no local run after send, tray | `tests/api/onboarding-install-route.test.ts` (parity for media, search, search-models, plugin-assets, agent-sync; 403 without/with a wrong secret; CLI origin), `tests/cli/operation-mode.test.ts`, `tests/core/server-singleton.test.ts`, `tests/core/onboarding/search-claim-intent.test.ts` |
+| 6 | Exclusion and attach | `tests/core/media/installer.test.ts` (three-way), `tests/core/onboarding/operation.test.ts` (attach, settings identity, the lock a server waits on), `tests/core/search-registry.test.ts` (pump vs reset, provisioning), `tests/core/search-operations.test.ts`, `tests/integration/runtime-switch.test.ts` |
+| 7 | Discord ordering and outcome-unknown | `tests/core/doctor-approvals.test.ts`, `tests/core/approvals/service.test.ts` |
+| 8 | Model bytes | `tests/core/onboarding/models.test.ts`, `tests/adapter-antfly/pull-progress.test.ts` |
+| 9 | Deletions | `tests/architecture/operations-{resources,transfers,install-state,search,onboarding,runtime-switch,routes}.test.ts` |
+| 10 | Green suites | every ◆ checkpoint; CI on each PR |
+| 11 | Docs | `.claude/knowledge/operations.md` (final) and the knowledge updates named in SPEC § Success criteria; CLAUDE.md; README; docs site `start/operation`, `extending/plugins`, `extending/ui` |
+
+Follow-ups: #990 (schedule hooks' private `EventSource`).
+

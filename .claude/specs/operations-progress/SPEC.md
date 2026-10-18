@@ -1,6 +1,8 @@
 # Operations — staged progress for every long-running flow — #895
 
-Status: revision 3.1, approved by the maintainer on 2026-10-15.
+Status: **done (2026-10-18)** — revision 3.1, approved by the maintainer on
+2026-10-15; amended in D23 on 2026-10-17 and 2026-10-18. Delivery and the
+success-criteria evidence: [PLAN.md](./PLAN.md).
 - Revision 1 came from the kickoff interview.
 - Revision 2 applied an independent Codex (`gpt-6-astra`) review (round 1:
   rework).

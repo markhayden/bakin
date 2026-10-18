@@ -5,8 +5,8 @@
  * - The switch's private progress stream, its step reducer and its
  *   single-flight flag are gone (install-state serializes switches).
  * - `new EventSource` appears only in the shell's one connection
- *   (`use-sse.ts`), the schedule hooks' stream (`use-schedule.ts`, ticketed
- *   debt) and the dev-loop client — never a private progress stream again.
+ *   (`use-sse.ts`), the schedule hooks' stream (`use-schedule.ts`, #990)
+ *   and the dev-loop client — never a private progress stream again.
  *
  * Pure scanner: reads source as text, imports no app modules.
  */

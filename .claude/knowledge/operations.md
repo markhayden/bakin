@@ -6,12 +6,11 @@ and reindex. It answers four questions from the browser or the CLI — what is
 it doing now, what is left, is it stuck, and what happened — and replaces the
 spinner-only and job-specific paths the 2026-09-21 margo incident exposed.
 
-Spec: `.claude/specs/operations-progress/SPEC.md` (decisions D1–D24).
-Plan and rollout order: `.claude/specs/operations-progress/PLAN.md`. PR1 ships
-the primitive below; PR2 adds the browser hook, pattern, tray and attention
-(§ Browser); PR3–PR6 convert
-the flows (repair, installs, search, onboarding/runtime) and delete the legacy
-job registry (`install-progress.ts`) and the throw-on-busy lock API.
+Spec: `.claude/specs/operations-progress/SPEC.md` (decisions D1–D24); the
+delivery plan and its success-criteria evidence: `PLAN.md` beside it. Every
+flow below is converted; the legacy job registry, the throw-on-busy lock API,
+the local-operation wrappers and the private progress streams are gone
+(architecture-test pinned: `tests/architecture/operations-*.test.ts`).
 
 ## Map
 
@@ -143,7 +142,7 @@ the core ones. Adding a fourth core resource is an approval checkpoint.
   throws `<writer> requires install-state — run it inside an operation that
   declares it (or holdNow for a bounded synchronous writer)`. The legacy
   throw-on-busy install-lock API and its job registry (`/api/install-jobs`,
-  `packages.install_*` events, `?async=1`) are gone (PR4).
+  `packages.install_*` events, `?async=1`) are gone.
 - Only `resources.ts` names `install.lock` or `locks/`
   (`tests/architecture/operations-resources.test.ts`). Antfly's own service
   lock under `~/.antfly` is a different lock and stays as it is.
@@ -212,12 +211,12 @@ the owner is `plugin:<id>` (separate from origin); origin comes from
 `request` (web/cli), else `system`; any plugin may declare its own
 `<pluginId>:<name>` resources, and the core resources are reserved for core
 plugins (`OperationResourceDeniedError`) — the same rule as repair resource
-declarations (D10, PR3). Not permission-gated: a plugin only ever reaches its
+declarations (D10). Not permission-gated: a plugin only ever reaches its
 own namespace and resources. `@makinbakin/sdk/testing` runs a real registry
 with in-memory resources (`createMemoryResourceAcquirer`) so author tests
 never touch a real Bakin home.
 
-## Browser (PR2)
+## Browser
 
 - **`useOperation(id, { bootId })`** follows one operation over the shell's
   single SSE connection (`operation.updated`) and reconciles from
@@ -251,7 +250,7 @@ never touch a real Bakin home.
   never. Only `origin ∈ {web, cli, discord}`; system work and children stay in
   the tray; nothing announces while the person is on the operation's `href`.
 
-## Children (PR3, D10/D21)
+## Children (D10/D21)
 
 `registry.startChild(parentId, input)` — repair actions are the only users.
 A child inherits the parent's owner and origin, namespaces its fingerprint
@@ -274,7 +273,7 @@ else `ok`. A repair's verification is evidence, never absence: every
 affected check must have run fresh (`checkEvaluatedFresh`) and no selected
 observation may still be unhealthy — a check that vanished is not a pass.
 
-## CLI (PR3, D11)
+## CLI (D11)
 
 - **Targeting** (`resolveCliTarget`, resolved once): explicit `BAKIN_URL`
   as given (unreachable is an error) → the live `server.lock` of THIS
@@ -284,7 +283,7 @@ observation may still be unhealthy — a check that vanished is not a pass.
   Every request goes through `serverBaseUrl()` / `cliFetch` and carries
   `X-Bakin-Origin: cli`. Tests pin `BAKIN_URL` in the preload so no test
   reads this machine's real lock.
-- **Mode** (`src/cli/operation-mode.ts`, PR6) for install-class verbs
+- **Mode** (`src/cli/operation-mode.ts`) for install-class verbs
   (`bakin install *`, `bakin mkdir`, `bakin settings init`, `bakin onboard`):
   explicit `BAKIN_URL` → server-only (refused = `ServerUnreachableError`);
   a live lock → that server, with the lock's `cliSecret` as
@@ -312,7 +311,7 @@ observation may still be unhealthy — a check that vanished is not a pass.
   `operationExitCode`: 0 succeeded, 130 cancelled/detached, 1 otherwise;
   the JSON document's `exitCode` is the same number.
 
-## Installs and lifecycle (PR4)
+## Installs and lifecycle
 
 Every install-state flow is an operation; the route's old JSON body is the
 operation result (`outcomeFromResponse`), so clients read the same shapes
@@ -356,7 +355,7 @@ every caller of an install-state writer owns it (or is an asserting engine
 module), converted routes start operations, synchronous writers use
 `holdNow`.
 
-## Search (PR5, D12/D15/D23)
+## Search (D12/D15/D23)
 
 Everything that changes the engine or its tables owns `search-engine`.
 
@@ -395,7 +394,7 @@ stay gone; no `?async` in the request router; the routes start operations
 and the CLI follows them; the rebuild pass asserts ownership; the pump
 timer, boot resumption and the watchdog go through the background pass.
 
-## Onboarding (PR6, D11)
+## Onboarding (D11)
 
 Every onboarding component install is ONE operation, built by
 `componentInstallOperation(component, options, origin)`
@@ -441,7 +440,18 @@ search, search-models, plugin-assets and agent-sync).
   keeps the dialog open on `OperationProgress` (Cancel while allowed) until
   it settles.
 
-## Health repair (PR3, D10/D24)
+## Runtime switch
+
+`runtimeSwitchOperation` (`src/core/runtime-switch.ts`): the phases are
+stages (`RUNTIME_SWITCH_PLAN`; the preview declares only its read-only
+stages), never cancellable, owning `install-state` — a second switch or a
+preview waits visibly (no single-flight flag). The report is the result body
+(`switch_failed` when not ok); a restore after a failure is logged against
+the failed stage. `POST /api/runtime/switch` answers 202; `bakin runtime use`
+follows with the renderer; the Runtimes tab with `useOperation` +
+`OperationProgress`. Details: `.claude/knowledge/runtime-capabilities.md`.
+
+## Health repair (D10/D24)
 
 See `.claude/knowledge/doctor-and-health-checks.md` § Explicit repair
 protocol (the parent/child run, the route, the dialog, the CLI) and
@@ -459,8 +469,10 @@ after, `afterResolve`, outcome-unknown recovery).
 - `tests/core/net/download.test.ts` — transfer events, abort, text, opTransfer,
   tar output.
 - `tests/sdk-testing/operations.test.ts` — the published harness, author-style.
-- `tests/architecture/operations-{resources,transfers,install-state}.test.ts`.
-- PR4 routes: `tests/api/{package-operations,skills-operations}.test.ts`,
+- `tests/architecture/operations-{resources,transfers,install-state,search,onboarding,runtime-switch,routes}.test.ts`
+  — `operations-routes` is the final converted/synchronous route list with
+  each route's resource.
+- Install routes: `tests/api/{package-operations,skills-operations}.test.ts`,
   `tests/host/plugins/install-operations.test.ts`,
   `tests/core/plugins/replace-transaction-operation.test.ts`; helpers
   `tests/helpers/{operation-route,operation-fetch,plugin-routes,owning}.ts`
@@ -476,6 +488,17 @@ after, `afterResolve`, outcome-unknown recovery).
 - `tests/hooks/use-operation.test.tsx` — rev/boot guards, reconcile, expired,
   restarted (late old-boot answer ignored), unreachable recovery,
   `startOperation`.
+- Search: `tests/core/search-operations.test.ts`, `tests/api/search-maintenance-routes.test.ts`,
+  the background-mutator block in `tests/core/search-registry.test.ts`,
+  `tests/core/onboarding/{antfly,models}.test.ts`; the real-engine check
+  `scripts/dev/search-container-check.ts` (developer-run, disposable container).
+- Onboarding: `tests/core/onboarding/{operation,install-request,index}.test.ts`,
+  `tests/api/onboarding-install-route.test.ts` (claim authority, CLI
+  attribution, server/local parity), `tests/cli/{operation-mode,component-install}.test.ts`,
+  `tests/core/server-singleton.test.ts` (cliSecret, 0600), the hub in
+  `tests/components/runtime-hub.test.tsx`.
+- Runtime switch: `tests/integration/runtime-switch*.test.ts` (via
+  `tests/helpers/runtime-switch.ts`), `tests/cli/runtime-command.test.ts`.
 - `tests/ui/patterns/operation-progress.test.tsx` + the 23 play-asserted
   stories in `storybook/public/feedback/operation-progress.stories.tsx`
   (five visual baselines).

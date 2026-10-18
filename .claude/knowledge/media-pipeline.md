@@ -118,13 +118,13 @@ The download/extract/verify/commit legs ride the shared primitive
   download (one item per pinned tarball, bytes / stalls / retries via
   `opTransfer`) → extract → bundle → verify → commit, the atomic commit being
   the point of no return. It ASSERTS the caller holds `media-store`, so every
-  install path is serialized on one resource: the repair declares it;
-  onboarding and other callers with no operation yet go through
-  `installMediaStoreLocally` (`src/core/media-store-install.ts`, a `runLocal`
-  operation that declares it). The failing tarball's item is marked failed
+  install path is serialized on one resource: the Health repair's child
+  declares it, and so does onboarding's `media` component operation (`bakin
+  install media` on the server or in-process, the hub's Repair — see
+  operations.md § Onboarding). The failing tarball's item is marked failed
   before the error propagates.
-- **Runtime hub one-click:** `media` is in the `FIXABLE` whitelist
-  (`POST /api/runtime/onboarding/install`).
+- **Runtime hub one-click:** `media` is repairable from the runtime hub's
+  Overview tab (`POST /api/runtime/onboarding/install`, followed live).
 - **Errors:** both sharp-missing throws name `bakin install media` / the
   Health repair.
 
