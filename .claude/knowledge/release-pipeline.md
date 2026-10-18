@@ -56,20 +56,21 @@ and its tests use; it is not a separate tagging command.
 
 `.github/workflows/release.yml` runs on strict `v*` release tags:
 
-1. Validate tag grammar and ensure the tag commit is on `main`.
-2. Install dependencies, lint, typecheck, test.
-3. Build production browser assets and all three binaries.
-4. Smoke the Linux x64 binary on the host runner.
-5. Dry-run SDK publish package generation.
-6. Sign and notarize `bakin-darwin-arm64` on macOS.
-7. Package signed binaries into `bakin-<platform>-<arch>.tar.gz` archives and compute archive checksums.
-8. Extract release notes from committed `CHANGELOG.md`.
-9. Create/update a draft GitHub release and upload archives plus `checksums.txt`.
-10. Publish `@makinbakin/sdk` from the generated package with npm trusted publishing; include provenance only when the source repository is public.
-11. Render the Homebrew formula for all tags.
-12. Stable only: push `Formula/bakin.rb` to `markhayden/homebrew-tap`.
-13. Publish/undraft the GitHub release.
-14. `release.yml` runs post-publish smoke jobs, which verify release archives, SDK install/imports, and stable Homebrew install/test. The SDK smoke first runs `scripts/wait-for-npm-version.ts` to gate on the exact version becoming resolvable on npm (bounded exponential backoff, loud failure at the deadline), closing the read-after-write propagation race before `bun add`.
+1. Plugin contract guard (`scripts/check-plugin-contract.ts`, before the tag is created): if the externals-contract FAMILY changed since the previous release tag, every official Bits plugin must already have a published release that runs on it, or the release refuses. Release prep (`bun run release …`) runs the same guard. See `plugin-system.md`.
+2. Validate tag grammar and ensure the tag commit is on `main`.
+3. Install dependencies, lint, typecheck, test.
+4. Build production browser assets and all three binaries.
+5. Smoke the Linux x64 binary on the host runner.
+6. Dry-run SDK publish package generation.
+7. Sign and notarize `bakin-darwin-arm64` on macOS.
+8. Package signed binaries into `bakin-<platform>-<arch>.tar.gz` archives and compute archive checksums.
+9. Extract release notes from committed `CHANGELOG.md`.
+10. Create/update a draft GitHub release and upload archives plus `checksums.txt`.
+11. Publish `@makinbakin/sdk` from the generated package with npm trusted publishing; include provenance only when the source repository is public.
+12. Render the Homebrew formula for all tags.
+13. Stable only: push `Formula/bakin.rb` to `markhayden/homebrew-tap`.
+14. Publish/undraft the GitHub release.
+15. `release.yml` runs post-publish smoke jobs, which verify release archives, SDK install/imports, and stable Homebrew install/test. The SDK smoke first runs `scripts/wait-for-npm-version.ts` to gate on the exact version becoming resolvable on npm (bounded exponential backoff, loud failure at the deadline), closing the read-after-write propagation race before `bun add`.
 
 If the Homebrew push fails, the GitHub release remains draft. Fix the tap/push issue and rerun the tail before publishing the release.
 

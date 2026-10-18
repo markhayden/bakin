@@ -15,7 +15,10 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { githubArtifactSource } from '@/core/whiskit/github-resolver'
 import { downloadText } from '@bakin/core/net/download'
+import { semver } from 'bun'
 import { parseArtifactsIndex, INDEX_FILENAME } from '@/core/whiskit/artifacts-index'
+import { hostPlatform, newestCompatibleVersion } from '@/core/whiskit/compatible-version'
+import { verifyInstalledArtifact } from '@/core/whiskit/verify'
 import { materializeArtifact } from '@/core/whiskit/consumer-install'
 import { isExternalsContractCompatible, PROVENANCE_FILENAME } from '@/core/whiskit/provenance'
 import { createLogger } from '@/core/logger'
@@ -47,13 +50,25 @@ export function isArtifactInstall(pluginDir: string): boolean {
   return existsSync(join(pluginDir, '.whiskit', PROVENANCE_FILENAME))
 }
 
-/** Fetch the latest published version for an artifact install's source. */
-export async function latestPublishedVersion(source: string): Promise<{ pluginId: string; latest: string | null }> {
+export interface PublishedVersions {
+  pluginId: string
+  /** The newest publish, whatever host it targets. */
+  latest: string | null
+  /** The newest publish THIS host can run (contract + Bakin range), or null. */
+  compatible: string | null
+}
+
+/** Fetch the published versions for an artifact install's source. */
+export async function publishedVersions(source: string): Promise<PublishedVersions> {
   const gh = githubArtifactSource(source)
   const index = parseArtifactsIndex(
     JSON.parse(await downloadText(`${gh.baseUrl}/${INDEX_FILENAME}`)),
   )
-  return { pluginId: gh.pluginId, latest: index.plugins[gh.pluginId]?.latest ?? null }
+  return {
+    pluginId: gh.pluginId,
+    latest: index.plugins[gh.pluginId]?.latest ?? null,
+    compatible: newestCompatibleVersion(index, gh.pluginId, { platform: hostPlatform() })?.version ?? null,
+  }
 }
 
 /**
@@ -71,13 +86,24 @@ export async function upgradeArtifact(
   before: { version: string; commitSha: string },
 ): Promise<UpgradeResult> {
   const gh = githubArtifactSource(entry.source)
-  const { latest } = await latestPublishedVersion(entry.source)
-  if (!latest) {
+  const { latest: newest, compatible } = await publishedVersions(entry.source)
+  if (!newest) {
     throw new UpgradeRefusedError(
       `${id}: no published artifact found at ${gh.baseUrl}. Remove and reinstall.`,
     )
   }
-  if (latest === entry.version) {
+  if (!compatible) {
+    auditUpgradeRejected('externals_contract_incompatible', id, { artifactVersion: newest })
+    throw new UpgradeRefusedError(
+      `${id}: no published release runs on this Bakin yet (newest is ${newest}). ` +
+      'The plugin author has to publish one for this version of Bakin; until then the installed version stays.',
+    )
+  }
+  // The target is the newest release THIS host can run, not the index's
+  // `latest` (which may target a newer or different host contract).
+  const latest = compatible
+  const installedRuns = verifyInstalledArtifact(pluginDir).status === 'compatible'
+  if (latest === entry.version || (installedRuns && semver.order(latest, entry.version) <= 0)) {
     return {
       id,
       before,
@@ -91,7 +117,7 @@ export async function upgradeArtifact(
 
   const contentDir = getContentDir()
   const stagingRoot = join(contentDir, '.whiskit-staging')
-  const platform = `${process.platform}-${process.arch}`
+  const platform = hostPlatform()
 
   const materialized = await materializeArtifact(gh.resolver, gh.pluginId, latest, platform, stagingRoot)
   try {

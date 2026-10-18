@@ -13,7 +13,7 @@ import {
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
 import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha } from './source-tree-sha'
-import { isArtifactInstall, latestPublishedVersion } from './upgrade-artifact'
+import { isArtifactInstall, publishedVersions } from './upgrade-artifact'
 import { githubCloneUrl } from './upgrade-github'
 import { git } from './upgrade-gate'
 
@@ -55,15 +55,20 @@ async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvai
       // rate-limited GitHub API).
       const pluginDir = join(getContentDir(), 'plugins', id)
       if (isArtifactInstall(pluginDir)) {
-        const { pluginId, latest } = await latestPublishedVersion(entry.source)
+        const { pluginId, latest, compatible } = await publishedVersions(entry.source)
         if (!latest) {
           return { id, upgradeAvailable: false, lastChecked, error: `no published artifact for ${pluginId}` }
         }
+        // "Available" means a release THIS host can run — a newer publish
+        // for another Bakin is not an upgrade it can take.
+        if (!compatible) {
+          return { id, upgradeAvailable: false, lastChecked, error: `no published release of ${pluginId} runs on this Bakin yet (newest is ${latest})` }
+        }
         return {
           id,
-          upgradeAvailable: latest !== entry.version,
+          upgradeAvailable: compatible !== entry.version,
           lastChecked,
-          remoteArtifactVersion: latest,
+          remoteArtifactVersion: compatible,
         }
       }
       if (!entry.source || !entry.ref) {

@@ -43,6 +43,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Before the tag exists: a release that changes the plugin contract
+      # family must not ship until every official Bits plugin has a release
+      # that runs on it (rc.41 stranded projects + terminal on margo).
+      - name: Plugin contract guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ inputs.version }}"
+          if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          bun run scripts/check-plugin-contract.ts --version "${version#v}"
+
       - name: Validate release and resolve tag
         id: release
         shell: bash

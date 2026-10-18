@@ -35,6 +35,32 @@ previous-family artifacts need a rebuild and are refused at install or marked
 `needs-update` by the host. Versions remain additive within a family; neither
 old hosts nor new hosts accept artifacts from a different family.
 
+A family change is therefore a fleet event, and two things keep it from
+stranding users (rc.41 left projects + terminal dark on margo until Bits
+published):
+
+- **Release guard** — `scripts/check-plugin-contract.ts` runs in release prep
+  and in `release.yml`'s gate BEFORE the tag is created. When
+  `EXTERNALS_CONTRACT`'s family differs from the previous release tag's, every
+  official Bits plugin (the curated catalog's non-builtin `github:` plugins)
+  must already have a published release that runs on the new contract and
+  this version (its `bakinRange` may require it) for every release platform,
+  or the release refuses. Publish Bits first, then cut Bakin.
+- **Compatible upgrades** — `src/core/whiskit/compatible-version.ts`
+  (`newestCompatibleVersion`) is the ONE answer to "which published version
+  can THIS host run" (contract + `bakinRange`, newest first, platform then
+  neutral). The artifact upgrade lane, `bakin plugins list --check`
+  (`remoteArtifactVersion` / "upgrade available") and Health all use it — never
+  the index's `latest`, which may target another host. Health's
+  `plugin-artifacts` check offers the one-click `upgrade-plugin-artifact`
+  repair when a stranded plugin's source has a compatible release: `plan()`
+  previews (version, manifest sha, every new permission and binary), safety is
+  `manual` so escalation asks for approval with exactly that change set, and
+  `apply()` re-previews and commits with that consent (a changed manifest
+  fails the item), then activates. No compatible release yet ⇒ the incident
+  says so (`await-compatible-release`) instead of pointing at an upgrade that
+  would refuse.
+
 Cross-plugin communication never goes through direct imports. On the
 server it goes through the HookRegistry
 (`packages/core/src/hooks/hook-registry.ts`). On the client it goes

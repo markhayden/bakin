@@ -77,7 +77,7 @@ import { checkSearchSpin, searchSpinRepair } from './lib/system-checks/search-sp
 import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchConsistencyRestartRepair, searchEngineBurnRepair } from './lib/system-checks/search-engine-watch'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets, installPluginAssetsRepair } from './lib/system-checks/plugin-assets'
-import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
+import { checkPluginArtifacts, upgradePluginArtifactRepair } from './lib/system-checks/plugin-artifacts'
 import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
 import { checkSpendPolicyAvailable } from './lib/system-checks/spend-policy'
 import { checkHealthAcks } from './lib/system-checks/health-acks'
@@ -1144,10 +1144,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       maxAgeMs: 900_000,
       run: () => checkPluginAssets(),
     })
+    ctx.registerHealthRepairAction(upgradePluginArtifactRepair())
     ctx.registerHealthCheck({
       id: 'plugin-artifacts',
       name: 'Installed plugin artifact compatibility',
-      description: 'Verifies user-installed plugin artifacts are compatible with and trusted by this host.',
+      description: 'Verifies user-installed plugin artifacts are compatible with and trusted by this host, and offers the upgrade when a compatible release exists.',
       group: pluginsGroup,
       maxAgeMs: 900_000,
       run: () => checkPluginArtifacts(),

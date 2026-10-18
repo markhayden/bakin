@@ -1354,6 +1354,7 @@ describe('plugin registration', () => {
       'search-spin-rebuild',
       'sweep-run-dirs',
       'sync-skill',
+      'upgrade-plugin-artifact',
     ])
     for (const registration of registrations) {
       expect(registration.description.length).toBeGreaterThan(0)

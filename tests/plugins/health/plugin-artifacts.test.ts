@@ -30,7 +30,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-import { checkPluginArtifacts } from '../../../plugins/health/lib/system-checks/plugin-artifacts'
+import { checkPluginArtifacts, type PluginArtifactDeps } from '../../../plugins/health/lib/system-checks/plugin-artifacts'
 import { writeProvenance, WHISKIT_PROVENANCE_VERSION, type WhiskitBuildProvenance } from '../../../src/core/whiskit/provenance'
 import { EXTERNALS_CONTRACT } from '../../../src/core/whiskit/externals'
 import type { HealthCheckRunInput } from '@makinbakin/sdk'
@@ -93,5 +93,58 @@ describe('checkPluginArtifacts', () => {
     expect(r.summary).toContain('stale')
     expect(r.summary).toContain('compatible update')
     expect(r.incident?.disposition).toBe('action_required')
+  })
+})
+
+describe('checkPluginArtifacts — what the source offers this host', () => {
+  function lockEntry(id: string, version = '1.0.0') {
+    writeFileSync(join(testDir, 'plugins', 'lock.json'), JSON.stringify({
+      version: 1,
+      plugins: {
+        [id]: {
+          source: `github:markhayden/bakin-bits-official#plugins/${id}`,
+          type: 'github',
+          ref: '',
+          commitSha: '',
+          installedAt: '2026-10-01T00:00:00.000Z',
+          version,
+          permissions: [],
+          manifestSha: 'c'.repeat(64),
+        },
+      },
+    }))
+  }
+  const offering = (compatible: string | null, latest = '2.0.0'): PluginArtifactDeps => ({
+    publishedVersions: async () => ({ pluginId: 'stale', latest, compatible }),
+  })
+
+  it('a compatible release becomes a one-click upgrade repair', async () => {
+    installPlugin('stale', 'react18-old-vX')
+    lockEntry('stale')
+    const [row] = observed(await checkPluginArtifacts(offering('1.5.0')))
+    expect(row.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'upgrade-plugin-artifact', label: 'Upgrade to 1.5.0' })
+    expect(row.evidence).toMatchObject({ compatibleVersion: '1.5.0' })
+  })
+
+  it('no compatible release yet says so instead of pointing at an upgrade that would refuse', async () => {
+    installPlugin('stale', 'react18-old-vX')
+    lockEntry('stale')
+    const [row] = observed(await checkPluginArtifacts(offering(null, '2.0.0')))
+    expect(row.incident?.resolution).toMatchObject({ type: 'instructions', key: 'await-compatible-release' })
+    expect(JSON.stringify(row.incident?.resolution)).toContain('newest is 2.0.0')
+  })
+
+  it('an unreadable source index keeps the generic instructions (never a fake repair)', async () => {
+    installPlugin('stale', 'react18-old-vX')
+    lockEntry('stale')
+    const [row] = observed(await checkPluginArtifacts({ publishedVersions: async () => { throw new Error('offline') } }))
+    expect(row.incident?.resolution).toMatchObject({ type: 'instructions', key: 'upgrade-plugin' })
+  })
+
+  it('the installed version being the compatible one is not an upgrade offer', async () => {
+    installPlugin('stale', 'react18-old-vX')
+    lockEntry('stale', '1.5.0')
+    const [row] = observed(await checkPluginArtifacts(offering('1.5.0')))
+    expect(row.incident?.resolution).toMatchObject({ key: 'await-compatible-release' })
   })
 })
