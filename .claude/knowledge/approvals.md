@@ -83,11 +83,90 @@ channel-button rejects without a comment record the default reason
 `Rejected via runtime channel (no reason provided)`. The Discord bridge's
 modal collects a real reason.
 
+## Provenance — declared, vouched, or refused (#898 H)
+
+HTTP is unauthenticated and agents share the OS user, so a record never
+claims "a verified human". Every decision carries `ApprovalProvenance`
+(`packages/core/src/adapters/runtime/channels.ts`):
+`{ channel: ui|cli|discord|mcp|runtime|hook, actor: { kind:
+operator-declared|agent|channel-user|unknown, id?, displayName? }, evidence:
+declared|runtime-context|provider }` — built ONLY by the transport
+(`packages/core/src/approvals/provenance.ts`), never from request JSON:
+
+- **HTTP:** `approvalProvenanceFromRequest(req)` reads headers only.
+  Browser decision clients send `OPERATOR_DECLARATION_HEADERS`
+  (`X-Bakin-Operator: declared`, re-exported from `@makinbakin/sdk/utils`);
+  the CLI sends it only with `--as human`; channel = `cli` when
+  `X-Bakin-Origin: cli`, else `ui`. `X-Bakin-Agent-Context` overrides any
+  declaration (a malformed one is `unknown`, never "no agent"). The
+  server-rendered gate decision form posts ONE exact scalar field
+  (`operator=declared`) — the only non-header declaration.
+- **Channels:** runtime channels report `ChannelApprovalDecision { channel:
+  discord|runtime, responder? }` — the provider vouches for the user
+  (Discord keeps its id + fail-closed approver allowlist). No responder ⇒
+  `unknown` ⇒ refused; none is ever invented (OpenClaw without `resolvedBy`).
+- **Hooks:** `workflows.approveGate/rejectGate` take `provenance` (the
+  plugin passes `approvalProvenanceFromRequest(req)` from
+  `@makinbakin/sdk/routing` for the request it serves); absent/malformed is
+  never defaulted.
+
+**ONE policy** (`approvalRefusal`) runs before ANY side effect — in
+`resolveApprovalWithResult` (before even the record lookup: a refused caller
+learns nothing) and at the other operator-word boundary, Health's direct
+apply when non-safe items are confirmed (`assertOperatorDecision`). It
+refuses: an in-process agent tool call (`src/core/agent-invocation.ts` —
+every exec-tool handler runs inside it, MCP and runtime-native), an `agent`
+actor, an undeclared/unknown caller, and `mcp`/`hook` channels.
+`ApprovalRefusedError { code }` → 403 on every surface (hooks return
+`{ success: false, status: 403, code }`; the decision page renders it).
+
+**Agent contexts are detected, not assumed away:** Pi agent shells carry
+`BAKIN_AGENT_CONTEXT=<agent>` per command (bash `spawnHook`,
+`packages/adapter-pi/src/agent-shell.ts`); the CLI resolves ONE identity per
+invocation in the shared http plumbing (`src/cli/identity.ts`): env marker →
+run-dir sidecar → (only for `--as human`) the run-dir/workspace check via the
+runtime's optional, STRICT `agents.workspaces()` (OpenClaw can't mark its
+shells; an unreadable openclaw.json throws rather than listing none), asked
+of THIS home's server (server.lock) — never a `BAKIN_URL` target, which
+cannot vouch for a local cwd; with no local server the CLI runs the same
+check in-process against a BARE runtime adapter (constructed, never
+initialized — no app services, search, or settings/secret writes), chosen
+by `readRuntimeAdapterStrict()` (an unreadable settings.json throws, never
+defaults; no logging). Both adapters treat only ENOENT as absent: OpenClaw's
+config reader and Pi's registry read refuse any other read failure, and
+OpenClaw derives the roster, main identity and every path from ONE strict
+snapshot. A check that cannot answer is not a negative:
+the server answers 503 when services, the roster or a workspace lookup fail
+(`AgentContextUnavailableError`), and the CLI then does not honor `--as
+human` (stderr says why) — task commands fail rather than act as an
+unconfirmed operator. Task commands' `--as human` inside an agent context
+resolves to that agent. Pi's replacement bash
+is `defaultActive: false` — active exactly when the session selects bash.
+Refusal codes stay machine-readable everywhere: JSON `code`, Health
+`refusalCode`, the decision page's `X-Bakin-Refusal-Code` header; the
+activity feed renders `approval.resolved` as "Approved — Declared in UI".
+
+**Words** (`describeApprovalProvenance`): "Declared in UI", "CLI --as
+human", "Discord @user", "Runtime channel user X", "Agent X (channel)",
+"Provenance unavailable — legacy record". Every decision appends ONE
+`approval.resolved` audit record with them; gate activity lines, receipts,
+repair task logs and Health request events use the same words.
+
+**Records:** old `response.actor` is dropped on read, never translated
+(status/decision/timestamps intact, an idempotent create never reopens);
+cancellations carry no provenance (Bakin withdrew the request).
+
+**Documented limits:** no HTTP auth; an arbitrary shell `curl` carrying the
+declaration, or a shell that strips the markers, is indistinguishable from
+the operator. Working from inside an agent's workspace with `--as human`
+is a false positive in the safe direction.
+
 ## Surfaces
 
 - Host REST: `GET /api/approvals?status=pending[&taskIds=a,b]`,
-  `POST /api/approvals/:id/resolve { option, comment? }` (actor =
-  `{source:'web', id: OS user}`). Routes: `packages/host/src/api/approvals.ts`.
+  `POST /api/approvals/:id/resolve { option, comment? }` (provenance from
+  the transport — see § Provenance), `GET /api/approvals/agent-context?cwd=`
+  (the CLI's workspace check). Routes: `packages/host/src/api/approvals.ts`.
 - Attention: `packages/host/src/components/attention/approvals-attention-provider.tsx`
   (toast with Open + OS notification on `approval.pending`, silent while
   viewing that task) — the ONE announcement path for every kind; the
@@ -124,7 +203,8 @@ modal collects a real reason.
   task-panel/Discord click one execution (review P1, 2026-10-02).
 - **Decision first, outcome after (#895 D24).** `onResolve` validates,
   writes `applying` BEFORE anything can mutate, starts the repair operation
-  (`startDoctorRepair`, origin from the actor: web / discord / system),
+  (`startDoctorRepair`, origin from the provenance channel: cli / discord
+  (runtime channels too) / web),
   appends `operation-started` and returns its id WITHOUT waiting — so the
   decision is saved, the card updated and `approval.resolved` published at
   once. The kind's `afterResolve` (run by the service strictly after that,

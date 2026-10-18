@@ -29,14 +29,14 @@ import {
   DEFAULT_SCAN_MINUTES,
 } from '../../src/core/usage-history-timer'
 import { DoctorRepairRequestNotFoundError } from '../../src/core/doctor-repair-store'
-import { userInfo } from 'os'
 import { getContentDir } from '../../src/core/content-dir'
 import { planDoctorRepair, startDoctorRepair } from '../../src/core/doctor-repair'
 import { OperationRejectedError, operationOriginFromRequest, operationStartResponseSchema } from '@bakin/core/operations'
 import { HealthContractError } from '../../src/core/health-contract'
 import { getStoredRepairPlan } from '../../src/core/doctor-repair-plans'
 import { pendingRepairApprovalFor } from '../../src/core/doctor-approvals'
-import { approvalErrorStatus, resolveApprovalWithResult } from '../../src/core/approvals'
+import { ApprovalRefusedError, approvalErrorStatus, assertOperatorDecision, resolveApprovalWithResult } from '../../src/core/approvals'
+import { approvalProvenanceFromRequest } from '@bakin/core/approvals'
 import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/doctor-delegate'
 import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
 import {
@@ -667,7 +667,7 @@ const routes = [
     summary: 'Apply deterministic doctor repairs',
     description: 'Starts the repair as an operation (#895): validates freshness and individual non-safe confirmations, then answers 202 { operationId, bootId } (200 when an identical apply is already running). Each selected action runs as a child operation, then the affected checks re-run; the operation result body is the apply report.',
     body: healthRepairApplyRequestSchema,
-    responses: { 200: operationStartResponseSchema, 202: operationStartResponseSchema, 409: healthErrorResponseSchema, 500: healthErrorResponseSchema },
+    responses: { 200: operationStartResponseSchema, 202: operationStartResponseSchema, 403: healthErrorResponseSchema, 409: healthErrorResponseSchema, 500: healthErrorResponseSchema },
     handler: async (req, _ctx, { body }) => {
       try {
         // A pending approval task already holds this repair (spec D7): the
@@ -676,12 +676,9 @@ const routes = [
         const plan = getStoredRepairPlan(body.planId)
         const selected = plan?.items.filter((item) => body.itemIds.includes(item.id)) ?? []
         const covering = pendingRepairApprovalFor(selected.flatMap((item) => item.observationIds))
+        const provenance = approvalProvenanceFromRequest(req)
         if (covering) {
-          const { username } = userInfo()
-          const { result } = await resolveApprovalWithResult(covering.approvalId, {
-            option: 'apply',
-            actor: { source: 'web', id: username, displayName: username },
-          })
+          const { result } = await resolveApprovalWithResult(covering.approvalId, { option: 'apply', provenance })
           const started = operationStartResponseSchema.safeParse(result)
           if (!started.success) {
             const failure = (result as { startFailure?: unknown } | null)?.startFailure
@@ -689,6 +686,10 @@ const routes = [
           }
           return Response.json(started.data, { status: 202 })
         }
+        // Confirming a non-safe item is the operator's word with no approval
+        // record behind it — the same policy as an approval decision, before
+        // the plan is consumed or anything starts (#898 D-H6).
+        if (body.confirmedItemIds.length > 0) assertOperatorDecision(provenance)
         const started = await startDoctorRepair({
           contentDir: getContentDir(),
           projectRoot: process.cwd(),
@@ -702,7 +703,12 @@ const routes = [
         if (err instanceof OperationRejectedError) return Response.json(err.body, { status: err.httpStatus })
         const approvalStatus = approvalErrorStatus(err)
         if (approvalStatus !== null) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err), code: 'APPROVAL_DECISION' }, { status: approvalStatus === 404 || approvalStatus === 503 ? 500 : approvalStatus })
+          return Response.json({
+            error: err instanceof Error ? err.message : String(err),
+            code: 'APPROVAL_DECISION',
+            // Agent refusal vs a missing declaration, machine-readable (#898 D-H6).
+            ...(err instanceof ApprovalRefusedError ? { refusalCode: err.code } : {}),
+          }, { status: approvalStatus === 404 || approvalStatus === 503 ? 500 : approvalStatus })
         }
         log.error('Health repair apply failed to start', err)
         return Response.json({

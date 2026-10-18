@@ -146,8 +146,9 @@ describe('discord approval surface', () => {
     expect(deps.events).toHaveLength(1)
     const event = deps.events[0]
     expect(event.approvalId).toBe(APPROVAL_ID)
-    expect(event.response.selectedOption).toBe('approve')
-    expect(event.response.actor).toEqual({ type: 'human', id: 'owner-1', displayName: 'mark' })
+    expect(event.decision.selectedOption).toBe('approve')
+    expect(event.decision.channel).toBe('discord')
+    expect(event.decision.responder).toEqual({ id: 'owner-1', displayName: 'mark' })
     expect(event.channelId).toBe('discord:channel:777')
     expect(deps.updates).toHaveLength(1)
   })
@@ -178,8 +179,8 @@ describe('discord approval surface', () => {
       channel_id: '777',
     })
     expect(deps.events).toHaveLength(1)
-    expect(deps.events[0].response.selectedOption).toBe('reject')
-    expect(deps.events[0].response.comment).toBe('wrong direction')
+    expect(deps.events[0].decision.selectedOption).toBe('reject')
+    expect(deps.events[0].decision.comment).toBe('wrong direction')
   })
 
   it('ignores interactions without an approval footer', async () => {
@@ -199,13 +200,14 @@ describe('discord approval surface', () => {
       response: {
         selectedOption: 'approve',
         respondedAt: '2026-07-26T01:00:00.000Z',
-        actor: { type: 'human', id: 'owner-1', displayName: 'mark' },
+        provenance: { channel: 'discord', actor: { kind: 'channel-user', id: 'owner-1', displayName: 'mark' }, evidence: 'provider' },
       },
     })
     expect(deps.edits).toHaveLength(1)
     expect(deps.edits[0].messageId).toBe('card-1')
     expect(deps.edits[0].payload.components).toEqual([])
     expect(String(deps.edits[0].payload.content)).toContain('Approve')
+    expect(String(deps.edits[0].payload.content)).toContain('Discord @mark')
   })
 
   it('cancelApproval strips buttons with a cancellation note', async () => {

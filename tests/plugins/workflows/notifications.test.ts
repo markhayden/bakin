@@ -5,6 +5,7 @@
  * covered in approval-kind.test.ts.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
+import { UI_OPERATOR, discordUser } from '../../helpers/approval-provenance'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -263,7 +264,7 @@ describe('workflow gate notifications', () => {
   })
 
   describe('decision receipt', () => {
-    const approver = { source: 'web' as const, id: 'main-operator', displayName: 'main-operator' }
+    const approver = UI_OPERATOR
 
     it('posts through the configured approvals channel', async () => {
       await sendGateDecisionSummary(mockInstance, 'review-gate', 'Review Draft', 'approved', approver, '2026-04-11T10:00:00Z', '2026-04-11T10:05:00Z', undefined, [])
@@ -272,12 +273,12 @@ describe('workflow gate notifications', () => {
       expect(call.channels).toEqual(['discord:123'])
       expect(call.notification.severity).toBe('success')
       expect(call.notification.title).toBe('')
-      expect(call.notification.body).toContain('✅ **Approval Gate: Review Draft** — Approved\nBy main-operator (web) · took 5m')
+      expect(call.notification.body).toContain('✅ **Approval Gate: Review Draft** — Approved\nDecided: Declared in UI · took 5m')
       expect(call.notification.body).toContain('Task `task-42` · `content-pipeline`')
     })
 
     it('quotes the reject reason', async () => {
-      await sendGateDecisionSummary(mockInstance, 'review-gate', 'Review Draft', 'rejected', { source: 'channel', id: 'owner-1', displayName: 'Owner' }, undefined, '2026-04-11T10:05:00Z', 'Needs a stronger hook', [])
+      await sendGateDecisionSummary(mockInstance, 'review-gate', 'Review Draft', 'rejected', discordUser('owner-1', 'Owner'), undefined, '2026-04-11T10:05:00Z', 'Needs a stronger hook', [])
       const [call] = sendNotification.mock.calls[0] as unknown as [{ notification: { severity: string; body: string } }]
       expect(call.notification.severity).toBe('warn')
       expect(call.notification.body).toContain('❌ **Approval Gate: Review Draft** — Rejected')
@@ -287,7 +288,7 @@ describe('workflow gate notifications', () => {
     it('threaded gates: edits the root card into a receipt and posts the summary inside the thread', async () => {
       const rt = threadedChannels()
       setNotificationRuntime({ channels: rt.channels } as unknown as AgentRuntimeAdapter)
-      await sendGateDecisionSummary(mockInstance, 'review-gate', 'Review Draft', 'approved', { source: 'channel', id: 'owner-1', displayName: 'Owner' }, '2026-04-11T10:00:00Z', '2026-04-11T10:05:00Z', undefined, [
+      await sendGateDecisionSummary(mockInstance, 'review-gate', 'Review Draft', 'approved', discordUser('owner-1', 'Owner'), '2026-04-11T10:00:00Z', '2026-04-11T10:05:00Z', undefined, [
         { channelId: 'discord:123', ref: 'message:42', renderedAt: '2026-04-11T10:00:00Z' },
         { channelId: 'discord:channel:777', ref: 'thread:777', renderedAt: '2026-04-11T10:00:00Z' },
         { channelId: 'discord:123', ref: 'openclaw-plugin-approval:plugin:x', renderedAt: '2026-04-11T10:00:00Z' },
@@ -296,7 +297,7 @@ describe('workflow gate notifications', () => {
       const [editCall] = rt.editMessage.mock.calls[0] as unknown as [{ messageRef: string; body: string }]
       expect(editCall.messageRef).toBe('message:42')
       expect(editCall.body).toContain('🚦 **Review Draft** — `content-pipeline`')
-      expect(editCall.body).toContain('✅ **Approved** by Owner (channel) · took 5m')
+      expect(editCall.body).toContain('✅ **Approved** — Discord @Owner · took 5m')
       const [summaryCall] = sendNotification.mock.calls[0] as unknown as [{ channels: string[] }]
       expect(summaryCall.channels).toEqual(['discord:channel:777'])
     })

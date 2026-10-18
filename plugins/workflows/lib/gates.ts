@@ -7,7 +7,7 @@
  * instance-store — nothing imports gates back.
  */
 import type {
-  ApprovalActor,
+  ApprovalProvenance,
   WorkflowDefinition,
   WorkflowInstance,
   ParallelStep,
@@ -31,18 +31,18 @@ import { getCurrentStep } from './step-context'
 const log = createLogger('workflow-runtime')
 
 export interface ApproveGateOptions {
-  approver?: ApprovalActor
+  provenance?: ApprovalProvenance
   contentDir?: string
 }
 
 export interface RejectGateOptions {
-  approver?: ApprovalActor
+  provenance?: ApprovalProvenance
   rewindTo?: string
   contentDir?: string
 }
 
 export interface ReopenFromStepOptions {
-  actor?: ApprovalActor
+  provenance?: ApprovalProvenance
   instanceId?: string
   stepId?: string
   reason: string
@@ -62,7 +62,7 @@ export interface ReopenFromStepResult {
  * undefined for older instances created before #91 landed. */
 export interface GateDecisionRecord {
   gateLabel: string
-  approver?: ApprovalActor
+  provenance?: ApprovalProvenance
   requestedAt?: string
   decidedAt: string
   durationMs?: number
@@ -100,19 +100,19 @@ export function approveGate(
   stepState.status = 'complete'
   stepState.completedAt = now
   stepState.decidedAt = now
-  if (opts.approver) stepState.approver = opts.approver
+  if (opts.provenance) stepState.provenance = opts.provenance
 
   instance.history.push({
     stepId,
     status: 'complete',
     completedAt: now,
-    approver: opts.approver,
+    provenance: opts.provenance,
     requestedAt,
   })
 
   const decision: GateDecisionRecord = {
     gateLabel: step.label || stepId,
-    approver: opts.approver,
+    provenance: opts.provenance,
     requestedAt,
     decidedAt: now,
     durationMs: requestedAt ? Date.parse(now) - Date.parse(requestedAt) : undefined,
@@ -123,7 +123,7 @@ export function approveGate(
   saveInstance(instance, dir)
 
   // Emit SSE event and clear notification tracking
-  notifyGateApproved(instance, stepId, step.label || stepId, opts.approver)
+  notifyGateApproved(instance, stepId, step.label || stepId, opts.provenance)
   clearGateNotified(taskId, stepId, dir)
 
   // Log gate approval to the task so watchdog sees recent activity
@@ -204,13 +204,13 @@ export function rejectGate(
     status: 'rejected',
     completedAt: now,
     rejectionReason: reason,
-    approver: opts.approver,
+    provenance: opts.provenance,
     requestedAt,
   })
 
   const decision: GateDecisionRecord = {
     gateLabel: gateStep.label || stepId,
-    approver: opts.approver,
+    provenance: opts.provenance,
     requestedAt,
     decidedAt: now,
     durationMs: requestedAt ? Date.parse(now) - Date.parse(requestedAt) : undefined,
@@ -221,7 +221,7 @@ export function rejectGate(
   // but the history above is the durable record).
   stepState.status = 'rejected'
   stepState.decidedAt = now
-  if (opts.approver) stepState.approver = opts.approver
+  if (opts.provenance) stepState.provenance = opts.provenance
 
   // Capture previous output from the rewind target before resetting
   const targetPreviousOutput = instance.stepStates[targetId]?.output
@@ -261,7 +261,7 @@ export function rejectGate(
   saveInstance(instance, dir)
 
   // Emit SSE event and clear notification tracking
-  notifyGateRejected(instance, stepId, step.label || stepId, reason, opts.approver)
+  notifyGateRejected(instance, stepId, step.label || stepId, reason, opts.provenance)
   clearGateNotified(taskId, stepId, dir)
 
   // Log gate rejection and move task back to inProgress (from review)
@@ -373,13 +373,13 @@ export function reopenFromStep(taskId: string, opts: ReopenFromStepOptions): Reo
     output: {
       reopened: true,
       reason: opts.reason,
-      actor: opts.actor,
+      provenance: opts.provenance,
       requestedStepId,
     },
   })
   saveInstance(instance, dir)
   dispatchReopenedStep(instance, def, reset.reopenedStepId, dir)
-  notifyWorkflowReopened(instance, reset.reopenedStepId, opts.reason, opts.actor)
+  notifyWorkflowReopened(instance, reset.reopenedStepId, opts.reason, opts.provenance)
 
   addTaskLogToStore(taskId, 'workflow', `Workflow reopened at "${reset.reopenedStepId}": ${opts.reason}`)
     .then(() => moveTaskInStore(taskId, 'inProgress'))

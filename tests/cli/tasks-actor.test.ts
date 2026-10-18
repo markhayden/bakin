@@ -32,10 +32,17 @@ const apiGetSpy = mock(async (path: string) => {
   if (path === '/api/plugins/team/') return { agents: [{ id: 'main' }, { id: 'patch' }], mainAgentId: 'main' }
   return { columns: {} }
 })
-mock.module('../../src/cli/http', () => ({
-  apiGet: (path: string) => apiGetSpy(path),
-  apiPost: (path: string, body: Record<string, unknown>) => apiPostSpy(path, body),
-}))
+let identityOverride: import('../../src/cli/identity').CliIdentity | null = null
+mock.module('../../src/cli/http', () => {
+  // The real detection, re-resolved per call: these tests chdir between calls.
+  const { resolveCliIdentity } = require('../../src/cli/identity') as typeof import('../../src/cli/identity')
+  return {
+    apiGet: (path: string) => apiGetSpy(path),
+    apiPost: (path: string, body: Record<string, unknown>) => apiPostSpy(path, body),
+    // The workspace check confirms no agent workspace, so --as human is a confirmed operator.
+    cliIdentity: async () => identityOverride ?? resolveCliIdentity({ argv: ['--as', 'human'], cwd: process.cwd(), env: {}, probeWorkspace: async () => null }),
+  }
+})
 mock.module('../../src/cli/output', () => ({ print: mock(), printTable: mock() }))
 class ExitCalled extends Error {}
 mock.module('../../src/cli/help', () => ({
@@ -130,6 +137,29 @@ describe('resolveCliActor', () => {
     process.chdir(runDir)
     expect(await resolveCliActor(undefined)).toEqual({ agent: 'jessica' })
     expect(apiGetSpy).not.toHaveBeenCalled()
+  })
+
+  it('--as human that could not be confirmed fails instead of acting as the operator (review r2)', async () => {
+    identityOverride = { agentContext: null, operatorDeclared: false, declarationWithheld: 'no Bakin server is running for this home' }
+    try {
+      await expect(resolveCliActor('human')).rejects.toThrow('--as human could not be confirmed: no Bakin server is running for this home')
+    } finally {
+      identityOverride = null
+    }
+  })
+
+  it('--as human inside an agent\'s run dir is NOT the operator — the run\'s agent acts (#898)', async () => {
+    const { repoDir } = makeRunDir('jessica')
+    process.chdir(repoDir)
+    const errors = mock((..._args: unknown[]) => {})
+    const original = console.error
+    console.error = errors
+    try {
+      expect(await resolveCliActor('human')).toEqual({ agent: 'jessica' })
+    } finally {
+      console.error = original
+    }
+    expect(String(errors.mock.calls[0]?.[0])).toContain('--as human is not honored')
   })
 
   it('without a flag or a run dir, falls back to the roster main agent exactly as before', async () => {

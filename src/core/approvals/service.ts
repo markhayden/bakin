@@ -8,6 +8,8 @@
 import type { ApprovalDelivery, ApprovalOutcome } from '@bakin/core/adapters/runtime'
 import type { RuntimeChannelSurface } from '@bakin/core/adapters/runtime/channels'
 import {
+  approvalRefusal,
+  describeApprovalProvenance,
   cancelApprovalRecord,
   createApprovalRecord,
   getApprovalRecord,
@@ -19,12 +21,15 @@ import {
   type ApprovalRequest,
 } from '@bakin/core/approvals'
 import type { ApprovalResponse } from '@bakin/core/adapters/runtime'
+import { currentAgentInvocation } from '../agent-invocation'
+import { appendAudit } from '../audit'
+import { getContentDir } from '../content-dir'
 import { maybeGetAppServices } from '../app-services-store'
 import { resolveRuntimeChannelRef } from '../channel-aliases'
 import { createLogger } from '../logger'
 import { getSettings } from '../settings'
 import { broadcast } from '../sse'
-import { ApprovalKindUnavailableError, ApprovalNotFoundError, ApprovalNotPendingError } from './errors'
+import { ApprovalKindUnavailableError, ApprovalNotFoundError, ApprovalNotPendingError, ApprovalRefusedError } from './errors'
 import { getApprovalKind, type ApprovalDecision } from './kinds'
 
 const log = createLogger('approvals')
@@ -61,6 +66,7 @@ function publishResolved(record: ApprovalRecord): void {
     taskId: record.owner.taskId,
     status: record.status,
     option: record.response?.selectedOption ?? null,
+    provenance: record.response?.provenance ?? null,
     timestamp: new Date().toISOString(),
   })
 }
@@ -135,9 +141,21 @@ export async function postApprovalOutcome(record: ApprovalRecord, outcome: Appro
 }
 
 /**
- * Apply a decision: refuse unknown/non-pending/in-flight ids with typed
- * errors, run the kind handler (its throw leaves the record pending), then
- * resolve the record (compare-and-set), tell the channel, and publish.
+ * The ONE decision policy at the service boundary (#898 D-H2/D-H6): throws
+ * ApprovalRefusedError for an agent, a known agent context, or an
+ * undeclared caller. Exported for the other mutation boundary that acts on
+ * an operator's word without an approval record (Health direct apply).
+ */
+export function assertOperatorDecision(provenance: ApprovalDecision['provenance'] | undefined): void {
+  const refusal = approvalRefusal(provenance, currentAgentInvocation())
+  if (refusal) throw new ApprovalRefusedError(refusal)
+}
+
+/**
+ * Apply a decision: refuse a caller the policy does not accept, refuse
+ * unknown/non-pending/in-flight ids with typed errors, run the kind handler
+ * (its throw leaves the record pending), then resolve the record
+ * (compare-and-set), tell the channel, and publish.
  */
 export async function resolveApproval(approvalId: string, decision: ApprovalDecision): Promise<ApprovalRecord> {
   return (await resolveApprovalWithResult(approvalId, decision)).record
@@ -145,6 +163,9 @@ export async function resolveApproval(approvalId: string, decision: ApprovalDeci
 
 /** `resolveApproval` plus whatever the kind handler returned (e.g. an apply report). */
 export async function resolveApprovalWithResult(approvalId: string, decision: ApprovalDecision): Promise<{ record: ApprovalRecord; result: unknown }> {
+  // Before anything else — including the record lookup — so a refused
+  // caller learns nothing and changes nothing.
+  assertOperatorDecision(decision.provenance)
   const record = getApprovalRecord(approvalId)
   if (!record) throw new ApprovalNotFoundError(approvalId)
   if (record.status !== 'pending') throw new ApprovalNotPendingError(approvalId, record.status)
@@ -158,7 +179,7 @@ export async function resolveApprovalWithResult(approvalId: string, decision: Ap
     const response: ApprovalResponse = {
       selectedOption: decision.option,
       respondedAt: decision.respondedAt ?? new Date().toISOString(),
-      actor: { type: 'human', id: decision.actor.id, ...(decision.actor.displayName ? { displayName: decision.actor.displayName } : {}) },
+      provenance: decision.provenance,
       ...(decision.comment ? { comment: decision.comment } : {}),
     }
     const resolved = resolveApprovalRecord(approvalId, response)
@@ -171,7 +192,16 @@ export async function resolveApprovalWithResult(approvalId: string, decision: Ap
       }
     }
     publishResolved(resolved)
-    log.info('Approval resolved', { approvalId, kind: record.owner.kind, option: decision.option, by: decision.actor.source })
+    // The durable "who decided, and how we know" line for every kind (#898 D-H8).
+    appendAudit(getContentDir(), 'approval.resolved', 'approvals', {
+      approvalId,
+      kind: record.owner.kind,
+      taskId: record.owner.taskId,
+      option: decision.option,
+      decidedBy: describeApprovalProvenance(decision.provenance),
+      provenance: decision.provenance,
+    })
+    log.info('Approval resolved', { approvalId, kind: record.owner.kind, option: decision.option, channel: decision.provenance.channel, actor: decision.provenance.actor.kind })
     if (handler.afterResolve) {
       const followUp = handler.afterResolve(resolved, result)
         .catch((err) => log.error('Approval follow-up failed', err, { approvalId, kind: record.owner.kind }))

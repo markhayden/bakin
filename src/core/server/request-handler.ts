@@ -363,6 +363,10 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       dispatchWebHandler(req, res, approvalsRoute.get)
       return
     }
+    if (url.pathname === '/api/approvals/agent-context' && req.method === 'GET') {
+      dispatchWebHandler(req, res, approvalsRoute.agentContext)
+      return
+    }
     if (req.method === 'POST' && approvalsRoute.approvalIdFromPath(url.pathname)) {
       dispatchWebHandler(req, res, approvalsRoute.resolve)
       return

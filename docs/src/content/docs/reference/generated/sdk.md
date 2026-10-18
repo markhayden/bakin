@@ -687,6 +687,7 @@ Source: `packages/sdk/src/utils/index.ts`.
 | `summarizeStructured` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `unwrapToolResult` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `FormatStructuredOptions` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
+| `OPERATOR_DECLARATION_HEADERS` | Headers a browser decision client sends with an approval decision (operator-declared, #898). |
 | `pluginFetch` | Fetch a plugin's own API route (`/api/plugins/&lt;id>/&lt;path>`) with JSON defaults. |
 | `pluginFetchJson` | `pluginFetch` + JSON parse under a hard deadline (the plain-function twin of `usePluginJsonFetch`'s `timeoutMs`). |
 | `PluginFetchJsonOptions` | `pluginFetch` + JSON parse under a hard deadline (the plain-function twin of `usePluginJsonFetch`'s `timeoutMs`). |
@@ -700,6 +701,8 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `defineRoute` | Define a plugin HTTP route with typed input/output and handler. |
 | `defineCoreRoute` | Define a core (non-plugin) HTTP route. |
 | `definePlugin` | Compose a plugin's routes into a single definition for the server. |
+| `approvalProvenanceFromRequest` | Provenance of an approval decision on a plugin route, from its transport only — pass it to the gate hooks (#898). |
+| `ApprovalProvenance` | Who decided an approval and how Bakin knows: channel, declared/provider-vouched actor, evidence (#898). |
 | `HttpMethod` | — |
 | `HttpStatus` | — |
 | `RouteContext` | — |
@@ -743,5 +746,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 16, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 18, 2026 · Bakin 0.0.0-dev</span>
 </aside>

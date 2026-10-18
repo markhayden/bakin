@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { toast, useAgent, useAgentList, useAgentStore, useJsonFetch, usePluginEvent, type PluginEventPayload } from '@makinbakin/sdk/hooks'
+import { OPERATOR_DECLARATION_HEADERS } from '@makinbakin/sdk/utils'
 import {
   TEAM_VALUE_PREFIX,
   isTeamValue,
@@ -290,7 +291,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
     try {
       const res = await fetch(`/api/plugins/workflows/instances/${wfInstance.taskId}/reopen`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...OPERATOR_DECLARATION_HEADERS },
         body: JSON.stringify({ stepId, reason: 'Re-run requested from task detail' }),
       })
       if (res.ok) {
@@ -566,7 +567,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
     try {
       const res = await fetch(`/api/approvals/${encodeURIComponent(approval.approvalId)}/resolve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...OPERATOR_DECLARATION_HEADERS },
         body: JSON.stringify({ option, ...(comment ? { comment } : {}) }),
       })
       if (res.ok) {

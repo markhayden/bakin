@@ -5,15 +5,14 @@
  * server-rendered decision page (GET + POST), and the pending / batch-status
  * reads. Every decision goes through the gate's pending approval record in
  * core (`decideGate` → `resolveApproval`); these handlers only parse input,
- * pick the web actor and map typed errors to status codes.
+ * build the decision's provenance from the transport and map typed errors
+ * to status codes.
  */
-import { userInfo } from 'os'
 import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
-import type { ApprovalActor } from '@bakin/core/plugin-types'
-import { getApprovalRecord, type ApprovalRecord } from '@bakin/core/approvals'
-import { approvalErrorStatus } from '../../../../src/core/approvals'
+import { APPROVAL_OPERATOR_FORM_FIELD, approvalProvenanceFromRequest, getApprovalRecord, type ApprovalRecord } from '@bakin/core/approvals'
+import { ApprovalRefusedError, approvalErrorStatus } from '../../../../src/core/approvals'
 import { loadInstance, listInstances } from '../runtime'
 import { loadDefinition } from '../parser'
 import { decideGate, pendingGateApproval } from '../approval-kind'
@@ -21,19 +20,11 @@ import { resolveApproval } from '../../../../src/core/approvals'
 import { formValue, gateDecisionHtmlResponse, escapeHtml } from '../gate-html'
 import { passthroughWf, errorResponseWf, htmlResponseWf } from '../route-schemas'
 
-// Web-source approver: REST endpoints come from the Bakin UI, which is
-// single-user behind Tailscale. Use the OS username so audit trails can
-// identify who clicked the button with at least machine-level granularity.
-const webApprover = (): ApprovalActor => {
-  const { username } = userInfo()
-  return { source: 'web', id: username, displayName: username }
-}
-
 function approvalErrorJson(err: unknown): Response {
   const status = approvalErrorStatus(err)
   if (status === null) throw err
   const message = (err as Error).message
-  return Response.json({ error: message, errors: [message] }, { status })
+  return Response.json({ error: message, errors: [message], ...(err instanceof ApprovalRefusedError ? { code: err.code } : {}) }, { status })
 }
 
 // POST /gates/:taskId/approve — approve a gate step
@@ -53,7 +44,7 @@ const approveHandler = async (req: Request, _ctx: PluginContextLite) => {
   }
 
   try {
-    const approval = await decideGate(taskId, stepId, 'approve', webApprover())
+    const approval = await decideGate(taskId, stepId, 'approve', approvalProvenanceFromRequest(req))
     return Response.json({ success: true, approval })
   } catch (err) {
     return approvalErrorJson(err)
@@ -77,7 +68,7 @@ const rejectHandler = async (req: Request, _ctx: PluginContextLite) => {
   }
 
   try {
-    const approval = await decideGate(taskId, stepId, 'reject', webApprover(), reason)
+    const approval = await decideGate(taskId, stepId, 'reject', approvalProvenanceFromRequest(req), reason)
     const rewoundTo = loadInstance(taskId)?.currentStepId
     return Response.json({ success: true, approval, ...(rewoundTo ? { rewoundTo } : {}) })
   } catch (err) {
@@ -123,12 +114,14 @@ const gateDecisionPageHandler = async (req: Request, _ctx: PluginContextLite) =>
       <input type="hidden" name="approvalId" value="${escapeHtml(approvalId)}" />
       <input type="hidden" name="taskId" value="${escapeHtml(taskId)}" />
       <input type="hidden" name="stepId" value="${escapeHtml(stepId)}" />
+      <input type="hidden" name="${APPROVAL_OPERATOR_FORM_FIELD}" value="declared" />
       <button name="decision" value="approve"${disabled}>Approve</button>
     </form>
     <form method="POST">
       <input type="hidden" name="approvalId" value="${escapeHtml(approvalId)}" />
       <input type="hidden" name="taskId" value="${escapeHtml(taskId)}" />
       <input type="hidden" name="stepId" value="${escapeHtml(stepId)}" />
+      <input type="hidden" name="${APPROVAL_OPERATOR_FORM_FIELD}" value="declared" />
       <label for="reason">Reject reason</label>
       <textarea id="reason" name="reason" rows="4"${disabled}></textarea>
       <button class="danger" name="decision" value="reject"${disabled}>Reject</button>
@@ -169,12 +162,18 @@ const gateDecisionActionHandler = async (req: Request, _ctx: PluginContextLite) 
   try {
     // The EXACT record the form named — never "the newest pending for this
     // gate": a superseded generation must refuse, not decide its successor.
-    await resolveApproval(approvalRecord.approvalId, { option: decision, actor: webApprover(), ...(reason ? { comment: reason } : {}) })
+    // The page's one exact scalar declaration field (D-H4) — never a
+    // provenance object; headers still win (an agent context overrides it).
+    const provenance = approvalProvenanceFromRequest(req, { formDeclaration: formValue(form, APPROVAL_OPERATOR_FORM_FIELD) })
+    await resolveApproval(approvalRecord.approvalId, { option: decision, provenance, ...(reason ? { comment: reason } : {}) })
   } catch (err) {
     const status = approvalErrorStatus(err)
     if (status === null) throw err
     const title = decision === 'approve' ? 'Approval Failed' : 'Reject Failed'
-    return gateDecisionHtmlResponse(title, `<p>${escapeHtml((err as Error).message)}</p>`, status === 409 ? 409 : 400)
+    const page = gateDecisionHtmlResponse(title, `<p>${escapeHtml((err as Error).message)}</p>`, status === 403 || status === 409 ? status : 400)
+    // The refusal stays machine-readable on the HTML surface too (#898 D-H6).
+    if (err instanceof ApprovalRefusedError) page.headers.set('X-Bakin-Refusal-Code', err.code)
+    return page
   }
   return decision === 'approve'
     ? gateDecisionHtmlResponse('Gate Approved', '<p>The workflow gate was approved. You can close this tab.</p>')
@@ -260,7 +259,7 @@ export const gateRoutes = [
   defineRoute({ path: '/gates/:taskId/approve', method: 'POST', description: 'Approve a human gate step', summary: 'Approve a human gate step', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: approveHandler }),
   defineRoute({ path: '/gates/:taskId/reject', method: 'POST', description: 'Reject a gate step, rewinds workflow', summary: 'Reject a gate step, rewinds workflow', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: rejectHandler }),
   defineRoute({ path: '/gates/:taskId/decision', method: 'GET', description: 'Render a durable Bakin gate approval fallback page', summary: 'Render a durable Bakin gate approval fallback page', params: z.object({ taskId: z.string() }), responses: { 200: htmlResponseWf, 400: htmlResponseWf, 404: htmlResponseWf }, handler: gateDecisionPageHandler }),
-  defineRoute({ path: '/gates/:taskId/decision', method: 'POST', description: 'Approve or reject a gate through the durable Bakin approval fallback page', summary: 'Approve or reject a gate through the durable Bakin approval fallback page', params: z.object({ taskId: z.string() }), responses: { 200: htmlResponseWf, 400: htmlResponseWf, 404: htmlResponseWf, 409: htmlResponseWf }, handler: gateDecisionActionHandler }),
+  defineRoute({ path: '/gates/:taskId/decision', method: 'POST', description: 'Approve or reject a gate through the durable Bakin approval fallback page', summary: 'Approve or reject a gate through the durable Bakin approval fallback page', params: z.object({ taskId: z.string() }), responses: { 200: htmlResponseWf, 400: htmlResponseWf, 403: htmlResponseWf, 404: htmlResponseWf, 409: htmlResponseWf }, handler: gateDecisionActionHandler }),
   defineRoute({ path: '/gates/pending', method: 'GET', description: 'List all gates awaiting approval', summary: 'List all gates awaiting approval', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: pendingGatesHandler }),
   defineRoute({ path: '/gates/status', method: 'GET', activityClass: 'routine', description: 'Batch map of nested-workflow parents to the child task their current step waits on', summary: 'Batch map of nested-workflow parents to the child task their current step waits on', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: gateStatusHandler }),
 ]

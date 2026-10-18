@@ -156,8 +156,9 @@ export function cancelApprovalRecord(
   return writeRecord({
     ...existing,
     status: 'cancelled',
+    // Bakin withdrew the request — not a decision, so no provenance (#898).
     response: reason
-      ? { selectedOption: 'cancel', respondedAt: now, actor: { type: 'human', id: 'system', displayName: 'system' }, comment: reason }
+      ? { selectedOption: 'cancel', respondedAt: now, comment: reason }
       : existing.response,
     resolvedAt: now,
     updatedAt: now,

@@ -4,6 +4,7 @@
  * Split from runtime.test.ts (FW7); shared scaffold in helpers/runtime-harness.ts.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { UI_OPERATOR } from '../../helpers/approval-provenance'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -120,7 +121,7 @@ describe('runtime — task-bridge', () => {
       const result = reopenFromStep('task-ledger-reopen', {
         stepId: 'step-two',
         reason: 'Redo it',
-        actor: { id: 'mark', source: 'web' },
+        provenance: UI_OPERATOR,
         contentDir: testDir,
       })
       expect(result.success).toBe(true)

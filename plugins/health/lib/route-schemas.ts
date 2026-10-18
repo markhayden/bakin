@@ -473,5 +473,7 @@ export const searchReadinessResponseSchema = z.object({
 export const healthErrorResponseSchema = z.object({
   error: nonEmptyString,
   code: nonEmptyString.optional(),
+  /** An approval-policy refusal's code (`agent_context` | `agent_actor` | `undeclared` | `channel_not_allowed`, #898). */
+  refusalCode: nonEmptyString.optional(),
   itemIds: z.array(nonEmptyString).optional(),
 }).strict()

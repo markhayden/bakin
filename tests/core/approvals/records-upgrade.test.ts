@@ -72,7 +72,9 @@ describe('upgradeApprovalRecords', () => {
     expect(pending?.deliveries).toEqual([{ channelId: 'discord:1', ref: 'msg-1', renderedAt: '2026-10-01T00:00:00.000Z' }])
     const resolved = getApprovalRecord('gate-resolved', testDir)
     expect(resolved?.status).toBe('approved')
-    expect(resolved?.response?.actor.id).toBe('mark')
+    // The old record's self-asserted `actor` is dropped, never translated (#898 D-H7).
+    expect(resolved?.response?.provenance).toBeUndefined()
+    expect(resolved?.response?.selectedOption).toBeDefined()
     expect(resolved?.resolvedAt).toBe('2026-10-01T01:00:00.000Z')
     expect(existsSync(legacyApprovalsDir(testDir))).toBe(false)
 

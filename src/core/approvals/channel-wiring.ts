@@ -4,8 +4,9 @@
  * registered before this runs (plugins activate → doctor.start → here).
  */
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import { provenanceFromChannelDecision } from '@bakin/core/approvals'
 import { createLogger } from '../logger'
-import { ApprovalKindUnavailableError, ApprovalNotFoundError, ApprovalNotPendingError, ApprovalResolveError } from './errors'
+import { ApprovalKindUnavailableError, ApprovalNotFoundError, ApprovalNotPendingError, ApprovalRefusedError, ApprovalResolveError } from './errors'
 import { rehydratePendingApprovals } from './rehydration'
 import { resolveApproval } from './service'
 
@@ -21,10 +22,10 @@ export async function bootApprovals(runtime: Pick<AgentRuntimeAdapter, 'channels
   return channels.subscribeApprovalResponses(async (event) => {
     try {
       await resolveApproval(event.approvalId, {
-        option: event.response.selectedOption,
-        comment: event.response.comment,
-        respondedAt: event.response.respondedAt,
-        actor: { source: 'channel', id: event.response.actor.id, displayName: event.response.actor.displayName },
+        option: event.decision.selectedOption,
+        ...(event.decision.comment ? { comment: event.decision.comment } : {}),
+        respondedAt: event.decision.respondedAt,
+        provenance: provenanceFromChannelDecision(event.decision),
       })
     } catch (err) {
       // Stale provider button: the record was already resolved, cancelled or
@@ -33,7 +34,7 @@ export async function bootApprovals(runtime: Pick<AgentRuntimeAdapter, 'channels
         log.warn('Channel approval response ignored', { approvalId: event.approvalId, reason: err.message })
         return
       }
-      if (err instanceof ApprovalKindUnavailableError || err instanceof ApprovalResolveError) {
+      if (err instanceof ApprovalKindUnavailableError || err instanceof ApprovalResolveError || err instanceof ApprovalRefusedError) {
         log.warn('Channel approval response refused', { approvalId: event.approvalId, reason: err.message })
         return
       }

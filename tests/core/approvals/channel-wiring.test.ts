@@ -5,6 +5,7 @@
  * board-only.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
+import type { ChannelApprovalDecision } from '../../../packages/core/src/adapters/runtime/channels'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -31,7 +32,7 @@ mock.module('../../../src/core/channel-aliases', () => ({
   resolveRuntimeChannelRef: async (_runtime: unknown, channel: string) => ({ resolved: channel }),
 }))
 
-type Listener = (event: { approvalId: string; channelId: string; response: { selectedOption: string; respondedAt: string; actor: { type: 'human'; id: string; displayName?: string }; comment?: string } }) => Promise<void> | void
+type Listener = (event: { approvalId: string; channelId: string; decision: ChannelApprovalDecision }) => Promise<void> | void
 let listener: Listener | null = null
 const unsubscribe = mock(() => {})
 const channels = {
@@ -69,14 +70,14 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-const click = (approvalId: string, option: string, comment?: string) => listener!({
+const click = (approvalId: string, option: string, comment?: string, responder: ChannelApprovalDecision['responder'] | null = { id: 'discord-mark', displayName: 'Mark' }) => listener!({
   approvalId,
   channelId: 'discord:1',
-  response: { selectedOption: option, respondedAt: '2026-10-02T00:00:00.000Z', actor: { type: 'human', id: 'discord-mark', displayName: 'Mark' }, ...(comment ? { comment } : {}) },
+  decision: { selectedOption: option, respondedAt: '2026-10-02T00:00:00.000Z', channel: 'discord', ...(responder ? { responder } : {}), ...(comment ? { comment } : {}) },
 })
 
 describe('bootApprovals', () => {
-  it('subscribes once and resolves a pending record from a channel decision with a channel actor', async () => {
+  it('subscribes once and resolves a pending record from a channel decision vouched for by the provider', async () => {
     requestApproval({ approvalId: 'g1', owner, request })
     const off = await bootApprovals(runtime)
     expect(listener).toBeInstanceOf(Function)
@@ -84,7 +85,7 @@ describe('bootApprovals', () => {
     await click('g1', 'reject', 'needs work')
 
     expect(onResolve).toHaveBeenCalledTimes(1)
-    expect(onResolve.mock.calls[0]?.[1]).toMatchObject({ option: 'reject', comment: 'needs work', actor: { source: 'channel', id: 'discord-mark', displayName: 'Mark' } })
+    expect(onResolve.mock.calls[0]?.[1]).toMatchObject({ option: 'reject', comment: 'needs work', provenance: { channel: 'discord', actor: { kind: 'channel-user', id: 'discord-mark', displayName: 'Mark' }, evidence: 'provider' } })
     expect(getApprovalRecord('g1')?.status).toBe('rejected')
     off()
     expect(unsubscribe).toHaveBeenCalled()
@@ -98,6 +99,14 @@ describe('bootApprovals', () => {
     await expect(click('never-existed', 'approve')).resolves.toBeUndefined()
     expect(onResolve).toHaveBeenCalledTimes(1)
     expect(getApprovalRecord('g2')?.response?.selectedOption).toBe('approve')
+  })
+
+  it('a channel decision with no responder is refused — never invented — and the record stays pending (#898)', async () => {
+    requestApproval({ approvalId: 'g4', owner, request })
+    await bootApprovals(runtime)
+    await expect(click('g4', 'approve', undefined, null)).resolves.toBeUndefined()
+    expect(onResolve).not.toHaveBeenCalled()
+    expect(getApprovalRecord('g4')?.status).toBe('pending')
   })
 
   it('a handler refusal is swallowed by the listener and the record stays pending', async () => {

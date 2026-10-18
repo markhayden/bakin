@@ -103,11 +103,41 @@ export interface ApprovalPatch {
   context?: RuntimeMetadata
 }
 
+/**
+ * Who decided an approval and how Bakin knows it (#898 D-H1). Built by the
+ * transport that carried the decision — never accepted from request JSON —
+ * and never claims more than that transport can know: a UI or CLI decision
+ * is operator-DECLARED, a channel decision is vouched for by its provider.
+ */
+export type ApprovalChannel = 'ui' | 'cli' | 'discord' | 'mcp' | 'runtime' | 'hook'
+export type ApprovalActorKind = 'operator-declared' | 'agent' | 'channel-user' | 'unknown'
+export type ApprovalEvidence = 'declared' | 'runtime-context' | 'provider'
+
+export interface ApprovalProvenance {
+  channel: ApprovalChannel
+  actor: { kind: ApprovalActorKind; id?: string; displayName?: string }
+  evidence: ApprovalEvidence
+}
+
 export interface ApprovalResponse {
   selectedOption: string
   respondedAt: string
-  actor: { type: 'agent' | 'human'; id: string; displayName?: string }
+  provenance: ApprovalProvenance
   comment?: string
+}
+
+/**
+ * A decision as a runtime channel reports it: the provider identifies the
+ * user who pressed the button (Discord via the delivery bridge, a runtime's
+ * native channel otherwise). Core turns it into provenance.
+ */
+export interface ChannelApprovalDecision {
+  selectedOption: string
+  respondedAt: string
+  comment?: string
+  channel: 'discord' | 'runtime'
+  /** Absent when the provider could not say who decided — refused, never invented. */
+  responder?: { id: string; displayName?: string }
 }
 
 export interface ApprovalRenderResult {
@@ -156,7 +186,7 @@ export interface PostApprovalOutcomeArgs extends ApprovalRenderRef {
 
 export interface ApprovalResolveEvent {
   approvalId: string
-  response: ApprovalResponse
+  decision: ChannelApprovalDecision
   channelId: string
 }
 

@@ -3,14 +3,13 @@
  *
  * The board is the inbox (spec D7): task cards and task detail read pending
  * approval records here and resolve them here, whatever their kind. The
- * decision actor is the OS user (single-operator box behind Tailscale) so
- * audit trails identify who clicked with machine-level granularity — the
- * same rule the workflow gate routes used.
+ * decision's provenance comes from the transport only (#898 D-H4): the
+ * board declares the operator with `X-Bakin-Operator: declared`, the CLI
+ * with `--as human`; anything else is refused before any side effect.
  */
-import { userInfo } from 'os'
 import { z } from 'zod'
-import { listApprovalRecords, type ApprovalStatus } from '@bakin/core/approvals'
-import { approvalErrorStatus, resolveApproval } from '@/core/approvals'
+import { approvalProvenanceFromRequest, listApprovalRecords, type ApprovalStatus } from '@bakin/core/approvals'
+import { AgentContextUnavailableError, ApprovalRefusedError, agentContextForPath, approvalErrorStatus, resolveApproval } from '@/core/approvals'
 
 const statusSchema = z.enum(['pending', 'approved', 'rejected', 'cancelled', 'expired'])
 const resolveBody = z.object({
@@ -51,17 +50,33 @@ export async function resolve(req: Request, url: URL): Promise<Response> {
   const parsed = resolveBody.safeParse(body)
   if (!parsed.success) return Response.json({ ok: false, error: 'invalid input', issues: parsed.error.issues }, { status: 400 })
 
-  const { username } = userInfo()
   try {
     const record = await resolveApproval(approvalId, {
       option: parsed.data.option,
       ...(parsed.data.comment ? { comment: parsed.data.comment } : {}),
-      actor: { source: 'web', id: username, displayName: username },
+      provenance: approvalProvenanceFromRequest(req),
     })
     return Response.json({ ok: true, approval: record })
   } catch (err) {
     const status = approvalErrorStatus(err)
     if (status === null) throw err
-    return Response.json({ ok: false, error: (err as Error).message }, { status })
+    return Response.json({ ok: false, error: (err as Error).message, ...(err instanceof ApprovalRefusedError ? { code: err.code } : {}) }, { status })
+  }
+}
+
+/**
+ * GET /api/approvals/agent-context?cwd=<absolute path> → { agentId | null }.
+ * The CLI asks before honoring `--as human` (#898 D-H5): a cwd inside an
+ * agent's run dir or workspace is that agent's context.
+ */
+export async function agentContext(_req: Request, url: URL): Promise<Response> {
+  const cwd = url.searchParams.get('cwd')
+  if (!cwd || !cwd.startsWith('/')) return Response.json({ ok: false, error: 'cwd must be an absolute path' }, { status: 400 })
+  try {
+    return Response.json({ agentId: await agentContextForPath(cwd) })
+  } catch (err) {
+    // Unknown is not "none": the CLI withholds `--as human` on a 503.
+    if (err instanceof AgentContextUnavailableError) return Response.json({ ok: false, error: err.message }, { status: 503 })
+    throw err
   }
 }

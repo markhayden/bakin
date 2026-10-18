@@ -5,6 +5,7 @@
  * .claude/specs/workflow-map-fanout-design.md.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { UI_OPERATOR } from '../../helpers/approval-provenance'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -620,7 +621,7 @@ steps:
         const childId = `task-gated--produce-items--${i}`
         completeStep(childId, 'work', { draft: i }, undefined, testDir)
         expect(loadInstance(childId, testDir)!.status).toBe('pending_approval')
-        const approval = approveGate(childId, 'check', { contentDir: testDir, approver: { id: 'mark', source: 'web' } })
+        const approval = approveGate(childId, 'check', { contentDir: testDir, provenance: UI_OPERATOR })
         expect(approval.success).toBe(true)
         completeStep(childId, 'finish', { final: i }, undefined, testDir)
       }
@@ -665,7 +666,7 @@ steps:
 
       // Child 0 → complete.
       completeStep('task-mixed--produce-items--0', 'work', { draft: 0 }, undefined, testDir)
-      approveGate('task-mixed--produce-items--0', 'check', { contentDir: testDir, approver: { id: 'mark', source: 'web' } })
+      approveGate('task-mixed--produce-items--0', 'check', { contentDir: testDir, provenance: UI_OPERATOR })
       completeStep('task-mixed--produce-items--0', 'finish', { final: 0 }, undefined, testDir)
       // Child 1 → parked at its gate.
       completeStep('task-mixed--produce-items--1', 'work', { draft: 1 }, undefined, testDir)

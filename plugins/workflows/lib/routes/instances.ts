@@ -7,6 +7,7 @@
  * and the search indexer; no gate-specific helpers.
  */
 import { z } from 'zod'
+import { approvalProvenanceFromRequest } from '@bakin/core/approvals'
 import { createLogger } from '@bakin/core/logger'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
@@ -219,7 +220,7 @@ const reopenHandler = async (req: Request, ctx: PluginContextLite) => {
   const result = reopenFromStep(taskId, {
     stepId: body.stepId,
     reason: body.reason || 'Reopened from task detail',
-    actor: { id: 'user', source: 'web' },
+    provenance: approvalProvenanceFromRequest(req),
   })
   if (!result.success) {
     return Response.json({ error: 'Reopen failed', errors: result.errors }, { status: 400 })

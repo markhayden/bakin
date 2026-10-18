@@ -64,6 +64,7 @@ import {
   findAgentById,
   getAgentList,
   readOpenClawConfig,
+  agentListFrom,
   readOpenClawConfigForMutation,
   resetOpenClawConfigCache,
 } from './config'
@@ -112,7 +113,7 @@ import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
   updateOpenClawAgentIdentity, updateAgentAllowlist, removeOpenClawAgentConfig,
   removeOpenClawAgentArtifacts, removeOpenClawAgentCronArtifacts,
-  agentToRuntime, getWorkspacePath, readGatewayToken, isSafeWorkspaceFile,
+  agentToRuntime, getWorkspacePath, workspacePathFrom, readGatewayToken, isSafeWorkspaceFile,
 } from './agent-config'
 import {
   OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS,
@@ -457,6 +458,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
       walk(root, '')
       return out.sort()
+    },
+    workspaces: async (): Promise<Array<{ agentId: string; path: string }>> => {
+      // ONE strict snapshot for the roster, the main identity and every path:
+      // an unreadable openclaw.json throws here, where the lenient reads
+      // answer an empty roster or default paths (#898 review r3–r5).
+      const config = readOpenClawConfigForMutation()
+      const agents = agentListFrom(config)
+      const hasMain = agents.some((agent) => agent.id === 'main')
+      return agents.map((agent) => ({ agentId: agent.id, path: workspacePathFrom(config, agent.id, hasMain && agent.id === 'main') }))
     },
     workspaceFileStats: async (agentId: string): Promise<WorkspaceFileStat[] | null> => {
       const root = getWorkspacePath(agentId)
@@ -890,7 +900,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private markApprovalResponseEmitted(event: ApprovalResolveEvent): boolean {
-    const key = `${event.approvalId}:${event.response.selectedOption}:${event.response.respondedAt}`
+    const key = `${event.approvalId}:${event.decision.selectedOption}:${event.decision.respondedAt}`
     if (this.emittedApprovalResponseKeySet.has(key)) return false
     this.emittedApprovalResponseKeySet.add(key)
     this.emittedApprovalResponseKeys.push(key)

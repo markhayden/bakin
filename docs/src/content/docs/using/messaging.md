@@ -161,8 +161,10 @@ review through the lifecycle tool.
 Workflow-backed prep is created through `ctx.tasks.create({ workflowId })`.
 Messaging listens for `workflow.gate_reached` and `workflow.complete`, and
 resolves gates through `workflows.approveGate` and `workflows.rejectGate`
-hooks. Messaging owns the final publish call in both bare-task and workflow
-paths.
+hooks, passing the provenance of the request it serves. A gate is a human
+decision: an agent can approve or reject a bare-task Deliverable when the
+agent approval policy allows it, but never a workflow-backed one. Messaging
+owns the final publish call in both bare-task and workflow paths.
 
 ## Where it lives
 

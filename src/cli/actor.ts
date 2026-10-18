@@ -9,20 +9,17 @@
  *      the request carries `agent: 'human'` + `channel: 'human'`, exactly what
  *      the board UI sends, so `bakin tasks move <id> todo --as human` is an
  *      operator move (resets the recovery budget, spec D4).
- *   2. The `.bakin-run.json` sidecar found walking up from cwd: an agent's
- *      dispatch shell runs inside `~/.bakin/run-workspaces/<agent>/<run>/`
- *      (a bound-repo worktree one level below), so a `bakin` call from there
- *      attributes to that agent with no flag. Identity rides the sidecar
- *      because the Pi SDK has no per-session env to carry it.
+ *   2. The detected agent context (`./identity`): the env marker an agent's
+ *      shell carries, or the `.bakin-run.json` sidecar found walking up
+ *      from cwd — a `bakin` call from an agent's shell attributes to that
+ *      agent with no flag, and `--as human` there is NOT honored (#898).
  *   3. The roster's main agent — today's default, so existing scripts keep
  *      their behavior.
  *
  * Only `apiGet` and a lazy import of the sidecar reader are pulled in; the
  * binary entry's import graph stays light.
  */
-import { dirname, resolve } from 'path'
-
-import { apiGet } from './http'
+import { apiGet, cliIdentity } from './http'
 
 export interface CliActor {
   agent: string
@@ -30,37 +27,7 @@ export interface CliActor {
   channel?: 'human'
 }
 
-export const ACTOR_FLAG_USAGE = '--as needs a value: --as=<agent> to act as that agent, or --as=human for an operator action'
-
-/**
- * Remove `--as <value>` / `--as=<value>` wherever it sits; positionals keep
- * their order. A flag with no value, an empty value, or an option-shaped
- * value (`--as --json`) is `invalid` — the command must refuse it rather
- * than silently act under a different identity.
- */
-export function stripActorFlag(args: string[]): { as: string | undefined; rest: string[]; invalid?: string } {
-  const rest: string[] = []
-  let as: string | undefined
-  let invalid: string | undefined
-  const take = (value: string | undefined): void => {
-    if (!value || value.startsWith('-')) invalid = ACTOR_FLAG_USAGE
-    else as = value
-  }
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]
-    if (arg === '--as') {
-      take(args[i + 1])
-      if (args[i + 1] !== undefined && !args[i + 1].startsWith('-')) i++
-      continue
-    }
-    if (arg.startsWith('--as=')) {
-      take(arg.slice('--as='.length))
-      continue
-    }
-    rest.push(arg)
-  }
-  return { as, rest, ...(invalid ? { invalid } : {}) }
-}
+export { ACTOR_FLAG_USAGE, stripActorFlag } from './identity'
 
 /** One CLI invocation runs one command — no memo, one roster read at most. */
 async function rosterMainAgent(): Promise<string> {
@@ -69,22 +36,21 @@ async function rosterMainAgent(): Promise<string> {
   return roster.mainAgentId ?? ids[0] ?? 'main'
 }
 
-async function agentFromRunDir(start: string): Promise<string | null> {
-  const { readRunSidecar } = await import('../core/run-workspace')
-  let dir = resolve(start)
-  for (;;) {
-    const sidecar = readRunSidecar(dir)
-    if (sidecar) return sidecar.agentId
-    const parent = dirname(dir)
-    if (parent === dir) return null
-    dir = parent
-  }
-}
-
 export async function resolveCliActor(as: string | undefined): Promise<CliActor> {
-  if (as === 'human') return { agent: 'human', channel: 'human' }
+  // The agent context is detected BEFORE `--as` is honored (#898): an agent
+  // shell cannot claim the operator with `--as human`.
+  const { agentContext, operatorDeclared, declarationWithheld } = await cliIdentity()
+  if (as === 'human') {
+    if (agentContext !== null) {
+      console.error(`Running in agent "${agentContext}"'s context — --as human is not honored here; acting as ${agentContext}.`)
+      return { agent: agentContext }
+    }
+    // Unconfirmed is not the operator: an operator action fails rather than
+    // acting under an identity nobody could check (#898).
+    if (!operatorDeclared) throw new Error(`--as human could not be confirmed${declarationWithheld ? `: ${declarationWithheld}` : ''}`)
+    return { agent: 'human', channel: 'human' }
+  }
   if (as) return { agent: as }
-  const fromRun = await agentFromRunDir(process.cwd())
-  if (fromRun) return { agent: fromRun }
+  if (agentContext !== null) return { agent: agentContext }
   return { agent: await rosterMainAgent() }
 }

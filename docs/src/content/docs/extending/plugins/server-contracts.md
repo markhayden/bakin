@@ -160,7 +160,7 @@ Core plugins expose cross-plugin hooks through the same registry — call them w
 | `workflows.definitions.list` | `{}` → available workflow definitions |
 | `workflows.instances.list` | `{}` → workflow instances |
 | `workflows.createInstance` | `{ taskId, workflowId, assignee? }` → new instance (start a workflow) |
-| `workflows.approveGate` / `workflows.rejectGate` | gate id payload → gate decision applied |
+| `workflows.approveGate` / `workflows.rejectGate` | `{ taskId, stepId, provenance, reason? }` → `{ success, approvalId }` or `{ success: false, errors, status?, code? }` — pass `approvalProvenanceFromRequest(req)` from `@makinbakin/sdk/routing`; an undeclared caller or an agent context is refused (403) with nothing changed, so check `success` before changing your own state |
 | `schedule.ensureBakinJob` | job spec (see Plugin-Owned Cron Jobs below) → `{ ok, jobId }` |
 | `assets.listByTask` | `{ taskId }` → `{assetId, description, type}[]` records for a task |
 | `assets.describe` | `{ assetIds: string[] }` → `{ [id]: { description, caption?, type, exists } }` |

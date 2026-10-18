@@ -6,16 +6,16 @@
  * `health-repair` and `health-navigate`. Core owns the record, the resolve
  * orchestration, rehydration and channel wiring; it never imports a kind.
  */
-import type { ApprovalDelivery } from '@bakin/core/adapters/runtime'
+import type { ApprovalDelivery, ApprovalProvenance } from '@bakin/core/adapters/runtime'
 import type { RuntimeChannelSurface } from '@bakin/core/adapters/runtime/channels'
 import type { ApprovalKind, ApprovalOwner, ApprovalRecord } from '@bakin/core/approvals'
-import type { ApprovalActor } from '@bakin/core/plugin-types'
 
 /** A decision as the service receives it, before it becomes the record's response. */
 export interface ApprovalDecision {
   option: string
   comment?: string
-  actor: ApprovalActor
+  /** Built by the transport that carried the decision (#898 D-H1). */
+  provenance: ApprovalProvenance
   respondedAt?: string
 }
 

@@ -2,11 +2,11 @@
  * Workflow plugin types — definitions, runtime instances, and skills.
  */
 
-import type { ApprovalActor } from '@bakin/core/plugin-types'
+import type { ApprovalProvenance } from '@bakin/core/adapters/runtime'
 import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
 import type { WorkflowSkillDriftReport } from './lib/workflow-skill-drift'
 
-export type { ApprovalActor }
+export type { ApprovalProvenance }
 
 // ─── Definition Types ────────────────────────────────────────────────────────
 
@@ -137,7 +137,7 @@ export interface StepState {
   /** Gate decision metadata — set when a gate enters pending_approval and when a decision is recorded */
   requestedAt?: string
   decidedAt?: string
-  approver?: ApprovalActor
+  provenance?: ApprovalProvenance
 }
 
 export interface StepHistoryEntry {
@@ -147,7 +147,7 @@ export interface StepHistoryEntry {
   output?: Record<string, unknown>
   rejectionReason?: string
   /** For gate decisions — who approved/rejected this step */
-  approver?: ApprovalActor
+  provenance?: ApprovalProvenance
   /** For gate decisions — when the gate entered pending_approval */
   requestedAt?: string
 }

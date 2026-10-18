@@ -71,9 +71,13 @@ function readConfigState(): ConfigReadState {
   let mtimeMs: number
   try {
     mtimeMs = statSync(path).mtimeMs
-  } catch {
+  } catch (err) {
     cachedConfig = null
-    return { kind: 'absent' }
+    // Only a missing file is absent. A config that exists but cannot be
+    // read (EACCES, I/O) is unreadable — strict readers must not mistake it
+    // for "no config" (writers would replace it; #898 review r4).
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return { kind: 'absent' }
+    return { kind: 'corrupt' }
   }
 
   if (cachedConfig && cachedConfig.path === path && cachedConfig.mtimeMs === mtimeMs) {

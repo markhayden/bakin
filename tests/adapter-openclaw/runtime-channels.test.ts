@@ -491,7 +491,7 @@ describe('OpenClaw runtime channels', () => {
       contentDir: testDir,
       logger: { debug: mock(), info: mock(), warn, error: mock() },
     })
-    const events: Array<{ response: { selectedOption: string } }> = []
+    const events: Array<{ decision: { selectedOption: string } }> = []
     const unsubscribe = runtime.channels!.subscribeApprovalResponses(event => events.push(event))
     await tick()
 
@@ -515,7 +515,7 @@ describe('OpenClaw runtime channels', () => {
     unsubscribe()
 
     expect(events).toEqual([expect.objectContaining({
-      response: expect.objectContaining({ selectedOption: 'approve' }),
+      decision: expect.objectContaining({ selectedOption: 'approve' }),
     })])
     expect(warn.mock.calls.some(call => String(call[0]).includes('allow-always'))).toBe(true)
   })
@@ -651,10 +651,11 @@ describe('OpenClaw runtime channels', () => {
     expect(events).toEqual([{
       approvalId: 'approval-1',
       channelId: 'discord:channel-1',
-      response: {
+      decision: {
         selectedOption: 'approve',
         respondedAt: '2026-04-28T12:00:00.000Z',
-        actor: { type: 'human', id: 'Main Operator', displayName: 'Main Operator' },
+        channel: 'runtime',
+        responder: { id: 'Main Operator', displayName: 'Main Operator' },
       },
     }])
   })
@@ -681,7 +682,7 @@ describe('OpenClaw runtime channels', () => {
       response: {
         selectedOption: 'reject',
         respondedAt: '2026-04-28T12:00:00Z',
-        actor: { type: 'human', id: 'main-operator' },
+        provenance: { channel: 'ui', actor: { kind: 'operator-declared' }, evidence: 'declared' },
       },
     })
 
@@ -713,7 +714,7 @@ describe('OpenClaw runtime channels', () => {
       response: {
         selectedOption: 'approve',
         respondedAt: '2026-04-28T12:00:00Z',
-        actor: { type: 'human', id: 'main-operator' },
+        provenance: { channel: 'ui', actor: { kind: 'operator-declared' }, evidence: 'declared' },
       },
     })
     unsubscribe()

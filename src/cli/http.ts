@@ -11,7 +11,8 @@
 import { isOperationFinished, type OperationCancelResult, type OperationView } from '@makinbakin/sdk/types'
 import { extractApiErrorMessage, formatApiError } from '../core/cli/api-error'
 import { getContentDir } from '../core/content-dir'
-import { readLiveServerLock, resolveCliTarget, type CliTarget } from '../core/server-lock'
+import { liveServerBaseUrl, readLiveServerLock, resolveCliTarget, type CliTarget } from '../core/server-lock'
+import { identityHeaders, resolveCliIdentity, type CliIdentity } from './identity'
 
 /**
  * Which server this CLI talks to (#895 D11), resolved once at import with the
@@ -47,9 +48,56 @@ export function describeCliTarget(target: CliTarget = CLI_TARGET): string {
 /** Operations started by the CLI are attributed to it (#895 D14 attention routing). */
 export const CLI_ORIGIN_HEADER = { 'X-Bakin-Origin': 'cli' } as const
 
+let identity: Promise<CliIdentity> | null = null
+
+/**
+ * This invocation's identity (#898), resolved once: env marker, run-dir
+ * sidecar, and — only for `--as human` — the server's workspace check.
+ */
+export function cliIdentity(): Promise<CliIdentity> {
+  identity ??= resolveCliIdentity({
+    argv: process.argv.slice(2),
+    cwd: process.cwd(),
+    env: process.env,
+    // The workspace authority is THIS home's server (server.lock), never a
+    // BAKIN_URL target: another machine cannot vouch for this cwd.
+    probeWorkspace: async (cwd) => {
+      const local = liveServerBaseUrl({})
+      if (!local) {
+        // No server for this home (e.g. BAKIN_URL reaches another machine):
+        // run the same strict lookup in-process against a BARE runtime adapter
+        // — constructed, never initialized: no app services, search, secret
+        // migration or settings writes, just the read-only roster. It throws
+        // when it cannot tell.
+        // The adapter choice is read strictly (an unreadable settings.json
+        // throws rather than defaulting to another runtime) and silently.
+        const { readRuntimeAdapterStrict } = await import('../../packages/core/src/settings')
+        const { createRuntimeAdapter } = await import('../core/runtime-adapter-factory')
+        const { agentContextForPath } = await import('../core/approvals/agent-context')
+        return agentContextForPath(cwd, createRuntimeAdapter(readRuntimeAdapterStrict()))
+      }
+      const res = await fetch(`${local}/api/approvals/agent-context?cwd=${encodeURIComponent(cwd)}`, { headers: { ...CLI_ORIGIN_HEADER } })
+      if (!res.ok) throw new Error(`the workspace check failed (HTTP ${res.status})`)
+      const body = await res.json() as { agentId?: unknown }
+      if (body.agentId !== null && typeof body.agentId !== 'string') throw new Error('the workspace check answered in an unexpected shape')
+      return body.agentId
+    },
+  }).then((resolved) => {
+    if (resolved.declarationWithheld) console.error(`--as human is not honored: ${resolved.declarationWithheld}.`)
+    return resolved
+  })
+  return identity
+}
+
+/** Test seam: forget the resolved identity. */
+export function resetCliIdentityForTests(): void {
+  identity = null
+}
+
 /** `fetch` against this home's server — for callers that need the raw Response. */
-export function cliFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${serverBaseUrl()}${path}`, { ...init, headers: { ...CLI_ORIGIN_HEADER, ...init?.headers } })
+export async function cliFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = identityHeaders(await cliIdentity())
+  return fetch(`${serverBaseUrl()}${path}`, { ...init, headers: { ...CLI_ORIGIN_HEADER, ...headers, ...init?.headers } })
 }
 
 export interface CliRoster {
@@ -61,11 +109,13 @@ export interface CliRoster {
 // HTTP helpers
 // ---------------------------------------------------------------------------
 export async function api(path: string, options?: RequestInit): Promise<unknown> {
+  const identityHeaderSet = identityHeaders(await cliIdentity())
   const res = await fetch(`${serverBaseUrl()}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...CLI_ORIGIN_HEADER,
+      ...identityHeaderSet,
       ...options?.headers,
     },
   })

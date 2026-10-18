@@ -8,6 +8,7 @@ import type {
   HealthReport,
 } from '@makinbakin/sdk/types'
 import { OperationStartError, startOperation, useOperation } from '@makinbakin/sdk/hooks'
+import { OPERATOR_DECLARATION_HEADERS } from '@makinbakin/sdk/utils'
 import { withDeadline } from '../lib/request-deadline'
 import { healthRepairApplyReportSchema, healthRepairPlanSchema } from '../lib/route-schemas'
 
@@ -151,7 +152,9 @@ export function useRepairPlan(
     try {
       const next = await startOperation(() => fetch('/api/plugins/health/doctor/repair/apply', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // Applying here may decide a pending approval or confirm non-safe
+        // items — both are the operator's word (#898).
+        headers: { 'Content-Type': 'application/json', ...OPERATOR_DECLARATION_HEADERS },
         body: JSON.stringify({ planId: plan.planId, itemIds, confirmedItemIds }),
       }))
       if (generation !== generationRef.current) return null

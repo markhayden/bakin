@@ -30,6 +30,7 @@ mock.module('../../src/core/audit', () => ({
 
 import { addExecTool, getExecTool } from '../../src/core/exec-tools/registry'
 import { createRuntimeExecToolProvider } from '../../src/core/exec-tools/provider'
+import { currentAgentInvocation } from '../../src/core/agent-invocation'
 import { claimRun, getLiveRun } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
 
@@ -52,8 +53,22 @@ addExecTool({
   handler: async () => { throw new Error('kaboom') },
 })
 
+addExecTool({
+  name: 'bakin_exec_test_whoami',
+  description: 'Reports the agent-invocation context its handler runs in',
+  parameters: {},
+  handler: async () => ({ ok: true, invocation: currentAgentInvocation() }),
+})
+
 describe('runtime exec-tool provider', () => {
   const provider = createRuntimeExecToolProvider()
+
+  test('a handler runs inside the calling agent\'s invocation context, and only for that call (#898)', async () => {
+    const result = await provider.invoke('bakin_exec_test_whoami', {}, 'agent-7')
+    expect(result.ok).toBe(true)
+    expect(JSON.parse(result.text)).toMatchObject({ invocation: { agentId: 'agent-7', tool: 'bakin_exec_test_whoami' } })
+    expect(currentAgentInvocation()).toBeNull()
+  })
 
   test('list() exposes live registry entries as JSON Schema descriptors', () => {
     const tools = provider.list()
