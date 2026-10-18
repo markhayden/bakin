@@ -128,8 +128,11 @@ run-dir sidecar → (only for `--as human`) the run-dir/workspace check via the
 runtime's optional `agents.workspacePath` (OpenClaw can't mark its shells),
 asked of THIS home's server (server.lock) — never a `BAKIN_URL` target, which
 cannot vouch for a local cwd. A check that cannot answer is not a negative:
-`--as human` is then not honored (stderr says why). Task commands' `--as
-human` inside an agent context resolves to that agent. Pi's replacement bash
+the server answers 503 when services, the roster or a workspace lookup fail
+(`AgentContextUnavailableError`), and the CLI then does not honor `--as
+human` (stderr says why) — task commands fail rather than act as an
+unconfirmed operator. Task commands' `--as human` inside an agent context
+resolves to that agent. Pi's replacement bash
 is `defaultActive: false` — active exactly when the session selects bash.
 Refusal codes stay machine-readable everywhere: JSON `code`, Health
 `refusalCode`, the decision page's `X-Bakin-Refusal-Code` header; the

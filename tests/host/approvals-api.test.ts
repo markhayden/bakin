@@ -140,10 +140,11 @@ describe('POST /api/approvals/:id/resolve', () => {
 })
 
 describe('GET /api/approvals/agent-context', () => {
-  it('needs an absolute cwd and answers null outside any agent context', async () => {
+  it('needs an absolute cwd, and answers 503 — never "no agent" — when it cannot tell', async () => {
     const ask = (query: string) => agentContext(new Request(`http://bakin.test/api/approvals/agent-context${query}`), new URL(`http://bakin.test/api/approvals/agent-context${query}`))
     expect((await ask('')).status).toBe(400)
     expect((await ask('?cwd=relative/path')).status).toBe(400)
-    expect(await (await ask(`?cwd=${encodeURIComponent(testDir)}`)).json()).toEqual({ agentId: null })
+    // No app services in this test: the runtime can't say which workspaces exist.
+    expect((await ask(`?cwd=${encodeURIComponent(testDir)}`)).status).toBe(503)
   })
 })

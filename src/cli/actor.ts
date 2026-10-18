@@ -39,11 +39,16 @@ async function rosterMainAgent(): Promise<string> {
 export async function resolveCliActor(as: string | undefined): Promise<CliActor> {
   // The agent context is detected BEFORE `--as` is honored (#898): an agent
   // shell cannot claim the operator with `--as human`.
-  const { agentContext } = await cliIdentity()
+  const { agentContext, operatorDeclared, declarationWithheld } = await cliIdentity()
   if (as === 'human') {
-    if (agentContext === null) return { agent: 'human', channel: 'human' }
-    console.error(`Running in agent "${agentContext}"'s context — --as human is not honored here; acting as ${agentContext}.`)
-    return { agent: agentContext }
+    if (agentContext !== null) {
+      console.error(`Running in agent "${agentContext}"'s context — --as human is not honored here; acting as ${agentContext}.`)
+      return { agent: agentContext }
+    }
+    // Unconfirmed is not the operator: an operator action fails rather than
+    // acting under an identity nobody could check (#898).
+    if (!operatorDeclared) throw new Error(`--as human could not be confirmed${declarationWithheld ? `: ${declarationWithheld}` : ''}`)
+    return { agent: 'human', channel: 'human' }
   }
   if (as) return { agent: as }
   if (agentContext !== null) return { agent: agentContext }

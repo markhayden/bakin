@@ -9,7 +9,7 @@
  */
 import { z } from 'zod'
 import { approvalProvenanceFromRequest, listApprovalRecords, type ApprovalStatus } from '@bakin/core/approvals'
-import { ApprovalRefusedError, agentContextForPath, approvalErrorStatus, resolveApproval } from '@/core/approvals'
+import { AgentContextUnavailableError, ApprovalRefusedError, agentContextForPath, approvalErrorStatus, resolveApproval } from '@/core/approvals'
 
 const statusSchema = z.enum(['pending', 'approved', 'rejected', 'cancelled', 'expired'])
 const resolveBody = z.object({
@@ -72,5 +72,11 @@ export async function resolve(req: Request, url: URL): Promise<Response> {
 export async function agentContext(_req: Request, url: URL): Promise<Response> {
   const cwd = url.searchParams.get('cwd')
   if (!cwd || !cwd.startsWith('/')) return Response.json({ ok: false, error: 'cwd must be an absolute path' }, { status: 400 })
-  return Response.json({ agentId: await agentContextForPath(cwd) })
+  try {
+    return Response.json({ agentId: await agentContextForPath(cwd) })
+  } catch (err) {
+    // Unknown is not "none": the CLI withholds `--as human` on a 503.
+    if (err instanceof AgentContextUnavailableError) return Response.json({ ok: false, error: err.message }, { status: 503 })
+    throw err
+  }
 }

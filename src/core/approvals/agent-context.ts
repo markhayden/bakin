@@ -15,6 +15,14 @@ import { runWorkspacesRoot } from '../run-workspace'
 
 const log = createLogger('approvals:agent-context')
 
+/** The answer could not be established — never read as "no agent" (#898). */
+export class AgentContextUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AgentContextUnavailableError'
+  }
+}
+
 function canonical(path: string): string {
   try {
     return realpathSync(path)
@@ -27,7 +35,12 @@ function within(path: string, root: string): boolean {
   return path === root || path.startsWith(root.endsWith(sep) ? root : `${root}${sep}`)
 }
 
-/** The agent whose run dir or workspace contains `cwd`, or null. */
+/**
+ * The agent whose run dir or workspace contains `cwd`, or null when it is
+ * none of theirs. Throws AgentContextUnavailableError when that cannot be
+ * established (services not up, roster or a workspace lookup failing) — a
+ * failed lookup is never a negative.
+ */
 export async function agentContextForPath(cwd: string): Promise<string | null> {
   const path = canonical(cwd)
   const runRoot = canonical(runWorkspacesRoot())
@@ -35,18 +48,19 @@ export async function agentContextForPath(cwd: string): Promise<string | null> {
     const agentId = path.slice(runRoot.length + 1).split(sep)[0]
     if (agentId) return agentId
   }
-  const runtime = maybeGetAppServices()?.runtime
-  if (!runtime?.agents.workspacePath) return null
-  let agents: Array<{ id: string }>
+  const services = maybeGetAppServices()
+  if (!services) throw new AgentContextUnavailableError('the runtime is not ready to say which agent workspaces exist')
+  const { runtime } = services
+  // A runtime without file-backed workspaces genuinely has none to be in.
+  if (!runtime.agents.workspacePath) return null
   try {
-    agents = await runtime.agents.list()
+    for (const agent of await runtime.agents.list()) {
+      const workspace = await runtime.agents.workspacePath(agent.id)
+      if (workspace && within(path, canonical(workspace))) return agent.id
+    }
   } catch (err) {
-    log.warn('Agent workspace lookup failed — no workspace context', { err: err instanceof Error ? err.message : String(err) })
-    return null
-  }
-  for (const agent of agents) {
-    const workspace = await runtime.agents.workspacePath(agent.id).catch(() => null)
-    if (workspace && within(path, canonical(workspace))) return agent.id
+    log.warn('Agent workspace lookup failed', { err: err instanceof Error ? err.message : String(err) })
+    throw new AgentContextUnavailableError(`agent workspaces could not be listed: ${err instanceof Error ? err.message : String(err)}`)
   }
   return null
 }

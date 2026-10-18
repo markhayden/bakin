@@ -16,22 +16,36 @@ mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info: mo
 
 const workspaces: Record<string, string> = {}
 let withWorkspaces = true
+let servicesUp = true
+let listFails = false
+let lookupFails = false
 mock.module('../../../src/core/app-services-store', () => ({
-  maybeGetAppServices: () => ({
+  maybeGetAppServices: () => (servicesUp ? {
     runtime: {
       agents: {
-        list: async () => Object.keys(workspaces).map((id) => ({ id, name: id })),
-        ...(withWorkspaces ? { workspacePath: async (id: string) => workspaces[id] ?? null } : {}),
+        list: async () => {
+          if (listFails) throw new Error('roster unavailable')
+          return Object.keys(workspaces).map((id) => ({ id, name: id }))
+        },
+        ...(withWorkspaces ? {
+          workspacePath: async (id: string) => {
+            if (lookupFails) throw new Error('config unreadable')
+            return workspaces[id] ?? null
+          },
+        } : {}),
       },
     },
-  }),
+  } : undefined),
 }))
 
-import { agentContextForPath } from '../../../src/core/approvals/agent-context'
+import { AgentContextUnavailableError, agentContextForPath } from '../../../src/core/approvals/agent-context'
 
 const home = join(testDir, 'home')
 beforeEach(() => {
   withWorkspaces = true
+  servicesUp = true
+  listFails = false
+  lookupFails = false
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(join(testDir, 'run-workspaces', 'researcher', 'run-1', 'repo'), { recursive: true })
   workspaces.writer = join(testDir, 'openclaw', 'workspace-writer')
@@ -63,5 +77,15 @@ describe('agentContextForPath', () => {
     withWorkspaces = false
     expect(await agentContextForPath(join(workspaces.writer, 'notes'))).toBeNull()
     expect(await agentContextForPath(join(testDir, 'run-workspaces', 'researcher'))).toBe('researcher')
+  })
+
+  it('a lookup that cannot answer throws — never "no agent" (review r2)', async () => {
+    for (const setup of [() => { servicesUp = false }, () => { listFails = true }, () => { lookupFails = true }]) {
+      servicesUp = true
+      listFails = false
+      lookupFails = false
+      setup()
+      await expect(agentContextForPath(home)).rejects.toBeInstanceOf(AgentContextUnavailableError)
+    }
   })
 })

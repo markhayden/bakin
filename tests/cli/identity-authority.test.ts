@@ -58,4 +58,19 @@ describe('cliIdentity workspace authority', () => {
     expect(calls).toHaveLength(0)
     expect(String(errors.mock.calls[0]?.[0])).toContain('--as human is not honored')
   })
+
+  it('a 503 from the workspace check (it cannot tell) withholds the declaration', async () => {
+    process.argv = ['bun', 'bakin', 'doctor', '--fix', '--as', 'human']
+    localServer = 'http://127.0.0.1:3737'
+    globalThis.fetch = mock(async () => Response.json({ ok: false, error: 'not ready' }, { status: 503 })) as unknown as typeof fetch
+    const original = console.error
+    console.error = mock(() => {})
+    try {
+      const identity = await cliIdentity()
+      expect(identity.operatorDeclared).toBe(false)
+      expect(identity.declarationWithheld).toContain('HTTP 503')
+    } finally {
+      console.error = original
+    }
+  })
 })
