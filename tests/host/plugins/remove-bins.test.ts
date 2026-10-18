@@ -36,11 +36,14 @@ mock.module('../../../src/core/onboarding/plugin-assets', () => ({
   removePluginAssets: async () => ({ removed: 0, kept: 0, missingFromDisk: [] }),
 }))
 
-import { post as removePOST } from '../../../packages/host/src/api/plugins/remove'
+import { removePOST } from '../../helpers/plugin-routes'
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { readLockfile, writeLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { writeInstalledBy } from '../../../packages/core/src/agent-packages/markers'
-import { withInstallLock } from '../../../src/core/install-core/install-lock'
+import { holdNow } from '../../../packages/core/src/operations'
+import { post as removeRoute } from '../../../packages/host/src/api/plugins/remove'
+import { getOperationRegistry } from '../../../src/core/operations'
+import { waitUntil } from '../../helpers/wait'
 
 const ID = 'binplug'
 const SHA = 'c'.repeat(64)
@@ -106,21 +109,37 @@ describe('POST /api/plugins/remove — bin sweep', () => {
   })
 })
 
-describe('POST /api/plugins/remove — install lock', () => {
-  it('refuses with 409 BEFORE any teardown while another operation holds the lock; the plugin stays installed and active', async () => {
+describe('POST /api/plugins/remove — install-state', () => {
+  it('waits visibly while another operation holds install-state, with NO teardown before it acquires; then removes', async () => {
     registry.deactivations = 0
     let release!: () => void
-    const held = withInstallLock(() => new Promise<void>((resolve) => { release = resolve }))
-    const res = await removePOST(new Request('http://localhost/api/plugins/remove', {
+    let ready!: () => void
+    const heldReady = new Promise<void>((resolve) => { ready = resolve })
+    const held = holdNow(['install-state'], { title: 'Install plugin messaging' }, () => new Promise<void>((resolve) => {
+      release = resolve
+      ready()
+    }))
+    await heldReady
+    const started = await removeRoute(new Request('http://localhost/api/plugins/remove', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pluginId: ID }),
-    }), new URL('http://localhost/api/plugins/remove'))
-    expect(res.status).toBe(409)
-    expect(String((await res.json() as { error: string }).error)).toMatch(/Another install is in progress/)
+    }))
+    expect(started.status).toBe(202)
+    const { operationId } = await started.json() as { operationId: string }
+    await waitUntil(() => getOperationRegistry().get(operationId)?.waitingFor !== undefined, { label: 'remove waiting' })
+
+    expect(getOperationRegistry().get(operationId)?.waitingFor?.holderTitle).toBe('Install plugin messaging')
     expect(registry.deactivations).toBe(0)
     expect(existsSync(join(testDir, 'plugins', ID))).toBe(true)
     expect(readPluginLockfile().plugins[ID]).toBeDefined()
     expect(existsSync(binPath('solo'))).toBe(true)
+    // Not cancellable from its start: the plugin's own uninstall hook runs first.
+    expect(getOperationRegistry().cancel(operationId)).toBe('not_cancellable')
+
     release()
     await held
+    const view = await getOperationRegistry().await(operationId)
+    expect(view.status).toBe('succeeded')
+    expect(view.plan.pointOfNoReturn).toBe('start')
+    expect(existsSync(join(testDir, 'plugins', ID))).toBe(false)
   })
 })

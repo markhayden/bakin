@@ -46,17 +46,16 @@ mock.module('@/core/logger', () => ({
 // branch, so isolate it from whatever runtime-skills core plugins ship.
 mock.module('../../../bakin.config', () => ({ default: { plugins: [] } }))
 
-import {
-  scanPluginAssets,
-  installPluginAssets,
-  PLUGIN_ASSETS_PLAN,
-  pluginAssetsComponent,
-} from '@/core/onboarding/plugin-assets'
+import { scanPluginAssets, installPluginAssets as installPluginAssetsUnowned, PLUGIN_ASSETS_PLAN, pluginAssetsComponent } from '@/core/onboarding/plugin-assets'
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { withOperationView } from '../../helpers/operation-harness'
 import { createMemoryResourceAcquirer, createOperationRegistry } from '../../../packages/core/src/operations'
 import { waitUntil } from '../../helpers/wait'
 import { readInstalledBy } from '../../../packages/core/src/agent-packages/markers'
+import { owned } from '../../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const installPluginAssets = owned(installPluginAssetsUnowned)
 
 type TestGlobal = typeof globalThis & {
   __bakinAppServices?: { runtime: AgentRuntimeAdapter }

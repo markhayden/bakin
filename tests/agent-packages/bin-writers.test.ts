@@ -4,7 +4,7 @@
  * both run only under the install lock and refuse a pin another owner
  * holds differently — before any download. Identical pins share.
  */
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -22,13 +22,13 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 mock.module('@/core/logger', () => ({ createLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }) }))
 
 import { installManifestBins, installPluginBins } from '../../src/core/agent-packages/bin-installer'
-import { releaseInstallLock, withInstallLock } from '../../src/core/install-core/install-lock'
 import { BinPinConflictError } from '../../src/core/plugins/bin-owners'
 import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../packages/core/src/plugins/lockfile'
 import { readInstalledBy } from '../../packages/core/src/agent-packages/markers'
 import type { BinRequirement } from '../../packages/core/src/plugins/bin-requirement'
 import type { Manifest } from '../../packages/core/src/agent-packages/manifest'
+import { owning } from '../helpers/owning'
 
 const SCRIPT = '#!/bin/sh\necho fixture\n'
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
@@ -45,7 +45,6 @@ beforeAll(async () => {
 })
 afterAll(() => { server.stop(true); rmSync(testDir, { recursive: true, force: true }) })
 beforeEach(() => { rmSync(testDir, { recursive: true, force: true }); mkdirSync(join(testDir, 'bin'), { recursive: true }); hits = 0 })
-afterEach(() => { try { releaseInstallLock() } catch { /* not held */ } })
 
 const bin = (sha = sha256(SCRIPT)): BinRequirement => ({
   name: 'fixturebin', version: '1.0.0', install: { [platform]: { url: `http://127.0.0.1:${server.port}/fixturebin`, sha256: sha } },
@@ -69,14 +68,14 @@ function packPins(key: string, sha: string): void {
 }
 
 describe('installManifestBins (every pack writer)', () => {
-  it('refuses to run outside the install lock', async () => {
-    await expect(installManifestBins(packManifest([bin()]), packMarker, { projections: [] })).rejects.toThrow(/installManifestBins requires the install lock/)
+  it('refuses to run outside an owner of install-state', async () => {
+    await expect(installManifestBins(packManifest([bin()]), packMarker, { projections: [] })).rejects.toThrow(/installManifestBins requires install-state/)
     expect(hits).toBe(0)
   })
 
   it('refuses a pin a plugin holds differently — before any download', async () => {
     pluginPins('terminal', 'b'.repeat(64))
-    await expect(withInstallLock(() => installManifestBins(packManifest([bin()]), packMarker, { projections: [] }))).rejects.toThrow(BinPinConflictError)
+    await expect(owning(() => installManifestBins(packManifest([bin()]), packMarker, { projections: [] }))).rejects.toThrow(BinPinConflictError)
     expect(hits).toBe(0)
     expect(existsSync(target())).toBe(false)
   })
@@ -85,7 +84,7 @@ describe('installManifestBins (every pack writer)', () => {
     pluginPins('terminal', sha256(SCRIPT))
     packPins('ocr@0.9.0', 'c'.repeat(64)) // the same pack's previous version — must not block its own upgrade
     const result = { projections: [] as Array<{ kind: string; target: string; sha256?: string }> }
-    await withInstallLock(() => installManifestBins(packManifest([bin()]), packMarker, result as never))
+    await owning(() => installManifestBins(packManifest([bin()]), packMarker, result as never))
     expect(existsSync(target())).toBe(true)
     expect(result.projections.map((p) => p.kind)).toEqual(['bin'])
   })
@@ -94,12 +93,12 @@ describe('installManifestBins (every pack writer)', () => {
 describe('installPluginBins', () => {
   const identity = { pluginId: 'terminal', version: '0.2.0', ref: 'main', commitSha: 'f'.repeat(40) }
 
-  it('refuses to run outside the install lock', async () => {
-    await expect(installPluginBins([bin()], identity)).rejects.toThrow(/installPluginBins requires the install lock/)
+  it('refuses to run outside an owner of install-state', async () => {
+    await expect(installPluginBins([bin()], identity)).rejects.toThrow(/installPluginBins requires install-state/)
   })
 
   it('installs with a plugin:<id> marker, reports created, and skips (created:false) on re-run', async () => {
-    await withInstallLock(async () => {
+    await owning(async () => {
     const first = await installPluginBins([bin()], identity)
     expect(first).toEqual([{ name: 'fixturebin', sha256: sha256(SCRIPT), target: target(), created: true }])
     expect(readFileSync(target(), 'utf-8')).toBe(SCRIPT)
@@ -112,7 +111,7 @@ describe('installPluginBins', () => {
 
   it('refuses a pin a pack holds differently — before any download', async () => {
     packPins('ocr@1.0.0', 'b'.repeat(64))
-    await expect(withInstallLock(() => installPluginBins([bin()], identity))).rejects.toThrow(/package "ocr".*plugin "terminal"/)
+    await expect(owning(() => installPluginBins([bin()], identity))).rejects.toThrow(/package "ocr".*plugin "terminal"/)
     expect(hits).toBe(0)
   })
 

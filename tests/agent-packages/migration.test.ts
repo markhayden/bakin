@@ -50,7 +50,7 @@ const silentLogger = {
 mock.module('../../src/core/logger', () => silentLogger)
 mock.module('@/core/logger', () => silentLogger)
 
-import { migrateToManagedBlocks } from '../../src/core/agent-packages/migration'
+import { migrateToManagedBlocks as migrateUnowned } from '../../src/core/agent-packages/migration'
 import { scanAgentSync } from '../../src/core/agent-packages/sync-scanner'
 import {
   type Lockfile,
@@ -60,6 +60,11 @@ import {
 } from '../../packages/core/src/agent-packages/lockfile'
 import { MANAGED_BLOCK_ID } from '../../packages/core/src/agent-packages/composer'
 import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
+import { holdNow } from '../../packages/core/src/operations'
+
+/** Writing syncs run inside an owner of install-state, like every production caller (#895). */
+const owning = <T>(fn: () => Promise<T>): Promise<T> => holdNow(['install-state'], { title: 'test' }, fn)
+const migrateToManagedBlocks = (...args: Parameters<typeof migrateUnowned>) => owning(() => migrateUnowned(...args))
 
 // ─── Disk-backed runtime mock ────────────────────────────────────────────────
 

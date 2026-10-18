@@ -59,7 +59,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({ unregisterByPlugin: () => 0 }),
 }))
 
-import { post as removePOST } from '../../../packages/host/src/api/plugins/remove'
+import { removePOST } from '../../helpers/plugin-routes'
 import { addPlugin, readPluginLockfile, writePluginLockfile, type PluginLockEntry } from '../../../packages/core/src/plugins/lockfile'
 
 beforeAll(() => {

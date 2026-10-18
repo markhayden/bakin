@@ -53,7 +53,7 @@ mock.module(
   }),
 )
 
-import { post as installPOST } from '../../../packages/host/src/api/plugins/install'
+import { installPOST } from '../../helpers/plugin-routes'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { createBareRepo, gitAvailable } from '../../fixtures/plugins/hermetic-git'
 
@@ -144,8 +144,9 @@ describe.skipIf(!gitAvailable())('install subpath — happy path', () => {
     expect(existsSync(join(fooDir, 'README.md'))).toBe(false)
     // Subpath installs intentionally drop the cloned repo's `.git/`.
     expect(existsSync(join(fooDir, '.git'))).toBe(false)
-    // github installs build from the import-validated source — no dist trust.
-    expect(buildUserPluginCalls.at(-1)?.options).toBeUndefined()
+    // github installs build from the import-validated source — no dist trust:
+    // the build gets only the operation's progress hooks.
+    expect(Object.keys(buildUserPluginCalls.at(-1)?.options ?? {}).sort()).toEqual(['onOutput', 'onStage'])
   })
 
   it('records the full source string (with #subpath) in the lockfile', async () => {

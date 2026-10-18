@@ -8,6 +8,7 @@ import { existsSync, mkdtempSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { setupTtyCliHarness } from './helpers/tty-cli-harness'
+import { TEST_BOOT_ID, finishedOperation } from '../helpers/operation-fetch'
 
 // These flows are HTTP-only (fetch is mocked; scaffold writes into a temp
 // cwd), but the isolation mocks are mandatory insurance: nothing this test
@@ -22,6 +23,14 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 const harness = setupTtyCliHarness({ defaultFetchJson: { ok: true } })
 const { fetchMock, output, errorOutput, setStdoutIsTTY, jsonResponse } = harness
+
+/** A converted route as the CLI meets it: 202 start, snapshot read (finished), events unavailable. */
+function queueOperation(id: string, body: unknown, httpStatus = 200): void {
+  const real = (payload: unknown, status: number) => new Response(JSON.stringify(payload), { status })
+  fetchMock.mockResolvedValueOnce(real({ operationId: id, bootId: TEST_BOOT_ID }, 202))
+  fetchMock.mockResolvedValueOnce(real({ bootId: TEST_BOOT_ID, operation: finishedOperation(id, { httpStatus, body }), children: [] }, 200))
+  fetchMock.mockResolvedValueOnce(real({ error: 'unavailable' }, 503))
+}
 
 describe('read-only CLI TTY commands — plugins', () => {
   it('renders plugin-contributed command results with the shared TUI in a TTY', async () => {
@@ -155,14 +164,17 @@ describe('read-only CLI TTY commands — plugins', () => {
   it('renders plugin lifecycle actions with shared TUI screens in a TTY', async () => {
     const { main } = await import('../../cli/bakin')
 
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    // Preview → commit operations (#895): nothing to consent to, so the
+    // preview is ready and the commit installs.
+    queueOperation('op-preview', { ok: true, awaitingConsent: false, ready: true, id: 'messaging', version: '2.0.0', permissions: [], bins: [] })
+    queueOperation('op-install', {
       ok: true,
       id: 'messaging',
       version: '2.0.0',
       activated: true,
       runtimeVersion: 4,
       message: 'Installed "messaging" and activated it.',
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'install', 'github:markhayden/bakin-bits-official#plugins/messaging']
     await main()
     expect(output()).toContain('Plugin action')
@@ -171,13 +183,13 @@ describe('read-only CLI TTY commands — plugins', () => {
     expect(output()).not.toContain('"id": "messaging"')
 
     harness.log.mockClear()
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    queueOperation('op-remove', {
       ok: true,
       id: 'messaging',
       snapshot: '/Users/roscoe/.bakin/.uninstalled/messaging.tar.gz',
       skills: { removed: 2, kept: 0 },
       message: 'Removed "messaging" and deactivated it.',
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'remove', 'messaging']
     await main()
     expect(output()).toContain('Plugin action')
@@ -186,14 +198,14 @@ describe('read-only CLI TTY commands — plugins', () => {
     expect(output()).not.toContain('"snapshot"')
 
     harness.log.mockClear()
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    queueOperation('op-link', {
       ok: true,
       id: 'local-tools',
       linkedSource: '/Users/roscoe/dev/local-tools',
       pluginDir: '/Users/roscoe/.bakin/plugins/local-tools',
       watching: true,
       message: 'Linked "local-tools" and activated it with dev hot reload.',
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'link', './local-tools', '--force']
     await main()
     expect(output()).toContain('Linked "local-tools" and activated it with dev')
@@ -212,13 +224,14 @@ describe('read-only CLI TTY commands — plugins', () => {
     expect(output()).toContain('Unlinked "local-tools" and deactivated it.')
 
     harness.log.mockClear()
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    queueOperation('op-upgrade-preview', { ok: true, ready: true, awaitingConsent: false, id: 'messaging', consentToken: 'tok-ready' })
+    queueOperation('op-upgrade', {
       ok: true,
       id: 'messaging',
       before: { version: '1.0.0', commitSha: '1111111111111111111111111111111111111111' },
       after: { version: '2.0.0', commitSha: '2222222222222222222222222222222222222222' },
       pluginAssets: { installed: [{ name: 'compose' }], skipped: [] },
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'upgrade', 'messaging', '--yes']
     await main()
     expect(output()).toContain('Plugin action')
@@ -261,11 +274,12 @@ describe('read-only CLI TTY commands — plugins', () => {
     expect(existsSync(join(scaffoldDir, 'json-smoke-plugin', 'bakin-plugin.json'))).toBe(true)
 
     harness.log.mockClear()
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    queueOperation('op-json-preview', { ok: true, awaitingConsent: false, ready: true, id: 'json-plugin', version: '1.0.0', permissions: [], bins: [] })
+    queueOperation('op-json-install', {
       ok: true,
       id: 'json-plugin',
       message: 'Installed "json-plugin" and activated it.',
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'install', './json-plugin', '--json']
     await main()
     expect(output()).toContain('"id": "json-plugin"')
@@ -280,11 +294,12 @@ describe('read-only CLI TTY commands — plugins', () => {
         { id: 'projects', source: 'github:markhayden/bakin-bits-official#plugins/projects', type: 'github', ref: '', commitSha: '' },
       ],
     }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    queueOperation('op-import-preview', { ok: true, awaitingConsent: false, ready: true, id: 'projects', version: '1.0.0', permissions: [], bins: [] })
+    queueOperation('op-import-install', {
       ok: true,
       id: 'projects',
       message: 'Installed "projects" and activated it.',
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'import', manifest, '--yes']
     await main()
     expect(output()).toContain('Plugin action')
@@ -317,7 +332,7 @@ describe('read-only CLI TTY commands — plugins', () => {
     expect(output()).not.toContain('Uninstall snapshots for')
 
     harness.log.mockClear()
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    queueOperation('op-restore', {
       ok: true,
       message: 'Restored "demo-plugin".',
       snapshotInfo: {
@@ -328,7 +343,7 @@ describe('read-only CLI TTY commands — plugins', () => {
       },
       skills: { restored: 2 },
       activated: false,
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'restore', 'demo-plugin', '--snapshot', 'demo-plugin-2026.tar.gz', '--force']
     await main()
 

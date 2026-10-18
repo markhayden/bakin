@@ -271,13 +271,18 @@ async function currentRuntime(): Promise<AgentRuntimeAdapter> {
   return maybeGetAppServices()?.runtime ?? (await createAppServices()).runtime
 }
 
-/** Drift-gated re-projection: recompose/sync only when the scan finds drift. */
-async function syncAgentsIfDrifted(): Promise<{ drifted: boolean; findings: number; syncedAgents: number }> {
+/** Drift-gated re-projection: recompose/sync only when the scan finds drift. Exported for its ownership test. */
+export async function syncAgentsIfDrifted(): Promise<{ drifted: boolean; findings: number; syncedAgents: number }> {
   const { scanAgentSync } = await import('./agent-packages/sync-scanner')
   const before = await scanAgentSync()
   if (before.findings.length === 0) return { drifted: false, findings: 0, syncedAgents: 0 }
   const { syncAllAgents } = await import('./agent-packages/sync')
-  const results = await syncAllAgents({ fetch: false, trigger: 'system' })
+  const { runOwning } = await import('./operations')
+  // Interim owner until the runtime switch is its own operation (#895 PR6).
+  const results = await runOwning(
+    { kind: 'runtime-switch:sync', title: 'Re-project agents for the new runtime', resources: ['install-state'] },
+    () => syncAllAgents({ fetch: false, trigger: 'system' }),
+  )
   return { drifted: true, findings: before.findings.length, syncedAgents: results.length }
 }
 

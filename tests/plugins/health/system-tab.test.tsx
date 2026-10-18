@@ -14,7 +14,8 @@ import type {
 import '../../rtl-settle'
 import { SystemTabView } from '../../../plugins/health/components/system-tab'
 import {
-  performPluginUpgrade,
+  interpretPluginUpgrade,
+  startPluginUpgrade,
   performSearchReindex,
   SystemMutationOutcomeUnknownError,
 } from '../../../plugins/health/hooks/use-system-data'
@@ -823,22 +824,21 @@ describe('performSearchReindex', () => {
     expect(invalidSearchConfirmation).toBeInstanceOf(SystemMutationOutcomeUnknownError)
     expect(invalidSearchConfirmation.message).toContain('could not confirm the result')
 
-    const invalidPluginConfirmation = await captureError(performPluginUpgrade('notes'))
+    // A plugin upgrade's success body that cannot be read honestly is unknown.
+    const invalidPluginConfirmation = await captureError(Promise.resolve().then(() => interpretPluginUpgrade('notes', { httpStatus: 200, body: 'not-json' })))
     expect(invalidPluginConfirmation).toBeInstanceOf(SystemMutationOutcomeUnknownError)
     expect(invalidPluginConfirmation.message).toContain('could not confirm the result')
   })
 
-  it('returns the consent preview (token, permissions, downloads) when the update needs approval', async () => {
-    globalThis.fetch = mock(async () => new Response(JSON.stringify({
+  it('reads the consent preview (token, permissions, downloads) from a settled preview operation', () => {
+    const result = interpretPluginUpgrade('terminal', { httpStatus: 200, body: {
       ok: false,
       awaitingConsent: true,
       noop: false,
       newPermissions: ['storage.write'],
       newBins: [{ name: 'tmux', version: '3.5a', sha256: 'c'.repeat(64), sizeBytes: 2_100_000 }],
       consentToken: 'tok-preview',
-    }), { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch
-
-    const result = await performPluginUpgrade('terminal')
+    } })
 
     expect(result.awaitingConsent).toBe(true)
     expect(result.consentToken).toBe('tok-preview')
@@ -847,31 +847,38 @@ describe('performSearchReindex', () => {
     expect(result.message).toBe('This update requests new permissions and downloads binaries.')
   })
 
-  it('approving re-posts the preview token as accepted consent', async () => {
-    const fetchMock = mock(async () => new Response(JSON.stringify({
-      ok: true, noop: false, awaitingConsent: false, newPermissions: ['storage.write'], newBins: [],
-    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+  it('a preview with nothing to consent to is ready, with the token the commit carries', () => {
+    const result = interpretPluginUpgrade('notes', { httpStatus: 200, body: {
+      ok: true, ready: true, awaitingConsent: false, noop: false, newPermissions: [], newBins: [], consentToken: 'tok-ready',
+    } })
+    expect(result.ready).toBe(true)
+    expect(result.awaitingConsent).toBe(false)
+    expect(result.consentToken).toBe('tok-ready')
+  })
+
+  it('approving starts the commit operation with the preview token as accepted consent', async () => {
+    const fetchMock = mock(async () => new Response(JSON.stringify({ operationId: 'op-commit', bootId: 'boot-1' }), { status: 202 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
-    const result = await performPluginUpgrade('terminal', 'tok-preview')
+    const started = await startPluginUpgrade('terminal', 'tok-preview')
 
-    expect(result.awaitingConsent).toBe(false)
-    expect(result.message).toBe('terminal was updated and reactivated.')
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(started).toEqual({ operationId: 'op-commit', bootId: 'boot-1' })
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('/api/plugins/upgrade')
     expect(JSON.parse(String(init.body))).toEqual({ pluginId: 'terminal', accepted: true, consentToken: 'tok-preview' })
   })
 
-  it('reports a no-op plugin update as already current', async () => {
-    globalThis.fetch = mock(async () => new Response(JSON.stringify({
-      ok: true,
-      noop: true,
-      awaitingConsent: false,
-      newPermissions: [],
-    }), { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch
+  it('reads a committed upgrade and a no-op from the settled result', () => {
+    expect(interpretPluginUpgrade('terminal', { httpStatus: 200, body: {
+      ok: true, noop: false, awaitingConsent: false, newPermissions: ['storage.write'], newBins: [],
+    } }).message).toBe('terminal was updated and reactivated.')
+    const noop = interpretPluginUpgrade('notes', { httpStatus: 200, body: { ok: true, noop: true, awaitingConsent: false, newPermissions: [] } })
+    expect(noop.noop).toBe(true)
+    expect(noop.message).toBe('notes is already current.')
+  })
 
-    const result = await performPluginUpgrade('notes')
-
-    expect(result.noop).toBe(true)
-    expect(result.message).toBe('notes is already current.')
+  it('a failed upgrade surfaces the server error', () => {
+    expect(() => interpretPluginUpgrade('notes', { httpStatus: 400, body: { ok: false, error: 'plugin "notes" is dev-installed' } }))
+      .toThrow('plugin "notes" is dev-installed')
   })
 })

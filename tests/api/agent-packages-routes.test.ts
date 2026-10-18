@@ -86,6 +86,7 @@ import * as listRoute from '../../packages/host/src/api/agent-packages/list'
 import * as dynamicRoute from '../../packages/host/src/api/agent-packages/dynamic'
 import * as packagesListRoute from '../../packages/host/src/api/packages/list'
 import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
+import { settleRoute } from '../helpers/operation-route'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -144,7 +145,7 @@ describe('POST /api/agent-packages/install', () => {
   it('returns 200 + result on success', async () => {
     const src = seedAgentPackage()
     const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-    const res = await installRoute.post(req, url)
+    const res = await settleRoute(installRoute.post(req))
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.ok).toBe(true)
@@ -155,7 +156,7 @@ describe('POST /api/agent-packages/install', () => {
 
   it('returns 400 on missing source', async () => {
     const { req, url } = makeRequest('POST', '/api/agent-packages/install', { foo: 'bar' })
-    const res = await installRoute.post(req, url)
+    const res = await settleRoute(installRoute.post(req))
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.ok).toBe(false)
@@ -165,10 +166,10 @@ describe('POST /api/agent-packages/install', () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      await installRoute.post(req, url)
+      await settleRoute(installRoute.post(req))
     }
     const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-    const res = await installRoute.post(req, url)
+    const res = await settleRoute(installRoute.post(req))
     expect(res.status).toBe(409)
   })
 
@@ -179,7 +180,7 @@ describe('POST /api/agent-packages/install', () => {
       body: '{ this is not json',
       headers: { 'Content-Type': 'application/json' },
     })
-    const res = await installRoute.post(req, url)
+    const res = await settleRoute(installRoute.post(req))
     expect(res.status).toBe(400)
   })
 })
@@ -188,7 +189,7 @@ describe('GET /api/agent-packages', () => {
   it('returns the list of all agent states', async () => {
     const src = seedAgentPackage()
     const { req: instReq, url: instUrl } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-    await installRoute.post(instReq, instUrl)
+    await settleRoute(installRoute.post(instReq))
 
     const { req, url } = makeRequest('GET', '/api/agent-packages')
     const res = await listRoute.get(req, url)
@@ -205,7 +206,7 @@ describe('GET /api/agent-packages', () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      await installRoute.post(req, url)
+      await settleRoute(installRoute.post(req))
     }
 
     const manifestPath = join(src, 'bakin-package.json')
@@ -213,7 +214,7 @@ describe('GET /api/agent-packages', () => {
     writeFileSync(manifestPath, JSON.stringify({ ...manifest, version: '0.2.0' }))
 
     const { req: syncReq, url: syncUrl } = makeRequest('POST', '/api/agent-packages/pixel/sync', {})
-    const syncRes = await dynamicRoute.handler(syncReq, syncUrl)
+    const syncRes = await settleRoute(dynamicRoute.handler(syncReq, syncUrl))
     expect(syncRes.status).toBe(200)
     const syncBody = await syncRes.json()
     expect(syncBody.ok).toBe(true)
@@ -223,7 +224,7 @@ describe('GET /api/agent-packages', () => {
 
     // Receipt persisted and retrievable
     const { req: rReq, url: rUrl } = makeRequest('GET', '/api/agent-packages/pixel/receipt')
-    const rRes = await dynamicRoute.handler(rReq, rUrl)
+    const rRes = await settleRoute(dynamicRoute.handler(rReq, rUrl))
     expect(rRes.status).toBe(200)
     expect((await rRes.json()).receipt.agentId).toBe('pixel')
 
@@ -240,7 +241,7 @@ describe('GET /api/agent-packages', () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      await installRoute.post(req, url)
+      await settleRoute(installRoute.post(req))
     }
 
     // Rewrite the lockfile into the legacy pre-block shape
@@ -259,17 +260,17 @@ describe('GET /api/agent-packages', () => {
     })
 
     const { req: syncReq, url: syncUrl } = makeRequest('POST', '/api/agent-packages/pixel/sync', {})
-    const syncRes = await dynamicRoute.handler(syncReq, syncUrl)
+    const syncRes = await settleRoute(dynamicRoute.handler(syncReq, syncUrl))
     expect(syncRes.status).toBe(409)
     expect((await syncRes.json()).migrationRequired).toBe(true)
 
     const { req: mReq, url: mUrl } = makeRequest('POST', '/api/agent-packages/migrate', {})
-    const mRes = await dynamicRoute.handler(mReq, mUrl)
+    const mRes = await settleRoute(dynamicRoute.handler(mReq, mUrl))
     expect(mRes.status).toBe(200)
     expect((await mRes.json()).ok).toBe(true)
 
     const { req: again, url: againUrl } = makeRequest('POST', '/api/agent-packages/pixel/sync', {})
-    const againRes = await dynamicRoute.handler(again, againUrl)
+    const againRes = await settleRoute(dynamicRoute.handler(again, againUrl))
     expect(againRes.status).toBe(200)
   })
 
@@ -277,7 +278,7 @@ describe('GET /api/agent-packages', () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      await installRoute.post(req, url)
+      await settleRoute(installRoute.post(req))
     }
 
     const manifestPath = join(src, 'bakin-package.json')
@@ -350,11 +351,11 @@ describe('agent-packages dynamic — DELETE /api/agent-packages/{agentId}', () =
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      await installRoute.post(req, url)
+      await settleRoute(installRoute.post(req))
     }
 
     const { req, url } = makeRequest('DELETE', '/api/agent-packages/pixel', {})
-    const res = await dynamicRoute.handler(req, url)
+    const res = await settleRoute(dynamicRoute.handler(req, url))
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.result.removed).toContain('pixel')
@@ -362,7 +363,7 @@ describe('agent-packages dynamic — DELETE /api/agent-packages/{agentId}', () =
 
   it('returns 404 when agent has no package', async () => {
     const { req, url } = makeRequest('DELETE', '/api/agent-packages/never-installed', {})
-    const res = await dynamicRoute.handler(req, url)
+    const res = await settleRoute(dynamicRoute.handler(req, url))
     expect(res.status).toBe(404)
   })
 })
@@ -370,7 +371,7 @@ describe('agent-packages dynamic — DELETE /api/agent-packages/{agentId}', () =
 describe('agent-packages dynamic — lessons endpoints', () => {
   it('GET /lessons returns an empty list for unmanaged agents', async () => {
     const { req, url } = makeRequest('GET', '/api/agent-packages/patch/lessons')
-    const res = await dynamicRoute.handler(req, url)
+    const res = await settleRoute(dynamicRoute.handler(req, url))
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body).toEqual({ ok: true, packageId: null, lessons: [] })
@@ -380,11 +381,11 @@ describe('agent-packages dynamic — lessons endpoints', () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      await installRoute.post(req, url)
+      await settleRoute(installRoute.post(req))
     }
 
     const { req, url } = makeRequest('GET', '/api/agent-packages/pixel/lessons')
-    const res = await dynamicRoute.handler(req, url)
+    const res = await settleRoute(dynamicRoute.handler(req, url))
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.ok).toBe(true)
@@ -396,13 +397,13 @@ describe('agent-packages dynamic — lessons endpoints', () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      await installRoute.post(req, url)
+      await settleRoute(installRoute.post(req))
     }
 
     const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/lessons/style', {
       enabled: false,
     })
-    const res = await dynamicRoute.handler(req, url)
+    const res = await settleRoute(dynamicRoute.handler(req, url))
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.result.changed).toBe(true)
@@ -410,7 +411,7 @@ describe('agent-packages dynamic — lessons endpoints', () => {
 
     // Verify via GET that the toggle reflected
     const { req: req2, url: url2 } = makeRequest('GET', '/api/agent-packages/pixel/lessons')
-    const res2 = await dynamicRoute.handler(req2, url2)
+    const res2 = await settleRoute(dynamicRoute.handler(req2, url2))
     const body2 = await res2.json()
     const style = body2.lessons.find((l: { lessonId: string }) => l.lessonId === 'style')
     expect(style?.enabled).toBe(false)
@@ -420,11 +421,11 @@ describe('agent-packages dynamic — lessons endpoints', () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      await installRoute.post(req, url)
+      await settleRoute(installRoute.post(req))
     }
 
     const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/lessons/style', {})
-    const res = await dynamicRoute.handler(req, url)
+    const res = await settleRoute(dynamicRoute.handler(req, url))
     expect(res.status).toBe(400)
   })
 
@@ -432,14 +433,14 @@ describe('agent-packages dynamic — lessons endpoints', () => {
     const src = seedAgentPackage('pixel', { enableLessons: [] })
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      await installRoute.post(req, url)
+      await settleRoute(installRoute.post(req))
     }
     unlinkSync(join(testDir, 'packages', 'agents', 'pixel@0.1.0', 'lessons', 'style.md'))
 
     const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/lessons/style', {
       enabled: true,
     })
-    const res = await dynamicRoute.handler(req, url)
+    const res = await settleRoute(dynamicRoute.handler(req, url))
     expect(res.status).toBe(500)
     const body = await res.json()
     expect(body.ok).toBe(false)
@@ -456,7 +457,7 @@ describe('agent-packages dynamic — lessons endpoints', () => {
 describe('agent-packages dynamic — 404 fallthrough', () => {
   it('returns 404 for an unknown verb/path combination', async () => {
     const { req, url } = makeRequest('PATCH', '/api/agent-packages/pixel/something-weird')
-    const res = await dynamicRoute.handler(req, url)
+    const res = await settleRoute(dynamicRoute.handler(req, url))
     expect(res.status).toBe(404)
   })
 })
@@ -464,7 +465,7 @@ describe('agent-packages dynamic — 404 fallthrough', () => {
 describe('GET /api/agent-packages/{agentId}/scan (#385)', () => {
   async function scan(agentId: string) {
     const { req, url } = makeRequest('GET', `/api/agent-packages/${agentId}/scan`)
-    const res = await dynamicRoute.handler(req, url)
+    const res = await settleRoute(dynamicRoute.handler(req, url))
     return { status: res.status, body: await res.json() }
   }
 
@@ -472,13 +473,13 @@ describe('GET /api/agent-packages/{agentId}/scan (#385)', () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      await installRoute.post(req, url)
+      await settleRoute(installRoute.post(req))
     }
     {
       // Recompose against current context layers (install-time shas can lag
       // the lazily-seeded role context) so the baseline scan is clean.
       const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/sync', {})
-      const res = await dynamicRoute.handler(req, url)
+      const res = await settleRoute(dynamicRoute.handler(req, url))
       expect(res.status).toBe(200)
     }
 
@@ -512,7 +513,7 @@ describe('GET /api/agent-packages/{agentId}/scan (#385)', () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      await installRoute.post(req, url)
+      await settleRoute(installRoute.post(req))
     }
     workspaceReadCalls = []
 
@@ -528,7 +529,7 @@ describe('GET /api/agent-packages/{agentId}/scan (#385)', () => {
     for (const agentId of ['pixel', 'scout']) {
       const src = seedAgentPackage(agentId)
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-      const res = await installRoute.post(req, url)
+      const res = await settleRoute(installRoute.post(req))
       expect(res.status).toBe(200)
     }
     workspaceReadCalls = []

@@ -1,7 +1,13 @@
 /**
  * POST /api/plugins/restore — restore a user plugin from a pre-uninstall
  * snapshot under ~/.bakin/.uninstalled/.
+ *
+ * `listOnly` answers synchronously. A restore runs as an operation (#895,
+ * PLUGIN_RESTORE_PLAN) that owns install-state: unpacking and conflict checks
+ * are cancellable; the first delete (--force) or copy is the point of no
+ * return. 202 `{ operationId, bootId }`; the old body is the result.
  */
+import { OperationCancelledError, operationOriginFromRequest, responseOutcome, type OperationContext, type OperationOutcome } from '@bakin/core/operations'
 import { getContentDir } from '@/core/content-dir'
 import { appendAudit } from '@/core/audit'
 import { createLogger } from '@/core/logger'
@@ -15,6 +21,8 @@ import {
   activateUserPluginDir,
   isLiveActivationUnavailable,
 } from '@/core/plugins/live-lifecycle'
+import { PLUGIN_RESTORE_PLAN, RESTORE_STAGES } from '@/core/plugins/operation-plans'
+import { startOperationResponse } from '../operations'
 
 const log = createLogger('plugin-restore')
 const PLUGIN_ID_RE = /^[a-z][a-z0-9-]{0,39}$/
@@ -26,8 +34,7 @@ interface RestoreBody {
   listOnly?: unknown
 }
 
-export async function post(req: Request, _url: URL): Promise<Response> {
-  void _url
+export async function post(req: Request): Promise<Response> {
   let body: RestoreBody
   try {
     body = await req.json()
@@ -69,14 +76,27 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     })
   }
 
-  try {
-    const restored = await restoreUninstallSnapshot({
-      pluginId,
-      snapshot: body.snapshot,
-      force: body.force === true,
-    })
+  const snapshot = body.snapshot as string | undefined
+  const force = body.force === true
+  return startOperationResponse<Record<string, unknown>>({
+    kind: 'restore',
+    owner: 'core',
+    origin: operationOriginFromRequest(req),
+    title: `Restore ${pluginId}`,
+    href: '/health',
+    fingerprint: `plugins:restore:${pluginId}|${snapshot ?? 'latest'}|${force ? 'force' : ''}`,
+    resources: ['install-state'],
+    plan: PLUGIN_RESTORE_PLAN,
+    run: (op) => runRestore(pluginId, snapshot, force, op),
+  })
+}
 
-    const sweep = body.force === true
+async function runRestore(pluginId: string, snapshot: string | undefined, force: boolean, op: OperationContext): Promise<OperationOutcome<Record<string, unknown>>> {
+  try {
+    const restored = await restoreUninstallSnapshot({ pluginId, snapshot, force, op })
+
+    op.stage(RESTORE_STAGES.activate)
+    const sweep = force
       ? await pluginRegistry.deactivatePlugin(pluginId, { callShutdown: true, removeState: true })
       : undefined
     let activated = false
@@ -97,7 +117,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       sweep,
     }, 'system')
 
-    return Response.json({
+    return responseOutcome(200, {
       ok: true,
       restored: true,
       id: pluginId,
@@ -112,18 +132,16 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       message: `Restored "${pluginId}" from ${restored.snapshot.filename}.`,
     })
   } catch (err) {
+    if (err instanceof OperationCancelledError) throw err
     if (err instanceof PluginRestoreError) {
-      return Response.json({
+      return responseOutcome(err.status, {
         ok: false,
         error: err.message,
         code: err.code,
         snapshots: err.snapshots,
-      }, { status: err.status })
+      })
     }
     log.error('plugin restore failed', err as Error, { pluginId })
-    return Response.json({
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    }, { status: 500 })
+    return responseOutcome(500, { ok: false, error: err instanceof Error ? err.message : String(err) })
   }
 }

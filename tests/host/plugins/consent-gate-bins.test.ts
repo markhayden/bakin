@@ -27,7 +27,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }) }))
 mock.module('../../../packages/host/src/plugin-host/user-plugin-builder', () => ({ buildUserPlugin: async () => {} }))
 
-import { post as installPOST } from '../../../packages/host/src/api/plugins/install'
+import { installPOST } from '../../helpers/plugin-routes'
 
 const SCRIPT = '#!/bin/sh\necho tool\n'
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')

@@ -1,6 +1,7 @@
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { getAgentState, type AgentState } from '../agent-packages/agent-state'
 import { installPackage } from '../agent-packages/installer'
+import { runOwning } from '../operations'
 import { loadUnifiedCatalog, staticCuratedCatalog } from '../curated-catalog/load'
 import { sourceWithRef } from '../../lib/package-source'
 import type { CatalogEntry } from '../curated-catalog/schema'
@@ -166,11 +167,15 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
       opts.onProgress?.(state === 'unmanaged'
         ? `Adopting existing agent ${agent.id}`
         : `Installing official agent ${agent.id}`)
-      await installPackage({
-        source: sourceWithRef(agent.source, agent.ref),
-        installAs: agent.id,
-        adopt: state === 'unmanaged',
-      })
+      // A local operation owns install-state until the onboarding switch (#895 PR6).
+      await runOwning(
+        { kind: 'onboarding:install-agent', title: `Install agent ${agent.id}`, resources: ['install-state'] },
+        () => installPackage({
+          source: sourceWithRef(agent.source, agent.ref),
+          installAs: agent.id,
+          adopt: state === 'unmanaged',
+        }),
+      )
       if (state === 'unmanaged') adopted.push(agent.id)
       else installed.push(agent.id)
     } catch (err) {

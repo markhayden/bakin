@@ -43,6 +43,10 @@ export interface BuildLogger {
 export interface BuildUserPluginOptions {
   diagnosticsLog?: BuildLogger
   pluginId?: string
+  /** Whiskit step events (start/ok/error) — an install operation's build items (#895). */
+  onStage?: (event: WhiskitStageEvent) => void
+  /** Each line a build subprocess prints — liveness only (#895). */
+  onOutput?: (line: string) => void
 }
 
 function diagnosticsLogger(log?: BuildLogger): StartupDiagnosticLogger | null {
@@ -154,6 +158,7 @@ function emitStageSpan(
   pluginId: string,
   event: WhiskitStageEvent,
 ): void {
+  if (event.status === 'start') return
   const { span, errorLabel } = STAGE_SPANS[event.stage]
   let reads = 0
   const handle = startStartupSpan(diag, span, {
@@ -246,7 +251,13 @@ export async function buildUserPlugin(
       production: isProductionBuild(),
       installDeps: true,
       serverBuild: true,
-      onStage: diag ? (event) => emitStageSpan(diag, pluginId, event) : undefined,
+      onStage: diag || options.onStage
+        ? (event) => {
+          if (diag) emitStageSpan(diag, pluginId, event)
+          options.onStage?.(event)
+        }
+        : undefined,
+      onOutput: options.onOutput,
     })
     totalSpan?.end({ status: 'ok', rebuilt: true, hasClient })
   } catch (err) {

@@ -46,7 +46,7 @@ import {
   type ReplacePluginDirArgs,
 } from '../../../src/core/plugins/replace-transaction'
 import { isLoadableUserPluginDir, recoverInterruptedPluginOps } from '../../../src/core/plugins/install-recovery'
-import { withInstallLock } from '../../../src/core/install-core/install-lock'
+import { owning } from '../../helpers/owning'
 import { addPlugin, readPluginLockfile, writePluginLockfile, type PluginLockEntry } from '../../../packages/core/src/plugins/lockfile'
 import { readInstalledBy } from '../../../packages/core/src/agent-packages/markers'
 import { treeDigest } from '../../helpers/tree-digest'
@@ -88,7 +88,7 @@ const placeV2 = (dir: string): void => {
 }
 
 function run(overrides: Partial<ReplacePluginDirArgs>) {
-  return withInstallLock(() => replacePluginDir({
+  return owning(() => replacePluginDir({
     id: ID,
     op: 'upgrade',
     place: placeV2,
@@ -154,10 +154,10 @@ beforeEach(() => {
 })
 
 describe('replacePluginDir', () => {
-  it('requires the install lock', async () => {
+  it('requires install-state', async () => {
     await expect(replacePluginDir({
       id: ID, op: 'install', place: placeV2, bins: [], binIdentity: { pluginId: ID, version: '1', ref: '', commitSha: '' }, ledger: () => {},
-    })).rejects.toThrow(/install lock/)
+    })).rejects.toThrow(/requires install-state/)
   })
 
   it('install: place → build → bins → ledger, then commits with no sentinel and no backup', async () => {

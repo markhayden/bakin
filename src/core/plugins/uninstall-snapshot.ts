@@ -22,10 +22,12 @@
 import { createHash } from 'crypto'
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join, basename, dirname } from 'path'
+import type { OperationContext } from '@makinbakin/sdk/types'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { getAppServices } from '@/core/app-services'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
+import { RESTORE_STAGES } from './operation-plans'
 import {
   addPlugin,
   PluginLockfileSchema,
@@ -100,6 +102,12 @@ export interface RestoreInput {
   snapshot?: string
   /** Replace existing plugin dir/settings/lockfile and runtime skills. */
   force?: boolean
+  /**
+   * The restore operation (#895, PLUGIN_RESTORE_PLAN): unpack and checks on
+   * `extract`; the first delete (--force) or copy enters `place`, the point
+   * of no return.
+   */
+  op?: OperationContext
 }
 
 export interface RestoreResult {
@@ -357,7 +365,9 @@ export async function restoreUninstallSnapshot(input: RestoreInput): Promise<Res
 
   const uninstalledDir = join(contentDir, '.uninstalled')
   const stagingDir = mkdtempSync(join(uninstalledDir, `.restore-${pluginId}-`))
+  const op = input.op
   try {
+    op?.stage(RESTORE_STAGES.extract, snapshot.filename)
     validateTarListing(await spawnTarText(['-tzf', snapshot.path]), pluginId)
     await spawnTar(['-xzf', snapshot.path, '-C', stagingDir])
 
@@ -411,6 +421,9 @@ export async function restoreUninstallSnapshot(input: RestoreInput): Promise<Res
       })
     }
 
+    // The point of no return: nothing live has changed until here.
+    op?.throwIfCancelled()
+    op?.stage(RESTORE_STAGES.place)
     if (input.force) {
       rmSync(pluginDir, { recursive: true, force: true })
       rmSync(settingsFile, { force: true })

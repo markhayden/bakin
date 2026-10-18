@@ -103,6 +103,28 @@ export interface RunSystemBunOptions {
    * installed) — skips PATH resolution so a box with no system bun works.
    */
   bunPath?: string
+  /**
+   * Each complete stdout/stderr line as it arrives — liveness for an operation
+   * (#895). The capped capture for the result is unaffected.
+   */
+  onLine?: (line: string) => void
+}
+
+/** Split a byte stream into lines, carrying a partial line between chunks. */
+function lineSplitter(onLine: (line: string) => void): { push(chunk: Buffer): void; flush(): void } {
+  let pending = ''
+  return {
+    push(chunk) {
+      pending += chunk.toString('utf-8')
+      const lines = pending.split(/\r?\n/)
+      pending = lines.pop() ?? ''
+      for (const line of lines) if (line.trim()) onLine(line)
+    },
+    flush() {
+      if (pending.trim()) onLine(pending)
+      pending = ''
+    },
+  }
 }
 
 class CappedCollector {
@@ -154,14 +176,24 @@ export function runSystemBun(args: string[], options: RunSystemBunOptions): Prom
       proc.kill('SIGKILL')
     }, timeoutMs)
 
-    proc.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk))
-    proc.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk))
+    const outLines = options.onLine ? lineSplitter(options.onLine) : null
+    const errLines = options.onLine ? lineSplitter(options.onLine) : null
+    proc.stdout?.on('data', (chunk: Buffer) => {
+      stdout.push(chunk)
+      outLines?.push(chunk)
+    })
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      stderr.push(chunk)
+      errLines?.push(chunk)
+    })
     proc.once('error', (err) => {
       clearTimeout(timer)
       reject(new WhiskitBuildError('resolve-bun', `Failed to spawn ${bun}: ${err.message}`))
     })
     proc.once('close', (code: number | null) => {
       clearTimeout(timer)
+      outLines?.flush()
+      errLines?.flush()
       resolve({
         exitCode: code ?? (timedOut ? 124 : 0),
         stdout: stdout.toString(),

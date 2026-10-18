@@ -16,7 +16,8 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { getBakinPaths } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
-import { commitFileAtomic, downloadToFile, extractTarball } from '../../../packages/core/src/net/download'
+import type { RequirementOp } from '@/core/agent-packages/requirement-op'
+import { commitFileAtomic, downloadToFile, extractTarball, opTransfer } from '../../../packages/core/src/net/download'
 import { mediaPlatformKey } from '../../../packages/core/src/media/pin'
 import { MANAGED_BUN_DOWNLOADS, MANAGED_BUN_VERSION } from './bun-pin'
 import { findSystemBun } from './command'
@@ -32,7 +33,12 @@ export interface EnsureBunOptions {
   fetchImpl?: typeof fetch
   /** Seam for tests: system-bun lookup (null = none found). Default wraps findSystemBun. */
   locate?: () => string | null
+  /** A download, when one is needed, reports as its own item with bytes (#895). */
+  op?: RequirementOp
 }
+
+/** The operation item id of the managed bun download. */
+export const MANAGED_BUN_ITEM_ID = 'managed-bun'
 
 /** `~/.bakin/bin/bun` — the managed install target. */
 export function managedBunPath(): string {
@@ -78,6 +84,10 @@ export async function ensureBunAvailable(options: EnsureBunOptions = {}): Promis
   const download = MANAGED_BUN_DOWNLOADS[platform]
 
   log.info(`installing managed bun ${MANAGED_BUN_VERSION} (${platform}) — no system bun on PATH`)
+  const op = options.op?.op
+  const stageId = options.op?.stageId ?? ''
+  const item = { id: MANAGED_BUN_ITEM_ID, label: `bun ${MANAGED_BUN_VERSION} (managed runtime)` }
+  op?.item(stageId, { ...item, status: 'active' })
   const workDir = mkdtempSync(join(tmpdir(), 'bakin-managed-bun-'))
   try {
     const tarPath = join(workDir, 'bun.tgz')
@@ -87,9 +97,11 @@ export async function ensureBunAvailable(options: EnsureBunOptions = {}): Promis
       timeoutMs: DOWNLOAD_TIMEOUT_MS,
       fetchImpl: options.fetchImpl,
       label: `Managed bun ${MANAGED_BUN_VERSION}`,
+      signal: op?.signal,
+      ...(op ? { onEvent: opTransfer(op, stageId, item.id) } : {}),
     })
     log.info(`managed bun downloaded — ${downloaded.bytes} bytes in ${Date.now() - started}ms`)
-    await extractTarball(tarPath, workDir, { stripComponents: 1, label: `Managed bun ${MANAGED_BUN_VERSION}` })
+    await extractTarball(tarPath, workDir, { stripComponents: 1, label: `Managed bun ${MANAGED_BUN_VERSION}`, signal: op?.signal })
     const extracted = join(workDir, 'bin', 'bun')
     if (!existsSync(extracted)) {
       throw new Error(`Managed bun ${MANAGED_BUN_VERSION} tarball did not contain bin/bun`)
@@ -111,7 +123,11 @@ export async function ensureBunAvailable(options: EnsureBunOptions = {}): Promis
       },
     })
     log.info(`managed bun installed → ${managed}`)
+    op?.item(stageId, { ...item, status: 'done' })
     return managed
+  } catch (err) {
+    op?.item(stageId, { ...item, status: 'failed', message: err instanceof Error ? err.message : String(err) })
+    throw err
   } finally {
     rmSync(workDir, { recursive: true, force: true })
   }

@@ -1,8 +1,7 @@
 /**
  * Operation resource ownership (#895, D23): only the resource module creates
  * `install.lock` or lock files under `~/.bakin/locks/`. Everything else
- * acquires through `@bakin/core/operations` (or, until PR4 deletes it, the
- * legacy install-lock facade built on it), so there is exactly one lock
+ * acquires through `@bakin/core/operations`, so there is exactly one lock
  * algorithm and one ownership context.
  *
  * Scoped to OPERATION resources: antfly's own service lock

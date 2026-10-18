@@ -20,13 +20,14 @@ import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSy
 import { join } from 'path'
 import type { Manifest, NpmRequirement, ModelRequirement } from '../../../packages/core/src/agent-packages/manifest'
 import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
-import { commitFileAtomic, downloadToFile, type DownloadEvent } from '../../../packages/core/src/net/download'
+import { commitFileAtomic, downloadToFile, opTransfer, type DownloadEvent } from '../../../packages/core/src/net/download'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { runSystemBun } from '../whiskit/command'
 import { ensureBunAvailable } from '../whiskit/managed-bun'
-import { binPlatformKey, installManifestBins } from './bin-installer'
+import { binItemId, binPlatformKey, installManifestBins } from './bin-installer'
 import type { ProjectorResult } from './projector'
+import type { RequirementOp } from './requirement-op'
 
 const log = createLogger('pack-requirements')
 
@@ -71,6 +72,7 @@ export async function installNpmRequirement(
   packId: string,
   sourceDir: string,
   installedBy: Omit<InstalledByMarker, 'sha256'>,
+  options: { op?: RequirementOp } = {},
 ): Promise<NpmInstallResult> {
   const target = npmPayloadDir(packId, req.name)
   const scriptsSource = join(sourceDir, req.source)
@@ -119,12 +121,14 @@ export async function installNpmRequirement(
       // Customer binary installs have no dev toolchain — a missing system
       // bun installs the pinned managed bun instead of failing with
       // "install Bun" advice (margo, 2026-09-21). Install-time only.
-      const bunPath = await ensureBunAvailable()
+      const bunPath = await ensureBunAvailable({ op: options.op })
+      options.op?.op.throwIfCancelled()
       const run = await runSystemBun(['install', '--ignore-scripts'], {
         cwd: staging,
         timeoutMs: NPM_INSTALL_TIMEOUT_MS,
         extraEnv: req.env,
         bunPath,
+        onLine: options.op ? (line) => options.op!.op.output(line) : undefined,
       })
       if (run.exitCode !== 0) {
         throw new Error(
@@ -165,6 +169,8 @@ export interface ModelInstallOptions {
   fetchImpl?: typeof fetch
   /** Transfer events for the download leg (#895). */
   onEvent?: (event: DownloadEvent) => void
+  /** Aborts the download (an operation's cancel, #895). */
+  signal?: AbortSignal
 }
 
 /**
@@ -209,6 +215,7 @@ export async function installModelRequirement(
     fetchImpl: options.fetchImpl,
     label: `Model "${req.name}"`,
     onEvent: options.onEvent,
+    signal: options.signal,
   })
   await commitFileAtomic(tmp, target, {
     verify: async () => {
@@ -225,8 +232,12 @@ export async function installModelRequirement(
 
 export interface ManifestRequirementsInput {
   manifest: Manifest
-  /** Staged progress reporter (#895) — bins/models/npm legs report live. */
-  progress?: import('./install-progress').InstallProgressFn
+  /**
+   * The operation stage these legs report into — one item per bin, model and
+   * npm payload (the managed bun download is its own item). The caller enters
+   * the stage; its plan decides whether that is the point of no return.
+   */
+  op?: RequirementOp
   /** Lockfile pack id WITHOUT version (payload dirs are keyed by it). */
   packId: string
   /** The pack source dir npm payload scripts are copied from (staging or installed source). */
@@ -259,27 +270,49 @@ export async function installManifestRequirements(input: ManifestRequirementsInp
   // Leg order matters for fail-fast: bins and models are atomic + idempotent
   // (tmp + rename; unchanged pins skip); the npm payload swap mutates live
   // state LAST, after every downloadable leg has already succeeded.
-  const progress = input.progress ?? (() => {})
-  await installManifestBins(manifest, installedBy, result, { progress })
+  const target = input.op
   const models = manifest.requires?.models ?? []
-  for (const [index, req] of models.entries()) {
-    progress({ stage: 'models', message: `Downloading model ${req.name} (${index + 1}/${models.length})…`, item: req.name, current: index + 1, total: models.length })
-    const installed = await installModelRequirement(req, installedBy, {
+  const npmReqs = manifest.requires?.npm ?? []
+  // Every leg is listed up front, so the operation shows what is still to come.
+  if (target) {
+    for (const bin of manifest.requires?.bins ?? []) target.op.item(target.stageId, { id: binItemId(bin.name), label: `${bin.name} ${bin.version}` })
+    for (const req of models) target.op.item(target.stageId, { id: modelItemId(req.name), label: req.name, bytes: { received: 0, total: req.bytes } })
+    for (const req of npmReqs) target.op.item(target.stageId, { id: npmItemId(req.name), label: `${req.name} (npm)` })
+  }
+  await installManifestBins(manifest, installedBy, result, { op: target })
+  for (const req of models) {
+    const installed = await asItem<ModelInstallResult>(target, { id: modelItemId(req.name), label: req.name }, (r) => r.skipped, (reportOp) => installModelRequirement(req, installedBy, {
       ...input.modelOptions,
-      onEvent: (event) => {
-        if (event.type !== 'bytes') return
-        progress({
-          stage: 'models', message: `Downloading model ${req.name} (${index + 1}/${models.length})…`,
-          item: req.name, current: index + 1, total: models.length, receivedBytes: event.received, totalBytes: event.total,
-        })
-      },
-    })
+      signal: target?.op.signal,
+      ...(reportOp ? { onEvent: reportOp } : {}),
+    }))
     result.projections.push({ kind: 'model', target: installed.target, sha256: installed.sha256 })
   }
-  const npmReqs = manifest.requires?.npm ?? []
-  for (const [index, req] of npmReqs.entries()) {
-    progress({ stage: 'npm', message: `Installing npm payload ${req.name} (${index + 1}/${npmReqs.length}) — resolving bun runtime…`, item: req.name, current: index + 1, total: npmReqs.length })
-    const installed = await installNpmRequirement(req, packId, sourceDir, installedBy)
+  for (const req of npmReqs) {
+    const installed = await asItem<NpmInstallResult>(target, { id: npmItemId(req.name), label: `${req.name} (npm)` }, (r) => r.skipped, () => installNpmRequirement(req, packId, sourceDir, installedBy, { op: target }))
     result.projections.push({ kind: 'npm-payload', target: installed.target })
+  }
+}
+
+export const modelItemId = (name: string): string => `model:${name}`
+export const npmItemId = (name: string): string => `npm:${name}`
+
+/** Run one requirement as an operation item: active → done/skipped, or failed with the error (rethrown). */
+async function asItem<R>(
+  target: RequirementOp | undefined,
+  item: { id: string; label: string },
+  skipped: (result: R) => boolean,
+  run: (reportOp: ((event: DownloadEvent) => void) | undefined) => Promise<R>,
+): Promise<R> {
+  if (!target) return run(undefined)
+  const { op, stageId } = target
+  op.item(stageId, { ...item, status: 'active' })
+  try {
+    const result = await run(opTransfer(op, stageId, item.id))
+    op.item(stageId, skipped(result) ? { ...item, status: 'skipped', message: 'already installed' } : { ...item, status: 'done' })
+    return result
+  } catch (err) {
+    op.item(stageId, { ...item, status: 'failed', message: err instanceof Error ? err.message : String(err) })
+    throw err
   }
 }

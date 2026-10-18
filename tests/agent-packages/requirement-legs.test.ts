@@ -46,18 +46,34 @@ mock.module('@/core/task-store', () => ({}))
 // the real system-bun mechanics are whiskit's tested territory.
 let bunRuns: Array<{ args: string[]; cwd: string; extraEnv?: Record<string, string> }> = []
 mock.module('../../src/core/whiskit/command', () => ({
-  runSystemBun: async (args: string[], options: { cwd: string; extraEnv?: Record<string, string> }) => {
+  runSystemBun: async (args: string[], options: { cwd: string; extraEnv?: Record<string, string>; onLine?: (line: string) => void }) => {
     bunRuns.push({ args, cwd: options.cwd, extraEnv: options.extraEnv })
+    options.onLine?.('+ fake-dep@1.0.0')
     mkdirSync(join(options.cwd, 'node_modules', 'fake-dep'), { recursive: true })
     return { exitCode: 0, stdout: '', stderr: '', timedOut: false, durationMs: 1 }
   },
 }))
 
-import { installPackage } from '../../src/core/agent-packages/installer'
-import { updatePackageById } from '../../src/core/agent-packages/updater'
-import { repairPackLocally } from '../../src/core/agent-packages/sync'
-import { removePackageById } from '../../src/core/agent-packages/uninstaller'
+import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
+import { updatePackageById as updatePackageByIdUnowned } from '../../src/core/agent-packages/updater'
+import { repairPackLocally as repairUnowned } from '../../src/core/agent-packages/sync'
+import { removePackageById as removePackageByIdUnowned } from '../../src/core/agent-packages/uninstaller'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
+import { parseManifest } from '../../packages/core/src/agent-packages/manifest'
+import { installManifestRequirements as installManifestRequirementsUnowned } from '../../src/core/agent-packages/requirements-installer'
+import { settleOperation } from '../helpers/operation-harness'
+import { holdNow } from '../../packages/core/src/operations'
+import { owned } from '../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const installPackage = owned(installPackageUnowned)
+const updatePackageById = owned(updatePackageByIdUnowned)
+const removePackageById = owned(removePackageByIdUnowned)
+const installManifestRequirements = owned(installManifestRequirementsUnowned)
+
+/** Writing syncs run inside an owner of install-state, like every production caller (#895). */
+const owning = <T>(fn: () => Promise<T>): Promise<T> => holdNow(['install-state'], { title: 'test' }, fn)
+const repairPackLocally = (...args: Parameters<typeof repairUnowned>) => owning(() => repairUnowned(...args))
 
 const MODEL_BYTES = 'FAKE-GGUF-MODEL-CONTENT-0123456789'
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
@@ -392,5 +408,47 @@ describe('sync scanner vs requirement legs', () => {
     const legFindings = report.findings.filter((f) =>
       String(f.target ?? '').includes('/npm/') || String(f.target ?? '').includes('/models/'))
     expect(legFindings).toEqual([])
+  })
+})
+
+describe('operation reporting (#895)', () => {
+  const plan = { stages: [{ id: 'requirements', kind: 'installing' as const, label: 'Install requirements' }], pointOfNoReturn: 'requirements' }
+  const installedBy = { package: 'toolpack', version: '1.0.0', ref: '', commitSha: '', installedAt: new Date().toISOString() }
+  const legsOf = (dir: string) => parseManifest(JSON.parse(readFileSync(join(dir, 'bakin-package.json'), 'utf-8')))
+  const run = (dir: string) => settleOperation({ plan, resources: ['install-state'] }, async (op) => {
+    op.stage('requirements')
+    await installManifestRequirements({
+      manifest: legsOf(dir), packId: 'toolpack', sourceDir: dir, installedBy, result: { projections: [] },
+      op: { op, stageId: 'requirements' }, modelOptions: { fetchImpl: nativeFetch },
+    })
+  })
+
+  it('lists every leg up front, then reports each as an item with the model bytes and bun output as liveness', async () => {
+    const dir = seedPack('1.0.0', { npmDeps: { 'fake-dep': '1.0.0' } })
+    const { error, view } = await run(dir)
+    expect(error).toBeUndefined()
+    const items = view.stages[0]!.items ?? []
+    expect(items.map((i) => [i.id, i.status])).toEqual([['model:fakemodel', 'done'], ['npm:scripts', 'done']])
+    expect(items[0]!.bytes).toEqual({ received: MODEL_BYTES.length, total: MODEL_BYTES.length })
+    expect(view.lastOutput).toBe('+ fake-dep@1.0.0')
+  })
+
+  it('a leg already at its pin is a skipped item, not a download', async () => {
+    const dir = seedPack('1.0.0', { npm: false })
+    await run(dir)
+    hits = {}
+    const { view } = await run(dir)
+    expect(view.stages[0]!.items?.map((i) => [i.id, i.status])).toEqual([['model:fakemodel', 'skipped']])
+    expect(hits['/model.gguf']).toBeUndefined()
+  })
+
+  it('a failed leg is a failed item carrying the error, and the error is rethrown', async () => {
+    const dir = seedPack('1.0.0', { npm: false, modelUrl: `http://127.0.0.1:${server.port}/gone.gguf` })
+    const { error, view } = await run(dir)
+    expect(String(error)).toMatch(/404/)
+    const item = view.stages[0]!.items?.[0]
+    expect(item?.status).toBe('failed')
+    expect(item?.message).toMatch(/404/)
+    expect(view.status).toBe('failed')
   })
 })

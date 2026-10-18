@@ -204,10 +204,16 @@ function installRuntimeMock(): void {
   ;(globalThis as TestGlobal).__bakinAppServices = { runtime }
 }
 
-import { installPackage } from '../../src/core/agent-packages/installer'
+import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
 import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
-import { isInstallLockHeld } from '../../src/core/install-core/install-lock'
+import { isResourceHeld } from '../../packages/core/src/operations'
+
+const isInstallStateHeld = () => isResourceHeld('install-state')
+import { owned } from '../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const installPackage = owned(installPackageUnowned)
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -378,7 +384,7 @@ describe('installPackage — fresh install (kind:"agent")', () => {
   it('releases the install lock after success', async () => {
     const src = seedAgentPackage()
     await installPackage({ source: src })
-    expect(isInstallLockHeld()).toBe(false)
+    expect(isInstallStateHeld()).toBe(false)
   })
 })
 
@@ -454,7 +460,7 @@ describe('installPackage — refuse paths', () => {
     expect(Object.keys(lock.packages)).toEqual([])
     expect(existsSync(join(testDir, 'packages', 'agents', 'x@0.0.0'))).toBe(false)
     expect(adapterCalls.addAgent).toHaveLength(0)
-    expect(isInstallLockHeld()).toBe(false)
+    expect(isInstallStateHeld()).toBe(false)
   })
 
   it('removes a freshly-created runtime agent when later install work fails', async () => {
@@ -698,7 +704,7 @@ describe('installPackage — install lock release on failure', () => {
       await installPackage({ source: src })
     }).toThrow()
 
-    expect(isInstallLockHeld()).toBe(false)
+    expect(isInstallStateHeld()).toBe(false)
   })
 })
 
@@ -753,7 +759,7 @@ describe('installPackage — capability-pack bins', () => {
   })
 
   it('installs the declared bin with a lockfile bin projection; uninstall removes it', async () => {
-    const { removePackageById } = await import('../../src/core/agent-packages/uninstaller')
+    const removePackageById = owned((await import('../../src/core/agent-packages/uninstaller')).removePackageById)
     await installPackage({ source: seedCapabilityPack('web-a') })
 
     const binPath = join(testDir, 'bin', 'capbin')
@@ -771,7 +777,6 @@ describe('installPackage — capability-pack bins', () => {
 
   it('#930-class contract: refuses when a plugin pins capbin at another sha — nothing written, lock released', async () => {
     const { addPlugin, readPluginLockfile, writePluginLockfile } = await import('../../packages/core/src/plugins/lockfile')
-    const { isInstallLockHeld } = await import('../../src/core/install-core/install-lock')
     writePluginLockfile(addPlugin(readPluginLockfile(), 'terminal', {
       source: 'github:x/terminal', type: 'github', ref: '', commitSha: '', installedAt: new Date().toISOString(),
       version: '0.2.0', permissions: [], manifestSha: 'm', installedBins: [{ name: 'capbin', sha256: 'b'.repeat(64) }],
@@ -780,11 +785,11 @@ describe('installPackage — capability-pack bins', () => {
     expect(existsSync(join(testDir, 'bin', 'capbin'))).toBe(false)
     const lock = readJson(join(testDir, 'packages', 'lock.json')) as { packages: Record<string, unknown> }
     expect(lock.packages['web-conflict@1.0.0']).toBeUndefined()
-    expect(isInstallLockHeld()).toBe(false)
+    expect(isInstallStateHeld()).toBe(false)
   })
 
   it('keeps a bin a plugin still pins when the pack is removed', async () => {
-    const { removePackageById } = await import('../../src/core/agent-packages/uninstaller')
+    const removePackageById = owned((await import('../../src/core/agent-packages/uninstaller')).removePackageById)
     const { addPlugin, readPluginLockfile, writePluginLockfile } = await import('../../packages/core/src/plugins/lockfile')
     await installPackage({ source: seedCapabilityPack('web-shared') })
     const binPath = join(testDir, 'bin', 'capbin')
@@ -808,7 +813,7 @@ describe('installPackage — capability-pack bins', () => {
   })
 
   it('a bin shared by two packs survives the first uninstall and dies with the last', async () => {
-    const { removePackageById } = await import('../../src/core/agent-packages/uninstaller')
+    const removePackageById = owned((await import('../../src/core/agent-packages/uninstaller')).removePackageById)
     await installPackage({ source: seedCapabilityPack('web-a') })
     await installPackage({ source: seedCapabilityPack('web-b') })
 

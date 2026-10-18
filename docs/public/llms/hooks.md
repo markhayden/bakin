@@ -176,7 +176,7 @@ const result = await ctx.hooks.invoke(
 
 Label: Prepared git worktree
 Kind: rpc
-Source: plugins/git/index.ts:709
+Source: plugins/git/index.ts:711
 
 Example:
 
@@ -191,7 +191,7 @@ const result = await ctx.hooks.invoke(
 
 Label: Prepared git worktree
 Kind: rpc
-Source: plugins/git/index.ts:713
+Source: plugins/git/index.ts:715
 
 Example:
 
@@ -211,7 +211,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns canonical metadata for one registered Health check by stable id without executing it.
 Kind: rpc
-Source: plugins/health/index.ts:865
+Source: plugins/health/index.ts:868
 
 Example:
 
@@ -229,7 +229,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns canonical metadata for registered Health checks without executing them.
 Kind: rpc
-Source: plugins/health/index.ts:864
+Source: plugins/health/index.ts:867
 
 Example:
 

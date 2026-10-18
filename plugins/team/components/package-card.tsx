@@ -6,7 +6,7 @@
  * import — overview-tab.tsx needs PackageCardBody, and
  * agent-detail.tsx already needs OverviewTab.
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Info, RefreshCw, Trash } from 'lucide-react'
 import {
   Alert,
@@ -25,10 +25,11 @@ import {
 } from '@makinbakin/sdk/ui'
 import { useRouter } from '@makinbakin/sdk/navigation'
 import { Inline, Panel } from '@makinbakin/sdk/layout'
-import { ConfirmDialog, CopyButton, KeyValue, StatusBadge, type KeyValueItem } from '@makinbakin/sdk/patterns'
+import { ConfirmDialog, CopyButton, KeyValue, OperationProgress, StatusBadge, type KeyValueItem } from '@makinbakin/sdk/patterns'
 import { toast, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
+import { usePackageOperation } from '../hooks/use-package-operation'
 import type { PackageStateRow } from '../types'
 
 export const ADOPT_INFO = `Adopting attaches an agent-package to this agent. Bakin then tracks the source repo + commit, projects the package's lessons + skills into the workspace, and lets you toggle which lessons are active. Your existing SOUL/IDENTITY/AGENTS/TOOLS files stay on disk untouched.`
@@ -98,91 +99,114 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const [updateOpen, setUpdateOpen] = useState(false)
   const [removeOpen, setRemoveOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
-  const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const hasPackage = Boolean(packageState?.entry && (state === 'managed' || state === 'update-available'))
   const updateAvailable = Boolean(packageState?.updateStatus?.upgradeAvailable || state === 'update-available')
   const displayState = updateAvailable ? 'update-available' : state
 
-  async function syncPackage() {
-    setActionBusy(true)
+  // Sync and remove run as operations (#895): the dialog follows them live and
+  // the route's old answer arrives as the operation result.
+  const syncOp = usePackageOperation()
+  const removeOp = usePackageOperation()
+  const removeDeletesAgent = useRef(false)
+  const actionBusy = syncOp.busy || removeOp.busy
+
+  function syncPackage() {
     setActionError(null)
     setActionMessage(null)
-    try {
-      const res = await fetch(`/api/agent-packages/${encodeURIComponent(agentId)}/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (res.status === 409 && body?.migrationRequired) {
-        throw new Error('One-time block migration required — run `bakin agents sync` and confirm, or use the Health page Repair flow.')
-      }
-      if (!res.ok || body?.ok === false) {
-        throw new Error(typeof body?.error === 'string' ? body.error : 'Agent sync failed.')
-      }
-      const receipt = body.receipt ?? {}
-      const recomposed = (receipt.blocks ?? []).filter((b: { action: string }) => b.action === 'recomposed').map((b: { file: string }) => b.file)
-      const skipped = receipt.skipped ?? []
-      const parts = [
-        receipt.package?.changed
-          ? `Updated ${receipt.package.versionBefore} → ${receipt.package.versionAfter}.`
-          : 'Already at the latest source.',
-        recomposed.length > 0 ? `Recomposed: ${recomposed.join(', ')}.` : 'All blocks current.',
-        skipped.length > 0 ? `${skipped.length} user-edited file(s) preserved (reclaim to overwrite).` : null,
-        `Verification: ${receipt.verification?.status ?? 'unknown'}.`,
-      ].filter(Boolean)
-      await refreshPackageStates()
-      // Sync succeeded: surface the receipt as a toast and auto-close the
-      // dialog. Errors keep the dialog open (actionError is shown inline).
-      toast(parts.join(' '), 'success')
-      setUpdateOpen(false)
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setActionBusy(false)
-    }
+    void syncOp.start(() => fetch(`/api/agent-packages/${encodeURIComponent(agentId)}/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    }))
   }
 
-  async function removePackage(deleteAgent: boolean) {
-    setActionBusy(true)
+  function removePackage(deleteAgent: boolean) {
     setActionError(null)
     setActionMessage(null)
-    try {
-      const res = await fetch(`/api/agent-packages/${encodeURIComponent(agentId)}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deleteAgent }),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok || body?.ok === false) {
-        throw new Error(typeof body?.error === 'string' ? body.error : 'Agent package removal failed.')
-      }
-      const result = body?.result && typeof body.result === 'object'
-        ? body.result as { deletedAgent?: boolean; deleteAgentError?: string }
-        : null
-      if (deleteAgent && result?.deletedAgent !== true) {
-        const detail = result?.deleteAgentError ? ` ${result.deleteAgentError}` : ''
-        setActionError(`Agent package was orphaned, but the OpenClaw agent was not deleted.${detail}`)
-        await refreshPackageStates()
-        await loadAgents()
-        return
-      }
-      if (deleteAgent) {
-        await loadAgents()
-        setRemoveOpen(false)
-        router.push('/team')
-      } else {
-        setActionMessage('Agent orphaned.')
-        await refreshPackageStates()
-      }
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setActionBusy(false)
-    }
+    removeDeletesAgent.current = deleteAgent
+    void removeOp.start(() => fetch(`/api/agent-packages/${encodeURIComponent(agentId)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleteAgent }),
+    }))
   }
+
+  useEffect(() => {
+    if (syncOp.error) setActionError(syncOp.error)
+  }, [syncOp.error])
+
+  const syncResult = syncOp.result
+  const resetSync = syncOp.reset
+  useEffect(() => {
+    const settled = syncResult
+    if (!settled) return
+    const body = (settled.body ?? {}) as Record<string, unknown>
+    if (settled.httpStatus === 409 && body.migrationRequired) {
+      setActionError('One-time block migration required — run `bakin agents sync` and confirm, or use the Health page Repair flow.')
+      return
+    }
+    if (settled.httpStatus !== 200 || body.ok === false) {
+      setActionError(typeof body.error === 'string' ? body.error : 'Agent sync failed.')
+      return
+    }
+    const receipt = (body.receipt ?? {}) as {
+      blocks?: Array<{ action: string; file: string }>
+      skipped?: unknown[]
+      package?: { changed?: boolean; versionBefore?: string; versionAfter?: string }
+      verification?: { status?: string }
+    }
+    const recomposed = (receipt.blocks ?? []).filter((b) => b.action === 'recomposed').map((b) => b.file)
+    const skipped = receipt.skipped ?? []
+    const parts = [
+      receipt.package?.changed
+        ? `Updated ${receipt.package.versionBefore} → ${receipt.package.versionAfter}.`
+        : 'Already at the latest source.',
+      recomposed.length > 0 ? `Recomposed: ${recomposed.join(', ')}.` : 'All blocks current.',
+      skipped.length > 0 ? `${skipped.length} user-edited file(s) preserved (reclaim to overwrite).` : null,
+      `Verification: ${receipt.verification?.status ?? 'unknown'}.`,
+    ].filter(Boolean)
+    void refreshPackageStates()
+    // Sync succeeded: surface the receipt as a toast and auto-close the
+    // dialog. Errors keep the dialog open (actionError is shown inline).
+    toast(parts.join(' '), 'success')
+    setUpdateOpen(false)
+    resetSync()
+  }, [syncResult, resetSync, refreshPackageStates])
+
+  useEffect(() => {
+    if (removeOp.error) setActionError(removeOp.error)
+  }, [removeOp.error])
+
+  useEffect(() => {
+    const settled = removeOp.result
+    if (!settled) return
+    const deleteAgent = removeDeletesAgent.current
+    const body = (settled.body ?? {}) as Record<string, unknown>
+    if (settled.httpStatus !== 200 || body.ok === false) {
+      setActionError(typeof body.error === 'string' ? body.error : 'Agent package removal failed.')
+      return
+    }
+    const result = body.result && typeof body.result === 'object'
+      ? body.result as { deletedAgent?: boolean; deleteAgentError?: string }
+      : null
+    if (deleteAgent && result?.deletedAgent !== true) {
+      const detail = result?.deleteAgentError ? ` ${result.deleteAgentError}` : ''
+      setActionError(`Agent package was orphaned, but the OpenClaw agent was not deleted.${detail}`)
+      void refreshPackageStates()
+      void loadAgents()
+      return
+    }
+    if (deleteAgent) {
+      void loadAgents()
+      setRemoveOpen(false)
+      router.push('/team')
+    } else {
+      setActionMessage('Agent orphaned.')
+      void refreshPackageStates()
+    }
+  }, [removeOp.result, refreshPackageStates, loadAgents, router])
 
   // Main agent is the user's persona — adopting/replacing it doesn't make
   // sense. Show a different framing instead of the Adopt button.
@@ -329,6 +353,13 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
               </div>
             </div>
           )}
+          {syncOp.showProgress && syncOp.operation ? (
+            <OperationProgress
+              operation={syncOp.operation}
+              phase={syncOp.phase ?? undefined}
+              onCancel={() => { void syncOp.cancel() }}
+            />
+          ) : null}
           {actionError ? (
             <Alert tone="danger">
               <AlertTitle>Package was not synced</AlertTitle>
@@ -404,12 +435,20 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
             busy={actionBusy}
             confirmTestId="delete-agent-confirm"
             onConfirm={() => {
-              void removePackage(true).finally(() => setConfirmDeleteOpen(false))
+              removePackage(true)
+              setConfirmDeleteOpen(false)
             }}
             onCancel={() => {
               if (!actionBusy) setConfirmDeleteOpen(false)
             }}
           />
+          {removeOp.showProgress && removeOp.operation ? (
+            <OperationProgress
+              operation={removeOp.operation}
+              phase={removeOp.phase ?? undefined}
+              onCancel={() => { void removeOp.cancel() }}
+            />
+          ) : null}
           {actionError ? (
             <Alert tone="danger">
               <AlertTitle>Package was not removed</AlertTitle>

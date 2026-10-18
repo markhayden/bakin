@@ -31,6 +31,7 @@ import {
 } from 'fs'
 import { homedir } from 'os'
 import { isAbsolute, join, resolve, sep } from 'path'
+import type { OperationContext } from '@makinbakin/sdk/types'
 import { createHash } from 'crypto'
 import { z } from 'zod'
 import { getContentDir } from '@/core/content-dir'
@@ -50,6 +51,8 @@ import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { verifyPluginManifestSignature } from '@bakin/core/plugins/signatures'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
 import { checkPluginDependencies } from './dependencies'
+import { LINK_STAGES } from './operation-plans'
+import { buildHooksFor } from './replace-transaction'
 
 const log = createLogger('plugin-link')
 
@@ -68,6 +71,12 @@ export interface LinkOptions {
    * and opt-in — typically used to dev a fork of a core plugin.
    */
   force?: boolean
+  /**
+   * The link operation (#895, PLUGIN_LINK_PLAN): validation on `check`; the
+   * point of no return (`link`) comes before --force's unlink of a prior
+   * linked entry, else before the initial build writes into the source.
+   */
+  op?: OperationContext
 }
 
 export interface LinkResult {
@@ -212,8 +221,17 @@ export async function linkPlugin(
   localPath: string,
   opts: LinkOptions = {},
 ): Promise<LinkResult> {
+  const op = opts.op
+  op?.stage(LINK_STAGES.check, localPath)
   const real = resolveAndContain(localPath)
   const { id, version, manifestSha, dependencies, permissions } = readManifest(real)
+  let linkEntered = false
+  const enterLink = () => {
+    if (linkEntered) return
+    linkEntered = true
+    op?.throwIfCancelled()
+    op?.stage(LINK_STAGES.link, id)
+  }
 
   // Refuse collisions with installed user plugins unless force=true.
   // `addLinkedPlugin` would also catch the dup id, but a clear pre-check
@@ -230,7 +248,8 @@ export async function linkPlugin(
     }
     // --force on an already-linked entry: drop the prior symlink + lockfile
     // entry so the link below proceeds cleanly. Mirrors how --force handles
-    // a prior installed (non-linked) entry.
+    // a prior installed (non-linked) entry. This is the first live change.
+    enterLink()
     await unlinkPlugin(id)
   }
   if (existingEntry && !isLinkedEntry(existingEntry) && opts.force !== true) {
@@ -270,8 +289,11 @@ export async function linkPlugin(
   mkdirSync(pluginsRoot, { recursive: true })
   const pluginDir = join(pluginsRoot, id)
 
+  // The initial build writes into the source tree: the point of no return
+  // (a no-op when --force already entered it to unlink a prior entry).
+  enterLink()
   try {
-    await buildUserPlugin(real)
+    await buildUserPlugin(real, buildHooksFor(op, LINK_STAGES.link))
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     throw new LinkRefusedError(`linked source failed initial build: ${message}`)

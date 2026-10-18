@@ -33,6 +33,9 @@ import { readTaskboard } from '../../../../src/core/task-store'
 import type { OrgTeam } from '../../types'
 import { passthroughTeam, errorResponseTeam } from './shared'
 
+/** The Global context page's pseudo-team: every runtime agent. */
+const GLOBAL_TEAM_ID = 'global'
+
 export function populateOrgTeamRoutes(arr: any[]): void {
 
   // GET /teams — List all org teams
@@ -188,44 +191,71 @@ export function populateOrgTeamRoutes(arr: any[]): void {
     },
   }))
 
-  // POST /teams/:teamId/sync — sync every member of a team
+  // POST /teams/:teamId/sync — sync every member of a team (`global`: every agent)
   arr.push(defineRoute({
     path: '/teams/:teamId/sync',
     method: 'POST',
-    description: 'Sync every member agent of a team (recompose blocks, re-project, verify)',
+    description: 'Sync every member agent of a team as one operation (recompose blocks, re-project, verify) — 202 { operationId, bootId }',
     summary: 'Sync every member agent of a team',
     params: z.object({ teamId: z.string() }),
-    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
+    responses: { 200: passthroughTeam, 201: passthroughTeam, 202: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
     handler: async (req: Request, ctx: PluginContextLite) => {
       const url = new URL(req.url)
       const teamId = url.searchParams.get('teamId')
       if (!teamId) return Response.json({ ok: false, error: 'teamId required' }, { status: 400 })
-      if (!readTeams().some((t) => t.id === teamId)) {
+      // `global` is every runtime agent — the Global context page syncs them all.
+      const isGlobal = teamId === GLOBAL_TEAM_ID
+      if (!isGlobal && !readTeams().some((t) => t.id === teamId)) {
         return Response.json({ ok: false, error: `Team "${teamId}" not found` }, { status: 404 })
       }
 
       const body = await req.json().catch(() => ({})) as { check?: boolean; fetch?: boolean }
+      const check = body.check === true
+      const fetch = body.fetch ?? false
       const { syncAgent } = await import('../../../../src/core/agent-packages/sync')
       const { reloadAgentPackageRegistries } = await import('../../../../src/core/agent-packages/post-sync-reload')
+      const { TEAM_SYNC_STAGE, teamSyncPlan } = await import('../../../../src/core/agent-packages/operation-plans')
 
-      const memberIds = await getTeamMembers(ctx.runtime, teamId)
-      const results: Array<{ agentId: string; receipt?: unknown; error?: string }> = []
-      for (const agentId of memberIds) {
-        try {
-          results.push({
-            agentId,
-            receipt: await syncAgent(agentId, {
-              check: body.check,
-              fetch: body.fetch ?? false,
-              trigger: 'rest',
-            }),
-          })
-        } catch (err) {
-          results.push({ agentId, error: err instanceof Error ? err.message : String(err) })
-        }
-      }
-      if (!body.check) await reloadAgentPackageRegistries({ kind: 'synced' })
-      return Response.json({ ok: true, teamId, results })
+      // One operation for the whole team (#895): members are items; a failed
+      // member never strands the rest. A check holds nothing.
+      const started = await ctx.operations.start({
+        kind: 'sync',
+        title: isGlobal ? `${check ? 'Check' : 'Sync'} all agents` : `${check ? 'Check' : 'Sync'} team ${teamId}`,
+        href: `/team/teams/${encodeURIComponent(teamId)}`,
+        fingerprint: `team-sync:${teamId}|${check ? 'check' : ''}|${fetch ? 'fetch' : ''}`,
+        resources: check ? [] : ['install-state'],
+        plan: teamSyncPlan(check),
+        request: req,
+        run: async (op) => {
+          const memberIds = isGlobal
+            ? (await listRuntimeAgentMetas(ctx.runtime)).map((agent) => agent.id)
+            : await getTeamMembers(ctx.runtime, teamId)
+          op.stage(TEAM_SYNC_STAGE)
+          for (const agentId of memberIds) op.item(TEAM_SYNC_STAGE, { id: agentId, label: agentId })
+          const results: Array<{ agentId: string; receipt?: unknown; error?: string }> = []
+          for (const agentId of memberIds) {
+            op.item(TEAM_SYNC_STAGE, { id: agentId, label: agentId, status: 'active' })
+            try {
+              results.push({ agentId, receipt: await syncAgent(agentId, { check, fetch, trigger: 'rest' }) })
+              op.item(TEAM_SYNC_STAGE, { id: agentId, label: agentId, status: 'done' })
+            } catch (err) {
+              const error = err instanceof Error ? err.message : String(err)
+              results.push({ agentId, error })
+              op.item(TEAM_SYNC_STAGE, { id: agentId, label: agentId, status: 'failed', message: error })
+            }
+          }
+          if (!check) await reloadAgentPackageRegistries({ kind: 'synced' })
+          const failed = results.filter((r) => r.error).length
+          return {
+            status: failed > 0 && failed === results.length ? 'failed' : 'succeeded',
+            code: failed === 0 ? 'ok' : failed === results.length ? 'failed' : 'partially_applied',
+            ...(failed > 0 ? { message: `${failed} of ${results.length} member(s) failed to sync` } : {}),
+            httpStatus: 200,
+            body: { ok: true, teamId, results },
+          }
+        },
+      })
+      return Response.json(started, { status: started.attached ? 200 : 202 })
     },
   }))
 

@@ -16,6 +16,7 @@ import {
   writeArtifactsIndex,
 } from '../../core/whiskit/artifacts-index'
 import { apiGet, apiPost, apiPostJson, cliFetch, jsonObject } from '../http'
+import { operationBody, startAndFollow } from '../operation-command'
 import { print } from '../output'
 import { exitCommandIssue, exitUsage, exitUnknownSubcommand } from '../help'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from '../../core/cli/plugin-install-args'
@@ -185,51 +186,55 @@ async function cmdPluginsList(opts: { json?: boolean; check?: boolean } = {}): P
   }
 }
 
+/**
+ * Start a plugin route operation (#895) and follow it to its outcome; the
+ * route's old body comes back (or an honest stand-in when it never settled).
+ */
+async function pluginOperation(path: string, body: Record<string, unknown>, json: boolean): Promise<{ body: Record<string, unknown>; exitCode: number }> {
+  // A synchronous refusal (a core plugin, an invalid id) is the answer itself.
+  const started = await apiPostJson(path, body)
+  if (!started.ok) return { body: started.data, exitCode: 1 }
+  const operation = await startAndFollow(async () => started.data, { json })
+  return { body: jsonObject(operationBody(operation)) ?? {}, exitCode: operation.exitCode }
+}
+
 async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: boolean; force?: boolean; ref?: string; json?: boolean } = {}): Promise<void> {
   const type = !opts.dev && (source.startsWith('github:') || source.includes('/') && !source.startsWith('.') && !source.startsWith('/'))
     ? 'github'
     : 'local'
-  const result = await apiPost('/api/plugins/install', {
+  const show = async (result: Record<string, unknown>, failed: boolean) => {
+    if (!opts.json && process.stdout.isTTY) {
+      await printPluginActionTui({ action: 'installed', source, result })
+    } else {
+      print(result)
+    }
+    if (failed) process.exit(1)
+  }
+
+  // Dev installs are the link operation (#895).
+  if (opts.dev) {
+    const linked = await pluginOperation('/api/plugins/install', { source, type, ref: opts.ref, accepted: false, dev: true, force: opts.force === true }, opts.json === true)
+    await show(linked.body, linked.exitCode !== 0 || linked.body.ok !== true)
+    return
+  }
+
+  // Preview → commit (#895): the preview never installs. It asks for consent
+  // (permissions and/or binary downloads — `--yes` gives it) or is `ready`.
+  const json = opts.json === true
+  const preview = await pluginOperation('/api/plugins/install', { source, type, ref: opts.ref, accepted: false }, json)
+  const awaitingConsent = preview.body.awaitingConsent === true && typeof preview.body.consentToken === 'string'
+  if ((awaitingConsent && !opts.yes) || preview.exitCode !== 0 || (!awaitingConsent && preview.body.ready !== true)) {
+    await show(preview.body, preview.exitCode !== 0 || preview.body.ok === false && !awaitingConsent)
+    return
+  }
+  const commit = await pluginOperation('/api/plugins/install', {
     source,
     type,
     ref: opts.ref,
-    accepted: false,
-    dev: opts.dev === true,
-    force: opts.force === true,
-  }) as {
-    awaitingConsent?: boolean
-    consentToken?: string
-  }
-  if (opts.yes && result.awaitingConsent && result.consentToken) {
-    const accepted = await apiPost('/api/plugins/install', {
-      source,
-      type,
-      ref: opts.ref,
-      accepted: true,
-      consentToken: result.consentToken,
-      dev: opts.dev === true,
-      force: opts.force === true,
-    })
-    if (!opts.json && process.stdout.isTTY) {
-      await printPluginActionTui({
-        action: 'installed',
-        source,
-        result: accepted,
-      })
-      return
-    }
-    print(accepted)
-  } else {
-    if (!opts.json && process.stdout.isTTY) {
-      await printPluginActionTui({
-        action: 'installed',
-        source,
-        result,
-      })
-      return
-    }
-    print(result)
-  }
+    accepted: true,
+    ...(awaitingConsent ? { consentToken: preview.body.consentToken } : {}),
+  }, json)
+  await show(commit.body, commit.exitCode !== 0 || commit.body.ok !== true)
 }
 
 async function cmdPluginsExport(file?: string, opts: { json?: boolean } = {}): Promise<void> {
@@ -260,41 +265,34 @@ async function installImportedPluginLegacy(
   opts: { yes: boolean; force: boolean; quiet?: boolean },
 ): Promise<void> {
   if (!opts.quiet) console.log(`Installing ${request.id} from ${request.source}${request.ref ? ` @ ${request.ref.slice(0, 12)}` : ''}`)
-  let result = await apiPost('/api/plugins/install', {
-    source: request.source,
-    type: request.type,
-    ref: request.ref,
-    accepted: false,
-    dev: request.dev,
-    force: opts.force,
-  }) as {
-    error?: string
-    awaitingConsent?: boolean
-    consentToken?: string
-    message?: string
-    id?: string
+  const base = { source: request.source, type: request.type, ref: request.ref, dev: request.dev, force: opts.force }
+  // Dev entries are the link operation; everything else is preview → commit
+  // operations — each followed to its terminal outcome before reporting.
+  if (request.dev) {
+    const linked = (await pluginOperation('/api/plugins/install', { ...base, accepted: false }, true)).body as { ok?: boolean; error?: string; message?: string; id?: string }
+    if (linked.error || linked.ok !== true) throw new Error(linked.error ?? `plugin "${request.id}" did not link`)
+    if (!opts.quiet) console.log(linked.message ?? `Linked "${linked.id ?? request.id}".`)
+    return
   }
-  if (result.error) throw new Error(result.error)
+  type InstallAnswer = { ok?: boolean; error?: string; awaitingConsent?: boolean; ready?: boolean; consentToken?: string; message?: string; id?: string }
+  const follow = async (body: Record<string, unknown>): Promise<InstallAnswer> =>
+    (await pluginOperation('/api/plugins/install', body, true)).body as InstallAnswer
 
-  for (let attempt = 0; attempt < 3 && result.awaitingConsent; attempt++) {
-    if (!opts.yes) {
+  let result = await follow({ ...base, accepted: false })
+  if (result.error && !result.awaitingConsent) throw new Error(result.error)
+
+  for (let attempt = 0; attempt < 3 && (result.awaitingConsent || result.ready); attempt++) {
+    if (result.awaitingConsent && !opts.yes) {
       throw new Error(`plugin "${request.id}" requires consent (permissions and/or binary downloads); rerun with --yes or install it directly`)
     }
-    result = await apiPost('/api/plugins/install', {
-      source: request.source,
-      type: request.type,
-      ref: request.ref,
-      accepted: true,
-      consentToken: result.consentToken,
-      dev: request.dev,
-      force: opts.force,
-    }) as typeof result
-    if (result.error) throw new Error(result.error)
+    result = await follow({ ...base, accepted: true, ...(result.consentToken ? { consentToken: result.consentToken } : {}) })
+    if (result.error && !result.awaitingConsent) throw new Error(result.error)
   }
 
   if (result.awaitingConsent) {
     throw new Error(`plugin "${request.id}" manifest kept changing between preflight and commit`)
   }
+  if (result.ok !== true) throw new Error(`plugin "${request.id}" did not install`)
   if (!opts.quiet) console.log(result.message ?? `Installed "${result.id ?? request.id}".`)
 }
 
@@ -331,97 +329,64 @@ async function cmdPluginsImport(file: string, opts: { yes: boolean; force: boole
 }
 
 async function cmdPluginsRemove(pluginId: string, opts: { json?: boolean } = {}): Promise<void> {
-  const result = await apiPost('/api/plugins/remove', { pluginId })
+  const { body: result, exitCode } = await pluginOperation('/api/plugins/remove', { pluginId }, opts.json === true)
   if (!opts.json && process.stdout.isTTY) {
     await printPluginActionTui({
       action: 'removed',
       pluginId,
       result,
     })
-    return
+  } else {
+    print(result)
   }
-  print(result)
+  if (result.core === true) process.exit(2)
+  if (exitCode !== 0 || result.ok !== true) process.exit(1)
 }
 
 async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?: boolean } = {}): Promise<void> {
-  // Two-phase round trip (spec plugin-managed-binaries S17): preview, then
-  // commit with the consent token. `--yes` accepts the preview in place of
-  // the prompt; a target that changed between preview and commit re-prompts
-  // (bounded — a source that keeps changing is an error, not a loop).
+  // Two-phase (spec plugin-managed-binaries S17), each phase an operation
+  // followed to its outcome (#895): the preview ends `awaitingConsent` (prompt,
+  // or `--yes`) or `ready`; the commit carries the preview's token. A target
+  // that changed between preview and commit re-prompts — bounded, so a source
+  // that keeps changing is an error, not a loop.
   const MAX_CONSENT_ROUNDS = 3
-  if (opts.json) {
-    let response: Awaited<ReturnType<typeof apiPostJson>>
-    try {
-      response = await apiPostJson('/api/plugins/upgrade', { pluginId })
-      for (let round = 0; round < MAX_CONSENT_ROUNDS; round++) {
-        const result = jsonObject(response.data) ?? {}
-        if (result.awaitingConsent !== true || !opts.yes || typeof result.consentToken !== 'string') break
-        response = await apiPostJson('/api/plugins/upgrade', { pluginId, accepted: true, consentToken: result.consentToken })
+  const json = opts.json === true
+  const tty = !json && process.stdout.isTTY === true
+
+  let { body: result, exitCode } = await pluginOperation('/api/plugins/upgrade', { pluginId }, json)
+  for (let round = 0; round < MAX_CONSENT_ROUNDS && exitCode === 0 && typeof result.consentToken === 'string' && (result.awaitingConsent === true || result.ready === true); round++) {
+    if (result.awaitingConsent === true) {
+      if (json) {
+        if (!opts.yes) break
+      } else {
+        const { promptUpgradeConsent } = await import('../../core/cli/consent-prompt')
+        const before = result.before && typeof result.before === 'object' ? result.before as Record<string, unknown> : {}
+        const after = result.after && typeof result.after === 'object' ? result.after as Record<string, unknown> : {}
+        const accepted = await promptUpgradeConsent({
+          pluginId,
+          fromVersion: String(before.version ?? '?'),
+          toVersion: String(after.version ?? '?'),
+          newPermissions: Array.isArray(result.newPermissions) ? result.newPermissions as Permission[] : [],
+          newBins: Array.isArray(result.newBins) ? result.newBins as ConsentBin[] : [],
+          yes: opts.yes === true,
+        })
+        if (!accepted) {
+          await printPluginActionTui({ action: 'upgraded', pluginId, result: { ok: false, error: 'Upgrade cancelled.' } })
+          process.exit(1)
+        }
       }
-    } catch (err) {
-      print({ ok: false, error: err instanceof Error ? err.message : String(err) })
-      process.exit(1)
     }
-    print(response.data)
-    if (!response.ok) process.exit(1)
-    const result = jsonObject(response.data) ?? {}
-    if (result.awaitingConsent === true) process.exit(1)
-    if (result.core === true) process.exit(2)
-    if (result.error) process.exit(1)
-    return
+    ;({ body: result, exitCode } = await pluginOperation('/api/plugins/upgrade', { pluginId, accepted: true, consentToken: result.consentToken }, json))
   }
+  const failed = exitCode !== 0 || result.core === true || Boolean(result.error) || result.awaitingConsent === true
 
-  let result: Record<string, unknown>
-  try {
-    result = await apiPost('/api/plugins/upgrade', { pluginId }) as Record<string, unknown>
-  } catch (err) {
-    if (process.stdout.isTTY) {
-      await printPluginActionTui({
-        action: 'upgraded',
-        pluginId,
-        result: { ok: false, error: err instanceof Error ? err.message : String(err) },
-      })
-      process.exit(1)
-    }
-    throw err
+  if (tty) {
+    await printPluginActionTui({ action: 'upgraded', pluginId, result })
+  } else {
+    print(result)
   }
-  for (let round = 0; round < MAX_CONSENT_ROUNDS && result.awaitingConsent === true && typeof result.consentToken === 'string'; round++) {
-    const { promptUpgradeConsent } = await import('../../core/cli/consent-prompt')
-    const before = result.before && typeof result.before === 'object' ? result.before as Record<string, unknown> : {}
-    const after = result.after && typeof result.after === 'object' ? result.after as Record<string, unknown> : {}
-    const accepted = await promptUpgradeConsent({
-      pluginId,
-      fromVersion: String(before.version ?? '?'),
-      toVersion: String(after.version ?? '?'),
-      newPermissions: Array.isArray(result.newPermissions) ? result.newPermissions as Permission[] : [],
-      newBins: Array.isArray(result.newBins) ? result.newBins as ConsentBin[] : [],
-      yes: opts.yes === true,
-    })
-    if (!accepted) {
-      await printPluginActionTui({
-        action: 'upgraded',
-        pluginId,
-        result: { ok: false, error: 'Upgrade cancelled.' },
-      })
-      process.exit(1)
-    }
-    result = await apiPost('/api/plugins/upgrade', { pluginId, accepted: true, consentToken: result.consentToken }) as Record<string, unknown>
-  }
-  const failed = result.core === true || Boolean(result.error) || result.awaitingConsent === true
-
-  if (process.stdout.isTTY) {
-    await printPluginActionTui({
-      action: 'upgraded',
-      pluginId,
-      result,
-    })
-    if (result.core === true) process.exit(2)
-    if (failed) process.exit(1)
-    return
-  }
-
-  print(result)
-  if (failed) process.exit(result.core === true ? 2 : 1)
+  if (result.core === true) process.exit(2)
+  if (failed) process.exit(1)
 }
 
 async function cmdPluginsScaffold(name: string, opts: { json?: boolean } = {}): Promise<void> {
@@ -571,17 +536,24 @@ function printPluginRestoreSnapshots(pluginId: string, snapshots: PluginRestoreS
 }
 
 async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; force: boolean; list: boolean }): Promise<void> {
-  const res = await cliFetch('/api/plugins/restore', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      pluginId,
-      snapshot: opts.snapshot,
-      force: opts.force,
-      listOnly: opts.list,
-    }),
-  })
-  const result = await res.json().catch(() => ({})) as PluginRestoreResult
+  const request = { pluginId, snapshot: opts.snapshot, force: opts.force, listOnly: opts.list }
+  let result: PluginRestoreResult
+  let failed: boolean
+  if (opts.list) {
+    // Listing snapshots is a plain read.
+    const res = await cliFetch('/api/plugins/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    })
+    result = await res.json().catch(() => ({})) as PluginRestoreResult
+    failed = !res.ok
+  } else {
+    // A restore is an operation (#895), followed to its outcome.
+    const followed = await pluginOperation('/api/plugins/restore', request, false)
+    result = followed.body as PluginRestoreResult
+    failed = followed.exitCode !== 0
+  }
   if (opts.list) {
     if (result.error) throw new Error(result.error)
     if (process.stdout.isTTY) {
@@ -591,12 +563,12 @@ async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; fo
     printPluginRestoreSnapshots(pluginId, result.snapshots)
     return
   }
-  if (!res.ok || result.error) {
+  if (failed || result.error) {
     if (result.snapshots && result.snapshots.length > 0) {
       if (process.stdout.isTTY) await printPluginRestoreSnapshotsTui(pluginId, result.snapshots)
       else printPluginRestoreSnapshots(pluginId, result.snapshots)
     }
-    throw new Error(result.error ?? `HTTP ${res.status}`)
+    throw new Error(result.error ?? 'Restore failed')
   }
   if (process.stdout.isTTY) {
     await printPluginRestoreResultTui(pluginId, result)
@@ -613,19 +585,20 @@ async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; fo
 }
 
 async function cmdPluginsLink(localPath: string, opts: { force?: boolean; json?: boolean } = {}): Promise<void> {
-  const result = await apiPost('/api/plugins/link', {
+  const { body: result, exitCode } = await pluginOperation('/api/plugins/link', {
     localPath,
     force: opts.force === true,
-  })
+  }, opts.json === true)
   if (!opts.json && process.stdout.isTTY) {
     await printPluginActionTui({
       action: 'linked',
       source: localPath,
       result,
     })
-    return
+  } else {
+    print(result)
   }
-  print(result)
+  if (exitCode !== 0 || result.ok !== true) process.exit(1)
 }
 
 async function cmdPluginsUnlink(pluginId: string, opts: { json?: boolean } = {}): Promise<void> {

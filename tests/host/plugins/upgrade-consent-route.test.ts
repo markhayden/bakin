@@ -30,7 +30,7 @@ mock.module('../../../src/core/plugins/live-lifecycle', () => ({
   isLiveActivationUnavailable: () => false,
 }))
 
-import { post as upgradePOST } from '../../../packages/host/src/api/plugins/upgrade'
+import { upgradePOST } from '../../helpers/plugin-routes'
 import { computeSourceTreeSha } from '../../../src/core/plugins/source-tree-sha'
 import { signConsentToken } from '../../../src/core/plugins/consent-token'
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
@@ -104,11 +104,18 @@ describe('POST /api/plugins/upgrade — consent round trip', () => {
     expect(installedVersion()).toBe('1.0.0')
   })
 
-  it('a narrowing or unchanged-permission upgrade needs no consent and commits on the first call', async () => {
+  it('a narrowing or unchanged-permission upgrade needs no consent: the preview is ready (never upgrades) and the commit applies it', async () => {
     writeSource('1.1.0', ['storage.read'])
-    const res = await post({ pluginId: ID })
-    expect(res.body.ok).toBe(true)
-    expect(res.body.awaitingConsent).toBe(false)
+    const preview = await post({ pluginId: ID })
+    expect(preview.body.ok).toBe(true)
+    expect(preview.body.ready).toBe(true)
+    expect(preview.body.awaitingConsent).toBe(false)
+    expect(typeof preview.body.consentToken).toBe('string')
+    // A preview holds nothing and never writes outside staging.
+    expect(installedVersion()).toBe('1.0.0')
+
+    const committed = await post({ pluginId: ID, accepted: true, consentToken: preview.body.consentToken })
+    expect(committed.body.ok).toBe(true)
     expect(installedVersion()).toBe('1.1.0')
   })
 })

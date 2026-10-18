@@ -176,9 +176,11 @@ function validateRequest(req: WhiskitBuildRequest): ValidatedPlugin {
  */
 async function installDeps(req: WhiskitBuildRequest, plugin: ValidatedPlugin): Promise<boolean> {
   if (!req.installDeps || !hasDeclaredDeps(plugin.pkg)) return false
+  req.onStage?.({ stage: 'install', status: 'start' })
   const result = await runSystemBun(['install', '--ignore-scripts'], {
     cwd: req.pluginDir,
     timeoutMs: req.timeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS,
+    onLine: req.onOutput,
   })
   req.onStage?.({
     stage: 'install',
@@ -247,9 +249,11 @@ async function buildServerWithSystemBun(
     }
     writeFileSync(scriptPath, SERVER_BUILD_SCRIPT)
     writeFileSync(configPath, JSON.stringify(config))
+    req.onStage?.({ stage: 'server-build', status: 'start' })
     const result = await runSystemBun([scriptPath, configPath], {
       cwd: req.pluginDir,
       timeoutMs: req.timeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS,
+      onLine: req.onOutput,
     })
     req.onStage?.({
       stage: 'server-build',
@@ -301,6 +305,7 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
   rmSync(join(plugin.distDir, 'client.css'), { force: true })
   rmSync(join(plugin.distDir, 'client.css.map'), { force: true })
   rmSync(join(plugin.distDir, 'client.js.map'), { force: true })
+  req.onStage?.({ stage: 'client-build', status: 'start' })
   const result = await runSystemBun(
     [
       'build', plugin.clientEntry,
@@ -312,7 +317,7 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
       ...(req.production ? ['--production'] : []),
       ...PLUGIN_CLIENT_EXTERNALS.flatMap((e) => ['--external', e]),
     ],
-    { cwd: req.pluginDir, timeoutMs: req.timeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS },
+    { cwd: req.pluginDir, timeoutMs: req.timeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS, onLine: req.onOutput },
   )
   req.onStage?.({
     stage: 'client-build',
@@ -323,6 +328,7 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
     throw commandFailure('client-build', `Client build for "${plugin.pluginId}"`, result)
   }
 
+  req.onStage?.({ stage: 'css-validate', status: 'start' })
   const cssStartedAt = Date.now()
   try {
     await processBuiltPluginCss({
@@ -417,6 +423,7 @@ export async function buildPluginInProcess(req: WhiskitBuildRequest): Promise<Wh
       },
     }],
   } as Parameters<typeof Bun.build>[0] & { plugins: Array<unknown> }
+  req.onStage?.({ stage: 'server-build', status: 'start' })
   const serverStartedAt = Date.now()
   let serverResult: Awaited<ReturnType<typeof Bun.build>>
   try {

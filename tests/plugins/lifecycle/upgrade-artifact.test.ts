@@ -76,7 +76,11 @@ import { addPlugin, writePluginLockfile } from '../../../packages/core/src/plugi
 import { parseManifestPermissions } from '../../../packages/core/src/plugins/permissions'
 import { httpIndexResolver } from '../../../src/core/whiskit/resolver'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
-import { isArtifactInstall, runChecks, upgradePlugin } from '../../../src/core/plugins/upgrade'
+import { isArtifactInstall, runChecks, upgradePlugin as upgradePluginUnowned } from '../../../src/core/plugins/upgrade'
+import { owned } from '../../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const upgradePlugin = owned(upgradePluginUnowned)
 
 const SOURCE = 'github:markhayden/bakin-bits-official#plugins/messaging'
 const PLATFORM = `${process.platform}-${process.arch}`

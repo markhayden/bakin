@@ -21,6 +21,7 @@ import { scanAgentSync, type SyncScanReport } from '../agent-packages/sync-scann
 import { repairPackLocally, syncAllAgents } from '../agent-packages/sync'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { refreshRoleContextBlocks } from '../team-context'
+import { runOwning } from '../operations'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
 const log = createLogger('onboarding:agent-sync')
@@ -85,7 +86,19 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-async function install(_opts: OnboardingOptions): Promise<InstallResult> {
+/**
+ * The component's install runs inside a local operation that owns
+ * install-state — the sync engine's writers assert it (#895). PR6's
+ * onboarding switch replaces this with the component's declared resources.
+ */
+function install(opts: OnboardingOptions): Promise<InstallResult> {
+  return runOwning(
+    { kind: 'onboarding:agent-sync', title: 'Sync agents', resources: ['install-state'] },
+    () => installOwned(opts),
+  )
+}
+
+async function installOwned(_opts: OnboardingOptions): Promise<InstallResult> {
   const start = Date.now()
   await ensureAppServices()
   const before = await scanAgentSync()

@@ -58,12 +58,12 @@ mock.module('../../src/core/app-services', () => ({
   maybeGetAppServices: () => undefined,
 }))
 
-import {
-  buildSkillPreview,
-  confirmSkillInstall,
-  scanInstructionRisk,
-} from '../../src/core/agent-packages/skill-trust'
+import { buildSkillPreview, confirmSkillInstall as confirmSkillInstallUnowned, scanInstructionRisk } from '../../src/core/agent-packages/skill-trust'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
+import { owned } from '../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const confirmSkillInstall = owned(confirmSkillInstallUnowned)
 
 const FIXTURES = join(import.meta.dir, '..', 'fixtures', 'skill-bundles')
 

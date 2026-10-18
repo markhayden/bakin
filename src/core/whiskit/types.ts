@@ -43,12 +43,16 @@ export class WhiskitBuildError extends Error {
   }
 }
 
-/** Stage progress event for observability (startup spans, dev overlay). */
-export interface WhiskitStageEvent {
-  stage: 'install' | 'server-build' | 'client-build' | 'css-validate'
-  status: 'ok' | 'error'
-  durationMs: number
-}
+/**
+ * Stage progress for observability (startup spans, dev overlay) and
+ * operations (#895): `start` is emitted BEFORE each step runs, so a hung step
+ * is named; `ok`/`error` follow with the step's duration.
+ */
+export type WhiskitStageEvent =
+  | { stage: WhiskitStage; status: 'start' }
+  | { stage: WhiskitStage; status: 'ok' | 'error'; durationMs: number }
+
+export type WhiskitStage = 'install' | 'server-build' | 'client-build' | 'css-validate'
 
 /** A request to build one plugin source dir into dist/. */
 export interface WhiskitBuildRequest {
@@ -70,8 +74,10 @@ export interface WhiskitBuildRequest {
    * when a trusted prebuilt server dist only needs its client refreshed.
    */
   serverBuild?: boolean
-  /** Optional per-stage observer — callers map these to diagnostics spans. */
+  /** Optional per-stage observer — callers map these to diagnostics spans or operation items. */
   onStage?: (event: WhiskitStageEvent) => void
+  /** Each line a build subprocess prints — liveness only, never progress (#895). */
+  onOutput?: (line: string) => void
 }
 
 export interface WhiskitBuildResult {

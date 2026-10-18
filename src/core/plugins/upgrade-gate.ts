@@ -7,12 +7,12 @@
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { execFileSync, type ExecFileSyncOptions } from 'child_process'
+import type { OperationContext } from '@makinbakin/sdk/types'
 import { gitArgs } from '@bakin/core/net/git-args'
 import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { appendAudit } from '@/core/audit'
-import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
 import { BinRequirementsSchema, type BinRequirement } from '@bakin/core/plugins/bin-requirement'
 import type { PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { deleteBinsWithoutOwners, samePin } from './bin-owners'
@@ -21,6 +21,7 @@ import { consentBinsOf, sameBins, type ConsentBin } from './consent-bins'
 import { getSettings } from '@bakin/core/settings'
 import { parseManifestPermissions, type Permission } from '@bakin/core/plugins/permissions'
 import { verifyPluginManifestSignature } from '@bakin/core/plugins/signatures'
+import { PLUGIN_STAGES } from './operation-plans'
 import {
   findSkillsForPlugin,
   installPluginAssets,
@@ -41,10 +42,16 @@ export interface UpgradeConsent {
 }
 
 export interface UpgradeOptions {
-  /** Staged progress for install jobs (fetch-source / project / bins / finalize). */
-  progress?: InstallProgressFn
-  /** Consent verified from the preview token; absent = preview only. */
+  /** Consent verified from the preview token. */
   accepted?: UpgradeConsent
+  /**
+   * Preview (#895): fetch and gate only — never replace anything. A preview
+   * with nothing new to consent to ends `ready` (with the consent to bind
+   * into the commit token) instead of committing.
+   */
+  previewOnly?: boolean
+  /** The preview or commit operation: lanes report fetch → check → the replace stages. */
+  op?: OperationContext
 }
 
 export interface UpgradeResult {
@@ -66,6 +73,8 @@ export interface UpgradeResult {
   consent?: UpgradeConsent
   /** Set when `accepted` was passed but the target changed since the preview — re-consent. */
   manifestChanged?: boolean
+  /** A preview with nothing new to consent to: commit (with the token for `consent`) to apply it. */
+  ready?: boolean
   /** Runtime skills projected from defaults/runtime-skills during a committed upgrade. */
   pluginAssets?: InstallReport
   /** Binaries the previous manifest declared that this upgrade dropped and deleted (zero remaining owners). */
@@ -245,6 +254,7 @@ export function gateUpgradeConsent(args: {
   after: { version: string; commitSha: string }
 }): UpgradeConsentGate {
   const { id, entry, manifest, manifestSha, opts, before, after } = args
+  opts.op?.stage(PLUGIN_STAGES.check)
   const newPerms = manifestPermissions(manifest, id)
   const bins = manifestBins(manifest, id)
   const preflight = preflightPluginBins(id, bins)
@@ -264,6 +274,12 @@ export function gateUpgradeConsent(args: {
     const accepted = opts.accepted
     const samePerms = accepted.permissions.length === newPerms.length && accepted.permissions.every((p) => (newPerms as string[]).includes(p))
     if (accepted.manifestSha !== manifestSha || !samePerms || !sameBins(accepted.bins, consent.bins)) return awaiting(true)
+  }
+  if (opts.previewOnly) {
+    return {
+      proceed: false,
+      result: { id, before, after, noop: false, newPermissions: widened, newBins, awaitingConsent: false, ready: true, consent },
+    }
   }
   return { proceed: true, newPerms, newBins, widened, bins }
 }

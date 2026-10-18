@@ -66,6 +66,7 @@ mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
 import { PackageCardBody } from '../../../plugins/team/components/package-card'
+import { finishedOperation, operationResponse, operationStarted } from '../../helpers/operation-fetch'
 import type { PackageStateRow } from '../../../plugins/team/types'
 import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'
 
@@ -304,23 +305,23 @@ describe('PackageCard — update and remove actions', () => {
     primeState({ pixel: UPDATE_ROW })
   })
 
+  // Sync and remove are operations (#895): 202 at once, the old body is the
+  // finished operation's result.
+  const operations = new Map([
+    ['op-sync', finishedOperation('op-sync', { httpStatus: 200, body: { ok: true, receipt: { package: { changed: true, versionBefore: '0.1.0', versionAfter: '0.2.0' }, blocks: [], skipped: [], verification: { status: 'ok' } } } })],
+    ['op-orphan', finishedOperation('op-orphan', { httpStatus: 200, body: { ok: true, result: { removed: ['pixel'] } } })],
+    ['op-delete', finishedOperation('op-delete', { httpStatus: 200, body: { ok: true, result: { removed: ['pixel'], deletedAgent: true } } })],
+  ])
+
   function setupActionFetch() {
     const fetchMock = mock((url: RequestInfo | URL, init?: RequestInit) => {
       const u = String(url)
-      if (u === '/api/agent-packages/pixel/update' && init?.method === 'POST') {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, result: { changed: true } }) } as Response)
-      }
+      const operation = operationResponse(u, operations)
+      if (operation) return Promise.resolve(operation)
+      if (u === '/api/agent-packages/pixel/sync' && init?.method === 'POST') return Promise.resolve(operationStarted('op-sync'))
       if (u === '/api/agent-packages/pixel' && init?.method === 'DELETE') {
         const body = typeof init.body === 'string' ? JSON.parse(init.body) as { deleteAgent?: boolean } : {}
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            ok: true,
-            result: body.deleteAgent
-              ? { removed: ['pixel'], deletedAgent: true }
-              : { removed: ['pixel'] },
-          }),
-        } as Response)
+        return Promise.resolve(operationStarted(body.deleteAgent ? 'op-delete' : 'op-orphan'))
       }
       if (u === '/api/agent-packages?check=1') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, agents: [UPDATE_ROW] }) } as Response)

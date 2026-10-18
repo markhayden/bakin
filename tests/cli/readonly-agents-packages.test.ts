@@ -7,6 +7,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { setupTtyCliHarness } from './helpers/tty-cli-harness'
+import { TEST_BOOT_ID, finishedOperation } from '../helpers/operation-fetch'
 
 // These flows are HTTP-only (fetch is mocked), but the isolation mocks are
 // mandatory insurance: nothing this test transitively imports may ever
@@ -21,6 +22,18 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 const harness = setupTtyCliHarness({ defaultFetchJson: { ok: true } })
 const { fetchMock, output, setStdoutIsTTY, jsonResponse } = harness
+
+/**
+ * A converted route (#895) as the CLI meets it: the 202 start, the immediate
+ * snapshot read (the finished operation carrying the old body as its result),
+ * then the events stream — unavailable here, so the snapshot settles it.
+ */
+function queueOperation(id: string, body: unknown, httpStatus = 200): void {
+  const real = (payload: unknown, status: number) => new Response(JSON.stringify(payload), { status })
+  fetchMock.mockResolvedValueOnce(real({ operationId: id, bootId: TEST_BOOT_ID }, 202))
+  fetchMock.mockResolvedValueOnce(real({ bootId: TEST_BOOT_ID, operation: finishedOperation(id, { httpStatus, body }), children: [] }, 200))
+  fetchMock.mockResolvedValueOnce(real({ error: 'unavailable' }, 503))
+}
 
 describe('read-only CLI TTY commands — agents and packages', () => {
   it('renders runtime action confirmations with the shared TUI screen in a TTY', async () => {
@@ -207,7 +220,7 @@ describe('read-only CLI TTY commands — agents and packages', () => {
   it('renders package action confirmations with the shared TUI screen in a TTY', async () => {
     const { main } = await import('../../cli/bakin')
 
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    queueOperation('op-install', {
       ok: true,
       result: {
         packageId: 'bakin.patch',
@@ -217,7 +230,7 @@ describe('read-only CLI TTY commands — agents and packages', () => {
         dependencies: [],
         skipped: [],
       },
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'agents', 'install', 'github:markhayden/bakin-patch']
     await main()
     expect(output()).toContain('Package action')
@@ -257,7 +270,7 @@ describe('read-only CLI TTY commands — agents and packages', () => {
     expect(output()).not.toContain('Package action')
 
     harness.log.mockClear()
-    fetchMock.mockResolvedValueOnce(jsonResponse({
+    queueOperation('op-sync', {
       ok: true,
       receipt: {
         agentId: 'bakin.workflow',
@@ -269,7 +282,7 @@ describe('read-only CLI TTY commands — agents and packages', () => {
         skipped: [],
         verification: { status: 'ok', findings: [] },
       },
-    }))
+    })
     process.argv = ['bun', 'cli/bakin.ts', 'packages', 'sync', 'bakin.workflow']
     await main()
     expect(output()).toContain('Package action')

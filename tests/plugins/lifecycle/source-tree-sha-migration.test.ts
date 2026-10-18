@@ -67,7 +67,11 @@ import {
   computeSourceTreeSha,
   legacySourceTreeSha,
 } from '../../../src/core/plugins/source-tree-sha'
-import { runChecks, upgradePlugin } from '../../../src/core/plugins/upgrade'
+import { runChecks, upgradePlugin as upgradePluginUnowned } from '../../../src/core/plugins/upgrade'
+import { owned } from '../../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const upgradePlugin = owned(upgradePluginUnowned)
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

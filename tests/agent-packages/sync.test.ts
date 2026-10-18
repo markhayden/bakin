@@ -55,8 +55,8 @@ mock.module('@/core/logger', () => silentLogger)
 import {
   MigrationRequiredError,
   lockfileNeedsMigration,
-  syncAgent,
-  syncAllAgents,
+  syncAgent as syncAgentUnowned,
+  syncAllAgents as syncAllAgentsUnowned,
 } from '../../src/core/agent-packages/sync'
 import { setLessonEnabled } from '../../src/core/agent-packages/lesson-toggle'
 import { readReceipt, receiptPath } from '../../src/core/agent-packages/receipts'
@@ -71,6 +71,12 @@ import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/m
 import { getGlobalContextPath, seedContextFiles } from '../../src/core/team-context'
 import { projectPackage } from '../../src/core/agent-packages/projector'
 import { settleFor } from '../helpers/wait'
+import { holdNow } from '../../packages/core/src/operations'
+
+/** Writing syncs run inside an owner of install-state, like every production caller (#895). */
+const owning = <T>(fn: () => Promise<T>): Promise<T> => holdNow(['install-state'], { title: 'test' }, fn)
+const syncAgent = (...args: Parameters<typeof syncAgentUnowned>) => owning(() => syncAgentUnowned(...args))
+const syncAllAgents = (...args: Parameters<typeof syncAllAgentsUnowned>) => owning(() => syncAllAgentsUnowned(...args))
 
 // ─── Disk-backed runtime mock (same shape as projector.test.ts) ─────────────
 

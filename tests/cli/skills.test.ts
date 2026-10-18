@@ -51,6 +51,19 @@ mock.module('../../src/cli/http', () => ({
     return { ok: true }
   },
   isServerConnectionError: () => false,
+  jsonObject: (value: unknown) => (typeof value === 'object' && value !== null && !Array.isArray(value) ? value : null),
+}))
+// The routes are operations (#895); following them is covered by the
+// operation-command and route suites. Here an operation settles at once with
+// the body the mocked route answered.
+mock.module('../../src/cli/operation-command', () => ({
+  startAndFollow: async (start: () => Promise<unknown>) => {
+    const body = await start() as Record<string, unknown>
+    const failed = body?.ok === false
+    return { follow: { phase: 'finished', operation: null, children: [] }, body, httpStatus: failed ? 400 : 200, exitCode: failed ? 1 : 0 }
+  },
+  operationBody: (operation: { body: Record<string, unknown> | null }) => operation.body ?? {},
+  exitOnFailure: () => {},
 }))
 
 import { run } from '../../src/cli/commands/skills'
@@ -144,6 +157,42 @@ describe('bakin skills remove', () => {
     const del = calls.find((c) => c.method === 'DELETE')
     expect(del?.path).toBe(`/api/packages/${encodeURIComponent('hub-weather@2.0.1')}`)
     expect(logs.join('\n')).toContain('✓ Removed weather')
+  })
+})
+
+describe('bakin skills map', () => {
+  const mapping = {
+    addSecrets: [{ name: 'WEATHER_API_KEY', secretSlot: 'skills.hub-weather.WEATHER_API_KEY' }],
+    addPrereqs: [],
+    dropped: [],
+  }
+
+  it('--yes previews the mapping (an operation), then applies exactly that mapping', async () => {
+    postResponses['/api/skills/map/preview'] = { ok: true, preview: { skillName: 'weather', packageKey: 'hub-weather@2.0.1', mapping } }
+    postResponses['/api/skills/map/apply'] = { ok: true, applied: true }
+    getResponses['/api/packages/capabilities'] = { capabilities: [] }
+    try {
+      await run(['skills', 'map', 'weather', '--yes'])
+    } finally {
+      restoreConsole()
+    }
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual(['/api/skills/map/preview', '/api/skills/map/apply'])
+    expect(calls.find((c) => c.path === '/api/skills/map/apply')?.body).toEqual({ name: 'weather', mapping })
+    expect(logs.join('\n')).toContain('✓ Mapping applied')
+  })
+
+  it('a busy apply prints the message naming the holder and exits non-zero', async () => {
+    postResponses['/api/skills/map/preview'] = { ok: true, preview: { skillName: 'weather', packageKey: 'hub-weather@2.0.1', mapping } }
+    postResponses['/api/skills/map/apply'] = { ok: false, error: 'install_busy', message: 'Install plugin notes is using install-state — try again when it finishes.' }
+    const exit = process.exit
+    process.exit = ((code?: number) => { throw new Error(`exit:${code}`) }) as never
+    try {
+      await expect(run(['skills', 'map', 'weather', '--yes'])).rejects.toThrow('exit:1')
+    } finally {
+      process.exit = exit
+      restoreConsole()
+    }
+    expect(logs.join('\n')).toContain('Install plugin notes is using install-state')
   })
 })
 

@@ -44,7 +44,11 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
 
 import { agentSyncComponent } from '../../src/core/onboarding/agent-sync'
-import { installPackage } from '../../src/core/agent-packages/installer'
+import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
+import { owned } from '../helpers/owning'
+
+/** Test setup installs as an owner of install-state, like every production caller (#895). */
+const installPackage = owned(installPackageUnowned)
 import { getGlobalContextPath } from '../../src/core/team-context'
 
 afterAll(() => {

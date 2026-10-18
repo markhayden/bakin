@@ -15,10 +15,10 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { SOURCE_TREE_SHA_ALGO, computeSourceTreeSha } from '@/core/plugins/source-tree-sha'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
-import { isInstallLockBusy, withInstallLock } from '@/core/install-core/install-lock'
-import { replacePluginDir } from '@/core/plugins/replace-transaction'
+import { replacePluginDir, type ReplaceBuildHooks } from '@/core/plugins/replace-transaction'
 import { toInstalledBins } from '@/core/agent-packages/bin-installer'
-import type { InstallProgressFn } from '@/core/agent-packages/install-progress'
+import type { OperationContext } from '@makinbakin/sdk/types'
+import { PLUGIN_STAGES } from '@/core/plugins/operation-plans'
 import {
   activateUserPluginDir,
   isLiveActivationUnavailable,
@@ -35,9 +35,9 @@ const log = createLogger('plugin-install')
  * copied dist also closes the freshness-check mtime race (cpSync stamps
  * everything ~now; a tie would skip the compile).
  */
-export async function buildSourceInstall(targetDir: string): Promise<void> {
+export async function buildSourceInstall(targetDir: string, hooks: ReplaceBuildHooks = {}): Promise<void> {
   rmSync(join(targetDir, 'dist'), { recursive: true, force: true })
-  await buildUserPlugin(targetDir)
+  await buildUserPlugin(targetDir, hooks)
 }
 
 /**
@@ -132,22 +132,10 @@ export async function commitInstall(args: {
   pluginsRoot: string
   staged: StagedSource
   validated: ValidatedManifest
-  progress?: InstallProgressFn
+  /** The install commit operation — it owns install-state for the whole commit (files, binaries, ledger). */
+  operation?: OperationContext
 }): Promise<Response> {
-  // The whole commit — files, binaries, ledger — is ONE operation under the
-  // install lock (reentrant when a job runner already holds it).
-  return withInstallLock(() => commitInstallLocked(args))
-}
-
-async function commitInstallLocked(args: {
-  body: InstallBody
-  stagingDir: string
-  pluginsRoot: string
-  staged: StagedSource
-  validated: ValidatedManifest
-  progress?: InstallProgressFn
-}): Promise<Response> {
-  const { body, stagingDir, staged, validated, progress } = args
+  const { body, stagingDir, staged, validated, operation } = args
   const { effectivePluginDir, requestedRef, gitProvenance, installedFromArtifact } = staged
   const { id, manifest, parsedPermissions, stagedManifestSha } = validated
 
@@ -178,7 +166,7 @@ async function commitInstallLocked(args: {
       build: installedFromArtifact ? undefined : buildSourceInstall,
       bins: validated.bins,
       binIdentity: { pluginId: id, version, ...(gitProvenance ?? resolveGitProvenance(effectivePluginDir, body.type)) },
-      progress,
+      operation,
       ledger: (installedBins) => recordInstall({
         id,
         targetDir: join(args.pluginsRoot, id),
@@ -193,9 +181,6 @@ async function commitInstallLocked(args: {
     })
     targetDir = result.targetDir
   } catch (err) {
-    if (isInstallLockBusy(err)) {
-      return Response.json({ ok: false, error: `Could not install "${id}": ${err.message}` }, { status: 409 })
-    }
     const message = err instanceof Error ? err.message : String(err)
     log.error('Plugin install failed — rolled back', err as Error, { id })
     return Response.json({ ok: false, error: `Could not install "${id}": ${message}` }, { status: 500 })
@@ -203,6 +188,7 @@ async function commitInstallLocked(args: {
 
   let runtimeVersion: number | undefined
   let activated = false
+  operation?.stage(PLUGIN_STAGES.activate)
   try {
     const activation = await activateUserPluginDir(targetDir)
     runtimeVersion = activation.runtimeVersion

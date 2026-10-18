@@ -85,7 +85,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/agent-packages/install' \
   -H 'Content-Type: application/json' \
-  --data '{"source":"value","adopt":true,"installAs":"value"}'
+  --data '{"source":"value","adopt":"value","replace":true,"installAs":"value"}'
 ```
 </OpenApiReference>
 
@@ -319,7 +319,9 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X DELETE \
-  'http://localhost:3737/api/packages/<packageId>'
+  'http://localhost:3737/api/packages/<packageId>' \
+  -H 'Content-Type: application/json' \
+  --data '{"keepBlocks":true,"force":true}'
 ```
 </OpenApiReference>
 
@@ -339,7 +341,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/packages/install' \
   -H 'Content-Type: application/json' \
-  --data '{"source":"value"}'
+  --data '{"source":"value","replace":true,"installAs":"value"}'
 ```
 </OpenApiReference>
 
@@ -387,7 +389,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/install' \
   -H 'Content-Type: application/json' \
-  --data '{"source":"value","type":"local"}'
+  --data '{"source":"value","type":"local","ref":"value","accepted":true,"consentToken":"value","dev":true,"force":true}'
 ```
 </OpenApiReference>
 
@@ -2312,5 +2314,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 16, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 17, 2026 · Bakin 0.0.0-dev</span>
 </aside>

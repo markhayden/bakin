@@ -11,7 +11,8 @@
  * have no dedicated verb: re-running `install <ref>` re-runs the whole gate
  * and re-pins.
  */
-import { apiDelete, apiGet, apiPostJson } from '../http'
+import { apiDelete, apiGet, apiPostJson, jsonObject } from '../http'
+import { operationBody, startAndFollow } from '../operation-command'
 import { print } from '../output'
 import { printCapabilityStatus, promptMissingSecrets, type InstallCapabilityInfo } from './packages'
 
@@ -160,16 +161,29 @@ async function printPostInstallReadiness(packageId: string): Promise<void> {
   }
 }
 
+/**
+ * Start a skills route operation (#895) and follow it to its outcome. A
+ * synchronous refusal (a bad body) is the answer itself; otherwise the body
+ * the route used to answer comes back once the operation settles.
+ */
+async function skillOperation(path: string, body: Record<string, unknown>): Promise<{ ok: boolean; data: Record<string, unknown> }> {
+  const started = await apiPostJson(path, body)
+  if (!started.ok) return { ok: false, data: started.data }
+  const operation = await startAndFollow(async () => started.data, { json: false })
+  const data = jsonObject(operationBody(operation)) ?? {}
+  return { ok: operation.httpStatus !== null && operation.httpStatus < 400, data }
+}
+
 async function cmdInstall(ref: string | undefined, yes: boolean): Promise<void> {
   if (!ref) {
     console.error('Usage: bakin skills install <url-or-ref> [--yes]')
     process.exit(1)
   }
 
-  // apiPostJson (not apiPost) — the shared client THROWS on non-2xx, which
-  // would swallow the refusal payload and the exit-2 contract with it.
-  const previewRes = await apiPostJson('/api/skills/preview', { ref })
-  const previewBody = previewRes.data as PreviewBody
+  // The preview and install are operations followed to their outcome; their
+  // refusal bodies keep the exit-2 contract.
+  const previewRes = await skillOperation('/api/skills/preview', { ref })
+  const previewBody = previewRes.data as unknown as PreviewBody
   if (!previewRes.ok || !previewBody?.ok || !previewBody.preview) {
     const refused = previewBody?.refused === true
     console.error(refused ? `Refused: ${previewBody.error}` : `Error: ${previewBody?.error ?? 'preview failed'}`)
@@ -189,8 +203,8 @@ async function cmdInstall(ref: string | undefined, yes: boolean): Promise<void> 
       }
     }
 
-    const installRes = await apiPostJson('/api/skills/install', { ref, consentToken: preview.consentToken })
-    const installBody = installRes.data as InstallBody
+    const installRes = await skillOperation('/api/skills/install', { ref, consentToken: preview.consentToken })
+    const installBody = installRes.data as unknown as InstallBody
     if (installRes.ok && installBody?.ok && installBody.installed) {
       console.log(`\n✓ Installed ${preview.skillName} v${preview.version} (${installBody.installed.packageId})`)
       for (const warning of installBody.warnings ?? []) console.log(`  ⚠ ${warning}`)
@@ -252,9 +266,13 @@ async function cmdRemove(name: string | undefined): Promise<void> {
     process.exit(1)
   }
   const lockKey = await resolveLockKey(name)
-  // apiDelete throws on non-2xx; a thrown error surfaces through the router's
-  // COMMAND_FAILED path with the server's message.
-  await apiDelete(`/api/packages/${encodeURIComponent(lockKey)}`)
+  // Removal is an operation (#895): followed to its outcome before reporting.
+  const operation = await startAndFollow(() => apiDelete(`/api/packages/${encodeURIComponent(lockKey)}`), { json: false })
+  const body = operationBody(operation)
+  if (operation.exitCode !== 0 || body.ok !== true) {
+    console.error(`Error: ${typeof body.error === 'string' ? body.error : 'remove failed'}`)
+    process.exit(operation.exitCode === 130 ? 130 : 1)
+  }
   console.log(`✓ Removed ${name} (${lockKey})`)
 }
 
@@ -272,7 +290,7 @@ async function cmdMap(name: string | undefined, yes: boolean): Promise<void> {
     process.exit(1)
   }
   console.log(`Dispatching an agent to read "${name}" and propose a requirements mapping…`)
-  const previewRes = await apiPostJson('/api/skills/map/preview', { name })
+  const previewRes = await skillOperation('/api/skills/map/preview', { name })
   const body = previewRes.data as {
     ok?: boolean
     error?: string
@@ -303,9 +321,10 @@ async function cmdMap(name: string | undefined, yes: boolean): Promise<void> {
     }
   }
   const applyRes = await apiPostJson('/api/skills/map/apply', { name, mapping })
-  const applied = applyRes.data as { ok?: boolean; error?: string }
+  const applied = applyRes.data as { ok?: boolean; error?: string; message?: string }
   if (!applyRes.ok || !applied?.ok) {
-    console.error(`Error: ${applied?.error ?? 'apply failed'}`)
+    // 409 install_busy carries the message naming what holds the install state.
+    console.error(`Error: ${applied?.message ?? applied?.error ?? 'apply failed'}`)
     process.exit(1)
   }
   console.log('✓ Mapping applied — readiness now covers these requirements.')

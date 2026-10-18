@@ -43,7 +43,7 @@ export {
   type PluginOperationStartInput,
   type PluginOperationsAPI,
 } from '@makinbakin/sdk/types'
-export { OperationCancelledError, OperationRejectedError } from './errors'
+export { OperationCancelledError, OperationRejectedError, ResourceBusyError } from './errors'
 export {
   CHILD_PARTIAL_CODE,
   CHILD_SKIPPED_CODE,
@@ -63,7 +63,9 @@ export {
 } from './registry'
 export {
   acquireResources,
+  assertResourceHeld,
   heldInContext,
+  holdNow,
   isResourceHeld,
   readResourceHolder,
   releaseResource,
@@ -78,6 +80,7 @@ export {
   type ResourceWait,
 } from './resources'
 export { runLocal } from './local'
+export { responseOutcome } from './outcome'
 export { operationStartResponseSchema } from './schema'
 export { createMemoryResourceAcquirer } from './memory-resources'
 export { operationOriginFromRequest } from './origin'

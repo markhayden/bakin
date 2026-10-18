@@ -202,6 +202,12 @@ No retention. Tarballs accumulate. Follow-up issue tracks expiry policy.
 
 ## 4. Command Surfaces
 
+> Since #895 every mutating plugin command below runs as a server
+> **operation** (install/upgrade: preview → commit; remove, restore, link)
+> and the CLI follows it with live progress (`startAndFollow`); unlink is a
+> synchronous `holdNow` writer (409 `install_busy`). See
+> `.claude/knowledge/operations.md` § Installs and lifecycle.
+
 ### 4.1 `bakin plugins install <source> [--yes]`
 
 **Today:** copies/clones, builds, walks away.

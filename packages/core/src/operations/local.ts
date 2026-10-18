@@ -5,9 +5,9 @@
  * (onboarding components until PR6, the CLI's in-process mode, approvals and
  * escalation) and by the in-PR callers of `op`-taking helpers.
  *
- * Inside an existing holder of a resource (an outer operation, or the legacy
- * `withInstallLock`), the declared resource is already held by the call
- * chain, so `runLocal` is reentrant and never waits on itself.
+ * Inside an existing holder of a resource (an outer operation, or `holdNow`),
+ * the declared resource is already held by the call chain, so `runLocal` is
+ * reentrant and never waits on itself.
  */
 import type { OperationView } from '@makinbakin/sdk/types'
 import type { OperationRegistry, StartOperationInput } from './registry'

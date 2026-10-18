@@ -26,7 +26,9 @@ job registry (`install-progress.ts`) and the throw-on-busy lock API.
 | The process registry + SSE/audit wiring | `src/core/operations.ts` (`getOperationRegistry`, `runLocal`, `noteOperationsShutdown`) |
 | HTTP surface + converted-route start | `packages/host/src/api/operations.ts` |
 | Transfer primitive (events, abort, `opTransfer`) | `packages/core/src/net/download.ts` |
-| Legacy install-lock facade (deleted in PR4) | `src/core/install-core/install-lock.ts` |
+| Owning helpers for in-process callers | `src/core/operations.ts` (`runOwning`, `awaitOperationResponse`) |
+| Install/lifecycle plans | `src/core/agent-packages/operation-plans.ts`, `src/core/plugins/operation-plans.ts` |
+| Route outcome helper | `packages/host/src/api/operations.ts` (`outcomeFromResponse`), `packages/core/src/operations/outcome.ts` (`responseOutcome`) |
 | Children + the D22 precedence | `packages/core/src/operations/children.ts` (`parentOutcome`, `tallyChildren`, `CHILD_SKIPPED_CODE`); `registry.startChild` |
 | CLI follow + renderer + targeting | `src/cli/http.ts` (`followOperation`, `resolveCliTarget`, `cliFetch`), `src/cli/operation-renderer.ts` |
 | Health repair as an operation | `src/core/doctor-repair.ts` (`startDoctorRepair`, `awaitDoctorRepair`, `REPAIR_PARENT_PLAN`) |
@@ -120,15 +122,23 @@ the core ones. Adding a fourth core resource is an approval checkpoint.
   the waiting operation.
 - `acquireResources` waits abortably (a lease obtained after an abort is
   released at once); `tryAcquireResources` never waits — for background work
-  (pump, boot resumption, wedge watchdog: defer to the next tick) and the
-  bounded synchronous writers (409 `install_busy`).
+  (pump, boot resumption, wedge watchdog: defer to the next tick).
+  `holdNow(resources, identity, fn)` wraps it for the bounded synchronous
+  writers (lesson toggle, plugin unlink, skill-map apply): it takes the
+  resources inside the ownership context or throws `ResourceBusyError`,
+  which the route answers 409 `{ ok: false, error: 'install_busy', message,
+  holder: { title, operationId } }`. It never takes over a live foreign
+  holder.
 - **One ownership context** (AsyncLocalStorage: `runHolding`,
   `heldInContext`): acquisition is reentrant within one operation's call
-  chain and never across siblings. The legacy `withInstallLock` /
-  `assertInstallLockHeld` API is built on the same context, so inner writers
-  keep working inside an operation that holds `install-state`, `runLocal`
-  inside a `withInstallLock` body never waits on itself, and the two APIs
-  exclude each other. Locks are never shared across an operation tree.
+  chain and never across siblings. Locks are never shared across an
+  operation tree.
+- **Writers assert, owners hold.** Every install-state writer calls
+  `assertResourceHeld('install-state', '<writer>')`; outside an owner it
+  throws `<writer> requires install-state — run it inside an operation that
+  declares it (or holdNow for a bounded synchronous writer)`. The legacy
+  throw-on-busy install-lock API and its job registry (`/api/install-jobs`,
+  `packages.install_*` events, `?async=1`) are gone (PR4).
 - Only `resources.ts` names `install.lock` or `locks/`
   (`tests/architecture/operations-resources.test.ts`). Antfly's own service
   lock under `~/.antfly` is a different lock and stays as it is.
@@ -140,6 +150,13 @@ machinery and resolves with the terminal view instead of answering 202 —
 same views, events, resources and audit. Validation failures reject. Used by
 in-process callers (onboarding components until PR6, the CLI's in-process
 mode, approvals/escalation) and by in-PR callers of `op`-taking helpers.
+
+`runOwning({ kind, title, resources }, fn)` is the thin form for in-process
+callers that only need ownership (onboarding plugin assets, recommended
+agents/capabilities, the runtime switch's drift-gated sync): a one-stage,
+non-cancellable local operation that returns `fn`'s value and rethrows its
+error. `awaitOperationResponse(res)` lets an in-process caller of a
+converted route await the 202 and read the old status + body.
 
 ## HTTP
 
@@ -276,6 +293,50 @@ observation may still be unhealthy — a check that vanished is not a pass.
   `operationExitCode`: 0 succeeded, 130 cancelled/detached, 1 otherwise;
   the JSON document's `exitCode` is the same number.
 
+## Installs and lifecycle (PR4)
+
+Every install-state flow is an operation; the route's old JSON body is the
+operation result (`outcomeFromResponse`), so clients read the same shapes
+after following. Synchronous 4xx (invalid body, unknown id, core plugin)
+stay synchronous via `OperationRejectedError`.
+
+| Flow | Route | Plan | Owns install-state | Point of no return |
+|---|---|---|---|---|
+| Package / agent-package install | `POST /api/packages/install`, `/api/agent-packages/install` | `PACKAGE_INSTALL_PLAN` | yes | `install` |
+| Package / agent remove | `DELETE /api/packages/:id`, `/api/agent-packages/:id` | `PACKAGE_REMOVE_PLAN` | yes | `remove` |
+| Sync (agent, pack, team-wide; `teamId=global` = all) | `…/sync`, team routes | `PACKAGE_SYNC_PLAN` / `teamSyncPlan` | yes (`--check`: no) | `install` / `sync` (check: none) |
+| Managed-block migration | `POST /api/agent-packages/migrate` | `MIGRATION_PLAN` | yes | `migrate` |
+| Plugin install / upgrade preview | `POST /api/plugins/{install,upgrade}` | `PLUGIN_PREVIEW_PLAN` | no | none — ends `awaiting_consent` or `ready` |
+| Plugin install / upgrade commit | same + `accepted` + token | `PLUGIN_COMMIT_PLAN` | yes | `replace` (journal-first rename) |
+| Plugin remove / restore / link | `POST /api/plugins/{remove,restore,link}` | `PLUGIN_{REMOVE,RESTORE,LINK}_PLAN` | yes | `start` / `place` / `link` |
+| Hub-skill preview / map preview | `POST /api/skills/{preview,map/preview}` | `SKILL_PREVIEW_PLAN` / `SKILL_MAP_PLAN` | no | none |
+| Hub-skill install | `POST /api/skills/install` | `SKILL_INSTALL_PLAN` | yes | `install` |
+| Lesson toggle, plugin unlink, skill-map apply | synchronous | — | `holdNow` (409 `install_busy`) | — |
+
+Shared helpers report through an optional `op` (`RequirementOp { op,
+stageId }` for bins/models/npm/managed bun — each download is an item with
+byte progress via `opTransfer`; `buildUserPlugin` streams build output as
+liveness; `replacePluginDir` maps transaction phases onto stages). `op`
+stays optional on engine verbs whose callers have no stage to report into —
+ownership is enforced by assertion, not by the parameter. Catch blocks
+rethrow `OperationCancelledError`. A stalled hub never holds a request: the
+hub verdict runs inside the preview's `fetch` stage, still fail-closed.
+
+Clients: Team (`usePackageOperation`), Explore (`useInstallOperation`),
+Health (`startPluginUpgrade` + hook following) and onboarding follow with
+`startOperation`/`useOperation` (generation-guarded; `showProgress` hides
+the progress once a result arrives so the surface's own result alert is the
+only one) and render `OperationProgress`. The CLI's `startAndFollow` /
+`operationBody` / `exitOnFailure` (`src/cli/operation-command.ts`) follow
+packages, agents, plugins and skills commands (JSON → silent; piped →
+plain progress on stderr; TTY → live).
+
+`tests/architecture/operations-install-state.test.ts` pins it: deleted
+symbols never return, no `?async` branch under `packages/host/src/api`,
+every caller of an install-state writer owns it (or is an asserting engine
+module), converted routes start operations, synchronous writers use
+`holdNow`.
+
 ## Health repair (PR3, D10/D24)
 
 See `.claude/knowledge/doctor-and-health-checks.md` § Explicit repair
@@ -294,7 +355,12 @@ after, `afterResolve`, outcome-unknown recovery).
 - `tests/core/net/download.test.ts` — transfer events, abort, text, opTransfer,
   tar output.
 - `tests/sdk-testing/operations.test.ts` — the published harness, author-style.
-- `tests/architecture/operations-{resources,transfers}.test.ts`.
+- `tests/architecture/operations-{resources,transfers,install-state}.test.ts`.
+- PR4 routes: `tests/api/{package-operations,skills-operations}.test.ts`,
+  `tests/host/plugins/install-operations.test.ts`,
+  `tests/core/plugins/replace-transaction-operation.test.ts`; helpers
+  `tests/helpers/{operation-route,operation-fetch,plugin-routes,owning}.ts`
+  (`owning`/`owned` run a writer under a test owner).
 - `tests/core/operations/children.test.ts` — precedence rows, startChild,
   latch, cascade (parent settles last), clocks, audit tally, eviction.
 - `tests/cli/operation-renderer.test.ts`, `tests/cli/cli-target.test.ts`.

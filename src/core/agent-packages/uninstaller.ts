@@ -11,6 +11,7 @@
  * the dependent first.
  */
 import { existsSync, rmSync } from 'fs'
+import type { OperationContext } from '@makinbakin/sdk/types'
 import { createLogger } from '../logger'
 import { getBakinPaths, getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
@@ -28,8 +29,9 @@ import { PackageNotInstalledError, PackageStillRequiredError } from './errors'
 import { unprojectPackage } from './projector'
 import { join } from 'path'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
-import { withInstallLock } from '../install-core/install-lock'
+import { assertResourceHeld } from '@bakin/core/operations'
 import { getAppServices } from '../app-services'
+import { REMOVE_STAGES } from './operation-plans'
 
 const log = createLogger('agent-pkg:uninstall')
 
@@ -55,6 +57,8 @@ export interface RemoveOptions {
   deleteAgent?: boolean
   /** When true, refuse-on-dependents is downgraded to a warning + force-remove. */
   force?: boolean
+  /** The remove operation (#895): reports on PACKAGE_REMOVE_PLAN; the first deletion is the point of no return. */
+  op?: OperationContext
 }
 
 export interface RemoveResult {
@@ -101,12 +105,15 @@ export function withoutSharedArtifacts(
  * Remove a package + its orphaned dependencies.
  */
 export async function removePackageById(options: RemoveOptions): Promise<RemoveResult> {
-  // ONE install lock around the whole operation; inner writers assert it.
-  return withInstallLock(() => removePackageByIdLocked(options))
+  // The caller (a remove operation) owns install-state; inner writers assert it too.
+  assertResourceHeld('install-state', 'removePackageById')
+  return removePackageByIdLocked(options)
 }
 
 async function removePackageByIdLocked(options: RemoveOptions): Promise<RemoveResult> {
   {
+    const op = options.op
+    op?.stage(REMOVE_STAGES.check)
     let lock = readLockfile()
     const entry = lock.packages[options.packageId]
     if (!entry) {
@@ -119,6 +126,10 @@ async function removePackageByIdLocked(options: RemoveOptions): Promise<RemoveRe
 
     const removed: string[] = []
     const kept: string[] = []
+
+    // The point of no return: a cancel lands before the first deletion or never.
+    op?.throwIfCancelled()
+    op?.stage(REMOVE_STAGES.remove, options.packageId)
 
     // 1. Unproject parent
     if (entry.projections && entry.projections.length > 0) {
@@ -194,12 +205,14 @@ async function removePackageByIdLocked(options: RemoveOptions): Promise<RemoveRe
     removed.push(options.packageId)
     lock = await cascadeRemove(lock, entry.dependencies ?? [], options.packageId)
 
+    op?.stage(REMOVE_STAGES.record)
     writeLockfile(lock)
 
     // 4. Optionally delete the runtime agent for kind:"agent"
     let deletedAgent = false
     let deleteAgentError: string | undefined
     if (entry.kind === 'agent' && entry.agentId && options.deleteAgent) {
+      op?.stage(REMOVE_STAGES.agent, entry.agentId)
       try {
         await removeRuntimeAgent(entry.agentId)
         await removeRuntimeAllowListReferences(entry.agentId)
@@ -210,7 +223,10 @@ async function removePackageByIdLocked(options: RemoveOptions): Promise<RemoveRe
           agentId: entry.agentId,
           error: deleteAgentError,
         })
+        op?.log(`The runtime agent could not be deleted: ${deleteAgentError}`, 'warn')
       }
+    } else {
+      op?.skip(REMOVE_STAGES.agent, entry.kind === 'agent' ? 'the runtime agent is kept' : 'not an agent package')
     }
 
     // 5. Audit

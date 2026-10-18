@@ -59,7 +59,11 @@ import {
   readPluginLockfile,
   writePluginLockfile,
 } from '../../../packages/core/src/plugins/lockfile'
-import { upgradePlugin } from '../../../src/core/plugins/upgrade'
+import { upgradePlugin as upgradePluginUnowned } from '../../../src/core/plugins/upgrade'
+import { owned } from '../../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const upgradePlugin = owned(upgradePluginUnowned)
 
 const HAS_GIT = gitAvailable()
 

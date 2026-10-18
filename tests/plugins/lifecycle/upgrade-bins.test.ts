@@ -29,10 +29,14 @@ mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {
 mock.module('@/core/plugin-registry', () => ({ isCorePlugin: () => false }))
 mock.module('../../../packages/host/src/plugin-host/user-plugin-builder', () => ({ buildUserPlugin: async () => {} }))
 
-import { upgradePlugin } from '../../../src/core/plugins/upgrade'
+import { upgradePlugin as upgradePluginUnowned } from '../../../src/core/plugins/upgrade'
 import { computeSourceTreeSha } from '../../../src/core/plugins/source-tree-sha'
 import { addPlugin, readPluginLockfile, writePluginLockfile, type PluginLockEntry } from '../../../packages/core/src/plugins/lockfile'
 import { readInstalledBy, writeInstalledBy } from '../../../packages/core/src/agent-packages/markers'
+import { owned } from '../../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const upgradePlugin = owned(upgradePluginUnowned)
 
 const ONE_V1 = '#!/bin/sh\necho one v1\n'
 const ONE_V2 = '#!/bin/sh\necho one v2\n'

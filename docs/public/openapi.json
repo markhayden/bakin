@@ -33625,6 +33625,18 @@
               }
             }
           },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid input.",
             "content": {
@@ -33724,7 +33736,7 @@
         "tags": [
           "Team"
         ],
-        "description": "Sync every member agent of a team (recompose blocks, re-project, verify)",
+        "description": "Sync every member agent of a team as one operation (recompose blocks, re-project, verify) — 202 { operationId, bootId }",
         "parameters": [
           {
             "name": "teamId",
@@ -38253,7 +38265,7 @@
     "/api/agent-packages/install": {
       "post": {
         "operationId": "core.post.api-agent-packages-install",
-        "summary": "Install agent package",
+        "summary": "Install agent package (operation)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -38261,8 +38273,54 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -38308,30 +38366,12 @@
                 }
               }
             }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
           }
         },
         "tags": [
           "Core"
         ],
+        "description": "Starts an install operation (#895): 202 { operationId, bootId }; the install result is the operation result.",
         "requestBody": {
           "required": true,
           "content": {
@@ -38343,6 +38383,9 @@
                     "type": "string"
                   },
                   "adopt": {
+                    "type": "string"
+                  },
+                  "replace": {
                     "type": "boolean"
                   },
                   "installAs": {
@@ -38363,7 +38406,7 @@
     "/api/agent-packages/{agentId}": {
       "delete": {
         "operationId": "core.delete.api-agent-packages-agent-id",
-        "summary": "Remove agent package",
+        "summary": "Remove agent package (operation)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -38372,21 +38415,59 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
                       "type": "boolean",
                       "const": true
                     }
                   },
                   "required": [
-                    "ok"
+                    "operationId",
+                    "bootId"
                   ],
-                  "additionalProperties": {}
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "description": "Invalid input.",
             "content": {
               "application/json": {
                 "schema": {
@@ -38394,16 +38475,12 @@
                   "properties": {
                     "error": {
                       "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
                     }
                   },
                   "required": [
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": {}
                 }
               }
             }
@@ -38454,6 +38531,7 @@
         "tags": [
           "Core"
         ],
+        "description": "Starts a remove operation (#895): 202 { operationId, bootId }; 404 when the agent has no package.",
         "parameters": [
           {
             "name": "agentId",
@@ -38492,7 +38570,7 @@
     "/api/agent-packages/{agentId}/sync": {
       "post": {
         "operationId": "core.post.api-agent-packages-agent-id-sync",
-        "summary": "Sync agent (fetch, recompose blocks, verify, receipt)",
+        "summary": "Sync agent (operation: fetch, recompose blocks, verify, receipt)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -38500,56 +38578,60 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input — params, query, or body did not match the declared schema.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
                   "properties": {
-                    "error": {
-                      "type": "string"
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
                     },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
                     }
                   },
                   "required": [
-                    "error"
+                    "operationId",
+                    "bootId"
                   ],
                   "additionalProperties": false
                 }
               }
             }
           },
-          "404": {
-            "description": "Not found.",
+          "202": {
+            "description": "Accepted.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": {
-                      "type": "string"
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
                     }
                   },
                   "required": [
-                    "error"
+                    "operationId",
+                    "bootId"
                   ],
-                  "additionalProperties": {}
+                  "additionalProperties": false
                 }
               }
             }
           },
-          "409": {
-            "description": "Conflict.",
+          "400": {
+            "description": "Invalid input.",
             "content": {
               "application/json": {
                 "schema": {
@@ -38589,30 +38671,12 @@
                 }
               }
             }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
           }
         },
         "tags": [
           "Core"
         ],
+        "description": "Starts a sync operation (#895): 202 { operationId, bootId }; the receipt is the operation result. check: true holds nothing and writes nothing.",
         "parameters": [
           {
             "name": "agentId",
@@ -38735,7 +38799,7 @@
     "/api/agent-packages/migrate": {
       "post": {
         "operationId": "core.post.api-agent-packages-migrate",
-        "summary": "One-time block migration (caller owns consent)",
+        "summary": "One-time block migration (operation; caller owns consent)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -38743,8 +38807,54 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -38771,30 +38881,12 @@
                 }
               }
             }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
           }
         },
         "tags": [
           "Core"
         ],
+        "description": "Starts the migration operation (#895): 202 { operationId, bootId }; install-state is held from before the first read.",
         "x-bakin-full-path": "/api/agent-packages/migrate"
       }
     },
@@ -38941,6 +39033,18 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
           "415": {
             "description": "Unsupported Media Type — body content type does not match the declared content type.",
             "content": {
@@ -38968,6 +39072,7 @@
         "tags": [
           "Core"
         ],
+        "description": "Synchronous and bounded; takes install-state without waiting — 409 install_busy names the holder.",
         "parameters": [
           {
             "name": "agentId",
@@ -39035,7 +39140,7 @@
     "/api/packages/install": {
       "post": {
         "operationId": "core.post.api-packages-install",
-        "summary": "Install reusable package",
+        "summary": "Install reusable package (operation)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -39043,8 +39148,54 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -39068,6 +39219,25 @@
               }
             }
           },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
           "415": {
             "description": "Unsupported Media Type — body content type does not match the declared content type.",
             "content": {
@@ -39090,30 +39260,12 @@
                 }
               }
             }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
           }
         },
         "tags": [
           "Core"
         ],
+        "description": "Starts an install operation (#895): 202 { operationId, bootId }; the install result is the operation result.",
         "requestBody": {
           "required": true,
           "content": {
@@ -39122,6 +39274,12 @@
                 "type": "object",
                 "properties": {
                   "source": {
+                    "type": "string"
+                  },
+                  "replace": {
+                    "type": "boolean"
+                  },
+                  "installAs": {
                     "type": "string"
                   }
                 },
@@ -39139,7 +39297,7 @@
     "/api/packages/{packageId}": {
       "delete": {
         "operationId": "core.delete.api-packages-package-id",
-        "summary": "Remove reusable package",
+        "summary": "Remove reusable package (operation)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -39148,116 +39306,59 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
                       "type": "boolean",
                       "const": true
                     }
                   },
                   "required": [
-                    "ok"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input — params, query, or body did not match the declared schema.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
+                    "operationId",
+                    "bootId"
                   ],
                   "additionalProperties": false
                 }
               }
             }
           },
-          "404": {
-            "description": "Not found.",
+          "202": {
+            "description": "Accepted.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": {
-                      "type": "string"
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
                     }
                   },
                   "required": [
-                    "error"
+                    "operationId",
+                    "bootId"
                   ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Core"
-        ],
-        "parameters": [
-          {
-            "name": "packageId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "x-bakin-full-path": "/api/packages/:packageId"
-      }
-    },
-    "/api/packages/{packageId}/sync": {
-      "post": {
-        "operationId": "core.post.api-packages-package-id-sync",
-        "summary": "Sync reusable package",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
+                  "additionalProperties": false
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "description": "Invalid input.",
             "content": {
               "application/json": {
                 "schema": {
@@ -39265,16 +39366,12 @@
                   "properties": {
                     "error": {
                       "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
                     }
                   },
                   "required": [
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": {}
                 }
               }
             }
@@ -39325,6 +39422,168 @@
         "tags": [
           "Core"
         ],
+        "description": "Starts a remove operation (#895): 202 { operationId, bootId }; 404 when not installed.",
+        "parameters": [
+          {
+            "name": "packageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "keepBlocks": {
+                    "type": "boolean"
+                  },
+                  "force": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": {}
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/packages/:packageId"
+      }
+    },
+    "/api/packages/{packageId}/sync": {
+      "post": {
+        "operationId": "core.post.api-packages-package-id-sync",
+        "summary": "Sync reusable package (operation)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type — body content type does not match the declared content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "description": "Starts a sync operation (#895): 202 { operationId, bootId }; 404 when not installed. check: true holds nothing and writes nothing.",
         "parameters": [
           {
             "name": "packageId",
@@ -39551,7 +39810,7 @@
     "/api/plugins/install": {
       "post": {
         "operationId": "core.post.api-plugins-install",
-        "summary": "Install plugin",
+        "summary": "Install plugin (preview → commit operations)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -39561,6 +39820,35 @@
                   "type": "object",
                   "properties": {},
                   "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -39630,6 +39918,7 @@
         "tags": [
           "Core"
         ],
+        "description": "Every install is preview → commit (#895). Without accepted: a preview operation (fetch + check, holds nothing) whose result is awaitingConsent + consentToken or ready. With accepted: true (+ the consentToken when one was issued): the commit operation under install-state. Both answer 202 { operationId, bootId }. dev: true links synchronously.",
         "requestBody": {
           "required": true,
           "content": {
@@ -39646,6 +39935,21 @@
                       "local",
                       "github"
                     ]
+                  },
+                  "ref": {
+                    "type": "string"
+                  },
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "consentToken": {
+                    "type": "string"
+                  },
+                  "dev": {
+                    "type": "boolean"
+                  },
+                  "force": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -39663,7 +39967,7 @@
     "/api/plugins/link": {
       "post": {
         "operationId": "core.post.api-plugins-link",
-        "summary": "Link local plugin",
+        "summary": "Link local plugin (operation)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -39671,8 +39975,54 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -39718,30 +40068,12 @@
                 }
               }
             }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
           }
         },
         "tags": [
           "Core"
         ],
+        "description": "Starts a link operation (#895) owning install-state: 202 { operationId, bootId }. Only validation is cancellable — the point of no return precedes --force's unlink, else the initial build.",
         "requestBody": {
           "required": true,
           "content": {
@@ -39934,7 +40266,7 @@
     "/api/plugins/remove": {
       "post": {
         "operationId": "core.post.api-plugins-remove",
-        "summary": "Remove plugin",
+        "summary": "Remove plugin (operation)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -39943,100 +40275,53 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "ok": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
                       "type": "boolean",
                       "const": true
                     }
                   },
                   "required": [
-                    "ok"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported Media Type — body content type does not match the declared content type.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
+                    "operationId",
+                    "bootId"
                   ],
                   "additionalProperties": false
                 }
               }
             }
-          }
-        },
-        "tags": [
-          "Core"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "pluginId": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "pluginId"
-                ],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "x-bakin-full-path": "/api/plugins/remove"
-      }
-    },
-    "/api/plugins/restore": {
-      "post": {
-        "operationId": "core.post.api-plugins-restore",
-        "summary": "Restore plugin",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
+          },
+          "202": {
+            "description": "Accepted.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -40120,9 +40405,82 @@
                 }
               }
             }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "description": "Starts a remove operation (#895) owning install-state — not cancellable (the plugin's uninstall hook runs first): 202 { operationId, bootId }. Invalid/core ids (400), not installed (404) and the removal-policy preflight (409) answer synchronously.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/plugins/remove"
+      }
+    },
+    "/api/plugins/restore": {
+      "post": {
+        "operationId": "core.post.api-plugins-restore",
+        "summary": "Restore plugin (operation)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
           },
-          "500": {
-            "description": "Server error.",
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
             "content": {
               "application/json": {
                 "schema": {
@@ -40139,11 +40497,35 @@
                 }
               }
             }
+          },
+          "415": {
+            "description": "Unsupported Media Type — body content type does not match the declared content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         },
         "tags": [
           "Core"
         ],
+        "description": "listOnly answers synchronously. A restore is an operation (#895) owning install-state: 202 { operationId, bootId }; unpack and conflict checks are cancellable, the first delete (--force) or copy is the point of no return.",
         "requestBody": {
           "required": true,
           "content": {
@@ -40219,6 +40601,18 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
           "415": {
             "description": "Unsupported Media Type — body content type does not match the declared content type.",
             "content": {
@@ -40246,6 +40640,7 @@
         "tags": [
           "Core"
         ],
+        "description": "Synchronous and bounded; takes install-state without waiting — 409 install_busy names the holder.",
         "requestBody": {
           "required": true,
           "content": {
@@ -40271,7 +40666,7 @@
     "/api/plugins/upgrade": {
       "post": {
         "operationId": "core.post.api-plugins-upgrade",
-        "summary": "Upgrade plugin",
+        "summary": "Upgrade plugin (preview → commit operations)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -40279,8 +40674,54 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bootId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attached": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "bootId"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -40326,31 +40767,12 @@
                 }
               }
             }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
           }
         },
         "tags": [
           "Core"
         ],
-        "description": "Two-phase: preview returns awaitingConsent + consentToken when permissions or binaries widen; commit with accepted + consentToken.",
+        "description": "Two-phase, both operations (#895): the preview (holds nothing) ends awaitingConsent + consentToken when permissions or binaries widen, or ready + consentToken when nothing new needs consent; the commit (accepted + consentToken, under install-state) lands only while the target still matches. Both answer 202 { operationId, bootId }; a core plugin is refused synchronously.",
         "requestBody": {
           "required": true,
           "content": {

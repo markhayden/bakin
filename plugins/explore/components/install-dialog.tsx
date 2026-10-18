@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import {
   Alert,
@@ -23,15 +23,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Progress,
-  ProgressLabel,
-  ProgressValue,
-  Spinner,
   SubmitButton,
-  Text,
 } from '@makinbakin/sdk/ui'
-import { usePluginEvent } from '@makinbakin/sdk/hooks'
+import { OperationProgress } from '@makinbakin/sdk/patterns'
 import { ConsentDialog, type ConsentRequest } from './consent-dialog'
+import { useInstallOperation } from '../hooks/use-install-operation'
 import { sourceWithRef } from '../lib/package-source'
 import type { ExploreCatalogEntry } from '../types'
 import { describeRequestError } from '../lib/request-error'
@@ -46,50 +42,8 @@ import { describeRequestError } from '../lib/request-error'
 
 type InstallKind = 'agent' | 'plugin' | 'skill-pack' | 'workflow-pack' | 'lesson-pack'
 
-/**
- * Installs clone repos and can pull binaries, so the ceiling is generous —
- * but it is a ceiling: without one a wedged host route leaves the dialog
- * spinning forever with no way back. `AbortSignal.timeout` tears down the
- * whole exchange, body read included, not just the headers.
- */
-const INSTALL_TIMEOUT_MS = 120_000
+/** Saving a key is a small synchronous request — it keeps a deadline. */
 const SECRET_TIMEOUT_MS = 15_000
-/** Async-job poll cadence — the SSE stream is primary, this is the net. */
-const JOB_POLL_MS = 4_000
-
-interface InstallProgressUpdate {
-  jobId?: string
-  stage?: string
-  message?: string
-  item?: string
-  current?: number
-  total?: number
-  receivedBytes?: number
-  totalBytes?: number | null
-}
-
-interface ActiveInstallJob {
-  id: string
-  startedAt: number
-  /** Distinct completed stage messages, oldest first. */
-  history: string[]
-  current: InstallProgressUpdate | null
-}
-
-function applyUpdate(prev: ActiveInstallJob, update: InstallProgressUpdate): ActiveInstallJob {
-  const history = update.message && prev.current?.message && update.message !== prev.current.message
-    ? [...prev.history.filter((line) => line !== prev.current?.message), prev.current.message].slice(-4)
-    : prev.history
-  return { ...prev, history, current: update }
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`
-  if (bytes >= 1_000_000) return `${Math.round(bytes / 1_000_000)} MB`
-  return `${Math.max(1, Math.round(bytes / 1_000))} KB`
-}
-
-/** Deadline rejections arrive as DOMExceptions — surface them as a real error. */
 
 /** Missing, store-backable secrets from a capability-pack install response. */
 interface CapabilityKeyStep {
@@ -136,47 +90,6 @@ function endpointFor(kind: InstallKind): string {
   return '/api/packages/install'
 }
 
-/**
- * Live install progress (#895): staged lines + a byte-level bar for the
- * active download, driven by packages.install_* SSE with a status poll as
- * the net. Composes Feedback/Progress (CanonicalUsage) — a busy button
- * alone is banned for anything that can outlive a few seconds.
- */
-function InstallProgressPanel({ job }: { job: ActiveInstallJob }) {
-  const current = job.current
-  const elapsedS = Math.max(0, Math.round((Date.now() - job.startedAt) / 1000))
-  const elapsed = elapsedS >= 60 ? `${Math.floor(elapsedS / 60)}m ${elapsedS % 60}s` : `${elapsedS}s`
-  const bytes = current?.receivedBytes !== undefined
-  const pct = bytes && current?.totalBytes
-    ? Math.min(100, Math.round((current.receivedBytes! / current.totalBytes) * 100))
-    : undefined
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="grid gap-bakin-2 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-3"
-    >
-      {job.history.map((line) => (
-        <Text key={line} size="meta" tone="muted">✓ {line}</Text>
-      ))}
-      <span className="inline-flex items-center gap-bakin-2">
-        <Spinner size="sm" />
-        <Text size="body">{current?.message ?? 'Starting install…'}</Text>
-      </span>
-      {bytes ? (
-        <Progress value={pct ?? null}>
-          <ProgressLabel>{current?.item ?? 'Downloading'}</ProgressLabel>
-          <ProgressValue>
-            {() => `${formatBytes(current!.receivedBytes!)}${current?.totalBytes ? ` of ${formatBytes(current.totalBytes)}` : ''}`}
-          </ProgressValue>
-        </Progress>
-      ) : null}
-      <Text size="meta" tone="muted">Elapsed {elapsed} — installs keep running on the server if you close this dialog.</Text>
-    </div>
-  )
-}
-
 export function InstallDialog({
   open,
   onOpenChange,
@@ -200,9 +113,10 @@ export function InstallDialog({
   const [consent, setConsent] = useState<ConsentRequest | null>(null)
   const [keyStep, setKeyStep] = useState<CapabilityKeyStep | null>(null)
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({})
-  const [job, setJob] = useState<ActiveInstallJob | null>(null)
-  // A job settles exactly once, whether SSE or the poll gets there first.
-  const settledJobRef = useRef<string | null>(null)
+  // Every install is an operation (#895), followed live. Plugins are preview
+  // → commit: the preview ends with the consent prompt or `ready`.
+  const install = useInstallOperation<InstallResponseBody>()
+  const busy = submitting || install.busy
 
   // Curated entries carry a ref pin — honor it exactly like onboarding does
   // (agent/pack specs embed @ref into the source; plugin installs send ref).
@@ -217,7 +131,7 @@ export function InstallDialog({
       setSubmitting(false)
       setKeyStep(null)
       setKeyDrafts({})
-      setJob(null)
+      install.reset()
     }
     onOpenChange(nextOpen)
   }
@@ -253,10 +167,12 @@ export function InstallDialog({
     return base
   }
 
-  type InstallResponseBody = {
+  interface InstallResponseBody {
     ok?: boolean
     error?: string
     awaitingConsent?: boolean
+    /** A plugin preview with nothing to consent to: commit it. */
+    ready?: boolean
     manifestChanged?: boolean
     id?: string
     version?: string
@@ -266,8 +182,23 @@ export function InstallDialog({
     capability?: Parameters<typeof keyStepFrom>[0]['capability']
   }
 
-  /** Shared terminal handling for sync responses AND finished async jobs. */
+  const installResult = install.result
+  const installStartError = install.error
+  useEffect(() => {
+    if (installStartError) setError(installStartError)
+  }, [installStartError])
+  useEffect(() => {
+    if (!installResult) return
+    handleInstallOutcome(installResult.body ?? {}, installResult.httpStatus < 400, installResult.httpStatus)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleInstallOutcome is render-scoped; the result settles once
+  }, [installResult])
+
+  /** Terminal handling for a settled install operation (its result is the route's old body). */
   const handleInstallOutcome = (responseBody: InstallResponseBody, httpOk: boolean, status: number) => {
+    if (responseBody.ready === true && kind === 'plugin') {
+      void postInstall(pluginCommitBody())
+      return
+    }
     if (responseBody.awaitingConsent && responseBody.consentToken) {
       setConsent({
         id: responseBody.id ?? source,
@@ -294,99 +225,27 @@ export function InstallDialog({
     finishSuccess()
   }
 
-  const settleJob = (jobId: string, apply: () => void) => {
-    if (settledJobRef.current === jobId) return
-    settledJobRef.current = jobId
-    setJob(null)
-    setSubmitting(false)
-    apply()
+  /** The commit body must mirror the preview exactly — the consent token binds (source, ref). */
+  const pluginCommitBody = (consentToken?: string): Record<string, unknown> => {
+    const trimmed = source.trim()
+    return {
+      source: trimmed,
+      type: inferSourceType(trimmed),
+      ref: presetRef ?? undefined,
+      accepted: true,
+      ...(consentToken ? { consentToken } : {}),
+    }
   }
 
   const postInstall = async (body: Record<string, unknown>) => {
-    setSubmitting(true)
     setError(null)
-
-    // Every install runs as an install JOB (#895): the POST asks for
-    // `?async=1`, a 202 hands back a job handle, staged progress rides the
-    // SSE bus (poll as the net), and the terminal body comes from the status
-    // endpoint. Anything but a 202 IS the outcome — the plugin preflight
-    // (consent request) answers synchronously with the token, as do
-    // validation errors, so one handler covers both shapes.
-    try {
-      const res = await fetch(`${endpointFor(kind)}?async=1`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS),
-      })
-      const responseBody = (await res.json()) as InstallResponseBody & { jobId?: string }
-      if (res.status === 202 && responseBody.jobId) {
-        settledJobRef.current = null
-        // The consent modal's job is done once the commit is accepted — the
-        // main dialog carries the staged progress (files → binaries → ledger).
-        setConsent(null)
-        setJob({ id: responseBody.jobId, startedAt: Date.now(), history: [], current: null })
-        // Immediate status check: fast installs settle in one round trip
-        // instead of waiting for the first SSE event or poll tick.
-        void resolveJob(responseBody.jobId)
-        return // submitting stays true until the job settles
-      }
-      handleInstallOutcome(responseBody, res.ok, res.status)
-    } catch (err) {
-      setError(describeRequestError(err))
-    }
-    setSubmitting(false)
+    setConsent(null)
+    await install.start(() => fetch(endpointFor(kind), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }))
   }
-
-  /** Resolve a finished job through the status endpoint (single source of truth). */
-  const resolveJob = async (jobId: string) => {
-    try {
-      const res = await fetch(`/api/install-jobs/${jobId}`, { signal: AbortSignal.timeout(SECRET_TIMEOUT_MS) })
-      const data = (await res.json()) as { ok?: boolean; error?: string; job?: { status: string; error?: string; result?: InstallResponseBody; resultStatus?: number; lastUpdate?: InstallProgressUpdate } }
-      if (!res.ok || !data.job) {
-        settleJob(jobId, () => setError(data.error ?? 'Install outcome unknown — the server may have restarted. Refresh and check the installed list.'))
-        return
-      }
-      const remote = data.job
-      if (remote.status === 'done') {
-        const status = remote.resultStatus ?? 200
-        settleJob(jobId, () => handleInstallOutcome(remote.result ?? {}, status < 400, status))
-      } else if (remote.status === 'failed') {
-        settleJob(jobId, () => setError(remote.error ?? 'Install failed'))
-      } else {
-        const update = remote.lastUpdate
-        setJob((prev) => {
-          if (!prev || prev.id !== jobId) return prev
-          return update ? applyUpdate(prev, update) : { ...prev }
-        })
-      }
-    } catch {
-      // Poll miss — the next tick or an SSE event will catch up.
-    }
-  }
-
-  // Live progress via the shared SSE bus.
-  usePluginEvent('packages.install_progress', (payload) => {
-    const update = payload as InstallProgressUpdate
-    setJob((prev) => (prev && update.jobId === prev.id ? applyUpdate(prev, update) : prev))
-  })
-  usePluginEvent('packages.install_done', (payload) => {
-    const { jobId } = payload as { jobId?: string }
-    if (jobId && job?.id === jobId) void resolveJob(jobId)
-  })
-  usePluginEvent('packages.install_failed', (payload) => {
-    const { jobId, error: jobError } = payload as { jobId?: string; error?: string }
-    if (jobId && job?.id === jobId) settleJob(jobId, () => setError(jobError ?? 'Install failed'))
-  })
-
-  // Poll net while a job is active — it also refreshes the elapsed display
-  // during silent stages (no 1s ticker: renders ride events and polls).
-  useEffect(() => {
-    if (!job) return
-    const poll = setInterval(() => { void resolveJob(job.id) }, JOB_POLL_MS)
-    return () => clearInterval(poll)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- resolveJob identity is render-scoped by design
-  }, [job?.id])
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -398,16 +257,7 @@ export function InstallDialog({
   }
 
   const handleConsentAccept = async (accepted: ConsentRequest) => {
-    // Must mirror the preflight body exactly — the consent token is bound to
-    // the (source, ref) identity server-side.
-    const trimmed = source.trim()
-    await postInstall({
-      source: trimmed,
-      type: inferSourceType(trimmed),
-      ref: presetRef ?? undefined,
-      accepted: true,
-      consentToken: accepted.consentToken,
-    })
+    await postInstall(pluginCommitBody(accepted.consentToken))
   }
 
   const saveKeys = async () => {
@@ -514,7 +364,7 @@ export function InstallDialog({
 
   return (
     <>
-      <Dialog busy={submitting} open={open && consent === null} onOpenChange={close}>
+      <Dialog busy={busy} open={open && consent === null} onOpenChange={close}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{preset ? `Install ${entry.name}` : 'Install from source'}</DialogTitle>
@@ -524,7 +374,7 @@ export function InstallDialog({
                 : 'Fetch a package or plugin from a GitHub repo or local path.'}
             </DialogDescription>
           </DialogHeader>
-          <Form busy={submitting} onSubmit={handleSubmit}>
+          <Form busy={busy} onSubmit={handleSubmit}>
             <FieldGroup>
               {preset ? (
                 <Field name="source">
@@ -624,10 +474,16 @@ export function InstallDialog({
               </Alert>
             ) : null}
 
-            {job ? <InstallProgressPanel job={job} /> : null}
+            {install.showProgress && install.operation ? (
+              <OperationProgress
+                operation={install.operation}
+                phase={install.phase ?? undefined}
+                onCancel={() => { void install.cancel() }}
+              />
+            ) : null}
 
             <FormActions>
-              <Button type="button" variant="outline" onClick={() => close(false)} disabled={submitting}>
+              <Button type="button" variant="outline" onClick={() => close(false)} disabled={busy}>
                 Cancel
               </Button>
               <SubmitButton busyLabel="Installing…" data-testid="install-submit">
@@ -640,7 +496,7 @@ export function InstallDialog({
 
       <ConsentDialog
         consent={consent}
-        busy={submitting}
+        busy={busy}
         onAccept={handleConsentAccept}
         onDecline={() => setConsent(null)}
       />

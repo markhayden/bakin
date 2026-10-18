@@ -6,6 +6,7 @@
  * the server log. Broadcast is reached through the globals `sse.ts` installs,
  * so the CLI's in-process mode can run operations without loading the server.
  */
+import { randomUUID } from 'node:crypto'
 import {
   createOperationRegistry,
   runLocal as runLocalOn,
@@ -55,6 +56,56 @@ export function getOperationRegistry(): OperationRegistry {
 /** In-process: run and wait for the terminal view (see `runLocal` in core). */
 export function runLocal<B>(input: StartOperationInput<B>): Promise<OperationView<B>> {
   return runLocalOn(getOperationRegistry(), input)
+}
+
+/**
+ * Run `fn` as a local operation that owns `resources` and hand back its value
+ * (rethrowing its error) — for in-process callers that are not operations of
+ * their own yet but call writers that assert ownership. It waits visibly for
+ * the resources like any operation and is not cancellable.
+ */
+export async function runOwning<T>(
+  input: { kind: string; title: string; resources: string[] },
+  fn: () => Promise<T>,
+): Promise<T> {
+  let value: T | undefined
+  let failure: { error: unknown } | undefined
+  const view = await runLocal({
+    kind: input.kind,
+    owner: 'core',
+    origin: 'system',
+    title: input.title,
+    fingerprint: `${input.kind}:${randomUUID()}`,
+    resources: input.resources,
+    plan: { stages: [{ id: 'run', kind: 'installing', label: input.title }], pointOfNoReturn: 'start' },
+    run: async (op) => {
+      op.stage('run')
+      try {
+        value = await fn()
+      } catch (error) {
+        failure = { error }
+        throw error
+      }
+      return { status: 'succeeded', code: 'ok', httpStatus: 200, body: null }
+    },
+  })
+  if (failure) throw failure.error
+  if (view.status !== 'succeeded') throw new Error(`${input.title} did not finish (${view.status})`)
+  return value as T
+}
+
+/**
+ * In-process callers of a converted route (onboarding, say): a 202
+ * `{ operationId }` is awaited on this process's registry and answered as the
+ * route used to answer — the operation result's status and body. Any other
+ * response (a synchronous 4xx) passes through.
+ */
+export async function awaitOperationResponse(res: Response): Promise<{ status: number; body: Record<string, unknown> }> {
+  const body = await res.json().catch(() => ({})) as Record<string, unknown>
+  if ((res.status !== 202 && res.status !== 200) || typeof body.operationId !== 'string') return { status: res.status, body }
+  const view = await getOperationRegistry().await(body.operationId)
+  if (view.result) return { status: view.result.httpStatus, body: (view.result.body ?? {}) as Record<string, unknown> }
+  return { status: 500, body: { ok: false, error: view.outcome?.message ?? `${view.title} ${view.status}` } }
 }
 
 /** SIGTERM: note "Server stopping" in every live operation. No-op if none ever started. */

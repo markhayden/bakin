@@ -115,7 +115,13 @@ authed/unavailable). An arch-pin test keeps client imports + raw API URLs inside
   gate and re-pins.
 - REST `packages/host/src/api/skills.ts`: `GET /api/skills`,
   `POST /api/skills/{preview,install,map/preview,map/apply}`. Removal rides
-  `DELETE /api/packages/{lockKey}`.
+  `DELETE /api/packages/{lockKey}`. Preview, install and map-preview are
+  operations (#895, `SKILL_*_PLAN`s): only the body is validated
+  synchronously, so a stalled hub never holds the request — the hub verdict
+  runs inside the `fetch` stage (still fail-closed; a refusal is a failed
+  outcome carrying the 403 body). Install owns `install-state`; map apply is
+  synchronous through `holdNow` (409 `install_busy` naming the holder). The
+  CLI follows each with `startAndFollow`.
 - Explore `plugins/explore/components/hub-skills-section.tsx`: the ecosystem lane
   INSIDE the Capabilities tab (unified surface — never a separate tab; grouping is
   installed-vs-available, never by source): one "Installed" list for curated packs

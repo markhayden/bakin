@@ -13,6 +13,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'fs'
 import { basename, dirname, join } from 'path'
+import type { OperationContext } from '@makinbakin/sdk/types'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
@@ -32,14 +33,22 @@ import { fetchSourceAsync, sourceSpecWithRef, type FetchedSource } from './sourc
 import { projectPackage, unprojectPackage } from './projector'
 import { installManifestRequirements, modelDest, npmPayloadDir } from './requirements-installer'
 import { withoutSharedArtifacts } from './uninstaller'
-import { withInstallLock } from '../install-core/install-lock'
+import { assertResourceHeld } from '@bakin/core/operations'
 import { validatePackageContributionIntegrity } from './package-integrity'
 import { assertRuntimePlatformCompatible } from './installer'
+import { SYNC_STAGES } from './operation-plans'
 
 const log = createLogger('agent-pkg:update')
 
 export interface UpdateOptions {
   packageId: string
+  /**
+   * The sync operation (#895, PACKAGE_SYNC_PLAN): the fetch reports on
+   * `fetch`; a changed package enters `install` — the point of no return —
+   * right before its first requirement install. An unchanged one returns
+   * without entering it.
+   */
+  op?: OperationContext
 }
 
 export interface UpdateResult {
@@ -56,12 +65,14 @@ export interface UpdateResult {
  * commit SHA hasn't moved.
  */
 export async function updatePackageById(options: UpdateOptions): Promise<UpdateResult> {
-  // ONE install lock around the whole operation; inner writers assert it.
-  return withInstallLock(() => updatePackageByIdLocked(options))
+  // The caller (a sync operation) owns install-state; inner writers assert it too.
+  assertResourceHeld('install-state', 'updatePackageById')
+  return updatePackageByIdLocked(options)
 }
 
 async function updatePackageByIdLocked(options: UpdateOptions): Promise<UpdateResult> {
   let fetched: FetchedSource | null = null
+  const op = options.op
 
   try {
     const lock = readLockfile()
@@ -72,7 +83,9 @@ async function updatePackageByIdLocked(options: UpdateOptions): Promise<UpdateRe
 
     // Re-fetch using the same source + ref the lockfile recorded.
     // Async path — clawhub: sources are network-fetched (#687).
+    op?.stage(SYNC_STAGES.fetch, entry.source)
     fetched = await fetchSourceAsync(sourceSpecWithRef(entry.source, entry.ref))
+    op?.throwIfCancelled()
 
     // No-op when the commit SHA hasn't moved. Local sources have empty
     // commitSha — for those we always re-project (the user just ran
@@ -132,12 +145,16 @@ async function updatePackageByIdLocked(options: UpdateOptions): Promise<UpdateRe
     // untouched.
     const requirementResult = { projections: [] as ProjectionEntry[] }
     const bareId = stripVersionFromKey(options.packageId)
+    // The point of no return: a cancel lands before the first requirement install or never.
+    op?.throwIfCancelled()
+    op?.stage(SYNC_STAGES.install, `${entry.version} → ${manifest.version}`)
     await installManifestRequirements({
       manifest,
       packId: bareId,
       sourceDir: fetched.stagingDir,
       installedBy,
       result: requirementResult,
+      ...(op ? { op: { op, stageId: SYNC_STAGES.install } } : {}),
     })
 
     // Roll back the old skill/asset projections so the new ones land on a

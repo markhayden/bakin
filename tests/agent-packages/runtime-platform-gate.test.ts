@@ -58,8 +58,12 @@ mock.module('../../src/core/app-services', () => ({
   maybeGetAppServices: () => ({ runtime: runtimeMock }),
 }))
 
-import { installPackage } from '../../src/core/agent-packages/installer'
+import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
+import { owned } from '../helpers/owning'
+
+// The core install writers assert install-state ownership (#895): call them as an owner.
+const installPackage = owned(installPackageUnowned)
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

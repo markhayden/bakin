@@ -64,8 +64,7 @@ mock.module('../../src/core/logger', () => ({
   }),
 }))
 
-import { post as installPost } from '../../packages/host/src/api/plugins/install'
-import { post as removePost } from '../../packages/host/src/api/plugins/remove'
+import { installPOST as installPost, removePOST as removePost } from '../helpers/plugin-routes'
 import { get as assetsGet } from '../../packages/host/src/api/plugins/assets'
 
 const FIXTURE_DIR = resolve(__dirname, '..', 'fixtures', 'sample-user-plugin')

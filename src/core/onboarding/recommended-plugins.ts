@@ -4,6 +4,7 @@ import { getContentDir } from '../content-dir'
 import { readPluginLockfile } from '@bakin/core/plugins/lockfile'
 import { getInstalledPluginIds, planPluginDependencyOrder } from '../plugins/dependencies'
 import { askYesNo } from './prompts'
+import { awaitOperationResponse } from '../operations'
 import { loadUnifiedCatalog, staticCuratedCatalog } from '../curated-catalog/load'
 import type { CatalogEntry } from '../curated-catalog/schema'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
@@ -54,42 +55,37 @@ async function missingPlugins(): Promise<RecommendedPlugin[]> {
   return (await catalogPlugins()).filter(plugin => !isInstalled(plugin.id))
 }
 
+/**
+ * Preview → commit (#895): the preview fetches and checks; `awaitingConsent`
+ * carries the token onboarding's own consent covers, `ready` means nothing
+ * needs consent. Either way the commit follows, and both are operations
+ * awaited to their terminal outcome.
+ */
 async function installSource(source: string): Promise<{ ok: true; id?: string } | { ok: false; error: string }> {
   const { post } = await import('../../../packages/host/src/api/plugins/install')
   const type = source.startsWith('github:') || (source.includes('/') && !source.startsWith('.') && !source.startsWith('/'))
     ? 'github'
     : 'local'
-  const preflight = await post(new Request('http://localhost/api/plugins/install', {
+  const request = (body: Record<string, unknown>) => new Request('http://localhost/api/plugins/install', {
     method: 'POST',
-    body: JSON.stringify({ source, type, accepted: false }),
-  }), new URL('http://localhost/api/plugins/install'))
-  const preflightBody = await preflight.json() as {
-    ok?: boolean
-    error?: string
-    awaitingConsent?: boolean
-    consentToken?: string
-    id?: string
+    body: JSON.stringify(body),
+  })
+  const preview = await awaitOperationResponse(await post(request({ source, type, accepted: false })))
+  const previewBody = preview.body as { ok?: boolean; error?: string; awaitingConsent?: boolean; ready?: boolean; consentToken?: string }
+  if (!previewBody.awaitingConsent && !previewBody.ready) {
+    return { ok: false, error: previewBody.error ?? `install preview failed with HTTP ${preview.status}` }
   }
 
-  if (preflightBody.awaitingConsent) {
-    const commit = await post(new Request('http://localhost/api/plugins/install', {
-      method: 'POST',
-      body: JSON.stringify({
-        source,
-        type,
-        accepted: true,
-        consentToken: preflightBody.consentToken,
-      }),
-    }), new URL('http://localhost/api/plugins/install'))
-    const commitBody = await commit.json() as { ok?: boolean; error?: string; id?: string }
-    return commitBody.ok
-      ? { ok: true, id: commitBody.id }
-      : { ok: false, error: commitBody.error ?? `install failed with HTTP ${commit.status}` }
-  }
-
-  return preflightBody.ok
-    ? { ok: true, id: preflightBody.id }
-    : { ok: false, error: preflightBody.error ?? `install failed with HTTP ${preflight.status}` }
+  const commit = await awaitOperationResponse(await post(request({
+    source,
+    type,
+    accepted: true,
+    ...(previewBody.consentToken ? { consentToken: previewBody.consentToken } : {}),
+  })))
+  const commitBody = commit.body as { ok?: boolean; error?: string; id?: string }
+  return commitBody.ok
+    ? { ok: true, id: commitBody.id }
+    : { ok: false, error: commitBody.error ?? `install failed with HTTP ${commit.status}` }
 }
 
 async function check(): Promise<CheckResult> {

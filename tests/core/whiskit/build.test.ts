@@ -176,6 +176,29 @@ describe('buildPluginWithSystemBun', () => {
     expect(client).toContain('@makinbakin/sdk')              // stays external
   }, 30_000)
 
+  it('announces each step before it runs, then its result (#895)', async () => {
+    const dir = seedPlugin()
+    const events: string[] = []
+    await buildPluginWithSystemBun({ pluginDir: dir, onStage: (e) => events.push(`${e.stage}:${e.status}`) })
+    expect(events).toEqual([
+      'server-build:start', 'server-build:ok',
+      'client-build:start', 'client-build:ok',
+      'css-validate:start', 'css-validate:ok',
+    ])
+  }, 30_000)
+
+  it('a failing step was named before it ran, and its output streamed (#895)', async () => {
+    const dir = seedPlugin({ withClient: false })
+    writeFileSync(join(dir, 'index.ts'), `import { missing } from './does-not-exist'\nexport default missing\n`)
+    const events: string[] = []
+    const lines: string[] = []
+    await expect(buildPluginWithSystemBun({
+      pluginDir: dir, onStage: (e) => events.push(`${e.stage}:${e.status}`), onOutput: (line) => lines.push(line),
+    })).rejects.toThrow(/does-not-exist/)
+    expect(events).toEqual(['server-build:start', 'server-build:error'])
+    expect(lines.join('\n')).toContain('does-not-exist')
+  }, 30_000)
+
   it('builds server-only plugins without a client bundle', async () => {
     const dir = seedPlugin({ withClient: false })
     const result = await buildPluginWithSystemBun({ pluginDir: dir })

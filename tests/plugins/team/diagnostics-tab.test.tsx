@@ -37,6 +37,7 @@ mock.module('@makinbakin/sdk/charts', () => ({
 }))
 
 import { DiagnosticsTab, DiagnosticsChipsView, useAgentAttention } from '../../../plugins/team/components/diagnostics-tab'
+import { finishedOperation, operationResponse, operationStarted } from '../../helpers/operation-fetch'
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
@@ -106,8 +107,19 @@ const ROUTES: Record<string, unknown> = {
   },
 }
 
+// Sync is an operation (#895): the POST answers 202 and the receipt is the finished view's result.
+let syncOperations = new Map([
+  ['op-diag-sync', finishedOperation('op-diag-sync', { httpStatus: 200, body: { ok: true, receipt: { agentId: 'pixel' } } })],
+])
+
 function stubFetch() {
-  const fetchMock = mock((url: string) => {
+  syncOperations = new Map([
+    ['op-diag-sync', finishedOperation('op-diag-sync', { httpStatus: 200, body: { ok: true, receipt: { agentId: 'pixel' } } })],
+  ])
+  const fetchMock = mock((url: string, init?: RequestInit) => {
+    const operation = operationResponse(url, syncOperations)
+    if (operation) return Promise.resolve(operation)
+    if (url === '/api/agent-packages/pixel/sync' && init?.method === 'POST') return Promise.resolve(operationStarted('op-diag-sync'))
     for (const [prefix, body] of Object.entries(ROUTES)) {
       if (url.startsWith(prefix)) return Promise.resolve(jsonResponse(body))
     }
@@ -337,37 +349,49 @@ describe('DiagnosticsTab', () => {
     }
   })
 
-  it('turns a hung sync request into a visible retryable error', async () => {
-    const baseFetch = stubFetch()
-    globalThis.fetch = mock((url: string) => {
-      if (url === '/api/agent-packages/pixel/sync') return new Promise<Response>(() => {})
-      return baseFetch(url)
-    }) as unknown as typeof fetch
+  it('a long sync shows its live progress — no request deadline, no timeout error (#895)', async () => {
+    stubFetch()
+    const running = finishedOperation('op-diag-sync', { httpStatus: 200, body: null }, {
+      status: 'running',
+      title: 'Sync pixel',
+      cancellable: true,
+      endedAt: undefined,
+      outcome: undefined,
+      result: undefined,
+      stages: [{ id: 'run', kind: 'installing', label: 'Apply the package', status: 'active', startedAt: new Date().toISOString() }],
+    })
+    syncOperations.set('op-diag-sync', running)
     await act(async () => {
       render(<DiagnosticsTab agentId="pixel" />)
     })
-    const sync = await screen.findByRole('button', { name: /Sync now/ })
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Sync now/ })) })
 
-    vi.useFakeTimers()
-    try {
-      await act(async () => { fireEvent.click(sync) })
-      await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
-
-      expect(screen.getByText('Sync timed out. Try again.')).toBeDefined()
-      expect(sync.hasAttribute('disabled')).toBe(false)
-    } finally {
-      vi.useRealTimers()
-    }
+    await waitFor(() => expect(screen.getByText('Sync pixel')).toBeDefined())
+    expect(screen.getByText('Apply the package')).toBeDefined()
+    expect(screen.queryByText(/timed out/i)).toBeNull()
+    expect(screen.getByRole('button', { name: /Sync now/ }).hasAttribute('disabled')).toBe(true)
   })
 
-  it('ignores an obsolete sync response after the selected agent changes', async () => {
+  it('a migration-required result says how to migrate and re-enables Sync', async () => {
+    stubFetch()
+    syncOperations.set('op-diag-sync', finishedOperation('op-diag-sync', { httpStatus: 409, body: { ok: false, migrationRequired: true, error: 'legacy' } }))
+    await act(async () => {
+      render(<DiagnosticsTab agentId="pixel" />)
+    })
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Sync now/ })) })
+
+    await waitFor(() => expect(screen.getByText(/needs the one-time block migration/)).toBeDefined())
+    expect(screen.getByRole('button', { name: /Sync now/ }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('ignores an obsolete sync start after the selected agent changes', async () => {
     const baseFetch = stubFetch()
     let resolveSync!: (response: Response) => void
-    globalThis.fetch = mock((url: string) => {
+    globalThis.fetch = mock((url: string, init?: RequestInit) => {
       if (url === '/api/agent-packages/pixel/sync') {
         return new Promise<Response>((resolve) => { resolveSync = resolve })
       }
-      return baseFetch(url)
+      return baseFetch(url, init)
     }) as unknown as typeof fetch
 
     let __view1!: ReturnType<typeof render>
@@ -381,7 +405,8 @@ describe('DiagnosticsTab', () => {
     view.rerender(<DiagnosticsTab agentId="enrich" />)
     await act(async () => { resolveSync(errorResponse(500)) })
 
-    expect(screen.queryByText(/Sync could not be completed|Sync timed out|sync failed/)).toBeNull()
+    expect(screen.queryByText(/sync failed|could not/i)).toBeNull()
+    expect(screen.queryByText('Test operation')).toBeNull()
   })
 
   it('aborts an in-flight timeline request when the panel unmounts', async () => {

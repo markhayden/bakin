@@ -1,4 +1,23 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+
+// Installs run inside a local operation (#895): its lock file and audit land
+// under the content dir, so it must be a temp dir.
+const testDir = join(tmpdir(), `bakin-test-rec-agents-${Date.now()}`)
+const contentDir = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db') }),
+})
+mock.module('../../../src/core/content-dir', contentDir)
+mock.module('../../../packages/core/src/content-dir', contentDir)
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 type AgentState = 'absent' | 'unmanaged' | 'adopted' | 'managed'
 

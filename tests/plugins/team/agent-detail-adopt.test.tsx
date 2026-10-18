@@ -57,6 +57,7 @@ mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
 import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'
+import { finishedOperation, operationResponse, operationStarted } from '../../helpers/operation-fetch'
 
 const PROFILE = {
   id: 'pixel',
@@ -92,12 +93,14 @@ function setupFetch() {
         json: () => Promise.resolve({ ok: true, agents: [{ agentId: 'pixel', state: 'managed', packageId: 'examples/pixel' }] }),
       } as Response)
     }
+    // The adopt is an install operation (#895): 202, then the finished view carries the old body.
+    const operation = operationResponse(u, new Map([['op-adopt', finishedOperation('op-adopt', installResponseOk
+      ? { httpStatus: 200, body: { ok: true } }
+      : { httpStatus: 500, body: { ok: false, error: 'fail' } })]]))
+    if (operation) return Promise.resolve(operation)
     if (u === '/api/agent-packages/install' && init?.method === 'POST') {
       installCalls.push({ url: u, init })
-      return Promise.resolve({
-        ok: installResponseOk,
-        json: () => Promise.resolve(installResponseOk ? { ok: true } : { ok: false, error: 'fail' }),
-      } as Response)
+      return Promise.resolve(operationStarted('op-adopt'))
     }
     if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: null }) } as Response)
     if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)

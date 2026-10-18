@@ -7,7 +7,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
 const testDir = join(tmpdir(), `bakin-test-operations-resources-${Date.now()}-${randomUUID()}`)
@@ -28,20 +28,17 @@ mock.module('../../../packages/core/src/logger', loggerMock)
 
 import {
   acquireResources,
+  assertResourceHeld,
   heldInContext,
+  holdNow,
   readResourceHolder,
   resourceLockPath,
   runHolding,
   sortResources,
   tryAcquireResources,
+  ResourceBusyError,
   type ResourceLease,
 } from '@bakin/core/operations'
-import {
-  acquireInstallLock,
-  assertInstallLockHeld,
-  releaseInstallLock,
-  withInstallLock,
-} from '../../../src/core/install-core/install-lock'
 import { settleFor, waitUntil } from '../../helpers/wait'
 
 const REPO_ROOT = join(import.meta.dir, '..', '..', '..')
@@ -54,7 +51,6 @@ beforeEach(() => {
 })
 afterEach(() => {
   for (const lease of leases.splice(0)) lease.release()
-  try { releaseInstallLock() } catch { /* not held */ }
 })
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
@@ -208,34 +204,52 @@ describe('one ownership context', () => {
     expect(heldInContext('install-state')).toBe(false)
   })
 
-  it('satisfies the legacy inner-writer assertion and reentrant withInstallLock inside an operation holding install-state', async () => {
+  it('inner writers assert ownership: satisfied only inside the holding call chain, naming the writer outside it', async () => {
+    const lease = await acquire(['install-state'], { identity: identity('op-1') })
+    await runHolding(lease.resources, async () => {
+      expect(() => assertResourceHeld('install-state', 'installManifestBins')).not.toThrow()
+    })
+    expect(readResourceHolder('install-state')?.operationId).toBe('op-1')
+    expect(() => assertResourceHeld('install-state', 'installManifestBins')).toThrow(/installManifestBins requires install-state/)
+  })
+})
+
+describe('holdNow — the bounded synchronous writers', () => {
+  it('takes the resource for the call and releases it after, satisfying inner writers', async () => {
+    let inside = false
+    await holdNow(['install-state'], { title: 'Toggle lesson' }, async () => {
+      assertResourceHeld('install-state', 'lesson toggle')
+      inside = readResourceHolder('install-state')?.title === 'Toggle lesson'
+    })
+    expect(inside).toBe(true)
+    expect(existsSync(resourceLockPath('install-state'))).toBe(false)
+  })
+
+  it('never waits: a held resource throws ResourceBusyError naming the holder, and the body never runs', async () => {
+    await acquire(['install-state'], { identity: identity('op-1', 'Install plugin notes') })
+    let ran = false
+    const busy = await holdNow(['install-state'], { title: 'Unlink' }, async () => { ran = true }).catch((err: unknown) => err)
+    expect(busy).toBeInstanceOf(ResourceBusyError)
+    expect((busy as ResourceBusyError).holder.title).toBe('Install plugin notes')
+    expect(ran).toBe(false)
+  })
+
+  it('is reentrant inside an operation that already holds the resource', async () => {
     const lease = await acquire(['install-state'], { identity: identity('op-1') })
     let ran = false
-    await runHolding(lease.resources, async () => {
-      expect(() => assertInstallLockHeld('installManifestBins')).not.toThrow()
-      await withInstallLock(async () => { ran = true })
-    })
+    await runHolding(lease.resources, () => holdNow(['install-state'], { title: 'nested' }, async () => { ran = true }))
     expect(ran).toBe(true)
     expect(readResourceHolder('install-state')?.operationId).toBe('op-1')
-    expect(() => assertInstallLockHeld('installManifestBins')).toThrow(/install lock/)
   })
 
-  it('is reentrant for an operation started inside a legacy withInstallLock holder', async () => {
-    await withInstallLock(async () => {
-      const lease = await acquire(['install-state'], { identity: identity('op-1') })
-      expect(lease.resources).toEqual([])
-    })
-  })
-
-  it('blocks a new-API acquire while the legacy lock is held, and the legacy API while a lease is held', async () => {
-    acquireInstallLock()
-    let waiting = false
-    const pending = acquire(['install-state'], { identity: identity('op-1'), onWait: () => { waiting = true }, pollMs: { initial: 5, max: 20 } })
-    await waitUntil(() => waiting, { label: 'new API waiting on legacy holder' })
-    releaseInstallLock()
-    await pending
-
-    expect(() => acquireInstallLock()).toThrow(/Another install is in progress/)
+  it('never takes over a lock another live process holds', async () => {
+    const path = resourceLockPath('install-state')
+    mkdirSync(dirname(path), { recursive: true })
+    const foreign = { pid: process.ppid, acquiredAt: new Date().toISOString(), title: 'Another Bakin' }
+    writeFileSync(path, JSON.stringify(foreign))
+    const busy = await holdNow(['install-state'], { title: 'Unlink' }, async () => {}).catch((err: unknown) => err)
+    expect(busy).toBeInstanceOf(ResourceBusyError)
+    expect(JSON.parse(readFileSync(path, 'utf-8')).pid).toBe(process.ppid)
   })
 })
 
