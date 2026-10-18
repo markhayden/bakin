@@ -78,6 +78,29 @@ export function provenModelIds(now: number = Date.now()): Set<string> {
   return proven
 }
 
+/**
+ * `provenModelIds` resolved to catalog ids: usage history records whatever
+ * the runtime transcript said (a bare `gpt-5.5` on Pi), so bare ids go
+ * through the runtime's own `models.resolveId` when it has one. Unresolvable
+ * ids stay as recorded (they still match a catalog row that uses them).
+ */
+export async function resolveProvenModelIds(runtime: AgentRuntimeAdapter, now: number = Date.now()): Promise<Set<string>> {
+  const raw = provenModelIds(now)
+  const resolveId = runtime.models.resolveId?.bind(runtime.models)
+  if (!resolveId) return raw
+  const resolved = new Set(raw)
+  for (const id of raw) {
+    if (id.includes('/')) continue
+    try {
+      const canonical = await resolveId(id)
+      if (canonical) resolved.add(normalizeModelId(canonical))
+    } catch (err) {
+      log.warn('Could not resolve a proven model id', { id, err: err instanceof Error ? err.message : String(err) })
+    }
+  }
+  return resolved
+}
+
 export interface AssemblePlanInputOptions {
   runtime: AgentRuntimeAdapter
   rows: PlanCatalogRow[]
@@ -85,7 +108,7 @@ export interface AssemblePlanInputOptions {
   enrichmentEnabled: boolean
   /** Operator lane overrides (the spend plugin's `billing.overrides`); provider-level entries apply. */
   billingOverrides?: BillingOverride[]
-  /** Positive-evidence model ids (defaults to `provenModelIds()`). */
+  /** Positive-evidence model ids (defaults to `resolveProvenModelIds(runtime)`). */
   proven?: Set<string>
 }
 
@@ -102,7 +125,7 @@ async function detectLanes(runtime: AgentRuntimeAdapter): Promise<Record<string,
 export async function assemblePlanInput(opts: AssemblePlanInputOptions): Promise<PlanInput> {
   const [policy, detected] = await Promise.all([opts.runtime.models.routingPolicy(), detectLanes(opts.runtime)])
   const overrides = opts.billingOverrides ?? []
-  const proven = opts.proven ?? provenModelIds()
+  const proven = opts.proven ?? await resolveProvenModelIds(opts.runtime)
   const candidates: PlanCandidate[] = opts.rows.filter(eligible).map((row) => {
     const pricing = getKnownModel(row.id)?.pricing
     const { lane } = resolveLaneFor({ provider: providerFromId(row.id), overrides, detected })

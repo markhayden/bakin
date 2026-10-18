@@ -12,7 +12,7 @@ import { getContentDir } from '../../../src/core/content-dir'
 import { getBootId } from '../../../src/core/boot-id'
 import { createSelectionMutator, type MutateRequest, type MutateResult, type SelectionMutator } from '../../../src/core/model-mutations'
 import { evaluateSelections, proposeRepairs } from '../../../src/core/model-selections'
-import { recommendForRef } from '../../../src/core/model-plan-input'
+import { recommendForRef, resolveProvenModelIds } from '../../../src/core/model-plan-input'
 import { notePendingChange } from '../../../src/core/pending-restart'
 import { setModelsCache } from './available-models'
 import { readRoutingSettings } from './routing-settings'
@@ -93,7 +93,14 @@ export async function describeSelections(ctx: PluginContext) {
       return null
     }),
   ])
-  const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), evaluation.reportFor, { recommendFor: (ref) => (plan ? recommendForRef(plan, ref) : null), revision })
+  // Proposals feed the `safe` dead-selections repair (auto-applied by
+  // escalation), so a target must have run here — never just be listed.
+  const proven = await resolveProvenModelIds(ctx.runtime)
+  const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), evaluation.reportFor, {
+    recommendFor: (ref) => (plan ? recommendForRef(plan, ref) : null),
+    revision,
+    proven: (model) => proven.has(model),
+  })
   return {
     revision,
     // Which routing knobs the ACTIVE runtime honors — the page hides the rest.

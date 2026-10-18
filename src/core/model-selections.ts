@@ -197,6 +197,14 @@ export interface ProposeOptions {
   /** Lane recommender hook: the best eligible model for this ref, or null. */
   recommendFor: (ref: string) => string | null
   revision: string
+  /**
+   * Positive evidence a model runs here (`provenModelIds`). When given, a
+   * proposal only targets a proven model — the dead-selections repair is
+   * `safe` and auto-applies, so an eligible-but-unverified target (a stale
+   * listing) must never be one. Omitted ⇒ eligibility alone (report-only
+   * callers such as the runtime switch, judging a target nothing ran on yet).
+   */
+  proven?: (model: string) => boolean
 }
 
 /**
@@ -227,13 +235,14 @@ export function proposeRepairs(
     const eligibleIds = eligibleIn(report)
     const entry = report.byModel.get(state.model)
     if (!entry || entry.eligibility.status !== 'ineligible') continue
+    const provenOk = (model: string) => opts.proven === undefined || opts.proven(model)
     const sameId = mapModelToCatalog(state.model, eligibleIds)
-    if (sameId && sameId !== state.model) {
+    if (sameId && sameId !== state.model && provenOk(sameId)) {
       proposals.push({ ref: state.ref, from: state.model, to: sameId, reason: entry.eligibility.detail, source: 'same-id-credentialed-provider', revision: opts.revision })
       continue
     }
     const recommended = opts.recommendFor(state.ref)
-    if (recommended && recommended !== state.model && report.byModel.get(recommended)?.eligibility.status === 'eligible') {
+    if (recommended && recommended !== state.model && report.byModel.get(recommended)?.eligibility.status === 'eligible' && provenOk(recommended)) {
       proposals.push({ ref: state.ref, from: state.model, to: recommended, reason: entry.eligibility.detail, source: 'recommender', revision: opts.revision })
       continue
     }

@@ -154,13 +154,19 @@ export function pickAgentModel(input: PlanInput): LanePick {
       : 'The strongest model that has run here.'
     return { model: proven.id, why, suitability: 'known' }
   }
-  // Nothing has run here yet (a fresh install, or every model is new): the
-  // strongest listed model is the only answer — disclosed, never "known".
+  // Nothing proven. Replacing a dead default with an unverified model is
+  // exactly the margo failure, so propose nothing — only a TRUE fresh
+  // install (no default at all) gets the strongest listed model, disclosed
+  // as unverified, because something has to be the first model.
+  if (input.currentDefaultModel) {
+    return {
+      model: null,
+      why: `Your current default (${input.currentDefaultModel}) cannot run here, and no other model has been seen running here in the last week — probe a model or run a task on one, then the plan can propose it.`,
+      suitability: 'none',
+    }
+  }
   const strongest = strongestFirst[0]!
-  const why = input.currentDefaultModel
-    ? `Your current default (${input.currentDefaultModel}) cannot run here and no model has been seen running here yet; ${strongest.id} is listed but unverified — probe it or run a task to confirm.`
-    : `No model has been seen running here yet; ${strongest.id} is the strongest listed — unverified until it runs.`
-  return { model: strongest.id, why, suitability: 'unknown' }
+  return { model: strongest.id, why: `No model has been seen running here yet; ${strongest.id} is the strongest listed — unverified until it runs.`, suitability: 'unknown' }
 }
 
 function priceWhy(pick: PlanCandidate, agent: PlanCandidate | null): string {

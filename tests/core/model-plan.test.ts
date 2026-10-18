@@ -185,6 +185,13 @@ describe('only proven models are proposed (margo 2026-10-18)', () => {
     expect(pick).toMatchObject({ model: astra.id, suitability: 'known' })
   })
 
+  it('a dead default with nothing proven proposes NO replacement (the margo failure mode)', () => {
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: 'openai/gone' }))
+    expect(plan.agent).toMatchObject({ model: null, suitability: 'none' })
+    expect(plan.agent.why).toContain('probe a model or run a task')
+    expect(plan.ops.some((op) => op.ref === 'policy:defaultModel')).toBe(false)
+  })
+
   it('with nothing proven yet (a fresh install) the strongest listed model is offered as unverified', () => {
     const pick = pickAgentModel(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: null }))
     expect(pick.model).toBe(luna.id)

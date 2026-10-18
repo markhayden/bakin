@@ -35,7 +35,8 @@ mock.module('@bakin/core/usage-history/store', () => ({
 
 import { closeDb } from '../../packages/core/src/storage/db'
 import { recordModelProbeSuccess } from '../../packages/core/src/execution/ledger'
-import { provenModelIds, PROOF_WINDOW_DAYS } from '../../src/core/model-plan-input'
+import { provenModelIds, PROOF_WINDOW_DAYS, resolveProvenModelIds } from '../../src/core/model-plan-input'
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { noteProbeOutcome } from '../../src/core/model-availability'
 
 const DAY = 86_400_000
@@ -87,5 +88,20 @@ describe('noteProbeOutcome', () => {
     noteProbeOutcome('openai-codex/gpt-5.6-sol', { ok: true })
     noteProbeOutcome('openai-codex/gpt-5.4-mini', { ok: false, err: new Error('timeout') })
     expect([...provenModelIds()]).toEqual(['openai-codex/gpt-5.6-sol'])
+  })
+})
+
+describe('resolveProvenModelIds', () => {
+  it('resolves bare usage ids through the runtime (Pi records gpt-5.5, the catalog says openai-codex/gpt-5.5)', async () => {
+    usageCells = [{ agent: 'main', day: '2026-10-18', model: 'gpt-5.5', tokens: tokens(900) }]
+    const runtime = { models: { resolveId: async (ref: string) => (ref === 'gpt-5.5' ? 'openai-codex/gpt-5.5' : null) } } as unknown as AgentRuntimeAdapter
+    const proven = await resolveProvenModelIds(runtime, Date.parse('2026-10-18T20:00:00Z'))
+    expect(proven.has('openai-codex/gpt-5.5')).toBe(true)
+  })
+
+  it('a runtime without resolveId keeps ids as recorded', async () => {
+    usageCells = [{ agent: 'main', day: '2026-10-18', model: 'openai-codex/gpt-6-astra', tokens: tokens(1) }]
+    const runtime = { models: {} } as unknown as AgentRuntimeAdapter
+    expect([...await resolveProvenModelIds(runtime, Date.parse('2026-10-18T20:00:00Z'))]).toEqual(['openai-codex/gpt-6-astra'])
   })
 })

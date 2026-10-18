@@ -149,6 +149,20 @@ describe('proposeRepairs', () => {
     expect(proposals.find((p) => p.ref === 'route:relay')).toMatchObject({ to: 'openai-codex/gpt-6-astra', source: 'recommender' })
   })
 
+  it('with proof required, an unproven target is never proposed — same-id or recommender (the repair auto-applies)', () => {
+    const proposals = proposeRepairs(states, rep, {
+      recommendFor: (ref) => (ref === 'route:relay' ? 'openai-codex/gpt-6-astra' : null),
+      revision: 'r1',
+      proven: (model) => model === 'openai-codex/gpt-5.5',
+    })
+    expect(proposals.map((p) => [p.ref, p.to, p.source])).toEqual([
+      ['agent:enrich:model', null, 'none'],
+      ['route:relay', null, 'none'],
+    ])
+    const provenAll = proposeRepairs(states, rep, { recommendFor: () => 'openai-codex/gpt-6-astra', revision: 'r1', proven: () => true })
+    expect(provenAll.find((p) => p.ref === 'route:relay')).toMatchObject({ to: 'openai-codex/gpt-6-astra', source: 'recommender' })
+  })
+
   it('an unknown-eligibility selection never gets a proposal; no candidate ⇒ to: null with source none', () => {
     const proposals = proposeRepairs(states, rep, { recommendFor: () => null, revision: 'r1' })
     expect(proposals.some((p) => p.ref === 'tag:legal')).toBe(false)
