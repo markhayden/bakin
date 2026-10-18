@@ -446,15 +446,17 @@ describe('schedule routes', () => {
     it('fixing the prompt of a manually paused unrunnable job keeps the manual pause and its date', async () => {
       upsertJob(makeMeta({ jobId: 'job-manual-bad', taskPrompt: 'heartbeat', paused: true, enabled: false, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z' }))
       const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
-      await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-manual-bad' }, body: { taskPrompt: 'Summarize the weekly report' } })
-      expect(getJob('job-manual-bad')).toMatchObject({ paused: true, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z', enabled: false })
+      const { status } = await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-manual-bad' }, body: { taskPrompt: 'Summarize the weekly report' } })
+      expect(status).toBe(200)
+      expect(getJob('job-manual-bad')).toMatchObject({ taskPrompt: 'Summarize the weekly report', paused: true, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z', enabled: false })
     })
 
     it('a manual pause survives a prompt edit', async () => {
       upsertJob(makeMeta({ jobId: 'job-manual', taskPrompt: 'Generate the report', paused: true, enabled: false, pauseReason: 'manual' }))
       const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
-      await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-manual' }, body: { taskPrompt: 'Generate the weekly report' } })
-      expect(getJob('job-manual')).toMatchObject({ paused: true, pauseReason: 'manual' })
+      const { status } = await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-manual' }, body: { taskPrompt: 'Generate the weekly report' } })
+      expect(status).toBe(200)
+      expect(getJob('job-manual')).toMatchObject({ taskPrompt: 'Generate the weekly report', paused: true, pauseReason: 'manual' })
     })
 
     it('updates sidecar fields for an existing job', async () => {

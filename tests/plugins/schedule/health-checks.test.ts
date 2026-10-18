@@ -247,6 +247,14 @@ describe('checkSchedulePrompts + remove-unrunnable-jobs (spec D5, plan review R2
     expect(row!.incident).toMatchObject({ impact: expect.stringMatching(/Paused automatically/) })
   })
 
+  it('an operator-paused unrunnable job says it needs a prompt AND a resume', async () => {
+    bakinJob('held', 'heartbeat', 'held')
+    upsertJob({ ...getJob('held')!, paused: true, pauseReason: 'manual', enabled: false })
+    const [row] = observations(await checkSchedulePrompts())
+    expect(row).toMatchObject({ status: 'warning' })
+    expect(row!.incident).toMatchObject({ disposition: 'watch', impact: expect.stringMatching(/task prompt and resume it/) })
+  })
+
   it('the plan freezes the exact job ids; apply removes ONLY those, skips what changed, never touches a job that appeared later', async () => {
     bakinJob('A', 'heartbeat')
     bakinJob('B', '')

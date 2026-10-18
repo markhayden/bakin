@@ -18,7 +18,7 @@ import {
 } from '@makinbakin/sdk/utils'
 import type { BakinJobMeta } from '../types'
 import { isTaskPrompt, NOT_A_PROMPT_REASON } from './prompt-guard'
-import { getJob, getSidecarPath, readSidecar, removeJob, upsertJob } from './sidecar'
+import { getJob, getSidecarPath, readSidecar, removeJob, UNRUNNABLE_PAUSE_REASON, upsertJob } from './sidecar'
 
 const log = createLogger('schedule:health')
 type RuntimeCronReader = Pick<NonNullable<AgentRuntimeAdapter['cron']>, 'list'>
@@ -363,8 +363,13 @@ export async function checkSchedulePrompts(): Promise<HealthCheckRunInput> {
       resources: [{ kind: 'schedule' as const, id: stablePart(job.jobId), label: bounded(name, 120) }],
       resolution: { key: 'remove-unrunnable-jobs', type: 'repair' as const, label: 'Remove job', actionId: 'remove-unrunnable-jobs' },
     }
+    // Recovery depends on WHO paused it: the scheduler's own pause lifts when
+    // the prompt is fixed; an operator's or auto-failures pause still needs Resume.
+    const containedImpact = job.pauseReason === UNRUNNABLE_PAUSE_REASON
+      ? 'Paused automatically, so it no longer fires. Give it a task prompt to resume it, or remove it.'
+      : 'Paused, so it no longer fires. Give it a task prompt and resume it, or remove it.'
     return contained
-      ? healthWarning({ ...base, incident: { ...incident, disposition: 'watch' as const, impact: 'Paused automatically, so it no longer fires. Give it a task prompt to resume it, or remove it.' } })
+      ? healthWarning({ ...base, incident: { ...incident, disposition: 'watch' as const, impact: containedImpact } })
       : healthError({ ...base, incident: { ...incident, disposition: 'action_required' as const, impact: 'Every fire creates a task with no actionable prompt; the task fails or blocks and the schedule keeps firing.' } })
   }) as [HealthObservationInput, ...HealthObservationInput[]])
 }

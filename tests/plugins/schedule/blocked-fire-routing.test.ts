@@ -113,7 +113,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 import { __scheduleTestInternals, MISSED_WINDOW_REASON } from '@bakin/schedule/index'
-import { TEAM_ROUTING_BLOCK_REASON } from '@bakin/schedule/lib/fire-engine'
+import { runClaimedFire, TEAM_ROUTING_BLOCK_REASON } from '@bakin/schedule/lib/fire-engine'
 import { TEAM_ROUTING_EXHAUSTED_REASON } from '../../../src/core/dispatch-types'
 import { closeDb } from '../../../packages/core/src/storage/db'
 import { waitUntil } from '../../helpers/wait'
@@ -485,6 +485,29 @@ describe('unrunnable Bakin schedules pause instead of firing (spec D5)', () => {
     expect(getJob('release-notes')).toMatchObject({ paused: true, pauseReason: 'unrunnable-prompt', enabled: false })
     // Search learns it is no longer enabled.
     await waitUntil(() => mockSearchIndex.mock.calls.some(([key, doc]) => key === 'release-notes' && doc.enabled === 'false'), { label: 'paused job reindexed' })
+  })
+
+  it('judges the LIVE record: a prompt fixed after the fire loaded its meta fires with the new prompt', async () => {
+    upsertJob(makeMeta({ taskPrompt: 'heartbeat' }))
+    const stale = getJob('release-notes')!
+    upsertJob({ ...stale, taskPrompt: 'Curate the fixed release notes' })
+
+    await runClaimedFire(stale, 'release-notes', 'run-fixed', { firedAtMs: Date.parse('2026-06-08T07:00:00Z') })
+
+    expect(getJob('release-notes')).toMatchObject({ taskPrompt: 'Curate the fixed release notes' })
+    expect(getJob('release-notes')!.paused).toBeFalsy()
+    expect(createdTaskOpts.at(-1)).toMatchObject({ description: 'Curate the fixed release notes' })
+  })
+
+  it('never persists a stale record over an operator pause made after the fire loaded its meta', async () => {
+    upsertJob(makeMeta({ taskPrompt: 'heartbeat' }))
+    const stale = getJob('release-notes')!
+    upsertJob({ ...stale, paused: true, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z', enabled: false })
+
+    await runClaimedFire(stale, 'release-notes', 'run-held', { firedAtMs: Date.parse('2026-06-08T07:00:00Z') })
+
+    expect(getJob('release-notes')).toMatchObject({ pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z' })
+    expect(mockCreateTask).not.toHaveBeenCalled()
   })
 
   it('a runnable prompt still fires normally', async () => {

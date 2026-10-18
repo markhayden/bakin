@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto'
 import type { BakinJobMeta, BridgeResult } from '../types'
 import { getPluginCtx } from './plugin-context'
 import { indexJob } from './job-service'
+import { isTaskPrompt } from './prompt-guard'
 import { getSystemTimezone, expandTemplate } from './schedule-util'
 import {
   upsertJob,
@@ -128,12 +129,19 @@ export async function runClaimedFire(
   }
 
   // A Bakin job without a task prompt can never produce a runnable task —
-  // pause it instead of creating a doomed task every occurrence.
-  if (pauseIfUnrunnable(meta)) {
-    upsertJob(meta)
+  // pause it instead of creating a doomed task every occurrence. Judge and
+  // write the LIVE record (read synchronously here): `meta` was loaded before
+  // the await above, and persisting it could undo a prompt fix or an
+  // operator's pause made in between.
+  const live = getJob(jobId)
+  if (!live) return skipFire(jobId, runId, 'job-removed')
+  if (pauseIfUnrunnable(live)) {
+    upsertJob(live)
     indexJob(jobId)
     return skipFire(jobId, runId, 'unrunnable')
   }
+  if (live.isBakinJob && !isTaskPrompt(live.taskPrompt)) return skipFire(jobId, runId, 'paused') // already paused by someone else
+  meta.taskPrompt = live.taskPrompt // a prompt fixed concurrently is the one this fire uses
 
   // Check skip-next-N
   if (shouldSkip(meta)) {
