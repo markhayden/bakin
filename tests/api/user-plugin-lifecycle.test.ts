@@ -66,6 +66,7 @@ mock.module('../../src/core/logger', () => ({
 
 import { installPOST as installPost, removePOST as removePost } from '../helpers/plugin-routes'
 import { get as assetsGet } from '../../packages/host/src/api/plugins/assets'
+import { pluginAssetVersion } from '../../packages/host/src/api/plugins/asset-version'
 
 const FIXTURE_DIR = resolve(__dirname, '..', 'fixtures', 'sample-user-plugin')
 
@@ -124,10 +125,16 @@ describe('user plugin lifecycle', () => {
       expect(assetRes.status).toBe(200)
       expect(assetRes.headers.get('content-type')).toMatch(/application\/javascript/)
       expect(assetRes.headers.get('cache-control')).toBe('no-store')
-      const versionedAssetUrl = new URL('http://localhost/api/plugins/sample/assets/client.js?v=test-version')
+      // Only the version the manifest advertises is immutable; any other key
+      // (an old tab after an upgrade) must not pin today's bytes.
+      const currentVersion = await pluginAssetVersion('sample', 'client.js')
+      const versionedAssetUrl = new URL(`http://localhost/api/plugins/sample/assets/client.js?v=${currentVersion}`)
       const versionedAssetReq = makeRequest(versionedAssetUrl.toString(), { method: 'GET' })
       const versionedAssetRes = await assetsGet(versionedAssetReq, versionedAssetUrl)
       expect(versionedAssetRes.headers.get('cache-control')).toBe('public, max-age=31536000, immutable')
+      const staleAssetUrl = new URL('http://localhost/api/plugins/sample/assets/client.js?v=test-version')
+      const staleAssetRes = await assetsGet(makeRequest(staleAssetUrl.toString(), { method: 'GET' }), staleAssetUrl)
+      expect(staleAssetRes.headers.get('cache-control')).toBe('no-store')
       assetBody = await assetRes.text()
     } finally {
       if (previousDev === undefined) {

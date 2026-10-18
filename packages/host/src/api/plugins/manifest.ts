@@ -11,15 +11,11 @@
  * registered by the plugin's `client.mjs` at runtime via `registerPlugin`,
  * so they don't live in the manifest.
  */
-import { createHash } from 'crypto'
-import { existsSync, statSync } from 'fs'
-import { join } from 'path'
 import { isCorePlugin, pluginRegistry } from '@/core/plugin-registry'
-import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { computeUpgradeAvailable, readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { runChecks } from '@/core/plugins/upgrade'
-import { EMBEDDED_ASSETS } from '../_embedded-assets'
+import { pluginAssetVersion } from './asset-version'
 import type { PluginContributions } from '@makinbakin/sdk/types'
 import { startStartupSpan } from '@/core/startup-diagnostics'
 
@@ -67,65 +63,6 @@ interface ManifestResponse {
 function daysSince(iso: string): number {
   const ms = Date.now() - new Date(iso).getTime()
   return Math.floor(ms / (1000 * 60 * 60 * 24))
-}
-
-function pluginAssetPath(pluginId: string, relPath: string): string | null {
-  const userPath = join(getContentDir(), 'plugins', pluginId, 'dist', relPath)
-  if (existsSync(userPath)) return userPath
-
-  const repoPath = join(process.cwd(), 'plugins', pluginId, 'dist', relPath)
-  if (existsSync(repoPath)) return repoPath
-
-  return null
-}
-
-async function hasEmbeddedPluginAsset(pluginId: string, relPath: string): Promise<boolean> {
-  const embeddedPath = EMBEDDED_ASSETS.get(`/api/plugins/${pluginId}/assets/${relPath}`)
-  if (!embeddedPath) return false
-  try {
-    return await Bun.file(embeddedPath).exists()
-  } catch {
-    return false
-  }
-}
-
-async function pluginAssetVersion(pluginId: string, relPath: string): Promise<string | null> {
-  const path = pluginAssetPath(pluginId, relPath)
-  if (path) {
-    try {
-      const stat = statSync(path)
-      if (!stat.isFile()) return null
-      return String(Math.trunc(stat.mtimeMs))
-    } catch {
-      return null
-    }
-  }
-
-  if (await hasEmbeddedPluginAsset(pluginId, relPath)) {
-    return embeddedAssetVersion(`/api/plugins/${pluginId}/assets/${relPath}`)
-  }
-
-  return null
-}
-
-const embeddedVersions = new Map<string, Promise<string>>()
-
-/**
- * Content hash of an embedded plugin asset, memoized for the process. The
- * browser caches `?v=` URLs immutably, so the key must change whenever the
- * bytes do — a version string does not (a rebuilt `0.0.0-dev` binary keeps
- * it), the bytes' hash always does.
- */
-function embeddedAssetVersion(key: string): Promise<string> {
-  let version = embeddedVersions.get(key)
-  if (!version) {
-    const path = EMBEDDED_ASSETS.get(key)!
-    version = Bun.file(path).arrayBuffer().then((bytes) => {
-      return `embedded-${createHash('sha256').update(new Uint8Array(bytes)).digest('hex').slice(0, 16)}`
-    })
-    embeddedVersions.set(key, version)
-  }
-  return version
 }
 
 export async function get(req: Request): Promise<Response> {

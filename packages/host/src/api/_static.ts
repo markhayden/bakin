@@ -123,6 +123,8 @@ export function assetVersionToken(): Promise<string> {
     }
     return hasher.digest('hex').slice(0, 16)
   })()
+  // A failed read must not poison the token for the life of the process.
+  shellVersion.catch(() => { shellVersion = null })
   return shellVersion
 }
 

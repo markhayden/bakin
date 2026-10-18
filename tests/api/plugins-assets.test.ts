@@ -31,6 +31,7 @@ mock.module('../../src/core/logger', () => ({
 
 import { get } from '../../packages/host/src/api/plugins/assets'
 import { setEmbeddedAssets } from '../../packages/host/src/api/_embedded-assets'
+import { pluginAssetVersion } from '../../packages/host/src/api/plugins/asset-version'
 
 function req(path: string): [Request, URL] {
   const url = new URL(`http://localhost:3737${path}`)
@@ -96,5 +97,59 @@ describe('plugin assets route — server-bundle guard (#421)', () => {
   it('still rejects malformed plugin asset paths with 400', async () => {
     const res = await get(...req('/api/plugins/userplug/assets/'))
     expect(res.status).toBe(400)
+  })
+})
+
+describe('plugin assets route — cache keys match the bytes served', () => {
+  it('caches only the CURRENT version immutably; a stale ?v= gets the short cache', async () => {
+    const current = await pluginAssetVersion('userplug', 'client.js')
+    expect(current).not.toBeNull()
+
+    const fresh = await get(...req(`/api/plugins/userplug/assets/client.js?v=${current}`))
+    expect(fresh.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable')
+
+    const stale = await get(...req('/api/plugins/userplug/assets/client.js?v=1'))
+    expect(stale.status).toBe(200)
+    expect(stale.headers.get('Cache-Control')).toBe('public, max-age=300')
+  })
+
+  it('versions the same file it serves: a user install shadows an embedded copy in both', async () => {
+    const embedded = join(testDir, 'embedded-userplug-client.js')
+    writeFileSync(embedded, 'registerPlugin({ id: "userplug", embedded: true })\n')
+    setEmbeddedAssets(new Map([['/api/plugins/userplug/assets/client.js', embedded]]))
+    try {
+      const version = await pluginAssetVersion('userplug', 'client.js')
+      expect(version).toMatch(/^\d+$/) // disk mtime, not an embedded hash
+      const res = await get(...req(`/api/plugins/userplug/assets/client.js?v=${version}`))
+      expect(await res.text()).not.toContain('embedded: true')
+      expect(res.headers.get('Cache-Control')).toContain('immutable')
+    } finally {
+      setEmbeddedAssets(new Map())
+    }
+  })
+
+  it('an embedded asset is keyed by its content hash, and a failed read is retried, not cached', async () => {
+    const embedded = join(testDir, 'embedded-core-client.js')
+    setEmbeddedAssets(new Map([['/api/plugins/coreplug/assets/client.js', embedded]]))
+    const originalFile = Bun.file
+    try {
+      writeFileSync(embedded, 'registerPlugin({ id: "coreplug" })\n')
+      let failNext = true
+      Bun.file = ((path: string) => {
+        const real = originalFile(path)
+        return {
+          exists: () => real.exists(),
+          arrayBuffer: () => {
+            if (failNext) { failNext = false; return Promise.reject(new Error('transient read failure')) }
+            return real.arrayBuffer()
+          },
+        }
+      }) as unknown as typeof Bun.file
+      expect(await pluginAssetVersion('coreplug', 'client.js')).toBeNull()
+      expect(await pluginAssetVersion('coreplug', 'client.js')).toMatch(/^embedded-[0-9a-f]{16}$/)
+    } finally {
+      Bun.file = originalFile
+      setEmbeddedAssets(new Map())
+    }
   })
 })
