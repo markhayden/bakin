@@ -8,7 +8,7 @@
  * user plugins are imported from disk.
  */
 import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -128,15 +128,15 @@ describe('plugin assets route — cache keys match the bytes served', () => {
     }
   })
 
-  it('an embedded asset is keyed by its content hash, and a failed read is retried, not cached', async () => {
-    const embedded = join(testDir, 'embedded-core-client.js')
-    setEmbeddedAssets(new Map([['/api/plugins/coreplug/assets/client.js', embedded]]))
+  it('a compiled-in (/$bunfs/) asset is keyed by its content hash, and a failed read is retried, not cached', async () => {
+    const realBytes = join(testDir, 'bunfs-core-client.js')
+    writeFileSync(realBytes, 'registerPlugin({ id: "coreplug" })\n')
+    setEmbeddedAssets(new Map([['/api/plugins/coreplug/assets/client.js', '/$bunfs/root/coreplug-client.js']]))
     const originalFile = Bun.file
     try {
-      writeFileSync(embedded, 'registerPlugin({ id: "coreplug" })\n')
       let failNext = true
       Bun.file = ((path: string) => {
-        const real = originalFile(path)
+        const real = originalFile(path === '/$bunfs/root/coreplug-client.js' ? realBytes : path)
         return {
           exists: () => real.exists(),
           arrayBuffer: () => {
@@ -149,6 +149,24 @@ describe('plugin assets route — cache keys match the bytes served', () => {
       expect(await pluginAssetVersion('coreplug', 'client.js')).toMatch(/^embedded-[0-9a-f]{16}$/)
     } finally {
       Bun.file = originalFile
+      setEmbeddedAssets(new Map())
+    }
+  })
+
+  it('a source run\'s map entry is an ordinary file: a rebuild gets a new key, never a memoized one', async () => {
+    const built = join(testDir, 'devplug-client.js')
+    writeFileSync(built, 'registerPlugin({ id: "devplug", build: 1 })\n')
+    setEmbeddedAssets(new Map([['/api/plugins/devplug/assets/client.js', built]]))
+    try {
+      const first = await pluginAssetVersion('devplug', 'client.js')
+      expect(first).toMatch(/^\d+$/)
+      writeFileSync(built, 'registerPlugin({ id: "devplug", build: 2 })\n')
+      utimesSync(built, new Date(), new Date(Date.now() + 5_000))
+      const second = await pluginAssetVersion('devplug', 'client.js')
+      expect(second).not.toBe(first)
+      const stale = await get(...req(`/api/plugins/devplug/assets/client.js?v=${first}`))
+      expect(stale.headers.get('Cache-Control')).not.toContain('immutable')
+    } finally {
       setEmbeddedAssets(new Map())
     }
   })

@@ -4,9 +4,10 @@
  * describes the bytes that URL returns. Order: user-installed disk →
  * embedded (compiled binary / generated map) → repo dist (dev fallback).
  *
- * Versions: a disk file's mtime (a plugin upgrade replaces the directory);
- * an embedded file's content hash (a rebuilt binary can keep its version
- * string while its bytes change, and `?v=` URLs are cached immutably).
+ * Versions: a disk file's mtime (a plugin upgrade replaces the directory,
+ * a rebuild rewrites the file); a compiled-in (`/$bunfs/`) file's content
+ * hash (a rebuilt binary can keep its version string while its bytes
+ * change, and `?v=` URLs are cached immutably).
  */
 import { createHash } from 'crypto'
 import { existsSync, statSync } from 'fs'
@@ -33,10 +34,17 @@ export async function resolvePluginAsset(pluginId: string, relPath: string): Pro
   const key = `/api/plugins/${pluginId}/assets/${relPath}`
   const embeddedPath = EMBEDDED_ASSETS.get(key)
   if (embeddedPath) {
-    try {
-      if (await Bun.file(embeddedPath).exists()) return { kind: 'embedded', path: embeddedPath, key }
-    } catch {
-      // fall through to the repo copy
+    // Only bytes compiled INTO the binary are immutable for the process; a
+    // source run's map points at ordinary files a rebuild rewrites in place,
+    // so those are disk assets (mtime-versioned), never memoized hashes.
+    if (!embeddedPath.startsWith('/$bunfs/')) {
+      if (diskFile(embeddedPath)) return { kind: 'disk', path: embeddedPath }
+    } else {
+      try {
+        if (await Bun.file(embeddedPath).exists()) return { kind: 'embedded', path: embeddedPath, key }
+      } catch {
+        // fall through to the repo copy
+      }
     }
   }
 
