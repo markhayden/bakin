@@ -1,4 +1,4 @@
-import type { OperationContext, OperationPlan } from '@makinbakin/sdk/types'
+import type { OperationContext, OperationPlan, OperationStagePlan } from '@makinbakin/sdk/types'
 import type { AdapterInitOpts } from '../shared'
 import type {
   BatchResult,
@@ -134,16 +134,27 @@ export interface SearchAdapterSetupComponent {
   install(opts: SearchAdapterSetupOptions): Promise<SearchAdapterSetupInstallResult>
 }
 
+/**
+ * The stages an engine reset reports, in order (#895): the caller's plan
+ * declares them, then appends its own repair reindex.
+ */
+export const ENGINE_RESET_STAGES = [
+  { id: 'stop', kind: 'preparing', label: 'Stop the search engine' },
+  { id: 'wipe', kind: 'cleanup', label: 'Wipe derived engine data' },
+  { id: 'boot', kind: 'verifying', label: 'Start the engine clean' },
+] as const satisfies readonly OperationStagePlan[]
+
 export interface SearchAdapterSetup {
   readonly dependency: SearchAdapterSetupComponent
   readonly models?: SearchAdapterSetupComponent
   /**
    * Stop the engine, wipe its DERIVED data (indexes — never models or
-   * source content), and start it clean. Optional: adapters whose engine
-   * Bakin does not supervise (guest mode) omit it or fail honestly.
-   * Callers follow with a repair reindex to regenerate tables.
+   * source content), and start it clean, reporting `ENGINE_RESET_STAGES`
+   * through `op` (whose holder owns `search-engine`). Optional: adapters
+   * whose engine Bakin does not supervise (guest mode) omit it or fail
+   * honestly. Callers follow with a repair reindex to regenerate tables.
    */
-  resetEngineData?(): Promise<SearchAdapterSetupInstallResult>
+  resetEngineData?(op: OperationContext): Promise<SearchAdapterSetupInstallResult>
 }
 
 export type {

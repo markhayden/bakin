@@ -7,7 +7,6 @@
  *
  * Uses globalThis so every reach into this module shares one registry.
  */
-import { randomUUID } from 'crypto'
 import type {
   SearchContentTypeDefinition,
   SearchIndexDefinition,
@@ -35,7 +34,7 @@ import {
   queryTarget,
   type TableEnsureDef,
 } from '@bakin/core/search/tables'
-import { ResourceBusyError, holdNow } from '@bakin/core/operations'
+import { ResourceBusyError, assertResourceHeld, holdNow, type OperationContext } from '@bakin/core/operations'
 import { getAppServices } from './app-services-store'
 
 const log = createLogger('search-registry-core')
@@ -235,86 +234,23 @@ export interface RebuildOpts {
  * in their (cheap, off-chain) converge phase simultaneously. */
 const REBUILD_CONCURRENCY = 3
 
-let rebuildInFlight: Promise<ReindexTableOutcome[]> | null = null
+/** Where a rebuild pass reports its tables: one item per table in `stageId`. */
+export interface RebuildReport {
+  op: OperationContext
+  stageId: string
+}
 
 /**
- * Blue/green rebuild pass (the /api/reindex + `bakin reindex` path).
- * Queries keep answering from the old physical throughout; SSE
- * `search.rebuild.*` events drive the health page's live progress.
- * SINGLE-FLIGHT: overlapping calls coalesce into the running pass —
- * stacked passes used to regenerate every table once per kick.
+ * Blue/green rebuild pass (the reindex operation, the doctor's search
+ * repairs, a reset's reindex stage). Queries keep answering from the old
+ * physical throughout. The caller owns `search-engine`, so passes never
+ * overlap: an identical reindex attaches to the running operation and any
+ * other waits for it, visibly (#895 D15). With `report`, every targeted
+ * table is an item that runs pending → active → done/failed.
  */
-export function rebuildRegisteredTables(tableName?: string, opts?: RebuildOpts): Promise<ReindexTableOutcome[]> {
-  if (rebuildInFlight) {
-    log.info('reindex requested while a pass is running — attaching to it')
-    return rebuildInFlight
-  }
-  const pass = runRebuildPass(tableName, opts).finally(() => {
-    rebuildInFlight = null
-  })
-  rebuildInFlight = pass
-  return pass
-}
-
-// ---------------------------------------------------------------------------
-// Reindex as a job (202 + poll)
-// ---------------------------------------------------------------------------
-
-export interface ReindexJobStatus {
-  id: string
-  state: 'running' | 'done' | 'failed'
-  target: string | null
-  force: boolean
-  startedAt: number
-  finishedAt: number | null
-  ok?: boolean
-  errors?: number
-  parked?: number
-  total?: number
-  tables?: ReindexTableOutcome[]
-  error?: string
-}
-
-let lastReindexJob: ReindexJobStatus | null = null
-
-/**
- * Job wrapper over the single-flight rebuild: callers get a 202-style
- * handle immediately and poll for the outcome instead of holding an HTTP
- * socket across a multi-minute blue/green pass (the old sync-only shape
- * made every long rebuild look like a hang — the CLI had no timeout and
- * no progress, just a dead prompt). A start while a job is running
- * attaches to it, mirroring the underlying single-flight.
- */
-export function startReindexJob(tableName?: string, opts?: RebuildOpts): ReindexJobStatus {
-  if (lastReindexJob?.state === 'running') return lastReindexJob
-  const job: ReindexJobStatus = {
-    id: randomUUID(),
-    state: 'running',
-    target: tableName ?? null,
-    force: Boolean(opts?.force),
-    startedAt: Date.now(),
-    finishedAt: null,
-  }
-  lastReindexJob = job
-  rebuildRegisteredTables(tableName, opts).then((results) => {
-    job.errors = results.filter((r) => r.error).length
-    job.parked = results.filter((r) => r.result === 'parked').length
-    job.ok = job.errors === 0 && job.parked === 0
-    job.total = results.reduce((sum, r) => sum + (r.indexed ?? 0), 0)
-    job.tables = results
-    job.state = 'done'
-    job.finishedAt = Date.now()
-  }).catch((err: unknown) => {
-    job.error = err instanceof Error ? err.message : String(err)
-    job.state = 'failed'
-    job.finishedAt = Date.now()
-    log.error('reindex job failed', err instanceof Error ? err : undefined, { target: tableName ?? 'all' })
-  })
-  return job
-}
-
-export function getReindexJobStatus(): ReindexJobStatus | null {
-  return lastReindexJob
+export function rebuildRegisteredTables(tableName?: string, opts?: RebuildOpts, report?: RebuildReport): Promise<ReindexTableOutcome[]> {
+  assertResourceHeld('search-engine', 'rebuildRegisteredTables')
+  return runningMigrations(() => rebuildPass(tableName, opts, report))
 }
 
 /**
@@ -341,11 +277,7 @@ const REBUILD_ORDER: Record<string, number> = {
 }
 const REBUILD_ORDER_DEFAULT = 50
 
-function runRebuildPass(tableName?: string, opts?: RebuildOpts): Promise<ReindexTableOutcome[]> {
-  return runningMigrations(() => rebuildPass(tableName, opts))
-}
-
-async function rebuildPass(tableName?: string, opts?: RebuildOpts): Promise<ReindexTableOutcome[]> {
+async function rebuildPass(tableName?: string, opts?: RebuildOpts, report?: RebuildReport): Promise<ReindexTableOutcome[]> {
   const registry = getRegistry()
   const search = getSearchAdapter()
   const targets = Array.from(registry.contentTypes.entries())
@@ -356,13 +288,14 @@ async function rebuildPass(tableName?: string, opts?: RebuildOpts): Promise<Rein
       return pa === pb ? (a < b ? -1 : 1) : pa - pb
     })
 
+  for (const [logical] of targets) report?.op.item(report.stageId, { id: logical, label: logical })
   const results: ReindexTableOutcome[] = []
   const queue = [...targets]
   const workers = Array.from({ length: Math.min(REBUILD_CONCURRENCY, queue.length) }, async () => {
     for (;;) {
       const next = queue.shift()
       if (!next) return
-      results.push(await rebuildOneTable(search, next[0], next[1], opts))
+      results.push(await rebuildOneTable(search, next[0], next[1], opts, report))
     }
   })
   await Promise.all(workers)
@@ -374,14 +307,19 @@ async function rebuildOneTable(
   logical: string,
   def: SearchContentTypeDefinition & { pluginId: string },
   opts?: RebuildOpts,
+  report?: RebuildReport,
 ): Promise<ReindexTableOutcome> {
+  const item = (status: 'active' | 'done' | 'failed', message?: string) =>
+    report?.op.item(report.stageId, { id: logical, label: logical, status, ...(message ? { message } : {}) })
   broadcastRebuild('search.rebuild.start', logical)
+  item('active')
   try {
     let indexed = 0
     const ensureOpts = {
       onProgress: (phase: string, backfillDone?: number) => {
         if (backfillDone !== undefined) indexed = backfillDone
         broadcastRebuild('search.rebuild.progress', logical, { phase, indexed: backfillDone ?? 0 })
+        item('active', backfillDone !== undefined ? `${phase} · ${backfillDone} indexed` : phase)
       },
     }
     const vdef = toVersionedDef(def)
@@ -393,10 +331,13 @@ async function rebuildOneTable(
       result = await repairOneTable(search, vdef, fingerprint, ensureOpts)
     }
     broadcastRebuild('search.rebuild.complete', logical, { result, indexed })
+    if (result === 'parked') item('failed', 'parked — the old table keeps serving; the migration pump resumes it')
+    else item('done', `${result} · ${indexed} indexed`)
     return { table: logical, result, indexed }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     broadcastRebuild('search.rebuild.complete', logical, { error: message })
+    item('failed', message)
     return { table: logical, result: 'failed', error: message }
   }
 }

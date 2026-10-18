@@ -5,6 +5,7 @@ import type { SearchReadiness, SearchStageStatus } from '@makinbakin/sdk/types'
 import { DisclosurePanel, Grid, Panel, Section } from '@makinbakin/sdk/layout'
 import {
   DataTable,
+  OperationProgress,
   StatTile,
   StatusBadge,
   type DataTableColumn,
@@ -212,7 +213,7 @@ export function SystemSearchSection({
             onClick={() => void onReindex(table.logical)}
             aria-label={`Reindex ${table.logical}`}
           >
-            {isPending ? 'Starting…' : 'Reindex'}
+            {isPending ? (mutation.operation ? 'Reindexing…' : 'Starting…') : 'Reindex'}
           </Button>
         )
       },
@@ -351,7 +352,7 @@ export function SystemSearchSection({
                 disabled={!status?.enabled || status?.engineReachable === false || mutationLocked}
                 onClick={() => void onReindex()}
               >
-                {pendingAll ? 'Starting reindex…' : 'Reindex all'}
+                {pendingAll ? (mutation.operation ? 'Reindexing…' : 'Starting reindex…') : 'Reindex all'}
               </Button>
             </div>
 
@@ -392,6 +393,9 @@ export function SystemSearchSection({
           </div>
         </DisclosurePanel>
 
+        {mutation.status === 'pending' && mutation.operation && (
+          <OperationProgress operation={mutation.operation} />
+        )}
         {mutation.status !== 'idle' && mutation.message && (
           <Banner
             tone={mutationTone(mutation.status)}

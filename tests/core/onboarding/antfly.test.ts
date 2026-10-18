@@ -33,13 +33,14 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
+import { ENGINE_RESET_STAGES } from '@bakin/core/adapters/search'
 import { createMemoryResourceAcquirer, createOperationRegistry, type OperationView } from '@bakin/core/operations'
 import {
   ANTFLY_ENGINE_PLAN,
   checkAntflyDependency as checkDependency,
   installAntflyDependency as installDependency,
 } from '../../../packages/adapter-antfly/src/installer'
-import { withOperationView } from '../../helpers/operation-harness'
+import { noopOp, withOperationView } from '../../helpers/operation-harness'
 import { waitUntil } from '../../helpers/wait'
 import { DEFAULT_SETTINGS } from '../../../packages/adapter-antfly/src/defaults'
 import { launchdPlistPath, renderLaunchdPlist, buildServiceArgv, servicePaths, type ServiceIo } from '../../../packages/adapter-antfly/src/service'
@@ -455,7 +456,8 @@ it('guest setup requires no local binary or model installation and refuses reset
   const models = await withOperationView({ plan: setup.models!.plan, resources: ['search-engine'] }, (op) => setup.models!.install({ ...optsAutoYes, op }))
   expect(models.value.status).toBe('noop')
   expect(models.view.stages.every((stage) => stage.status === 'skipped')).toBe(true)
-  expect((await setup.resetEngineData!()).status).toBe('failed')
+  const reset = await withOperationView({ plan: { stages: [...ENGINE_RESET_STAGES], pointOfNoReturn: 'start' }, resources: ['search-engine'] }, (op) => setup.resetEngineData!(op))
+  expect(reset.value.status).toBe('failed')
   expect(fetchCalls).toEqual([])
   expect(commands).toEqual([])
   expect(existsSync(managedBinary)).toBe(false)
@@ -571,3 +573,34 @@ describe('the engine install as an operation (#895)', () => {
     }
   })
 })
+
+describe('the engine reset as operation stages (#895)', () => {
+  it('stops the service, wipes derived data and starts clean, reporting each stage', async () => {
+    writeBinary(managedBinary, PIN_VERSION)
+    mockDownloadFetch()
+    expect((await installAntflyDependency(optsAutoYes, undefined, makePin())).status).toBe('noop')
+    const table = join(servicePaths().dataDir, 'table.db')
+    mkdirSync(servicePaths().dataDir, { recursive: true })
+    writeFileSync(table, 'derived index data')
+    commands.length = 0
+
+    const { resetAntflyEngineData } = await import('../../../packages/adapter-antfly/src/installer')
+    const { value, view } = await withOperationView({ plan: { stages: [...ENGINE_RESET_STAGES], pointOfNoReturn: 'start' }, resources: ['search-engine'] }, (op) =>
+      resetAntflyEngineData(op, undefined, DEFAULT_SETTINGS, serviceIo))
+
+    expect(value.status).toBe('installed')
+    expect(view.stages.map((stage) => [stage.id, stage.status])).toEqual([['stop', 'done'], ['wipe', 'done'], ['boot', 'done']])
+    expect(existsSync(table)).toBe(false)
+    expect(loaded).toBe(true)
+    expect(commands.some((command) => command.includes('bootout'))).toBe(true)
+  })
+
+  it('refuses to run outside an owner of search-engine', async () => {
+    const { resetAntflyEngineData } = await import('../../../packages/adapter-antfly/src/installer')
+    await expect(resetAntflyEngineData(noopOpWithout('search-engine'), undefined, DEFAULT_SETTINGS, serviceIo)).rejects.toThrow(/requires search-engine/)
+  })
+})
+
+function noopOpWithout(_resource: string) {
+  return { ...noopOp(), holds: () => false }
+}

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import type { HealthCheckState, HealthObservation, HealthReport } from '@makinbakin/sdk/types'
+import type { HealthCheckState, HealthObservation, HealthReport, OperationView } from '@makinbakin/sdk/types'
 import type { UseHealthResourceResult } from '../../../plugins/health/hooks/use-health-resource'
 import type {
   SystemPluginManifestData,
@@ -15,8 +15,9 @@ import '../../rtl-settle'
 import { SystemTabView } from '../../../plugins/health/components/system-tab'
 import {
   interpretPluginUpgrade,
+  interpretSearchReindex,
   startPluginUpgrade,
-  performSearchReindex,
+  startSearchReindex,
   SystemMutationOutcomeUnknownError,
 } from '../../../plugins/health/hooks/use-system-data'
 
@@ -445,6 +446,40 @@ describe('SystemTabView', () => {
     expect((screen.getByRole('button', { name: 'Refresh live data' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
+  it('follows a running reindex live: its tables as items, every reindex button locked', () => {
+    const at = new Date().toISOString()
+    const data = systemData()
+    data.searchMutation = {
+      status: 'pending',
+      message: null,
+      target: 'all',
+      operation: {
+        id: 'op-reindex', children: [], rev: 3, bootId: 'boot-1', kind: 'search:reindex', owner: 'core', origin: 'web',
+        title: 'Reindex search', href: '/health', fingerprint: 'search:reindex:all:repair', resources: ['search-engine'],
+        status: 'running', cancellable: false, startedAt: at, lastProgressAt: at, lastLivenessAt: at, log: [],
+        plan: { stages: [{ id: 'reindex', kind: 'building', label: 'Rebuild search tables' }], pointOfNoReturn: 'start' },
+        stages: [{
+          id: 'reindex', kind: 'building', label: 'Rebuild search tables', status: 'active', startedAt: at,
+          items: [
+            { id: 'bakin_assets', label: 'bakin_assets', status: 'done', message: 'unchanged · 0 indexed' },
+            { id: 'bakin_tasks', label: 'bakin_tasks', status: 'active', message: 'backfill · 120 indexed' },
+          ],
+        }],
+      },
+    }
+
+    render(<SystemTabView data={data} />)
+    fireEvent.click(screen.getByTestId('search-technical-details').querySelector('summary')!)
+
+    expect(screen.getByText('Rebuild search tables')).toBeDefined()
+    expect(screen.getByText('backfill · 120 indexed')).toBeDefined()
+    expect((screen.getByRole('button', { name: 'Reindexing…' }) as HTMLButtonElement).disabled).toBe(true)
+    for (const button of screen.getAllByRole('button', { name: 'Reindex bakin_assets' })) {
+      expect((button as HTMLButtonElement).disabled).toBe(true)
+      expect(button.textContent).toBe('Reindexing…')
+    }
+  })
+
   it('makes indexes, migrations, journal, and enrichment consumable and actionable', () => {
     const data = systemData()
     render(<SystemTabView data={data} />)
@@ -751,80 +786,32 @@ describe('SystemTabView', () => {
   })
 })
 
-describe('performSearchReindex', () => {
-  it('validates the mutation before refreshing canonical readiness', async () => {
-    const refreshReadiness = mock(async () => {})
-    globalThis.fetch = mock(async () => new Response(JSON.stringify({ ok: false, error: 'Index registration rejected' }), {
-      status: 409, headers: { 'content-type': 'application/json' },
-    })) as unknown as typeof fetch
+describe('system mutations', () => {
+  it('starts a reindex as an operation for one table or all of them', async () => {
+    const calls: string[] = []
+    globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push(`${init?.method ?? 'GET'} ${String(input)}`)
+      return new Response(JSON.stringify({ operationId: 'op-1', bootId: 'boot-1' }), { status: 202, headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch
 
-    await expect(performSearchReindex('bakin_assets', refreshReadiness)).rejects.toThrow('Index registration rejected')
-    expect(refreshReadiness).not.toHaveBeenCalled()
-
-    globalThis.fetch = mock(async () => new Response(JSON.stringify({ ok: true }), {
-      status: 202, headers: { 'content-type': 'application/json' },
-    })) as unknown as typeof fetch
-    await performSearchReindex('bakin_assets', refreshReadiness)
-    expect(refreshReadiness).toHaveBeenCalledTimes(1)
-
-    const unavailableRefresh = mock(async () => { throw new Error('readiness endpoint unavailable') })
-    await expect(performSearchReindex('bakin_assets', unavailableRefresh)).rejects.toThrow(
-      'Reindex started, but Search readiness could not be refreshed: readiness endpoint unavailable',
-    )
+    expect(await startSearchReindex('bakin_assets')).toEqual({ operationId: 'op-1', bootId: 'boot-1' })
+    await startSearchReindex()
+    expect(calls).toEqual(['POST /api/reindex?table=bakin_assets', 'POST /api/reindex'])
   })
 
-  it('does not apply the short read deadline while the server is still rebuilding', async () => {
-    const refreshReadiness = mock(async () => {})
-    globalThis.fetch = mock(async () => await new Promise<Response>((resolve) => {
-      setTimeout(() => resolve(new Response(JSON.stringify({ ok: true }), {
-        status: 202,
-        headers: { 'content-type': 'application/json' },
-      })), 30)
-    })) as unknown as typeof fetch
-
-    await performSearchReindex('bakin_assets', refreshReadiness, {
-      responseBodyMs: 5,
-      operationMs: 100,
-    })
-    expect(refreshReadiness).toHaveBeenCalledTimes(1)
+  it('reads a settled reindex: converged, unconverged tables, or a failure', () => {
+    const view = (fields: Partial<OperationView>) => ({ status: 'succeeded', ...fields }) as OperationView
+    expect(interpretSearchReindex('all', view({}))).toEqual({ ok: true, message: 'Reindex finished for all Search indexes.' })
+    expect(interpretSearchReindex('bakin_assets', view({
+      status: 'failed',
+      outcome: { code: 'tables_parked' },
+      result: { httpStatus: 200, body: { ok: false, errors: 1, parked: 2, total: 0, tables: [] } },
+    }))).toEqual({ ok: false, message: 'Reindex for bakin_assets did not converge (1 failed, 2 parked). The current indexes keep serving; parked work resumes automatically.' })
+    expect(interpretSearchReindex('all', view({ status: 'failed', outcome: { code: 'unexpected', message: 'engine unreachable' } })))
+      .toEqual({ ok: false, message: 'Reindex failed: engine unreachable' })
   })
 
-  it('reports an unknown outcome when a long-running mutation never responds', async () => {
-    const refreshReadiness = mock(async () => {})
-    globalThis.fetch = mock(async () => await new Promise<Response>(() => {})) as unknown as typeof fetch
-
-    const error = await captureError(performSearchReindex('bakin_assets', refreshReadiness, {
-      responseBodyMs: 100,
-      operationMs: 10,
-    }))
-
-    expect(error).toBeInstanceOf(SystemMutationOutcomeUnknownError)
-    expect(error.message).toContain('Search reindex is taking longer than expected')
-    expect(refreshReadiness).not.toHaveBeenCalled()
-  })
-
-  it('times out a hung mutation result body and rejects malformed success bodies', async () => {
-    const refreshReadiness = mock(async () => {})
-    globalThis.fetch = mock(async () => ({
-      ok: true,
-      status: 200,
-      json: () => new Promise<never>(() => {}),
-    }) as unknown as Response) as unknown as typeof fetch
-
-    const unreadableConfirmation = await captureError(performSearchReindex('bakin_assets', refreshReadiness, {
-      responseBodyMs: 10,
-      operationMs: 100,
-    }))
-    expect(unreadableConfirmation).toBeInstanceOf(SystemMutationOutcomeUnknownError)
-    expect(unreadableConfirmation.message).toContain('could not read its confirmation')
-    expect(refreshReadiness).not.toHaveBeenCalled()
-
-    globalThis.fetch = mock(async () => new Response('not-json', { status: 200 })) as unknown as typeof fetch
-    const invalidSearchConfirmation = await captureError(performSearchReindex('bakin_assets', refreshReadiness))
-    expect(invalidSearchConfirmation).toBeInstanceOf(SystemMutationOutcomeUnknownError)
-    expect(invalidSearchConfirmation.message).toContain('could not confirm the result')
-
-    // A plugin upgrade's success body that cannot be read honestly is unknown.
+  it('treats an unreadable plugin upgrade success body as an unknown outcome', async () => {
     const invalidPluginConfirmation = await captureError(Promise.resolve().then(() => interpretPluginUpgrade('notes', { httpStatus: 200, body: 'not-json' })))
     expect(invalidPluginConfirmation).toBeInstanceOf(SystemMutationOutcomeUnknownError)
     expect(invalidPluginConfirmation.message).toContain('could not confirm the result')

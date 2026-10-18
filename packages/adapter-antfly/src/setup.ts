@@ -44,6 +44,6 @@ export function createAntflySearchSetup(
       check: () => isLocalDefaultUrl(settings.url) ? checkInferenceModels(models) : Promise.resolve({ name: 'models', status: 'ok', message: 'Search models are managed at the configured external endpoint.' }),
       install: (opts) => isLocalDefaultUrl(settings.url) ? installInferenceModels(opts, logger, models) : external(opts),
     },
-    resetEngineData: () => resetAntflyEngineData(logger, settings),
+    resetEngineData: (op) => resetAntflyEngineData(op, logger, settings),
   }
 }

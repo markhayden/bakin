@@ -3,7 +3,8 @@
  * semantic search queries, index stats, and reindexing. Relocated verbatim
  * from cli/bakin.ts (B5.3 command-module split).
  */
-import { apiGet, apiPost } from '../http'
+import { apiGet, apiPost, apiPostJson } from '../http'
+import { exitOnFailure, operationBody, startAndFollow } from '../operation-command'
 import { confirmPrompt, exitUsage } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 import type {
@@ -159,25 +160,21 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean; force?: 
     // Pre-flight is advisory only — never block a reindex on it.
   }
 
-  let url = '/api/reindex'
-  const params: string[] = ['async=1']
+  const params: string[] = []
   if (options.table) params.push(`table=${encodeURIComponent(options.table)}`)
-  if (options.rebuild) params.push('rebuild=true')
   // Default is REPAIR (resume parked, regenerate engine-missing, skip
   // healthy); --force mints fresh generations for every targeted table.
   if (options.force) params.push('force=1')
-  url += `?${params.join('&')}`
+  const url = `/api/reindex${params.length ? `?${params.join('&')}` : ''}`
 
   const target = options.table || 'all content'
   if (!process.stdout.isTTY) {
     console.log(`Reindexing ${target} into search${options.rebuild ? ' (rebuild indexes)' : ''}...`)
   }
-  // 202-job flow: the server no longer holds the socket across a
-  // multi-minute blue/green pass (the old sync request had NO timeout and
-  // NO progress — a long rebuild was indistinguishable from a hang). We
-  // poll /api/reindex/status and narrate elapsed time. An older
-  // not-yet-restarted server ignores ?async=1 and answers 200 with the
-  // final result directly — handle both shapes.
+  // A reindex is an operation (#895): its tables show as live items, an
+  // identical running reindex is attached to, and anything holding the
+  // search engine is waited for visibly. Not cancellable — Ctrl-C stops
+  // watching and the pass keeps running.
   type ReindexResult = ReindexResultData & {
     ok: boolean
     total?: number
@@ -185,42 +182,16 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean; force?: 
     parked?: number
     tables: Array<import('../../core/search-registry-core').ReindexTableOutcome>
   }
-  const kicked = await apiPost(url) as { job?: { id: string; state: string } } & Partial<ReindexResult>
-  let result: ReindexResult
-  if (kicked.job) {
-    const startedAt = Date.now()
-    let lastNote = 0
-    for (;;) {
-      await new Promise((resolve) => setTimeout(resolve, 2_000))
-      const { job } = await apiGet('/api/reindex/status') as {
-        job: { state: 'running' | 'done' | 'failed'; error?: string } & Partial<ReindexResult>
-      }
-      if (job.state === 'failed') {
-        console.error(`Reindex failed: ${job.error ?? 'unknown error'}`)
-        process.exit(1)
-      }
-      if (job.state === 'done') {
-        result = {
-          ok: job.ok ?? false,
-          total: job.total,
-          errors: job.errors ?? 0,
-          parked: job.parked,
-          tables: job.tables ?? [],
-        }
-        break
-      }
-      const elapsed = Math.round((Date.now() - startedAt) / 1000)
-      // A quiet line every ~15s so a long pass reads as progress, not a hang.
-      if (elapsed - lastNote >= 15) {
-        lastNote = elapsed
-        console.log(`  still rebuilding (${elapsed}s) — queries keep answering from the current tables`)
-      }
-    }
-  } else {
-    result = kicked as ReindexResult
+  const operation = await startAndFollow(() => apiPost(url), { json: false })
+  const body = operationBody(operation)
+  if (!Array.isArray(body.tables)) {
+    console.error(`Reindex failed: ${typeof body.error === 'string' ? body.error : 'no result'}`)
+    process.exit(operation.exitCode || 1)
   }
+  const result = body as unknown as ReindexResult
   if (process.stdout.isTTY) {
     await printReindexTui(result, { target, rebuild: options.rebuild === true })
+    exitOnFailure(operation)
     return
   }
   if (result.tables?.length) {
@@ -237,6 +208,7 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean; force?: 
   if ((result.parked ?? 0) > 0) {
     console.log(`WARNING: ${result.parked} table(s) parked mid-migration — queries keep answering from the old table; run \`bakin doctor\` to resume.`)
   }
+  exitOnFailure(operation)
 }
 
 /**
@@ -256,40 +228,21 @@ async function cmdSearchReset(options: { yes: boolean }): Promise<void> {
       return
     }
   }
-  console.log('Resetting the search engine (stop → wipe derived data → clean start → repair reindex)...')
-  const result = await apiPost('/api/search/reset') as {
-    ok: boolean
-    message: string
-    job: { id: string; state: string } | null
-  }
-  if (!result.ok) {
-    console.error(`Reset failed: ${result.message}`)
+  // One operation (#895): stop → wipe → clean start → repair reindex as
+  // stages. A refusal (search disabled, no reset support) answers at once.
+  const started = await apiPostJson('/api/search/reset')
+  if (!started.ok) {
+    console.error(`Reset failed: ${typeof started.data.message === 'string' ? started.data.message : String(started.data.error ?? 'unknown error')}`)
     process.exit(1)
   }
-  console.log(result.message)
-  console.log('Rebuild is running in the background — following it now (safe to Ctrl-C; `bakin search:stats` shows progress).')
-  const startedAt = Date.now()
-  let lastNote = 0
-  for (;;) {
-    await new Promise((resolve) => setTimeout(resolve, 2_000))
-    const { job } = await apiGet('/api/reindex/status') as {
-      job: { state: 'running' | 'done' | 'failed'; error?: string; total?: number; errors?: number; parked?: number }
-    }
-    if (job.state === 'failed') {
-      console.error(`Rebuild failed: ${job.error ?? 'unknown error'}`)
-      process.exit(1)
-    }
-    if (job.state === 'done') {
-      console.log(`Done. ${job.total ?? 0} documents reindexed${(job.errors ?? 0) > 0 ? `, ${job.errors} table errors` : ''}${(job.parked ?? 0) > 0 ? `, ${job.parked} parked (doctor resumes them)` : ''}.`)
-      if ((job.errors ?? 0) > 0 || (job.parked ?? 0) > 0) process.exit(1)
-      return
-    }
-    const elapsed = Math.round((Date.now() - startedAt) / 1000)
-    if (elapsed - lastNote >= 15) {
-      lastNote = elapsed
-      console.log(`  still rebuilding (${elapsed}s)...`)
-    }
+  const operation = await startAndFollow(async () => started.data, { json: false })
+  const body = operationBody(operation)
+  const reindex = body.reindex as { total?: number; errors?: number; parked?: number } | null | undefined
+  if (typeof body.message === 'string') console.log(body.message)
+  if (reindex) {
+    console.log(`Done. ${reindex.total ?? 0} documents reindexed${(reindex.errors ?? 0) > 0 ? `, ${reindex.errors} table errors` : ''}${(reindex.parked ?? 0) > 0 ? `, ${reindex.parked} parked (doctor resumes them)` : ''}.`)
   }
+  exitOnFailure(operation)
 }
 
 export async function run(args: string[]): Promise<void> {

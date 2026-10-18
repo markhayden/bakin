@@ -1,7 +1,7 @@
 import { spawn } from 'child_process'
 import { chmodSync, existsSync, mkdirSync, renameSync, rmdirSync, rmSync } from 'fs'
 import { dirname, join } from 'path'
-import type { OperationPlan } from '@makinbakin/sdk/types'
+import type { OperationContext, OperationPlan } from '@makinbakin/sdk/types'
 import type { SearchAdapterSetupOptions, SearchAdapterSetupCheckResult } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import { DownloadChecksumError, downloadToFile, extractTarball, opTransfer } from '@bakin/core/net/download'
@@ -115,19 +115,24 @@ const ENGINE_DEAD_AFTER_START = (budgetMs: number) =>
  * someone else (dev-rig lesson, 2026-07-11 hijack incident).
  */
 export async function resetAntflyEngineData(
+  op: OperationContext,
   logger: AdapterLogger = noopLogger,
   settings: AntflySettings = DEFAULT_SETTINGS,
   io: ServiceIo = defaultServiceIo(),
 ): Promise<{ name: string; status: 'installed' | 'failed'; message: string; durationMs: number; error?: unknown }> {
+  if (!op.holds('search-engine')) throw new Error('resetAntflyEngineData requires search-engine (run it inside an operation that declares it)')
   const start = Date.now()
   try {
     return await withServiceOperation(settings, io, {}, async () => {
       const dataDir = servicePaths().dataDir
+      op.stage('stop')
       await stopService(settings, io)
+      op.stage('wipe')
       rmSync(dataDir, { recursive: true, force: true })
+      op.stage('boot')
       await startService(settings, io)
       if (!await waitForEngineReady(settings, 30_000)) throw new Error(ENGINE_DEAD_AFTER_START(30_000))
-      return { name: 'reset', status: 'installed', message: 'Engine reset clean and responding. Run a repair reindex to regenerate search tables from source.', durationMs: Date.now() - start }
+      return { name: 'reset', status: 'installed', message: 'Engine reset clean and responding.', durationMs: Date.now() - start }
     })
   } catch (err) {
     logger.error('Engine reset failed', err)
