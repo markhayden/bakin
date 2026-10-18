@@ -217,6 +217,13 @@ export async function runClaimedFire(
     }
   }
 
+  // Persist the outcome bookkeeping NOW, while `meta` is still the record
+  // read after the last await: once task creation awaits, only this fire's
+  // own fields may be written (writeLatest), so an operator's Resume or edit
+  // in between survives.
+  upsertJob(meta)
+  const consumedSchedule = meta.schedule
+
   // Create the task. Label by the run's logical OCCURRENCE time, not wall-clock
   // creation time — a catch-up task for a missed run must read as the day it was
   // supposed to fire, not the (later) day it was created (see SPEC FR3). The
@@ -333,11 +340,11 @@ export async function runClaimedFire(
   attachCronTask(jobId, runId, taskId)
   writeLatest(jobId, (latest) => {
     latest.lastTaskId = taskId
-    latest.consecutiveFailures = meta.consecutiveFailures // recordSuccess above
     // A one-shot's single occurrence is now consumed (even a blocked catch-up
     // materialized a task) — auto-disable + stamp completedAt so the job reads
     // "completed" instead of pretending a next run exists. Run history stays.
-    if (meta.schedule?.kind === 'at') {
+    // Only if it is still THAT one-shot: a job rescheduled mid-fire stays live.
+    if (consumedSchedule?.kind === 'at' && latest.schedule?.kind === 'at' && latest.schedule.expr === consumedSchedule.expr) {
       latest.enabled = false
       latest.completedAt = new Date(opts.firedAtMs ?? Date.now()).toISOString()
     }

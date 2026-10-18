@@ -539,6 +539,48 @@ describe('unrunnable Bakin schedules pause instead of firing (spec D5)', () => {
     expect(job.lastTaskId).toBe(createdTasks.at(-1))
   })
 
+  it('a failed creation after a recorded success counts from the reset, not the stale failures', async () => {
+    upsertJob(makeMeta({ lastTaskId: 'task-done', consecutiveFailures: 2, maxFailures: 3 }))
+    emptyBoard.columns.done.push({ id: 'task-done' })
+    mockCreateTask.mockImplementationOnce(async () => { throw new Error('create failed') })
+
+    await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-create-fails', timestamp: '2026-06-08T07:00:00Z' })
+
+    expect(getJob('release-notes')).toMatchObject({ consecutiveFailures: 1 })
+    expect(getJob('release-notes')!.paused).toBeFalsy()
+  })
+
+  it('an operator Resume during task creation keeps its reset failure count', async () => {
+    upsertJob(makeMeta({ consecutiveFailures: 1 }))
+    mockCreateTask.mockImplementationOnce(async (opts?: unknown) => {
+      upsertJob({ ...getJob('release-notes')!, consecutiveFailures: 0 })
+      const o = (opts ?? {}) as Record<string, unknown>
+      createdTasks.push(o.id as string)
+      return { id: o.id as string, workflowId: undefined }
+    })
+
+    await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-resume-mid', timestamp: '2026-06-08T07:00:00Z' })
+
+    expect(getJob('release-notes')!.consecutiveFailures).toBe(0)
+  })
+
+  it('a one-shot rescheduled during task creation stays live', async () => {
+    upsertJob(makeMeta({ schedule: { kind: 'at', expr: '2026-06-08T07:00:00Z' }, enabled: true }))
+    mockCreateTask.mockImplementationOnce(async (opts?: unknown) => {
+      upsertJob({ ...getJob('release-notes')!, schedule: { kind: 'cron', expr: '0 7 * * *' } })
+      const o = (opts ?? {}) as Record<string, unknown>
+      createdTasks.push(o.id as string)
+      return { id: o.id as string, workflowId: undefined }
+    })
+
+    await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-resched', timestamp: '2026-06-08T07:00:00Z' })
+
+    const job = getJob('release-notes')!
+    expect(job.schedule).toEqual({ kind: 'cron', expr: '0 7 * * *' })
+    expect(job.enabled).toBe(true)
+    expect(job.completedAt).toBeUndefined()
+  })
+
   it('a runnable prompt still fires normally', async () => {
     upsertJob(makeMeta())
     await fireScheduledRunFromPayload({ jobId: 'release-notes', runId: 'run-ok', timestamp: '2026-06-08T07:00:00Z' })
