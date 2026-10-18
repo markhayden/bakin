@@ -45,9 +45,10 @@ release workflow. Nothing local creates or pushes tags.
 with the same version. The existing tag is reused (the workflow file comes
 from the dispatched ref, the code from the tag), so the tag never has to
 move. Never delete and recreate a tag a GitHub release points at — it
-spawns duplicate release objects. A failed post-publish smoke (the npm
-propagation race on `Smoke SDK install`) is `gh run rerun <id> --failed`
-once `npm view @makinbakin/sdk@<version> --prefer-online` resolves.
+spawns duplicate release objects. The npm wait allows 10 min (raised from
+120 s after the propagation race failed `Smoke SDK install` four times at
+~3 min of lag); if it still times out, `gh run rerun <id> --failed` once
+`npm view @makinbakin/sdk@<version> --prefer-online` resolves.
 
 `scripts/release.ts` holds the shared tag/changelog helpers the prep script
 and its tests use; it is not a separate tagging command.

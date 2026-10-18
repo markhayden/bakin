@@ -598,7 +598,7 @@ jobs:
   smoke-sdk:
     name: Smoke SDK install
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25  # the npm wait alone may use 10 min
     needs:
       - gate
       - publish

@@ -48,7 +48,9 @@ function realSleep(ms: number): Promise<void> {
 export function parseArgs(argv: string[]): WaitOptions {
   let pkg = ''
   let version = ''
-  let timeoutSeconds = 120
+  // npm's read-after-write lag has reached ~3 min (rc.29/38/40/41 smoke
+  // flakes at the old 120 s); 10 min keeps a real outage loud without racing it.
+  let timeoutSeconds = 600
   let baseDelaySeconds = 2
   let maxDelaySeconds = 30
 
