@@ -43,6 +43,19 @@ function sourceLabel(source: string | undefined, scope: string | undefined): str
   return scope === 'project' ? 'project extension' : 'extensions dir'
 }
 
+/** Discovery reads the package manager's view; a hung resolve must never hang the caller (#895 § synchronous routes). */
+export const EXTENSION_DISCOVERY_DEADLINE_MS = 15_000
+
+/** Resolves `work`, or rejects once `deadlineMs` passes — the timer never keeps the process alive. */
+function withDeadline<T>(work: Promise<T>, deadlineMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Pi extension discovery did not finish within ${Math.round(deadlineMs / 1000)}s — try again; if it repeats, check the Pi packages it resolves.`)), deadlineMs)
+    timer.unref?.()
+  })
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer))
+}
+
 /**
  * The surface is created with the Bakin-side adapter settings getter — the
  * SAME policy source the messaging loader reads, so list() status can never
@@ -50,7 +63,9 @@ function sourceLabel(source: string | undefined, scope: string | undefined): str
  */
 export function createExtensionsSurface(
   getSettings: () => Record<string, unknown> | undefined,
+  opts: { discoveryDeadlineMs?: number } = {},
 ): RuntimeExtensionsAccess {
+  const deadlineMs = opts.discoveryDeadlineMs ?? EXTENSION_DISCOVERY_DEADLINE_MS
   return {
     async list(): Promise<RuntimeExtensionInfo[]> {
       const policy = extensionsPolicy(getSettings())
@@ -60,7 +75,7 @@ export function createExtensionsSurface(
       // User-scope discovery (agentDir as cwd) — byte-identical to the turn
       // gate's basis (approvedExtensionPaths in messaging.ts), so list status
       // and what actually loads can never disagree.
-      const resources = await resolveExtensionResources(getPiAgentDir(), getPiAgentDir())
+      const resources = await withDeadline(resolveExtensionResources(getPiAgentDir(), getPiAgentDir()), deadlineMs)
       return resources.map((resource) => ({
         id: resource.path, // identity == the real file the runtime would import
         label: labelFor(resource.path, resource.source),

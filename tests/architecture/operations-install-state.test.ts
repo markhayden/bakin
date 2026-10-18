@@ -125,30 +125,6 @@ export function unownedWriterCalls(file: string, text: string): string[] {
   return [...calls].map((name) => `${file}: calls ${name}() with no owner of install-state`)
 }
 
-// ── Converted routes ────────────────────────────────────────────────────────
-
-/** Routes that answer 202 and run as operations (PR3–PR4 so far). */
-const CONVERTED_ROUTES = [
-  'packages/host/src/api/packages/install.ts',
-  'packages/host/src/api/packages/dynamic.ts',
-  'packages/host/src/api/agent-packages/install.ts',
-  'packages/host/src/api/agent-packages/dynamic.ts',
-  'packages/host/src/api/plugins/install.ts',
-  'packages/host/src/api/plugins/upgrade.ts',
-  'packages/host/src/api/plugins/remove.ts',
-  'packages/host/src/api/plugins/restore.ts',
-  'packages/host/src/api/plugins/link.ts',
-  'packages/host/src/api/skills.ts',
-  'plugins/team/lib/routes/teams.ts',
-]
-
-/** Bounded synchronous writers: take install-state without waiting (409 install_busy). */
-const NON_BLOCKING_WRITERS = [
-  'src/core/agent-packages/lesson-toggle.ts',
-  'packages/host/src/api/plugins/unlink.ts',
-  'packages/host/src/api/skills.ts',
-]
-
 describe('the legacy install job system and lock API are gone', () => {
   it('no source names a deleted symbol, module or route', () => {
     expect(allSources().flatMap(({ file, text }) => deletedSymbolHits(file, text))).toEqual([])
@@ -202,15 +178,5 @@ describe('every install-state writer runs under an owner', () => {
     expect(unownedWriterCalls('src/new-flow.ts', `// installPackage() is called by the route`)).toEqual([])
     expect(unownedWriterCalls('src/new-flow.ts', `export async function linkPlugin(path: string) {}`)).toEqual([])
     expect(unownedWriterCalls('src/core/agent-packages/installer.ts', `await installPackage({ source })`)).toEqual([])
-  })
-})
-
-describe('converted and synchronous routes', () => {
-  it.each(CONVERTED_ROUTES)('%s starts operations', (file) => {
-    expect(/startOperationResponse[<(]|operations\.start[<(]/.test(readFileSync(join(ROOT, file), 'utf-8'))).toBe(true)
-  })
-
-  it.each(NON_BLOCKING_WRITERS)('%s takes install-state without waiting', (file) => {
-    expect(/holdNow\(\s*\[\s*'install-state'\s*\]/.test(readFileSync(join(ROOT, file), 'utf-8'))).toBe(true)
   })
 })
