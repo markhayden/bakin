@@ -28,8 +28,14 @@ import { readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { createInterface } from 'readline/promises'
 import { getContentDir } from '../packages/core/src/content-dir'
+import { liveServerBaseUrl } from '../src/core/server-lock'
 
-const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
+// BAKIN_URL, else THIS home's live server.lock — never a guess at :3737 (these
+// scripts mutate tasks/workflows; another home's server must not receive them).
+const BAKIN_URL = liveServerBaseUrl() ?? (() => {
+  console.error(`No Bakin server is running for ${getContentDir()} — start it or set BAKIN_URL.`)
+  process.exit(1)
+})()
 const APPROVALS_DIR = join(getContentDir(), 'workflows', 'approvals')
 const WORKFLOW_ID = 'image-multi-select'
 const MAP_STEP_ID = 'generate-variants'

@@ -5,7 +5,7 @@
  * setup. Relocated verbatim from cli/bakin.ts (B5.3 command-module split);
  * the src/core/cli dependency stays a dynamic import (mutual-lazy contract).
  */
-import { liveServerBaseUrl } from '../../core/server-lock'
+import { liveServerBaseUrl, readLiveServerLock } from '../../core/server-lock'
 import { jsonObject } from '../http'
 import {
   printCommandFailureTui,
@@ -81,7 +81,7 @@ async function waitForServerVersion(timeoutSeconds = 15): Promise<{ ok: true; ve
     await new Promise(r => setTimeout(r, 1000))
     // Re-resolve each poll: the server just started writes its own lock, and
     // another home's server on a default port must never answer for this one.
-    const baseUrl = liveServerBaseUrl()
+    const baseUrl = thisHomeServerUrl()
     if (!baseUrl) continue
     try {
       const res = await fetch(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(2000) })
@@ -164,8 +164,19 @@ WantedBy=default.target
 `
 }
 
-function serverProcessPattern(): string {
-  return 'tsx.*server\\.ts|bun.*server\\.ts.*serve|bakin.*serve'
+/**
+ * Local lifecycle verbs act on THIS home's server only: its live
+ * `server.lock` names the pid and port. Never a machine-wide process match
+ * (that SIGTERMed every home's server) and never `BAKIN_URL` (a remote
+ * target can't verify a local start/stop).
+ */
+function thisHomeServerPid(): number | null {
+  const lock = readLiveServerLock()
+  return lock && lock.pid !== process.pid ? lock.pid : null
+}
+
+function thisHomeServerUrl(): string | null {
+  return liveServerBaseUrl({})
 }
 
 async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): Promise<void> {
@@ -493,22 +504,19 @@ async function cmdReboot(): Promise<void> {
 
   // Kill any running Bakin server processes
   if (!isTTY) console.log('[..] Stopping Bakin server...')
-  try {
-    const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
-    if (pids) {
-      let signaled = 0
-      for (const pid of pids.split('\n')) {
-        if (pid && pid !== String(process.pid)) {
-          process.kill(Number(pid), 'SIGTERM')
-          signaled++
-        }
-      }
-      details.push(`Sent SIGTERM to ${signaled} process(es).`)
+  const pid = thisHomeServerPid()
+  if (pid) {
+    try {
+      process.kill(pid, 'SIGTERM')
+      details.push(`Sent SIGTERM to pid ${pid}.`)
       if (!isTTY) console.log('[OK] Sent SIGTERM to Bakin server')
       if (!isTTY) console.log('[..] Waiting for shutdown...')
       await new Promise(r => setTimeout(r, 2000))
+    } catch {
+      details.push('No running Bakin process found before restart.')
+      if (!isTTY) console.log('[..] No running Bakin process found')
     }
-  } catch {
+  } else {
     details.push('No running Bakin process found before restart.')
     if (!isTTY) console.log('[..] No running Bakin process found')
   }
@@ -761,8 +769,6 @@ async function cmdLogs(options: LogsOptions = {}): Promise<void> {
 }
 
 async function cmdStop(): Promise<void> {
-  const { execFileSync } = await import('child_process')
-
   const printStopResult = async (result: Record<string, unknown>, detail?: string): Promise<void> => {
     // Antfly dies ONLY after Bakin is down/absent: killing it while a Bakin
     // server still runs would trip that server's takeover supervision, which
@@ -815,22 +821,18 @@ async function cmdStop(): Promise<void> {
 
   if (!process.stdout.isTTY) console.log('[..] Stopping Bakin server...')
   try {
-    const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
-    if (pids) {
+    const pid = thisHomeServerPid()
+    if (pid) {
       const signaled: string[] = []
-      for (const pid of pids.split('\n')) {
-        if (pid && pid !== String(process.pid)) {
-          process.kill(Number(pid), 'SIGTERM')
-          signaled.push(pid)
-        }
-      }
+      process.kill(pid, 'SIGTERM')
+      signaled.push(String(pid))
       if (!process.stdout.isTTY) console.log('[OK] Sent SIGTERM to Bakin server')
 
       // Wait and verify it's actually down
       for (let i = 0; i < 10; i++) {
         await new Promise(r => setTimeout(r, 500))
         // No live server for this home (its lock is gone) or no answer = down.
-        const baseUrl = liveServerBaseUrl()
+        const baseUrl = thisHomeServerUrl()
         try {
           if (!baseUrl) throw new Error('no live server for this home')
           await fetch(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(1000) })
