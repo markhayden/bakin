@@ -76,7 +76,7 @@ import { materializeArtifact } from '../../../src/core/whiskit/consumer-install'
 import { addPlugin, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { parseManifestPermissions } from '../../../packages/core/src/plugins/permissions'
 import { httpIndexResolver } from '../../../src/core/whiskit/resolver'
-import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
+import { computeUpgradeAvailable, readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { isArtifactInstall, runChecks, upgradePlugin as upgradePluginUnowned } from '../../../src/core/plugins/upgrade'
 import { owned } from '../../helpers/owning'
 
@@ -184,6 +184,28 @@ describe('artifact-lane check (runChecks)', () => {
     const entry = readPluginLockfile().plugins['messaging']
     expect(entry.remoteArtifactVersion).toBe('0.2.0')
     expect(entry.lastChecked).toBeDefined()
+  })
+
+  it('a definitive "nothing runs on this Bakin" replaces an earlier positive check (never a stale upgrade marker)', async () => {
+    await publishVersion('0.1.0')
+    await installVersion('0.1.0')
+    await publishVersion('0.2.0')
+    expect((await runChecks(['messaging']))[0].upgradeAvailable).toBe(true)
+
+    // Every published release now targets another host contract family.
+    const indexPath = join(releaseDir, INDEX_FILENAME)
+    const index = readArtifactsIndex(indexPath)
+    for (const version of Object.values(index.plugins.messaging!.versions)) {
+      for (const artifact of Object.values(version.platforms)) artifact.externalsContract = 'react20-some-other-family-v1'
+    }
+    writeArtifactsIndex(indexPath, index)
+
+    const [result] = await runChecks(['messaging'])
+    expect(result).toMatchObject({ upgradeAvailable: false, notice: expect.stringContaining('runs on this Bakin yet') })
+    expect(result.error).toBeUndefined()
+    const entry = readPluginLockfile().plugins['messaging']
+    expect(entry.remoteArtifactVersion).toBe('0.1.0')
+    expect(computeUpgradeAvailable(entry)).toBe(false)
   })
 })
 

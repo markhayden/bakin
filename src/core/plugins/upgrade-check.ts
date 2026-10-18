@@ -37,6 +37,8 @@ export interface UpgradeAvailability {
    * "source changed" (see source-tree-sha.ts).
    */
   sourceTreeShaAlgoMigration?: boolean
+  /** A definitive, persisted answer worth saying (e.g. no release runs on this Bakin yet) — not a failure. */
+  notice?: string
   /** Set when the check itself failed (e.g. network error, missing source). */
   error?: string
 }
@@ -64,7 +66,16 @@ async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvai
         // "Available" means a release THIS host can run — a newer publish
         // for another Bakin is not an upgrade it can take.
         if (!compatible) {
-          return { id, upgradeAvailable: false, lastChecked, error: `no published release of ${pluginId} runs on this Bakin yet (newest is ${latest})` }
+          // A definitive answer, so it is PERSISTED (an `error` would keep
+          // a stale "upgrade available" from an earlier check).
+          return {
+            id,
+            upgradeAvailable: false,
+            lastChecked,
+            remoteArtifactVersion: entry.version,
+            remoteArtifactRebuild: false,
+            notice: `no published release of ${pluginId} runs on this Bakin yet (newest is ${latest})`,
+          }
         }
         // Same predicate as the upgrade itself, so "available" never names
         // a release the upgrade would refuse (a published rollback below
