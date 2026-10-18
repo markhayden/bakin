@@ -423,6 +423,40 @@ describe('incident ack projection (health trust overhaul, 2026-07-24)', () => {
   })
 })
 
+describe('forged ack records (#898)', () => {
+  it('a hand-written permanent ack on an action_required incident suppresses nothing and stays named', async () => {
+    rmSync(join(testDir, 'health'), { recursive: true, force: true })
+    const def = register(async () => healthObserved([
+      healthError({
+        key: 'breach', summary: 'Cap breached.',
+        incident: {
+          key: 'breach', title: 'Spending cap reached', impact: 'Dispatch defers.',
+          disposition: 'action_required',
+          resources: [{ kind: 'budget_rule', id: 'global', label: 'global' }],
+          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+        },
+      }),
+    ]), 'forged-probe', 'Forged probe')
+    await apply(def, '2026-07-24T12:00:00.000Z')
+    const incident = getHealthReport('2026-07-24T12:00:10.000Z').incidents[0]!
+    mkdirSync(join(testDir, 'health'), { recursive: true })
+    writeFileSync(join(testDir, 'health', 'acks.json'), JSON.stringify({
+      [incident.id]: {
+        incidentId: incident.id, mode: 'ack', at: '2026-07-24T12:00:05.000Z',
+        tierAtAck: 'action_required', resourceFingerprint: 'budget_rule:global',
+      },
+    }))
+
+    const report = getHealthReport('2026-07-24T12:00:20.000Z')
+    expect(report.incidents[0]!.ackState).toBeUndefined()
+    expect(report.overallStatus).toBe('needs_attention')
+    // Not pruned while its incident is live: the Health acks check names it.
+    const { inspectAckStore } = require('../../src/core/health-acks') as typeof import('../../src/core/health-acks')
+    expect(inspectAckStore(Date.parse('2026-07-24T12:00:20.000Z')).invalid.map((entry) => entry.key)).toEqual([incident.id])
+    rmSync(join(testDir, 'health'), { recursive: true, force: true })
+  })
+})
+
 describe('vanished-incident ack pruning (review finding)', () => {
   const { acknowledgeHealthIncident } = require('../../src/core/doctor-report-cache') as typeof import('../../src/core/doctor-report-cache')
   const { readAckRecords } = require('../../src/core/health-acks') as typeof import('../../src/core/health-acks')

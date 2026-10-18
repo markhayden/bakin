@@ -17,7 +17,7 @@ import { getLastReport, runDiagnostics, runTargetedDiagnostics } from '../../src
 import { CHANNEL_HEALTH_CHECK_IDS, subscribeChannelReadiness } from '../../src/core/delivery/readiness'
 import { wireChannelHealthReruns } from './lib/channel-readiness-reruns'
 import { acknowledgeHealthIncident } from '../../src/core/doctor-report-cache'
-import { HealthAckNotFoundError, HealthAckStoreError, readAckRecords } from '../../src/core/health-acks'
+import { HealthAckNotFoundError, HealthAckStoreError, inspectAckStore } from '../../src/core/health-acks'
 import { createLogger } from '../../src/core/logger'
 import { getAgentUsageSnapshot, getAllAgentUsage } from '../../src/core/agent-usage'
 import {
@@ -80,6 +80,7 @@ import { checkPluginAssets, installPluginAssetsRepair } from './lib/system-check
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
 import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
 import { checkSpendPolicyAvailable } from './lib/system-checks/spend-policy'
+import { checkHealthAcks } from './lib/system-checks/health-acks'
 import {
   agentEffortResponseSchema,
   agentUsageSnapshotResponseSchema,
@@ -770,16 +771,19 @@ const routes = [
     method: 'GET',
     activityClass: 'routine',
     summary: 'List Health incident ack/snooze records',
-    description: 'Current acknowledge/snooze records — what is quiet and why. Suppressed is never hidden.',
+    description: 'Current acknowledge/snooze records — what is quiet and why. Suppressed is never hidden. `invalid` lists records that broke the acknowledge rules and suppress nothing.',
     responses: { 200: passthrough },
     handler: async () => {
       try {
-        return Response.json({ records: Object.values(readAckRecords()) })
+        const { records, invalid } = inspectAckStore()
+        // Records that broke the write rules suppress nothing; listed so
+        // they are never silent (#898).
+        return Response.json({ records: Object.values(records), invalid })
       } catch (err) {
         if (err instanceof HealthAckStoreError) {
           // Fail open toward visibility, matching the projection: an
           // unreadable store reads as no records, with the error surfaced.
-          return Response.json({ records: [], error: err.message })
+          return Response.json({ records: [], invalid: [], error: err.message })
         }
         throw err
       }
@@ -938,6 +942,14 @@ const healthPlugin: BakinPlugin = definePlugin({
       group: systemGroup,
       maxAgeMs: 3_600_000,
       run: () => checkContentDir(),
+    })
+    ctx.registerHealthCheck({
+      id: 'acks',
+      name: 'Health acknowledgements',
+      description: 'Names acknowledge/snooze records that break the acknowledge rules — those records suppress nothing.',
+      group: systemGroup,
+      maxAgeMs: 300_000,
+      run: () => checkHealthAcks(),
     })
     ctx.registerHealthCheck({
       id: 'media.sharp',

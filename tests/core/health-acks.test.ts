@@ -26,6 +26,8 @@ mock.module('../../src/core/logger', () => ({
 
 import {
   HealthAckStoreError,
+  inspectAckStore,
+  pruneAckRecords,
   readAckRecords,
   removeAckRecord,
   resolveAckState,
@@ -198,6 +200,64 @@ describe('review findings — re-fire hardening', () => {
     expect(resolveAckState({
       record: ackRecord({ mode: 'snooze', until: undefined }),
       effectiveDisposition: 'watch',
+      resourceFingerprint: 'agent:relay',
+      evidenceSha: 'sha-1',
+      nowMs: NOW,
+    })).toBeNull()
+  })
+})
+
+describe('forged records (#898) — the write rules apply on read', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const forged: Array<[string, Record<string, unknown>]> = [
+    ['a permanent ack on an action_required incident', { mode: 'ack', tierAtAck: 'action_required' }],
+    ['a snooze longer than 7 days', { mode: 'snooze', until: new Date(NOW + 8 * DAY).toISOString() }],
+    ['a snooze that ends before it starts', { mode: 'snooze', until: new Date(NOW - 2 * 60_000).toISOString() }],
+    ['a future-dated ack', { at: new Date(NOW + DAY).toISOString() }],
+    ['an unparseable at', { at: 'yesterday' }],
+    ['an action_required snooze without evidenceSha', { mode: 'snooze', tierAtAck: 'action_required', until: new Date(NOW + DAY).toISOString() }],
+  ]
+
+  function writeRaw(entries: Record<string, unknown>): void {
+    mkdirSync(join(testDir, 'health'), { recursive: true })
+    writeFileSync(acksPath, JSON.stringify(entries))
+  }
+
+  for (const [label, overrides] of forged) {
+    it(`${label} is ignored and named; valid acks beside it still hold`, () => {
+      const good = ackRecord({ incidentId: 'good' })
+      writeRaw({ good, bad: { ...ackRecord({ incidentId: 'bad' }), ...overrides } })
+      const store = inspectAckStore(NOW)
+      expect(Object.keys(store.records)).toEqual(['good'])
+      expect(store.invalid.map((entry) => entry.key)).toEqual(['bad'])
+      expect(store.invalid[0]!.reason.length).toBeGreaterThan(0)
+      // The same rules refuse the record on write.
+      expect(() => writeAckRecord({ ...ackRecord({ incidentId: 'bad' }), ...overrides } as HealthAckRecord, NOW))
+        .toThrow(HealthAckStoreError)
+    })
+  }
+
+  it('a record stored under another incident\'s key is ignored', () => {
+    writeRaw({ 'incident-a': ackRecord({ incidentId: 'incident-b' }) })
+    expect(inspectAckStore(NOW)).toEqual({
+      records: {},
+      invalid: [{ key: 'incident-a', reason: "keyed as 'incident-a' but names incident 'incident-b'" }],
+    })
+  })
+
+  it('writes and prunes keep invalid records in the file until cleared, so they stay visible', () => {
+    writeRaw({ bad: { ...ackRecord({ incidentId: 'bad' }), at: new Date(NOW + DAY).toISOString() } })
+    writeAckRecord(ackRecord({ incidentId: 'good' }), NOW)
+    pruneAckRecords(['good'])
+    expect(inspectAckStore(NOW).invalid.map((entry) => entry.key)).toEqual(['bad'])
+    expect(removeAckRecord('bad')).toBe(true)
+    expect(inspectAckStore(NOW).invalid).toEqual([])
+  })
+
+  it('an action_required snooze without evidenceSha never resolves as snoozed', () => {
+    expect(resolveAckState({
+      record: ackRecord({ mode: 'snooze', tierAtAck: 'action_required', until: new Date(NOW + DAY).toISOString() }),
+      effectiveDisposition: 'action_required',
       resourceFingerprint: 'agent:relay',
       evidenceSha: 'sha-1',
       nowMs: NOW,

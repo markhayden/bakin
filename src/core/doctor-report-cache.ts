@@ -13,8 +13,8 @@ import type { DetailedHealthCheckRun } from './doctor-checks'
 import {
   HealthAckNotFoundError,
   SNOOZE_MAX_MS,
+  inspectAckStore,
   pruneAckRecords,
-  readAckRecords,
   removeAckRecord,
   resolveAckState,
   resourceFingerprint,
@@ -366,36 +366,41 @@ function incidentEvidenceSha(incident: HealthIncident, observationsById: Map<str
 /**
  * Join the user's ack/snooze records onto projected incidents. Invalid
  * records (expired snoozes, escalated acks, changed evidence) are pruned
- * lazily. A corrupt store FAILS OPEN toward visibility: acks are ignored,
- * everything re-surfaces, a warning logs — the user's attention is the
- * safe default for a health system.
+ * lazily. A record that fails the write rules (#898: hand-written, future
+ * dated, an over-long or evidence-less snooze) suppresses nothing — the
+ * `health-acks` check names it. A corrupt store FAILS OPEN toward
+ * visibility: acks are ignored, everything re-surfaces, a warning logs —
+ * the user's attention is the safe default for a health system.
  */
 function applyIncidentAckStates(
   incidents: HealthIncident[],
   observations: HealthObservation[],
   generatedAt: string,
 ): HealthIncident[] {
+  const nowMs = Date.parse(generatedAt)
   let records: Record<string, HealthAckRecord>
+  let invalidKeys: string[]
   try {
-    records = readAckRecords()
+    const store = inspectAckStore(nowMs)
+    records = store.records
+    invalidKeys = store.invalid.map((entry) => entry.key)
   } catch (error) {
     log.warn('health ack store unreadable — acks ignored, all incidents re-surface', {
       err: error instanceof Error ? error.message : String(error),
     })
     return incidents
   }
-  if (Object.keys(records).length === 0) return incidents
+  if (Object.keys(records).length === 0 && invalidKeys.length === 0) return incidents
 
   const observationsById = new Map(observations.map((observation) => [observation.id, observation]))
-  const nowMs = Date.parse(generatedAt)
   const invalidated: string[] = []
   // A record whose incident is ABSENT from the report means the incident
   // resolved (last-known retention keeps flapping checks alive, so absence
   // is evidence of resolution) — prune it, so a recurrence weeks later
   // arrives LOUD, not pre-silenced, and GET /doctor/acks never lists
-  // ghost rows (review finding).
+  // ghost rows (review finding). Invalid records follow the same rule.
   const liveIds = new Set(incidents.map((incident) => incident.id))
-  for (const recordId of Object.keys(records)) {
+  for (const recordId of [...Object.keys(records), ...invalidKeys]) {
     if (!liveIds.has(recordId)) invalidated.push(recordId)
   }
   const joined = incidents.map((incident) => {
@@ -456,7 +461,7 @@ export function acknowledgeHealthIncident(input: {
       record.evidenceSha = incidentEvidenceSha(incident, observationsById)
     }
   }
-  writeAckRecord(record)
+  writeAckRecord(record, now.getTime())
   bump()
   return { incidentId: incident.id, action: input.action }
 }

@@ -68,25 +68,48 @@ function isMissingFileError(error: unknown): boolean {
   return error instanceof Error && 'code' in error && (error as { code?: string }).code === 'ENOENT'
 }
 
-function isRecord(value: unknown): value is HealthAckRecord {
-  if (typeof value !== 'object' || value === null) return false
-  const record = value as Partial<HealthAckRecord>
-  return typeof record.incidentId === 'string'
-    && (record.mode === 'ack' || record.mode === 'snooze')
-    && typeof record.at === 'string'
-    && (record.until === undefined || typeof record.until === 'string')
-    && (record.tierAtAck === 'advisory' || record.tierAtAck === 'watch' || record.tierAtAck === 'action_required')
-    && typeof record.resourceFingerprint === 'string'
-    && (record.evidenceSha === undefined || typeof record.evidenceSha === 'string')
-    // Mode invariant at read (defense in depth): a snooze without an
-    // expiry would otherwise never expire.
-    && (record.mode !== 'snooze' || typeof record.until === 'string')
+const TIERS = new Set<string>(['advisory', 'watch', 'action_required'])
+
+/**
+ * The ONE rule set for a stored record, applied on write AND on read (#898):
+ * the file is a plain JSON file anything running as this user can write, so
+ * a record suppresses an incident only if it is a record the ack verb could
+ * have written. Returns why the record is invalid, or null.
+ */
+export function ackRecordProblem(key: string, value: unknown, nowMs: number): string | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return 'not a record'
+  const record = value as Partial<Record<keyof HealthAckRecord, unknown>>
+  if (typeof record.incidentId !== 'string' || record.incidentId === '') return 'missing incidentId'
+  if (record.incidentId !== key) return `keyed as '${key}' but names incident '${record.incidentId}'`
+  if (record.mode !== 'ack' && record.mode !== 'snooze') return 'unknown mode'
+  if (typeof record.tierAtAck !== 'string' || !TIERS.has(record.tierAtAck)) return 'unknown tierAtAck'
+  if (typeof record.resourceFingerprint !== 'string') return 'missing resourceFingerprint'
+  if (record.evidenceSha !== undefined && typeof record.evidenceSha !== 'string') return 'evidenceSha is not a string'
+  if (record.until !== undefined && typeof record.until !== 'string') return 'until is not a string'
+  const atMs = typeof record.at === 'string' ? Date.parse(record.at) : Number.NaN
+  if (!Number.isFinite(atMs)) return 'at is not a valid time'
+  if (atMs > nowMs) return 'at is in the future'
+  if (record.mode === 'ack') {
+    if (record.tierAtAck === 'action_required') return 'action_required incidents cannot be permanently acknowledged — snooze only'
+    return null
+  }
+  if (typeof record.until !== 'string') return 'snooze without an expiry'
+  const window = Date.parse(record.until) - atMs
+  if (!Number.isFinite(window) || window <= 0 || window > SNOOZE_MAX_MS) return 'snooze window is not between 0 and 7 days'
+  if (record.tierAtAck === 'action_required' && !record.evidenceSha) return 'action_required snooze without evidenceSha'
+  return null
 }
 
-/** Read all records. Missing file = empty; corrupt file = typed error the
- *  projection surfaces as an evidence gap — never a crash, never a silent
- *  reset that would lose the user's acks. */
-export function readAckRecords(): Record<string, HealthAckRecord> {
+export interface InvalidAckRecord {
+  /** The key the record is stored under. */
+  key: string
+  reason: string
+}
+
+/** Raw entries as stored. Missing file = empty; corrupt file = typed error
+ *  the projection surfaces — never a crash, never a silent reset that
+ *  would lose the user's acks. */
+function readRawEntries(): Record<string, unknown> {
   let raw: string
   try {
     raw = readFileSync(acksPath(), 'utf-8')
@@ -103,14 +126,30 @@ export function readAckRecords(): Record<string, HealthAckRecord> {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new HealthAckStoreError('Health ack store has an invalid shape.')
   }
-  const records: Record<string, HealthAckRecord> = {}
-  for (const [id, value] of Object.entries(parsed)) {
-    if (isRecord(value)) records[id] = value
-  }
-  return records
+  return parsed as Record<string, unknown>
 }
 
-function writeAll(records: Record<string, HealthAckRecord>): void {
+/** Valid records plus the ones that fail the write rules. Invalid records
+ *  suppress nothing; they stay in the file (writes never silently drop
+ *  them) until cleared or their incident resolves, so the health check
+ *  can name them. */
+export function inspectAckStore(nowMs = Date.now()): { records: Record<string, HealthAckRecord>; invalid: InvalidAckRecord[] } {
+  const records: Record<string, HealthAckRecord> = {}
+  const invalid: InvalidAckRecord[] = []
+  for (const [key, value] of Object.entries(readRawEntries())) {
+    const reason = ackRecordProblem(key, value, nowMs)
+    if (reason === null) records[key] = value as HealthAckRecord
+    else invalid.push({ key, reason })
+  }
+  return { records, invalid }
+}
+
+/** The records that may suppress an incident. */
+export function readAckRecords(nowMs = Date.now()): Record<string, HealthAckRecord> {
+  return inspectAckStore(nowMs).records
+}
+
+function writeAll(records: Record<string, unknown>): void {
   const path = acksPath()
   mkdirSync(dirname(path), { recursive: true })
   // Temp+rename: a crash mid-write must not corrupt the store (a corrupt
@@ -120,28 +159,18 @@ function writeAll(records: Record<string, HealthAckRecord>): void {
   renameSync(tmp, path)
 }
 
-/** Validates the tier rules at the storage boundary (defense in depth —
- *  the REST route re-validates with honest HTTP errors). */
-export function writeAckRecord(record: HealthAckRecord): void {
-  if (record.mode === 'ack' && record.tierAtAck === 'action_required') {
-    throw new HealthAckStoreError('action_required incidents cannot be permanently acknowledged — snooze only.')
-  }
-  if (record.mode === 'snooze') {
-    if (!record.until) {
-      throw new HealthAckStoreError('Snooze records require an expiry.')
-    }
-    const window = Date.parse(record.until) - Date.parse(record.at)
-    if (!Number.isFinite(window) || window <= 0 || window > SNOOZE_MAX_MS) {
-      throw new HealthAckStoreError('Snooze windows are capped at 7 days.')
-    }
-  }
-  const records = readAckRecords()
+/** Validates with the read rules at the storage boundary (defense in
+ *  depth — the REST route re-validates with honest HTTP errors). */
+export function writeAckRecord(record: HealthAckRecord, nowMs = Date.now()): void {
+  const problem = ackRecordProblem(record.incidentId, record, nowMs)
+  if (problem !== null) throw new HealthAckStoreError(`Invalid health ack: ${problem}.`)
+  const records = readRawEntries()
   records[record.incidentId] = record
   writeAll(records)
 }
 
 export function removeAckRecord(incidentId: string): boolean {
-  const records = readAckRecords()
+  const records = readRawEntries()
   if (!(incidentId in records)) return false
   delete records[incidentId]
   writeAll(records)
@@ -149,11 +178,12 @@ export function removeAckRecord(incidentId: string): boolean {
 }
 
 /** Lazy prune for records invalidated at projection time (expired snoozes,
- *  escalated acks). Best-effort: pruning never throws into the projection. */
+ *  escalated acks, resolved incidents). Best-effort: pruning never throws
+ *  into the projection. */
 export function pruneAckRecords(incidentIds: string[]): void {
   if (incidentIds.length === 0) return
   try {
-    const records = readAckRecords()
+    const records = readRawEntries()
     let changed = false
     for (const id of incidentIds) {
       if (id in records) {
@@ -194,9 +224,7 @@ export function resolveAckState(input: {
   if (TIER_ORDER[input.effectiveDisposition] > TIER_ORDER[record.tierAtAck]) return null
   if (record.mode === 'snooze') {
     if (record.until === undefined || Date.parse(record.until) <= input.nowMs) return null
-    if (record.tierAtAck === 'action_required'
-      && record.evidenceSha !== undefined
-      && record.evidenceSha !== input.evidenceSha) return null
+    if (record.tierAtAck === 'action_required' && record.evidenceSha !== input.evidenceSha) return null
     return 'snoozed'
   }
   if (record.resourceFingerprint !== input.resourceFingerprint) return null
