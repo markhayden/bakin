@@ -126,14 +126,11 @@ function writeLatest(jobId: string, mutate: (latest: BakinJobMeta) => void): voi
 }
 
 export async function runClaimedFire(
-  claimed: BakinJobMeta,
+  _claimed: BakinJobMeta,
   jobId: string,
   runId: string,
   opts: { column?: string; blockedReason?: string; firedAtMs?: number } = {},
 ): Promise<ProcessRunResult> {
-  // The schedule this claim fires — captured BEFORE any await. A one-shot
-  // rescheduled mid-fire is a new occurrence and must not be consumed here.
-  const consumedSchedule = claimed.schedule ? { ...claimed.schedule } : undefined
   const owner = await getScheduleDefaultOwner()
   // Judge the LIVE record: the caller's copy was read before the await
   // above, and acting on it could undo a prompt fix or an operator's pause
@@ -345,13 +342,12 @@ export async function runClaimedFire(
     // A one-shot's single occurrence is now consumed (even a blocked catch-up
     // materialized a task) — auto-disable + stamp completedAt so the job reads
     // "completed" instead of pretending a next run exists. Run history stays.
-    // Only if it is still THAT occurrence: a scheduled/healed claim names its
+    // Only the scheduled occurrence itself consumes it: its claim names the
     // instant (firedAtMs), so a job rescheduled since — even before a heal
-    // re-drives an old claim — stays live. A manual run-now consumes the
-    // one-shot it was started on.
-    const sameOneShot = latest.schedule?.kind === 'at' && (runId.startsWith('manual-')
-      ? consumedSchedule?.kind === 'at' && latest.schedule.expr === consumedSchedule.expr
-      : opts.firedAtMs !== undefined && Date.parse(latest.schedule.expr) === opts.firedAtMs)
+    // re-drives an old claim — stays live. A manual run-now is an extra
+    // on-demand fire, never the scheduled one.
+    const sameOneShot = !runId.startsWith('manual-') && latest.schedule?.kind === 'at'
+      && opts.firedAtMs !== undefined && Date.parse(latest.schedule.expr) === opts.firedAtMs
     if (sameOneShot) {
       latest.enabled = false
       latest.completedAt = new Date(opts.firedAtMs ?? Date.now()).toISOString()

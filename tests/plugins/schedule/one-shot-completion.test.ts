@@ -164,6 +164,15 @@ describe('one-shot completion', () => {
     expect(after.completedAt).toBeUndefined()
   })
 
+  it('a manual run-now is an extra fire: it never consumes the scheduled one-shot (healed or not)', async () => {
+    const meta = oneShotMeta()
+    upsertJob(meta)
+    await runClaimedFire(meta, 'sch_once', 'manual-1234', { firedAtMs: Date.parse(AT) })
+    const after = getJob('sch_once')!
+    expect(after.enabled).not.toBe(false)
+    expect(after.completedAt).toBeUndefined()
+  })
+
   it('a blocked catch-up fire still completes the one-shot (occurrence consumed)', async () => {
     const meta = oneShotMeta()
     upsertJob(meta)
