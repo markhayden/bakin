@@ -29,13 +29,16 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 // router navigation.
 type Blocker = (args: { currentLocation: { pathname: string }; nextLocation: { pathname: string } }) => Promise<boolean>
 let blockers: Blocker[] = []
+// ONE router instance, like TanStack's: a fresh object per render would
+// re-run the guard's blocker effect (and its cleanup) on every render.
+const router = {
+  navigate: () => {},
+  history: { block: ({ blockerFn }: { blockerFn: Blocker }) => { blockers.push(blockerFn); return () => { blockers = blockers.filter((b) => b !== blockerFn) } } },
+  parseLocation: (location: unknown) => location,
+}
 mock.module('@tanstack/react-router', () => ({
   ...require('../../shims/tanstack-router'),
-  useRouter: () => ({
-    navigate: () => {},
-    history: { block: ({ blockerFn }: { blockerFn: Blocker }) => { blockers.push(blockerFn); return () => { blockers = blockers.filter((b) => b !== blockerFn) } } },
-    parseLocation: (location: unknown) => location,
-  }),
+  useRouter: () => router,
 }))
 
 import { useAgentStore } from '@makinbakin/sdk/hooks'

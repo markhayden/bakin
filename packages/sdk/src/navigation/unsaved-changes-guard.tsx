@@ -79,7 +79,7 @@ export function useUnsavedChangesGuard({
 
   useEffect(() => {
     if (!hasUnsavedChanges) return
-    return tanStackRouter.history.block({
+    const unblock = tanStackRouter.history.block({
       enableBeforeUnload: false,
       blockerFn: async ({
         currentLocation,
@@ -92,19 +92,31 @@ export function useUnsavedChangesGuard({
         const next = tanStackRouter.parseLocation(nextLocation)
         if (current.pathname === next.pathname) return false
 
+        // A newer navigation supersedes a pending one: the older stays blocked
+        // (settled now, never orphaned) and the decision is about the newer.
+        settleBlocker('reset')
+        let blocker!: Extract<RouteNavigationBlocker, { status: 'blocked' }>
         const shouldBlock = await new Promise<boolean>((resolve) => {
-          const blocker = {
-            status: 'blocked' as const,
+          blocker = {
+            status: 'blocked',
             proceed: () => resolve(false),
             reset: () => resolve(true),
           }
           activeBlocker.current = blocker
           setRouteBlocker(blocker)
         })
-        setRouteBlocker({ status: 'idle' })
+        // Only clear the dialog state this blocker owns — a newer blocker's
+        // prompt must stay open.
+        setRouteBlocker((state) => (state === blocker ? { status: 'idle' } : state))
         return shouldBlock
       },
     })
+    return () => {
+      unblock()
+      // Clean again (saved) or unmounting: nothing is left to lose, so a
+      // navigation still waiting on the decision goes through.
+      if (settleBlocker('proceed')) setRouteBlocker({ status: 'idle' })
+    }
   }, [hasUnsavedChanges, tanStackRouter])
 
   useEffect(() => {
