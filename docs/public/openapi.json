@@ -22347,7 +22347,7 @@
         "tags": [
           "Health"
         ],
-        "description": "Current acknowledge/snooze records — what is quiet and why. Suppressed is never hidden.",
+        "description": "Current acknowledge/snooze records — what is quiet and why. Suppressed is never hidden. `invalid` lists records that broke the acknowledge rules and suppress nothing.",
         "x-bakin-full-path": "/api/plugins/health/doctor/acks"
       }
     },
