@@ -9,9 +9,33 @@ function auditEventOf(payload: PluginEventPayload): string | undefined {
   return typeof entry?.event === 'string' ? entry.event : undefined
 }
 
-/** The schedule plugin audits every job change and fire as `schedule.*`. */
-function isScheduleAudit(payload: PluginEventPayload): boolean {
-  return auditEventOf(payload)?.startsWith('schedule.') === true
+/**
+ * Refetch on a signal without stacking requests: one in flight at a time, and
+ * one trailing run when signals arrived meanwhile — a burst of schedule
+ * writes (a tick's fires) costs at most two requests, never one per write.
+ */
+function useCoalescedRefresh(fetcher: () => Promise<void>): () => void {
+  const state = useRef({ running: false, again: false })
+  const latest = useRef(fetcher)
+  latest.current = fetcher
+  return useCallback(() => {
+    const s = state.current
+    if (s.running) {
+      s.again = true
+      return
+    }
+    s.running = true
+    void (async () => {
+      try {
+        do {
+          s.again = false
+          await latest.current()
+        } while (s.again)
+      } finally {
+        s.running = false
+      }
+    })()
+  }, [])
 }
 
 export interface ScheduleJob {
@@ -98,12 +122,11 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
     fetchJobs()
   }, [fetchJobs])
 
-  // Schedule changes from anywhere (an agent, another tab, the scheduler's
-  // own fires) arrive as `schedule.*` audit events on the shell's one stream.
-  usePluginEvent('bakin.audit', (payload) => {
-    if (isScheduleAudit(payload)) void fetchJobs()
-  })
-  usePluginEvent('bakin.reconcile', () => { void fetchJobs() })
+  // Every Bakin schedule write (the UI, an agent's tools, fires, auto-resume,
+  // repairs) signals `schedule.changed` on the shell's one stream (#990).
+  const refreshJobs = useCoalescedRefresh(fetchJobs)
+  usePluginEvent('schedule.changed', refreshJobs)
+  usePluginEvent('bakin.reconcile', refreshJobs)
 
   // Apply client-side filters
   const opts = options
@@ -298,14 +321,16 @@ export function useOccurrences(fromIso: string, toIso: string) {
     fetchOccurrences()
   }, [fetchOccurrences])
 
-  // Occurrences move with schedule changes, with task dates (the board
+  // Occurrences move with schedule writes, with task dates (the board
   // broadcasts every write) and with any provider's documented
   // `<pluginId>.scheduled_events_changed` audit event (#191).
+  const refreshOccurrences = useCoalescedRefresh(fetchOccurrences)
+  usePluginEvent('schedule.changed', refreshOccurrences)
+  usePluginEvent('taskboard', refreshOccurrences)
   usePluginEvent('bakin.audit', (payload) => {
-    if (isScheduleAudit(payload) || auditEventOf(payload)?.endsWith('.scheduled_events_changed')) void fetchOccurrences()
+    if (auditEventOf(payload)?.endsWith('.scheduled_events_changed')) refreshOccurrences()
   })
-  usePluginEvent('taskboard', () => { void fetchOccurrences() })
-  usePluginEvent('bakin.reconcile', () => { void fetchOccurrences() })
+  usePluginEvent('bakin.reconcile', refreshOccurrences)
 
   return { occurrences, events, unevaluated, droppedProviders, loading, refresh: fetchOccurrences }
 }

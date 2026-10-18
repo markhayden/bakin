@@ -17,6 +17,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { emitPluginEvent } from '@/hooks/use-plugin-event'
 import { useOccurrences, useScheduleJobs } from '@/hooks/use-schedule'
+import { settleFor } from '../helpers/wait'
 
 const realFetch = globalThis.fetch
 let jobFetches = 0
@@ -42,27 +43,46 @@ afterEach(() => {
 })
 
 const audit = (event: string) => act(() => { emitPluginEvent({ event: 'bakin.audit', entry: { event } }) })
+const changed = () => act(() => { emitPluginEvent({ event: 'schedule.changed' }) })
 
 describe('useScheduleJobs', () => {
-  it('refetches on schedule audit events and reconnects, never on another domain, and opens no stream', async () => {
+  it('refetches on schedule.changed and reconnects, never on an audit, and opens no stream', async () => {
     renderHook(() => useScheduleJobs())
     await waitFor(() => expect(jobFetches).toBe(1))
 
-    await audit('schedule.job.created')
+    await changed()
     await waitFor(() => expect(jobFetches).toBe(2))
+    await audit('schedule.fire_skipped')
     await audit('task.created')
     await act(() => { emitPluginEvent({ event: 'bakin.reconcile' }) })
     await waitFor(() => expect(jobFetches).toBe(3))
     expect(eventSources).toBe(0)
   })
+
+  it('a burst of writes costs at most one trailing request, never one per write', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    renderHook(() => useScheduleJobs())
+    await waitFor(() => expect(jobFetches).toBe(1))
+    const realFetchStub = globalThis.fetch
+    ;(globalThis as { fetch: typeof fetch }).fetch = (async (input: RequestInfo | URL) => {
+      await gate
+      return realFetchStub(input)
+    }) as typeof fetch
+    await act(() => { for (let i = 0; i < 20; i += 1) emitPluginEvent({ event: 'schedule.changed' }) })
+    await act(async () => { release() })
+    await waitFor(() => expect(jobFetches).toBe(3))
+    await settleFor(50, 'no request beyond the one trailing refresh')
+    expect(jobFetches).toBe(3)
+  })
 })
 
 describe('useOccurrences', () => {
-  it('refetches on schedule audits, board writes and any provider’s scheduled_events_changed', async () => {
+  it('refetches on schedule.changed, board writes and any provider’s scheduled_events_changed — nothing else', async () => {
     renderHook(() => useOccurrences('2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z'))
     await waitFor(() => expect(occurrenceFetches).toBe(1))
 
-    await audit('schedule.task_created')
+    await changed()
     await waitFor(() => expect(occurrenceFetches).toBe(2))
     await act(() => { emitPluginEvent({ event: 'taskboard' }) })
     await waitFor(() => expect(occurrenceFetches).toBe(3))

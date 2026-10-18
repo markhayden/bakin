@@ -46,12 +46,16 @@ teal (start), no agent identity — unmistakable from job occurrence cards.
 Popover: details + Open deep link + Reschedule (whole flow in a
 ConfirmDialog with a datetime picker; owner rejection shown in-dialog).
 `useOccurrences` (SDK hook) surfaces `events` + `droppedProviders` and
-refetches on `schedule.*` audit events, `taskboard` broadcasts, the
-documented `<pluginId>.scheduled_events_changed` audit convention and
-reconnects — all through `usePluginEvent` on the shell's one stream (the
-shell fans every audit entry out as `bakin.audit`; #990 retired the hooks'
-private EventSources, which also never matched audit events: provider
-changes did not refresh open calendars before).
+refetches on `schedule.changed`, `taskboard` broadcasts, the documented
+`<pluginId>.scheduled_events_changed` audit convention and reconnects — all
+through `usePluginEvent` on the shell's one stream, coalesced (one request
+in flight, one trailing refresh). `schedule.changed` is emitted by
+`writeSidecar`, the ONE choke point every Bakin schedule write passes
+(the UI routes, agents' exec tools, fires, auto-resume, repairs), so no
+writer can forget to signal. #990 retired the hooks' private EventSources,
+which matched neither audit events nor agent-tool changes: open calendars
+missed provider changes, agent edits and auto-resumes before. Native
+runtime cron jobs Bakin doesn't own refresh on reconnect / tab wake.
 
 ## Providers
 

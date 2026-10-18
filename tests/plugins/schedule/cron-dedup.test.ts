@@ -107,6 +107,8 @@ function makeCtx() {
   return {
     pluginId: 'schedule',
     runtime,
+    // Sidecar writes signal schedule.changed (#990).
+    events: { emit: mock(), on: mock(() => () => {}), once: mock(() => () => {}) },
     activity: {
       log: mock(),
       audit: mock((event: string, _agent: string, data?: Record<string, unknown>) => {
