@@ -187,7 +187,10 @@ export const UNRUNNABLE_PAUSE_REASON = 'unrunnable-prompt'
 /** Pause `meta` as unrunnable when it is a Bakin job without a task prompt. Returns true when it was paused now. */
 export function pauseIfUnrunnable(meta: BakinJobMeta): boolean {
   if (!meta.isBakinJob || isTaskPrompt(meta.taskPrompt)) return false
-  if (meta.paused && meta.pauseReason === UNRUNNABLE_PAUSE_REASON && meta.enabled === false) return false
+  // An existing pause (manual, timed, auto-failures, or this one) already
+  // stops it firing and is the operator's state — never overwrite it. A
+  // timed pause that lapses is re-checked on the same cycle it resumes.
+  if (meta.paused) return false
   meta.paused = true
   meta.pauseReason = UNRUNNABLE_PAUSE_REASON
   meta.pauseUntil = undefined

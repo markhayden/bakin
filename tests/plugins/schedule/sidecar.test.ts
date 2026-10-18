@@ -282,12 +282,16 @@ describe('schedule/sidecar', () => {
       expect(pauseUnrunnableJobs()).toEqual([]) // idempotent
     })
 
-    it('re-claims a manually paused unrunnable job and clears a timed resume that would re-arm it', () => {
-      upsertJob(makeMeta({ jobId: 'timed', taskPrompt: '', paused: true, enabled: false, pauseReason: 'manual', pauseUntil: '2020-01-01T00:00:00Z' }))
-      expect(pauseUnrunnableJobs()).toEqual(['timed'])
-      expect(getJob('timed')).toMatchObject({ pauseReason: UNRUNNABLE_PAUSE_REASON })
-      expect(getJob('timed')!.pauseUntil).toBeUndefined()
-      expect(resumeDuePauses()).toBe(0)
+    it('never overwrites an existing pause; a lapsed timed pause is re-checked and contained', () => {
+      upsertJob(makeMeta({ jobId: 'manual', taskPrompt: '', paused: true, enabled: false, pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z' }))
+      upsertJob(makeMeta({ jobId: 'lapsed', taskPrompt: '', paused: true, enabled: false, pauseReason: 'manual', pauseUntil: '2020-01-01T00:00:00Z' }))
+      expect(pauseUnrunnableJobs()).toEqual([])
+      expect(getJob('manual')).toMatchObject({ pauseReason: 'manual', pauseUntil: '2099-01-01T00:00:00Z' })
+
+      // The scheduler cycle order: resume lapsed pauses, then contain.
+      expect(resumeDuePauses()).toBe(1)
+      expect(pauseUnrunnableJobs()).toEqual(['lapsed'])
+      expect(getJob('lapsed')).toMatchObject({ paused: true, pauseReason: UNRUNNABLE_PAUSE_REASON, enabled: false })
     })
   })
 

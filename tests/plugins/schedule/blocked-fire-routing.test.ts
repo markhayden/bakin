@@ -116,15 +116,18 @@ import { __scheduleTestInternals, MISSED_WINDOW_REASON } from '@bakin/schedule/i
 import { TEAM_ROUTING_BLOCK_REASON } from '@bakin/schedule/lib/fire-engine'
 import { TEAM_ROUTING_EXHAUSTED_REASON } from '../../../src/core/dispatch-types'
 import { closeDb } from '../../../packages/core/src/storage/db'
+import { waitUntil } from '../../helpers/wait'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 const { fireScheduledRunFromPayload, setPluginCtxForTests } = __scheduleTestInternals
+const mockSearchIndex = mock(async (_key: string, _doc: Record<string, unknown>) => undefined)
 
 function makeCtx() {
   return {
     pluginId: 'schedule',
     runtime: createMockRuntimeAdapter(),
     activity: { log: mock(), audit: mock() },
+    search: { index: mockSearchIndex },
     hooks: { register: mock(), has: mockHookRegistry.has, invoke: mockHookRegistry.invoke },
     getSettings: mock(() => ({})),
     updateSettings: mock(),
@@ -480,6 +483,8 @@ describe('unrunnable Bakin schedules pause instead of firing (spec D5)', () => {
     expect(result.body).toMatchObject({ ok: true, skipped: 'unrunnable' })
     expect(mockCreateTask).not.toHaveBeenCalled()
     expect(getJob('release-notes')).toMatchObject({ paused: true, pauseReason: 'unrunnable-prompt', enabled: false })
+    // Search learns it is no longer enabled.
+    await waitUntil(() => mockSearchIndex.mock.calls.some(([key, doc]) => key === 'release-notes' && doc.enabled === 'false'), { label: 'paused job reindexed' })
   })
 
   it('a runnable prompt still fires normally', async () => {

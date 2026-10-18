@@ -27,6 +27,7 @@ import {
 } from './lib/scheduler-loop'
 import {
   ensureBakinJob,
+  indexJob,
   readMergedRuntimeJobs,
   jobToSearchDoc,
 } from './lib/job-service'
@@ -191,7 +192,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
     // caught up rather than left dormant by the enabled-gate.
     try {
       resumeDuePauses()
-      pauseUnrunnableJobs()
+      pauseUnrunnableJobs().forEach(indexJob)
       await runStartupCatchUp(schedulerDeps(), catchUpWindowMs())
     } catch (err) {
       log.error('Schedule startup catch-up failed', err)

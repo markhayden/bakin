@@ -18,7 +18,7 @@ import {
 } from '@makinbakin/sdk/utils'
 import type { BakinJobMeta } from '../types'
 import { isTaskPrompt, NOT_A_PROMPT_REASON } from './prompt-guard'
-import { getJob, getSidecarPath, readSidecar, removeJob, UNRUNNABLE_PAUSE_REASON, upsertJob } from './sidecar'
+import { getJob, getSidecarPath, readSidecar, removeJob, upsertJob } from './sidecar'
 
 const log = createLogger('schedule:health')
 type RuntimeCronReader = Pick<NonNullable<AgentRuntimeAdapter['cron']>, 'list'>
@@ -346,7 +346,9 @@ export async function checkSchedulePrompts(): Promise<HealthCheckRunInput> {
   return healthObserved(unrunnable.map(job => {
     // The scheduler pauses these before they fire (pauseUnrunnableJobs); once
     // paused nothing breaks, so the incident is cleanup, not an alarm.
-    const contained = job.paused === true && job.pauseReason === UNRUNNABLE_PAUSE_REASON
+    // Any pause contains it; a manual/timed/auto-failures one is kept as-is
+    // (the sweep never overwrites an operator's pause).
+    const contained = job.paused === true
     const name = job.displayName ?? job.jobId
     const base = {
       key: `unrunnable-${stablePart(job.jobId)}`,

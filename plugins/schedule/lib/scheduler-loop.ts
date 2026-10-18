@@ -10,6 +10,7 @@
  */
 import { runSchedulerTick, DEFAULT_TICK_WINDOW_MS, type SchedulerDeps } from './scheduler'
 import { getPluginCtx } from './plugin-context'
+import { indexJob } from './job-service'
 import { runClaimedFire, healPendingCronClaims, MISSED_WINDOW_REASON } from './fire-engine'
 import { pauseUnrunnableJobs, readSidecar, resumeDuePauses } from './sidecar'
 import { getCronFire, claimCronFire, pruneCronFires } from '../../../src/core/execution-ledger'
@@ -127,7 +128,7 @@ export function startScheduler(): void {
   // resume expired timed-pauses + pause unrunnable jobs → fire due occurrences → heal stranded claims.
   const cycle = () => {
     Promise.resolve()
-      .then(() => { resumeDuePauses(); pauseUnrunnableJobs() })
+      .then(() => { resumeDuePauses(); pauseUnrunnableJobs().forEach(indexJob) })
       .then(() => runSchedulerTick(schedulerDeps()))
       .then(() => healPendingCronClaims())
       .then(() => { maybeRunRetentionSweep() })

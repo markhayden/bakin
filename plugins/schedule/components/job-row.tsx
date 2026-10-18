@@ -155,9 +155,12 @@ export function JobActionsMenu({
         )}
         <DropdownMenuSeparator />
         {job.paused ? (
-          <DropdownMenuItem onClick={onResume}>
-            <RotateCcw /> Resume
-          </DropdownMenuItem>
+          // A job paused for having no task prompt can only be fixed (edit) or removed.
+          job.pauseReason !== 'unrunnable-prompt' && (
+            <DropdownMenuItem onClick={onResume}>
+              <RotateCcw /> Resume
+            </DropdownMenuItem>
+          )
         ) : (
           job.enabled ? (
             <DropdownMenuItem onClick={onPause}>

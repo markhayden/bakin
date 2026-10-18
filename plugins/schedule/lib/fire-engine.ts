@@ -12,6 +12,7 @@
 import { randomUUID } from 'crypto'
 import type { BakinJobMeta, BridgeResult } from '../types'
 import { getPluginCtx } from './plugin-context'
+import { indexJob } from './job-service'
 import { getSystemTimezone, expandTemplate } from './schedule-util'
 import {
   upsertJob,
@@ -130,6 +131,7 @@ export async function runClaimedFire(
   // pause it instead of creating a doomed task every occurrence.
   if (pauseIfUnrunnable(meta)) {
     upsertJob(meta)
+    indexJob(jobId)
     return skipFire(jobId, runId, 'unrunnable')
   }
 
