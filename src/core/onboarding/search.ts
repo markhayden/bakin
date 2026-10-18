@@ -61,7 +61,7 @@ export const searchComponent: InstallableComponent = {
   identity: () => setup().settings,
   failureCode: 'engine_install_failed',
   install: async (opts, op) => {
-    const result = await setup().setup.dependency.install({ autoApprove: opts.autoApprove, allowServiceClaim: opts.allowServiceClaim, op })
+    const result = await setup().setup.dependency.install({ autoApprove: opts.autoApprove || opts.approvedComponents?.includes('search') === true, allowServiceClaim: opts.allowServiceClaim, op })
     if (result.status !== 'installed' && result.status !== 'noop') {
       return { ...result, name: 'search' }
     }

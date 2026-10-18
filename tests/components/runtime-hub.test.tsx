@@ -173,6 +173,31 @@ describe('OverviewTab', () => {
     expect(String(toasts[0].message)).toContain('synced 3 agents')
   })
 
+  it('a second Repair click while the first request is pending sends nothing (#895 review)', async () => {
+    const posts: number[] = []
+    let accept!: () => void
+    const accepted = new Promise<void>((resolve) => { accept = resolve })
+    const operations = new Map([['op-assets', finishedOperation('op-assets', { httpStatus: 200, body: { ok: true, result: { status: 'installed', message: 'done' } } })]])
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/runtime/onboarding/install')) {
+        posts.push(1)
+        await accepted
+        return operationStarted('op-assets')
+      }
+      return operationResponse(String(input), operations) ?? new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    await act(async () => {
+      render(<OverviewTab report={report} onRefreshOnboarding={() => {}} onboarding={[{ name: 'plugin-assets', status: 'warn', message: '1 drifted' }]} />)
+    })
+    await act(async () => { fireEvent.click(within(screen.getByRole('table', { name: 'Setup checks' })).getByTestId('setup-fix-plugin-assets')) })
+    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-repair-confirm')) })
+    await act(async () => { fireEvent.click(screen.getByTestId('setup-repair-confirm')) })
+    expect(posts).toEqual([1])
+    await act(async () => { accept() })
+    await settleReact()
+  })
+
   it('a failed repair surfaces the reason', async () => {
     const operations = new Map([['op-assets', finishedOperation('op-assets', { httpStatus: 200, body: { ok: false, result: { status: 'failed', message: 'runtime unreachable' } } }, { status: 'failed', outcome: { code: 'component_failed', message: 'runtime unreachable' } })]])
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -284,6 +309,26 @@ describe('RuntimesTab', () => {
       }
       return operationResponse(url, operations) ?? new Response('{}', { status: 200 })
     }) as typeof fetch
+  })
+
+  it('while a preview request is pending, nothing else can start a switch (#895 review)', async () => {
+    let accept!: () => void
+    const accepted = new Promise<void>((resolve) => { accept = resolve })
+    const base = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/api/runtime/switch')) await accepted
+      return base(input, init)
+    }) as typeof fetch
+    await act(async () => { render(<RuntimesTab report={report} onSwitched={() => {}} />) })
+    await act(async () => { fireEvent.click(within(screen.getByRole('list', { name: 'Available runtimes' })).getByTestId('switch-target-openclaw')) })
+    await settleReact()
+    await act(async () => { fireEvent.click(screen.getByTestId('switch-preview')) })
+
+    const target = within(screen.getByRole('list', { name: 'Available runtimes' })).getByTestId('switch-target-openclaw') as HTMLButtonElement
+    expect(target.disabled).toBe(true)
+    await act(async () => { accept() })
+    await waitFor(() => screen.getByTestId('switch-result'))
+    expect(posts).toHaveLength(1)
   })
 
   it('preview posts a dry run with the chosen options and renders grouped result cards', async () => {

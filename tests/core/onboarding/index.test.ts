@@ -300,6 +300,20 @@ describe('runOnboard orchestrator', () => {
       ])
     })
 
+    it('an interrupted install (Ctrl-C) stops onboarding: nothing after it runs and no marker is written', async () => {
+      const { OnboardingInterruptedError } = await import('../../../src/core/onboarding/index')
+      scripts.search.check = { name: 'search', status: 'missing', message: 'missing' }
+      scripts.media.check = { name: 'media', status: 'missing', message: 'missing' }
+      const started: string[] = []
+      const run = runOnboardWith(opts, async (component) => {
+        started.push(component.name)
+        throw new OnboardingInterruptedError(component.name, 'cancelled')
+      })
+      await expect(run).rejects.toBeInstanceOf(OnboardingInterruptedError)
+      expect(started).toEqual(['search'])
+      expect(saveStateCalls).toEqual([])
+    })
+
     it('a check-only component that is not set up records its setup pointer and installs nothing', async () => {
       scripts.llm.check = { name: 'llm', status: 'missing', message: 'no providers' }
       const result = await runOnboard(opts)

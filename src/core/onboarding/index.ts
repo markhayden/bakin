@@ -84,6 +84,18 @@ export { isOnboarded, loadState, saveState, clearMarker, ONBOARDING_VERSION } fr
 export type { CheckResult, InstallResult, OnboardingOptions, OnboardingComponent, InstallableComponent, CheckOnlyComponent, CheckStatus, InstallStatus } from './types'
 export { isInstallable } from './types'
 
+/**
+ * The operator stopped an install (Ctrl-C: cancelled, or detached from a
+ * server run). Onboarding stops there — no later component starts and no
+ * marker is written; the CLI exits 130.
+ */
+export class OnboardingInterruptedError extends Error {
+  constructor(readonly component: string, message: string) {
+    super(message)
+    this.name = 'OnboardingInterruptedError'
+  }
+}
+
 /** Runs one component install as an operation — against the server or in-process (#895 D11). */
 export type ComponentInstaller = (component: InstallableComponent, options: OnboardingInstallOptions) => Promise<InstallResult>
 export type { OnboardingState, ComponentStatus } from './state'
@@ -312,6 +324,7 @@ async function runComponent(
         }
     }
   } catch (err) {
+    if (err instanceof OnboardingInterruptedError) throw err
     log.error('Component install() threw', { component: component.name, error: String(err) })
     return {
       name: component.name,
@@ -417,6 +430,7 @@ export async function checkAll(): Promise<CheckResult[]> {
  * every component is idempotent and the marker file is only written
  * when no component errored.
  */
+/** Throws `OnboardingInterruptedError` when the installer reports the operator stopped an install. */
 export async function runOnboard(opts: OnboardingOptions, installComponent: ComponentInstaller): Promise<RunOnboardResult> {
   // Clear the marker upfront if --force was passed. The user wants to
   // replay the whole flow regardless of prior state.

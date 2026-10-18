@@ -226,8 +226,11 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
   const [result, setResult] = useState<SwitchResultPayload | null>(null)
   // The preview or switch in flight — an operation (#895), followed live.
   const [operation, setOperation] = useState<{ dryRun: boolean; target: string; start: OperationStartResponse } | null>(null)
+  // Busy from the moment the request is sent: a preview and a switch (or two
+  // clicks) must never race to own the one follower.
+  const [starting, setStarting] = useState<'preview' | 'switch' | null>(null)
   const followed = useOperation<SwitchResultPayload>(operation?.start.operationId ?? null, operation ? { bootId: operation.start.bootId } : {})
-  const running: 'preview' | 'switch' | null = operation ? (operation.dryRun ? 'preview' : 'switch') : null
+  const running: 'preview' | 'switch' | null = operation ? (operation.dryRun ? 'preview' : 'switch') : starting
 
   const others = report.adapters.filter((name) => name !== report.adapter)
   const roster = [report.adapter, ...others]
@@ -251,7 +254,8 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
   }), [report.adapter])
 
   const run = useCallback(async (dryRun: boolean) => {
-    if (!target || operation !== null) return
+    if (!target || operation !== null || starting !== null) return
+    setStarting(dryRun ? 'preview' : 'switch')
     setResult(null)
     try {
       const start = await startOperation(() => fetch('/api/runtime/switch', {
@@ -267,8 +271,10 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
       setOperation({ dryRun, target, start })
     } catch (err) {
       setResult(failedResult(target, dryRun, describeRequestError(err)))
+    } finally {
+      setStarting(null)
     }
-  }, [target, operation, adoptCron, copyWorkspaces, failedResult])
+  }, [target, operation, starting, adoptCron, copyWorkspaces, failedResult])
 
   const view = followed.operation
   const phase = followed.phase

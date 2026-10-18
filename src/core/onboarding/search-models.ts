@@ -40,7 +40,7 @@ export const searchModelsComponent: InstallableComponent = {
   identity: () => setup().settings,
   failureCode: 'models_install_failed',
   install: async (opts, op) => {
-    const result = await setup().models.install({ autoApprove: opts.autoApprove, op })
+    const result = await setup().models.install({ autoApprove: opts.autoApprove || opts.approvedComponents?.includes('search-models') === true, op })
     if (result.status === 'installed' || result.status === 'noop') noteSearchEngineProgress()
     return { ...result, name: 'search-models' }
   },

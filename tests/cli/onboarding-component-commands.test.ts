@@ -98,6 +98,8 @@ const { output } = harness
 describe('onboarding component CLI commands', () => {
   beforeEach(() => {
     delete process.env.BAKIN_URL
+    pluginAssetsInstall.mockClear()
+    askYesNo.mockClear()
     runtimeCheck.mockImplementation(async () => {
       const { createLogger } = await import('../../packages/core/src/logger')
       createLogger('settings').info('Runtime check log')
@@ -197,6 +199,17 @@ describe('onboarding component CLI commands', () => {
     expect(askYesNo).toHaveBeenCalledWith('Plugin assets missing. Install plugin-assets now?', true)
     expect(output()).not.toContain('Plugin install log')
     expect(output()).not.toContain('[INSTALLED]')
+  })
+
+  it('declining the prompt starts nothing and reports the skip', async () => {
+    askYesNo.mockImplementationOnce(async () => false)
+    process.argv = ['bun', 'cli/bakin.ts', 'install', 'plugin-assets']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(pluginAssetsInstall).not.toHaveBeenCalled()
+    expect(output()).toContain('Skipped')
   })
 
   it('renders mkdir installs with the shared TUI in a TTY', async () => {

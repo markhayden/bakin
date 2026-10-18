@@ -152,6 +152,13 @@ describe('search service claim authority', () => {
     expect(searchInstalls[0].allowServiceClaim).not.toBe(true)
   })
 
+  it('the wizard approval alone (no --yes) approves the engine download', async () => {
+    await runOnboard({ autoApprove: false, approvedComponents: ['search'], force: true, json: false, checkOnly: false },
+      (component, options) => component.install(options, noopOp()))
+    expect(searchInstalls).toHaveLength(1)
+    expect(searchInstalls[0].autoApprove).toBe(true)
+  })
+
   it('bakin install search-models does not receive service transfer authority', async () => {
     await run(['install', 'search-models', '--yes', '--json'])
 

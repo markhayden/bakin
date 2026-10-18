@@ -434,7 +434,19 @@ search, search-models, plugin-assets and agent-sync).
 - **`bakin onboard`**: `runOnboard(opts, installComponent)` — checks run in
   the CLI process, installs through `runComponentInstall` in the mode D11
   picks; the Ink busy view shows each install's `operationStatusLine`
-  (waiting-for included — no silent waits).
+  (waiting-for included — no silent waits). Checks, provisioning and the
+  `.onboarded` marker are this home's, so an explicit `BAKIN_URL` (another
+  server) is refused; without it the installs go to this home's own server
+  (its lock) or run in-process. Ctrl-C on an install (cancelled, or
+  detached from a server run) throws `OnboardingInterruptedError`: nothing
+  after it starts, no marker, exit 130.
+- **`bakin install <x>`** on a terminal without `--yes` asks when the check
+  is not ok; declining starts nothing (not every installer gates on
+  approval). The wizard's `approvedComponents` approve the search downloads
+  just like `--yes`.
+- **Hub tabs** are busy from the moment a request is sent — a second click,
+  a preview racing a switch, or dismissing the dialog can't race the
+  acceptance.
 - **Runtime hub**: the Overview tab's Repair (mkdir, settings, search,
   search-models, media, plugin-assets, agent-sync) starts the operation and
   keeps the dialog open on `OperationProgress` (Cancel while allowed) until

@@ -179,9 +179,14 @@ async function cmdOnboardingInstallSingle(target: InstallableName, args: string[
   if (!autoApprove && isTTY && !json) {
     const { installableComponent } = await import('../../core/onboarding/index')
     const check = await withTtyRuntimeLogsSilenced({ isTTY, verbose }, () => installableComponent(target).check())
-    if (check.status === 'missing' || check.status === 'broken') {
+    if (check.status !== 'ok') {
       const { askYesNo } = await import('../../core/onboarding/prompts')
-      autoApprove = await askYesNo(`${check.message.replace(/\.$/, '')}. Install ${target} now?`, true)
+      if (!await askYesNo(`${check.message.replace(/\.$/, '')}. Install ${target} now?`, true)) {
+        // Declined: nothing starts — not every installer gates on approval.
+        await printOnboardingInstallTui({ name: target, status: 'skipped', message: `Skipped — run \`bakin install ${target}\` when you're ready.`, durationMs: 0 })
+        return
+      }
+      autoApprove = true
     }
   }
   await installAndReport(target, {
@@ -193,7 +198,15 @@ async function cmdOnboardingInstallSingle(target: InstallableName, args: string[
 }
 
 async function cmdOnboard(args: string[]): Promise<void> {
-  const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER } = await import('../../core/onboarding/index')
+  // Onboarding checks, provisions and marks THIS home; installs go to this
+  // home's own server (via its server.lock) or run in-process. An explicit
+  // BAKIN_URL targets some other server, whose home these checks don't see.
+  if (process.env.BAKIN_URL) {
+    const { getContentDir } = await import('../../core/content-dir')
+    console.error(`bakin onboard sets up this machine's Bakin home (${getContentDir()}), but BAKIN_URL points at ${process.env.BAKIN_URL}. Unset BAKIN_URL and run it again — it uses this home's own server when one is running.`)
+    process.exit(1)
+  }
+  const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER, OnboardingInterruptedError } = await import('../../core/onboarding/index')
   const { collectOnboardingSelections } = await import('../../core/cli/onboarding-interactive')
   const { OnboardingAlreadyCompleteReport, OnboardingBusy, OnboardingSummary } = await import('../../core/cli/ui/onboarding')
   const { render } = await import('ink')
@@ -293,10 +306,13 @@ async function cmdOnboard(args: string[]): Promise<void> {
     const { runComponentInstall } = await import('../component-install')
     const installComponent = async (component: InstallableComponent, options: OnboardingInstallOptions): Promise<InstallResult> => {
       const run = await runComponentInstall(component.name as InstallableName, options, { renderer })
+      // Ctrl-C (cancelled, or detached from a server run) stops onboarding, not just this step.
+      if (run.exitCode === 130) throw new OnboardingInterruptedError(component.name, describeResult(run.follow))
       return run.result ?? { name: component.name, status: 'failed', message: describeResult(run.follow), durationMs: 0 }
     }
 
-    let result: Awaited<ReturnType<typeof runOnboard>>
+    let result: Awaited<ReturnType<typeof runOnboard>> | undefined
+    let interrupted: InstanceType<typeof OnboardingInterruptedError> | null = null
     try {
       result = await runOnboard({
         ...opts,
@@ -312,10 +328,20 @@ async function cmdOnboard(args: string[]): Promise<void> {
           }
           : undefined,
       }, installComponent)
+    } catch (err) {
+      if (!(err instanceof OnboardingInterruptedError)) throw err
+      interrupted = err
     } finally {
       if (busyTimer) clearInterval(busyTimer)
       busy?.unmount()
     }
+    if (interrupted) {
+      const line = `Onboarding stopped at ${interrupted.component}: ${interrupted.message}. Nothing after it ran — rerun \`bakin onboard\` to continue.`
+      if (json) console.log(JSON.stringify({ status: 'interrupted', component: interrupted.component, message: interrupted.message }))
+      else console.error(line)
+      process.exit(130)
+    }
+    if (!result) return
 
     if (!json) {
       if (isTTY) {

@@ -175,8 +175,11 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
   const [confirmTarget, setConfirmTarget] = useState<OnboardingComponentStatus | null>(null)
   const [repair, setRepair] = useState<{ name: string; start: OperationStartResponse } | null>(null)
   const [repairError, setRepairError] = useState<string | null>(null)
+  // Busy from the moment the request is sent, so a second click (or closing
+  // the dialog) can't race the first repair's acceptance.
+  const [starting, setStarting] = useState(false)
   const followed = useOperation<ComponentInstallBody>(repair?.start.operationId ?? null, repair ? { bootId: repair.start.bootId } : {})
-  const repairing = repair !== null
+  const repairing = repair !== null || starting
   // The closing dialog keeps rendering during its exit animation — hold the
   // last target so it never flashes "Repair undefined?".
   const lastTargetRef = useRef<OnboardingComponentStatus | null>(null)
@@ -187,6 +190,8 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
   // operation while the repair runs, shows failures inline (retry or close),
   // and only closes on success. Confirming in the dialog is the approval.
   const runRepair = async (name: string) => {
+    if (repairing) return
+    setStarting(true)
     setRepairError(null)
     try {
       const start = await startOperation(() => fetch('/api/runtime/onboarding/install', {
@@ -198,6 +203,8 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
     } catch (err) {
       // A refusal (OperationStartError) carries the server's own message.
       setRepairError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setStarting(false)
     }
   }
 
@@ -320,7 +327,9 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
 
       <ConfirmDialog
         open={confirmTarget !== null}
-        onCancel={() => setConfirmTarget(null)}
+        // Not while the request is in flight; once accepted the repair runs on
+        // (the tray shows it) and the dialog may close.
+        onCancel={() => { if (!starting) setConfirmTarget(null) }}
         title={`Repair ${dialogTarget?.name}?`}
         description={dialogTarget
           ? `${dialogTarget.message.replace(/\.$/, '')}. This runs the same repair as \`bakin install ${dialogTarget.name}\` and may take a moment.`
