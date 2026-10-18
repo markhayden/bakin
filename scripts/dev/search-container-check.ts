@@ -164,10 +164,14 @@ async function inside(): Promise<void> {
   const modelsCheck = await capture(['check', 'search-models', '--json'])
   const modelsStatus = (() => { try { return (JSON.parse(modelsCheck) as { status?: string; message?: string }) } catch { return {} } })()
   check('every search model is present and loads here', modelsStatus.status === 'ok', `status=${modelsStatus.status} message=${modelsStatus.message}`)
-  const receipt = (() => {
-    try { return JSON.parse(readFileSync(join(env.ANTFLY_HOME, 'bakin-model-load', 'antflydb__clipclap.json'), 'utf8')) as { loadable?: boolean; reason?: string } } catch { return null }
+  // The install's own load probes: every model it pulled must have loaded.
+  const receipts = (() => {
+    const dir = join(env.ANTFLY_HOME, 'bakin-model-load')
+    try {
+      return readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => ({ file: f, ...(JSON.parse(readFileSync(join(dir, f), 'utf8')) as { loadable?: boolean; reason?: string }) }))
+    } catch { return [] }
   })()
-  check('the engine itself loaded the visual embedder', receipt?.loadable === true, `receipt=${JSON.stringify(receipt)}`)
+  check('the engine itself loaded every pulled model', receipts.length > 0 && receipts.every((r) => r.loadable === true), `receipts=${JSON.stringify(receipts)}`)
 
   // 3. Boot the server, then reset.
   const server = spawn('bun', ['server.ts', 'serve'], { cwd: REPO, env: childEnv, stdio: ['ignore', 'inherit', 'inherit'] })
