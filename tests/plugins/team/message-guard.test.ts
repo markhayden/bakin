@@ -58,6 +58,8 @@ mock.module('../../../src/core/execution-ledger', () => ({
   listLiveRuns: () => [],
   // Model-availability evidence (#852) — inert here.
   recordModelRejection: () => ({ opened: false, id: 0 }),
+  recordModelProbeSuccess: () => {},
+  listModelProbeSuccessesSince: () => [],
   resolveModelRejection: () => false,
   listModelRejections: () => [],
 }))

@@ -1,0 +1,91 @@
+/**
+ * Positive model evidence for the plan (margo 2026-10-18): a model is proven
+ * by tokens in usage history or a passing probe within the proof window;
+ * unreadable evidence proves nothing. Probe outcomes record through the ONE
+ * availability chokepoint.
+ */
+import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { randomUUID } from 'crypto'
+import { mkdirSync, rmSync } from 'fs'
+
+const testDir = join(tmpdir(), `bakin-test-model-plan-proof-${Date.now()}-${randomUUID()}`)
+mkdirSync(testDir, { recursive: true })
+const contentDirMock = () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db') }) })
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
+mock.module('../../src/core/logger', () => ({ createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }) }))
+
+type Cell = { agent: string; day: string; model: string; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number } }
+let usageCells: Cell[] = []
+let usageThrows = false
+let usageSince: string | null = null
+mock.module('@bakin/core/usage-history/store', () => ({
+  readUsageByAgentModelDaySince: (sinceDay: string) => {
+    usageSince = sinceDay
+    if (usageThrows) throw new Error('usage.db unreadable')
+    return usageCells
+  },
+  toLocalDayKey: (tsMs: number) => {
+    const d = new Date(tsMs)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  },
+}))
+
+import { closeDb } from '../../packages/core/src/storage/db'
+import { recordModelProbeSuccess } from '../../packages/core/src/execution/ledger'
+import { provenModelIds, PROOF_WINDOW_DAYS } from '../../src/core/model-plan-input'
+import { noteProbeOutcome } from '../../src/core/model-availability'
+
+const DAY = 86_400_000
+const tokens = (total: number) => ({ input: total, output: 0, cacheRead: 0, cacheWrite: 0, total })
+
+beforeEach(() => {
+  closeDb()
+  rmSync(testDir, { recursive: true, force: true })
+  mkdirSync(testDir, { recursive: true })
+  usageCells = []
+  usageThrows = false
+  usageSince = null
+})
+
+afterAll(() => {
+  closeDb()
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+describe('provenModelIds', () => {
+  it('counts models that produced tokens in the window; zero-token and unknown-model rows prove nothing', () => {
+    usageCells = [
+      { agent: 'main', day: '2026-10-18', model: 'openai-codex/gpt-6-astra', tokens: tokens(1200) },
+      { agent: 'main', day: '2026-10-18', model: 'openclaw/delivery-mirror', tokens: tokens(0) },
+      { agent: 'main', day: '2026-10-18', model: '', tokens: tokens(50) },
+    ]
+    const now = Date.parse('2026-10-18T20:00:00Z')
+    expect([...provenModelIds(now)]).toEqual(['openai-codex/gpt-6-astra'])
+    const since = new Date(now - PROOF_WINDOW_DAYS * DAY)
+    expect(usageSince).toBe(`${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, '0')}-${String(since.getDate()).padStart(2, '0')}`)
+  })
+
+  it('counts a passing probe inside the window, not one older than it', () => {
+    const now = Date.now()
+    recordModelProbeSuccess({ model: 'openai-codex/gpt-5.6-luna', at: now - DAY })
+    recordModelProbeSuccess({ model: 'openai-codex/gpt-5.4-mini', at: now - (PROOF_WINDOW_DAYS + 1) * DAY })
+    expect([...provenModelIds(now)]).toEqual(['openai-codex/gpt-5.6-luna'])
+  })
+
+  it('fails closed: unreadable usage history proves nothing, probes still count', () => {
+    usageThrows = true
+    recordModelProbeSuccess({ model: 'openai-codex/gpt-5.6-luna' })
+    expect([...provenModelIds()]).toEqual(['openai-codex/gpt-5.6-luna'])
+  })
+})
+
+describe('noteProbeOutcome', () => {
+  it('a passing probe becomes proof; a failing one does not', () => {
+    noteProbeOutcome('openai-codex/gpt-5.6-sol', { ok: true })
+    noteProbeOutcome('openai-codex/gpt-5.4-mini', { ok: false, err: new Error('timeout') })
+    expect([...provenModelIds()]).toEqual(['openai-codex/gpt-5.6-sol'])
+  })
+})

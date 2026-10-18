@@ -17,7 +17,9 @@ import { detectLanesFromCredentials, resolveLaneFor, type BillingLane, type Bill
 import { getKnownModel } from '@bakin/core/llm/model-catalog'
 import { normalizeModelId, providerFromId, tierFromId } from '@bakin/core/llm/model-id'
 import { VISION_MODELS } from '@bakin/core/llm/vision-models'
+import { readUsageByAgentModelDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
 
+import { listModelProbeSuccessesSince } from './execution-ledger'
 import { createLogger } from './logger'
 import { getModelEligibility } from './model-eligibility'
 import type { PlanCandidate, PlanInput, PlanRecommendation, PlanTier } from './model-plan'
@@ -49,6 +51,33 @@ function eligible(row: PlanCatalogRow): boolean {
   return row.kind === undefined || row.kind === 'llm'
 }
 
+/** How far back a model must have run (or passed a probe) to count as proven here. */
+export const PROOF_WINDOW_DAYS = 7
+
+/**
+ * Models with POSITIVE evidence of running here in the proof window: tokens
+ * observed in usage history (every turn, inherited-model ones included), or
+ * a passing probe. A runtime listing is not proof — margo's stale listing
+ * still offered a model retired upstream (2026-10-18). Each source fails
+ * closed: unreadable evidence proves nothing, it never proves everything.
+ */
+export function provenModelIds(now: number = Date.now()): Set<string> {
+  const proven = new Set<string>()
+  try {
+    for (const cell of readUsageByAgentModelDaySince(toLocalDayKey(now - PROOF_WINDOW_DAYS * 86_400_000))) {
+      if (cell.model && cell.tokens.total > 0) proven.add(normalizeModelId(cell.model))
+    }
+  } catch (err) {
+    log.warn('Usage history unreadable; no model is proven by usage', { err: err instanceof Error ? err.message : String(err) })
+  }
+  try {
+    for (const model of listModelProbeSuccessesSince(now - PROOF_WINDOW_DAYS * 86_400_000)) proven.add(normalizeModelId(model))
+  } catch (err) {
+    log.warn('Probe evidence unreadable; no model is proven by probe', { err: err instanceof Error ? err.message : String(err) })
+  }
+  return proven
+}
+
 export interface AssemblePlanInputOptions {
   runtime: AgentRuntimeAdapter
   rows: PlanCatalogRow[]
@@ -56,6 +85,8 @@ export interface AssemblePlanInputOptions {
   enrichmentEnabled: boolean
   /** Operator lane overrides (the spend plugin's `billing.overrides`); provider-level entries apply. */
   billingOverrides?: BillingOverride[]
+  /** Positive-evidence model ids (defaults to `provenModelIds()`). */
+  proven?: Set<string>
 }
 
 /** Best-effort: a runtime that cannot report credentials leaves every lane metered (conservative), never blocks the plan. */
@@ -71,6 +102,7 @@ async function detectLanes(runtime: AgentRuntimeAdapter): Promise<Record<string,
 export async function assemblePlanInput(opts: AssemblePlanInputOptions): Promise<PlanInput> {
   const [policy, detected] = await Promise.all([opts.runtime.models.routingPolicy(), detectLanes(opts.runtime)])
   const overrides = opts.billingOverrides ?? []
+  const proven = opts.proven ?? provenModelIds()
   const candidates: PlanCandidate[] = opts.rows.filter(eligible).map((row) => {
     const pricing = getKnownModel(row.id)?.pricing
     const { lane } = resolveLaneFor({ provider: providerFromId(row.id), overrides, detected })
@@ -81,6 +113,7 @@ export async function assemblePlanInput(opts: AssemblePlanInputOptions): Promise
       ...(pricing ? { pricePer1M: pricing.inputPer1M + pricing.outputPer1M } : {}),
       ...(row.contextWindow !== undefined ? { contextWindow: row.contextWindow } : {}),
       vision: visionOf(row),
+      proven: proven.has(row.id),
     }
   })
   return {

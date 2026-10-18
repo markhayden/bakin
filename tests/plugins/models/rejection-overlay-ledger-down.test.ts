@@ -27,6 +27,8 @@ mock.module('../../../src/core/execution-ledger', () => ({
   LedgerUnavailableError: FakeLedgerUnavailableError,
   listModelRejections: () => { throw new FakeLedgerUnavailableError('ledger op failed: listModelRejections') },
   recordModelRejection: () => { throw new FakeLedgerUnavailableError('ledger op failed: recordModelRejection') },
+  recordModelProbeSuccess: () => { throw new FakeLedgerUnavailableError('ledger op failed: recordModelProbeSuccess') },
+  listModelProbeSuccessesSince: () => { throw new FakeLedgerUnavailableError('ledger op failed: listModelProbeSuccessesSince') },
   resolveModelRejection: () => { throw new FakeLedgerUnavailableError('ledger op failed: resolveModelRejection') },
 }))
 

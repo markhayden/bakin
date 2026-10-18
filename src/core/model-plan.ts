@@ -33,6 +33,13 @@ export interface PlanCandidate {
   contextWindow?: number
   /** true/false when known (runtime `input` modalities, then the curated list); null = unknown. */
   vision: boolean | null
+  /**
+   * Positive evidence it runs HERE (tokens in usage history or a passing
+   * probe within the proof window). The plan only proposes MOVING to a
+   * proven model — a runtime listing can be stale (a retired model stayed
+   * listed on margo, 2026-10-18).
+   */
+  proven: boolean
 }
 
 export interface PlanInput {
@@ -122,7 +129,7 @@ export function rankCandidates(candidates: PlanCandidate[]): PlanCandidate[] {
   })
 }
 
-/** Agent pick: the current default if eligible, else the highest-tier eligible model. */
+/** Agent pick: the current default if eligible (kept, not a change), else the strongest PROVEN model. */
 export function pickAgentModel(input: PlanInput): LanePick {
   const current = input.currentDefaultModel
     ? input.candidates.find((c) => c.id === input.currentDefaultModel) ?? null
@@ -133,17 +140,27 @@ export function pickAgentModel(input: PlanInput): LanePick {
   if (input.candidates.length === 0) {
     return { model: null, why: 'No model can run here yet — add credentials for a provider first.', suitability: 'none' }
   }
-  const strongest = [...input.candidates].sort((a, b) => {
+  const strongestFirst = [...input.candidates].sort((a, b) => {
     if (tierRank(a) !== tierRank(b)) return tierRank(b) - tierRank(a)
     const ca = a.contextWindow ?? 0
     const cb = b.contextWindow ?? 0
     if (ca !== cb) return cb - ca
     return byId(a, b)
-  })[0]!
+  })
+  const proven = strongestFirst.find((c) => c.proven)
+  if (proven) {
+    const why = input.currentDefaultModel
+      ? `Your current default (${input.currentDefaultModel}) cannot run here; this is the strongest model that has.`
+      : 'The strongest model that has run here.'
+    return { model: proven.id, why, suitability: 'known' }
+  }
+  // Nothing has run here yet (a fresh install, or every model is new): the
+  // strongest listed model is the only answer — disclosed, never "known".
+  const strongest = strongestFirst[0]!
   const why = input.currentDefaultModel
-    ? `Your current default (${input.currentDefaultModel}) cannot run here; this is the strongest model that can.`
-    : 'The strongest model that can run here.'
-  return { model: strongest.id, why, suitability: 'known' }
+    ? `Your current default (${input.currentDefaultModel}) cannot run here and no model has been seen running here yet; ${strongest.id} is listed but unverified — probe it or run a task to confirm.`
+    : `No model has been seen running here yet; ${strongest.id} is the strongest listed — unverified until it runs.`
+  return { model: strongest.id, why, suitability: 'unknown' }
 }
 
 function priceWhy(pick: PlanCandidate, agent: PlanCandidate | null): string {
@@ -172,14 +189,21 @@ export function pickChoresModel(input: PlanInput, agent: LanePick): { pick: Lane
   const ceiling = agentCandidate ? tierRank(agentCandidate) : Number.POSITIVE_INFINITY
   const notHeavier = rankCandidates(input.candidates.filter((c) => tierRank(c) <= ceiling))
   const agentAt = agentCandidate ? notHeavier.findIndex((c) => c.id === agentCandidate.id) : -1
-  const lighter = agentAt === -1 ? notHeavier : notHeavier.slice(0, agentAt)
+  const listedLighter = agentAt === -1 ? notHeavier : notHeavier.slice(0, agentAt)
+  // A chores route MOVES work off the agent model, so only a proven model
+  // may take it; lighter models that are merely listed are named, not used.
+  const lighter = listedLighter.filter((c) => c.proven)
+  const unproven = listedLighter.filter((c) => !c.proven).map((c) => c.id)
+  if (unproven.length > 0) {
+    notes.push(`Not seen running here in the last week, so not proposed: ${unproven.slice(0, 5).join(', ')}${unproven.length > 5 ? ` (+${unproven.length - 5} more)` : ''}. Run a task on one or probe it, and the plan will consider it.`)
+  }
   const needsVision = input.enrichmentEnabled
   if (lighter.length === 0) {
     if (!agentCandidate) {
       return { pick: { model: null, why: 'No model can run here yet.', suitability: 'none' }, enrichment: needsVision ? 'unset' : 'disabled', notes }
     }
-    // Nothing lighter can run: the agent model does the chores (inherit).
-    const pick: LanePick = { model: agentCandidate.id, why: 'the agent model — nothing lighter can run here', suitability: 'known' }
+    // Nothing lighter has run here: the agent model does the chores (inherit).
+    const pick: LanePick = { model: agentCandidate.id, why: 'the agent model — nothing lighter has run here', suitability: 'known' }
     if (!needsVision) return { pick, enrichment: 'disabled', notes }
     if (agentCandidate.vision === true) return { pick, enrichment: 'chores', notes }
     if (agentCandidate.vision === null) {
@@ -235,7 +259,7 @@ function planRoutes(agent: LanePick, chores: LanePick, enrichment: PlanRecommend
       return { workClass, model: null, reason: 'No eligible model can see images — enrichment will fail until a vision-capable model is available.' }
     }
     if (!chores.model) return { workClass, model: null, reason: 'No model can run here yet.' }
-    if (chores.model === agent.model) return { workClass, model: null, reason: 'inherits the agent model — nothing lighter can run here' }
+    if (chores.model === agent.model) return { workClass, model: null, reason: 'inherits the agent model — nothing lighter has run here' }
     return { workClass, model: chores.model, reason: chores.why }
   })
 }

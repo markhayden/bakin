@@ -18,14 +18,14 @@ mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () =>
 
 import { CHORES_CLASSES, choresLaneState, pickAgentModel, rankCandidates, recommendPlan, type PlanCandidate, type PlanInput } from '../../src/core/model-plan'
 
-const luna: PlanCandidate = { id: 'openai-codex/gpt-5.6-luna', tier: 'premium', lane: 'subscription', contextWindow: 400_000, vision: true }
-const terra: PlanCandidate = { id: 'openai-codex/gpt-5.6-terra', tier: 'standard', lane: 'subscription', contextWindow: 400_000, vision: true }
-const mini: PlanCandidate = { id: 'openai-codex/gpt-5.4-mini', tier: 'budget', lane: 'subscription', contextWindow: 200_000, vision: false }
-const miniUnknown: PlanCandidate = { id: 'openai-codex/gpt-5.4-nano', tier: 'budget', lane: 'subscription', contextWindow: 128_000, vision: null }
-const haiku: PlanCandidate = { id: 'anthropic/claude-haiku-4-5', tier: 'budget', lane: 'metered', pricePer1M: 6, vision: true }
-const sonnet: PlanCandidate = { id: 'anthropic/claude-sonnet-4-6', tier: 'standard', lane: 'metered', pricePer1M: 18, vision: true }
-const opus: PlanCandidate = { id: 'anthropic/claude-opus-4-6', tier: 'premium', lane: 'metered', pricePer1M: 90, vision: true }
-const unpriced: PlanCandidate = { id: 'mystery/cheap', tier: 'budget', lane: 'metered', vision: null }
+const luna: PlanCandidate = { id: 'openai-codex/gpt-5.6-luna', tier: 'premium', lane: 'subscription', contextWindow: 400_000, vision: true, proven: true }
+const terra: PlanCandidate = { id: 'openai-codex/gpt-5.6-terra', tier: 'standard', lane: 'subscription', contextWindow: 400_000, vision: true, proven: true }
+const mini: PlanCandidate = { id: 'openai-codex/gpt-5.4-mini', tier: 'budget', lane: 'subscription', contextWindow: 200_000, vision: false, proven: true }
+const miniUnknown: PlanCandidate = { id: 'openai-codex/gpt-5.4-nano', tier: 'budget', lane: 'subscription', contextWindow: 128_000, vision: null, proven: true }
+const haiku: PlanCandidate = { id: 'anthropic/claude-haiku-4-5', tier: 'budget', lane: 'metered', pricePer1M: 6, vision: true, proven: true }
+const sonnet: PlanCandidate = { id: 'anthropic/claude-sonnet-4-6', tier: 'standard', lane: 'metered', pricePer1M: 18, vision: true, proven: true }
+const opus: PlanCandidate = { id: 'anthropic/claude-opus-4-6', tier: 'premium', lane: 'metered', pricePer1M: 90, vision: true, proven: true }
+const unpriced: PlanCandidate = { id: 'mystery/cheap', tier: 'budget', lane: 'metered', vision: null, proven: true }
 
 function input(over: Partial<PlanInput>): PlanInput {
   return { candidates: [], currentDefaultModel: null, routing: { routes: [], tagOverrides: [] }, enrichmentEnabled: true, ...over }
@@ -157,5 +157,43 @@ describe('choresLaneState (Simple view)', () => {
     expect(choresLaneState(mixed, luna.id)).toMatchObject({ model: null, mixed: true, models: [luna.id, mini.id] })
     const thinking = { routes: CHORES_CLASSES.map((workClass) => ({ workClass, model: terra.id, thinking: 'low' as const })), tagOverrides: [] }
     expect(choresLaneState(thinking, luna.id).mixed).toBe(true)
+  })
+})
+
+describe('only proven models are proposed (margo 2026-10-18)', () => {
+  const astra: PlanCandidate = { id: 'openai-codex/gpt-6-astra', tier: 'standard', lane: 'subscription', contextWindow: 400_000, vision: true, proven: true }
+  const retiredMini: PlanCandidate = { id: 'openai-codex/gpt-5.4-mini', tier: 'budget', lane: 'subscription', contextWindow: 400_000, vision: true, proven: false }
+
+  it('replays margo: a listed-but-never-run lighter model is named, not proposed, and no route changes', () => {
+    const plan = recommendPlan(input({ candidates: [astra, retiredMini], currentDefaultModel: astra.id }))
+    expect(plan.agent.model).toBe(astra.id)
+    expect(plan.chores.model).toBe(astra.id)
+    expect(plan.routes.every((route) => route.model === null)).toBe(true)
+    expect(plan.ops).toEqual([])
+    expect(plan.notes.join(' ')).toContain(`Not seen running here in the last week, so not proposed: ${retiredMini.id}`)
+  })
+
+  it('a proven lighter model is still proposed for the chores', () => {
+    const plan = recommendPlan(input({ candidates: [astra, { ...retiredMini, proven: true }], currentDefaultModel: astra.id }))
+    expect(plan.chores.model).toBe(retiredMini.id)
+    expect(plan.ops.length).toBeGreaterThan(0)
+  })
+
+  it('replacing a dead default prefers a proven model over a stronger unproven one', () => {
+    const strongUnproven: PlanCandidate = { ...luna, proven: false }
+    const pick = pickAgentModel(input({ candidates: [strongUnproven, astra], currentDefaultModel: 'openai/gone' }))
+    expect(pick).toMatchObject({ model: astra.id, suitability: 'known' })
+  })
+
+  it('with nothing proven yet (a fresh install) the strongest listed model is offered as unverified', () => {
+    const pick = pickAgentModel(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: null }))
+    expect(pick.model).toBe(luna.id)
+    expect(pick.suitability).toBe('unknown')
+    expect(pick.why).toMatch(/unverified/)
+  })
+
+  it('keeping the current default needs no proof (it is not a change)', () => {
+    const pick = pickAgentModel(input({ candidates: [{ ...luna, proven: false }], currentDefaultModel: luna.id }))
+    expect(pick).toMatchObject({ model: luna.id, suitability: 'known' })
   })
 })

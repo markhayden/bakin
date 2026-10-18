@@ -98,6 +98,8 @@ mock.module('../../../src/core/execution-ledger', () => ({
   // Model-availability evidence (#852) — inert here; covered by
   // tests/plugins/models/rejection-overlay*.test.ts.
   recordModelRejection: mock(() => ({ opened: false, id: 0 })),
+  recordModelProbeSuccess: () => {},
+  listModelProbeSuccessesSince: () => [],
   resolveModelRejection: mock(() => false),
   listModelRejections: mock(() => []),
   // dispatch-turns (dynamic import in /budget/status) needs the dispatch verbs at load.

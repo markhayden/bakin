@@ -52,6 +52,8 @@ export {
   recordModelRejection,
   resolveModelRejection,
   listModelRejections,
+  recordModelProbeSuccess,
+  listModelProbeSuccessesSince,
   LedgerUnavailableError,
 } from '../../packages/core/src/execution/ledger'
 export type {

@@ -28,7 +28,7 @@
  */
 import { RuntimeError } from '@bakin/core/adapters/runtime'
 import type { AgentRuntimeAdapter, ChatChunk, MessageArgs } from '@bakin/core/adapters/runtime'
-import { recordModelRejection, resolveModelRejection, type ModelRejectionResolution } from './execution-ledger'
+import { recordModelProbeSuccess, recordModelRejection, resolveModelRejection, type ModelRejectionResolution } from './execution-ledger'
 import { appendAudit } from './audit'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
@@ -200,6 +200,11 @@ export function withModelAvailabilityObservation(adapter: AgentRuntimeAdapter): 
 export function noteProbeOutcome(model: string, outcome: { ok: true } | { ok: false; err: unknown }): void {
   if (outcome.ok) {
     noteModelSucceeded(model, 'probe', 'probe_succeeded')
+    try {
+      recordModelProbeSuccess({ model })
+    } catch (err) {
+      log.warn('probe success not recorded (ledger unavailable?)', { model, error: String(err) })
+    }
     return
   }
   const err = outcome.err

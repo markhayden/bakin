@@ -27,6 +27,7 @@ mock.module('../../../src/core/logger', () => ({
 
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { closeDb } from '../../../packages/core/src/storage/db'
+import { recordModelProbeSuccess } from '../../../packages/core/src/execution/ledger'
 import { setModelsCache } from '../../../plugins/models/lib/available-models'
 import { clearPersistedCache } from '../../../plugins/models/lib/models-cache'
 import { buildPlanInput, describePlan, lastPlan, routeProposals } from '../../../plugins/models/lib/plan'
@@ -85,6 +86,8 @@ function fakeCtx(opts: FakeCtxOpts = {}): PluginContext {
 beforeEach(() => {
   setModelsCache({ models: catalog(), fetchedAt: Date.now() })
   clearPersistedCache()
+  // The fixture's runnable models have run here (the plan only proposes proven models).
+  for (const model of [LUNA, MINI, HAIKU]) recordModelProbeSuccess({ model })
 })
 
 describe('visionOf', () => {
@@ -136,8 +139,8 @@ describe('recommendForRef', () => {
   it('chores routes get the plan route (or the chores model through inherit); everything else the agent model; unset enrichment has no answer', () => {
     const plan = recommendPlan({
       candidates: [
-        { id: LUNA, tier: 'premium', lane: 'subscription', vision: true },
-        { id: MINI, tier: 'budget', lane: 'subscription', vision: false },
+        { id: LUNA, tier: 'premium', lane: 'subscription', vision: true, proven: true },
+        { id: MINI, tier: 'budget', lane: 'subscription', vision: false, proven: true },
       ],
       currentDefaultModel: LUNA,
       routing: { routes: [], tagOverrides: [] },
@@ -159,8 +162,8 @@ describe('routeProposals', () => {
     const routing = { routes: [{ workClass: 'relay' as const, model: HAIKU }], tagOverrides: [] }
     const plan = recommendPlan({
       candidates: [
-        { id: LUNA, tier: 'premium', lane: 'subscription', vision: false },
-        { id: MINI, tier: 'budget', lane: 'subscription', vision: false },
+        { id: LUNA, tier: 'premium', lane: 'subscription', vision: false, proven: true },
+        { id: MINI, tier: 'budget', lane: 'subscription', vision: false, proven: true },
       ],
       currentDefaultModel: LUNA,
       routing,
@@ -176,8 +179,8 @@ describe('routeProposals', () => {
     const routing = { routes: [], tagOverrides: [] }
     const plan = recommendPlan({
       candidates: [
-        { id: LUNA, tier: 'premium', lane: 'subscription', vision: true },
-        { id: MINI, tier: 'budget', lane: 'subscription', vision: false },
+        { id: LUNA, tier: 'premium', lane: 'subscription', vision: true, proven: true },
+        { id: MINI, tier: 'budget', lane: 'subscription', vision: false, proven: true },
       ],
       currentDefaultModel: LUNA,
       routing,
