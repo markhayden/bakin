@@ -154,14 +154,6 @@ export function getAgentList(): OpenClawAgent[] {
   return agentListFrom(readOpenClawConfig())
 }
 
-/**
- * The roster from ONE strict snapshot: an unreadable or corrupt config
- * throws (never an empty roster); an absent one is genuinely no agents.
- */
-export function getAgentListStrict(): OpenClawAgent[] {
-  return agentListFrom(readOpenClawConfigForMutation())
-}
-
 export function getAgentIds(): string[] {
   return getAgentList().map((agent) => agent.id)
 }

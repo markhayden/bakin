@@ -6,7 +6,6 @@
  * store). Writes are atomic (tmp+rename) and serialized through one queue.
  */
 import {
-  existsSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -70,9 +69,17 @@ function serialized<T>(fn: () => T): Promise<T> {
 
 export function readRegistry(_logger?: AdapterLogger): PiRegistry {
   const path = getPiRegistryPath()
-  if (!existsSync(path)) return { version: 1, agents: [] }
+  let raw: string
   try {
-    return RegistrySchema.parse(JSON.parse(readFileSync(path, 'utf-8')))
+    raw = readFileSync(path, 'utf-8')
+  } catch (err) {
+    // Only a missing file is an empty roster; one that exists but cannot be
+    // read (EACCES, I/O) must fail loudly like a corrupt one (#898 review r5).
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return { version: 1, agents: [] }
+    throw new Error(`adapter-pi: registry unreadable at ${path}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  try {
+    return RegistrySchema.parse(JSON.parse(raw))
   } catch (err) {
     // A corrupt roster must fail loudly — silently starting empty would
     // orphan every agent workspace and re-seed 'main' on top of them.

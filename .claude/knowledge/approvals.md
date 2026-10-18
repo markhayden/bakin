@@ -130,10 +130,12 @@ shells; an unreadable openclaw.json throws rather than listing none), asked
 of THIS home's server (server.lock) — never a `BAKIN_URL` target, which
 cannot vouch for a local cwd; with no local server the CLI runs the same
 check in-process against a BARE runtime adapter (constructed, never
-initialized — no app services, search, or settings/secret writes). OpenClaw
-treats only ENOENT as an absent config; any other read failure is
-unreadable (strict readers and writers refuse it). A check that cannot
-answer is not a negative:
+initialized — no app services, search, or settings/secret writes), chosen
+by `readRuntimeAdapterStrict()` (an unreadable settings.json throws, never
+defaults; no logging). Both adapters treat only ENOENT as absent: OpenClaw's
+config reader and Pi's registry read refuse any other read failure, and
+OpenClaw derives the roster, main identity and every path from ONE strict
+snapshot. A check that cannot answer is not a negative:
 the server answers 503 when services, the roster or a workspace lookup fail
 (`AgentContextUnavailableError`), and the CLI then does not honor `--as
 human` (stderr says why) — task commands fail rather than act as an

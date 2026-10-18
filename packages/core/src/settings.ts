@@ -663,6 +663,32 @@ function getSettingsPath(): string {
   return path.join(getContentDir(), 'settings.json')
 }
 
+/**
+ * The runtime adapter this home selects, read STRICTLY and without logging
+ * or caching (#898 D-H5): `BAKIN_RUNTIME_ADAPTER` wins; a missing
+ * settings.json is the default; an unreadable or unparseable file, or an
+ * unknown adapter name, THROWS — never a silent fall back to the default,
+ * which would point an agent-context check at the wrong runtime.
+ */
+export function readRuntimeAdapterStrict(): RuntimeAdapterName {
+  const isAdapter = (value: unknown): value is RuntimeAdapterName => (RUNTIME_ADAPTER_NAMES as readonly unknown[]).includes(value)
+  const envAdapter = process.env.BAKIN_RUNTIME_ADAPTER
+  if (envAdapter) {
+    if (!isAdapter(envAdapter)) throw new Error(`BAKIN_RUNTIME_ADAPTER is not a known runtime: ${envAdapter}`)
+    return envAdapter
+  }
+  let raw: string
+  try {
+    raw = fs.readFileSync(getSettingsPath(), 'utf-8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return DEFAULT_SETTINGS.runtime.adapter
+    throw new Error(`settings.json could not be read: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  const adapter = (JSON.parse(raw) as { runtime?: { adapter?: unknown } } | null)?.runtime?.adapter ?? DEFAULT_SETTINGS.runtime.adapter
+  if (!isAdapter(adapter)) throw new Error(`settings.json names an unknown runtime: ${String(adapter)}`)
+  return adapter
+}
+
 export function getSettings(): BakinSettings {
   const cached = getCachedSettings()
   if (cached) return cached

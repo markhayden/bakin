@@ -18,7 +18,8 @@ let localAnswer: () => Promise<string | null> = async () => null
 const bareRuntime = { agents: {} }
 const createRuntimeAdapter = mock(() => bareRuntime)
 const createAppServices = mock(async () => { throw new Error('app services must not be created by the CLI identity check') })
-mock.module('../../src/core/settings', () => ({ getSettings: () => ({ runtime: { adapter: 'pi' } }) }))
+let adapterChoice: () => string = () => 'pi'
+mock.module('../../packages/core/src/settings', () => ({ readRuntimeAdapterStrict: () => adapterChoice() }))
 mock.module('../../src/core/runtime-adapter-factory', () => ({ createRuntimeAdapter }))
 mock.module('../../src/core/app-services', () => ({ createAppServices, maybeGetAppServices: () => undefined }))
 const agentContextForPath = mock((_cwd: string, _runtime?: unknown) => localAnswer())
@@ -97,6 +98,22 @@ describe('cliIdentity workspace authority', () => {
       expect(identity.declarationWithheld).toContain('HTTP 503')
     } finally {
       console.error = original
+    }
+  })
+
+  it('an unreadable settings.json (uncertain runtime) withholds the declaration (review r5)', async () => {
+    process.argv = ['bun', 'bakin', 'doctor', '--fix', '--as', 'human']
+    localServer = null
+    adapterChoice = () => { throw new Error('settings.json could not be read: EACCES') }
+    const original = console.error
+    console.error = mock(() => {})
+    try {
+      const identity = await cliIdentity()
+      expect(identity.operatorDeclared).toBe(false)
+      expect(identity.declarationWithheld).toContain('EACCES')
+    } finally {
+      console.error = original
+      adapterChoice = () => 'pi'
     }
   })
 })

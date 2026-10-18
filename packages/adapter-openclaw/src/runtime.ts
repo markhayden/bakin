@@ -64,7 +64,7 @@ import {
   findAgentById,
   getAgentList,
   readOpenClawConfig,
-  getAgentListStrict,
+  agentListFrom,
   readOpenClawConfigForMutation,
   resetOpenClawConfigCache,
 } from './config'
@@ -113,7 +113,7 @@ import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
   updateOpenClawAgentIdentity, updateAgentAllowlist, removeOpenClawAgentConfig,
   removeOpenClawAgentArtifacts, removeOpenClawAgentCronArtifacts,
-  agentToRuntime, getWorkspacePath, readGatewayToken, isSafeWorkspaceFile,
+  agentToRuntime, getWorkspacePath, workspacePathFrom, readGatewayToken, isSafeWorkspaceFile,
 } from './agent-config'
 import {
   OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS,
@@ -460,9 +460,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return out.sort()
     },
     workspaces: async (): Promise<Array<{ agentId: string; path: string }>> => {
-      // ONE strict snapshot: an unreadable openclaw.json throws here, where
-      // the lenient roster read answers an empty list (#898 review r3/r4).
-      return getAgentListStrict().map((agent) => ({ agentId: agent.id, path: getWorkspacePath(agent.id) }))
+      // ONE strict snapshot for the roster, the main identity and every path:
+      // an unreadable openclaw.json throws here, where the lenient reads
+      // answer an empty roster or default paths (#898 review r3–r5).
+      const config = readOpenClawConfigForMutation()
+      const agents = agentListFrom(config)
+      const hasMain = agents.some((agent) => agent.id === 'main')
+      return agents.map((agent) => ({ agentId: agent.id, path: workspacePathFrom(config, agent.id, hasMain && agent.id === 'main') }))
     },
     workspaceFileStats: async (agentId: string): Promise<WorkspaceFileStat[] | null> => {
       const root = getWorkspacePath(agentId)

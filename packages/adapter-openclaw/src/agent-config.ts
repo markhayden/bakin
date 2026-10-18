@@ -201,8 +201,11 @@ function isForeignOpenClawPath(path: string): boolean {
 }
 
 export function getWorkspacePath(agentId: string): string {
-  const config = readOpenClawConfig()
-  const isMain = agentId === tryGetMainAgentId()
+  return workspacePathFrom(readOpenClawConfig(), agentId, agentId === tryGetMainAgentId())
+}
+
+/** The workspace path for `agentId` from ONE config snapshot (no re-read). */
+export function workspacePathFrom(config: OpenClawConfig | null, agentId: string, isMain: boolean): string {
   const configured = configuredWorkspaceFor(config, agentId, isMain)
   // Trust the configured path unless it belongs to a foreign OpenClaw home
   // that doesn't exist here (the dockerized-rig scenario) — writes through

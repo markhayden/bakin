@@ -69,10 +69,12 @@ export function cliIdentity(): Promise<CliIdentity> {
         // — constructed, never initialized: no app services, search, secret
         // migration or settings writes, just the read-only roster. It throws
         // when it cannot tell.
-        const { getSettings } = await import('../core/settings')
+        // The adapter choice is read strictly (an unreadable settings.json
+        // throws rather than defaulting to another runtime) and silently.
+        const { readRuntimeAdapterStrict } = await import('../../packages/core/src/settings')
         const { createRuntimeAdapter } = await import('../core/runtime-adapter-factory')
         const { agentContextForPath } = await import('../core/approvals/agent-context')
-        return agentContextForPath(cwd, createRuntimeAdapter(getSettings().runtime.adapter))
+        return agentContextForPath(cwd, createRuntimeAdapter(readRuntimeAdapterStrict()))
       }
       const res = await fetch(`${local}/api/approvals/agent-context?cwd=${encodeURIComponent(cwd)}`, { headers: { ...CLI_ORIGIN_HEADER } })
       if (!res.ok) throw new Error(`the workspace check failed (HTTP ${res.status})`)
