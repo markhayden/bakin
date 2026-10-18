@@ -35,6 +35,7 @@ import {
   queryTarget,
   type TableEnsureDef,
 } from '@bakin/core/search/tables'
+import { ResourceBusyError, holdNow } from '@bakin/core/operations'
 import { getAppServices } from './app-services-store'
 
 const log = createLogger('search-registry-core')
@@ -340,7 +341,11 @@ const REBUILD_ORDER: Record<string, number> = {
 }
 const REBUILD_ORDER_DEFAULT = 50
 
-async function runRebuildPass(tableName?: string, opts?: RebuildOpts): Promise<ReindexTableOutcome[]> {
+function runRebuildPass(tableName?: string, opts?: RebuildOpts): Promise<ReindexTableOutcome[]> {
+  return runningMigrations(() => rebuildPass(tableName, opts))
+}
+
+async function rebuildPass(tableName?: string, opts?: RebuildOpts): Promise<ReindexTableOutcome[]> {
   const registry = getRegistry()
   const search = getSearchAdapter()
   const targets = Array.from(registry.contentTypes.entries())
@@ -435,12 +440,45 @@ async function repairOneTable(
   return ensureVersionedTable(search, vdef, fingerprint, ensureOpts)
 }
 
+/** Passes running migrations in this process right now (the wedge watchdog acts for them). */
+let migrationRunners = 0
+
+async function runningMigrations<T>(fn: () => Promise<T>): Promise<T> {
+  migrationRunners += 1
+  try {
+    return await fn()
+  } finally {
+    migrationRunners -= 1
+  }
+}
+
+/** How a background mutator names itself to a reset or reindex waiting on it. */
+const BACKGROUND_MIGRATION = { title: 'Background index migration' }
+
+/**
+ * Background search mutators never wait for `search-engine` (#895 D23): the
+ * resource is taken now or the pass defers to its next tick, so an engine
+ * install, reset or reindex never races a background migration — and those
+ * foreground operations wait for an in-flight pass, visibly.
+ */
+async function backgroundPass<T>(what: string, fn: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await holdNow(['search-engine'], BACKGROUND_MIGRATION, () => runningMigrations(fn))
+  } catch (err) {
+    if (!(err instanceof ResourceBusyError) || err.resource !== 'search-engine') throw err
+    log.info(`${what} deferred — the search engine is busy`, { holder: err.holder.title ?? null })
+    return undefined
+  }
+}
+
 /** Boot-time continuation of crash/park-interrupted migrations (D5). */
 export async function resumeTableMigrations(): Promise<void> {
-  const registry = getRegistry()
-  const search = getSearchAdapter()
-  const defs = Array.from(registry.contentTypes.values()).map(toVersionedDef)
-  await resumeVersionedMigrations(search, defs, adapterFingerprint(search))
+  await backgroundPass('boot migration resumption', async () => {
+    const registry = getRegistry()
+    const search = getSearchAdapter()
+    const defs = Array.from(registry.contentTypes.values()).map(toVersionedDef)
+    await resumeVersionedMigrations(search, defs, adapterFingerprint(search))
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -483,7 +521,7 @@ let deadShardRestartAttempts = 0
 export function startMigrationPump(): void {
   if (pumpTimer) return
   pumpTimer = setInterval(() => {
-    void pumpParkedMigrations().catch((err: unknown) => {
+    void migrationPumpTick().catch((err: unknown) => {
       log.warn('migration pump cycle failed', { err: err instanceof Error ? err.message : String(err) })
     })
   }, MIGRATION_PUMP_INTERVAL_MS)
@@ -552,7 +590,7 @@ async function handleDeadShards(
  * supervise their engine (guest/child modes return restartEngine
  * undefined).
  */
-async function wedgeWatchTick(): Promise<void> {
+export async function wedgeWatchTick(): Promise<void> {
   const inFlight = listVersionedTableStates().some(
     (s) => s.state === 'migrating' && s.phase !== 'parked',
   )
@@ -564,21 +602,35 @@ async function wedgeWatchTick(): Promise<void> {
 
   const search = getSearchAdapter()
   if (!search.restartEngine) return
-  lastWedgeRestartAt = Date.now()
-  log.warn('engine wedged under migration load — bouncing it', { staleForMs: staleFor })
-  try {
-    await search.restartEngine()
-  } catch (err) {
-    log.warn('wedge watchdog engine restart failed', { err: err instanceof Error ? err.message : String(err) })
-    return
+  const restartEngine = search.restartEngine.bind(search)
+  const bounce = async (): Promise<boolean> => {
+    lastWedgeRestartAt = Date.now()
+    log.warn('engine wedged under migration load — bouncing it', { staleForMs: staleFor })
+    try {
+      await restartEngine()
+    } catch (err) {
+      log.warn('wedge watchdog engine restart failed', { err: err instanceof Error ? err.message : String(err) })
+      return false
+    }
+    const { noteSearchEngineProgress } = await import('@bakin/core/search/progress')
+    noteSearchEngineProgress()
+    return true
   }
-  const { noteSearchEngineProgress } = await import('@bakin/core/search/progress')
-  noteSearchEngineProgress()
+  // A pass running migrations here holds search-engine for the whole
+  // migration, and its wedge is exactly what this watchdog heals — so it
+  // bounces on that holder's behalf. Anything else holding the engine (an
+  // install, a model pull, a reset's stop/wipe) defers the bounce.
+  const bounced = migrationRunners > 0 ? await bounce() : await backgroundPass('wedge watchdog restart', bounce)
   // Parked work resumes right away instead of waiting for the slow tick.
-  void pumpParkedMigrations().catch(() => {})
+  if (bounced) void migrationPumpTick().catch(() => {})
 }
 
-/** One pump cycle (exported for tests + the doctor's repair path). */
+/** The pump's timer tick: one cycle, or nothing while the engine is busy. */
+export async function migrationPumpTick(): Promise<void> {
+  await backgroundPass('migration pump cycle', () => pumpParkedMigrations())
+}
+
+/** One pump cycle (exported for tests; the timer runs it through migrationPumpTick). */
 export async function pumpParkedMigrations(
   opts?: { convergePollMs?: number; zeroProgressParkMs?: number },
 ): Promise<Array<{ logical: string; result: string }>> {

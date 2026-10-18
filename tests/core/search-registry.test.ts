@@ -88,6 +88,9 @@ import {
   purgeContentType,
   rebuildRegisteredTables,
   pumpParkedMigrations,
+  migrationPumpTick,
+  resumeTableMigrations,
+  wedgeWatchTick,
   startReindexJob,
   getReindexJobStatus,
   stopMigrationPump,
@@ -96,6 +99,8 @@ import { sweepOrphanRegistryRows } from '@/core/search-orphan-sweep'
 import { tableStatus, sweepTombstones } from '@bakin/core/search/tables'
 import { enqueueIndex, outboxStats } from '@bakin/core/search/outbox'
 import { broadcast } from '@/core/sse'
+import { readResourceHolder, tryAcquireResources, type ResourceLease } from '@bakin/core/operations'
+import { resetSearchEngineProgressForTests } from '@bakin/core/search/progress'
 import { waitUntil } from '../helpers/wait'
 import { closeAllDbs } from '../../packages/core/src/storage/db'
 
@@ -1367,5 +1372,141 @@ describe('reindex job (202 + poll contract)', () => {
     expect(done.state).toBe('done')
     expect(done.finishedAt).toBeGreaterThan(0)
     expect(done.tables!.length).toBeGreaterThan(0)
+  })
+})
+
+describe('background search mutators respect search-engine (#895 D23)', () => {
+  let searchHarness: ReturnType<typeof createSearchAdapterHarness>
+  let lease: ResourceLease | undefined
+
+  beforeEach(() => {
+    stopMigrationPump()
+    resetSearchRegistry()
+    searchHarness = createSearchAdapterHarness()
+    installSearchAdapter(searchHarness.adapter)
+    mock.clearAllMocks()
+  })
+
+  afterEach(() => {
+    lease?.release()
+    lease = undefined
+    resetSearchEngineProgressForTests()
+    clearSearchAdapter()
+  })
+
+  function makeDef(table: string) {
+    return {
+      table,
+      schemaVersion: 1,
+      schema: { title: { type: 'text' as const } },
+      searchableFields: ['title'],
+      embeddingTemplate: '{{title}}',
+      facets: [],
+      reindex: async function* () { yield { key: 'k1', doc: { title: 'row' } } },
+      verifyExists: async () => true,
+    }
+  }
+
+  /** Register a table and hand-move its row into a migration toward a recorded green. */
+  async function migrating(name: string, phase: 'parked' | 'backfill'): Promise<string> {
+    buildSearchAPI(`${name}-plugin`).registerContentType(makeDef(name))
+    await createRegisteredTables()
+    const { openNamedDb } = require('../../packages/core/src/storage/db') as typeof import('../../packages/core/src/storage/db')
+    const store = openNamedDb('search', () => join(testDir, 'search.db'))
+    const green = `bakin_${name}_v1_feedf00d`
+    store.db().prepare(
+      "UPDATE search_tables SET state = 'migrating', migrating_to = ?, migrating_fp = 'feedf00d-full', migration_phase = ? WHERE logical = ?",
+    ).run(green, phase, `bakin_${name}`)
+    mock.clearAllMocks()
+    return green
+  }
+
+  function holdEngine(title: string): void {
+    const taken = tryAcquireResources(['search-engine'], { title })
+    if ('busy' in taken) throw new Error(`search-engine unexpectedly held by ${taken.busy.holder.title}`)
+    lease = taken
+  }
+
+  it('the pump tick skips while search-engine is held, and runs once it is free', async () => {
+    const green = await migrating('gatepump', 'parked')
+    holdEngine('Install the search engine')
+
+    await migrationPumpTick()
+    expect(tableStatus('bakin_gatepump')!.phase).toBe('parked')
+    expect(searchHarness.calls.documentsBatchIndex).not.toHaveBeenCalled()
+
+    lease!.release()
+    lease = undefined
+    await migrationPumpTick()
+    expect(tableStatus('bakin_gatepump')).toMatchObject({ state: 'active', physical: green })
+  })
+
+  it('boot resumption skips while search-engine is held', async () => {
+    await migrating('gateboot', 'parked')
+    holdEngine('Reset search')
+
+    await resumeTableMigrations()
+
+    expect(tableStatus('bakin_gateboot')!.phase).toBe('parked')
+    expect(searchHarness.calls.documentsBatchIndex).not.toHaveBeenCalled()
+  })
+
+  it('a pump pass holds search-engine for its whole run, named so a waiting reset can say what it waits for', async () => {
+    await migrating('gateholder', 'parked')
+    const holders: Array<string | undefined> = []
+    searchHarness.calls.documentsBatchIndex.mockImplementation(async (name, items) => {
+      holders.push(readResourceHolder('search-engine')?.title)
+      for (const item of items) await searchHarness.adapter.documents.index(name, item.key, item.doc)
+      return { indexed: items.length, failed: [] }
+    })
+
+    await migrationPumpTick()
+
+    expect(holders.length).toBeGreaterThan(0)
+    expect(new Set(holders)).toEqual(new Set(['Background index migration']))
+    expect(readResourceHolder('search-engine')).toBeNull()
+  })
+
+  it('the wedge watchdog defers its bounce while an install or reset holds the engine', async () => {
+    await migrating('gatewedge', 'backfill')
+    resetSearchEngineProgressForTests(0)
+    holdEngine('Install the search engine')
+
+    await wedgeWatchTick()
+
+    expect(searchHarness.adapter.restartEngine).not.toHaveBeenCalled()
+  })
+
+  it('the wedge watchdog bounces a wedged engine when search-engine is free', async () => {
+    await migrating('gatefree', 'backfill')
+    resetSearchEngineProgressForTests(0)
+
+    await wedgeWatchTick()
+
+    expect(searchHarness.adapter.restartEngine).toHaveBeenCalledTimes(1)
+  })
+
+  it('the wedge watchdog bounces on behalf of the holder running the migration', async () => {
+    buildSearchAPI('gaterun-plugin').registerContentType(makeDef('gaterun'))
+    await createRegisteredTables()
+    let unblock!: () => void
+    const blocked = new Promise<void>((resolve) => { unblock = resolve })
+    let entered = false
+    searchHarness.calls.documentsBatchIndex.mockImplementation(async (name, items) => {
+      entered = true
+      await blocked
+      for (const item of items) await searchHarness.adapter.documents.index(name, item.key, item.doc)
+      return { indexed: items.length, failed: [] }
+    })
+    holdEngine('Reindex search')
+    const pass = rebuildRegisteredTables('bakin_gaterun', { force: true })
+    await waitUntil(() => entered, { label: 'the reindex backfill is in flight' })
+    resetSearchEngineProgressForTests(0)
+
+    await wedgeWatchTick()
+
+    expect(searchHarness.adapter.restartEngine).toHaveBeenCalledTimes(1)
+    unblock()
+    await pass
   })
 })
