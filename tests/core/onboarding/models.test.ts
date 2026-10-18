@@ -63,6 +63,7 @@ const TEST_MODELS: InferenceModel[] = [
  * then one rename into `<root>/<model>`. Refuses to run without the flag.
  */
 const PULL_OK = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 [ "$1" = "inference" ] && [ "$2" = "pull" ] && [ "$4" = "--models-dir" ] || exit 9
 echo "$*" >> "$(dirname "$0")/argv.log"
 owner=$(dirname "$3"); name=$(basename "$3")
@@ -81,6 +82,7 @@ mv "$stage" "$5/$3"
 
 /** Stages half the weight as a `.part`, then stops talking (a stalled pull). */
 const PULL_STALLS = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 owner=$(dirname "$3"); name=$(basename "$3")
 stage="$5/$owner/.$name.antfly-download-staging"
 mkdir -p "$stage/onnx"
@@ -92,6 +94,7 @@ exec sleep 30
 
 /** Stalls and ignores SIGTERM — cancel must still settle. */
 const PULL_IGNORES_TERM = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 trap '' TERM
 echo "pulling $3..." >&2
 echo "  [1/1] onnx/model.onnx (2.0 KiB)..." >&2
@@ -100,6 +103,7 @@ while :; do sleep 1; done
 
 /** Resumes only from a kept staging dir (T0 F6), then publishes. */
 const PULL_RESUMES = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 owner=$(dirname "$3"); name=$(basename "$3")
 stage="$5/$owner/.$name.antfly-download-staging"
 [ -f "$stage/onnx/model.onnx.part" ] || { echo "no staging to resume" >&2; exit 7; }
@@ -113,12 +117,14 @@ mv "$stage" "$5/$3"
 
 /** A pull that exits non-zero. */
 const PULL_FAILS = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 echo "pull failed: HuggingFace unreachable" >&2
 exit 2
 `
 
 /** A pull that claims success but creates nothing. */
 const PULL_LIES = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 exit 0
 `
 

@@ -4,7 +4,9 @@ import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import type { AntflySettings } from './defaults'
 import { modelDir, modelStructurallyComplete, unverifiedModelFiles } from './model-pins'
+import { modelLoadVerdict, probeModelLoad } from './model-load'
 import { inferenceModelsRoot } from './paths'
+import { ANTFLY_PIN } from './pin'
 import { createPullTracker, pullStagingDir } from './pull-progress'
 import { findAntflyBinary } from './service'
 
@@ -122,6 +124,27 @@ export function describeMissingModels(missing: InferenceModel[]): { impact: stri
 
 export async function checkInferenceModels(models: InferenceModel[]) {
   const missing = missingModelEntries(models)
+  // Present but known not to load on this machine (#993): the engine boots
+  // without it, so this is degraded, not broken — and says which leg.
+  const unloadable = missing.length === 0
+    ? models.flatMap((m) => {
+      const verdict = modelLoadVerdict(m.model)
+      return verdict && !verdict.loadable ? [{ model: m, reason: verdict.reason ?? 'the engine could not load it' }] : []
+    })
+    : []
+  if (unloadable.length > 0) {
+    const names = unloadable.map((u) => u.model.label).join(', ')
+    return {
+      name: 'models',
+      status: 'warn' as const,
+      message: `${names} can't load on this machine (engine ${ANTFLY_PIN.version}, ${process.platform}-${process.arch}) — the search that relies on ${unloadable.length === 1 ? 'it is' : 'them is'} unavailable here. Everything else is unaffected.`,
+      remediation: 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
+      details: {
+        root: inferenceModelsRoot(),
+        unloadable: unloadable.map((u) => ({ label: u.model.label, model: u.model.model, reason: u.reason })),
+      },
+    }
+  }
   if (missing.length === 0) {
     // Structural verification only — pinned file NAMES and sizes, which is
     // what catches the wrong-distribution crash-loop class. sha256 hashing
@@ -320,9 +343,17 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
   }
 
   op.stage('verify')
+  const unloadable: InferenceModel[] = []
   for (const m of missing) {
     const verified = modelComplete(m)
     if (!verified.ok) return failed(`antfly inference pull ${m.model} reported success but ${verified.reason}`)
+    // Complete is not the same as loadable here (#993): ask the engine now,
+    // so the next start leaves an unloadable model off its preloads.
+    const verdict = await probeModelLoad(antfly, m.model)
+    if (verdict && !verdict.loadable) {
+      unloadable.push(m)
+      op.log(`${m.label} can't load on this machine: ${verdict.reason ?? 'the engine could not load it'}`, 'warn')
+    }
     const drifted = await unverifiedModelFiles(m.model)
     if (drifted.length > 0) {
       logger.warn('Pulled model differs from the pinned verified distribution', { model: m.model, files: drifted })
@@ -332,11 +363,14 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
 
   const pulledLabels = missing.map((m) => m.label)
   const durationMs = Date.now() - start
-  logger.info('Search models installed', { pulled: pulledLabels, durationMs })
+  logger.info('Search models installed', { pulled: pulledLabels, unloadable: unloadable.map((m) => m.model), durationMs })
+  const unloadableNote = unloadable.length > 0
+    ? ` ${unloadable.map((m) => m.label).join(', ')} can't load on this machine — the search that relies on ${unloadable.length === 1 ? 'it' : 'them'} is unavailable here; everything else works.`
+    : ''
   return {
     name: 'models',
     status: 'installed' as const,
-    message: `Pulled ${pulledLabels.length} model${pulledLabels.length === 1 ? '' : 's'}: ${pulledLabels.join(', ')}`,
+    message: `Pulled ${pulledLabels.length} model${pulledLabels.length === 1 ? '' : 's'}: ${pulledLabels.join(', ')}.${unloadableNote}`,
     durationMs,
   }
 }

@@ -30,6 +30,7 @@ import { canonicalPath, evaluateOwnership, type ServiceOwnership, type Ownership
 import { withServiceLock, serviceLockBusy } from './service-lock'
 import { antflyBinaryPath, antflyHome, inferenceModelsRoot } from './paths'
 import { modelStructurallyComplete } from './model-pins'
+import { ensureModelLoadVerdicts, modelLoadable } from './model-load'
 import type { AntflySettings } from './defaults'
 
 const log = createLogger('antfly-service')
@@ -146,10 +147,26 @@ export function servicePaths(): ServicePaths {
  * Preload pre-check: the engine EXITS on a preload it cannot load instead
  * of degrading, and the supervisor's respawn turns one broken model into
  * an invisible crash loop (161 respawns before diagnosis, 2026-07-21).
- * Models failing the structural distribution check are left OFF the argv —
- * the engine boots, that leg degrades honestly, and the models health
- * check names the broken model. `modelReady` is injectable for tests.
+ * Models failing the structural distribution check — or that the engine
+ * itself failed to load on this machine (`model-load.ts`, #993) — are left
+ * OFF the argv: the engine boots, that leg degrades honestly, and the
+ * models health check names the model. `modelReady` is injectable for tests.
  */
+/** The models the engine is asked to preload. */
+export function preloadedModels(settings: AntflySettings): string[] {
+  return [...new Set(Object.values(settings.embedders).filter((e) => e.provider === 'antfly').map((e) => e.model))]
+}
+
+/**
+ * Before an argv is built: load-probe any preloaded model with no current
+ * verdict (the first start after a pull or an engine bump). An injected
+ * `modelReady` means the caller decides readiness — nothing is probed.
+ */
+async function probeBeforeStart(settings: AntflySettings, io: ServiceIo, binary: string): Promise<void> {
+  if (io.modelReady) return
+  await ensureModelLoadVerdicts(preloadedModels(settings), binary)
+}
+
 export function buildServiceArgv(
   settings: AntflySettings,
   paths: ServicePaths,
@@ -157,13 +174,8 @@ export function buildServiceArgv(
 ): string[] {
   const url = new URL(settings.url)
   const port = Number(url.port || 3738)
-  const modelReady = opts?.modelReady ?? ((model: string) => modelStructurallyComplete(model).ok)
-  const preloads = [...new Set(
-    Object.values(settings.embedders)
-      .filter((e) => e.provider === 'antfly')
-      .filter((e) => modelReady(e.model))
-      .map((e) => `embedder:${e.model}`),
-  )]
+  const modelReady = opts?.modelReady ?? ((model: string) => modelStructurallyComplete(model).ok && modelLoadable(model))
+  const preloads = preloadedModels(settings).filter((model) => modelReady(model)).map((model) => `embedder:${model}`)
   return [
     paths.binary, 'standalone',
     '--host', '127.0.0.1',
@@ -400,6 +412,7 @@ export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo 
     const mode = detectServiceMode(settings, io)
     if (mode === 'child') return { mode, action: 'skipped' }
     const paths = servicePaths()
+    await probeBeforeStart(settings, io, paths.binary)
     const argv = buildServiceArgv(settings, paths, { modelReady: io.modelReady })
     const unitPath = mode === 'launchd' ? launchdPlistPath(io) : systemdUnitPath(io)
     const desired = mode === 'launchd' ? renderLaunchdPlist(argv, paths.logFile) : renderSystemdUnit(argv, paths.logFile)
@@ -449,6 +462,7 @@ export async function startService(settings: AntflySettings, io: ServiceIo = def
     if (mode === 'child') {
       if (childPid()) return
       await assertServicePortsReleased(io)
+      await probeBeforeStart(settings, io, servicePaths().binary)
       startChild(settings, io)
       return
     }

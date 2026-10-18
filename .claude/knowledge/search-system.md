@@ -776,7 +776,23 @@ embedding does NOT lazy-download a missing model — the backfill fails.
 Recovery is cheap: once the model is on disk, any write heals the index;
 `bakin install search-models` + `bakin reindex` fully repairs.
 The service argv preloads every configured antfly-provider embedder
-(`--preload-model`) so first embeds never race a cold model load.
+(`--preload-model`) so first embeds never race a cold model load — except
+one that can't load here. The engine EXITS when a preload fails to warm,
+so a complete download is not enough (#993): on Linux the pinned 0.2.2
+engine cannot run `antflydb/clipclap` with any backend (`native` fails on
+its ONNX projection with `error.MissingWeight`, the `onnx` runtime isn't in
+the Linux build, `metal` is macOS-only, `cuda` needs a GPU) while macOS
+Metal loads the same files. `model-load.ts` asks the engine itself
+(`antfly inference embed <dir>`) once per model — after a pull (the
+install's verify stage) and before a start when no current verdict exists
+— and records the verdict in `~/.antfly/bakin-model-load.json`, keyed by
+engine version, platform and download (a re-pull or a repin re-probes;
+unknown = loadable; a hung probe records nothing). A model known not to
+load is left off the preloads and its leg is not offered (`embedderUsable`),
+so the engine boots, text search works and Health warns
+(`checkInferenceModels`: "can't load on this machine", the engine's reason).
+Only that verdict enters `mappingFingerprint()` — every other fingerprint is
+byte-identical, so upgrading migrates nothing.
 
 **`dimension` is required** on every embedder entry (the server demands
 declared dims at table-create time). Embedder settings feed

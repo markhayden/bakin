@@ -30,6 +30,7 @@ import type {
   TableLegHealth,
 } from '@bakin/core/adapters/search'
 import type { AntflySettings } from './defaults'
+import { modelLoadable } from './model-load'
 import type {
   WireBatchRequest,
   WireIndexConfig,
@@ -350,11 +351,14 @@ export function buildBatchDeletes(keys: string[]): WireBatchRequest {
 /** An embedder an operator has turned off (or gutted) must produce NO leg
  *  at all. A disabled visual embedder once flowed through as a dimension-0
  *  index spec, which the engine 500s on EVERY create — bricking every
- *  media-capable table on the box (2026-07-21 field incident). */
+ *  media-capable table on the box (2026-07-21 field incident). Neither may
+ *  a model the engine is known not to load here (#993): that leg is not
+ *  offered, so tables degrade honestly instead of failing every write. */
 export function embedderUsable(embedder: { provider?: string; model?: string; dimension?: number } | undefined): boolean {
   if (!embedder) return false
   if (!embedder.provider || embedder.provider === 'disabled' || embedder.provider === 'none') return false
   if (!embedder.model) return false
+  if (embedder.provider === 'antfly' && !modelLoadable(embedder.model)) return false
   return typeof embedder.dimension === 'number' && embedder.dimension > 0
 }
 

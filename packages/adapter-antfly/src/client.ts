@@ -26,6 +26,7 @@ import type {
   TableStats,
   TransformFn,
 } from '@bakin/core/adapters/search'
+import { modelLoadable } from './model-load'
 import type { AntflySettings } from './defaults'
 import {
   buildBatchDeletes,
@@ -195,8 +196,11 @@ export class AntflySearchClient implements SearchAdapter {
   }
 
   mappingFingerprint(): string {
+    // A model the engine can't load here changes which legs exist (#993),
+    // so that verdict is part of the layout's identity — and ONLY that one:
+    // every other fingerprint stays byte-identical (no migration on upgrade).
     const canonical = Object.entries(this.settings.embedders)
-      .map(([ref, e]) => `${ref}:${e.provider}/${e.model}@${e.dimension}${e.multimodal ? '+mm' : ''}`)
+      .map(([ref, e]) => `${ref}:${e.provider}/${e.model}@${e.dimension}${e.multimodal ? '+mm' : ''}${e.provider === 'antfly' && !modelLoadable(e.model) ? '!unloadable' : ''}`)
       .sort()
       .join('|')
     return createHash('sha256').update(canonical).digest('hex').slice(0, 16)

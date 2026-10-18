@@ -106,6 +106,13 @@ async function inside(): Promise<void> {
     console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`)
   }
   const cli = (args: string[]) => stream('bun', ['cli/bakin.ts', ...args], `bakin ${args[0]}`, childEnv)
+  /** A CLI command's stdout (for --json checks). */
+  const capture = (args: string[]) => new Promise<string>((resolve) => {
+    const child = spawn('bun', ['cli/bakin.ts', ...args], { cwd: REPO, env: childEnv, stdio: ['ignore', 'pipe', 'inherit'] })
+    let out = ''
+    child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString() })
+    child.on('close', () => resolve(out))
+  })
   const engine = join(env.ANTFLY_HOME, 'bin', 'antfly')
 
   // 1. Cancel an engine install during its download.
@@ -148,6 +155,17 @@ async function inside(): Promise<void> {
   check('bakin install search', installCode === 0 && existsSync(engine))
   stopStrayEngines()
 
+  // Models BEFORE the server (#993): on Linux the pinned engine cannot load
+  // the default visual embedder — the install probes it, Health says so, and
+  // the server must still boot with every other search leg working.
+  check('bakin install search-models', (await cli(['install', 'search-models', '--yes'])) === 0)
+  stopStrayEngines()
+  const modelsCheck = await capture(['check', 'search-models', '--json'])
+  const modelsStatus = (() => { try { return (JSON.parse(modelsCheck) as { status?: string; message?: string }) } catch { return {} } })()
+  check('a model that cannot load here is reported as degraded, not broken',
+    modelsStatus.status === 'ok' || (modelsStatus.status === 'warn' && /can't load on this machine/.test(modelsStatus.message ?? '')),
+    `status=${modelsStatus.status} message=${modelsStatus.message}`)
+
   // 3. Boot the server, then reset.
   const server = spawn('bun', ['server.ts', 'serve'], { cwd: REPO, env: childEnv, stdio: ['ignore', 'inherit', 'inherit'] })
   try {
@@ -163,6 +181,13 @@ async function inside(): Promise<void> {
     }
     check('server boots', up)
     if (!up) return finish(results)
+    // The engine came up with the models present — search answers (not 503).
+    let searchStatus = 0
+    for (let i = 0; i < 120 && searchStatus !== 200; i++) {
+      searchStatus = await fetch(`${base}/api/search?q=hello`).then((r) => r.status, () => 0)
+      if (searchStatus !== 200) await sleep(500)
+    }
+    check('search answers with the models installed', searchStatus === 200, `status=${searchStatus}`)
 
     const resetCode = await cli(['search:reset', '--yes'])
     const reset = (await operations()).find((o) => o.kind === 'search:reset')
@@ -198,13 +223,6 @@ async function inside(): Promise<void> {
     server.kill('SIGTERM')
   }
 
-  // Models LAST: on Linux the default visual embedder
-  // has no loadable weight for the native backend (error.MissingWeight), so
-  // an engine that preloads it crash-loops at startup — a platform limit of
-  // the default settings, not of these flows. The pull itself is the check.
-  await sleep(2_000)
-  stopStrayEngines()
-  check('bakin install search-models', (await cli(['install', 'search-models', '--yes'])) === 0)
   finish(results)
 }
 

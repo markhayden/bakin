@@ -92,3 +92,25 @@ no 5xx.
   value remains `full_index` — `none/applied/indexed` are 400s.
 - Per-index create body unchanged (`embedder.provider` required — a body
   without it is 400 `invalid_index_request/unsupported index configuration`).
+
+## Linux: the visual embedder does not load (2026-10-18, #993)
+
+Disposable `oven/bun:1.3.13` container, linux-arm64, pinned 0.2.2 engine,
+`antfly inference pull antflydb/clipclap` (complete: both GGUFs plus the
+ONNX set — `text_model.onnx` + `.onnx.data`, projections, audio, visual —
+and `antfly_inference_variants.json` with ONNX defaults and a `gguf-Q4_K`
+variant). `antfly inference embed <dir> --text …`:
+
+| Backend | Result |
+|---|---|
+| `auto`, `native` | picks `text_projection.onnx`, `startup failed (error.MissingWeight)` |
+| `onnx` | `no backend accepted model` (`error.BackendUnavailable`) — not in the Linux build |
+| `metal` / `cuda` | macOS / NVIDIA only |
+
+`BAAI/bge-small-en-v1.5` embeds fine on `native` in the same container.
+The server preloads every embedder and exits on a failed warm, so before
+#993 the whole engine crash-looped. Bakin now probes and leaves an
+unloadable model off (`model-load.ts`). Re-run this ladder on the next
+repin: a build that loads clipclap on Linux makes the warning disappear by
+itself (new engine version → fresh probe).
+
