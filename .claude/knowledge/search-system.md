@@ -771,7 +771,17 @@ install is an operation (#895 D12): one item per model whose bytes come from
 antfly's stderr protocol (file sizes announced as files start, a line every
 16 MiB — `pull-progress.ts`) plus the staged `.part` between lines; cancel is
 allowed throughout (SIGTERM) and keeps the staging dir for the resume.
-Evidence: `tasks/evidence-antfly-pull.md`. Prefetch matters: index-time
+Evidence: `tasks/evidence-antfly-pull.md`. **Model integrity policy
+(#898 E):** every pinned file in `model-pins.ts` carries a sha256 — weights
+AND tokenizers (the tokenizer pins match HuggingFace's files). The install
+path HASHES: its skip check stream-hashes every pinned file
+(`pinMismatches` → `verifyFileSha256`; no (size, mtime) cache is ever
+proof), a structurally complete but mismatched model is moved aside
+(`.<name>.bakin-mismatch-*`) and pulled again — the aside is retired on
+success and restored on failure — and a post-pull mismatch FAILS the
+install (it used to be a warning). The doctor's `checkInferenceModels` stays
+structural (pinned names + sizes, the crash-loop class) and its message says
+"integrity is hash-checked at install/repair". Prefetch matters: index-time
 embedding does NOT lazy-download a missing model — the backfill fails.
 Recovery is cheap: once the model is on disk, any write heals the index;
 `bakin install search-models` + `bakin reindex` fully repairs.
