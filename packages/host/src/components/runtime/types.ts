@@ -33,7 +33,7 @@ export interface CapabilityReadiness {
   description?: string
   skills: Array<{ name: string; status: 'ok' | 'missing' }>
   bins: Array<{ name: string; status: 'ok' | 'missing' | 'unsupported-platform' }>
-  npm: Array<{ name: string; status: 'ok' | 'missing' }>
+  npm: Array<{ name: string; status: 'ok' | 'missing' | 'unresolved' }>
   models: Array<{ name: string; bytes: number; status: 'ok' | 'missing' }>
   prereqs: Array<{ name: string; kind: 'binary' | 'app'; help: string; optional: boolean; status: 'ok' | 'missing' }>
   secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string; status: 'env' | 'store' | 'missing' }>

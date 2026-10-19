@@ -25,6 +25,7 @@ import { createAppServices, maybeGetAppServices } from '@/core/app-services'
 import { createLogger } from '@/core/logger'
 import { binPlatformKey } from './bin-installer'
 import { modelDest, npmPayloadDir } from './requirements-installer'
+import { verifyNpmPayload } from './npm-verify'
 
 const log = createLogger('capability-readiness')
 
@@ -48,7 +49,8 @@ export interface CapabilitySecretStatus {
 
 export interface CapabilityNpmStatus {
   name: string
-  status: 'ok' | 'missing'
+  /** `unresolved`: installed, but its dependencies do not resolve at the declared versions (`verifyNpmPayload`). */
+  status: 'ok' | 'missing' | 'unresolved'
 }
 
 export interface CapabilityModelStatus {
@@ -145,10 +147,17 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
     const npm: CapabilityNpmStatus[] = []
     for (const req of manifest.requires?.npm ?? []) {
       const payload = npmPayloadDir(id, req.name)
-      const present = existsSync(payload)
-        && (Object.keys(req.dependencies).length === 0 || existsSync(join(payload, 'node_modules')))
-      npm.push({ name: req.name, status: present ? 'ok' : 'missing' })
-      if (!present) missing.push(`npm payload "${req.name}" is not installed — run: bakin packages sync ${key}`)
+      if (!existsSync(payload)) {
+        npm.push({ name: req.name, status: 'missing' })
+        missing.push(`npm payload "${req.name}" is not installed — run: bakin packages sync ${key}`)
+        continue
+      }
+      // Dependencies resolved at declared versions — a file-only check, never
+      // an import or a network call, and never called "integrity verified".
+      const scriptsSource = join(getPackageSourceDir(getContentDir(), entry.kind, id, entry.version), req.source)
+      const verdict = verifyNpmPayload(payload, id, req, { scriptsSource })
+      npm.push({ name: req.name, status: verdict.ok ? 'ok' : 'unresolved' })
+      if (!verdict.ok) missing.push(`npm payload "${req.name}" does not resolve at the declared versions (${verdict.problems.join('; ')}) — run: bakin packages sync ${key}`)
     }
 
     const models: CapabilityModelStatus[] = []
