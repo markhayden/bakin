@@ -130,6 +130,19 @@ describe('index consistency', () => {
     expect(store.listSync({ column: 'todo' }).map((task) => task.id)).toEqual(['zero', 'one', 'legacy'])
   })
 
+  it('hasSync answers from the index alone: no shard walk on a miss', () => {
+    store.createSync({ id: 'here', title: 'here' })
+    expect(store.hasSync('here')).toBe(true)
+    store.removeSync('here')
+    expect(store.hasSync('here')).toBe(false)
+    // A file placed outside the store is not seen by hasSync (that is the
+    // walk it skips) until a getSync heals it into the index.
+    writeExternalTask('outside', 'todo')
+    expect(store.hasSync('outside')).toBe(false)
+    expect(store.getSync('outside')?.id).toBe('outside')
+    expect(store.hasSync('outside')).toBe(true)
+  })
+
   it('createSync rejects duplicate ids via the index', () => {
     store.createSync({ id: 'dup', title: 'one' })
     expect(() => store.createSync({ id: 'dup', title: 'two' })).toThrow(/already exists/)

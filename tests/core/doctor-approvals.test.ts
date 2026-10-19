@@ -53,7 +53,7 @@ const moveTaskWithEffects = mock(async (taskId: string, to: string) => {
 })
 mock.module('../../src/core/task-service', () => ({ createTaskWithEffects, moveTaskWithEffects }))
 mock.module('../../src/core/task-store', () => ({
-  getTaskWithColumn: (taskId: string) => { const t = tasks.get(taskId); return t ? { task: { id: taskId }, column: t.column } : null },
+  taskExists: (taskId: string) => tasks.has(taskId),
   addTaskLog: async (taskId: string, _author: string, message: string) => { tasks.get(taskId)?.logs.push(message) },
   blockTask: async (taskId: string, reason: string) => { const t = tasks.get(taskId)!; t.column = 'blocked'; t.blockedReason = reason },
 }))

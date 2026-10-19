@@ -43,6 +43,7 @@ mock.module('../../src/core/content-dir', () => ({
 }))
 
 mock.module('@/core/task-store', () => ({
+  taskExists: () => false,
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,

@@ -229,6 +229,11 @@ export function getTask(id: string): Task | null {
   return task ? taskToView(task) : null
 }
 
+/** Index-only existence check — cheap on a miss (no shard walk). */
+export function taskExists(id: string): boolean {
+  return getSharedBakinTaskStore().hasSync(id)
+}
+
 export function getTaskWithColumn(id: string): { task: Task; column: ColumnId } | null {
   const task = getSharedBakinTaskStore().getSync(id)
   if (!task) return null

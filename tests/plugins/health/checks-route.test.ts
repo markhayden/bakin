@@ -56,6 +56,7 @@ mock.module('../../../src/core/watcher', () => ({
   stop: mock(),
 }))
 const taskStoreMock = {
+  taskExists: () => false,
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,

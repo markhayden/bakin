@@ -274,6 +274,7 @@ mock.module('../../../src/core/search-registry', () => ({
 }))
 
 const taskStoreMock = {
+  taskExists: () => false,
   readTaskboard: () => ({ columns: { inProgress: [] } }),
   getAllTasks: () => ({ columns: { inProgress: [] } }),
   getTask: () => null,
