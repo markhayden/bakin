@@ -55,7 +55,8 @@ export interface LifecycleIo {
   pidAlive(pid: number): boolean
   /** One bounded request to 127.0.0.1; null on any network error/timeout. Never follows redirects. */
   http(method: 'GET' | 'POST', port: number, path: string, opts?: { headers?: Record<string, string>; body?: unknown; timeoutMs?: number }): Promise<HttpAnswer | null>
-  listProcesses(): ProcessInfo[]
+  /** Every process on the machine; null when discovery failed (unknown — never "none"). */
+  listProcesses(): ProcessInfo[] | null
   /** A service-manager command; never throws. */
   exec(cmd: string, args: string[]): { ok: boolean; output: string }
   uid(): string
@@ -232,19 +233,53 @@ function restartServiceCommands(io: LifecycleIo, state: ServiceState): Array<[st
 
 const SERVER_LIKE = /(server\.ts\b.*\bserve\b|\bbakin\b.*\b(start|serve)\b|__bakin-restart-child|scripts\/dev\.ts)/
 
+const RESTART_CHILD = /__bakin-restart-child(?:\s+(\d+))?/
+
 /**
- * Starts that may already be on their way. A restart child (spawned by the
- * server's own /api/restart, waiting for its parent to exit) is pending even
- * while the old server still answers; a dev coordinator counts only when no
- * server answers (it normally runs the server it started).
+ * Starts that may already be on their way; null when processes can't be
+ * listed (callers fail closed). A restart child (`__bakin-restart-child
+ * <parentPid>`, spawned by a server's own /api/restart) keeps that argv for
+ * life, so it is judged by its PARENT:
+ *   - `waitingFor` a running server: only children whose parent IS that server
+ *     (they would start it again the moment it exits);
+ *   - no server here: children whose parent is gone (starting now — or a
+ *     finished child serving some home, which can't be told apart; restart
+ *     has --force) and dev coordinators.
  */
-export function pendingStarts(io: LifecycleIo, exclude: number[], opts: { serverRunning: boolean }): ProcessInfo[] {
-  const pattern = opts.serverRunning ? /__bakin-restart-child/ : /__bakin-restart-child|scripts\/dev\.ts/
-  return io.listProcesses().filter((p) => !exclude.includes(p.pid) && pattern.test(p.command))
+export function pendingStarts(io: LifecycleIo, opts: { exclude: number[]; waitingFor?: number }): ProcessInfo[] | null {
+  const procs = io.listProcesses()
+  if (procs === null) return null
+  return procs.filter((p) => {
+    if (opts.exclude.includes(p.pid)) return false
+    const child = RESTART_CHILD.exec(p.command)
+    if (child) {
+      const parent = child[1] ? Number(child[1]) : null
+      if (opts.waitingFor !== undefined) return parent === null || parent === opts.waitingFor
+      return parent === null || !io.pidAlive(parent)
+    }
+    return opts.waitingFor === undefined && /scripts\/dev\.ts/.test(p.command)
+  })
 }
 
 export function otherServers(io: LifecycleIo, exclude: number[]): ProcessInfo[] {
-  return io.listProcesses().filter((p) => !exclude.includes(p.pid) && SERVER_LIKE.test(p.command) && !/__bakin-restart-child|scripts\/dev\.ts/.test(p.command))
+  // Reports only: a failed listing just reports nothing.
+  return (io.listProcesses() ?? []).filter((p) => !exclude.includes(p.pid) && SERVER_LIKE.test(p.command) && !/__bakin-restart-child|scripts\/dev\.ts/.test(p.command))
+}
+
+/** The manager must still report exactly what ownership was judged on before Bakin drives it. */
+function serviceUnchanged(io: LifecycleIo, judged: ServiceState): boolean {
+  const now = readServiceState(io)
+  if (now.kind !== judged.kind) return false
+  if (now.kind === 'loaded' && judged.kind === 'loaded') return now.pid === judged.pid && now.home === judged.home && now.idle === judged.idle
+  if (now.kind === 'unloaded' && judged.kind === 'unloaded') return now.home === judged.home
+  return true
+}
+
+const SERVICE_CHANGED: LifecycleOutcome = {
+  ok: false,
+  status: 'error',
+  message: 'The Bakin service changed while Bakin was checking it, so it was not touched.',
+  notes: ['Something else is managing the service right now (setup, another bakin command). Run the command again once it settles.'],
 }
 
 // ─── Outcomes ────────────────────────────────────────────────────────────────
@@ -368,21 +403,28 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
         notes: ['Run `bakin status` in a moment; once it answers, `bakin stop` stops the service with it.'],
       }
     }
-    const pending = pendingStarts(io, [io.selfPid], { serverRunning: false })
+    const pending = pendingStarts(io, { exclude: [io.selfPid] })
+    const pendingNote = pending === null
+      ? 'A start may be pending: processes could not be listed, so a dev build or a restart waiting to boot can\'t be ruled out.'
+      : pending.length > 0 ? `A start may be pending (${pending.map((p) => `pid ${p.pid}`).join(', ')}): a dev build or a restart waiting to boot. If it is this home's, stop it before it starts.` : null
     return {
       ok: true,
-      status: pending.length > 0 ? 'warn' : 'ok',
+      status: pendingNote ? 'warn' : 'ok',
       message: 'No running Bakin server for this home.',
       notes: [
-        ...(pending.length > 0 ? [`A start may be pending (${pending.map((p) => `pid ${p.pid}`).join(', ')}): a dev build or a restart waiting to boot. If it is this home's, stop it before it starts.`] : []),
+        ...(pendingNote ? [pendingNote] : []),
         ...othersNote(io, [io.selfPid]),
       ],
     }
   }
 
-  // A restart child waiting for this server to exit would start it again.
-  // (The verified server itself may carry the restart-child argv: it is the finished child.)
-  const restarting = pendingStarts(io, identity.kind === 'owned' || identity.kind === 'old-protocol' ? [io.selfPid, identity.pid] : [io.selfPid], { serverRunning: true })
+  // A restart child waiting for THIS server to exit would start it again.
+  // (The verified server itself may carry the restart-child argv: it is a finished child.)
+  const serverPid = identity.kind === 'owned' || identity.kind === 'old-protocol' ? identity.pid : -1
+  const restarting = pendingStarts(io, { exclude: [io.selfPid, serverPid], waitingFor: serverPid })
+  if (restarting === null) {
+    return { ok: false, status: 'error', message: 'Processes could not be listed, so Bakin can\'t rule out a restart waiting to undo this stop. Nothing was stopped.', notes: ['Run the command again.'] }
+  }
   if (restarting.length > 0) {
     return {
       ok: false,
@@ -400,6 +442,7 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
     // An older server can't take a shutdown request. Only its own service
     // manager — proved to run exactly this lock holder — may stop it.
     if (serviceRunsOldServer(io, service, identity)) {
+      if (!serviceUnchanged(io, service)) return SERVICE_CHANGED
       const [cmd, args] = stopServiceCommand(io)
       const done = io.exec(cmd, args)
       if (!done.ok) return { ok: false, status: 'error', message: `Could not stop the Bakin service: ${done.output.trim()}`, notes }
@@ -418,6 +461,7 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
   if (identity.kind !== 'owned') return { ok: false, status: 'error', message: 'Unexpected server state.', notes }
   if (service.kind === 'loaded' && service.pid === identity.pid) {
     // Service-managed: stop the SERVICE, or KeepAlive respawns the server.
+    if (!serviceUnchanged(io, service)) return SERVICE_CHANGED
     const [cmd, args] = stopServiceCommand(io)
     const done = io.exec(cmd, args)
     if (!done.ok) return { ok: false, status: 'error', message: `Could not stop the Bakin service: ${done.output.trim()}`, notes }
@@ -467,13 +511,16 @@ export async function restartHome(io: LifecycleIo, opts: RestartOptions): Promis
   const deadline = () => io.now() + HANDOFF_BUDGET_MS
 
   // A start may already be on its way (dev build, restart child): never race it.
-  const pending = pendingStarts(io, identity.kind === 'owned' || identity.kind === 'old-protocol' ? [io.selfPid, identity.pid] : [io.selfPid], { serverRunning: identity.kind !== 'none' })
-  if (pending.length > 0 && !opts.force) {
+  const serverPid = identity.kind === 'owned' || identity.kind === 'old-protocol' ? identity.pid : undefined
+  const pending = pendingStarts(io, { exclude: serverPid === undefined ? [io.selfPid] : [io.selfPid, serverPid], ...(serverPid === undefined ? {} : { waitingFor: serverPid }) })
+  if ((pending === null || pending.length > 0) && !opts.force) {
     return {
       ok: false,
       status: 'error',
       message: 'A Bakin start may already be pending, so Bakin will not launch a competing server.',
-      notes: [`Pending: ${pending.map((p) => `pid ${p.pid} (${p.command.slice(0, 80)})`).join('; ')}. If that is another home's, run \`bakin restart --force\`.`],
+      notes: [pending === null
+        ? 'Processes could not be listed, so a pending start can\'t be ruled out. Run the command again, or `bakin restart --force` if you are sure.'
+        : `Pending: ${pending.map((p) => `pid ${p.pid} (${p.command.slice(0, 80)})`).join('; ')}. If that is another home's, run \`bakin restart --force\`.`],
     }
   }
 
@@ -506,6 +553,7 @@ export async function restartHome(io: LifecycleIo, opts: RestartOptions): Promis
 
   // 1. The service manager restarts what it owns (or starts this home's own idle service).
   if (ownsService || (identity.kind === 'none' && idleServiceForThisHome)) {
+    if (!serviceUnchanged(io, service)) return SERVICE_CHANGED
     for (const [cmd, args] of restartServiceCommands(io, service)) {
       const done = io.exec(cmd, args)
       if (!done.ok) return { ok: false, status: 'error', message: `Could not restart the Bakin service: ${done.output.trim()}`, notes }

@@ -10,7 +10,7 @@ import { readServiceState, restartHome, stopHome, type HttpAnswer, type Lifecycl
 
 interface Server { pid: number; bootId: string; port: number; state: string; protocol?: 'new' | 'old'; secret: string; alive: boolean; answers: boolean }
 
-function harness(opts: { home?: string; platform?: string; lock?: LockInfo | null; servers?: Server[]; processes?: ProcessInfo[]; launchctl?: { ok: boolean; output: string }; plist?: string | null; spawnBoots?: boolean } = {}) {
+function harness(opts: { home?: string; platform?: string; lock?: LockInfo | null; servers?: Server[]; processes?: ProcessInfo[]; launchctl?: { ok: boolean; output: string }; plist?: string | null; spawnBoots?: boolean; psFails?: boolean } = {}) {
   const servers = opts.servers ?? []
   let lock: LockInfo | null = opts.lock ?? null
   let launchctl = opts.launchctl ?? { ok: false, output: 'Could not find service' }
@@ -45,7 +45,7 @@ function harness(opts: { home?: string; platform?: string; lock?: LockInfo | nul
       }
       return null
     },
-    listProcesses: () => opts.processes ?? [],
+    listProcesses: () => (opts.psFails ? null : opts.processes ?? []),
     exec: (cmd, args) => {
       execs.push(`${cmd} ${args.join(' ')}`)
       if (cmd === 'launchctl' && args[0] === 'print') return launchctl
@@ -531,6 +531,38 @@ describe('K r6', () => {
     const h = harness({ platform: 'linux' })
     h.io.exec = () => ({ ok: true, output: 'LoadState=loaded\nActiveState=active\nMainPID=500\nEnvironment=BAKIN_HOME=/home/me/.bakin\nEnvironmentFiles=\nUnsetEnvironment=BAKIN_HOME\n' })
     expect(readServiceState(h.io)).toMatchObject({ kind: 'loaded', pid: 500, home: null })
+  })
+})
+
+describe('K r7', () => {
+  it('another home\'s FINISHED restart child (its parent is gone) never blocks this home\'s stop', async () => {
+    const me = fresh()
+    const h = harness({ lock: lockFor(me), servers: [me], processes: [{ pid: 700, command: 'bun server.ts __bakin-restart-child 400' }] })
+    expect((await stopHome(h.io)).ok).toBe(true)
+  })
+
+  it('a failed process listing is unknown: stop and restart refuse (restart --force overrides)', async () => {
+    const me = fresh()
+    const h = harness({ lock: lockFor(me), servers: [me], psFails: true })
+    expect((await stopHome(h.io)).ok).toBe(false)
+    expect((await restartHome(h.io, { baseEnv: {} })).ok).toBe(false)
+    expect(h.shutdownRequests).toEqual([])
+    expect((await restartHome(h.io, { baseEnv: {}, force: true })).ok).toBe(true)
+  })
+
+  it('a service that changes between the ownership check and the command is not driven', async () => {
+    const me = fresh()
+    const h = harness({ lock: lockFor(me), servers: [me] })
+    h.setService(500)
+    const exec = h.io.exec
+    let prints = 0
+    h.io.exec = (cmd, args) => {
+      if (args[0] === 'print' && ++prints === 2) h.setService(4242, '/other/home') // setup swapped the job meanwhile
+      return exec(cmd, args)
+    }
+    const out = await restartHome(h.io, { baseEnv: {} })
+    expect(out.ok).toBe(false)
+    expect(h.execs.some((e) => e.includes('kickstart'))).toBe(false)
   })
 })
 

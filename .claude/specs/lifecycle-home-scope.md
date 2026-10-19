@@ -202,3 +202,13 @@ plan) is either impossible by construction or covered by a test.
   fixture (`tests/fixtures/lifecycle/launchctl-print-running.txt`).
 - A systemd `UnsetEnvironment` (applied after `Environment=`) makes the
   service's home unknowable, like an `EnvironmentFile`.
+
+## Review hardening (Codex round 7)
+
+- The service is re-read immediately before it is driven; a job that
+  changed since ownership was judged is left alone.
+- A failed process listing is unknown: stop refuses, restart refuses unless
+  `--force` (only reports treat it as empty).
+- A restart child is judged by its parent pid (`__bakin-restart-child
+  <parentPid>`): pending for a running server only when waiting for THAT
+  server; with no server, only when its parent is gone.

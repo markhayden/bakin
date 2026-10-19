@@ -65,7 +65,7 @@ export async function realLifecycleIo(launch: () => Promise<{ programArgs: strin
     },
     listProcesses: () => {
       try {
-        const out = execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: SERVICE_COMMAND_TIMEOUT_MS, killSignal: 'SIGKILL' })
+        const out = execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: SERVICE_COMMAND_TIMEOUT_MS, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 * 1024 })
         const procs: ProcessInfo[] = []
         for (const line of out.split('\n')) {
           const m = /^\s*(\d+)\s+(.*)$/.exec(line)
@@ -73,7 +73,7 @@ export async function realLifecycleIo(launch: () => Promise<{ programArgs: strin
         }
         return procs
       } catch {
-        return [] // discovery is best-effort and only ever used for reports
+        return null // failed / timed out / overflowed: unknown, and callers fail closed on it
       }
     },
     exec: (cmd, args) => {
