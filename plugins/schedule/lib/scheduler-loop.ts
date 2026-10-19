@@ -12,7 +12,7 @@ import { runSchedulerTick, DEFAULT_TICK_WINDOW_MS, type SchedulerDeps } from './
 import { getPluginCtx } from './plugin-context'
 import { indexJob } from './job-service'
 import { runClaimedFire, healPendingCronClaims, MISSED_WINDOW_REASON } from './fire-engine'
-import { pauseUnrunnableJobs, readSidecar, resumeDuePauses } from './sidecar'
+import { pauseUnrunnableJobs, readSidecar, resumeDuePauses, signalScheduleChanged } from './sidecar'
 import { getCronFire, claimCronFire, pruneCronFires } from '../../../src/core/execution-ledger'
 import { migrateBakinSchedulesOffOpenClawCron } from './cutover'
 import { getSystemTimezone } from './schedule-util'
@@ -75,6 +75,8 @@ export function maybeRunRetentionSweep(now = Date.now()): void {
   })
   if (pruned > 0) {
     log.info('cron_fires retention sweep pruned rows', { pruned })
+    // Past occurrences lose their dispositions and task links.
+    signalScheduleChanged()
     getPluginCtx()?.activity.audit('retention_swept', 'system', {
       pruned,
       maxAgeDays: RETENTION_MAX_AGE_MS / (24 * 60 * 60 * 1000),
@@ -90,7 +92,12 @@ export function schedulerDeps(): SchedulerDeps {
     tickWindowMs: Math.max(DEFAULT_TICK_WINDOW_MS, tickIntervalMs() * 2),
     listJobs: () => Object.values(readSidecar().jobs).filter(job => job.isBakinJob),
     getCronFire: (jobId, runId) => getCronFire(jobId, runId),
-    claimCronFire: (jobId, runId, firedAt) => claimCronFire(jobId, runId, firedAt),
+    claimCronFire: (jobId, runId, firedAt) => {
+      const claim = claimCronFire(jobId, runId, firedAt)
+      // The occurrence is pending now — before the fire path can fail.
+      if (claim.claimed) signalScheduleChanged()
+      return claim
+    },
     fire: async (meta, jobId, runId, occurrence, opts) => {
       await runClaimedFire(
         meta, jobId, runId,

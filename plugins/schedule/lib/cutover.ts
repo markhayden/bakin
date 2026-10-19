@@ -13,7 +13,7 @@
  * and is reused by the doctor repair (T11) when the runtime was unreachable.
  */
 import { createLogger } from '../../../src/core/logger'
-import { readSidecar, upsertJob } from './sidecar'
+import { readSidecar, signalScheduleChanged, upsertJob } from './sidecar'
 import type { BakinJobMeta } from '../types'
 
 const log = createLogger('schedule:cutover')
@@ -66,6 +66,8 @@ export async function migrateBakinSchedulesOffOpenClawCron(deps: CutoverDeps): P
       }
       upsertJob(updated)
       await deps.cronRemove(meta.jobId)
+      // The merged view changes again once the native cron is gone.
+      signalScheduleChanged()
       summary.migrated += 1
       log.info('Migrated Bakin schedule off OpenClaw cron', { jobId: meta.jobId })
     } catch (err) {

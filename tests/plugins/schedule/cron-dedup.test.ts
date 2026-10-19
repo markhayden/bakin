@@ -101,12 +101,15 @@ import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 const { fireScheduledRunFromPayload, healPendingCronClaims, setPluginCtxForTests } = __scheduleTestInternals
 
 let auditEvents: Array<{ event: string; data: Record<string, unknown> }> = []
+let emittedEvents: string[] = []
 
 function makeCtx() {
   const runtime = createMockRuntimeAdapter()
   return {
     pluginId: 'schedule',
     runtime,
+    // Sidecar writes signal schedule.changed (#990).
+    events: { emit: mock((event: string) => { emittedEvents.push(event) }), on: mock(() => () => {}), once: mock(() => () => {}) },
     activity: {
       log: mock(),
       audit: mock((event: string, _agent: string, data?: Record<string, unknown>) => {
@@ -142,6 +145,7 @@ beforeEach(() => {
   createdTasks = []
   createDelayMs = 0
   auditEvents = []
+  emittedEvents = []
   for (const col of Object.values(emptyBoard.columns)) (col as unknown[]).length = 0
   mockCreateTask.mockClear()
   setPluginCtxForTests(makeCtx())
@@ -259,7 +263,10 @@ describe('cron fire dedup (claim before create)', () => {
     upsertJob(makeMeta({ allowOverlap: false, lastTaskId: 'task-active' }))
     emptyBoard.columns.todo.push({ id: 'task-active' } as never)
     const payload = { jobId: 'release-notes', runId: 'run-overlap-audit', timestamp: '2026-06-06T07:00:00Z' }
+    emittedEvents = []
     const result = await fireScheduledRunFromPayload(payload)
+    // A ledger-only transition (no sidecar write) still tells open calendars (#990).
+    expect(emittedEvents).toContain('schedule.changed')
 
     expect(result.body.skipped).toBe('overlap')
     const ev = auditEvents.filter((e) => e.event === 'fire_skipped')

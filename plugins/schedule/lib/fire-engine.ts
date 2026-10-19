@@ -24,6 +24,7 @@ import {
   recordFailure,
   recordSuccess,
   withDefaults,
+  signalScheduleChanged,
 } from './sidecar'
 import { claimCronFire, attachCronTask, markCronFireSkipped, findHealableCronClaims } from '../../../src/core/execution-ledger'
 import { createTaskWithEffects, validateTeamRef, TaskValidationError } from '../../../src/core/task-service'
@@ -63,6 +64,7 @@ async function getScheduleDefaultOwner(): Promise<string> {
  *  ledger key is the lock. */
 async function fireScheduledRun(meta: BakinJobMeta, jobId: string, runId: string, firedAtMs: number): Promise<ProcessRunResult> {
   const claim = claimCronFire(jobId, runId, firedAtMs)
+  if (claim.claimed) signalScheduleChanged()
   if (!claim.claimed) {
     getPluginCtx()?.activity.audit('fire_suppressed', 'system', {
       jobId,
@@ -107,6 +109,8 @@ type SkipReason = 'paused' | 'skip-count' | 'auto-paused' | 'unrunnable' | 'over
  *  silently dropping beats. */
 function skipFire(jobId: string, runId: string, reason: SkipReason): ProcessRunResult {
   markCronFireSkipped(jobId, runId, reason)
+  // A ledger-only transition: the occurrence's disposition moved.
+  signalScheduleChanged()
   // activity.audit prepends the plugin id → observable event is `schedule.fire_skipped`
   // (matches fire_suppressed/fire_healed/task_created — bare operation, no manual prefix).
   getPluginCtx()?.activity.audit('fire_skipped', 'system', { jobId, runId, reason })
@@ -338,6 +342,7 @@ export async function runClaimedFire(
   }
 
   attachCronTask(jobId, runId, taskId)
+  signalScheduleChanged()
   writeLatest(jobId, (latest) => {
     latest.lastTaskId = taskId
     // A one-shot's single occurrence is now consumed (even a blocked catch-up
@@ -408,6 +413,7 @@ export async function healPendingCronClaims(): Promise<void> {
     if (!meta?.isBakinJob) {
       // Job deleted/unmanaged since the claim — consume it.
       markCronFireSkipped(claim.jobId, claim.runId, 'job-removed')
+      signalScheduleChanged()
       continue
     }
     const result = await runClaimedFire(meta, claim.jobId, claim.runId, { firedAtMs: claim.firedAt })

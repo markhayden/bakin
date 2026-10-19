@@ -125,6 +125,10 @@ export function useSSE() {
             const entry = data.entry
             const entryData = entry.data || {}
             appendAuditEntry(entry)
+            // Every audit entry reaches usePluginEvent subscribers over this one
+            // connection (surfaces that refresh on a domain's audit events, like
+            // the schedule calendars, filter on `entry.event`).
+            emitPluginEvent({ event: 'bakin.audit', entry })
             // A doctor run just refreshed the health-check cache — notify the
             // Health nav badge / summary (they subscribe to 'doctor.run').
             if (entry.event === 'doctor.run') emitPluginEvent({ event: 'doctor.run' })
