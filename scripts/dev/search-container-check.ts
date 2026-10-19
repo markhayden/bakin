@@ -26,11 +26,13 @@
  * are never touched. `--inside` refuses to run outside a container.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 const REPO = resolve(import.meta.dir, '..', '..')
+/** A 64×64 PNG — the image asset the media-leg checks import. */
+const PROBE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAeUlEQVR4nO3PQQkAMAzAwMqpfxWTNRF7HINABFzm7H7dcEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFj13vDoEA84tnsQAAAABJRU5ErkJggg=='
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 if (process.argv[2] === '--inside') await inside()
@@ -196,6 +198,15 @@ async function inside(): Promise<void> {
     }
     check('search answers with the models installed', searchStatus === 200, `status=${searchStatus}`)
 
+    // An image asset reaches the media leg by file:// URL — which the engine
+    // denies unless its config allowlists the asset store (0.2.5+).
+    const probe = join(env.BAKIN_HOME, 'assets', 'inbox', 'probe.png')
+    mkdirSync(dirname(probe), { recursive: true })
+    writeFileSync(probe, Buffer.from(PROBE_PNG, 'base64'))
+    check('an image asset imports', (await cli(['assets', 'import', 'assets/inbox/probe.png'])) === 0)
+    const live = await mediaLegIndexed()
+    check('the image reaches the media leg', live.ok, live.detail)
+
     const resetCode = await cli(['search:reset', '--yes'])
     const reset = (await operations()).find((o) => o.kind === 'search:reset')
     check('bakin search:reset', resetCode === 0 && reset?.status === 'succeeded',
@@ -218,6 +229,10 @@ async function inside(): Promise<void> {
     const done = (await operations()).find((o) => o.kind === 'search:reindex')
     check('bakin reindex runs once the engine is free', reindexCode === 0 && done?.status === 'succeeded',
       `exit=${reindexCode} status=${done?.status} tables=${done?.stages[0]?.items?.length ?? 0}`)
+    const rebuilt = await mediaLegIndexed()
+    check('the reindex re-embeds the image from the asset store', rebuilt.ok, rebuilt.detail)
+    const engineLogText = existsSync('/work/home/logs/antfly.log') ? readFileSync('/work/home/logs/antfly.log', 'utf-8') : ''
+    check('the engine never refused a media file', !engineLogText.includes('PathNotAllowed'))
 
     // 5. With a server running for this home, an install runs ON it (the CLI
     // reads server.lock — step 2 ran in-process with none) and the server's
@@ -231,6 +246,32 @@ async function inside(): Promise<void> {
   }
 
   finish(results)
+}
+
+
+/** Polls the engine until some table's media leg (a remoteMedia template) has embedded a document. */
+async function mediaLegIndexed(): Promise<{ ok: boolean; detail: string }> {
+  const engine = 'http://127.0.0.1:3738'
+  let detail = 'no media leg seen'
+  for (let i = 0; i < 240; i++) {
+    try {
+      const listed = (await (await fetch(`${engine}/db/v1/tables`)).json()) as unknown
+      const rows = (Array.isArray(listed) ? listed : ((listed as { tables?: unknown[] }).tables ?? [])) as Array<string | { name?: string }>
+      for (const row of rows) {
+        const table = typeof row === 'string' ? row : row.name
+        if (!table) continue
+        const indexes = (await (await fetch(`${engine}/db/v1/tables/${encodeURIComponent(table)}/indexes`)).json()) as Array<{ config?: { name?: string; template?: string }; status?: { total_indexed?: number } }>
+        const media = Array.isArray(indexes) ? indexes.find((entry) => entry.config?.template?.includes('remoteMedia')) : undefined
+        if (!media) continue
+        detail = `${table}/${media.config?.name} total_indexed=${media.status?.total_indexed ?? 0}`
+        if ((media.status?.total_indexed ?? 0) >= 1) return { ok: true, detail }
+      }
+    } catch (err) {
+      detail = `engine unreachable: ${err instanceof Error ? err.message : String(err)}`
+    }
+    await sleep(500)
+  }
+  return { ok: false, detail }
 }
 
 /** In child mode a CLI install leaves its engine child behind; the server spawns its own. */

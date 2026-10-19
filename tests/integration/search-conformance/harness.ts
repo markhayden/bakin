@@ -10,12 +10,14 @@
  */
 import { createServer } from 'net'
 import { execFileSync } from 'child_process'
-import { existsSync, mkdtempSync, mkdirSync, openSync, rmSync, symlinkSync } from 'fs'
+import { existsSync, mkdtempSync, mkdirSync, openSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'fs'
 import { tmpdir, homedir } from 'os'
 import { join } from 'path'
 import { spawn, type ChildProcess } from 'child_process'
 
 import { ANTFLY_PIN } from '../../../packages/adapter-antfly/src/pin'
+import { renderEngineConfig } from '../../../packages/adapter-antfly/src/service'
+import { mediaRootsFor } from '../../../packages/adapter-antfly/src/media-url'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -85,6 +87,8 @@ export interface EphemeralAntfly {
   port: number
   healthPort: number
   root: string
+  /** The one directory `file://` media may be read from (the asset store's stand-in), spelled through a symlink. */
+  mediaDir: string
   modelsAvailable: boolean
   stop: () => Promise<void>
 }
@@ -94,6 +98,8 @@ export interface SpawnOpts {
   modelOwners?: string[]
   preloadModels?: string[]
   readyTimeoutMs?: number
+  /** Start WITHOUT Bakin's engine config — the engine's own `file://` default (deny-all since 0.2.5). */
+  withoutEngineConfig?: boolean
 }
 
 export async function spawnEphemeralAntfly(binary: string, opts: SpawnOpts = {}): Promise<EphemeralAntfly> {
@@ -102,6 +108,14 @@ export async function spawnEphemeralAntfly(binary: string, opts: SpawnOpts = {})
   const modelsDir = join(root, 'models')
   mkdirSync(dataDir, { recursive: true })
   mkdirSync(modelsDir, { recursive: true })
+  // The media dir is spelled through a symlink, the way a symlinked
+  // BAKIN_HOME spells the asset store — the engine's lexical check sees that
+  // spelling, so every media test exercises it (macOS tmp adds /var → /private/var).
+  mkdirSync(join(realpathSync(root), 'media'), { recursive: true })
+  symlinkSync(realpathSync(root), join(root, 'home-link'))
+  const mediaDir = join(root, 'home-link', 'media')
+  const configFile = join(root, 'antfly-engine.json')
+  writeFileSync(configFile, renderEngineConfig({ mediaRoots: mediaRootsFor(mediaDir) }))
 
   const machineModels = join(homedir(), '.antfly', 'inference', 'models')
   let modelsAvailable = false
@@ -136,6 +150,7 @@ export async function spawnEphemeralAntfly(binary: string, opts: SpawnOpts = {})
     '--host', '127.0.0.1',
     '--port', String(port),
     '--health-port', String(healthPort),
+    ...(opts.withoutEngineConfig ? [] : ['--config', configFile]),
     '--data-dir', dataDir,
     '--models-dir', modelsDir,
     ...(opts.preloadModels ?? []).flatMap((m) => ['--preload-model', m]),
@@ -171,6 +186,7 @@ export async function spawnEphemeralAntfly(binary: string, opts: SpawnOpts = {})
     port,
     healthPort,
     root,
+    mediaDir,
     modelsAvailable,
     stop: async () => {
       child.kill('SIGTERM')

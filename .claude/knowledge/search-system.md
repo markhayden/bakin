@@ -40,6 +40,16 @@ adapter's release host (SHA256-verified against
 `~/.bakin/antfly/` and logs at `~/.bakin/logs/antfly.log`. Bakin is a pure
 HTTP client; the OS owns start, keep-alive, and crash-restart.
 
+The engine also gets `--config ~/.bakin/antfly-engine.json` (written before
+every start by `writeEngineConfig`, outside the data dir a version change
+wipes). Since 0.2.5 (upstream #898) remote templates deny `file://` unless
+`remote_content.security.allowed_paths` names the directory, and Bakin's media
+legs embed assets by `file://` URL — so the config allowlists the asset store
+(`getBakinPaths()['assets.store']`, canonical) and nothing else (never the
+Bakin home: `secrets.json`). Without it every batch carrying an image 500s
+whole (`remoteMedia fetch failed error=PathNotAllowed`), text docs included;
+the workaround-regression suite pins that default.
+
 `packages/adapter-antfly/src/service.ts` owns lifecycle controls; the private
 `service-ownership.ts` and `service-lock.ts` implement ownership and serialized
 mutations. Four process modes remain:

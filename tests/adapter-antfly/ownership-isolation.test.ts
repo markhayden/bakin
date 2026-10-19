@@ -29,6 +29,7 @@ const contentDirMock = () => ({
   getContentDir: () => activeHome,
   getBakinPaths: () => ({
     home: activeHome,
+    'assets.store': join(activeHome, 'assets', 'store'),
     audit: join(activeHome, 'audit.jsonl'),
     tasks: join(activeHome, 'tasks'),
     logs: join(activeHome, 'logs'),
@@ -110,6 +111,8 @@ function seedForeignUnit(mode: 'launchd' | 'systemd', io: ServiceIo, ownerHome =
     dataDir: join(ownerHome, 'antfly'),
     modelsDir: join(sandbox, 'antfly-home', 'inference', 'models'),
     logFile: join(ownerHome, 'logs', 'antfly.log'),
+    configFile: join(ownerHome, 'antfly-engine.json'),
+    mediaRoots: [join(ownerHome, 'assets', 'store')],
   }
   const argv = buildServiceArgv(DEFAULT_SETTINGS, paths, { modelReady: () => true })
   const unitPath = mode === 'launchd' ? launchdPlistPath(io) : systemdUnitPath(io)

@@ -26,6 +26,8 @@ import type {
   TableStats,
   TransformFn,
 } from '@bakin/core/adapters/search'
+import { localMediaRoots, normalizeFileUrls } from './media-url'
+import { isLocalDefaultUrl } from './paths'
 import { modelLoadable } from './model-load'
 import type { AntflySettings } from './defaults'
 import {
@@ -101,6 +103,30 @@ export class AntflySearchClient implements SearchAdapter {
    * SearchRequestRejectedError (counts toward quarantine). The engine has
    * no server-side cancellation, so timeouts ABANDON the request.
    */
+  /**
+   * Every `file://` value goes out in its canonical spelling when it lies in
+   * the asset store (media-url.ts) — including rows the outbox persisted
+   * under another spelling of the home. A guest engine reads files on
+   * someone else's machine, so its documents are sent untouched.
+   */
+  private localMedia<T extends { doc: Record<string, unknown> }>(items: T[]): T[] {
+    if (!isLocalDefaultUrl(this.settings.url)) return items
+    const carriesFileUrl = items.some((item) => Object.values(item.doc).some((value) => typeof value === 'string' && value.startsWith('file://')))
+    if (!carriesFileUrl) return items
+    let roots: string[]
+    try {
+      roots = localMediaRoots()
+    } catch (err) {
+      // Unresolvable store: send as is — the engine decides, the batch isn't held up.
+      log.debug('media roots could not be resolved — file:// values sent as is', { error: err instanceof Error ? err.message : String(err) })
+      return items
+    }
+    return items.map((item) => {
+      const doc = normalizeFileUrls(item.doc, roots)
+      return doc === item.doc ? item : { ...item, doc }
+    })
+  }
+
   private async request(method: string, path: string, body?: unknown, timeoutMs = WRITE_TIMEOUT_MS): Promise<Response> {
     this.requestGuard?.()
     let response: Response
@@ -307,7 +333,7 @@ export class AntflySearchClient implements SearchAdapter {
 
   documents = {
     index: async (table: string, key: string, doc: Document): Promise<void> => {
-      await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc }]))
+      await this.request('POST', paths.batch(table), buildBatchInserts(this.localMedia([{ key, doc }])))
     },
     batchIndex: async (table: string, items: IndexItem[], opts?: { sync?: boolean }): Promise<BatchResult> => {
       if (items.length === 0) return { indexed: 0, failed: [] }
@@ -315,7 +341,7 @@ export class AntflySearchClient implements SearchAdapter {
       // 50-doc backfill chunks can legitimately take tens of seconds, so the
       // batch write gets its own generous ceiling instead of the 30s default.
       const result = await this.requestJson<WireBatchResponse>(
-        'POST', paths.batch(table), buildBatchInserts(items, opts),
+        'POST', paths.batch(table), buildBatchInserts(this.localMedia(items), opts),
         opts?.sync === false ? undefined : SYNC_BATCH_TIMEOUT_MS)
       return { indexed: result?.inserted ?? items.length, failed: [] }
     },
@@ -343,7 +369,7 @@ export class AntflySearchClient implements SearchAdapter {
       const current = await this.documents.get(table, key)
       if (!current) return // absent — nothing to transform
       const next = await fn(current)
-      await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc: next }]))
+      await this.request('POST', paths.batch(table), buildBatchInserts(this.localMedia([{ key, doc: next }])))
     },
   }
 
