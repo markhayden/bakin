@@ -203,7 +203,7 @@ async function inside(): Promise<void> {
     const probe = join(env.BAKIN_HOME, 'assets', 'inbox', 'probe.png')
     mkdirSync(dirname(probe), { recursive: true })
     writeFileSync(probe, Buffer.from(PROBE_PNG, 'base64'))
-    check('an image asset imports', (await cli(['assets', 'import', 'inbox/probe.png'])) === 0)
+    check('an image asset imports', (await cli(['assets', 'import', 'assets/inbox/probe.png'])) === 0)
     const live = await mediaLegIndexed()
     check('the image reaches the media leg', live.ok, live.detail)
 
