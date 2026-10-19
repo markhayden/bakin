@@ -64,7 +64,8 @@ A capability pack is `kind: "skill-pack"` plus:
   invalid; `*` is a pattern only behind a pattern key; legacy folder
   mappings (`"./": "./"`) are ignored as Node ignores them; percent-encoded
   dot segments are judged decoded; a config error inside an array is fatal; `exports: null`
-  = legacy `main` with Node's fallbacks then the root index.*; `module` is
+  = legacy `main` with Node's fallbacks then the root index.*; no `main`
+  and no `exports` = possibly data-only (subpath imports), no root entry required; `module` is
   a bundler field and never checked). The payload's node_modules must be
   its own directory, payload scripts must resolve (realpath, so symlinked dirs too) inside it, and every
   resolved dependency AND entry file must stay inside it; unreadable files are failed verdicts, never exceptions. File

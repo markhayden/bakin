@@ -243,6 +243,12 @@ describe('verifyNpmPayload', () => {
       expect(verify()).toEqual({ ok: true })
     })
 
+    it('a package with no main, no exports and no index is data-only — no root entry required (node-releases shape)', () => {
+      reset({}, ['data/processed/envs.json'])
+      rmSync(join(depDir(), 'index.js'), { force: true })
+      expect(verify()).toEqual({ ok: true })
+    })
+
     it('a missing main falls back to the package root index.js, as Node does', () => {
       reset({ main: 'missing.js' }, ['index.js'])
       expect(verify()).toEqual({ ok: true })

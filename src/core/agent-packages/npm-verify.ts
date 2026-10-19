@@ -292,8 +292,9 @@ type EntryCheck =
  *     condition keys, or numeric condition keys, is invalid) — a blocked
  *     (null) or unmatched subpath needs nothing; a `*` target is a pattern
  *     only behind a pattern key, otherwise a literal file to check;
- *   - otherwise (`exports` absent or null): `main` with Node's extension and
- *     directory-index fallbacks, then the package root's index.* files.
+ *   - otherwise (`exports` absent or null): a declared `main` with Node's
+ *     extension and directory-index fallbacks, then the root index.*; with
+ *     no `main` the package may be data-only (subpath imports), so nothing.
  * `module` is a bundler field Node never reads, so it is not checked.
  */
 function entryChecks(pkg: { exports?: unknown; main?: unknown }): EntryCheck[] {
@@ -325,5 +326,8 @@ function entryChecks(pkg: { exports?: unknown; main?: unknown }): EntryCheck[] {
     const main = pkg.main.replace(/^\.\//, '')
     return [{ label: 'its entry file', candidates: [main, `${main}.js`, `${main}.json`, `${main}.node`, join(main, 'index.js'), join(main, 'index.json'), join(main, 'index.node'), ...rootIndex] }]
   }
-  return [{ label: 'its entry file', candidates: rootIndex }]
+  // No exports and no main: the package may be data-only, used through
+  // subpaths (e.g. node-releases' JSON). Node needs a root index only when
+  // something imports the bare package — nothing to require here.
+  return []
 }
