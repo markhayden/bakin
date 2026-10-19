@@ -1,15 +1,15 @@
 import { spawn } from 'child_process'
-import { existsSync, readdirSync, renameSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'fs'
 import { basename, dirname, join } from 'path'
 import type { OperationPlan } from '@makinbakin/sdk/types'
 import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import type { AntflySettings } from './defaults'
-import { MODEL_PULL_VARIANTS, modelDir, modelStructurallyComplete, modelVariantMismatch, pulledVariantDir, unverifiedModelFiles } from './model-pins'
+import { MODEL_PULL_VARIANTS, isPinnedModel, isSafeModelName, modelDir, modelStructurallyComplete, modelVariantMismatch, pinMismatches, pulledVariantDir } from './model-pins'
 import { modelLoadVerdict, probeModelLoad } from './model-load'
 import { inferenceModelsRoot } from './paths'
 import { ANTFLY_PIN } from './pin'
-import { createPullTracker, pullStagingDir, variantPullStagingDir } from './pull-progress'
+import { acquireModelsLock, createPullTracker, pullStagingDir, pullStagingRoot, variantPullStagingDir } from './pull-progress'
 import { findAntflyBinary } from './service'
 
 /**
@@ -125,6 +125,16 @@ export function describeMissingModels(missing: InferenceModel[]): { impact: stri
 }
 
 export async function checkInferenceModels(models: InferenceModel[]) {
+  const unsafe = models.filter((m) => !isSafeModelName(m.model))
+  if (unsafe.length > 0) {
+    return {
+      name: 'models',
+      status: 'missing' as const,
+      message: `Invalid search model id${unsafe.length === 1 ? '' : 's'} ${unsafe.map((m) => `"${m.model}"`).join(', ')} — expected owner/name`,
+      remediation: 'Fix the search model ids in the search settings.',
+      details: { root: inferenceModelsRoot(), invalid: unsafe.map((m) => m.model) },
+    }
+  }
   const missing = missingModelEntries(models)
   // Present but known not to load on this machine (#993): the engine boots
   // without it, so this is degraded, not broken — and says which leg.
@@ -152,13 +162,16 @@ export async function checkInferenceModels(models: InferenceModel[]) {
   if (missing.length === 0) {
     // Structural verification only — pinned file NAMES and sizes, which is
     // what catches the wrong-distribution crash-loop class. sha256 hashing
-    // lives on the INSTALL path (post-pull): checks run on doctor cadence
-    // and hashing hundreds of MB per pass made a fully loaded test/CI
-    // machine blow check timeouts (2026-07-22).
+    // lives on the INSTALL path (skip check + staged verify): checks run on
+    // doctor cadence and hashing hundreds of MB per pass made a fully loaded
+    // test/CI machine blow check timeouts (2026-07-22). The message says
+    // exactly what was checked — never "verified" (#898 E).
     return {
       name: 'models',
       status: 'ok' as const,
-      message: `All ${models.length} search models present at ${inferenceModelsRoot()}`,
+      message: models.every((m) => isPinnedModel(m.model))
+        ? `All ${models.length} search models present at ${inferenceModelsRoot()} (files present — integrity is hash-checked at install/repair)`
+        : `All ${models.length} search models present at ${inferenceModelsRoot()} (files present — pinned models are hash-checked at install/repair; custom models are checked structurally only)`,
       details: { root: inferenceModelsRoot(), models: models.map((m) => m.model) },
     }
   }
@@ -317,24 +330,49 @@ function recoverModelInstall(model: string, logger: AdapterLogger): void {
   sweepTrash(model, target, logger)
 }
 
+/** A staged copy that may be published as-is: complete, the pinned variant, every pinned file matching its sha256. */
+async function stagedModelVerifies(model: string, stagingRoot: string): Promise<boolean> {
+  if (!existsSync(modelDir(model, stagingRoot))) return false
+  if (!modelStructurallyComplete(model, stagingRoot).ok) return false
+  if (modelVariantMismatch(model, stagingRoot) !== null) return false
+  return (await pinMismatches(model, stagingRoot)).length === 0
+}
+
 /**
- * Moves a variant pull's `<name>--antfly-<hash>` install to the model's own
- * directory (the name the engine is configured with): old install → backup,
- * variant → model dir (backup restored if that fails), backup → trash, sweep.
- * A crash anywhere is finished by `recoverModelInstall` on the next install.
+ * In the STAGING root: moves a variant pull's `<name>--antfly-<hash>`
+ * install to the model's own directory name there, so it can be verified
+ * exactly where it will be published from.
  */
-function adoptVariantInstall(model: string, variant: string, logger: AdapterLogger): string | null {
-  const target = modelDir(model)
-  recoverModelInstall(model, logger)
-  const pulled = pulledVariantDir(inferenceModelsRoot(), model, variant)
-  if (!pulled) return `no ${variant} install appeared next to ${target}`
-  const backup = existsSync(target) ? backupFor(target) : null
-  if (backup) renameSync(target, backup)
+function adoptStagedVariant(model: string, variant: string, stagingRoot: string): string | null {
+  const target = modelDir(model, stagingRoot)
+  const pulled = pulledVariantDir(stagingRoot, model, variant)
+  if (!pulled) return `no ${variant} install appeared in staging next to ${target}`
+  rmSync(target, { recursive: true, force: true })
   try {
     renameSync(pulled, target)
   } catch (err) {
+    return `could not move ${pulled} into place in staging: ${err instanceof Error ? err.message : String(err)}`
+  }
+  return null
+}
+
+/**
+ * Publishes a staged, VERIFIED model into the live tree with the replacement
+ * protocol `recoverModelInstall` finishes after a crash (#993): old install →
+ * backup, staged → model dir (backup restored if that fails), backup →
+ * trash, sweep.
+ */
+function publishStagedModel(model: string, stagingRoot: string, logger: AdapterLogger): string | null {
+  const target = modelDir(model)
+  recoverModelInstall(model, logger)
+  mkdirSync(dirname(target), { recursive: true })
+  const backup = existsSync(target) ? backupFor(target) : null
+  if (backup) renameSync(target, backup)
+  try {
+    renameSync(modelDir(model, stagingRoot), target)
+  } catch (err) {
     if (backup) renameSync(backup, target)
-    return `could not move ${pulled} into place: ${err instanceof Error ? err.message : String(err)}`
+    return `could not publish ${model}: ${err instanceof Error ? err.message : String(err)}`
   }
   if (backup) retire(backup, target)
   sweepTrash(model, target, logger)
@@ -359,103 +397,178 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     }
   }
 
-  for (const m of models) if (MODEL_PULL_VARIANTS[m.model]) recoverModelInstall(m.model, logger)
-  // A complete install of the wrong distribution is re-pulled as the pinned
-  // variant (#993) — the old clipclap layout can't load on Linux.
-  const missing = models.filter((m) => !modelComplete(m).ok || modelVariantMismatch(m.model) !== null)
-  if (missing.length === 0) {
-    skipAll('already downloaded')
+  // Every path below is built from model ids — custom ones come from
+  // settings: an id that is not exactly owner/name never reaches the
+  // filesystem (#898 E).
+  const unsafe = models.filter((m) => !isSafeModelName(m.model))
+  if (unsafe.length > 0) {
+    skipAll('invalid model id')
     return {
       name: 'models',
-      status: 'noop' as const,
-      message: `All ${models.length} search models already present.`,
+      status: 'failed' as const,
+      message: `Invalid search model id${unsafe.length === 1 ? '' : 's'} ${unsafe.map((m) => `"${m.model}"`).join(', ')} — expected owner/name; fix the search settings.`,
       durationMs: Date.now() - start,
     }
   }
 
-  if (!opts.autoApprove) {
-    skipAll('not approved')
+  const liveRoot = inferenceModelsRoot()
+  const stagingRoot = pullStagingRoot(liveRoot)
+  // The models root is shared by every Bakin home on this machine: the whole
+  // check → pull → verify → publish runs under ONE machine-wide lock
+  // (#898 E) — installed state is only ever judged while holding it.
+  const lock = acquireModelsLock(liveRoot)
+  if ('heldBy' in lock) {
+    skipAll('another install holds the models lock')
     return {
       name: 'models',
-      status: 'skipped' as const,
-      message: 'Model download not approved; semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex` to repair anything indexed meanwhile).',
+      status: 'failed' as const,
+      message: `Another Bakin on this machine is installing search models${lock.heldBy > 0 ? ` (pid ${lock.heldBy})` : ''} — try again when it finishes. If none is (an install crashed), remove ${lock.path}.`,
       durationMs: Date.now() - start,
     }
   }
+  try {
+    // Every model publishes through the replacement protocol, so a crash
+    // between its renames is finished for EVERY requested model first.
+    for (const m of models) recoverModelInstall(m.model, logger)
+    // The install skip HASHES (#898 E): a model is present only when it is
+    // structurally complete, the pinned variant (#993), AND every pinned file
+    // matches its sha256 — never trusted on names and sizes alone. Custom
+    // (unpinned) models can only be checked structurally; messages say so.
+    const missing: InferenceModel[] = []
+    for (const m of models) {
+      if (!modelComplete(m).ok || modelVariantMismatch(m.model) !== null || (await pinMismatches(m.model)).length > 0) missing.push(m)
+    }
+    if (missing.length === 0) {
+      skipAll('already downloaded')
+      const custom = models.filter((m) => !isPinnedModel(m.model)).length
+      return {
+        name: 'models',
+        status: 'noop' as const,
+        message: custom === 0
+          ? `All ${models.length} search models already present and matching their pins.`
+          : `All ${models.length} search models already present (${models.length - custom} matching their pins; ${custom} custom, checked structurally).`,
+        durationMs: Date.now() - start,
+      }
+    }
 
-  const failed = (message: string, error?: unknown) => {
-    // A cancel accepted before the failure settles cancelled, not failed.
-    op.throwIfCancelled()
-    return { name: 'models', status: 'failed' as const, message, ...(error === undefined ? {} : { error }), durationMs: Date.now() - start }
-  }
-  const modelsDir = inferenceModelsRoot()
-  logger.info('Pulling search models', { count: missing.length, antfly, modelsDir })
-  op.stage('download')
-  for (const m of missing) op.item('download', { id: m.model, label: m.label })
-  for (const m of missing) {
-    logger.info('Pulling model', { model: m.model, label: m.label })
-    op.item('download', { id: m.model, label: m.label, status: 'active' })
-    let result: { code: number | null; stderr: string }
-    try {
-      result = await runPull(antfly, m.model, {
-        modelsDir,
-        signal: op.signal,
-        pollMs: timings.pollMs,
-        killAfterMs: timings.killAfterMs,
-        onLine: (line) => op.output(line),
-        onBytes: (bytes) => op.bytes('download', bytes, m.model),
-      })
-    } catch (err) {
-      logger.error('Failed to spawn antfly inference pull', err)
-      op.item('download', { id: m.model, label: m.label, status: 'failed' })
-      return failed(`Failed to pull ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)
+    if (!opts.autoApprove) {
+      skipAll('not approved')
+      return {
+        name: 'models',
+        status: 'skipped' as const,
+        message: 'Model download not approved; semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex` to repair anything indexed meanwhile).',
+        durationMs: Date.now() - start,
+      }
     }
-    // Cancelled: the staging dir stays, so the next pull resumes (T0 F4/F6).
-    op.throwIfCancelled()
-    if (result.code !== 0) {
-      op.item('download', { id: m.model, label: m.label, status: 'failed', message: `exited with code ${result.code}` })
-      return failed(`antfly inference pull ${m.model} exited with code ${result.code}${result.stderr ? `: ${result.stderr}` : ''}`)
-    }
-    const variant = MODEL_PULL_VARIANTS[m.model]
-    const adoptError = variant ? adoptVariantInstall(m.model, variant, logger) : null
-    if (adoptError) {
-      op.item('download', { id: m.model, label: m.label, status: 'failed', message: adoptError })
-      return failed(`antfly inference pull ${m.model}:${variant} reported success but ${adoptError}`)
-    }
-    op.item('download', { id: m.model, label: m.label, status: 'done' })
-  }
 
-  op.stage('verify')
-  const unloadable: InferenceModel[] = []
-  for (const m of missing) {
-    const verified = modelComplete(m)
-    if (!verified.ok) return failed(`antfly inference pull ${m.model} reported success but ${verified.reason}`)
-    // Complete is not the same as loadable here (#993): ask the engine now,
-    // so the next start leaves an unloadable model off its preloads.
-    op.throwIfCancelled()
-    const verdict = await probeModelLoad(antfly, m.model, { signal: op.signal })
-    if (verdict && !verdict.loadable) {
-      unloadable.push(m)
-      op.log(`${m.label} can't load on this machine: ${verdict.reason ?? 'the engine could not load it'}`, 'warn')
+    const failed = (message: string, error?: unknown) => {
+      // A cancel accepted before the failure settles cancelled, not failed.
+      op.throwIfCancelled()
+      return { name: 'models', status: 'failed' as const, message, ...(error === undefined ? {} : { error }), durationMs: Date.now() - start }
     }
-    const drifted = await unverifiedModelFiles(m.model)
-    if (drifted.length > 0) {
-      logger.warn('Pulled model differs from the pinned verified distribution', { model: m.model, files: drifted })
-      op.log(`${m.model}: differs from the pinned distribution (${drifted.join(', ')})`, 'warn')
+    // Every pull lands in a STAGING models root beside the live tree and is
+    // verified there; the live tree the running engine reads is touched only
+    // to publish models that passed, after every pull verified. A failure or
+    // cancel leaves every live model exactly as it was, and the staging root
+    // keeps antfly's resumable staging for the next run (T0 F6).
+    logger.info('Pulling search models', { count: missing.length, antfly, stagingRoot })
+    op.stage('download')
+    for (const m of missing) op.item('download', { id: m.model, label: m.label })
+    for (const m of missing) {
+      // A copy a previous run already downloaded into staging is REUSED when
+      // it still verifies (structure, pinned variant, pin hashes) — a failed
+      // or cancelled later model never costs a re-download of this one. A
+      // copy that does not verify is discarded and pulled fresh.
+      if (await stagedModelVerifies(m.model, stagingRoot)) {
+        logger.info('Reusing a verified staged model', { model: m.model })
+        op.item('download', { id: m.model, label: m.label, status: 'skipped', message: 'already downloaded and verified' })
+        continue
+      }
+      rmSync(modelDir(m.model, stagingRoot), { recursive: true, force: true })
+      logger.info('Pulling model', { model: m.model, label: m.label })
+      op.item('download', { id: m.model, label: m.label, status: 'active' })
+      let result: { code: number | null; stderr: string }
+      try {
+        result = await runPull(antfly, m.model, {
+          modelsDir: stagingRoot,
+          signal: op.signal,
+          pollMs: timings.pollMs,
+          killAfterMs: timings.killAfterMs,
+          onLine: (line) => op.output(line),
+          onBytes: (bytes) => op.bytes('download', bytes, m.model),
+        })
+      } catch (err) {
+        logger.error('Failed to spawn antfly inference pull', err)
+        op.item('download', { id: m.model, label: m.label, status: 'failed' })
+        return failed(`Failed to pull ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)
+      }
+      // Cancelled: antfly's staging dir stays, so the next pull resumes (T0 F4/F6).
+      op.throwIfCancelled()
+      if (result.code !== 0) {
+        op.item('download', { id: m.model, label: m.label, status: 'failed', message: `exited with code ${result.code}` })
+        return failed(`antfly inference pull ${m.model} exited with code ${result.code}${result.stderr ? `: ${result.stderr}` : ''}`)
+      }
+      const variant = MODEL_PULL_VARIANTS[m.model]
+      const adoptError = variant ? adoptStagedVariant(m.model, variant, stagingRoot) : null
+      if (adoptError) {
+        op.item('download', { id: m.model, label: m.label, status: 'failed', message: adoptError })
+        return failed(`antfly inference pull ${m.model}:${variant} reported success but ${adoptError}`)
+      }
+      op.item('download', { id: m.model, label: m.label, status: 'done' })
     }
-  }
 
-  const pulledLabels = missing.map((m) => m.label)
-  const durationMs = Date.now() - start
-  logger.info('Search models installed', { pulled: pulledLabels, unloadable: unloadable.map((m) => m.model), durationMs })
-  const unloadableNote = unloadable.length > 0
-    ? ` ${unloadable.map((m) => m.label).join(', ')} can't load on this machine — the search that relies on ${unloadable.length === 1 ? 'it' : 'them'} is unavailable here; everything else works.`
-    : ''
-  return {
-    name: 'models',
-    status: 'installed' as const,
-    message: `Pulled ${pulledLabels.length} model${pulledLabels.length === 1 ? '' : 's'}: ${pulledLabels.join(', ')}.${unloadableNote}`,
-    durationMs,
+    op.stage('verify')
+    for (const m of missing) {
+      const verified = modelStructurallyComplete(m.model, stagingRoot)
+      if (!verified.ok) {
+        rmSync(modelDir(m.model, stagingRoot), { recursive: true, force: true })
+        return failed(`antfly inference pull ${m.model} reported success but ${verified.reason}`)
+      }
+      // A pulled file that does not match its pin FAILS the install (#898 E):
+      // the engine must never boot on an unverified distribution.
+      const drifted = await pinMismatches(m.model, stagingRoot)
+      if (drifted.length > 0) {
+        logger.error('Pulled model does not match its pins', { model: m.model, files: drifted })
+        rmSync(modelDir(m.model, stagingRoot), { recursive: true, force: true })
+        return failed(`antfly inference pull ${m.model} downloaded files that do not match their pinned sha256 (${drifted.join(', ')}) — the distribution differs from the verified one`)
+      }
+    }
+    // Last cancel point: nothing live has been touched yet.
+    op.throwIfCancelled()
+
+    // Publish every verified model into the live tree.
+    for (const m of missing) {
+      const publishError = publishStagedModel(m.model, stagingRoot, logger)
+      if (publishError) return failed(publishError)
+    }
+
+    // Complete is not the same as loadable (#993): ask the engine about the
+    // PUBLISHED files, so the next start leaves an unloadable model off its
+    // preloads.
+    const unloadable: InferenceModel[] = []
+    for (const m of missing) {
+      op.throwIfCancelled()
+      const verdict = await probeModelLoad(antfly, m.model, { signal: op.signal })
+      if (verdict && !verdict.loadable) {
+        unloadable.push(m)
+        op.log(`${m.label} can't load on this machine: ${verdict.reason ?? 'the engine could not load it'}`, 'warn')
+      }
+    }
+
+    const pulledLabels = missing.map((m) => m.label)
+    const durationMs = Date.now() - start
+    logger.info('Search models installed', { pulled: pulledLabels, unloadable: unloadable.map((m) => m.model), durationMs })
+    const unloadableNote = unloadable.length > 0
+      ? ` ${unloadable.map((m) => m.label).join(', ')} can't load on this machine — the search that relies on ${unloadable.length === 1 ? 'it' : 'them'} is unavailable here; everything else works.`
+      : ''
+    return {
+      name: 'models',
+      status: 'installed' as const,
+      message: `Pulled ${pulledLabels.length} model${pulledLabels.length === 1 ? '' : 's'}: ${pulledLabels.join(', ')}.${unloadableNote}`,
+      durationMs,
+    }
+  } finally {
+    lock.release()
   }
 }
 

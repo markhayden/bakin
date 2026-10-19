@@ -247,8 +247,20 @@ describe('model leg', () => {
 
     seedPack('1.0.1', { npm: false })
     await updatePackageById({ packageId: 'toolpack@1.0.0' })
-    expect(hits['/model.gguf']).toBe(1) // size+marker fast path — no re-download
+    expect(hits['/model.gguf']).toBe(1) // hash matches the pin — no re-download
     expect(readLockfile().packages['toolpack@1.0.0']!.version).toBe('1.0.1')
+  })
+
+  it('same-size corruption under an intact marker defeats the skip — the repair re-downloads (#898 E)', async () => {
+    await installPackage({ source: seedPack('1.0.0', { npm: false }) })
+    expect(hits['/model.gguf']).toBe(1)
+    const { atime, mtime } = require('fs').statSync(modelFile())
+    const corrupt = MODEL_BYTES.slice(0, -1) + (MODEL_BYTES.endsWith('x') ? 'y' : 'x')
+    writeFileSync(modelFile(), corrupt) // same length, marker untouched
+    require('fs').utimesSync(modelFile(), atime, mtime)
+    await repairPackLocally('toolpack@1.0.0')
+    expect(hits['/model.gguf']).toBe(2)
+    expect(readFileSync(modelFile(), 'utf-8')).toBe(MODEL_BYTES)
   })
 
   it('repairPackLocally restores a deleted model', async () => {

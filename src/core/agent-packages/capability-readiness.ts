@@ -206,9 +206,12 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
     const models: CapabilityModelStatus[] = []
     for (const req of manifest.requires?.models ?? []) {
       const dest = modelDest(req.dest)
+      // Structural only — present at the declared size. Hashing ~GB files on
+      // every doctor run is real cost; the content is hashed against its pin
+      // at install and repair (#898 E), and this leg never claims otherwise.
       const present = existsSync(dest) && statSync(dest).size === req.bytes
       models.push({ name: req.name, bytes: req.bytes, status: present ? 'ok' : 'missing' })
-      if (!present) missing.push(`model "${req.name}" (${Math.round(req.bytes / 1e6)} MB) is missing — run: bakin packages sync ${key}`)
+      if (!present) missing.push(`model "${req.name}" (${Math.round(req.bytes / 1e6)} MB) is missing or the wrong size — run: bakin packages sync ${key} (files are hash-checked against their pin at install/repair)`)
     }
 
     const prereqs: CapabilityPrereqStatus[] = []

@@ -16,11 +16,12 @@
  * removal like bins). Downloads stream to disk — never buffered in memory.
  */
 import { createHash } from 'crypto'
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Manifest, NpmRequirement, ModelRequirement } from '../../../packages/core/src/agent-packages/manifest'
 import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
 import { commitFileAtomic, downloadToFile, opTransfer, type DownloadEvent } from '../../../packages/core/src/net/download'
+import { verifyFileSha256 } from '../../../packages/core/src/integrity/files'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { runSystemBun } from '../whiskit/command'
@@ -188,9 +189,10 @@ export interface ModelInstallOptions {
 /**
  * Install one pinned model: stream the download to a temp file, sha256-verify
  * against the pin, atomic-rename into the models dir. Fast path: an on-disk
- * file whose size matches the declaration and whose install marker carries
- * the pinned sha is trusted without re-hashing (~GB files; re-hashing every
- * sync pass would be real cost).
+ * file is reused only after it is stream-HASHED against the pin (#898 E) —
+ * never on size + marker alone, which a same-size corruption or a forged
+ * marker would pass. Installs and repairs pay the hash; the doctor never does
+ * (readiness stays structural).
  */
 export async function installModelRequirement(
   req: ModelRequirement,
@@ -202,11 +204,13 @@ export async function installModelRequirement(
 
   if (existsSync(target)) {
     const marker = readInstalledBy(target)
-    if (statSync(target).size === req.bytes && marker?.sha256?.toLowerCase() === pin) {
-      log.info(`Model "${req.name}" already installed at pinned sha — skipping download`)
+    const verdict = await verifyFileSha256(target, pin, { bytes: req.bytes })
+    if (verdict.ok) {
+      log.info(`Model "${req.name}" already installed — hash matches the pin, skipping download`)
       writeInstalledBy(target, { ...installedBy, sha256: pin })
       return { target, sha256: pin, skipped: true }
     }
+    log.info(`Model "${req.name}" on disk does not match its pin — re-downloading`, { reason: verdict.reason })
     // A DIFFERENT pack's pin at the same dest must never silently clobber a
     // model another installed pack depends on — shared dests require shared
     // pins; otherwise the pack author picks a distinct dest.
