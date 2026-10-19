@@ -119,6 +119,10 @@ export interface ServicePaths {
   dataDir: string
   modelsDir: string
   logFile: string
+  /** The engine's `--config` file — outside dataDir, which a version change wipes. */
+  configFile: string
+  /** The only directories `file://` media may be read from (asset store, canonical). */
+  mediaRoots: string[]
 }
 
 export function servicePaths(): ServicePaths {
@@ -129,7 +133,29 @@ export function servicePaths(): ServicePaths {
     modelsDir: resolve(inferenceModelsRoot()),
     // Same file the log-tail annotation pipeline (server-logs.ts) reads.
     logFile: join(home, 'logs', 'antfly.log'),
+    configFile: join(home, 'antfly-engine.json'),
+    mediaRoots: [canonicalPath(getBakinPaths()['assets.store'])],
   }
+}
+
+/**
+ * The engine's config file. Since 0.2.5 remote templates deny `file://`
+ * unless `remote_content.security.allowed_paths` names the directory (an
+ * omitted list is deny-all) — and Bakin's media legs embed assets by
+ * `file://` URL, so without this every batch carrying an image fails whole
+ * (`remoteMedia fetch failed error=PathNotAllowed` → 500, text docs too).
+ * Only the asset store is allowed: never the Bakin home (secrets.json).
+ */
+export function renderEngineConfig(paths: Pick<ServicePaths, 'mediaRoots'>): string {
+  return `${JSON.stringify({ remote_content: { security: { allowed_paths: paths.mediaRoots } } }, null, 2)}\n`
+}
+
+/** Writes the engine config before a start (atomic, and only when it changed). */
+export function writeEngineConfig(paths: ServicePaths): void {
+  const desired = renderEngineConfig(paths)
+  if (existsSync(paths.configFile) && readFileSync(paths.configFile, 'utf8') === desired) return
+  mkdirSync(dirname(paths.configFile), { recursive: true })
+  atomicWriteText(paths.configFile, desired)
 }
 
 /**
@@ -176,6 +202,7 @@ export function buildServiceArgv(
     '--host', '127.0.0.1',
     '--port', String(port),
     '--health-port', String(port + 1),
+    '--config', paths.configFile,
     '--data-dir', paths.dataDir,
     '--models-dir', paths.modelsDir,
     ...preloads.flatMap((p) => ['--preload-model', p]),
@@ -408,6 +435,7 @@ export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo 
     if (mode === 'child') return { mode, action: 'skipped' }
     const paths = servicePaths()
     await probeBeforeStart(settings, io, paths.binary)
+    writeEngineConfig(paths)
     const argv = buildServiceArgv(settings, paths, { modelReady: io.modelReady })
     const unitPath = mode === 'launchd' ? launchdPlistPath(io) : systemdUnitPath(io)
     const desired = mode === 'launchd' ? renderLaunchdPlist(argv, paths.logFile) : renderSystemdUnit(argv, paths.logFile)
@@ -534,6 +562,7 @@ export function startChild(settings: AntflySettings, io: ServiceIo = defaultServ
   }
   mkdirSync(dirname(paths.logFile), { recursive: true })
   mkdirSync(paths.dataDir, { recursive: true })
+  writeEngineConfig(paths)
   const argv = buildServiceArgv(settings, paths, { modelReady: io.modelReady })
   const logFd = openSync(paths.logFile, 'a')
   const child = spawn(argv[0], argv.slice(1), { stdio: ['ignore', logFd, logFd] })

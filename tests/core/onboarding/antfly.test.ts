@@ -23,11 +23,11 @@ const managedBinary = join(antflyHomeDir, 'bin', 'antfly')
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
+  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly'), 'assets.store': join(testDir, 'assets', 'store') }),
 }))
 mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
+  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly'), 'assets.store': join(testDir, 'assets', 'store') }),
 }))
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),

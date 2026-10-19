@@ -237,7 +237,7 @@ if (!binary) {
       // Per-index endpoint: the only create path whose enrichment starts on 0.2.0.
       await api('POST', `/db/v1/tables/${T2}/indexes/vis`, { type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } })
       await sleep(1200)
-      const png = join(instance.root, 'pin319.png')
+      const png = join(instance.mediaDir, 'pin319.png')
       const { solidPng } = await import('./golden-queries')
       const { writeFileSync } = await import('node:fs')
       writeFileSync(png, solidPng([255, 0, 0]))
@@ -366,7 +366,7 @@ if (!binary) {
       await api('POST', `/db/v1/tables/${T3}/indexes/vis`, { type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } })
       await sleep(1200)
       const sharp = (await import('sharp')).default
-      const webp = join(instance.root, 'pin-webp.webp')
+      const webp = join(instance.mediaDir, 'pin-webp.webp')
       await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 200, g: 120, b: 40 } } }).webp().toFile(webp)
       // Retry loop mirrors beforeAll: early attempts can race table
       // provisioning (transient non-2xx). rc.18 GUARD: the batch LANDS
@@ -403,7 +403,7 @@ if (!binary) {
       await api('POST', `/db/v1/tables/${T5}/indexes/vis`, { type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } })
       await sleep(1200)
       const { writeFileSync } = await import('node:fs')
-      const bad = join(instance.root, 'pin-bad.webp')
+      const bad = join(instance.mediaDir, 'pin-bad.webp')
       writeFileSync(bad, Buffer.from('RIFFnope-not-webp-data'))
       let status = 0
       for (let i = 0; i < 10; i++) {
@@ -489,6 +489,42 @@ if (!binary) {
       expect(result.status).toBe(200)
       expect(hits?.hits.map((h) => h._id)).toEqual(['mine'])
     }, 120_000)
+  })
+
+  describe('file:// media needs Bakin\'s engine config (0.2.5 secure defaults, upstream #898)', () => {
+    it('PIN: without `remote_content.security.allowed_paths` the engine refuses file:// media — and the whole batch fails', async () => {
+      // Bakin embeds assets by file:// URL; service.ts writes the allowlist
+      // (renderEngineConfig) and passes --config. WHEN THIS FAILS (2xx): the
+      // engine allows file:// by default again — the config is then harmless,
+      // but re-read the upstream policy before relying on that.
+      if (!existsSync(join(homedir(), '.antfly', 'inference', 'models', 'antflydb', 'clipclap'))) {
+        console.warn('⚠ file:// default pin skipped — clipclap model not present')
+        return
+      }
+      const bare = await spawnEphemeralAntfly(binary, { modelOwners: ['antflydb'], preloadModels: ['embedder:antflydb/clipclap'], withoutEngineConfig: true })
+      try {
+        const call = async (method: string, path: string, body: unknown) => (await nativeFetch(`${bare.url}${path}`, {
+          method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000),
+        })).status
+        await call('POST', '/db/v1/tables/denied', { num_shards: 1 })
+        await sleep(500)
+        await call('POST', '/db/v1/tables/denied/indexes/vis', { type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } })
+        await sleep(1200)
+        const sharp = (await import('sharp')).default
+        const png = join(bare.mediaDir, 'denied.png')
+        await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 10, g: 200, b: 40 } } }).png().toFile(png)
+        let status = 0
+        for (let i = 0; i < 10; i++) {
+          status = await call('POST', '/db/v1/tables/denied/batch', { inserts: { m1: { title: 'green', media_url: `file://${png}` }, p1: { title: 'plain' } }, sync_level: 'full_index' })
+          if (status === 500 || status < 300) break
+          await sleep(500)
+        }
+        expect(status).toBe(500)
+        expect(readFileSync(join(bare.root, 'antfly.err.log'), 'utf8') + readFileSync(join(bare.root, 'antfly.log'), 'utf8')).toContain('PathNotAllowed')
+      } finally {
+        await bare.stop()
+      }
+    }, 180_000)
   })
 
   describe('engine-burn watchdog log signature', () => {

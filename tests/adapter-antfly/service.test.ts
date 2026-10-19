@@ -4,7 +4,7 @@
  */
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
+import { rmSync, readFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-antfly-service-${Date.now()}-${randomUUID()}`)
@@ -20,6 +20,7 @@ const contentDirMock = () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     home: testDir,
+    'assets.store': join(testDir, 'assets', 'store'),
     audit: join(testDir, 'audit.jsonl'),
     tasks: join(testDir, 'tasks'),
     logs: join(testDir, 'logs'),
@@ -48,6 +49,7 @@ import {
   renderSystemdUnit,
   restartService,
   servicePaths,
+  writeEngineConfig,
   startService,
   systemdUnitPath,
   type ServiceIo,
@@ -99,8 +101,32 @@ describe('detectServiceMode', () => {
   })
 })
 
+describe('engine config (0.2.5 file:// allowlist)', () => {
+  it('allows file:// media only from the canonical asset store — never the Bakin home — and rewrites only on change', () => {
+    const paths = servicePaths()
+    expect(paths.configFile).toBe(join(paths.dataDir, '..', 'antfly-engine.json'))
+    writeEngineConfig(paths)
+    const config = JSON.parse(readFileSync(paths.configFile, 'utf8')) as { remote_content: { security: { allowed_paths: string[] } } }
+    expect(config.remote_content.security.allowed_paths).toEqual(paths.mediaRoots)
+    expect(paths.mediaRoots).toHaveLength(1)
+    expect(paths.mediaRoots[0]!.endsWith(join('assets', 'store'))).toBe(true)
+    expect(paths.mediaRoots).not.toContain(dirname(paths.dataDir))
+    const written = readFileSync(paths.configFile, 'utf8')
+    writeFileSync(paths.configFile, written)
+    const mtime = statSync(paths.configFile).mtimeMs
+    writeEngineConfig(paths)
+    expect(statSync(paths.configFile).mtimeMs).toBe(mtime)
+  })
+
+  it('the argv points the engine at that config', () => {
+    const paths = servicePaths()
+    const argv = buildServiceArgv(DEFAULT_SETTINGS, paths, { modelReady: () => false })
+    expect(argv[argv.indexOf('--config') + 1]).toBe(paths.configFile)
+  })
+})
+
 describe('unit rendering (goldens)', () => {
-  const paths = { binary: '/opt/antfly/bin/antfly', dataDir: '/home/u/.bakin/antfly', modelsDir: '/home/u/.antfly/inference/models', logFile: '/home/u/.bakin/logs/antfly.log' }
+  const paths = { binary: '/opt/antfly/bin/antfly', dataDir: '/home/u/.bakin/antfly', modelsDir: '/home/u/.antfly/inference/models', logFile: '/home/u/.bakin/logs/antfly.log', configFile: '/home/u/.bakin/antfly-engine.json', mediaRoots: ['/home/u/.bakin/assets/store'] }
 
   it('argv preloads every antfly-provider embedder, deduped, same across supervisors', () => {
     const argv = buildServiceArgv(DEFAULT_SETTINGS, paths, { modelReady: () => true })
@@ -109,6 +135,7 @@ describe('unit rendering (goldens)', () => {
       '--host', '127.0.0.1',
       '--port', '3738',
       '--health-port', '3739',
+      '--config', '/home/u/.bakin/antfly-engine.json',
       '--data-dir', '/home/u/.bakin/antfly',
       '--models-dir', '/home/u/.antfly/inference/models',
       '--preload-model', 'embedder:BAAI/bge-small-en-v1.5',

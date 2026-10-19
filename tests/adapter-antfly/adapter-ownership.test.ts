@@ -5,7 +5,7 @@ import { dirname, join } from 'path'
 const root = mkdtempSync(join(tmpdir(), 'bakin-adapter-ownership-'))
 const home = join(root, 'home')
 process.env.ANTFLY_HOME = join(root, 'engine')
-const paths = () => ({ getContentDir: () => home, getBakinPaths: () => ({ home, db: join(home, 'bakin.db'), logs: join(home, 'logs') }) })
+const paths = () => ({ getContentDir: () => home, getBakinPaths: () => ({ home, db: join(home, 'bakin.db'), logs: join(home, 'logs'), 'assets.store': join(home, 'assets', 'store') }) })
 mock.module('../../src/core/content-dir', paths)
 mock.module('../../packages/core/src/content-dir', paths)
 mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => join(root, 'openclaw'), getOpenClawPath: (...p: string[]) => join(root, 'openclaw', ...p), resetOpenClawHome: () => {} }))
