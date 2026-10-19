@@ -505,8 +505,9 @@ describe('read-only CLI TUI screens', () => {
         color={false}
       />,
     )
-    // Same disclosure shape as install: the count of requested permissions + every download.
-    expect(output).toContain('Permissions: 2 requested')
+    // Every declared permission by name (never a count) + every download.
+    expect(output).toContain('Permissions requested: storage.read,')
+    expect(output).toContain('events.emit')
     expect(output).toContain('tmux 3.7c')
   })
 
