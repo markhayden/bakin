@@ -230,6 +230,34 @@ describe('only proven models are proposed (margo 2026-10-18)', () => {
     expect(plan.notes.join(' ')).not.toContain('enrichment will fail')
   })
 
+  it('enrichment status follows the FINAL route: a kept text-only enrichment route is reported as failing, not as the agent model', () => {
+    const routing = { routes: [{ workClass: 'enrichment' as const, model: mini.id }], tagOverrides: [] } // mini: vision false
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: luna.id, routing }))
+    expect(plan.routes.find((r) => r.workClass === 'enrichment')?.model).toBe(mini.id)
+    expect(plan.enrichment).toBe('unset')
+    expect(plan.notes.join(' ')).toContain('enrichment will fail')
+  })
+
+  it('a blocked plan keeping a listed vision-capable enrichment route reports it as kept', () => {
+    const routing = { routes: [{ workClass: 'enrichment' as const, model: luna.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }], currentDefaultModel: 'openai/gone', routing }))
+    expect(plan.blocked).toBeTruthy()
+    expect(plan.enrichment).toBe('kept')
+    expect(plan.notes.join(' ')).not.toContain('enrichment will fail')
+  })
+
+  it('a kept route is described only with what is known: unknown vision stays unknown, proof is not denied when present', () => {
+    // terra (unproven default) does the chores; enrichment is routed to a
+    // PROVEN heavier model whose vision is unknown — the route is kept.
+    const lunaUnknownSight: PlanCandidate = { ...luna, vision: null, proven: true }
+    const routing = { routes: [{ workClass: 'enrichment' as const, model: lunaUnknownSight.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [{ ...terra, proven: false }, lunaUnknownSight], currentDefaultModel: terra.id, routing }))
+    expect(plan.enrichment).toBe('kept')
+    const note = plan.notes.find((n) => n.startsWith('Enrichment stays on'))!
+    expect(note).toContain('unknown here')
+    expect(note).not.toContain('has not run')
+  })
+
   it('an unproven (kept) default never absorbs a working chores route', () => {
     const routing = { routes: [{ workClass: 'relay' as const, model: mini.id }], tagOverrides: [] }
     const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: luna.id, routing }))

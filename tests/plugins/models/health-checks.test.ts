@@ -223,6 +223,17 @@ describe('checkModelRouting', () => {
     expect(warn?.incident?.impact).toContain('No cheaper model has been seen running here yet')
   })
 
+  it('premium-on-cheap on an EXPLICITLY routed class points at that route, not at proving a model', async () => {
+    const result = await checkModelRouting(deps({
+      getRoutingConfig: () => ({ routes: [{ workClass: 'relay', model: 'anthropic/claude-opus-4-6' }], tagOverrides: [] }),
+      listRecentRunCosts: () => [row({ workClass: 'relay', model: 'anthropic/claude-opus-4-6', costUsdMicros: 40_000 })],
+    }))
+    if (result.outcome !== 'observed') throw new Error('expected observed')
+    const warn = result.observations.find((o) => o.key === 'premium-on-cheap-relay')
+    expect(warn?.incident?.resolution).toMatchObject({ type: 'navigate', href: '/models?ref=route:relay' })
+    expect(warn?.incident?.impact).toContain('routed to anthropic/claude-opus-4-6 on purpose')
+  })
+
   it('premium-on-cheap escalates to WATCH past $5 of KNOWN spend in the window — unpriced rows never fabricate', async () => {
     const expensive = await checkModelRouting(deps({
       listRecentRunCosts: () => [

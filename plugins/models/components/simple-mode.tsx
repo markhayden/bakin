@@ -66,7 +66,7 @@ export function SimpleMode({ sel, modelOptions, onAdvanced }: SimpleModeProps) {
       { label: 'Background chores', value: plan.recommended.chores.model ?? '—', mono: true },
       ...(plan.recommended.enrichment === 'agent' ? [{ label: 'Enrichment', value: `${plan.recommended.agent.model} — the only eligible model that can see images` }] : []),
       ...(plan.recommended.enrichment === 'unset' ? [{ label: 'Enrichment', value: 'No eligible model can see images — enrichment will fail until one is available' }] : []),
-      ...(plan.recommended.enrichment === 'kept' ? [{ label: 'Enrichment', value: `Stays on ${plan.recommended.routes.find((r) => r.workClass === 'enrichment')?.model ?? 'its configured model'} — it can see images but has not run here in the last week` }] : []),
+      ...(plan.recommended.enrichment === 'kept' ? [{ label: 'Enrichment', value: `Stays on its configured model (${plan.recommended.routes.find((r) => r.workClass === 'enrichment')?.model ?? 'unknown'})` }] : []),
       ...recommendedOps.map((op) => ({ label: op.ref, value: op.set.model ?? 'inherit', mono: true })),
     ]
     : []

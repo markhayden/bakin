@@ -156,7 +156,14 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
     // The repair only routes classes the plan proposes for — a cheaper model
     // that has not been seen running here is never proposed (proof gate).
     const routable = proposals.some((p) => p.workClass === workClass)
-    const cheaper = routable ? ' — one click routes it to a cheap model.' : '. No cheaper model has been seen running here yet; run a task on one or probe it, and Health can route this.'
+    // An explicitly routed class is the operator's choice — the recommender
+    // never proposes over it, so the fix is to change that route.
+    const routedTo = config.routes.find((r) => r.workClass === workClass)?.model ?? null
+    const cheaper = routable
+      ? ' — one click routes it to a cheap model.'
+      : routedTo
+        ? `. It is routed to ${routedTo} on purpose — change that route to a cheaper model if this is not intended.`
+        : '. No cheaper model has been seen running here yet; run a task on one or probe it, and Health can route this.'
     observations.push(healthWarning({
       key: `premium-on-cheap-${workClass}`,
       summary: `${cell.runs} '${workClass}' turn(s) ran on premium-tier model(s) in the last 7 days (${[...cell.models].join(', ')}).`,
@@ -177,7 +184,9 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
         resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
         resolution: routable
           ? { key: 'route-cheaper', type: 'repair', label: 'Apply recommended routes', actionId: 'apply-recommended-routes' }
-          : { key: 'prove-cheaper-model', type: 'navigate', label: 'Open Models', href: '/models' },
+          : routedTo
+            ? { key: 'change-route', type: 'navigate', label: 'Change the route', href: `/models?ref=route:${workClass}` }
+            : { key: 'prove-cheaper-model', type: 'navigate', label: 'Open Models', href: '/models' },
       },
     }))
   }
