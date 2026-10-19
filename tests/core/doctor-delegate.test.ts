@@ -106,6 +106,14 @@ describe('structured Health delegation', () => {
     expect(createTaskWithEffects).toHaveBeenCalledTimes(2)
   })
 
+  it('a FUTURE-dated request works nothing: delegation is not suppressed by it (#898)', async () => {
+    const first = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    updateDoctorRepairRequest(testDir, first.request.id, (r) => ({ ...r, createdAt: new Date(Date.now() + 24 * 3_600_000).toISOString() }))
+    const again = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(again.status).toBe('sent')
+    expect(createTaskWithEffects).toHaveBeenCalledTimes(2)
+  })
+
   it('the repair brief carries integrity guardrails and each incident\'s sanctioned fix (margo forgery, 2026-09-21)', async () => {
     await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
     const call = (createTaskWithEffects.mock.calls.at(-1) as unknown as [{ description: string }])[0]
