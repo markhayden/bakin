@@ -46,7 +46,7 @@ bakin plugins list --check   # polls each release's whiskit-artifacts.json over 
 bakin plugins upgrade my-plugin
 ```
 
-`--check` records the latest published version in the plugin lockfile; the plugins UI and CLI surface `update available` when it differs from the installed version. `upgrade` refetches the latest artifact through the same verify/extract pipeline as install, gates widened permissions behind consent before touching disk, refuses artifacts built for a newer host contract (update Bakin first), and atomically replaces the installed plugin.
+`--check` records the newest published version this Bakin can run (its externals contract and `bakin` range both fit) in the plugin lockfile; the plugins UI and CLI surface `update available` when it is an upgrade from the installed version. `upgrade` refetches that artifact through the same verify/extract pipeline as install, asks for consent to every permission and binary the new version declares (the full list, unchanged entries included) before touching disk, and atomically replaces the installed plugin. When no published release runs on this Bakin yet, the check says so and the upgrade refuses instead of installing an incompatible artifact.
 
 One host-upgrade note for older plugins: the manifest `entry` and `tests` fields were removed. A previously-installed plugin whose manifest still carries them fails to load after a Bakin upgrade with a message naming the field — the remedy is deleting the field from the installed `bakin-plugin.json` (or reinstalling the plugin); there is no automated migration.
 

@@ -7944,6 +7944,10 @@
                       "type": "string",
                       "minLength": 1
                     },
+                    "refusalCode": {
+                      "type": "string",
+                      "minLength": 1
+                    },
                     "itemIds": {
                       "type": "array",
                       "items": {
@@ -16759,6 +16763,10 @@
                       "type": "string",
                       "minLength": 1
                     },
+                    "refusalCode": {
+                      "type": "string",
+                      "minLength": 1
+                    },
                     "itemIds": {
                       "type": "array",
                       "items": {
@@ -21321,6 +21329,10 @@
                       "type": "string",
                       "minLength": 1
                     },
+                    "refusalCode": {
+                      "type": "string",
+                      "minLength": 1
+                    },
                     "itemIds": {
                       "type": "array",
                       "items": {
@@ -21675,6 +21687,10 @@
                       "type": "string",
                       "minLength": 1
                     },
+                    "refusalCode": {
+                      "type": "string",
+                      "minLength": 1
+                    },
                     "itemIds": {
                       "type": "array",
                       "items": {
@@ -21892,6 +21908,10 @@
                       "type": "string",
                       "minLength": 1
                     },
+                    "refusalCode": {
+                      "type": "string",
+                      "minLength": 1
+                    },
                     "itemIds": {
                       "type": "array",
                       "items": {
@@ -21920,6 +21940,10 @@
                       "minLength": 1
                     },
                     "code": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "refusalCode": {
                       "type": "string",
                       "minLength": 1
                     },
@@ -21974,6 +21998,10 @@
                       "minLength": 1
                     },
                     "code": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "refusalCode": {
                       "type": "string",
                       "minLength": 1
                     },

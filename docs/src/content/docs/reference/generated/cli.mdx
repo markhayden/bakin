@@ -481,7 +481,7 @@ bakin plugins import <file> [--yes] [--force] [--json]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-upgrade" name="plugins upgrade" summary="Upgrade a user plugin." description="Upgrades an installed user plugin. Whiskit artifact installs refetch the latest published, checksum-verified artifact (toolchain-free); source installs re-pull from git or the local path and rebuild. Widened permissions require consent; --yes skips the prompt. Pass --json for raw API output.">
+<CliCommandCard id="plugins-upgrade" name="plugins upgrade" summary="Upgrade a user plugin." description="Upgrades an installed user plugin. Whiskit artifact installs refetch the newest published, checksum-verified artifact this Bakin can run (toolchain-free); source installs re-pull from git or the local path and rebuild. Any declared permission or binary download requires consent (the full list is shown, unchanged entries included); --yes skips the prompt. Pass --json for raw API output.">
 ```sh frame="terminal"
 bakin plugins upgrade <id> [--yes] [--json]
 ```
