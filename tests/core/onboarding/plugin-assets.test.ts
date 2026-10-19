@@ -669,7 +669,7 @@ describe('plugin-assets — binaries', () => {
     mkdirSync(join(bakinHome, 'plugins'), { recursive: true })
     rmSync(userPluginDir, { recursive: true, force: true })
     cpSync(pluginDir, userPluginDir, { recursive: true })
-    writeFileSync(join(userPluginDir, 'bakin-plugin.json'), JSON.stringify({ id: 'sdr', name: 'SDR', version: '1.0.0' }))
+    writeFileSync(join(userPluginDir, 'bakin-plugin.json'), JSON.stringify({ id: 'sdr', name: 'SDR', version: '1.0.0', bakin: '*', description: 'skills only' }))
     writePluginLockfile(addPlugin(readPluginLockfile(), 'sdr', {
       source: userPluginDir, type: 'local', ref: '', commitSha: '', installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'a'.repeat(64),
     }))
@@ -691,6 +691,8 @@ describe('plugin-assets — binaries', () => {
       ['strreq', { id: 'strreq', name: 'x', version: '1.0.0', bakin: '*', requires: 'tmux' }],
       ['arrreq', { id: 'arrreq', name: 'x', version: '1.0.0', bakin: '*', requires: [] }],
       ['arrmanifest', []],
+      // Parses as JSON but is no plugin manifest at all.
+      ['emptymanifest', {}],
     ] as const) {
       const pluginDir = join(testDir, 'plugins', id)
       mkdirSync(pluginDir, { recursive: true })
@@ -701,7 +703,7 @@ describe('plugin-assets — binaries', () => {
     // A manifest that genuinely declares nothing is still "no bins".
     const plain = join(testDir, 'plugins', 'plain')
     mkdirSync(plain, { recursive: true })
-    writeFileSync(join(plain, 'bakin-plugin.json'), JSON.stringify({ id: 'plain', name: 'x', version: '1.0.0', bakin: '*', requires: {} }))
+    writeFileSync(join(plain, 'bakin-plugin.json'), JSON.stringify({ id: 'plain', name: 'x', version: '1.0.0', bakin: '*', description: 'declares nothing', requires: {} }))
     expect((await scanPluginAssets([{ id: 'plain', path: plain }])).bins.invalid).toEqual([])
   })
 

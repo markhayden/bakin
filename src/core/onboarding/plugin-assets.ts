@@ -41,7 +41,8 @@ import { verifyInstalledBin } from '../agent-packages/bin-verify'
 import { binTargetPath } from '../plugins/bin-owners'
 import type { RuntimeSkill } from '@bakin/core/adapters/runtime'
 import type { OperationContext, OperationPlan } from '@bakin/core/operations'
-import { BinRequirementsSchema, type BinRequirement } from '@bakin/core/plugins/bin-requirement'
+import { type BinRequirement } from '@bakin/core/plugins/bin-requirement'
+import { readPluginManifestJson } from '@bakin/core/plugins/manifest'
 import {
   type PluginLockfile,
   isLinked,
@@ -279,23 +280,13 @@ export type PluginBinDeclaration = { ok: true; bins: BinRequirement[] } | { ok: 
 export function findBinsForPlugin(plugin: PluginEntry): PluginBinDeclaration {
   const manifestPath = join(plugin.path, 'bakin-plugin.json')
   if (!existsSync(manifestPath)) return { ok: true, bins: [] }
+  // The canonical manifest parser — the one the loader runs — decides; only
+  // a VALID manifest that declares no bins means "no bins" (#898 D).
   try {
-    // Every container on the way to `bins` is checked: only a manifest that
-    // genuinely declares no `requires`/`bins` means "no bins".
-    const manifest: unknown = JSON.parse(readFileSync(manifestPath, 'utf-8'))
-    if (typeof manifest !== 'object' || manifest === null || Array.isArray(manifest)) return { ok: false, reason: 'manifest is not a JSON object' }
-    const requires = (manifest as { requires?: unknown }).requires
-    if (requires === undefined) return { ok: true, bins: [] }
-    if (typeof requires !== 'object' || requires === null || Array.isArray(requires)) return { ok: false, reason: 'requires must be an object' }
-    const raw = (requires as { bins?: unknown }).bins
-    if (raw === undefined) return { ok: true, bins: [] }
-    const parsed = BinRequirementsSchema.safeParse(raw)
-    if (!parsed.success) {
-      return { ok: false, reason: parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') }
-    }
-    return { ok: true, bins: parsed.data }
+    const manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'))
+    return { ok: true, bins: (manifest.requires?.bins ?? []) as BinRequirement[] }
   } catch (err) {
-    return { ok: false, reason: `manifest unreadable: ${err instanceof Error ? err.message : String(err)}` }
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) }
   }
 }
 
