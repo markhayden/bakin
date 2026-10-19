@@ -53,6 +53,7 @@ const moveTaskWithEffects = mock(async (taskId: string, to: string) => {
 })
 mock.module('../../src/core/task-service', () => ({ createTaskWithEffects, moveTaskWithEffects }))
 mock.module('../../src/core/task-store', () => ({
+  getTaskWithColumn: (taskId: string) => { const t = tasks.get(taskId); return t ? { task: { id: taskId }, column: t.column } : null },
   addTaskLog: async (taskId: string, _author: string, message: string) => { tasks.get(taskId)?.logs.push(message) },
   blockTask: async (taskId: string, reason: string) => { const t = tasks.get(taskId)!; t.column = 'blocked'; t.blockedReason = reason },
 }))
@@ -468,6 +469,21 @@ describe('resurfacing (spec D-G3)', () => {
 
     updateDoctorRepairRequest(testDir, opened.request.id, (r) => ({ ...r, status: 'verified' }))
     expect(getHealthReport().incidents.find((row) => row.id === opened.incident.id)!.repairTaskId).toBeUndefined()
+  })
+
+  it('the link skips a request whose task was deleted: the newest LIVE task wins, none links nothing', async () => {
+    const incident = getHealthReport().incidents.find((row) => row.id.includes('expired'))!
+    const make = (taskId: string, ageMs: number) => {
+      const created = createDoctorRepairRequest(testDir, { kind: 'delegate', incidentIds: [incident.id], observationIds: [...incident.observationIds] })
+      updateDoctorRepairRequest(testDir, created.id, (r) => ({ ...r, taskId, status: 'sent', createdAt: new Date(Date.now() - ageMs).toISOString() }))
+    }
+    tasks.set('task-older', { column: 'review', logs: [] })
+    make('task-older', 60_000)
+    make('task-newer-deleted', 1_000)
+    const link = () => getHealthReport().incidents.find((row) => row.id === incident.id)!.repairTaskId
+    expect(link()).toBe('task-older')
+    tasks.delete('task-older')
+    expect(link()).toBeUndefined()
   })
 
   it('reannounceApproval re-publishes a pending approval once per call and refuses a decided one', async () => {

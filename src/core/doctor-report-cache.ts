@@ -33,6 +33,7 @@ import { listHealthChecks, onHealthRegistryChanged } from './health-check-regist
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
 import { openRepairWorkByIncident, type OpenRepairWork } from './doctor-repair-store'
+import { getTaskWithColumn } from './task-store'
 import { getSettings } from './settings'
 
 const log = createLogger('doctor-report-cache')
@@ -472,7 +473,8 @@ export function acknowledgeHealthIncident(input: {
 
 /**
  * The open repair task working each incident (spec D-G2), from the repair
- * store's memoized index (no file reads per projection). A read failure links
+ * store's memoized index (no request-file reads per projection) — the newest
+ * candidate whose task still exists (an in-memory task-store lookup). A read failure links
  * nothing — never fails the report.
  */
 function joinRepairTasks(incidents: HealthIncident[]): HealthIncident[] {
@@ -485,7 +487,8 @@ function joinRepairTasks(incidents: HealthIncident[]): HealthIncident[] {
   }
   if (byIncident.size === 0) return incidents
   return incidents.map((incident) => {
-    const work = byIncident.get(incident.id)?.[0]
+    // Newest first; a request whose task was deleted links nothing.
+    const work = byIncident.get(incident.id)?.find((candidate) => getTaskWithColumn(candidate.taskId) !== null)
     return work ? { ...incident, repairTaskId: work.taskId } : incident
   })
 }

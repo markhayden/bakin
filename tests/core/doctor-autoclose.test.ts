@@ -41,6 +41,7 @@ mock.module('../../src/core/task-service', () => ({
   getTaskDetails: async (taskId: string) => tasks.has(taskId) ? { task: {}, column: tasks.get(taskId)!.column } : null,
 }))
 mock.module('../../src/core/task-store', () => ({
+  getTaskWithColumn: (taskId: string) => { const t = tasks.get(taskId); return t ? { task: { id: taskId }, column: t.column } : null },
   addTaskLog: async (taskId: string, _author: string, message: string) => { tasks.get(taskId)?.logs.push(message) },
 }))
 
