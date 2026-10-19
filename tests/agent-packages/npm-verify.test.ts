@@ -220,9 +220,13 @@ describe('verifyNpmPayload', () => {
       expect(verify()).toEqual({ ok: true })
     })
 
-    it('only ARRAY-INDEX condition keys are fatal — "01" is just an inactive condition name', () => {
+    it('Node\'s array-index predicate: "1.5" / "1e-7" are fatal even AFTER default; "01" is just a condition name', () => {
       reset({ exports: { '01': './unused.js', default: './index.js' } }, ['index.js'])
       expect(verify()).toEqual({ ok: true })
+      for (const key of ['1.5', '1e-7']) {
+        reset({ exports: { default: './index.js', [key]: './unused.js' } }, ['index.js'])
+        expect(problems()).toEqual([expect.stringContaining('numeric')])
+      }
     })
 
     it('a configuration error inside an exports array is fatal — arrays only fall back past invalid TARGETS', () => {

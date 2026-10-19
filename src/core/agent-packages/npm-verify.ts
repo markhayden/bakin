@@ -253,9 +253,15 @@ function decodeSegment(raw: string): string {
   }
 }
 
-/** Node refuses ARRAY-INDEX condition keys (canonical integers below 2^32 - 1; ERR_INVALID_PACKAGE_CONFIG). */
+/**
+ * Node's own predicate (lib/internal/modules/esm/resolve.js `isArrayIndex`):
+ * a key that round-trips through Number and lies in [0, 2^32 - 1) — so
+ * "1", "1.5" and "1e-7" are refused (ERR_INVALID_PACKAGE_CONFIG), "01" is
+ * just a condition name.
+ */
 function isArrayIndexKey(key: string): boolean {
-  return /^(0|[1-9]\d*)$/.test(key) && Number(key) < 4294967295
+  const num = Number(key)
+  return `${num}` === key && num >= 0 && num < 0xFFFF_FFFF
 }
 
 function resolveTarget(target: unknown): TargetResolution {
@@ -276,8 +282,10 @@ function resolveTarget(target: unknown): TargetResolution {
     return last
   }
   if (target && typeof target === 'object') {
+    // Node validates EVERY key before selecting a condition.
+    const numeric = Object.keys(target).find(isArrayIndexKey)
+    if (numeric !== undefined) return { kind: 'config', reason: `condition key "${numeric}" is numeric` }
     for (const [condition, value] of Object.entries(target)) {
-      if (isArrayIndexKey(condition)) return { kind: 'config', reason: `condition key "${condition}" is numeric` }
       if (!ACTIVE_CONDITIONS.has(condition)) continue
       const resolved = resolveTarget(value)
       if (resolved.kind === 'none') continue
