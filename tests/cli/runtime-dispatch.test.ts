@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { APP_VERSION } from '../../packages/core/src/constants'
-import { setStdoutIsTTY, setupTtyCliHarness } from './helpers/tty-cli-harness'
+import { setStdoutIsTTY, setupTtyCliHarness, withTempBakinHome } from './helpers/tty-cli-harness'
 
 const execFileSync = mock((..._args: unknown[]) => '')
 
@@ -108,14 +108,16 @@ describe('bakin runtime binary dispatch', () => {
   })
 
   it('delegates stop to the shared source CLI TUI', async () => {
-    const { dispatchCli } = await import('../../src/core/cli')
+    // stop reads THIS home's server.lock: a temp home, never the real one.
+    await withTempBakinHome('bakin-test-dispatch-stop-', async () => {
+      const { dispatchCli } = await import('../../src/core/cli')
 
-    const result = await dispatchCli(['bun', 'bakin', 'stop'])
+      const result = await dispatchCli(['bun', 'bakin', 'stop'])
 
-    expect(result).toEqual({ startServer: false, exitCode: 0 })
-    expect(output()).toContain('Runtime action')
-    expect(output()).toContain('No running Bakin process found.')
-    expect(output()).not.toContain('No running Bakin server at')
-    expect(errorOutput()).toBe('')
+      expect(result).toEqual({ startServer: false, exitCode: 0 })
+      expect(output()).toContain('Runtime action')
+      expect(output()).toContain('No running Bakin server for this home.')
+      expect(errorOutput()).toBe('')
+    })
   })
 })
