@@ -62,11 +62,15 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
   }
   const routesSet = ROUTABLE.filter((c) => sel.effective(`route:${c.id}`).model || sel.effective(`route:${c.id}`).thinking).length
   const recommendedOps = plan?.recommended.ops ?? []
-  const onPlan = plan !== null && recommendedOps.length === 0
+  // A blocked plan has no ops because nothing SAFE can be recommended — not
+  // because the install is already there (dead default, nothing proven).
+  const blocked = plan?.recommended.blocked
+  const onPlan = plan !== null && !blocked && recommendedOps.length === 0
   // What the recommendation would change, in one sentence — the agent lane
   // (keep vs switch) and the chores lane (same model vs a lighter one).
   const planSentence = (() => {
     if (!plan) return 'The recommendation loads with the page.'
+    if (blocked) return blocked
     if (onPlan) return 'You are on the recommended plan: your agents run on a model that can run here, and the background chores use the lightest model that can do them.'
     const rec = plan.recommended
     const agentPart = rec.agent.model === agent.model
@@ -154,7 +158,7 @@ export function AdvancedOverview({ sel, modelOptions }: AdvancedOverviewProps) {
           {plan ? (
             <CardFooter className="mt-auto flex flex-wrap items-center justify-between gap-bakin-3">
               <Text size="meta" tone="muted">{plan.candidates} model{plan.candidates === 1 ? '' : 's'} can run here</Text>
-              {onPlan ? (
+              {blocked ? null : onPlan ? (
                 <Badge tone="success" variant="soft">On the recommended plan</Badge>
               ) : (
                 <Button type="button" size="sm" onClick={() => setPlanOpen(true)}>Use recommended plan</Button>

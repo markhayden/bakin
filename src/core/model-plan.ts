@@ -297,15 +297,18 @@ export function recommendPlan(input: PlanInput): PlanRecommendation {
   let finalEnrichment: PlanRecommendation['enrichment'] = enrichment
   const routes = planRoutes(agent, chores, enrichment).map((route) => {
     const current = routedModel(input.routing, route.workClass)
+    const configured = current !== null ? input.candidates.find((c) => c.id === current) : undefined
+    // A kept enrichment route whose model can see means enrichment still runs.
+    const keepsSeeingEnrichment = route.workClass === 'enrichment' && enrichment === 'unset' && configured !== undefined && configured.vision !== false
     if (route.model === null && current !== null && !agentProven) {
+      if (keepsSeeingEnrichment) finalEnrichment = 'kept'
       return { ...route, model: current, reason: `kept on ${current} — the agent model (${agent.model}) has not been seen running here in the last week, so work is not moved onto it` }
     }
     // No proven model can see images, but the configured one is still listed
     // and can (it just has not run lately): clearing it would only guarantee
     // enrichment fails — keep it. A route to a model that is no longer
     // listed is cleared as before.
-    const configured = current !== null ? input.candidates.find((c) => c.id === current) : undefined
-    if (route.workClass === 'enrichment' && enrichment === 'unset' && route.model === null && configured && configured.vision !== false) {
+    if (route.model === null && keepsSeeingEnrichment) {
       finalEnrichment = 'kept'
       return { ...route, model: current, reason: `kept on ${current} — no model that has run here in the last week can see images` }
     }

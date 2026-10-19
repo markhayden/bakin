@@ -793,6 +793,16 @@ describe('ModelsPage component', () => {
       expect(panel.queryByRole('button', { name: 'Use recommended plan' })).toBeNull()
     })
 
+    it('Advanced: a blocked plan shows its reason, never the on-plan badge or the apply button', async () => {
+      uiModeState = 'advanced'
+      planBlockedState = 'Your current default (openai/gone) cannot run here, and no other model has been seen running here in the last week — probe a model or run a task on one, then the plan can propose it.'
+      render(<ModelsPage />)
+      const card = await screen.findByTestId('overview-plan')
+      await waitFor(() => expect(within(card).getByText(/probe a model or run a task on one/)).toBeTruthy())
+      expect(within(card).queryByText('On the recommended plan')).toBeNull()
+      expect(within(card).queryByRole('button', { name: 'Use recommended plan' })).toBeNull()
+    })
+
     it('a persisted mode wins over classification; switching writes ui:mode and flips the view', async () => {
       uiModeState = 'simple'
       render(<ModelsPage />)
