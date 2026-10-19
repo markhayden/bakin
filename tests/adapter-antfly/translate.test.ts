@@ -34,6 +34,7 @@ import {
   mapIndexStatuses,
   mapQueryResponse,
   needsFacetSplit,
+  scopeQueryToIndexes,
 } from '../../packages/adapter-antfly/src/translate'
 import { DEFAULT_SETTINGS } from '../../packages/adapter-antfly/src/defaults'
 import type { WireQueryEnvelope, WireIndexStatusEntry } from '../../packages/adapter-antfly/src/wire'
@@ -141,6 +142,35 @@ describe('buildQueryRequest', () => {
     expect('order_by' in req).toBe(false)
   })
 
+})
+
+describe('scopeQueryToIndexes (#993)', () => {
+  const asked = {
+    text: 'dark dashboard',
+    adapterOptions: {
+      searchableFields: ['title'],
+      indexes: ['assets_text', 'assets_visual'],
+      indexWeights: { assets_text: 0.5, assets_visual: 2 },
+    },
+  }
+
+  it('drops the legs and weights the physical lacks — naming either is a hard 400', () => {
+    const req = buildQueryRequest('t', scopeQueryToIndexes(asked, new Set(['full_text', 'assets_text'])), S)
+    expect(req.indexes).toEqual(['assets_text'])
+    expect(req.merge_config?.weights).toEqual({ assets_text: 0.5 })
+  })
+
+  it('a table that has every leg is queried exactly as asked', () => {
+    expect(scopeQueryToIndexes(asked, new Set(['assets_text', 'assets_visual']))).toBe(asked)
+  })
+
+  it('no vector leg left: keyword only — and a semantic-only query falls back to keyword, never match-all', () => {
+    const none = scopeQueryToIndexes(asked, new Set(['full_text']))
+    expect(buildQueryRequest('t', none, S).semantic_search).toBeUndefined()
+    const semanticOnly = buildQueryRequest('t', { ...none, strategy: 'vector' }, S)
+    expect(semanticOnly.semantic_search).toBeUndefined()
+    expect(semanticOnly.full_text_search).toEqual({ match: 'dark dashboard', field: 'title' })
+  })
 })
 
 describe('buildFilterQuery', () => {

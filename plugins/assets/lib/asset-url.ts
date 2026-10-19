@@ -7,16 +7,44 @@
  *
  * The caller passes a relative path under the assets root (e.g.
  * `store/2026-04/20260401-recipe-a1b2c3d4.pdf`) and gets back a
- * `file:///abs/path` URL.
+ * `file:///abs/path` URL — always absolute and canonical.
  * The function also percent-encodes each path segment so filenames with
  * spaces or special characters round-trip correctly through adapter parsers.
  */
-import { join } from 'path'
+import { realpathSync } from 'fs'
+import { basename, dirname, join, resolve } from 'path'
 import { getBakinPaths } from '../../../src/core/content-dir'
+
+/**
+ * One absolute, canonical spelling for a file: the deepest existing
+ * ancestor's realpath with the missing tail re-attached. A relative
+ * BAKIN_HOME would otherwise yield `file://relative-home/…` (the engine reads
+ * that as a hostname), and a symlinked home — or a symlinked store under it —
+ * would spell the same file differently from process to process, while the
+ * search engine only reads `file://` media from an allowlisted store and
+ * checks the URL's path lexically first.
+ */
+function canonicalFilePath(path: string): string {
+  const absolute = resolve(path)
+  try {
+    return realpathSync(absolute)
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code !== 'ENOENT' && code !== 'ENOTDIR') throw err
+    const parent = dirname(absolute)
+    return parent === absolute ? absolute : join(canonicalFilePath(parent), basename(absolute))
+  }
+}
 
 export function buildAssetFileUrl(relPathUnderAssetsRoot: string): string {
   const clean = relPathUnderAssetsRoot.replace(/^[\\/]+/, '')
-  const absolute = join(getBakinPaths().assets, clean)
+  // Resolved FIRST: a relative home only reveals a backslash once it meets cwd.
+  const joined = resolve(join(getBakinPaths().assets, clean))
+  // A backslash is an ordinary filename character here, but path resolution
+  // can rewrite it into a separator — keep that spelling exactly as built
+  // (absolute; the store is allowlisted under it too).
+  const canonical = joined.includes('\\') ? null : canonicalFilePath(joined)
+  const absolute = canonical === null || canonical.includes('\\') ? resolve(joined) : canonical
   const encoded = absolute
     .split('/')
     .map((segment, i) => (i === 0 && segment === '' ? '' : encodeURIComponent(segment)))

@@ -1,11 +1,15 @@
 import { spawn } from 'child_process'
+import { existsSync, readdirSync, renameSync, rmSync } from 'fs'
+import { basename, dirname, join } from 'path'
 import type { OperationPlan } from '@makinbakin/sdk/types'
 import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import type { AntflySettings } from './defaults'
-import { modelDir, modelStructurallyComplete, unverifiedModelFiles } from './model-pins'
+import { MODEL_PULL_VARIANTS, modelDir, modelStructurallyComplete, modelVariantMismatch, pulledVariantDir, unverifiedModelFiles } from './model-pins'
+import { modelLoadVerdict, probeModelLoad } from './model-load'
 import { inferenceModelsRoot } from './paths'
-import { createPullTracker, pullStagingDir } from './pull-progress'
+import { ANTFLY_PIN } from './pin'
+import { createPullTracker, pullStagingDir, variantPullStagingDir } from './pull-progress'
 import { findAntflyBinary } from './service'
 
 /**
@@ -122,6 +126,29 @@ export function describeMissingModels(missing: InferenceModel[]): { impact: stri
 
 export async function checkInferenceModels(models: InferenceModel[]) {
   const missing = missingModelEntries(models)
+  // Present but known not to load on this machine (#993): the engine boots
+  // without it, so this is degraded, not broken — and says which leg.
+  const unloadable = missing.length === 0
+    ? models.flatMap((m) => {
+      const verdict = modelLoadVerdict(m.model)
+      return verdict && !verdict.loadable ? [{ model: m, reason: verdict.reason ?? 'the engine could not load it' }] : []
+    })
+    : []
+  if (unloadable.length > 0) {
+    const names = unloadable.map((u) => u.model.label).join(', ')
+    return {
+      name: 'models',
+      status: 'warn' as const,
+      message: `${names} can't load on this machine (engine ${ANTFLY_PIN.version}, ${process.platform}-${process.arch}) — the search that relies on ${unloadable.length === 1 ? 'it is' : 'them is'} unavailable here. Everything else is unaffected.`,
+      remediation: unloadable.some((u) => modelVariantMismatch(u.model.model) !== null)
+        ? 'Run `bakin install search-models`: it re-downloads the model in the form that loads on this machine.'
+        : 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
+      details: {
+        root: inferenceModelsRoot(),
+        unloadable: unloadable.map((u) => ({ label: u.model.label, model: u.model.model, reason: u.reason })),
+      },
+    }
+  }
   if (missing.length === 0) {
     // Structural verification only — pinned file NAMES and sizes, which is
     // what catches the wrong-distribution crash-loop class. sha256 hashing
@@ -192,9 +219,10 @@ interface PullOptions {
  * check on one directory under every home. Abort sends SIGTERM.
  */
 function runPull(antfly: string, model: string, opts: PullOptions): Promise<{ code: number | null; stderr: string }> {
+  const variant = MODEL_PULL_VARIANTS[model]
   return new Promise((resolve, reject) => {
-    const child = spawn(antfly, ['inference', 'pull', model, '--models-dir', opts.modelsDir], { stdio: ['ignore', 'ignore', 'pipe'] })
-    const tracker = createPullTracker(pullStagingDir(opts.modelsDir, model))
+    const child = spawn(antfly, ['inference', 'pull', variant ? `${model}:${variant}` : model, '--models-dir', opts.modelsDir], { stdio: ['ignore', 'ignore', 'pipe'] })
+    const tracker = createPullTracker(variant ? () => variantPullStagingDir(opts.modelsDir, model) : pullStagingDir(opts.modelsDir, model))
     const tail: string[] = []
     let pending = ''
     let last = ''
@@ -244,6 +272,75 @@ function runPull(antfly: string, model: string, opts: PullOptions): Promise<{ co
   })
 }
 
+/** The ONE recoverable copy of an install being replaced (one replacement at a time: search-engine). */
+const backupFor = (target: string) => join(dirname(target), `.bakin-replacing-${basename(target)}`)
+/** Retired copies — never read, only deleted (a half-deleted dir lives only here). */
+const trashPrefixFor = (target: string) => `.bakin-trash-${basename(target)}-`
+
+function retire(dir: string, target: string): string {
+  const trash = join(dirname(target), `${trashPrefixFor(target)}${process.pid}-${Date.now()}`)
+  renameSync(dir, trash)
+  return trash
+}
+
+function sweepTrash(model: string, target: string, logger: AdapterLogger): void {
+  const parent = dirname(target)
+  if (!existsSync(parent)) return
+  for (const entry of readdirSync(parent)) {
+    if (!entry.startsWith(trashPrefixFor(target))) continue
+    try {
+      rmSync(join(parent, entry), { recursive: true, force: true })
+    } catch (err) {
+      logger.warn('Could not delete a replaced model install', { model, dir: join(parent, entry), error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+}
+
+/**
+ * Finishes an interrupted replacement (runs under search-engine, before any
+ * check or pull). The backup's fixed name is the journal: a backup with no
+ * model dir means a crash between the two renames — it goes back; a backup
+ * next to the model dir means the replacement committed — it is retired to
+ * trash whole. Then trash is swept.
+ */
+function recoverModelInstall(model: string, logger: AdapterLogger): void {
+  const target = modelDir(model)
+  const backup = backupFor(target)
+  if (existsSync(backup)) {
+    if (existsSync(target)) {
+      retire(backup, target)
+    } else {
+      logger.warn('Restoring a model install an interrupted replacement left aside', { model, from: backup })
+      renameSync(backup, target)
+    }
+  }
+  sweepTrash(model, target, logger)
+}
+
+/**
+ * Moves a variant pull's `<name>--antfly-<hash>` install to the model's own
+ * directory (the name the engine is configured with): old install → backup,
+ * variant → model dir (backup restored if that fails), backup → trash, sweep.
+ * A crash anywhere is finished by `recoverModelInstall` on the next install.
+ */
+function adoptVariantInstall(model: string, variant: string, logger: AdapterLogger): string | null {
+  const target = modelDir(model)
+  recoverModelInstall(model, logger)
+  const pulled = pulledVariantDir(inferenceModelsRoot(), model, variant)
+  if (!pulled) return `no ${variant} install appeared next to ${target}`
+  const backup = existsSync(target) ? backupFor(target) : null
+  if (backup) renameSync(target, backup)
+  try {
+    renameSync(pulled, target)
+  } catch (err) {
+    if (backup) renameSync(backup, target)
+    return `could not move ${pulled} into place: ${err instanceof Error ? err.message : String(err)}`
+  }
+  if (backup) retire(backup, target)
+  sweepTrash(model, target, logger)
+  return null
+}
+
 export async function installInferenceModels(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger, models: InferenceModel[], timings: { pollMs?: number; killAfterMs?: number } = {}) {
   const { op } = opts
   if (!op.holds('search-engine')) throw new Error('installInferenceModels requires search-engine (run it inside an operation that declares it)')
@@ -262,7 +359,10 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     }
   }
 
-  const missing = missingModels(models)
+  for (const m of models) if (MODEL_PULL_VARIANTS[m.model]) recoverModelInstall(m.model, logger)
+  // A complete install of the wrong distribution is re-pulled as the pinned
+  // variant (#993) — the old clipclap layout can't load on Linux.
+  const missing = models.filter((m) => !modelComplete(m).ok || modelVariantMismatch(m.model) !== null)
   if (missing.length === 0) {
     skipAll('already downloaded')
     return {
@@ -316,13 +416,28 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
       op.item('download', { id: m.model, label: m.label, status: 'failed', message: `exited with code ${result.code}` })
       return failed(`antfly inference pull ${m.model} exited with code ${result.code}${result.stderr ? `: ${result.stderr}` : ''}`)
     }
+    const variant = MODEL_PULL_VARIANTS[m.model]
+    const adoptError = variant ? adoptVariantInstall(m.model, variant, logger) : null
+    if (adoptError) {
+      op.item('download', { id: m.model, label: m.label, status: 'failed', message: adoptError })
+      return failed(`antfly inference pull ${m.model}:${variant} reported success but ${adoptError}`)
+    }
     op.item('download', { id: m.model, label: m.label, status: 'done' })
   }
 
   op.stage('verify')
+  const unloadable: InferenceModel[] = []
   for (const m of missing) {
     const verified = modelComplete(m)
     if (!verified.ok) return failed(`antfly inference pull ${m.model} reported success but ${verified.reason}`)
+    // Complete is not the same as loadable here (#993): ask the engine now,
+    // so the next start leaves an unloadable model off its preloads.
+    op.throwIfCancelled()
+    const verdict = await probeModelLoad(antfly, m.model, { signal: op.signal })
+    if (verdict && !verdict.loadable) {
+      unloadable.push(m)
+      op.log(`${m.label} can't load on this machine: ${verdict.reason ?? 'the engine could not load it'}`, 'warn')
+    }
     const drifted = await unverifiedModelFiles(m.model)
     if (drifted.length > 0) {
       logger.warn('Pulled model differs from the pinned verified distribution', { model: m.model, files: drifted })
@@ -332,11 +447,14 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
 
   const pulledLabels = missing.map((m) => m.label)
   const durationMs = Date.now() - start
-  logger.info('Search models installed', { pulled: pulledLabels, durationMs })
+  logger.info('Search models installed', { pulled: pulledLabels, unloadable: unloadable.map((m) => m.model), durationMs })
+  const unloadableNote = unloadable.length > 0
+    ? ` ${unloadable.map((m) => m.label).join(', ')} can't load on this machine — the search that relies on ${unloadable.length === 1 ? 'it' : 'them'} is unavailable here; everything else works.`
+    : ''
   return {
     name: 'models',
     status: 'installed' as const,
-    message: `Pulled ${pulledLabels.length} model${pulledLabels.length === 1 ? '' : 's'}: ${pulledLabels.join(', ')}`,
+    message: `Pulled ${pulledLabels.length} model${pulledLabels.length === 1 ? '' : 's'}: ${pulledLabels.join(', ')}.${unloadableNote}`,
     durationMs,
   }
 }

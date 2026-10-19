@@ -52,7 +52,11 @@ afterEach(() => _resetOperationRegistryForTests())
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 /** A cancellable download that waits for cancel, then settles. */
+/** Holds a past-the-point-of-no-return download open until the test releases it — never a timer race. */
+let releaseDownload: () => void = () => {}
+
 async function startDownload(pointOfNoReturn: string | null) {
+  const held = new Promise<void>((resolve) => { releaseDownload = resolve })
   return getOperationRegistry().start({
     kind: 'onboarding:test', owner: 'core', origin: 'cli', title: 'Download the thing', fingerprint: `t:${randomUUID()}`,
     resources: [],
@@ -60,7 +64,7 @@ async function startDownload(pointOfNoReturn: string | null) {
     run: async (op) => {
       op.stage('download')
       if (pointOfNoReturn === 'download') {
-        await new Promise((r) => setTimeout(r, 30))
+        await held
         return { status: 'succeeded', code: 'ok', httpStatus: 200, body: null }
       }
       await new Promise<void>((resolve) => op.signal.addEventListener('abort', () => resolve(), { once: true }))
@@ -93,6 +97,7 @@ describe('followLocalAndRender', () => {
 
     sig.press()
     expect(notes[0]).toContain("Can't stop now")
+    releaseDownload()
     expect((await following).operation?.status).toBe('succeeded')
   })
 
@@ -107,6 +112,7 @@ describe('followLocalAndRender', () => {
     sig.press()
     expect(exits).toEqual([130])
     expect(notes.at(-1)).toContain('next start checks')
+    releaseDownload()
     await following
   })
 })

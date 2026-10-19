@@ -303,16 +303,12 @@ export async function drainOnce(target: OutboxDrainTarget, opts?: { ignoreBackof
     if (indexRows.length > 0) {
       const items = indexRows.map((r) => ({ key: r.key, doc: JSON.parse(r.payload ?? '{}') as Document }))
       const failedKeys = new Map<string, string>()
-      let batchError: unknown = null
-      for (const physical of targets) {
-        try {
-          const result = await target.adapter.documents.batchIndex(physical, items)
-          for (const f of result.failed) failedKeys.set(f.key, f.error)
-        } catch (err) {
-          batchError = err
-          break
-        }
-      }
+      const destination = targets[targets.length - 1]
+      const batchError = await deliver(targets, logical, async (physical) => {
+        const result = await target.adapter.documents.batchIndex(physical, items)
+        // Per-item failures count on the destination only (see deliver()).
+        if (physical === destination) for (const f of result.failed) failedKeys.set(f.key, f.error)
+      })
       for (const row of indexRows) {
         if (batchError) {
           if (isEngineUnavailable(batchError) || isMissingTable(batchError)) {
@@ -334,9 +330,8 @@ export async function drainOnce(target: OutboxDrainTarget, opts?: { ignoreBackof
 
     if (removeRows.length > 0) {
       try {
-        for (const physical of targets) {
-          await target.adapter.documents.batchRemove(physical, removeRows.map((r) => r.key))
-        }
+        const err = await deliver(targets, logical, (physical) => target.adapter.documents.batchRemove(physical, removeRows.map((r) => r.key)))
+        if (err) throw err
         for (const row of removeRows) {
           ackSuccess(row)
           report.processed++
@@ -357,9 +352,8 @@ export async function drainOnce(target: OutboxDrainTarget, opts?: { ignoreBackof
     for (const row of transformRows) {
       const ops = JSON.parse(row.payload ?? '[]') as SearchTransformOp[]
       try {
-        for (const physical of targets) {
-          await target.adapter.documents.transform(physical, row.key, (doc) => applyTransformOps(doc, ops))
-        }
+        const err = await deliver(targets, logical, (physical) => target.adapter.documents.transform(physical, row.key, (doc) => applyTransformOps(doc, ops)))
+        if (err) throw err
         ackSuccess(row)
         report.processed++
       } catch (err) {
@@ -375,6 +369,34 @@ export async function drainOnce(target: OutboxDrainTarget, opts?: { ignoreBackof
   }
 
   return report
+}
+
+/**
+ * Dual-write during a migration: every target is attempted, and the LAST —
+ * the migration's destination, or the only table — decides the row. The
+ * table being replaced failing (e.g. a leg whose model can no longer load
+ * here, #993) never keeps the write from the table that replaces it; queries
+ * on the old table may miss it until the pointer flips. Returns the
+ * destination's error, if any.
+ */
+async function deliver(targets: string[], logical: string, write: (physical: string) => Promise<unknown>): Promise<unknown> {
+  let destinationError: unknown = null
+  for (const [i, physical] of targets.entries()) {
+    try {
+      await write(physical)
+    } catch (err) {
+      if (i === targets.length - 1) {
+        destinationError = err
+      } else {
+        log.warn('write to the table being replaced failed; its replacement decides the row', {
+          logical,
+          physical,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  }
+  return destinationError
 }
 
 export function outboxStats(): OutboxStats {

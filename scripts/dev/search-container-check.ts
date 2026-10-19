@@ -18,18 +18,21 @@
  *   4. `bakin reindex` while this driver holds search-engine the way a
  *      background migration pass does — the reindex must wait VISIBLY
  *      (naming the holder), then run once the engine is free;
- *   5. `bakin install search-models` (last: see the note there).
+ *   5. `bakin install search-models` before the server: the visual embedder
+ *      must load on the pinned Linux engine (#993).
  *
  * The container has its own BAKIN_HOME, ANTFLY_HOME and HOME, and antfly runs
  * in strict-child mode, so this Mac's `io.bakin.antfly` unit and `~/.antfly`
  * are never touched. `--inside` refuses to run outside a container.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 const REPO = resolve(import.meta.dir, '..', '..')
+/** A 64×64 PNG — the image asset the media-leg checks import. */
+const PROBE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAeUlEQVR4nO3PQQkAMAzAwMqpfxWTNRF7HINABFzm7H7dcEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFj13vDoEA84tnsQAAAABJRU5ErkJggg=='
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 if (process.argv[2] === '--inside') await inside()
@@ -106,6 +109,13 @@ async function inside(): Promise<void> {
     console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`)
   }
   const cli = (args: string[]) => stream('bun', ['cli/bakin.ts', ...args], `bakin ${args[0]}`, childEnv)
+  /** A CLI command's stdout (for --json checks). */
+  const capture = (args: string[]) => new Promise<string>((resolve) => {
+    const child = spawn('bun', ['cli/bakin.ts', ...args], { cwd: REPO, env: childEnv, stdio: ['ignore', 'pipe', 'inherit'] })
+    let out = ''
+    child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString() })
+    child.on('close', () => resolve(out))
+  })
   const engine = join(env.ANTFLY_HOME, 'bin', 'antfly')
 
   // 1. Cancel an engine install during its download.
@@ -148,6 +158,23 @@ async function inside(): Promise<void> {
   check('bakin install search', installCode === 0 && existsSync(engine))
   stopStrayEngines()
 
+  // Models BEFORE the server (#993): the visual embedder is pulled as its
+  // GGUF variant, which the pinned static Linux engine loads — the install's
+  // own load probe must say so, and Health must be clean.
+  check('bakin install search-models', (await cli(['install', 'search-models', '--yes'])) === 0)
+  stopStrayEngines()
+  const modelsCheck = await capture(['check', 'search-models', '--json'])
+  const modelsStatus = (() => { try { return (JSON.parse(modelsCheck) as { status?: string; message?: string }) } catch { return {} } })()
+  check('every search model is present and loads here', modelsStatus.status === 'ok', `status=${modelsStatus.status} message=${modelsStatus.message}`)
+  // The install's own load probes: every model it pulled must have loaded.
+  const receipts = (() => {
+    const dir = join(env.ANTFLY_HOME, 'bakin-model-load')
+    try {
+      return readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => ({ file: f, ...(JSON.parse(readFileSync(join(dir, f), 'utf8')) as { loadable?: boolean; reason?: string }) }))
+    } catch { return [] }
+  })()
+  check('the engine itself loaded every pulled model', receipts.length > 0 && receipts.every((r) => r.loadable === true), `receipts=${JSON.stringify(receipts)}`)
+
   // 3. Boot the server, then reset.
   const server = spawn('bun', ['server.ts', 'serve'], { cwd: REPO, env: childEnv, stdio: ['ignore', 'inherit', 'inherit'] })
   try {
@@ -163,6 +190,22 @@ async function inside(): Promise<void> {
     }
     check('server boots', up)
     if (!up) return finish(results)
+    // The engine came up with the models present — search answers (not 503).
+    let searchStatus = 0
+    for (let i = 0; i < 120 && searchStatus !== 200; i++) {
+      searchStatus = await fetch(`${base}/api/search?q=hello`).then((r) => r.status, () => 0)
+      if (searchStatus !== 200) await sleep(500)
+    }
+    check('search answers with the models installed', searchStatus === 200, `status=${searchStatus}`)
+
+    // An image asset reaches the media leg by file:// URL — which the engine
+    // denies unless its config allowlists the asset store (0.2.5+).
+    const probe = join(env.BAKIN_HOME, 'assets', 'inbox', 'probe.png')
+    mkdirSync(dirname(probe), { recursive: true })
+    writeFileSync(probe, Buffer.from(PROBE_PNG, 'base64'))
+    check('an image asset imports', (await cli(['assets', 'import', 'assets/inbox/probe.png'])) === 0)
+    const live = await mediaLegIndexed()
+    check('the image reaches the media leg', live.ok, live.detail)
 
     const resetCode = await cli(['search:reset', '--yes'])
     const reset = (await operations()).find((o) => o.kind === 'search:reset')
@@ -186,6 +229,10 @@ async function inside(): Promise<void> {
     const done = (await operations()).find((o) => o.kind === 'search:reindex')
     check('bakin reindex runs once the engine is free', reindexCode === 0 && done?.status === 'succeeded',
       `exit=${reindexCode} status=${done?.status} tables=${done?.stages[0]?.items?.length ?? 0}`)
+    const rebuilt = await mediaLegIndexed()
+    check('the reindex re-embeds the image from the asset store', rebuilt.ok, rebuilt.detail)
+    const engineLogText = existsSync('/work/home/logs/antfly.log') ? readFileSync('/work/home/logs/antfly.log', 'utf-8') : ''
+    check('the engine never refused a media file', !engineLogText.includes('PathNotAllowed'))
 
     // 5. With a server running for this home, an install runs ON it (the CLI
     // reads server.lock — step 2 ran in-process with none) and the server's
@@ -198,14 +245,33 @@ async function inside(): Promise<void> {
     server.kill('SIGTERM')
   }
 
-  // Models LAST: on Linux the default visual embedder
-  // has no loadable weight for the native backend (error.MissingWeight), so
-  // an engine that preloads it crash-loops at startup — a platform limit of
-  // the default settings, not of these flows. The pull itself is the check.
-  await sleep(2_000)
-  stopStrayEngines()
-  check('bakin install search-models', (await cli(['install', 'search-models', '--yes'])) === 0)
   finish(results)
+}
+
+
+/** Polls the engine until some table's media leg (a remoteMedia template) has embedded a document. */
+async function mediaLegIndexed(): Promise<{ ok: boolean; detail: string }> {
+  const engine = 'http://127.0.0.1:3738'
+  let detail = 'no media leg seen'
+  for (let i = 0; i < 240; i++) {
+    try {
+      const listed = (await (await fetch(`${engine}/db/v1/tables`)).json()) as unknown
+      const rows = (Array.isArray(listed) ? listed : ((listed as { tables?: unknown[] }).tables ?? [])) as Array<string | { name?: string }>
+      for (const row of rows) {
+        const table = typeof row === 'string' ? row : row.name
+        if (!table) continue
+        const indexes = (await (await fetch(`${engine}/db/v1/tables/${encodeURIComponent(table)}/indexes`)).json()) as Array<{ config?: { name?: string; template?: string }; status?: { total_indexed?: number } }>
+        const media = Array.isArray(indexes) ? indexes.find((entry) => entry.config?.template?.includes('remoteMedia')) : undefined
+        if (!media) continue
+        detail = `${table}/${media.config?.name} total_indexed=${media.status?.total_indexed ?? 0}`
+        if ((media.status?.total_indexed ?? 0) >= 1) return { ok: true, detail }
+      }
+    } catch (err) {
+      detail = `engine unreachable: ${err instanceof Error ? err.message : String(err)}`
+    }
+    await sleep(500)
+  }
+  return { ok: false, detail }
 }
 
 /** In child mode a CLI install leaves its engine child behind; the server spawns its own. */

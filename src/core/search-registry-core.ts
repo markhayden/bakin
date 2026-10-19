@@ -132,6 +132,11 @@ function getEffectiveIndexes(def: SearchContentTypeDefinition): SearchIndexDefin
   ]
 }
 
+/** A vector index's leg kind: media indexes embed a media URL field, the rest embed text. */
+function legCapability(idx: SearchIndexDefinition): 'media-embedding' | 'text-embedding' {
+  return idx.mediaUrlField ? 'media-embedding' : 'text-embedding'
+}
+
 function buildTableConfig(def: SearchContentTypeDefinition): TableConfig {
   return {
     fields: def.schema,
@@ -142,7 +147,7 @@ function buildTableConfig(def: SearchContentTypeDefinition): TableConfig {
       { name: 'full_text', capability: 'full-text' as const, fields: def.searchableFields },
       ...getEffectiveIndexes(def).map((idx) => ({
         name: idx.name,
-        capability: (idx.mediaUrlField ? 'media-embedding' : 'text-embedding') as 'media-embedding' | 'text-embedding',
+        capability: legCapability(idx),
         fields: def.searchableFields,
         template: idx.embeddingTemplate,
         mediaUrlField: idx.mediaUrlField,
@@ -896,7 +901,17 @@ export function getTableForPlugin(pluginId: string): string | null {
 export function getIndexNames(tableName: string): string[] {
   const def = getRegistry().contentTypes.get(tableName)
   if (!def) return ['embeddings']
-  return getEffectiveIndexes(def).map(i => i.name)
+  return offeredIndexes(def).map((idx) => idx.name)
+}
+
+/**
+ * The vector legs the adapter offers (a disabled embedder, or a model the
+ * engine can't load here, #993, offers none) — a query naming or weighting a
+ * skipped index is rejected outright, losing the legs that DO exist.
+ */
+function offeredIndexes(def: SearchContentTypeDefinition): SearchIndexDefinition[] {
+  const offered = new Set<string>(getSearchAdapter().capabilities().legs)
+  return getEffectiveIndexes(def).filter((idx) => offered.has(legCapability(idx)))
 }
 
 /**
@@ -926,7 +941,7 @@ export function getIndexWeights(tableName: string): Record<string, number> | und
   const def = getRegistry().contentTypes.get(tableName)
   if (!def) return undefined
   const weights: Record<string, number> = {}
-  for (const idx of getEffectiveIndexes(def)) {
+  for (const idx of offeredIndexes(def)) {
     if (typeof idx.weight === 'number') weights[idx.name] = idx.weight
   }
   return Object.keys(weights).length > 0 ? weights : undefined

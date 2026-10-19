@@ -30,6 +30,7 @@ import type {
   TableLegHealth,
 } from '@bakin/core/adapters/search'
 import type { AntflySettings } from './defaults'
+import { modelLoadable } from './model-load'
 import type {
   WireBatchRequest,
   WireIndexConfig,
@@ -47,7 +48,7 @@ import type {
 
 type Strategy = 'rrf' | 'semantic_only' | 'full_text_only'
 
-function resolveStrategy(requested: Query['strategy'], settings: AntflySettings): Strategy {
+export function resolveStrategy(requested: Query['strategy'], settings: AntflySettings): Strategy {
   if (requested === 'fts') return 'full_text_only'
   if (requested === 'vector') return 'semantic_only'
   if (requested === 'hybrid') return 'rrf'
@@ -151,6 +152,32 @@ function readNumberRecord(value: unknown): Record<string, number> | null {
   return entries.length > 0 ? Object.fromEntries(entries) : null
 }
 
+/**
+ * Narrow a query's vector legs to the indexes the target physical really
+ * has. Queries name the content type's legs, but a table may lack one — a
+ * leg the adapter skipped (a disabled embedder, a model the engine can't
+ * load here, #993), or one added by a migration that hasn't flipped yet —
+ * and naming a missing index (or weighting one) is a hard 400 that loses
+ * every leg. Pure: `existing` comes from the client's per-table cache.
+ */
+export function scopeQueryToIndexes(q: Query, existing: ReadonlySet<string>): Query {
+  const indexes = readStringArray(q.adapterOptions?.indexes)
+  if (!indexes) return q
+  const kept = indexes.filter((name) => existing.has(name))
+  if (kept.length === indexes.length) return q
+  const weights = readNumberRecord(q.adapterOptions?.indexWeights)
+  const keptWeights = weights ? Object.fromEntries(Object.entries(weights).filter(([name]) => existing.has(name))) : null
+  const { indexes: _indexes, indexWeights: _weights, ...rest } = q.adapterOptions ?? {}
+  return {
+    ...q,
+    adapterOptions: {
+      ...rest,
+      ...(kept.length > 0 ? { indexes: kept } : {}),
+      ...(keptWeights && Object.keys(keptWeights).length > 0 ? { indexWeights: keptWeights } : {}),
+    },
+  }
+}
+
 export function buildQueryRequest(table: string, q: Query, settings: AntflySettings): WireQueryRequest {
   const strategy = resolveStrategy(q.strategy, settings)
   const text = (q.text ?? '').trim()
@@ -176,7 +203,9 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
 
   if (isMatchAll || listFlow) {
     request.full_text_search = { match_all: {} }
-  } else if (text.length > 0 && effectiveStrategy !== 'semantic_only') {
+  } else if (text.length > 0 && (effectiveStrategy !== 'semantic_only' || !readStringArray(q.adapterOptions?.indexes))) {
+    // A semantic-only query with no vector leg to search falls back to
+    // keyword — never to an unconstrained match-all (the client labels it).
     request.full_text_search = fullTextNode(text, readStringArray(q.adapterOptions?.searchableFields))
   }
 
@@ -350,18 +379,21 @@ export function buildBatchDeletes(keys: string[]): WireBatchRequest {
 /** An embedder an operator has turned off (or gutted) must produce NO leg
  *  at all. A disabled visual embedder once flowed through as a dimension-0
  *  index spec, which the engine 500s on EVERY create — bricking every
- *  media-capable table on the box (2026-07-21 field incident). */
-export function embedderUsable(embedder: { provider?: string; model?: string; dimension?: number } | undefined): boolean {
+ *  media-capable table on the box (2026-07-21 field incident). Neither may
+ *  a model the engine is known not to load here (#993): that leg is not
+ *  offered, so tables degrade honestly instead of failing every write. */
+export function embedderUsable(embedder: { provider?: string; model?: string; dimension?: number } | undefined, engineUrl: string): boolean {
   if (!embedder) return false
   if (!embedder.provider || embedder.provider === 'disabled' || embedder.provider === 'none') return false
   if (!embedder.model) return false
+  if (embedder.provider === 'antfly' && !modelLoadable(embedder.model, engineUrl)) return false
   return typeof embedder.dimension === 'number' && embedder.dimension > 0
 }
 
 function embeddingIndexFromLeg(leg: TableLegConfig, settings: AntflySettings): WireIndexConfig | null {
   const ref = leg.capability === 'media-embedding' ? 'visual' : 'default'
   const embedder = settings.embedders[ref] ?? settings.embedders.default
-  if (!embedderUsable(embedder)) return null
+  if (!embedderUsable(embedder, settings.url)) return null
   const template = leg.mediaUrlField
     ? `{{#if ${leg.mediaUrlField}}}{{remoteMedia url=${leg.mediaUrlField}}}{{/if}}`
     : leg.template ?? leg.fields.map((field) => `{{${field}}}`).join(' ')

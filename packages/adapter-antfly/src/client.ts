@@ -26,12 +26,17 @@ import type {
   TableStats,
   TransformFn,
 } from '@bakin/core/adapters/search'
+import { localMediaRoots, normalizeFileUrls } from './media-url'
+import { isLocalDefaultUrl } from './paths'
+import { modelLoadable } from './model-load'
 import type { AntflySettings } from './defaults'
 import {
   buildBatchDeletes,
   buildBatchInserts,
   buildFacetCountRequest,
   buildQueryRequest,
+  resolveStrategy,
+  scopeQueryToIndexes,
   buildTableProvisioning,
   embedderUsable,
   mapIndexStatuses,
@@ -41,6 +46,11 @@ import {
 import { paths, type WireBatchResponse, type WireIndexStatusEntry, type WireQueryEnvelope, type WireQueryRequest } from './wire'
 
 const log = createLogger('antfly-client')
+
+/** The most a query spends learning its table's indexes (once per table). */
+const INDEX_READ_BUDGET_MS = 1_000
+/** How long a table's index names are trusted — another process can recreate the same physical. */
+const INDEX_CACHE_TTL_MS = 60_000
 
 const QUERY_TIMEOUT_MS = 15_000
 /** Client-side grace past a query's cooperative deadline (see runQuery). */
@@ -93,6 +103,30 @@ export class AntflySearchClient implements SearchAdapter {
    * SearchRequestRejectedError (counts toward quarantine). The engine has
    * no server-side cancellation, so timeouts ABANDON the request.
    */
+  /**
+   * Every `file://` value goes out in its canonical spelling when it lies in
+   * the asset store (media-url.ts) — including rows the outbox persisted
+   * under another spelling of the home. A guest engine reads files on
+   * someone else's machine, so its documents are sent untouched.
+   */
+  private localMedia<T extends { doc: Record<string, unknown> }>(items: T[]): T[] {
+    if (!isLocalDefaultUrl(this.settings.url)) return items
+    const carriesFileUrl = items.some((item) => Object.values(item.doc).some((value) => typeof value === 'string' && value.startsWith('file://')))
+    if (!carriesFileUrl) return items
+    let roots: string[]
+    try {
+      roots = localMediaRoots()
+    } catch (err) {
+      // Unresolvable store: send as is — the engine decides, the batch isn't held up.
+      log.debug('media roots could not be resolved — file:// values sent as is', { error: err instanceof Error ? err.message : String(err) })
+      return items
+    }
+    return items.map((item) => {
+      const doc = normalizeFileUrls(item.doc, roots)
+      return doc === item.doc ? item : { ...item, doc }
+    })
+  }
+
   private async request(method: string, path: string, body?: unknown, timeoutMs = WRITE_TIMEOUT_MS): Promise<Response> {
     this.requestGuard?.()
     let response: Response
@@ -188,15 +222,18 @@ export class AntflySearchClient implements SearchAdapter {
     // NOT offered — table creates skip it (keyword-only degrade) and the
     // doctor compares these legs against what content types declare.
     const legs: SearchAdapterCapabilities['legs'] = ['full-text']
-    if (embedderUsable(this.settings.embedders.default)) legs.push('text-embedding')
+    if (embedderUsable(this.settings.embedders.default, this.settings.url)) legs.push('text-embedding')
     // Mirrors embeddingIndexFromLeg's resolution: visual falls back to default.
-    if (embedderUsable(this.settings.embedders.visual ?? this.settings.embedders.default)) legs.push('media-embedding')
+    if (embedderUsable(this.settings.embedders.visual ?? this.settings.embedders.default, this.settings.url)) legs.push('media-embedding')
     return { legs, rerank: true, facets: true, transform: true }
   }
 
   mappingFingerprint(): string {
+    // A model the engine can't load here changes which legs exist (#993),
+    // so that verdict is part of the layout's identity — and ONLY that one:
+    // every other fingerprint stays byte-identical (no migration on upgrade).
     const canonical = Object.entries(this.settings.embedders)
-      .map(([ref, e]) => `${ref}:${e.provider}/${e.model}@${e.dimension}${e.multimodal ? '+mm' : ''}`)
+      .map(([ref, e]) => `${ref}:${e.provider}/${e.model}@${e.dimension}${e.multimodal ? '+mm' : ''}${e.provider === 'antfly' && !modelLoadable(e.model, this.settings.url) ? '!unloadable' : ''}`)
       .sort()
       .join('|')
     return createHash('sha256').update(canonical).digest('hex').slice(0, 16)
@@ -220,6 +257,7 @@ export class AntflySearchClient implements SearchAdapter {
     // 9,843 batches) AND concurrent structural create/drop pipelines —
     // both probed on the target hardware (tasks/evidence-antfly-0.2.0.md).
     create: async (name: string, config: TableConfig): Promise<void> => {
+      this.invalidateIndexNames(name)
       const plan = buildTableProvisioning(config, this.settings)
       await this.request('POST', paths.table(name), plan.table)
       // Embeddings legs ride the per-index endpoint — the only create path
@@ -230,6 +268,7 @@ export class AntflySearchClient implements SearchAdapter {
       }
     },
     drop: async (name: string): Promise<void> => {
+      this.invalidateIndexNames(name)
       await this.request('DELETE', paths.table(name))
     },
     stats: async (name: string): Promise<TableStats | null> => {
@@ -245,9 +284,41 @@ export class AntflySearchClient implements SearchAdapter {
     },
   }
 
-  private async indexStatuses(name: string): Promise<WireIndexStatusEntry[] | null> {
+  /**
+   * A physical's index names. Legs land at create and never change after,
+   * so one read per table usually suffices — but another process can drop
+   * and recreate the same physical, so entries expire, a rejected query
+   * drops its table's entry, and a read that raced an invalidation never
+   * writes back (generation check).
+   */
+  private readonly indexNames = new Map<string, { names: ReadonlySet<string>; at: number }>()
+  private readonly indexGeneration = new Map<string, number>()
+
+  private invalidateIndexNames(table: string): void {
+    this.indexNames.delete(table)
+    this.indexGeneration.set(table, (this.indexGeneration.get(table) ?? 0) + 1)
+  }
+
+  private async existingIndexNames(table: string, timeoutMs: number): Promise<ReadonlySet<string> | null> {
+    const cached = this.indexNames.get(table)
+    if (cached && Date.now() - cached.at < INDEX_CACHE_TTL_MS) return cached.names
+    const generation = this.indexGeneration.get(table) ?? 0
     try {
-      const raw = await this.requestJson<WireIndexStatusEntry[]>('GET', paths.indexes(name))
+      const entries = await this.indexStatuses(table, timeoutMs)
+      if (entries === null) return null
+      const names = new Set(entries.map((entry) => entry.config.name))
+      if ((this.indexGeneration.get(table) ?? 0) === generation) this.indexNames.set(table, { names, at: Date.now() })
+      return names
+    } catch (err) {
+      // Unknown: query as asked — the engine's own answer still decides.
+      log.debug('could not read a table\'s indexes before querying it', { table, error: err instanceof Error ? err.message : String(err) })
+      return null
+    }
+  }
+
+  private async indexStatuses(name: string, timeoutMs?: number): Promise<WireIndexStatusEntry[] | null> {
+    try {
+      const raw = await this.requestJson<WireIndexStatusEntry[]>('GET', paths.indexes(name), undefined, timeoutMs)
       return Array.isArray(raw) ? raw : []
     } catch (err) {
       // ONLY a 404 means "no such table". Any other 4xx (malformed leg,
@@ -262,7 +333,7 @@ export class AntflySearchClient implements SearchAdapter {
 
   documents = {
     index: async (table: string, key: string, doc: Document): Promise<void> => {
-      await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc }]))
+      await this.request('POST', paths.batch(table), buildBatchInserts(this.localMedia([{ key, doc }])))
     },
     batchIndex: async (table: string, items: IndexItem[], opts?: { sync?: boolean }): Promise<BatchResult> => {
       if (items.length === 0) return { indexed: 0, failed: [] }
@@ -270,7 +341,7 @@ export class AntflySearchClient implements SearchAdapter {
       // 50-doc backfill chunks can legitimately take tens of seconds, so the
       // batch write gets its own generous ceiling instead of the 30s default.
       const result = await this.requestJson<WireBatchResponse>(
-        'POST', paths.batch(table), buildBatchInserts(items, opts),
+        'POST', paths.batch(table), buildBatchInserts(this.localMedia(items), opts),
         opts?.sync === false ? undefined : SYNC_BATCH_TIMEOUT_MS)
       return { indexed: result?.inserted ?? items.length, failed: [] }
     },
@@ -298,13 +369,31 @@ export class AntflySearchClient implements SearchAdapter {
       const current = await this.documents.get(table, key)
       if (!current) return // absent — nothing to transform
       const next = await fn(current)
-      await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc: next }]))
+      await this.request('POST', paths.batch(table), buildBatchInserts(this.localMedia([{ key, doc: next }])))
     },
   }
 
-  async query(table: string, q: Query): Promise<QueryResult> {
+  async query(table: string, asked: Query): Promise<QueryResult> {
+    const discoveryStarted = Date.now()
+    // Name only the vector legs this physical really has (#993). Read once
+    // per table, inside a small slice of the query's own budget — a slow
+    // read never costs the query its deadline; unknown queries as asked.
+    const wantsVectors = Array.isArray(asked.adapterOptions?.indexes) && (asked.adapterOptions.indexes as unknown[]).length > 0
+    const existing = wantsVectors
+      ? await this.existingIndexNames(table, Math.min(INDEX_READ_BUDGET_MS, Math.max(1, Math.floor((asked.deadlineMs ?? QUERY_TIMEOUT_MS) / 4))))
+      : null
+    const scoped = existing ? scopeQueryToIndexes(asked, existing) : asked
+    // One absolute deadline: what discovery spent comes off the query's own.
     const started = Date.now()
+    const q = asked.deadlineMs !== undefined ? { ...scoped, deadlineMs: Math.max(1, asked.deadlineMs - (started - discoveryStarted)) } : scoped
     const request = buildQueryRequest(table, q, this.settings)
+    // Semantic was intended but no vector leg is left to search (skipped by
+    // the adapter, or missing from this physical): keyword answered — labelled.
+    const text = (q.text ?? '').trim()
+    const noSemanticLeg = text.length > 0 && text !== '*'
+      && resolveStrategy(asked.strategy, this.settings) !== 'full_text_only'
+      && Array.isArray(asked.adapterOptions?.indexes)
+      && request.semantic_search === undefined
     // #930: facets never ride a semantic request (the engine rejects the
     // aggregation rerun as soon as the vector leg is approximate). Run the
     // hits query without aggregations and a match-all count companion for
@@ -322,6 +411,8 @@ export class AntflySearchClient implements SearchAdapter {
     try {
       main = await this.runQuery(table, request, q.deadlineMs)
     } catch (err) {
+      // A rejected query may mean this table's legs changed under us.
+      if (err instanceof SearchRequestRejectedError) this.invalidateIndexNames(table)
       // D11's sanctioned degrade, implemented client-side: while a large
       // embeddings backfill saturates the inference queue, the QUERY's own
       // embed job starves and the request times out — client-side abort,
@@ -353,6 +444,13 @@ export class AntflySearchClient implements SearchAdapter {
         strategy: 'fts',
         budget: 'degraded',
         adapter: { ...(result.diagnostics?.adapter ?? {}), degraded: 'semantic-embed-timeout' },
+      }
+    } else if (noSemanticLeg) {
+      result.diagnostics = {
+        ...(result.diagnostics ?? { strategy: 'fts' }),
+        strategy: 'fts',
+        budget: 'degraded',
+        adapter: { ...(result.diagnostics?.adapter ?? {}), degraded: 'no-semantic-leg' },
       }
     }
     if (facetCompanion) {
