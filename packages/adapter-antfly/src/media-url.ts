@@ -109,26 +109,42 @@ export function normalizeFileUrls(doc: Record<string, unknown>, mediaRoots: read
   let roots: string[] | null = null
   for (const [field, value] of Object.entries(doc)) {
     if (typeof value !== 'string' || !value.startsWith('file://')) continue
-    const path = localPathOf(value)
-    if (path === null) continue
-    const canonical = existingFileRealpath(path, field)
-    if (canonical === null) continue
-    roots ??= mediaRoots.flatMap((root) => {
-      // A root that can't be canonicalized faithfully is never a rewrite target.
-      if (hasBackslash(root)) return []
-      try {
-        const real = realpathSync(root)
-        return hasBackslash(real) ? [] : [real]
-      } catch (err) {
-        log.debug('media root could not be resolved', { root, error: err instanceof Error ? err.message : String(err) })
-        return []
-      }
-    })
-    if (!roots.some((root) => canonical.startsWith(root + sep))) continue
-    const url = encodeFileUrl(canonical)
-    if (url === value || localPathOf(url) === null) continue
+    let url: string | null
+    try {
+      roots ??= canonicalRoots(mediaRoots)
+      url = canonicalUrlFor(value, field, roots)
+    } catch (err) {
+      // Whatever a single value trips on (a lone surrogate, …) stays its own problem.
+      log.debug('file:// value left as sent', { field, error: err instanceof Error ? err.message : String(err) })
+      continue
+    }
+    if (url === null || url === value) continue
     next ??= { ...doc }
     next[field] = url
   }
   return next ?? doc
+}
+
+/** The store roots a rewrite may target — only those that canonicalize faithfully. */
+function canonicalRoots(mediaRoots: readonly string[]): string[] {
+  return mediaRoots.flatMap((root) => {
+    if (hasBackslash(root)) return []
+    try {
+      const real = realpathSync(root)
+      return hasBackslash(real) ? [] : [real]
+    } catch (err) {
+      log.debug('media root could not be resolved', { root, error: err instanceof Error ? err.message : String(err) })
+      return []
+    }
+  })
+}
+
+/** The canonical URL for `value` when it is the builder's shape naming an existing file in the store; else null. */
+function canonicalUrlFor(value: string, field: string, roots: readonly string[]): string | null {
+  const path = localPathOf(value)
+  if (path === null) return null
+  const canonical = existingFileRealpath(path, field)
+  if (canonical === null || !roots.some((root) => canonical.startsWith(root + sep))) return null
+  const url = encodeFileUrl(canonical)
+  return localPathOf(url) === null ? null : url
 }

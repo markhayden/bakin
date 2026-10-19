@@ -112,6 +112,11 @@ describe('normalizeFileUrls', () => {
     expect(normalizeFileUrls(doc, mediaRootsFor(literal))).toBe(doc)
   })
 
+  it('a malformed value (a lone surrogate) is left as sent and never stops its siblings', () => {
+    const doc = { title: 'file:///' + String.fromCharCode(0xd800), media_url: `file://${join(testDir, 'old-alias', 'assets', 'store', '2026-10', 'a.jpg')}` }
+    expect(normalizeFileUrls(doc, roots)).toEqual({ title: doc.title, media_url: `file://${store}/2026-10/a.jpg` })
+  })
+
   it('canonicalFilePath re-attaches a missing tail to the deepest existing ancestor', () => {
     expect(canonicalFilePath(join(testDir, 'old-alias', 'assets', 'store', 'not', 'yet.png'))).toBe(join(store, 'not', 'yet.png'))
   })

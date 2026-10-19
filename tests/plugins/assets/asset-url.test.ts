@@ -68,6 +68,23 @@ describe('buildAssetFileUrl', () => {
     expect(buildAssetFileUrl('store/dir\\b.png')).toBe(`file://${join(realHome, 'assets')}/store/dir%5Cb.png`)
   })
 
+  it('a relative home under a backslash-named cwd keeps its spelling — never resolved into a decoy', () => {
+    const odd = join(testDir, 'cwd\\x')
+    mkdirSync(join(odd, 'home', 'assets', 'store'), { recursive: true })
+    mkdirSync(join(testDir, 'cwd', 'x', 'home', 'assets', 'store'), { recursive: true }) // the decoy
+    const cwd = process.cwd()
+    process.chdir(odd)
+    try {
+      assetsRoot = join('home', 'assets')
+      const here = process.cwd() // the kernel's own spelling of the backslash-named cwd
+      const url = buildAssetFileUrl('store/x.png')
+      expect(url).toBe(`file://${join(here, 'home', 'assets').split('/').map((seg, i) => (i === 0 ? '' : encodeURIComponent(seg))).join('/')}/store/x.png`)
+      expect(url).toContain('cwd%5Cx')
+    } finally {
+      process.chdir(cwd)
+    }
+  })
+
   it('an assets root that does not exist yet still yields an absolute URL', () => {
     assetsRoot = join(testDir, 'not-yet', 'assets')
     expect(buildAssetFileUrl('store/a.png')).toBe(`file://${join(realpathSync(testDir), 'not-yet', 'assets')}/store/a.png`)

@@ -38,7 +38,8 @@ function canonicalFilePath(path: string): string {
 
 export function buildAssetFileUrl(relPathUnderAssetsRoot: string): string {
   const clean = relPathUnderAssetsRoot.replace(/^[\\/]+/, '')
-  const joined = join(getBakinPaths().assets, clean)
+  // Resolved FIRST: a relative home only reveals a backslash once it meets cwd.
+  const joined = resolve(join(getBakinPaths().assets, clean))
   // A backslash is an ordinary filename character here, but path resolution
   // can rewrite it into a separator — keep that spelling exactly as built
   // (absolute; the store is allowlisted under it too).
