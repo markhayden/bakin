@@ -51,8 +51,18 @@ A capability pack is `kind: "skill-pack"` plus:
   allowlist; `env` overlays, e.g. PUPPETEER_SKIP_DOWNLOAD). HARD RULE:
   node_modules can NEVER live in a projected skill — Pi's skill writer
   rejects nested paths and both drift hashes walk every file. Zero-dep
-  payloads (vendored scripts) never invoke bun. Unchanged deps +
-  node_modules present = install skipped, so offline repair converges.
+  payloads (vendored scripts) never invoke bun. ONE predicate,
+  `verifyNpmPayload` (`src/core/agent-packages/npm-verify.ts`, #898 F):
+  the generated package.json, the payload scripts vs the pack source, and
+  every DIRECT dependency resolving inside the payload's own node_modules
+  (no ancestor/global fallback; a symlink must stay inside) at its exact
+  declared name + version with its entry file (exports "." / module / main
+  with Node's fallbacks; subpath-only exports have no root entry). File
+  reads only — no imports, subprocesses or network. The installer reuses a
+  live payload only when it passes (so offline repair of an intact payload
+  converges), and a staged payload must pass before it replaces the live
+  one. It proves "dependencies resolved at declared versions" — never call
+  it "integrity verified".
 - `requires.models[]` — `{ name, url, sha256, bytes, dest, env? }` into
   `~/.bakin/models/<dest>`; streams to disk (never buffered), sha256+size
   verified, atomic rename; size+marker fast path avoids re-hashing ~GB
@@ -153,7 +163,7 @@ rollback, receipts) with two additions:
 `src/core/agent-packages/capability-readiness.ts` (`listCapabilities()`):
 content leg (lockfile skill projections resolved against live
 `runtime.skills`), bins leg (Bakin bin dir; honest `unsupported-platform`),
-npm leg (payload dir + node_modules when deps exist), models leg (dest
+npm leg (`verifyNpmPayload` — `ok`/`missing`/`unresolved`), models leg (dest
 present at declared size), prereqs leg (PATH/app probes; optional ones
 never block), platform gate (`platformSupported`), secrets leg (env →
 store per `secretSlot`). Non-ready legs carry remediation strings. Surfaces (all thin clients): `GET
