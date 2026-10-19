@@ -45,11 +45,21 @@ mock.module('@/core/task-store', () => ({}))
 // bun-install spy: creates node_modules at the cwd like the real run would;
 // the real system-bun mechanics are whiskit's tested territory.
 let bunRuns: Array<{ args: string[]; cwd: string; extraEnv?: Record<string, string> }> = []
+/** What the fake install actually lands (a misbehaving bun); null = the declared set. */
+let bunInstallOverride: Record<string, string> | null = null
 mock.module('../../src/core/whiskit/command', () => ({
   runSystemBun: async (args: string[], options: { cwd: string; extraEnv?: Record<string, string>; onLine?: (line: string) => void }) => {
     bunRuns.push({ args, cwd: options.cwd, extraEnv: options.extraEnv })
     options.onLine?.('+ fake-dep@1.0.0')
-    mkdirSync(join(options.cwd, 'node_modules', 'fake-dep'), { recursive: true })
+    // Install exactly what the generated package.json declares — name,
+    // version and an entry file — like the real run (verifyNpmPayload, #898 F).
+    const declared = JSON.parse(readFileSync(join(options.cwd, 'package.json'), 'utf-8')) as { dependencies: Record<string, string> }
+    for (const [name, version] of Object.entries(bunInstallOverride ?? declared.dependencies)) {
+      const dir = join(options.cwd, 'node_modules', ...name.split('/'))
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version, main: 'index.js' }))
+      writeFileSync(join(dir, 'index.js'), 'export default 1\n')
+    }
     return { exitCode: 0, stdout: '', stderr: '', timedOut: false, durationMs: 1 }
   },
 }))
@@ -110,6 +120,7 @@ beforeEach(() => {
   mkdirSync(openClawDir, { recursive: true })
   hits = {}
   bunRuns = []
+  bunInstallOverride = null
   installFilesystemRuntimeAppServices({ openClawDir, agents: () => [] })
 })
 
@@ -173,13 +184,49 @@ describe('npm payload leg', () => {
   it('runs bun install --ignore-scripts with declared env when deps exist, and skips it on unchanged local repair (offline-safe)', async () => {
     await installPackage({ source: seedPack('1.0.0', { model: false, npmDeps: { 'fake-dep': '1.2.3' } }) })
     expect(bunRuns).toHaveLength(1)
-    expect(bunRuns[0]!.args).toEqual(['install', '--ignore-scripts'])
+    // A payload-local layout whatever any bunfig says — the CLI flag overrides config (#898 F review).
+    expect(bunRuns[0]!.args).toEqual(['install', '--ignore-scripts', '--linker=hoisted'])
     expect(bunRuns[0]!.extraEnv).toEqual({ PUPPETEER_SKIP_DOWNLOAD: '1' })
 
     rmSync(join(payloadDir(), 'run.js'), { force: true }) // drift the scripts
     await repairPackLocally('toolpack@1.0.0')
     expect(existsSync(join(payloadDir(), 'run.js'))).toBe(true) // scripts restored
     expect(bunRuns).toHaveLength(1) // unchanged deps + node_modules present → NO second install
+  })
+
+  it('a pack\'s own bunfig is copied verbatim (registries/scopes stay in force); the layout rides the CLI flag', async () => {
+    const src = seedPack('1.0.0', { model: false, npmDeps: { 'fake-dep': '1.2.3' } })
+    const packBunfig = '[install]\n"linker" = "isolated"\nregistry = "https://registry.example"\n\n[install.scopes]\n"@acme" = { url = "https://npm.acme.dev", token = "$ACME_TOKEN" }\n'
+    writeFileSync(join(src, 'payload', 'scripts', 'bunfig.toml'), packBunfig)
+    await installPackage({ source: src })
+    expect(readFileSync(join(payloadDir(), 'bunfig.toml'), 'utf-8')).toBe(packBunfig)
+    expect(bunRuns.at(-1)!.args).toContain('--linker=hoisted')
+  })
+
+  it('reuse needs PROOF: a live payload whose dependency no longer resolves at its pin is reinstalled, not reused (#898 F)', async () => {
+    await installPackage({ source: seedPack('1.0.0', { model: false, npmDeps: { 'fake-dep': '1.2.3' } }) })
+    expect(bunRuns).toHaveLength(1)
+    // node_modules still exists, package.json unchanged — but the dependency was swapped.
+    writeFileSync(join(payloadDir(), 'node_modules', 'fake-dep', 'package.json'), JSON.stringify({ name: 'fake-dep', version: '9.9.9', main: 'index.js' }))
+    await repairPackLocally('toolpack@1.0.0')
+    expect(bunRuns).toHaveLength(2)
+    expect(JSON.parse(readFileSync(join(payloadDir(), 'node_modules', 'fake-dep', 'package.json'), 'utf-8')).version).toBe('1.2.3')
+  })
+
+  it('an install that does not resolve the declared versions fails and never replaces the live payload', async () => {
+    await installPackage({ source: seedPack('1.0.0', { model: false, npmDeps: { 'fake-dep': '1.2.3' } }) })
+    const liveDep = join(payloadDir(), 'node_modules', 'fake-dep', 'package.json')
+    rmSync(join(payloadDir(), 'node_modules'), { recursive: true, force: true })
+    bunInstallOverride = { 'fake-dep': '0.0.1' } // the run "succeeds" with the wrong version
+    const { installNpmRequirement } = await import('../../src/core/agent-packages/requirements-installer')
+    const src = join(testDir, 'packages', 'skill-packs', 'toolpack@1.0.0')
+    const req = { name: 'scripts', source: 'payload/scripts', dependencies: { 'fake-dep': '1.2.3' } }
+    await expect(installNpmRequirement(req, 'toolpack', src, { package: 'toolpack', version: '1.0.0', ref: '', commitSha: '', installedAt: new Date().toISOString() }))
+      .rejects.toThrow(/did not resolve at the declared versions.*fake-dep is 0\.0\.1, not the declared 1\.2\.3/)
+    expect(existsSync(liveDep)).toBe(false) // the bad staged tree never replaced the live payload
+    // The local repair (which logs leg failures rather than throwing) lands nothing bad either.
+    await repairPackLocally('toolpack@1.0.0')
+    expect(existsSync(liveDep)).toBe(false)
   })
 
   it('a dropped npm leg is swept on upgrade; a kept one survives', async () => {
@@ -320,6 +367,18 @@ describe('capability readiness — new legs', () => {
     expect(cap!.platformSupported).toBe(true)
     expect(cap!.missing.join('\n')).toContain('bakin packages sync toolpack@1.0.0')
     expect(cap!.missing.join('\n')).toContain('https://example.dev')
+  })
+
+  it('an installed npm payload whose dependency drifted from its pin is unresolved, never ok (#898 F)', async () => {
+    await installPackage({ source: seedPack('1.0.0', { model: false, npmDeps: { 'fake-dep': '1.2.3' } }) })
+    const { listCapabilities } = await import('../../src/core/agent-packages/capability-readiness')
+    let [cap] = await listCapabilities()
+    expect(cap!.npm).toEqual([{ name: 'scripts', status: 'ok' }])
+    writeFileSync(join(payloadDir(), 'node_modules', 'fake-dep', 'package.json'), JSON.stringify({ name: 'fake-dep', version: '2.0.0', main: 'index.js' }))
+    ;[cap] = await listCapabilities()
+    expect(cap!.npm).toEqual([{ name: 'scripts', status: 'unresolved' }])
+    expect(cap!.missing.join('\n')).toMatch(/does not resolve at the declared versions.*fake-dep is 2\.0\.0.*bakin packages sync/)
+    expect(cap!.missing.join('\n')).not.toMatch(/integrity/i)
   })
 
   it('a pack whose platforms become incompatible AFTER install reports platform, not per-leg noise', async () => {

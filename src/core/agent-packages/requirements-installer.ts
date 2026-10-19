@@ -16,7 +16,7 @@
  * removal like bins). Downloads stream to disk — never buffered in memory.
  */
 import { createHash } from 'crypto'
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Manifest, NpmRequirement, ModelRequirement } from '../../../packages/core/src/agent-packages/manifest'
 import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
@@ -26,6 +26,7 @@ import { createLogger } from '@/core/logger'
 import { runSystemBun } from '../whiskit/command'
 import { ensureBunAvailable } from '../whiskit/managed-bun'
 import { binItemId, binPlatformKey, installManifestBins } from './bin-installer'
+import { generatedNpmManifest, verifyNpmPayload } from './npm-verify'
 import type { ProjectorResult } from './projector'
 import type { RequirementOp } from './requirement-op'
 
@@ -52,6 +53,9 @@ export function modelDest(dest: string): string {
   return join(getContentDir(), 'models', dest)
 }
 
+/** The one dependency-install invocation for npm payloads (see installNpmRequirement). */
+export const NPM_INSTALL_ARGS = ['install', '--ignore-scripts', '--linker=hoisted']
+
 export interface NpmInstallResult {
   target: string
   /** True when dependencies were already installed and matching — no bun run. */
@@ -63,9 +67,11 @@ export interface NpmInstallResult {
  * dir, write the generated exact-pinned package.json, and `bun install
  * --ignore-scripts` via the system bun (whiskit precedent — the compiled
  * binary's embedded bun cannot install). Scripts are always re-copied
- * (re-projection semantics); the dependency install is skipped when the
- * generated package.json is unchanged and node_modules exists — so an
- * OFFLINE local repair with unchanged deps never needs the network.
+ * (re-projection semantics); the dependency install is skipped only when
+ * the live payload PROVES its dependencies resolve at the declared versions
+ * (`verifyNpmPayload`, #898 F) — so an OFFLINE local repair with unchanged,
+ * intact deps never needs the network — and every staged payload proves
+ * itself the same way before it replaces the live one.
  */
 export async function installNpmRequirement(
   req: NpmRequirement,
@@ -80,21 +86,16 @@ export async function installNpmRequirement(
     throw new Error(`npm payload "${req.name}": source dir "${req.source}" is missing from the pack`)
   }
 
-  const generated = JSON.stringify(
-    // type:module — payload scripts in this ecosystem are ESM (upstream
-    // pi-skills convention); without it node re-parses on every run.
-    { name: `bakin-pack-${packId}-${req.name}`, private: true, type: 'module', dependencies: req.dependencies },
-    null,
-    2,
-  )
+  const generated = generatedNpmManifest(packId, req)
   const hasDeps = Object.keys(req.dependencies).length > 0
   // Read the LIVE payload state BEFORE any mutation — the offline fast path
   // must never be defeated by this pass's own writes (or by a stray
-  // package.json inside the pack's script dir).
-  const livePkgJson = join(target, 'package.json')
-  const depsUnchanged = existsSync(livePkgJson) && readFileSync(livePkgJson, 'utf-8') === generated
+  // package.json inside the pack's script dir). Reuse requires PROOF: the
+  // declared dependency set, every direct dependency resolving inside the
+  // payload at its exact version with its entry file (#898 F) — never just
+  // "node_modules exists". Scripts are re-copied below either way.
   const liveModules = join(target, 'node_modules')
-  const canReuseModules = hasDeps && depsUnchanged && existsSync(liveModules)
+  const canReuseModules = hasDeps && verifyNpmPayload(target, packId, req).ok
 
   // Build the ENTIRE new payload in a staging dir and swap at the end — the
   // live payload (which the still-installed pack version's SKILL.md points
@@ -123,7 +124,13 @@ export async function installNpmRequirement(
       // "install Bun" advice (margo, 2026-09-21). Install-time only.
       const bunPath = await ensureBunAvailable({ op: options.op })
       options.op?.op.throwIfCancelled()
-      const run = await runSystemBun(['install', '--ignore-scripts'], {
+      // A payload-local layout whatever any bunfig says (the user's global
+      // one, or the pack's — copied verbatim, so its registries/scopes stay
+      // in force): an isolated linker with a global store links deps
+      // OUTSIDE the payload, which verifyNpmPayload rightly rejects. The CLI
+      // flag overrides config; buns that predate it ignore unknown flags
+      // and only ever install hoisted.
+      const run = await runSystemBun(NPM_INSTALL_ARGS, {
         cwd: staging,
         timeoutMs: NPM_INSTALL_TIMEOUT_MS,
         extraEnv: req.env,
@@ -135,9 +142,14 @@ export async function installNpmRequirement(
           `npm payload "${req.name}": bun install failed (exit ${run.exitCode}${run.timedOut ? ', timed out' : ''}): ${(run.stderr || run.stdout).slice(-400)}`,
         )
       }
-      if (!existsSync(join(staging, 'node_modules'))) {
-        throw new Error(`npm payload "${req.name}": bun install succeeded but node_modules is missing`)
-      }
+    }
+
+    // The staged payload must prove itself before it replaces the live one:
+    // a bun run that "succeeded" without resolving the declared versions, or
+    // a reused tree that no longer matches, never goes live.
+    const staged = verifyNpmPayload(staging, packId, req, { scriptsSource })
+    if (!staged.ok) {
+      throw new Error(`npm payload "${req.name}": dependencies did not resolve at the declared versions — ${staged.problems.join('; ')}`)
     }
 
     rmSync(target, { recursive: true, force: true })
@@ -154,7 +166,7 @@ export async function installNpmRequirement(
   // The marker sha identifies the DEP SET (generated package.json) — the
   // payload dir itself has no stable content hash (node_modules).
   writeInstalledBy(target, { ...installedBy, sha256: createHash('sha256').update(generated).digest('hex') })
-  log.info(`npm payload "${req.name}" ${skipped ? 'verified' : 'installed'} → ${target}`)
+  log.info(`npm payload "${req.name}" ${skipped ? 'reused (dependencies resolved at declared versions)' : 'installed'} → ${target}`)
   return { target, skipped }
 }
 

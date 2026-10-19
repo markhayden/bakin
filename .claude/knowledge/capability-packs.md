@@ -51,8 +51,35 @@ A capability pack is `kind: "skill-pack"` plus:
   allowlist; `env` overlays, e.g. PUPPETEER_SKIP_DOWNLOAD). HARD RULE:
   node_modules can NEVER live in a projected skill — Pi's skill writer
   rejects nested paths and both drift hashes walk every file. Zero-dep
-  payloads (vendored scripts) never invoke bun. Unchanged deps +
-  node_modules present = install skipped, so offline repair converges.
+  payloads (vendored scripts) never invoke bun. ONE predicate,
+  `verifyNpmPayload` (`src/core/agent-packages/npm-verify.ts`, #898 F):
+  the generated package.json, the payload scripts vs the pack source, and
+  every DIRECT dependency resolving inside the payload's own node_modules
+  (no ancestor/global fallback; a symlink must stay inside) at its exact
+  declared name + version with the files Node would load — Node's
+  PACKAGE_TARGET_RESOLVE under ESM conditions in DECLARATION order (null
+  blocks a subpath, arrays fall back past invalid targets, targets must be
+  "./…" and are URLs — decoded, query/hash dropped, encoded separators
+  invalid; mixed subpath/condition maps and numeric condition keys are
+  invalid; `*` is a pattern only behind a pattern key; legacy folder
+  mappings (`"./": "./"`) are ignored as Node ignores them; percent-encoded
+  dot segments are judged decoded; a config error inside an array is fatal; `exports: null`
+  = legacy `main` with Node's fallbacks then the root index.*; no `main`
+  and no `exports` = possibly data-only (subpath imports), no root entry required; `module` is
+  a bundler field and never checked). The payload's node_modules must be
+  its own directory, payload scripts must resolve (realpath, so symlinked dirs too) inside it, and every
+  resolved dependency AND entry file must stay inside it; unreadable files are failed verdicts, never exceptions. File
+  reads only — no imports, subprocesses or network. The installer reuses a
+  live payload only when it passes (so offline repair of an intact payload
+  converges), and a staged payload must pass before it replaces the live
+  (the install runs `bun install --ignore-scripts --linker=hoisted` — the
+  CLI flag overrides any bunfig, so a user's or pack's isolated/global-store
+  layout cannot link deps outside the payload, while a pack `bunfig.toml`
+  is copied verbatim and its registries/scopes stay in force; buns that
+  predate the flag ignore it and only install hoisted. `package.json` and
+  bun lockfiles are install artifacts, never compared as scripts)
+  one. It proves "dependencies resolved at declared versions" — never call
+  it "integrity verified".
 - `requires.models[]` — `{ name, url, sha256, bytes, dest, env? }` into
   `~/.bakin/models/<dest>`; streams to disk (never buffered), sha256+size
   verified, atomic rename; size+marker fast path avoids re-hashing ~GB
@@ -153,7 +180,7 @@ rollback, receipts) with two additions:
 `src/core/agent-packages/capability-readiness.ts` (`listCapabilities()`):
 content leg (lockfile skill projections resolved against live
 `runtime.skills`), bins leg (Bakin bin dir; honest `unsupported-platform`),
-npm leg (payload dir + node_modules when deps exist), models leg (dest
+npm leg (`verifyNpmPayload` — `ok`/`missing`/`unresolved`), models leg (dest
 present at declared size), prereqs leg (PATH/app probes; optional ones
 never block), platform gate (`platformSupported`), secrets leg (env →
 store per `secretSlot`). Non-ready legs carry remediation strings. Surfaces (all thin clients): `GET
