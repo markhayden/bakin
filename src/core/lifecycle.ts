@@ -29,6 +29,24 @@ const SHUTDOWN_FORCE_EXIT_MS = 4000
 const POST_EXIT_HARD_KILL_MS = 250
 
 let shutdownInProgress = false
+
+/**
+ * Where this server generation is in its life (#898 K): `starting` until it
+ * listens, `serving` while it accepts work, `stopping` from the first
+ * shutdown step. Reported by GET /api/version so a CLI never mistakes a
+ * draining generation for a healthy one (identity ≠ readiness).
+ */
+export type ServerState = 'starting' | 'serving' | 'stopping'
+let serverState: ServerState = 'starting'
+
+export function getServerState(): ServerState {
+  return shutdownInProgress ? 'stopping' : serverState
+}
+
+/** Called once the HTTP server is listening. */
+export function markServing(): void {
+  if (!shutdownInProgress) serverState = 'serving'
+}
 let registered: { server: Server; contentDir: string } | null = null
 let hardTerminateForTests: ((exitCode: number) => void) | null = null
 let postExitHardKillTimer: ReturnType<typeof setTimeout> | null = null
@@ -62,6 +80,7 @@ function exitWithHardFallback(exitCode: number): void {
 /** Tests use this between cases — bun:test has no vi.resetModules equivalent. */
 export function _resetShutdownStateForTests(): void {
   shutdownInProgress = false
+  serverState = 'starting'
   registered = null
   hardTerminateForTests = null
   if (postExitHardKillTimer) clearTimeout(postExitHardKillTimer)

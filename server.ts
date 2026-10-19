@@ -38,7 +38,7 @@ import { createRequestHandler } from './src/core/server/request-handler'
 import { getBootId } from './src/core/boot-id'
 import { acquireServerLock, formatBindFailureHelp } from './src/core/server-lock'
 import { STATIC_ENV_SECRET_MAPPINGS, collectPackSecretMappings, ensureBinDirsOnPath, injectIntegrationEnv, injectPackModelEnv } from './src/core/secret-env'
-import { registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
+import { markServing, registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
 import { generateDocs } from './src/core/api-docs'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
 import { collectOpenApiSources as collectTypedOpenApiSources } from './packages/host/src/api/openapi-sources'
@@ -270,6 +270,7 @@ const eventBus = new BakinEventBus(broadcast)
   })
 
   server.listen(port, '0.0.0.0', () => {
+    markServing()
     log.info(`Bakin ready on http://localhost:${port}`)
     log.info(`Listening on 0.0.0.0:${port} (Tailscale: http://100.91.112.69:${port})`)
     if (process.env.BAKIN_DEV === '1') {
