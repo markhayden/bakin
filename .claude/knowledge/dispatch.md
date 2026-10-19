@@ -39,7 +39,12 @@ process) fails the INSERT, audits `task.dispatch_suppressed`, and skips.
 Workflow steps claim exec_key `taskId:stepId` so parallel step agents stay
 legitimate. Settle handlers free the claim FIRST (success → `settleRun`,
 session death → `loseRun`) so the recovery ladder can claim anew; a
-dispatch-prep failure releases its claim (`dispatch-prep-failed`). The
+dispatch-prep failure releases its claim (`dispatch-prep-failed`). Right
+after a regular claim, `prepareRegularDispatch` re-reads the task's column
+synchronously: a task that left active work while the pre-claim gates
+awaited (an operator or Health's resurface moved it to Review/Blocked/Done,
+or it was deleted) releases the claim (`task-left-active-work`) and never
+fires or moves back to In Progress. The
 `dispatched[]` markers + in-flight registry remain advisory bookkeeping —
 the ledger is the source of truth. A startup sweep (`server.ts`) marks
 prior-boot running rows lost (keyed on `src/core/boot-id.ts`) before

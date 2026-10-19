@@ -65,6 +65,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 // the import statement can resolve regardless of which file ran first.
 const emptyBoard = { columns: { backlog: [], todo: [], inProgress: [], blocked: [], review: [], done: [], archived: [] } }
 mock.module('../../src/core/task-store', () => ({
+  taskExists: () => false,
   readTaskboard: () => emptyBoard,
   getAllTasks: () => emptyBoard,
   getTask: () => null,

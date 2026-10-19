@@ -90,9 +90,11 @@ export async function recordVerification(contentDir: string, request: DoctorRepa
     status: 'verified',
     events: [...current.events, { ts, type: 'verified', message: 'Fresh targeted checks pass and the original incidents no longer reproduce.', data: { reportId: fresh.id, checkIds } }],
   }))
-  if (request.approvalId) {
+  // The UPDATED request: an approval attached while the checks ran (Health's
+  // resurface) must be withdrawn too, not just the one in the snapshot.
+  if (updated.approvalId) {
     const { cancelApproval } = await import('./approvals')
-    await cancelApproval(request.approvalId, 'resolved').catch((err) => log.warn('Approval withdraw failed', err, { approvalId: request.approvalId }))
+    await cancelApproval(updated.approvalId, 'resolved').catch((err) => log.warn('Approval withdraw failed', err, { approvalId: updated.approvalId }))
   }
   if (request.taskId) {
     const { addTaskLog } = await import('./task-store')

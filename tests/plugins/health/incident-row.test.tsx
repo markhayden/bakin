@@ -52,6 +52,15 @@ function item(overrides: Partial<HealthIncident> = {}): OverviewIncident {
 }
 
 describe('IncidentRow (#690)', () => {
+  it('links the open repair task working the incident (spec D-G2), and shows no link without one', () => {
+    render(<IncidentRow item={item({ repairTaskId: 'task-abc' })} />)
+    const link = screen.getByRole('link', { name: 'Open the repair task for Something needs review' })
+    expect(link.getAttribute('href')).toBe('/tasks?taskId=task-abc')
+    cleanup()
+    render(<IncidentRow item={item()} />)
+    expect(screen.queryByRole('link', { name: /Open the repair task/ })).toBeNull()
+  })
+
   it('exposes commandless ownership recovery through the existing instruction disclosure', () => {
     render(<IncidentRow item={item({
       status: 'error', class: 'policy_denial', disposition: 'action_required', effectiveDisposition: 'action_required',

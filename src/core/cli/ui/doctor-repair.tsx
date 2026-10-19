@@ -56,7 +56,7 @@ export interface DoctorRepairRequestData {
 }
 
 export interface DoctorDelegateReportData {
-  status: 'confirmation_required' | 'sent' | 'no_unresolved'
+  status: 'confirmation_required' | 'sent' | 'no_unresolved' | 'already_delegated'
   request: DoctorRepairRequestData
   incidents: HealthIncident[]
 }
@@ -527,6 +527,26 @@ export function DoctorDelegateResult({ report, color = true, showBrand }: {
   const requestId = requestValue(report.request, 'id') ?? '(unknown)'
   const taskId = requestValue(report.request, 'taskId')
   const agentId = requestValue(report.request, 'agentId')
+  if (report.status === 'already_delegated') {
+    return (
+      <Box flexDirection="column">
+        <ScreenHeader title="Already delegated" subtitle="An open repair task is already working these incidents" color={color} showBrand={showBrand} />
+        <SummaryStrip items={[
+          { label: 'request', value: requestId, status: 'sent' },
+          ...(taskId ? [{ label: 'task', value: taskId, status: 'todo' as const }] : []),
+        ]} color={color} />
+        <Section title="Incidents" color={color}>
+          <FindingRows rows={incidentRows(report.incidents)} color={color} />
+        </Section>
+        <NextActions
+          color={color}
+          actions={[
+            taskId ? `Follow ${taskId} on the board — Health hands it back to you if it is not fixed in time.` : 'Follow the repair task on the board.',
+          ]}
+        />
+      </Box>
+    )
+  }
   return (
     <Box flexDirection="column">
       <ScreenHeader title="Delegated doctor repair" subtitle="A board task was created for action-required incidents" color={color} showBrand={showBrand} />

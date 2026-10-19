@@ -177,6 +177,16 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-bakin-2">
+        {incident.repairTaskId && (
+          <PluginLink
+            to={`/tasks?taskId=${encodeURIComponent(incident.repairTaskId)}`}
+            className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+            aria-label={`Open the repair task for ${incident.title}`}
+          >
+            Repair task
+            <ChevronRight aria-hidden="true" />
+          </PluginLink>
+        )}
         {onAck && (incident.ackState ? (
           <Button size="sm" variant="ghost" onClick={() => onAck(incident, 'clear')}>
             Un-ack

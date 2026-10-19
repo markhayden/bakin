@@ -4,7 +4,14 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = mkdtempSync(join(tmpdir(), 'bakin-doctor-delegate-'))
-const createTaskWithEffects = mock(async () => ({ id: 'task-doctor-repair' }))
+let taskSeq = 0
+const liveTasks = new Set<string>()
+const createTaskWithEffects = mock(async () => {
+  taskSeq += 1
+  const id = taskSeq === 1 ? 'task-doctor-repair' : `task-doctor-repair-${taskSeq}`
+  liveTasks.add(id)
+  return { id }
+})
 const dispatchSingleTask = mock(async () => {})
 const report = {
   id: 'health-report-1',
@@ -24,18 +31,23 @@ const plan = {
 
 mock.module('../../src/core/doctor-report-cache', () => ({ getHealthReport: () => report }))
 mock.module('../../src/core/doctor-repair', () => ({ planDoctorRepair: async () => plan }))
-mock.module('../../src/core/task-service', () => ({ createTaskWithEffects }))
+mock.module('../../src/core/task-service', () => ({
+  createTaskWithEffects,
+  getTaskDetails: async (id: string) => (liveTasks.has(id) ? { task: { id }, column: 'todo' } : null),
+}))
 mock.module('../../src/core/dispatch', () => ({ dispatchSingleTask }))
 mock.module('../../src/core/app-services', () => ({ getAppServices: () => ({ runtime: { agents: { list: async () => [{ id: 'main' }] } } }) }))
 mock.module('../../src/core/app-services-store', () => ({ getAppServices: () => ({ runtime: { agents: { list: async () => [{ id: 'main' }] } } }) }))
 mock.module('@bakin/core/adapters/runtime', () => ({ getRuntimeMainAgentId: async () => 'main' }))
 
 import { delegateDoctorRepair } from '../../src/core/doctor-delegate'
-import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
+import { getDoctorRepairRequest, listDoctorRepairRequests, updateDoctorRepairRequest } from '../../src/core/doctor-repair-store'
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   createTaskWithEffects.mockClear()
+  taskSeq = 0
+  liveTasks.clear()
   dispatchSingleTask.mockClear()
 })
 afterEach(() => rmSync(testDir, { recursive: true, force: true }))
@@ -59,6 +71,62 @@ describe('structured Health delegation', () => {
     }))
     expect(dispatchSingleTask).toHaveBeenCalledWith('task-doctor-repair', testDir, 3737, 'kick')
     expect(listDoctorRepairRequests(testDir)).toHaveLength(1)
+  })
+
+  it('an incident an open repair task already works is never delegated twice (spec D-G3)', async () => {
+    const first = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    const again = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(again.status).toBe('already_delegated')
+    expect(again.request).toMatchObject({ id: first.request.id, taskId: 'task-doctor-repair' })
+    expect(again.incidents.map((incident) => incident.id)).toEqual(['health:search:unavailable'])
+    expect(createTaskWithEffects).toHaveBeenCalledTimes(1)
+    expect(listDoctorRepairRequests(testDir)).toHaveLength(1)
+
+    // Once that work is verified, a recurrence is a new episode.
+    updateDoctorRepairRequest(testDir, first.request.id, (r) => ({ ...r, status: 'verified' }))
+    const recurrence = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(recurrence.status).toBe('sent')
+    expect(createTaskWithEffects).toHaveBeenCalledTimes(2)
+  })
+
+  it('concurrent delegations of the same incident open ONE task', async () => {
+    const [a, b] = await Promise.all([
+      delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true }),
+      delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true }),
+    ])
+    expect([a.status, b.status].sort()).toEqual(['already_delegated', 'sent'])
+    expect(createTaskWithEffects).toHaveBeenCalledTimes(1)
+  })
+
+  it('a request whose task was deleted works nothing: the incident is delegated again', async () => {
+    await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    liveTasks.clear()
+    const again = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(again.status).toBe('sent')
+    expect(createTaskWithEffects).toHaveBeenCalledTimes(2)
+  })
+
+  it('falls back past a newer request whose task was deleted to an older one that still exists', async () => {
+    const older = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    // A newer request for the same incident (a state earlier builds allowed), whose task is then deleted.
+    updateDoctorRepairRequest(testDir, older.request.id, (r) => ({ ...r, createdAt: new Date(Date.now() - 60_000).toISOString() }))
+    liveTasks.clear()
+    const newer = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(newer.status).toBe('sent')
+    liveTasks.clear()
+    liveTasks.add('task-doctor-repair') // the older task survives, the newer one is gone
+    const again = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(again.status).toBe('already_delegated')
+    expect(again.request.id).toBe(older.request.id)
+    expect(createTaskWithEffects).toHaveBeenCalledTimes(2)
+  })
+
+  it('a FUTURE-dated request works nothing: delegation is not suppressed by it (#898)', async () => {
+    const first = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    updateDoctorRepairRequest(testDir, first.request.id, (r) => ({ ...r, createdAt: new Date(Date.now() + 24 * 3_600_000).toISOString() }))
+    const again = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(again.status).toBe('sent')
+    expect(createTaskWithEffects).toHaveBeenCalledTimes(2)
   })
 
   it('the repair brief carries integrity guardrails and each incident\'s sanctioned fix (margo forgery, 2026-09-21)', async () => {

@@ -9,10 +9,12 @@ import {
   DoctorRepairRequestNotFoundError,
   createDoctorRepairRequest,
   getDoctorRepairRequest,
+  openRepairWorkByIncident,
   updateDoctorRepairRequest,
   type DoctorRepairRequest,
+  type OpenRepairWork,
 } from './doctor-repair-store'
-import { createTaskWithEffects } from './task-service'
+import { createTaskWithEffects, getTaskDetails } from './task-service'
 
 export interface DoctorDelegateOptions {
   contentDir: string
@@ -22,7 +24,8 @@ export interface DoctorDelegateOptions {
 }
 
 export interface DoctorDelegateReport {
-  status: 'confirmation_required' | 'sent' | 'no_unresolved'
+  /** `already_delegated`: every targeted incident already has an open repair task (`request` is that work). */
+  status: 'confirmation_required' | 'sent' | 'no_unresolved' | 'already_delegated'
   request: DoctorRepairRequest
   incidents: HealthIncident[]
 }
@@ -88,7 +91,20 @@ function buildRepairBrief(request: DoctorRepairRequest, incidents: readonly Heal
   ].join('\n')
 }
 
-export async function delegateDoctorRepair(options: DoctorDelegateOptions): Promise<DoctorDelegateReport> {
+/**
+ * Delegations run one at a time: the open-work check and the task it
+ * records are separated by awaits (agent lookup, task creation), so two
+ * concurrent calls would both pass the check and open duplicate tasks.
+ */
+let delegationChain: Promise<unknown> = Promise.resolve()
+
+export function delegateDoctorRepair(options: DoctorDelegateOptions): Promise<DoctorDelegateReport> {
+  const run = delegationChain.then(() => delegateOnce(options))
+  delegationChain = run.catch(() => undefined)
+  return run
+}
+
+async function delegateOnce(options: DoctorDelegateOptions): Promise<DoctorDelegateReport> {
   const report = getHealthReport()
   const target = options.target ?? { type: 'all_actionable' as const, reportId: report.id }
   const plan = await planDoctorRepair({
@@ -103,7 +119,23 @@ export async function delegateDoctorRepair(options: DoctorDelegateOptions): Prom
       // Effective disposition (#690): a sensitivity-demoted incident must not
       // spawn a paid repair task every surface called calm.
       : new Set(report.incidents.filter((incident) => incident.effectiveDisposition === 'action_required').map((incident) => incident.id))
-  const incidents = report.incidents.filter((incident) => incidentIds.has(incident.id))
+  const targeted = report.incidents.filter((incident) => incidentIds.has(incident.id))
+  // An incident an open repair task already works is never delegated twice
+  // (spec D-G3): Health resurfaces that task instead.
+  // A request whose task was deleted works nothing — the incident may be delegated again.
+  const index = openRepairWorkByIncident(options.contentDir)
+  const working = new Map<string, OpenRepairWork>()
+  for (const incident of targeted) {
+    // Newest first; fall back past a request whose task was deleted.
+    for (const work of index.get(incident.id) ?? []) {
+      if (await getTaskDetails(work.taskId).catch(() => null)) { working.set(incident.id, work); break }
+    }
+  }
+  const incidents = targeted.filter((incident) => !working.has(incident.id))
+  if (targeted.length > 0 && incidents.length === 0) {
+    const existing = getDoctorRepairRequest(options.contentDir, working.get(targeted[0]!.id)!.requestId)
+    if (existing) return { status: 'already_delegated', request: existing, incidents: targeted }
+  }
   const observationIds = [...new Set(incidents.flatMap((incident) => incident.observationIds))]
   const request = createDoctorRepairRequest(options.contentDir, {
     plan,

@@ -166,6 +166,12 @@ export interface BakinTaskStore {
 export interface SyncBakinTaskStore extends BakinTaskStore {
   createSync(input: CreateBakinTaskInput): BakinTask
   getSync(id: string): BakinTask | null
+  /**
+   * Index-only existence: no file read, no self-heal walk. For hot paths
+   * (the Health projection runs every second) where a miss must stay cheap;
+   * a file placed outside the store is not seen until a getSync heals it.
+   */
+  hasSync(id: string): boolean
   findSync(identifier: string): BakinTask | null
   listSync(opts?: TaskListOpts): BakinTask[]
   updateSync(id: string, patch: BakinTaskPatch): BakinTask
@@ -393,6 +399,11 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
       const task = readFile(path)
       if (task) indexUpsert(task, path)
       return task
+    },
+
+    hasSync(id) {
+      ensureIndex()
+      return idToEntry.has(id)
     },
 
     findSync(identifier) {

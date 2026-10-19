@@ -35,7 +35,7 @@ interface CliDoctorRepairApply {
 }
 
 interface CliDoctorDelegateReport {
-  status: 'confirmation_required' | 'sent' | 'no_unresolved'
+  status: 'confirmation_required' | 'sent' | 'no_unresolved' | 'already_delegated'
   request: Record<string, unknown>
   incidents: HealthIncident[]
 }
@@ -483,6 +483,11 @@ function printDoctorDelegateResult(report: CliDoctorDelegateReport): void {
     return
   }
   const request = report.request as { id?: string; taskId?: string; agentId?: string }
+  if (report.status === 'already_delegated') {
+    console.log(`Already delegated: repair task ${request.taskId ?? '(unknown)'} is working these incidents.`)
+    for (const incident of report.incidents) console.log(`  ${incident.id}: ${incident.title}`)
+    return
+  }
   console.log(`Delegated doctor repair ${request.id ?? ''}`)
   if (request.taskId) console.log(`Task: ${request.taskId}`)
   if (request.agentId) console.log(`Agent: ${request.agentId}`)

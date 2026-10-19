@@ -135,6 +135,7 @@ import {
   findTaskWithColumn,
   reorderTasks,
   renumberColumn,
+  escalateTaskToReview,
   getSharedBakinTaskStore,
   moveTaskToInProgress,
   recoverTask,
@@ -728,6 +729,41 @@ describe('reorderTasks', () => {
     expect(board.columns.todo[0].id).toBe(t3.id)
     expect(board.columns.todo[1].id).toBe(t2.id)
     expect(board.columns.todo[2].id).toBe(t1.id)
+  })
+})
+
+describe('escalateTaskToReview (Health hand-over, spec D-G3)', () => {
+  it('lands in Review from To Do or Done — the one exception to the agent transition table — and logs why', async () => {
+    const todo = await createTask('stuck repair')
+    expect(escalateTaskToReview(todo.id, 'Health: not fixed after 12h — handed back to you.')).toBe('todo')
+    expect(getTaskWithColumn(todo.id)?.column).toBe('review')
+    expect(getSharedBakinTaskStore().getSync(todo.id)!.log.at(-1)).toMatchObject({ author: 'health', message: expect.stringContaining('not fixed after 12h') })
+
+    const done = await createTask('closed repair', 'done')
+    expect(escalateTaskToReview(done.id, 'Health: this task was closed, but its incident still fails — reopened in Review for you.')).toBe('done')
+    expect(getTaskWithColumn(done.id)?.column).toBe('review')
+    // An agent move along the same edge is still refused.
+    const other = await createTask('agent move')
+    await expect(moveTask(other.id, 'review')).rejects.toThrow(/Invalid transition/)
+  })
+
+  it('a task already in Review just gets the log line', async () => {
+    const t = await createTask('already there')
+    await moveTask(t.id, 'inProgress')
+    await moveTask(t.id, 'review')
+    const before = getSharedBakinTaskStore().getSync(t.id)!.order
+    expect(escalateTaskToReview(t.id, 'Health: not fixed after 12h — handed back to you.')).toBeNull()
+    expect(getSharedBakinTaskStore().getSync(t.id)!).toMatchObject({ column: 'review', order: before })
+  })
+
+  it('a BLOCKED task stays blocked with its reason — the operator needs that context', async () => {
+    const t = await createTask('blocked repair')
+    await moveTask(t.id, 'inProgress')
+    await blockTask(t.id, 'installer hung at 40%')
+    expect(escalateTaskToReview(t.id, 'Health: not fixed after 12h — handed back to you.')).toBeNull()
+    const stored = getSharedBakinTaskStore().getSync(t.id)!
+    expect(stored).toMatchObject({ column: 'blocked', blockedReason: 'installer hung at 40%' })
+    expect(stored.log.at(-1)).toMatchObject({ author: 'health', message: expect.stringContaining('not fixed after 12h') })
   })
 })
 

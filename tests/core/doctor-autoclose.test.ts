@@ -41,6 +41,7 @@ mock.module('../../src/core/task-service', () => ({
   getTaskDetails: async (taskId: string) => tasks.has(taskId) ? { task: {}, column: tasks.get(taskId)!.column } : null,
 }))
 mock.module('../../src/core/task-store', () => ({
+  taskExists: (taskId: string) => tasks.has(taskId),
   addTaskLog: async (taskId: string, _author: string, message: string) => { tasks.get(taskId)?.logs.push(message) },
 }))
 
@@ -55,6 +56,8 @@ import { waitUntil } from '../helpers/wait'
 
 type Mode = 'error' | 'healthy' | 'unknown' | 'throw'
 let mode: Mode = 'error'
+/** Runs inside the check — models work landing while auto-close's diagnostics await. */
+let duringRun: (() => void) | null = null
 
 const INCIDENT_ID = 'autoclose-test:search:unavailable'
 const CHECK_ID = 'autoclose-test.search'
@@ -63,6 +66,7 @@ function register() {
   registerPluginHealthCheck('autoclose-test', {
     id: 'search', name: 'Search', description: 'Search readiness.', group: { key: 'search', label: 'Search' },
     run: async () => {
+      duringRun?.()
       if (mode === 'throw') throw new Error('engine timed out')
       if (mode === 'unknown') return healthObserved([healthUnknown({ key: 'engine', summary: 'Cannot tell.', incident: { key: 'unknown', title: 'Search state unknown', impact: 'Unknown.', disposition: 'watch', resolution: { key: 'rerun', type: 'rerun', label: 'Re-run' } } })])
       if (mode === 'healthy') return healthObserved([healthHealthy({ key: 'engine', summary: 'Ready.' })])
@@ -97,6 +101,7 @@ beforeEach(async () => {
   tasks.clear()
   moveTaskWithEffects.mockClear()
   mode = 'error'
+  duringRun = null
   register()
   await sweep()
   expect(getHealthReport().incidents.map((i) => i.id)).toEqual([INCIDENT_ID])
@@ -144,6 +149,20 @@ describe('reconcileRepairRequests', () => {
     await reconcileRepairRequests(testDir)
     expect(getApprovalRecord(`health-repair:${requestId}`)).toMatchObject({ status: 'cancelled', response: { comment: 'resolved' } })
     expect(tasks.get(taskId)!.column).toBe('done')
+  })
+
+  it('withdraws an approval attached WHILE its checks ran (resurface during verification)', async () => {
+    const { requestId, taskId } = openRequest('review')
+    const approvalId = `health-navigate:${requestId}`
+    duringRun = () => {
+      duringRun = null
+      createApprovalRecord({ approvalId, owner: { kind: 'health-navigate', taskId, requestId, incidentIds: [INCIDENT_ID], href: '/health' }, request: { title: 'Needs you', body: '', options: [{ id: 'dismiss', label: 'Dismiss' }] } })
+      updateDoctorRepairRequest(testDir, requestId, (r) => ({ ...r, approvalId }))
+    }
+    mode = 'healthy'
+    await reconcileRepairRequests(testDir)
+    expect(getDoctorRepairRequest(testDir, requestId)!.status).toBe('verified')
+    expect(getApprovalRecord(approvalId)).toMatchObject({ status: 'cancelled' })
   })
 
   it('keeps the task while the incident still reproduces', async () => {

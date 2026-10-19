@@ -214,6 +214,7 @@ mock.module('../../../src/core/doctor-delegate', () => ({
 
 mock.module('../../../src/core/doctor-repair-store', () => ({
   DoctorRepairRequestNotFoundError: class DoctorRepairRequestNotFoundError extends Error {},
+  openRepairWorkByIncident: () => new Map(),
   listDoctorRepairRequests: mock(() => [mockDelegateRequest]),
   getDoctorRepairRequest: mock((_contentDir: string, id: string) => id === 'repair-1' ? mockDelegateRequest : null),
 }))
@@ -273,6 +274,7 @@ mock.module('../../../src/core/search-registry', () => ({
 }))
 
 const taskStoreMock = {
+  taskExists: () => false,
   readTaskboard: () => ({ columns: { inProgress: [] } }),
   getAllTasks: () => ({ columns: { inProgress: [] } }),
   getTask: () => null,

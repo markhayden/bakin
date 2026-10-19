@@ -57,6 +57,7 @@ mock.module('../../../src/core/doctor-delegate', () => ({
 }))
 mock.module('../../../src/core/doctor-repair-store', () => ({
   DoctorRepairRequestNotFoundError: class DoctorRepairRequestNotFoundError extends Error {},
+  openRepairWorkByIncident: () => new Map(),
   listDoctorRepairRequests: () => [],
   getDoctorRepairRequest: () => null,
 }))

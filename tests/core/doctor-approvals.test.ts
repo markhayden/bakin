@@ -53,20 +53,21 @@ const moveTaskWithEffects = mock(async (taskId: string, to: string) => {
 })
 mock.module('../../src/core/task-service', () => ({ createTaskWithEffects, moveTaskWithEffects }))
 mock.module('../../src/core/task-store', () => ({
+  taskExists: (taskId: string) => tasks.has(taskId),
   addTaskLog: async (taskId: string, _author: string, message: string) => { tasks.get(taskId)?.logs.push(message) },
   blockTask: async (taskId: string, reason: string) => { const t = tasks.get(taskId)!; t.column = 'blocked'; t.blockedReason = reason },
 }))
 
 import { getApprovalRecord, listApprovalRecords } from '../../packages/core/src/approvals'
 import { clearApprovalKinds } from '../../src/core/approvals/kinds'
-import { resolveApproval, settleApprovalFollowUps } from '../../src/core/approvals/service'
+import { reannounceApproval, resolveApproval, settleApprovalFollowUps } from '../../src/core/approvals/service'
 import { _resetOperationRegistryForTests } from '../../src/core/operations'
 import { ApprovalNotPendingError, ApprovalResolveError } from '../../src/core/approvals/errors'
 import { applyHealthCheckRun, getHealthReport, resetHealthReportCache } from '../../src/core/doctor-report-cache'
 import { runHealthCheck } from '../../src/core/doctor-checks'
 import { clearStoredRepairPlans, PLAN_TTL_MS } from '../../src/core/doctor-repair-plans'
 import { planDoctorRepair } from '../../src/core/doctor-repair'
-import { getDoctorRepairRequest, updateDoctorRepairRequest } from '../../src/core/doctor-repair-store'
+import { createDoctorRepairRequest, getDoctorRepairRequest, updateDoctorRepairRequest } from '../../src/core/doctor-repair-store'
 import { readAckRecords } from '../../src/core/health-acks'
 import {
   getHealthCheck,
@@ -76,6 +77,7 @@ import {
   unregisterPluginHealthChecks,
 } from '../../src/core/health-check-registry'
 import {
+  attachResurfaceApproval,
   canonicalChangeSet,
   healthRepairApprovalKind,
   openNavigateApproval,
@@ -424,6 +426,75 @@ describe('dismiss', () => {
     await resolveApproval(opened.approval.approvalId, { option: 'dismiss', provenance: channel })
     expect(readAckRecords()[incident.id]?.mode).toBe('snooze')
     expect(tasks.get('task-1')!.column).toBe('done')
+  })
+})
+
+describe('resurfacing (spec D-G3)', () => {
+  it('a delegated request the agent marked completed gets a navigate approval on its EXISTING task, dismissable like any navigate incident', async () => {
+    const incident = getHealthReport().incidents.find((row) => row.id.includes('expired'))!
+    tasks.set('task-delegated', { column: 'review', logs: [] })
+    const created = createDoctorRepairRequest(testDir, { kind: 'delegate', incidentIds: [incident.id], observationIds: [...incident.observationIds] })
+    const request = updateDoctorRepairRequest(testDir, created.id, (r) => ({ ...r, taskId: 'task-delegated', status: 'completed' }))
+    const pendingBefore = broadcasts.filter((b) => b.event === 'approval.pending').length
+
+    const approval = attachResurfaceApproval({ contentDir: testDir, request, incidents: [incident] })
+    expect(approval.owner).toMatchObject({ kind: 'health-navigate', taskId: 'task-delegated', requestId: request.id, incidentIds: [incident.id] })
+    expect(getDoctorRepairRequest(testDir, request.id)).toMatchObject({ status: 'sent', approvalId: approval.approvalId, kind: 'delegate' })
+    expect(createTaskWithEffects).not.toHaveBeenCalled()
+    expect(broadcasts.filter((b) => b.event === 'approval.pending')).toHaveLength(pendingBefore + 1)
+
+    await resolveApproval(approval.approvalId, { option: 'dismiss', provenance: web })
+    expect(readAckRecords()[incident.id]?.mode).toBe('snooze')
+    expect(getDoctorRepairRequest(testDir, request.id)!.status).toBe('dismissed')
+  })
+
+  it('attaching never writes over a non-terminal status (a planned/sent request keeps it)', async () => {
+    const incident = getHealthReport().incidents.find((row) => row.id.includes('expired'))!
+    tasks.set('task-planned', { column: 'inProgress', logs: [] })
+    const created = createDoctorRepairRequest(testDir, { kind: 'delegate', incidentIds: [incident.id], observationIds: [...incident.observationIds] })
+    const request = updateDoctorRepairRequest(testDir, created.id, (r) => ({ ...r, taskId: 'task-planned', status: 'planned' }))
+    const approval = attachResurfaceApproval({ contentDir: testDir, request, incidents: [incident] })
+    expect(getDoctorRepairRequest(testDir, request.id)).toMatchObject({ status: 'planned', approvalId: approval.approvalId })
+  })
+
+  it('the report links each incident to its open repair task, never a verified or dismissed one (spec D-G2)', async () => {
+    const opened = await openRepair()
+    const linked = getHealthReport().incidents.find((row) => row.id === opened.incident.id)!
+    expect(linked.repairTaskId).toBe('task-1')
+    // The link is not a resource: resources feed the ack re-fire fingerprint.
+    expect(linked.resources.some((resource) => resource.kind === 'task')).toBe(false)
+    // The strict wire schema accepts it (a lagging mirror rejects the whole report).
+    const { healthReportSchema } = await import('../../plugins/health/lib/route-schemas')
+    expect(healthReportSchema.safeParse(getHealthReport()).success).toBe(true)
+
+    updateDoctorRepairRequest(testDir, opened.request.id, (r) => ({ ...r, status: 'verified' }))
+    expect(getHealthReport().incidents.find((row) => row.id === opened.incident.id)!.repairTaskId).toBeUndefined()
+  })
+
+  it('the link skips a request whose task was deleted: the newest LIVE task wins, none links nothing', async () => {
+    const incident = getHealthReport().incidents.find((row) => row.id.includes('expired'))!
+    const make = (taskId: string, ageMs: number) => {
+      const created = createDoctorRepairRequest(testDir, { kind: 'delegate', incidentIds: [incident.id], observationIds: [...incident.observationIds] })
+      updateDoctorRepairRequest(testDir, created.id, (r) => ({ ...r, taskId, status: 'sent', createdAt: new Date(Date.now() - ageMs).toISOString() }))
+    }
+    tasks.set('task-older', { column: 'review', logs: [] })
+    make('task-older', 60_000)
+    make('task-newer-deleted', 1_000)
+    const link = () => getHealthReport().incidents.find((row) => row.id === incident.id)!.repairTaskId
+    expect(link()).toBe('task-older')
+    tasks.delete('task-older')
+    expect(link()).toBeUndefined()
+  })
+
+  it('reannounceApproval re-publishes a pending approval once per call and refuses a decided one', async () => {
+    const opened = await openRepair()
+    const count = () => broadcasts.filter((b) => b.event === 'approval.pending' && b.approvalId === opened.approval.approvalId).length
+    expect(count()).toBe(1)
+    expect(reannounceApproval(opened.approval.approvalId)).toBe(true)
+    expect(count()).toBe(2)
+    await resolveApproval(opened.approval.approvalId, { option: 'dismiss', provenance: web })
+    expect(reannounceApproval(opened.approval.approvalId)).toBe(false)
+    expect(count()).toBe(2)
   })
 })
 

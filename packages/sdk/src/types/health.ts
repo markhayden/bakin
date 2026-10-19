@@ -437,6 +437,12 @@ export interface HealthIncident {
    * stay on the wire and render in the Acknowledged section.
    */
   ackState?: 'acked' | 'snoozed'
+  /**
+   * The open Health repair task working this incident, when one exists
+   * (spec D-G2) — surfaces link to it. A separate field, never a resource:
+   * resources feed the ack re-fire fingerprint.
+   */
+  repairTaskId?: string
 }
 
 export interface HealthCheckSnapshot {
