@@ -169,8 +169,8 @@ async function upgradeLocal(
       before,
       after: before,
       noop: true,
-      newPermissions: [],
-      newBins: [],
+      declaredPermissions: [],
+      declaredBins: [],
       awaitingConsent: false,
     }
   }
@@ -219,8 +219,8 @@ async function upgradeLocal(
     before,
     after: { version: newVersion, commitSha: '' },
     noop: false,
-    newPermissions: gate.widened,
-    newBins: gate.newBins,
+    declaredPermissions: gate.newPerms,
+    declaredBins: gate.declaredBins,
     awaitingConsent: false,
     pluginAssets: assets.pluginAssets,
     droppedBins,

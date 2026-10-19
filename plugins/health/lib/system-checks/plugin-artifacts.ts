@@ -5,7 +5,7 @@
  *
  * A needs-update plugin whose source has published a release THIS host can
  * run gets the one-click `upgrade-plugin-artifact` repair: its plan previews
- * the upgrade (version, new permissions, new binaries) and it is `manual`, so
+ * the upgrade (version, EVERY declared permission and binary) and it is `manual`, so
  * escalation asks for approval with exactly that change set — approving it is
  * the consent. With no compatible release yet, the incident says so plainly
  * instead of pointing at an upgrade that would refuse.
@@ -266,10 +266,10 @@ export function upgradePluginArtifactRepair(deps: PluginArtifactDeps = defaultDe
             action: 'update' as const,
             description: `Upgrade ${plugin.id} ${preview.before.version} → ${preview.after.version} (manifest ${preview.consent.manifestSha.slice(0, 12)}).`,
           })
-          for (const permission of preview.newPermissions) {
-            changes.push({ kind: 'setting' as const, target: `plugin:${plugin.id}:permission:${permission}`, action: 'create' as const, description: `${plugin.id} gains the "${permission}" permission.` })
+          for (const permission of preview.declaredPermissions) {
+            changes.push({ kind: 'setting' as const, target: `plugin:${plugin.id}:permission:${permission}`, action: 'create' as const, description: `${plugin.id} is granted the "${permission}" permission.` })
           }
-          for (const bin of preview.newBins) {
+          for (const bin of preview.declaredBins) {
             changes.push({ kind: 'file' as const, target: `plugin:${plugin.id}:bin:${bin.name}@${bin.version}#${bin.sha256}`, action: 'create' as const, description: `${plugin.id} installs ${bin.name} ${bin.version} (sha256 ${bin.sha256.slice(0, 12)}) into ~/.bakin/bin.` })
           }
         } catch (err) {
@@ -309,7 +309,7 @@ export function upgradePluginArtifactRepair(deps: PluginArtifactDeps = defaultDe
           // Commit ONLY what was approved: same version, same manifest, and
           // (through the consent) the same permissions and binaries.
           if (!preview.consent || preview.after.version !== want.version || preview.consent.manifestSha !== want.manifestSha
-            || !sameBins(preview.newBins, approvedBins(items, id))) {
+            || !sameBins(preview.declaredBins, approvedBins(items, id))) {
             throw new UpgradeRefusedError(`${id}: the published release changed since it was approved (approved ${want.version}) — rerun Health to review the new change set.`)
           }
           const result = await upgradePlugin(id, { accepted: preview.consent })

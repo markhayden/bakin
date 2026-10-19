@@ -1,6 +1,6 @@
 /**
  * The one-click upgrade for plugins a Bakin upgrade stranded: plan() previews
- * (version + new permissions/binaries are the change set an approval shows),
+ * (version + every declared permission/binary are the change set an approval shows),
  * apply() re-previews and commits with exactly that consent, then activates.
  */
 import { tmpdir } from 'os'
@@ -36,9 +36,9 @@ mock.module('../../../src/core/plugins/upgrade', () => ({
     calls.push({ id, previewOnly: opts.previewOnly, accepted: opts.accepted })
     const consent = { manifestSha: previewManifest, permissions: ['network'], bins: [{ name: 'ttyd', version: '1.7.7', sha256: 'e'.repeat(64) }] }
     const base = { id, before: { version: '1.0.0', commitSha: '' }, after: { version: previewVersion, commitSha: '' }, noop: false }
-    if (opts.previewOnly) return { ...base, newPermissions: ['network'], newBins: consent.bins, awaitingConsent: true, consent }
-    if (commitAwaitsConsent) return { ...base, newPermissions: [], newBins: [], awaitingConsent: true, consent }
-    return { ...base, newPermissions: ['network'], newBins: consent.bins, awaitingConsent: false }
+    if (opts.previewOnly) return { ...base, declaredPermissions: ['network'], declaredBins: consent.bins, awaitingConsent: true, consent }
+    if (commitAwaitsConsent) return { ...base, declaredPermissions: [], declaredBins: [], awaitingConsent: true, consent }
+    return { ...base, declaredPermissions: ['network'], declaredBins: consent.bins, awaitingConsent: false }
   },
 }))
 const activated: string[] = []

@@ -100,7 +100,7 @@ describe('upgrade decline path — github', () => {
     return
   }
 
-  it('declined widened-perms upgrade leaves working tree + lockfile unchanged', async () => {
+  it('declined upgrade leaves working tree + lockfile unchanged', async () => {
     const repo = createBareRepo(testDir, 'decline-fixture',
       fixturePluginFiles({ id: 'declinep', version: '1.0.0', permissions: ['storage.read'] }))
     cloneRepoIntoPluginsDir({ pluginId: 'declinep', cloneUrl: repo.cloneUrl })
@@ -131,7 +131,7 @@ describe('upgrade decline path — github', () => {
     // No --yes → consent required → returns awaitingConsent.
     const result = await upgradePlugin('declinep')
     expect(result.awaitingConsent).toBe(true)
-    expect(result.newPermissions).toEqual(['storage.write'])
+    expect(result.declaredPermissions).toEqual(['storage.read', 'storage.write'])
 
     // Working tree must NOT have been fast-forwarded yet.
     const afterWorkingHead = headSha(pluginDir)
@@ -177,7 +177,7 @@ describe('upgrade consent binding — local (S17)', () => {
     const stale = await upgradePlugin('stalec', { accepted: previewA.consent })
     expect(stale.awaitingConsent).toBe(true)
     expect(stale.manifestChanged).toBe(true)
-    expect(stale.newPermissions).toEqual(['storage.write'])
+    expect(stale.declaredPermissions).toEqual(['storage.read', 'storage.write'])
     expect(stale.consent?.manifestSha).not.toBe(previewA.consent?.manifestSha)
     expect(readManifestVersion(pluginDir)).toBe('1.0.0')
     expect(readPluginLockfile().plugins['stalec']).toEqual(beforeLock)
@@ -191,7 +191,7 @@ describe('upgrade consent binding — local (S17)', () => {
 })
 
 describe('upgrade decline path — local', () => {
-  it('declined widened-perms upgrade leaves plugin dir + lockfile unchanged', async () => {
+  it('declined upgrade leaves plugin dir + lockfile unchanged', async () => {
     const sourcePath = join(testDir, 'src-decline')
     mkdirSync(sourcePath, { recursive: true })
     const fixture = fixturePluginFiles({ id: 'declinel', version: '1.0.0', permissions: ['storage.read'] })
@@ -231,7 +231,7 @@ describe('upgrade decline path — local', () => {
 
     const result = await upgradePlugin('declinel')
     expect(result.awaitingConsent).toBe(true)
-    expect(result.newPermissions).toEqual(['events.emit'])
+    expect(result.declaredPermissions).toEqual(['storage.read', 'events.emit'])
 
     // Plugin dir must NOT have been wiped + recopied.
     expect(readManifestVersion(pluginDir)).toBe(beforePluginDirVersion)

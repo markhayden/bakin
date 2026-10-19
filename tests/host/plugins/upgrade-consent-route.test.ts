@@ -69,8 +69,9 @@ describe('POST /api/plugins/upgrade — consent round trip', () => {
     const preview = await post({ pluginId: ID })
     expect(preview.body.ok).toBe(false)
     expect(preview.body.awaitingConsent).toBe(true)
-    expect(preview.body.newPermissions).toEqual(['events.emit'])
-    expect(preview.body.newBins).toEqual([])
+    // The FULL declaration — the unchanged storage.read included.
+    expect(preview.body.declaredPermissions).toEqual(['storage.read', 'events.emit'])
+    expect(preview.body.declaredBins).toEqual([])
     expect(typeof preview.body.consentToken).toBe('string')
     expect(installedVersion()).toBe('1.0.0')
 
@@ -79,7 +80,7 @@ describe('POST /api/plugins/upgrade — consent round trip', () => {
     const stale = await post({ pluginId: ID, accepted: true, consentToken: preview.body.consentToken })
     expect(stale.body.awaitingConsent).toBe(true)
     expect(stale.body.manifestChanged).toBe(true)
-    expect(stale.body.newPermissions).toEqual(['storage.write'])
+    expect(stale.body.declaredPermissions).toEqual(['storage.read', 'storage.write'])
     expect(stale.body.consentToken).not.toBe(preview.body.consentToken)
     expect(installedVersion()).toBe('1.0.0')
     expect(readPluginLockfile().plugins[ID]?.version).toBe('1.0.0')
@@ -104,8 +105,21 @@ describe('POST /api/plugins/upgrade — consent round trip', () => {
     expect(installedVersion()).toBe('1.0.0')
   })
 
-  it('a narrowing or unchanged-permission upgrade needs no consent: the preview is ready (never upgrades) and the commit applies it', async () => {
+  it('an unchanged declaration still needs consent (the lockfile is never the baseline)', async () => {
     writeSource('1.1.0', ['storage.read'])
+    const preview = await post({ pluginId: ID })
+    expect(preview.body.ok).toBe(false)
+    expect(preview.body.awaitingConsent).toBe(true)
+    expect(preview.body.declaredPermissions).toEqual(['storage.read'])
+    expect(installedVersion()).toBe('1.0.0')
+
+    const committed = await post({ pluginId: ID, accepted: true, consentToken: preview.body.consentToken })
+    expect(committed.body.ok).toBe(true)
+    expect(installedVersion()).toBe('1.1.0')
+  })
+
+  it('a target that declares nothing needs no consent: the preview is ready (never upgrades) and the commit applies it', async () => {
+    writeSource('1.1.0', [])
     const preview = await post({ pluginId: ID })
     expect(preview.body.ok).toBe(true)
     expect(preview.body.ready).toBe(true)

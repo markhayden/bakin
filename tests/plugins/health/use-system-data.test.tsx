@@ -169,8 +169,8 @@ describe('useSystemData plugin upgrade operations (#895)', () => {
 
   it('a preview with nothing to consent to commits at once with its token, then refreshes and succeeds', async () => {
     const operations = new Map([
-      ['op-preview', finishedOperation('op-preview', { httpStatus: 200, body: { ok: true, ready: true, awaitingConsent: false, noop: false, newPermissions: [], newBins: [], consentToken: 'tok-ready' } })],
-      ['op-commit', finishedOperation('op-commit', { httpStatus: 200, body: { ok: true, noop: false, awaitingConsent: false, newPermissions: [], newBins: [] } })],
+      ['op-preview', finishedOperation('op-preview', { httpStatus: 200, body: { ok: true, ready: true, awaitingConsent: false, noop: false, declaredPermissions: [], declaredBins: [], consentToken: 'tok-ready' } })],
+      ['op-commit', finishedOperation('op-commit', { httpStatus: 200, body: { ok: true, noop: false, awaitingConsent: false, declaredPermissions: [], declaredBins: [] } })],
     ])
     const calls = systemFetch((url, init) => {
       const op = operationResponse(url, operations)
@@ -194,9 +194,9 @@ describe('useSystemData plugin upgrade operations (#895)', () => {
   it('a preview that needs consent asks first; approving runs the commit operation', async () => {
     const operations = new Map([
       ['op-preview', finishedOperation('op-preview', { httpStatus: 200, body: {
-        ok: false, awaitingConsent: true, noop: false, newPermissions: ['storage.write'], newBins: [], consentToken: 'tok-consent',
+        ok: false, awaitingConsent: true, noop: false, declaredPermissions: ['storage.write'], declaredBins: [], consentToken: 'tok-consent',
       } })],
-      ['op-commit', finishedOperation('op-commit', { httpStatus: 200, body: { ok: true, noop: false, awaitingConsent: false, newPermissions: ['storage.write'], newBins: [] } })],
+      ['op-commit', finishedOperation('op-commit', { httpStatus: 200, body: { ok: true, noop: false, awaitingConsent: false, declaredPermissions: ['storage.write'], declaredBins: [] } })],
     ])
     const calls = systemFetch((url, init) => {
       const op = operationResponse(url, operations)
