@@ -420,7 +420,7 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
           // live name missing between two renames while the engine may read
           // it, so fail safely — the live copy stays exactly as it was.
           rmSync(staged, { recursive: true, force: true })
-          return failed(`${m.model} does not match its pins, and this platform cannot replace a live model atomically. Remove ${live} (search runs without that model until it is reinstalled), then run \`bakin install search-models\` again — with no live copy to replace, it publishes the verified download directly.`)
+          return failed(`${m.model} needs replacing (${mismatched.includes(m) ? 'its files do not match their pins' : 'the installed copy is incomplete'}), and this platform cannot replace a live model atomically. Remove ${live} (search runs without that model until it is reinstalled), then run \`bakin install search-models\` again — with no live copy to replace, it publishes the verified download directly.`)
         }
       } catch (err) {
         return failed(`Could not publish ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)

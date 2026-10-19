@@ -376,6 +376,18 @@ describe('installInferenceModels', () => {
       expect(result.status).toBe('installed')
     }, 30_000)
 
+    it('an incomplete CUSTOM model with no atomic exchange is described as incomplete, never as a pin mismatch', async () => {
+      exchangeUnavailable = true
+      installFakeBinary(PULL_OK)
+      const custom = TEST_MODELS[0]!
+      mkdirSync(join(modelsRoot, custom.model, 'onnx'), { recursive: true }) // weights but no manifest: incomplete
+      writeFileSync(join(modelsRoot, custom.model, 'onnx', 'model.onnx'), 'weights')
+      const result = await installInferenceModels(optsAutoYes, undefined, [custom])
+      expect(result.status).toBe('failed')
+      expect(result.message).toContain('the installed copy is incomplete')
+      expect(result.message).not.toContain('pins')
+    })
+
     it('without flock the install fails closed — one lock protocol only, never a fallback that ignores flock holders', async () => {
       flockUnavailable = true
       installFakeBinary(PULL_OK)
