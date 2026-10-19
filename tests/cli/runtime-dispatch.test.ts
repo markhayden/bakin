@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { APP_VERSION } from '../../packages/core/src/constants'
-import { setStdoutIsTTY, setupTtyCliHarness } from './helpers/tty-cli-harness'
+import { setStdoutIsTTY, setupTtyCliHarness, withTempBakinHome } from './helpers/tty-cli-harness'
 
 const execFileSync = mock((..._args: unknown[]) => '')
 
@@ -13,6 +13,7 @@ const { fetchMock, output, errorOutput, jsonResponse } = harness
 
 describe('bakin runtime binary dispatch', () => {
   beforeEach(() => {
+    execFileSync.mockReset()
     execFileSync.mockReturnValue('')
   })
 
@@ -108,14 +109,21 @@ describe('bakin runtime binary dispatch', () => {
   })
 
   it('delegates stop to the shared source CLI TUI', async () => {
-    const { dispatchCli } = await import('../../src/core/cli')
+    // stop reads THIS home's server.lock: a temp home, never the real one.
+    // No service is loaded: launchctl/systemctl answer the way they do for an unknown job.
+    execFileSync.mockImplementation((cmd: unknown) => {
+      if (cmd === 'launchctl' || cmd === 'systemctl') throw Object.assign(new Error('exit 113'), { stdout: '', stderr: cmd === 'launchctl' ? 'Could not find service' : 'Failed to connect to bus: No such file or directory' })
+      return ''
+    })
+    await withTempBakinHome('bakin-test-dispatch-stop-', async () => {
+      const { dispatchCli } = await import('../../src/core/cli')
 
-    const result = await dispatchCli(['bun', 'bakin', 'stop'])
+      const result = await dispatchCli(['bun', 'bakin', 'stop'])
 
-    expect(result).toEqual({ startServer: false, exitCode: 0 })
-    expect(output()).toContain('Runtime action')
-    expect(output()).toContain('No running Bakin process found.')
-    expect(output()).not.toContain('No running Bakin server at')
-    expect(errorOutput()).toBe('')
+      expect(result).toEqual({ startServer: false, exitCode: 0 })
+      expect(output()).toContain('Runtime action')
+      expect(output()).toContain('No running Bakin server for this home.')
+      expect(errorOutput()).toBe('')
+    })
   })
 })

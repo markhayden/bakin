@@ -41,6 +41,47 @@ mock.module('../../src/core/server-lock', () => ({
   liveServerBaseUrl: () => 'http://localhost:3737',
 }))
 
+// stop/restart never reach a real lock, process, service or socket (#898 K):
+// the lifecycle IO is a fake each test configures.
+import type { LifecycleIo, LockInfo } from '../../src/cli/lifecycle-control'
+let fakeLock: LockInfo | null = null
+let serviceOwns = false
+const servedBoots = new Map<number, { bootId: string; pid: number }>()
+const fakeIo = (): LifecycleIo => ({
+  platform: 'darwin',
+  home: '/Users/tester/.bakin',
+  selfPid: 1,
+  readLock: () => fakeLock,
+  pidAlive: (pid) => fakeLock?.pid === pid,
+  http: async (method, port, path) => {
+    const boot = servedBoots.get(port)
+    if (!boot || method !== 'GET' || path !== '/api/version') return null
+    return { status: 200, body: { version: 'test', pid: boot.pid, bootId: boot.bootId, state: 'serving' } }
+  },
+  listProcesses: () => [],
+  exec: (cmd, args) => {
+    execFileSync(cmd, args, {})
+    if (args[0] === 'print') return serviceOwns && fakeLock ? { ok: true, output: `x = {\n\tstate = running\n\tpid = ${fakeLock.pid}\n}` } : { ok: false, output: 'Could not find service' }
+    if (args[0] === 'kickstart') { fakeLock = { pid: 7777, port: 3737, bootId: 'boot-service', cliSecret: 's' }; servedBoots.set(3737, { pid: 7777, bootId: 'boot-service' }) }
+    return { ok: true, output: '' }
+  },
+  uid: () => '501',
+  readFile: () => null,
+  launchAgentPath: () => '/Users/tester/Library/LaunchAgents/com.makinbakin.bakin.plist',
+  systemdUnitPath: () => '/Users/tester/.config/systemd/user/com.makinbakin.bakin.service',
+  spawnServer: () => {
+    fakeLock = { pid: 4242, port: 3737, bootId: 'boot-new', cliSecret: 's' }
+    servedBoots.set(3737, { pid: 4242, bootId: 'boot-new' })
+    return { pid: 4242, exitedEarly: () => false, error: () => null }
+  },
+  now: () => 0,
+  sleep: async () => {},
+})
+mock.module('../../src/cli/lifecycle-io', () => ({
+  canonicalHome: () => '/Users/tester/.bakin',
+  realLifecycleIo: async () => fakeIo(),
+}))
+
 const harness = setupTtyCliHarness()
 const { fetchMock, output } = harness
 
@@ -64,6 +105,9 @@ describe('CLI system action TUI commands', () => {
       return 0 as unknown as ReturnType<typeof setTimeout>
     }) as unknown as typeof setTimeout
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+    fakeLock = null
+    serviceOwns = false
+    servedBoots.clear()
   })
 
   afterEach(() => {
@@ -79,7 +123,7 @@ describe('CLI system action TUI commands', () => {
 
     expect(output()).toContain('Runtime action')
     expect(output()).toContain('RESULT')
-    expect(output()).toContain('No running Bakin process found.')
+    expect(output()).toContain('No running Bakin server for this home.')
     expect(output()).not.toContain('[OK]')
     expect(harness.error.mock.calls).toHaveLength(0)
   })
@@ -94,9 +138,8 @@ describe('CLI system action TUI commands', () => {
     expect(output()).toContain('RESULT')
     expect(output()).toContain('Bakin restarted.')
     expect(output()).toContain('Started process 4242.')
-    expect(output()).toContain('Version: test')
-    expect(output()).not.toContain('[..] Starting Bakin server')
-    expect(spawn).toHaveBeenCalled()
+    expect(output()).toContain('version test')
+    expect(output()).not.toContain('[..]')
     expect(harness.error.mock.calls).toHaveLength(0)
   })
 
@@ -131,17 +174,30 @@ describe('CLI system action TUI commands', () => {
     expect(plist).not.toContain('/$bunfs')
   })
 
-  it('restarts through launchctl when the LaunchAgent is installed', async () => {
+  it('restarts through launchctl only when the loaded service owns this home\'s proven server — never because a plist exists (#898 K)', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    // This home's server answers as itself, and the loaded service's pid IS it.
+    fakeLock = { pid: 500, port: 3737, bootId: 'boot-old', cliSecret: 's' }
+    servedBoots.set(3737, { pid: 500, bootId: 'boot-old' })
+    serviceOwns = true
+    process.argv = ['bun', 'cli/bakin.ts', 'restart']
+    await main()
+
+    expect(execFileSync).toHaveBeenCalledWith('launchctl', ['kickstart', '-k', 'gui/501/com.makinbakin.bakin'], expect.any(Object))
+    expect(output()).toContain('Bakin restarted.')
+    expect(output()).toContain('Restarted through the Bakin service')
+  })
+
+  it('a plist alone (service not owning anything here) never kickstarts — a manual start instead', async () => {
     const { main } = await import('../../cli/bakin')
 
     existsSync.mockImplementation((path?: unknown) => String(path).endsWith('com.makinbakin.bakin.plist'))
     process.argv = ['bun', 'cli/bakin.ts', 'restart']
     await main()
 
-    expect(execFileSync).toHaveBeenCalledWith('launchctl', ['kickstart', '-k', 'gui/501/com.makinbakin.bakin'], expect.any(Object))
-    expect(spawn).not.toHaveBeenCalled()
-    expect(output()).toContain('Bakin restarted.')
-    expect(output()).toContain('Service: com.makinbakin.bakin')
+    expect(execFileSync).not.toHaveBeenCalledWith('launchctl', ['kickstart', '-k', 'gui/501/com.makinbakin.bakin'], expect.any(Object))
+    expect(output()).toContain('Started process 4242.')
   })
 
   it('renders setup service uninstall results with the shared runtime action TUI in a TTY', async () => {

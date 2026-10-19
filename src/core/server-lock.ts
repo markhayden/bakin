@@ -10,11 +10,11 @@
  * CLI that can read this file proves it is this home's operator, which is
  * what authorizes a service claim (#895 D11).
  * A live holder refuses acquisition; a stale lock (dead pid) or corrupt
- * file is replaced. Acquisition uses exclusive create (wx) with one
- * stale-sweep retry.
+ * file is replaced. The lock is published complete via temp + `link`, and a
+ * stale one is claimed by rename before it is deleted (see acquireServerLock).
  */
 import { randomBytes, timingSafeEqual } from 'crypto'
-import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'fs'
+import { existsSync, linkSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
@@ -122,36 +122,121 @@ export function cliSecretMatches(presented: string | null | undefined): boolean 
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
+/**
+ * Acquire this home's singleton lock (#898 K hardening):
+ *   - the lock is written COMPLETE to a private temp file and published with
+ *     `link`, which fails if a lock exists — it is never visible half-written
+ *     (a partial file would read as corrupt and be swept as stale);
+ *   - a stale lock (dead holder, or corrupt) is removed ONLY under the
+ *     exclusive sweep marker (`server.lock.sweep`), and only when the bytes
+ *     still on disk are the exact bytes judged stale. Removal is the one way
+ *     a lock path ever empties besides its own holder releasing, and
+ *     publishing can't replace an existing lock, so between that re-read and
+ *     the unlink the file cannot change: a live lock is never removed. (The
+ *     path is never renamed aside — putting a renamed lock back can collide
+ *     with a third starter and lose a live owner.)
+ *   - a sweep marker left by a DEAD process is never reclaimed automatically
+ *     (reclaiming it races exactly like the lock itself): boot fails closed
+ *     naming the file, which the operator removes.
+ */
 export function acquireServerLock(port: number, bootId: string): AcquireResult {
   const cliSecret = randomBytes(32).toString('hex')
   const payload = JSON.stringify({ pid: process.pid, port, startedAt: Date.now(), bootId, cliSecret } satisfies ServerLock, null, 2)
+  const temp = `${lockPath()}.${process.pid}-${Date.now()}-${randomBytes(4).toString('hex')}`
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < SWEEP_ATTEMPTS; attempt++) {
+    // 0600: the secret inside authorizes service claims for this home.
+    writeFileSync(temp, payload, { encoding: 'utf-8', flag: 'wx', mode: 0o600 })
     try {
-      // 0600: the secret inside authorizes service claims for this home.
-      writeFileSync(lockPath(), payload, { encoding: 'utf-8', flag: 'wx', mode: 0o600 })
+      linkSync(temp, lockPath())
       ownCliSecret = cliSecret
       return { acquired: true }
-    } catch {
-      const holder = readServerLock()
-      // Live holder that isn't us → refuse. Our own pid re-acquiring is
-      // fine (in-process restart / HMR re-evaluation).
-      if (holder && holder.pid !== process.pid && isPidAlive(holder.pid)) {
-        return { acquired: false, holder }
-      }
-      // Stale (dead pid) or corrupt — sweep and retry the exclusive create.
-      log.warn('Replacing stale server lock', { stalePid: holder?.pid ?? null })
-      try {
-        unlinkSync(lockPath())
-      } catch {
-        // raced with another sweeper; the retry's wx decides
-        log.debug('Stale lock already removed by a concurrent sweeper')
-      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    } finally {
+      unlinkSync(temp)
     }
+    const seenText = readText(lockPath())
+    if (seenText === null) continue // released meanwhile: try again
+    const holder = readServerLock()
+    // Live holder that isn't us → refuse. Our own pid re-acquiring is fine
+    // (in-process restart / HMR re-evaluation).
+    if (holder && holder.pid !== process.pid && isPidAlive(holder.pid)) {
+      return { acquired: false, holder }
+    }
+    // Stale (dead pid), corrupt, or our own: remove exactly those bytes.
+    if (sweepStaleLock(seenText, holder?.pid ?? null) === 'busy') sleepSync(SWEEP_BUSY_WAIT_MS)
   }
-  // Two sweep attempts lost the wx race both times — someone else acquired.
+  // Every attempt lost a race — someone else acquired (or keeps sweeping).
   const holder = readServerLock()
   return holder ? { acquired: false, holder } : { acquired: false, holder: { pid: -1, port, startedAt: 0, bootId: '' } }
+}
+
+const SWEEP_ATTEMPTS = 20
+const SWEEP_BUSY_WAIT_MS = 5
+
+/** Block briefly (acquire runs before the event loop matters; a sweeper holds its marker for microseconds). */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+function sweepMarkerPath(): string {
+  return `${lockPath()}.sweep`
+}
+
+/** Remove the lock iff it still holds `seenText`, under the exclusive sweep marker. */
+function sweepStaleLock(seenText: string, stalePid: number | null): 'swept' | 'changed' | 'busy' {
+  const marker = sweepMarkerPath()
+  try {
+    writeFileSync(marker, JSON.stringify({ pid: process.pid, at: Date.now() }), { encoding: 'utf-8', flag: 'wx', mode: 0o600 })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    const sweeper = readSweepMarker(marker)
+    if (sweeper === 'gone') return 'busy' // released meanwhile
+    if (typeof sweeper === 'number' && isPidAlive(sweeper)) return 'busy'
+    // A live sweeper writes its marker in one call; unreadable for longer than that means it died mid-write.
+    if (sweeper === 'unreadable' && Date.now() - markerMtime(marker) < SWEEP_MARKER_WRITE_GRACE_MS) return 'busy'
+    throw new Error(`A previous Bakin start died while clearing a stale server lock and left ${marker} behind. Make sure no Bakin for this home is starting, delete that file, and start again.`)
+  }
+  try {
+    if (readText(lockPath()) !== seenText) return 'changed'
+    log.warn('Replacing stale server lock', { stalePid })
+    unlinkSync(lockPath())
+    return 'swept'
+  } finally {
+    unlinkSync(marker)
+  }
+}
+
+const SWEEP_MARKER_WRITE_GRACE_MS = 2_000
+
+function readSweepMarker(marker: string): number | 'unreadable' | 'gone' {
+  const text = readText(marker)
+  if (text === null) return 'gone'
+  try {
+    const pid = (JSON.parse(text) as { pid?: unknown }).pid
+    return Number.isInteger(pid) && (pid as number) > 0 ? (pid as number) : 'unreadable'
+  } catch {
+    return 'unreadable' // empty or half-written: judged by its age
+  }
+}
+
+function markerMtime(marker: string): number {
+  try {
+    return statSync(marker).mtimeMs
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return Date.now() // released: not old
+    throw err
+  }
+}
+
+function readText(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf-8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw err
+  }
 }
 
 /** Removes the lock iff this process owns it. Safe to call repeatedly. */

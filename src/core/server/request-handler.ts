@@ -69,6 +69,7 @@ import * as pluginCatchAllRoute from '../../../packages/host/src/api/plugins/[pl
 import * as pluginsManifestRoute from '../../../packages/host/src/api/plugins/manifest'
 import * as pluginsAssetsRoute from '../../../packages/host/src/api/plugins/assets'
 import * as versionRoute from '../../../packages/host/src/api/version'
+import * as serverShutdownRoute from '../../../packages/host/src/api/server/shutdown'
 import * as docsRoute from '../../../packages/host/src/api/docs'
 import * as updateStatusRoute from '../../../packages/host/src/api/update/status'
 import * as updateApplyRoute from '../../../packages/host/src/api/update/apply'
@@ -131,6 +132,10 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     // Version endpoint
     if (url.pathname === '/api/version' && req.method === 'GET') {
       dispatchWebHandler(req, res, versionRoute.get)
+      return
+    }
+    if (url.pathname === '/api/server/shutdown' && req.method === 'POST') {
+      dispatchWebHandler(req, res, serverShutdownRoute.post)
       return
     }
 

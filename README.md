@@ -47,8 +47,8 @@ Open [http://localhost:3737](http://localhost:3737).
 
 ```sh
 bakin start        # start in the foreground
-bakin stop         # stop a running Bakin process
-bakin restart      # stop, then start again
+bakin stop         # stop THIS home's server (and its service)
+bakin restart      # restart this home's server; waits for a new boot
 bakin status       # show server, dispatch, and health status
 bakin doctor       # run health checks now
 ```

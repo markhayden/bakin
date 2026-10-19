@@ -266,11 +266,43 @@ failing closed. No parallel stat recorder — counts come from
 ## Server singleton
 
 `src/core/server-lock.ts` — `~/.bakin/server.lock` `{pid, port, startedAt,
-bootId}` acquired before ANY side effect in `server.ts`; a live holder
-(EPERM counts as alive) refuses startup naming the pid; stale/corrupt locks
-are swept via exclusive-create retry; released in the lifecycle shutdown.
+bootId, cliSecret}` acquired before ANY side effect in `server.ts`; a live
+holder (EPERM counts as alive) refuses startup naming the pid. The lock is
+published complete (temp file + `link`, never a partially written lock); a
+stale/corrupt lock is removed only under the exclusive `server.lock.sweep`
+marker and only if the bytes on disk are still the ones judged stale (the path
+is never renamed aside — putting a renamed lock back can collide with a third
+starter and lose a live owner). A marker left by a dead starter fails boot
+closed, naming the file; released in the lifecycle shutdown.
 EADDRINUSE routes through `lifecycle.triggerShutdown` (full graceful chain
 — the antfly child is stopped, not orphaned, #459) and exits non-zero.
+
+**Home-scoped stop/restart (#898 K, spec `.claude/specs/lifecycle-home-scope.md`).**
+`bakin stop`/`restart` act ONLY on the server this home's lock names, and only
+after it proves itself: `GET /api/version` must answer `{pid, bootId}` equal
+to the lock (`state` = `starting|serving|stopping`). Shutdown is the
+authenticated `POST /api/server/shutdown {bootId}` (`X-Bakin-Cli-Secret`;
+403 `not_this_home`, 409 `boot_mismatch`) — the CLI never signals a pid. The
+service manager is driven only when its loaded pid IS that server (or, for a
+restart with nothing running, when the unit's `BAKIN_HOME` is this home);
+`stop` then boots the unit out so it cannot respawn. A lock holder that
+doesn't answer (wedged), an answer that doesn't match (foreign), an
+unreadable state of an installed service, a service job that is running or
+starting (launchd `spawn scheduled`, systemd `activating`) without holding
+this home's lock, a waiting restart child (stop), or an
+old-protocol server outside a service configured for this home fails closed
+with a report. A service restart is proved by the MANAGER's pid answering; a
+successor that grabs the home as the old server exits is reported (stop) or
+reconciled with (restart) — never raced. Failures `process.exit(1)` (the
+compiled dispatcher maps a normal return to 0); service commands carry a
+10 s deadline.
+`restart` refuses while a start may already be pending (an in-flight
+restart child at any time; a dev coordinator only when no server answers)
+unless `--force`, waits ≤20 s for the old boot to go,
+and succeeds only when a NEW bootId answers. Seams: `src/cli/lifecycle-control.ts`
+(pure controller over `LifecycleIo`), `src/cli/lifecycle-io.ts` (real IO),
+`src/core/service-manager.ts` (launchctl/systemd pid parsers); the server's
+own `/api/restart` uses the service only when `loadedServicePid() === process.pid`.
 
 ## Testing
 
