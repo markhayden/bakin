@@ -238,6 +238,17 @@ describe('only proven models are proposed (margo 2026-10-18)', () => {
     expect(plan.notes.join(' ')).toContain('enrichment will fail')
   })
 
+  it('notes never contradict the final route: a kept blind enrichment route is "will fail", never "runs on the agent model"', () => {
+    const blindChores: PlanCandidate = { ...mini, proven: true } // vision false
+    const blindRoute: PlanCandidate = { ...miniUnknown, vision: false, proven: false }
+    const routing = { routes: [{ workClass: 'enrichment' as const, model: blindRoute.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }, blindChores, blindRoute], currentDefaultModel: luna.id, routing }))
+    expect(plan.routes.find((r) => r.workClass === 'enrichment')?.model).toBe(blindRoute.id)
+    expect(plan.enrichment).toBe('unset')
+    expect(plan.notes.join(' ')).toContain('enrichment will fail')
+    expect(plan.notes.join(' ')).not.toContain('runs on')
+  })
+
   it('a blocked plan keeping a listed vision-capable enrichment route reports it as kept', () => {
     const routing = { routes: [{ workClass: 'enrichment' as const, model: luna.id }], tagOverrides: [] }
     const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }], currentDefaultModel: 'openai/gone', routing }))

@@ -295,18 +295,27 @@ function finalEnrichment(
   routes: ChoresRoute[],
   notes: string[],
 ): { enrichment: PlanRecommendation['enrichment']; notes: string[] } {
-  const others = notes.filter((n) => n !== NO_VISION_NOTE && !n.startsWith('Enrichment stays on '))
+  // Every enrichment note is regenerated here from the final route; the
+  // provisional ones the lane pick wrote may describe a route that changed.
+  const others = notes.filter((n) => !/see images|enrichment/i.test(n))
   if (!input.enrichmentEnabled) return { enrichment: 'disabled', notes: others }
   const routed = routes.find((r) => r.workClass === 'enrichment')?.model ?? null
   const effective = routed ?? agentModel
   const candidate = effective ? input.candidates.find((c) => c.id === effective) : undefined
   if (!effective || !candidate || candidate.vision === false) return { enrichment: 'unset', notes: [...others, NO_VISION_NOTE] }
+  const unknownSight = candidate.vision === null
+    ? [`Whether ${effective} can see images is unknown here — enrichment may fail until a vision-capable model is confirmed.`]
+    : []
   if (routed && routed !== choresModel && routed !== agentModel) {
     const sight = candidate.vision === true ? 'can see images' : 'may be able to see images (unknown here)'
     const proof = candidate.proven ? '' : ' and has not run here in the last week'
     return { enrichment: 'kept', notes: [...others, `Enrichment stays on ${routed}, which ${sight}${proof}.`] }
   }
-  return { enrichment: effective === choresModel ? 'chores' : 'agent', notes: others }
+  if (effective === choresModel) return { enrichment: 'chores', notes: [...others, ...unknownSight] }
+  const blindChores = choresModel && choresModel !== effective
+    ? [`${choresModel} cannot see images, so enrichment (captions, OCR, tags) runs on ${effective} instead.`]
+    : []
+  return { enrichment: 'agent', notes: [...others, ...blindChores, ...unknownSight] }
 }
 
 /** Recommend the two-lane plan and the ops that reach it from the current state. */
