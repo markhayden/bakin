@@ -30,7 +30,8 @@ import { buildTaskLessonQuery } from './agent-packages/lesson-retrieval'
 import type { DispatchTask, DispatchRosterAgent, DispatchContinuationContext, SessionDeathState } from './dispatch-types'
 import { buildDispatchLessonBlock, buildDispatchAssetBlock, buildDispatchBrandBlock, resolveTriageBrand, BrandUnavailableError } from './dispatch-context-blocks'
 import { buildDispatchMessage, buildDecompositionMessage } from './dispatch-prompts'
-import { findDispatchTaskSnapshot, moveTaskToInProgress, taskAlreadyLeftActiveWork } from './dispatch-board'
+import { moveTaskToInProgress, taskAlreadyLeftActiveWork } from './dispatch-board'
+import { getTaskWithColumn } from './task-store'
 import { claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn } from './dispatch-turns'
 import type { ResolvedTurn } from './model-routing'
 
@@ -90,7 +91,7 @@ export async function prepareRegularDispatch(input: {
   // active work meanwhile (an operator — or Health's resurface — moved it to
   // Review/Blocked/Done), the claim is released and nothing fires. The
   // check runs synchronously after the claim, so no move can slip between.
-  const current = findDispatchTaskSnapshot(task.id)
+  const current = getTaskWithColumn(task.id)
   if (!current || taskAlreadyLeftActiveWork(current.column)) {
     loseRun(claim.runId, 'task-left-active-work')
     log.info('Dispatch released: the task left active work before its claim', { taskId: task.id, column: current?.column ?? null })

@@ -96,6 +96,13 @@ function relocate(taskId: string, to: keyof Columns): void {
 
 const taskStoreMock = {
   readTaskboard: mock(() => ({ columns: currentColumns })),
+  getTaskWithColumn: (id: string) => {
+    for (const [column, tasks] of Object.entries(currentColumns) as Array<[string, Array<{ id: string }>]>) {
+      const task = tasks.find((t) => t.id === id)
+      if (task) return { task, column }
+    }
+    return null
+  },
   addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
   updateTask: mock(async (taskId: string, patch: { column?: string }) => {
     if (patch?.column) relocate(taskId, patch.column as keyof Columns)

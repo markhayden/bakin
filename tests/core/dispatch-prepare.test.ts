@@ -19,10 +19,10 @@ const moveTaskToInProgress = mock(async () => {})
 const appendAudit = mock(() => {})
 const fireDispatchTurn = mock(() => {})
 mock.module('../../src/core/audit', () => ({ appendAudit }))
+mock.module('../../src/core/task-store', () => ({ getTaskWithColumn: (id: string) => (column ? { task: { id }, column } : null) }))
 mock.module('../../src/core/execution-ledger', () => ({ loseRun }))
 mock.module('../../src/core/dispatch-board', () => ({
   moveTaskToInProgress,
-  findDispatchTaskSnapshot: (id: string) => (column ? { column, task: { id } } : null),
   taskAlreadyLeftActiveWork: (c: string) => c === 'done' || c === 'blocked' || c === 'review' || c === 'archived',
 }))
 mock.module('../../src/core/dispatch-turns', () => ({

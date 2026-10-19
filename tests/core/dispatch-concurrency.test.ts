@@ -102,6 +102,13 @@ function setColumns(c: Partial<Columns>): void {
 
 const taskStoreMock = {
   readTaskboard: mock(() => ({ columns: currentColumns })),
+  getTaskWithColumn: (id: string) => {
+    for (const [column, tasks] of Object.entries(currentColumns) as Array<[string, Array<{ id: string }>]>) {
+      const task = tasks.find((t) => t.id === id)
+      if (task) return { task, column }
+    }
+    return null
+  },
   addTaskLog: mock(async () => undefined),
   updateTask: mock(async () => undefined),
   moveTask: mock(async () => undefined),

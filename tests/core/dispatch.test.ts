@@ -114,6 +114,13 @@ function setDispatchColumns(columns: Partial<DispatchTestColumns>): void {
 
 mock.module('../../src/core/task-store', () => ({
   readTaskboard: mock(() => ({ columns: currentDispatchColumns })),
+  getTaskWithColumn: (id: string) => {
+    for (const [column, tasks] of Object.entries(currentDispatchColumns) as Array<[string, Array<{ id: string }>]>) {
+      const task = tasks.find((t) => t.id === id)
+      if (task) return { task, column }
+    }
+    return null
+  },
   addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
   updateTask: (...args: unknown[]) => mockStoreUpdateTask(...args),
   moveTask: (...args: unknown[]) => mockStoreMoveTask(...args),
@@ -121,6 +128,13 @@ mock.module('../../src/core/task-store', () => ({
 }))
 mock.module('@/core/task-store', () => ({
   readTaskboard: mock(() => ({ columns: currentDispatchColumns })),
+  getTaskWithColumn: (id: string) => {
+    for (const [column, tasks] of Object.entries(currentDispatchColumns) as Array<[string, Array<{ id: string }>]>) {
+      const task = tasks.find((t) => t.id === id)
+      if (task) return { task, column }
+    }
+    return null
+  },
   addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
   updateTask: (...args: unknown[]) => mockStoreUpdateTask(...args),
   moveTask: (...args: unknown[]) => mockStoreMoveTask(...args),
