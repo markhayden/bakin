@@ -17,9 +17,17 @@ import { createLogger } from '@bakin/core/logger'
 
 const log = createLogger('antfly-media-url')
 
+/**
+ * Bun's realpath treats a backslash as a path separator, so a path containing
+ * one can "resolve" to a DIFFERENT, unrelated path. Such paths are never
+ * canonicalized — they keep their absolute spelling.
+ */
+const hasBackslash = (path: string) => path.includes('\\')
+
 /** The deepest existing ancestor's realpath, with the missing tail re-attached. */
 export function canonicalFilePath(path: string): string {
   const absolute = resolve(path)
+  if (hasBackslash(absolute)) return absolute
   try {
     return realpathSync(absolute)
   } catch (err) {
@@ -70,7 +78,9 @@ function localPathOf(url: string): string | null {
       if (err instanceof URIError) return null
       throw err
     }
-    if (text === '.' || text === '..' || /[\\\u0000-\u001f\u007f]/.test(text)) return null
+    // `/` inside a decoded segment (`%2F`) would let path resolution walk a
+    // different route than the engine opening the original spelling.
+    if (text === '.' || text === '..' || /[/\\\u0000-\u001f\u007f]/.test(text)) return null
     if (encodeURIComponent(text) !== segment) return null
     decoded.push(text)
   }
@@ -81,7 +91,7 @@ function localPathOf(url: string): string | null {
 function existingFileRealpath(path: string, field: string): string | null {
   try {
     const canonical = realpathSync(path)
-    return statSync(canonical).isFile() ? canonical : null
+    return !hasBackslash(canonical) && statSync(canonical).isFile() ? canonical : null
   } catch (err) {
     log.debug('file:// value left as sent — its path could not be resolved', { field, error: err instanceof Error ? err.message : String(err) })
     return null
@@ -104,8 +114,11 @@ export function normalizeFileUrls(doc: Record<string, unknown>, mediaRoots: read
     const canonical = existingFileRealpath(path, field)
     if (canonical === null) continue
     roots ??= mediaRoots.flatMap((root) => {
+      // A root that can't be canonicalized faithfully is never a rewrite target.
+      if (hasBackslash(root)) return []
       try {
-        return [realpathSync(root)]
+        const real = realpathSync(root)
+        return hasBackslash(real) ? [] : [real]
       } catch (err) {
         log.debug('media root could not be resolved', { root, error: err instanceof Error ? err.message : String(err) })
         return []

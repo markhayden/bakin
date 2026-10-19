@@ -42,7 +42,8 @@ export function buildAssetFileUrl(relPathUnderAssetsRoot: string): string {
   // A backslash is an ordinary filename character here, but path resolution
   // can rewrite it into a separator — keep that spelling exactly as built
   // (absolute; the store is allowlisted under it too).
-  const absolute = joined.includes('\\') ? resolve(joined) : canonicalFilePath(joined)
+  const canonical = joined.includes('\\') ? null : canonicalFilePath(joined)
+  const absolute = canonical === null || canonical.includes('\\') ? resolve(joined) : canonical
   const encoded = absolute
     .split('/')
     .map((segment, i) => (i === 0 && segment === '' ? '' : encodeURIComponent(segment)))

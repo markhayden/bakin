@@ -95,6 +95,23 @@ describe('normalizeFileUrls', () => {
     expect(normalizeFileUrls({ media_url: `file://${alias}/a.jpg%20` }, roots)).toEqual({ media_url: `file://${store}/2026-10/a.jpg%20` })
   })
 
+  it('an encoded slash never smuggles a traversal past the shape check', () => {
+    // store/link → elsewhere/sub (from the dot-segment test): link%2F..%2Fa.txt
+    // opens elsewhere/a.txt, but realpath would collapse it to store/a.txt.
+    const doc = { media_url: `file://${store}/link%2F..%2Fa.txt` }
+    expect(normalizeFileUrls(doc, roots)).toBe(doc)
+  })
+
+  it('a store under a backslash-named directory is allowlisted only as spelled — never "canonicalized" into an unrelated directory', () => {
+    const literal = join(testDir, 'home\\name', 'assets', 'store')
+    mkdirSync(literal, { recursive: true })
+    mkdirSync(join(testDir, 'home', 'name', 'assets', 'store'), { recursive: true }) // the decoy Bun would resolve to
+    expect(mediaRootsFor(literal)).toEqual([literal])
+    writeFileSync(join(literal, 'x.png'), 'x')
+    const doc = { media_url: `file://${literal.split('/').map((seg, i) => (i === 0 ? '' : encodeURIComponent(seg))).join('/')}/x.png` }
+    expect(normalizeFileUrls(doc, mediaRootsFor(literal))).toBe(doc)
+  })
+
   it('canonicalFilePath re-attaches a missing tail to the deepest existing ancestor', () => {
     expect(canonicalFilePath(join(testDir, 'old-alias', 'assets', 'store', 'not', 'yet.png'))).toBe(join(store, 'not', 'yet.png'))
   })
