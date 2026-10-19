@@ -17,7 +17,8 @@
  */
 import { existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
-import { BinRequirementsSchema, type BinDownload, type BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
+import type { BinDownload, BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
+import { safeParseManifest } from '../../../packages/core/src/agent-packages/manifest'
 import { computeFileSha } from '../../../packages/core/src/agent-packages/markers'
 import type { PackageEntry } from '../../../packages/core/src/agent-packages/lockfile'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
@@ -64,8 +65,8 @@ export function verifyInstalledBin(target: string, download: Pick<BinDownload, '
 /**
  * An installed pack's declared binaries, read from its INSTALLED manifest
  * under ~/.bakin/packages/ — the pins every scan judges the bytes on disk
- * against. A missing, unreadable or schema-invalid declaration (e.g. an
- * archive bin installed before `extractedSha256` existed) is `invalid` with
+ * against. A missing, unreadable or invalid manifest (the canonical package
+ * parser; e.g. an archive bin installed before `extractedSha256` existed) is `invalid` with
  * the reason: surfaces report it, never treat it as "no bins" (#898 D).
  */
 export type InstalledPackBins =
@@ -77,13 +78,15 @@ export function readInstalledPackBins(kind: PackageEntry['kind'], id: string, ve
   if (!existsSync(manifestPath)) return { ok: false, reason: `installed manifest is missing (${manifestPath})` }
   let raw: unknown
   try {
-    raw = (JSON.parse(readFileSync(manifestPath, 'utf-8')) as { requires?: { bins?: unknown } }).requires?.bins
+    raw = JSON.parse(readFileSync(manifestPath, 'utf-8'))
   } catch (err) {
     return { ok: false, reason: `installed manifest is unreadable: ${err instanceof Error ? err.message : String(err)}` }
   }
-  const parsed = BinRequirementsSchema.safeParse(raw ?? [])
+  // The canonical package parser decides — the whole manifest, not just its
+  // bins: an installed declaration this Bakin would reject is never green.
+  const parsed = safeParseManifest(raw)
   if (!parsed.success) {
-    return { ok: false, reason: `installed manifest declares invalid binaries: ${parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')}` }
+    return { ok: false, reason: `installed manifest is invalid: ${parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')}` }
   }
-  return { ok: true, bins: parsed.data }
+  return { ok: true, bins: ('requires' in parsed.data ? parsed.data.requires?.bins : undefined) ?? [] }
 }

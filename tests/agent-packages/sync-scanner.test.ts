@@ -497,7 +497,7 @@ describe('scanAgentSync — skills', () => {
         ? { url: 'https://example.com/tool.tar.gz', sha256: 'a'.repeat(64), archive }
         : { url: 'https://example.com/tool', sha256: toolSha() }
       writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({
-        id: 'tool-pack', kind: 'skill-pack', name: 'Tool', version: '1.0.0', contributions: { skills: [] },
+        id: 'tool-pack', kind: 'skill-pack', name: 'Tool', version: '1.0.0', contributions: { skills: ['skills/tool'] },
         requires: { bins: [{ name: 'tool', version: '1', install: { [binPlatformKey()!]: download } }] },
       }))
       const lockMod = await import('../../packages/core/src/agent-packages/lockfile')
@@ -545,6 +545,18 @@ describe('scanAgentSync — skills', () => {
       const target = await seedBinPack(null)
       mkdirSync(target, { recursive: true })
       expect(await binFindings()).toMatchObject([{ type: 'asset-drifted', target }])
+    })
+
+    it('valid bins inside a manifest the package parser rejects are never green', async () => {
+      await seedSyncedState()
+      const target = await seedBinPack(null)
+      writeFileSync(target, TOOL)
+      const { getPackageSourceDir } = await import('../../packages/core/src/agent-packages/package-paths')
+      const manifestPath = join(getPackageSourceDir(testDir, 'skill-pack', 'tool-pack', '1.0.0'), 'bakin-package.json')
+      const manifest = JSON.parse(require('fs').readFileSync(manifestPath, 'utf-8'))
+      delete manifest.name
+      writeFileSync(manifestPath, JSON.stringify(manifest))
+      expect(await binFindings()).toMatchObject([{ type: 'bin-manifest-invalid', target }])
     })
 
     it('a missing binary is asset-missing', async () => {
