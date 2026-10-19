@@ -6,16 +6,17 @@
  * standalone runs we start a detached child that waits for this parent PID to
  * disappear before booting the replacement binary.
  */
-import { existsSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { resolve } from 'node:path'
 import { execFileSync, spawn } from 'node:child_process'
+import { getContentDir } from './content-dir'
+import { loadedServicePid } from './service-manager'
 import { createLogger } from './logger'
 
 const SERVICE_LABEL = 'com.makinbakin.bakin'
 const RESTART_CHILD_COMMAND = '__bakin-restart-child'
 const DEFAULT_RESTART_DELAY_MS = 750
 const PARENT_EXIT_POLL_MS = 250
+const PARENT_EXIT_MAX_WAIT_MS = 60_000
 
 const log = createLogger('server-restart')
 
@@ -36,16 +37,16 @@ function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
   if (typeof maybeTimer.unref === 'function') maybeTimer.unref()
 }
 
+/**
+ * The service restarts THIS server only when the loaded service's main pid
+ * IS this process (#898 K) — a plist or unit file merely existing is the
+ * next launch's config, possibly another home's. Otherwise: the standalone
+ * child path.
+ */
 function serviceRestartStrategy(): 'launchagent' | 'systemd' | null {
-  if (process.platform === 'darwin') {
-    const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
-    return existsSync(plistPath) ? 'launchagent' : null
-  }
-  if (process.platform === 'linux') {
-    const unitPath = join(homedir(), '.config', 'systemd', 'user', `${SERVICE_LABEL}.service`)
-    return existsSync(unitPath) ? 'systemd' : null
-  }
-  return null
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return null
+  if (loadedServicePid() !== process.pid) return null
+  return process.platform === 'darwin' ? 'launchagent' : 'systemd'
 }
 
 function scheduleServiceRestart(strategy: 'launchagent' | 'systemd', delayMs: number): RestartScheduleResult {
@@ -75,6 +76,9 @@ function scheduleStandaloneRestart(delayMs: number): RestartScheduleResult {
       stdio: 'ignore',
       env: {
         ...process.env,
+        // The replacement is THIS home's, absolute — never re-resolved
+        // against whatever cwd the child starts in.
+        BAKIN_HOME: resolve(getContentDir()),
         BAKIN_RESTART_PARENT_PID: String(parentPid),
       },
     })
@@ -117,12 +121,16 @@ export async function waitForRestartParentExit(parentPidText: string | undefined
     throw new Error('Missing restart parent PID.')
   }
 
+  // Bounded: a parent that never exits must not leave a child waiting
+  // forever to start a competitor later. EPERM means it still exists.
+  const deadline = Date.now() + PARENT_EXIT_MAX_WAIT_MS
   for (;;) {
     try {
       process.kill(parentPid, 0)
-      await new Promise((resolve) => setTimeout(resolve, PARENT_EXIT_POLL_MS))
-    } catch {
-      return
+    } catch (err) {
+      if ((err as { code?: string }).code === 'ESRCH') return
     }
+    if (Date.now() >= deadline) throw new Error(`Restart parent ${parentPid} did not exit within ${PARENT_EXIT_MAX_WAIT_MS / 1000}s — not starting a competing server.`)
+    await new Promise((r) => setTimeout(r, PARENT_EXIT_POLL_MS))
   }
 }
