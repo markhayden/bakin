@@ -180,6 +180,38 @@ describe('verifyNpmPayload', () => {
       expect(problems()).toEqual([expect.stringContaining('invalid target for entry file')])
     })
 
+    it('null inside an exports ARRAY falls through to the next target', () => {
+      reset({ exports: [null, './missing.js'] }, [])
+      expect(problems()).toEqual([expect.stringContaining('missing its entry file missing.js')])
+    })
+
+    it('targets are URLs: percent-decoded, query/hash dropped, encoded separators invalid', () => {
+      reset({ exports: './entry%20file.js' }, ['entry file.js'])
+      expect(verify()).toEqual({ ok: true })
+      reset({ exports: './entry.js?mode=test' }, ['entry.js'])
+      expect(verify()).toEqual({ ok: true })
+      reset({ exports: './a%2fb.js' }, ['a/b.js'])
+      expect(problems()).toEqual([expect.stringContaining('invalid target')])
+    })
+
+    it('an exports map mixing subpath and condition keys, or with numeric condition keys, is invalid', () => {
+      reset({ exports: { '.': './entry.js', default: './entry.js' } }, ['entry.js'])
+      expect(problems()).toEqual([expect.stringContaining('invalid target for exports map')])
+      reset({ exports: { 0: './entry.js', default: './entry.js' } }, ['entry.js'])
+      expect(problems()).toEqual([expect.stringContaining('numeric')])
+    })
+
+    it('a "*" in a target is literal unless the KEY is a pattern', () => {
+      reset({ exports: './entry*.js' }, [])
+      expect(problems()).toEqual([expect.stringContaining('missing its entry file entry*.js')])
+    })
+
+    it('a payload script that is a symlink is rejected — Node resolves from its real location', () => {
+      rmSync(join(payload, 'run.js'))
+      symlinkSync(join(source, 'run.js'), join(payload, 'run.js'))
+      expect(problems()).toEqual([expect.stringContaining('script run.js is a symlink')])
+    })
+
     it('a missing main falls back to the package root index.js, as Node does', () => {
       reset({ main: 'missing.js' }, ['index.js'])
       expect(verify()).toEqual({ ok: true })

@@ -59,11 +59,13 @@ A capability pack is `kind: "skill-pack"` plus:
   declared name + version with the files Node would load — Node's
   PACKAGE_TARGET_RESOLVE under ESM conditions in DECLARATION order (null
   blocks a subpath, arrays fall back past invalid targets, targets must be
-  "./…"; literal targets behind wildcard keys are checked; `exports: null`
+  "./…" and are URLs — decoded, query/hash dropped, encoded separators
+  invalid; mixed subpath/condition maps and numeric condition keys are
+  invalid; `*` is a pattern only behind a pattern key; `exports: null`
   = legacy `main` with Node's fallbacks then the root index.*; `module` is
   a bundler field and never checked). The payload's node_modules must be
-  its own directory and every resolved dependency AND entry file must stay
-  inside it; unreadable files are failed verdicts, never exceptions. File
+  its own directory, payload scripts real copies (not symlinks), and every
+  resolved dependency AND entry file must stay inside it; unreadable files are failed verdicts, never exceptions. File
   reads only — no imports, subprocesses or network. The installer reuses a
   live payload only when it passes (so offline repair of an intact payload
   converges), and a staged payload must pass before it replaces the live
