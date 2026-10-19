@@ -185,6 +185,19 @@ describe('listCapabilities', () => {
     expect(cap.missing.join('\n')).toMatch(/installed manifest is invalid.*extractedSha256.*bakin packages install web-search-brave/)
   })
 
+  it('an unreadable or missing installed manifest keeps the pack visible as NOT ready — never a healthy "no packs" (#898 D)', async () => {
+    seedInstalledPack()
+    const manifestPath = join(testDir, 'packages', 'skill-packs', 'web-search-brave@1.0.0', 'bakin-package.json')
+    writeFileSync(manifestPath, '{ not json')
+    let [cap] = await listCapabilities()
+    expect(cap).toMatchObject({ capability: 'web-search-brave', packageId: 'web-search-brave', ready: false })
+    expect(cap.missing.join('\n')).toMatch(/unreadable.*bakin packages install web-search-brave/)
+    rmSync(manifestPath)
+    ;[cap] = await listCapabilities()
+    expect(cap.ready).toBe(false)
+    expect(cap.missing.join('\n')).toMatch(/missing.*bakin packages install web-search-brave/)
+  })
+
   it('an env var beats the store and reports source env', async () => {
     seedInstalledPack({ withBin: false })
     projectedSkills.add('bx-search')

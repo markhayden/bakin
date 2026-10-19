@@ -686,6 +686,25 @@ describe('plugin-assets — binaries', () => {
     expect(check.remediation).toMatch(/\.userEdited/)
   })
 
+  it('malformed containers on the way to requires.bins are invalid, never "no bins" (#898 D)', async () => {
+    for (const [id, body] of [
+      ['strreq', { id: 'strreq', name: 'x', version: '1.0.0', bakin: '*', requires: 'tmux' }],
+      ['arrreq', { id: 'arrreq', name: 'x', version: '1.0.0', bakin: '*', requires: [] }],
+      ['arrmanifest', []],
+    ] as const) {
+      const pluginDir = join(testDir, 'plugins', id)
+      mkdirSync(pluginDir, { recursive: true })
+      writeFileSync(join(pluginDir, 'bakin-plugin.json'), JSON.stringify(body))
+      const report = await scanPluginAssets([{ id, path: pluginDir }])
+      expect(report.bins.invalid).toEqual([{ pluginId: id, reason: expect.any(String) }])
+    }
+    // A manifest that genuinely declares nothing is still "no bins".
+    const plain = join(testDir, 'plugins', 'plain')
+    mkdirSync(plain, { recursive: true })
+    writeFileSync(join(plain, 'bakin-plugin.json'), JSON.stringify({ id: 'plain', name: 'x', version: '1.0.0', bakin: '*', requires: {} }))
+    expect((await scanPluginAssets([{ id: 'plain', path: plain }])).bins.invalid).toEqual([])
+  })
+
   it('the component check is never ok while a plugin\'s bin declaration is invalid — it names the plugin and the upgrade (#898 D)', async () => {
     const userPluginDir = join(bakinHome, 'plugins', 'oldterm')
     mkdirSync(userPluginDir, { recursive: true })

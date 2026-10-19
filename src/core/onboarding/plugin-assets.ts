@@ -280,7 +280,14 @@ export function findBinsForPlugin(plugin: PluginEntry): PluginBinDeclaration {
   const manifestPath = join(plugin.path, 'bakin-plugin.json')
   if (!existsSync(manifestPath)) return { ok: true, bins: [] }
   try {
-    const raw = (JSON.parse(readFileSync(manifestPath, 'utf-8')) as { requires?: { bins?: unknown } }).requires?.bins
+    // Every container on the way to `bins` is checked: only a manifest that
+    // genuinely declares no `requires`/`bins` means "no bins".
+    const manifest: unknown = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+    if (typeof manifest !== 'object' || manifest === null || Array.isArray(manifest)) return { ok: false, reason: 'manifest is not a JSON object' }
+    const requires = (manifest as { requires?: unknown }).requires
+    if (requires === undefined) return { ok: true, bins: [] }
+    if (typeof requires !== 'object' || requires === null || Array.isArray(requires)) return { ok: false, reason: 'requires must be an object' }
+    const raw = (requires as { bins?: unknown }).bins
     if (raw === undefined) return { ok: true, bins: [] }
     const parsed = BinRequirementsSchema.safeParse(raw)
     if (!parsed.success) {

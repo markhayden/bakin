@@ -562,3 +562,24 @@ export function readUninstallPolicy(text: string): boolean {
   if (typeof value !== 'boolean') throw new PluginManifestError('uninstallPreflightRequired must be a boolean')
   return value
 }
+
+/**
+ * The identity a restore needs to rebuild a ledger row (`id`, `version`,
+ * `permissions`), read without validating the rest of the install-time
+ * contract — a snapshot taken before a field became required (e.g. an
+ * archive bin without `extractedSha256`, #898 D) must still restore; the
+ * loader then reports the plugin `manifest_invalid` until it is upgraded.
+ */
+export function readPluginIdentity(text: string): { id: string; version: string; permissions: unknown } {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch (err) {
+    throw new PluginManifestError(`Invalid bakin-plugin.json: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  if (!isRecord(raw)) throw new PluginManifestError('bakin-plugin.json must be an object')
+  const id = stringField(raw, 'id', { required: true })!
+  if (!PLUGIN_ID_RE.test(id)) throw new PluginManifestError(`Invalid plugin id "${id}"`)
+  const version = stringField(raw, 'version') ?? '0.0.0'
+  return { id, version, permissions: raw.permissions }
+}

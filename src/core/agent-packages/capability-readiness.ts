@@ -95,32 +95,31 @@ const GLOBAL_SKILL_TARGET = 'runtime:global-skill:'
 
 type InstalledPackManifest =
   | { ok: true; manifest: SkillPackManifest }
-  | { ok: false; reason: string; raw: Record<string, unknown> }
+  /** `raw` is null when the file is missing or unreadable — nothing in it can be trusted. */
+  | { ok: false; reason: string; raw: Record<string, unknown> | null }
 
 /**
- * The installed skill-pack manifest — or, when the file is there but no
- * longer validates (e.g. an archive bin installed before `extractedSha256`
- * was required), the reason plus the raw JSON so the pack still shows up as
- * a NOT-ready capability instead of silently disappearing (#898 D). Null
- * only when there is nothing to report (absent, or not a skill-pack).
+ * The installed skill-pack manifest — or why it cannot be used: missing,
+ * unreadable, or no longer valid (e.g. an archive bin installed before
+ * `extractedSha256` was required). A broken manifest keeps the pack
+ * VISIBLE as a not-ready capability; it never silently disappears into a
+ * healthy result (#898 D). Null only for a valid manifest of another kind.
  */
 function readInstalledManifest(kind: string, id: string, version: string): InstalledPackManifest | null {
   const dir = getPackageSourceDir(getContentDir(), kind as never, id, version)
   const path = join(dir, 'bakin-package.json')
-  if (!existsSync(path)) return null
+  if (!existsSync(path)) return { ok: false, reason: 'the installed manifest is missing', raw: null }
   let raw: unknown
   try {
     raw = JSON.parse(readFileSync(path, 'utf-8'))
   } catch (err) {
     log.warn(`Unreadable installed manifest for ${id}@${version}`, { error: err instanceof Error ? err.message : String(err) })
-    return null
+    return { ok: false, reason: `the installed manifest is unreadable (${err instanceof Error ? err.message : String(err)})`, raw: null }
   }
   const parsed = safeParseManifest(raw)
   if (parsed.success) return parsed.data.kind === 'skill-pack' ? { ok: true, manifest: parsed.data } : null
-  const record = raw !== null && typeof raw === 'object' ? raw as Record<string, unknown> : {}
-  if (record.kind !== 'skill-pack') return null
   const reason = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')
-  return { ok: false, reason, raw: record }
+  return { ok: false, reason: `the installed manifest is invalid (${reason})`, raw: raw !== null && typeof raw === 'object' ? raw as Record<string, unknown> : null }
 }
 
 /** Readiness for every installed capability pack (lockfile-driven). */
@@ -140,19 +139,22 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
     if (!installed) continue
     if (!installed.ok) {
       // Visible, never green, never "no bins": the pack cannot be judged
-      // until it is reinstalled with a manifest this Bakin accepts.
-      const capability = typeof installed.raw.capability === 'string' ? installed.raw.capability : null
-      if (!capability) continue
+      // until it is reinstalled with a manifest this Bakin accepts. Only a
+      // readable manifest that clearly declares NO capability is skipped;
+      // otherwise the lockfile identity names the row.
+      const raw = installed.raw
+      if (raw && raw.capability === undefined) continue
+      const capability = typeof raw?.capability === 'string' ? raw.capability : id
       out.push({
         capability,
         packageId: id,
         version: entry.version,
-        name: typeof installed.raw.name === 'string' ? installed.raw.name : id,
-        description: typeof installed.raw.description === 'string' ? installed.raw.description : '',
+        name: typeof raw?.name === 'string' ? raw.name : id,
+        description: typeof raw?.description === 'string' ? raw.description : '',
         skills: [], bins: [], npm: [], models: [], prereqs: [], secrets: [],
         platformSupported: true,
         ready: false,
-        missing: [`the installed manifest is invalid (${installed.reason}) — reinstall: bakin packages install ${id}`],
+        missing: [`${installed.reason} — reinstall: bakin packages install ${id}`],
       })
       continue
     }
