@@ -90,11 +90,11 @@ function isFile(path: string): boolean {
   }
 }
 
-function isSymlink(path: string): boolean {
+function realpathOrNull(path: string): string | null {
   try {
-    return lstatSync(path).isSymbolicLink()
+    return realpathSync(path)
   } catch {
-    return false
+    return null
   }
 }
 
@@ -118,6 +118,7 @@ function readBytes(path: string): Buffer | null {
 /** Every file in the pack's script dir exists in the payload with identical bytes (the generated package.json always wins). */
 function compareScripts(source: string, payloadDir: string): string[] {
   if (!isDirectory(source)) return [`pack script dir is missing (${source})`]
+  const payloadReal = realpathOrNull(payloadDir) ?? payloadDir
   const problems: string[] = []
   const walk = (dir: string): void => {
     let entries
@@ -134,9 +135,11 @@ function compareScripts(source: string, payloadDir: string): string[] {
       if (rel === 'package.json') continue
       const copy = join(payloadDir, rel)
       if (!isFile(copy)) { problems.push(`script ${rel} is missing`); continue }
-      // Node resolves a script's imports from its REAL location: a symlinked
-      // copy would run against some other tree's dependencies.
-      if (isSymlink(copy)) { problems.push(`script ${rel} is a symlink, not a copy in the payload`); continue }
+      // Node resolves a script's imports from its REAL location: a script
+      // that is (or sits under a directory that is) a symlink out of the
+      // payload would run against some other tree's dependencies.
+      const real = realpathOrNull(copy)
+      if (!real || !real.startsWith(payloadReal + sep)) { problems.push(`script ${rel} resolves outside the payload`); continue }
       const want = readBytes(abs)
       const have = readBytes(copy)
       if (!want || !have) problems.push(`script ${rel} is unreadable`)
@@ -285,6 +288,9 @@ function entryChecks(pkg: { exports?: unknown; main?: unknown }): EntryCheck[] {
     const subpaths: Array<[string, unknown]> = dotted > 0 ? Object.entries(exportsField as Record<string, unknown>) : [['.', exportsField]]
     const checks: EntryCheck[] = []
     for (const [subpath, target] of subpaths) {
+      // Legacy folder mappings ("./": "./", "./lib/": …) are ignored by Node's
+      // resolver — they name directories, not files to check.
+      if (subpath.endsWith('/')) continue
       const label = subpath === '.' ? 'its entry file' : `its export ${subpath}`
       const resolved = resolveTarget(target)
       if (resolved.kind === 'invalid') checks.push({ label, invalid: resolved.reason })

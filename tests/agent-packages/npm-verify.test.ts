@@ -206,10 +206,25 @@ describe('verifyNpmPayload', () => {
       expect(problems()).toEqual([expect.stringContaining('missing its entry file entry*.js')])
     })
 
-    it('a payload script that is a symlink is rejected — Node resolves from its real location', () => {
+    it('a payload script that is a symlink out of the payload is rejected — Node resolves from its real location', () => {
       rmSync(join(payload, 'run.js'))
       symlinkSync(join(source, 'run.js'), join(payload, 'run.js'))
-      expect(problems()).toEqual([expect.stringContaining('script run.js is a symlink')])
+      expect(problems()).toEqual([expect.stringContaining('script run.js resolves outside the payload')])
+    })
+
+    it('a script under a symlinked DIRECTORY that leaves the payload is rejected', () => {
+      rmSync(join(payload, 'lib'), { recursive: true, force: true })
+      symlinkSync(join(source, 'lib'), join(payload, 'lib'))
+      expect(problems()).toEqual([expect.stringContaining('script lib/util.js resolves outside the payload')])
+    })
+
+    it('legacy trailing-slash folder mappings are ignored, as Node does (tslib / diff / @babel/runtime shapes)', () => {
+      // tslib@2.8.1
+      reset({ exports: { '.': { module: { types: './modules/index.d.ts', default: './tslib.es6.mjs' }, import: { node: './modules/index.js', default: { types: './modules/index.d.ts', default: './tslib.es6.mjs' } }, default: './tslib.js' }, './*': './*', './': './' } }, ['modules/index.js', 'tslib.es6.mjs', 'tslib.js'])
+      expect(verify()).toEqual({ ok: true })
+      // @babel/runtime-style: subpath files + a folder mapping
+      reset({ exports: { './helpers/x': [{ node: './helpers/x.js', default: './helpers/esm/x.js' }, './helpers/x.js'], './package': './package.json', './package.json': './package.json', './regenerator': './regenerator/index.js', './regenerator/': './regenerator/' } }, ['helpers/x.js', 'regenerator/index.js'])
+      expect(verify()).toEqual({ ok: true })
     })
 
     it('a missing main falls back to the package root index.js, as Node does', () => {
