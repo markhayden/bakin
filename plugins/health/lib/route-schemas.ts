@@ -173,6 +173,8 @@ export const canonicalHealthIncidentSchema = z.object({
   // Lockstep with HealthIncident.ackState (health trust overhaul) — a
   // lagging mirror makes the client reject the entire report (rc.25).
   ackState: z.enum(['acked', 'snoozed']).optional(),
+  // Lockstep with HealthIncident.repairTaskId (#898 PR G, D-G2).
+  repairTaskId: z.string().min(1).optional(),
 }).strict()
 
 export const searchReadinessStageSchema = z.object({

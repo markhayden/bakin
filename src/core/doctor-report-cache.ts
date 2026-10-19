@@ -31,6 +31,8 @@ import {
 import { deriveSearchReadiness } from './health-search-readiness'
 import { listHealthChecks, onHealthRegistryChanged } from './health-check-registry'
 import { createLogger } from './logger'
+import { getContentDir } from './content-dir'
+import { listDoctorRepairRequests, type DoctorRepairRequest } from './doctor-repair-store'
 import { getSettings } from './settings'
 
 const log = createLogger('doctor-report-cache')
@@ -343,6 +345,9 @@ function semanticProjectionKey(report: Pick<
       // Ack state participates in identity: ack writes and snooze expiry
       // republish without a doctor re-run (health trust overhaul).
       incident.ackState ?? null,
+      // The repair-task link participates too: a task opening or closing
+      // republishes so the incident card's link appears/disappears (D-G2).
+      incident.repairTaskId ?? null,
     ]),
     overallStatus: report.overallStatus,
     search: {
@@ -465,6 +470,34 @@ export function acknowledgeHealthIncident(input: {
   return { incidentId: incident.id, action: input.action }
 }
 
+/**
+ * The open repair task working each incident (spec D-G2): the newest open
+ * request (not verified or dismissed) that names the incident and has a task.
+ * A read failure links nothing — never fails the report.
+ */
+function joinRepairTasks(incidents: HealthIncident[]): HealthIncident[] {
+  let requests: DoctorRepairRequest[]
+  try {
+    requests = listDoctorRepairRequests(getContentDir())
+  } catch (err) {
+    log.warn('Repair requests unreadable; incidents carry no repair task link', { err: err instanceof Error ? err.message : String(err) })
+    return incidents
+  }
+  const taskFor = new Map<string, { taskId: string; at: number }>()
+  for (const request of requests) {
+    if (!request.taskId || request.status === 'verified' || request.status === 'dismissed') continue
+    const at = Date.parse(request.createdAt)
+    for (const id of request.incidentIds) {
+      const current = taskFor.get(id)
+      if (!current || at > current.at) taskFor.set(id, { taskId: request.taskId, at })
+    }
+  }
+  return incidents.map((incident) => {
+    const link = taskFor.get(incident.id)
+    return link ? { ...incident, repairTaskId: link.taskId } : incident
+  })
+}
+
 export function getHealthReport(generatedAt = new Date().toISOString()): HealthReport {
   const definitions = listHealthChecks()
   const defById = new Map(definitions.map((def) => [def.id, def]))
@@ -477,11 +510,11 @@ export function getHealthReport(generatedAt = new Date().toISOString()): HealthR
   // Ack state joins at the same ONE point: acked/snoozed incidents stay on
   // the wire (Acknowledged section) but stop driving attention anywhere.
   const sensitivity = getSettings().doctor.sensitivity
-  const incidents = applyIncidentAckStates(
+  const incidents = joinRepairTasks(applyIncidentAckStates(
     sortHealthIncidents(projectEffectiveDispositions(rawIncidents, sensitivity)),
     observations,
     generatedAt,
-  )
+  ))
   const liveIncidents = incidents.filter((incident) => incident.ackState === undefined)
   const search = deriveSearchReadiness({ observations, incidents, checks, generatedAt })
   const overallStatus = deriveHealthReportStatus({
