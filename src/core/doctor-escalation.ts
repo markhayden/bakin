@@ -97,9 +97,8 @@ function judgeCoverage(
 
 async function taskColumn(taskId: string | undefined): Promise<string | null> {
   if (!taskId) return null
-  const { getTaskDetails } = await import('./task-service')
-  const details = await getTaskDetails(taskId).catch(() => null)
-  return details?.column ?? null
+  const { getTaskWithColumn } = await import('./task-store')
+  return getTaskWithColumn(taskId)?.column ?? null
 }
 
 /**
@@ -137,38 +136,38 @@ interface ResurfaceContext {
 }
 
 /**
- * Hand a repair task back to the operator (spec D-G3). Re-reads the request
- * and its task first and re-judges them — auto-close or an approval may have
- * moved on since the assessment — and skips while a run is in flight (the
- * agent is working). Otherwise moves it to Review (audited reopen when it
- * leaves Done), re-announces its pending approval or attaches one
- * (delegated), and records the `resurfaced` window mark. Never creates a task.
+ * Hand a repair task back to the operator (spec D-G3). Every module is
+ * loaded first; then ONE synchronous block re-reads the request and its
+ * task, re-judges them, and mutates — nothing (auto-close verifying it, an
+ * approval resolving) can interleave between the check and the writes.
+ * Skips while a run is in flight (the agent is working). Otherwise moves the
+ * task to Review (audited reopen when it leaves Done), re-announces its
+ * pending approval or attaches one (delegated), and records the `resurfaced`
+ * window mark. Never creates a task.
  */
 async function resurfaceRequest(requestId: string, ctx: ResurfaceContext): Promise<string | null> {
   const { getDoctorRepairRequest, updateDoctorRepairRequest } = await import('./doctor-repair-store')
+  const { getTaskWithColumn, escalateTaskToReview } = await import('./task-store')
+  const { reopenIfLeavingDone } = await import('./task-service')
+  const { getLiveRun } = await import('./execution-ledger')
+  const { reannounceApproval } = await import('./approvals')
+  const { attachResurfaceApproval } = await import('./doctor-approvals')
+
+  // ── synchronous from here: check and mutate as one step ──
   const request = getDoctorRepairRequest(ctx.contentDir, requestId)
   if (!request?.taskId) return null
-  const verdict = judgeCoverage(request, await taskColumn(request.taskId), ctx.fresh, Date.now(), ctx.cooldownMs, ctx.staleAfterMs)
-  if (verdict.kind !== 'resurface') return null
   const taskId = request.taskId
-  const { getLiveRun } = await import('./execution-ledger')
+  const column = getTaskWithColumn(taskId)?.column ?? null
+  const verdict = judgeCoverage(request, column, ctx.fresh, Date.now(), ctx.cooldownMs, ctx.staleAfterMs)
+  if (verdict.kind !== 'resurface') return null
   if (getLiveRun(taskId)) return null
   const hours = Math.round(ctx.staleAfterMs / 3_600_000)
   const message = verdict.reason === 'closed-unfixed'
     ? 'Health: this task was closed, but its incident still fails — reopened in Review for you.'
     : `Health: not fixed after ${hours}h — handed back to you.`
-  const { escalateTaskToReview } = await import('./task-store')
-  const from = await escalateTaskToReview(taskId, message)
-  if (from) {
-    const { reopenIfLeavingDone } = await import('./task-service')
-    reopenIfLeavingDone(taskId, 'review', 'health', 'system')
-  }
-  const { reannounceApproval } = await import('./approvals')
+  if (escalateTaskToReview(taskId, message)) reopenIfLeavingDone(taskId, 'review', 'health', 'system')
   const announced = request.approvalId ? reannounceApproval(request.approvalId) : false
-  if (!announced) {
-    const { attachResurfaceApproval } = await import('./doctor-approvals')
-    attachResurfaceApproval({ contentDir: ctx.contentDir, request, incidents: ctx.incidents })
-  }
+  if (!announced) attachResurfaceApproval({ contentDir: ctx.contentDir, request, incidents: ctx.incidents })
   updateDoctorRepairRequest(ctx.contentDir, request.id, (current) => ({
     ...current,
     events: [...current.events, { ts: new Date().toISOString(), type: 'resurfaced', message, data: { reason: verdict.reason } }],

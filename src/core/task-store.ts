@@ -472,20 +472,17 @@ export function addTaskLog(identifier: string, author: string, message: string, 
  * incident still fails; it never runs for an agent or a turn. A task already
  * in Review or Blocked stays put (its blocked reason is context the operator
  * needs). The reason always goes on the task log so the hand-off explains
- * itself. Resolves to the column the task LEFT, or null when it did not move.
+ * itself. Synchronous on purpose: Health's resurface re-judges and mutates in
+ * one uninterrupted block. Returns the column the task LEFT, or null.
  */
-export function escalateTaskToReview(identifier: string, reason: string): Promise<string | null> {
-  try {
-    const task = requireTask(identifier)
-    const store = getSharedBakinTaskStore()
-    const from = asColumnId(task)
-    const moves = from !== 'review' && from !== 'blocked'
-    if (moves) store.updateSync(task.id, columnPatch('review'))
-    store.appendLogSync(task.id, { timestamp: new Date().toISOString(), author: 'health', message: reason })
-    return Promise.resolve(moves ? from : null)
-  } catch (err) {
-    return Promise.reject(err)
-  }
+export function escalateTaskToReview(identifier: string, reason: string): string | null {
+  const task = requireTask(identifier)
+  const store = getSharedBakinTaskStore()
+  const from = asColumnId(task)
+  const moves = from !== 'review' && from !== 'blocked'
+  if (moves) store.updateSync(task.id, columnPatch('review'))
+  store.appendLogSync(task.id, { timestamp: new Date().toISOString(), author: 'health', message: reason })
+  return moves ? from : null
 }
 
 export function blockTask(identifier: string, reason: string, agent?: string, channel?: string): Promise<void> {

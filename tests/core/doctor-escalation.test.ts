@@ -25,7 +25,7 @@ type Req = { id: string; incidentIds: string[]; taskId?: string; createdAt: stri
 let requests: Req[] = []
 let liveRuns = new Set<string>()
 let onTaskRead = () => {}
-const escalateTaskToReview = mock(async (taskId: string, _reason: string) => {
+const escalateTaskToReview = mock((taskId: string, _reason: string) => {
   const from = taskColumns[taskId]!
   if (from === 'review' || from === 'blocked') return null
   taskColumns[taskId] = 'review'
@@ -70,10 +70,12 @@ mock.module('../../src/core/doctor-repair-store', () => ({
   },
 }))
 mock.module('../../src/core/execution-ledger', () => ({ getLiveRun: (taskId: string) => (liveRuns.has(taskId) ? { runId: `run-${taskId}` } : null) }))
-mock.module('../../src/core/task-store', () => ({ escalateTaskToReview }))
+mock.module('../../src/core/task-store', () => ({
+  escalateTaskToReview,
+  getTaskWithColumn: (taskId: string) => { onTaskRead(); return taskId in taskColumns ? { column: taskColumns[taskId] } : null },
+}))
 mock.module('../../src/core/approvals', () => ({ reannounceApproval }))
 mock.module('../../src/core/task-service', () => ({
-  getTaskDetails: async (taskId: string) => { onTaskRead(); return taskId in taskColumns ? { column: taskColumns[taskId] } : null },
   reopenIfLeavingDone,
 }))
 mock.module('../../src/core/doctor-delegate', () => ({ delegateDoctorRepair: delegate }))
