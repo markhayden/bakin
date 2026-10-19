@@ -4,7 +4,7 @@
  * Exactly one may win; a live lock is never swept away.
  */
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test'
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { tmpdir } from 'os'
 
@@ -48,5 +48,33 @@ describe('acquireServerLock across processes', () => {
     writeFileSync(join(home, 'server.lock'), '{"pid": 12')
     await race(8)
     expect(readdirSync(winners)).toHaveLength(1)
+  }, 30_000)
+
+  it('fails closed on a sweep marker a DEAD starter left — never reclaims it, never touches the lock', async () => {
+    const stale = JSON.stringify({ pid: 999999999, port: 3737, startedAt: 0, bootId: 'dead' })
+    writeFileSync(join(home, 'server.lock'), stale)
+    writeFileSync(join(home, 'server.lock.sweep'), JSON.stringify({ pid: 999999998, at: 0 }))
+    const script = join(home, 'one.ts')
+    writeFileSync(script, `import { acquireServerLock } from ${JSON.stringify(modulePath)}\ntry { acquireServerLock(3737, 'b'); console.log('ACQUIRED') } catch (err) { console.log(String(err)) }\n`)
+    const proc = Bun.spawn(['bun', script], { stdout: 'pipe', stderr: 'ignore', env: { ...process.env, BAKIN_HOME: home, BAKIN_CONSOLE_FORMAT: 'silent', BAKIN_DISABLE_FILE_LOG: '1' } })
+    const out = await new Response(proc.stdout).text()
+    await proc.exited
+    expect(out).toContain('server.lock.sweep')
+    expect(out).not.toContain('ACQUIRED')
+    expect(readFileSync(join(home, 'server.lock'), 'utf-8')).toBe(stale)
+  }, 30_000)
+
+  it('starters racing a LIVE holder all refuse and leave its lock byte for byte', async () => {
+    const holder = Bun.spawn(['sleep', '30'])
+    try {
+      const live = JSON.stringify({ pid: holder.pid, port: 3737, startedAt: 1, bootId: 'live' })
+      writeFileSync(join(home, 'server.lock'), live)
+      await race(8)
+      expect(readdirSync(winners)).toHaveLength(0)
+      expect(readFileSync(join(home, 'server.lock'), 'utf-8')).toBe(live)
+      expect(readdirSync(home).filter((n) => n.startsWith('server.lock.'))).toEqual([])
+    } finally {
+      holder.kill()
+    }
   }, 30_000)
 })

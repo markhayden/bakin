@@ -11,6 +11,7 @@ interface Server { pid: number; bootId: string; port: number; state: string; pro
 function harness(opts: { home?: string; platform?: string; lock?: LockInfo | null; servers?: Server[]; processes?: ProcessInfo[]; launchctl?: { ok: boolean; output: string }; plist?: string | null; spawnBoots?: boolean } = {}) {
   const servers = opts.servers ?? []
   let lock: LockInfo | null = opts.lock ?? null
+  let launchctl = opts.launchctl ?? { ok: false, output: 'Could not find service' }
   let clock = 0
   const execs: string[] = []
   const shutdownRequests: Array<{ port: number; secret?: string; bootId?: string }> = []
@@ -45,7 +46,7 @@ function harness(opts: { home?: string; platform?: string; lock?: LockInfo | nul
     listProcesses: () => opts.processes ?? [],
     exec: (cmd, args) => {
       execs.push(`${cmd} ${args.join(' ')}`)
-      if (cmd === 'launchctl' && args[0] === 'print') return opts.launchctl ?? { ok: false, output: 'Could not find service' }
+      if (cmd === 'launchctl' && args[0] === 'print') return launchctl
       return { ok: true, output: '' }
     },
     uid: () => '501',
@@ -65,7 +66,15 @@ function harness(opts: { home?: string; platform?: string; lock?: LockInfo | nul
     now: () => clock,
     sleep: async (ms) => { clock += ms; await Promise.resolve() },
   }
-  return { io, execs, shutdownRequests, spawns, servers, getLock: () => lock }
+  return {
+    io, execs, shutdownRequests, spawns, servers,
+    getLock: () => lock,
+    setLock: (next: LockInfo | null) => { lock = next },
+    /** What the manager reports from now on (a kickstart changes its pid). */
+    setService: (pid: number | null, home = '/home/me/.bakin') => {
+      launchctl = { ok: true, output: `gui/501/com.makinbakin.bakin = {\n${pid ? `\tpid = ${pid}\n` : ''}\tenvironment = {\n\t\tBAKIN_HOME => ${home}\n\t}\n}` }
+    },
+  }
 }
 
 const mine: Server = { pid: 500, bootId: 'boot-A', port: 3737, state: 'serving', secret: 'secret-A', alive: true, answers: true }
@@ -191,7 +200,8 @@ describe('restart', () => {
         me.alive = false
         const next = { ...mine, pid: 501, bootId: 'boot-B', secret: 'b' }
         h.servers.push(next)
-        ;(h.io as { readLock: () => LockInfo | null }).readLock = () => lockFor(next)
+        h.setLock(lockFor(next))
+        h.setService(501)
       }
       return r
     }
@@ -217,7 +227,8 @@ describe('restart', () => {
       if (args[0] === 'kickstart') {
         const s = { ...mine, pid: 777, bootId: 'boot-S', secret: 's' }
         h.servers.push(s)
-        ;(h.io as { readLock: () => LockInfo | null }).readLock = () => lockFor(s)
+        h.setLock(lockFor(s))
+        h.setService(777)
       }
       return r
     }
@@ -231,5 +242,115 @@ describe('restart', () => {
     const out = await restartHome(h.io, { baseEnv: {} })
     expect(out.ok).toBe(true)
     expect(h.execs.some((e) => e.includes('bootstrap'))).toBe(false)
+  })
+
+  it('a service restart is proved only by the MANAGER\'s pid — a manual starter winning the home fails it (K r1 #6)', async () => {
+    const me = fresh()
+    const h = harness({ lock: lockFor(me), servers: [me] })
+    h.setService(500)
+    const exec = h.io.exec
+    h.io.exec = (cmd, args) => {
+      const r = exec(cmd, args)
+      if (args[0] === 'kickstart') {
+        me.alive = false
+        const interloper = { ...mine, pid: 8080, bootId: 'boot-X', secret: 'x' }
+        h.servers.push(interloper)
+        h.setLock(lockFor(interloper))
+        h.setService(null) // the service's own replacement lost the lock and exited
+      }
+      return r
+    }
+    const out = await restartHome(h.io, { baseEnv: {} })
+    expect(out.ok).toBe(false)
+    expect(out.message).toContain('pid 8080')
+  })
+
+  it('a running service job that holds no lock for this home is unproven → no restart, nothing spawned (K r1 #3)', async () => {
+    const h = harness()
+    h.setService(4242)
+    const out = await restartHome(h.io, { baseEnv: {} })
+    expect(out.ok).toBe(false)
+    expect(h.execs.some((e) => e.includes('kickstart') || e.includes('bootstrap'))).toBe(false)
+    expect(h.spawns).toEqual([])
+  })
+
+  it('an old-protocol server is driven through a service only when the job is configured for THIS home (K r1 #2)', async () => {
+    const me = fresh({ protocol: 'old' })
+    const h = harness({ lock: lockFor(me), servers: [me] })
+    h.setService(500, '/other/home')
+    const restarted = await restartHome(h.io, { baseEnv: {} })
+    expect(restarted.ok).toBe(false)
+    const stopped = await stopHome(h.io)
+    expect(stopped.ok).toBe(false)
+    expect(h.execs.some((e) => e.includes('kickstart') || e.includes('bootout'))).toBe(false)
+  })
+
+  it('a successor that takes the home as the old server exits is reconciled with — no competing spawn (K r1 #8)', async () => {
+    const me = fresh()
+    const h = harness({ lock: lockFor(me), servers: [me] })
+    const http = h.io.http
+    h.io.http = async (method, port, path, o) => {
+      const r = await http(method, port, path, o)
+      if (path === '/api/server/shutdown') {
+        queueMicrotask(() => {
+          const successor = { ...mine, pid: 6060, bootId: 'boot-Z', secret: 'z' }
+          h.servers.push(successor)
+          h.setLock(lockFor(successor))
+        })
+      }
+      return r
+    }
+    const out = await restartHome(h.io, { baseEnv: {} })
+    expect(out).toMatchObject({ ok: true, status: 'warn', boot: { pid: 6060 } })
+    expect(h.spawns).toEqual([])
+  })
+
+  it('a pending restart child refuses restart even while the old server still answers (K r1 #9); --force overrides', async () => {
+    const me = fresh()
+    const child = { pid: 3030, command: 'bun server.ts __bakin-restart-child 500' }
+    const h = harness({ lock: lockFor(me), servers: [me], processes: [child] })
+    const out = await restartHome(h.io, { baseEnv: {} })
+    expect(out.ok).toBe(false)
+    expect(h.shutdownRequests).toEqual([])
+    const forced = await restartHome(h.io, { baseEnv: {}, force: true })
+    expect(forced.ok).toBe(true)
+  })
+
+  it('a dev coordinator running the current server does not block its restart', async () => {
+    const me = fresh()
+    const h = harness({ lock: lockFor(me), servers: [me], processes: [{ pid: 3131, command: 'bun scripts/dev.ts' }] })
+    const out = await restartHome(h.io, { baseEnv: {} })
+    expect(out.ok).toBe(true)
+  })
+})
+
+describe('stop — fail closed on what it cannot see', () => {
+  it('an unreadable service state stops nothing (a KeepAlive job could respawn it) (K r1 #5)', async () => {
+    const me = fresh()
+    const h = harness({ lock: lockFor(me), servers: [me], launchctl: { ok: false, output: 'launchctl: internal error' } })
+    const out = await stopHome(h.io)
+    expect(out.ok).toBe(false)
+    expect(h.shutdownRequests).toEqual([])
+    expect(me.alive).toBe(true)
+  })
+
+  it('a replacement taking the home right after the stop is reported, never "stopped" (K r1 #5)', async () => {
+    const me = fresh()
+    const h = harness({ lock: lockFor(me), servers: [me] })
+    const http = h.io.http
+    h.io.http = async (method, port, path, o) => {
+      const r = await http(method, port, path, o)
+      if (path === '/api/server/shutdown') {
+        queueMicrotask(() => {
+          const respawn = { ...mine, pid: 7070, bootId: 'boot-R', secret: 'r' }
+          h.servers.push(respawn)
+          h.setLock(lockFor(respawn))
+        })
+      }
+      return r
+    }
+    const out = await stopHome(h.io)
+    expect(out.ok).toBe(false)
+    expect(out.message).toContain('pid 7070')
   })
 })

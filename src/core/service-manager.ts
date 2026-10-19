@@ -8,6 +8,8 @@
 import { execFileSync } from 'child_process'
 
 export const BAKIN_SERVICE_LABEL = 'com.makinbakin.bakin'
+/** A stuck manager must never hang /api/restart. */
+const SERVICE_QUERY_TIMEOUT_MS = 5_000
 
 export function parseLaunchctlPid(output: string): number | null {
   const pids = [...output.matchAll(/^\s*pid = (\d+)\s*$/gm)].map((m) => Number(m[1]))
@@ -23,11 +25,11 @@ export function parseSystemdMainPid(output: string): number | null {
 export function loadedServicePid(platform: string = process.platform): number | null {
   try {
     if (platform === 'darwin') {
-      const uid = String(process.getuid?.() ?? execFileSync('id', ['-u'], { encoding: 'utf-8' }).trim())
-      return parseLaunchctlPid(execFileSync('launchctl', ['print', `gui/${uid}/${BAKIN_SERVICE_LABEL}`], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }))
+      const uid = String(process.getuid?.() ?? execFileSync('id', ['-u'], { encoding: 'utf-8', timeout: SERVICE_QUERY_TIMEOUT_MS }).trim())
+      return parseLaunchctlPid(execFileSync('launchctl', ['print', `gui/${uid}/${BAKIN_SERVICE_LABEL}`], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: SERVICE_QUERY_TIMEOUT_MS }))
     }
     if (platform === 'linux') {
-      return parseSystemdMainPid(execFileSync('systemctl', ['--user', 'show', `${BAKIN_SERVICE_LABEL}.service`, '-p', 'MainPID'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }))
+      return parseSystemdMainPid(execFileSync('systemctl', ['--user', 'show', `${BAKIN_SERVICE_LABEL}.service`, '-p', 'MainPID'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: SERVICE_QUERY_TIMEOUT_MS }))
     }
   } catch {
     return null // not loaded, or the manager is unavailable: no evidence

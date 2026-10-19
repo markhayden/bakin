@@ -390,15 +390,16 @@ async function cmdReboot(args: string[] = []): Promise<void> {
  * output modes, and a failure always exits non-zero.
  */
 async function printLifecycleOutcome(action: 'stop' | 'restart', outcome: import('../lifecycle-control').LifecycleOutcome, facts: string[] = []): Promise<void> {
-  if (!outcome.ok) process.exitCode = 1
   const detail = [...facts, ...outcome.notes].join('\n') || undefined
   if (process.stdout.isTTY) {
     await printRuntimeActionTui({ action, target: 'Bakin server', result: { ok: outcome.ok, status: outcome.status, message: outcome.message }, message: outcome.message, detail })
-    return
+  } else {
+    const tag = outcome.status === 'ok' ? '[OK]' : outcome.status === 'warn' ? '[WARN]' : '[ERROR]'
+    console.log(`${tag} ${outcome.message}`)
+    for (const line of [...facts, ...outcome.notes]) console.log(`  ${line}`)
   }
-  const tag = outcome.status === 'ok' ? '[OK]' : outcome.status === 'warn' ? '[WARN]' : '[ERROR]'
-  console.log(`${tag} ${outcome.message}`)
-  for (const line of [...facts, ...outcome.notes]) console.log(`  ${line}`)
+  // Exit here: the compiled dispatcher turns a normal return into exit 0.
+  if (!outcome.ok) process.exit(1)
 }
 
 interface LogsOptions {

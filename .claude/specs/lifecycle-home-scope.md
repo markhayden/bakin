@@ -136,3 +136,19 @@ plan) is either impossible by construction or covered by a test.
 - **Q4 Stop of a service-managed server:** stop the SERVICE (no KeepAlive
   respawn); `bakin start` / `restart` / `setup` bring it back.
 - Handoff budget: 20 s monotonic deadline with early completion.
+
+## Review hardening (Codex round 1, 2026-10-19)
+
+- Stale-lock removal runs under an exclusive `server.lock.sweep` marker and
+  re-reads the exact stale bytes before unlinking; the lock path is never
+  renamed aside. A marker left by a dead starter fails boot closed.
+- An old-protocol server's service is driven only when the loaded job runs
+  the lock's pid AND is configured for this home.
+- With nothing running here, only an IDLE service for this home (unloaded, or
+  loaded without a pid) is started; a running job holding no lock is refused.
+- Stop refuses when the service state is unreadable; a successor taking the
+  home right after a stop is an error, never "stopped".
+- A service restart succeeds only when the manager's own pid answers.
+- A successor appearing during a manual restart is awaited, not raced.
+- A restart child counts as a pending start even while the old server answers.
+- Service commands carry deadlines; failures exit 1 via `process.exit`.

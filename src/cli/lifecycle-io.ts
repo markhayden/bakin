@@ -12,6 +12,9 @@ import { readServerLock } from '../core/server-lock'
 import { SERVICE_LABEL, type LifecycleIo, type ProcessInfo } from './lifecycle-control'
 
 /** This home, absolute and canonical — frozen before anything changes directory. */
+/** A stuck service manager must never hang the CLI past its own deadlines. */
+const SERVICE_COMMAND_TIMEOUT_MS = 10_000
+
 export function canonicalHome(): string {
   const home = resolve(getContentDir())
   try {
@@ -62,7 +65,7 @@ export async function realLifecycleIo(launch: () => Promise<{ programArgs: strin
     },
     listProcesses: () => {
       try {
-        const out = execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] })
+        const out = execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: SERVICE_COMMAND_TIMEOUT_MS })
         const procs: ProcessInfo[] = []
         for (const line of out.split('\n')) {
           const m = /^\s*(\d+)\s+(.*)$/.exec(line)
@@ -75,7 +78,7 @@ export async function realLifecycleIo(launch: () => Promise<{ programArgs: strin
     },
     exec: (cmd, args) => {
       try {
-        const output = execFileSync(cmd, args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] })
+        const output = execFileSync(cmd, args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], timeout: SERVICE_COMMAND_TIMEOUT_MS })
         return { ok: true, output }
       } catch (err) {
         const e = err as { stdout?: string; stderr?: string; message?: string }

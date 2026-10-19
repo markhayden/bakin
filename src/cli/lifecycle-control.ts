@@ -185,8 +185,15 @@ function restartServiceCommands(io: LifecycleIo, state: ServiceState): Array<[st
 
 const SERVER_LIKE = /(server\.ts\b.*\bserve\b|\bbakin\b.*\b(start|serve)\b|__bakin-restart-child|scripts\/dev\.ts)/
 
-export function pendingStarts(io: LifecycleIo, exclude: number[]): ProcessInfo[] {
-  return io.listProcesses().filter((p) => !exclude.includes(p.pid) && /__bakin-restart-child|scripts\/dev\.ts/.test(p.command))
+/**
+ * Starts that may already be on their way. A restart child (spawned by the
+ * server's own /api/restart, waiting for its parent to exit) is pending even
+ * while the old server still answers; a dev coordinator counts only when no
+ * server answers (it normally runs the server it started).
+ */
+export function pendingStarts(io: LifecycleIo, exclude: number[], opts: { serverRunning: boolean }): ProcessInfo[] {
+  const pattern = opts.serverRunning ? /__bakin-restart-child/ : /__bakin-restart-child|scripts\/dev\.ts/
+  return io.listProcesses().filter((p) => !exclude.includes(p.pid) && pattern.test(p.command))
 }
 
 export function otherServers(io: LifecycleIo, exclude: number[]): ProcessInfo[] {
@@ -226,22 +233,45 @@ function refusal(identity: Identity): LifecycleOutcome | null {
   }
 }
 
-/** Await the end of one generation: no answer from that boot AND its lock released/replaced (or its pid gone). */
-async function awaitGenerationGone(io: LifecycleIo, gen: { pid: number; bootId: string; port: number }, deadline: number): Promise<boolean> {
+/**
+ * Await the end of one generation: no answer from that boot AND its lock
+ * released/replaced (or its pid gone). `successor` is a live lock holder of a
+ * DIFFERENT generation already in this home's lock when it went — a respawn or
+ * a start that raced us — which the caller must never treat as "stopped" nor
+ * launch a competitor beside.
+ */
+async function awaitGenerationGone(io: LifecycleIo, gen: { pid: number; bootId: string; port: number }, deadline: number): Promise<{ gone: false } | { gone: true; successor: LockInfo | null }> {
   for (;;) {
     const answer = await askVersion(io, gen.port)
     const stillAnswering = answer !== null && answer !== 'old' && answer.bootId === gen.bootId
     if (!stillAnswering) {
       const lock = io.readLock()
-      if (!lock || lock.bootId !== gen.bootId || !io.pidAlive(gen.pid)) return true
+      if (!lock || lock.bootId !== gen.bootId || !io.pidAlive(gen.pid)) {
+        const successor = lock && lock.bootId !== gen.bootId && io.pidAlive(lock.pid) ? lock : null
+        return { gone: true, successor }
+      }
     }
-    if (io.now() >= deadline) return false
+    if (io.now() >= deadline) return { gone: false }
     await io.sleep(POLL_MS)
   }
 }
 
+function stoppedOutcome(io: LifecycleIo, gone: { gone: false } | { gone: true; successor: LockInfo | null }, pid: number, notes: string[]): LifecycleOutcome {
+  if (!gone.gone) return { ok: false, status: 'error', message: `Bakin (pid ${pid}) is still shutting down after 20s.`, notes }
+  if (gone.successor) {
+    return {
+      ok: false,
+      status: 'error',
+      message: `The server stopped, but another Bakin (pid ${gone.successor.pid}) took this home straight away — a service manager or another start may own it.`,
+      notes: [...notes, 'Check `bakin status`; if a service respawned it, `bakin stop` again stops the service.'],
+    }
+  }
+  return { ok: true, status: 'ok', message: 'Bakin stopped.', notes: [...notes, ...othersNote(io, [io.selfPid])] }
+}
+
 /** Await a NEW boot for this home: lock + own answer agree, state serving, and (when given) the pid we started. */
-async function awaitNewBoot(io: LifecycleIo, oldBootId: string | null, deadline: number, expect: { pid?: number | null; spawned?: ReturnType<LifecycleIo['spawnServer']> }): Promise<LifecycleOutcome['boot'] | { failed: string } | null> {
+async function awaitNewBoot(io: LifecycleIo, oldBootId: string | null, deadline: number, expect: { pid?: number | null; spawned?: ReturnType<LifecycleIo['spawnServer']>; service?: boolean }): Promise<LifecycleOutcome['boot'] | { failed: string } | null> {
+  let notTheService: number | null = null
   for (;;) {
     if (expect.spawned?.exitedEarly()) return { failed: `the new server exited during startup${expect.spawned.error() ? `: ${expect.spawned.error()}` : ''}` }
     const lock = io.readLock()
@@ -250,11 +280,16 @@ async function awaitNewBoot(io: LifecycleIo, oldBootId: string | null, deadline:
       const answer = parseVersion(raw)
       if (answer && answer !== 'old' && answer.pid === lock.pid && answer.bootId === lock.bootId && answer.state === 'serving') {
         if (expect.pid && answer.pid !== expect.pid) return { failed: `a different server (pid ${answer.pid}) took this home instead of the one just started (pid ${expect.pid})` }
-        const version = typeof (raw?.body as { version?: unknown })?.version === 'string' ? (raw!.body as { version: string }).version : undefined
-        return { pid: answer.pid, bootId: answer.bootId, ...(version ? { version } : {}) }
+        // A service restart is proved only by the MANAGER's own pid answering.
+        const service = expect.service ? readServiceState(io) : null
+        if (!service || (service.kind === 'loaded' && service.pid === answer.pid)) {
+          const version = typeof (raw?.body as { version?: unknown })?.version === 'string' ? (raw!.body as { version: string }).version : undefined
+          return { pid: answer.pid, bootId: answer.bootId, ...(version ? { version } : {}) }
+        }
+        notTheService = answer.pid
       }
     }
-    if (io.now() >= deadline) return null
+    if (io.now() >= deadline) return notTheService !== null ? { failed: `a server that is not the service's (pid ${notTheService}) took this home` } : null
     await io.sleep(POLL_MS)
   }
 }
@@ -272,7 +307,7 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
   if (refused) return { ...refused, notes: [...refused.notes, ...othersNote(io, [io.selfPid])] }
 
   if (identity.kind === 'none') {
-    const pending = pendingStarts(io, [io.selfPid])
+    const pending = pendingStarts(io, [io.selfPid], { serverRunning: false })
     return {
       ok: true,
       status: pending.length > 0 ? 'warn' : 'ok',
@@ -290,7 +325,7 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
   if (identity.kind === 'old-protocol') {
     // An older server can't take a shutdown request. Only its own service
     // manager — proved to run exactly this lock holder — may stop it.
-    if (service.kind === 'loaded' && service.pid === identity.pid) {
+    if (serviceRunsOldServer(io, service, identity)) {
       const [cmd, args] = stopServiceCommand(io)
       const done = io.exec(cmd, args)
       if (!done.ok) return { ok: false, status: 'error', message: `Could not stop the Bakin service: ${done.output.trim()}`, notes }
@@ -303,9 +338,7 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
         notes: [`Stop it once yourself (it is this home's lock holder: kill ${identity.pid}); every later stop/restart is by request.`],
       }
     }
-    return (await awaitGenerationGone(io, { pid: identity.pid, bootId: io.readLock()?.bootId ?? '', port: identity.port }, deadline))
-      ? { ok: true, status: 'ok', message: 'Bakin stopped.', notes: [...notes, ...othersNote(io, [io.selfPid])] }
-      : { ok: false, status: 'error', message: 'Bakin did not stop within 20s.', notes }
+    return stoppedOutcome(io, await awaitGenerationGone(io, { pid: identity.pid, bootId: io.readLock()?.bootId ?? '', port: identity.port }, deadline), identity.pid, notes)
   }
 
   if (identity.kind !== 'owned') return { ok: false, status: 'error', message: 'Unexpected server state.', notes }
@@ -316,17 +349,30 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
     if (!done.ok) return { ok: false, status: 'error', message: `Could not stop the Bakin service: ${done.output.trim()}`, notes }
     notes.push('Stopped the Bakin service so it does not respawn; `bakin restart` or `bakin setup service` brings it back.')
   } else {
-    if (service.kind === 'unknown') notes.push(`The Bakin service state could not be read (${service.reason}); stopped this home's server by request only.`)
+    if (service.kind === 'unknown') {
+      return {
+        ok: false,
+        status: 'error',
+        message: `The Bakin service state could not be read (${service.reason}), so Bakin can't tell whether a service would respawn this server. Nothing was stopped.`,
+        notes: ['Check the service manager (launchctl / systemctl --user), then run the command again.'],
+      }
+    }
     if (!identity.secret) return { ok: false, status: 'error', message: 'This home\'s lock carries no shutdown secret (a server from before the secret existed); it cannot be stopped by request.', notes }
     const answer = await io.http('POST', identity.port, '/api/server/shutdown', { headers: { 'X-Bakin-Cli-Secret': identity.secret }, body: { bootId: identity.bootId }, timeoutMs: FETCH_TIMEOUT_MS })
     if (!answer || answer.status !== 202) {
       return { ok: false, status: 'error', message: `The server refused the shutdown request${answer ? ` (HTTP ${answer.status})` : ' (no answer)'}.`, notes }
     }
   }
-  if (!(await awaitGenerationGone(io, identity, deadline))) {
-    return { ok: false, status: 'error', message: `Bakin (pid ${identity.pid}) is still shutting down after 20s.`, notes }
-  }
-  return { ok: true, status: 'ok', message: 'Bakin stopped.', notes: [...notes, ...othersNote(io, [io.selfPid])] }
+  return stoppedOutcome(io, await awaitGenerationGone(io, identity, deadline), identity.pid, notes)
+}
+
+/**
+ * An old-protocol server answers only `{version}`, proving neither pid nor
+ * boot: its service may be driven only when the LOADED job both runs exactly
+ * this lock holder and is configured for this home.
+ */
+function serviceRunsOldServer(io: LifecycleIo, service: ServiceState, identity: { pid: number }): boolean {
+  return service.kind === 'loaded' && service.pid === identity.pid && service.home === io.home
 }
 
 // ─── restart ─────────────────────────────────────────────────────────────────
@@ -347,8 +393,8 @@ export async function restartHome(io: LifecycleIo, opts: RestartOptions): Promis
   const deadline = () => io.now() + HANDOFF_BUDGET_MS
 
   // A start may already be on its way (dev build, restart child): never race it.
-  const pending = pendingStarts(io, [io.selfPid])
-  if (identity.kind === 'none' && pending.length > 0 && !opts.force) {
+  const pending = pendingStarts(io, [io.selfPid], { serverRunning: identity.kind !== 'none' })
+  if (pending.length > 0 && !opts.force) {
     return {
       ok: false,
       status: 'error',
@@ -358,17 +404,38 @@ export async function restartHome(io: LifecycleIo, opts: RestartOptions): Promis
   }
 
   const oldBootId = io.readLock()?.bootId ?? null
-  const ownsService = (identity.kind === 'owned' || identity.kind === 'old-protocol') && service.kind === 'loaded' && service.pid === identity.pid
-  const serviceForThisHome = (service.kind === 'loaded' || service.kind === 'unloaded') && service.home === io.home
+  const ownsService = identity.kind === 'owned'
+    ? service.kind === 'loaded' && service.pid === identity.pid
+    : identity.kind === 'old-protocol' && serviceRunsOldServer(io, service, identity)
+  // With nothing running here, this home's own service may be STARTED — but
+  // only one that is not running anything (a running job holding no lock for
+  // this home is unproven: starting, wedged, or another home's).
+  const idleServiceForThisHome = (service.kind === 'unloaded' || (service.kind === 'loaded' && service.pid === null)) && service.home === io.home
+  if (identity.kind === 'none' && service.kind === 'loaded' && service.pid !== null) {
+    return {
+      ok: false,
+      status: 'error',
+      message: `The Bakin service is running pid ${service.pid}, but it does not hold this home's lock, so Bakin can't prove what it is and will not restart it.`,
+      notes: ['It may still be starting — run `bakin status` in a moment. If it is wedged, inspect it before stopping it yourself.'],
+    }
+  }
+  if (service.kind === 'unknown' && identity.kind !== 'none') {
+    return {
+      ok: false,
+      status: 'error',
+      message: `The Bakin service state could not be read (${service.reason}), so Bakin can't tell who owns this server. Nothing was restarted.`,
+      notes: ['Check the service manager (launchctl / systemctl --user), then run the command again.'],
+    }
+  }
 
-  // 1. The service manager restarts what it owns (or starts this home's own service).
-  if (ownsService || (identity.kind === 'none' && serviceForThisHome)) {
+  // 1. The service manager restarts what it owns (or starts this home's own idle service).
+  if (ownsService || (identity.kind === 'none' && idleServiceForThisHome)) {
     for (const [cmd, args] of restartServiceCommands(io, service)) {
       const done = io.exec(cmd, args)
       if (!done.ok) return { ok: false, status: 'error', message: `Could not restart the Bakin service: ${done.output.trim()}`, notes }
     }
     notes.push(`Restarted through the Bakin service (${SERVICE_LABEL}).`)
-    const boot = await awaitNewBoot(io, oldBootId, deadline(), {})
+    const boot = await awaitNewBoot(io, oldBootId, deadline(), { service: true })
     if (boot && 'failed' in boot) return { ok: false, status: 'error', message: `Restart failed: ${boot.failed}.`, notes }
     if (!boot) return { ok: false, status: 'error', message: 'The service did not bring up a new Bakin within 20s — check the logs.', notes }
     return { ok: true, status: 'ok', message: 'Bakin restarted.', notes: [...notes, ...othersNote(io, [io.selfPid, boot.pid])], boot }
@@ -388,8 +455,17 @@ export async function restartHome(io: LifecycleIo, opts: RestartOptions): Promis
     if (!identity.secret) return { ok: false, status: 'error', message: 'This home\'s lock carries no shutdown secret; it cannot be restarted by request.', notes }
     const answer = await io.http('POST', identity.port, '/api/server/shutdown', { headers: { 'X-Bakin-Cli-Secret': identity.secret }, body: { bootId: identity.bootId }, timeoutMs: FETCH_TIMEOUT_MS })
     if (!answer || answer.status !== 202) return { ok: false, status: 'error', message: `The server refused the shutdown request${answer ? ` (HTTP ${answer.status})` : ' (no answer)'}.`, notes }
-    if (!(await awaitGenerationGone(io, identity, deadline()))) {
+    const gone = await awaitGenerationGone(io, identity, deadline())
+    if (!gone.gone) {
       return { ok: false, status: 'error', message: `The old server (pid ${identity.pid}) is still shutting down after 20s — not starting a competitor.`, notes }
+    }
+    if (gone.successor) {
+      // Something else started this home meanwhile: reconcile with it, never race it.
+      notes.push(`Another start took this home as the old server exited (pid ${gone.successor.pid}); no second server was launched.`)
+      const boot = await awaitNewBoot(io, oldBootId, deadline(), { pid: gone.successor.pid })
+      if (boot && 'failed' in boot) return { ok: false, status: 'error', message: `Restart failed: ${boot.failed}.`, notes }
+      if (!boot) return { ok: false, status: 'error', message: `The server that took over (pid ${gone.successor.pid}) did not finish starting within 20s — check the logs.`, notes }
+      return { ok: true, status: 'warn', message: 'Bakin restarted (by another start).', notes: [...notes, ...othersNote(io, [io.selfPid, boot.pid])], boot }
     }
     port = String(identity.port) // the replacement keeps the port it had
   }
