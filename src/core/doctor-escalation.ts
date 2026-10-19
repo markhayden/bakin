@@ -11,21 +11,24 @@
  *   4. everything else (instructions / rerun / repair without a plan item) →
  *      ONE delegated repair task for the main agent.
  *
- * Cover is per incident: a request whose task sits in blocked or review
- * covers its incidents indefinitely (a human owns it); todo/inProgress cover
- * until `escalationStaleAfterMs`; done/archived/missing never cover; and any
- * request younger than `escalationCooldownMs` covers (no one-task-per-cycle
- * churn). Manual diagnostics never create tasks through this module.
+ * Cover is per incident and BOUNDED (spec D-G1/D-G3): a request younger than
+ * `escalationCooldownMs` covers (no one-task-per-cycle churn); an open task
+ * covers for one window (`escalationStaleAfterMs`, measured from the
+ * request's last `resurfaced` event, else its creation — column moves never
+ * reset it); past the window, or when the task was closed while its incident
+ * still fails, the request RESURFACES its existing task (moved to Review,
+ * the approval re-announced or attached) and keeps covering — never a
+ * duplicate task. A verified request or a missing task covers nothing.
+ * Manual diagnostics never create tasks through this module.
  */
 import type { HealthIncident, HealthRepairPlan, HealthReport } from '../../packages/core/src/plugin-types'
+import type { DoctorRepairRequest } from './doctor-repair-store'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 
 const log = createLogger('doctor-escalation')
 const DEFAULT_ESCALATION_COOLDOWN_MS = 6 * 60 * 60_000
 const DEFAULT_ESCALATION_STALE_AFTER_MS = 12 * 60 * 60_000
-/** Task columns where a human owns the next step — cover never expires. */
-const HUMAN_OWNED_COLUMNS = new Set(['blocked', 'review'])
 const CLOSED_COLUMNS = new Set(['done', 'archived'])
 
 /**
@@ -44,35 +47,104 @@ function onboardingOnly(incidents: readonly HealthIncident[]): boolean {
   return incidents.length > 0 && incidents.every((incident) => incident.id === 'core:system:onboarding-required')
 }
 
-/** Incident ids some open or recent repair request still covers. */
-export async function coveredIncidentIds(
+export type ResurfaceReason = 'stale' | 'closed-unfixed'
+
+export interface RepairCoverage {
+  /** Incident ids an open or recent request covers this cycle. */
+  covered: Set<string>
+  /** Requests whose existing task must resurface (their incidents are covered too). */
+  resurface: Array<{ request: DoctorRepairRequest; reason: ResurfaceReason }>
+}
+
+/** The window mark: the last time this request resurfaced, else its creation. */
+function windowMark(request: DoctorRepairRequest): number {
+  const last = [...request.events].reverse().find((event) => event.type === 'resurfaced')
+  return Date.parse(last?.ts ?? request.createdAt)
+}
+
+/**
+ * Which incidents open or recent repair requests cover, and which requests
+ * must resurface their task (spec D-G3). `fresh` = this cycle's fresh
+ * action-required incident ids: only a request whose incidents are still
+ * failing can resurface.
+ */
+export async function assessRepairCoverage(
   contentDir: string,
+  fresh: ReadonlySet<string>,
   now: number,
   cooldownMs: number,
   staleAfterMs: number,
-): Promise<Set<string>> {
+): Promise<RepairCoverage> {
   const { listDoctorRepairRequests } = await import('./doctor-repair-store')
   const { getTaskDetails } = await import('./task-service')
-  const covered = new Set<string>()
+  const coverage: RepairCoverage = { covered: new Set(), resurface: [] }
   for (const request of listDoctorRepairRequests(contentDir)) {
     const ageMs = now - Date.parse(request.createdAt)
     // A request dated in the future (or undated) covers nothing — no
     // clamping: a negative age would read as fresh forever (#898).
     if (!Number.isFinite(ageMs) || ageMs < 0) continue
-    let covers = ageMs < cooldownMs
-    if (!covers && request.taskId) {
-      const details = await getTaskDetails(request.taskId).catch(() => null)
-      const column = details?.column ?? null
-      if (column && HUMAN_OWNED_COLUMNS.has(column)) covers = true
-      else if (column && !CLOSED_COLUMNS.has(column)) covers = ageMs < staleAfterMs
+    if (request.status === 'verified' || request.status === 'dismissed') continue
+    const cover = () => { for (const id of request.incidentIds) coverage.covered.add(id) }
+    if (ageMs < cooldownMs) { cover(); continue }
+    if (!request.taskId) continue
+    const details = await getTaskDetails(request.taskId).catch(() => null)
+    const column = details?.column ?? null
+    if (!column) continue // task gone — a new request may open
+    const stillFailing = request.incidentIds.some((id) => fresh.has(id))
+    if (CLOSED_COLUMNS.has(column)) {
+      if (!stillFailing) continue
+      coverage.resurface.push({ request, reason: 'closed-unfixed' })
+      cover()
+      continue
     }
-    if (covers) for (const id of request.incidentIds) covered.add(id)
+    const sinceMark = now - windowMark(request)
+    if (!Number.isFinite(sinceMark) || sinceMark < staleAfterMs || !stillFailing) { cover(); continue }
+    coverage.resurface.push({ request, reason: 'stale' })
+    cover()
   }
-  return covered
+  return coverage
+}
+
+/**
+ * Hand a repair task back to the operator (spec D-G3): skip while a run is
+ * in flight (the agent is working); otherwise move it to Review with a log
+ * line, re-announce its pending approval or attach one (delegated), and
+ * record the `resurfaced` window mark. Never creates a task.
+ */
+async function resurfaceRequest(
+  contentDir: string,
+  request: DoctorRepairRequest,
+  reason: ResurfaceReason,
+  incidents: readonly HealthIncident[],
+  staleAfterMs: number,
+): Promise<boolean> {
+  const { getLiveRun } = await import('./execution-ledger')
+  if (getLiveRun(request.taskId!)) return false
+  const hours = Math.round(staleAfterMs / 3_600_000)
+  const message = reason === 'closed-unfixed'
+    ? 'Health: this task was closed, but its incident still fails — reopened in Review for you.'
+    : `Health: not fixed after ${hours}h — moved to Review for you.`
+  const { escalateTaskToReview } = await import('./task-store')
+  await escalateTaskToReview(request.taskId!, message)
+  const { reannounceApproval } = await import('./approvals')
+  const announced = request.approvalId ? reannounceApproval(request.approvalId) : false
+  if (!announced) {
+    const { attachResurfaceApproval } = await import('./doctor-approvals')
+    attachResurfaceApproval({ contentDir, request, incidents })
+  }
+  const { updateDoctorRepairRequest } = await import('./doctor-repair-store')
+  updateDoctorRepairRequest(contentDir, request.id, (current) => ({
+    ...current,
+    events: [...current.events, { ts: new Date().toISOString(), type: 'resurfaced', message, data: { reason } }],
+  }))
+  log.info('Resurfaced a Health repair task', { requestId: request.id, taskId: request.taskId, reason })
+  return true
 }
 
 export interface EscalationOutcome {
   autoApplied: string[]
+  /** Existing repair tasks handed back to the operator this cycle (spec D-G3). */
+  resurfacedTaskIds: string[]
   repairApprovalTaskId: string | null
   navigateApprovalTaskIds: string[]
   delegatedIncidentIds: string[]
@@ -92,10 +164,19 @@ export async function escalateCronIncidents(
   const fresh = freshActionRequiredIncidents(report)
   if (fresh.length === 0 || onboardingOnly(fresh)) return null
 
-  const outcome: EscalationOutcome = { autoApplied: [], repairApprovalTaskId: null, navigateApprovalTaskIds: [], delegatedIncidentIds: [] }
+  const outcome: EscalationOutcome = { autoApplied: [], resurfacedTaskIds: [], repairApprovalTaskId: null, navigateApprovalTaskIds: [], delegatedIncidentIds: [] }
   try {
-    const covered = await coveredIncidentIds(contentDir, Date.now(), escalationCooldownMs, escalationStaleAfterMs)
-    let remaining = fresh.filter((incident) => !covered.has(incident.id))
+    const freshIds = new Set(fresh.map((incident) => incident.id))
+    const coverage = await assessRepairCoverage(contentDir, freshIds, Date.now(), escalationCooldownMs, escalationStaleAfterMs)
+    for (const { request, reason } of coverage.resurface) {
+      try {
+        const incidents = fresh.filter((incident) => request.incidentIds.includes(incident.id))
+        if (await resurfaceRequest(contentDir, request, reason, incidents, escalationStaleAfterMs)) outcome.resurfacedTaskIds.push(request.taskId!)
+      } catch (err) {
+        log.warn('Could not resurface a Health repair task', err, { requestId: request.id, taskId: request.taskId })
+      }
+    }
+    let remaining = fresh.filter((incident) => !coverage.covered.has(incident.id))
     if (remaining.length === 0) return outcome
 
     // 1. Plan once for everything uncovered; apply the safe items now.

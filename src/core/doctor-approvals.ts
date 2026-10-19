@@ -279,6 +279,45 @@ export async function openNavigateApproval(input: {
   return { request: sent, approval, taskId: task.id }
 }
 
+/**
+ * A DELEGATED repair the agent didn't fix (spec D-G3) becomes the operator's:
+ * a `health-navigate` approval opens on its EXISTING task (no new task), so it
+ * rides the one approvals attention path and Dismiss snoozes it for 7 days
+ * like every navigate incident. The request keeps its id, kind and history.
+ */
+export function attachResurfaceApproval(input: {
+  contentDir: string
+  request: DoctorRepairRequest
+  incidents: readonly HealthIncident[]
+}): ApprovalRecord {
+  const { request, incidents } = input
+  if (!request.taskId) throw new Error(`Health request ${request.id} has no task to hand over`)
+  const absoluteHref = new URL('/health', bakinBaseUrl()).toString()
+  const body = [
+    summarizeIncidents(incidents),
+    ...incidentLines(incidents),
+    '',
+    `The delegated repair did not fix this. It needs you: ${absoluteHref}`,
+    '',
+    'Dismiss snoozes the incident for 7 days; it closes on its own once Health verifies the fix.',
+  ].join('\n')
+  const approvalId = `health-navigate:${request.id}`
+  const approval = requestApproval({
+    approvalId,
+    owner: { kind: 'health-navigate', taskId: request.taskId, requestId: request.id, incidentIds: [...request.incidentIds], href: '/health' },
+    request: {
+      title: summarizeIncidents(incidents),
+      body,
+      options: [{ id: 'dismiss', label: 'Dismiss', variant: 'neutral' }],
+      context: { requestId: request.id, taskId: request.taskId, href: absoluteHref },
+    },
+  })
+  // Back to `sent`: the agent may have marked it completed, and the approval
+  // is only live (dismissable) while its request is open.
+  appendEvents(input.contentDir, request.id, [event('approval-requested', 'Handed the unfixed repair to the operator.', { approvalId })], { approvalId, status: 'sent' })
+  return approval
+}
+
 // ─── Decisions ───────────────────────────────────────────────────────────────
 
 function liveRequestFor(record: ApprovalRecord & { owner: { requestId: string } }): DoctorRepairRequest {

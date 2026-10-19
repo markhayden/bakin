@@ -111,6 +111,19 @@ export function requestApproval(input: RequestApprovalInput): ApprovalRecord {
   return record
 }
 
+/**
+ * Announce a still-pending approval again (toast + OS notification through
+ * the one approvals attention path) — Health's resurfacing of a repair that
+ * sat past its window (spec D-G3). No channel card is re-posted: the original
+ * one is still live. Returns false when the record is gone or decided.
+ */
+export function reannounceApproval(approvalId: string): boolean {
+  const record = getApprovalRecord(approvalId)
+  if (!record || record.status !== 'pending') return false
+  publishPending(record)
+  return true
+}
+
 // Resolves in flight — a second resolver for the same id (Health card +
 // Discord button) is refused before its handler runs (plan review R1).
 const inFlight = new Set<string>()

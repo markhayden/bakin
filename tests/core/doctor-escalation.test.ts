@@ -21,7 +21,16 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 let mode = true
 let cooldownMs = 6 * 60 * 60_000
 let staleAfterMs = 12 * 60 * 60_000
-let requests: Array<{ id: string; incidentIds: string[]; taskId?: string; createdAt: string }> = []
+type Req = { id: string; incidentIds: string[]; taskId?: string; createdAt: string; status: string; approvalId?: string; events: Array<{ ts: string; type: string; message: string; data?: Record<string, unknown> }> }
+let requests: Req[] = []
+let liveRuns = new Set<string>()
+const escalateTaskToReview = mock(async (taskId: string, _reason: string) => { taskColumns[taskId] = 'review' })
+const reannounceApproval = mock((_approvalId: string) => true)
+const attachResurfaceApproval = mock((input: { request: Req }) => {
+  const request = requests.find((r) => r.id === input.request.id)!
+  request.approvalId = `health-navigate:${request.id}`
+  return { approvalId: request.approvalId }
+})
 let taskColumns: Record<string, string> = {}
 let planItems: HealthRepairPlanItem[] = []
 let planThrows = false
@@ -44,18 +53,28 @@ const planDoctorRepair = mock(async () => {
 mock.module('../../src/core/settings', () => ({
   getSettings: () => ({ doctor: { escalation: mode, escalationCooldownMs: cooldownMs, escalationStaleAfterMs: staleAfterMs } }),
 }))
-mock.module('../../src/core/doctor-repair-store', () => ({ listDoctorRepairRequests: () => requests }))
+mock.module('../../src/core/doctor-repair-store', () => ({
+  listDoctorRepairRequests: () => requests,
+  updateDoctorRepairRequest: (_dir: string, id: string, fn: (r: Req) => Req) => {
+    const at = requests.findIndex((r) => r.id === id)
+    requests[at] = fn(requests[at]!)
+    return requests[at]
+  },
+}))
+mock.module('../../src/core/execution-ledger', () => ({ getLiveRun: (taskId: string) => (liveRuns.has(taskId) ? { runId: `run-${taskId}` } : null) }))
+mock.module('../../src/core/task-store', () => ({ escalateTaskToReview }))
+mock.module('../../src/core/approvals', () => ({ reannounceApproval }))
 mock.module('../../src/core/task-service', () => ({
   getTaskDetails: async (taskId: string) => taskId in taskColumns ? { column: taskColumns[taskId] } : null,
 }))
 mock.module('../../src/core/doctor-delegate', () => ({ delegateDoctorRepair: delegate }))
-mock.module('../../src/core/doctor-approvals', () => ({ openRepairApproval, openNavigateApproval }))
+mock.module('../../src/core/doctor-approvals', () => ({ openRepairApproval, openNavigateApproval, attachResurfaceApproval }))
 mock.module('../../src/core/doctor-repair', () => ({ planDoctorRepair, startDoctorRepair, awaitDoctorRepair }))
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }),
 }))
 
-import { coveredIncidentIds, escalateCronIncidents, freshActionRequiredIncidents } from '../../src/core/doctor-escalation'
+import { assessRepairCoverage, escalateCronIncidents, freshActionRequiredIncidents } from '../../src/core/doctor-escalation'
 
 function incident(overrides: Partial<HealthIncident> = {}): HealthIncident {
   return {
@@ -104,9 +123,11 @@ function report(incidents: HealthIncident[]): HealthReport {
   }
 }
 
-function coveringRequest(ageMs: number, overrides: Partial<(typeof requests)[number]> = {}): (typeof requests)[number] {
-  return { id: 'repair-1', incidentIds: ['health:search:unavailable'], taskId: 'task-1', createdAt: new Date(Date.now() - ageMs).toISOString(), ...overrides }
+function coveringRequest(ageMs: number, overrides: Partial<Req> = {}): Req {
+  return { id: 'repair-1', incidentIds: ['health:search:unavailable'], taskId: 'task-1', createdAt: new Date(Date.now() - ageMs).toISOString(), status: 'sent', events: [], ...overrides }
 }
+
+const covered = async (fresh: string[]) => (await assessRepairCoverage('/tmp/content', new Set(fresh), Date.now(), cooldownMs, staleAfterMs)).covered
 
 const escalate = (incidents: HealthIncident[]) => escalateCronIncidents(report(incidents), '/tmp/content', '/tmp/project')
 
@@ -119,7 +140,8 @@ beforeEach(() => {
   planItems = []
   planThrows = false
   afterApplyIncidents = null
-  for (const fn of [delegate, openRepairApproval, openNavigateApproval, startDoctorRepair, awaitDoctorRepair, planDoctorRepair]) fn.mockClear()
+  liveRuns = new Set()
+  for (const fn of [delegate, openRepairApproval, openNavigateApproval, startDoctorRepair, awaitDoctorRepair, planDoctorRepair, escalateTaskToReview, reannounceApproval, attachResurfaceApproval]) fn.mockClear()
   setSystemTime(new Date('2026-07-15T12:00:00.000Z'))
 })
 
@@ -148,52 +170,104 @@ describe('fresh incident selection', () => {
   })
 })
 
-describe('per-incident cover', () => {
-  it('skips while a fresh open repair task covers every current incident', async () => {
-    requests = [coveringRequest(7 * 60 * 60_000)]
+const HOUR = 60 * 60_000
+
+describe('per-incident cover (bounded, resurfacing — spec D-G1/D-G3)', () => {
+  it('a fresh open repair task covers inside the window', async () => {
+    requests = [coveringRequest(7 * HOUR)]
     taskColumns = { 'task-1': 'inProgress' }
+    const outcome = await escalate([incident()])
+    expect(delegate).not.toHaveBeenCalled()
+    expect(escalateTaskToReview).not.toHaveBeenCalled()
+    expect(outcome?.resurfacedTaskIds).toEqual([])
+  })
+
+  it('a stale open delegated task RESURFACES (to Review, approval attached) — never a duplicate task', async () => {
+    requests = [coveringRequest(34 * HOUR)]
+    taskColumns = { 'task-1': 'inProgress' }
+    const outcome = await escalate([incident()])
+    expect(delegate).not.toHaveBeenCalled()
+    expect(escalateTaskToReview).toHaveBeenCalledWith('task-1', expect.stringContaining('not fixed after 12h'))
+    expect(attachResurfaceApproval).toHaveBeenCalledTimes(1)
+    expect(outcome?.resurfacedTaskIds).toEqual(['task-1'])
+    expect(requests[0]!.events.map((e) => e.type)).toEqual(['resurfaced'])
+  })
+
+  it('a task the human owns no longer covers forever: past the window its approval is re-announced', async () => {
+    requests = [coveringRequest(10 * 24 * HOUR, { id: 'r-review', taskId: 't-review', incidentIds: ['health:runtime:auth-expired'], approvalId: 'health-navigate:r-review' })]
+    taskColumns = { 't-review': 'review' }
+    const outcome = await escalate([navigateIncident()])
+    expect(reannounceApproval).toHaveBeenCalledWith('health-navigate:r-review')
+    expect(attachResurfaceApproval).not.toHaveBeenCalled()
+    expect(openNavigateApproval).not.toHaveBeenCalled()
+    expect(outcome?.resurfacedTaskIds).toEqual(['t-review'])
+  })
+
+  it('one announcement per window: the next cycle inside the window is quiet, the one after it resurfaces again', async () => {
+    requests = [coveringRequest(34 * HOUR, { approvalId: 'health-repair:repair-1:1' })]
+    taskColumns = { 'task-1': 'review' }
     await escalate([incident()])
+    expect(reannounceApproval).toHaveBeenCalledTimes(1)
+
+    setSystemTime(new Date(Date.now() + 6 * HOUR))
+    await escalate([incident()])
+    expect(reannounceApproval).toHaveBeenCalledTimes(1)
+
+    setSystemTime(new Date(Date.now() + 7 * HOUR))
+    await escalate([incident()])
+    expect(reannounceApproval).toHaveBeenCalledTimes(2)
     expect(delegate).not.toHaveBeenCalled()
   })
 
-  it('treats a done or archived covering task as closed once cooldown has passed', async () => {
-    requests = [coveringRequest(7 * 60 * 60_000)]
-    taskColumns = { 'task-1': 'archived' }
+  it('moving the task between columns never resets the window (and a restart re-reads the mark)', async () => {
+    requests = [coveringRequest(13 * HOUR)]
+    taskColumns = { 'task-1': 'todo' }
+    // The task was shuffled around recently — irrelevant: the window runs from the request.
+    taskColumns['task-1'] = 'inProgress'
+    const fresh = (await assessRepairCoverage('/tmp/content', new Set(['health:search:unavailable']), Date.now(), cooldownMs, staleAfterMs))
+    expect(fresh.resurface.map((r) => r.reason)).toEqual(['stale'])
+  })
+
+  it('a task closed while its incident still fails is reopened in Review (same task)', async () => {
+    requests = [coveringRequest(7 * HOUR)]
+    taskColumns = { 'task-1': 'done' }
+    const outcome = await escalate([incident()])
+    expect(delegate).not.toHaveBeenCalled()
+    expect(escalateTaskToReview).toHaveBeenCalledWith('task-1', expect.stringContaining('closed, but its incident still fails'))
+    expect(outcome?.resurfacedTaskIds).toEqual(['task-1'])
+  })
+
+  it('a VERIFIED request covers nothing: a recurrence is a new episode', async () => {
+    requests = [coveringRequest(7 * HOUR, { status: 'verified' })]
+    taskColumns = { 'task-1': 'done' }
     await escalate([incident()])
     expect(delegate).toHaveBeenCalledTimes(1)
+    expect(escalateTaskToReview).not.toHaveBeenCalled()
   })
 
-  it('a task the human owns (blocked / review) covers indefinitely', async () => {
-    requests = [coveringRequest(10 * 24 * 60 * 60_000, { id: 'r-blocked', taskId: 't-blocked' }), coveringRequest(10 * 24 * 60 * 60_000, { id: 'r-review', taskId: 't-review', incidentIds: ['health:runtime:auth-expired'] })]
-    taskColumns = { 't-blocked': 'blocked', 't-review': 'review' }
-    await escalate([incident(), navigateIncident()])
-    expect(delegate).not.toHaveBeenCalled()
-    expect(openNavigateApproval).not.toHaveBeenCalled()
-  })
-
-  it('re-escalates when a covering active task is stale and incidents are still burning', async () => {
-    requests = [coveringRequest(34 * 60 * 60_000)]
+  it('an in-flight run is never yanked: the task stays covered and is not moved', async () => {
+    requests = [coveringRequest(34 * HOUR)]
     taskColumns = { 'task-1': 'inProgress' }
+    liveRuns.add('task-1')
+    const outcome = await escalate([incident()])
+    expect(escalateTaskToReview).not.toHaveBeenCalled()
+    expect(delegate).not.toHaveBeenCalled()
+    expect(outcome?.resurfacedTaskIds).toEqual([])
+  })
+
+  it('a missing task covers nothing after the cooldown (a new request may open)', async () => {
+    requests = [coveringRequest(7 * HOUR, { taskId: 'gone' })]
     await escalate([incident()])
     expect(delegate).toHaveBeenCalledTimes(1)
   })
 
   it('still honors the cooldown when a custom stale threshold is shorter', async () => {
-    staleAfterMs = 60 * 60_000
-    requests = [coveringRequest(2 * 60 * 60_000)]
+    staleAfterMs = HOUR
+    requests = [coveringRequest(2 * HOUR)]
     taskColumns = { 'task-1': 'inProgress' }
     await escalate([incident()])
     expect(delegate).not.toHaveBeenCalled()
-  })
-
-  it('lets a newer fresh covering request suppress an older stale one', async () => {
-    requests = [
-      coveringRequest(34 * 60 * 60_000, { id: 'repair-old', taskId: 'task-old' }),
-      coveringRequest(60_000, { id: 'repair-new', taskId: 'task-new' }),
-    ]
-    taskColumns = { 'task-old': 'inProgress', 'task-new': 'todo' }
-    await escalate([incident()])
-    expect(delegate).not.toHaveBeenCalled()
+    expect(escalateTaskToReview).not.toHaveBeenCalled()
   })
 
   it('skips inside the cooldown window even when the previous task is done or missing', async () => {
@@ -204,13 +278,6 @@ describe('per-incident cover', () => {
     expect(openNavigateApproval).not.toHaveBeenCalled()
   })
 
-  it('delegates after cooldown when the previous task is done', async () => {
-    requests = [coveringRequest(7 * 60 * 60_000)]
-    taskColumns = { 'task-1': 'done' }
-    await escalate([incident()])
-    expect(delegate).toHaveBeenCalledTimes(1)
-  })
-
   it('covers incident by incident: a request covering one of two incidents only suppresses that one', async () => {
     requests = [coveringRequest(60_000)]
     taskColumns = { 'task-1': 'inProgress' }
@@ -219,16 +286,16 @@ describe('per-incident cover', () => {
     expect(delegate).toHaveBeenCalledWith(expect.objectContaining({
       target: { type: 'incidents', reportId: 'health-report-1', ids: ['health:runtime:unavailable'] },
     }))
-    expect(await coveredIncidentIds('/tmp/content', Date.now(), cooldownMs, staleAfterMs)).toEqual(new Set(['health:search:unavailable']))
+    expect(await covered(['health:search:unavailable', 'health:runtime:unavailable'])).toEqual(new Set(['health:search:unavailable']))
   })
 
   it('a future-dated request covers nothing — not even one a human owns (#898)', async () => {
     requests = [
-      coveringRequest(-24 * 60 * 60_000, { id: 'r-future', taskId: 't-blocked' }),
+      coveringRequest(-24 * HOUR, { id: 'r-future', taskId: 't-blocked' }),
       coveringRequest(0, { id: 'r-undated', taskId: 't-review', incidentIds: ['health:runtime:auth-expired'], createdAt: 'whenever' }),
     ]
     taskColumns = { 't-blocked': 'blocked', 't-review': 'review' }
-    expect(await coveredIncidentIds('/tmp/content', Date.now(), cooldownMs, staleAfterMs)).toEqual(new Set())
+    expect(await covered(['health:search:unavailable', 'health:runtime:auth-expired'])).toEqual(new Set())
     await escalate([incident()])
     expect(delegate).toHaveBeenCalledTimes(1)
   })

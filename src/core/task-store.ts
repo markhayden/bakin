@@ -464,6 +464,26 @@ export function addTaskLog(identifier: string, author: string, message: string, 
   }
 }
 
+/**
+ * Health escalation hands a repair task to the operator (spec D-G3): it lands
+ * in Review from wherever it sat — including To Do or Done, which the agent
+ * transition table refuses. This is the ONE documented exception, used only
+ * by Health's resurfacing of a repair that sat past its window or was closed
+ * while its incident still fails; it never runs for an agent or a turn.
+ * The reason goes on the task log so the move explains itself.
+ */
+export function escalateTaskToReview(identifier: string, reason: string): Promise<void> {
+  try {
+    const task = requireTask(identifier)
+    const store = getSharedBakinTaskStore()
+    if (asColumnId(task) !== 'review') store.updateSync(task.id, { ...columnPatch('review'), blockedReason: undefined })
+    store.appendLogSync(task.id, { timestamp: new Date().toISOString(), author: 'health', message: reason })
+    return Promise.resolve()
+  } catch (err) {
+    return Promise.reject(err)
+  }
+}
+
 export function blockTask(identifier: string, reason: string, agent?: string, channel?: string): Promise<void> {
   try {
     void agent
