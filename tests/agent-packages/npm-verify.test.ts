@@ -213,6 +213,18 @@ describe('verifyNpmPayload', () => {
       expect(problems()).toEqual([expect.stringContaining('not a valid URL path')])
     })
 
+    it('an encoded separator only in the QUERY is fine; a traversal rejected before finalization still falls back', () => {
+      reset({ exports: './index.js?path=a%2fb' }, ['index.js'])
+      expect(verify()).toEqual({ ok: true })
+      reset({ exports: ['./../a%2fb.js', './index.js'] }, ['index.js'])
+      expect(verify()).toEqual({ ok: true })
+    })
+
+    it('only ARRAY-INDEX condition keys are fatal — "01" is just an inactive condition name', () => {
+      reset({ exports: { '01': './unused.js', default: './index.js' } }, ['index.js'])
+      expect(verify()).toEqual({ ok: true })
+    })
+
     it('a configuration error inside an exports array is fatal — arrays only fall back past invalid TARGETS', () => {
       reset({ exports: [{ 0: './x.js' }, './index.js'] }, ['index.js'])
       expect(problems()).toEqual([expect.stringContaining('numeric')])

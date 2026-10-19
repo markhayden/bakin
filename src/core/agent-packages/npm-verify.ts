@@ -220,9 +220,6 @@ type TargetResolution = { kind: 'file'; path: string } | { kind: 'blocked' } | {
  */
 function validTarget(target: string): TargetResolution {
   if (!target.startsWith('./')) return { kind: 'invalid', reason: `"${target}" does not start with "./"` }
-  // Node FINALIZES a selected target and throws there (ERR_INVALID_MODULE_
-  // SPECIFIER / URIError) — terminal, so an array never falls back past it.
-  if (/%2f|%5c/i.test(target)) return { kind: 'config', reason: `"${target}" encodes a path separator` }
   const badSegment = (path: string): boolean => path.split(/[\\/]/).some((raw) => {
     // Judge each segment percent-DECODED, before any URL normalisation can
     // collapse it ("%2e%2e" is ".." — Node rejects it, never resolves it).
@@ -230,10 +227,16 @@ function validTarget(target: string): TargetResolution {
     return segment === '..' || segment === '.' || segment.toLowerCase() === 'node_modules'
   })
   if (badSegment(target.slice(2))) return { kind: 'invalid', reason: `"${target}" leaves the package` }
+  // Only after the segment checks (an invalid target arrays may fall back
+  // past) does Node FINALIZE the selected target — and an encoded separator
+  // in its PATHNAME (never the query) or a malformed escape throws there:
+  // terminal, so an array never falls back past it.
   let path: string
   try {
     const url = new URL(target, 'file:///__package__/')
-    path = decodeURIComponent(url.pathname.slice('/__package__/'.length))
+    const encoded = url.pathname.slice('/__package__/'.length)
+    if (/%2f|%5c/i.test(encoded)) return { kind: 'config', reason: `"${target}" encodes a path separator` }
+    path = decodeURIComponent(encoded)
   } catch {
     return { kind: 'config', reason: `"${target}" is not a valid URL path` }
   }
@@ -250,8 +253,10 @@ function decodeSegment(raw: string): string {
   }
 }
 
-/** Node refuses numeric condition keys (ERR_INVALID_PACKAGE_CONFIG). */
-const NUMERIC_KEY = /^\d+$/
+/** Node refuses ARRAY-INDEX condition keys (canonical integers below 2^32 - 1; ERR_INVALID_PACKAGE_CONFIG). */
+function isArrayIndexKey(key: string): boolean {
+  return /^(0|[1-9]\d*)$/.test(key) && Number(key) < 4294967295
+}
 
 function resolveTarget(target: unknown): TargetResolution {
   if (typeof target === 'string') return validTarget(target)
@@ -272,7 +277,7 @@ function resolveTarget(target: unknown): TargetResolution {
   }
   if (target && typeof target === 'object') {
     for (const [condition, value] of Object.entries(target)) {
-      if (NUMERIC_KEY.test(condition)) return { kind: 'config', reason: `condition key "${condition}" is numeric` }
+      if (isArrayIndexKey(condition)) return { kind: 'config', reason: `condition key "${condition}" is numeric` }
       if (!ACTIVE_CONDITIONS.has(condition)) continue
       const resolved = resolveTarget(value)
       if (resolved.kind === 'none') continue
