@@ -100,9 +100,41 @@ describe('verifyNpmPayload', () => {
     expect(problems()).toEqual([expect.stringContaining('package.json differs')])
   })
 
-  it('a subpath-only exports map has no root entry to check', () => {
-    installDep('dep-a', { version: '1.2.3', exports: { './feature': './feature.js' } }, [])
+  it('every concrete exported subpath must exist — a subpath-only package is not "no entry"', () => {
+    installDep('dep-a', { version: '1.2.3', exports: { './feature': './feature.js', './lib/*': './lib/*.js' } }, ['feature.js'])
     expect(verify()).toEqual({ ok: true })
+    rmSync(join(payload, 'node_modules', 'dep-a', 'feature.js'))
+    expect(problems()).toEqual([expect.stringContaining('dep-a is missing its export ./feature feature.js')])
+  })
+
+  it('conditions resolve in DECLARATION order, as Node does', () => {
+    // node is declared first: Node loads ./node.js, whatever import names.
+    installDep('dep-a', { version: '1.2.3', exports: { node: './node.js', import: './import.js' } }, ['import.js'])
+    expect(problems()).toEqual([expect.stringContaining('dep-a is missing its entry file node.js')])
+    installDep('dep-a', { version: '1.2.3', exports: { node: './node.js', import: './import.js' } }, ['node.js'])
+    rmSync(join(payload, 'node_modules', 'dep-a', 'import.js'), { force: true })
+    expect(verify()).toEqual({ ok: true })
+  })
+
+  it('`module` is a bundler field: Node\'s main decides', () => {
+    installDep('dep-a', { version: '1.2.3', module: './esm.js', main: './cjs.js' }, ['esm.js'])
+    expect(problems()).toEqual([expect.stringContaining('dep-a is missing its entry file cjs.js')])
+    installDep('dep-a', { version: '1.2.3', module: './esm.js', main: './cjs.js' }, ['cjs.js'])
+    rmSync(join(payload, 'node_modules', 'dep-a', 'esm.js'), { force: true })
+    expect(verify()).toEqual({ ok: true })
+  })
+
+  it('a malformed dependency package.json is a failed verdict, never an exception', () => {
+    writeFileSync(join(payload, 'node_modules', 'dep-a', 'package.json'), 'null')
+    expect(problems()).toEqual([expect.stringContaining('dep-a has a malformed package.json')])
+  })
+
+  it('a node_modules that is itself a symlink out of the payload is rejected', () => {
+    const outside = join(root, 'shared-modules')
+    mkdirSync(root, { recursive: true })
+    require('fs').renameSync(join(payload, 'node_modules'), outside)
+    symlinkSync(outside, join(payload, 'node_modules'))
+    expect(problems()).toEqual([expect.stringContaining('node_modules is a symlink')])
   })
 
   it('a missing payload directory is not ok', () => {

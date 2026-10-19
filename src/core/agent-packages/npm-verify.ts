@@ -8,8 +8,9 @@
  *     pack's copy byte for byte;
  *   - every DIRECT dependency resolves INSIDE the payload's own
  *     node_modules — never an ancestor or global fallback — with the
- *     declared name and exact version, and its entry file (exports "." /
- *     module / main / index.js) exists.
+ *     declared name and exact version, and the files Node would load exist
+ *     (every concrete `exports` target, resolved under ESM conditions in
+ *     declaration order; else `main` / index.js).
  *
  * It reads files only: no imports, no subprocesses, no network — cheap
  * enough for every readiness/doctor run. It proves "dependencies resolved at
@@ -59,8 +60,15 @@ export function verifyNpmPayload(
 
   const modules = join(payloadDir, 'node_modules')
   const deps = Object.entries(req.dependencies)
-  if (deps.length > 0 && !isDirectory(modules)) problems.push('node_modules is missing')
-  else for (const [name, version] of deps) problems.push(...verifyDependency(modules, name, version))
+  if (deps.length > 0) {
+    // The containment boundary is the payload's OWN node_modules: it must be
+    // a real directory there, never a symlink out to an ancestor or another
+    // tree (which would make every dependency "inside" it trivially).
+    const boundary = join(realpathSync(payloadDir), 'node_modules')
+    if (!isDirectory(modules)) problems.push('node_modules is missing')
+    else if (lstatSync(modules).isSymbolicLink()) problems.push('node_modules is a symlink, not the payload\'s own directory')
+    else for (const [name, version] of deps) problems.push(...verifyDependency(modules, boundary, name, version))
+  }
 
   return problems.length === 0 ? { ok: true } : { ok: false, problems }
 }
@@ -105,7 +113,7 @@ function compareScripts(source: string, payloadDir: string): string[] {
  * scoped `@scope/pkg` included). A symlink (isolated linkers) is followed
  * but must stay inside the payload's node_modules — never an ancestor's.
  */
-function verifyDependency(modules: string, name: string, version: string): string[] {
+function verifyDependency(modules: string, boundary: string, name: string, version: string): string[] {
   const dir = join(modules, ...name.split('/'))
   let resolved: string
   try {
@@ -114,29 +122,38 @@ function verifyDependency(modules: string, name: string, version: string): strin
   } catch {
     return [`dependency ${name} is not installed in the payload`]
   }
-  const modulesReal = realpathSync(modules)
-  if (resolved !== modulesReal && !resolved.startsWith(modulesReal + sep)) {
+  if (!resolved.startsWith(boundary + sep)) {
     return [`dependency ${name} resolves outside the payload (${resolved})`]
   }
-  let pkg: { name?: unknown; version?: unknown; exports?: unknown; module?: unknown; main?: unknown }
+  let parsed: unknown
   try {
-    pkg = JSON.parse(readFileSync(join(resolved, 'package.json'), 'utf-8'))
+    parsed = JSON.parse(readFileSync(join(resolved, 'package.json'), 'utf-8'))
   } catch {
     return [`dependency ${name} has no readable package.json`]
   }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return [`dependency ${name} has a malformed package.json`]
+  }
+  const pkg = parsed as { name?: unknown; version?: unknown; exports?: unknown; main?: unknown }
   const problems: string[] = []
   if (pkg.name !== name) problems.push(`dependency ${name} is installed as "${String(pkg.name)}"`)
   if (pkg.version !== version) problems.push(`dependency ${name} is ${String(pkg.version)}, not the declared ${version}`)
-  const candidates = entryCandidates(pkg)
-  if (candidates.length > 0 && !candidates.some((candidate) => isFile(join(resolved, candidate)))) {
-    problems.push(`dependency ${name} is missing its entry file ${candidates[0]}`)
+  for (const entry of entryChecks(pkg)) {
+    if (!entry.candidates.some((candidate) => isFile(join(resolved, candidate)))) {
+      problems.push(`dependency ${name} is missing ${entry.label} ${entry.candidates[0]}`)
+    }
   }
   return problems
 }
 
-const CONDITIONS = ['import', 'node', 'default', 'require'] as const
+/**
+ * The conditions active when a payload script (ESM, run by Node) imports a
+ * dependency. Matching walks each condition map in ITS declaration order —
+ * Node's rule — so `{ node, import }` resolves to `node` (#898 F review).
+ */
+const ACTIVE_CONDITIONS = new Set(['node', 'import', 'module-sync', 'default'])
 
-/** The first file a condition map resolves to, or null when it names none. */
+/** The file a target resolves to under the active conditions, or null when nothing matches. */
 function conditionTarget(value: unknown): string | null {
   if (typeof value === 'string') return value
   if (Array.isArray(value)) {
@@ -147,39 +164,48 @@ function conditionTarget(value: unknown): string | null {
     return null
   }
   if (value && typeof value === 'object') {
-    for (const condition of CONDITIONS) {
-      if (condition in value) {
-        const target = conditionTarget((value as Record<string, unknown>)[condition])
-        if (target) return target
-      }
+    for (const [condition, target] of Object.entries(value)) {
+      if (!ACTIVE_CONDITIONS.has(condition)) continue
+      const resolved = conditionTarget(target)
+      if (resolved) return resolved
     }
   }
   return null
 }
 
+interface EntryCheck {
+  label: string
+  /** Any one existing satisfies the check (Node's main fallbacks); one entry for exact targets. */
+  candidates: string[]
+}
+
 /**
- * Where the package's root entry may live, relative to its dir, in Node's
- * resolution order: `exports["."]` (or a bare exports string / condition
- * map) is exact; `module`, then `main` (with Node's extension and
- * directory-index fallbacks); else `index.js`. Empty when `exports` defines
- * only subpaths — there is no root entry to check.
+ * The files Node needs for this package, relative to its dir:
+ *   - with `exports`: the root target (exports "." or a bare string /
+ *     condition map) AND every concrete subpath target (no `*` patterns,
+ *     null = explicitly blocked) — a missing exported file is unresolved;
+ *   - otherwise `main` with Node's extension/index fallbacks, else index.js.
+ * `module` is a bundler field Node never reads, so it is not checked.
  */
-function entryCandidates(pkg: { exports?: unknown; module?: unknown; main?: unknown }): string[] {
+function entryChecks(pkg: { exports?: unknown; main?: unknown }): EntryCheck[] {
   const strip = (path: string): string => path.replace(/^\.\//, '')
   if (pkg.exports !== undefined) {
     const exportsField = pkg.exports
-    const root = exportsField && typeof exportsField === 'object' && !Array.isArray(exportsField)
+    const isSubpathMap = exportsField !== null && typeof exportsField === 'object' && !Array.isArray(exportsField)
       && Object.keys(exportsField).some((key) => key.startsWith('.'))
-      ? (exportsField as Record<string, unknown>)['.']
-      : exportsField
-    if (root === undefined) return []
-    const target = conditionTarget(root)
-    return target ? [strip(target)] : []
+    const subpaths: Array<[string, unknown]> = isSubpathMap ? Object.entries(exportsField as Record<string, unknown>) : [['.', exportsField]]
+    const checks: EntryCheck[] = []
+    for (const [subpath, target] of subpaths) {
+      if (subpath.includes('*')) continue
+      const file = conditionTarget(target)
+      if (!file || file.includes('*')) continue
+      checks.push({ label: subpath === '.' ? 'its entry file' : `its export ${subpath}`, candidates: [strip(file)] })
+    }
+    return checks
   }
-  if (typeof pkg.module === 'string') return [strip(pkg.module)]
   if (typeof pkg.main === 'string' && pkg.main.length > 0) {
     const main = strip(pkg.main)
-    return [main, `${main}.js`, `${main}.json`, `${main}.node`, join(main, 'index.js'), join(main, 'index.json')]
+    return [{ label: 'its entry file', candidates: [main, `${main}.js`, `${main}.json`, `${main}.node`, join(main, 'index.js'), join(main, 'index.json'), join(main, 'index.node')] }]
   }
-  return ['index.js', 'index.json', 'index.node']
+  return [{ label: 'its entry file', candidates: ['index.js', 'index.json', 'index.node'] }]
 }

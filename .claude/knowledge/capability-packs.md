@@ -56,8 +56,10 @@ A capability pack is `kind: "skill-pack"` plus:
   the generated package.json, the payload scripts vs the pack source, and
   every DIRECT dependency resolving inside the payload's own node_modules
   (no ancestor/global fallback; a symlink must stay inside) at its exact
-  declared name + version with its entry file (exports "." / module / main
-  with Node's fallbacks; subpath-only exports have no root entry). File
+  declared name + version with the files Node would load (every concrete
+  `exports` target under ESM conditions in DECLARATION order, else `main`
+  with Node's fallbacks; `module` is a bundler field and never checked);
+  the payload's node_modules must be its own directory, not a symlink. File
   reads only — no imports, subprocesses or network. The installer reuses a
   live payload only when it passes (so offline repair of an intact payload
   converges), and a staged payload must pass before it replaces the live
