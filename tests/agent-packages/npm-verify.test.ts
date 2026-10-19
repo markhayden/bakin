@@ -206,6 +206,13 @@ describe('verifyNpmPayload', () => {
       expect(problems()).toEqual([expect.stringContaining('invalid target')])
     })
 
+    it('an encoded separator or malformed escape in an array target is terminal — no fallback (Node finalizes, then throws)', () => {
+      reset({ exports: ['./a%2fb.js', './index.js'] }, ['index.js'])
+      expect(problems()).toEqual([expect.stringContaining('encodes a path separator')])
+      reset({ exports: ['./entry%zz.js', './index.js'] }, ['index.js'])
+      expect(problems()).toEqual([expect.stringContaining('not a valid URL path')])
+    })
+
     it('a configuration error inside an exports array is fatal — arrays only fall back past invalid TARGETS', () => {
       reset({ exports: [{ 0: './x.js' }, './index.js'] }, ['index.js'])
       expect(problems()).toEqual([expect.stringContaining('numeric')])

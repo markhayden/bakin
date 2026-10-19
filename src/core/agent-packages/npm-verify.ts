@@ -207,8 +207,9 @@ const ACTIVE_CONDITIONS = new Set(['node', 'import', 'module-sync', 'default'])
  *   blocked — an explicit `null` (Node refuses the subpath)
  *   none    — no condition matched (undefined in Node's algorithm)
  *   invalid — a malformed target (Node throws; arrays fall back past it)
- *   config  — a malformed exports CONFIGURATION (ERR_INVALID_PACKAGE_CONFIG):
- *             fatal everywhere, arrays never fall back past it
+ *   config  — a fatal error (ERR_INVALID_PACKAGE_CONFIG, or a selected
+ *             target that fails URL finalization — encoded separators,
+ *             malformed escapes): arrays never fall back past it
  */
 type TargetResolution = { kind: 'file'; path: string } | { kind: 'blocked' } | { kind: 'none' } | { kind: 'invalid'; reason: string } | { kind: 'config'; reason: string }
 
@@ -219,7 +220,9 @@ type TargetResolution = { kind: 'file'; path: string } | { kind: 'blocked' } | {
  */
 function validTarget(target: string): TargetResolution {
   if (!target.startsWith('./')) return { kind: 'invalid', reason: `"${target}" does not start with "./"` }
-  if (/%2f|%5c/i.test(target)) return { kind: 'invalid', reason: `"${target}" encodes a path separator` }
+  // Node FINALIZES a selected target and throws there (ERR_INVALID_MODULE_
+  // SPECIFIER / URIError) — terminal, so an array never falls back past it.
+  if (/%2f|%5c/i.test(target)) return { kind: 'config', reason: `"${target}" encodes a path separator` }
   const badSegment = (path: string): boolean => path.split(/[\\/]/).some((raw) => {
     // Judge each segment percent-DECODED, before any URL normalisation can
     // collapse it ("%2e%2e" is ".." — Node rejects it, never resolves it).
@@ -232,7 +235,7 @@ function validTarget(target: string): TargetResolution {
     const url = new URL(target, 'file:///__package__/')
     path = decodeURIComponent(url.pathname.slice('/__package__/'.length))
   } catch {
-    return { kind: 'invalid', reason: `"${target}" is not a valid URL path` }
+    return { kind: 'config', reason: `"${target}" is not a valid URL path` }
   }
   if (badSegment(path)) return { kind: 'invalid', reason: `"${target}" leaves the package` }
   return { kind: 'file', path }
