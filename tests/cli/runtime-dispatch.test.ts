@@ -13,6 +13,7 @@ const { fetchMock, output, errorOutput, jsonResponse } = harness
 
 describe('bakin runtime binary dispatch', () => {
   beforeEach(() => {
+    execFileSync.mockReset()
     execFileSync.mockReturnValue('')
   })
 
@@ -109,6 +110,11 @@ describe('bakin runtime binary dispatch', () => {
 
   it('delegates stop to the shared source CLI TUI', async () => {
     // stop reads THIS home's server.lock: a temp home, never the real one.
+    // No service is loaded: launchctl/systemctl answer the way they do for an unknown job.
+    execFileSync.mockImplementation((cmd: unknown) => {
+      if (cmd === 'launchctl' || cmd === 'systemctl') throw Object.assign(new Error('exit 113'), { stdout: '', stderr: cmd === 'launchctl' ? 'Could not find service' : 'Failed to connect to bus: No such file or directory' })
+      return ''
+    })
     await withTempBakinHome('bakin-test-dispatch-stop-', async () => {
       const { dispatchCli } = await import('../../src/core/cli')
 

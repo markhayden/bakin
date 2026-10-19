@@ -185,3 +185,11 @@ plan) is either impossible by construction or covered by a test.
   `Permission denied` is unknown.
 - Service commands are killed with SIGKILL at their deadline (a SIGTERM
   timeout is not a hard deadline).
+
+## Review hardening (Codex round 5)
+
+- The verified server is excluded from pending-start detection (a server a
+  restart child became keeps that argv).
+- Stop with no lock holder refuses when this home's service (or a service of
+  unknown home) is starting/running, or its state is unreadable — it may be
+  about to bring the home back.

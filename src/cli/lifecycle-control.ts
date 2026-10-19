@@ -351,6 +351,20 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
   if (refused) return { ...refused, notes: [...refused.notes, ...othersNote(io, [io.selfPid])] }
 
   if (identity.kind === 'none') {
+    // No lock holder — but a service that is starting (or unreadable) may be
+    // about to bring this home back: never call that "stopped".
+    const service = readServiceState(io)
+    const serviceMayStart = service.kind === 'unknown' || (service.kind === 'loaded' && !service.idle && (service.home === null || service.home === io.home))
+    if (serviceMayStart) {
+      return {
+        ok: false,
+        status: 'error',
+        message: service.kind === 'unknown'
+          ? `No Bakin holds this home's lock, but the Bakin service state could not be read (${service.reason}), so Bakin can't tell whether it is about to start one.`
+          : `No Bakin holds this home's lock, but the Bakin service is ${service.kind === 'loaded' && service.pid !== null ? `running pid ${service.pid}` : 'starting'} — it may be about to bring this home back.`,
+        notes: ['Run `bakin status` in a moment; once it answers, `bakin stop` stops the service with it.'],
+      }
+    }
     const pending = pendingStarts(io, [io.selfPid], { serverRunning: false })
     return {
       ok: true,
@@ -364,7 +378,8 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
   }
 
   // A restart child waiting for this server to exit would start it again.
-  const restarting = pendingStarts(io, [io.selfPid], { serverRunning: true })
+  // (The verified server itself may carry the restart-child argv: it is the finished child.)
+  const restarting = pendingStarts(io, identity.kind === 'owned' || identity.kind === 'old-protocol' ? [io.selfPid, identity.pid] : [io.selfPid], { serverRunning: true })
   if (restarting.length > 0) {
     return {
       ok: false,
@@ -449,7 +464,7 @@ export async function restartHome(io: LifecycleIo, opts: RestartOptions): Promis
   const deadline = () => io.now() + HANDOFF_BUDGET_MS
 
   // A start may already be on its way (dev build, restart child): never race it.
-  const pending = pendingStarts(io, [io.selfPid], { serverRunning: identity.kind !== 'none' })
+  const pending = pendingStarts(io, identity.kind === 'owned' || identity.kind === 'old-protocol' ? [io.selfPid, identity.pid] : [io.selfPid], { serverRunning: identity.kind !== 'none' })
   if (pending.length > 0 && !opts.force) {
     return {
       ok: false,

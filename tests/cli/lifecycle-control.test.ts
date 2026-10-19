@@ -482,3 +482,26 @@ describe('K r4', () => {
   })
 })
 
+describe('K r5', () => {
+  it('a server started by a finished restart child (it keeps that argv) is not a pending start', async () => {
+    const me = fresh()
+    const h = harness({ lock: lockFor(me), servers: [me], processes: [{ pid: 500, command: 'bun server.ts __bakin-restart-child 400' }] })
+    expect((await restartHome(h.io, { baseEnv: {} })).ok).toBe(true)
+    const h2 = harness({ lock: lockFor(me), servers: [fresh()], processes: [{ pid: 500, command: 'bun server.ts __bakin-restart-child 400' }] })
+    expect((await stopHome(h2.io)).ok).toBe(true)
+  })
+
+  it('stop with no lock holder while this home\'s service is starting is not "stopped"', async () => {
+    const h = harness({ launchctl: { ok: true, output: 'x = {\n\tenvironment = {\n\t\tBAKIN_HOME => /home/me/.bakin\n\t}\n\tstate = spawn scheduled\n}' } })
+    const out = await stopHome(h.io)
+    expect(out.ok).toBe(false)
+  })
+
+  it('stop with no lock holder and an idle or other-home service is a plain "no server"', async () => {
+    const idle = harness({ launchctl: { ok: true, output: 'x = {\n\tenvironment = {\n\t\tBAKIN_HOME => /home/me/.bakin\n\t}\n\tstate = not running\n}' } })
+    expect((await stopHome(idle.io)).ok).toBe(true)
+    const other = harness({ launchctl: { ok: true, output: 'x = {\n\tstate = running\n\tpid = 4242\n\tenvironment = {\n\t\tBAKIN_HOME => /other/home\n\t}\n}' } })
+    expect((await stopHome(other.io)).ok).toBe(true)
+  })
+})
+
