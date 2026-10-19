@@ -793,8 +793,9 @@ whole pull → verify → publish runs under a MACHINE-wide lock beside the
 shared models root (`acquireModelsLock`, `.models.bakin-pull.lock`): an OS
 `flock` (`tryLockFile`, `packages/core/src/fs/flock.ts`, via `bun:ffi`) that
 the kernel releases when the holder exits or dies — no stale lock exists, so
-no reclaim race can ever hand it to two owners. Without flock it falls back
-to an O_EXCL file that is never auto-reclaimed (the message names it).
+no reclaim race can ever hand it to two owners. ONE protocol: there is no
+fallback (a second protocol would not interoperate with flock holders), so
+without flock the install fails closed.
 Operation locks are per home; the antfly models root is not. Model ids are
 validated as exactly `owner/name` (`isSafeModelName`; custom ids come from
 settings) before any path is built from them. A

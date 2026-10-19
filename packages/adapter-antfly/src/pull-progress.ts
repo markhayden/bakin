@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, statSync } from 'fs'
 import { tryLockFile } from '@bakin/core/fs/flock'
 import { basename, dirname, join } from 'path'
 
@@ -127,30 +127,19 @@ export function createPullTracker(stagingDir: string) {
  * the machine, while operation locks are per home — without this, one home
  * could delete or replace another's staged, verified model mid-install.
  *
- * An OS `flock` (`tryLockFile`): the kernel releases it when the holder
- * exits or dies, so there is no stale lock to reclaim and no reclaim race.
- * Where flock is unavailable, an O_EXCL lock file that is NEVER reclaimed
- * automatically (a crashed holder's file must be removed by hand — the
- * message names it): two owners are never possible either way.
+ * ONE protocol: an OS `flock` (`tryLockFile`) that the kernel releases when
+ * the holder exits or dies — no stale lock, no reclaim race. There is NO
+ * fallback: a second protocol (e.g. an O_EXCL file) would not interoperate
+ * with flock holders, so where flock is unavailable the install fails
+ * closed (`unsupported`).
  */
-export function acquireModelsLock(liveModelsRoot: string): { release: () => void } | { heldBy: number; path: string } {
+export function acquireModelsLock(liveModelsRoot: string): { release: () => void } | { heldBy: number; path: string } | { unsupported: true; path: string } {
   const path = join(dirname(liveModelsRoot), `.${basename(liveModelsRoot)}.bakin-pull.lock`)
   mkdirSync(dirname(path), { recursive: true })
   const lock = tryLockFile(path)
   if (lock.kind === 'held') return { release: lock.release }
   if (lock.kind === 'busy') return { heldBy: holderPid(path), path }
-  // No flock: exclusive create, never auto-reclaimed.
-  try {
-    writeFileSync(path, String(process.pid), { flag: 'wx' })
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return { heldBy: holderPid(path), path }
-    throw err
-  }
-  return {
-    release: () => {
-      if (readText(path)?.trim() === String(process.pid)) unlinkSync(path)
-    },
-  }
+  return { unsupported: true, path }
 }
 
 function holderPid(path: string): number {

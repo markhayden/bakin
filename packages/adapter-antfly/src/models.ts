@@ -336,6 +336,9 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
   // The models root is shared by every Bakin home on this machine: the whole
   // pull → verify → publish runs under ONE machine-wide lock (#898 E).
   const lock = acquireModelsLock(liveRoot)
+  if ('unsupported' in lock) {
+    return failed(`This platform cannot lock the shared search models folder (no flock), so Bakin will not change it — another Bakin on this machine could be mid-install. Install the models with \`antfly inference pull\` directly, or run Bakin on a platform with flock.`)
+  }
   if ('heldBy' in lock) {
     return failed(`Another Bakin on this machine is installing search models${lock.heldBy > 0 ? ` (pid ${lock.heldBy})` : ''} — try again when it finishes (lock: ${lock.path}).`)
   }

@@ -38,6 +38,12 @@ const { exchangePaths: realExchange } = await import('../../../packages/core/src
 mock.module('../../../packages/core/src/fs/exchange', () => ({
   exchangePaths: (a: string, b: string) => (exchangeUnavailable ? false : realExchange(a, b)),
 }))
+/** Forces "flock unavailable" when true. */
+let flockUnavailable = false
+const { tryLockFile: realTryLock } = await import('../../../packages/core/src/fs/flock')
+mock.module('../../../packages/core/src/fs/flock', () => ({
+  tryLockFile: (path: string) => (flockUnavailable ? { kind: 'unsupported' } : realTryLock(path)),
+}))
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
@@ -156,6 +162,7 @@ const optsAutoYes = { autoApprove: true }
 
 beforeEach(() => {
   exchangeUnavailable = false
+  flockUnavailable = false
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(antflyHomeDir, { recursive: true })
   process.env.ANTFLY_HOME = antflyHomeDir
@@ -368,6 +375,15 @@ describe('installInferenceModels', () => {
       result = await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])
       expect(result.status).toBe('installed')
     }, 30_000)
+
+    it('without flock the install fails closed — one lock protocol only, never a fallback that ignores flock holders', async () => {
+      flockUnavailable = true
+      installFakeBinary(PULL_OK)
+      const result = await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])
+      expect(result.status).toBe('failed')
+      expect(result.message).toContain('cannot lock the shared search models folder')
+      expect(existsSync(join(modelsRoot, TEST_MODELS[0]!.model))).toBe(false)
+    })
 
     it('a malformed model id never reaches the filesystem — it cannot delete live models', async () => {
       installFakeBinary(PULL_OK)
