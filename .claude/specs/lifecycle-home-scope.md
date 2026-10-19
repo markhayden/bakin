@@ -212,3 +212,10 @@ plan) is either impossible by construction or covered by a test.
 - A restart child is judged by its parent pid (`__bakin-restart-child
   <parentPid>`): pending for a running server only when waiting for THAT
   server; with no server, only when its parent is gone.
+
+## Review hardening (Codex round 8)
+
+- Destructive verbs (`kickstart -k`, `systemctl restart`) only for a job
+  proved to run this home's server; starting an idle job uses `kickstart`
+  (after `bootstrap` when unloaded) / `systemctl start`, so a job that changed
+  hands in between is never killed.

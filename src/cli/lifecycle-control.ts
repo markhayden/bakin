@@ -221,12 +221,19 @@ function stopServiceCommand(io: LifecycleIo): [string, string[]] {
     : ['systemctl', ['--user', 'stop', `${SERVICE_LABEL}.service`]]
 }
 
-function restartServiceCommands(io: LifecycleIo, state: ServiceState): Array<[string, string[]]> {
+/**
+ * `restart` (kickstart -k / systemctl restart) kills whatever the job runs, so
+ * it is used ONLY on a job proved to run this home's server. Starting an idle
+ * job uses the non-destructive verbs: if the job changed hands in between, a
+ * plain start never kills another home's server.
+ */
+function serviceCommands(io: LifecycleIo, state: ServiceState, mode: 'restart' | 'start'): Array<[string, string[]]> {
   if (io.platform === 'darwin') {
-    const kick: [string, string[]] = ['launchctl', ['kickstart', '-k', `gui/${io.uid()}/${SERVICE_LABEL}`]]
+    const target = `gui/${io.uid()}/${SERVICE_LABEL}`
+    const kick: [string, string[]] = ['launchctl', mode === 'restart' ? ['kickstart', '-k', target] : ['kickstart', target]]
     return state.kind === 'unloaded' ? [['launchctl', ['bootstrap', `gui/${io.uid()}`, io.launchAgentPath()]], kick] : [kick]
   }
-  return [['systemctl', ['--user', 'restart', `${SERVICE_LABEL}.service`]]]
+  return [['systemctl', ['--user', mode, `${SERVICE_LABEL}.service`]]]
 }
 
 // ─── Pending starts + other servers (reported, never touched) ────────────────
@@ -554,7 +561,7 @@ export async function restartHome(io: LifecycleIo, opts: RestartOptions): Promis
   // 1. The service manager restarts what it owns (or starts this home's own idle service).
   if (ownsService || (identity.kind === 'none' && idleServiceForThisHome)) {
     if (!serviceUnchanged(io, service)) return SERVICE_CHANGED
-    for (const [cmd, args] of restartServiceCommands(io, service)) {
+    for (const [cmd, args] of serviceCommands(io, service, ownsService ? 'restart' : 'start')) {
       const done = io.exec(cmd, args)
       if (!done.ok) return { ok: false, status: 'error', message: `Could not restart the Bakin service: ${done.output.trim()}`, notes }
     }

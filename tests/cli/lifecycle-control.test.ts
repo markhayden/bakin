@@ -237,6 +237,9 @@ describe('restart', () => {
     const out = await restartHome(h.io, { baseEnv: {} })
     expect(out.ok).toBe(true)
     expect(h.execs).toContain('launchctl bootstrap gui/501 /Users/me/Library/LaunchAgents/com.makinbakin.bakin.plist')
+    // Starting an idle job never uses the destructive -k (K r8).
+    expect(h.execs).toContain('launchctl kickstart gui/501/com.makinbakin.bakin')
+    expect(h.execs.some((e) => e.includes('kickstart -k'))).toBe(false)
   })
 
   it('an ambiguous service home (two BAKIN_HOME values) is never treated as this home\'s (J r4 #3)', async () => {
