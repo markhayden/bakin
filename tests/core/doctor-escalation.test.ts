@@ -24,7 +24,14 @@ let staleAfterMs = 12 * 60 * 60_000
 type Req = { id: string; incidentIds: string[]; taskId?: string; createdAt: string; status: string; approvalId?: string; events: Array<{ ts: string; type: string; message: string; data?: Record<string, unknown> }> }
 let requests: Req[] = []
 let liveRuns = new Set<string>()
-const escalateTaskToReview = mock(async (taskId: string, _reason: string) => { taskColumns[taskId] = 'review' })
+let onTaskRead = () => {}
+const escalateTaskToReview = mock(async (taskId: string, _reason: string) => {
+  const from = taskColumns[taskId]!
+  if (from === 'review' || from === 'blocked') return null
+  taskColumns[taskId] = 'review'
+  return from
+})
+const reopenIfLeavingDone = mock((_taskId: string, _to: string, _agent: string, _channel?: string) => {})
 const reannounceApproval = mock((_approvalId: string) => true)
 const attachResurfaceApproval = mock((input: { request: Req }) => {
   const request = requests.find((r) => r.id === input.request.id)!
@@ -55,6 +62,7 @@ mock.module('../../src/core/settings', () => ({
 }))
 mock.module('../../src/core/doctor-repair-store', () => ({
   listDoctorRepairRequests: () => requests,
+  getDoctorRepairRequest: (_dir: string, id: string) => requests.find((r) => r.id === id) ?? null,
   updateDoctorRepairRequest: (_dir: string, id: string, fn: (r: Req) => Req) => {
     const at = requests.findIndex((r) => r.id === id)
     requests[at] = fn(requests[at]!)
@@ -65,7 +73,8 @@ mock.module('../../src/core/execution-ledger', () => ({ getLiveRun: (taskId: str
 mock.module('../../src/core/task-store', () => ({ escalateTaskToReview }))
 mock.module('../../src/core/approvals', () => ({ reannounceApproval }))
 mock.module('../../src/core/task-service', () => ({
-  getTaskDetails: async (taskId: string) => taskId in taskColumns ? { column: taskColumns[taskId] } : null,
+  getTaskDetails: async (taskId: string) => { onTaskRead(); return taskId in taskColumns ? { column: taskColumns[taskId] } : null },
+  reopenIfLeavingDone,
 }))
 mock.module('../../src/core/doctor-delegate', () => ({ delegateDoctorRepair: delegate }))
 mock.module('../../src/core/doctor-approvals', () => ({ openRepairApproval, openNavigateApproval, attachResurfaceApproval }))
@@ -141,7 +150,8 @@ beforeEach(() => {
   planThrows = false
   afterApplyIncidents = null
   liveRuns = new Set()
-  for (const fn of [delegate, openRepairApproval, openNavigateApproval, startDoctorRepair, awaitDoctorRepair, planDoctorRepair, escalateTaskToReview, reannounceApproval, attachResurfaceApproval]) fn.mockClear()
+  onTaskRead = () => {}
+  for (const fn of [delegate, openRepairApproval, openNavigateApproval, startDoctorRepair, awaitDoctorRepair, planDoctorRepair, escalateTaskToReview, reopenIfLeavingDone, reannounceApproval, attachResurfaceApproval]) fn.mockClear()
   setSystemTime(new Date('2026-07-15T12:00:00.000Z'))
 })
 
@@ -235,6 +245,55 @@ describe('per-incident cover (bounded, resurfacing — spec D-G1/D-G3)', () => {
     expect(delegate).not.toHaveBeenCalled()
     expect(escalateTaskToReview).toHaveBeenCalledWith('task-1', expect.stringContaining('closed, but its incident still fails'))
     expect(outcome?.resurfacedTaskIds).toEqual(['task-1'])
+  })
+
+  it('reopening from Done goes through the audited reopen (the completion row is cleared)', async () => {
+    requests = [coveringRequest(7 * HOUR)]
+    taskColumns = { 'task-1': 'done' }
+    await escalate([incident()])
+    expect(reopenIfLeavingDone).toHaveBeenCalledWith('task-1', 'review', 'health', 'system')
+  })
+
+  it('a stale BLOCKED task stays blocked: log + announce, no move, no reopen', async () => {
+    requests = [coveringRequest(34 * HOUR)]
+    taskColumns = { 'task-1': 'blocked' }
+    const outcome = await escalate([incident()])
+    expect(escalateTaskToReview).toHaveBeenCalledTimes(1)
+    expect(taskColumns['task-1']).toBe('blocked')
+    expect(reopenIfLeavingDone).not.toHaveBeenCalled()
+    expect(attachResurfaceApproval).toHaveBeenCalledTimes(1)
+    expect(outcome?.resurfacedTaskIds).toEqual(['task-1'])
+  })
+
+  it('an APPLYING request stays covered past the window and is never handed back mid-run', async () => {
+    requests = [coveringRequest(34 * HOUR, { status: 'applying', approvalId: 'health-repair:repair-1:1' })]
+    taskColumns = { 'task-1': 'review' }
+    const outcome = await escalate([incident()])
+    expect(escalateTaskToReview).not.toHaveBeenCalled()
+    expect(reannounceApproval).not.toHaveBeenCalled()
+    expect(delegate).not.toHaveBeenCalled()
+    expect(outcome?.resurfacedTaskIds).toEqual([])
+  })
+
+  it('re-judges current state before mutating: a request verified after the assessment is not resurfaced', async () => {
+    requests = [coveringRequest(34 * HOUR)]
+    taskColumns = { 'task-1': 'inProgress' }
+    // Auto-close lands between the assessment and the resurface: the first
+    // task read (the assessment) flips the request to verified.
+    onTaskRead = () => { requests[0] = { ...requests[0]!, status: 'verified' }; onTaskRead = () => {} }
+    const outcome = await escalate([incident()])
+    expect(escalateTaskToReview).not.toHaveBeenCalled()
+    expect(attachResurfaceApproval).not.toHaveBeenCalled()
+    expect(outcome?.resurfacedTaskIds).toEqual([])
+  })
+
+  it('overlapping cycles are serialized: one expired window announces once', async () => {
+    requests = [coveringRequest(34 * HOUR, { approvalId: 'health-repair:repair-1:1' })]
+    taskColumns = { 'task-1': 'review' }
+    const [a, b] = await Promise.all([escalate([incident()]), escalate([incident()])])
+    expect(reannounceApproval).toHaveBeenCalledTimes(1)
+    expect([...(a?.resurfacedTaskIds ?? []), ...(b?.resurfacedTaskIds ?? [])]).toEqual(['task-1'])
+    expect(requests[0]!.events.filter((e) => e.type === 'resurfaced')).toHaveLength(1)
   })
 
   it('a VERIFIED request covers nothing: a recurrence is a new episode', async () => {

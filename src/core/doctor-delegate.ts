@@ -9,6 +9,7 @@ import {
   DoctorRepairRequestNotFoundError,
   createDoctorRepairRequest,
   getDoctorRepairRequest,
+  openRepairWorkByIncident,
   updateDoctorRepairRequest,
   type DoctorRepairRequest,
 } from './doctor-repair-store'
@@ -22,7 +23,8 @@ export interface DoctorDelegateOptions {
 }
 
 export interface DoctorDelegateReport {
-  status: 'confirmation_required' | 'sent' | 'no_unresolved'
+  /** `already_delegated`: every targeted incident already has an open repair task (`request` is that work). */
+  status: 'confirmation_required' | 'sent' | 'no_unresolved' | 'already_delegated'
   request: DoctorRepairRequest
   incidents: HealthIncident[]
 }
@@ -103,7 +105,15 @@ export async function delegateDoctorRepair(options: DoctorDelegateOptions): Prom
       // Effective disposition (#690): a sensitivity-demoted incident must not
       // spawn a paid repair task every surface called calm.
       : new Set(report.incidents.filter((incident) => incident.effectiveDisposition === 'action_required').map((incident) => incident.id))
-  const incidents = report.incidents.filter((incident) => incidentIds.has(incident.id))
+  const targeted = report.incidents.filter((incident) => incidentIds.has(incident.id))
+  // An incident an open repair task already works is never delegated twice
+  // (spec D-G3): Health resurfaces that task instead.
+  const working = openRepairWorkByIncident(options.contentDir)
+  const incidents = targeted.filter((incident) => !working.has(incident.id))
+  if (targeted.length > 0 && incidents.length === 0) {
+    const existing = getDoctorRepairRequest(options.contentDir, working.get(targeted[0]!.id)!.requestId)
+    if (existing) return { status: 'already_delegated', request: existing, incidents: targeted }
+  }
   const observationIds = [...new Set(incidents.flatMap((incident) => incident.observationIds))]
   const request = createDoctorRepairRequest(options.contentDir, {
     plan,

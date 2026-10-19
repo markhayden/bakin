@@ -31,7 +31,7 @@ mock.module('../../src/core/app-services-store', () => ({ getAppServices: () => 
 mock.module('@bakin/core/adapters/runtime', () => ({ getRuntimeMainAgentId: async () => 'main' }))
 
 import { delegateDoctorRepair } from '../../src/core/doctor-delegate'
-import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
+import { getDoctorRepairRequest, listDoctorRepairRequests, updateDoctorRepairRequest } from '../../src/core/doctor-repair-store'
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -59,6 +59,22 @@ describe('structured Health delegation', () => {
     }))
     expect(dispatchSingleTask).toHaveBeenCalledWith('task-doctor-repair', testDir, 3737, 'kick')
     expect(listDoctorRepairRequests(testDir)).toHaveLength(1)
+  })
+
+  it('an incident an open repair task already works is never delegated twice (spec D-G3)', async () => {
+    const first = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    const again = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(again.status).toBe('already_delegated')
+    expect(again.request).toMatchObject({ id: first.request.id, taskId: 'task-doctor-repair' })
+    expect(again.incidents.map((incident) => incident.id)).toEqual(['health:search:unavailable'])
+    expect(createTaskWithEffects).toHaveBeenCalledTimes(1)
+    expect(listDoctorRepairRequests(testDir)).toHaveLength(1)
+
+    // Once that work is verified, a recurrence is a new episode.
+    updateDoctorRepairRequest(testDir, first.request.id, (r) => ({ ...r, status: 'verified' }))
+    const recurrence = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(recurrence.status).toBe('sent')
+    expect(createTaskWithEffects).toHaveBeenCalledTimes(2)
   })
 
   it('the repair brief carries integrity guardrails and each incident\'s sanctioned fix (margo forgery, 2026-09-21)', async () => {

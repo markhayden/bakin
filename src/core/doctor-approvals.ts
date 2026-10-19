@@ -312,9 +312,15 @@ export function attachResurfaceApproval(input: {
       context: { requestId: request.id, taskId: request.taskId, href: absoluteHref },
     },
   })
-  // Back to `sent`: the agent may have marked it completed, and the approval
-  // is only live (dismissable) while its request is open.
-  appendEvents(input.contentDir, request.id, [event('approval-requested', 'Handed the unfixed repair to the operator.', { approvalId })], { approvalId, status: 'sent' })
+  // A request the agent marked completed/failed goes back to `sent`: the
+  // approval is only live (dismissable) while its request is open. Any other
+  // status (planned/sent) is kept — never written over a later transition.
+  updateDoctorRepairRequest(input.contentDir, request.id, (current) => ({
+    ...current,
+    approvalId,
+    status: current.status === 'completed' || current.status === 'failed' ? 'sent' : current.status,
+    events: [...current.events, event('approval-requested', 'Handed the unfixed repair to the operator.', { approvalId })],
+  }))
   return approval
 }
 

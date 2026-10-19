@@ -180,6 +180,7 @@ export function createDoctorRepairRequest(
     events: input.events ?? [{ ts, type: 'created', message: CREATED_MESSAGE[kind] }],
   }
   atomicWriteJson(requestPath(contentDir, request), request)
+  openTaskIndex = null
   return request
 }
 
@@ -199,6 +200,7 @@ export function updateDoctorRepairRequest(
   if (!current) throw new DoctorRepairRequestNotFoundError(requestId)
   const next = { ...update(current), version: 2 as const, updatedAt: nowIso() }
   atomicWriteJson(path, next)
+  openTaskIndex = null
   return next
 }
 
@@ -216,4 +218,38 @@ export function listDoctorRepairRequests(contentDir: string): DoctorRepairReques
     }
   }
   return requests.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+/** The newest open repair request working an incident, and its task. */
+export interface OpenRepairWork {
+  requestId: string
+  taskId: string
+}
+
+/**
+ * incident id → its newest OPEN repair request (not verified or dismissed)
+ * that has a task. Memoized per home and dropped on every write through this
+ * module (the only writer), so the Health report projection — which runs
+ * every second — never re-reads the request files, and delegation reuses the
+ * work instead of opening a duplicate task (#898 PR G).
+ */
+let openTaskIndex: { contentDir: string; byIncident: Map<string, OpenRepairWork> } | null = null
+
+export function openRepairWorkByIncident(contentDir: string): ReadonlyMap<string, OpenRepairWork> {
+  // One stat keeps the memo honest when the store is wiped out from under it.
+  if (!existsSync(repairRequestV2Root(contentDir))) {
+    openTaskIndex = null
+    return new Map()
+  }
+  if (openTaskIndex?.contentDir === contentDir) return openTaskIndex.byIncident
+  const byIncident = new Map<string, OpenRepairWork>()
+  // Newest first (the list's order): the first request naming an incident wins.
+  for (const request of listDoctorRepairRequests(contentDir)) {
+    if (!request.taskId || request.status === 'verified' || request.status === 'dismissed') continue
+    for (const id of request.incidentIds) {
+      if (!byIncident.has(id)) byIncident.set(id, { requestId: request.id, taskId: request.taskId })
+    }
+  }
+  openTaskIndex = { contentDir, byIncident }
+  return byIncident
 }

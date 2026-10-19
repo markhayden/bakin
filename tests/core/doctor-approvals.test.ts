@@ -447,6 +447,15 @@ describe('resurfacing (spec D-G3)', () => {
     expect(getDoctorRepairRequest(testDir, request.id)!.status).toBe('dismissed')
   })
 
+  it('attaching never writes over a non-terminal status (a planned/sent request keeps it)', async () => {
+    const incident = getHealthReport().incidents.find((row) => row.id.includes('expired'))!
+    tasks.set('task-planned', { column: 'inProgress', logs: [] })
+    const created = createDoctorRepairRequest(testDir, { kind: 'delegate', incidentIds: [incident.id], observationIds: [...incident.observationIds] })
+    const request = updateDoctorRepairRequest(testDir, created.id, (r) => ({ ...r, taskId: 'task-planned', status: 'planned' }))
+    const approval = attachResurfaceApproval({ contentDir: testDir, request, incidents: [incident] })
+    expect(getDoctorRepairRequest(testDir, request.id)).toMatchObject({ status: 'planned', approvalId: approval.approvalId })
+  })
+
   it('the report links each incident to its open repair task, never a verified or dismissed one (spec D-G2)', async () => {
     const opened = await openRepair()
     const linked = getHealthReport().incidents.find((row) => row.id === opened.incident.id)!

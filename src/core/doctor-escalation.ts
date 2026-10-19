@@ -16,9 +16,11 @@
  * covers for one window (`escalationStaleAfterMs`, measured from the
  * request's last `resurfaced` event, else its creation — column moves never
  * reset it); past the window, or when the task was closed while its incident
- * still fails, the request RESURFACES its existing task (moved to Review,
- * the approval re-announced or attached) and keeps covering — never a
- * duplicate task. A verified request or a missing task covers nothing.
+ * still fails, the request RESURFACES its existing task (moved to Review
+ * unless it already sits in Review/Blocked, the approval re-announced or
+ * attached) and keeps covering — never a duplicate task. An `applying`
+ * request always covers; a verified request or a missing task covers
+ * nothing. Cycles are serialized.
  * Manual diagnostics never create tasks through this module.
  */
 import type { HealthIncident, HealthRepairPlan, HealthReport } from '../../packages/core/src/plugin-types'
@@ -62,6 +64,44 @@ function windowMark(request: DoctorRepairRequest): number {
   return Date.parse(last?.ts ?? request.createdAt)
 }
 
+type Verdict = { kind: 'skip' } | { kind: 'cover' } | { kind: 'resurface'; reason: ResurfaceReason }
+
+/**
+ * One request's verdict this cycle (spec D-G3). `column` is its task's
+ * current column (null = no task or task gone). Shared by the assessment and
+ * the pre-mutation recheck, so a resurface only acts on CURRENT state.
+ */
+function judgeCoverage(
+  request: DoctorRepairRequest,
+  column: string | null,
+  fresh: ReadonlySet<string>,
+  now: number,
+  cooldownMs: number,
+  staleAfterMs: number,
+): Verdict {
+  const ageMs = now - Date.parse(request.createdAt)
+  // A request dated in the future (or undated) covers nothing — no
+  // clamping: a negative age would read as fresh forever (#898).
+  if (!Number.isFinite(ageMs) || ageMs < 0) return { kind: 'skip' }
+  if (request.status === 'verified' || request.status === 'dismissed') return { kind: 'skip' }
+  // A repair operation is running: covered until it settles, never handed
+  // back (a navigate approval would make it dismissable mid-run).
+  if (request.status === 'applying' || ageMs < cooldownMs) return { kind: 'cover' }
+  if (!column) return { kind: 'skip' } // task gone — a new request may open
+  const stillFailing = request.incidentIds.some((id) => fresh.has(id))
+  if (CLOSED_COLUMNS.has(column)) return stillFailing ? { kind: 'resurface', reason: 'closed-unfixed' } : { kind: 'skip' }
+  const sinceMark = now - windowMark(request)
+  if (!Number.isFinite(sinceMark) || sinceMark < staleAfterMs || !stillFailing) return { kind: 'cover' }
+  return { kind: 'resurface', reason: 'stale' }
+}
+
+async function taskColumn(taskId: string | undefined): Promise<string | null> {
+  if (!taskId) return null
+  const { getTaskDetails } = await import('./task-service')
+  const details = await getTaskDetails(taskId).catch(() => null)
+  return details?.column ?? null
+}
+
 /**
  * Which incidents open or recent repair requests cover, and which requests
  * must resurface their task (spec D-G3). `fresh` = this cycle's fresh
@@ -76,69 +116,65 @@ export async function assessRepairCoverage(
   staleAfterMs: number,
 ): Promise<RepairCoverage> {
   const { listDoctorRepairRequests } = await import('./doctor-repair-store')
-  const { getTaskDetails } = await import('./task-service')
   const coverage: RepairCoverage = { covered: new Set(), resurface: [] }
   for (const request of listDoctorRepairRequests(contentDir)) {
-    const ageMs = now - Date.parse(request.createdAt)
-    // A request dated in the future (or undated) covers nothing — no
-    // clamping: a negative age would read as fresh forever (#898).
-    if (!Number.isFinite(ageMs) || ageMs < 0) continue
-    if (request.status === 'verified' || request.status === 'dismissed') continue
-    const cover = () => { for (const id of request.incidentIds) coverage.covered.add(id) }
-    if (ageMs < cooldownMs) { cover(); continue }
-    if (!request.taskId) continue
-    const details = await getTaskDetails(request.taskId).catch(() => null)
-    const column = details?.column ?? null
-    if (!column) continue // task gone — a new request may open
-    const stillFailing = request.incidentIds.some((id) => fresh.has(id))
-    if (CLOSED_COLUMNS.has(column)) {
-      if (!stillFailing) continue
-      coverage.resurface.push({ request, reason: 'closed-unfixed' })
-      cover()
-      continue
-    }
-    const sinceMark = now - windowMark(request)
-    if (!Number.isFinite(sinceMark) || sinceMark < staleAfterMs || !stillFailing) { cover(); continue }
-    coverage.resurface.push({ request, reason: 'stale' })
-    cover()
+    const needsTask = request.status !== 'verified' && request.status !== 'dismissed'
+    const column = needsTask ? await taskColumn(request.taskId) : null
+    const verdict = judgeCoverage(request, column, fresh, now, cooldownMs, staleAfterMs)
+    if (verdict.kind === 'skip') continue
+    for (const id of request.incidentIds) coverage.covered.add(id)
+    if (verdict.kind === 'resurface') coverage.resurface.push({ request, reason: verdict.reason })
   }
   return coverage
 }
 
+interface ResurfaceContext {
+  contentDir: string
+  fresh: ReadonlySet<string>
+  incidents: readonly HealthIncident[]
+  cooldownMs: number
+  staleAfterMs: number
+}
+
 /**
- * Hand a repair task back to the operator (spec D-G3): skip while a run is
- * in flight (the agent is working); otherwise move it to Review with a log
- * line, re-announce its pending approval or attach one (delegated), and
- * record the `resurfaced` window mark. Never creates a task.
+ * Hand a repair task back to the operator (spec D-G3). Re-reads the request
+ * and its task first and re-judges them — auto-close or an approval may have
+ * moved on since the assessment — and skips while a run is in flight (the
+ * agent is working). Otherwise moves it to Review (audited reopen when it
+ * leaves Done), re-announces its pending approval or attaches one
+ * (delegated), and records the `resurfaced` window mark. Never creates a task.
  */
-async function resurfaceRequest(
-  contentDir: string,
-  request: DoctorRepairRequest,
-  reason: ResurfaceReason,
-  incidents: readonly HealthIncident[],
-  staleAfterMs: number,
-): Promise<boolean> {
+async function resurfaceRequest(requestId: string, ctx: ResurfaceContext): Promise<string | null> {
+  const { getDoctorRepairRequest, updateDoctorRepairRequest } = await import('./doctor-repair-store')
+  const request = getDoctorRepairRequest(ctx.contentDir, requestId)
+  if (!request?.taskId) return null
+  const verdict = judgeCoverage(request, await taskColumn(request.taskId), ctx.fresh, Date.now(), ctx.cooldownMs, ctx.staleAfterMs)
+  if (verdict.kind !== 'resurface') return null
+  const taskId = request.taskId
   const { getLiveRun } = await import('./execution-ledger')
-  if (getLiveRun(request.taskId!)) return false
-  const hours = Math.round(staleAfterMs / 3_600_000)
-  const message = reason === 'closed-unfixed'
+  if (getLiveRun(taskId)) return null
+  const hours = Math.round(ctx.staleAfterMs / 3_600_000)
+  const message = verdict.reason === 'closed-unfixed'
     ? 'Health: this task was closed, but its incident still fails — reopened in Review for you.'
-    : `Health: not fixed after ${hours}h — moved to Review for you.`
+    : `Health: not fixed after ${hours}h — handed back to you.`
   const { escalateTaskToReview } = await import('./task-store')
-  await escalateTaskToReview(request.taskId!, message)
+  const from = await escalateTaskToReview(taskId, message)
+  if (from) {
+    const { reopenIfLeavingDone } = await import('./task-service')
+    reopenIfLeavingDone(taskId, 'review', 'health', 'system')
+  }
   const { reannounceApproval } = await import('./approvals')
   const announced = request.approvalId ? reannounceApproval(request.approvalId) : false
   if (!announced) {
     const { attachResurfaceApproval } = await import('./doctor-approvals')
-    attachResurfaceApproval({ contentDir, request, incidents })
+    attachResurfaceApproval({ contentDir: ctx.contentDir, request, incidents: ctx.incidents })
   }
-  const { updateDoctorRepairRequest } = await import('./doctor-repair-store')
-  updateDoctorRepairRequest(contentDir, request.id, (current) => ({
+  updateDoctorRepairRequest(ctx.contentDir, request.id, (current) => ({
     ...current,
-    events: [...current.events, { ts: new Date().toISOString(), type: 'resurfaced', message, data: { reason } }],
+    events: [...current.events, { ts: new Date().toISOString(), type: 'resurfaced', message, data: { reason: verdict.reason } }],
   }))
-  log.info('Resurfaced a Health repair task', { requestId: request.id, taskId: request.taskId, reason })
-  return true
+  log.info('Resurfaced a Health repair task', { requestId: request.id, taskId, reason: verdict.reason })
+  return taskId
 }
 
 export interface EscalationOutcome {
@@ -150,7 +186,24 @@ export interface EscalationOutcome {
   delegatedIncidentIds: string[]
 }
 
-export async function escalateCronIncidents(
+/**
+ * Escalation cycles run one at a time: two overlapping cycles would each
+ * assess the same expired window and resurface (announce) twice. Each cycle
+ * assesses after the previous one recorded its window marks.
+ */
+let escalationChain: Promise<unknown> = Promise.resolve()
+
+export function escalateCronIncidents(
+  report: HealthReport,
+  contentDir: string,
+  projectRoot: string,
+): Promise<EscalationOutcome | null> {
+  const run = escalationChain.then(() => escalateOnce(report, contentDir, projectRoot))
+  escalationChain = run.catch(() => undefined)
+  return run
+}
+
+async function escalateOnce(
   report: HealthReport,
   contentDir: string,
   projectRoot: string,
@@ -168,10 +221,11 @@ export async function escalateCronIncidents(
   try {
     const freshIds = new Set(fresh.map((incident) => incident.id))
     const coverage = await assessRepairCoverage(contentDir, freshIds, Date.now(), escalationCooldownMs, escalationStaleAfterMs)
-    for (const { request, reason } of coverage.resurface) {
+    for (const { request } of coverage.resurface) {
       try {
         const incidents = fresh.filter((incident) => request.incidentIds.includes(incident.id))
-        if (await resurfaceRequest(contentDir, request, reason, incidents, escalationStaleAfterMs)) outcome.resurfacedTaskIds.push(request.taskId!)
+        const taskId = await resurfaceRequest(request.id, { contentDir, fresh: freshIds, incidents, cooldownMs: escalationCooldownMs, staleAfterMs: escalationStaleAfterMs })
+        if (taskId) outcome.resurfacedTaskIds.push(taskId)
       } catch (err) {
         log.warn('Could not resurface a Health repair task', err, { requestId: request.id, taskId: request.taskId })
       }

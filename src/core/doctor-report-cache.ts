@@ -32,7 +32,7 @@ import { deriveSearchReadiness } from './health-search-readiness'
 import { listHealthChecks, onHealthRegistryChanged } from './health-check-registry'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
-import { listDoctorRepairRequests, type DoctorRepairRequest } from './doctor-repair-store'
+import { openRepairWorkByIncident, type OpenRepairWork } from './doctor-repair-store'
 import { getSettings } from './settings'
 
 const log = createLogger('doctor-report-cache')
@@ -471,30 +471,22 @@ export function acknowledgeHealthIncident(input: {
 }
 
 /**
- * The open repair task working each incident (spec D-G2): the newest open
- * request (not verified or dismissed) that names the incident and has a task.
- * A read failure links nothing — never fails the report.
+ * The open repair task working each incident (spec D-G2), from the repair
+ * store's memoized index (no file reads per projection). A read failure links
+ * nothing — never fails the report.
  */
 function joinRepairTasks(incidents: HealthIncident[]): HealthIncident[] {
-  let requests: DoctorRepairRequest[]
+  let byIncident: ReadonlyMap<string, OpenRepairWork>
   try {
-    requests = listDoctorRepairRequests(getContentDir())
+    byIncident = openRepairWorkByIncident(getContentDir())
   } catch (err) {
     log.warn('Repair requests unreadable; incidents carry no repair task link', { err: err instanceof Error ? err.message : String(err) })
     return incidents
   }
-  const taskFor = new Map<string, { taskId: string; at: number }>()
-  for (const request of requests) {
-    if (!request.taskId || request.status === 'verified' || request.status === 'dismissed') continue
-    const at = Date.parse(request.createdAt)
-    for (const id of request.incidentIds) {
-      const current = taskFor.get(id)
-      if (!current || at > current.at) taskFor.set(id, { taskId: request.taskId, at })
-    }
-  }
+  if (byIncident.size === 0) return incidents
   return incidents.map((incident) => {
-    const link = taskFor.get(incident.id)
-    return link ? { ...incident, repairTaskId: link.taskId } : incident
+    const work = byIncident.get(incident.id)
+    return work ? { ...incident, repairTaskId: work.taskId } : incident
   })
 }
 

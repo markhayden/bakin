@@ -466,19 +466,23 @@ export function addTaskLog(identifier: string, author: string, message: string, 
 
 /**
  * Health escalation hands a repair task to the operator (spec D-G3): it lands
- * in Review from wherever it sat — including To Do or Done, which the agent
- * transition table refuses. This is the ONE documented exception, used only
- * by Health's resurfacing of a repair that sat past its window or was closed
- * while its incident still fails; it never runs for an agent or a turn.
- * The reason goes on the task log so the move explains itself.
+ * in Review from To Do, In Progress or Done — moves the agent transition
+ * table refuses. This is the ONE documented exception, used only by Health's
+ * resurfacing of a repair that sat past its window or was closed while its
+ * incident still fails; it never runs for an agent or a turn. A task already
+ * in Review or Blocked stays put (its blocked reason is context the operator
+ * needs). The reason always goes on the task log so the hand-off explains
+ * itself. Resolves to the column the task LEFT, or null when it did not move.
  */
-export function escalateTaskToReview(identifier: string, reason: string): Promise<void> {
+export function escalateTaskToReview(identifier: string, reason: string): Promise<string | null> {
   try {
     const task = requireTask(identifier)
     const store = getSharedBakinTaskStore()
-    if (asColumnId(task) !== 'review') store.updateSync(task.id, { ...columnPatch('review'), blockedReason: undefined })
+    const from = asColumnId(task)
+    const moves = from !== 'review' && from !== 'blocked'
+    if (moves) store.updateSync(task.id, columnPatch('review'))
     store.appendLogSync(task.id, { timestamp: new Date().toISOString(), author: 'health', message: reason })
-    return Promise.resolve()
+    return Promise.resolve(moves ? from : null)
   } catch (err) {
     return Promise.reject(err)
   }
