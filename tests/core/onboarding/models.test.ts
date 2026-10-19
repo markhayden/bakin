@@ -32,18 +32,6 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
 }))
-/** Forces the "no atomic exchange on this platform" branch when true. */
-let exchangeUnavailable = false
-const { exchangePaths: realExchange } = await import('../../../packages/core/src/fs/exchange')
-mock.module('../../../packages/core/src/fs/exchange', () => ({
-  exchangePaths: (a: string, b: string) => (exchangeUnavailable ? false : realExchange(a, b)),
-}))
-/** Forces "flock unavailable" when true. */
-let flockUnavailable = false
-const { tryLockFile: realTryLock } = await import('../../../packages/core/src/fs/flock')
-mock.module('../../../packages/core/src/fs/flock', () => ({
-  tryLockFile: (path: string) => (flockUnavailable ? { kind: 'unsupported' } : realTryLock(path)),
-}))
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
@@ -161,8 +149,6 @@ function seedModel(model: string): void {
 const optsAutoYes = { autoApprove: true }
 
 beforeEach(() => {
-  exchangeUnavailable = false
-  flockUnavailable = false
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(antflyHomeDir, { recursive: true })
   process.env.ANTFLY_HOME = antflyHomeDir
@@ -280,15 +266,23 @@ describe('installInferenceModels', () => {
     const zeros = (n: number) => require('crypto').createHash('sha256').update(Buffer.alloc(n)).digest('hex') as string
     afterEach(() => { delete MODEL_PINS[PINNED.model] })
 
-    it('a structurally complete model whose bytes do not match the pin is pulled again; the old copy is retired', async () => {
+    const live = (model: string) => join(modelsRoot, model)
+    const lockPath = () => join(require('path').dirname(modelsRoot), `.${require('path').basename(modelsRoot)}.bakin-pull.lock`)
+
+    it('a model whose bytes do not match the pin is refused BEFORE any download, naming the dir to remove; following that succeeds', async () => {
       MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
       installFakeBinary(PULL_OK)
       seedModel(PINNED.model) // 'weights' — names right, bytes wrong
       const result = await installInferenceModels(optsAutoYes, undefined, [PINNED])
-      expect(result.status).toBe('installed')
-      expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx')).length).toBe(2048)
-      const leftovers = require('fs').readdirSync(join(modelsRoot, 'test-pinned')).filter((n: string) => n.includes('bakin-'))
-      expect(leftovers).toEqual([])
+      expect(result.status).toBe('failed')
+      expect(result.message).toContain('its files do not match their pins')
+      expect(result.message).toContain(`Remove ${live(PINNED.model)}`)
+      expect(existsSync(join(testDir, 'argv.log'))).toBe(false) // nothing was downloaded
+      expect(readFileSync(join(live(PINNED.model), 'onnx', 'model.onnx'), 'utf-8')).toBe('weights') // live copy untouched
+      rmSync(live(PINNED.model), { recursive: true, force: true })
+      const retry = await installInferenceModels(optsAutoYes, undefined, [PINNED])
+      expect(retry.status).toBe('installed')
+      expect(readFileSync(join(live(PINNED.model), 'onnx', 'model.onnx')).length).toBe(2048)
     })
 
     it('a model whose bytes match the pin is a noop — no pull', async () => {
@@ -298,53 +292,28 @@ describe('installInferenceModels', () => {
       expect((await installInferenceModels(optsAutoYes, undefined, [PINNED])).status).toBe('noop')
     })
 
-    it('a post-pull mismatch FAILS the install (never a warning) and the previous copy goes back', async () => {
+    it('a post-pull mismatch FAILS the install (never a warning) and publishes nothing', async () => {
       MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(4096) }] // the pull serves 2048 bytes
       installFakeBinary(PULL_OK)
-      seedModel(PINNED.model)
       const result = await installInferenceModels(optsAutoYes, undefined, [PINNED])
       expect(result.status).toBe('failed')
       expect(result.message).toMatch(/do not match their pinned sha256 \(onnx\/model\.onnx\)/)
-      // The set-aside copy is restored — never left with nothing.
-      expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
+      expect(existsSync(live(PINNED.model))).toBe(false)
     })
 
-    it('when one model fails, nothing is published — every live model stays exactly as it was', async () => {
+    it('when one model fails, nothing is published', async () => {
       const OTHER = { label: 'pinned reranker', model: 'test-pinned/reranker', kind: 'reranker' as const }
       MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
       MODEL_PINS[OTHER.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
       try {
-        // Pulls fine for the embedder, fails for the reranker.
         installFakeBinary(PULL_OK.replace('#!/bin/sh\n', `#!/bin/sh\n[ "$3" = "${OTHER.model}" ] && { echo "boom" >&2; exit 2; }\n`))
-        seedModel(PINNED.model)
-        seedModel(OTHER.model)
         const result = await installInferenceModels(optsAutoYes, undefined, [PINNED, OTHER])
         expect(result.status).toBe('failed')
-        expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
-        expect(readFileSync(join(modelsRoot, OTHER.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
+        expect(existsSync(live(PINNED.model))).toBe(false) // pulled and verified, but never published alone
+        expect(existsSync(live(OTHER.model))).toBe(false)
       } finally {
         delete MODEL_PINS[OTHER.model]
       }
-    })
-
-    it('a cancelled re-pull leaves the live copy in place — nothing live moves before publish', async () => {
-      MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
-      installFakeBinary(PULL_STALLS)
-      seedModel(PINNED.model)
-      const reg = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, acquireResources: createMemoryResourceAcquirer(1) })
-      try {
-        const { operationId } = await reg.start({
-          kind: 'install:search-models', owner: 'core', origin: 'cli', title: 'Download the search models', fingerprint: 'install:search-models',
-          resources: ['search-engine'], plan: ANTFLY_MODELS_PLAN,
-          run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installModels({ ...optsAutoYes, op }, undefined, [PINNED], { pollMs: 10, killAfterMs: 200 }) }),
-        })
-        await waitUntil(() => existsSync(join(stagingDir(PINNED.model), 'onnx', 'model.onnx.part')), { label: 'the re-pull is mid-file' })
-        reg.cancel(operationId)
-        expect((await reg.await(operationId)).status).toBe('cancelled')
-      } finally {
-        reg.dispose()
-      }
-      expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
     })
 
     it('custom (unpinned) models are never described as matching pins', async () => {
@@ -357,44 +326,28 @@ describe('installInferenceModels', () => {
       expect(check.message).toContain('custom models are checked structurally only')
     })
 
-    it('a live holder of the machine-wide models lock fails the install clearly; once it exits the lock is free', async () => {
-      installFakeBinary(PULL_OK)
-      const lockPath = join(require('path').dirname(modelsRoot), `.${require('path').basename(modelsRoot)}.bakin-pull.lock`)
-      mkdirSync(require('path').dirname(lockPath), { recursive: true })
-      const flockModule = require('path').resolve(import.meta.dir, '../../../packages/core/src/fs/flock.ts')
-      const holderScript = join(testDir, 'holder.ts')
-      writeFileSync(holderScript, `import { tryLockFile } from ${JSON.stringify(flockModule)}\nconst l = tryLockFile(${JSON.stringify(lockPath)})\nif (l.kind !== 'held') process.exit(3)\nconsole.log('held')\nawait Bun.sleep(30000)\n`)
-      const holder = Bun.spawn(['bun', holderScript], { stdout: 'pipe', stderr: 'ignore' })
-      const reader = holder.stdout.getReader()
-      expect(new TextDecoder().decode((await reader.read()).value)).toContain('held')
-      let result = await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])
-      expect(result.status).toBe('failed')
-      expect(result.message).toContain('Another Bakin on this machine is installing search models')
-      holder.kill('SIGKILL') // the kernel releases a dead holder's flock — nothing to reclaim
-      await holder.exited
-      result = await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])
-      expect(result.status).toBe('installed')
-    }, 30_000)
-
-    it('an incomplete CUSTOM model with no atomic exchange is described as incomplete, never as a pin mismatch', async () => {
-      exchangeUnavailable = true
+    it('an incomplete CUSTOM model in the way is described as incomplete, never as a pin mismatch', async () => {
       installFakeBinary(PULL_OK)
       const custom = TEST_MODELS[0]!
-      mkdirSync(join(modelsRoot, custom.model, 'onnx'), { recursive: true }) // weights but no manifest: incomplete
-      writeFileSync(join(modelsRoot, custom.model, 'onnx', 'model.onnx'), 'weights')
+      mkdirSync(join(live(custom.model), 'onnx'), { recursive: true }) // weights but no manifest: incomplete
+      writeFileSync(join(live(custom.model), 'onnx', 'model.onnx'), 'weights')
       const result = await installInferenceModels(optsAutoYes, undefined, [custom])
       expect(result.status).toBe('failed')
       expect(result.message).toContain('the installed copy is incomplete')
       expect(result.message).not.toContain('pins')
     })
 
-    it('without flock the install fails closed — one lock protocol only, never a fallback that ignores flock holders', async () => {
-      flockUnavailable = true
+    it('the machine-wide lock: a holder makes the install fail clearly and is NEVER auto-reclaimed; removing it as told succeeds', async () => {
       installFakeBinary(PULL_OK)
+      mkdirSync(require('path').dirname(lockPath()), { recursive: true })
+      writeFileSync(lockPath(), '999999999') // even a dead pid: a crashed install's lock is not reclaimed automatically
       const result = await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])
       expect(result.status).toBe('failed')
-      expect(result.message).toContain('cannot lock the shared search models folder')
-      expect(existsSync(join(modelsRoot, TEST_MODELS[0]!.model))).toBe(false)
+      expect(result.message).toContain('Another Bakin on this machine is installing search models')
+      expect(result.message).toContain(`remove ${lockPath()}`)
+      rmSync(lockPath())
+      expect((await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])).status).toBe('installed')
+      expect(existsSync(lockPath())).toBe(false) // released after the install
     })
 
     it('a malformed model id never reaches the filesystem — it cannot delete live models', async () => {
@@ -406,22 +359,6 @@ describe('installInferenceModels', () => {
       expect(result.message).toContain('Invalid search model id "../models"')
       expect(existsSync(join(modelsRoot, TEST_MODELS[0]!.model, 'onnx', 'model.onnx'))).toBe(true)
       expect((await checkInferenceModels([evil])).message).toContain('Invalid search model id')
-    })
-
-    it('without an atomic exchange a replacement fails safely — the live copy stays exactly as it was', async () => {
-      exchangeUnavailable = true
-      MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
-      installFakeBinary(PULL_OK)
-      seedModel(PINNED.model)
-      const result = await installInferenceModels(optsAutoYes, undefined, [PINNED])
-      expect(result.status).toBe('failed')
-      expect(result.message).toContain('cannot replace a live model atomically')
-      expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
-      // Following the message's recovery steps succeeds.
-      rmSync(join(modelsRoot, PINNED.model), { recursive: true, force: true })
-      const retry = await installInferenceModels(optsAutoYes, undefined, [PINNED])
-      expect(retry.status).toBe('installed')
-      expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx')).length).toBe(2048)
     })
 
     it('the doctor check stays structural and says so', async () => {

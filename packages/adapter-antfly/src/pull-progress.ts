@@ -1,5 +1,4 @@
-import { mkdirSync, readFileSync, statSync } from 'fs'
-import { tryLockFile } from '@bakin/core/fs/flock'
+import { mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { basename, dirname, join } from 'path'
 
 /**
@@ -127,19 +126,26 @@ export function createPullTracker(stagingDir: string) {
  * the machine, while operation locks are per home — without this, one home
  * could delete or replace another's staged, verified model mid-install.
  *
- * ONE protocol: an OS `flock` (`tryLockFile`) that the kernel releases when
- * the holder exits or dies — no stale lock, no reclaim race. There is NO
- * fallback: a second protocol (e.g. an O_EXCL file) would not interoperate
- * with flock holders, so where flock is unavailable the install fails
- * closed (`unsupported`).
+ * An exclusive-create lock file holding the owner's pid, NEVER reclaimed
+ * automatically: any automatic stale-lock reclaim can, under some schedule,
+ * hand the lock to two owners. A crashed install leaves the file behind and
+ * the caller's message names it for the operator to remove.
  */
-export function acquireModelsLock(liveModelsRoot: string): { release: () => void } | { heldBy: number; path: string } | { unsupported: true; path: string } {
+export function acquireModelsLock(liveModelsRoot: string): { release: () => void } | { heldBy: number; path: string } {
   const path = join(dirname(liveModelsRoot), `.${basename(liveModelsRoot)}.bakin-pull.lock`)
   mkdirSync(dirname(path), { recursive: true })
-  const lock = tryLockFile(path)
-  if (lock.kind === 'held') return { release: lock.release }
-  if (lock.kind === 'busy') return { heldBy: holderPid(path), path }
-  return { unsupported: true, path }
+  const mine = String(process.pid)
+  try {
+    writeFileSync(path, mine, { flag: 'wx' })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return { heldBy: holderPid(path), path }
+    throw err
+  }
+  return {
+    release: () => {
+      if (readText(path)?.trim() === mine) unlinkSync(path)
+    },
+  }
 }
 
 function holderPid(path: string): number {

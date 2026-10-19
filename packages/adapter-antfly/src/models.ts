@@ -8,7 +8,6 @@ import type { AntflySettings } from './defaults'
 import { isPinnedModel, isSafeModelName, modelDir, modelStructurallyComplete, pinMismatches } from './model-pins'
 import { inferenceModelsRoot } from './paths'
 import { acquireModelsLock, createPullTracker, pullStagingDir, pullStagingRoot } from './pull-progress'
-import { exchangePaths } from '@bakin/core/fs/exchange'
 import { findAntflyBinary } from './service'
 
 /**
@@ -335,17 +334,22 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
   const stagingRoot = pullStagingRoot(liveRoot)
   // The models root is shared by every Bakin home on this machine: the whole
   // pull → verify → publish runs under ONE machine-wide lock (#898 E).
-  const lock = acquireModelsLock(liveRoot)
-  if ('unsupported' in lock) {
-    return failed(`This platform cannot lock the shared search models folder (no flock), so Bakin will not change it — another Bakin on this machine could be mid-install. Install the models with \`antfly inference pull\` directly, or run Bakin on a platform with flock.`)
+  // A live copy is never replaced in place: swapping a directory the
+  // running engine may read takes two renames (a window where it is
+  // missing). A model that needs replacing must be removed by the operator
+  // first — refused BEFORE any download, naming exactly what to remove.
+  const inTheWay = missing.filter((m) => existsSync(modelDir(m.model, liveRoot)))
+  if (inTheWay.length > 0) {
+    return failed(`${inTheWay.map((m) => `${m.model} (${mismatched.includes(m) ? 'its files do not match their pins' : 'the installed copy is incomplete'})`).join(', ')} must be replaced, and Bakin never replaces a live model in place. Remove ${inTheWay.map((m) => modelDir(m.model, liveRoot)).join(', ')} (search runs without ${inTheWay.length === 1 ? 'that model' : 'those models'} until reinstalled), then run \`bakin install search-models\` again.`)
   }
+  const lock = acquireModelsLock(liveRoot)
   if ('heldBy' in lock) {
-    return failed(`Another Bakin on this machine is installing search models${lock.heldBy > 0 ? ` (pid ${lock.heldBy})` : ''} — try again when it finishes (lock: ${lock.path}).`)
+    return failed(`Another Bakin on this machine is installing search models${lock.heldBy > 0 ? ` (pid ${lock.heldBy})` : ''} — try again when it finishes. If none is (an install crashed), remove ${lock.path}.`)
   }
   try {
     // Every pull lands in a STAGING models root and is verified there; the
     // live tree the running engine reads is touched only to publish a model
-    // that passed — one rename-swap per model, after every pull verified. A
+    // that passed — one rename per model, after every pull verified. A
     // failure or cancel leaves every live model exactly as it was, and the
     // staging root (antfly's own resumable staging inside it) survives so the
     // next run resumes (T0 F6).
@@ -401,27 +405,13 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     // Last cancel point: nothing live has been touched yet.
     op.throwIfCancelled()
 
-    // Publish: every model verified — swap each into the live tree. A
-    // replaced copy is moved aside first and retired only after its
-    // replacement is in place; a failed swap puts it back.
+    // Publish: every model verified — one rename each into the live tree
+    // (nothing live is in the way: refused up front otherwise).
     for (const m of missing) {
       const live = modelDir(m.model, liveRoot)
-      const staged = modelDir(m.model, stagingRoot)
       mkdirSync(dirname(live), { recursive: true })
       try {
-        if (!existsSync(live)) {
-          renameSync(staged, live) // nothing live to replace: one rename publishes
-        } else if (exchangePaths(staged, live)) {
-          // ONE atomic step: the engine sees the old model or the new one,
-          // never neither. `staged` now holds the replaced copy.
-          rmSync(staged, { recursive: true, force: true })
-        } else {
-          // No atomic exchange on this platform: replacing would leave the
-          // live name missing between two renames while the engine may read
-          // it, so fail safely — the live copy stays exactly as it was.
-          rmSync(staged, { recursive: true, force: true })
-          return failed(`${m.model} needs replacing (${mismatched.includes(m) ? 'its files do not match their pins' : 'the installed copy is incomplete'}), and this platform cannot replace a live model atomically. Remove ${live} (search runs without that model until it is reinstalled), then run \`bakin install search-models\` again — with no live copy to replace, it publishes the verified download directly.`)
-        }
+        renameSync(modelDir(m.model, stagingRoot), live)
       } catch (err) {
         return failed(`Could not publish ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)
       }

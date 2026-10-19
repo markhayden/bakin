@@ -1,8 +1,8 @@
 /**
  * acquireModelsLock under REAL concurrency (#898 E review): separate
- * processes race for the machine-wide models lock (an OS flock) — with a
- * fresh file, and with a leftover file naming a dead pid. Exactly one may
- * win; a SIGKILLed holder frees the lock with nothing to reclaim.
+ * processes race for the machine-wide models lock (an exclusive-create file,
+ * never auto-reclaimed). Exactly one may win a free lock; a leftover lock —
+ * even a dead holder's — is never taken automatically.
  */
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs'
@@ -54,23 +54,11 @@ describe('acquireModelsLock across processes', () => {
     if ('release' in again) again.release()
   }, 30_000)
 
-  it('a leftover lock file naming a dead pid is not a lock — exactly one racer wins', async () => {
+  it('a leftover lock — even one naming a dead pid — is never reclaimed: no racer wins', async () => {
     writeFileSync(lockPath, '999999999')
     await race(8)
-    expect(readdirSync(winners)).toHaveLength(1)
-  }, 30_000)
-
-  it('a SIGKILLed holder releases the lock at once — there is no stale state to reclaim', async () => {
-    const script = join(dir, 'holder.ts')
-    writeFileSync(script, `import { acquireModelsLock } from ${JSON.stringify(modulePath)}\nconst l = acquireModelsLock(${JSON.stringify(modelsRoot)})\nif (!('release' in l)) process.exit(3)\nconsole.log('held')\nawait Bun.sleep(30000)\n`)
-    const holder = Bun.spawn(['bun', script], { stdout: 'pipe', stderr: 'ignore' })
-    expect(new TextDecoder().decode((await holder.stdout.getReader().read()).value)).toContain('held')
+    expect(readdirSync(winners)).toHaveLength(0)
     const { acquireModelsLock } = await import(modulePath)
-    expect('heldBy' in acquireModelsLock(modelsRoot)).toBe(true)
-    holder.kill('SIGKILL')
-    await holder.exited
-    const lock = acquireModelsLock(modelsRoot)
-    expect('release' in lock).toBe(true)
-    if ('release' in lock) lock.release()
+    expect(acquireModelsLock(modelsRoot)).toMatchObject({ heldBy: 999999999, path: lockPath })
   }, 30_000)
 })

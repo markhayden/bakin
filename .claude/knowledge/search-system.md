@@ -781,21 +781,18 @@ Every pull lands in a STAGING models root beside the live one
 (`pullStagingRoot` → `<parent>/.models.bakin-pull/`, same filesystem,
 outside the tree the engine scans) and is verified THERE (structure + pins);
 a post-pull mismatch FAILS the install (it used to be a warning). Only after
-every pulled model verified does the install publish: a model with no live
-copy is one rename; a replacement is ONE atomic exchange
-(`exchangePaths`, `packages/core/src/fs/exchange.ts` — darwin `renamex_np
-RENAME_SWAP`, linux `renameat2 RENAME_EXCHANGE` via `bun:ffi`), so the running
-engine sees the old model or the new one, never neither; where it is
-unavailable a replacement FAILS SAFELY (live copy untouched; the message says
-to remove that model dir and re-run, after which the verified download
-publishes with one rename) — never a two-rename window. The
-whole pull → verify → publish runs under a MACHINE-wide lock beside the
-shared models root (`acquireModelsLock`, `.models.bakin-pull.lock`): an OS
-`flock` (`tryLockFile`, `packages/core/src/fs/flock.ts`, via `bun:ffi`) that
-the kernel releases when the holder exits or dies — no stale lock exists, so
-no reclaim race can ever hand it to two owners. ONE protocol: there is no
-fallback (a second protocol would not interoperate with flock holders), so
-without flock the install fails closed.
+every pulled model verified does the install publish, one rename each. A
+live copy is NEVER replaced in place (swapping a directory the running engine
+may read takes two renames — a window where it is missing; no `bun:ffi`
+atomic exchange, an owner decision 2026-10-19 to keep release signing
+unchanged): a model that needs replacing with a live copy in the way is
+refused BEFORE any download, the message naming the dir to remove; the re-run
+then publishes the verified download with one rename. The whole pull →
+verify → publish runs under a MACHINE-wide lock beside the shared models root
+(`acquireModelsLock`, `.models.bakin-pull.lock`): an exclusive-create file
+holding the owner's pid, NEVER reclaimed automatically (any automatic stale
+reclaim can, under some schedule, hand the lock to two owners) — a crashed
+install's lock is named in the message for the operator to remove.
 Operation locks are per home; the antfly models root is not. Model ids are
 validated as exactly `owner/name` (`isSafeModelName`; custom ids come from
 settings) before any path is built from them. A
