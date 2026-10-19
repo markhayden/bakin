@@ -65,14 +65,20 @@ async function resolveServerLaunchSpec(): Promise<ServerLaunchSpec> {
   return { programArgs: [currentExecutable(), 'serve'], workingDir: getBakinPaths().home }
 }
 
-function serviceEnvironment(): Record<string, string> {
+/**
+ * The environment a service (or a restart's replacement) runs with. It
+ * ALWAYS names this home as an absolute, canonical `BAKIN_HOME` — the
+ * default home too — so the service's next launch is unambiguously this
+ * home's and a relative path can never be resolved against another cwd
+ * (#898 K).
+ */
+async function serviceEnvironment(): Promise<Record<string, string>> {
+  const { canonicalHome } = await import('../lifecycle-io')
   const env: Record<string, string> = {
     PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
+    BAKIN_HOME: canonicalHome(),
   }
-  for (const key of ['BAKIN_HOME', 'PORT'] as const) {
-    const value = process.env[key]
-    if (value) env[key] = value
-  }
+  if (process.env.PORT) env.PORT = process.env.PORT
   return env
 }
 
@@ -165,10 +171,6 @@ WantedBy=default.target
 `
 }
 
-function serverProcessPattern(): string {
-  return 'tsx.*server\\.ts|bun.*server\\.ts.*serve|bakin.*serve'
-}
-
 async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): Promise<void> {
   if (command === 'start') {
     const { dispatchCli } = await import('../../core/cli')
@@ -230,7 +232,7 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
   }
 
   const launch = await resolveServerLaunchSpec()
-  const environment = serviceEnvironment()
+  const environment = await serviceEnvironment()
   const paths = getBakinPaths()
   const stdoutPath = join(paths.logs, 'server.out.log')
   const stderrPath = join(paths.logs, 'server.err.log')
@@ -374,191 +376,29 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
   process.exit(1)
 }
 
-async function cmdReboot(): Promise<void> {
-  const { execFileSync, spawn } = await import('child_process')
-  const { existsSync } = await import('fs')
-  const { join } = await import('path')
-  const { homedir } = await import('os')
-  const { getBakinPaths } = await import('../../../packages/core/src/content-dir')
-  const isTTY = process.stdout.isTTY
-  const details: string[] = []
-  const paths = getBakinPaths()
-  const logPath = join(paths.logs, 'server.log')
+async function cmdReboot(args: string[] = []): Promise<void> {
+  const { restartHome } = await import('../lifecycle-control')
+  const { realLifecycleIo } = await import('../lifecycle-io')
+  if (!process.stdout.isTTY) console.log('[..] Restarting this home\'s Bakin server...')
+  const io = await realLifecycleIo(resolveServerLaunchSpec)
+  const outcome = await restartHome(io, { force: args.includes('--force'), baseEnv: await serviceEnvironment() })
+  await printLifecycleOutcome('restart', outcome, outcome.boot ? [`pid ${outcome.boot.pid}`, ...(outcome.boot.version ? [`version ${outcome.boot.version}`] : [])] : [])
+}
 
-  const printRestartResult = async (result: Record<string, unknown>): Promise<void> => {
-    const message = typeof result.message === 'string' ? result.message : 'Bakin restart request completed.'
-    if (isTTY) {
-      await printRuntimeActionTui({
-        action: 'restart',
-        target: 'Bakin server',
-        result,
-        message,
-        detail: details.join('\n'),
-      })
-      return
-    }
-    if (result.status === 'warn') console.log(`[WARN] ${message}`)
-    else console.log(message)
-  }
-
-  if (process.platform === 'darwin') {
-    const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
-    if (existsSync(plistPath)) {
-      const uid = execFileSync('id', ['-u'], { encoding: 'utf-8' }).trim()
-      if (!isTTY) console.log('[..] Restarting Bakin LaunchAgent...')
-      try {
-        execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe' })
-      } catch {
-        details.push('LaunchAgent was not loaded; bootstrapped it before restart.')
-        execFileSync('launchctl', ['bootstrap', `gui/${uid}`, plistPath], { stdio: 'pipe' })
-        execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe' })
-      }
-      details.push(`Service: ${SERVICE_LABEL}`)
-      details.push(`Logs: tail -f ${logPath}`)
-      if (!isTTY) console.log('[OK] Bakin LaunchAgent restart requested')
-
-      if (!isTTY) console.log('[..] Waiting for server to come up...')
-      const started = await waitForServerVersion()
-      if (started.ok) {
-        if (!isTTY) {
-          console.log(`[OK] Bakin is up (${started.version})`)
-          return
-        }
-        details.push(`Version: ${started.version}`)
-        await printRestartResult({
-          ok: true,
-          status: 'ok',
-          message: 'Bakin restarted.',
-          service: SERVICE_LABEL,
-          version: started.version,
-        })
-        return
-      }
-      if (!isTTY) {
-        console.log('[WARN] Server not responding after 15s - check logs')
-        process.exitCode = 1
-        return
-      }
-      process.exitCode = 1
-      await printRestartResult({
-        ok: true,
-        status: 'warn',
-        message: 'Server not responding after 15s - check logs.',
-        service: SERVICE_LABEL,
-      })
-      return
-    }
-  }
-
-  if (process.platform === 'linux') {
-    const unitPath = join(homedir(), '.config', 'systemd', 'user', `${SERVICE_LABEL}.service`)
-    if (existsSync(unitPath)) {
-      if (!isTTY) console.log('[..] Restarting Bakin user service...')
-      execFileSync('systemctl', ['--user', 'restart', `${SERVICE_LABEL}.service`], { stdio: 'pipe' })
-      details.push(`Service: ${SERVICE_LABEL}.service`)
-      details.push(`Logs: tail -f ${logPath}`)
-      if (!isTTY) console.log('[OK] Bakin user service restart requested')
-
-      if (!isTTY) console.log('[..] Waiting for server to come up...')
-      const started = await waitForServerVersion()
-      if (started.ok) {
-        if (!isTTY) {
-          console.log(`[OK] Bakin is up (${started.version})`)
-          return
-        }
-        details.push(`Version: ${started.version}`)
-        await printRestartResult({
-          ok: true,
-          status: 'ok',
-          message: 'Bakin restarted.',
-          service: `${SERVICE_LABEL}.service`,
-          version: started.version,
-        })
-        return
-      }
-      if (!isTTY) {
-        console.log('[WARN] Server not responding after 15s - check logs')
-        process.exitCode = 1
-        return
-      }
-      process.exitCode = 1
-      await printRestartResult({
-        ok: true,
-        status: 'warn',
-        message: 'Server not responding after 15s - check logs.',
-        service: `${SERVICE_LABEL}.service`,
-      })
-      return
-    }
-  }
-
-  // Kill any running Bakin server processes
-  if (!isTTY) console.log('[..] Stopping Bakin server...')
-  try {
-    const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
-    if (pids) {
-      let signaled = 0
-      for (const pid of pids.split('\n')) {
-        if (pid && pid !== String(process.pid)) {
-          process.kill(Number(pid), 'SIGTERM')
-          signaled++
-        }
-      }
-      details.push(`Sent SIGTERM to ${signaled} process(es).`)
-      if (!isTTY) console.log('[OK] Sent SIGTERM to Bakin server')
-      if (!isTTY) console.log('[..] Waiting for shutdown...')
-      await new Promise(r => setTimeout(r, 2000))
-    }
-  } catch {
-    details.push('No running Bakin process found before restart.')
-    if (!isTTY) console.log('[..] No running Bakin process found')
-  }
-
-  // Start the server in background
-  if (!isTTY) console.log('[..] Starting Bakin server...')
-  const launch = await resolveServerLaunchSpec()
-  const child = spawn(launch.programArgs[0], launch.programArgs.slice(1), {
-    cwd: launch.workingDir,
-    detached: true,
-    stdio: ['ignore', 'ignore', 'ignore'],
-    env: { ...process.env },
-  })
-  child.unref()
-  if (child.pid) details.push(`Started process ${child.pid}.`)
-  details.push(`Logs: tail -f ${logPath}`)
-  if (!isTTY) console.log(`[OK] Bakin starting (pid ${child.pid})`)
-  if (!isTTY) console.log(`  Logs: tail -f ${logPath}`)
-
-  // Wait and verify
-  if (!isTTY) console.log('[..] Waiting for server to come up...')
-  const started = await waitForServerVersion()
-  if (started.ok) {
-    if (!isTTY) {
-      console.log(`[OK] Bakin is up (${started.version})`)
-      return
-    }
-    details.push(`Version: ${started.version}`)
-    await printRestartResult({
-      ok: true,
-      status: 'ok',
-      message: 'Bakin restarted.',
-      pid: child.pid,
-      version: started.version,
-    })
+/**
+ * One outcome printer for stop/restart (#898 K): every note reaches BOTH
+ * output modes, and a failure always exits non-zero.
+ */
+async function printLifecycleOutcome(action: 'stop' | 'restart', outcome: import('../lifecycle-control').LifecycleOutcome, facts: string[] = []): Promise<void> {
+  if (!outcome.ok) process.exitCode = 1
+  const detail = [...facts, ...outcome.notes].join('\n') || undefined
+  if (process.stdout.isTTY) {
+    await printRuntimeActionTui({ action, target: 'Bakin server', result: { ok: outcome.ok, status: outcome.status, message: outcome.message }, message: outcome.message, detail })
     return
   }
-  if (!isTTY) {
-    console.log('[WARN] Server not responding after 15s - check logs')
-    process.exitCode = 1
-    return
-  }
-  process.exitCode = 1
-  await printRestartResult({
-    ok: true,
-    status: 'warn',
-    message: 'Server not responding after 15s - check logs.',
-    pid: child.pid,
-  })
+  const tag = outcome.status === 'ok' ? '[OK]' : outcome.status === 'warn' ? '[WARN]' : '[ERROR]'
+  console.log(`${tag} ${outcome.message}`)
+  for (const line of [...facts, ...outcome.notes]) console.log(`  ${line}`)
 }
 
 interface LogsOptions {
@@ -762,113 +602,50 @@ async function cmdLogs(options: LogsOptions = {}): Promise<void> {
 }
 
 async function cmdStop(): Promise<void> {
-  const { execFileSync } = await import('child_process')
-
-  const printStopResult = async (result: Record<string, unknown>, detail?: string): Promise<void> => {
-    // Antfly dies ONLY after Bakin is down/absent: killing it while a Bakin
-    // server still runs would trip that server's takeover supervision, which
-    // exists precisely to resurrect a disappeared local instance.
-    const antflyPid = await stopAntflyInstance()
-    if (antflyPid && !process.stdout.isTTY) console.log(`[OK] Sent SIGTERM to Antfly instance (pid ${antflyPid})`)
-    const message = typeof result.message === 'string' ? result.message : 'Bakin stop request completed.'
-    if (process.stdout.isTTY) {
-      await printRuntimeActionTui({
-        action: 'stop',
-        target: 'Bakin server',
-        result,
-        message,
-        detail,
-      })
-      return
-    }
-    if (message === 'Bakin stopped.') console.log('[OK] Bakin stopped')
-    else if (message === 'No running Bakin process found.') console.log('[OK] No running Bakin process found')
-    else if (result.status === 'warn') console.log(`[WARN] ${message}`)
-    else console.log(message)
-    if (detail) console.log(`  ${detail}`)
-  }
-
+  const { stopHome } = await import('../lifecycle-control')
+  const { realLifecycleIo } = await import('../lifecycle-io')
+  if (!process.stdout.isTTY) console.log('[..] Stopping this home\'s Bakin server...')
+  const outcome = await stopHome(await realLifecycleIo(resolveServerLaunchSpec))
   // `bakin stop` is one of the EXPLICIT antfly kill paths (the keep-alive
-  // lifecycle leaves the child running across routine Bakin restarts, so a
-  // routine server SIGTERM never stops it). Kill via the instance sidecar,
-  // best-effort — a missing/stale sidecar or dead pid is fine.
-  const stopAntflyInstance = async (): Promise<number | null> => {
-    try {
-      const { getBakinPaths } = await import('../../../packages/core/src/content-dir')
-      const { join } = await import('path')
-      const { readFileSync, existsSync, unlinkSync } = await import('fs')
-      const sidecarPath = join(getBakinPaths().antfly, 'instance.json')
-      if (!existsSync(sidecarPath)) return null
-      const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8')) as { pid?: number | null }
-      if (sidecar?.pid) {
-        try {
-          process.kill(sidecar.pid, 'SIGTERM')
-        } catch { /* already gone */ }
-      }
-      try {
-        unlinkSync(sidecarPath)
-      } catch { /* best effort */ }
-      return sidecar?.pid ?? null
-    } catch {
-      return null
-    }
+  // lifecycle leaves the child running across routine restarts). Antfly dies
+  // ONLY once Bakin is conclusively down here — never on a refusal or a
+  // timeout, where a live server's supervision would just resurrect it.
+  const facts: string[] = []
+  if (outcome.ok && !outcome.notes.some((n) => n.startsWith('A start may be pending'))) {
+    const antflyPid = await stopAntflyInstance()
+    if (antflyPid) facts.push(`Stopped the Antfly instance (pid ${antflyPid}).`)
   }
-
-  if (!process.stdout.isTTY) console.log('[..] Stopping Bakin server...')
-  try {
-    const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
-    if (pids) {
-      const signaled: string[] = []
-      for (const pid of pids.split('\n')) {
-        if (pid && pid !== String(process.pid)) {
-          process.kill(Number(pid), 'SIGTERM')
-          signaled.push(pid)
-        }
-      }
-      if (!process.stdout.isTTY) console.log('[OK] Sent SIGTERM to Bakin server')
-
-      // Wait and verify it's actually down
-      for (let i = 0; i < 10; i++) {
-        await new Promise(r => setTimeout(r, 500))
-        // No live server for this home (its lock is gone) or no answer = down.
-        const baseUrl = liveServerBaseUrl({})
-        try {
-          if (!baseUrl) throw new Error('no live server for this home')
-          await fetch(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(1000) })
-        } catch {
-          await printStopResult({
-            ok: true,
-            status: 'ok',
-            message: 'Bakin stopped.',
-            signaled: signaled.length,
-          }, signaled.length > 0 ? `Sent SIGTERM to ${signaled.length} process(es).` : undefined)
-          return
-        }
-      }
-      await printStopResult({
-        ok: true,
-        status: 'warn',
-        message: 'Server may still be shutting down.',
-        signaled: signaled.length,
-      }, signaled.length > 0 ? `Sent SIGTERM to ${signaled.length} process(es).` : undefined)
-    } else {
-      await printStopResult({
-        ok: true,
-        status: 'ok',
-        message: 'No running Bakin process found.',
-        signaled: 0,
-      })
-    }
-  } catch {
-    await printStopResult({
-      ok: true,
-      status: 'ok',
-      message: 'No running Bakin process found.',
-      signaled: 0,
-    })
-  }
+  await printLifecycleOutcome('stop', outcome, facts)
 }
 
+/** Kill this home's Antfly via its instance sidecar, best-effort (a missing/stale sidecar is fine). */
+async function stopAntflyInstance(): Promise<number | null> {
+  const { getBakinPaths } = await import('../../../packages/core/src/content-dir')
+  const { join } = await import('path')
+  const { readFileSync, existsSync, unlinkSync } = await import('fs')
+  const sidecarPath = join(getBakinPaths().antfly, 'instance.json')
+  if (!existsSync(sidecarPath)) return null
+  let pid: number | null = null
+  try {
+    pid = (JSON.parse(readFileSync(sidecarPath, 'utf-8')) as { pid?: number | null }).pid ?? null
+  } catch (err) {
+    console.error(`Could not read the Antfly instance sidecar: ${err instanceof Error ? err.message : String(err)}`)
+    return null
+  }
+  if (pid) {
+    try {
+      process.kill(pid, 'SIGTERM')
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'ESRCH') throw err // already gone is fine
+    }
+  }
+  try {
+    unlinkSync(sidecarPath)
+  } catch (err) {
+    if ((err as { code?: string }).code !== 'ENOENT') throw err
+  }
+  return pid
+}
 
 export async function run(args: string[]): Promise<void> {
   const cmd = args[0]
@@ -910,7 +687,7 @@ export async function run(args: string[]): Promise<void> {
 
     default:
       // 'reboot' | 'restart'
-      await cmdReboot()
+      await cmdReboot(args.slice(1))
       break
   }
 }
