@@ -198,6 +198,26 @@ describe('listCapabilities', () => {
     expect(cap.missing.join('\n')).toMatch(/missing.*bakin packages install web-search-brave/)
   })
 
+  it('a manifest that parses but is not a valid pack ([] or {}) is still a NOT-ready row — nothing invalid is trusted to say "not a capability"', async () => {
+    seedInstalledPack()
+    const manifestPath = join(testDir, 'packages', 'skill-packs', 'web-search-brave@1.0.0', 'bakin-package.json')
+    for (const body of ['[]', '{}']) {
+      writeFileSync(manifestPath, body)
+      const caps = await listCapabilities()
+      expect(caps).toHaveLength(1)
+      expect(caps[0]).toMatchObject({ packageId: 'web-search-brave', ready: false })
+      expect(caps[0]!.missing.join('\n')).toMatch(/invalid.*bakin packages install web-search-brave/)
+    }
+  })
+
+  it('a directory where a declared binary should be is a drifted leg — the list still answers for every pack', async () => {
+    seedInstalledPack()
+    mkdirSync(join(testDir, 'bin', 'bx'), { recursive: true })
+    const [cap] = await listCapabilities()
+    expect(cap.bins[0].status).toBe('drifted')
+    expect(cap.ready).toBe(false)
+  })
+
   it('an env var beats the store and reports source env', async () => {
     seedInstalledPack({ withBin: false })
     projectedSkills.add('bx-search')

@@ -540,6 +540,13 @@ describe('scanAgentSync — skills', () => {
       expect(await binFindings()).toMatchObject([{ type: 'bin-manifest-invalid', severity: 'error', autoFixable: false, target, hint: expect.stringContaining('bakin packages install tool-pack') }])
     })
 
+    it('a directory where the binary should be is drifted — the scan keeps going', async () => {
+      await seedSyncedState()
+      const target = await seedBinPack(null)
+      mkdirSync(target, { recursive: true })
+      expect(await binFindings()).toMatchObject([{ type: 'asset-drifted', target }])
+    })
+
     it('a missing binary is asset-missing', async () => {
       await seedSyncedState()
       await seedBinPack(null)

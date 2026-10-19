@@ -139,11 +139,10 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
     if (!installed) continue
     if (!installed.ok) {
       // Visible, never green, never "no bins": the pack cannot be judged
-      // until it is reinstalled with a manifest this Bakin accepts. Only a
-      // readable manifest that clearly declares NO capability is skipped;
-      // otherwise the lockfile identity names the row.
+      // until it is reinstalled with a manifest this Bakin accepts. Nothing
+      // in an invalid manifest is trusted to say "not a capability", so it
+      // is always a row — named by its lockfile identity when it has none.
       const raw = installed.raw
-      if (raw && raw.capability === undefined) continue
       const capability = typeof raw?.capability === 'string' ? raw.capability : id
       out.push({
         capability,

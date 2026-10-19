@@ -75,3 +75,10 @@ describe('verifyInstalledBin — archive download', () => {
     expect(verifyInstalledBin(BIN, download).status).toBe('missing')
   })
 })
+
+describe('verifyInstalledBin — never throws', () => {
+  it('a directory where the binary should be is drifted (not-a-file), not an exception', () => {
+    mkdirSync(BIN, { recursive: true })
+    expect(verifyInstalledBin(BIN, { sha256: sha('x') })).toEqual({ status: 'drifted', reason: 'not-a-file' })
+  })
+})
