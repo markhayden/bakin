@@ -337,7 +337,7 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
   // pull → verify → publish runs under ONE machine-wide lock (#898 E).
   const lock = acquireModelsLock(liveRoot)
   if ('heldBy' in lock) {
-    return failed(`Another Bakin on this machine is installing search models${lock.heldBy > 0 ? ` (pid ${lock.heldBy})` : ''} — try again when it finishes.`)
+    return failed(`Another Bakin on this machine is installing search models${lock.heldBy > 0 ? ` (pid ${lock.heldBy})` : ''} — try again when it finishes (lock: ${lock.path}).`)
   }
   try {
     // Every pull lands in a STAGING models root and is verified there; the
@@ -417,7 +417,7 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
           // live name missing between two renames while the engine may read
           // it, so fail safely — the live copy stays exactly as it was.
           rmSync(staged, { recursive: true, force: true })
-          return failed(`${m.model} does not match its pins, and this platform cannot replace a live model atomically. Stop search (or remove ${live}), then run \`bakin install search-models\` again.`)
+          return failed(`${m.model} does not match its pins, and this platform cannot replace a live model atomically. Remove ${live} (search runs without that model until it is reinstalled), then run \`bakin install search-models\` again — with no live copy to replace, it publishes the verified download directly.`)
         }
       } catch (err) {
         return failed(`Could not publish ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)

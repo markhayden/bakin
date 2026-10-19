@@ -38,6 +38,7 @@
     "./tasks/testing": "./src/tasks/testing.ts",
     "./usage-history/store": "./src/usage-history/store.ts",
     "./fs/exchange": "./src/fs/exchange.ts",
+    "./fs/flock": "./src/fs/flock.ts",
     "./integrity/files": "./src/integrity/files.ts",
     "./logger": "./src/logger.ts",
     "./settings": "./src/settings.ts",

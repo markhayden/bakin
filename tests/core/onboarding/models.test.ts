@@ -350,19 +350,24 @@ describe('installInferenceModels', () => {
       expect(check.message).toContain('custom models are checked structurally only')
     })
 
-    it('a live holder of the machine-wide models lock fails the install clearly; a dead holder\'s lock is reclaimed', async () => {
+    it('a live holder of the machine-wide models lock fails the install clearly; once it exits the lock is free', async () => {
       installFakeBinary(PULL_OK)
       const lockPath = join(require('path').dirname(modelsRoot), `.${require('path').basename(modelsRoot)}.bakin-pull.lock`)
       mkdirSync(require('path').dirname(lockPath), { recursive: true })
-      writeFileSync(lockPath, String(process.ppid)) // a live process: another Bakin home mid-install
+      const flockModule = require('path').resolve(import.meta.dir, '../../../packages/core/src/fs/flock.ts')
+      const holderScript = join(testDir, 'holder.ts')
+      writeFileSync(holderScript, `import { tryLockFile } from ${JSON.stringify(flockModule)}\nconst l = tryLockFile(${JSON.stringify(lockPath)})\nif (l.kind !== 'held') process.exit(3)\nconsole.log('held')\nawait Bun.sleep(30000)\n`)
+      const holder = Bun.spawn(['bun', holderScript], { stdout: 'pipe', stderr: 'ignore' })
+      const reader = holder.stdout.getReader()
+      expect(new TextDecoder().decode((await reader.read()).value)).toContain('held')
       let result = await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])
       expect(result.status).toBe('failed')
       expect(result.message).toContain('Another Bakin on this machine is installing search models')
-      writeFileSync(lockPath, '999999999') // a dead pid
+      holder.kill('SIGKILL') // the kernel releases a dead holder's flock — nothing to reclaim
+      await holder.exited
       result = await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])
       expect(result.status).toBe('installed')
-      expect(existsSync(lockPath)).toBe(false) // released after the install
-    })
+    }, 30_000)
 
     it('a malformed model id never reaches the filesystem — it cannot delete live models', async () => {
       installFakeBinary(PULL_OK)
@@ -384,6 +389,11 @@ describe('installInferenceModels', () => {
       expect(result.status).toBe('failed')
       expect(result.message).toContain('cannot replace a live model atomically')
       expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
+      // Following the message's recovery steps succeeds.
+      rmSync(join(modelsRoot, PINNED.model), { recursive: true, force: true })
+      const retry = await installInferenceModels(optsAutoYes, undefined, [PINNED])
+      expect(retry.status).toBe('installed')
+      expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx')).length).toBe(2048)
     })
 
     it('the doctor check stays structural and says so', async () => {

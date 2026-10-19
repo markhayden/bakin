@@ -1,4 +1,5 @@
-import { linkSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'fs'
+import { tryLockFile } from '@bakin/core/fs/flock'
 import { basename, dirname, join } from 'path'
 
 /**
@@ -126,59 +127,35 @@ export function createPullTracker(stagingDir: string) {
  * the machine, while operation locks are per home — without this, one home
  * could delete or replace another's staged, verified model mid-install.
  *
- * The lock file holds the owner's pid and is never visible empty: it is
- * written complete to a private temp file and published with `link`, which
- * fails if the lock exists. A dead holder's lock is reclaimed by RENAMING it
- * to a private name and re-reading it there: only the content just judged
- * stale is ever deleted — a lock someone published in between is put back.
- * Non-blocking: a live holder is reported.
+ * An OS `flock` (`tryLockFile`): the kernel releases it when the holder
+ * exits or dies, so there is no stale lock to reclaim and no reclaim race.
+ * Where flock is unavailable, an O_EXCL lock file that is NEVER reclaimed
+ * automatically (a crashed holder's file must be removed by hand — the
+ * message names it): two owners are never possible either way.
  */
-export function acquireModelsLock(liveModelsRoot: string): { release: () => void } | { heldBy: number } {
+export function acquireModelsLock(liveModelsRoot: string): { release: () => void } | { heldBy: number; path: string } {
   const path = join(dirname(liveModelsRoot), `.${basename(liveModelsRoot)}.bakin-pull.lock`)
   mkdirSync(dirname(path), { recursive: true })
-  const mine = String(process.pid)
-  const unique = () => `${path}.${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const temp = unique()
-    writeFileSync(temp, mine, { flag: 'wx' })
-    try {
-      linkSync(temp, path)
-      return {
-        release: () => {
-          if (readText(path)?.trim() === mine) unlinkSync(path)
-        },
-      }
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-    } finally {
-      unlinkSync(temp)
-    }
-    const seen = readText(path)?.trim() ?? ''
-    const holder = Number.parseInt(seen, 10)
-    if (Number.isInteger(holder) && holder > 0 && processAlive(holder)) return { heldBy: holder }
-    // Stale (dead or unreadable holder): claim the FILE first, then judge it.
-    const claimed = unique()
-    try {
-      renameSync(path, claimed)
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue // someone else reclaimed it
-      throw err
-    }
-    if ((readText(claimed)?.trim() ?? '') === seen) {
-      unlinkSync(claimed) // exactly the stale lock we judged
-      continue
-    }
-    // A live lock was published between our read and our rename: put it back.
-    try {
-      linkSync(claimed, path)
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-    }
-    unlinkSync(claimed)
-    const current = Number.parseInt(readText(path)?.trim() ?? '', 10)
-    return { heldBy: Number.isInteger(current) ? current : -1 }
+  const lock = tryLockFile(path)
+  if (lock.kind === 'held') return { release: lock.release }
+  if (lock.kind === 'busy') return { heldBy: holderPid(path), path }
+  // No flock: exclusive create, never auto-reclaimed.
+  try {
+    writeFileSync(path, String(process.pid), { flag: 'wx' })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return { heldBy: holderPid(path), path }
+    throw err
   }
-  return { heldBy: -1 }
+  return {
+    release: () => {
+      if (readText(path)?.trim() === String(process.pid)) unlinkSync(path)
+    },
+  }
+}
+
+function holderPid(path: string): number {
+  const pid = Number.parseInt(readText(path)?.trim() ?? '', 10)
+  return Number.isInteger(pid) && pid > 0 ? pid : -1
 }
 
 function readText(path: string): string | null {
@@ -186,14 +163,5 @@ function readText(path: string): string | null {
     return readFileSync(path, 'utf-8')
   } catch {
     return null
-  }
-}
-
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === 'EPERM'
   }
 }

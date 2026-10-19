@@ -786,14 +786,16 @@ copy is one rename; a replacement is ONE atomic exchange
 (`exchangePaths`, `packages/core/src/fs/exchange.ts` — darwin `renamex_np
 RENAME_SWAP`, linux `renameat2 RENAME_EXCHANGE` via `bun:ffi`), so the running
 engine sees the old model or the new one, never neither; where it is
-unavailable a replacement FAILS SAFELY (live copy untouched, the message says
-to stop search or remove the model first) — never a two-rename window. The
+unavailable a replacement FAILS SAFELY (live copy untouched; the message says
+to remove that model dir and re-run, after which the verified download
+publishes with one rename) — never a two-rename window. The
 whole pull → verify → publish runs under a MACHINE-wide lock beside the
-shared models root (`acquireModelsLock`, `.models.bakin-pull.lock`: the pid
-is written to a temp file and published with `link`, so the lock is never
-visible empty; a dead holder's lock is reclaimed by renaming it aside and
-re-checking it, so a concurrently published lock is never deleted) —
-operation locks are per home, the antfly models root is not. Model ids are
+shared models root (`acquireModelsLock`, `.models.bakin-pull.lock`): an OS
+`flock` (`tryLockFile`, `packages/core/src/fs/flock.ts`, via `bun:ffi`) that
+the kernel releases when the holder exits or dies — no stale lock exists, so
+no reclaim race can ever hand it to two owners. Without flock it falls back
+to an O_EXCL file that is never auto-reclaimed (the message names it).
+Operation locks are per home; the antfly models root is not. Model ids are
 validated as exactly `owner/name` (`isSafeModelName`; custom ids come from
 settings) before any path is built from them. A
 failure or cancel therefore never touches a live model, and

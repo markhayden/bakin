@@ -1,7 +1,8 @@
 /**
  * acquireModelsLock under REAL concurrency (#898 E review): separate
- * processes race for the machine-wide models lock — with no lock, and with a
- * stale (dead-pid) lock all of them try to reclaim. Exactly one may win.
+ * processes race for the machine-wide models lock (an OS flock) — with a
+ * fresh file, and with a leftover file naming a dead pid. Exactly one may
+ * win; a SIGKILLed holder frees the lock with nothing to reclaim.
  */
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs'
@@ -46,13 +47,30 @@ describe('acquireModelsLock across processes', () => {
   it('exactly one of many simultaneous racers acquires a free lock', async () => {
     await race(8)
     expect(readdirSync(winners)).toHaveLength(1)
-    expect(existsSync(lockPath)).toBe(false) // released
+    // Released: a new holder can take it at once.
+    const { acquireModelsLock } = await import(modulePath)
+    const again = acquireModelsLock(modelsRoot)
+    expect('release' in again).toBe(true)
+    if ('release' in again) again.release()
   }, 30_000)
 
-  it('exactly one racer wins a STALE lock — concurrent reclaimers never both own it', async () => {
-    writeFileSync(lockPath, '999999999') // a dead pid
+  it('a leftover lock file naming a dead pid is not a lock — exactly one racer wins', async () => {
+    writeFileSync(lockPath, '999999999')
     await race(8)
     expect(readdirSync(winners)).toHaveLength(1)
-    expect(readdirSync(join(dir, 'inference')).filter((name) => name.includes('.bakin-pull.lock.'))).toEqual([]) // no temp/claim leftovers
+  }, 30_000)
+
+  it('a SIGKILLed holder releases the lock at once — there is no stale state to reclaim', async () => {
+    const script = join(dir, 'holder.ts')
+    writeFileSync(script, `import { acquireModelsLock } from ${JSON.stringify(modulePath)}\nconst l = acquireModelsLock(${JSON.stringify(modelsRoot)})\nif (!('release' in l)) process.exit(3)\nconsole.log('held')\nawait Bun.sleep(30000)\n`)
+    const holder = Bun.spawn(['bun', script], { stdout: 'pipe', stderr: 'ignore' })
+    expect(new TextDecoder().decode((await holder.stdout.getReader().read()).value)).toContain('held')
+    const { acquireModelsLock } = await import(modulePath)
+    expect('heldBy' in acquireModelsLock(modelsRoot)).toBe(true)
+    holder.kill('SIGKILL')
+    await holder.exited
+    const lock = acquireModelsLock(modelsRoot)
+    expect('release' in lock).toBe(true)
+    if ('release' in lock) lock.release()
   }, 30_000)
 })
