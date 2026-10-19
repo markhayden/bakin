@@ -72,7 +72,7 @@ function harness(opts: { home?: string; platform?: string; lock?: LockInfo | nul
     setLock: (next: LockInfo | null) => { lock = next },
     /** What the manager reports from now on (a kickstart changes its pid). */
     setService: (pid: number | null, home = '/home/me/.bakin') => {
-      launchctl = { ok: true, output: `gui/501/com.makinbakin.bakin = {\n${pid ? `\tpid = ${pid}\n` : ''}\tenvironment = {\n\t\tBAKIN_HOME => ${home}\n\t}\n}` }
+      launchctl = { ok: true, output: `gui/501/com.makinbakin.bakin = {\n${pid ? `\tstate = running\n\tpid = ${pid}\n` : '\tstate = not running\n'}\tenvironment = {\n\t\tBAKIN_HOME => ${home}\n\t}\n}` }
     },
   }
 }
@@ -111,7 +111,7 @@ describe('stop', () => {
 
   it('a service-managed server: stops the SERVICE (no KeepAlive respawn), only when the manager pid IS the proved pid (J r3 #2, r4 #4)', async () => {
     const me = fresh()
-    const h = harness({ lock: lockFor(me), servers: [me], launchctl: { ok: true, output: `gui/501/com.makinbakin.bakin = {\n\tpid = 500\n\tenvironment = {\n\t\tBAKIN_HOME => /home/me/.bakin\n\t}\n}` } })
+    const h = harness({ lock: lockFor(me), servers: [me], launchctl: { ok: true, output: `gui/501/com.makinbakin.bakin = {\n\tstate = running\n\tpid = 500\n\tenvironment = {\n\t\tBAKIN_HOME => /home/me/.bakin\n\t}\n}` } })
     // The bootout stops the process.
     const origExec = h.io.exec
     h.io.exec = (cmd, args) => { if (args[0] === 'bootout') me.alive = false; return origExec(cmd, args) }
@@ -123,7 +123,7 @@ describe('stop', () => {
 
   it('a loaded service running ANOTHER pid (another home) is never controlled — this home is stopped by request (J r4 #4)', async () => {
     const me = fresh()
-    const h = harness({ lock: lockFor(me), servers: [me], launchctl: { ok: true, output: `x = {\n\tpid = 4242\n\tenvironment = {\n\t\tBAKIN_HOME => /home/me/.bakin\n\t}\n}` } })
+    const h = harness({ lock: lockFor(me), servers: [me], launchctl: { ok: true, output: `x = {\n\tstate = running\n\tpid = 4242\n\tenvironment = {\n\t\tBAKIN_HOME => /home/me/.bakin\n\t}\n}` } })
     const out = await stopHome(h.io)
     expect(out.ok).toBe(true)
     expect(h.execs.some((e) => e.includes('bootout'))).toBe(false)
@@ -192,7 +192,7 @@ describe('restart', () => {
 
   it('a service-owned server restarts through the manager and proves a NEW boot', async () => {
     const me = fresh()
-    const h = harness({ lock: lockFor(me), servers: [me], launchctl: { ok: true, output: `x = {\n\tpid = 500\n}` } })
+    const h = harness({ lock: lockFor(me), servers: [me], launchctl: { ok: true, output: `x = {\n\tstate = running\n\tpid = 500\n}` } })
     const exec = h.io.exec
     h.io.exec = (cmd, args) => {
       const r = exec(cmd, args)
@@ -404,5 +404,49 @@ describe('K r2 — fail closed', () => {
     expect(out.ok).toBe(false)
     expect(h.shutdownRequests).toEqual([])
     expect(me.alive).toBe(true)
+  })
+})
+
+describe('K r3', () => {
+  it('launchd output without a single state, or running without a pid, is unknown — stop then touches nothing', async () => {
+    for (const output of ['x = {\n\tstate = running\n}', 'x = {\n\tpid = 500\n}']) {
+      const me = fresh()
+      const h = harness({ lock: lockFor(me), servers: [me], launchctl: { ok: true, output } })
+      expect(readServiceState(h.io).kind).toBe('unknown')
+      const out = await stopHome(h.io)
+      expect(out.ok).toBe(false)
+      expect(h.shutdownRequests).toEqual([])
+    }
+  })
+
+  it('a failing manager query is unknown even with no unit file on disk (a loaded job outlives its plist)', () => {
+    const h = harness({ launchctl: { ok: false, output: 'launchctl: internal error' } })
+    expect(readServiceState(h.io).kind).toBe('unknown')
+  })
+
+  it('systemd active without a main pid is unknown', () => {
+    const h = harness({ platform: 'linux' })
+    h.io.exec = () => ({ ok: true, output: 'LoadState=loaded\nActiveState=active\nMainPID=0\nEnvironment=BAKIN_HOME=/home/me/.bakin\nEnvironmentFiles=\n' })
+    expect(readServiceState(h.io).kind).toBe('unknown')
+  })
+
+  it('stopping an old-protocol service judges the generation captured BEFORE the bootout (a fast successor is reported)', async () => {
+    const me = fresh({ protocol: 'old' })
+    const h = harness({ lock: lockFor(me), servers: [me] })
+    h.setService(500)
+    const exec = h.io.exec
+    h.io.exec = (cmd, args) => {
+      const r = exec(cmd, args)
+      if (args[0] === 'bootout') {
+        me.alive = false
+        const successor = { ...mine, pid: 9191, bootId: 'boot-N', secret: 'n', answers: false }
+        h.servers.push(successor)
+        h.setLock(lockFor(successor))
+      }
+      return r
+    }
+    const out = await stopHome(h.io)
+    expect(out.ok).toBe(false)
+    expect(out.message).toContain('pid 9191')
   })
 })

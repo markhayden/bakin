@@ -163,3 +163,16 @@ plan) is either impossible by construction or covered by a test.
 - An installed service whose state can't be read refuses restart even with
   nothing running; with no unit installed (Docker/CI) the state is absent.
 - Stop refuses while a restart child waits for this server to exit.
+
+## Review hardening (Codex round 3)
+
+- A failing manager query is unknown even when the unit file is missing (a
+  loaded job outlives its plist); only systemctl's own "no user manager"
+  answers (no bus / not booted with systemd / not installed) mean absent.
+- launchd output without exactly one `state`, or `running` without a pid, and
+  systemd `active` without a main pid, are unknown.
+- Stopping an old-protocol service judges the generation captured before the
+  bootout.
+- Server-side kickstart/restart commands carry deadlines.
+- A standalone restart inherits the caller's environment (PATH included);
+  only BAKIN_HOME and PORT are pinned.

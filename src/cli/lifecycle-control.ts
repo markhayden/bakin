@@ -148,8 +148,6 @@ export function readServiceState(io: LifecycleIo): ServiceState {
       if (/could not find service|not find/i.test(printed.output) || printed.output.trim() === '') {
         return plist ? { kind: 'unloaded', home: plistHome } : { kind: 'absent' }
       }
-      // No unit installed: nothing of ours could be running under launchd.
-      if (!plist) return { kind: 'absent' }
       return { kind: 'unknown', reason: `launchctl print failed: ${printed.output.trim().slice(0, 200)}` }
     }
     // `launchctl print` is not an API: read only what is unambiguous.
@@ -160,14 +158,17 @@ export function readServiceState(io: LifecycleIo): ServiceState {
     const homes = envBlocks.length === 1 ? [...envBlocks[0]!.matchAll(/^\s*BAKIN_HOME => (.+?)\s*$/gm)].map((m) => m[1]!) : []
     const states = [...printed.output.matchAll(/^\s*state = (.+?)\s*$/gm)].map((m) => m[1]!)
     const pid = parseLaunchctlPid(printed.output)
-    return { kind: 'loaded', pid, idle: pid === null && states.length === 1 && states[0] === 'not running', home: single(homes) }
+    // An unsupported or truncated layout (no single state, or running without a pid) is unknown.
+    if (states.length !== 1) return { kind: 'unknown', reason: 'launchctl print reported no single job state' }
+    if (pid === null && states[0] === 'running') return { kind: 'unknown', reason: 'launchctl print reported a running job without a pid' }
+    return { kind: 'loaded', pid, idle: pid === null && states[0] === 'not running', home: single(homes) }
   }
   if (io.platform === 'linux') {
     const unit = io.readFile(io.systemdUnitPath())
     const shown = io.exec('systemctl', ['--user', 'show', `${SERVICE_LABEL}.service`, '-p', 'LoadState', '-p', 'ActiveState', '-p', 'MainPID', '-p', 'Environment', '-p', 'EnvironmentFiles'])
     if (!shown.ok) {
-      // No user manager (Docker/CI) and no unit installed: nothing of ours runs under systemd.
-      if (!unit) return { kind: 'absent' }
+      // No user manager at all (Docker/CI): nothing can be running under it.
+      if (NO_USER_MANAGER.test(shown.output)) return { kind: 'absent' }
       return { kind: 'unknown', reason: `systemctl show failed: ${shown.output.trim().slice(0, 200)}` }
     }
     const prop = (key: string) => new RegExp(`^${key}=(.*)$`, 'm').exec(shown.output)?.[1] ?? ''
@@ -180,10 +181,14 @@ export function readServiceState(io: LifecycleIo): ServiceState {
     const homes = prop('EnvironmentFiles').trim() ? [] : [...prop('Environment').matchAll(/(?:^|\s)BAKIN_HOME=(\S+)/g)].map((m) => m[1]!)
     const pid = parseSystemdMainPid(shown.output)
     const active = prop('ActiveState')
+    if (pid === null && (active === 'active' || active === 'reloading')) return { kind: 'unknown', reason: `systemd reports ${active} without a main pid` }
     return { kind: 'loaded', pid, idle: pid === null && (active === 'inactive' || active === 'failed'), home: single(homes) }
   }
   return { kind: 'absent' }
 }
+
+/** systemctl's own words when there is no user manager to ask (containers, CI, no systemd). */
+const NO_USER_MANAGER = /Failed to connect to bus|System has not been booted with systemd|\bENOENT\b|command not found|No such file or directory/i
 
 function stopServiceCommand(io: LifecycleIo): [string, string[]] {
   return io.platform === 'darwin'
@@ -351,6 +356,8 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
   const deadline = io.now() + HANDOFF_BUDGET_MS
   const notes: string[] = []
   if (identity.kind === 'old-protocol') {
+    // The generation being stopped, captured BEFORE anything changes it.
+    const bootId = io.readLock()?.bootId ?? ''
     // An older server can't take a shutdown request. Only its own service
     // manager — proved to run exactly this lock holder — may stop it.
     if (serviceRunsOldServer(io, service, identity)) {
@@ -366,7 +373,7 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
         notes: [`Stop it once yourself (it is this home's lock holder: kill ${identity.pid}); every later stop/restart is by request.`],
       }
     }
-    return stoppedOutcome(io, await awaitGenerationGone(io, { pid: identity.pid, bootId: io.readLock()?.bootId ?? '', port: identity.port }, deadline), identity.pid, notes)
+    return stoppedOutcome(io, await awaitGenerationGone(io, { pid: identity.pid, bootId, port: identity.port }, deadline), identity.pid, notes)
   }
 
   if (identity.kind !== 'owned') return { ok: false, status: 'error', message: 'Unexpected server state.', notes }

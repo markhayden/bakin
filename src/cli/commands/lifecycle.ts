@@ -381,7 +381,8 @@ async function cmdReboot(args: string[] = []): Promise<void> {
   const { realLifecycleIo } = await import('../lifecycle-io')
   if (!process.stdout.isTTY) console.log('[..] Restarting this home\'s Bakin server...')
   const io = await realLifecycleIo(resolveServerLaunchSpec)
-  const outcome = await restartHome(io, { force: args.includes('--force'), baseEnv: await serviceEnvironment() })
+  // A standalone replacement inherits this shell's environment (PATH included); the controller pins BAKIN_HOME + PORT.
+  const outcome = await restartHome(io, { force: args.includes('--force'), baseEnv: {} })
   await printLifecycleOutcome('restart', outcome, outcome.boot ? [`pid ${outcome.boot.pid}`, ...(outcome.boot.version ? [`version ${outcome.boot.version}`] : [])] : [])
 }
 

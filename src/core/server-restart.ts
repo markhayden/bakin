@@ -12,6 +12,9 @@ import { getContentDir } from './content-dir'
 import { loadedServicePid } from './service-manager'
 import { createLogger } from './logger'
 
+/** A stuck service manager must never block the server's event loop. */
+const SERVICE_COMMAND_TIMEOUT_MS = 10_000
+
 const SERVICE_LABEL = 'com.makinbakin.bakin'
 const RESTART_CHILD_COMMAND = '__bakin-restart-child'
 const DEFAULT_RESTART_DELAY_MS = 750
@@ -53,11 +56,11 @@ function scheduleServiceRestart(strategy: 'launchagent' | 'systemd', delayMs: nu
   const timer = setTimeout(() => {
     try {
       if (strategy === 'launchagent') {
-        const uid = execFileSync('id', ['-u'], { encoding: 'utf-8' }).trim()
-        execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe' })
+        const uid = execFileSync('id', ['-u'], { encoding: 'utf-8', timeout: SERVICE_COMMAND_TIMEOUT_MS }).trim()
+        execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe', timeout: SERVICE_COMMAND_TIMEOUT_MS })
         return
       }
-      execFileSync('systemctl', ['--user', 'restart', `${SERVICE_LABEL}.service`], { stdio: 'pipe' })
+      execFileSync('systemctl', ['--user', 'restart', `${SERVICE_LABEL}.service`], { stdio: 'pipe', timeout: SERVICE_COMMAND_TIMEOUT_MS })
     } catch (err) {
       log.error('Scheduled service restart failed', err as Error, { strategy })
     }

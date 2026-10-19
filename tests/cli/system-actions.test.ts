@@ -61,7 +61,7 @@ const fakeIo = (): LifecycleIo => ({
   listProcesses: () => [],
   exec: (cmd, args) => {
     execFileSync(cmd, args, {})
-    if (args[0] === 'print') return serviceOwns && fakeLock ? { ok: true, output: `x = {\n\tpid = ${fakeLock.pid}\n}` } : { ok: false, output: 'Could not find service' }
+    if (args[0] === 'print') return serviceOwns && fakeLock ? { ok: true, output: `x = {\n\tstate = running\n\tpid = ${fakeLock.pid}\n}` } : { ok: false, output: 'Could not find service' }
     if (args[0] === 'kickstart') { fakeLock = { pid: 7777, port: 3737, bootId: 'boot-service', cliSecret: 's' }; servedBoots.set(3737, { pid: 7777, bootId: 'boot-service' }) }
     return { ok: true, output: '' }
   },
