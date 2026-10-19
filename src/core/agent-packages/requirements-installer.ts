@@ -16,7 +16,7 @@
  * removal like bins). Downloads stream to disk — never buffered in memory.
  */
 import { createHash } from 'crypto'
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Manifest, NpmRequirement, ModelRequirement } from '../../../packages/core/src/agent-packages/manifest'
 import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
@@ -53,8 +53,19 @@ export function modelDest(dest: string): string {
   return join(getContentDir(), 'models', dest)
 }
 
-/** Generated next to every payload's package.json (see installNpmRequirement). */
-export const PAYLOAD_BUNFIG = '[install]\nlinker = "hoisted"\n'
+/**
+ * The payload's bunfig.toml: the pack's own (registries, scopes, CA —
+ * preserved verbatim) with only the LAYOUT forced — `linker = "hoisted"` in
+ * `[install]`, any `linker`/`globalStore` the pack set dropped — so
+ * dependencies always land inside the payload (see installNpmRequirement).
+ */
+export function payloadBunfig(packBunfig: string): string {
+  const lines = packBunfig.split('\n').filter((line) => !/^\s*(linker|globalStore)\s*=/.test(line))
+  const header = lines.findIndex((line) => /^\s*\[install\]\s*$/.test(line))
+  if (header === -1) return `${lines.join('\n').trimEnd()}${lines.some((l) => l.trim()) ? '\n\n' : ''}[install]\nlinker = "hoisted"\n`
+  lines.splice(header + 1, 0, 'linker = "hoisted"')
+  return `${lines.join('\n').trimEnd()}\n`
+}
 
 export interface NpmInstallResult {
   target: string
@@ -114,7 +125,8 @@ export async function installNpmRequirement(
     // says: an isolated linker with a global store links dependencies
     // OUTSIDE the payload, which verifyNpmPayload (rightly) rejects. The
     // project bunfig wins over the global one; older buns ignore the key.
-    writeFileSync(join(staging, 'bunfig.toml'), PAYLOAD_BUNFIG, 'utf-8')
+    const packBunfig = join(staging, 'bunfig.toml')
+    writeFileSync(packBunfig, payloadBunfig(existsSync(packBunfig) ? readFileSync(packBunfig, 'utf-8') : ''), 'utf-8')
 
     if (canReuseModules) {
       // Unchanged deps: adopt the live install state (rename, no network).

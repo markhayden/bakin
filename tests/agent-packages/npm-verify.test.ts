@@ -217,6 +217,12 @@ describe('verifyNpmPayload', () => {
       expect(verify()).toEqual({ ok: true })
     })
 
+    it('a pack-shipped bun lockfile that bun rewrote at install never counts as a differing script', () => {
+      writeFileSync(join(source, 'bun.lock'), '{ "lockfileVersion": 1, "pack": true }\n')
+      writeFileSync(join(payload, 'bun.lock'), '{ "lockfileVersion": 1, "rewritten": true }\n')
+      expect(verify()).toEqual({ ok: true })
+    })
+
     it('a "*" in a target is literal unless the KEY is a pattern', () => {
       reset({ exports: './entry*.js' }, [])
       expect(problems()).toEqual([expect.stringContaining('missing its entry file entry*.js')])

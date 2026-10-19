@@ -115,6 +115,8 @@ function readBytes(path: string): Buffer | null {
   }
 }
 
+const INSTALL_ARTIFACTS = new Set(['package.json', 'bunfig.toml', 'bun.lock', 'bun.lockb'])
+
 /** Every file in the pack's script dir exists in the payload with identical bytes (the generated package.json always wins). */
 function compareScripts(source: string, payloadDir: string): string[] {
   if (!isDirectory(source)) return [`pack script dir is missing (${source})`]
@@ -132,8 +134,9 @@ function compareScripts(source: string, payloadDir: string): string[] {
       const abs = join(dir, entry.name)
       const rel = relative(source, abs)
       if (entry.isDirectory()) { walk(abs); continue }
-      // Bakin generates these two; the pack's own copies never count.
-      if (rel === 'package.json' || rel === 'bunfig.toml') continue
+      // Bakin generates package.json and bunfig.toml; bun rewrites its own
+      // lockfiles against them during install — none of these are scripts.
+      if (INSTALL_ARTIFACTS.has(rel)) continue
       const copy = join(payloadDir, rel)
       if (!isFile(copy)) { problems.push(`script ${rel} is missing`); continue }
       // Node resolves a script's imports from its REAL location: a script

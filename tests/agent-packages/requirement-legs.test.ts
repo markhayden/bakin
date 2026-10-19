@@ -195,6 +195,17 @@ describe('npm payload leg', () => {
     expect(bunRuns).toHaveLength(1) // unchanged deps + node_modules present → NO second install
   })
 
+  it('a pack\'s own bunfig keeps its registry/scopes; only the layout is forced (#898 F review)', async () => {
+    const src = seedPack('1.0.0', { model: false, npmDeps: { 'fake-dep': '1.2.3' } })
+    writeFileSync(join(src, 'payload', 'scripts', 'bunfig.toml'), '[install]\nlinker = "isolated"\nregistry = "https://registry.example"\n\n[install.scopes]\n"@acme" = { url = "https://npm.acme.dev", token = "$ACME_TOKEN" }\n')
+    await installPackage({ source: src })
+    const bunfig = readFileSync(join(payloadDir(), 'bunfig.toml'), 'utf-8')
+    expect(bunfig).toContain('linker = "hoisted"')
+    expect(bunfig).not.toContain('linker = "isolated"')
+    expect(bunfig).toContain('registry = "https://registry.example"')
+    expect(bunfig).toContain('"@acme" = { url = "https://npm.acme.dev", token = "$ACME_TOKEN" }')
+  })
+
   it('reuse needs PROOF: a live payload whose dependency no longer resolves at its pin is reinstalled, not reused (#898 F)', async () => {
     await installPackage({ source: seedPack('1.0.0', { model: false, npmDeps: { 'fake-dep': '1.2.3' } }) })
     expect(bunRuns).toHaveLength(1)
