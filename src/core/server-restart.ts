@@ -56,11 +56,11 @@ function scheduleServiceRestart(strategy: 'launchagent' | 'systemd', delayMs: nu
   const timer = setTimeout(() => {
     try {
       if (strategy === 'launchagent') {
-        const uid = execFileSync('id', ['-u'], { encoding: 'utf-8', timeout: SERVICE_COMMAND_TIMEOUT_MS }).trim()
-        execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe', timeout: SERVICE_COMMAND_TIMEOUT_MS })
+        const uid = execFileSync('id', ['-u'], { encoding: 'utf-8', timeout: SERVICE_COMMAND_TIMEOUT_MS, killSignal: 'SIGKILL' }).trim()
+        execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe', timeout: SERVICE_COMMAND_TIMEOUT_MS, killSignal: 'SIGKILL' })
         return
       }
-      execFileSync('systemctl', ['--user', 'restart', `${SERVICE_LABEL}.service`], { stdio: 'pipe', timeout: SERVICE_COMMAND_TIMEOUT_MS })
+      execFileSync('systemctl', ['--user', 'restart', `${SERVICE_LABEL}.service`], { stdio: 'pipe', timeout: SERVICE_COMMAND_TIMEOUT_MS, killSignal: 'SIGKILL' })
     } catch (err) {
       log.error('Scheduled service restart failed', err as Error, { strategy })
     }

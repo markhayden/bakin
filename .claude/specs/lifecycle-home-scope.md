@@ -176,3 +176,12 @@ plan) is either impossible by construction or covered by a test.
 - Server-side kickstart/restart commands carry deadlines.
 - A standalone restart inherits the caller's environment (PATH included);
   only BAKIN_HOME and PORT are pinned.
+
+## Review hardening (Codex round 4)
+
+- Identity discovery re-reads the lock when the holder dies (or the home
+  changes hands) mid-ask: a successor is resolved, never reported as none.
+- Only systemctl's specific "no user manager" answers mean absent; a bus
+  `Permission denied` is unknown.
+- Service commands are killed with SIGKILL at their deadline (a SIGTERM
+  timeout is not a hard deadline).

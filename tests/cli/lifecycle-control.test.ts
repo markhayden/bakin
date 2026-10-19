@@ -376,7 +376,7 @@ describe('service state — read only what is unambiguous (K r2)', () => {
 
   it('no unit installed + no reachable manager (Docker/CI) is absent, not unknown', () => {
     const h = harness({ platform: 'linux' })
-    h.io.exec = () => ({ ok: false, output: 'Failed to connect to bus' })
+    h.io.exec = () => ({ ok: false, output: 'Failed to connect to bus: No such file or directory' })
     expect(readServiceState(h.io)).toEqual({ kind: 'absent' })
   })
 })
@@ -450,3 +450,35 @@ describe('K r3', () => {
     expect(out.message).toContain('pid 9191')
   })
 })
+
+describe('K r4', () => {
+  it('a holder that dies while asked, replaced by a successor, is never reported as "no server" (stop asks the successor)', async () => {
+    const a = fresh({ answers: false })
+    const b = fresh({ pid: 5151, bootId: 'boot-B', secret: 'secret-B' })
+    const h = harness({ lock: lockFor(a), servers: [a] })
+    const http = h.io.http
+    let swapped = false
+    h.io.http = async (method, port, path, o) => {
+      if (!swapped && path === '/api/version') {
+        swapped = true
+        a.alive = false
+        h.servers.push(b)
+        h.setLock(lockFor(b))
+        return null
+      }
+      return http(method, port, path, o)
+    }
+    const out = await stopHome(h.io)
+    expect(out.ok).toBe(true)
+    expect(h.shutdownRequests).toEqual([{ port: 3737, secret: 'secret-B', bootId: 'boot-B' }])
+  })
+
+  it('systemd "Permission denied" on the bus is unknown (a manager may be running), never absent', () => {
+    const h = harness({ platform: 'linux' })
+    h.io.exec = () => ({ ok: false, output: 'Failed to connect to bus: Permission denied' })
+    expect(readServiceState(h.io).kind).toBe('unknown')
+    h.io.exec = () => ({ ok: false, output: 'Failed to connect to bus: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined' })
+    expect(readServiceState(h.io).kind).toBe('absent')
+  })
+})
+

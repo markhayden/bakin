@@ -98,8 +98,26 @@ export async function askVersion(io: LifecycleIo, port: number): Promise<Version
  * called wedged.
  */
 export async function resolveIdentity(io: LifecycleIo): Promise<Identity> {
+  // A holder that dies while we ask may already have a successor in the lock:
+  // "none" only when the lock itself shows no live holder.
+  for (let attempt = 0; attempt < IDENTITY_ATTEMPTS; attempt++) {
+    const lock = io.readLock()
+    if (!lock || !io.pidAlive(lock.pid)) {
+      const again = io.readLock()
+      if (!again || (again.bootId === lock?.bootId && !io.pidAlive(again.pid))) return { kind: 'none' }
+      continue
+    }
+    const identity = await identityOf(io, lock)
+    if (identity.kind !== 'none') return identity
+  }
+  // The home kept changing hands while we looked: report it, touch nothing.
   const lock = io.readLock()
-  if (!lock || !io.pidAlive(lock.pid)) return { kind: 'none' }
+  return lock && io.pidAlive(lock.pid) ? { kind: 'wedged', pid: lock.pid, port: lock.port } : { kind: 'none' }
+}
+
+const IDENTITY_ATTEMPTS = 3
+
+async function identityOf(io: LifecycleIo, lock: LockInfo): Promise<Identity> {
   if (!Number.isInteger(lock.port) || lock.port <= 0) return { kind: 'wedged', pid: lock.pid, port: 0 }
   const deadline = io.now() + IDENTITY_GRACE_MS
   for (;;) {
@@ -109,12 +127,14 @@ export async function resolveIdentity(io: LifecycleIo): Promise<Identity> {
       if (answer.pid === lock.pid && answer.bootId === lock.bootId) {
         return { kind: 'owned', pid: lock.pid, bootId: lock.bootId, port: lock.port, state: answer.state, ...(lock.cliSecret ? { secret: lock.cliSecret } : {}) }
       }
+      // The home changed hands while we asked: the caller re-reads the lock.
+      if (io.readLock()?.bootId !== lock.bootId) return { kind: 'none' }
       return { kind: 'foreign', lockPid: lock.pid, port: lock.port, answeredPid: answer.pid }
     }
     if (io.now() >= deadline || !io.pidAlive(lock.pid)) break
     await io.sleep(POLL_MS)
   }
-  // Died during the grace: nothing to stop.
+  // Died during the grace: the caller re-reads the lock for a successor.
   if (!io.pidAlive(lock.pid)) return { kind: 'none' }
   return { kind: 'wedged', pid: lock.pid, port: lock.port }
 }
@@ -188,7 +208,8 @@ export function readServiceState(io: LifecycleIo): ServiceState {
 }
 
 /** systemctl's own words when there is no user manager to ask (containers, CI, no systemd). */
-const NO_USER_MANAGER = /Failed to connect to bus|System has not been booted with systemd|\bENOENT\b|command not found|No such file or directory/i
+// Never a bare "Failed to connect to bus": `Permission denied` there can hide a RUNNING user manager.
+const NO_USER_MANAGER = /Failed to connect to bus: (No such file or directory|No medium found|\$DBUS_SESSION_BUS_ADDRESS and \$XDG_RUNTIME_DIR not defined)|System has not been booted with systemd|spawnSync systemctl ENOENT/
 
 function stopServiceCommand(io: LifecycleIo): [string, string[]] {
   return io.platform === 'darwin'
