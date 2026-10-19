@@ -285,11 +285,21 @@ describe('installInferenceModels', () => {
       expect(readFileSync(join(live(PINNED.model), 'onnx', 'model.onnx')).length).toBe(2048)
     })
 
-    it('a model whose bytes match the pin is a noop — no pull', async () => {
+    it('a model whose bytes match the pin is a noop — no pull; installed state is judged under the lock, which every exit releases', async () => {
       MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: require('crypto').createHash('sha256').update('weights').digest('hex') }]
       installFakeBinary(PULL_FAILS) // any pull would fail the install
       seedModel(PINNED.model)
       expect((await installInferenceModels(optsAutoYes, undefined, [PINNED])).status).toBe('noop')
+      expect(existsSync(lockPath())).toBe(false)
+      // A held lock is checked BEFORE installed state is judged — even a noop waits its turn.
+      mkdirSync(require('path').dirname(lockPath()), { recursive: true })
+      writeFileSync(lockPath(), String(process.ppid))
+      expect((await installInferenceModels(optsAutoYes, undefined, [PINNED])).message).toContain('Another Bakin on this machine')
+      rmSync(lockPath())
+      // The not-approved exit releases it too.
+      rmSync(live(PINNED.model), { recursive: true, force: true })
+      expect((await installInferenceModels({ autoApprove: false }, undefined, [PINNED])).status).toBe('skipped')
+      expect(existsSync(lockPath())).toBe(false)
     })
 
     it('a post-pull mismatch FAILS the install (never a warning) and publishes nothing', async () => {

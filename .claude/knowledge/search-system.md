@@ -787,8 +787,9 @@ may read takes two renames — a window where it is missing; no `bun:ffi`
 atomic exchange, an owner decision 2026-10-19 to keep release signing
 unchanged): a model that needs replacing with a live copy in the way is
 refused BEFORE any download, the message naming the dir to remove; the re-run
-then publishes the verified download with one rename. The whole pull →
-verify → publish runs under a MACHINE-wide lock beside the shared models root
+then publishes the verified download with one rename. The whole check →
+pull → verify → publish (installed state is only judged while holding it)
+runs under a MACHINE-wide lock beside the shared models root
 (`acquireModelsLock`, `.models.bakin-pull.lock`): an exclusive-create file
 holding the owner's pid, NEVER reclaimed automatically (any automatic stale
 reclaim can, under some schedule, hand the lock to two owners) — a crashed

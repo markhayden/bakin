@@ -291,62 +291,70 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     }
   }
 
-  // The install skip HASHES: a structurally complete model whose pinned
-  // files do not match their sha256 pins is pulled again (#898 E) — never
-  // trusted on file names and sizes alone. Custom (unpinned) models can only
-  // be checked structurally, and the messages say which is which.
-  const structurallyMissing = new Set(missingModels(models))
-  const mismatched: InferenceModel[] = []
-  for (const m of models) {
-    if (structurallyMissing.has(m)) continue
-    if ((await pinMismatches(m.model)).length > 0) mismatched.push(m)
-  }
-  const missing = models.filter((m) => structurallyMissing.has(m) || mismatched.includes(m))
-  if (missing.length === 0) {
-    skipAll('already downloaded')
-    const custom = models.filter((m) => !isPinnedModel(m.model)).length
-    return {
-      name: 'models',
-      status: 'noop' as const,
-      message: custom === 0
-        ? `All ${models.length} search models already present and matching their pins.`
-        : `All ${models.length} search models already present (${models.length - custom} matching their pins; ${custom} custom, checked structurally).`,
-      durationMs: Date.now() - start,
-    }
-  }
-
-  if (!opts.autoApprove) {
-    skipAll('not approved')
-    return {
-      name: 'models',
-      status: 'skipped' as const,
-      message: 'Model download not approved; semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex` to repair anything indexed meanwhile).',
-      durationMs: Date.now() - start,
-    }
-  }
-
-  const failed = (message: string, error?: unknown) => {
-    // A cancel accepted before the failure settles cancelled, not failed.
-    op.throwIfCancelled()
-    return { name: 'models', status: 'failed' as const, message, ...(error === undefined ? {} : { error }), durationMs: Date.now() - start }
-  }
   const liveRoot = inferenceModelsRoot()
   const stagingRoot = pullStagingRoot(liveRoot)
   // The models root is shared by every Bakin home on this machine: the whole
-  // pull → verify → publish runs under ONE machine-wide lock (#898 E).
-  // A live copy is never replaced in place: swapping a directory the
-  // running engine may read takes two renames (a window where it is
-  // missing). A model that needs replacing must be removed by the operator
-  // first — refused BEFORE any download, naming exactly what to remove.
-  const inTheWay = missing.filter((m) => existsSync(modelDir(m.model, liveRoot)))
-  if (inTheWay.length > 0) {
-    return failed(`${inTheWay.map((m) => `${m.model} (${mismatched.includes(m) ? 'its files do not match their pins' : 'the installed copy is incomplete'})`).join(', ')} must be replaced, and Bakin never replaces a live model in place. Remove ${inTheWay.map((m) => modelDir(m.model, liveRoot)).join(', ')} (search runs without ${inTheWay.length === 1 ? 'that model' : 'those models'} until reinstalled), then run \`bakin install search-models\` again.`)
-  }
+  // check → pull → verify → publish runs under ONE machine-wide lock
+  // (#898 E) — installed state is only ever judged while holding it, so
+  // another home publishing mid-check can never be mistaken for damage.
   const lock = acquireModelsLock(liveRoot)
   if ('heldBy' in lock) {
-    return failed(`Another Bakin on this machine is installing search models${lock.heldBy > 0 ? ` (pid ${lock.heldBy})` : ''} — try again when it finishes. If none is (an install crashed), remove ${lock.path}.`)
+    skipAll('another install holds the models lock')
+    return {
+      name: 'models',
+      status: 'failed' as const,
+      message: `Another Bakin on this machine is installing search models${lock.heldBy > 0 ? ` (pid ${lock.heldBy})` : ''} — try again when it finishes. If none is (an install crashed), remove ${lock.path}.`,
+      durationMs: Date.now() - start,
+    }
   }
   try {
+    // The install skip HASHES: a structurally complete model whose pinned
+    // files do not match their sha256 pins is pulled again (#898 E) — never
+    // trusted on file names and sizes alone. Custom (unpinned) models can only
+    // be checked structurally, and the messages say which is which.
+    const structurallyMissing = new Set(missingModels(models))
+    const mismatched: InferenceModel[] = []
+    for (const m of models) {
+      if (structurallyMissing.has(m)) continue
+      if ((await pinMismatches(m.model)).length > 0) mismatched.push(m)
+    }
+    const missing = models.filter((m) => structurallyMissing.has(m) || mismatched.includes(m))
+    if (missing.length === 0) {
+      skipAll('already downloaded')
+      const custom = models.filter((m) => !isPinnedModel(m.model)).length
+      return {
+        name: 'models',
+        status: 'noop' as const,
+        message: custom === 0
+          ? `All ${models.length} search models already present and matching their pins.`
+          : `All ${models.length} search models already present (${models.length - custom} matching their pins; ${custom} custom, checked structurally).`,
+        durationMs: Date.now() - start,
+      }
+    }
+
+    if (!opts.autoApprove) {
+      skipAll('not approved')
+      return {
+        name: 'models',
+        status: 'skipped' as const,
+        message: 'Model download not approved; semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex` to repair anything indexed meanwhile).',
+        durationMs: Date.now() - start,
+      }
+    }
+
+    const failed = (message: string, error?: unknown) => {
+      // A cancel accepted before the failure settles cancelled, not failed.
+      op.throwIfCancelled()
+      return { name: 'models', status: 'failed' as const, message, ...(error === undefined ? {} : { error }), durationMs: Date.now() - start }
+    }
+    // A live copy is never replaced in place: swapping a directory the
+    // running engine may read takes two renames (a window where it is
+    // missing). A model that needs replacing must be removed by the operator
+    // first — refused BEFORE any download, naming exactly what to remove.
+    const inTheWay = missing.filter((m) => existsSync(modelDir(m.model, liveRoot)))
+    if (inTheWay.length > 0) {
+      return failed(`${inTheWay.map((m) => `${m.model} (${mismatched.includes(m) ? 'its files do not match their pins' : 'the installed copy is incomplete'})`).join(', ')} must be replaced, and Bakin never replaces a live model in place. Remove ${inTheWay.map((m) => modelDir(m.model, liveRoot)).join(', ')} (search runs without ${inTheWay.length === 1 ? 'that model' : 'those models'} until reinstalled), then run \`bakin install search-models\` again.`)
+    }
     // Every pull lands in a STAGING models root and is verified there; the
     // live tree the running engine reads is touched only to publish a model
     // that passed — one rename per model, after every pull verified. A
@@ -416,18 +424,18 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
         return failed(`Could not publish ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)
       }
     }
+
+    const pulledLabels = missing.map((m) => m.label)
+    const durationMs = Date.now() - start
+    logger.info('Search models installed', { pulled: pulledLabels, durationMs })
+    return {
+      name: 'models',
+      status: 'installed' as const,
+      message: `Pulled ${pulledLabels.length} model${pulledLabels.length === 1 ? '' : 's'}: ${pulledLabels.join(', ')}`,
+      durationMs,
+    }
   } finally {
     lock.release()
-  }
-
-  const pulledLabels = missing.map((m) => m.label)
-  const durationMs = Date.now() - start
-  logger.info('Search models installed', { pulled: pulledLabels, durationMs })
-  return {
-    name: 'models',
-    status: 'installed' as const,
-    message: `Pulled ${pulledLabels.length} model${pulledLabels.length === 1 ? '' : 's'}: ${pulledLabels.join(', ')}`,
-    durationMs,
   }
 }
 
