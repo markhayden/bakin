@@ -542,3 +542,23 @@ export function readPluginManifestJson(text: string): PluginManifest {
   }
   return parsePluginManifest(raw)
 }
+
+/**
+ * The ONE manifest field removal needs (`uninstallPreflightRequired`), read
+ * without validating the rest of the install-time contract — a manifest a
+ * newer Bakin rejects must still be removable. Throws when the JSON or the
+ * field itself is malformed (removal fails closed on an unreadable policy).
+ */
+export function readUninstallPolicy(text: string): boolean {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch (err) {
+    throw new PluginManifestError(`Invalid bakin-plugin.json: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  if (!isRecord(raw)) throw new PluginManifestError('bakin-plugin.json must be an object')
+  const value = raw.uninstallPreflightRequired
+  if (value === undefined) return false
+  if (typeof value !== 'boolean') throw new PluginManifestError('uninstallPreflightRequired must be a boolean')
+  return value
+}

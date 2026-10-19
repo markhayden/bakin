@@ -20,8 +20,11 @@ import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/p
 import { getContentDir } from '../content-dir'
 import { binPlatformKey } from '../agent-packages/bin-platform'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
-import { BinRequirementsSchema, type BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
+import { type BinRequirement } from '../../../packages/core/src/plugins/bin-requirement'
 import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
+import { createLogger } from '../logger'
+
+const log = createLogger('bin-owners')
 
 export type BinOwnerKind = 'package' | 'plugin'
 
@@ -60,14 +63,21 @@ function legacyPackBinMember(lockKey: string, entry: PackageEntry, target: strin
   const id = bareOwnerId('package', lockKey)
   const manifestPath = join(getPackageSourceDir(getContentDir(), entry.kind, id, entry.version), 'bakin-package.json')
   if (!existsSync(manifestPath)) return undefined
+  // Ownership identity, not integrity: read only the member, without the
+  // install-time schema — a declaration from before a field became required
+  // (e.g. archive.extractedSha256, #898 D) still names its member, and
+  // dropping it would turn an identical shared archive into a false conflict.
   try {
     const raw = (JSON.parse(readFileSync(manifestPath, 'utf-8')) as { requires?: { bins?: unknown } }).requires?.bins
-    const bins = BinRequirementsSchema.safeParse(raw ?? [])
-    if (!bins.success) return undefined
-    const bin = bins.data.find((b) => binTargetPath(b.name) === target)
+    if (!Array.isArray(raw)) return undefined
     const platform = binPlatformKey()
-    return platform ? bin?.install[platform]?.archive?.member : undefined
-  } catch {
+    if (!platform) return undefined
+    const bin = raw.find((b): b is { name: string; install?: Record<string, { archive?: { member?: unknown } }> } =>
+      typeof b === 'object' && b !== null && typeof (b as { name?: unknown }).name === 'string' && binTargetPath((b as { name: string }).name) === target)
+    const member = bin?.install?.[platform]?.archive?.member
+    return typeof member === 'string' ? member : undefined
+  } catch (err) {
+    log.warn('Could not read a legacy pack manifest for its bin member', { lockKey, error: err instanceof Error ? err.message : String(err) })
     return undefined
   }
 }

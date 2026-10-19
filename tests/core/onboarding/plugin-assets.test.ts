@@ -585,6 +585,7 @@ describe('plugin-assets — binaries', () => {
     expect(report.bins.invalid).toEqual([{ pluginId: 'oldterm', reason: expect.stringContaining('extractedSha256') }])
     const installed = await installPluginAssets([entry])
     expect(installed.bins.installed).toEqual([])
+    expect(installed.bins.invalid).toEqual([{ pluginId: 'oldterm', reason: expect.stringContaining('extractedSha256') }])
     expect(existsSync(binPath())).toBe(false)
   })
 
@@ -623,7 +624,7 @@ describe('plugin-assets — binaries', () => {
     const report = await scanPluginAssets([{ id: 'term', path: pluginDir }])
     expect(report.bins.unsupported).toEqual([{ pluginId: 'term', name: 'tool' }])
     const installed = await installPluginAssets([{ id: 'term', path: pluginDir }])
-    expect(installed.bins).toEqual({ installed: [], unchanged: [], failed: [] })
+    expect(installed.bins).toEqual({ installed: [], unchanged: [], failed: [], invalid: [] })
     expect(existsSync(binPath())).toBe(false)
   })
 
@@ -658,7 +659,7 @@ describe('plugin-assets — binaries', () => {
   it('a plugin with no ledger row never gets binaries installed by the repair', async () => {
     const pluginDir = makePluginWithBin('unledgered')
     const installed = await installPluginAssets([{ id: 'unledgered', path: pluginDir }])
-    expect(installed.bins).toEqual({ installed: [], unchanged: [], failed: [] })
+    expect(installed.bins).toEqual({ installed: [], unchanged: [], failed: [], invalid: [] })
     expect(existsSync(binPath())).toBe(false)
   })
 
@@ -699,6 +700,40 @@ describe('plugin-assets — binaries', () => {
     expect(check.status).toBe('warn')
     expect(check.message).toMatch(/1 plugin\(s\) declare binaries this Bakin cannot verify: oldterm \(.*extractedSha256/)
     expect(check.remediation).toMatch(/bakin plugins upgrade oldterm/)
+    // The repair reports it as failed with the upgrade — never "0 plugin assets to install".
+    const install = await installInOperation(pluginAssetsComponent, { autoApprove: true, allowServiceClaim: false })
+    expect(install.status).toBe('failed')
+    expect(install.message).toMatch(/oldterm.*bakin plugins upgrade oldterm/)
+  })
+
+  it('an archive binary forged together with its marker is drifted, and the repair replaces it (#898 D)', async () => {
+    const archiveRoot = join(testDir, 'tar-src', 'inner')
+    mkdirSync(archiveRoot, { recursive: true })
+    writeFileSync(join(archiveRoot, 'tool'), TOOL, { mode: 0o755 })
+    const tarPath = join(testDir, 'tool.tar.gz')
+    require('child_process').execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(join(testDir, 'tar-src'))} inner/tool`)
+    const tarBytes = readFileSync(tarPath)
+    const tarSha = createHash('sha256').update(tarBytes).digest('hex')
+    const pluginDir = join(testDir, 'plugins', 'archterm')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(join(pluginDir, 'bakin-plugin.json'), JSON.stringify({
+      id: 'archterm', name: 'archterm', version: '1.0.0', bakin: '*', description: 'archive bin',
+      requires: { bins: [{ name: 'tool', version: '1.0.0', install: { [platform]: { url: `http://127.0.0.1:${binServer.port}/tool.tar.gz`, sha256: tarSha, archive: { format: 'tar.gz', member: 'inner/tool', extractedSha256: sha256(TOOL) } } } }] },
+    }))
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'archterm', {
+      source: pluginDir, type: 'local', ref: '', commitSha: 'a'.repeat(40), installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'a'.repeat(64),
+    }))
+    // A forged binary under a forged marker claiming the right pins — written raw, so nothing strips it.
+    mkdirSync(join(bakinHome, 'bin'), { recursive: true })
+    writeFileSync(binPath(), '#!/bin/sh\necho forged\n', { mode: 0o755 })
+    const forgedMarker = { package: 'plugin:archterm', version: '1.0.0', ref: '', commitSha: '', installedAt: '2026-09-01T00:00:00.000Z', sha256: tarSha, member: 'inner/tool', extractedSha256: sha256('#!/bin/sh\necho forged\n') }
+    writeFileSync(`${binPath()}.installedBy`, JSON.stringify(forgedMarker))
+    const entry = { id: 'archterm', path: pluginDir }
+    expect((await scanPluginAssets([entry])).bins.drifted).toEqual([{ pluginId: 'archterm', name: 'tool' }])
+    served = tarBytes as unknown as string
+    await installPluginAssets([entry])
+    expect(readFileSync(binPath(), 'utf-8')).toBe(TOOL)
+    expect((await scanPluginAssets([entry])).bins.installed).toEqual([{ pluginId: 'archterm', name: 'tool' }])
   })
 
   it('discovery is committed installs only: abandoned staging dirs and unledgered copies never reach the installer', async () => {

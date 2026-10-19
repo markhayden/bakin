@@ -528,8 +528,8 @@ describe('scanAgentSync — skills', () => {
       await seedSyncedState()
       const target = await seedBinPack({ format: 'tar.gz', member: 'tool', extractedSha256: toolSha() })
       writeFileSync(target, '#!/bin/sh\necho forged\n')
-      const { writeInstalledBy } = await import('../../packages/core/src/agent-packages/markers')
-      writeInstalledBy(target, { package: 'tool-pack', version: '1.0.0', ref: '', commitSha: '', installedAt: new Date().toISOString(), sha256: 'a'.repeat(64), member: 'tool', extractedSha256: require('crypto').createHash('sha256').update('#!/bin/sh\necho forged\n').digest('hex') } as Parameters<typeof writeInstalledBy>[1])
+      // Written raw so the forged extractedSha256 survives (the marker schema would strip it).
+      writeFileSync(`${target}.installedBy`, JSON.stringify({ package: 'tool-pack', version: '1.0.0', ref: '', commitSha: '', installedAt: new Date().toISOString(), sha256: 'a'.repeat(64), member: 'tool', extractedSha256: require('crypto').createHash('sha256').update('#!/bin/sh\necho forged\n').digest('hex') }))
       expect(await binFindings()).toMatchObject([{ type: 'asset-drifted', target }])
     })
 

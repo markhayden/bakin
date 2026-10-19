@@ -94,6 +94,8 @@ export interface BinInstallReport {
   unchanged: BinRef[]
   /** Per-plugin install failures (pin conflict, download, checksum) — the repair fails loudly. */
   failed: Array<BinRef & { error: string }>
+  /** Plugins whose `requires.bins` does not validate — nothing was installed for them; the fix is a plugin upgrade (#898 D). */
+  invalid: Array<{ pluginId: string; reason: string }>
 }
 
 export interface ScanReport {
@@ -369,7 +371,7 @@ export const PLUGIN_ASSETS_PLAN: OperationPlan = {
 }
 
 export async function installPluginAssets(plugins: PluginEntry[], op?: OperationContext): Promise<InstallReport> {
-  const report: InstallReport = { installed: [], unchanged: [], skipped: [], failed: [], bins: { installed: [], unchanged: [], failed: [] } }
+  const report: InstallReport = { installed: [], unchanged: [], skipped: [], failed: [], bins: { installed: [], unchanged: [], failed: [], invalid: [] } }
   const runtime = getAppServices().runtime
 
   op?.stage('skills')
@@ -445,7 +447,8 @@ export async function installPluginAssets(plugins: PluginEntry[], op?: Operation
     if (!declared.ok) {
       // Nothing to install against: an invalid declaration is the plugin's
       // to fix (upgrade), never silently "no bins".
-      op?.item('bins', { id: plugin.id, label: plugin.id, status: 'skipped', message: `invalid requires.bins — upgrade the plugin (${declared.reason})` })
+      op?.item('bins', { id: plugin.id, label: plugin.id, status: 'failed', message: `invalid requires.bins — upgrade the plugin (${declared.reason})` })
+      report.bins.invalid.push({ pluginId: plugin.id, reason: declared.reason })
       continue
     }
     const bins = declared.bins
@@ -705,14 +708,16 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
   const durationMs = Date.now() - start
   const { bins } = report
 
-  if (bins.failed.length > 0 || report.failed.length > 0) {
+  if (bins.failed.length > 0 || report.failed.length > 0 || bins.invalid.length > 0) {
     const failures = [
       ...report.failed.map((f) => `skill ${f.name} (${f.pluginId}): ${f.error}`),
       ...bins.failed.map((f) => `${binLabel(f)}: ${f.error}`),
+      ...(bins.invalid.length > 0 ? [`${invalidBinsMessage(bins.invalid)} — ${invalidBinsRemediation(bins.invalid)}`] : []),
     ]
     const counts = [
       report.failed.length > 0 ? `${report.failed.length} plugin skill(s)` : null,
       bins.failed.length > 0 ? `${bins.failed.length} plugin binar${bins.failed.length === 1 ? 'y' : 'ies'}` : null,
+      bins.invalid.length > 0 ? `the binaries of ${bins.invalid.length} plugin(s)` : null,
     ].filter(Boolean).join(' and ')
     return {
       name: 'plugin-assets',

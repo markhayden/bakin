@@ -158,7 +158,7 @@ rollback, receipts) with two additions:
   declaration that no longer validates (e.g. an archive bin from before the
   pin) is a visible finding everywhere — plugin-assets `bins.invalid` →
   `plugin-bins-invalid` incident (upgrade the plugin), sync scan
-  `bin-manifest-invalid`, a not-ready readiness row — never "no bins". Pack `bin` projections written before
+  `bin-manifest-invalid`, a not-ready readiness row, a failed (not noop) plugin-assets repair naming the upgrade — never "no bins". Integrity is the only thing the new pin gates: removal reads just `uninstallPreflightRequired` (`readUninstallPolicy`) and legacy ownership reads just the archive `member`, so a pre-pin declaration stays removable and never fakes a pin conflict. Pack `bin` projections written before
   `member` existed are completed at read time from the pack's INSTALLED
   manifest under `~/.bakin/packages/` (`legacyPackBinMember`), so two
   packs sharing an unchanged archive never read as conflicting pins.

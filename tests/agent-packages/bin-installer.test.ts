@@ -31,7 +31,6 @@ mock.module('@/core/logger', () => ({
 }))
 
 import { binPlatformKey, installBinRequirement, installPluginBins } from '../../src/core/agent-packages/bin-installer'
-import { writeInstalledBy } from '../../packages/core/src/agent-packages/markers'
 import { settleOperation } from '../helpers/operation-harness'
 import type { BinRequirement } from '../../packages/core/src/plugins/bin-requirement'
 
@@ -250,7 +249,8 @@ describe('installBinRequirement', () => {
     const target = join(testDir, 'bin', 'realbin')
     mkdirSync(join(testDir, 'bin'), { recursive: true })
     writeFileSync(target, '#!/bin/sh\necho forged\n', { mode: 0o755 })
-    writeInstalledBy(target, { ...marker, sha256: tarSha, member: 'inner/realbin', extractedSha256: sha256('#!/bin/sh\necho forged\n') } as Parameters<typeof writeInstalledBy>[1])
+    // Written raw — the forged extractedSha256 must survive to prove it is ignored.
+    writeFileSync(`${target}.installedBy`, JSON.stringify({ ...marker, sha256: tarSha, member: 'inner/realbin', extractedSha256: sha256('#!/bin/sh\necho forged\n') }))
     const result = await installBinRequirement(bin, marker, { fetchImpl: nativeFetch })
     expect(result.skipped).toBe(false)
     expect(readFileSync(target, 'utf-8')).toBe(script)

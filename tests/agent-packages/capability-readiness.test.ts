@@ -157,6 +157,22 @@ describe('listCapabilities', () => {
     expect(cap.missing.join('\n')).toContain('does not match the sha256')
   })
 
+  it('an archive binary forged together with its marker is drifted — the marker is never the pin (#898 D)', async () => {
+    seedInstalledPack({ binDownload: { url: 'https://example.com/bx.tar.gz', sha256: 'a'.repeat(64), archive: { format: 'tar.gz', member: 'bx', extractedSha256: BX_SHA } } })
+    projectedSkills.add('bx-search')
+    setStoredSecret('brave', 'apiKey', 'bsk-1')
+    mkdirSync(join(testDir, 'bin'), { recursive: true })
+    const forged = '#!/bin/sh\necho forged\n'
+    writeFileSync(join(testDir, 'bin', 'bx'), forged)
+    writeFileSync(join(testDir, 'bin', 'bx.installedBy'), JSON.stringify({
+      package: 'web-search-brave', version: '1.0.0', ref: '', commitSha: '', installedAt: new Date().toISOString(),
+      sha256: 'a'.repeat(64), member: 'bx', extractedSha256: require('crypto').createHash('sha256').update(forged).digest('hex'),
+    }))
+    const [cap] = await listCapabilities()
+    expect(cap.bins[0].status).toBe('drifted')
+    expect(cap.ready).toBe(false)
+  })
+
   it('an installed manifest that no longer validates stays visible as NOT ready — never green, never "no bins"', async () => {
     // An archive bin installed before extractedSha256 was required.
     seedInstalledPack({ binDownload: { url: 'https://example.com/bx.tar.gz', sha256: 'a'.repeat(64), archive: { format: 'tar.gz', member: 'bx' } } })

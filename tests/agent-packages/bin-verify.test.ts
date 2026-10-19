@@ -6,7 +6,7 @@
  * forged binary under a forged marker is drifted (#898 D).
  */
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -63,8 +63,9 @@ describe('verifyInstalledBin — archive download', () => {
   })
   it('a forged binary under a forged marker is drifted — the marker is never the pin', () => {
     writeFileSync(BIN, 'forged')
-    // A marker claiming everything matches, written by whoever planted the binary.
-    writeInstalledBy(BIN, marker({ sha256: download.sha256, member: 'tool', extractedSha256: sha('forged') } as Record<string, unknown>))
+    // A marker claiming everything matches, written raw by whoever planted the binary.
+    writeFileSync(`${BIN}.installedBy`, JSON.stringify({ ...marker({ sha256: download.sha256, member: 'tool' }), extractedSha256: sha('forged') }))
+    expect(JSON.parse(readFileSync(`${BIN}.installedBy`, 'utf-8')).extractedSha256).toBe(sha('forged'))
     expect(verifyInstalledBin(BIN, download)).toMatchObject({ status: 'drifted', reason: 'hash-mismatch' })
   })
   it('drifted when the bytes change, and missing when absent', () => {

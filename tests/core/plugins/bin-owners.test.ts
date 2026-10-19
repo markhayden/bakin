@@ -137,6 +137,18 @@ describe('pin conflicts', () => {
     expect(findBinPinConflicts([other], { kind: 'plugin', id: 'terminal' }, binPlatformKey())).toHaveLength(1)
   })
 
+  it('a legacy pack manifest from before extractedSha256 still names its member — ownership is read without the integrity schema (#898 D)', () => {
+    pinsPack('ocr', 'tool', A) // written before `member` existed
+    const dir = getPackageSourceDir(testDir, 'skill-pack', 'ocr', '1.0.0')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({
+      requires: { bins: [{ name: 'tool', version: '1', install: { [binPlatformKey()!]: { url: 'https://example.com/x.tar.gz', sha256: A, archive: { format: 'tar.gz', member: 'bin/tool-a' } } } }] },
+    }))
+    expect(binTargetOwners(binTargetPath('tool'))).toEqual([{ kind: 'package', id: 'ocr', sha256: A, member: 'bin/tool-a' }])
+    const same = { name: 'tool', version: '1', install: { [binPlatformKey()!]: { url: 'https://example.com/x.tar.gz', sha256: A, archive: { format: 'tar.gz' as const, member: 'bin/tool-a', extractedSha256: 'e'.repeat(64) } } } }
+    expect(findBinPinConflicts([same], { kind: 'plugin', id: 'terminal' }, binPlatformKey())).toEqual([])
+  })
+
   it('bins with no download for this platform are not judged here', () => {
     pinsPack('ocr', 'tmux', A)
     const linuxOnly: BinRequirement = { name: 'tmux', version: '1', install: { 'linux-x64': { url: 'https://example.com/x', sha256: B } } }
