@@ -38,6 +38,11 @@ export interface ModelFilePin {
   minBytes?: number
 }
 
+/** Whether a model's integrity is pinned (hash-verified) or only structurally checked (operator-configured). */
+export function isPinnedModel(model: string): boolean {
+  return MODEL_PINS[model] !== undefined
+}
+
 export const MODEL_PINS: Record<string, ModelFilePin[]> = {
   'BAAI/bge-small-en-v1.5': [
     { file: 'model.safetensors', sha256: '3c9f31665447c8911517620762200d2245a2518d6e7208acc78cd9db317e21ad', minBytes: 100_000_000 },
@@ -56,9 +61,9 @@ export const MODEL_PINS: Record<string, ModelFilePin[]> = {
   ],
 }
 
-export function modelDir(model: string): string {
+export function modelDir(model: string, root: string = inferenceModelsRoot()): string {
   // v0.2 layout is {root}/{owner}/{name} — no per-kind buckets.
-  return join(inferenceModelsRoot(), model)
+  return join(root, model)
 }
 
 const WEIGHT_FILE_RE = /\.(onnx|gguf|safetensors)$/
@@ -89,8 +94,8 @@ function hasWeightFile(dir: string, depth = 0): boolean {
  * (generic weight-file fallback for unpinned models). Cheap — safe to call
  * on every doctor cycle and from the service argv builder.
  */
-export function modelStructurallyComplete(model: string): { ok: true } | { ok: false; reason: string } {
-  const root = modelDir(model)
+export function modelStructurallyComplete(model: string, modelsRoot?: string): { ok: true } | { ok: false; reason: string } {
+  const root = modelDir(model, modelsRoot)
   if (!existsSync(root)) return { ok: false, reason: 'not downloaded yet' }
 
   // The registry synthesizes model_manifest.json after a successful pull;
@@ -131,10 +136,10 @@ export function modelStructurallyComplete(model: string): { ok: true } | { ok: f
  * it; the doctor never does. Empty for unpinned or fully matching models;
  * a missing pinned file counts as a mismatch.
  */
-export async function pinMismatches(model: string): Promise<string[]> {
+export async function pinMismatches(model: string, modelsRoot?: string): Promise<string[]> {
   const pins = MODEL_PINS[model]
   if (!pins) return []
-  const root = modelDir(model)
+  const root = modelDir(model, modelsRoot)
   const mismatched: string[] = []
   for (const pin of pins) {
     if (!pin.sha256) continue

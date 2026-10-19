@@ -45,6 +45,7 @@ import {
 import { createMemoryResourceAcquirer, createOperationRegistry, operationQuietState, type OperationView } from '@bakin/core/operations'
 import { withOperationView } from '../../helpers/operation-harness'
 import { MODEL_PINS } from '../../../packages/adapter-antfly/src/model-pins'
+import { pullStagingRoot } from '../../../packages/adapter-antfly/src/pull-progress'
 import { waitUntil } from '../../helpers/wait'
 
 // UNPINNED model names: this file exercises the pull → verify PIPELINE
@@ -131,7 +132,7 @@ async function installInferenceModels(opts: Omit<Parameters<typeof installModels
   return value
 }
 
-const stagingDir = (model: string) => join(modelsRoot, model.split('/')[0]!, `.${model.split('/')[1]}.antfly-download-staging`)
+const stagingDir = (model: string) => join(pullStagingRoot(modelsRoot), model.split('/')[0]!, `.${model.split('/')[1]}.antfly-download-staging`)
 
 function installFakeBinary(script: string): void {
   writeFileSync(fakeBinary, script, { mode: 0o755 })
@@ -272,7 +273,7 @@ describe('installInferenceModels', () => {
       const result = await installInferenceModels(optsAutoYes, undefined, [PINNED])
       expect(result.status).toBe('installed')
       expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx')).length).toBe(2048)
-      const leftovers = require('fs').readdirSync(join(modelsRoot, 'test-pinned')).filter((n: string) => n.includes('bakin-mismatch'))
+      const leftovers = require('fs').readdirSync(join(modelsRoot, 'test-pinned')).filter((n: string) => n.includes('bakin-'))
       expect(leftovers).toEqual([])
     })
 
@@ -292,6 +293,54 @@ describe('installInferenceModels', () => {
       expect(result.message).toMatch(/do not match their pinned sha256 \(onnx\/model\.onnx\)/)
       // The set-aside copy is restored — never left with nothing.
       expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
+    })
+
+    it('when one model fails, nothing is published — every live model stays exactly as it was', async () => {
+      const OTHER = { label: 'pinned reranker', model: 'test-pinned/reranker', kind: 'reranker' as const }
+      MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
+      MODEL_PINS[OTHER.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
+      try {
+        // Pulls fine for the embedder, fails for the reranker.
+        installFakeBinary(PULL_OK.replace('#!/bin/sh\n', `#!/bin/sh\n[ "$3" = "${OTHER.model}" ] && { echo "boom" >&2; exit 2; }\n`))
+        seedModel(PINNED.model)
+        seedModel(OTHER.model)
+        const result = await installInferenceModels(optsAutoYes, undefined, [PINNED, OTHER])
+        expect(result.status).toBe('failed')
+        expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
+        expect(readFileSync(join(modelsRoot, OTHER.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
+      } finally {
+        delete MODEL_PINS[OTHER.model]
+      }
+    })
+
+    it('a cancelled re-pull leaves the live copy in place — nothing live moves before publish', async () => {
+      MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
+      installFakeBinary(PULL_STALLS)
+      seedModel(PINNED.model)
+      const reg = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, acquireResources: createMemoryResourceAcquirer(1) })
+      try {
+        const { operationId } = await reg.start({
+          kind: 'install:search-models', owner: 'core', origin: 'cli', title: 'Download the search models', fingerprint: 'install:search-models',
+          resources: ['search-engine'], plan: ANTFLY_MODELS_PLAN,
+          run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installModels({ ...optsAutoYes, op }, undefined, [PINNED], { pollMs: 10, killAfterMs: 200 }) }),
+        })
+        await waitUntil(() => existsSync(join(stagingDir(PINNED.model), 'onnx', 'model.onnx.part')), { label: 'the re-pull is mid-file' })
+        reg.cancel(operationId)
+        expect((await reg.await(operationId)).status).toBe('cancelled')
+      } finally {
+        reg.dispose()
+      }
+      expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
+    })
+
+    it('custom (unpinned) models are never described as matching pins', async () => {
+      installFakeBinary(PULL_FAILS)
+      for (const m of TEST_MODELS) seedModel(m.model)
+      const result = await installInferenceModels(optsAutoYes, undefined, TEST_MODELS)
+      expect(result.status).toBe('noop')
+      expect(result.message).toContain('custom, checked structurally')
+      const check = await checkInferenceModels(TEST_MODELS)
+      expect(check.message).toContain('custom models are checked structurally only')
     })
 
     it('the doctor check stays structural and says so', async () => {
@@ -314,10 +363,12 @@ describe('installInferenceModels', () => {
 })
 
 describe('the model install as an operation (#895 D12)', () => {
-  it('passes --models-dir set to the inference models root', async () => {
+  it('pulls into the staging root beside the live models root, then publishes into the live tree (#898 E)', async () => {
     installFakeBinary(PULL_OK)
     expect((await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])).status).toBe('installed')
-    expect(readFileSync(join(testDir, 'argv.log'), 'utf8').trim()).toBe(`inference pull ${TEST_MODELS[0]!.model} --models-dir ${modelsRoot}`)
+    expect(readFileSync(join(testDir, 'argv.log'), 'utf8').trim()).toBe(`inference pull ${TEST_MODELS[0]!.model} --models-dir ${pullStagingRoot(modelsRoot)}`)
+    expect(existsSync(join(modelsRoot, TEST_MODELS[0]!.model, 'model_manifest.json'))).toBe(true)
+    expect(existsSync(join(pullStagingRoot(modelsRoot), TEST_MODELS[0]!.model))).toBe(false)
   })
 
   it('reports one download item per model with bytes against the announced sizes, then verifies', async () => {

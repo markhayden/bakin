@@ -776,12 +776,19 @@ Evidence: `tasks/evidence-antfly-pull.md`. **Model integrity policy
 AND tokenizers (the tokenizer pins match HuggingFace's files). The install
 path HASHES: its skip check stream-hashes every pinned file
 (`pinMismatches` → `verifyFileSha256`; no (size, mtime) cache is ever
-proof), a structurally complete but mismatched model is moved aside
-(`.<name>.bakin-mismatch-*`) and pulled again — the aside is retired on
-success and restored on failure — and a post-pull mismatch FAILS the
-install (it used to be a warning). The doctor's `checkInferenceModels` stays
-structural (pinned names + sizes, the crash-loop class) and its message says
-"integrity is hash-checked at install/repair". Prefetch matters: index-time
+proof), and a structurally complete but mismatched model is pulled again.
+Every pull lands in a STAGING models root beside the live one
+(`pullStagingRoot` → `<parent>/.models.bakin-pull/`, same filesystem,
+outside the tree the engine scans) and is verified THERE (structure + pins);
+a post-pull mismatch FAILS the install (it used to be a warning). Only after
+every pulled model verified does the install publish, one rename-swap per
+model (a replaced copy moves aside and is retired only once its replacement
+is in place). A failure or cancel therefore never touches a live model, and
+the staging root keeps antfly's resumable staging for the next run. The
+doctor's `checkInferenceModels` stays structural (pinned names + sizes, the
+crash-loop class) and says so — "integrity is hash-checked at
+install/repair", with custom (unpinned) models named as checked
+structurally only. Prefetch matters: index-time
 embedding does NOT lazy-download a missing model — the backfill fails.
 Recovery is cheap: once the model is on disk, any write heals the index;
 `bakin install search-models` + `bakin reindex` fully repairs.

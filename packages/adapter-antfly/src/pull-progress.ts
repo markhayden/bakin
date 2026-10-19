@@ -1,5 +1,5 @@
 import { statSync } from 'fs'
-import { dirname, join } from 'path'
+import { basename, dirname, join } from 'path'
 
 /**
  * Progress for `antfly inference pull` (#895 D12, `tasks/evidence-antfly-pull.md`).
@@ -46,6 +46,16 @@ export function parsePullLine(raw: string): PullLine {
 }
 
 /** `<root>/<owner>/.<name>.antfly-download-staging` — where in-flight files land (F2). */
+/**
+ * Where Bakin's pulls land before verification (#898 E): a dot-dir BESIDE
+ * the live models root — same filesystem, so publishing is a rename, and
+ * outside the tree the engine scans. Stable across runs so an interrupted
+ * pull resumes.
+ */
+export function pullStagingRoot(liveModelsRoot: string): string {
+  return join(dirname(liveModelsRoot), `.${basename(liveModelsRoot)}.bakin-pull`)
+}
+
 export function pullStagingDir(modelsRoot: string, model: string): string {
   const owned = join(modelsRoot, model)
   const name = owned.slice(dirname(owned).length + 1)
