@@ -4,7 +4,7 @@
  */
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync, readFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'fs'
+import { rmSync, readFileSync, existsSync, mkdirSync, realpathSync, statSync, symlinkSync, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-antfly-service-${Date.now()}-${randomUUID()}`)
@@ -50,6 +50,7 @@ import {
   restartService,
   servicePaths,
   writeEngineConfig,
+  mediaRootsFor,
   startService,
   systemdUnitPath,
   type ServiceIo,
@@ -102,20 +103,30 @@ describe('detectServiceMode', () => {
 })
 
 describe('engine config (0.2.5 file:// allowlist)', () => {
-  it('allows file:// media only from the canonical asset store — never the Bakin home — and rewrites only on change', () => {
+  it('allows file:// media only from the asset store — never the Bakin home — and rewrites only on change', () => {
     const paths = servicePaths()
     expect(paths.configFile).toBe(join(paths.dataDir, '..', 'antfly-engine.json'))
     writeEngineConfig(paths)
     const config = JSON.parse(readFileSync(paths.configFile, 'utf8')) as { remote_content: { security: { allowed_paths: string[] } } }
     expect(config.remote_content.security.allowed_paths).toEqual(paths.mediaRoots)
-    expect(paths.mediaRoots).toHaveLength(1)
-    expect(paths.mediaRoots[0]!.endsWith(join('assets', 'store'))).toBe(true)
+    for (const root of paths.mediaRoots) expect(root.endsWith(join('assets', 'store'))).toBe(true)
+    expect(paths.mediaRoots).toContain(join(testDir, 'assets', 'store'))
     expect(paths.mediaRoots).not.toContain(dirname(paths.dataDir))
     const written = readFileSync(paths.configFile, 'utf8')
     writeFileSync(paths.configFile, written)
     const mtime = statSync(paths.configFile).mtimeMs
     writeEngineConfig(paths)
     expect(statSync(paths.configFile).mtimeMs).toBe(mtime)
+  })
+
+  it('allowlists the store under its own spelling AND its canonical one — a symlinked BAKIN_HOME keeps its spelling in asset URLs', () => {
+    const real = join(testDir, 'real-home')
+    mkdirSync(join(real, 'assets', 'store'), { recursive: true })
+    const link = join(testDir, 'linked-home')
+    if (!existsSync(link)) symlinkSync(real, link)
+    const roots = mediaRootsFor(join(link, 'assets', 'store'))
+    expect(roots).toEqual([join(link, 'assets', 'store'), realpathSync(join(real, 'assets', 'store'))])
+    expect(mediaRootsFor(realpathSync(join(real, 'assets', 'store')))).toHaveLength(1)
   })
 
   it('the argv points the engine at that config', () => {

@@ -16,7 +16,7 @@ import { join } from 'path'
 import { spawn, type ChildProcess } from 'child_process'
 
 import { ANTFLY_PIN } from '../../../packages/adapter-antfly/src/pin'
-import { renderEngineConfig } from '../../../packages/adapter-antfly/src/service'
+import { mediaRootsFor, renderEngineConfig } from '../../../packages/adapter-antfly/src/service'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -86,7 +86,7 @@ export interface EphemeralAntfly {
   port: number
   healthPort: number
   root: string
-  /** The one directory `file://` media may be read from (the asset store's stand-in). */
+  /** The one directory `file://` media may be read from (the asset store's stand-in), spelled through a symlink. */
   mediaDir: string
   modelsAvailable: boolean
   stop: () => Promise<void>
@@ -107,11 +107,14 @@ export async function spawnEphemeralAntfly(binary: string, opts: SpawnOpts = {})
   const modelsDir = join(root, 'models')
   mkdirSync(dataDir, { recursive: true })
   mkdirSync(modelsDir, { recursive: true })
-  // The engine checks canonical paths (macOS tmp is /var → /private/var).
-  const mediaDir = join(realpathSync(root), 'media')
-  mkdirSync(mediaDir, { recursive: true })
+  // The media dir is spelled through a symlink, the way a symlinked
+  // BAKIN_HOME spells the asset store — the engine's lexical check sees that
+  // spelling, so every media test exercises it (macOS tmp adds /var → /private/var).
+  mkdirSync(join(realpathSync(root), 'media'), { recursive: true })
+  symlinkSync(realpathSync(root), join(root, 'home-link'))
+  const mediaDir = join(root, 'home-link', 'media')
   const configFile = join(root, 'antfly-engine.json')
-  writeFileSync(configFile, renderEngineConfig({ mediaRoots: [mediaDir] }))
+  writeFileSync(configFile, renderEngineConfig({ mediaRoots: mediaRootsFor(mediaDir) }))
 
   const machineModels = join(homedir(), '.antfly', 'inference', 'models')
   let modelsAvailable = false

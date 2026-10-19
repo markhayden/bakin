@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { homedir } from 'os'
-import { existsSync , readFileSync} from 'fs'
+import { existsSync, readFileSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 
@@ -492,6 +492,31 @@ if (!binary) {
   })
 
   describe('file:// media needs Bakin\'s engine config (0.2.5 secure defaults, upstream #898)', () => {
+    it('a media file is accepted under the symlinked AND the canonical spelling of the store (symlinked BAKIN_HOME)', async () => {
+      if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'antflydb', 'clipclap'))) {
+        console.warn('⚠ spelling pin skipped — clipclap model not present')
+        return
+      }
+      const T = 'pins_spelling'
+      await api('POST', `/db/v1/tables/${T}`, { num_shards: 1 })
+      await sleep(500)
+      await api('POST', `/db/v1/tables/${T}/indexes/vis`, { type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } })
+      await sleep(1200)
+      const sharp = (await import('sharp')).default
+      const png = join(instance.mediaDir, 'spelling.png')
+      await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 30, g: 60, b: 220 } } }).png().toFile(png)
+      expect(realpathSync(png)).not.toBe(png)
+      for (const [key, path] of [['linked', png], ['canonical', realpathSync(png)]] as const) {
+        let status = 0
+        for (let i = 0; i < 10; i++) {
+          status = (await api('POST', `/db/v1/tables/${T}/batch`, { inserts: { [key]: { title: key, media_url: `file://${path}` } }, sync_level: 'full_index' })).status
+          if (status === 500 || status < 300) break
+          await sleep(500)
+        }
+        expect({ key, status }).toEqual({ key, status: 201 })
+      }
+    }, 120_000)
+
     it('PIN: without `remote_content.security.allowed_paths` the engine refuses file:// media — and the whole batch fails', async () => {
       // Bakin embeds assets by file:// URL; service.ts writes the allowlist
       // (renderEngineConfig) and passes --config. WHEN THIS FAILS (2xx): the

@@ -134,8 +134,20 @@ export function servicePaths(): ServicePaths {
     // Same file the log-tail annotation pipeline (server-logs.ts) reads.
     logFile: join(home, 'logs', 'antfly.log'),
     configFile: join(home, 'antfly-engine.json'),
-    mediaRoots: [canonicalPath(getBakinPaths()['assets.store'])],
+    mediaRoots: mediaRootsFor(getBakinPaths()['assets.store']),
   }
+}
+
+/**
+ * The asset store, allowlisted under BOTH its spellings. The engine checks
+ * the URL's path LEXICALLY against each entry before opening the file, then
+ * the file's realpath against each entry's realpath after. Asset URLs keep
+ * the home's own spelling (a symlinked BAKIN_HOME stays symlinked), so the
+ * as-given spelling passes the lexical check and the canonical one covers a
+ * process that spelled the home canonically. Still the store and nothing else.
+ */
+export function mediaRootsFor(store: string): string[] {
+  return [...new Set([resolve(store), canonicalPath(store)])]
 }
 
 /**
