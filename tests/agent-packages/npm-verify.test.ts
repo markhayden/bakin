@@ -137,6 +137,55 @@ describe('verifyNpmPayload', () => {
     expect(problems()).toEqual([expect.stringContaining('node_modules is a symlink')])
   })
 
+  describe('Node resolution edge cases (review round 2)', () => {
+    const depDir = () => join(payload, 'node_modules', 'dep-a')
+    const reset = (pkg: Record<string, unknown>, files: string[]) => {
+      rmSync(depDir(), { recursive: true, force: true })
+      installDep('dep-a', { version: '1.2.3', ...pkg }, files)
+    }
+
+    it('a payload package.json that is not a file is a failed verdict, not EISDIR', () => {
+      rmSync(join(payload, 'package.json'))
+      mkdirSync(join(payload, 'package.json'))
+      expect(problems()).toEqual(['package.json is not a file'])
+    })
+
+    it('an entry file symlinked outside the payload is rejected — Node would follow it', () => {
+      reset({ main: 'index.js' }, [])
+      const outside = join(root, 'outside.js')
+      writeFileSync(outside, 'export default 1\n')
+      symlinkSync(outside, join(depDir(), 'index.js'))
+      expect(problems()).toEqual([expect.stringContaining('entry file resolves outside the payload')])
+    })
+
+    it('a literal target behind a wildcard KEY is still checked', () => {
+      reset({ exports: { '.': './index.js', './feature/*': './shared.js' } }, ['index.js'])
+      expect(problems()).toEqual([expect.stringContaining('export ./feature/* shared.js')])
+    })
+
+    it('exports: null means legacy main resolution', () => {
+      reset({ exports: null, main: 'missing.js' }, [])
+      expect(problems()).toEqual([expect.stringContaining('missing its entry file missing.js')])
+    })
+
+    it('an explicit null condition blocks the subpath — it never falls through to default', () => {
+      reset({ exports: { '.': './index.js', './browser': { node: null, default: './browser.js' } } }, ['index.js'])
+      expect(verify()).toEqual({ ok: true })
+    })
+
+    it('array targets fall back past invalid strings; a bare non-"./" target is invalid', () => {
+      reset({ exports: ['invalid', './index.js'] }, ['index.js'])
+      expect(verify()).toEqual({ ok: true })
+      reset({ exports: 'index.js' }, ['index.js'])
+      expect(problems()).toEqual([expect.stringContaining('invalid target for entry file')])
+    })
+
+    it('a missing main falls back to the package root index.js, as Node does', () => {
+      reset({ main: 'missing.js' }, ['index.js'])
+      expect(verify()).toEqual({ ok: true })
+    })
+  })
+
   it('a missing payload directory is not ok', () => {
     rmSync(payload, { recursive: true, force: true })
     expect(problems()).toEqual(['payload directory is missing'])
