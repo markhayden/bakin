@@ -50,12 +50,12 @@ import {
   restartService,
   servicePaths,
   writeEngineConfig,
-  mediaRootsFor,
   startService,
   systemdUnitPath,
   type ServiceIo,
 } from '../../packages/adapter-antfly/src/service'
 import { unitDataDir } from '../../packages/adapter-antfly/src/service-ownership'
+import { mediaRootsFor } from '../../packages/adapter-antfly/src/media-url'
 import { DEFAULT_SETTINGS } from '../../packages/adapter-antfly/src/defaults'
 
 beforeEach(() => rmSync(testDir, { recursive: true, force: true }))

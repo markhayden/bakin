@@ -29,6 +29,7 @@ import { atomicWriteText } from '@bakin/core/storage/atomic-write'
 import { canonicalPath, evaluateOwnership, type ServiceOwnership, type OwnershipKind } from './service-ownership'
 import { withServiceLock, serviceLockBusy } from './service-lock'
 import { antflyBinaryPath, antflyHome, inferenceModelsRoot, isLocalDefaultUrl } from './paths'
+import { localMediaRoots } from './media-url'
 import { modelStructurallyComplete } from './model-pins'
 import { ensureModelLoadVerdicts, modelLoadable } from './model-load'
 import type { AntflySettings } from './defaults'
@@ -134,21 +135,10 @@ export function servicePaths(): ServicePaths {
     // Same file the log-tail annotation pipeline (server-logs.ts) reads.
     logFile: join(home, 'logs', 'antfly.log'),
     configFile: join(home, 'antfly-engine.json'),
-    mediaRoots: mediaRootsFor(getBakinPaths()['assets.store']),
+    mediaRoots: localMediaRoots(),
   }
 }
 
-/**
- * The asset store, allowlisted under BOTH its spellings. The engine checks
- * the URL's path LEXICALLY against each entry before opening the file, then
- * the file's realpath against each entry's realpath after. Asset URLs keep
- * the home's own spelling (a symlinked BAKIN_HOME stays symlinked), so the
- * as-given spelling passes the lexical check and the canonical one covers a
- * process that spelled the home canonically. Still the store and nothing else.
- */
-export function mediaRootsFor(store: string): string[] {
-  return [...new Set([resolve(store), canonicalPath(store)])]
-}
 
 /**
  * The engine's config file. Since 0.2.5 remote templates deny `file://`

@@ -50,8 +50,19 @@ describe('buildAssetFileUrl', () => {
     expect(buildAssetFileUrl('store/my file%.png')).toBe(`file://${canonicalAssets}/store/my%20file%25.png`)
   })
 
+  it('a symlinked home over a symlinked store yields the store\'s real path — no intermediate spelling', () => {
+    const disk = join(testDir, 'disk-store')
+    mkdirSync(disk, { recursive: true })
+    const home2 = join(testDir, 'home2')
+    mkdirSync(join(home2, 'assets'), { recursive: true })
+    symlinkSync(disk, join(home2, 'assets', 'store'))
+    symlinkSync(home2, join(testDir, 'alias2'))
+    assetsRoot = join(testDir, 'alias2', 'assets')
+    expect(buildAssetFileUrl('store/2026-10/x/thumb.jpg')).toBe(`file://${realpathSync(disk)}/2026-10/x/thumb.jpg`)
+  })
+
   it('an assets root that does not exist yet still yields an absolute URL', () => {
     assetsRoot = join(testDir, 'not-yet', 'assets')
-    expect(buildAssetFileUrl('store/a.png')).toBe(`file://${join(testDir, 'not-yet', 'assets')}/store/a.png`)
+    expect(buildAssetFileUrl('store/a.png')).toBe(`file://${join(realpathSync(testDir), 'not-yet', 'assets')}/store/a.png`)
   })
 })

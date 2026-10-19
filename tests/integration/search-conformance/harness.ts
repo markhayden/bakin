@@ -16,7 +16,8 @@ import { join } from 'path'
 import { spawn, type ChildProcess } from 'child_process'
 
 import { ANTFLY_PIN } from '../../../packages/adapter-antfly/src/pin'
-import { mediaRootsFor, renderEngineConfig } from '../../../packages/adapter-antfly/src/service'
+import { renderEngineConfig } from '../../../packages/adapter-antfly/src/service'
+import { mediaRootsFor } from '../../../packages/adapter-antfly/src/media-url'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
