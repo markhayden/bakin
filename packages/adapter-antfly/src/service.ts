@@ -19,6 +19,7 @@
  * old sidecar fingerprint + adoption lattice wholesale.
  */
 import { spawn, type ChildProcess } from 'child_process'
+import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, openSync } from 'fs'
 import { homedir, tmpdir } from 'os'
 import { createConnection } from 'net'
@@ -152,6 +153,17 @@ export function renderEngineConfig(paths: Pick<ServicePaths, 'mediaRoots'>): str
   return `${JSON.stringify({ remote_content: { security: { allowed_paths: paths.mediaRoots } } }, null, 2)}\n`
 }
 
+/**
+ * The engine config's identity, rendered INTO the unit. The engine reads its
+ * config only at start, so a config change (the asset store moved, say) must
+ * make the unit differ — the ordinary drift path then restarts the engine,
+ * and the state lives in the unit, so a crash between writing the config and
+ * restarting can't leave an engine running the old allowlist.
+ */
+export function engineConfigFingerprint(paths: Pick<ServicePaths, 'mediaRoots'>): string {
+  return createHash('sha256').update(renderEngineConfig(paths)).digest('hex').slice(0, 16)
+}
+
 /** Writes the engine config before a start (atomic, and only when it changed). */
 export function writeEngineConfig(paths: ServicePaths): void {
   const desired = renderEngineConfig(paths)
@@ -220,12 +232,12 @@ function xmlEscape(value: string): string {
 // old child spawn inherited. An LSM engine with N tables x shards x
 // segment files exhausts 256 instantly (ProcessFdQuotaExceeded, observed
 // at the rc.17 cutover as boot-wide flakiness + an exit-6 crash).
-export function renderLaunchdPlist(argv: string[], logFile: string): string {
+export function renderLaunchdPlist(argv: string[], logFile: string, configFingerprint?: string): string {
   const args = argv.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n')
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
+${configFingerprint ? `<!-- engine config ${configFingerprint} -->\n` : ''}<dict>
   <key>Label</key>
   <string>${LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key>
@@ -255,7 +267,7 @@ ${args}
 `
 }
 
-export function renderSystemdUnit(argv: string[], logFile: string): string {
+export function renderSystemdUnit(argv: string[], logFile: string, configFingerprint?: string): string {
   // systemd.service(5): $$ and %% preserve literal expansion characters.
   const exec = argv.map((a) => {
     if (/[\r\n\0]/.test(a)) throw new Error('Unsupported control character in service argument')
@@ -263,7 +275,7 @@ export function renderSystemdUnit(argv: string[], logFile: string): string {
     return /[\s"'\\$%]/.test(a) ? `"${escaped}"` : escaped
   }).join(' ')
   return `# Managed by Bakin — do not edit (bakin install search rewrites this file).
-[Unit]
+${configFingerprint ? `# engine config ${configFingerprint}\n` : ''}[Unit]
 Description=Bakin private antfly search engine
 
 [Service]
@@ -440,7 +452,8 @@ export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo 
     writeEngineConfig(paths)
     const argv = buildServiceArgv(settings, paths, { modelReady: io.modelReady })
     const unitPath = mode === 'launchd' ? launchdPlistPath(io) : systemdUnitPath(io)
-    const desired = mode === 'launchd' ? renderLaunchdPlist(argv, paths.logFile) : renderSystemdUnit(argv, paths.logFile)
+    const fingerprint = engineConfigFingerprint(paths)
+    const desired = mode === 'launchd' ? renderLaunchdPlist(argv, paths.logFile, fingerprint) : renderSystemdUnit(argv, paths.logFile, fingerprint)
     const current = existsSync(unitPath) ? readFileSync(unitPath, 'utf8') : null
     if (current === desired) {
       const state = mode === 'launchd'
