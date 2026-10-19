@@ -85,8 +85,11 @@ A capability pack is `kind: "skill-pack"` plus:
   it "integrity verified".
 - `requires.models[]` — `{ name, url, sha256, bytes, dest, env? }` into
   `~/.bakin/models/<dest>`; streams to disk (never buffered), sha256+size
-  verified, atomic rename; size+marker fast path avoids re-hashing ~GB
-  files. `bytes` drives the CLI consent preview. `env` is injected at boot
+  verified, atomic rename. Reuse of an on-disk model is decided by a stream
+  HASH against the pin (`verifyFileSha256`, `packages/core/src/integrity/files.ts`,
+  #898 E) — never size + marker, which a same-size corruption or a forged
+  marker passes; installs/repairs pay the hash, the readiness leg stays
+  structural (present at the declared size) and says so. `bytes` drives the CLI consent preview. `env` is injected at boot
   (`injectPackModelEnv`, secret-env pattern, unset-only) with `{dest}`
   expanding to the absolute installed path — how a consuming binary finds
   its model (transcribe: PARAKEET_CPP_MODEL_PATH).

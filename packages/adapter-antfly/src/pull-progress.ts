@@ -1,5 +1,5 @@
-import { readdirSync, statSync } from 'fs'
-import { dirname, join } from 'path'
+import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'fs'
+import { basename, dirname, join } from 'path'
 
 /**
  * Progress for `antfly inference pull` (#895 D12, `tasks/evidence-antfly-pull.md`).
@@ -46,6 +46,16 @@ export function parsePullLine(raw: string): PullLine {
 }
 
 /** `<root>/<owner>/.<name>.antfly-download-staging` — where in-flight files land (F2). */
+/**
+ * Where Bakin's pulls land before verification (#898 E): a dot-dir BESIDE
+ * the live models root — same filesystem, so publishing is a rename, and
+ * outside the tree the engine scans. Stable across runs so an interrupted
+ * pull resumes.
+ */
+export function pullStagingRoot(liveModelsRoot: string): string {
+  return join(dirname(liveModelsRoot), `.${basename(liveModelsRoot)}.bakin-pull`)
+}
+
 export function pullStagingDir(modelsRoot: string, model: string): string {
   const owned = join(modelsRoot, model)
   const name = owned.slice(dirname(owned).length + 1)
@@ -124,5 +134,46 @@ export function createPullTracker(stagingDir: string | (() => string | null)) {
       for (const size of announced.values()) total += size
       return { received, total }
     },
+  }
+}
+
+/**
+ * The machine-wide lock over Bakin's pull → verify → publish of search
+ * models (#898 E). The antfly models root is shared by every Bakin home on
+ * the machine, while operation locks are per home — without this, one home
+ * could delete or replace another's staged, verified model mid-install.
+ *
+ * An exclusive-create lock file holding the owner's pid, NEVER reclaimed
+ * automatically: any automatic stale-lock reclaim can, under some schedule,
+ * hand the lock to two owners. A crashed install leaves the file behind and
+ * the caller's message names it for the operator to remove.
+ */
+export function acquireModelsLock(liveModelsRoot: string): { release: () => void } | { heldBy: number; path: string } {
+  const path = join(dirname(liveModelsRoot), `.${basename(liveModelsRoot)}.bakin-pull.lock`)
+  mkdirSync(dirname(path), { recursive: true })
+  const mine = String(process.pid)
+  try {
+    writeFileSync(path, mine, { flag: 'wx' })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return { heldBy: holderPid(path), path }
+    throw err
+  }
+  return {
+    release: () => {
+      if (readText(path)?.trim() === mine) unlinkSync(path)
+    },
+  }
+}
+
+function holderPid(path: string): number {
+  const pid = Number.parseInt(readText(path)?.trim() ?? '', 10)
+  return Number.isInteger(pid) && pid > 0 ? pid : -1
+}
+
+function readText(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf-8')
+  } catch {
+    return null
   }
 }

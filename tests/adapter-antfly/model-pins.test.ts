@@ -16,7 +16,7 @@ import { randomUUID } from 'crypto'
 const testDir = join(tmpdir(), `bakin-test-model-pins-${Date.now()}-${randomUUID()}`)
 process.env.ANTFLY_HOME = testDir
 
-import { MODEL_PINS, modelDir, modelStructurallyComplete, unverifiedModelFiles } from '../../packages/adapter-antfly/src/model-pins'
+import { MODEL_PINS, modelDir, modelStructurallyComplete, pinMismatches } from '../../packages/adapter-antfly/src/model-pins'
 
 const CLIPCLAP = 'antflydb/clipclap'
 
@@ -93,8 +93,8 @@ describe('modelStructurallyComplete', () => {
   })
 })
 
-describe('unverifiedModelFiles', () => {
-  it('reports hash drift without blocking (structural check still passes)', async () => {
+describe('pinMismatches (install path only — #898 E)', () => {
+  it('names every pinned file whose bytes differ — tokenizer included; the structural check alone would pass', async () => {
     seedModel(CLIPCLAP, {
       'model_manifest.json': '{}',
       'clipclap-clip.Q4_K.gguf': bigWeight(),
@@ -102,12 +102,28 @@ describe('unverifiedModelFiles', () => {
       'tokenizer.json': '{}',
     })
     expect(modelStructurallyComplete(CLIPCLAP).ok).toBe(true)
-    const drifted = await unverifiedModelFiles(CLIPCLAP)
-    expect(drifted.sort()).toEqual(['clipclap-clap.Q4_K.gguf', 'clipclap-clip.Q4_K.gguf'])
+    const mismatched = await pinMismatches(CLIPCLAP)
+    expect(mismatched.sort()).toEqual(['clipclap-clap.Q4_K.gguf', 'clipclap-clip.Q4_K.gguf', 'tokenizer.json'])
+  })
+
+  it('a matching file is not cached into trust: same-size, same-mtime corruption is caught on the next call', async () => {
+    const model = 'test-owner/pinned-tiny'
+    MODEL_PINS[model] = [{ file: 'w.bin', sha256: require('crypto').createHash('sha256').update('weights!').digest('hex') }]
+    try {
+      seedModel(model, { 'model_manifest.json': '{}', 'w.bin': 'weights!' })
+      expect(await pinMismatches(model)).toEqual([])
+      const path = join(modelDir(model), 'w.bin')
+      const { atime, mtime } = require('fs').statSync(path)
+      require('fs').writeFileSync(path, 'weightS!')
+      require('fs').utimesSync(path, atime, mtime)
+      expect(await pinMismatches(model)).toEqual(['w.bin'])
+    } finally {
+      delete MODEL_PINS[model]
+    }
   })
 
   it('returns empty for unpinned models', async () => {
-    expect(await unverifiedModelFiles('someone/custom-embedder')).toEqual([])
+    expect(await pinMismatches('someone/custom-embedder')).toEqual([])
   })
 })
 
@@ -117,7 +133,8 @@ describe('pin integrity', () => {
       expect(pins.length).toBeGreaterThan(0)
       for (const pin of pins) {
         expect(pin.file.length).toBeGreaterThan(0)
-        if (pin.sha256) expect(pin.sha256).toMatch(/^[0-9a-f]{64}$/)
+        // Every pinned file carries a sha256 — tokenizers included (#898 E).
+        expect(pin.sha256).toMatch(/^[0-9a-f]{64}$/)
       }
       expect(model).toMatch(/^[\w.-]+\/[\w.-]+$/)
     }

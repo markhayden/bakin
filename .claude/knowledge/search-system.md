@@ -781,7 +781,42 @@ install is an operation (#895 D12): one item per model whose bytes come from
 antfly's stderr protocol (file sizes announced as files start, a line every
 16 MiB — `pull-progress.ts`) plus the staged `.part` between lines; cancel is
 allowed throughout (SIGTERM) and keeps the staging dir for the resume.
-Evidence: `tasks/evidence-antfly-pull.md`. Prefetch matters: index-time
+Evidence: `tasks/evidence-antfly-pull.md`. **Model integrity policy
+(#898 E):** every pinned file in `model-pins.ts` carries a sha256 — weights
+AND tokenizers (the tokenizer pins match HuggingFace's files). The install
+path HASHES: its skip check stream-hashes every pinned file
+(`pinMismatches` → `verifyFileSha256`; no (size, mtime) cache is ever
+proof), and a structurally complete but mismatched model is pulled again.
+Every pull lands in a STAGING models root beside the live one
+(`pullStagingRoot` → `<parent>/.models.bakin-pull/`, same filesystem,
+outside the tree the engine scans) and is verified THERE (structure + pins);
+a post-pull mismatch FAILS the install (it used to be a warning). Only after
+every pulled model verified does the install publish — through #993's
+replacement protocol (`publishStagedModel`: live → `.bakin-replacing-*`
+backup, staged → live, backup → trash; `recoverModelInstall` finishes a crash
+between the renames on the next install, for EVERY requested model, before
+any installed state is judged). A staged copy a failed or cancelled run already
+downloaded is REUSED when it still verifies (structure, variant, pins) —
+never re-downloaded. A pinned variant (#993, clipclap
+`gguf:Q4_K`) is adopted to its model name INSIDE staging, so it is verified
+exactly where it publishes from; the engine load probe runs on the published
+files afterwards. (No `bun:ffi` atomic exchange — owner decision 2026-10-19
+to keep release signing unchanged.) The whole check →
+pull → verify → publish (installed state is only judged while holding it)
+runs under a MACHINE-wide lock beside the shared models root
+(`acquireModelsLock`, `.models.bakin-pull.lock`): an exclusive-create file
+holding the owner's pid, NEVER reclaimed automatically (any automatic stale
+reclaim can, under some schedule, hand the lock to two owners) — a crashed
+install's lock is named in the message for the operator to remove.
+Operation locks are per home; the antfly models root is not. Model ids are
+validated as exactly `owner/name` (`isSafeModelName`; custom ids come from
+settings) before any path is built from them. A
+failure or cancel therefore never touches a live model, and
+the staging root keeps antfly's resumable staging for the next run. The
+doctor's `checkInferenceModels` stays structural (pinned names + sizes, the
+crash-loop class) and says so — "integrity is hash-checked at
+install/repair", with custom (unpinned) models named as checked
+structurally only. Prefetch matters: index-time
 embedding does NOT lazy-download a missing model — the backfill fails.
 Recovery is cheap: once the model is on disk, any write heals the index;
 `bakin install search-models` + `bakin reindex` fully repairs.

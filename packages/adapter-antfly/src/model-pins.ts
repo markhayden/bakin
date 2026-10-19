@@ -11,22 +11,25 @@
  * human read the diagnostics (2026-07-21 field incident).
  *
  * Pins are the exact file set verified working against the pinned engine
- * version; sha256 values were computed from that verified install.
- * Verification tiers:
- *   - a MISSING or truncated pinned file  → structurally broken (blocks
- *     preload, reported as missing/broken — the crash-loop class)
- *   - a present file whose hash drifted   → "unverified" (reported, never
- *     blocking — upstream may legitimately rev a distribution; we re-pin
- *     when we re-verify)
+ * version; sha256 values were computed from that verified install (the
+ * tokenizer pins, added 2026-10-19 for #898 E, also match HuggingFace's
+ * published files byte for byte). Verification tiers (#898 E):
+ *   - a MISSING or truncated pinned file → structurally broken (blocks
+ *     preload; the doctor reports it — the crash-loop class). The doctor is
+ *     STRUCTURAL ONLY: hashing hundreds of MB per check cycle is real cost.
+ *   - a pinned file whose sha256 differs → the INSTALL path refuses it: the
+ *     install skip hashes every pinned file before calling a model present,
+ *     and a post-pull mismatch fails the install. There is no cache: a
+ *     (size, mtime) match is never proof.
  * Models without a pin entry (operator-configured embedders) fall back to
  * the generic any-weight-file check.
  *
  * When repinning the ENGINE version, re-verify these distributions against
  * it and refresh the hashes in the same commit.
  */
-import { createHash } from 'crypto'
-import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'fs'
-import { dirname, join } from 'path'
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
+import { verifyFileSha256 } from '@bakin/core/integrity/files'
+import { dirname, join, sep } from 'path'
 import { inferenceModelsRoot } from './paths'
 
 export interface ModelFilePin {
@@ -35,21 +38,26 @@ export interface ModelFilePin {
   minBytes?: number
 }
 
+/** Whether a model's integrity is pinned (hash-verified) or only structurally checked (operator-configured). */
+export function isPinnedModel(model: string): boolean {
+  return MODEL_PINS[model] !== undefined
+}
+
 export const MODEL_PINS: Record<string, ModelFilePin[]> = {
   'BAAI/bge-small-en-v1.5': [
     { file: 'model.safetensors', sha256: '3c9f31665447c8911517620762200d2245a2518d6e7208acc78cd9db317e21ad', minBytes: 100_000_000 },
-    { file: 'tokenizer.json' },
+    { file: 'tokenizer.json', sha256: 'd241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66' },
   ],
   'antflydb/clipclap': [
     // The paired GGUFs are what the engine's Metal runtime loads; an
     // ONNX-only download passes a naive weight-file check and crash-loops.
     { file: 'clipclap-clip.Q4_K.gguf', sha256: 'cd41fa6f466205c3dc987ba4cb0d673f0059447c6c5daef5dcd5ae210cbec361', minBytes: 50_000_000 },
     { file: 'clipclap-clap.Q4_K.gguf', sha256: '8be2a0c523b20452a8a16f5915d0096b12ad7de18aa07d6adb71a3669b1a27ec', minBytes: 20_000_000 },
-    { file: 'tokenizer.json' },
+    { file: 'tokenizer.json', sha256: '8e019f9349caf5f9bb92514b0e4fc00c92841aef6ae8df9d833d975c623b7c72' },
   ],
   'mixedbread-ai/mxbai-rerank-base-v1': [
     { file: 'model.safetensors', sha256: 'd9db29f75d900055e9ce4f9a79c841d13384fdc3ca144404f9eecb873fc4fcbd', minBytes: 200_000_000 },
-    { file: 'tokenizer.json' },
+    { file: 'tokenizer.json', sha256: '305674b4d785287feecfb5f73f24aa75e9b57c87c579cfe24fbd207987d4b4c4' },
   ],
 }
 
@@ -84,10 +92,10 @@ function recordedVariant(dir: string): string | null {
  * when the model pins none. A mismatch is not "missing" (the files may load,
  * e.g. on macOS); the installer re-pulls it as the pinned variant.
  */
-export function modelVariantMismatch(model: string): string | null {
+export function modelVariantMismatch(model: string, modelsRoot?: string): string | null {
   const variant = MODEL_PULL_VARIANTS[model]
-  if (!variant || !existsSync(modelDir(model))) return null
-  const recorded = recordedVariant(modelDir(model))
+  if (!variant || !existsSync(modelDir(model, modelsRoot))) return null
+  const recorded = recordedVariant(modelDir(model, modelsRoot))
   return recorded === variant ? null : `installed as the ${recorded ?? 'default'} distribution, not ${variant}`
 }
 
@@ -110,9 +118,22 @@ export function pulledVariantDir(modelsRoot: string, model: string, variant: str
   return hits[0] ?? null
 }
 
-export function modelDir(model: string): string {
+/**
+ * A model id is exactly `owner/name` (HuggingFace shape): two segments of
+ * [A-Za-z0-9._-], neither "." nor "..". Custom ids come from settings, so
+ * this guards every filesystem path built from them (#898 E review).
+ */
+export function isSafeModelName(model: string): boolean {
+  const parts = model.split('/')
+  return parts.length === 2 && parts.every((part) => /^[\w.-]+$/.test(part) && part !== '.' && part !== '..')
+}
+
+export function modelDir(model: string, root: string = inferenceModelsRoot()): string {
   // v0.2 layout is {root}/{owner}/{name} — no per-kind buckets.
-  return join(inferenceModelsRoot(), model)
+  if (!isSafeModelName(model)) throw new Error(`Invalid search model id "${model}" — expected owner/name`)
+  const dir = join(root, model)
+  if (!dir.startsWith(join(root) + sep)) throw new Error(`Search model id "${model}" escapes the models root`)
+  return dir
 }
 
 const WEIGHT_FILE_RE = /\.(onnx|gguf|safetensors)$/
@@ -143,8 +164,9 @@ function hasWeightFile(dir: string, depth = 0): boolean {
  * (generic weight-file fallback for unpinned models). Cheap — safe to call
  * on every doctor cycle and from the service argv builder.
  */
-export function modelStructurallyComplete(model: string): { ok: true } | { ok: false; reason: string } {
-  const root = modelDir(model)
+export function modelStructurallyComplete(model: string, modelsRoot?: string): { ok: true } | { ok: false; reason: string } {
+  if (!isSafeModelName(model)) return { ok: false, reason: `invalid model id "${model}" — expected owner/name` }
+  const root = modelDir(model, modelsRoot)
   if (!existsSync(root)) return { ok: false, reason: 'not downloaded yet' }
 
   // The registry synthesizes model_manifest.json after a successful pull;
@@ -178,46 +200,23 @@ export function modelStructurallyComplete(model: string): { ok: true } | { ok: f
   return { ok: true }
 }
 
-// Hashing hundreds of MB is ~seconds — cache by (path, size, mtime) so the
-// doctor's repeat calls cost one pass per file per boot.
-const hashCache = new Map<string, { size: number; mtimeMs: number; sha256: string }>()
-
-async function fileSha256(path: string): Promise<string> {
-  const stat = statSync(path)
-  const cached = hashCache.get(path)
-  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.sha256
-  const hash = createHash('sha256')
-  await new Promise<void>((resolve, reject) => {
-    const stream = createReadStream(path)
-    stream.on('data', (chunk) => hash.update(chunk))
-    stream.on('end', () => resolve())
-    stream.on('error', reject)
-  })
-  const sha256 = hash.digest('hex')
-  hashCache.set(path, { size: stat.size, mtimeMs: stat.mtimeMs, sha256 })
-  return sha256
-}
-
 /**
- * Hash verification against the pins. Never blocking: a drifted hash means
- * "distribution differs from the verified set", which is worth surfacing
- * but is not the crash-loop failure class. Returns the drifted file names
- * (empty for unpinned or fully matching models).
+ * Every pinned file whose bytes do not match its sha256 pin — ALWAYS
+ * stream-hashed (`verifyFileSha256`; no (size, mtime) cache is proof).
+ * Install-path only: the skip check and the post-pull verification call
+ * it; the doctor never does. Empty for unpinned or fully matching models;
+ * a missing pinned file counts as a mismatch.
  */
-export async function unverifiedModelFiles(model: string): Promise<string[]> {
+export async function pinMismatches(model: string, modelsRoot?: string): Promise<string[]> {
   const pins = MODEL_PINS[model]
   if (!pins) return []
-  const root = modelDir(model)
-  const drifted: string[] = []
+  if (!isSafeModelName(model)) return ['<invalid model id>']
+  const root = modelDir(model, modelsRoot)
+  const mismatched: string[] = []
   for (const pin of pins) {
     if (!pin.sha256) continue
-    const path = join(root, pin.file)
-    if (!existsSync(path)) continue // structural check owns missing files
-    try {
-      if (await fileSha256(path) !== pin.sha256) drifted.push(pin.file)
-    } catch {
-      drifted.push(pin.file)
-    }
+    const verdict = await verifyFileSha256(join(root, pin.file), pin.sha256)
+    if (!verdict.ok) mismatched.push(pin.file)
   }
-  return drifted
+  return mismatched
 }
