@@ -203,7 +203,8 @@ function pluginActionDetail(action: PluginActionData): string {
       return `${valueText(objectField(item, 'id'))}: ${valueText(objectField(item, 'error'))}`
     }).join(', ')}`)
   }
-  details.push(...pluginPermissionsDetail(objectField(payload, 'permissions')))
+  // Install answers carry `permissions`; upgrade answers the full `declaredPermissions`.
+  details.push(...pluginPermissionsDetail(objectField(payload, 'permissions') ?? objectField(payload, 'declaredPermissions')))
   details.push(...pluginBinsDetail(objectField(payload, 'bins') ?? objectField(payload, 'declaredBins')))
   if (next.length > 0) details.push(`Next: ${next.map(item => valueText(item)).join(' && ')}`)
 
