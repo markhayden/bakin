@@ -126,8 +126,10 @@ async function delegateOnce(options: DoctorDelegateOptions): Promise<DoctorDeleg
   const index = openRepairWorkByIncident(options.contentDir)
   const working = new Map<string, OpenRepairWork>()
   for (const incident of targeted) {
-    const work = index.get(incident.id)
-    if (work && await getTaskDetails(work.taskId).catch(() => null)) working.set(incident.id, work)
+    // Newest first; fall back past a request whose task was deleted.
+    for (const work of index.get(incident.id) ?? []) {
+      if (await getTaskDetails(work.taskId).catch(() => null)) { working.set(incident.id, work); break }
+    }
   }
   const incidents = targeted.filter((incident) => !working.has(incident.id))
   if (targeted.length > 0 && incidents.length === 0) {

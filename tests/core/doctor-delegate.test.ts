@@ -106,6 +106,21 @@ describe('structured Health delegation', () => {
     expect(createTaskWithEffects).toHaveBeenCalledTimes(2)
   })
 
+  it('falls back past a newer request whose task was deleted to an older one that still exists', async () => {
+    const older = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    // A newer request for the same incident (a state earlier builds allowed), whose task is then deleted.
+    updateDoctorRepairRequest(testDir, older.request.id, (r) => ({ ...r, createdAt: new Date(Date.now() - 60_000).toISOString() }))
+    liveTasks.clear()
+    const newer = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(newer.status).toBe('sent')
+    liveTasks.clear()
+    liveTasks.add('task-doctor-repair') // the older task survives, the newer one is gone
+    const again = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(again.status).toBe('already_delegated')
+    expect(again.request.id).toBe(older.request.id)
+    expect(createTaskWithEffects).toHaveBeenCalledTimes(2)
+  })
+
   it('a FUTURE-dated request works nothing: delegation is not suppressed by it (#898)', async () => {
     const first = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
     updateDoctorRepairRequest(testDir, first.request.id, (r) => ({ ...r, createdAt: new Date(Date.now() + 24 * 3_600_000).toISOString() }))

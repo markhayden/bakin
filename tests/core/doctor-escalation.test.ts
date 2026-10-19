@@ -289,6 +289,16 @@ describe('per-incident cover (bounded, resurfacing — spec D-G1/D-G3)', () => {
     expect(outcome?.resurfacedTaskIds).toEqual([])
   })
 
+  it('an invalid or future window mark never extends cover — it is ignored', async () => {
+    const mark = (ts: string) => ({ ts, type: 'resurfaced', message: 'x' })
+    for (const ts of ['not-a-time', new Date(Date.now() + 48 * HOUR).toISOString()]) {
+      requests = [coveringRequest(34 * HOUR, { events: [mark(ts)] })]
+      taskColumns = { 'task-1': 'inProgress' }
+      const fresh = await assessRepairCoverage('/tmp/content', new Set(['health:search:unavailable']), Date.now(), cooldownMs, staleAfterMs)
+      expect(fresh.resurface.map((r) => r.reason)).toEqual(['stale'])
+    }
+  })
+
   it('overlapping cycles are serialized: one expired window announces once', async () => {
     requests = [coveringRequest(34 * HOUR, { approvalId: 'health-repair:repair-1:1' })]
     taskColumns = { 'task-1': 'review' }

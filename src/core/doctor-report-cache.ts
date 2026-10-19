@@ -476,7 +476,7 @@ export function acknowledgeHealthIncident(input: {
  * nothing — never fails the report.
  */
 function joinRepairTasks(incidents: HealthIncident[]): HealthIncident[] {
-  let byIncident: ReadonlyMap<string, OpenRepairWork>
+  let byIncident: ReadonlyMap<string, readonly OpenRepairWork[]>
   try {
     byIncident = openRepairWorkByIncident(getContentDir())
   } catch (err) {
@@ -485,7 +485,7 @@ function joinRepairTasks(incidents: HealthIncident[]): HealthIncident[] {
   }
   if (byIncident.size === 0) return incidents
   return incidents.map((incident) => {
-    const work = byIncident.get(incident.id)
+    const work = byIncident.get(incident.id)?.[0]
     return work ? { ...incident, repairTaskId: work.taskId } : incident
   })
 }

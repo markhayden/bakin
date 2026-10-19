@@ -58,10 +58,18 @@ export interface RepairCoverage {
   resurface: Array<{ request: DoctorRepairRequest; reason: ResurfaceReason }>
 }
 
-/** The window mark: the last time this request resurfaced, else its creation. */
-function windowMark(request: DoctorRepairRequest): number {
-  const last = [...request.events].reverse().find((event) => event.type === 'resurfaced')
-  return Date.parse(last?.ts ?? request.createdAt)
+/**
+ * The window mark: the last VALID `resurfaced` event (a parseable time not
+ * in the future), else the request's creation. An invalid or future mark
+ * never extends cover — it is ignored, not trusted.
+ */
+function windowMark(request: DoctorRepairRequest, now: number): number {
+  for (const event of [...request.events].reverse()) {
+    if (event.type !== 'resurfaced') continue
+    const at = Date.parse(event.ts)
+    if (Number.isFinite(at) && at <= now) return at
+  }
+  return Date.parse(request.createdAt)
 }
 
 type Verdict = { kind: 'skip' } | { kind: 'cover' } | { kind: 'resurface'; reason: ResurfaceReason }
@@ -90,7 +98,7 @@ function judgeCoverage(
   if (!column) return { kind: 'skip' } // task gone — a new request may open
   const stillFailing = request.incidentIds.some((id) => fresh.has(id))
   if (CLOSED_COLUMNS.has(column)) return stillFailing ? { kind: 'resurface', reason: 'closed-unfixed' } : { kind: 'skip' }
-  const sinceMark = now - windowMark(request)
+  const sinceMark = now - windowMark(request, now)
   if (!Number.isFinite(sinceMark) || sinceMark < staleAfterMs || !stillFailing) return { kind: 'cover' }
   return { kind: 'resurface', reason: 'stale' }
 }

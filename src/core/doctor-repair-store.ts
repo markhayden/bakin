@@ -227,34 +227,38 @@ export interface OpenRepairWork {
 }
 
 /**
- * incident id → its newest OPEN repair request (not verified or dismissed)
- * that has a task. Memoized per home and dropped on every write through this
+ * incident id → its OPEN repair requests (not verified or dismissed, dated,
+ * not in the future) that have a task, newest first — every candidate, so a
+ * caller can fall back past one whose task was deleted. Memoized per home and dropped on every write through this
  * module (the only writer), so the Health report projection — which runs
  * every second — never re-reads the request files, and delegation reuses the
  * work instead of opening a duplicate task (#898 PR G).
  */
-let openTaskIndex: { contentDir: string; byIncident: Map<string, OpenRepairWork>; rebuildAt: number } | null = null
+let openTaskIndex: { contentDir: string; byIncident: Map<string, OpenRepairWork[]>; rebuildAt: number } | null = null
 
-export function openRepairWorkByIncident(contentDir: string, now = Date.now()): ReadonlyMap<string, OpenRepairWork> {
+export function openRepairWorkByIncident(contentDir: string, now = Date.now()): ReadonlyMap<string, readonly OpenRepairWork[]> {
   // One stat keeps the memo honest when the store is wiped out from under it.
   if (!existsSync(repairRequestV2Root(contentDir))) {
     openTaskIndex = null
     return new Map()
   }
   if (openTaskIndex?.contentDir === contentDir && now < openTaskIndex.rebuildAt) return openTaskIndex.byIncident
-  const byIncident = new Map<string, OpenRepairWork>()
+  const byIncident = new Map<string, OpenRepairWork[]>()
   // A future-dated (or undated) request works nothing — the same rule
   // escalation's coverage applies (#898). The memo expires when the
   // earliest future request comes due.
   let rebuildAt = Number.POSITIVE_INFINITY
-  // Newest first (the list's order): the first request naming an incident wins.
+  // Newest first (the list's order).
   for (const request of listDoctorRepairRequests(contentDir)) {
     if (!request.taskId || request.status === 'verified' || request.status === 'dismissed') continue
     const createdAt = Date.parse(request.createdAt)
     if (!Number.isFinite(createdAt)) continue
     if (createdAt > now) { rebuildAt = Math.min(rebuildAt, createdAt); continue }
     for (const id of request.incidentIds) {
-      if (!byIncident.has(id)) byIncident.set(id, { requestId: request.id, taskId: request.taskId })
+      const work = { requestId: request.id, taskId: request.taskId }
+      const list = byIncident.get(id)
+      if (list) list.push(work)
+      else byIncident.set(id, [work])
     }
   }
   openTaskIndex = { contentDir, byIncident, rebuildAt }

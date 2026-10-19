@@ -112,7 +112,7 @@ describe('openRepairWorkByIncident', () => {
       const a = createDoctorRepairRequest(dir, { incidentIds: ['i1'], observationIds: [] })
       expect(openRepairWorkByIncident(dir).size).toBe(0) // no task yet
       updateDoctorRepairRequest(dir, a.id, (r) => ({ ...r, taskId: 't1', status: 'sent' }))
-      expect(openRepairWorkByIncident(dir).get('i1')).toEqual({ requestId: a.id, taskId: 't1' })
+      expect(openRepairWorkByIncident(dir).get('i1')).toEqual([{ requestId: a.id, taskId: 't1' }])
       updateDoctorRepairRequest(dir, a.id, (r) => ({ ...r, status: 'verified' }))
       expect(openRepairWorkByIncident(dir).has('i1')).toBe(false)
     } finally {
@@ -127,7 +127,7 @@ describe('openRepairWorkByIncident', () => {
       const a = createDoctorRepairRequest(dir, { incidentIds: ['i1'], observationIds: [] })
       updateDoctorRepairRequest(dir, a.id, (r) => ({ ...r, taskId: 't1', status: 'sent', createdAt: new Date(now + 60_000).toISOString() }))
       expect(openRepairWorkByIncident(dir, now).has('i1')).toBe(false)
-      expect(openRepairWorkByIncident(dir, now + 120_000).get('i1')?.taskId).toBe('t1')
+      expect(openRepairWorkByIncident(dir, now + 120_000).get('i1')?.[0]?.taskId).toBe('t1')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
