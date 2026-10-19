@@ -569,6 +569,25 @@ describe('plugin-assets — binaries', () => {
   })
   afterEach(() => rmSync(testDir, { recursive: true, force: true }))
 
+  it('an archive bin without its extracted pin is an INVALID declaration — visible, never "no bins", never installed (#898 D)', async () => {
+    const pluginDir = join(testDir, 'plugins', 'oldterm')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(join(pluginDir, 'bakin-plugin.json'), JSON.stringify({
+      id: 'oldterm', name: 'oldterm', version: '1.0.0', bakin: '*', description: 'pre-#898 D manifest',
+      requires: { bins: [{ name: 'tool', version: '1.0.0', install: { [platform]: { url: `http://127.0.0.1:${binServer.port}/tool.tar.gz`, sha256: sha256(TOOL), archive: { format: 'tar.gz', member: 'tool' } } } }] },
+    }))
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'oldterm', {
+      source: pluginDir, type: 'local', ref: '', commitSha: 'a'.repeat(40), installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'a'.repeat(64),
+    }))
+    const entry = { id: 'oldterm', path: pluginDir }
+    const report = await scanPluginAssets([entry])
+    expect(report.bins.total).toBe(0)
+    expect(report.bins.invalid).toEqual([{ pluginId: 'oldterm', reason: expect.stringContaining('extractedSha256') }])
+    const installed = await installPluginAssets([entry])
+    expect(installed.bins.installed).toEqual([])
+    expect(existsSync(binPath())).toBe(false)
+  })
+
   it('missing → install downloads + marks + records in the lockfile → installed; tampered bytes → drifted → reinstalled', async () => {
     const pluginDir = makePluginWithBin('term')
     writePluginLockfile(addPlugin(readPluginLockfile(), 'term', {
@@ -577,7 +596,7 @@ describe('plugin-assets — binaries', () => {
     const entry = { id: 'term', path: pluginDir }
 
     let report = await scanPluginAssets([entry])
-    expect(report.bins).toEqual({ total: 1, installed: [], missing: [{ pluginId: 'term', name: 'tool' }], drifted: [], unsupported: [] })
+    expect(report.bins).toEqual({ total: 1, installed: [], missing: [{ pluginId: 'term', name: 'tool' }], drifted: [], unsupported: [], invalid: [] })
 
     const installed = await installPluginAssets([entry])
     expect(installed.bins.installed).toEqual([{ pluginId: 'term', name: 'tool' }])
@@ -664,6 +683,22 @@ describe('plugin-assets — binaries', () => {
     expect(check.status).toBe('warn')
     expect(check.message).toMatch(/1 user-edited skill\(s\) differ from what the plugin ships: cold-email \(sdr\)/)
     expect(check.remediation).toMatch(/\.userEdited/)
+  })
+
+  it('the component check is never ok while a plugin\'s bin declaration is invalid — it names the plugin and the upgrade (#898 D)', async () => {
+    const userPluginDir = join(bakinHome, 'plugins', 'oldterm')
+    mkdirSync(userPluginDir, { recursive: true })
+    writeFileSync(join(userPluginDir, 'bakin-plugin.json'), JSON.stringify({
+      id: 'oldterm', name: 'oldterm', version: '1.0.0', bakin: '*', description: 'pre-#898 D manifest',
+      requires: { bins: [{ name: 'tool', version: '1.0.0', install: { [platform]: { url: 'https://example.com/tool.tar.gz', sha256: sha256(TOOL), archive: { format: 'tar.gz', member: 'tool' } } } }] },
+    }))
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'oldterm', {
+      source: userPluginDir, type: 'local', ref: '', commitSha: '', installedAt: '2026-09-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'a'.repeat(64),
+    }))
+    const check = await pluginAssetsComponent.check()
+    expect(check.status).toBe('warn')
+    expect(check.message).toMatch(/1 plugin\(s\) declare binaries this Bakin cannot verify: oldterm \(.*extractedSha256/)
+    expect(check.remediation).toMatch(/bakin plugins upgrade oldterm/)
   })
 
   it('discovery is committed installs only: abandoned staging dirs and unledgered copies never reach the installer', async () => {

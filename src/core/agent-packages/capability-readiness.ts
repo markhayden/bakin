@@ -6,7 +6,8 @@
  *
  * A capability pack is ready when all three legs stand:
  *   content — its skills are projected where the active runtime reads them
- *   bins    — every declared binary is installed in the Bakin bin dir
+ *   bins    — every declared binary is in the Bakin bin dir AND its bytes
+ *             match the manifest pin (the one bin verifier, bin-verify.ts)
  *   secrets — every REQUIRED declared env var is set (env) or backed by a
  *             stored secret (store; injected at boot)
  * Anything else is an honest per-leg `missing` with a remediation string —
@@ -24,6 +25,7 @@ import { getContentDir, getBakinPaths } from '@/core/content-dir'
 import { createAppServices, maybeGetAppServices } from '@/core/app-services'
 import { createLogger } from '@/core/logger'
 import { binPlatformKey } from './bin-installer'
+import { verifyInstalledBin } from './bin-verify'
 import { modelDest, npmPayloadDir } from './requirements-installer'
 import { verifyNpmPayload } from './npm-verify'
 
@@ -36,7 +38,8 @@ export interface CapabilitySkillStatus {
 
 export interface CapabilityBinStatus {
   name: string
-  status: 'ok' | 'missing' | 'unsupported-platform'
+  /** `drifted`: a file is there but its bytes do not match the manifest pin (the one bin verifier). */
+  status: 'ok' | 'missing' | 'drifted' | 'unsupported-platform'
 }
 
 export interface CapabilitySecretStatus {
@@ -90,18 +93,34 @@ export interface CapabilityReadiness {
 
 const GLOBAL_SKILL_TARGET = 'runtime:global-skill:'
 
-function readInstalledManifest(kind: string, id: string, version: string): SkillPackManifest | null {
+type InstalledPackManifest =
+  | { ok: true; manifest: SkillPackManifest }
+  | { ok: false; reason: string; raw: Record<string, unknown> }
+
+/**
+ * The installed skill-pack manifest — or, when the file is there but no
+ * longer validates (e.g. an archive bin installed before `extractedSha256`
+ * was required), the reason plus the raw JSON so the pack still shows up as
+ * a NOT-ready capability instead of silently disappearing (#898 D). Null
+ * only when there is nothing to report (absent, or not a skill-pack).
+ */
+function readInstalledManifest(kind: string, id: string, version: string): InstalledPackManifest | null {
   const dir = getPackageSourceDir(getContentDir(), kind as never, id, version)
   const path = join(dir, 'bakin-package.json')
   if (!existsSync(path)) return null
+  let raw: unknown
   try {
-    const parsed = safeParseManifest(JSON.parse(readFileSync(path, 'utf-8')))
-    if (!parsed.success || parsed.data.kind !== 'skill-pack') return null
-    return parsed.data
+    raw = JSON.parse(readFileSync(path, 'utf-8'))
   } catch (err) {
     log.warn(`Unreadable installed manifest for ${id}@${version}`, { error: err instanceof Error ? err.message : String(err) })
     return null
   }
+  const parsed = safeParseManifest(raw)
+  if (parsed.success) return parsed.data.kind === 'skill-pack' ? { ok: true, manifest: parsed.data } : null
+  const record = raw !== null && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+  if (record.kind !== 'skill-pack') return null
+  const reason = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')
+  return { ok: false, reason, raw: record }
 }
 
 /** Readiness for every installed capability pack (lockfile-driven). */
@@ -117,8 +136,28 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
   for (const [key, entry] of Object.entries(lock.packages)) {
     if (entry.kind !== 'skill-pack') continue
     const id = key.includes('@') ? key.slice(0, key.lastIndexOf('@')) : key
-    const manifest = readInstalledManifest(entry.kind, id, entry.version)
-    if (!manifest?.capability) continue
+    const installed = readInstalledManifest(entry.kind, id, entry.version)
+    if (!installed) continue
+    if (!installed.ok) {
+      // Visible, never green, never "no bins": the pack cannot be judged
+      // until it is reinstalled with a manifest this Bakin accepts.
+      const capability = typeof installed.raw.capability === 'string' ? installed.raw.capability : null
+      if (!capability) continue
+      out.push({
+        capability,
+        packageId: id,
+        version: entry.version,
+        name: typeof installed.raw.name === 'string' ? installed.raw.name : id,
+        description: typeof installed.raw.description === 'string' ? installed.raw.description : '',
+        skills: [], bins: [], npm: [], models: [], prereqs: [], secrets: [],
+        platformSupported: true,
+        ready: false,
+        missing: [`the installed manifest is invalid (${installed.reason}) — reinstall: bakin packages install ${id}`],
+      })
+      continue
+    }
+    const manifest = installed.manifest
+    if (!manifest.capability) continue
 
     const missing: string[] = []
 
@@ -139,9 +178,12 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
         missing.push(`binary "${bin.name}" has no build for this platform`)
         continue
       }
-      const present = existsSync(join(binDir, bin.name))
-      bins.push({ name: bin.name, status: present ? 'ok' : 'missing' })
-      if (!present) missing.push(`binary "${bin.name}" is missing — reinstall: bakin packages install ${id}`)
+      // The ONE bin verifier: the bytes on disk against the manifest pin.
+      const verdict = verifyInstalledBin(join(binDir, bin.name), bin.install[platform]!)
+      const status = verdict.status === 'installed' ? 'ok' : verdict.status
+      bins.push({ name: bin.name, status })
+      if (status === 'missing') missing.push(`binary "${bin.name}" is missing — reinstall: bakin packages install ${id}`)
+      if (status === 'drifted') missing.push(`binary "${bin.name}" does not match the sha256 its package pins — reinstall: bakin packages install ${id}`)
     }
 
     const npm: CapabilityNpmStatus[] = []

@@ -28,12 +28,12 @@ import { join } from 'path'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ db: join(testDir, 'bakin.db') }),
+  getBakinPaths: () => ({ db: join(testDir, 'bakin.db'), bin: join(testDir, 'bin') }),
   isUsingBakinHome: () => true,
 }))
 mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ db: join(testDir, 'bakin.db') }),
+  getBakinPaths: () => ({ db: join(testDir, 'bakin.db'), bin: join(testDir, 'bin') }),
   isUsingBakinHome: () => true,
 }))
 mock.module('@bakin/adapter-openclaw/home', () => ({
@@ -484,6 +484,69 @@ describe('scanAgentSync — migration + source', () => {
 })
 
 describe('scanAgentSync — skills', () => {
+  describe('pack binaries — judged by the one verifier against the installed manifest pin (#898 D)', () => {
+    const TOOL = '#!/bin/sh\necho tool\n'
+    const toolSha = () => require('crypto').createHash('sha256').update(TOOL).digest('hex') as string
+    async function seedBinPack(archive: Record<string, unknown> | null): Promise<string> {
+      const { binPlatformKey } = await import('../../src/core/agent-packages/bin-platform')
+      const { getPackageSourceDir } = await import('../../packages/core/src/agent-packages/package-paths')
+      const target = join(testDir, 'bin', 'tool')
+      const dir = getPackageSourceDir(testDir, 'skill-pack', 'tool-pack', '1.0.0')
+      mkdirSync(dir, { recursive: true })
+      const download = archive
+        ? { url: 'https://example.com/tool.tar.gz', sha256: 'a'.repeat(64), archive }
+        : { url: 'https://example.com/tool', sha256: toolSha() }
+      writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({
+        id: 'tool-pack', kind: 'skill-pack', name: 'Tool', version: '1.0.0', contributions: { skills: [] },
+        requires: { bins: [{ name: 'tool', version: '1', install: { [binPlatformKey()!]: download } }] },
+      }))
+      const lockMod = await import('../../packages/core/src/agent-packages/lockfile')
+      const current = lockMod.readLockfile()
+      writeLockfile({
+        version: 1,
+        packages: {
+          ...current.packages,
+          'tool-pack@1.0.0': {
+            kind: 'skill-pack', version: '1.0.0', source: 'local:/x', ref: '', commitSha: '', installedAt: new Date().toISOString(),
+            projections: [{ kind: 'bin', target, sha256: download.sha256 }],
+          },
+        },
+      } as Parameters<typeof writeLockfile>[0])
+      mkdirSync(join(testDir, 'bin'), { recursive: true })
+      return target
+    }
+    const binFindings = async () => (await scanAgentSync()).findings.filter((f) => f.packageId === 'tool-pack@1.0.0')
+
+    it('an archive binary matching its extracted pin is ok — no marker needed', async () => {
+      await seedSyncedState()
+      const target = await seedBinPack({ format: 'tar.gz', member: 'tool', extractedSha256: toolSha() })
+      writeFileSync(target, TOOL)
+      expect(await binFindings()).toEqual([])
+    })
+
+    it('a forged binary under a forged marker is drifted', async () => {
+      await seedSyncedState()
+      const target = await seedBinPack({ format: 'tar.gz', member: 'tool', extractedSha256: toolSha() })
+      writeFileSync(target, '#!/bin/sh\necho forged\n')
+      const { writeInstalledBy } = await import('../../packages/core/src/agent-packages/markers')
+      writeInstalledBy(target, { package: 'tool-pack', version: '1.0.0', ref: '', commitSha: '', installedAt: new Date().toISOString(), sha256: 'a'.repeat(64), member: 'tool', extractedSha256: require('crypto').createHash('sha256').update('#!/bin/sh\necho forged\n').digest('hex') } as Parameters<typeof writeInstalledBy>[1])
+      expect(await binFindings()).toMatchObject([{ type: 'asset-drifted', target }])
+    })
+
+    it('an installed manifest without the extracted pin is a visible, non-auto-fixable finding — never ok', async () => {
+      await seedSyncedState()
+      const target = await seedBinPack({ format: 'tar.gz', member: 'tool' })
+      writeFileSync(target, TOOL)
+      expect(await binFindings()).toMatchObject([{ type: 'bin-manifest-invalid', severity: 'error', autoFixable: false, target, hint: expect.stringContaining('bakin packages install tool-pack') }])
+    })
+
+    it('a missing binary is asset-missing', async () => {
+      await seedSyncedState()
+      await seedBinPack(null)
+      expect(await binFindings()).toMatchObject([{ type: 'asset-missing' }])
+    })
+  })
+
   it('reports skill-missing when the runtime lost the skill', async () => {
     await seedSyncedState()
     runtimeSkills.delete('pixel:image-gen')

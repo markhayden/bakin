@@ -52,8 +52,10 @@ import { setStoredSecret } from '../../packages/core/src/media/secret-store'
 import { resetContentDir } from '../../src/core/content-dir'
 
 const key = binPlatformKey()!
+const BX_BYTES = '#!/bin/sh\n'
+const BX_SHA = require('crypto').createHash('sha256').update(BX_BYTES).digest('hex') as string
 
-function seedInstalledPack(opts: { withBin?: boolean } = {}): void {
+function seedInstalledPack(opts: { withBin?: boolean; binDownload?: Record<string, unknown> } = {}): void {
   // Install dir with the manifest, exactly where the installer commits it.
   const dir = join(testDir, 'packages', 'skill-packs', 'web-search-brave@1.0.0')
   mkdirSync(dir, { recursive: true })
@@ -65,7 +67,7 @@ function seedInstalledPack(opts: { withBin?: boolean } = {}): void {
     capability: 'web-search',
     contributions: { skills: ['skills/bx-search'] },
     ...(opts.withBin === false ? {} : {
-      requires: { bins: [{ name: 'bx', version: '1.4.0', install: { [key]: { url: 'https://example.com/bx', sha256: 'a'.repeat(64) } } }] },
+      requires: { bins: [{ name: 'bx', version: '1.4.0', install: { [key]: opts.binDownload ?? { url: 'https://example.com/bx', sha256: BX_SHA } } }] },
     }),
     secrets: [{ name: 'BRAVE_SEARCH_API_KEY', description: 'key', required: true, secretSlot: 'brave.apiKey', help: 'https://api-dashboard.search.brave.com' }],
   }))
@@ -129,7 +131,7 @@ describe('listCapabilities', () => {
 
     // Rung 3: bin installed.
     mkdirSync(join(testDir, 'bin'), { recursive: true })
-    writeFileSync(join(testDir, 'bin', 'bx'), '#!/bin/sh\n')
+    writeFileSync(join(testDir, 'bin', 'bx'), BX_BYTES)
     ;[cap] = await listCapabilities()
     expect(cap.bins[0].status).toBe('ok')
     expect(cap.ready).toBe(false)
@@ -141,6 +143,30 @@ describe('listCapabilities', () => {
     expect(cap.secrets[0].status).toBe('store')
     expect(cap.ready).toBe(true)
     expect(cap.missing).toEqual([])
+  })
+
+  it('a present binary whose bytes do not match the pin is drifted, never ok (#898 D)', async () => {
+    seedInstalledPack()
+    projectedSkills.add('bx-search')
+    setStoredSecret('brave', 'apiKey', 'bsk-1')
+    mkdirSync(join(testDir, 'bin'), { recursive: true })
+    writeFileSync(join(testDir, 'bin', 'bx'), '#!/bin/sh\necho swapped\n')
+    const [cap] = await listCapabilities()
+    expect(cap.bins[0].status).toBe('drifted')
+    expect(cap.ready).toBe(false)
+    expect(cap.missing.join('\n')).toContain('does not match the sha256')
+  })
+
+  it('an installed manifest that no longer validates stays visible as NOT ready — never green, never "no bins"', async () => {
+    // An archive bin installed before extractedSha256 was required.
+    seedInstalledPack({ binDownload: { url: 'https://example.com/bx.tar.gz', sha256: 'a'.repeat(64), archive: { format: 'tar.gz', member: 'bx' } } })
+    projectedSkills.add('bx-search')
+    setStoredSecret('brave', 'apiKey', 'bsk-1')
+    mkdirSync(join(testDir, 'bin'), { recursive: true })
+    writeFileSync(join(testDir, 'bin', 'bx'), BX_BYTES)
+    const [cap] = await listCapabilities()
+    expect(cap).toMatchObject({ capability: 'web-search', packageId: 'web-search-brave', ready: false })
+    expect(cap.missing.join('\n')).toMatch(/installed manifest is invalid.*extractedSha256.*bakin packages install web-search-brave/)
   })
 
   it('an env var beats the store and reports source env', async () => {

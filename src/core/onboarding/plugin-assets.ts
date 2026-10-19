@@ -81,6 +81,12 @@ export interface BinScanReport {
   drifted: BinRef[]
   /** Declared but with no download for this platform — cannot be repaired here. */
   unsupported: BinRef[]
+  /**
+   * Plugins whose `requires.bins` no longer validates (e.g. an archive bin
+   * without `extractedSha256`) — nothing can be verified or installed for
+   * them until the plugin is upgraded. Visible, never "no bins" (#898 D).
+   */
+  invalid: Array<{ pluginId: string; reason: string }>
 }
 
 export interface BinInstallReport {
@@ -265,29 +271,35 @@ function skillVerdict(source: PluginSkillSource, installed: RuntimeSkill | null)
  * on disk simply has none; an invalid declaration is logged and ignored here
  * — install and upgrade already refused it at their gates.
  */
-export function findBinsForPlugin(plugin: PluginEntry): BinRequirement[] {
+/** A plugin's declared binaries, or why its declaration cannot be used. */
+export type PluginBinDeclaration = { ok: true; bins: BinRequirement[] } | { ok: false; reason: string }
+
+export function findBinsForPlugin(plugin: PluginEntry): PluginBinDeclaration {
   const manifestPath = join(plugin.path, 'bakin-plugin.json')
-  if (!existsSync(manifestPath)) return []
+  if (!existsSync(manifestPath)) return { ok: true, bins: [] }
   try {
     const raw = (JSON.parse(readFileSync(manifestPath, 'utf-8')) as { requires?: { bins?: unknown } }).requires?.bins
-    if (raw === undefined) return []
+    if (raw === undefined) return { ok: true, bins: [] }
     const parsed = BinRequirementsSchema.safeParse(raw)
     if (!parsed.success) {
-      log.warn('Ignoring invalid requires.bins in plugin manifest', { pluginId: plugin.id, issues: parsed.error.issues.map((i) => i.message) })
-      return []
+      return { ok: false, reason: parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') }
     }
-    return parsed.data
+    return { ok: true, bins: parsed.data }
   } catch (err) {
-    log.warn('Could not read plugin manifest for binaries', { pluginId: plugin.id, error: err instanceof Error ? err.message : String(err) })
-    return []
+    return { ok: false, reason: `manifest unreadable: ${err instanceof Error ? err.message : String(err)}` }
   }
 }
 
 function scanPluginBins(plugins: PluginEntry[]): BinScanReport {
-  const bins: BinScanReport = { total: 0, installed: [], missing: [], drifted: [], unsupported: [] }
+  const bins: BinScanReport = { total: 0, installed: [], missing: [], drifted: [], unsupported: [], invalid: [] }
   const platform = binPlatformKey()
   for (const plugin of plugins) {
-    for (const bin of findBinsForPlugin(plugin)) {
+    const declared = findBinsForPlugin(plugin)
+    if (!declared.ok) {
+      bins.invalid.push({ pluginId: plugin.id, reason: declared.reason })
+      continue
+    }
+    for (const bin of declared.bins) {
       bins.total++
       const ref: BinRef = { pluginId: plugin.id, name: bin.name }
       const download = platform ? bin.install[platform] : undefined
@@ -429,7 +441,14 @@ export async function installPluginAssets(plugins: PluginEntry[], op?: Operation
   // leaves the others to proceed.
   op?.stage('bins')
   for (const plugin of plugins) {
-    const bins = findBinsForPlugin(plugin)
+    const declared = findBinsForPlugin(plugin)
+    if (!declared.ok) {
+      // Nothing to install against: an invalid declaration is the plugin's
+      // to fix (upgrade), never silently "no bins".
+      op?.item('bins', { id: plugin.id, label: plugin.id, status: 'skipped', message: `invalid requires.bins — upgrade the plugin (${declared.reason})` })
+      continue
+    }
+    const bins = declared.bins
     if (bins.length === 0) continue
     const platform = binPlatformKey()
     const installable = bins.filter((bin) => platform && bin.install[platform])
@@ -564,6 +583,10 @@ async function ensureAppServices(): Promise<void> {
 }
 
 const binLabel = (ref: BinRef): string => `${ref.name} (${ref.pluginId})`
+const invalidBinsMessage = (invalid: BinScanReport['invalid']): string =>
+  `${invalid.length} plugin(s) declare binaries this Bakin cannot verify: ${invalid.map((row) => `${row.pluginId} (${row.reason})`).join('; ')}`
+const invalidBinsRemediation = (invalid: BinScanReport['invalid']): string =>
+  `Upgrade ${invalid.length === 1 ? 'the plugin' : 'each plugin'}: ${invalid.map((row) => `\`bakin plugins upgrade ${row.pluginId}\``).join(', ')}.`
 
 async function check(): Promise<CheckResult> {
   await ensureAppServices()
@@ -587,7 +610,7 @@ async function check(): Promise<CheckResult> {
   const total = report.totalAvailable + bins.total
   const details = report as unknown as Record<string, unknown>
 
-  if (total === 0) {
+  if (total === 0 && bins.invalid.length === 0) {
     return {
       name: 'plugin-assets',
       status: 'ok',
@@ -596,7 +619,7 @@ async function check(): Promise<CheckResult> {
     }
   }
 
-  if (pending === 0 && bins.unsupported.length === 0 && (report.userEditedDrifted.length > 0 || report.invalidSource.length > 0)) {
+  if (pending === 0 && bins.unsupported.length === 0 && (report.userEditedDrifted.length > 0 || report.invalidSource.length > 0 || bins.invalid.length > 0)) {
     // Nothing the repair can fix: the user locked these, or the plugin
     // ships a skill that is not text. Still never ok.
     const label = (ref: SkillRef) => `${ref.name} (${ref.pluginId})`
@@ -610,6 +633,10 @@ async function check(): Promise<CheckResult> {
       messages.push(`${report.invalidSource.length} plugin skill(s) are not text and cannot be installed: ${report.invalidSource.map(label).join(', ')}`)
       remediations.push('Update or remove the plugin that ships them.')
     }
+    if (bins.invalid.length > 0) {
+      messages.push(invalidBinsMessage(bins.invalid))
+      remediations.push(invalidBinsRemediation(bins.invalid))
+    }
     return {
       name: 'plugin-assets',
       status: 'warn',
@@ -619,7 +646,7 @@ async function check(): Promise<CheckResult> {
     }
   }
 
-  if (pending === 0 && bins.unsupported.length === 0) {
+  if (pending === 0 && bins.unsupported.length === 0 && bins.invalid.length === 0) {
     const userEditedNote = report.userEdited.length > 0
       ? ` (${report.userEdited.length} user-edited, locked)`
       : ''
@@ -639,6 +666,7 @@ async function check(): Promise<CheckResult> {
   if (report.invalidSource.length > 0) parts.push(`${report.invalidSource.length} skill(s) are not text and cannot be installed`)
   if (bins.missing.length > 0) parts.push(`${bins.missing.length} binar${bins.missing.length === 1 ? 'y' : 'ies'} missing: ${bins.missing.map(binLabel).join(', ')}`)
   if (bins.drifted.length > 0) parts.push(`${bins.drifted.length} binar${bins.drifted.length === 1 ? 'y' : 'ies'} drifted: ${bins.drifted.map(binLabel).join(', ')}`)
+  if (bins.invalid.length > 0) parts.push(invalidBinsMessage(bins.invalid))
   if (bins.unsupported.length > 0) parts.push(`${bins.unsupported.length} binar${bins.unsupported.length === 1 ? 'y has' : 'ies have'} no build for this platform: ${bins.unsupported.map(binLabel).join(', ')}`)
   return {
     name: 'plugin-assets',
