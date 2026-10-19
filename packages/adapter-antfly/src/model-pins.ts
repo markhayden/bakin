@@ -92,10 +92,10 @@ function recordedVariant(dir: string): string | null {
  * when the model pins none. A mismatch is not "missing" (the files may load,
  * e.g. on macOS); the installer re-pulls it as the pinned variant.
  */
-export function modelVariantMismatch(model: string): string | null {
+export function modelVariantMismatch(model: string, modelsRoot?: string): string | null {
   const variant = MODEL_PULL_VARIANTS[model]
-  if (!variant || !existsSync(modelDir(model))) return null
-  const recorded = recordedVariant(modelDir(model))
+  if (!variant || !existsSync(modelDir(model, modelsRoot))) return null
+  const recorded = recordedVariant(modelDir(model, modelsRoot))
   return recorded === variant ? null : `installed as the ${recorded ?? 'default'} distribution, not ${variant}`
 }
 

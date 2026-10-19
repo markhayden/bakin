@@ -794,7 +794,10 @@ a post-pull mismatch FAILS the install (it used to be a warning). Only after
 every pulled model verified does the install publish — through #993's
 replacement protocol (`publishStagedModel`: live → `.bakin-replacing-*`
 backup, staged → live, backup → trash; `recoverModelInstall` finishes a crash
-between the renames on the next install). A pinned variant (#993, clipclap
+between the renames on the next install, for EVERY requested model, before
+any installed state is judged). A staged copy a failed or cancelled run already
+downloaded is REUSED when it still verifies (structure, variant, pins) —
+never re-downloaded. A pinned variant (#993, clipclap
 `gguf:Q4_K`) is adopted to its model name INSIDE staging, so it is verified
 exactly where it publishes from; the engine load probe runs on the published
 files afterwards. (No `bun:ffi` atomic exchange — owner decision 2026-10-19

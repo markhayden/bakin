@@ -286,6 +286,37 @@ describe('installInferenceModels', () => {
       expect((await installInferenceModels(optsAutoYes, undefined, [PINNED])).status).toBe('noop')
     })
 
+    it('an interrupted swap of a NON-variant model is finished first — its backup comes back even when the retried pull fails', async () => {
+      MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: require('crypto').createHash('sha256').update('weights').digest('hex') }]
+      seedModel(PINNED.model)
+      const backup = join(modelsRoot, 'test-pinned', '.bakin-replacing-embedder')
+      renameSync(live(PINNED.model), backup) // crash between the two renames
+      installFakeBinary(PULL_FAILS)
+      // The restored copy matches its pin: nothing to pull at all.
+      expect((await installInferenceModels(optsAutoYes, undefined, [PINNED])).status).toBe('noop')
+      expect(readFileSync(join(live(PINNED.model), 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
+      expect(existsSync(backup)).toBe(false)
+    })
+
+    it('a model a failed run already downloaded and verified in staging is reused — never re-downloaded', async () => {
+      const OTHER = { label: 'pinned reranker', model: 'test-pinned/reranker', kind: 'reranker' as const }
+      MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
+      MODEL_PINS[OTHER.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
+      try {
+        // Run 1: the embedder downloads; the reranker fails.
+        installFakeBinary(PULL_OK.replace('#!/bin/sh\n', `#!/bin/sh\n[ "$3" = "${OTHER.model}" ] && { echo "boom" >&2; exit 2; }\n`))
+        expect((await installInferenceModels(optsAutoYes, undefined, [PINNED, OTHER])).status).toBe('failed')
+        // Run 2: any pull of the embedder would fail — it must come from staging.
+        rmSync(join(testDir, 'argv.log'), { force: true })
+        installFakeBinary(PULL_OK.replace('#!/bin/sh\n', `#!/bin/sh\n[ "$3" = "${PINNED.model}" ] && { echo "re-downloaded" >&2; exit 2; }\n`))
+        expect((await installInferenceModels(optsAutoYes, undefined, [PINNED, OTHER])).status).toBe('installed')
+        expect(readFileSync(join(testDir, 'argv.log'), 'utf8')).not.toContain(PINNED.model)
+        expect(readFileSync(join(live(PINNED.model), 'onnx', 'model.onnx')).length).toBe(2048)
+      } finally {
+        delete MODEL_PINS[OTHER.model]
+      }
+    })
+
     it('a model whose bytes match the pin is a noop — no pull; installed state is judged under the lock, which every exit releases', async () => {
       MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: require('crypto').createHash('sha256').update('weights').digest('hex') }]
       installFakeBinary(PULL_FAILS) // any pull would fail the install

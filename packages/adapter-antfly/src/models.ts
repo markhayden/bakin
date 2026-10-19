@@ -330,6 +330,14 @@ function recoverModelInstall(model: string, logger: AdapterLogger): void {
   sweepTrash(model, target, logger)
 }
 
+/** A staged copy that may be published as-is: complete, the pinned variant, every pinned file matching its sha256. */
+async function stagedModelVerifies(model: string, stagingRoot: string): Promise<boolean> {
+  if (!existsSync(modelDir(model, stagingRoot))) return false
+  if (!modelStructurallyComplete(model, stagingRoot).ok) return false
+  if (modelVariantMismatch(model, stagingRoot) !== null) return false
+  return (await pinMismatches(model, stagingRoot)).length === 0
+}
+
 /**
  * In the STAGING root: moves a variant pull's `<name>--antfly-<hash>`
  * install to the model's own directory name there, so it can be verified
@@ -419,7 +427,9 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     }
   }
   try {
-    for (const m of models) if (MODEL_PULL_VARIANTS[m.model]) recoverModelInstall(m.model, logger)
+    // Every model publishes through the replacement protocol, so a crash
+    // between its renames is finished for EVERY requested model first.
+    for (const m of models) recoverModelInstall(m.model, logger)
     // The install skip HASHES (#898 E): a model is present only when it is
     // structurally complete, the pinned variant (#993), AND every pinned file
     // matches its sha256 — never trusted on names and sizes alone. Custom
@@ -465,7 +475,15 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     op.stage('download')
     for (const m of missing) op.item('download', { id: m.model, label: m.label })
     for (const m of missing) {
-      // A previous run's staged copy is never trusted: pull a fresh one.
+      // A copy a previous run already downloaded into staging is REUSED when
+      // it still verifies (structure, pinned variant, pin hashes) — a failed
+      // or cancelled later model never costs a re-download of this one. A
+      // copy that does not verify is discarded and pulled fresh.
+      if (await stagedModelVerifies(m.model, stagingRoot)) {
+        logger.info('Reusing a verified staged model', { model: m.model })
+        op.item('download', { id: m.model, label: m.label, status: 'skipped', message: 'already downloaded and verified' })
+        continue
+      }
       rmSync(modelDir(m.model, stagingRoot), { recursive: true, force: true })
       logger.info('Pulling model', { model: m.model, label: m.label })
       op.item('download', { id: m.model, label: m.label, status: 'active' })
