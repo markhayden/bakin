@@ -7,7 +7,8 @@ import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import type { AntflySettings } from './defaults'
 import { isPinnedModel, modelDir, modelStructurallyComplete, pinMismatches } from './model-pins'
 import { inferenceModelsRoot } from './paths'
-import { createPullTracker, pullStagingDir, pullStagingRoot } from './pull-progress'
+import { acquireModelsLock, createPullTracker, pullStagingDir, pullStagingRoot } from './pull-progress'
+import { exchangePaths } from '@bakin/core/fs/exchange'
 import { findAntflyBinary } from './service'
 
 /**
@@ -306,84 +307,107 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     op.throwIfCancelled()
     return { name: 'models', status: 'failed' as const, message, ...(error === undefined ? {} : { error }), durationMs: Date.now() - start }
   }
-  // Every pull lands in a STAGING models root and is verified there; the
-  // live tree the running engine reads is touched only to publish a model
-  // that passed — one rename-swap per model, after every pull verified. A
-  // failure or cancel leaves every live model exactly as it was, and the
-  // staging root (antfly's own resumable staging inside it) survives so the
-  // next run resumes (T0 F6).
   const liveRoot = inferenceModelsRoot()
   const stagingRoot = pullStagingRoot(liveRoot)
-  logger.info('Pulling search models', { count: missing.length, antfly, stagingRoot })
-  op.stage('download')
-  for (const m of missing) op.item('download', { id: m.model, label: m.label })
-  for (const m of missing) {
-    // A previous run's verified-but-unpublished (or rejected) copy is never
-    // trusted: the pull below publishes a fresh one into staging.
-    rmSync(modelDir(m.model, stagingRoot), { recursive: true, force: true })
-    logger.info('Pulling model', { model: m.model, label: m.label })
-    op.item('download', { id: m.model, label: m.label, status: 'active' })
-    let result: { code: number | null; stderr: string }
-    try {
-      result = await runPull(antfly, m.model, {
-        modelsDir: stagingRoot,
-        signal: op.signal,
-        pollMs: timings.pollMs,
-        killAfterMs: timings.killAfterMs,
-        onLine: (line) => op.output(line),
-        onBytes: (bytes) => op.bytes('download', bytes, m.model),
-      })
-    } catch (err) {
-      logger.error('Failed to spawn antfly inference pull', err)
-      op.item('download', { id: m.model, label: m.label, status: 'failed' })
-      return failed(`Failed to pull ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)
-    }
-    // Cancelled: antfly's staging dir stays, so the next pull resumes (T0 F4/F6).
-    op.throwIfCancelled()
-    if (result.code !== 0) {
-      op.item('download', { id: m.model, label: m.label, status: 'failed', message: `exited with code ${result.code}` })
-      return failed(`antfly inference pull ${m.model} exited with code ${result.code}${result.stderr ? `: ${result.stderr}` : ''}`)
-    }
-    op.item('download', { id: m.model, label: m.label, status: 'done' })
+  // The models root is shared by every Bakin home on this machine: the whole
+  // pull → verify → publish runs under ONE machine-wide lock (#898 E).
+  const lock = acquireModelsLock(liveRoot)
+  if ('heldBy' in lock) {
+    return failed(`Another Bakin on this machine is installing search models${lock.heldBy > 0 ? ` (pid ${lock.heldBy})` : ''} — try again when it finishes.`)
   }
-
-  op.stage('verify')
-  for (const m of missing) {
-    const verified = modelStructurallyComplete(m.model, stagingRoot)
-    if (!verified.ok) {
+  try {
+    // Every pull lands in a STAGING models root and is verified there; the
+    // live tree the running engine reads is touched only to publish a model
+    // that passed — one rename-swap per model, after every pull verified. A
+    // failure or cancel leaves every live model exactly as it was, and the
+    // staging root (antfly's own resumable staging inside it) survives so the
+    // next run resumes (T0 F6).
+    logger.info('Pulling search models', { count: missing.length, antfly, stagingRoot })
+    op.stage('download')
+    for (const m of missing) op.item('download', { id: m.model, label: m.label })
+    for (const m of missing) {
+      // A previous run's verified-but-unpublished (or rejected) copy is never
+      // trusted: the pull below publishes a fresh one into staging.
       rmSync(modelDir(m.model, stagingRoot), { recursive: true, force: true })
-      return failed(`antfly inference pull ${m.model} reported success but ${verified.reason}`)
-    }
-    // A pulled file that does not match its pin FAILS the install (#898 E):
-    // the engine must never boot on an unverified distribution.
-    const drifted = await pinMismatches(m.model, stagingRoot)
-    if (drifted.length > 0) {
-      logger.error('Pulled model does not match its pins', { model: m.model, files: drifted })
-      rmSync(modelDir(m.model, stagingRoot), { recursive: true, force: true })
-      return failed(`antfly inference pull ${m.model} downloaded files that do not match their pinned sha256 (${drifted.join(', ')}) — the distribution differs from the verified one`)
-    }
-  }
-  // Last cancel point: nothing live has been touched yet.
-  op.throwIfCancelled()
-
-  // Publish: every model verified — swap each into the live tree. A
-  // replaced copy is moved aside first and retired only after its
-  // replacement is in place; a failed swap puts it back.
-  for (const m of missing) {
-    const live = modelDir(m.model, liveRoot)
-    const staged = modelDir(m.model, stagingRoot)
-    mkdirSync(dirname(live), { recursive: true })
-    const aside = existsSync(live) ? join(dirname(live), `.${basename(live)}.bakin-replaced-${process.pid}-${Date.now()}`) : null
-    try {
-      if (aside) renameSync(live, aside)
-      renameSync(staged, live)
-    } catch (err) {
-      if (aside && !existsSync(live)) {
-        try { renameSync(aside, live) } catch (restoreErr) { logger.error('Could not restore a replaced search model', { model: m.model, aside, error: restoreErr instanceof Error ? restoreErr.message : String(restoreErr) }) }
+      logger.info('Pulling model', { model: m.model, label: m.label })
+      op.item('download', { id: m.model, label: m.label, status: 'active' })
+      let result: { code: number | null; stderr: string }
+      try {
+        result = await runPull(antfly, m.model, {
+          modelsDir: stagingRoot,
+          signal: op.signal,
+          pollMs: timings.pollMs,
+          killAfterMs: timings.killAfterMs,
+          onLine: (line) => op.output(line),
+          onBytes: (bytes) => op.bytes('download', bytes, m.model),
+        })
+      } catch (err) {
+        logger.error('Failed to spawn antfly inference pull', err)
+        op.item('download', { id: m.model, label: m.label, status: 'failed' })
+        return failed(`Failed to pull ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)
       }
-      return failed(`Could not publish ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)
+      // Cancelled: antfly's staging dir stays, so the next pull resumes (T0 F4/F6).
+      op.throwIfCancelled()
+      if (result.code !== 0) {
+        op.item('download', { id: m.model, label: m.label, status: 'failed', message: `exited with code ${result.code}` })
+        return failed(`antfly inference pull ${m.model} exited with code ${result.code}${result.stderr ? `: ${result.stderr}` : ''}`)
+      }
+      op.item('download', { id: m.model, label: m.label, status: 'done' })
     }
-    if (aside) rmSync(aside, { recursive: true, force: true })
+
+    op.stage('verify')
+    for (const m of missing) {
+      const verified = modelStructurallyComplete(m.model, stagingRoot)
+      if (!verified.ok) {
+        rmSync(modelDir(m.model, stagingRoot), { recursive: true, force: true })
+        return failed(`antfly inference pull ${m.model} reported success but ${verified.reason}`)
+      }
+      // A pulled file that does not match its pin FAILS the install (#898 E):
+      // the engine must never boot on an unverified distribution.
+      const drifted = await pinMismatches(m.model, stagingRoot)
+      if (drifted.length > 0) {
+        logger.error('Pulled model does not match its pins', { model: m.model, files: drifted })
+        rmSync(modelDir(m.model, stagingRoot), { recursive: true, force: true })
+        return failed(`antfly inference pull ${m.model} downloaded files that do not match their pinned sha256 (${drifted.join(', ')}) — the distribution differs from the verified one`)
+      }
+    }
+    // Last cancel point: nothing live has been touched yet.
+    op.throwIfCancelled()
+
+    // Publish: every model verified — swap each into the live tree. A
+    // replaced copy is moved aside first and retired only after its
+    // replacement is in place; a failed swap puts it back.
+    for (const m of missing) {
+      const live = modelDir(m.model, liveRoot)
+      const staged = modelDir(m.model, stagingRoot)
+      mkdirSync(dirname(live), { recursive: true })
+      try {
+        if (!existsSync(live)) {
+          renameSync(staged, live) // nothing live to replace: one rename publishes
+        } else if (exchangePaths(staged, live)) {
+          // ONE atomic step: the engine sees the old model or the new one,
+          // never neither. `staged` now holds the replaced copy.
+          rmSync(staged, { recursive: true, force: true })
+        } else {
+          // No atomic exchange on this platform: a two-rename swap (a brief
+          // window where the live name is missing), the replaced copy put
+          // back if the second rename fails.
+          const aside = join(dirname(live), `.${basename(live)}.bakin-replaced-${process.pid}-${Date.now()}`)
+          renameSync(live, aside)
+          try {
+            renameSync(staged, live)
+          } catch (err) {
+            renameSync(aside, live)
+            throw err
+          }
+          rmSync(aside, { recursive: true, force: true })
+        }
+      } catch (err) {
+        return failed(`Could not publish ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)
+      }
+    }
+  } finally {
+    lock.release()
   }
 
   const pulledLabels = missing.map((m) => m.label)

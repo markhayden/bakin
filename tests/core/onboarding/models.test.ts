@@ -343,6 +343,20 @@ describe('installInferenceModels', () => {
       expect(check.message).toContain('custom models are checked structurally only')
     })
 
+    it('a live holder of the machine-wide models lock fails the install clearly; a dead holder\'s lock is reclaimed', async () => {
+      installFakeBinary(PULL_OK)
+      const lockPath = join(require('path').dirname(modelsRoot), `.${require('path').basename(modelsRoot)}.bakin-pull.lock`)
+      mkdirSync(require('path').dirname(lockPath), { recursive: true })
+      writeFileSync(lockPath, String(process.ppid)) // a live process: another Bakin home mid-install
+      let result = await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])
+      expect(result.status).toBe('failed')
+      expect(result.message).toContain('Another Bakin on this machine is installing search models')
+      writeFileSync(lockPath, '999999999') // a dead pid
+      result = await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])
+      expect(result.status).toBe('installed')
+      expect(existsSync(lockPath)).toBe(false) // released after the install
+    })
+
     it('the doctor check stays structural and says so', async () => {
       MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(4096) }]
       seedModel(PINNED.model)

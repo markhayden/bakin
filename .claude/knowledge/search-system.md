@@ -781,9 +781,16 @@ Every pull lands in a STAGING models root beside the live one
 (`pullStagingRoot` → `<parent>/.models.bakin-pull/`, same filesystem,
 outside the tree the engine scans) and is verified THERE (structure + pins);
 a post-pull mismatch FAILS the install (it used to be a warning). Only after
-every pulled model verified does the install publish, one rename-swap per
-model (a replaced copy moves aside and is retired only once its replacement
-is in place). A failure or cancel therefore never touches a live model, and
+every pulled model verified does the install publish: a model with no live
+copy is one rename; a replacement is ONE atomic exchange
+(`exchangePaths`, `packages/core/src/fs/exchange.ts` — darwin `renamex_np
+RENAME_SWAP`, linux `renameat2 RENAME_EXCHANGE` via `bun:ffi`), so the running
+engine sees the old model or the new one, never neither; platforms without it
+fall back to a logged two-rename swap. The whole pull → verify → publish runs
+under a MACHINE-wide lock beside the shared models root
+(`acquireModelsLock`, `.models.bakin-pull.lock`, pid-owned, dead holders
+reclaimed) — operation locks are per home, the antfly models root is not. A
+failure or cancel therefore never touches a live model, and
 the staging root keeps antfly's resumable staging for the next run. The
 doctor's `checkInferenceModels` stays structural (pinned names + sizes, the
 crash-loop class) and says so — "integrity is hash-checked at

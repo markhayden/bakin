@@ -1,4 +1,4 @@
-import { statSync } from 'fs'
+import { closeSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from 'fs'
 import { basename, dirname, join } from 'path'
 
 /**
@@ -117,5 +117,58 @@ export function createPullTracker(stagingDir: string) {
       for (const size of announced.values()) total += size
       return { received, total }
     },
+  }
+}
+
+/**
+ * The machine-wide lock over Bakin's pull → verify → publish of search
+ * models (#898 E). The antfly models root is shared by every Bakin home on
+ * the machine, while operation locks are per home — without this, one home
+ * could delete or replace another's staged, verified model mid-install.
+ * O_EXCL lock file beside the models root holding the owner's pid; a dead
+ * owner's lock is reclaimed. Non-blocking: a live holder is reported.
+ */
+export function acquireModelsLock(liveModelsRoot: string): { release: () => void } | { heldBy: number } {
+  const path = join(dirname(liveModelsRoot), `.${basename(liveModelsRoot)}.bakin-pull.lock`)
+  mkdirSync(dirname(path), { recursive: true })
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = openSync(path, 'wx')
+      writeSync(fd, String(process.pid))
+      closeSync(fd)
+      return {
+        release: () => {
+          try {
+            if (readFileSync(path, 'utf-8').trim() === String(process.pid)) unlinkSync(path)
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+          }
+        },
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    }
+    const holder = Number.parseInt(readText(path) ?? '', 10)
+    if (Number.isInteger(holder) && holder > 0 && processAlive(holder)) return { heldBy: holder }
+    // A dead (or unreadable) holder's lock is reclaimed once.
+    try { unlinkSync(path) } catch (err) { if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err }
+  }
+  return { heldBy: -1 }
+}
+
+function readText(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf-8')
+  } catch {
+    return null
+  }
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
   }
 }
