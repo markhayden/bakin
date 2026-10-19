@@ -98,7 +98,7 @@ export function CapabilitiesTab() {
                     <Inline gap="item" align="center">
                       {!cap.platformSupported && <Leg key="platform" label="not available on this platform" />}
                       {cap.skills.filter((s) => s.status !== 'ok').map((s) => <Leg key={`s-${s.name}`} label={`skill ${s.name} missing`} />)}
-                      {cap.bins.filter((b) => b.status !== 'ok').map((b) => <Leg key={`b-${b.name}`} label={b.status === 'unsupported-platform' ? `binary ${b.name} not available for this platform` : `binary ${b.name} missing`} />)}
+                      {cap.bins.filter((b) => b.status !== 'ok').map((b) => <Leg key={`b-${b.name}`} label={b.status === 'unsupported-platform' ? `binary ${b.name} not available for this platform` : b.status === 'drifted' ? `binary ${b.name} does not match its pin` : `binary ${b.name} missing`} />)}
                       {(cap.npm ?? []).filter((n) => n.status !== 'ok').map((n) => <Leg key={`n-${n.name}`} label={n.status === 'unresolved' ? `dependencies ${n.name} not at declared versions` : `dependencies ${n.name} missing`} />)}
                       {(cap.models ?? []).filter((m) => m.status !== 'ok').map((m) => <Leg key={`m-${m.name}`} label={`model ${m.name} missing (${Math.round(m.bytes / 1e6)} MB)`} />)}
                       {(cap.prereqs ?? []).filter((p) => p.status !== 'ok' && !p.optional).map((p) => <Leg key={`p-${p.name}`} label={`${p.name} not installed`} />)}

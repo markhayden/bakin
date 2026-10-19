@@ -220,8 +220,12 @@ export interface PluginBinDownload {
   url: string
   /** Hex sha256 of the download (the archive when `archive` is set). */
   sha256: string
-  /** Present when the download is a tarball; `member` is the file extracted as the binary. */
-  archive?: { format: 'tar.gz'; member: string }
+  /**
+   * Present when the download is a tarball; `member` is the file extracted as
+   * the binary and `extractedSha256` the hex sha256 of that member — the
+   * bytes Bakin verifies on disk before every use.
+   */
+  archive?: { format: 'tar.gz'; member: string; extractedSha256: string }
   /** Download size in bytes, shown in consent/install UIs when present. */
   sizeBytes?: number
 }

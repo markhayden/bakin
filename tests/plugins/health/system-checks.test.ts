@@ -1242,6 +1242,14 @@ describe('checkPluginAssets — user-edited skills (#898)', () => {
     expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:blobby', label: 'blobby (sdr)' }])
   })
 
+  it('an invalid plugin bin declaration is an action-required incident naming the plugin and the upgrade — never the install repair (#898 D)', async () => {
+    warnWith({ userEditedDrifted: [], bins: { missing: [], drifted: [], unsupported: [], invalid: [{ pluginId: 'terminal', reason: 'requires.bins.0.install.darwin-arm64.archive.extractedSha256: Required' }] } })
+    const results = observed(await checkPluginAssets())
+    expect(results[0].incident).toMatchObject({ key: 'plugin-bins-invalid', disposition: 'action_required' })
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'instructions', steps: [expect.stringContaining('bakin plugins upgrade terminal')] })
+    expect(results[0].incident?.resources).toEqual([{ kind: 'plugin', id: 'terminal', label: 'terminal' }])
+  })
+
   it('with anything else to install, the repair is still offered', async () => {
     warnWith({ drifted: [{ pluginId: 'sdr', name: 'other' }] })
     const results = observed(await checkPluginAssets())

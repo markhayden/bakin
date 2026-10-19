@@ -542,3 +542,44 @@ export function readPluginManifestJson(text: string): PluginManifest {
   }
   return parsePluginManifest(raw)
 }
+
+/**
+ * The ONE manifest field removal needs (`uninstallPreflightRequired`), read
+ * without validating the rest of the install-time contract — a manifest a
+ * newer Bakin rejects must still be removable. Throws when the JSON or the
+ * field itself is malformed (removal fails closed on an unreadable policy).
+ */
+export function readUninstallPolicy(text: string): boolean {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch (err) {
+    throw new PluginManifestError(`Invalid bakin-plugin.json: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  if (!isRecord(raw)) throw new PluginManifestError('bakin-plugin.json must be an object')
+  const value = raw.uninstallPreflightRequired
+  if (value === undefined) return false
+  if (typeof value !== 'boolean') throw new PluginManifestError('uninstallPreflightRequired must be a boolean')
+  return value
+}
+
+/**
+ * The identity a restore needs to rebuild a ledger row (`id`, `version`,
+ * `permissions`), read without validating the rest of the install-time
+ * contract — a snapshot taken before a field became required (e.g. an
+ * archive bin without `extractedSha256`, #898 D) must still restore; the
+ * loader then reports the plugin `manifest_invalid` until it is upgraded.
+ */
+export function readPluginIdentity(text: string): { id: string; version: string; permissions: unknown } {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch (err) {
+    throw new PluginManifestError(`Invalid bakin-plugin.json: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  if (!isRecord(raw)) throw new PluginManifestError('bakin-plugin.json must be an object')
+  const id = stringField(raw, 'id', { required: true })!
+  if (!PLUGIN_ID_RE.test(id)) throw new PluginManifestError(`Invalid plugin id "${id}"`)
+  const version = stringField(raw, 'version') ?? '0.0.0'
+  return { id, version, permissions: raw.permissions }
+}

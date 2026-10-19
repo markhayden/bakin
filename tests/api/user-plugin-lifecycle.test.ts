@@ -94,6 +94,31 @@ describe('user plugin lifecycle', () => {
     expect((await removePost(request, new URL(request.url))).status).toBe(409)
     expect(existsSync(dir)).toBe(true)
   })
+  it('an install-time declaration this Bakin now rejects never blocks removal — only the policy field is read (#898 D)', async () => {
+    const dir = join(testDir, 'plugins', 'legacy-bins')
+    mkdirSync(dir, { recursive: true })
+    // An archive bin from before extractedSha256 was required: invalid to load, still removable.
+    writeFileSync(join(dir, 'bakin-plugin.json'), JSON.stringify({
+      id: 'legacy-bins', name: 'Legacy bins', version: '1.0.0', bakin: '>=0.0.1', description: 'Test',
+      requires: { bins: [{ name: 'tool', version: '1', install: { 'darwin-arm64': { url: 'https://example.com/t.tar.gz', sha256: 'a'.repeat(64), archive: { format: 'tar.gz', member: 'tool' } } } }] },
+    }))
+    const request = makeRequest('http://localhost/api/plugins/remove', { method: 'POST', body: JSON.stringify({ pluginId: 'legacy-bins' }) })
+    const res = await removePost(request, new URL(request.url))
+    const body = await res.clone().json().catch(() => ({})) as { error?: string }
+    expect(body.error ?? '').not.toMatch(/repair its manifest first/)
+  })
+
+  it('a malformed removal policy still fails closed', async () => {
+    const dir = join(testDir, 'plugins', 'bad-policy')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'bakin-plugin.json'), JSON.stringify({ id: 'bad-policy', name: 'Bad', version: '1.0.0', bakin: '>=0.0.1', description: 'Test', uninstallPreflightRequired: 'yes' }))
+    const request = makeRequest('http://localhost/api/plugins/remove', { method: 'POST', body: JSON.stringify({ pluginId: 'bad-policy' }) })
+    const res = await removePost(request, new URL(request.url))
+    expect(res.status).toBe(409)
+    expect(((await res.json()) as { error: string }).error).toMatch(/repair its manifest first/)
+    expect(existsSync(dir)).toBe(true)
+  })
+
   it('install → build → serve → remove', async () => {
     // 1. POST /api/plugins/install with local source path
     const installReq = makeRequest('http://localhost/api/plugins/install', {

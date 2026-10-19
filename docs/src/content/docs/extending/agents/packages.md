@@ -216,7 +216,7 @@ A skill-pack becomes a **capability pack** by naming a `capability` slug and dec
   "runtimes": ["*"],
   "platforms": ["darwin-arm64"],
   "requires": {
-    "bins":    [{ "name": "tool", "version": "1.0.0", "install": { "darwin-arm64": { "url": "https://…/tool.tar.gz", "sha256": "…", "archive": { "format": "tar.gz", "member": "tool" } } }, "verifyArgs": ["--help"] }],
+    "bins":    [{ "name": "tool", "version": "1.0.0", "install": { "darwin-arm64": { "url": "https://…/tool.tar.gz", "sha256": "…", "archive": { "format": "tar.gz", "member": "tool", "extractedSha256": "…" } } }, "verifyArgs": ["--help"] }],
     "npm":     [{ "name": "scripts", "source": "payload/scripts", "dependencies": { "some-lib": "1.2.3" } }],
     "models":  [{ "name": "model", "url": "https://…/model.gguf", "sha256": "…", "bytes": 940663680, "dest": "vendor/model.gguf", "env": { "TOOL_MODEL_PATH": "{dest}" } }],
     "prereqs": [{ "name": "ffmpeg", "kind": "binary", "probe": "ffmpeg", "help": "https://ffmpeg.org/download.html", "optional": true }]
@@ -225,7 +225,7 @@ A skill-pack becomes a **capability pack** by naming a `capability` slug and dec
 }
 ```
 
-- **bins** install into `~/.bakin/bin` (on PATH for agent shells). The sha256 pins the download; with `archive`, it pins the tarball and `member` is extracted.
+- **bins** install into `~/.bakin/bin` (on PATH for agent shells). The sha256 pins the download; with `archive`, it pins the tarball, `member` is extracted, and the required `extractedSha256` pins the extracted binary — Bakin checks it before running or installing the member and on every later verification.
 - **npm** payloads install scripts + exact-pinned dependencies into `~/.bakin/npm/<packId>/<name>/` — reference that path in your SKILL.md. Dependencies must be exact versions, never ranges. Scripts are ESM. Bakin checks that each direct dependency resolves inside the payload at its declared version (with its entry file) before reusing a payload and after every install, and readiness reports a payload that no longer does as unresolved.
 - **models** are sha256-pinned downloads into `~/.bakin/models/`; declare honest `bytes` (shown at install consent). `env` vars are injected at server boot with `{dest}` expanded to the installed path.
 - **prereqs** are checked, never installed — missing required ones block readiness with your `help` link; `optional: true` ones never block.

@@ -156,6 +156,23 @@ describe('restoreUninstallSnapshot', () => {
       .toThrow(/already exists/i)
   })
 
+  it('an unledgered snapshot whose bins predate extractedSha256 still restores with its settings (#898 D)', async () => {
+    const { pluginDir, settingsFile } = seedInstalledPlugin('legacy-plugin')
+    writeFileSync(join(pluginDir, 'bakin-plugin.json'), JSON.stringify({
+      id: 'legacy-plugin', name: 'Legacy', version: '0.9.0', bakin: '*', permissions: [],
+      requires: { bins: [{ name: 'tool', version: '1', install: { 'darwin-arm64': { url: 'https://example.com/t.tar.gz', sha256: 'a'.repeat(64), archive: { format: 'tar.gz', member: 'tool' } } } }] },
+    }), 'utf-8')
+    await snapshotUninstall({ pluginId: 'legacy-plugin', pluginDir, settingsFile, removedSkills: [] })
+    rmSync(pluginDir, { recursive: true, force: true })
+    rmSync(settingsFile, { force: true })
+    writePluginLockfile(removePlugin(readPluginLockfile(), 'legacy-plugin'))
+
+    await restoreUninstallSnapshot({ pluginId: 'legacy-plugin' })
+    expect(existsSync(join(testDir, 'plugins', 'legacy-plugin', 'bakin-plugin.json'))).toBe(true)
+    expect(existsSync(join(testDir, 'plugin-settings', 'legacy-plugin.json'))).toBe(true)
+    expect(readPluginLockfile().plugins['legacy-plugin']).toMatchObject({ type: 'local', version: '0.9.0' })
+  })
+
   it('restores plugin files, settings, runtime skills, and lockfile provenance', async () => {
     const { pluginDir, settingsFile } = seedInstalledPlugin()
     const snapshot = await snapshotUninstall({

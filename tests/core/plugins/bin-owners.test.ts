@@ -56,7 +56,7 @@ const declares = (name: string, sha: string): BinRequirement => ({
   name, version: '1', install: { [PLATFORM]: { url: 'https://example.com/x', sha256: sha } },
 })
 const declaresArchive = (name: string, sha: string, member: string): BinRequirement => ({
-  name, version: '1', install: { [PLATFORM]: { url: 'https://example.com/x.tar.gz', sha256: sha, archive: { format: 'tar.gz', member } } },
+  name, version: '1', install: { [PLATFORM]: { url: 'https://example.com/x.tar.gz', sha256: sha, archive: { format: 'tar.gz', member, extractedSha256: 'e'.repeat(64) } } },
 })
 
 beforeEach(() => { rmSync(testDir, { recursive: true, force: true }); mkdirSync(join(testDir, 'bin'), { recursive: true }) })
@@ -128,13 +128,25 @@ describe('pin conflicts', () => {
     const dir = getPackageSourceDir(testDir, 'skill-pack', 'ocr', '1.0.0')
     mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({
+      requires: { bins: [{ name: 'tool', version: '1', install: { [binPlatformKey()!]: { url: 'https://example.com/x.tar.gz', sha256: A, archive: { format: 'tar.gz', member: 'bin/tool-a', extractedSha256: 'e'.repeat(64) } } } }] },
+    }))
+    expect(binTargetOwners(binTargetPath('tool'))).toEqual([{ kind: 'package', id: 'ocr', sha256: A, member: 'bin/tool-a' }])
+    const same = { name: 'tool', version: '1', install: { [binPlatformKey()!]: { url: 'https://example.com/x.tar.gz', sha256: A, archive: { format: 'tar.gz' as const, member: 'bin/tool-a', extractedSha256: 'e'.repeat(64) } } } }
+    const other = { ...same, install: { [binPlatformKey()!]: { ...same.install[binPlatformKey()!]!, archive: { format: 'tar.gz' as const, member: 'bin/tool-b', extractedSha256: 'f'.repeat(64) } } } }
+    expect(findBinPinConflicts([same], { kind: 'plugin', id: 'terminal' }, binPlatformKey())).toEqual([])
+    expect(findBinPinConflicts([other], { kind: 'plugin', id: 'terminal' }, binPlatformKey())).toHaveLength(1)
+  })
+
+  it('a legacy pack manifest from before extractedSha256 still names its member — ownership is read without the integrity schema (#898 D)', () => {
+    pinsPack('ocr', 'tool', A) // written before `member` existed
+    const dir = getPackageSourceDir(testDir, 'skill-pack', 'ocr', '1.0.0')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({
       requires: { bins: [{ name: 'tool', version: '1', install: { [binPlatformKey()!]: { url: 'https://example.com/x.tar.gz', sha256: A, archive: { format: 'tar.gz', member: 'bin/tool-a' } } } }] },
     }))
     expect(binTargetOwners(binTargetPath('tool'))).toEqual([{ kind: 'package', id: 'ocr', sha256: A, member: 'bin/tool-a' }])
-    const same = { name: 'tool', version: '1', install: { [binPlatformKey()!]: { url: 'https://example.com/x.tar.gz', sha256: A, archive: { format: 'tar.gz' as const, member: 'bin/tool-a' } } } }
-    const other = { ...same, install: { [binPlatformKey()!]: { ...same.install[binPlatformKey()!]!, archive: { format: 'tar.gz' as const, member: 'bin/tool-b' } } } }
+    const same = { name: 'tool', version: '1', install: { [binPlatformKey()!]: { url: 'https://example.com/x.tar.gz', sha256: A, archive: { format: 'tar.gz' as const, member: 'bin/tool-a', extractedSha256: 'e'.repeat(64) } } } }
     expect(findBinPinConflicts([same], { kind: 'plugin', id: 'terminal' }, binPlatformKey())).toEqual([])
-    expect(findBinPinConflicts([other], { kind: 'plugin', id: 'terminal' }, binPlatformKey())).toHaveLength(1)
   })
 
   it('bins with no download for this platform are not judged here', () => {

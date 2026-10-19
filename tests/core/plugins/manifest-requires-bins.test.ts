@@ -11,6 +11,7 @@ import { safeParseManifest } from '../../../packages/core/src/agent-packages/man
 import { BIN_PLATFORM_KEYS, BinRequirementSchema } from '../../../packages/core/src/plugins/bin-requirement'
 
 const SHA = 'a'.repeat(64)
+const EXTRACTED = 'b'.repeat(64)
 const tmux = {
   name: 'tmux',
   version: '3.7c',
@@ -18,7 +19,7 @@ const tmux = {
     'darwin-arm64': {
       url: 'https://github.com/markhayden/bakin-bits-official/releases/download/mirror/tmux-v3.7c/tmux-3.7c-macos-universal.tar.gz',
       sha256: SHA,
-      archive: { format: 'tar.gz', member: 'tmux' },
+      archive: { format: 'tar.gz', member: 'tmux', extractedSha256: EXTRACTED },
       sizeBytes: 2_100_000,
     },
   },
@@ -40,7 +41,7 @@ describe('plugin manifest requires.bins', () => {
     expect(bin.name).toBe('tmux')
     expect(bin.install['darwin-arm64']?.sha256).toBe(SHA)
     expect(bin.install['darwin-arm64']?.sizeBytes).toBe(2_100_000)
-    expect(bin.install['darwin-arm64']?.archive).toEqual({ format: 'tar.gz', member: 'tmux' })
+    expect(bin.install['darwin-arm64']?.archive).toEqual({ format: 'tar.gz', member: 'tmux', extractedSha256: EXTRACTED })
     expect(bin.verifyArgs).toEqual(['-V'])
   })
 
@@ -53,7 +54,10 @@ describe('plugin manifest requires.bins', () => {
     const cases: Array<[string, unknown, RegExp]> = [
       ['bad sha', { ...tmux, install: { 'darwin-arm64': { ...tmux.install['darwin-arm64'], sha256: 'nope' } } }, /requires\.bins\[0\].*sha256/],
       ['http url', { ...tmux, install: { 'darwin-arm64': { ...tmux.install['darwin-arm64'], url: 'http://example.com/tmux.tar.gz' } } }, /requires\.bins\[0\].*https/],
-      ['traversal member', { ...tmux, install: { 'darwin-arm64': { ...tmux.install['darwin-arm64'], archive: { format: 'tar.gz', member: '../tmux' } } } }, /requires\.bins\[0\].*member/],
+      ['traversal member', { ...tmux, install: { 'darwin-arm64': { ...tmux.install['darwin-arm64'], archive: { format: 'tar.gz', member: '../tmux', extractedSha256: EXTRACTED } } } }, /requires\.bins\[0\].*member/],
+      // An archive without its extracted pin (every manifest before #898 D) is invalid — never "verified by the marker".
+      ['archive without extractedSha256', { ...tmux, install: { 'darwin-arm64': { ...tmux.install['darwin-arm64'], archive: { format: 'tar.gz', member: 'tmux' } } } }, /requires\.bins\[0\].*extractedSha256/],
+      ['bad extractedSha256', { ...tmux, install: { 'darwin-arm64': { ...tmux.install['darwin-arm64'], archive: { format: 'tar.gz', member: 'tmux', extractedSha256: 'nope' } } } }, /requires\.bins\[0\].*extractedSha256/],
       ['unknown platform key', { ...tmux, install: { 'windows-x64': tmux.install['darwin-arm64'] } }, /requires\.bins\[0\]/],
       ['no platforms', { ...tmux, install: {} }, /requires\.bins\[0\].*platform/],
       ['bad name', { ...tmux, name: '../tmux' }, /requires\.bins\[0\].*name/],

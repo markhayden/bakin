@@ -40,11 +40,35 @@ export async function checkPluginAssets(): Promise<HealthCheckRunInput> {
       })])
     }
     type SkillRef = { name: string; pluginId: string }
-    const scan = result.details as { missing?: unknown[]; drifted?: unknown[]; userEditedDrifted?: SkillRef[]; invalidSource?: SkillRef[]; bins?: { missing?: unknown[]; drifted?: unknown[]; unsupported?: unknown[] } } | undefined
+    const scan = result.details as { missing?: unknown[]; drifted?: unknown[]; userEditedDrifted?: SkillRef[]; invalidSource?: SkillRef[]; bins?: { missing?: unknown[]; drifted?: unknown[]; unsupported?: unknown[]; invalid?: Array<{ pluginId: string; reason: string }> } } | undefined
     const repairable = (scan?.missing?.length ?? 0) + (scan?.drifted?.length ?? 0)
       + (scan?.bins?.missing?.length ?? 0) + (scan?.bins?.drifted?.length ?? 0) + (scan?.bins?.unsupported?.length ?? 0)
     const locked = scan?.userEditedDrifted ?? []
     const invalid = scan?.invalidSource ?? []
+    const invalidBins = scan?.bins?.invalid ?? []
+    if (repairable === 0 && invalidBins.length > 0) {
+      // The plugin's declaration is the problem — the install repair has
+      // nothing it could verify against, so it is not offered (#898 D).
+      return healthObserved([healthWarning({
+        key: 'runtime-assets',
+        summary: result.message,
+        detail: result.remediation,
+        evidence: { inSync: false, ...(result.details ?? {}) },
+        incident: {
+          key: 'plugin-bins-invalid',
+          title: 'A plugin declares binaries Bakin cannot verify',
+          impact: 'Bakin will not install or trust these plugin binaries until the plugin ships a declaration that pins each binary it runs.',
+          disposition: 'action_required',
+          resources: invalidBins.map((row) => ({ kind: 'plugin' as const, id: row.pluginId, label: row.pluginId })),
+          resolution: {
+            key: 'upgrade-plugin',
+            type: 'instructions',
+            label: 'Upgrade the plugin',
+            steps: invalidBins.map((row) => `Run \`bakin plugins upgrade ${row.pluginId}\` (or reinstall it).`) as [string, ...string[]],
+          },
+        },
+      })])
+    }
     if (repairable === 0 && (locked.length > 0 || invalid.length > 0)) {
       // Nothing the repair can fix — the user locked these skills, or the
       // plugin ships one that is not text — so offering it would be a

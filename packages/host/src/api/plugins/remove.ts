@@ -22,7 +22,7 @@
  * answers 202 `{ operationId, bootId }` and its old body is the result.
  */
 import { existsSync, rmSync, readFileSync } from 'fs'
-import { readPluginManifestJson } from '@bakin/core/plugins/manifest'
+import { readUninstallPolicy } from '@bakin/core/plugins/manifest'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
@@ -96,8 +96,12 @@ export async function post(req: Request): Promise<Response> {
   const manifestPath = join(pluginDir, 'bakin-plugin.json')
   if (existsSync(manifestPath)) {
     try {
-      const manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf8'))
-      if (manifest.uninstallPreflightRequired && !installedPlugin?.beforeUninstall) {
+      // Only the removal POLICY is read here — never the whole install-time
+      // contract: a plugin whose declaration Bakin has since tightened (e.g.
+      // an archive bin without its extracted pin, #898 D) must stay
+      // removable. An unreadable or malformed policy still fails closed.
+      const policy = readUninstallPolicy(readFileSync(manifestPath, 'utf8'))
+      if (policy && !installedPlugin?.beforeUninstall) {
         return Response.json({ ok: false, error: 'Activate this plugin before removing it so its persistent resources can be checked' }, { status: 409 })
       }
     } catch {
