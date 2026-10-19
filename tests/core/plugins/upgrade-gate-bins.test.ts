@@ -30,7 +30,7 @@ import type { Permission } from '../../../packages/core/src/plugins/permissions'
 const A = 'a'.repeat(64)
 const platform = binPlatformKey()!
 const archive = (member: string): BinRequirement => ({
-  name: 'tool', version: '1.0.0', install: { [platform]: { url: 'https://example.com/tool.tar.gz', sha256: A, archive: { format: 'tar.gz', member } } },
+  name: 'tool', version: '1.0.0', install: { [platform]: { url: 'https://example.com/tool.tar.gz', sha256: A, archive: { format: 'tar.gz', member, extractedSha256: 'e'.repeat(64) } } },
 })
 
 describe('binary consent identity', () => {
