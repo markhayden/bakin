@@ -10,11 +10,11 @@
  * CLI that can read this file proves it is this home's operator, which is
  * what authorizes a service claim (#895 D11).
  * A live holder refuses acquisition; a stale lock (dead pid) or corrupt
- * file is replaced. Acquisition uses exclusive create (wx) with one
- * stale-sweep retry.
+ * file is replaced. The lock is published complete via temp + `link`, and a
+ * stale one is claimed by rename before it is deleted (see acquireServerLock).
  */
 import { randomBytes, timingSafeEqual } from 'crypto'
-import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'fs'
+import { existsSync, linkSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
@@ -122,36 +122,77 @@ export function cliSecretMatches(presented: string | null | undefined): boolean 
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
+/**
+ * Acquire this home's singleton lock (#898 K hardening):
+ *   - the lock is written COMPLETE to a private temp file and published with
+ *     `link`, which fails if a lock exists — it is never visible half-written
+ *     (a partial file would read as corrupt and be swept as stale);
+ *   - a stale lock (dead holder, or corrupt) is CLAIMED by renaming it to a
+ *     private name and re-read there: only the exact content judged stale is
+ *     deleted. A live lock another starter published in between is linked
+ *     back — never removed.
+ */
 export function acquireServerLock(port: number, bootId: string): AcquireResult {
   const cliSecret = randomBytes(32).toString('hex')
   const payload = JSON.stringify({ pid: process.pid, port, startedAt: Date.now(), bootId, cliSecret } satisfies ServerLock, null, 2)
+  const unique = () => `${lockPath()}.${process.pid}-${Date.now()}-${randomBytes(4).toString('hex')}`
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const temp = unique()
+    // 0600: the secret inside authorizes service claims for this home.
+    writeFileSync(temp, payload, { encoding: 'utf-8', flag: 'wx', mode: 0o600 })
     try {
-      // 0600: the secret inside authorizes service claims for this home.
-      writeFileSync(lockPath(), payload, { encoding: 'utf-8', flag: 'wx', mode: 0o600 })
+      linkSync(temp, lockPath())
       ownCliSecret = cliSecret
       return { acquired: true }
-    } catch {
-      const holder = readServerLock()
-      // Live holder that isn't us → refuse. Our own pid re-acquiring is
-      // fine (in-process restart / HMR re-evaluation).
-      if (holder && holder.pid !== process.pid && isPidAlive(holder.pid)) {
-        return { acquired: false, holder }
-      }
-      // Stale (dead pid) or corrupt — sweep and retry the exclusive create.
-      log.warn('Replacing stale server lock', { stalePid: holder?.pid ?? null })
-      try {
-        unlinkSync(lockPath())
-      } catch {
-        // raced with another sweeper; the retry's wx decides
-        log.debug('Stale lock already removed by a concurrent sweeper')
-      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    } finally {
+      unlinkSync(temp)
     }
+    const seenText = readText(lockPath())
+    if (seenText === null) continue // released meanwhile: try again
+    const holder = readServerLock()
+    // Live holder that isn't us → refuse. Our own pid re-acquiring is fine
+    // (in-process restart / HMR re-evaluation).
+    if (holder && holder.pid !== process.pid && isPidAlive(holder.pid)) {
+      return { acquired: false, holder }
+    }
+    // Stale (dead pid), corrupt, or our own: claim the FILE, then judge it.
+    const claimed = unique()
+    try {
+      renameSync(lockPath(), claimed)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue // another sweeper took it
+      throw err
+    }
+    if (readText(claimed) === seenText) {
+      log.warn('Replacing stale server lock', { stalePid: holder?.pid ?? null })
+      unlinkSync(claimed)
+      continue
+    }
+    // A live lock was published between our read and our rename: put it back.
+    try {
+      linkSync(claimed, lockPath())
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    }
+    unlinkSync(claimed)
+    const current = readServerLock()
+    return { acquired: false, holder: current ?? { pid: -1, port, startedAt: 0, bootId: '' } }
   }
-  // Two sweep attempts lost the wx race both times — someone else acquired.
+  // Three attempts lost every race — someone else acquired.
   const holder = readServerLock()
   return holder ? { acquired: false, holder } : { acquired: false, holder: { pid: -1, port, startedAt: 0, bootId: '' } }
+}
+
+function readText(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf-8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw err
+  }
 }
 
 /** Removes the lock iff this process owns it. Safe to call repeatedly. */
