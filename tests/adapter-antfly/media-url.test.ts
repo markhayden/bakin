@@ -4,7 +4,7 @@
  * asset store — including rows persisted under another spelling of the home.
  */
 import { afterAll, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, realpathSync, rmSync, symlinkSync } from 'fs'
+import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
@@ -14,6 +14,7 @@ const home = join(testDir, 'home')
 const paths = () => ({ getContentDir: () => home, getBakinPaths: () => ({ home, 'assets.store': join(home, 'assets', 'store'), db: join(home, 'bakin.db') }) })
 mock.module('../../src/core/content-dir', paths)
 mock.module('../../packages/core/src/content-dir', paths)
+mock.module('../../src/core/logger', () => ({ createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }) }))
 mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
@@ -50,6 +51,25 @@ describe('normalizeFileUrls', () => {
     expect(normalizeFileUrls(hostForm, roots)).toBe(hostForm)
     const web = { media_url: 'https://example.com/a.png', n: 3 }
     expect(normalizeFileUrls(web, roots)).toBe(web)
+  })
+
+  it('a dot segment is never collapsed into a different file — the engine judges the URL as sent', () => {
+    // store/link → elsewhere/sub: `store/link/../a.txt` is elsewhere/a.txt on disk,
+    // but a lexical collapse would name store/a.txt.
+    mkdirSync(join(testDir, 'elsewhere', 'sub'), { recursive: true })
+    writeFileSync(join(testDir, 'elsewhere', 'a.txt'), 'outside')
+    writeFileSync(join(home, 'assets', 'store', 'a.txt'), 'inside')
+    symlinkSync(join(testDir, 'elsewhere', 'sub'), join(home, 'assets', 'store', 'link'))
+    const doc = { media_url: `file://${store}/link/../a.txt` }
+    expect(normalizeFileUrls(doc, roots)).toBe(doc)
+    const encoded = { media_url: `file://${store}/link/%2E%2E/a.txt` }
+    expect(normalizeFileUrls(encoded, roots)).toBe(encoded)
+  })
+
+  it('a path that cannot be resolved (a symlink loop) is sent as it is — it never throws or holds up other values', () => {
+    symlinkSync(join(testDir, 'loop'), join(testDir, 'loop'))
+    const doc = { title: `file://${join(testDir, 'loop', 'x.png')}`, media_url: `file://${join(testDir, 'old-alias', 'assets', 'store', '2026-10', 'b.jpg')}` }
+    expect(normalizeFileUrls(doc, roots)).toEqual({ title: doc.title, media_url: `file://${store}/2026-10/b.jpg` })
   })
 
   it('canonicalFilePath re-attaches a missing tail to the deepest existing ancestor', () => {

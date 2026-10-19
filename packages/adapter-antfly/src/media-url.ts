@@ -14,6 +14,9 @@ import { realpathSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { basename, dirname, join, resolve, sep } from 'path'
 import { getBakinPaths } from '@bakin/core/content-dir'
+import { createLogger } from '@bakin/core/logger'
+
+const log = createLogger('antfly-media-url')
 
 /** The deepest existing ancestor's realpath, with the missing tail re-attached. */
 export function canonicalFilePath(path: string): string {
@@ -47,26 +50,52 @@ function encodeFileUrl(path: string): string {
   return `file://${path.split('/').map((segment, i) => (i === 0 && segment === '' ? '' : encodeURIComponent(segment))).join('/')}`
 }
 
+/** The local path a `file://` URL names — null when it isn't one we may reason about. */
+function localPathOf(url: string): string | null {
+  // Any `.`/`..` segment is left to the engine: WHATWG parsing collapses
+  // `link/..` lexically, which can name a different file than the
+  // filesystem would reach through a symlinked `link`.
+  const rawPath = url.slice('file://'.length)
+  let segments: string[]
+  try {
+    segments = rawPath.split('/').map((segment) => decodeURIComponent(segment))
+  } catch (err) {
+    if (err instanceof URIError) return null
+    throw err
+  }
+  if (segments.some((segment) => segment === '.' || segment === '..')) return null
+  try {
+    return fileURLToPath(url)
+  } catch (err) {
+    // A host-form URL (`file://relative-home/…`) is not a local path.
+    if (err instanceof TypeError) return null
+    throw err
+  }
+}
+
 /**
  * Rewrites each top-level `file://` string to its canonical spelling when that
  * canonical path lies inside one of `mediaRoots` (canonicalized). Anything
- * else — outside the store, not a local file URL, undecodable — is sent as it
- * is, and the engine's own check decides.
+ * else — outside the store, dot segments, not a local file URL, a path that
+ * can't be resolved (ELOOP, EACCES, …) — is sent exactly as it is, and the
+ * engine's own check decides. Never throws for one value: a bad path must not
+ * hold up the rest of the batch.
  */
 export function normalizeFileUrls(doc: Record<string, unknown>, mediaRoots: readonly string[]): Record<string, unknown> {
   let next: Record<string, unknown> | null = null
-  const roots = [...new Set(mediaRoots.map(canonicalFilePath))]
+  let roots: string[] | null = null
   for (const [field, value] of Object.entries(doc)) {
     if (typeof value !== 'string' || !value.startsWith('file://')) continue
-    let path: string
+    const path = localPathOf(value)
+    if (path === null) continue
+    let canonical: string
     try {
-      path = fileURLToPath(value)
+      roots ??= [...new Set(mediaRoots.map(canonicalFilePath))]
+      canonical = canonicalFilePath(path)
     } catch (err) {
-      // A host-form URL (`file://relative-home/…`) is not a local path; the engine rejects it on its own.
-      if (err instanceof TypeError) continue
-      throw err
+      log.debug('file:// value left as sent — its path could not be resolved', { field, error: err instanceof Error ? err.message : String(err) })
+      continue
     }
-    const canonical = canonicalFilePath(path)
     if (!roots.some((root) => canonical === root || canonical.startsWith(root + sep))) continue
     const url = encodeFileUrl(canonical)
     if (url === value) continue
