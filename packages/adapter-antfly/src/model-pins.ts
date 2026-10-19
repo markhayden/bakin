@@ -29,7 +29,7 @@
  */
 import { existsSync, readdirSync, statSync } from 'fs'
 import { verifyFileSha256 } from '@bakin/core/integrity/files'
-import { join } from 'path'
+import { join, sep } from 'path'
 import { inferenceModelsRoot } from './paths'
 
 export interface ModelFilePin {
@@ -61,9 +61,22 @@ export const MODEL_PINS: Record<string, ModelFilePin[]> = {
   ],
 }
 
+/**
+ * A model id is exactly `owner/name` (HuggingFace shape): two segments of
+ * [A-Za-z0-9._-], neither "." nor "..". Custom ids come from settings, so
+ * this guards every filesystem path built from them (#898 E review).
+ */
+export function isSafeModelName(model: string): boolean {
+  const parts = model.split('/')
+  return parts.length === 2 && parts.every((part) => /^[\w.-]+$/.test(part) && part !== '.' && part !== '..')
+}
+
 export function modelDir(model: string, root: string = inferenceModelsRoot()): string {
   // v0.2 layout is {root}/{owner}/{name} — no per-kind buckets.
-  return join(root, model)
+  if (!isSafeModelName(model)) throw new Error(`Invalid search model id "${model}" — expected owner/name`)
+  const dir = join(root, model)
+  if (!dir.startsWith(join(root) + sep)) throw new Error(`Search model id "${model}" escapes the models root`)
+  return dir
 }
 
 const WEIGHT_FILE_RE = /\.(onnx|gguf|safetensors)$/
@@ -95,6 +108,7 @@ function hasWeightFile(dir: string, depth = 0): boolean {
  * on every doctor cycle and from the service argv builder.
  */
 export function modelStructurallyComplete(model: string, modelsRoot?: string): { ok: true } | { ok: false; reason: string } {
+  if (!isSafeModelName(model)) return { ok: false, reason: `invalid model id "${model}" — expected owner/name` }
   const root = modelDir(model, modelsRoot)
   if (!existsSync(root)) return { ok: false, reason: 'not downloaded yet' }
 
@@ -139,6 +153,7 @@ export function modelStructurallyComplete(model: string, modelsRoot?: string): {
 export async function pinMismatches(model: string, modelsRoot?: string): Promise<string[]> {
   const pins = MODEL_PINS[model]
   if (!pins) return []
+  if (!isSafeModelName(model)) return ['<invalid model id>']
   const root = modelDir(model, modelsRoot)
   const mismatched: string[] = []
   for (const pin of pins) {

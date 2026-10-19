@@ -1,4 +1,4 @@
-import { closeSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from 'fs'
+import { linkSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { basename, dirname, join } from 'path'
 
 /**
@@ -125,33 +125,58 @@ export function createPullTracker(stagingDir: string) {
  * models (#898 E). The antfly models root is shared by every Bakin home on
  * the machine, while operation locks are per home — without this, one home
  * could delete or replace another's staged, verified model mid-install.
- * O_EXCL lock file beside the models root holding the owner's pid; a dead
- * owner's lock is reclaimed. Non-blocking: a live holder is reported.
+ *
+ * The lock file holds the owner's pid and is never visible empty: it is
+ * written complete to a private temp file and published with `link`, which
+ * fails if the lock exists. A dead holder's lock is reclaimed by RENAMING it
+ * to a private name and re-reading it there: only the content just judged
+ * stale is ever deleted — a lock someone published in between is put back.
+ * Non-blocking: a live holder is reported.
  */
 export function acquireModelsLock(liveModelsRoot: string): { release: () => void } | { heldBy: number } {
   const path = join(dirname(liveModelsRoot), `.${basename(liveModelsRoot)}.bakin-pull.lock`)
   mkdirSync(dirname(path), { recursive: true })
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const mine = String(process.pid)
+  const unique = () => `${path}.${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const temp = unique()
+    writeFileSync(temp, mine, { flag: 'wx' })
     try {
-      const fd = openSync(path, 'wx')
-      writeSync(fd, String(process.pid))
-      closeSync(fd)
+      linkSync(temp, path)
       return {
         release: () => {
-          try {
-            if (readFileSync(path, 'utf-8').trim() === String(process.pid)) unlinkSync(path)
-          } catch (err) {
-            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-          }
+          if (readText(path)?.trim() === mine) unlinkSync(path)
         },
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    } finally {
+      unlinkSync(temp)
     }
-    const holder = Number.parseInt(readText(path) ?? '', 10)
+    const seen = readText(path)?.trim() ?? ''
+    const holder = Number.parseInt(seen, 10)
     if (Number.isInteger(holder) && holder > 0 && processAlive(holder)) return { heldBy: holder }
-    // A dead (or unreadable) holder's lock is reclaimed once.
-    try { unlinkSync(path) } catch (err) { if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err }
+    // Stale (dead or unreadable holder): claim the FILE first, then judge it.
+    const claimed = unique()
+    try {
+      renameSync(path, claimed)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue // someone else reclaimed it
+      throw err
+    }
+    if ((readText(claimed)?.trim() ?? '') === seen) {
+      unlinkSync(claimed) // exactly the stale lock we judged
+      continue
+    }
+    // A live lock was published between our read and our rename: put it back.
+    try {
+      linkSync(claimed, path)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    }
+    unlinkSync(claimed)
+    const current = Number.parseInt(readText(path)?.trim() ?? '', 10)
+    return { heldBy: Number.isInteger(current) ? current : -1 }
   }
   return { heldBy: -1 }
 }

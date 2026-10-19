@@ -1,11 +1,11 @@
 import { spawn } from 'child_process'
 import { existsSync, mkdirSync, renameSync, rmSync } from 'fs'
-import { basename, dirname, join } from 'path'
+import { dirname } from 'path'
 import type { OperationPlan } from '@makinbakin/sdk/types'
 import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import type { AntflySettings } from './defaults'
-import { isPinnedModel, modelDir, modelStructurallyComplete, pinMismatches } from './model-pins'
+import { isPinnedModel, isSafeModelName, modelDir, modelStructurallyComplete, pinMismatches } from './model-pins'
 import { inferenceModelsRoot } from './paths'
 import { acquireModelsLock, createPullTracker, pullStagingDir, pullStagingRoot } from './pull-progress'
 import { exchangePaths } from '@bakin/core/fs/exchange'
@@ -124,6 +124,16 @@ export function describeMissingModels(missing: InferenceModel[]): { impact: stri
 }
 
 export async function checkInferenceModels(models: InferenceModel[]) {
+  const unsafe = models.filter((m) => !isSafeModelName(m.model))
+  if (unsafe.length > 0) {
+    return {
+      name: 'models',
+      status: 'missing' as const,
+      message: `Invalid search model id${unsafe.length === 1 ? '' : 's'} ${unsafe.map((m) => `"${m.model}"`).join(', ')} — expected owner/name`,
+      remediation: 'Fix the search model ids in the search settings.',
+      details: { root: inferenceModelsRoot(), invalid: unsafe.map((m) => m.model) },
+    }
+  }
   const missing = missingModelEntries(models)
   if (missing.length === 0) {
     // Structural verification only — pinned file NAMES and sizes, which is
@@ -268,6 +278,20 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     }
   }
 
+  // Every path below is built from model ids — custom ones come from
+  // settings: an id that is not exactly owner/name never reaches the
+  // filesystem (#898 E review).
+  const unsafe = models.filter((m) => !isSafeModelName(m.model))
+  if (unsafe.length > 0) {
+    skipAll('invalid model id')
+    return {
+      name: 'models',
+      status: 'failed' as const,
+      message: `Invalid search model id${unsafe.length === 1 ? '' : 's'} ${unsafe.map((m) => `"${m.model}"`).join(', ')} — expected owner/name; fix the search settings.`,
+      durationMs: Date.now() - start,
+    }
+  }
+
   // The install skip HASHES: a structurally complete model whose pinned
   // files do not match their sha256 pins is pulled again (#898 E) — never
   // trusted on file names and sizes alone. Custom (unpinned) models can only
@@ -389,18 +413,11 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
           // never neither. `staged` now holds the replaced copy.
           rmSync(staged, { recursive: true, force: true })
         } else {
-          // No atomic exchange on this platform: a two-rename swap (a brief
-          // window where the live name is missing), the replaced copy put
-          // back if the second rename fails.
-          const aside = join(dirname(live), `.${basename(live)}.bakin-replaced-${process.pid}-${Date.now()}`)
-          renameSync(live, aside)
-          try {
-            renameSync(staged, live)
-          } catch (err) {
-            renameSync(aside, live)
-            throw err
-          }
-          rmSync(aside, { recursive: true, force: true })
+          // No atomic exchange on this platform: replacing would leave the
+          // live name missing between two renames while the engine may read
+          // it, so fail safely — the live copy stays exactly as it was.
+          rmSync(staged, { recursive: true, force: true })
+          return failed(`${m.model} does not match its pins, and this platform cannot replace a live model atomically. Stop search (or remove ${live}), then run \`bakin install search-models\` again.`)
         }
       } catch (err) {
         return failed(`Could not publish ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)

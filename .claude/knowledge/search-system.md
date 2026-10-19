@@ -785,11 +785,17 @@ every pulled model verified does the install publish: a model with no live
 copy is one rename; a replacement is ONE atomic exchange
 (`exchangePaths`, `packages/core/src/fs/exchange.ts` — darwin `renamex_np
 RENAME_SWAP`, linux `renameat2 RENAME_EXCHANGE` via `bun:ffi`), so the running
-engine sees the old model or the new one, never neither; platforms without it
-fall back to a logged two-rename swap. The whole pull → verify → publish runs
-under a MACHINE-wide lock beside the shared models root
-(`acquireModelsLock`, `.models.bakin-pull.lock`, pid-owned, dead holders
-reclaimed) — operation locks are per home, the antfly models root is not. A
+engine sees the old model or the new one, never neither; where it is
+unavailable a replacement FAILS SAFELY (live copy untouched, the message says
+to stop search or remove the model first) — never a two-rename window. The
+whole pull → verify → publish runs under a MACHINE-wide lock beside the
+shared models root (`acquireModelsLock`, `.models.bakin-pull.lock`: the pid
+is written to a temp file and published with `link`, so the lock is never
+visible empty; a dead holder's lock is reclaimed by renaming it aside and
+re-checking it, so a concurrently published lock is never deleted) —
+operation locks are per home, the antfly models root is not. Model ids are
+validated as exactly `owner/name` (`isSafeModelName`; custom ids come from
+settings) before any path is built from them. A
 failure or cancel therefore never touches a live model, and
 the staging root keeps antfly's resumable staging for the next run. The
 doctor's `checkInferenceModels` stays structural (pinned names + sizes, the

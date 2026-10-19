@@ -32,6 +32,12 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
 }))
+/** Forces the "no atomic exchange on this platform" branch when true. */
+let exchangeUnavailable = false
+const { exchangePaths: realExchange } = await import('../../../packages/core/src/fs/exchange')
+mock.module('../../../packages/core/src/fs/exchange', () => ({
+  exchangePaths: (a: string, b: string) => (exchangeUnavailable ? false : realExchange(a, b)),
+}))
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
@@ -149,6 +155,7 @@ function seedModel(model: string): void {
 const optsAutoYes = { autoApprove: true }
 
 beforeEach(() => {
+  exchangeUnavailable = false
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(antflyHomeDir, { recursive: true })
   process.env.ANTFLY_HOME = antflyHomeDir
@@ -355,6 +362,28 @@ describe('installInferenceModels', () => {
       result = await installInferenceModels(optsAutoYes, undefined, [TEST_MODELS[0]!])
       expect(result.status).toBe('installed')
       expect(existsSync(lockPath)).toBe(false) // released after the install
+    })
+
+    it('a malformed model id never reaches the filesystem — it cannot delete live models', async () => {
+      installFakeBinary(PULL_OK)
+      seedModel(TEST_MODELS[0]!.model)
+      const evil = { label: 'evil', model: '../models', kind: 'embedder' as const }
+      const result = await installInferenceModels(optsAutoYes, undefined, [evil])
+      expect(result.status).toBe('failed')
+      expect(result.message).toContain('Invalid search model id "../models"')
+      expect(existsSync(join(modelsRoot, TEST_MODELS[0]!.model, 'onnx', 'model.onnx'))).toBe(true)
+      expect((await checkInferenceModels([evil])).message).toContain('Invalid search model id')
+    })
+
+    it('without an atomic exchange a replacement fails safely — the live copy stays exactly as it was', async () => {
+      exchangeUnavailable = true
+      MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
+      installFakeBinary(PULL_OK)
+      seedModel(PINNED.model)
+      const result = await installInferenceModels(optsAutoYes, undefined, [PINNED])
+      expect(result.status).toBe('failed')
+      expect(result.message).toContain('cannot replace a live model atomically')
+      expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
     })
 
     it('the doctor check stays structural and says so', async () => {
