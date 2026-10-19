@@ -17,6 +17,7 @@ const LUNA = 'openai-codex/gpt-5.6-luna'
 const MINI = 'openai-codex/gpt-5.4-mini'
 let ops: Array<{ ref: string; set: { model: string | null } }> = []
 let revision = 'rev-1'
+let blocked: string | undefined
 const getCalls: string[] = []
 mock.module('../../src/cli/http', () => ({
   BASE_URL: 'http://bakin.test',
@@ -34,6 +35,7 @@ mock.module('../../src/cli/http', () => ({
         enrichment: 'agent',
         ops,
         notes: [`${MINI} cannot see images, so enrichment (captions, OCR, tags) runs on ${LUNA} instead.`],
+        ...(blocked ? { blocked } : {}),
       },
     }
   }),
@@ -57,6 +59,7 @@ const originalLog = console.log
 beforeEach(() => {
   ops = [{ ref: 'route:auto-title', set: { model: MINI } }, { ref: 'route:enrichment', set: { model: LUNA } }]
   revision = 'rev-1'
+  blocked = undefined
   getCalls.length = 0
   posts.length = 0
   logs.length = 0
@@ -124,6 +127,29 @@ describe('bakin models plan', () => {
       expect(printSpy).toHaveBeenCalledTimes(1)
     } finally {
       exitSpy.mockRestore()
+    }
+  })
+
+  it('a blocked plan says why — never "already on the plan" — and --apply exits 1 without posting', async () => {
+    ops = []
+    blocked = 'Your current default (openai/gone) cannot run here, and no other model has been seen running here in the last week — probe a model or run a task on one, then the plan can propose it.'
+    await run(['models', 'plan'])
+    const out = logs.join('\n')
+    expect(out).toContain('No change recommended: Your current default (openai/gone) cannot run here')
+    expect(out).not.toContain('already on this plan')
+
+    const exitSpy = spyOn(process, 'exit').mockImplementation(((code?: number) => { throw new ExitCalled(`exit ${code}`) }) as never)
+    const errors: string[] = []
+    const errSpy = spyOn(console, 'error').mockImplementation((...args: unknown[]) => { errors.push(args.map(String).join(' ')) })
+    try {
+      await expect(run(['models', 'plan', '--apply'])).rejects.toThrow('exit 1')
+      await expect(run(['models', 'plan', '--apply', '--json'])).rejects.toThrow('exit 1')
+      expect(posts).toEqual([])
+      expect(errors.join('\n')).toContain('No change recommended')
+      expect(printSpy.mock.calls.at(-1)![0]).toMatchObject({ ok: false, blocked })
+    } finally {
+      exitSpy.mockRestore()
+      errSpy.mockRestore()
     }
   })
 

@@ -17,15 +17,16 @@ mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir,
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db') }) }))
 
 import { CHORES_CLASSES, choresLaneState, pickAgentModel, rankCandidates, recommendPlan, type PlanCandidate, type PlanInput } from '../../src/core/model-plan'
+import { recommendForRef } from '../../src/core/model-plan-input'
 
-const luna: PlanCandidate = { id: 'openai-codex/gpt-5.6-luna', tier: 'premium', lane: 'subscription', contextWindow: 400_000, vision: true }
-const terra: PlanCandidate = { id: 'openai-codex/gpt-5.6-terra', tier: 'standard', lane: 'subscription', contextWindow: 400_000, vision: true }
-const mini: PlanCandidate = { id: 'openai-codex/gpt-5.4-mini', tier: 'budget', lane: 'subscription', contextWindow: 200_000, vision: false }
-const miniUnknown: PlanCandidate = { id: 'openai-codex/gpt-5.4-nano', tier: 'budget', lane: 'subscription', contextWindow: 128_000, vision: null }
-const haiku: PlanCandidate = { id: 'anthropic/claude-haiku-4-5', tier: 'budget', lane: 'metered', pricePer1M: 6, vision: true }
-const sonnet: PlanCandidate = { id: 'anthropic/claude-sonnet-4-6', tier: 'standard', lane: 'metered', pricePer1M: 18, vision: true }
-const opus: PlanCandidate = { id: 'anthropic/claude-opus-4-6', tier: 'premium', lane: 'metered', pricePer1M: 90, vision: true }
-const unpriced: PlanCandidate = { id: 'mystery/cheap', tier: 'budget', lane: 'metered', vision: null }
+const luna: PlanCandidate = { id: 'openai-codex/gpt-5.6-luna', tier: 'premium', lane: 'subscription', contextWindow: 400_000, vision: true, proven: true }
+const terra: PlanCandidate = { id: 'openai-codex/gpt-5.6-terra', tier: 'standard', lane: 'subscription', contextWindow: 400_000, vision: true, proven: true }
+const mini: PlanCandidate = { id: 'openai-codex/gpt-5.4-mini', tier: 'budget', lane: 'subscription', contextWindow: 200_000, vision: false, proven: true }
+const miniUnknown: PlanCandidate = { id: 'openai-codex/gpt-5.4-nano', tier: 'budget', lane: 'subscription', contextWindow: 128_000, vision: null, proven: true }
+const haiku: PlanCandidate = { id: 'anthropic/claude-haiku-4-5', tier: 'budget', lane: 'metered', pricePer1M: 6, vision: true, proven: true }
+const sonnet: PlanCandidate = { id: 'anthropic/claude-sonnet-4-6', tier: 'standard', lane: 'metered', pricePer1M: 18, vision: true, proven: true }
+const opus: PlanCandidate = { id: 'anthropic/claude-opus-4-6', tier: 'premium', lane: 'metered', pricePer1M: 90, vision: true, proven: true }
+const unpriced: PlanCandidate = { id: 'mystery/cheap', tier: 'budget', lane: 'metered', vision: null, proven: true }
 
 function input(over: Partial<PlanInput>): PlanInput {
   return { candidates: [], currentDefaultModel: null, routing: { routes: [], tagOverrides: [] }, enrichmentEnabled: true, ...over }
@@ -157,5 +158,134 @@ describe('choresLaneState (Simple view)', () => {
     expect(choresLaneState(mixed, luna.id)).toMatchObject({ model: null, mixed: true, models: [luna.id, mini.id] })
     const thinking = { routes: CHORES_CLASSES.map((workClass) => ({ workClass, model: terra.id, thinking: 'low' as const })), tagOverrides: [] }
     expect(choresLaneState(thinking, luna.id).mixed).toBe(true)
+  })
+})
+
+describe('only proven models are proposed (margo 2026-10-18)', () => {
+  const astra: PlanCandidate = { id: 'openai-codex/gpt-6-astra', tier: 'standard', lane: 'subscription', contextWindow: 400_000, vision: true, proven: true }
+  const retiredMini: PlanCandidate = { id: 'openai-codex/gpt-5.4-mini', tier: 'budget', lane: 'subscription', contextWindow: 400_000, vision: true, proven: false }
+
+  it('replays margo: a listed-but-never-run lighter model is named, not proposed, and no route changes', () => {
+    const plan = recommendPlan(input({ candidates: [astra, retiredMini], currentDefaultModel: astra.id }))
+    expect(plan.agent.model).toBe(astra.id)
+    expect(plan.chores.model).toBe(astra.id)
+    expect(plan.routes.every((route) => route.model === null)).toBe(true)
+    expect(plan.ops).toEqual([])
+    expect(plan.notes.join(' ')).toContain(`Not seen running here in the last week, so not proposed: ${retiredMini.id}`)
+  })
+
+  it('a proven lighter model is still proposed for the chores', () => {
+    const plan = recommendPlan(input({ candidates: [astra, { ...retiredMini, proven: true }], currentDefaultModel: astra.id }))
+    expect(plan.chores.model).toBe(retiredMini.id)
+    expect(plan.ops.length).toBeGreaterThan(0)
+  })
+
+  it('replacing a dead default prefers a proven model over a stronger unproven one', () => {
+    const strongUnproven: PlanCandidate = { ...luna, proven: false }
+    const pick = pickAgentModel(input({ candidates: [strongUnproven, astra], currentDefaultModel: 'openai/gone' }))
+    expect(pick).toMatchObject({ model: astra.id, suitability: 'known' })
+  })
+
+  it('a dead default with nothing proven proposes NO replacement (the margo failure mode)', () => {
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: 'openai/gone' }))
+    expect(plan.agent).toMatchObject({ model: null, suitability: 'none' })
+    expect(plan.agent.why).toContain('probe a model or run a task')
+    expect(plan.ops.some((op) => op.ref === 'policy:defaultModel')).toBe(false)
+  })
+
+  it('a dead default with nothing proven changes NOTHING — existing chores routes are kept, not cleared onto the dead default', () => {
+    const routing = { routes: [{ workClass: 'relay' as const, model: mini.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }], currentDefaultModel: 'openai/gone', routing }))
+    expect(plan.ops).toEqual([])
+    expect(plan.blocked).toContain('probe a model or run a task')
+    expect(plan.routes.find((r) => r.workClass === 'relay')?.model).toBe(mini.id)
+  })
+
+  it('nothing eligible at all with a dead default: routes are kept, nothing changes', () => {
+    const routing = { routes: [{ workClass: 'relay' as const, model: mini.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [], currentDefaultModel: 'openai/gone', routing }))
+    expect(plan.ops).toEqual([])
+    expect(plan.blocked).toBeTruthy()
+    expect(plan.routes.find((r) => r.workClass === 'relay')?.model).toBe(mini.id)
+  })
+
+  it('a proven text-only default never absorbs an enrichment route when nothing proven can see', () => {
+    const textOnly: PlanCandidate = { ...terra, vision: false, proven: true }
+    const routing = { routes: [{ workClass: 'enrichment' as const, model: luna.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [textOnly, { ...luna, proven: false }], currentDefaultModel: textOnly.id, routing }))
+    expect(plan.enrichment).toBe('kept')
+    expect(plan.routes.find((r) => r.workClass === 'enrichment')).toMatchObject({ model: luna.id, reason: expect.stringContaining('kept on') })
+    expect(plan.ops.some((op) => op.ref === 'route:enrichment')).toBe(false)
+    expect(plan.notes.join(' ')).not.toContain('enrichment will fail')
+    expect(plan.notes.join(' ')).toContain(`Enrichment stays on ${luna.id}`)
+    expect(recommendForRef(plan, 'route:enrichment')).toBe(luna.id)
+  })
+
+  it('an unproven text-only default keeping a vision-capable enrichment route reports it as kept, not failing', () => {
+    const textOnly: PlanCandidate = { ...terra, vision: false, proven: false }
+    const routing = { routes: [{ workClass: 'enrichment' as const, model: luna.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [textOnly, { ...luna, proven: false }], currentDefaultModel: textOnly.id, routing }))
+    expect(plan.enrichment).toBe('kept')
+    expect(plan.routes.find((r) => r.workClass === 'enrichment')?.model).toBe(luna.id)
+    expect(plan.notes.join(' ')).not.toContain('enrichment will fail')
+  })
+
+  it('enrichment status follows the FINAL route: a kept text-only enrichment route is reported as failing, not as the agent model', () => {
+    const routing = { routes: [{ workClass: 'enrichment' as const, model: mini.id }], tagOverrides: [] } // mini: vision false
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: luna.id, routing }))
+    expect(plan.routes.find((r) => r.workClass === 'enrichment')?.model).toBe(mini.id)
+    expect(plan.enrichment).toBe('unset')
+    expect(plan.notes.join(' ')).toContain('enrichment will fail')
+  })
+
+  it('notes never contradict the final route: a kept blind enrichment route is "will fail", never "runs on the agent model"', () => {
+    const blindChores: PlanCandidate = { ...mini, proven: true } // vision false
+    const blindRoute: PlanCandidate = { ...miniUnknown, vision: false, proven: false }
+    const routing = { routes: [{ workClass: 'enrichment' as const, model: blindRoute.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }, blindChores, blindRoute], currentDefaultModel: luna.id, routing }))
+    expect(plan.routes.find((r) => r.workClass === 'enrichment')?.model).toBe(blindRoute.id)
+    expect(plan.enrichment).toBe('unset')
+    expect(plan.notes.join(' ')).toContain('enrichment will fail')
+    expect(plan.notes.join(' ')).not.toContain('runs on')
+  })
+
+  it('a blocked plan keeping a listed vision-capable enrichment route reports it as kept', () => {
+    const routing = { routes: [{ workClass: 'enrichment' as const, model: luna.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }], currentDefaultModel: 'openai/gone', routing }))
+    expect(plan.blocked).toBeTruthy()
+    expect(plan.enrichment).toBe('kept')
+    expect(plan.notes.join(' ')).not.toContain('enrichment will fail')
+  })
+
+  it('a kept route is described only with what is known: unknown vision stays unknown, proof is not denied when present', () => {
+    // terra (unproven default) does the chores; enrichment is routed to a
+    // PROVEN heavier model whose vision is unknown — the route is kept.
+    const lunaUnknownSight: PlanCandidate = { ...luna, vision: null, proven: true }
+    const routing = { routes: [{ workClass: 'enrichment' as const, model: lunaUnknownSight.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [{ ...terra, proven: false }, lunaUnknownSight], currentDefaultModel: terra.id, routing }))
+    expect(plan.enrichment).toBe('kept')
+    const note = plan.notes.find((n) => n.startsWith('Enrichment stays on'))!
+    expect(note).toContain('unknown here')
+    expect(note).not.toContain('has not run')
+  })
+
+  it('an unproven (kept) default never absorbs a working chores route', () => {
+    const routing = { routes: [{ workClass: 'relay' as const, model: mini.id }], tagOverrides: [] }
+    const plan = recommendPlan(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: luna.id, routing }))
+    expect(plan.agent.model).toBe(luna.id)
+    expect(plan.routes.find((r) => r.workClass === 'relay')).toMatchObject({ model: mini.id, reason: expect.stringContaining('kept on') })
+    expect(plan.ops.some((op) => op.ref === 'route:relay')).toBe(false)
+  })
+
+  it('with nothing proven yet (a fresh install) the strongest listed model is offered as unverified', () => {
+    const pick = pickAgentModel(input({ candidates: [{ ...luna, proven: false }, { ...mini, proven: false }], currentDefaultModel: null }))
+    expect(pick.model).toBe(luna.id)
+    expect(pick.suitability).toBe('unknown')
+    expect(pick.why).toMatch(/unverified/)
+  })
+
+  it('keeping the current default needs no proof (it is not a change)', () => {
+    const pick = pickAgentModel(input({ candidates: [{ ...luna, proven: false }], currentDefaultModel: luna.id }))
+    expect(pick).toMatchObject({ model: luna.id, suitability: 'known' })
   })
 })

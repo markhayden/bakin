@@ -12,7 +12,7 @@ import { getContentDir } from '../../../src/core/content-dir'
 import { getBootId } from '../../../src/core/boot-id'
 import { createSelectionMutator, type MutateRequest, type MutateResult, type SelectionMutator } from '../../../src/core/model-mutations'
 import { evaluateSelections, proposeRepairs } from '../../../src/core/model-selections'
-import { recommendForRef } from '../../../src/core/model-plan-input'
+import { provenForRef, recommendForRef, resolveProvenModels } from '../../../src/core/model-plan-input'
 import { notePendingChange } from '../../../src/core/pending-restart'
 import { setModelsCache } from './available-models'
 import { readRoutingSettings } from './routing-settings'
@@ -43,6 +43,11 @@ export function getSelectionMutator(ctx: PluginContext): SelectionMutator {
     recommendFor: (ref) => {
       const plan = lastPlan()
       return plan ? recommendForRef(plan, ref) : null
+    },
+    // A refused write's suggestion is held to the same proof as the repair.
+    proven: async () => {
+      const proven = await resolveProvenModels(ctx.runtime)
+      return (model, ref) => provenForRef(proven, model, ref)
     },
     audit: (event, data) => ctx.activity.audit(event.replace(/^models\./, ''), 'system', data),
   })
@@ -93,7 +98,14 @@ export async function describeSelections(ctx: PluginContext) {
       return null
     }),
   ])
-  const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), evaluation.reportFor, { recommendFor: (ref) => (plan ? recommendForRef(plan, ref) : null), revision })
+  // Proposals feed the `safe` dead-selections repair (auto-applied by
+  // escalation), so a target must have run here — never just be listed.
+  const proven = await resolveProvenModels(ctx.runtime)
+  const proposals = proposeRepairs(states.filter((s) => s.ref !== 'ui:mode'), evaluation.reportFor, {
+    recommendFor: (ref) => (plan ? recommendForRef(plan, ref) : null),
+    revision,
+    proven: (model, ref) => provenForRef(proven, model, ref),
+  })
   return {
     revision,
     // Which routing knobs the ACTIVE runtime honors — the page hides the rest.

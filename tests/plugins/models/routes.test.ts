@@ -98,6 +98,9 @@ mock.module('../../../src/core/execution-ledger', () => ({
   // Model-availability evidence (#852) — inert here; covered by
   // tests/plugins/models/rejection-overlay*.test.ts.
   recordModelRejection: mock(() => ({ opened: false, id: 0 })),
+  recordModelProbeSuccess: () => {},
+  // Every catalog model has run here (the plan + proposals require proof).
+  listModelProbeSuccessesSince: () => provenForTests,
   resolveModelRejection: mock(() => false),
   listModelRejections: mock(() => []),
   // dispatch-turns (dynamic import in /budget/status) needs the dispatch verbs at load.
@@ -131,6 +134,8 @@ mock.module('../../../src/core/task-store', () => ({
   updateTask: async () => {},
   blockTask: async () => {},
 }))
+
+let provenForTests: string[] = []
 
 // The spend engine's observed side — empty for route tests.
 mock.module('../../../packages/core/src/usage-history/store', () => ({
@@ -454,6 +459,10 @@ describe('GET/POST /selections — the ONE write path (#907)', () => {
     const off = activated.ctx.events.on('models.catalog_changed', (_event, data) => { events.push(data) })
     const { _resetModelHoldMemo } = await import('../../../src/core/dispatch-turns')
     routingPolicy.defaultModel = 'xai/grok-4' // runtime-unavailable ⇒ a dead policy:defaultModel
+    // The replacement must have run here (proof gate) — prove the eligible catalog.
+    provenForTests = ['anthropic/claude-sonnet-4-6', 'anthropic/claude-opus-4-6', 'anthropic/claude-haiku-4-5', 'google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'openai-codex/gpt-5.5', 'openai-codex/gpt-5.6-luna']
+    const { invalidateResolvedProof } = await import('../../../src/core/model-plan-input')
+    invalidateResolvedProof()
     // A proposal is only offered for a model whose eligibility is VERIFIED
     // (never on partial/failed credential evidence): give the runtime a
     // complete credential inventory for this test.
@@ -479,6 +488,7 @@ describe('GET/POST /selections — the ONE write path (#907)', () => {
     } finally {
       off()
       runtime.credentials = savedCredentials
+      provenForTests = []
       setModelsCache(null)
       writeRuntimeConfig()
       _resetModelHoldMemo()

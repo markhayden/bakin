@@ -47,6 +47,7 @@ mock.module('../../../src/core/app-services', () => ({
 import { modelsComponent } from '../../../src/core/onboarding/models'
 import { readPluginSettings, writePluginSettings } from '../../../packages/core/src/plugins/settings-store'
 import { closeDb } from '../../../packages/core/src/storage/db'
+import { recordModelProbeSuccess } from '../../../packages/core/src/execution/ledger'
 import { installInOperation } from '../../helpers/operation-harness'
 import type { ComponentInstallOptions } from '../../../src/core/onboarding/types'
 
@@ -59,8 +60,11 @@ function routes(): Array<{ workClass: string; model?: string }> {
 }
 
 beforeEach(() => {
+  closeDb()
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(join(testDir, 'plugin-settings'), { recursive: true })
+  // Every listed model has run here (the plan only proposes proven models).
+  for (const model of [LUNA, TERRA, MINI]) recordModelProbeSuccess({ model })
   policyWrites.length = 0
   defaultModel = LUNA
   catalog = [
@@ -112,6 +116,17 @@ describe('models onboarding component (S7)', () => {
     expect(policyWrites).toEqual([{ defaultModel: LUNA }])
     expect(routes()).toHaveLength(4)
     expect(r.message).toContain(LUNA)
+  })
+
+  it('a dead default with NOTHING proven is not "already on the plan": --yes writes nothing and says why', async () => {
+    defaultModel = 'openai/gpt-6-astra'
+    catalog = [{ id: 'openai-codex/gpt-9-unseen', available: true, input: 'text,image' }, catalog[3]!]
+    const r = await installInOperation(modelsComponent, YES)
+    expect(r.status).toBe('skipped')
+    expect(r.message).toContain('No model change recommended')
+    expect(r.message).toContain('probe a model or run a task')
+    expect(policyWrites).toEqual([])
+    expect(routes()).toHaveLength(0)
   })
 
   it('a WORKING default is never moved by --yes (the recommender keeps an eligible current default); no default at all gets one', async () => {

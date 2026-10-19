@@ -114,6 +114,7 @@ describe('ModelsPage component', () => {
   let eligibilityState: Record<string, Record<string, unknown>>
   let proposalsState: Array<Record<string, unknown>>
   let routeProposalsState: { proposals: Array<Record<string, unknown>>; skipped: Array<Record<string, unknown>> }
+  let planBlockedState: string | undefined
   let evidenceState: Record<string, string>
   let routingState: {
     routes: Array<{ workClass: string; model?: string; thinking?: string }>
@@ -159,6 +160,7 @@ describe('ModelsPage component', () => {
     agentStoreState = { teams: [], displaySettings: {} }
     pendingState = []
     routeProposalsState = { proposals: [], skipped: [] }
+    planBlockedState = undefined
     eligibilityState = {}
     proposalsState = []
     supportState = { defaultModel: true, fallbackModels: true, defaultSubagentModel: true, aliases: true, perAgentSubagentModel: true, supportedThinkingLevels: ['off', 'low', 'medium', 'high'], perTurnModel: true }
@@ -224,8 +226,9 @@ describe('ModelsPage component', () => {
             chores: { model: 'anthropic/claude-haiku-4-5', why: '~$6 per 1M tokens vs ~$18 for anthropic/claude-sonnet-4-6', suitability: 'known' },
             routes: ['auto-title', 'enrichment', 'relay', 'team-routing', 'skill-mapping'].map((workClass) => ({ workClass, model: 'anthropic/claude-haiku-4-5', reason: 'cheapest' })),
             enrichment: 'chores',
-            ops: ['auto-title', 'enrichment', 'relay', 'team-routing', 'skill-mapping'].map((workClass) => ({ ref: `route:${workClass}`, set: { model: 'anthropic/claude-haiku-4-5' } })),
+            ops: planBlockedState ? [] : ['auto-title', 'enrichment', 'relay', 'team-routing', 'skill-mapping'].map((workClass) => ({ ref: `route:${workClass}`, set: { model: 'anthropic/claude-haiku-4-5' } })),
             notes: [],
+            ...(planBlockedState ? { blocked: planBlockedState } : {}),
           },
           routeProposals: routeProposalsState,
           candidates: 4,
@@ -775,6 +778,29 @@ describe('ModelsPage component', () => {
       const choresLane = within(panel.getByTestId('lane-chores'))
       expect(choresLane.getByRole('combobox', { name: 'Model' }).textContent).toContain('Same as the agent model')
       expect(screen.queryByTestId('customizations-line')).toBeNull()
+    })
+
+    it('a blocked plan says why instead of claiming you are on the recommended plan', async () => {
+      configState = { ...configState, defaultSubagentModel: null, fallbackModels: [] }
+      aliasesState = {}
+      routingState = { routes: [], tagOverrides: [] }
+      planBlockedState = 'Your current default (openai/gone) cannot run here, and no other model has been seen running here in the last week — probe a model or run a task on one, then the plan can propose it.'
+      render(<ModelsPage />)
+      expect((await screen.findByRole('tab', { name: 'Simple' })).getAttribute('aria-selected')).toBe('true')
+      const panel = within(screen.getByRole('tabpanel', { name: 'Simple' }))
+      expect(await panel.findByText(/probe a model or run a task on one/)).toBeTruthy()
+      expect(panel.queryByText('You are on the recommended plan.')).toBeNull()
+      expect(panel.queryByRole('button', { name: 'Use recommended plan' })).toBeNull()
+    })
+
+    it('Advanced: a blocked plan shows its reason, never the on-plan badge or the apply button', async () => {
+      uiModeState = 'advanced'
+      planBlockedState = 'Your current default (openai/gone) cannot run here, and no other model has been seen running here in the last week — probe a model or run a task on one, then the plan can propose it.'
+      render(<ModelsPage />)
+      const card = await screen.findByTestId('overview-plan')
+      await waitFor(() => expect(within(card).getByText(/probe a model or run a task on one/)).toBeTruthy())
+      expect(within(card).queryByText('On the recommended plan')).toBeNull()
+      expect(within(card).queryByRole('button', { name: 'Use recommended plan' })).toBeNull()
     })
 
     it('a persisted mode wins over classification; switching writes ui:mode and flips the view', async () => {

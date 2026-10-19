@@ -153,6 +153,17 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
   }
   for (const [workClass, cell] of Object.entries(premiumRuns)) {
     const escalated = cell.usdMicros > PREMIUM_ON_CHEAP_WATCH_USD_MICROS
+    // The repair only routes classes the plan proposes for — a cheaper model
+    // that has not been seen running here is never proposed (proof gate).
+    const routable = proposals.some((p) => p.workClass === workClass)
+    // An explicitly routed class is the operator's choice — the recommender
+    // never proposes over it, so the fix is to change that route.
+    const routedTo = config.routes.find((r) => r.workClass === workClass)?.model ?? null
+    const cheaper = routable
+      ? ' — one click routes it to a cheap model.'
+      : routedTo
+        ? `. It is routed to ${routedTo} on purpose — change that route to a cheaper model if this is not intended.`
+        : '. No cheaper model has been seen running here yet; run a task on one or probe it, and Health can route this.'
     observations.push(healthWarning({
       key: `premium-on-cheap-${workClass}`,
       summary: `${cell.runs} '${workClass}' turn(s) ran on premium-tier model(s) in the last 7 days (${[...cell.models].join(', ')}).`,
@@ -167,11 +178,15 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
         key: `premium-on-cheap-${workClass}`,
         title: `Premium model on cheap work (${workClass})`,
         impact: escalated
-          ? `Cheap background work billed $${(cell.usdMicros / 1_000_000).toFixed(2)} at premium rates this week — one click routes it to a cheap model.`
-          : 'Cheap background work is billing at premium rates. One click routes it to a cheap model.',
+          ? `Cheap background work billed $${(cell.usdMicros / 1_000_000).toFixed(2)} at premium rates this week${cheaper}`
+          : `Cheap background work is billing at premium rates${cheaper}`,
         disposition: escalated ? 'watch' : 'advisory',
         resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
-        resolution: { key: 'route-cheaper', type: 'repair', label: 'Apply recommended routes', actionId: 'apply-recommended-routes' },
+        resolution: routable
+          ? { key: 'route-cheaper', type: 'repair', label: 'Apply recommended routes', actionId: 'apply-recommended-routes' }
+          : routedTo
+            ? { key: 'change-route', type: 'navigate', label: 'Change the route', href: `/models?ref=route:${workClass}` }
+            : { key: 'prove-cheaper-model', type: 'navigate', label: 'Open Models', href: '/models' },
       },
     }))
   }

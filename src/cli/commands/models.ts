@@ -48,6 +48,7 @@ function enrichmentLine(plan: PlanRecommendation): string {
     case 'chores': return 'runs on the chores model'
     case 'agent': return `runs on the agent model (${plan.agent.model}) — the chores model cannot see images`
     case 'unset': return 'will fail until a vision-capable model is available'
+    case 'kept': return `stays on its configured model (${plan.routes.find((r) => r.workClass === 'enrichment')?.model ?? 'unknown'})`
     case 'disabled': return 'off (assets enrichment is disabled)'
   }
 }
@@ -65,6 +66,10 @@ function printPlan(payload: PlanPayload): void {
   console.log(`  Enrichment    ${enrichmentLine(recommended)}`)
   for (const note of recommended.notes) console.log(`  Note: ${note}`)
   console.log('')
+  if (recommended.blocked) {
+    console.log(`No change recommended: ${recommended.blocked}`)
+    return
+  }
   if (recommended.ops.length === 0) {
     console.log('You are already on this plan — nothing to change.')
     return
@@ -85,6 +90,11 @@ export async function cmdPlan(apply: boolean, json: boolean): Promise<void> {
       return
     }
     const ops = payload.recommended.ops
+    if (payload.recommended.blocked) {
+      if (json) print({ ok: false, applied: [], failed: [], pending: [], blocked: payload.recommended.blocked })
+      else console.error(`No change recommended: ${payload.recommended.blocked}`)
+      process.exit(1)
+    }
     if (ops.length === 0) {
       if (json) print({ ok: true, applied: [], failed: [], pending: [], message: 'already on the recommended plan' })
       else console.log('You are already on the recommended plan — nothing to change.')

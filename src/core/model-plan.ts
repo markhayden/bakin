@@ -33,6 +33,13 @@ export interface PlanCandidate {
   contextWindow?: number
   /** true/false when known (runtime `input` modalities, then the curated list); null = unknown. */
   vision: boolean | null
+  /**
+   * Positive evidence it runs HERE (tokens in usage history or a passing
+   * probe within the proof window). The plan only proposes MOVING to a
+   * proven model — a runtime listing can be stale (a retired model stayed
+   * listed on margo, 2026-10-18).
+   */
+  proven: boolean
 }
 
 export interface PlanInput {
@@ -78,14 +85,23 @@ export interface PlanRecommendation {
   /**
    * Where enrichment goes: `chores` (the chores model can see), `agent` (only
    * the agent model can — the route stays unrouted and inherits it), `unset` (no
-   * eligible model has vision — enrichment will fail until one is), or
-   * `disabled` (enrichment is off; no vision requirement).
+   * eligible model has vision — enrichment will fail until one is), `kept`
+   * (no PROVEN model can see, but the configured enrichment route's model is
+   * still listed and can — it stays where it is), or `disabled` (enrichment
+   * is off; no vision requirement).
    */
-  enrichment: 'chores' | 'agent' | 'unset' | 'disabled'
+  enrichment: 'chores' | 'agent' | 'unset' | 'kept' | 'disabled'
   /** Ops that move the persisted state to this plan (empty = already there). Derived from `routes` + the agent pick. */
   ops: MutationOp[]
   /** Anything the plan could not satisfy or had to assume, in plain words. */
   notes: string[]
+  /**
+   * Set when the plan cannot recommend ANYTHING safe (a dead default and no
+   * proven replacement): `ops` is empty because nothing should change, not
+   * because the install is already on the plan — surfaces show this instead
+   * of "you are on the recommended plan".
+   */
+  blocked?: string
 }
 
 function tierRank(candidate: PlanCandidate): number {
@@ -122,7 +138,7 @@ export function rankCandidates(candidates: PlanCandidate[]): PlanCandidate[] {
   })
 }
 
-/** Agent pick: the current default if eligible, else the highest-tier eligible model. */
+/** Agent pick: the current default if eligible (kept, not a change), else the strongest PROVEN model. */
 export function pickAgentModel(input: PlanInput): LanePick {
   const current = input.currentDefaultModel
     ? input.candidates.find((c) => c.id === input.currentDefaultModel) ?? null
@@ -133,17 +149,33 @@ export function pickAgentModel(input: PlanInput): LanePick {
   if (input.candidates.length === 0) {
     return { model: null, why: 'No model can run here yet — add credentials for a provider first.', suitability: 'none' }
   }
-  const strongest = [...input.candidates].sort((a, b) => {
+  const strongestFirst = [...input.candidates].sort((a, b) => {
     if (tierRank(a) !== tierRank(b)) return tierRank(b) - tierRank(a)
     const ca = a.contextWindow ?? 0
     const cb = b.contextWindow ?? 0
     if (ca !== cb) return cb - ca
     return byId(a, b)
-  })[0]!
-  const why = input.currentDefaultModel
-    ? `Your current default (${input.currentDefaultModel}) cannot run here; this is the strongest model that can.`
-    : 'The strongest model that can run here.'
-  return { model: strongest.id, why, suitability: 'known' }
+  })
+  const proven = strongestFirst.find((c) => c.proven)
+  if (proven) {
+    const why = input.currentDefaultModel
+      ? `Your current default (${input.currentDefaultModel}) cannot run here; this is the strongest model that has.`
+      : 'The strongest model that has run here.'
+    return { model: proven.id, why, suitability: 'known' }
+  }
+  // Nothing proven. Replacing a dead default with an unverified model is
+  // exactly the margo failure, so propose nothing — only a TRUE fresh
+  // install (no default at all) gets the strongest listed model, disclosed
+  // as unverified, because something has to be the first model.
+  if (input.currentDefaultModel) {
+    return {
+      model: null,
+      why: `Your current default (${input.currentDefaultModel}) cannot run here, and no other model has been seen running here in the last week — probe a model or run a task on one, then the plan can propose it.`,
+      suitability: 'none',
+    }
+  }
+  const strongest = strongestFirst[0]!
+  return { model: strongest.id, why: `No model has been seen running here yet; ${strongest.id} is the strongest listed — unverified until it runs.`, suitability: 'unknown' }
 }
 
 function priceWhy(pick: PlanCandidate, agent: PlanCandidate | null): string {
@@ -172,14 +204,21 @@ export function pickChoresModel(input: PlanInput, agent: LanePick): { pick: Lane
   const ceiling = agentCandidate ? tierRank(agentCandidate) : Number.POSITIVE_INFINITY
   const notHeavier = rankCandidates(input.candidates.filter((c) => tierRank(c) <= ceiling))
   const agentAt = agentCandidate ? notHeavier.findIndex((c) => c.id === agentCandidate.id) : -1
-  const lighter = agentAt === -1 ? notHeavier : notHeavier.slice(0, agentAt)
+  const listedLighter = agentAt === -1 ? notHeavier : notHeavier.slice(0, agentAt)
+  // A chores route MOVES work off the agent model, so only a proven model
+  // may take it; lighter models that are merely listed are named, not used.
+  const lighter = listedLighter.filter((c) => c.proven)
+  const unproven = listedLighter.filter((c) => !c.proven).map((c) => c.id)
+  if (unproven.length > 0) {
+    notes.push(`Not seen running here in the last week, so not proposed: ${unproven.slice(0, 5).join(', ')}${unproven.length > 5 ? ` (+${unproven.length - 5} more)` : ''}. Run a task on one or probe it, and the plan will consider it.`)
+  }
   const needsVision = input.enrichmentEnabled
   if (lighter.length === 0) {
     if (!agentCandidate) {
       return { pick: { model: null, why: 'No model can run here yet.', suitability: 'none' }, enrichment: needsVision ? 'unset' : 'disabled', notes }
     }
-    // Nothing lighter can run: the agent model does the chores (inherit).
-    const pick: LanePick = { model: agentCandidate.id, why: 'the agent model — nothing lighter can run here', suitability: 'known' }
+    // Nothing lighter has run here: the agent model does the chores (inherit).
+    const pick: LanePick = { model: agentCandidate.id, why: 'the agent model — nothing lighter has run here', suitability: 'known' }
     if (!needsVision) return { pick, enrichment: 'disabled', notes }
     if (agentCandidate.vision === true) return { pick, enrichment: 'chores', notes }
     if (agentCandidate.vision === null) {
@@ -235,16 +274,81 @@ function planRoutes(agent: LanePick, chores: LanePick, enrichment: PlanRecommend
       return { workClass, model: null, reason: 'No eligible model can see images — enrichment will fail until a vision-capable model is available.' }
     }
     if (!chores.model) return { workClass, model: null, reason: 'No model can run here yet.' }
-    if (chores.model === agent.model) return { workClass, model: null, reason: 'inherits the agent model — nothing lighter can run here' }
+    if (chores.model === agent.model) return { workClass, model: null, reason: 'inherits the agent model — nothing lighter has run here' }
     return { workClass, model: chores.model, reason: chores.why }
   })
+}
+
+const NO_VISION_NOTE = 'No eligible model can see images — enrichment will fail until a vision-capable model is available.'
+
+/**
+ * Enrichment status + notes from the FINAL enrichment route — the one source
+ * of truth, whatever path kept or moved it. An explicit route runs on its own
+ * model; an unrouted one inherits the agent model. A configured model that is
+ * not the chores or agent model is `kept`, described only with what is known
+ * about it (vision unknown stays unknown; proof is stated, never assumed).
+ */
+function finalEnrichment(
+  input: PlanInput,
+  agentModel: string | null,
+  choresModel: string | null,
+  routes: ChoresRoute[],
+  notes: string[],
+): { enrichment: PlanRecommendation['enrichment']; notes: string[] } {
+  // Every enrichment note is regenerated here from the final route; the
+  // provisional ones the lane pick wrote may describe a route that changed.
+  const others = notes.filter((n) => !/see images|enrichment/i.test(n))
+  if (!input.enrichmentEnabled) return { enrichment: 'disabled', notes: others }
+  const routed = routes.find((r) => r.workClass === 'enrichment')?.model ?? null
+  const effective = routed ?? agentModel
+  const candidate = effective ? input.candidates.find((c) => c.id === effective) : undefined
+  if (!effective || !candidate || candidate.vision === false) return { enrichment: 'unset', notes: [...others, NO_VISION_NOTE] }
+  const unknownSight = candidate.vision === null
+    ? [`Whether ${effective} can see images is unknown here — enrichment may fail until a vision-capable model is confirmed.`]
+    : []
+  if (routed && routed !== choresModel && routed !== agentModel) {
+    const sight = candidate.vision === true ? 'can see images' : 'may be able to see images (unknown here)'
+    const proof = candidate.proven ? '' : ' and has not run here in the last week'
+    return { enrichment: 'kept', notes: [...others, `Enrichment stays on ${routed}, which ${sight}${proof}.`] }
+  }
+  if (effective === choresModel) return { enrichment: 'chores', notes: [...others, ...unknownSight] }
+  const blindChores = choresModel && choresModel !== effective
+    ? [`${choresModel} cannot see images, so enrichment (captions, OCR, tags) runs on ${effective} instead.`]
+    : []
+  return { enrichment: 'agent', notes: [...others, ...blindChores, ...unknownSight] }
 }
 
 /** Recommend the two-lane plan and the ops that reach it from the current state. */
 export function recommendPlan(input: PlanInput): PlanRecommendation {
   const agent = pickAgentModel(input)
+  if (!agent.model) {
+    // No agent model can be recommended (a dead default with nothing proven,
+    // or nothing can run at all): change NOTHING — clearing a chores route
+    // here would make it inherit a default that cannot run.
+    const routes = CHORES_CLASSES.map((workClass) => ({ workClass, model: routedModel(input.routing, workClass), reason: agent.why }))
+    const { enrichment, notes } = finalEnrichment(input, input.currentDefaultModel, null, routes, [])
+    return { agent, chores: { model: null, why: agent.why, suitability: 'none' }, routes, enrichment, ops: [], notes, blocked: agent.why }
+  }
   const { pick: chores, enrichment, notes } = pickChoresModel(input, agent)
-  const routes = planRoutes(agent, chores, enrichment)
+  // Clearing a route moves its work onto the agent model, so that is a
+  // change TO the agent model: only when the agent model is proven. An
+  // unproven default (kept, not changed) never absorbs a working route.
+  const agentProven = input.candidates.find((c) => c.id === agent.model)?.proven === true
+  const routes = planRoutes(agent, chores, enrichment).map((route) => {
+    const current = routedModel(input.routing, route.workClass)
+    if (route.model === null && current !== null && !agentProven) {
+      return { ...route, model: current, reason: `kept on ${current} — the agent model (${agent.model}) has not been seen running here in the last week, so work is not moved onto it` }
+    }
+    // No proven model can see images, but the configured one is still listed
+    // and may: clearing it would only guarantee enrichment fails — keep it.
+    // A route to a model that is no longer listed is cleared as before.
+    const configured = current !== null ? input.candidates.find((c) => c.id === current) : undefined
+    if (route.workClass === 'enrichment' && enrichment === 'unset' && route.model === null && configured && configured.vision !== false) {
+      return { ...route, model: current, reason: `kept on ${current} — no model that has run here in the last week can see images` }
+    }
+    return route
+  })
+  const final = finalEnrichment(input, agent.model, chores.model, routes, notes)
   const ops: MutationOp[] = []
   if (agent.model && agent.model !== input.currentDefaultModel) {
     ops.push({ ref: 'policy:defaultModel', set: { model: agent.model } })
@@ -254,7 +358,7 @@ export function recommendPlan(input: PlanInput): PlanRecommendation {
       ops.push({ ref: `route:${route.workClass}`, set: { model: route.model } })
     }
   }
-  return { agent, chores, routes, enrichment, ops, notes }
+  return { agent, chores, routes, enrichment: final.enrichment, ops, notes: final.notes }
 }
 
 /** What Simple shows for the chores lane today. */

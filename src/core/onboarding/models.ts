@@ -123,7 +123,8 @@ function describe(plan: PlanRecommendation): string {
   const chores = plan.chores.model ?? '(none)'
   const enrichment = plan.enrichment === 'agent'
     ? `; enrichment on ${agent}`
-    : plan.enrichment === 'unset' ? '; enrichment will fail until a vision-capable model is available' : ''
+    : plan.enrichment === 'unset' ? '; enrichment will fail until a vision-capable model is available'
+    : plan.enrichment === 'kept' ? `; enrichment stays on ${plan.routes.find((r) => r.workClass === 'enrichment')?.model ?? 'its configured model'}` : ''
   return `agent model ${agent}, background chores ${chores} (${plan.chores.why})${enrichment}`
 }
 
@@ -187,6 +188,9 @@ async function install(opts: ComponentInstallOptions, op: OperationContext): Pro
   const { input, plan, persisted, problems } = await assess()
   if (input.candidates.length === 0) {
     return skip('no runnable model', 'No model can run here yet — add credentials for a provider, then `bakin models plan --apply`.')
+  }
+  if (plan.blocked) {
+    return skip('no proven model', `No model change recommended: ${plan.blocked}`)
   }
   if (plan.ops.length === 0) {
     const caveat = problems.length > 0 ? ` Needs attention: ${problems.join('; ')}.` : ''

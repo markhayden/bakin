@@ -140,6 +140,8 @@ export interface MutationDeps {
   listOpenRejections?: EligibilityDeps['listOpenRejections']
   /** Lane recommender for proposals (T3.2 supplies the real one). */
   recommendFor?: (ref: string) => string | null
+  /** Proof predicate for refused-write suggestions (`proposeRepairs`); omitted ⇒ eligibility alone. */
+  proven?: () => Promise<(model: string, ref: string) => boolean>
   audit?: (event: string, data: Record<string, unknown>) => void
 }
 
@@ -315,7 +317,8 @@ export function createSelectionMutator(deps: MutationDeps) {
       if (typeof model !== 'string' || model.length === 0) continue
       const e = evaluation.eligibilityOf({ ref: op.ref, model })
       if (e?.status === 'ineligible') {
-        const [proposal] = proposeRepairs([{ ref: op.ref, model, document: documentOf(op.ref), label: op.ref }], evaluation.reportFor, { recommendFor: deps.recommendFor ?? (() => null), revision })
+        const proven = deps.proven ? await deps.proven() : undefined
+        const [proposal] = proposeRepairs([{ ref: op.ref, model, document: documentOf(op.ref), label: op.ref }], evaluation.reportFor, { recommendFor: deps.recommendFor ?? (() => null), revision, ...(proven ? { proven } : {}) })
         throw new MutationRefused('model_not_eligible', `${model} cannot run here: ${e.detail}`, { ref: op.ref, reason: e.reason, ...(proposal && proposal.to ? { proposal } : {}) })
       }
       if (!e || e.status === 'unknown') warnings.push(`${op.ref}: could not verify ${model} (${e?.detail ?? 'no evidence'}) — saved anyway`)

@@ -374,6 +374,22 @@ const MIGRATIONS = [
       db.exec('CREATE INDEX budget_milestones_pending ON budget_milestones(notified_at) WHERE notified_at IS NULL')
     },
   },
+  {
+    // Positive model evidence from probes: one row per model, the last time a
+    // probe completed on it. The model plan only PROPOSES a model it has seen
+    // run (usage history or a passing probe) — a stale runtime listing is not
+    // proof. Turn successes need no row: usage.db already records every model
+    // that produced tokens. Coordination facts only.
+    version: 11,
+    up: (db: Db) => {
+      db.exec(
+        `CREATE TABLE model_probe_successes (
+           model         TEXT PRIMARY KEY,
+           last_ok_at    INTEGER NOT NULL
+         )`,
+      )
+    },
+  },
 ]
 
 /** Open the db with this module's schema applied. Every verb goes through here. */
@@ -1678,6 +1694,28 @@ export function resolveModelRejection(input: {
       .run(input.resolution, input.resolvedAt ?? Date.now(), input.model)
     return res.changes > 0
   })
+}
+
+/** Record a probe that completed on `model` (upsert; the latest time wins). */
+export function recordModelProbeSuccess(input: { model: string; at?: number }): void {
+  guard('recordModelProbeSuccess', () => {
+    ledger()
+      .prepare(
+        `INSERT INTO model_probe_successes (model, last_ok_at) VALUES (?, ?)
+         ON CONFLICT(model) DO UPDATE SET last_ok_at = MAX(last_ok_at, excluded.last_ok_at)`,
+      )
+      .run(input.model, input.at ?? Date.now())
+  })
+}
+
+/** Models whose last passing probe is at or after `sinceMs`. */
+export function listModelProbeSuccessesSince(sinceMs: number): string[] {
+  return guard('listModelProbeSuccessesSince', () =>
+    ledger()
+      .prepare<{ model: string }, [number]>('SELECT model FROM model_probe_successes WHERE last_ok_at >= ? ORDER BY model')
+      .all(sinceMs)
+      .map((row) => row.model),
+  )
 }
 
 /** Rejections, most recently seen first. `openOnly` = live rows. */

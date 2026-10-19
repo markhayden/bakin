@@ -45,6 +45,8 @@ export const ledgerMock = () => ({
   // Model-availability evidence (#852) — inert here; covered by
   // tests/core/model-rejections-ledger.test.ts + model-availability-wrapper.test.ts.
   recordModelRejection: () => ({ opened: false, id: 0 }),
+  recordModelProbeSuccess: () => {},
+  listModelProbeSuccessesSince: () => [],
   resolveModelRejection: () => false,
   listModelRejections: () => [],
 })

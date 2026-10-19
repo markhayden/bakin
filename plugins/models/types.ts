@@ -133,9 +133,11 @@ export interface PlanResponse {
     agent: PlanLaneWire
     chores: PlanLaneWire
     routes: Array<{ workClass: string; model: string | null; reason: string }>
-    enrichment: 'chores' | 'agent' | 'unset' | 'disabled'
+    enrichment: 'chores' | 'agent' | 'unset' | 'kept' | 'disabled'
     ops: SelectionOpWire[]
     notes: string[]
+    /** Set when nothing safe can be recommended (dead default, no proven replacement). */
+    blocked?: string
   }
   routeProposals: {
     proposals: Array<{ workClass: string; model: string; reason: string }>

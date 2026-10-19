@@ -50,7 +50,7 @@ describe('parseArgs', () => {
     expect(parseArgs(['--version', '0.1.0-rc.1'])).toEqual({
       package: PUBLIC_SDK_PACKAGE_NAME,
       version: '0.1.0-rc.1',
-      timeoutMs: 120_000,
+      timeoutMs: 600_000,
       baseDelayMs: 2_000,
       maxDelayMs: 30_000,
     })
@@ -86,7 +86,7 @@ describe('waitForNpmVersion', () => {
     const harness = fakeClock()
     const runner = runnerFrom([resolved('1.0.0')], harness)
     await waitForNpmVersion(
-      { package: PUBLIC_SDK_PACKAGE_NAME, version: '1.0.0', timeoutMs: 120_000, baseDelayMs: 2_000, maxDelayMs: 30_000 },
+      { package: PUBLIC_SDK_PACKAGE_NAME, version: '1.0.0', timeoutMs: 600_000, baseDelayMs: 2_000, maxDelayMs: 30_000 },
       { ...harness, runner },
     )
     expect(harness.viewCalls).toBe(1)
@@ -97,7 +97,7 @@ describe('waitForNpmVersion', () => {
     const harness = fakeClock()
     const runner = runnerFrom([NOT_FOUND, NOT_FOUND, resolved('0.0.1-rc.8')], harness)
     await waitForNpmVersion(
-      { package: PUBLIC_SDK_PACKAGE_NAME, version: '0.0.1-rc.8', timeoutMs: 120_000, baseDelayMs: 2_000, maxDelayMs: 30_000 },
+      { package: PUBLIC_SDK_PACKAGE_NAME, version: '0.0.1-rc.8', timeoutMs: 600_000, baseDelayMs: 2_000, maxDelayMs: 30_000 },
       { ...harness, runner },
     )
     expect(harness.viewCalls).toBe(3)
@@ -108,7 +108,7 @@ describe('waitForNpmVersion', () => {
     const harness = fakeClock()
     const runner = runnerFrom([{ status: 1, stdout: '', stderr: 'network failed' }], harness)
     await expect(waitForNpmVersion(
-      { package: PUBLIC_SDK_PACKAGE_NAME, version: '1.0.0', timeoutMs: 120_000, baseDelayMs: 2_000, maxDelayMs: 30_000 },
+      { package: PUBLIC_SDK_PACKAGE_NAME, version: '1.0.0', timeoutMs: 600_000, baseDelayMs: 2_000, maxDelayMs: 30_000 },
       { ...harness, runner },
     )).rejects.toThrow('Could not check')
     expect(harness.viewCalls).toBe(1)
