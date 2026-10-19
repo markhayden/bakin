@@ -4,7 +4,7 @@
  * from the J reviews (r2 #2, r3 #1–#5, r4 #1–#6) or the K design review.
  */
 import { describe, expect, it } from 'bun:test'
-import { restartHome, stopHome, type HttpAnswer, type LifecycleIo, type LockInfo, type ProcessInfo } from '../../src/cli/lifecycle-control'
+import { readServiceState, restartHome, stopHome, type HttpAnswer, type LifecycleIo, type LockInfo, type ProcessInfo } from '../../src/cli/lifecycle-control'
 
 interface Server { pid: number; bootId: string; port: number; state: string; protocol?: 'new' | 'old'; secret: string; alive: boolean; answers: boolean }
 
@@ -327,7 +327,7 @@ describe('restart', () => {
 describe('stop — fail closed on what it cannot see', () => {
   it('an unreadable service state stops nothing (a KeepAlive job could respawn it) (K r1 #5)', async () => {
     const me = fresh()
-    const h = harness({ lock: lockFor(me), servers: [me], launchctl: { ok: false, output: 'launchctl: internal error' } })
+    const h = harness({ lock: lockFor(me), servers: [me], plist: '<key>BAKIN_HOME</key>\n<string>/home/me/.bakin</string>', launchctl: { ok: false, output: 'launchctl: internal error' } })
     const out = await stopHome(h.io)
     expect(out.ok).toBe(false)
     expect(h.shutdownRequests).toEqual([])
@@ -352,5 +352,57 @@ describe('stop — fail closed on what it cannot see', () => {
     const out = await stopHome(h.io)
     expect(out.ok).toBe(false)
     expect(out.message).toContain('pid 7070')
+  })
+})
+
+describe('service state — read only what is unambiguous (K r2)', () => {
+  it('launchd: the job\'s own environment block, never `inherited environment`', () => {
+    const h = harness({
+      launchctl: { ok: true, output: 'gui/501/com.makinbakin.bakin = {\n\tinherited environment = {\n\t\tBAKIN_HOME => /other/home\n\t}\n\tenvironment = {\n\t\tBAKIN_HOME => /home/me/.bakin\n\t}\n\tstate = not running\n}' },
+    })
+    expect(readServiceState(h.io)).toEqual({ kind: 'loaded', pid: null, idle: true, home: '/home/me/.bakin' })
+  })
+
+  it('launchd: a job mid-spawn is not idle', () => {
+    const h = harness({ launchctl: { ok: true, output: 'x = {\n\tenvironment = {\n\t\tBAKIN_HOME => /home/me/.bakin\n\t}\n\tstate = spawn scheduled\n}' } })
+    expect(readServiceState(h.io)).toMatchObject({ kind: 'loaded', pid: null, idle: false })
+  })
+
+  it('systemd: an EnvironmentFile makes the home unknowable; `activating` is not idle', () => {
+    const h = harness({ platform: 'linux' })
+    h.io.exec = () => ({ ok: true, output: 'LoadState=loaded\nActiveState=activating\nMainPID=0\nEnvironment=BAKIN_HOME=/home/me/.bakin\nEnvironmentFiles=/home/me/.bakin.env (ignore_errors=no)\n' })
+    expect(readServiceState(h.io)).toEqual({ kind: 'loaded', pid: null, idle: false, home: null })
+  })
+
+  it('no unit installed + no reachable manager (Docker/CI) is absent, not unknown', () => {
+    const h = harness({ platform: 'linux' })
+    h.io.exec = () => ({ ok: false, output: 'Failed to connect to bus' })
+    expect(readServiceState(h.io)).toEqual({ kind: 'absent' })
+  })
+})
+
+describe('K r2 — fail closed', () => {
+  it('restart with nothing running refuses when an installed service\'s state is unreadable (it may be starting)', async () => {
+    const h = harness({ plist: '<key>BAKIN_HOME</key>\n<string>/home/me/.bakin</string>', launchctl: { ok: false, output: 'launchctl: internal error' } })
+    const out = await restartHome(h.io, { baseEnv: {} })
+    expect(out.ok).toBe(false)
+    expect(h.spawns).toEqual([])
+  })
+
+  it('restart never interrupts this home\'s service while it is starting', async () => {
+    const h = harness({ launchctl: { ok: true, output: 'x = {\n\tenvironment = {\n\t\tBAKIN_HOME => /home/me/.bakin\n\t}\n\tstate = spawn scheduled\n}' } })
+    const out = await restartHome(h.io, { baseEnv: {} })
+    expect(out.ok).toBe(false)
+    expect(h.execs.some((e) => e.includes('kickstart'))).toBe(false)
+    expect(h.spawns).toEqual([])
+  })
+
+  it('stop refuses while a restart child waits for this server to exit (it would start it again)', async () => {
+    const me = fresh()
+    const h = harness({ lock: lockFor(me), servers: [me], processes: [{ pid: 3030, command: 'bun server.ts __bakin-restart-child 500' }] })
+    const out = await stopHome(h.io)
+    expect(out.ok).toBe(false)
+    expect(h.shutdownRequests).toEqual([])
+    expect(me.alive).toBe(true)
   })
 })

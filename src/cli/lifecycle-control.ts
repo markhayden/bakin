@@ -125,8 +125,13 @@ export type ServiceState =
   | { kind: 'absent' }
   /** Installed on disk but not loaded; `home` from the file (config for the NEXT launch only). */
   | { kind: 'unloaded'; home: string | null }
-  /** Loaded; `pid` null when not running. `home` from the loaded job's environment (null = unknown). */
-  | { kind: 'loaded'; pid: number | null; home: string | null }
+  /**
+   * Loaded; `pid` null when not running. `idle` only when the manager says
+   * plainly that nothing is starting (a job mid-spawn / `activating` is NOT
+   * idle). `home` from the loaded job's environment (null = unknown or
+   * overridable, e.g. a systemd EnvironmentFile).
+   */
+  | { kind: 'loaded'; pid: number | null; idle: boolean; home: string | null }
   | { kind: 'unknown'; reason: string }
 
 function single(values: string[]): string | null {
@@ -143,26 +148,39 @@ export function readServiceState(io: LifecycleIo): ServiceState {
       if (/could not find service|not find/i.test(printed.output) || printed.output.trim() === '') {
         return plist ? { kind: 'unloaded', home: plistHome } : { kind: 'absent' }
       }
+      // No unit installed: nothing of ours could be running under launchd.
+      if (!plist) return { kind: 'absent' }
       return { kind: 'unknown', reason: `launchctl print failed: ${printed.output.trim().slice(0, 200)}` }
     }
     // `launchctl print` is not an API: read only what is unambiguous.
     const pids = [...printed.output.matchAll(/^\s*pid = (\d+)\s*$/gm)]
     if (pids.length > 1) return { kind: 'unknown', reason: 'launchctl print reported more than one pid' }
-    const envBlock = /environment = \{([\s\S]*?)\n\s*\}/.exec(printed.output)?.[1] ?? ''
-    const homes = [...envBlock.matchAll(/^\s*BAKIN_HOME => (.+?)\s*$/gm)].map((m) => m[1]!)
-    return { kind: 'loaded', pid: parseLaunchctlPid(printed.output), home: single(homes) }
+    // The job's OWN `environment = {` block — never `inherited environment` / `default environment`.
+    const envBlocks = [...printed.output.matchAll(/^[ \t]*environment = \{\n([\s\S]*?)\n[ \t]*\}/gm)].map((m) => m[1]!)
+    const homes = envBlocks.length === 1 ? [...envBlocks[0]!.matchAll(/^\s*BAKIN_HOME => (.+?)\s*$/gm)].map((m) => m[1]!) : []
+    const states = [...printed.output.matchAll(/^\s*state = (.+?)\s*$/gm)].map((m) => m[1]!)
+    const pid = parseLaunchctlPid(printed.output)
+    return { kind: 'loaded', pid, idle: pid === null && states.length === 1 && states[0] === 'not running', home: single(homes) }
   }
   if (io.platform === 'linux') {
-    const shown = io.exec('systemctl', ['--user', 'show', `${SERVICE_LABEL}.service`, '-p', 'LoadState', '-p', 'ActiveState', '-p', 'MainPID', '-p', 'Environment'])
-    if (!shown.ok) return { kind: 'unknown', reason: `systemctl show failed: ${shown.output.trim().slice(0, 200)}` }
+    const unit = io.readFile(io.systemdUnitPath())
+    const shown = io.exec('systemctl', ['--user', 'show', `${SERVICE_LABEL}.service`, '-p', 'LoadState', '-p', 'ActiveState', '-p', 'MainPID', '-p', 'Environment', '-p', 'EnvironmentFiles'])
+    if (!shown.ok) {
+      // No user manager (Docker/CI) and no unit installed: nothing of ours runs under systemd.
+      if (!unit) return { kind: 'absent' }
+      return { kind: 'unknown', reason: `systemctl show failed: ${shown.output.trim().slice(0, 200)}` }
+    }
     const prop = (key: string) => new RegExp(`^${key}=(.*)$`, 'm').exec(shown.output)?.[1] ?? ''
     const load = prop('LoadState')
+    const unitHome = (text: string) => (/^EnvironmentFile=/m.test(text) ? null : single([...text.matchAll(/^Environment="?BAKIN_HOME=([^"\n]*)"?$/gm)].map((m) => m[1]!)))
     if (load === 'not-found' || load === '') {
-      const unit = io.readFile(io.systemdUnitPath())
-      return unit ? { kind: 'unloaded', home: single([...unit.matchAll(/^Environment="?BAKIN_HOME=([^"\n]*)"?$/gm)].map((m) => m[1]!)) } : { kind: 'absent' }
+      return unit ? { kind: 'unloaded', home: unitHome(unit) } : { kind: 'absent' }
     }
-    const homes = [...prop('Environment').matchAll(/(?:^|\s)BAKIN_HOME=(\S+)/g)].map((m) => m[1]!)
-    return { kind: 'loaded', pid: parseSystemdMainPid(shown.output), home: single(homes) }
+    // An EnvironmentFile can override Environment=: the effective home is then unknowable here.
+    const homes = prop('EnvironmentFiles').trim() ? [] : [...prop('Environment').matchAll(/(?:^|\s)BAKIN_HOME=(\S+)/g)].map((m) => m[1]!)
+    const pid = parseSystemdMainPid(shown.output)
+    const active = prop('ActiveState')
+    return { kind: 'loaded', pid, idle: pid === null && (active === 'inactive' || active === 'failed'), home: single(homes) }
   }
   return { kind: 'absent' }
 }
@@ -319,6 +337,16 @@ export async function stopHome(io: LifecycleIo): Promise<LifecycleOutcome> {
     }
   }
 
+  // A restart child waiting for this server to exit would start it again.
+  const restarting = pendingStarts(io, [io.selfPid], { serverRunning: true })
+  if (restarting.length > 0) {
+    return {
+      ok: false,
+      status: 'error',
+      message: 'A Bakin restart is in progress, so stopping now would only be undone by the restart. Nothing was stopped.',
+      notes: [`Restarting: ${restarting.map((p) => `pid ${p.pid}`).join(', ')}. Wait for it to finish (\`bakin status\`), then run \`bakin stop\`.`],
+    }
+  }
   const service = readServiceState(io)
   const deadline = io.now() + HANDOFF_BUDGET_MS
   const notes: string[] = []
@@ -410,20 +438,22 @@ export async function restartHome(io: LifecycleIo, opts: RestartOptions): Promis
   // With nothing running here, this home's own service may be STARTED — but
   // only one that is not running anything (a running job holding no lock for
   // this home is unproven: starting, wedged, or another home's).
-  const idleServiceForThisHome = (service.kind === 'unloaded' || (service.kind === 'loaded' && service.pid === null)) && service.home === io.home
-  if (identity.kind === 'none' && service.kind === 'loaded' && service.pid !== null) {
+  const idleServiceForThisHome = (service.kind === 'unloaded' || (service.kind === 'loaded' && service.idle)) && service.home === io.home
+  if (identity.kind === 'none' && service.kind === 'loaded' && !service.idle) {
     return {
       ok: false,
       status: 'error',
-      message: `The Bakin service is running pid ${service.pid}, but it does not hold this home's lock, so Bakin can't prove what it is and will not restart it.`,
+      message: service.pid !== null
+        ? `The Bakin service is running pid ${service.pid}, but it does not hold this home's lock, so Bakin can't prove what it is and will not restart it.`
+        : 'The Bakin service is starting (or its state is unclear), so Bakin will not launch a competing server.',
       notes: ['It may still be starting — run `bakin status` in a moment. If it is wedged, inspect it before stopping it yourself.'],
     }
   }
-  if (service.kind === 'unknown' && identity.kind !== 'none') {
+  if (service.kind === 'unknown') {
     return {
       ok: false,
       status: 'error',
-      message: `The Bakin service state could not be read (${service.reason}), so Bakin can't tell who owns this server. Nothing was restarted.`,
+      message: `The Bakin service state could not be read (${service.reason}), so Bakin can't tell who owns or is starting this server. Nothing was restarted.`,
       notes: ['Check the service manager (launchctl / systemctl --user), then run the command again.'],
     }
   }

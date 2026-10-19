@@ -152,3 +152,14 @@ plan) is either impossible by construction or covered by a test.
 - A successor appearing during a manual restart is awaited, not raced.
 - A restart child counts as a pending start even while the old server answers.
 - Service commands carry deadlines; failures exit 1 via `process.exit`.
+
+## Review hardening (Codex round 2)
+
+- Service home is read only from the job's OWN launchd `environment` block
+  (never `inherited`/`default environment`); a systemd unit with an
+  `EnvironmentFile` has an unknowable home.
+- "Idle" is the manager's plain word (`state = not running`; systemd
+  `inactive`/`failed`) — a job mid-spawn / `activating` is never restarted.
+- An installed service whose state can't be read refuses restart even with
+  nothing running; with no unit installed (Docker/CI) the state is absent.
+- Stop refuses while a restart child waits for this server to exit.

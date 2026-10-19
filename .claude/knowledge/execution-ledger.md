@@ -287,7 +287,9 @@ service manager is driven only when its loaded pid IS that server (or, for a
 restart with nothing running, when the unit's `BAKIN_HOME` is this home);
 `stop` then boots the unit out so it cannot respawn. A lock holder that
 doesn't answer (wedged), an answer that doesn't match (foreign), an
-unreadable service state, a running service job holding no lock here, or an
+unreadable state of an installed service, a service job that is running or
+starting (launchd `spawn scheduled`, systemd `activating`) without holding
+this home's lock, a waiting restart child (stop), or an
 old-protocol server outside a service configured for this home fails closed
 with a report. A service restart is proved by the MANAGER's pid answering; a
 successor that grabs the home as the old server exits is reported (stop) or
