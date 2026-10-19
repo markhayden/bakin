@@ -111,6 +111,32 @@ workspace fallback, one policy at every mutation boundary incl. Health direct
 non-safe apply, legacy-record reads, activity/Health-request display, and a
 Bits messaging companion PR (`fix/gate-provenance`) shipped with H.
 
+## Re-validation 2026-10-19 (after prevention PRs #994/#997/#998/#999/#1000)
+
+All six remaining problems confirmed on `main` @ 2a5461d2a. Owner-confirmed
+build order: **I → G → D → F → E → K**.
+
+- **I** additionally covers #999's `upgrade-plugin-artifact` repair
+  (`plugins/health/lib/system-checks/plugin-artifacts.ts`), which plans its
+  approval change set from the lock diff (`preview.newPermissions/newBins`);
+  it must list the full declaration. Producers: local/github/artifact lanes
+  (`upgrade.ts`, `upgrade-github.ts`, `upgrade-artifact.ts`) via
+  `gateUpgradeConsent`; consumers: host upgrade route, CLI
+  `plugins.ts:357-370`, `consent-prompt.ts`, CLI report `plugins.tsx`,
+  Health `use-system-data.ts` / `system-route-schemas.ts`, the #999 repair.
+  Install is already declaration-based (`install/consent-gate.ts:48`).
+- **G** unchanged: blocked/review cover forever (`doctor-escalation.ts:66`);
+  stale todo/inProgress mint a duplicate (`doctor-delegate.ts:108-119`);
+  task id lives only on the repair request; `HealthResource` has no task kind.
+- **D** partly in place: ONE verifier exists (`bin-verify.ts`, #935) but
+  trusts the self-written marker's `extractedSha256`; `sync-scanner.ts:640-660`
+  duplicates it; readiness is `existsSync`. Bits manifests (terminal, ocr,
+  transcribe) still lack the extracted pin → Bits PR first.
+- **F / E** unchanged (existence/size-only reuse; antfly post-pull drift is
+  a warning; tokenizer pins have no sha; (size, mtime) cache used as proof).
+- **K** unchanged; `/api/version` exposes only `{version}` — no pid/bootId
+  handshake yet. Design spec pass (Codex first, owner confirms) when K starts.
+
 ## PR G — bounded repair coverage, task reuse
 Branch `fix/repair-coverage-bounded` (after C, H)
 
@@ -125,7 +151,7 @@ Branch `fix/upgrade-consent-declared`
 
 | # | Commit | Content | Verify |
 |---|---|---|---|
-| I1 | `fix(plugins): consent required whenever bins or permissions are declared` | ATOMIC (a split would let the CLI default missing fields to empty and auto-accept — `src/cli/commands/plugins.ts:396`, `src/core/cli/consent-prompt.ts:118`): predicate from the target manifest, widening helpers deleted, new response shape, and every producer/consumer (upgrade implementations using `gate.widened`/`gate.newBins`, CLI prompt, UI) in one commit | upgrade-gate tests: forged lock still prompts; unchanged still prompts; empty → none; CLI prompt test: declared bins are never auto-accepted; `ui:conformance --quick` if UI touched |
+| I1 | `fix(plugins): consent required whenever bins or permissions are declared` | ATOMIC (a split would let the CLI default missing fields to empty and auto-accept — `src/cli/commands/plugins.ts`, `src/core/cli/consent-prompt.ts`): predicate from the target manifest, widening helpers deleted, new response shape, and every producer/consumer (the three upgrade lanes, host route, CLI prompt + report, Health UI, and #999's upgrade repair change set) in one commit | upgrade-gate tests: forged lock still prompts; unchanged still prompts; empty → none; CLI prompt test: declared bins are never auto-accepted; `ui:conformance --quick` if UI touched |
 | I2 | `docs(plugins): consent policy` | `plugin-lifecycle.md`, `plugin-system.md`, user docs | — |
 
 ## PR D — archive binaries verify against a manifest pin (+ Bits)
