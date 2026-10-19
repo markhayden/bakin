@@ -26,7 +26,9 @@ export const BinDownloadSchema = z.object({
   /**
    * Set when the download is an archive rather than the raw binary
    * (GitHub releases commonly ship tarballs). The sha256 pins the ARCHIVE;
-   * `member` is the file extracted as the binary.
+   * `member` is the file extracted as the binary and `extractedSha256` pins
+   * ITS bytes — the binary that actually runs is verified against the
+   * manifest, never against a marker Bakin wrote itself (#898 D).
    */
   archive: z
     .object({
@@ -34,6 +36,7 @@ export const BinDownloadSchema = z.object({
       member: z.string().min(1).refine((m) => !m.startsWith('/') && !m.startsWith('-') && !m.split('/').includes('..'), {
         message: 'archive member must be a relative path inside the archive (no leading - or /)',
       }),
+      extractedSha256: z.string().regex(/^[a-f0-9]{64}$/i, { message: 'archive extractedSha256 must be 64 hex chars (the sha256 of the extracted member)' }),
     })
     .optional(),
   /** Download size in bytes — shown in consent/install UIs when present; never trusted for verification. */

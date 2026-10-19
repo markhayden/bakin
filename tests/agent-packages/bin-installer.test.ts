@@ -138,7 +138,8 @@ describe('installBinRequirement', () => {
     // the script constants above — never a machine-specific path).
     const tarSrc = join(testDir, 'tar-src', 'inner')
     mkdirSync(tarSrc, { recursive: true })
-    writeFileSync(join(tarSrc, 'tarredbin'), '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "tarred 1.0.0"; exit 0; fi\nexit 1\n', { mode: 0o755 })
+    const tarredScript = '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "tarred 1.0.0"; exit 0; fi\nexit 1\n'
+    writeFileSync(join(tarSrc, 'tarredbin'), tarredScript, { mode: 0o755 })
     const tarPath = join(testDir, 'fixture.tar.gz')
     execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(join(testDir, 'tar-src'))} inner/tarredbin`)
     const tarBytes = readFileSync(tarPath)
@@ -148,14 +149,14 @@ describe('installBinRequirement', () => {
     const bin = {
       name: 'tarredbin',
       version: '1.0.0',
-      install: { [key!]: { url: `http://127.0.0.1:${server.port}/tarball`, sha256: tarSha, archive: { format: 'tar.gz' as const, member: 'inner/tarredbin' } } },
+      install: { [key!]: { url: `http://127.0.0.1:${server.port}/tarball`, sha256: tarSha, archive: { format: 'tar.gz' as const, member: 'inner/tarredbin', extractedSha256: sha256(tarredScript) } } },
       verifyArgs: ['--version'],
     }
     const result = await installBinRequirement(bin, marker, { fetchImpl: nativeFetch })
     expect(result.skipped).toBe(false)
     expect(readFileSync(result.target, 'utf-8')).toContain('tarred 1.0.0')
 
-    // Fast path: marker sha (== tarball pin) short-circuits a re-install.
+    // Fast path: the on-disk bytes match the manifest's extracted pin.
     const again = await installBinRequirement(bin, marker, { fetchImpl: nativeFetch })
     expect(again.skipped).toBe(true)
   })
@@ -185,7 +186,8 @@ describe('installBinRequirement', () => {
   it('a corrupted archive-sourced binary self-heals despite a surviving sidecar', async () => {
     const tarSrc = join(testDir, 'tar-src2', 'inner')
     mkdirSync(tarSrc, { recursive: true })
-    writeFileSync(join(tarSrc, 'healbin'), '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "heal 1.0.0"; exit 0; fi\nexit 1\n', { mode: 0o755 })
+    const healScript = '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "heal 1.0.0"; exit 0; fi\nexit 1\n'
+    writeFileSync(join(tarSrc, 'healbin'), healScript, { mode: 0o755 })
     const tarPath = join(testDir, 'heal.tar.gz')
     execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(join(testDir, 'tar-src2'))} inner/healbin`)
     const tarBytes = readFileSync(tarPath)
@@ -193,7 +195,7 @@ describe('installBinRequirement', () => {
     const bin = {
       name: 'healbin',
       version: '1.0.0',
-      install: { [key!]: { url: `http://127.0.0.1:${server.port}/healtar`, sha256: createHash('sha256').update(tarBytes).digest('hex'), archive: { format: 'tar.gz' as const, member: 'inner/healbin' } } },
+      install: { [key!]: { url: `http://127.0.0.1:${server.port}/healtar`, sha256: createHash('sha256').update(tarBytes).digest('hex'), archive: { format: 'tar.gz' as const, member: 'inner/healbin', extractedSha256: sha256(healScript) } } },
       verifyArgs: ['--version'],
     }
     const first = await installBinRequirement(bin, marker, { fetchImpl: nativeFetch })
@@ -204,6 +206,54 @@ describe('installBinRequirement', () => {
     const healed = await installBinRequirement(bin, marker, { fetchImpl: nativeFetch })
     expect(healed.skipped).toBe(false) // re-extracted, not trusted
     expect(readFileSync(healed.target, 'utf-8')).toContain('heal 1.0.0')
+  })
+
+  it('a member that does not match its extracted pin never runs and never lands (#898 D)', async () => {
+    const ran = join(testDir, 'verify-ran')
+    const tarSrc = join(testDir, 'tar-src3', 'inner')
+    mkdirSync(tarSrc, { recursive: true })
+    // Running it at all would leave a trace — the verify run must not happen.
+    writeFileSync(join(tarSrc, 'evilbin'), `#!/bin/sh\ntouch ${JSON.stringify(ran)}\nexit 0\n`, { mode: 0o755 })
+    const tarPath = join(testDir, 'evil.tar.gz')
+    execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(join(testDir, 'tar-src3'))} inner/evilbin`)
+    const tarBytes = readFileSync(tarPath)
+    fixtures['/eviltar'] = tarBytes
+    const bin = {
+      name: 'evilbin',
+      version: '1.0.0',
+      // The archive pin is right (it IS this tarball); the member pin is not.
+      install: { [key!]: { url: `http://127.0.0.1:${server.port}/eviltar`, sha256: createHash('sha256').update(tarBytes).digest('hex'), archive: { format: 'tar.gz' as const, member: 'inner/evilbin', extractedSha256: sha256('the reviewed binary') } } },
+      verifyArgs: ['--version'],
+    }
+    await expect(installBinRequirement(bin, marker, { fetchImpl: nativeFetch })).rejects.toThrow(/extractedSha256/)
+    expect(existsSync(ran)).toBe(false)
+    expect(existsSync(join(testDir, 'bin', 'evilbin'))).toBe(false)
+  })
+
+  it('a forged binary under a forged marker is re-downloaded, never skipped', async () => {
+    const script = '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "real 1.0.0"; exit 0; fi\nexit 1\n'
+    const tarSrc = join(testDir, 'tar-src4', 'inner')
+    mkdirSync(tarSrc, { recursive: true })
+    writeFileSync(join(tarSrc, 'realbin'), script, { mode: 0o755 })
+    const tarPath = join(testDir, 'real.tar.gz')
+    execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(join(testDir, 'tar-src4'))} inner/realbin`)
+    const tarBytes = readFileSync(tarPath)
+    fixtures['/realtar'] = tarBytes
+    const tarSha = createHash('sha256').update(tarBytes).digest('hex')
+    const bin = {
+      name: 'realbin',
+      version: '1.0.0',
+      install: { [key!]: { url: `http://127.0.0.1:${server.port}/realtar`, sha256: tarSha, archive: { format: 'tar.gz' as const, member: 'inner/realbin', extractedSha256: sha256(script) } } },
+      verifyArgs: ['--version'],
+    }
+    const target = join(testDir, 'bin', 'realbin')
+    mkdirSync(join(testDir, 'bin'), { recursive: true })
+    writeFileSync(target, '#!/bin/sh\necho forged\n', { mode: 0o755 })
+    // Written raw — the forged extractedSha256 must survive to prove it is ignored.
+    writeFileSync(`${target}.installedBy`, JSON.stringify({ ...marker, sha256: tarSha, member: 'inner/realbin', extractedSha256: sha256('#!/bin/sh\necho forged\n') }))
+    const result = await installBinRequirement(bin, marker, { fetchImpl: nativeFetch })
+    expect(result.skipped).toBe(false)
+    expect(readFileSync(target, 'utf-8')).toBe(script)
   })
 })
 

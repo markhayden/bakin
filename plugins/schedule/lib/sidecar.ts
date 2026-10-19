@@ -10,6 +10,7 @@ import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
 import type { ScheduleSidecar, BakinJobMeta } from '../types'
 import { isTaskPrompt } from './prompt-guard'
+import { getPluginCtx } from './plugin-context'
 
 const log = createLogger('schedule:sidecar')
 
@@ -88,6 +89,18 @@ export function writeSidecar(sidecar: ScheduleSidecar): void {
     mkdirSync(dir, { recursive: true })
   }
   writeFileSync(path, JSON.stringify(sidecar, null, 2), 'utf-8')
+  // Every Bakin schedule write — the UI routes, agents' exec tools, fires,
+  // auto-resume, repairs — lands here, so none can forget to signal.
+  signalScheduleChanged()
+}
+
+/**
+ * The ONE change signal open schedule views refetch on (#990). writeSidecar
+ * sends it; the other schedule state — fire dispositions in the execution
+ * ledger, a native cron removed after adoption — signals here once written.
+ */
+export function signalScheduleChanged(): void {
+  getPluginCtx()?.events.emit('schedule.changed', {})
 }
 
 export function getJob(jobId: string): BakinJobMeta | null {

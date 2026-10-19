@@ -40,6 +40,16 @@ adapter's release host (SHA256-verified against
 `~/.bakin/antfly/` and logs at `~/.bakin/logs/antfly.log`. Bakin is a pure
 HTTP client; the OS owns start, keep-alive, and crash-restart.
 
+The engine also gets `--config ~/.bakin/antfly-engine.json` (written before
+every start by `writeEngineConfig`, outside the data dir a version change
+wipes). Since 0.2.5 (upstream #898) remote templates deny `file://` unless
+`remote_content.security.allowed_paths` names the directory, and Bakin's media
+legs embed assets by `file://` URL — so the config allowlists the asset store
+(`getBakinPaths()['assets.store']`, canonical) and nothing else (never the
+Bakin home: `secrets.json`). Without it every batch carrying an image 500s
+whole (`remoteMedia fetch failed error=PathNotAllowed`), text docs included;
+the workaround-regression suite pins that default.
+
 `packages/adapter-antfly/src/service.ts` owns lifecycle controls; the private
 `service-ownership.ts` and `service-lock.ts` implement ownership and serialized
 mutations. Four process modes remain:
@@ -781,13 +791,14 @@ Every pull lands in a STAGING models root beside the live one
 (`pullStagingRoot` → `<parent>/.models.bakin-pull/`, same filesystem,
 outside the tree the engine scans) and is verified THERE (structure + pins);
 a post-pull mismatch FAILS the install (it used to be a warning). Only after
-every pulled model verified does the install publish, one rename each. A
-live copy is NEVER replaced in place (swapping a directory the running engine
-may read takes two renames — a window where it is missing; no `bun:ffi`
-atomic exchange, an owner decision 2026-10-19 to keep release signing
-unchanged): a model that needs replacing with a live copy in the way is
-refused BEFORE any download, the message naming the dir to remove; the re-run
-then publishes the verified download with one rename. The whole check →
+every pulled model verified does the install publish — through #993's
+replacement protocol (`publishStagedModel`: live → `.bakin-replacing-*`
+backup, staged → live, backup → trash; `recoverModelInstall` finishes a crash
+between the renames on the next install). A pinned variant (#993, clipclap
+`gguf:Q4_K`) is adopted to its model name INSIDE staging, so it is verified
+exactly where it publishes from; the engine load probe runs on the published
+files afterwards. (No `bun:ffi` atomic exchange — owner decision 2026-10-19
+to keep release signing unchanged.) The whole check →
 pull → verify → publish (installed state is only judged while holding it)
 runs under a MACHINE-wide lock beside the shared models root
 (`acquireModelsLock`, `.models.bakin-pull.lock`): an exclusive-create file
@@ -807,7 +818,47 @@ embedding does NOT lazy-download a missing model — the backfill fails.
 Recovery is cheap: once the model is on disk, any write heals the index;
 `bakin install search-models` + `bakin reindex` fully repairs.
 The service argv preloads every configured antfly-provider embedder
-(`--preload-model`) so first embeds never race a cold model load.
+(`--preload-model`) so first embeds never race a cold model load — except
+one that can't load here. The engine EXITS when a preload fails to warm,
+so a complete download is not enough (#993). The incident: clipclap's
+default 0.2.x pull also fetches an ONNX set (~1.4 GB) that the static Linux
+build picks first and fails on (`error.MissingWeight`; the `onnx` backend
+isn't in that build and is gone entirely in 0.3), while macOS Metal loads
+the GGUFs. **The fix is the distribution:** `MODEL_PULL_VARIANTS` pulls
+clipclap as `gguf:Q4_K` — GGUF only, which loads on every build and version
+tried (0.2.2/0.2.5/0.3.0-rc.1, static and glibc, identical vectors) and is
+what 0.3's default pull already fetches. A variant pull installs as
+`<name>--antfly-<hash>`; the installer moves it to `antflydb/clipclap` (old
+install renamed aside, restored on failure, swept after), and an existing
+default-layout install counts as needing a re-pull (`modelVariantMismatch`).
+Pruning the ONNX files in place does NOT work — the engine checks the
+download marker (`error.InvalidManagedDownload`). The safety net stays for
+the next model that can't load: `model-load.ts` asks the engine itself
+(`antfly inference embed <dir>`) once per model — after a pull (the
+install's verify stage) and before a start when no current verdict exists
+— and records one receipt per model under `~/.antfly/bakin-model-load/`
+(atomic replace; homes sharing the models never clobber each other), keyed
+by the engine version the BINARY reports (a probe of anything but the pin
+records nothing), the platform and the download (a re-pull or a repin
+re-probes). Only the engine's own `error.X` diagnostic records "can't
+load"; a spawn failure, signal, timeout or cancel records nothing —
+unknown = loadable. Verdicts judge only the managed engine: a guest
+endpoint (`isLocalDefaultUrl` false) is never judged by them. A model known
+not to load is left off the preloads and its leg is not offered
+(`embedderUsable(embedder, engineUrl)`); queries follow the same offered
+legs (`getIndexNames`/`getIndexWeights` filter by `capabilities().legs`),
+and the adapter narrows each query to the indexes the target PHYSICAL
+really has (`scopeQueryToIndexes`; one bounded read per table, cached —
+physicals never change legs) so a table mid-migration is never asked for a
+leg it lacks: naming or weighting a missing index is a hard 400 that loses
+every leg. A semantic-only query with no vector leg left answers by keyword,
+labelled `no-semantic-leg` — never an unconstrained match-all. During a
+migration the outbox lets the DESTINATION decide each row (`deliver`): the
+table being replaced rejecting a write (its leg's model can no longer load)
+never keeps the write from its replacement. So the engine boots, text search works
+and Health warns (`checkInferenceModels`: "can't load on this machine", the
+engine's reason). Only that verdict enters `mappingFingerprint()` — every
+other fingerprint is byte-identical, so upgrading migrates nothing.
 
 **`dimension` is required** on every embedder entry (the server demands
 declared dims at table-create time). Embedder settings feed

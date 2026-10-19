@@ -39,10 +39,13 @@ A capability pack is `kind: "skill-pack"` plus:
   adapter slugs when genuinely runtime-specific. Explore badges/gates
   install against the active adapter.
 - `requires.bins[]` — `{ name, version, install: { <platform>: { url,
-  sha256, archive?: { format: 'tar.gz', member } } }, verifyArgs? }`;
-  platforms `darwin-arm64|darwin-x64|linux-x64|linux-arm64`; https-only
-  (loopback http allowed for test fixtures). With `archive`, the sha256
-  pins the TARBALL and `member` is extracted as the binary.
+  sha256, archive?: { format: 'tar.gz', member, extractedSha256 } } },
+  verifyArgs? }`; platforms `darwin-arm64|darwin-x64|linux-x64|linux-arm64`;
+  https-only (loopback http allowed for test fixtures). With `archive`, the
+  sha256 pins the TARBALL, `member` is extracted as the binary and the
+  REQUIRED `extractedSha256` pins that member's bytes (#898 D) — the
+  installer checks it before the `verifyArgs` run or the commit, so a
+  member that does not match never executes.
 - `requires.npm[]` (pi-ecosystem WS2) — `{ name, source, dependencies
   (EXACT pins only), env? }`. Scripts from the pack-relative `source` dir +
   a generated `type:module` package.json + node_modules install into
@@ -148,9 +151,17 @@ rollback, receipts) with two additions:
   repairs can never alternate versions; identical pins share the file. A
   pin's identity is the sha PLUS the archive `member` when there is one
   (recorded on pack `bin` projections, plugin `installedBins` and the
-  `.installedBy` marker; `verifyInstalledBin` reports `member-mismatch` as
-  drift) — two owners extracting different members from the same tarball
-  are not sharing one binary. Pack `bin` projections written before
+  `.installedBy` marker) — two owners extracting different members from
+  the same tarball are not sharing one binary. **Verification never reads
+  the marker** (#898 D): `verifyInstalledBin` (`bin-verify.ts`) hashes the
+  bytes on disk against the MANIFEST pin (raw `sha256`, or
+  `archive.extractedSha256`) and is the ONE predicate behind the
+  installer's skip, the plugin-assets scan, the package sync scan and the
+  capability-readiness bin leg (`drifted` is its own status). An installed
+  declaration that no longer validates (e.g. an archive bin from before the
+  pin) is a visible finding everywhere — plugin-assets `bins.invalid` →
+  `plugin-bins-invalid` incident (upgrade the plugin), sync scan
+  `bin-manifest-invalid`, a not-ready readiness row (also for a missing or unreadable installed manifest — named by its lockfile identity), a failed (not noop) plugin-assets repair naming the upgrade — never "no bins". Integrity is the only thing the new pin gates: removal reads just `uninstallPreflightRequired` (`readUninstallPolicy`), snapshot restore just the identity (`readPluginIdentity`), and legacy ownership just the archive `member`, so a pre-pin declaration stays removable and never fakes a pin conflict. Pack `bin` projections written before
   `member` existed are completed at read time from the pack's INSTALLED
   manifest under `~/.bakin/packages/` (`legacyPackBinMember`), so two
   packs sharing an unchanged archive never read as conflicting pins.

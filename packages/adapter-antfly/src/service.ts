@@ -19,6 +19,7 @@
  * old sidecar fingerprint + adoption lattice wholesale.
  */
 import { spawn, type ChildProcess } from 'child_process'
+import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, openSync } from 'fs'
 import { homedir, tmpdir } from 'os'
 import { createConnection } from 'net'
@@ -28,8 +29,10 @@ import { getBakinPaths } from '@bakin/core/content-dir'
 import { atomicWriteText } from '@bakin/core/storage/atomic-write'
 import { canonicalPath, evaluateOwnership, type ServiceOwnership, type OwnershipKind } from './service-ownership'
 import { withServiceLock, serviceLockBusy } from './service-lock'
-import { antflyBinaryPath, antflyHome, inferenceModelsRoot } from './paths'
+import { antflyBinaryPath, antflyHome, inferenceModelsRoot, isLocalDefaultUrl } from './paths'
+import { localMediaRoots } from './media-url'
 import { modelStructurallyComplete } from './model-pins'
+import { ensureModelLoadVerdicts, modelLoadable } from './model-load'
 import type { AntflySettings } from './defaults'
 
 const log = createLogger('antfly-service')
@@ -93,11 +96,6 @@ export function isAntflyInstalled(): boolean {
 }
 
 /** The default private-instance URL — anything else is guest mode. */
-export function isLocalDefaultUrl(url: string): boolean {
-  const origin = new URL(url).origin
-  return origin === 'http://127.0.0.1:3738' || origin === 'http://localhost:3738'
-}
-
 export function detectServiceMode(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): ServiceMode {
   if (!isLocalDefaultUrl(settings.url)) return 'guest'
   const override = io.env.BAKIN_SEARCH_SERVICE_MODE
@@ -123,6 +121,10 @@ export interface ServicePaths {
   dataDir: string
   modelsDir: string
   logFile: string
+  /** The engine's `--config` file — outside dataDir, which a version change wipes. */
+  configFile: string
+  /** The only directories `file://` media may be read from (asset store, canonical). */
+  mediaRoots: string[]
 }
 
 export function servicePaths(): ServicePaths {
@@ -133,7 +135,41 @@ export function servicePaths(): ServicePaths {
     modelsDir: resolve(inferenceModelsRoot()),
     // Same file the log-tail annotation pipeline (server-logs.ts) reads.
     logFile: join(home, 'logs', 'antfly.log'),
+    configFile: join(home, 'antfly-engine.json'),
+    mediaRoots: localMediaRoots(),
   }
+}
+
+
+/**
+ * The engine's config file. Since 0.2.5 remote templates deny `file://`
+ * unless `remote_content.security.allowed_paths` names the directory (an
+ * omitted list is deny-all) — and Bakin's media legs embed assets by
+ * `file://` URL, so without this every batch carrying an image fails whole
+ * (`remoteMedia fetch failed error=PathNotAllowed` → 500, text docs too).
+ * Only the asset store is allowed: never the Bakin home (secrets.json).
+ */
+export function renderEngineConfig(paths: Pick<ServicePaths, 'mediaRoots'>): string {
+  return `${JSON.stringify({ remote_content: { security: { allowed_paths: paths.mediaRoots } } }, null, 2)}\n`
+}
+
+/**
+ * The engine config's identity, rendered INTO the unit. The engine reads its
+ * config only at start, so a config change (the asset store moved, say) must
+ * make the unit differ — the ordinary drift path then restarts the engine,
+ * and the state lives in the unit, so a crash between writing the config and
+ * restarting can't leave an engine running the old allowlist.
+ */
+export function engineConfigFingerprint(paths: Pick<ServicePaths, 'mediaRoots'>): string {
+  return createHash('sha256').update(renderEngineConfig(paths)).digest('hex').slice(0, 16)
+}
+
+/** Writes the engine config before a start (atomic, and only when it changed). */
+export function writeEngineConfig(paths: ServicePaths): void {
+  const desired = renderEngineConfig(paths)
+  if (existsSync(paths.configFile) && readFileSync(paths.configFile, 'utf8') === desired) return
+  mkdirSync(dirname(paths.configFile), { recursive: true })
+  atomicWriteText(paths.configFile, desired)
 }
 
 /**
@@ -146,10 +182,26 @@ export function servicePaths(): ServicePaths {
  * Preload pre-check: the engine EXITS on a preload it cannot load instead
  * of degrading, and the supervisor's respawn turns one broken model into
  * an invisible crash loop (161 respawns before diagnosis, 2026-07-21).
- * Models failing the structural distribution check are left OFF the argv —
- * the engine boots, that leg degrades honestly, and the models health
- * check names the broken model. `modelReady` is injectable for tests.
+ * Models failing the structural distribution check — or that the engine
+ * itself failed to load on this machine (`model-load.ts`, #993) — are left
+ * OFF the argv: the engine boots, that leg degrades honestly, and the
+ * models health check names the model. `modelReady` is injectable for tests.
  */
+/** The models the engine is asked to preload. */
+export function preloadedModels(settings: AntflySettings): string[] {
+  return [...new Set(Object.values(settings.embedders).filter((e) => e.provider === 'antfly').map((e) => e.model))]
+}
+
+/**
+ * Before an argv is built: load-probe any preloaded model with no current
+ * verdict (the first start after a pull or an engine bump). An injected
+ * `modelReady` means the caller decides readiness — nothing is probed.
+ */
+async function probeBeforeStart(settings: AntflySettings, io: ServiceIo, binary: string): Promise<void> {
+  if (io.modelReady) return
+  await ensureModelLoadVerdicts(preloadedModels(settings), binary)
+}
+
 export function buildServiceArgv(
   settings: AntflySettings,
   paths: ServicePaths,
@@ -157,18 +209,14 @@ export function buildServiceArgv(
 ): string[] {
   const url = new URL(settings.url)
   const port = Number(url.port || 3738)
-  const modelReady = opts?.modelReady ?? ((model: string) => modelStructurallyComplete(model).ok)
-  const preloads = [...new Set(
-    Object.values(settings.embedders)
-      .filter((e) => e.provider === 'antfly')
-      .filter((e) => modelReady(e.model))
-      .map((e) => `embedder:${e.model}`),
-  )]
+  const modelReady = opts?.modelReady ?? ((model: string) => modelStructurallyComplete(model).ok && modelLoadable(model, settings.url))
+  const preloads = preloadedModels(settings).filter((model) => modelReady(model)).map((model) => `embedder:${model}`)
   return [
     paths.binary, 'standalone',
     '--host', '127.0.0.1',
     '--port', String(port),
     '--health-port', String(port + 1),
+    '--config', paths.configFile,
     '--data-dir', paths.dataDir,
     '--models-dir', paths.modelsDir,
     ...preloads.flatMap((p) => ['--preload-model', p]),
@@ -184,12 +232,12 @@ function xmlEscape(value: string): string {
 // old child spawn inherited. An LSM engine with N tables x shards x
 // segment files exhausts 256 instantly (ProcessFdQuotaExceeded, observed
 // at the rc.17 cutover as boot-wide flakiness + an exit-6 crash).
-export function renderLaunchdPlist(argv: string[], logFile: string): string {
+export function renderLaunchdPlist(argv: string[], logFile: string, configFingerprint?: string): string {
   const args = argv.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n')
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
+${configFingerprint ? `<!-- engine config ${configFingerprint} -->\n` : ''}<dict>
   <key>Label</key>
   <string>${LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key>
@@ -219,7 +267,7 @@ ${args}
 `
 }
 
-export function renderSystemdUnit(argv: string[], logFile: string): string {
+export function renderSystemdUnit(argv: string[], logFile: string, configFingerprint?: string): string {
   // systemd.service(5): $$ and %% preserve literal expansion characters.
   const exec = argv.map((a) => {
     if (/[\r\n\0]/.test(a)) throw new Error('Unsupported control character in service argument')
@@ -227,7 +275,7 @@ export function renderSystemdUnit(argv: string[], logFile: string): string {
     return /[\s"'\\$%]/.test(a) ? `"${escaped}"` : escaped
   }).join(' ')
   return `# Managed by Bakin — do not edit (bakin install search rewrites this file).
-[Unit]
+${configFingerprint ? `# engine config ${configFingerprint}\n` : ''}[Unit]
 Description=Bakin private antfly search engine
 
 [Service]
@@ -400,9 +448,12 @@ export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo 
     const mode = detectServiceMode(settings, io)
     if (mode === 'child') return { mode, action: 'skipped' }
     const paths = servicePaths()
+    await probeBeforeStart(settings, io, paths.binary)
+    writeEngineConfig(paths)
     const argv = buildServiceArgv(settings, paths, { modelReady: io.modelReady })
     const unitPath = mode === 'launchd' ? launchdPlistPath(io) : systemdUnitPath(io)
-    const desired = mode === 'launchd' ? renderLaunchdPlist(argv, paths.logFile) : renderSystemdUnit(argv, paths.logFile)
+    const fingerprint = engineConfigFingerprint(paths)
+    const desired = mode === 'launchd' ? renderLaunchdPlist(argv, paths.logFile, fingerprint) : renderSystemdUnit(argv, paths.logFile, fingerprint)
     const current = existsSync(unitPath) ? readFileSync(unitPath, 'utf8') : null
     if (current === desired) {
       const state = mode === 'launchd'
@@ -449,6 +500,7 @@ export async function startService(settings: AntflySettings, io: ServiceIo = def
     if (mode === 'child') {
       if (childPid()) return
       await assertServicePortsReleased(io)
+      await probeBeforeStart(settings, io, servicePaths().binary)
       startChild(settings, io)
       return
     }
@@ -525,6 +577,7 @@ export function startChild(settings: AntflySettings, io: ServiceIo = defaultServ
   }
   mkdirSync(dirname(paths.logFile), { recursive: true })
   mkdirSync(paths.dataDir, { recursive: true })
+  writeEngineConfig(paths)
   const argv = buildServiceArgv(settings, paths, { modelReady: io.modelReady })
   const logFd = openSync(paths.logFile, 'a')
   const child = spawn(argv[0], argv.slice(1), { stdio: ['ignore', logFd, logFd] })

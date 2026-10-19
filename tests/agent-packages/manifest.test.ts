@@ -526,7 +526,7 @@ describe('manifest schema — review hardening pins', () => {
   it('rejects archive members shaped like tar options (argument injection)', () => {
     expect(() => parseManifest(skillPackWithBin({
       url: 'https://x.dev/t.tar.gz', sha256: 'a'.repeat(64),
-      archive: { format: 'tar.gz', member: '--to-command=/bin/sh' },
+      archive: { format: 'tar.gz', member: '--to-command=/bin/sh', extractedSha256: 'e'.repeat(64) },
     }))).toThrow(/no leading -/)
   })
 

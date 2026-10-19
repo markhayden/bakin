@@ -25,3 +25,9 @@ export function antflyBinaryPath(): string {
 export function inferenceModelsRoot(): string {
   return join(antflyHome(), 'inference', 'models')
 }
+
+/** The engine Bakin manages itself (anything else is a guest endpoint someone else runs). */
+export function isLocalDefaultUrl(url: string): boolean {
+  const origin = new URL(url).origin
+  return origin === 'http://127.0.0.1:3738' || origin === 'http://localhost:3738'
+}

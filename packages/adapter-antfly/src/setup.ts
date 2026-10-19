@@ -1,6 +1,6 @@
 import type { SearchAdapterSetup, SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
-import { isLocalDefaultUrl } from './service'
+import { isLocalDefaultUrl } from './paths'
 import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
 import { ANTFLY_ENGINE_PLAN, checkAntflyDependency, installAntflyDependency, resetAntflyEngineData } from './installer'
 import { ANTFLY_MODELS_PLAN, checkInferenceModels, installInferenceModels, requiredModelsForSettings } from './models'

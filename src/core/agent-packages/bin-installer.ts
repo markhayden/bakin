@@ -19,7 +19,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'fs'
 
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { verifyInstalledBin } from './bin-verify'
+import { expectedBinarySha256, verifyInstalledBin } from './bin-verify'
 import { binPlatformKey } from './bin-platform'
 
 export { binPlatformKey } from './bin-platform'
@@ -83,16 +83,14 @@ export async function installBinRequirement(
   const target = join(binDir, bin.name)
   const pin = download.sha256.toLowerCase()
 
-  // Idempotent / shared-bin fast path. Raw downloads: on-disk bytes match
-  // the pin. Archives: the pin names the TARBALL, so the marker must match
-  // the pin AND the on-disk bytes must match the marker's extracted hash —
-  // a corrupted binary under a surviving sidecar still self-heals.
-  // ONE predicate with the readiness scan (bin-verify.ts): whatever the
+  // Idempotent / shared-bin fast path: the on-disk bytes match the
+  // MANIFEST pin (raw, or the archive's extracted member) — never a marker.
+  // ONE predicate with every readiness scan (bin-verify.ts): whatever the
   // doctor would report as installed, the installer skips — and vice versa.
   const verdict = verifyInstalledBin(target, download)
   if (verdict.status === 'installed') {
     log.info(`Binary "${bin.name}" already installed at pinned sha — skipping download`)
-    writeInstalledBy(target, { ...installedBy, sha256: pin, ...(download.archive ? { extractedSha256: verdict.onDiskSha256, member: download.archive.member } : {}) })
+    writeInstalledBy(target, { ...installedBy, sha256: pin, ...(download.archive ? { member: download.archive.member } : {}) })
     return { target, sha256: pin, ...(download.archive ? { member: download.archive.member } : {}), skipped: true }
   }
 
@@ -104,7 +102,9 @@ export async function installBinRequirement(
   try {
     if (download.archive) {
       // Archive download: the pin names the TARBALL — verify it, extract the
-      // member, and continue the pipeline with ITS bytes.
+      // member, verify THE MEMBER against its own pin, and only then continue
+      // the pipeline with its bytes. A member that does not match never runs
+      // (`verifyArgs`) and never lands (#898 D).
       const extractDir = mkdtempSync(join(tmpdir(), `bakin-bin-${bin.name}-`))
       try {
         const tarPath = join(extractDir, 'archive.tar.gz')
@@ -114,6 +114,13 @@ export async function installBinRequirement(
         const memberPath = await extractTarMember(tarPath, download.archive.member, extractDir, {
           timeoutMs: VERIFY_TIMEOUT_MS, label: `${label} archive`, signal: options.signal,
         })
+        const memberSha = await sha256File(memberPath)
+        const expected = expectedBinarySha256(download)
+        if (memberSha !== expected) {
+          throw new Error(
+            `${label}: archive member "${download.archive.member}" sha256 ${memberSha} does not match the manifest's extractedSha256 ${expected} — refusing to run or install it`,
+          )
+        }
         copyFileSync(memberPath, tmp)
       } finally {
         rmSync(extractDir, { recursive: true, force: true })
@@ -148,7 +155,7 @@ export async function installBinRequirement(
   writeInstalledBy(target, {
     ...installedBy,
     sha256: pin,
-    ...(download.archive ? { extractedSha256: await sha256File(target), member: download.archive.member } : {}),
+    ...(download.archive ? { member: download.archive.member } : {}),
   })
   log.info(`Installed binary "${bin.name}" ${bin.version} → ${target}`)
   return { target, sha256: pin, ...(download.archive ? { member: download.archive.member } : {}), skipped: false }

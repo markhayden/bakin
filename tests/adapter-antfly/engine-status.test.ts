@@ -16,6 +16,7 @@ const contentDirMock = () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     home: testDir,
+    'assets.store': join(testDir, 'assets', 'store'),
     audit: join(testDir, 'audit.jsonl'),
     tasks: join(testDir, 'tasks'),
     logs: join(testDir, 'logs'),

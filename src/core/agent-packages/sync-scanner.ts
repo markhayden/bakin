@@ -65,6 +65,9 @@ import {
   resolveEnabledLessons,
 } from './lesson-files'
 import type { RuntimeAgent } from '@bakin/core/adapters/runtime'
+import { readInstalledPackBins, verifyInstalledBin, type InstalledBinStatus } from './bin-verify'
+import { binPlatformKey } from './bin-platform'
+import { binTargetPath } from '../plugins/bin-owners'
 
 const log = createLogger('agent-pkg:sync-scan')
 
@@ -86,10 +89,32 @@ export type SyncFindingType =
   | 'asset-drifted'
   | 'user-edited'
   | 'broken-marker'
+  | 'bin-manifest-invalid'
 
 export type StaleInput = 'package' | 'global' | 'role' | 'team' | 'lessons' | 'tool-access' | 'in-place-edit'
 
 /** Human-facing label for a stale input — runtime-aware for tool-access (P1.6). */
+function bareId(lockKey: string): string {
+  const at = lockKey.lastIndexOf('@')
+  return at > 0 ? lockKey.slice(0, at) : lockKey
+}
+
+/** A pack binary's verdict against its installed manifest pin, or why it cannot be judged. */
+function verifyPackBin(
+  lockKey: string,
+  entry: PackageEntry,
+  target: string,
+): { kind: 'verdict'; status: InstalledBinStatus } | { kind: 'invalid'; reason: string } {
+  const declared = readInstalledPackBins(entry.kind, bareId(lockKey), entry.version)
+  if (!declared.ok) return { kind: 'invalid', reason: declared.reason }
+  const bin = declared.bins.find((candidate) => binTargetPath(candidate.name) === target)
+  if (!bin) return { kind: 'invalid', reason: 'the installed manifest no longer declares this binary' }
+  const platform = binPlatformKey()
+  const download = platform ? bin.install[platform] : undefined
+  if (!download) return { kind: 'invalid', reason: `the installed manifest has no download for this platform (${platform ?? 'unknown'})` }
+  return { kind: 'verdict', status: verifyInstalledBin(target, download).status }
+}
+
 export function describeStaleInput(input: StaleInput): string {
   return input === 'tool-access' ? 'runtime tool access' : input
 }
@@ -521,8 +546,8 @@ export async function scanAgentSync(
       // here is a permanent false positive: a payload contains node_modules
       // + a generated package.json the pack source never had, and re-hashing
       // ~GB models every scan is real cost. Bins stay: tamper detection
-      // belongs here (repair self-heals), with archive bins compared against
-      // the marker's extractedSha256 below.
+      // belongs here (repair self-heals), judged by the one bin verifier
+      // against the installed manifest's pin below.
       if (p.kind === 'npm-payload' || p.kind === 'model') continue
 
       // Seed-once kinds (personas today) are user-owned after projection: no
@@ -601,6 +626,37 @@ export async function scanAgentSync(
         continue
       }
 
+      // Binaries: the ONE verifier against the installed manifest's pin
+      // (bin-verify.ts) — never the .installedBy marker Bakin wrote itself.
+      if (p.kind === 'bin') {
+        const verdict = verifyPackBin(packageId, entry, p.target)
+        if (verdict.kind === 'invalid') {
+          report.findings.push({
+            type: 'bin-manifest-invalid',
+            severity: 'error',
+            autoFixable: false,
+            packageId,
+            agentId: entry.agentId,
+            target: p.target,
+            message: `${p.target} cannot be verified: ${verdict.reason}`,
+            hint: `Reinstall the package: bakin packages install ${bareId(packageId)}`,
+          })
+        } else if (verdict.status === 'missing') {
+          report.findings.push({
+            type: 'asset-missing', severity: 'error', autoFixable: true, packageId, agentId: entry.agentId, target: p.target,
+            message: `Projected file missing: ${p.target}`,
+          })
+        } else if (verdict.status === 'drifted') {
+          report.findings.push({
+            type: 'asset-drifted', severity: 'warn', autoFixable: true, packageId, agentId: entry.agentId, target: p.target,
+            message: `${p.target} differs from the binary its package pins`,
+          })
+        } else {
+          report.projectionsOk++
+        }
+        continue
+      }
+
       // Disk assets (and any legacy disk-path projections).
       if (!existsSync(p.target)) {
         report.findings.push({
@@ -641,11 +697,7 @@ export async function scanAgentSync(
         continue
       }
       const actualSha = statSync(p.target).isDirectory() ? computeDirSha(p.target) : computeFileSha(p.target)
-      // Archive-sourced bins: the projection/marker sha pins the TARBALL —
-      // the on-disk binary compares against the marker's extracted hash.
-      const expectedSha = p.kind === 'bin' && marker.extractedSha256 ? marker.extractedSha256 : marker.sha256
-      const rowShaMismatch = p.kind === 'bin' && marker.extractedSha256 ? false : Boolean(p.sha256 && actualSha !== p.sha256)
-      if (rowShaMismatch || expectedSha !== actualSha) {
+      if (Boolean(p.sha256 && actualSha !== p.sha256) || marker.sha256 !== actualSha) {
         report.findings.push({
           type: 'asset-drifted',
           severity: 'warn',

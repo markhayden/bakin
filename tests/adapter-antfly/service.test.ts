@@ -4,7 +4,7 @@
  */
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
+import { rmSync, readFileSync, existsSync, mkdirSync, realpathSync, statSync, symlinkSync, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-antfly-service-${Date.now()}-${randomUUID()}`)
@@ -20,6 +20,7 @@ const contentDirMock = () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     home: testDir,
+    'assets.store': join(testDir, 'assets', 'store'),
     audit: join(testDir, 'audit.jsonl'),
     tasks: join(testDir, 'tasks'),
     logs: join(testDir, 'logs'),
@@ -48,11 +49,14 @@ import {
   renderSystemdUnit,
   restartService,
   servicePaths,
+  writeEngineConfig,
+  engineConfigFingerprint,
   startService,
   systemdUnitPath,
   type ServiceIo,
 } from '../../packages/adapter-antfly/src/service'
 import { unitDataDir } from '../../packages/adapter-antfly/src/service-ownership'
+import { mediaRootsFor } from '../../packages/adapter-antfly/src/media-url'
 import { DEFAULT_SETTINGS } from '../../packages/adapter-antfly/src/defaults'
 
 beforeEach(() => rmSync(testDir, { recursive: true, force: true }))
@@ -99,8 +103,42 @@ describe('detectServiceMode', () => {
   })
 })
 
+describe('engine config (0.2.5 file:// allowlist)', () => {
+  it('allows file:// media only from the asset store — never the Bakin home — and rewrites only on change', () => {
+    const paths = servicePaths()
+    expect(paths.configFile).toBe(join(paths.dataDir, '..', 'antfly-engine.json'))
+    writeEngineConfig(paths)
+    const config = JSON.parse(readFileSync(paths.configFile, 'utf8')) as { remote_content: { security: { allowed_paths: string[] } } }
+    expect(config.remote_content.security.allowed_paths).toEqual(paths.mediaRoots)
+    for (const root of paths.mediaRoots) expect(root.endsWith(join('assets', 'store'))).toBe(true)
+    expect(paths.mediaRoots).toContain(join(testDir, 'assets', 'store'))
+    expect(paths.mediaRoots).not.toContain(dirname(paths.dataDir))
+    const written = readFileSync(paths.configFile, 'utf8')
+    writeFileSync(paths.configFile, written)
+    const mtime = statSync(paths.configFile).mtimeMs
+    writeEngineConfig(paths)
+    expect(statSync(paths.configFile).mtimeMs).toBe(mtime)
+  })
+
+  it('allowlists the store under its own spelling AND its canonical one — a symlinked BAKIN_HOME keeps its spelling in asset URLs', () => {
+    const real = join(testDir, 'real-home')
+    mkdirSync(join(real, 'assets', 'store'), { recursive: true })
+    const link = join(testDir, 'linked-home')
+    if (!existsSync(link)) symlinkSync(real, link)
+    const roots = mediaRootsFor(join(link, 'assets', 'store'))
+    expect(roots).toEqual([join(link, 'assets', 'store'), realpathSync(join(real, 'assets', 'store'))])
+    expect(mediaRootsFor(realpathSync(join(real, 'assets', 'store')))).toHaveLength(1)
+  })
+
+  it('the argv points the engine at that config', () => {
+    const paths = servicePaths()
+    const argv = buildServiceArgv(DEFAULT_SETTINGS, paths, { modelReady: () => false })
+    expect(argv[argv.indexOf('--config') + 1]).toBe(paths.configFile)
+  })
+})
+
 describe('unit rendering (goldens)', () => {
-  const paths = { binary: '/opt/antfly/bin/antfly', dataDir: '/home/u/.bakin/antfly', modelsDir: '/home/u/.antfly/inference/models', logFile: '/home/u/.bakin/logs/antfly.log' }
+  const paths = { binary: '/opt/antfly/bin/antfly', dataDir: '/home/u/.bakin/antfly', modelsDir: '/home/u/.antfly/inference/models', logFile: '/home/u/.bakin/logs/antfly.log', configFile: '/home/u/.bakin/antfly-engine.json', mediaRoots: ['/home/u/.bakin/assets/store'] }
 
   it('argv preloads every antfly-provider embedder, deduped, same across supervisors', () => {
     const argv = buildServiceArgv(DEFAULT_SETTINGS, paths, { modelReady: () => true })
@@ -109,6 +147,7 @@ describe('unit rendering (goldens)', () => {
       '--host', '127.0.0.1',
       '--port', '3738',
       '--health-port', '3739',
+      '--config', '/home/u/.bakin/antfly-engine.json',
       '--data-dir', '/home/u/.bakin/antfly',
       '--models-dir', '/home/u/.antfly/inference/models',
       '--preload-model', 'embedder:BAAI/bge-small-en-v1.5',
@@ -161,6 +200,32 @@ describe('ensureProvisioned idempotence', () => {
     // read-only probe, still zero writes/bootstraps.
     expect(io2.record).toHaveLength(1)
     expect(io2.record[0][1]).toBe('print')
+  })
+
+  it('a moved asset store (same argv, new allowlist) restarts the engine — it reads its config only at start', async () => {
+    const io = fakeIo({ platform: 'darwin' })
+    expect((await ensureProvisioned(DEFAULT_SETTINGS, io, { intent: 'install' })).action).toBe('provisioned')
+    const before = readFileSync(servicePaths().configFile, 'utf8')
+    // The store moves elsewhere and a symlink takes its place.
+    const store = join(testDir, 'assets', 'store')
+    const moved = join(testDir, 'moved-store')
+    rmSync(store, { recursive: true, force: true })
+    mkdirSync(moved, { recursive: true })
+    mkdirSync(dirname(store), { recursive: true })
+    symlinkSync(moved, store)
+    try {
+      const io2 = fakeIo({ platform: 'darwin' })
+      const second = await ensureProvisioned(DEFAULT_SETTINGS, io2)
+      expect(second).toEqual({ mode: 'launchd', action: 'restarted' })
+      expect(readFileSync(servicePaths().configFile, 'utf8')).not.toBe(before)
+      expect(readFileSync(launchdPlistPath(io2), 'utf8')).toContain(`engine config ${engineConfigFingerprint(servicePaths())}`)
+      expect(io2.record.some((c) => c[0] === 'launchctl' && c[1] === 'bootstrap')).toBe(true)
+      // Settled: the next boot is a status probe again.
+      const io3 = fakeIo({ platform: 'darwin' })
+      expect((await ensureProvisioned(DEFAULT_SETTINGS, io3)).action).toBe('unchanged')
+    } finally {
+      rmSync(store, { force: true })
+    }
   })
 
   it('launchd: identical plist but unit NOT loaded → bootstrap + reloaded (#859 self-heal)', async () => {

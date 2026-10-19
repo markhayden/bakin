@@ -51,7 +51,7 @@ Same schema as capability packs (`packages/core/src/agent-packages/manifest.ts` 
       "darwin-arm64": {
         "url": "https://github.com/markhayden/bakin-bits-official/releases/download/mirror/tmux-v3.7c/tmux-3.7c-darwin-arm64.tar.gz",
         "sha256": "<64 hex>",
-        "archive": { "format": "tar.gz", "member": "tmux" }
+        "archive": { "format": "tar.gz", "member": "tmux", "extractedSha256": "<sha256 of the extracted tmux>" }
       }
     },
     "verifyArgs": ["-V"]
@@ -70,7 +70,7 @@ Same schema as capability packs (`packages/core/src/agent-packages/manifest.ts` 
 
 ### 2.3 Marker identity
 
-`~/.bakin/bin/<name>.installedBy` uses the existing `InstalledByMarker` with `package: "plugin:<id>"`, `version: <plugin version>`, `ref`/`commitSha` from the plugin's provenance (empty for local/artifact installs, as today), `sha256` = pinned download sha, `extractedSha256` for archives.
+`~/.bakin/bin/<name>.installedBy` uses the existing `InstalledByMarker` with `package: "plugin:<id>"`, `version: <plugin version>`, `ref`/`commitSha` from the plugin's provenance (empty for local/artifact installs, as today), `sha256` = pinned download sha, `member` for archives. The marker is bookkeeping only — verification compares the bytes on disk with the manifest's pin (amended by #898 D; the marker's former `extractedSha256` is gone).
 
 ### 2.4 Shared ownership: one target, one pin
 
@@ -101,7 +101,7 @@ Both installers write `~/.bakin/bin/<name>`, so ownership is a contract, not a d
 
 ### 2.7 Readiness (D2)
 
-`src/core/onboarding/plugin-assets.ts` scans bins as well as skills using the **installer's own verification predicate**, extracted from `installBinRequirement` into one exported function so the two can never disagree: a raw download is `installed` when the file's hash equals the pinned sha; an archive download when the marker's pin matches the manifest AND the file's hash equals the marker's `extractedSha256`. Anything else present is `drifted`; absent is `missing`. Regression: a binary whose bytes change with an untouched marker reports `drifted`. `install()` reinstalls missing/drifted through the bin installer. The report gains a `bins` section; the CLI output names them. The doctor's `plugin-assets` check gains repair action `install-plugin-assets` (deterministic: calls the component's `install()`), which fixes skills and bins alike.
+`src/core/onboarding/plugin-assets.ts` scans bins as well as skills using the **installer's own verification predicate**, extracted from `installBinRequirement` into one exported function so the two can never disagree: a raw download is `installed` when the file's hash equals the pinned sha; an archive download when the file's hash equals the manifest's `archive.extractedSha256` (#898 D — never the marker). Anything else present is `drifted`; absent is `missing`; an invalid declaration is reported as `bins.invalid`, never "no bins". Regression: a forged binary under a forged marker reports `drifted`. `install()` reinstalls missing/drifted through the bin installer. The report gains a `bins` section; the CLI output names them. The doctor's `plugin-assets` check gains repair action `install-plugin-assets` (deterministic: calls the component's `install()`), which fixes skills and bins alike.
 
 ### 2.8 Terminal plugin (Bits, D3/D6) — resolution, repair, migration
 

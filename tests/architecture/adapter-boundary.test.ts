@@ -94,6 +94,8 @@ const DENYLIST = [
       // the chaos drills and the rig's antfly child deliberately drive a
       // real antfly binary.
       || rel === 'scripts/dev/search-chaos-drills.ts'
+      || rel === 'scripts/dev/antfly-repin-rungs.ts'
+      || rel === 'scripts/dev/antfly-mixed-corpus-status.ts'
       || isDevRig(rel),
   },
   {

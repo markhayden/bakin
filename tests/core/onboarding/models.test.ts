@@ -15,7 +15,7 @@
  *     without creating files)
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -65,6 +65,7 @@ const TEST_MODELS: InferenceModel[] = [
  * then one rename into `<root>/<model>`. Refuses to run without the flag.
  */
 const PULL_OK = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 [ "$1" = "inference" ] && [ "$2" = "pull" ] && [ "$4" = "--models-dir" ] || exit 9
 echo "$*" >> "$(dirname "$0")/argv.log"
 owner=$(dirname "$3"); name=$(basename "$3")
@@ -83,6 +84,7 @@ mv "$stage" "$5/$3"
 
 /** Stages half the weight as a `.part`, then stops talking (a stalled pull). */
 const PULL_STALLS = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 owner=$(dirname "$3"); name=$(basename "$3")
 stage="$5/$owner/.$name.antfly-download-staging"
 mkdir -p "$stage/onnx"
@@ -94,6 +96,7 @@ exec sleep 30
 
 /** Stalls and ignores SIGTERM — cancel must still settle. */
 const PULL_IGNORES_TERM = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 trap '' TERM
 echo "pulling $3..." >&2
 echo "  [1/1] onnx/model.onnx (2.0 KiB)..." >&2
@@ -102,6 +105,7 @@ while :; do sleep 1; done
 
 /** Resumes only from a kept staging dir (T0 F6), then publishes. */
 const PULL_RESUMES = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 owner=$(dirname "$3"); name=$(basename "$3")
 stage="$5/$owner/.$name.antfly-download-staging"
 [ -f "$stage/onnx/model.onnx.part" ] || { echo "no staging to resume" >&2; exit 7; }
@@ -115,12 +119,14 @@ mv "$stage" "$5/$3"
 
 /** A pull that exits non-zero. */
 const PULL_FAILS = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 echo "pull failed: HuggingFace unreachable" >&2
 exit 2
 `
 
 /** A pull that claims success but creates nothing. */
 const PULL_LIES = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
 exit 0
 `
 
@@ -269,20 +275,15 @@ describe('installInferenceModels', () => {
     const live = (model: string) => join(modelsRoot, model)
     const lockPath = () => join(require('path').dirname(modelsRoot), `.${require('path').basename(modelsRoot)}.bakin-pull.lock`)
 
-    it('a model whose bytes do not match the pin is refused BEFORE any download, naming the dir to remove; following that succeeds', async () => {
+    it('a model whose bytes do not match the pin is re-pulled, verified in staging, and replaces the live copy — nothing left aside', async () => {
       MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
       installFakeBinary(PULL_OK)
       seedModel(PINNED.model) // 'weights' — names right, bytes wrong
       const result = await installInferenceModels(optsAutoYes, undefined, [PINNED])
-      expect(result.status).toBe('failed')
-      expect(result.message).toContain('its files do not match their pins')
-      expect(result.message).toContain(`Remove ${live(PINNED.model)}`)
-      expect(existsSync(join(testDir, 'argv.log'))).toBe(false) // nothing was downloaded
-      expect(readFileSync(join(live(PINNED.model), 'onnx', 'model.onnx'), 'utf-8')).toBe('weights') // live copy untouched
-      rmSync(live(PINNED.model), { recursive: true, force: true })
-      const retry = await installInferenceModels(optsAutoYes, undefined, [PINNED])
-      expect(retry.status).toBe('installed')
+      expect(result.status).toBe('installed')
       expect(readFileSync(join(live(PINNED.model), 'onnx', 'model.onnx')).length).toBe(2048)
+      expect(require('fs').readdirSync(join(modelsRoot, 'test-pinned')).filter((n: string) => n !== 'embedder')).toEqual([])
+      expect((await installInferenceModels(optsAutoYes, undefined, [PINNED])).status).toBe('noop')
     })
 
     it('a model whose bytes match the pin is a noop — no pull; installed state is judged under the lock, which every exit releases', async () => {
@@ -336,15 +337,14 @@ describe('installInferenceModels', () => {
       expect(check.message).toContain('custom models are checked structurally only')
     })
 
-    it('an incomplete CUSTOM model in the way is described as incomplete, never as a pin mismatch', async () => {
+    it('an incomplete CUSTOM model is re-pulled and published (structure is all a custom model can prove)', async () => {
       installFakeBinary(PULL_OK)
       const custom = TEST_MODELS[0]!
       mkdirSync(join(live(custom.model), 'onnx'), { recursive: true }) // weights but no manifest: incomplete
       writeFileSync(join(live(custom.model), 'onnx', 'model.onnx'), 'weights')
       const result = await installInferenceModels(optsAutoYes, undefined, [custom])
-      expect(result.status).toBe('failed')
-      expect(result.message).toContain('the installed copy is incomplete')
-      expect(result.message).not.toContain('pins')
+      expect(result.status).toBe('installed')
+      expect(existsSync(join(live(custom.model), 'model_manifest.json'))).toBe(true)
     })
 
     it('the machine-wide lock: a holder makes the install fail clearly and is NEVER auto-reclaimed; removing it as told succeeds', async () => {
@@ -485,5 +485,122 @@ describe('the model install as an operation (#895 D12)', () => {
       expect(existsSync(stagingDir(model.model))).toBe(false)
       expect((await checkInferenceModels([model])).status).toBe('ok')
     })
+  })
+})
+
+describe('clipclap is pulled as its GGUF variant (#993)', () => {
+  const CLIPCLAP: InferenceModel = { label: 'visual embedder', model: 'antflydb/clipclap', kind: 'embedder' }
+  const target = join(modelsRoot, 'antflydb', 'clipclap')
+
+  /** The real variant pull: installs as `<name>--antfly-<hash>` with the variant in its marker. */
+  const PULL_VARIANT = `#!/bin/sh
+[ "$1" = "inference" ] && [ "$2" = "embed" ] && { echo '{"embeddings":[[0.1]]}'; exit 0; }
+[ "$1" = "inference" ] && [ "$2" = "pull" ] && [ "$4" = "--models-dir" ] || exit 9
+echo "$*" >> "$(dirname "$0")/argv.log"
+ref="\${3%%:*}"; variant="\${3#*:}"
+owner=$(dirname "$ref"); name=$(basename "$ref")
+stage="$5/$owner/.$name--antfly-a2cdf31c.antfly-download-staging"
+mkdir -p "$stage"
+echo "  [1/1] clipclap-clip.Q4_K.gguf (64.0 MiB)..." >&2
+truncate -s 60000000 "$stage/clipclap-clip.Q4_K.gguf"
+truncate -s 30000000 "$stage/clipclap-clap.Q4_K.gguf"
+echo '{}' > "$stage/tokenizer.json"
+echo '{"type":"embedder"}' > "$stage/model_manifest.json"
+echo "{\\"version\\":2,\\"source\\":{\\"owner\\":\\"$owner\\",\\"name\\":\\"$name\\",\\"variant\\":\\"$variant\\"},\\"artifacts\\":[]}" > "$stage/.antfly-download-complete.json"
+echo "done." >&2
+mv "$stage" "$5/$owner/$name--antfly-a2cdf31c"
+`
+
+  /** The 0.2.x default layout: GGUFs plus the ONNX set, no variant recorded. */
+  function seedDefaultLayout(): void {
+    mkdirSync(target, { recursive: true })
+    writeFileSync(join(target, 'clipclap-clip.Q4_K.gguf'), Buffer.alloc(60_000_000))
+    writeFileSync(join(target, 'clipclap-clap.Q4_K.gguf'), Buffer.alloc(30_000_000))
+    writeFileSync(join(target, 'tokenizer.json'), '{}')
+    writeFileSync(join(target, 'model_manifest.json'), '{"type":"embedder"}')
+    writeFileSync(join(target, 'text_projection.onnx'), 'onnx')
+    writeFileSync(join(target, '.antfly-download-complete.json'), JSON.stringify({ version: 2, source: { owner: 'antflydb', name: 'clipclap' }, artifacts: [] }))
+  }
+
+  const leftovers = () => readdirSync(join(modelsRoot, 'antflydb')).filter((entry) => entry !== 'clipclap')
+
+  // The fake pull writes sparse placeholder GGUFs; pin THOSE bytes so the
+  // staged hash verification (#898 E) judges the test files, not the real ones.
+  const zeros = (n: number) => require('crypto').createHash('sha256').update(Buffer.alloc(n)).digest('hex') as string
+  let realPins: (typeof MODEL_PINS)[string]
+  beforeEach(() => {
+    realPins = MODEL_PINS['antflydb/clipclap']!
+    MODEL_PINS['antflydb/clipclap'] = [
+      { file: 'clipclap-clip.Q4_K.gguf', sha256: zeros(60_000_000), minBytes: 50_000_000 },
+      { file: 'clipclap-clap.Q4_K.gguf', sha256: zeros(30_000_000), minBytes: 20_000_000 },
+      { file: 'tokenizer.json', sha256: require('crypto').createHash('sha256').update('{}\n').digest('hex') },
+    ]
+  })
+  afterEach(() => { MODEL_PINS['antflydb/clipclap'] = realPins })
+
+  it('pulls `antflydb/clipclap:gguf:Q4_K` and moves the install to the name the engine is configured with', async () => {
+    installFakeBinary(PULL_VARIANT)
+    const result = await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])
+    expect(result.status).toBe('installed')
+    expect(readFileSync(join(testDir, 'argv.log'), 'utf8').trim()).toBe(`inference pull antflydb/clipclap:gguf:Q4_K --models-dir ${pullStagingRoot(modelsRoot)}`)
+    expect(JSON.parse(readFileSync(join(target, '.antfly-download-complete.json'), 'utf8')).source.variant).toBe('gguf:Q4_K')
+    expect(leftovers()).toEqual([])
+    expect((await checkInferenceModels([CLIPCLAP])).status).toBe('ok')
+    // Installed as pinned: a second run has nothing to do.
+    expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('noop')
+  })
+
+  it('an existing default-layout install (the ONNX set Linux cannot load) is re-pulled and replaced', async () => {
+    installFakeBinary(PULL_VARIANT)
+    seedDefaultLayout()
+    expect((await checkInferenceModels([CLIPCLAP])).status).toBe('ok')
+    const result = await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])
+    expect(result.status).toBe('installed')
+    expect(existsSync(join(target, 'text_projection.onnx'))).toBe(false)
+    expect(JSON.parse(readFileSync(join(target, '.antfly-download-complete.json'), 'utf8')).source.variant).toBe('gguf:Q4_K')
+    expect(leftovers()).toEqual([])
+  })
+
+  it('a crash between the two renames is finished by the next install — the backup is restored, trash never is', async () => {
+    seedDefaultLayout()
+    const aside = join(modelsRoot, 'antflydb', '.bakin-replacing-clipclap')
+    renameSync(target, aside)
+    // A half-deleted copy from an earlier sweep, touched AFTER the backup: trash is never restored.
+    const trash = join(modelsRoot, 'antflydb', '.bakin-trash-clipclap-1-1')
+    mkdirSync(trash, { recursive: true })
+    writeFileSync(join(trash, 'model_manifest.json'), '{"type":"embedder"}')
+    expect((await checkInferenceModels([CLIPCLAP])).status).toBe('missing')
+    // The retried pull fails: the old install must still come back.
+    installFakeBinary(PULL_LIES)
+    expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('failed')
+    expect(existsSync(join(target, 'text_projection.onnx'))).toBe(true)
+    expect(existsSync(join(target, 'clipclap-clip.Q4_K.gguf'))).toBe(true)
+    expect(existsSync(aside)).toBe(false)
+    expect(existsSync(trash)).toBe(false)
+    // And the next good pull replaces it and leaves nothing aside.
+    installFakeBinary(PULL_VARIANT)
+    expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('installed')
+    expect(existsSync(join(target, 'text_projection.onnx'))).toBe(false)
+    expect(leftovers()).toEqual([])
+  })
+
+  it('a crash after the variant moved in (backup still present) keeps the new install and retires the backup', async () => {
+    installFakeBinary(PULL_VARIANT)
+    expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('installed')
+    const backup = join(modelsRoot, 'antflydb', '.bakin-replacing-clipclap')
+    mkdirSync(backup)
+    writeFileSync(join(backup, 'text_projection.onnx'), 'old')
+    expect((await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])).status).toBe('noop')
+    expect(JSON.parse(readFileSync(join(target, '.antfly-download-complete.json'), 'utf8')).source.variant).toBe('gguf:Q4_K')
+    expect(leftovers()).toEqual([])
+  })
+
+  it('a pull that reports success without the variant install fails and leaves the existing install in place', async () => {
+    installFakeBinary(PULL_LIES)
+    seedDefaultLayout()
+    const result = await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])
+    expect(result.status).toBe('failed')
+    expect(result.message).toContain('no gguf:Q4_K install appeared')
+    expect(existsSync(join(target, 'text_projection.onnx'))).toBe(true)
   })
 })

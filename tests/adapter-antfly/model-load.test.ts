@@ -1,0 +1,315 @@
+/**
+ * Model load verdicts (#993): the engine is the authority on whether a
+ * complete download LOADS here. An unloadable model stays off the engine's
+ * preloads (the engine exits on a failed preload), its leg isn't offered,
+ * the layout fingerprint says so (and only then), and Health names it.
+ * Only the engine's own diagnostic records "can't load"; anything else
+ * (another engine version, a spawn failure, a signal, a timeout, a cancel)
+ * records nothing. Guest endpoints are never judged by local verdicts.
+ */
+import { afterAll, beforeEach, describe, expect, it } from 'bun:test'
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { randomUUID } from 'crypto'
+
+const testDir = join(tmpdir(), `bakin-test-model-load-${Date.now()}-${randomUUID()}`)
+process.env.ANTFLY_HOME = testDir
+
+import {
+  _resetModelLoadCacheForTests,
+  ensureModelLoadVerdicts,
+  modelLoadable,
+  modelLoadReceiptDir,
+  modelLoadVerdict,
+  probeModelLoad,
+  type ProbeResult,
+  type ProbeRunner,
+} from '../../packages/adapter-antfly/src/model-load'
+import { modelDir } from '../../packages/adapter-antfly/src/model-pins'
+import { buildServiceArgv } from '../../packages/adapter-antfly/src/service'
+import { embedderUsable } from '../../packages/adapter-antfly/src/translate'
+import { checkInferenceModels } from '../../packages/adapter-antfly/src/models'
+import { ANTFLY_PIN } from '../../packages/adapter-antfly/src/pin'
+import { DEFAULT_SETTINGS } from '../../packages/adapter-antfly/src/defaults'
+import { AntflySearchClient } from '../../packages/adapter-antfly/src/client'
+
+const MODEL = 'acme/unpinned-embedder'
+const LOCAL = 'http://127.0.0.1:3738'
+const GUEST = 'http://10.0.0.7:3738'
+
+/** A complete unpinned download (generic weight-file check) with a pull marker. */
+function seed(model = MODEL, marker = 'pull-1'): void {
+  const dir = modelDir(model)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'model_manifest.json'), '{"type":"embedder"}')
+  writeFileSync(join(dir, 'model.onnx'), 'weights')
+  writeFileSync(join(dir, '.antfly-download-complete.json'), JSON.stringify({ marker }))
+}
+
+const ok = (over: Partial<ProbeResult> = {}): ProbeResult => ({ code: 0, output: '', timedOut: false, spawnFailed: false, aborted: false, ...over })
+
+/** A fake engine: `--version` answers `version`; `inference embed` answers `embed`. */
+function engine(embed: ProbeResult, version = ANTFLY_PIN.version): ProbeRunner {
+  return async (_binary, args) => (args[0] === '--version' ? ok({ output: `antfly ${version} (zig)` }) : embed)
+}
+const loads = engine(ok({ output: '{"embeddings":[[0.1]]}' }))
+const rejects = engine(ok({
+  code: 1,
+  output: 'info: trying backend native\nantfly inference: startup failed; see the preceding diagnostic for details (error.MissingWeight)\n',
+}))
+
+beforeEach(() => {
+  rmSync(testDir, { recursive: true, force: true })
+  mkdirSync(testDir, { recursive: true })
+  _resetModelLoadCacheForTests()
+})
+afterAll(() => rmSync(testDir, { recursive: true, force: true }))
+
+describe('probeModelLoad', () => {
+  it('records a model that loads', async () => {
+    seed()
+    expect((await probeModelLoad('/bin/antfly', MODEL, { run: loads }))?.loadable).toBe(true)
+    expect(modelLoadable(MODEL, LOCAL)).toBe(true)
+  })
+
+  it("records the engine's own diagnostic when it can't load", async () => {
+    seed()
+    const verdict = await probeModelLoad('/bin/antfly', MODEL, { run: rejects })
+    expect(verdict).toMatchObject({ loadable: false, engineVersion: ANTFLY_PIN.version })
+    expect(verdict?.reason).toContain('error.MissingWeight')
+    expect(modelLoadable(MODEL, LOCAL)).toBe(false)
+  })
+
+  it('records nothing for anything but an engine answer: another version, a spawn failure, a bare exit, a signal, a timeout, a cancel', async () => {
+    seed()
+    const cases: ProbeRunner[] = [
+      engine(ok({ code: 1, output: 'error.MissingWeight' }), '0.2.1'),
+      engine(ok({ code: null, spawnFailed: true })),
+      engine(ok({ code: 1, output: 'Segmentation fault' })),
+      engine(ok({ code: null })),
+      engine(ok({ code: null, timedOut: true })),
+      engine(ok({ code: null, aborted: true })),
+    ]
+    for (const run of cases) expect(await probeModelLoad('/bin/antfly', MODEL, { run })).toBeNull()
+    expect(modelLoadVerdict(MODEL)).toBeNull()
+    expect(modelLoadable(MODEL, LOCAL)).toBe(true)
+  })
+
+  it('a re-pull makes the verdict stale', async () => {
+    seed()
+    await probeModelLoad('/bin/antfly', MODEL, { run: rejects })
+    expect(modelLoadable(MODEL, LOCAL)).toBe(false)
+    seed(MODEL, 'pull-2')
+    expect(modelLoadVerdict(MODEL)).toBeNull()
+  })
+
+  it('verdicts for different models never clobber each other (one receipt per model)', async () => {
+    const models = Array.from({ length: 12 }, (_, i) => `acme/model-${i}`)
+    for (const model of models) seed(model)
+    await Promise.all(models.map((model, i) => probeModelLoad('/bin/antfly', model, { run: i % 2 ? rejects : loads })))
+    _resetModelLoadCacheForTests()
+    expect(readdirSync(modelLoadReceiptDir()).filter((f) => f.endsWith('.json'))).toHaveLength(12)
+    for (const [i, model] of models.entries()) expect(modelLoadVerdict(model)?.loadable).toBe(i % 2 === 0)
+  })
+
+  it('a guest endpoint is never judged by this machine’s verdicts', async () => {
+    seed()
+    await probeModelLoad('/bin/antfly', MODEL, { run: rejects })
+    expect(modelLoadable(MODEL, LOCAL)).toBe(false)
+    expect(modelLoadable(MODEL, GUEST)).toBe(true)
+  })
+})
+
+describe('ensureModelLoadVerdicts', () => {
+  it('probes each complete model once, skipping incomplete ones, a missing binary and a cancelled run', async () => {
+    seed()
+    const binary = join(testDir, 'antfly')
+    writeFileSync(binary, '')
+    let embeds = 0
+    const counting: ProbeRunner = async (b, args, t, s) => { if (args[0] !== '--version') embeds += 1; return loads(b, args, t, s) }
+    await ensureModelLoadVerdicts([MODEL, 'acme/not-downloaded'], binary, { run: counting })
+    await ensureModelLoadVerdicts([MODEL], binary, { run: counting })
+    expect(embeds).toBe(1)
+    await ensureModelLoadVerdicts([MODEL], join(testDir, 'no-such-binary'), { run: counting })
+    seed('acme/second')
+    const cancelled = new AbortController()
+    cancelled.abort()
+    await ensureModelLoadVerdicts(['acme/second'], binary, { run: counting, signal: cancelled.signal })
+    expect(embeds).toBe(1)
+  })
+})
+
+describe('wiring', () => {
+  const settings = {
+    ...DEFAULT_SETTINGS,
+    url: LOCAL,
+    embedders: {
+      default: { provider: 'antfly', model: 'acme/text', dimension: 384 },
+      visual: { provider: 'antfly', model: MODEL, dimension: 512 },
+    },
+  } as typeof DEFAULT_SETTINGS
+  const paths = { binary: '/bin/antfly', dataDir: '/d', modelsDir: '/m', logFile: '/l' } as never
+
+  it('an unloadable model is left off the preloads and its leg is not offered — a loadable one is untouched', async () => {
+    seed('acme/text')
+    seed()
+    await probeModelLoad('/bin/antfly', 'acme/text', { run: loads })
+    await probeModelLoad('/bin/antfly', MODEL, { run: rejects })
+
+    const argv = buildServiceArgv(settings, paths)
+    expect(argv).toContain('embedder:acme/text')
+    expect(argv).not.toContain(`embedder:${MODEL}`)
+    expect(embedderUsable(settings.embedders.default, LOCAL)).toBe(true)
+    expect(embedderUsable(settings.embedders.visual, LOCAL)).toBe(false)
+    expect(embedderUsable(settings.embedders.visual, GUEST)).toBe(true)
+  })
+
+  it('Health names the model that cannot load here, with the reason, as degraded — not missing', async () => {
+    seed()
+    await probeModelLoad('/bin/antfly', MODEL, { run: rejects })
+    const check = await checkInferenceModels([{ label: 'CLIP visual embedder', model: MODEL, kind: 'embedder' }])
+    expect(check.status).toBe('warn')
+    expect(check.message).toContain("CLIP visual embedder can't load on this machine")
+    expect(JSON.stringify(check.details)).toContain('error.MissingWeight')
+  })
+
+  it('the layout fingerprint changes only for a model known not to load — never on upgrade for one that loads', async () => {
+    const fingerprint = () => new AntflySearchClient(settings).mappingFingerprint()
+    seed()
+    const unknown = fingerprint()
+    await probeModelLoad('/bin/antfly', MODEL, { run: loads })
+    expect(fingerprint()).toBe(unknown)
+    await probeModelLoad('/bin/antfly', MODEL, { run: rejects })
+    expect(fingerprint()).not.toBe(unknown)
+    expect(new AntflySearchClient(settings).capabilities().legs).not.toContain('media-embedding')
+  })
+})
+
+describe('queries name only the legs a table has (#993)', () => {
+  const settings = { ...DEFAULT_SETTINGS, url: LOCAL } as typeof DEFAULT_SETTINGS
+  const indexEntry = (name: string, type: string) => ({ config: { name, type }, status: { index_type: type, rebuilding: false, total_indexed: 0, backfill_active: false, backfill_state: 'ready', doc_count: 0 } })
+
+  function fakeEngine(indexes: string[]) {
+    const queries: Array<Record<string, unknown>> = []
+    let indexReads = 0
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/indexes')) {
+        indexReads += 1
+        return Response.json([indexEntry('full_text', 'full_text'), ...indexes.map((n) => indexEntry(n, 'embeddings'))])
+      }
+      if (url.endsWith('/query')) {
+        queries.push(JSON.parse(String(init?.body)))
+        return Response.json({ responses: [{ hits: { total: 0, max_score: 0, hits: [] }, aggregations: null, took: 1, status: 200, error: null, table: 't_v1' }] })
+      }
+      return new Response('{}', { status: 404 })
+    }) as unknown as typeof fetch
+    return { client: new AntflySearchClient(settings, { fetchImpl }), queries, reads: () => indexReads }
+  }
+
+  const asked = {
+    text: 'red apple',
+    adapterOptions: { searchableFields: ['title'], indexes: ['assets_text', 'assets_visual'], indexWeights: { assets_text: 1, assets_visual: 2 } },
+  }
+
+  it('drops the leg the physical lacks and its weight, reading the table’s indexes once', async () => {
+    const engine = fakeEngine(['assets_text'])
+    await engine.client.query('t_v1', asked)
+    await engine.client.query('t_v1', asked)
+    expect(engine.queries[0]).toMatchObject({ indexes: ['assets_text'], merge_config: { weights: { assets_text: 1 } } })
+    expect(engine.reads()).toBe(1)
+  })
+
+  it('no vector leg on the table: keyword answers, labelled no-semantic-leg — never match-all', async () => {
+    const engine = fakeEngine([])
+    const result = await engine.client.query('t_v1', { ...asked, strategy: 'vector' })
+    expect(engine.queries[0]).not.toHaveProperty('semantic_search')
+    expect(engine.queries[0]).toHaveProperty('full_text_search')
+    expect(result.diagnostics).toMatchObject({ budget: 'degraded', adapter: { degraded: 'no-semantic-leg' } })
+  })
+
+  it('the index names are re-read after a rejected query and once they expire — another process can recreate the table', async () => {
+    let legs = ['assets_text']
+    let reject = false
+    let reads = 0
+    const queries: Array<Record<string, unknown>> = []
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/indexes')) {
+        reads += 1
+        return Response.json([indexEntry('full_text', 'full_text'), ...legs.map((n) => indexEntry(n, 'embeddings'))])
+      }
+      queries.push(JSON.parse(String(init?.body)))
+      if (reject) return new Response('no such index', { status: 400 })
+      return Response.json({ responses: [{ hits: { total: 0, max_score: 0, hits: [] }, aggregations: null, took: 1, status: 200, error: null, table: 't_v1' }] })
+    }) as unknown as typeof fetch
+    const client = new AntflySearchClient(settings, { fetchImpl })
+    await client.query('t_v1', asked)
+    // Recreated elsewhere WITH the visual leg, then the old leg set is rejected.
+    legs = ['assets_visual']
+    reject = true
+    await client.query('t_v1', asked).catch(() => undefined)
+    reject = false
+    await client.query('t_v1', asked)
+    expect(reads).toBe(2)
+    expect(queries.at(-1)).toMatchObject({ indexes: ['assets_visual'] })
+    // Expiry: a minute later the names are read again even without a rejection.
+    legs = ['assets_text', 'assets_visual']
+    const realNow = Date.now
+    Date.now = () => realNow() + 61_000
+    try {
+      await client.query('t_v1', asked)
+    } finally {
+      Date.now = realNow
+    }
+    expect(reads).toBe(3)
+    expect(queries.at(-1)).toMatchObject({ indexes: ['assets_text', 'assets_visual'] })
+  })
+
+  it('discovery spends the query’s own budget — the engine gets what is left, not the full deadline', async () => {
+    const queries: Array<Record<string, unknown>> = []
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/indexes')) {
+        await new Promise((resolve) => setTimeout(resolve, 60))
+        return Response.json([indexEntry('full_text', 'full_text'), indexEntry('assets_text', 'embeddings')])
+      }
+      queries.push(JSON.parse(String(init?.body)))
+      return Response.json({ responses: [{ hits: { total: 0, max_score: 0, hits: [] }, aggregations: null, took: 1, status: 200, error: null, table: 't_v1' }] })
+    }) as unknown as typeof fetch
+    await new AntflySearchClient(settings, { fetchImpl }).query('t_v1', { ...asked, deadlineMs: 400 })
+    const sent = (queries[0] as { timeout_ms?: number }).timeout_ms ?? 0
+    expect(sent).toBeLessThanOrEqual(345)
+    expect(sent).toBeGreaterThan(0)
+  })
+
+  it('semantic intended with no legs offered at all: keyword answers, and the response says so (adapter AND budget)', async () => {
+    const engine = fakeEngine(['assets_text'])
+    const result = await engine.client.query('t_v1', { text: 'red apple', strategy: 'vector', adapterOptions: { searchableFields: ['title'], indexes: [] } })
+    expect(engine.queries[0]).toHaveProperty('full_text_search')
+    expect(engine.queries[0]).not.toHaveProperty('semantic_search')
+    expect(result.diagnostics).toMatchObject({ strategy: 'fts', budget: 'degraded', adapter: { degraded: 'no-semantic-leg' } })
+  })
+
+  it('an explicit keyword query is never labelled degraded', async () => {
+    const engine = fakeEngine([])
+    const result = await engine.client.query('t_v1', { ...asked, strategy: 'fts' })
+    expect(result.diagnostics?.adapter?.degraded).toBeUndefined()
+    expect(result.diagnostics?.budget).not.toBe('degraded')
+  })
+
+  it('a hung index read costs the query only a slice of its budget, then queries as asked', async () => {
+    const queries: Array<Record<string, unknown>> = []
+    const fetchImpl = (async (url: string, init?: RequestInit & { signal?: AbortSignal }) => {
+      if (url.endsWith('/indexes')) {
+        await new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))))
+      }
+      queries.push(JSON.parse(String(init?.body)))
+      return Response.json({ responses: [{ hits: { total: 0, max_score: 0, hits: [] }, aggregations: null, took: 1, status: 200, error: null, table: 't_v1' }] })
+    }) as unknown as typeof fetch
+    const client = new AntflySearchClient(settings, { fetchImpl })
+    const started = Date.now()
+    await client.query('t_v1', { ...asked, deadlineMs: 400 })
+    expect(Date.now() - started).toBeLessThan(1_500)
+    expect(queries[0]).toMatchObject({ indexes: ['assets_text', 'assets_visual'] })
+  })
+})
+

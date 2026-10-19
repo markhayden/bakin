@@ -203,7 +203,7 @@ export async function installUpgradedPluginAssets(
   if (installedSkills.length === 0) {
     return {
       installedSkills,
-      pluginAssets: { installed: [], unchanged: [], skipped: [], failed: [], bins: { installed: [], unchanged: [], failed: [] } },
+      pluginAssets: { installed: [], unchanged: [], skipped: [], failed: [], bins: { installed: [], unchanged: [], failed: [], invalid: [] } },
     }
   }
 

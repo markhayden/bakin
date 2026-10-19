@@ -61,7 +61,8 @@ async function main() {
     modelOwners: ['BAAI', 'antflydb', 'mixedbread-ai'],
     preloadModels: ['embedder:BAAI/bge-small-en-v1.5', 'embedder:antflydb/clipclap'],
   })
-  const imagesDir = join(instance.root, 'corpus-images')
+  // Inside the engine config's file:// allowlist (0.2.5 denies anything else).
+  const imagesDir = join(instance.mediaDir, 'corpus-images')
   mkdirSync(imagesDir, { recursive: true })
 
   try {

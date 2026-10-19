@@ -1,6 +1,61 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { usePluginEvent, type PluginEventPayload } from './use-plugin-event'
+
+/** The audit event name a `bakin.audit` payload carries. */
+function auditEventOf(payload: PluginEventPayload): string | undefined {
+  const entry = payload.entry as { event?: unknown } | undefined
+  return typeof entry?.event === 'string' ? entry.event : undefined
+}
+
+/**
+ * Deleting an agent removes its native runtime cron jobs (OpenClaw keeps
+ * them per agent) — the runtime's change, so no schedule write signals it;
+ * the deletion's own audit does.
+ */
+const AGENT_REMOVED_AUDITS = new Set(['team.agent.deleted', 'agent_pkg.removed'])
+
+function isAgentRemoval(payload: PluginEventPayload): boolean {
+  const event = auditEventOf(payload)
+  return event !== undefined && AGENT_REMOVED_AUDITS.has(event)
+}
+
+/**
+ * Refetch on a signal without stacking requests: one in flight at a time, and
+ * one trailing run when signals arrived meanwhile — a burst of schedule
+ * writes (a tick's fires) costs at most two requests, never one per write.
+ */
+function useCoalescedRefresh(fetcher: () => Promise<void>): () => void {
+  const state = useRef({ running: false, again: false, disposed: false })
+  const latest = useRef(fetcher)
+  latest.current = fetcher
+  useEffect(() => {
+    const s = state.current
+    s.disposed = false
+    // Unmounted: drop any queued run — nothing starts after this.
+    return () => { s.disposed = true; s.again = false }
+  }, [])
+  return useCallback(() => {
+    const s = state.current
+    if (s.disposed) return
+    if (s.running) {
+      s.again = true
+      return
+    }
+    s.running = true
+    void (async () => {
+      try {
+        do {
+          s.again = false
+          await latest.current()
+        } while (s.again && !s.disposed)
+      } finally {
+        s.running = false
+      }
+    })()
+  }, [])
+}
 
 export interface ScheduleJob {
   id: string
@@ -86,26 +141,12 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
     fetchJobs()
   }, [fetchJobs])
 
-  // Listen for SSE schedule events
-  useEffect(() => {
-    const es = new EventSource('/api/events')
-    const handler = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (
-          (data.type === 'activity' && data.message?.includes('Schedule')) ||
-          data.event?.startsWith('schedule.')
-        ) {
-          fetchJobs()
-        }
-      } catch { /* ignore */ }
-    }
-    es.addEventListener('message', handler)
-    return () => {
-      es.removeEventListener('message', handler)
-      es.close()
-    }
-  }, [fetchJobs])
+  // Every Bakin schedule write (the UI, an agent's tools, fires, auto-resume,
+  // repairs) signals `schedule.changed` on the shell's one stream (#990).
+  const refreshJobs = useCoalescedRefresh(fetchJobs)
+  usePluginEvent('schedule.changed', refreshJobs)
+  usePluginEvent('bakin.audit', (payload) => { if (isAgentRemoval(payload)) refreshJobs() })
+  usePluginEvent('bakin.reconcile', refreshJobs)
 
   // Apply client-side filters
   const opts = options
@@ -300,30 +341,16 @@ export function useOccurrences(fromIso: string, toIso: string) {
     fetchOccurrences()
   }, [fetchOccurrences])
 
-  useEffect(() => {
-    const es = new EventSource('/api/events')
-    const handler = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (
-          (data.type === 'activity' && data.message?.includes('Schedule')) ||
-          data.event?.startsWith('schedule.') ||
-          // Task dates feed the domain-event layer; the store broadcasts on
-          // every board write. External providers emit the documented
-          // `<pluginId>.scheduled_events_changed` audit event.
-          data.type === 'taskboard' ||
-          data.event?.endsWith('.scheduled_events_changed')
-        ) {
-          fetchOccurrences()
-        }
-      } catch { /* ignore */ }
-    }
-    es.addEventListener('message', handler)
-    return () => {
-      es.removeEventListener('message', handler)
-      es.close()
-    }
-  }, [fetchOccurrences])
+  // Occurrences move with schedule writes, with task dates (the board
+  // broadcasts every write) and with any provider's documented
+  // `<pluginId>.scheduled_events_changed` audit event (#191).
+  const refreshOccurrences = useCoalescedRefresh(fetchOccurrences)
+  usePluginEvent('schedule.changed', refreshOccurrences)
+  usePluginEvent('taskboard', refreshOccurrences)
+  usePluginEvent('bakin.audit', (payload) => {
+    if (auditEventOf(payload)?.endsWith('.scheduled_events_changed') || isAgentRemoval(payload)) refreshOccurrences()
+  })
+  usePluginEvent('bakin.reconcile', refreshOccurrences)
 
   return { occurrences, events, unevaluated, droppedProviders, loading, refresh: fetchOccurrences }
 }

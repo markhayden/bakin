@@ -1200,9 +1200,12 @@ Mechanics (`src/hooks/use-plugin-event.ts`, SDK-re-exported like `useSSE`):
   raw server frames to event names and calls `emitPluginEvent`:
   `{type:'plugin-event', event, …}` frames pass through verbatim
   (`asset.changed`, `asset.removed`, `workflow.*`, …); the shell also
-  synthesizes `taskboard` (on `{type:'taskboard'}`), `doctor.run` (on a
-  `doctor.run` audit entry), and `reindex.start|progress|complete` (from
-  the per-table reindex frames). Adding a new event name = one `emit`
+  synthesizes `taskboard` (on `{type:'taskboard'}`), `bakin.audit` (every
+  audit entry, as `{ entry }` — filter on `entry.event`; the schedule
+  calendars use it), `doctor.run` (on a `doctor.run` audit entry),
+  `bakin.reconcile` (after a reconnect or a tab wake), `turn-activity`, and
+  `search.rebuild.start|progress|complete` (from the per-table rebuild
+  frames). There is no other `EventSource` — architecture-test pinned. Adding a new event name = one `emit`
   line here; no content-store change.
 
 This replaced two older patterns: the assets plugin's 3 raw

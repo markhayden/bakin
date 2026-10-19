@@ -18,27 +18,27 @@ export interface AntflyPin {
 }
 
 export const ANTFLY_PIN: AntflyPin = {
-  // v0.2.2 (published 2026-09-14) — ADOPTED 2026-09-18 after the repin gate
-  // on the target M4 (tasks/evidence-antfly-0.2.2.md, bakin#843): every 0.2.0
-  // sharp edge we filed is FIXED (antfly#617 add-leg wedge → clean
-  // progressive backfill; #618 inline indexes → honest 400 rejection; #619
-  // backfill pacing → ~17x, 20k rebuild ~83min → ~5min), and the 2026-09-18
-  // live forced-rebuild HTTP-starvation wedge does not reproduce (0 probe
-  // failures across three rebuild cycles under concurrent backfill load —
-  // the 0.2.1 HBC cache-fill bounding). NO workaround pins flipped: order_by
-  // on inferred fields still 422s and undecodable media still poisons its
-  // whole batch, so the adapter carries the same workarounds as 0.2.0.
-  // Upstream now also publishes Linux *_gnu (glibc) tarballs — we keep the
-  // original names; switch if musl issues surface in Docker/CI.
+  // v0.2.5 (published 2026-09-28) — the repin gate is in
+  // tasks/evidence-antfly-0.2.5.md. 0.2.3/0.2.5 are v0.2.x backports; the one
+  // that touches Bakin is upstream #898 (secure deployment defaults): remote
+  // templates now DENY file:// unless remote_content.security.allowed_paths
+  // names the directory, so service.ts passes --config with the asset store
+  // allowlisted (renderEngineConfig) — without it every asset batch with an
+  // image 500s whole. Pinned by workaround-regressions "file:// media needs
+  // Bakin's engine config". Workarounds unchanged: order_by on inferred
+  // fields still 422s and undecodable media still poisons its whole batch.
+  // Linux stays on the static tarballs (not *_gnu): the static-only artifact
+  // mix-up (antfly#1202) needs a GGUF+ONNX install, which Bakin no longer
+  // creates (MODEL_PULL_VARIANTS), and *_gnu would break musl hosts.
   // For the next repin: bump version+checksums from the release's
   // antfly_zig_checksums.txt and re-run tests/integration/antfly/ + the
   // reproduction ladder (rungs in the evidence files) BEFORE adopting.
-  version: '0.2.2',
+  version: '0.2.5',
   baseUrl: 'https://releases.antfly.io/antfly',
   checksums: {
-    'darwin-arm64': '556a012141b7e3db0796902e3e219ad12c08a36cd9ff6b0ef0e9813948ecbcc6',
-    'linux-arm64': '03154bf9bd3bbc7335e0662563c69bd3259c3bbfe8fcf8509b5f4a6265be4d84',
-    'linux-x64': '17ebb65e906ce24a0a7e2672e8316c867fd9d7550b1f42eb4e1f714bb0697456',
+    'darwin-arm64': '4fc5a948be9e14cefc8393de22ce1ea6e35b927aa79cc35b7d80bef55b712ac8',
+    'linux-arm64': 'ad166bedb9eb4d137240b2f20c82ae143c211c3f2c95d0aad0ac864ba179c24d',
+    'linux-x64': 'd123bd0f92c9a9837e4f079c6aca91a587051a3acfed64a74ccd6951398e1b08',
   },
 }
 

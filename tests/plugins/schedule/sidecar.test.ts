@@ -50,6 +50,7 @@ import {
   pauseUnrunnableJobs,
   UNRUNNABLE_PAUSE_REASON,
 } from '@bakin/schedule/lib/sidecar'
+import { setPluginCtx } from '@bakin/schedule/lib/plugin-context'
 import type { BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
 
 function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
@@ -350,3 +351,21 @@ describe('schedule/sidecar', () => {
     })
   })
 })
+
+describe('the schedule change signal (#990)', () => {
+  afterEach(() => setPluginCtx(null))
+
+  it('every sidecar write — upsert, remove, timed auto-resume — emits schedule.changed', () => {
+    const emitted: string[] = []
+    setPluginCtx({ events: { emit: (event: string) => { emitted.push(event) } } } as never)
+    upsertJob(makeMeta({ jobId: 'signal-1' }))
+    removeJob('signal-1')
+    upsertJob(makeMeta({ jobId: 'signal-2', paused: true, pauseUntil: '2000-01-01T00:00:00Z' }))
+    expect(emitted).toEqual(['schedule.changed', 'schedule.changed', 'schedule.changed'])
+
+    // The timed auto-resume writes with no request behind it — it signals too.
+    expect(resumeDuePauses(Date.now())).toBe(1)
+    expect(emitted).toHaveLength(4)
+  })
+})
+

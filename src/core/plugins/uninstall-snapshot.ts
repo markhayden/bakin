@@ -35,7 +35,7 @@ import {
   writePluginLockfile,
   type PluginLockEntry,
 } from '@bakin/core/plugins/lockfile'
-import { readPluginManifestJson } from '@bakin/core/plugins/manifest'
+import { readPluginIdentity } from '@bakin/core/plugins/manifest'
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import type { RuntimeSkill } from '@bakin/core/adapters/runtime'
 
@@ -660,9 +660,12 @@ function synthesizeLockEntryFromSnapshot(
 ): PluginLockEntry {
   const manifestPath = join(stagedPluginDir, 'bakin-plugin.json')
   const manifestText = readFileSync(manifestPath, 'utf-8')
-  let manifest: ReturnType<typeof readPluginManifestJson>
+  // Identity only (#898 D): a snapshot whose install-time declaration a newer
+  // Bakin rejects still restores — with its settings — and the loader
+  // reports it invalid until it is upgraded.
+  let manifest: ReturnType<typeof readPluginIdentity>
   try {
-    manifest = readPluginManifestJson(manifestText)
+    manifest = readPluginIdentity(manifestText)
   } catch (err) {
     throw new PluginRestoreError({
       status: 400,

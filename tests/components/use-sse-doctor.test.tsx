@@ -22,6 +22,7 @@ import { useContentStore } from '@/hooks/use-content-store'
 
 let doctorRuns = 0
 let reconciles = 0
+let audits: string[] = []
 let changedFile = ''
 
 // Controllable EventSource — captures the instance so the test can drive
@@ -44,6 +45,7 @@ function createMockEventSource(url: string): MockEventSource {
 function Probe() {
   useSSE()
   usePluginEvent('doctor.run', () => { doctorRuns += 1 })
+  usePluginEvent('bakin.audit', (payload) => { audits.push(String((payload.entry as { event?: string }).event)) })
   usePluginEvent('bakin.reconcile', () => { reconciles += 1 })
   usePluginEvent('bakin.file.changed', (event) => { changedFile = String(event.file) })
   return null
@@ -59,10 +61,21 @@ beforeEach(() => {
   lastES = null
   doctorRuns = 0
   reconciles = 0
+  audits = []
   changedFile = ''
   ;(globalThis as { EventSource: unknown }).EventSource = createMockEventSource as unknown
   // initialize() fetches a few endpoints on mount — stub them to empty.
   ;(globalThis as { fetch: typeof fetch }).fetch = (mock(async () => new Response('{}', { status: 200 }))) as unknown as typeof fetch
+})
+
+describe('useSSE — audit fan-out', () => {
+  it('every audit entry reaches bakin.audit subscribers with its entry (#990)', async () => {
+    render(<Probe />)
+    await waitFor(() => expect(lastES).not.toBeNull())
+    emitAudit('schedule.job.created')
+    emitAudit('messaging.scheduled_events_changed')
+    expect(audits).toEqual(['schedule.job.created', 'messaging.scheduled_events_changed'])
+  })
 })
 
 describe('useSSE — doctor.run event wiring', () => {

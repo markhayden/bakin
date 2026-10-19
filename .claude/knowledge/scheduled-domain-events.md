@@ -46,8 +46,22 @@ teal (start), no agent identity — unmistakable from job occurrence cards.
 Popover: details + Open deep link + Reschedule (whole flow in a
 ConfirmDialog with a datetime picker; owner rejection shown in-dialog).
 `useOccurrences` (SDK hook) surfaces `events` + `droppedProviders` and
-refetches on `schedule.*` events, `taskboard` broadcasts, and the documented
-`<pluginId>.scheduled_events_changed` audit convention.
+refetches on `schedule.changed`, `taskboard` broadcasts, the documented
+`<pluginId>.scheduled_events_changed` audit convention and reconnects — all
+through `usePluginEvent` on the shell's one stream, coalesced (one request
+in flight, one trailing refresh). `schedule.changed` (`signalScheduleChanged`) is
+emitted by `writeSidecar`, the ONE choke point every Bakin schedule write
+passes (the UI routes, agents' exec tools, fires, auto-resume, repairs), so
+no writer can forget to signal; the schedule state outside the sidecar
+signals once written — fire claims and dispositions in the execution
+ledger (claim, `skipFire`, attach, heal, a retention prune that deleted
+rows) and adoption / cutover after the native cron is removed. Deleting
+an agent removes its native runtime cron jobs, so both views also refresh
+on the `team.agent.deleted` and `agent_pkg.removed` audits.
+A refresh queued behind an in-flight one is dropped on unmount. #990 retired the hooks' private EventSources,
+which matched neither audit events nor agent-tool changes: open calendars
+missed provider changes, agent edits and auto-resumes before. Native
+runtime cron jobs Bakin doesn't own refresh on reconnect / tab wake.
 
 ## Providers
 
