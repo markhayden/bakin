@@ -5,7 +5,7 @@
  * home (read as a hostname) or a symlink spelling that differs by process.
  */
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, realpathSync, rmSync, symlinkSync } from 'fs'
+import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, relative } from 'path'
 import { randomUUID } from 'crypto'
@@ -59,6 +59,13 @@ describe('buildAssetFileUrl', () => {
     symlinkSync(home2, join(testDir, 'alias2'))
     assetsRoot = join(testDir, 'alias2', 'assets')
     expect(buildAssetFileUrl('store/2026-10/x/thumb.jpg')).toBe(`file://${realpathSync(disk)}/2026-10/x/thumb.jpg`)
+  })
+
+  it('a backslash in a filename is kept exactly — never resolved into a separator', () => {
+    mkdirSync(join(realHome, 'assets', 'store', 'dir'), { recursive: true })
+    writeFileSync(join(realHome, 'assets', 'store', 'dir\\b.png'), 'x')
+    writeFileSync(join(realHome, 'assets', 'store', 'dir', 'b.png'), 'y')
+    expect(buildAssetFileUrl('store/dir\\b.png')).toBe(`file://${join(realHome, 'assets')}/store/dir%5Cb.png`)
   })
 
   it('an assets root that does not exist yet still yields an absolute URL', () => {

@@ -113,7 +113,14 @@ export class AntflySearchClient implements SearchAdapter {
     if (!isLocalDefaultUrl(this.settings.url)) return items
     const carriesFileUrl = items.some((item) => Object.values(item.doc).some((value) => typeof value === 'string' && value.startsWith('file://')))
     if (!carriesFileUrl) return items
-    const roots = localMediaRoots()
+    let roots: string[]
+    try {
+      roots = localMediaRoots()
+    } catch (err) {
+      // Unresolvable store: send as is — the engine decides, the batch isn't held up.
+      log.debug('media roots could not be resolved — file:// values sent as is', { error: err instanceof Error ? err.message : String(err) })
+      return items
+    }
     return items.map((item) => {
       const doc = normalizeFileUrls(item.doc, roots)
       return doc === item.doc ? item : { ...item, doc }

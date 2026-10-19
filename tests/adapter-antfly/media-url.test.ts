@@ -4,7 +4,7 @@
  * asset store — including rows persisted under another spelling of the home.
  */
 import { afterAll, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'fs'
+import { chmodSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
@@ -26,6 +26,7 @@ import { AntflySearchClient } from '../../packages/adapter-antfly/src/client'
 import { DEFAULT_SETTINGS } from '../../packages/adapter-antfly/src/defaults'
 
 mkdirSync(join(home, 'assets', 'store', '2026-10'), { recursive: true })
+for (const name of ['my thumb.jpg', 'a.jpg', 'b.jpg']) writeFileSync(join(home, 'assets', 'store', '2026-10', name), 'img')
 mkdirSync(join(testDir, 'elsewhere'), { recursive: true })
 symlinkSync(home, join(testDir, 'old-alias'))
 const store = realpathSync(join(home, 'assets', 'store'))
@@ -72,6 +73,28 @@ describe('normalizeFileUrls', () => {
     expect(normalizeFileUrls(doc, roots)).toEqual({ title: doc.title, media_url: `file://${store}/2026-10/b.jpg` })
   })
 
+  it('only the builder\'s exact shape is ever rewritten — any spelling a parser or resolver would change is sent as is', () => {
+    const alias = join(testDir, 'old-alias', 'assets', 'store', '2026-10')
+    writeFileSync(join(home, 'assets', 'store', '2026-10', 'a.jpg '), 'trailing-space twin')
+    const asIs = [
+      `file://${alias}/a.jpg/`, // trailing slash (ENOTDIR on disk)
+      `file://${alias}//a.jpg`, // doubled slash
+      `file://${alias}/sub\\..\\a.jpg`, // raw backslashes
+      `file://${alias}/dir%5Ca.jpg`, // encoded backslash
+      `file://${alias}/a.jpg `, // raw trailing space (WHATWG strips it)
+      `file://${alias}/a.jpg%00`, // NUL
+      `file://${alias}/a.jpg\t`, // control character
+      `file://${alias}/missing.jpg`, // no such file
+      `file://${alias}/a%2Ejpg`, // non-canonical encoding of a.jpg
+    ]
+    for (const media_url of asIs) {
+      const doc = { media_url }
+      expect({ media_url, out: normalizeFileUrls(doc, roots) }).toEqual({ media_url, out: doc })
+    }
+    // The real twin with a trailing space, spelled the builder's way, still normalizes to ITSELF.
+    expect(normalizeFileUrls({ media_url: `file://${alias}/a.jpg%20` }, roots)).toEqual({ media_url: `file://${store}/2026-10/a.jpg%20` })
+  })
+
   it('canonicalFilePath re-attaches a missing tail to the deepest existing ancestor', () => {
     expect(canonicalFilePath(join(testDir, 'old-alias', 'assets', 'store', 'not', 'yet.png'))).toBe(join(store, 'not', 'yet.png'))
   })
@@ -83,7 +106,7 @@ describe('the client sends canonical media URLs to a local engine only', () => {
     const sent: Array<Record<string, unknown>> = []
     const fetchImpl = (async (_u: string, init?: RequestInit) => {
       sent.push(JSON.parse(String(init?.body)))
-      return Response.json({ status: 'committed', inserted: 1 })
+      return Response.json({ status: 'committed', inserted: 1, failed: [] })
     }) as unknown as typeof fetch
     return { c: new AntflySearchClient({ ...DEFAULT_SETTINGS, url }, { fetchImpl }), sent }
   }
@@ -92,6 +115,18 @@ describe('the client sends canonical media URLs to a local engine only', () => {
     const { c, sent } = client(DEFAULT_SETTINGS.url)
     await c.documents.index('t', 'k', { media_url: aliasUrl })
     expect((sent[0]!.inserts as Record<string, { media_url: string }>).k!.media_url).toBe(`file://${store}/2026-10/a.jpg`)
+  })
+
+  it('a store whose roots cannot be resolved sends the batch as is — never holds it up', async () => {
+    const { c, sent } = client(DEFAULT_SETTINGS.url)
+    const assets = join(home, 'assets')
+    chmodSync(assets, 0o000)
+    try {
+      await c.documents.batchIndex('t', [{ key: 'k1', doc: { title: 'plain' } }, { key: 'k2', doc: { title: 'file:///unrelated/missing' } }])
+    } finally {
+      chmodSync(assets, 0o755)
+    }
+    expect(Object.keys(sent[0]!.inserts as object)).toEqual(['k1', 'k2'])
   })
 
   it('a guest engine gets the document untouched — its files are not on this machine', async () => {

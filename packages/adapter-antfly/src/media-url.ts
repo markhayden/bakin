@@ -10,8 +10,7 @@
  * document persisted under any spelling of the home (a symlink, a home spelled
  * differently before an upgrade, a store that is itself a symlink) still lands.
  */
-import { realpathSync } from 'fs'
-import { fileURLToPath } from 'url'
+import { realpathSync, statSync } from 'fs'
 import { basename, dirname, join, resolve, sep } from 'path'
 import { getBakinPaths } from '@bakin/core/content-dir'
 import { createLogger } from '@bakin/core/logger'
@@ -50,36 +49,50 @@ function encodeFileUrl(path: string): string {
   return `file://${path.split('/').map((segment, i) => (i === 0 && segment === '' ? '' : encodeURIComponent(segment))).join('/')}`
 }
 
-/** The local path a `file://` URL names — null when it isn't one we may reason about. */
+/**
+ * The local path a `file://` URL names — ONLY for the exact shape Bakin's own
+ * asset URL builder emits (`file:///` + non-empty segments, each exactly the
+ * encodeURIComponent form of its decoded text). Anything else returns null
+ * and is sent untouched: WHATWG parsing and path resolution both rewrite
+ * spellings (dot segments, backslashes, trailing slashes, stripped whitespace
+ * or NUL), and any of those can name a different file than the engine would.
+ */
 function localPathOf(url: string): string | null {
-  // Any `.`/`..` segment is left to the engine: WHATWG parsing collapses
-  // `link/..` lexically, which can name a different file than the
-  // filesystem would reach through a symlinked `link`.
-  const rawPath = url.slice('file://'.length)
-  let segments: string[]
-  try {
-    segments = rawPath.split('/').map((segment) => decodeURIComponent(segment))
-  } catch (err) {
-    if (err instanceof URIError) return null
-    throw err
+  if (!url.startsWith('file:///')) return null
+  const segments = url.slice('file:///'.length).split('/')
+  const decoded: string[] = []
+  for (const segment of segments) {
+    if (segment === '') return null
+    let text: string
+    try {
+      text = decodeURIComponent(segment)
+    } catch (err) {
+      if (err instanceof URIError) return null
+      throw err
+    }
+    if (text === '.' || text === '..' || /[\\\u0000-\u001f\u007f]/.test(text)) return null
+    if (encodeURIComponent(text) !== segment) return null
+    decoded.push(text)
   }
-  if (segments.some((segment) => segment === '.' || segment === '..')) return null
+  return `/${decoded.join('/')}`
+}
+
+/** The realpath of an EXISTING regular file — null for anything else or anything unreadable. */
+function existingFileRealpath(path: string, field: string): string | null {
   try {
-    return fileURLToPath(url)
+    const canonical = realpathSync(path)
+    return statSync(canonical).isFile() ? canonical : null
   } catch (err) {
-    // A host-form URL (`file://relative-home/…`) is not a local path.
-    if (err instanceof TypeError) return null
-    throw err
+    log.debug('file:// value left as sent — its path could not be resolved', { field, error: err instanceof Error ? err.message : String(err) })
+    return null
   }
 }
 
 /**
- * Rewrites each top-level `file://` string to its canonical spelling when that
- * canonical path lies inside one of `mediaRoots` (canonicalized). Anything
- * else — outside the store, dot segments, not a local file URL, a path that
- * can't be resolved (ELOOP, EACCES, …) — is sent exactly as it is, and the
- * engine's own check decides. Never throws for one value: a bad path must not
- * hold up the rest of the batch.
+ * Rewrites each top-level `file://` string to its canonical spelling when it
+ * has the builder's exact shape AND names an existing regular file whose
+ * realpath lies inside one of `mediaRoots`. Everything else is sent exactly as
+ * it is, and the engine's own check decides. Never throws for one value.
  */
 export function normalizeFileUrls(doc: Record<string, unknown>, mediaRoots: readonly string[]): Record<string, unknown> {
   let next: Record<string, unknown> | null = null
@@ -88,17 +101,19 @@ export function normalizeFileUrls(doc: Record<string, unknown>, mediaRoots: read
     if (typeof value !== 'string' || !value.startsWith('file://')) continue
     const path = localPathOf(value)
     if (path === null) continue
-    let canonical: string
-    try {
-      roots ??= [...new Set(mediaRoots.map(canonicalFilePath))]
-      canonical = canonicalFilePath(path)
-    } catch (err) {
-      log.debug('file:// value left as sent — its path could not be resolved', { field, error: err instanceof Error ? err.message : String(err) })
-      continue
-    }
-    if (!roots.some((root) => canonical === root || canonical.startsWith(root + sep))) continue
+    const canonical = existingFileRealpath(path, field)
+    if (canonical === null) continue
+    roots ??= mediaRoots.flatMap((root) => {
+      try {
+        return [realpathSync(root)]
+      } catch (err) {
+        log.debug('media root could not be resolved', { root, error: err instanceof Error ? err.message : String(err) })
+        return []
+      }
+    })
+    if (!roots.some((root) => canonical.startsWith(root + sep))) continue
     const url = encodeFileUrl(canonical)
-    if (url === value) continue
+    if (url === value || localPathOf(url) === null) continue
     next ??= { ...doc }
     next[field] = url
   }
