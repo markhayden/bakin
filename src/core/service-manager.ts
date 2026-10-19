@@ -12,7 +12,8 @@ export const BAKIN_SERVICE_LABEL = 'com.makinbakin.bakin'
 const SERVICE_QUERY_TIMEOUT_MS = 5_000
 
 export function parseLaunchctlPid(output: string): number | null {
-  const pids = [...output.matchAll(/^\s*pid = (\d+)\s*$/gm)].map((m) => Number(m[1]))
+  // Only the job's own top-level key (one tab deep), never a nested block's.
+  const pids = [...output.matchAll(/^\tpid = (\d+)\s*$/gm)].map((m) => Number(m[1]))
   return pids.length === 1 && pids[0]! > 0 ? pids[0]! : null
 }
 

@@ -193,3 +193,12 @@ plan) is either impossible by construction or covered by a test.
 - Stop with no lock holder refuses when this home's service (or a service of
   unknown home) is starting/running, or its state is unreadable — it may be
   about to bring the home back.
+
+## Review hardening (Codex round 6)
+
+- launchd fields are read only at the job's top level (one tab deep): real
+  output carries resource/jetsam coalition blocks with their own
+  `state = active`. Pinned by a captured, sanitized `launchctl print`
+  fixture (`tests/fixtures/lifecycle/launchctl-print-running.txt`).
+- A systemd `UnsetEnvironment` (applied after `Environment=`) makes the
+  service's home unknowable, like an `EnvironmentFile`.

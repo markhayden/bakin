@@ -3,6 +3,8 @@
  * is ever signalled, controlled, spawned or fetched. Each case is a finding
  * from the J reviews (r2 #2, r3 #1–#5, r4 #1–#6) or the K design review.
  */
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { describe, expect, it } from 'bun:test'
 import { readServiceState, restartHome, stopHome, type HttpAnswer, type LifecycleIo, type LockInfo, type ProcessInfo } from '../../src/cli/lifecycle-control'
 
@@ -502,6 +504,33 @@ describe('K r5', () => {
     expect((await stopHome(idle.io)).ok).toBe(true)
     const other = harness({ launchctl: { ok: true, output: 'x = {\n\tstate = running\n\tpid = 4242\n\tenvironment = {\n\t\tBAKIN_HOME => /other/home\n\t}\n}' } })
     expect((await stopHome(other.io)).ok).toBe(true)
+  })
+})
+
+describe('K r6', () => {
+  // Captured from a real `launchctl print` of a running LaunchAgent (sanitized): it
+  // carries nested coalition blocks with their own `state = active`.
+  const captured = readFileSync(join(import.meta.dir, '../fixtures/lifecycle/launchctl-print-running.txt'), 'utf-8')
+
+  it('a real running job parses to its own pid/state/home — nested coalition states are ignored', () => {
+    const h = harness({ launchctl: { ok: true, output: captured } })
+    expect(readServiceState(h.io)).toEqual({ kind: 'loaded', pid: 500, idle: false, home: '/home/me/.bakin' })
+  })
+
+  it('a real service-managed server is stopped through the service', async () => {
+    const me = fresh()
+    const h = harness({ lock: lockFor(me), servers: [me], launchctl: { ok: true, output: captured } })
+    const exec = h.io.exec
+    h.io.exec = (cmd, args) => { if (args[0] === 'bootout') me.alive = false; return exec(cmd, args) }
+    const out = await stopHome(h.io)
+    expect(out.ok).toBe(true)
+    expect(h.execs).toContain('launchctl bootout gui/501/com.makinbakin.bakin')
+  })
+
+  it('systemd UnsetEnvironment makes the home unknowable (it is applied after Environment=)', () => {
+    const h = harness({ platform: 'linux' })
+    h.io.exec = () => ({ ok: true, output: 'LoadState=loaded\nActiveState=active\nMainPID=500\nEnvironment=BAKIN_HOME=/home/me/.bakin\nEnvironmentFiles=\nUnsetEnvironment=BAKIN_HOME\n' })
+    expect(readServiceState(h.io)).toMatchObject({ kind: 'loaded', pid: 500, home: null })
   })
 })
 

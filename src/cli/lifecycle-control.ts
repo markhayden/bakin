@@ -170,13 +170,15 @@ export function readServiceState(io: LifecycleIo): ServiceState {
       }
       return { kind: 'unknown', reason: `launchctl print failed: ${printed.output.trim().slice(0, 200)}` }
     }
-    // `launchctl print` is not an API: read only what is unambiguous.
-    const pids = [...printed.output.matchAll(/^\s*pid = (\d+)\s*$/gm)]
+    // `launchctl print` is not an API: read only what is unambiguous, and only
+    // the JOB's own top-level keys (exactly one tab deep) — nested blocks such
+    // as resource/jetsam coalitions carry their own `state = active`.
+    const pids = [...printed.output.matchAll(/^\tpid = (\d+)\s*$/gm)]
     if (pids.length > 1) return { kind: 'unknown', reason: 'launchctl print reported more than one pid' }
     // The job's OWN `environment = {` block — never `inherited environment` / `default environment`.
-    const envBlocks = [...printed.output.matchAll(/^[ \t]*environment = \{\n([\s\S]*?)\n[ \t]*\}/gm)].map((m) => m[1]!)
+    const envBlocks = [...printed.output.matchAll(/^\tenvironment = \{\n([\s\S]*?)\n\t\}/gm)].map((m) => m[1]!)
     const homes = envBlocks.length === 1 ? [...envBlocks[0]!.matchAll(/^\s*BAKIN_HOME => (.+?)\s*$/gm)].map((m) => m[1]!) : []
-    const states = [...printed.output.matchAll(/^\s*state = (.+?)\s*$/gm)].map((m) => m[1]!)
+    const states = [...printed.output.matchAll(/^\tstate = (.+?)\s*$/gm)].map((m) => m[1]!)
     const pid = parseLaunchctlPid(printed.output)
     // An unsupported or truncated layout (no single state, or running without a pid) is unknown.
     if (states.length !== 1) return { kind: 'unknown', reason: 'launchctl print reported no single job state' }
@@ -185,7 +187,7 @@ export function readServiceState(io: LifecycleIo): ServiceState {
   }
   if (io.platform === 'linux') {
     const unit = io.readFile(io.systemdUnitPath())
-    const shown = io.exec('systemctl', ['--user', 'show', `${SERVICE_LABEL}.service`, '-p', 'LoadState', '-p', 'ActiveState', '-p', 'MainPID', '-p', 'Environment', '-p', 'EnvironmentFiles'])
+    const shown = io.exec('systemctl', ['--user', 'show', `${SERVICE_LABEL}.service`, '-p', 'LoadState', '-p', 'ActiveState', '-p', 'MainPID', '-p', 'Environment', '-p', 'EnvironmentFiles', '-p', 'UnsetEnvironment'])
     if (!shown.ok) {
       // No user manager at all (Docker/CI): nothing can be running under it.
       if (NO_USER_MANAGER.test(shown.output)) return { kind: 'absent' }
@@ -193,12 +195,13 @@ export function readServiceState(io: LifecycleIo): ServiceState {
     }
     const prop = (key: string) => new RegExp(`^${key}=(.*)$`, 'm').exec(shown.output)?.[1] ?? ''
     const load = prop('LoadState')
-    const unitHome = (text: string) => (/^EnvironmentFile=/m.test(text) ? null : single([...text.matchAll(/^Environment="?BAKIN_HOME=([^"\n]*)"?$/gm)].map((m) => m[1]!)))
+    const unitHome = (text: string) => (/^(EnvironmentFile|UnsetEnvironment)=/m.test(text) ? null : single([...text.matchAll(/^Environment="?BAKIN_HOME=([^"\n]*)"?$/gm)].map((m) => m[1]!)))
     if (load === 'not-found' || load === '') {
       return unit ? { kind: 'unloaded', home: unitHome(unit) } : { kind: 'absent' }
     }
-    // An EnvironmentFile can override Environment=: the effective home is then unknowable here.
-    const homes = prop('EnvironmentFiles').trim() ? [] : [...prop('Environment').matchAll(/(?:^|\s)BAKIN_HOME=(\S+)/g)].map((m) => m[1]!)
+    // An EnvironmentFile can override Environment= and UnsetEnvironment= removes
+    // from it (applied last): either makes the effective home unknowable here.
+    const homes = prop('EnvironmentFiles').trim() || prop('UnsetEnvironment').trim() ? [] : [...prop('Environment').matchAll(/(?:^|\s)BAKIN_HOME=(\S+)/g)].map((m) => m[1]!)
     const pid = parseSystemdMainPid(shown.output)
     const active = prop('ActiveState')
     if (pid === null && (active === 'active' || active === 'reloading')) return { kind: 'unknown', reason: `systemd reports ${active} without a main pid` }
