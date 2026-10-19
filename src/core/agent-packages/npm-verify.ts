@@ -132,7 +132,8 @@ function compareScripts(source: string, payloadDir: string): string[] {
       const abs = join(dir, entry.name)
       const rel = relative(source, abs)
       if (entry.isDirectory()) { walk(abs); continue }
-      if (rel === 'package.json') continue
+      // Bakin generates these two; the pack's own copies never count.
+      if (rel === 'package.json' || rel === 'bunfig.toml') continue
       const copy = join(payloadDir, rel)
       if (!isFile(copy)) { problems.push(`script ${rel} is missing`); continue }
       // Node resolves a script's imports from its REAL location: a script
@@ -203,8 +204,10 @@ const ACTIVE_CONDITIONS = new Set(['node', 'import', 'module-sync', 'default'])
  *   blocked — an explicit `null` (Node refuses the subpath)
  *   none    — no condition matched (undefined in Node's algorithm)
  *   invalid — a malformed target (Node throws; arrays fall back past it)
+ *   config  — a malformed exports CONFIGURATION (ERR_INVALID_PACKAGE_CONFIG):
+ *             fatal everywhere, arrays never fall back past it
  */
-type TargetResolution = { kind: 'file'; path: string } | { kind: 'blocked' } | { kind: 'none' } | { kind: 'invalid'; reason: string }
+type TargetResolution = { kind: 'file'; path: string } | { kind: 'blocked' } | { kind: 'none' } | { kind: 'invalid'; reason: string } | { kind: 'config'; reason: string }
 
 /**
  * A string target, with Node's URL semantics: it must start with "./",
@@ -214,7 +217,12 @@ type TargetResolution = { kind: 'file'; path: string } | { kind: 'blocked' } | {
 function validTarget(target: string): TargetResolution {
   if (!target.startsWith('./')) return { kind: 'invalid', reason: `"${target}" does not start with "./"` }
   if (/%2f|%5c/i.test(target)) return { kind: 'invalid', reason: `"${target}" encodes a path separator` }
-  const badSegment = (path: string): boolean => path.split(/[\\/]/).some((segment) => segment === '..' || segment === '.' || segment.toLowerCase() === 'node_modules')
+  const badSegment = (path: string): boolean => path.split(/[\\/]/).some((raw) => {
+    // Judge each segment percent-DECODED, before any URL normalisation can
+    // collapse it ("%2e%2e" is ".." — Node rejects it, never resolves it).
+    const segment = decodeSegment(raw)
+    return segment === '..' || segment === '.' || segment.toLowerCase() === 'node_modules'
+  })
   if (badSegment(target.slice(2))) return { kind: 'invalid', reason: `"${target}" leaves the package` }
   let path: string
   try {
@@ -225,6 +233,15 @@ function validTarget(target: string): TargetResolution {
   }
   if (badSegment(path)) return { kind: 'invalid', reason: `"${target}" leaves the package` }
   return { kind: 'file', path }
+}
+
+/** A percent-decoded path segment; a malformed escape is judged as written. */
+function decodeSegment(raw: string): string {
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
 }
 
 /** Node refuses numeric condition keys (ERR_INVALID_PACKAGE_CONFIG). */
@@ -240,6 +257,7 @@ function resolveTarget(target: unknown): TargetResolution {
     let last: TargetResolution = { kind: 'none' }
     for (const item of target) {
       const resolved = resolveTarget(item)
+      if (resolved.kind === 'config') return resolved
       if (resolved.kind === 'invalid' || resolved.kind === 'blocked') { last = resolved; continue }
       if (resolved.kind === 'none') continue
       return resolved
@@ -248,7 +266,7 @@ function resolveTarget(target: unknown): TargetResolution {
   }
   if (target && typeof target === 'object') {
     for (const [condition, value] of Object.entries(target)) {
-      if (NUMERIC_KEY.test(condition)) return { kind: 'invalid', reason: `condition key "${condition}" is numeric` }
+      if (NUMERIC_KEY.test(condition)) return { kind: 'config', reason: `condition key "${condition}" is numeric` }
       if (!ACTIVE_CONDITIONS.has(condition)) continue
       const resolved = resolveTarget(value)
       if (resolved.kind === 'none') continue
@@ -293,7 +311,7 @@ function entryChecks(pkg: { exports?: unknown; main?: unknown }): EntryCheck[] {
       if (subpath.endsWith('/')) continue
       const label = subpath === '.' ? 'its entry file' : `its export ${subpath}`
       const resolved = resolveTarget(target)
-      if (resolved.kind === 'invalid') checks.push({ label, invalid: resolved.reason })
+      if (resolved.kind === 'invalid' || resolved.kind === 'config') checks.push({ label, invalid: resolved.reason })
       // A "*" is a pattern only behind a pattern KEY; otherwise it is literal.
       else if (resolved.kind === 'file' && !(subpath.includes('*') && resolved.path.includes('*'))) checks.push({ label, candidates: [resolved.path] })
     }

@@ -185,6 +185,8 @@ describe('npm payload leg', () => {
     await installPackage({ source: seedPack('1.0.0', { model: false, npmDeps: { 'fake-dep': '1.2.3' } }) })
     expect(bunRuns).toHaveLength(1)
     expect(bunRuns[0]!.args).toEqual(['install', '--ignore-scripts'])
+    // A payload-local layout whatever the user's global bunfig says (#898 F review).
+    expect(readFileSync(join(payloadDir(), 'bunfig.toml'), 'utf-8')).toContain('linker = "hoisted"')
     expect(bunRuns[0]!.extraEnv).toEqual({ PUPPETEER_SKIP_DOWNLOAD: '1' })
 
     rmSync(join(payloadDir(), 'run.js'), { force: true }) // drift the scripts

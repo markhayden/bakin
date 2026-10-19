@@ -62,7 +62,8 @@ A capability pack is `kind: "skill-pack"` plus:
   "./…" and are URLs — decoded, query/hash dropped, encoded separators
   invalid; mixed subpath/condition maps and numeric condition keys are
   invalid; `*` is a pattern only behind a pattern key; legacy folder
-  mappings (`"./": "./"`) are ignored as Node ignores them; `exports: null`
+  mappings (`"./": "./"`) are ignored as Node ignores them; percent-encoded
+  dot segments are judged decoded; a config error inside an array is fatal; `exports: null`
   = legacy `main` with Node's fallbacks then the root index.*; `module` is
   a bundler field and never checked). The payload's node_modules must be
   its own directory, payload scripts must resolve (realpath, so symlinked dirs too) inside it, and every
@@ -70,6 +71,9 @@ A capability pack is `kind: "skill-pack"` plus:
   reads only — no imports, subprocesses or network. The installer reuses a
   live payload only when it passes (so offline repair of an intact payload
   converges), and a staged payload must pass before it replaces the live
+  (each payload carries a generated `bunfig.toml` forcing the hoisted
+  linker, so a user's isolated/global-store bun config cannot link deps
+  outside it)
   one. It proves "dependencies resolved at declared versions" — never call
   it "integrity verified".
 - `requires.models[]` — `{ name, url, sha256, bytes, dest, env? }` into

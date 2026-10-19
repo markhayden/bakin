@@ -201,6 +201,22 @@ describe('verifyNpmPayload', () => {
       expect(problems()).toEqual([expect.stringContaining('numeric')])
     })
 
+    it('percent-encoded dot segments are rejected before URL normalisation can collapse them', () => {
+      reset({ exports: './lib/%2e%2e/index.js' }, ['index.js'])
+      expect(problems()).toEqual([expect.stringContaining('invalid target')])
+    })
+
+    it('a configuration error inside an exports array is fatal — arrays only fall back past invalid TARGETS', () => {
+      reset({ exports: [{ 0: './x.js' }, './index.js'] }, ['index.js'])
+      expect(problems()).toEqual([expect.stringContaining('numeric')])
+    })
+
+    it('a pack-shipped bunfig.toml never counts as a differing script (Bakin generates its own)', () => {
+      writeFileSync(join(source, 'bunfig.toml'), '[install]\nlinker = "isolated"\n')
+      writeFileSync(join(payload, 'bunfig.toml'), '[install]\nlinker = "hoisted"\n')
+      expect(verify()).toEqual({ ok: true })
+    })
+
     it('a "*" in a target is literal unless the KEY is a pattern', () => {
       reset({ exports: './entry*.js' }, [])
       expect(problems()).toEqual([expect.stringContaining('missing its entry file entry*.js')])

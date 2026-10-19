@@ -53,6 +53,9 @@ export function modelDest(dest: string): string {
   return join(getContentDir(), 'models', dest)
 }
 
+/** Generated next to every payload's package.json (see installNpmRequirement). */
+export const PAYLOAD_BUNFIG = '[install]\nlinker = "hoisted"\n'
+
 export interface NpmInstallResult {
   target: string
   /** True when dependencies were already installed and matching — no bun run. */
@@ -107,6 +110,11 @@ export async function installNpmRequirement(
     // The generated manifest always wins over any package.json the pack's
     // script dir happens to carry.
     writeFileSync(join(staging, 'package.json'), generated, 'utf-8')
+    // A payload-local install layout, whatever the user's global bunfig
+    // says: an isolated linker with a global store links dependencies
+    // OUTSIDE the payload, which verifyNpmPayload (rightly) rejects. The
+    // project bunfig wins over the global one; older buns ignore the key.
+    writeFileSync(join(staging, 'bunfig.toml'), PAYLOAD_BUNFIG, 'utf-8')
 
     if (canReuseModules) {
       // Unchanged deps: adopt the live install state (rename, no network).
