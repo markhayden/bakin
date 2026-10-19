@@ -44,6 +44,7 @@ import {
 } from '../../../packages/adapter-antfly/src/models'
 import { createMemoryResourceAcquirer, createOperationRegistry, operationQuietState, type OperationView } from '@bakin/core/operations'
 import { withOperationView } from '../../helpers/operation-harness'
+import { MODEL_PINS } from '../../../packages/adapter-antfly/src/model-pins'
 import { waitUntil } from '../../helpers/wait'
 
 // UNPINNED model names: this file exercises the pull → verify PIPELINE
@@ -257,6 +258,49 @@ describe('installInferenceModels', () => {
     const result = await installInferenceModels(optsAutoYes, undefined, TEST_MODELS)
     expect(result.status).toBe('failed')
     expect(result.message).toContain('reported success but')
+  })
+
+  describe('pinned models are hashed before any skip (#898 E)', () => {
+    const PINNED = { label: 'pinned embedder', model: 'test-pinned/embedder', kind: 'embedder' as const }
+    const zeros = (n: number) => require('crypto').createHash('sha256').update(Buffer.alloc(n)).digest('hex') as string
+    afterEach(() => { delete MODEL_PINS[PINNED.model] })
+
+    it('a structurally complete model whose bytes do not match the pin is pulled again; the old copy is retired', async () => {
+      MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(2048) }]
+      installFakeBinary(PULL_OK)
+      seedModel(PINNED.model) // 'weights' — names right, bytes wrong
+      const result = await installInferenceModels(optsAutoYes, undefined, [PINNED])
+      expect(result.status).toBe('installed')
+      expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx')).length).toBe(2048)
+      const leftovers = require('fs').readdirSync(join(modelsRoot, 'test-pinned')).filter((n: string) => n.includes('bakin-mismatch'))
+      expect(leftovers).toEqual([])
+    })
+
+    it('a model whose bytes match the pin is a noop — no pull', async () => {
+      MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: require('crypto').createHash('sha256').update('weights').digest('hex') }]
+      installFakeBinary(PULL_FAILS) // any pull would fail the install
+      seedModel(PINNED.model)
+      expect((await installInferenceModels(optsAutoYes, undefined, [PINNED])).status).toBe('noop')
+    })
+
+    it('a post-pull mismatch FAILS the install (never a warning) and the previous copy goes back', async () => {
+      MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(4096) }] // the pull serves 2048 bytes
+      installFakeBinary(PULL_OK)
+      seedModel(PINNED.model)
+      const result = await installInferenceModels(optsAutoYes, undefined, [PINNED])
+      expect(result.status).toBe('failed')
+      expect(result.message).toMatch(/do not match their pinned sha256 \(onnx\/model\.onnx\)/)
+      // The set-aside copy is restored — never left with nothing.
+      expect(readFileSync(join(modelsRoot, PINNED.model, 'onnx', 'model.onnx'), 'utf-8')).toBe('weights')
+    })
+
+    it('the doctor check stays structural and says so', async () => {
+      MODEL_PINS[PINNED.model] = [{ file: 'onnx/model.onnx', sha256: zeros(4096) }]
+      seedModel(PINNED.model)
+      const check = await checkInferenceModels([PINNED])
+      expect(check.status).toBe('ok')
+      expect(check.message).toContain('integrity is hash-checked at install/repair')
+    })
   })
 
   it('skips without approval, noting the degraded-semantic consequence', async () => {

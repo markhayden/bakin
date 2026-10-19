@@ -1,9 +1,11 @@
 import { spawn } from 'child_process'
+import { existsSync, renameSync, rmSync } from 'fs'
+import { basename, dirname, join } from 'path'
 import type { OperationPlan } from '@makinbakin/sdk/types'
 import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import type { AntflySettings } from './defaults'
-import { modelDir, modelStructurallyComplete, unverifiedModelFiles } from './model-pins'
+import { modelDir, modelStructurallyComplete, pinMismatches } from './model-pins'
 import { inferenceModelsRoot } from './paths'
 import { createPullTracker, pullStagingDir } from './pull-progress'
 import { findAntflyBinary } from './service'
@@ -125,13 +127,14 @@ export async function checkInferenceModels(models: InferenceModel[]) {
   if (missing.length === 0) {
     // Structural verification only — pinned file NAMES and sizes, which is
     // what catches the wrong-distribution crash-loop class. sha256 hashing
-    // lives on the INSTALL path (post-pull): checks run on doctor cadence
+    // lives on the INSTALL path (skip check + post-pull): checks run on doctor cadence
     // and hashing hundreds of MB per pass made a fully loaded test/CI
     // machine blow check timeouts (2026-07-22).
     return {
       name: 'models',
       status: 'ok' as const,
-      message: `All ${models.length} search models present at ${inferenceModelsRoot()}`,
+      // Says exactly what it checked — never "verified" (#898 E).
+      message: `All ${models.length} search models present at ${inferenceModelsRoot()} (files present — integrity is hash-checked at install/repair)`,
       details: { root: inferenceModelsRoot(), models: models.map((m) => m.model) },
     }
   }
@@ -262,13 +265,22 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     }
   }
 
-  const missing = missingModels(models)
+  // The install skip HASHES: a structurally complete model whose pinned
+  // files do not match their sha256 pins is pulled again (#898 E) — never
+  // trusted on file names and sizes alone.
+  const structurallyMissing = new Set(missingModels(models))
+  const mismatched: InferenceModel[] = []
+  for (const m of models) {
+    if (structurallyMissing.has(m)) continue
+    if ((await pinMismatches(m.model)).length > 0) mismatched.push(m)
+  }
+  const missing = models.filter((m) => structurallyMissing.has(m) || mismatched.includes(m))
   if (missing.length === 0) {
     skipAll('already downloaded')
     return {
       name: 'models',
       status: 'noop' as const,
-      message: `All ${models.length} search models already present.`,
+      message: `All ${models.length} search models already present and matching their pins.`,
       durationMs: Date.now() - start,
     }
   }
@@ -284,11 +296,35 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
   }
 
   const failed = (message: string, error?: unknown) => {
+    restoreAsides()
     // A cancel accepted before the failure settles cancelled, not failed.
     op.throwIfCancelled()
     return { name: 'models', status: 'failed' as const, message, ...(error === undefined ? {} : { error }), durationMs: Date.now() - start }
   }
   const modelsDir = inferenceModelsRoot()
+  // A published model dir would be kept by the pull; a mismatched one is
+  // moved ASIDE first so the pull publishes a fresh copy, and put back if
+  // the pull or its verification fails (never left with nothing).
+  const asides = new Map<string, string>()
+  const restoreAsides = () => {
+    for (const [model, aside] of asides) {
+      const dir = modelDir(model)
+      try {
+        if (!existsSync(dir)) renameSync(aside, dir)
+        else rmSync(aside, { recursive: true, force: true })
+      } catch (err) {
+        logger.warn('Could not restore a set-aside search model', { model, aside, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+    asides.clear()
+  }
+  for (const m of mismatched) {
+    const dir = modelDir(m.model)
+    const aside = join(dirname(dir), `.${basename(dir)}.bakin-mismatch-${process.pid}-${Date.now()}`)
+    renameSync(dir, aside)
+    asides.set(m.model, aside)
+    logger.warn('Search model does not match its pins — pulling it again', { model: m.model })
+  }
   logger.info('Pulling search models', { count: missing.length, antfly, modelsDir })
   op.stage('download')
   for (const m of missing) op.item('download', { id: m.model, label: m.label })
@@ -310,7 +346,9 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
       op.item('download', { id: m.model, label: m.label, status: 'failed' })
       return failed(`Failed to pull ${m.model}: ${err instanceof Error ? err.message : String(err)}`, err)
     }
-    // Cancelled: the staging dir stays, so the next pull resumes (T0 F4/F6).
+    // Cancelled: the staging dir stays, so the next pull resumes (T0 F4/F6);
+    // a set-aside model goes back until then.
+    if (op.signal.aborted) restoreAsides()
     op.throwIfCancelled()
     if (result.code !== 0) {
       op.item('download', { id: m.model, label: m.label, status: 'failed', message: `exited with code ${result.code}` })
@@ -323,12 +361,20 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
   for (const m of missing) {
     const verified = modelComplete(m)
     if (!verified.ok) return failed(`antfly inference pull ${m.model} reported success but ${verified.reason}`)
-    const drifted = await unverifiedModelFiles(m.model)
+    // A pulled file that does not match its pin FAILS the install (#898 E):
+    // the engine must never boot on an unverified distribution.
+    const drifted = await pinMismatches(m.model)
     if (drifted.length > 0) {
-      logger.warn('Pulled model differs from the pinned verified distribution', { model: m.model, files: drifted })
-      op.log(`${m.model}: differs from the pinned distribution (${drifted.join(', ')})`, 'warn')
+      logger.error('Pulled model does not match its pins', { model: m.model, files: drifted })
+      // The fresh pull is unusable — remove it so the set-aside copy (if
+      // any) goes back and the next run pulls again.
+      rmSync(modelDir(m.model), { recursive: true, force: true })
+      return failed(`antfly inference pull ${m.model} downloaded files that do not match their pinned sha256 (${drifted.join(', ')}) — the distribution differs from the verified one`)
     }
   }
+  // Every model verified: the set-aside mismatched copies are retired.
+  for (const aside of asides.values()) rmSync(aside, { recursive: true, force: true })
+  asides.clear()
 
   const pulledLabels = missing.map((m) => m.label)
   const durationMs = Date.now() - start

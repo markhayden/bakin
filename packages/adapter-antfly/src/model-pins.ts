@@ -11,21 +11,24 @@
  * human read the diagnostics (2026-07-21 field incident).
  *
  * Pins are the exact file set verified working against the pinned engine
- * version; sha256 values were computed from that verified install.
- * Verification tiers:
- *   - a MISSING or truncated pinned file  → structurally broken (blocks
- *     preload, reported as missing/broken — the crash-loop class)
- *   - a present file whose hash drifted   → "unverified" (reported, never
- *     blocking — upstream may legitimately rev a distribution; we re-pin
- *     when we re-verify)
+ * version; sha256 values were computed from that verified install (the
+ * tokenizer pins, added 2026-10-19 for #898 E, also match HuggingFace's
+ * published files byte for byte). Verification tiers (#898 E):
+ *   - a MISSING or truncated pinned file → structurally broken (blocks
+ *     preload; the doctor reports it — the crash-loop class). The doctor is
+ *     STRUCTURAL ONLY: hashing hundreds of MB per check cycle is real cost.
+ *   - a pinned file whose sha256 differs → the INSTALL path refuses it: the
+ *     install skip hashes every pinned file before calling a model present,
+ *     and a post-pull mismatch fails the install. There is no cache: a
+ *     (size, mtime) match is never proof.
  * Models without a pin entry (operator-configured embedders) fall back to
  * the generic any-weight-file check.
  *
  * When repinning the ENGINE version, re-verify these distributions against
  * it and refresh the hashes in the same commit.
  */
-import { createHash } from 'crypto'
-import { createReadStream, existsSync, readdirSync, statSync } from 'fs'
+import { existsSync, readdirSync, statSync } from 'fs'
+import { verifyFileSha256 } from '@bakin/core/integrity/files'
 import { join } from 'path'
 import { inferenceModelsRoot } from './paths'
 
@@ -38,18 +41,18 @@ export interface ModelFilePin {
 export const MODEL_PINS: Record<string, ModelFilePin[]> = {
   'BAAI/bge-small-en-v1.5': [
     { file: 'model.safetensors', sha256: '3c9f31665447c8911517620762200d2245a2518d6e7208acc78cd9db317e21ad', minBytes: 100_000_000 },
-    { file: 'tokenizer.json' },
+    { file: 'tokenizer.json', sha256: 'd241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66' },
   ],
   'antflydb/clipclap': [
     // The paired GGUFs are what the engine's Metal runtime loads; an
     // ONNX-only download passes a naive weight-file check and crash-loops.
     { file: 'clipclap-clip.Q4_K.gguf', sha256: 'cd41fa6f466205c3dc987ba4cb0d673f0059447c6c5daef5dcd5ae210cbec361', minBytes: 50_000_000 },
     { file: 'clipclap-clap.Q4_K.gguf', sha256: '8be2a0c523b20452a8a16f5915d0096b12ad7de18aa07d6adb71a3669b1a27ec', minBytes: 20_000_000 },
-    { file: 'tokenizer.json' },
+    { file: 'tokenizer.json', sha256: '8e019f9349caf5f9bb92514b0e4fc00c92841aef6ae8df9d833d975c623b7c72' },
   ],
   'mixedbread-ai/mxbai-rerank-base-v1': [
     { file: 'model.safetensors', sha256: 'd9db29f75d900055e9ce4f9a79c841d13384fdc3ca144404f9eecb873fc4fcbd', minBytes: 200_000_000 },
-    { file: 'tokenizer.json' },
+    { file: 'tokenizer.json', sha256: '305674b4d785287feecfb5f73f24aa75e9b57c87c579cfe24fbd207987d4b4c4' },
   ],
 }
 
@@ -121,46 +124,22 @@ export function modelStructurallyComplete(model: string): { ok: true } | { ok: f
   return { ok: true }
 }
 
-// Hashing hundreds of MB is ~seconds — cache by (path, size, mtime) so the
-// doctor's repeat calls cost one pass per file per boot.
-const hashCache = new Map<string, { size: number; mtimeMs: number; sha256: string }>()
-
-async function fileSha256(path: string): Promise<string> {
-  const stat = statSync(path)
-  const cached = hashCache.get(path)
-  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.sha256
-  const hash = createHash('sha256')
-  await new Promise<void>((resolve, reject) => {
-    const stream = createReadStream(path)
-    stream.on('data', (chunk) => hash.update(chunk))
-    stream.on('end', () => resolve())
-    stream.on('error', reject)
-  })
-  const sha256 = hash.digest('hex')
-  hashCache.set(path, { size: stat.size, mtimeMs: stat.mtimeMs, sha256 })
-  return sha256
-}
-
 /**
- * Hash verification against the pins. Never blocking: a drifted hash means
- * "distribution differs from the verified set", which is worth surfacing
- * but is not the crash-loop failure class. Returns the drifted file names
- * (empty for unpinned or fully matching models).
+ * Every pinned file whose bytes do not match its sha256 pin — ALWAYS
+ * stream-hashed (`verifyFileSha256`; no (size, mtime) cache is proof).
+ * Install-path only: the skip check and the post-pull verification call
+ * it; the doctor never does. Empty for unpinned or fully matching models;
+ * a missing pinned file counts as a mismatch.
  */
-export async function unverifiedModelFiles(model: string): Promise<string[]> {
+export async function pinMismatches(model: string): Promise<string[]> {
   const pins = MODEL_PINS[model]
   if (!pins) return []
   const root = modelDir(model)
-  const drifted: string[] = []
+  const mismatched: string[] = []
   for (const pin of pins) {
     if (!pin.sha256) continue
-    const path = join(root, pin.file)
-    if (!existsSync(path)) continue // structural check owns missing files
-    try {
-      if (await fileSha256(path) !== pin.sha256) drifted.push(pin.file)
-    } catch {
-      drifted.push(pin.file)
-    }
+    const verdict = await verifyFileSha256(join(root, pin.file), pin.sha256)
+    if (!verdict.ok) mismatched.push(pin.file)
   }
-  return drifted
+  return mismatched
 }
