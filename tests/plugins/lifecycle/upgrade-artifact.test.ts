@@ -215,7 +215,11 @@ describe('artifact-lane upgrade (upgradePlugin)', () => {
     const installDir = await installVersion('0.1.0')
     await publishVersion('0.2.0')
 
-    const result = await upgradePlugin('messaging')
+    // The target declares storage.read — consent is required even though the
+    // installed version declares the same (the lock is never the baseline).
+    const preview = await upgradePlugin('messaging')
+    expect(preview.awaitingConsent).toBe(true)
+    const result = await upgradePlugin('messaging', { accepted: preview.consent })
     expect(result.noop).toBe(false)
     expect(result.awaitingConsent).toBe(false)
     expect(result.before.version).toBe('0.1.0')
@@ -241,9 +245,10 @@ describe('artifact-lane upgrade (upgradePlugin)', () => {
     const treeBefore = treeDigest(installDir)
     const rowBefore = readPluginLockfile().plugins['messaging']
 
+    const preview = await upgradePlugin('messaging')
     assets.fail = true
     try {
-      await expect(upgradePlugin('messaging')).rejects.toThrow('skill projection failed')
+      await expect(upgradePlugin('messaging', { accepted: preview.consent })).rejects.toThrow('skill projection failed')
     } finally {
       assets.fail = false
     }
@@ -273,7 +278,7 @@ describe('artifact-lane upgrade (upgradePlugin)', () => {
 
     const pending = await upgradePlugin('messaging')
     expect(pending.awaitingConsent).toBe(true)
-    expect(pending.newPermissions.sort()).toEqual(['events.emit', 'storage.write'])
+    expect(pending.declaredPermissions.sort()).toEqual(['events.emit', 'storage.read', 'storage.write'])
 
     // Nothing mutated before consent.
     const manifest = JSON.parse(readFileSync(join(installDir, 'bakin-plugin.json'), 'utf-8')) as { version: string }

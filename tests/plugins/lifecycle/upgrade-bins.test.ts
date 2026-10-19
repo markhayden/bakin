@@ -1,7 +1,7 @@
 /**
  * Binaries on upgrade (spec plugin-managed-binaries S7 / S17, local lane):
  *  - a re-pinned or added bin is a widening: the preview lists it in
- *    `newBins` and nothing moves until consent;
+ *    `declaredBins` and nothing moves until consent;
  *  - the accepted upgrade re-downloads the re-pinned bin, installs the new
  *    one, and records both in `installedBins`;
  *  - a bin the new manifest drops is deleted after the ledger write — only
@@ -93,8 +93,8 @@ describe('upgradePlugin — binaries (local lane)', () => {
 
     const preview = await upgradePlugin('rebin')
     expect(preview.awaitingConsent).toBe(true)
-    expect(preview.newPermissions).toEqual([])
-    expect(preview.newBins.map((b) => [b.name, b.version, b.sha256])).toEqual([
+    expect(preview.declaredPermissions).toEqual([])
+    expect(preview.declaredBins.map((b) => [b.name, b.version, b.sha256])).toEqual([
       ['one', '2.0.0', sha256(ONE_V2)],
       ['two', '1.0.0', sha256(TWO)],
     ])

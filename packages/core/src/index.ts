@@ -49,7 +49,6 @@ export type { PluginSignaturePolicy, PluginSignatureVerification } from './plugi
 export {
   PermissionDenied,
   PERMISSION_DESCRIPTIONS,
-  newPermissions,
   parseManifestPermissions,
   suggestPermission,
 } from './plugins/permissions'

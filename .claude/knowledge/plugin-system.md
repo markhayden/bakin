@@ -614,21 +614,28 @@ trusted signed source. Then it determines source type:
 
 **Consent gate (`gateUpgradeConsent`, `upgrade-gate.ts`)** — one function
 for all four lanes, run BEFORE any mutation: bin preflight (platform +
-pin conflicts, fail closed → `UpgradeRefusedError`), then the widening
-diff over permissions AND binaries (`diffNewBins`: a bin the lockfile
-doesn't record, one re-pinned at a different sha for this platform, or a
-different archive member — `ConsentBin.member` is part of the consent
-identity the token binds).
+pin conflicts, fail closed → `UpgradeRefusedError`), then consent judged
+from the validated TARGET manifest alone (#898 PR I, 2026-10-19): ANY
+declared permission or binary needs consent, unchanged ones included. The
+lockfile is inventory and cleanup bookkeeping only — never the baseline —
+so an edited lock entry cannot remove the prompt (the retired lock-diff
+helpers `diffNewPermissions`/`diffNewBins`/core `newPermissions` are gone).
+`ConsentBin.member` is part of the consent identity the token binds.
 `UpgradeOptions.yes` is gone; the option is `accepted: UpgradeConsent`
 (`{ manifestSha, permissions, bins }` — the declaration the route verified
-out of a token). Widening without `accepted` → `{ awaitingConsent: true,
-newPermissions, newBins, consent }`; `accepted` that no longer matches the
-target → `awaitingConsent` + `manifestChanged: true`; otherwise proceed. A
-narrowing (dropped permission or bin) needs no consent.
+out of a token). A declaration without `accepted` → `{ awaitingConsent:
+true, declaredPermissions, declaredBins, consent }` (the FULL declaration
+for every surface to disclose); a supplied `accepted` that no longer
+matches the target (manifest, permissions or binaries) → `awaitingConsent`
++ `manifestChanged: true` — checked every time one is supplied; otherwise
+proceed. Only a target that declares nothing needs no consent. The CLI
+prompt never auto-accepts an `awaitingConsent` answer, even with an empty
+or missing declaration.
 
 **Route — two-phase like install.** `POST /api/plugins/upgrade
-{ pluginId }` previews; on widening it answers `{ ok: false,
-awaitingConsent: true, newPermissions, newBins, consentToken }` with the
+{ pluginId }` previews; when the target declares anything it answers
+`{ ok: false, awaitingConsent: true, declaredPermissions, declaredBins,
+consentToken }` with the
 token bound to `upgrade:<id>` + `manifestSha` + full permissions + bins.
 `{ pluginId, accepted: true, consentToken }` commits only while the target
 still matches (else bounce + fresh token). Tokens for another plugin,

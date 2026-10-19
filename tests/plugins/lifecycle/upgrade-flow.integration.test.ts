@@ -248,7 +248,7 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     await expect(upgradePlugin('rewind')).rejects.toThrow(UpgradeRefusedError)
   })
 
-  it('returns awaitingConsent when permissions widen on the upgrade target', async () => {
+  it('returns awaitingConsent with the full declaration of the upgrade target', async () => {
     const repo = createBareRepo(testDir, 'widen-fixture', fixturePluginFiles({ id: 'widen', version: '1.0.0', permissions: ['storage.read'] }))
     cloneRepoIntoPluginsDir({ pluginId: 'widen', cloneUrl: repo.cloneUrl })
     const installedSha = headSha(join(testDir, 'plugins', 'widen'))
@@ -262,7 +262,7 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
 
     const result = await upgradePlugin('widen')
     expect(result.awaitingConsent).toBe(true)
-    expect(result.newPermissions).toEqual(['events.emit'])
+    expect(result.declaredPermissions).toEqual(['storage.read', 'events.emit'])
     expect(result.noop).toBe(false)
 
     // Lockfile should NOT have been updated yet (consent gate held).

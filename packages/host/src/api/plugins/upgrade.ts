@@ -5,16 +5,17 @@
  * also enforces this).
  *
  * Two-phase, like install (spec plugin-managed-binaries §2.5 / S17):
- *   preview  { pluginId }                                → widened permissions
- *            or binaries ⇒ { ok:false, awaitingConsent:true, newPermissions,
- *            newBins, consentToken } — the token binds the target manifest
+ *   preview  { pluginId }                                → any declared
+ *            permission or binary ⇒ { ok:false, awaitingConsent:true,
+ *            declaredPermissions, declaredBins, consentToken } — the FULL
+ *            declaration, never a lockfile diff; the token binds the target manifest
  *            sha, its full permission list and its bins for this platform.
  *   commit   { pluginId, accepted:true, consentToken }   → the upgrade lands
  *            only while the target still matches the token; a changed target
  *            bounces to awaitingConsent + manifestChanged with a fresh token.
  *
  * Response shape:
- *   { ok: true, id, before, after, noop, awaitingConsent:false, newPermissions, newBins, pluginAssets?, droppedBins? }
+ *   { ok: true, id, before, after, noop, awaitingConsent:false, declaredPermissions, declaredBins, pluginAssets?, droppedBins? }
  *   { ok: false, awaitingConsent: true, ..., consentToken, manifestChanged? }
  *   { ok: false, error: string, core?: boolean }    on refusal/4xx
  *

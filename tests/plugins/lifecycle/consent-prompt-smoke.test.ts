@@ -98,38 +98,40 @@ describe('renderInstallPrompt', () => {
 })
 
 describe('renderUpgradePrompt', () => {
-  it('shows only added permissions with the version diff', () => {
+  it('discloses EVERY declared permission (unchanged ones included) with the version change', () => {
     const text = renderUpgradePrompt({
       pluginId: 'p',
       fromVersion: '1.0.0',
       toVersion: '1.1.0',
-      newPermissions: ['storage.write'],
+      declaredPermissions: ['storage.read', 'storage.write'],
     })
     expect(text).toContain('Upgrading: p v1.0.0 → v1.1.0')
-    expect(text).toContain('NEW permissions requested:')
-    expect(text).toContain('+ storage.write')
+    expect(text).toContain('Permissions requested:')
+    expect(text).toContain('storage.read')
+    expect(text).toContain('storage.write')
   })
 
-  it('lists NEW or changed binary downloads on upgrade', () => {
+  it('lists every declared binary download on upgrade', () => {
     const text = renderUpgradePrompt({
-      pluginId: 'terminal', fromVersion: '0.1.3', toVersion: '0.2.0', newPermissions: [],
-      newBins: [{ name: 'tmux', version: '3.7c', sha256: 'a'.repeat(64) }],
+      pluginId: 'terminal', fromVersion: '0.1.3', toVersion: '0.2.0', declaredPermissions: [],
+      declaredBins: [{ name: 'tmux', version: '3.7c', sha256: 'a'.repeat(64) }],
     })
-    expect(text).toContain('NEW downloads (installed into ~/.bakin/bin, sha256-pinned):')
-    expect(text).toContain('+ tmux 3.7c')
+    expect(text).toContain('Permissions requested:\n  (none)')
+    expect(text).toContain('Downloads (installed into ~/.bakin/bin, sha256-pinned):')
+    expect(text).toContain('  tmux 3.7c')
   })
 })
 
 describe('promptUpgradeConsent with binaries only', () => {
-  it('prompts when the only change is a new binary download', async () => {
+  it('prompts when the target declares only a binary download', async () => {
     const { promptUpgradeConsent } = await import('../../../src/core/cli/consent-prompt')
     const { io, output } = makeIO('n\n')
     const accepted = await promptUpgradeConsent({
-      pluginId: 'terminal', fromVersion: '0.1.3', toVersion: '0.2.0', newPermissions: [],
-      newBins: [{ name: 'tmux', version: '3.7c', sha256: 'a'.repeat(64) }], io,
+      pluginId: 'terminal', fromVersion: '0.1.3', toVersion: '0.2.0', declaredPermissions: [],
+      declaredBins: [{ name: 'tmux', version: '3.7c', sha256: 'a'.repeat(64) }], io,
     })
     expect(accepted).toBe(false)
-    expect(output()).toContain('NEW downloads')
+    expect(output()).toContain('Downloads (')
   })
 })
 
@@ -199,26 +201,26 @@ describe('promptInstallConsent', () => {
 })
 
 describe('promptUpgradeConsent', () => {
-  it('returns accepted=true without prompting when newPermissions is empty', async () => {
-    const { io, output } = makeIO('')
+  it('never auto-accepts an empty or missing declaration — the server asked, so the operator answers', async () => {
+    const { io, output } = makeIO('\n')
     const accepted = await promptUpgradeConsent({
       pluginId: 'p',
       fromVersion: '1.0.0',
       toVersion: '1.1.0',
-      newPermissions: [],
+      declaredPermissions: [],
       io,
     })
-    expect(accepted).toBe(true)
-    expect(output()).toBe('')
+    expect(accepted).toBe(false)
+    expect(output()).toContain('Continue? [y/N]')
   })
 
-  it('--yes short-circuits even with new permissions', async () => {
+  it('--yes short-circuits even with declared permissions', async () => {
     const { io, output } = makeIO('')
     const accepted = await promptUpgradeConsent({
       pluginId: 'p',
       fromVersion: '1.0.0',
       toVersion: '1.1.0',
-      newPermissions: ['storage.write'],
+      declaredPermissions: ['storage.write'],
       io,
       yes: true,
     })
@@ -232,7 +234,7 @@ describe('promptUpgradeConsent', () => {
       pluginId: 'p',
       fromVersion: '1.0.0',
       toVersion: '1.1.0',
-      newPermissions: ['storage.write'],
+      declaredPermissions: ['storage.write'],
       io,
     })).toBe(true)
   })

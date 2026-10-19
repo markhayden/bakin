@@ -2,7 +2,7 @@
  * Smoke tests for the permission taxonomy (commit C8).
  *
  * Coverage at this commit — enum accept/reject, parse helper, did-you-mean
- * suggestion, newPermissions diff. Full coverage in C10.
+ * suggestion. Full coverage in C10.
  */
 import { describe, it, expect, afterAll, mock } from 'bun:test'
 import { readFileSync, rmSync } from 'fs'
@@ -40,7 +40,6 @@ mock.module('@/core/logger', () => ({
 import {
   PermissionSchema,
   PERMISSION_DESCRIPTIONS,
-  newPermissions,
   parseManifestPermissions,
   suggestPermission,
 } from '../../../packages/core/src/plugins/permissions'
@@ -94,24 +93,6 @@ describe('parseManifestPermissions', () => {
 
   it('throws on non-string entries', () => {
     expect(() => parseManifestPermissions([42])).toThrow(/must be strings/)
-  })
-})
-
-describe('newPermissions', () => {
-  it('returns added permissions only', () => {
-    expect(newPermissions(['storage.read'], ['storage.read', 'events.emit'])).toEqual(['events.emit'])
-  })
-
-  it('returns [] when permissions are identical', () => {
-    expect(newPermissions(['storage.read'], ['storage.read'])).toEqual([])
-  })
-
-  it('returns [] when permissions only shrunk', () => {
-    expect(newPermissions(['storage.read', 'events.emit'], ['storage.read'])).toEqual([])
-  })
-
-  it('ignores unknown strings in next (defense in depth — they would have been rejected upstream)', () => {
-    expect(newPermissions(['storage.read'], ['storage.read', 'network.fetch'])).toEqual([])
   })
 })
 

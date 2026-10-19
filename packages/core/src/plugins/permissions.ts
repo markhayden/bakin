@@ -73,20 +73,6 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 const KNOWN_PERMISSIONS: readonly Permission[] = PermissionSchema.options
 
 /**
- * Pure: returns the permissions present in `next` that weren't in `prev`.
- * Used by upgrade flow to decide whether to re-prompt for consent.
- */
-export function newPermissions(prev: readonly string[], next: readonly string[]): Permission[] {
-  const prevSet = new Set(prev)
-  const out: Permission[] = []
-  for (const p of next) {
-    if (prevSet.has(p)) continue
-    if ((KNOWN_PERMISSIONS as readonly string[]).includes(p)) out.push(p as Permission)
-  }
-  return out
-}
-
-/**
  * Suggest a known permission within edit-distance 2 of the unknown
  * input — used to render "did you mean…" in install/upgrade errors.
  * Returns null when nothing matches closely enough.

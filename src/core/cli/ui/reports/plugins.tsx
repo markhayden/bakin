@@ -106,7 +106,7 @@ function pluginActionMessage(action: PluginActionData): string {
   if (message) return message
   if (objectField(payload, 'awaitingConsent') === true) {
     const nextAction = actionName === 'upgraded' ? 'upgrade' : 'install'
-    const declaredBins = objectField(payload, 'bins') ?? objectField(payload, 'newBins')
+    const declaredBins = objectField(payload, 'bins') ?? objectField(payload, 'declaredBins')
     const hasBins = Array.isArray(declaredBins) && declaredBins.length > 0
     return `Plugin ${target} requires consent for ${hasBins ? 'permissions and binary downloads' : 'permissions'} before ${nextAction}.`
   }
@@ -129,9 +129,15 @@ function pluginActionMessage(action: PluginActionData): string {
   return `Updated plugin ${target}.`
 }
 
+/** Every permission requested, by name — consent disclosure never collapses to a count. */
 function pluginPermissionsDetail(value: unknown): string[] {
   if (!Array.isArray(value) || value.length === 0) return []
-  return [`Permissions: ${value.length} requested`]
+  const names = value.map((permission) => {
+    if (typeof permission === 'string') return permission
+    if (isPlainRecord(permission) && typeof permission.resource === 'string' && typeof permission.action === 'string') return `${permission.resource}.${permission.action}`
+    return valueText(permission)
+  })
+  return [`Permissions requested: ${names.join(', ')}`]
 }
 
 /** Binary downloads the manifest declares (consent disclosure, spec plugin-managed-binaries §2.5). */
@@ -203,8 +209,9 @@ function pluginActionDetail(action: PluginActionData): string {
       return `${valueText(objectField(item, 'id'))}: ${valueText(objectField(item, 'error'))}`
     }).join(', ')}`)
   }
-  details.push(...pluginPermissionsDetail(objectField(payload, 'permissions')))
-  details.push(...pluginBinsDetail(objectField(payload, 'bins') ?? objectField(payload, 'newBins')))
+  // Install answers carry `permissions`; upgrade answers the full `declaredPermissions`.
+  details.push(...pluginPermissionsDetail(objectField(payload, 'permissions') ?? objectField(payload, 'declaredPermissions')))
+  details.push(...pluginBinsDetail(objectField(payload, 'bins') ?? objectField(payload, 'declaredBins')))
   if (next.length > 0) details.push(`Next: ${next.map(item => valueText(item)).join(' && ')}`)
 
   return details.filter(Boolean).join('\n')

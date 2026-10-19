@@ -110,8 +110,8 @@ export async function upgradeGithub(
       before,
       after: before,
       noop: true,
-      newPermissions: [],
-      newBins: [],
+      declaredPermissions: [],
+      declaredBins: [],
       awaitingConsent: false,
     }
   }
@@ -180,8 +180,8 @@ export async function upgradeGithub(
     before,
     after: { version: newVersion, commitSha: remoteSha },
     noop: false,
-    newPermissions: gate.widened,
-    newBins: gate.newBins,
+    declaredPermissions: gate.newPerms,
+    declaredBins: gate.declaredBins,
     awaitingConsent: false,
     pluginAssets: assets.pluginAssets,
     droppedBins,
@@ -232,8 +232,8 @@ export async function upgradeGithubSubpath(
         before,
         after: before,
         noop: true,
-        newPermissions: [],
-        newBins: [],
+        declaredPermissions: [],
+        declaredBins: [],
         awaitingConsent: false,
       }
     }
@@ -291,8 +291,8 @@ export async function upgradeGithubSubpath(
       before,
       after: { version: newVersion, commitSha: remoteSha },
       noop: false,
-      newPermissions: gate.widened,
-      newBins: gate.newBins,
+      declaredPermissions: gate.newPerms,
+      declaredBins: gate.declaredBins,
       awaitingConsent: false,
       pluginAssets: assets.pluginAssets,
       droppedBins,

@@ -177,8 +177,8 @@ export function interpretPluginUpgrade(
 ): PluginUpgradeResult {
   const body = result?.body
   if (isRecord(body) && typeof body.consentToken === 'string' && (body.awaitingConsent === true || body.ready === true)) {
-    const permissions = Array.isArray(body.newPermissions) ? body.newPermissions.filter((p): p is string => typeof p === 'string') : []
-    const bins = Array.isArray(body.newBins) ? body.newBins.filter(isUpgradeBin) : []
+    const permissions = Array.isArray(body.declaredPermissions) ? body.declaredPermissions.filter((p): p is string => typeof p === 'string') : []
+    const bins = Array.isArray(body.declaredBins) ? body.declaredBins.filter(isUpgradeBin) : []
     if (body.ready === true) {
       return { awaitingConsent: false, ready: true, permissions, bins, consentToken: body.consentToken, noop: false, message: `Updating ${pluginId}…` }
     }
@@ -193,8 +193,8 @@ export function interpretPluginUpgrade(
         : bins.length > 0 && permissions.length === 0
           ? 'This update downloads binaries.'
           : bins.length > 0
-            ? 'This update requests new permissions and downloads binaries.'
-            : 'This update requests new permissions.',
+            ? 'This update requests permissions and downloads binaries.'
+            : 'This update requests permissions.',
     }
   }
   if (!result || result.httpStatus >= 400 || (isRecord(body) && body.ok === false)) {
@@ -206,8 +206,8 @@ export function interpretPluginUpgrade(
   if (!isRecord(body)
     || body.ok !== true
     || typeof body.noop !== 'boolean'
-    || !Array.isArray(body.newPermissions)
-    || !body.newPermissions.every((permission) => typeof permission === 'string')) {
+    || !Array.isArray(body.declaredPermissions)
+    || !body.declaredPermissions.every((permission) => typeof permission === 'string')) {
     throw new SystemMutationOutcomeUnknownError(
       'The plugin update finished, but Bakin could not confirm the result. Refresh live data before trying again.',
     )
@@ -215,7 +215,7 @@ export function interpretPluginUpgrade(
   const noop = body.noop
   return {
     awaitingConsent: false,
-    permissions: body.newPermissions,
+    permissions: body.declaredPermissions,
     bins: [],
     noop,
     message: noop

@@ -15,7 +15,7 @@ import { createLogger } from '@/core/logger'
 import { appendAudit } from '@/core/audit'
 import { BinRequirementsSchema, type BinRequirement } from '@bakin/core/plugins/bin-requirement'
 import type { PluginLockEntry } from '@bakin/core/plugins/lockfile'
-import { deleteBinsWithoutOwners, samePin } from './bin-owners'
+import { deleteBinsWithoutOwners } from './bin-owners'
 import { preflightPluginBins } from './bin-preflight'
 import { consentBinsOf, sameBins, type ConsentBin } from './consent-bins'
 import { getSettings } from '@bakin/core/settings'
@@ -61,12 +61,16 @@ export interface UpgradeResult {
   after: { version: string; commitSha: string }
   /** True when nothing changed and no rebuild ran. */
   noop: boolean
-  /** Permissions present in the new manifest that weren't in the lockfile entry. */
-  newPermissions: string[]
-  /** Binaries the new manifest adds or re-pins for this platform. */
-  newBins: ConsentBin[]
   /**
-   * True when the new manifest widens permissions or binaries and no matching
+   * EVERY permission the target manifest declares — the consent disclosure.
+   * Never a diff against the lockfile: the lock is inventory, and an edited
+   * lock entry must not be able to hide a permission from the prompt.
+   */
+  declaredPermissions: string[]
+  /** EVERY binary the target manifest declares for this platform (same rule). */
+  declaredBins: ConsentBin[]
+  /**
+   * True when the target declares any permission or binary and no matching
    * consent was passed. `consent` carries the declaration to bind into the
    * token; the caller re-invokes with `accepted` once the user agrees.
    */
@@ -74,7 +78,7 @@ export interface UpgradeResult {
   consent?: UpgradeConsent
   /** Set when `accepted` was passed but the target changed since the preview — re-consent. */
   manifestChanged?: boolean
-  /** A preview with nothing new to consent to: commit (with the token for `consent`) to apply it. */
+  /** A preview with nothing to consent to (no declared permissions or binaries): commit (with the token for `consent`) to apply it. */
   ready?: boolean
   /** Runtime skills projected from defaults/runtime-skills during a committed upgrade. */
   pluginAssets?: InstallReport
@@ -191,12 +195,6 @@ export function manifestVersion(manifest: Record<string, unknown>, fallback: str
   return fallback
 }
 
-/** Permissions present in `next` that weren't in `prev` — used for consent diff. */
-export function diffNewPermissions(prev: string[], next: string[]): string[] {
-  const prevSet = new Set(prev)
-  return next.filter(p => !prevSet.has(p))
-}
-
 export async function installUpgradedPluginAssets(
   id: string,
   pluginDir: string,
@@ -230,26 +228,19 @@ export function manifestBins(manifest: Record<string, unknown>, id: string): Bin
   return parsed.data
 }
 
-/** Bins the new manifest adds or re-pins (for this platform) relative to what the lockfile records — the consent diff. */
-export function diffNewBins(prev: PluginLockEntry['installedBins'], next: readonly BinRequirement[]): ConsentBin[] {
-  const before = new Map((prev ?? []).map((b) => [b.name, b]))
-  return consentBinsOf(next).filter((bin) => {
-    const recorded = before.get(bin.name)
-    // A re-pin OR a different member of the same archive is a new binary.
-    return !recorded || !samePin(recorded, bin)
-  })
-}
-
 export type UpgradeConsentGate =
-  | { proceed: true; newPerms: Permission[]; newBins: ConsentBin[]; widened: Permission[]; bins: BinRequirement[] }
+  | { proceed: true; newPerms: Permission[]; declaredBins: ConsentBin[]; bins: BinRequirement[] }
   | { proceed: false; result: UpgradeResult }
 
 /**
  * ONE consent gate for every upgrade lane. Runs BEFORE any mutation:
- * platform/conflict preflight for the declared bins (fail closed), then the
- * widening diff (permissions OR bins). Widening without consent ⇒ the
- * awaiting result carrying the declaration to sign; consent that no longer
- * matches the target ⇒ awaiting + `manifestChanged` (S17); otherwise proceed.
+ * platform/conflict preflight for the declared bins (fail closed), then
+ * consent judged from the validated TARGET manifest alone: any declared
+ * permission or binary needs consent (unchanged ones included — the lockfile
+ * is never the baseline, so a forged lock entry cannot remove the prompt).
+ * Without consent ⇒ the awaiting result carrying the declaration to sign;
+ * consent that no longer matches the target ⇒ awaiting + `manifestChanged`
+ * (S17); otherwise proceed.
  */
 export function gateUpgradeConsent(args: {
   id: string
@@ -260,23 +251,22 @@ export function gateUpgradeConsent(args: {
   before: { version: string; commitSha: string }
   after: { version: string; commitSha: string }
 }): UpgradeConsentGate {
-  const { id, entry, manifest, manifestSha, opts, before, after } = args
+  const { id, manifest, manifestSha, opts, before, after } = args
   opts.op?.stage(PLUGIN_STAGES.check)
   const newPerms = manifestPermissions(manifest, id)
   const bins = manifestBins(manifest, id)
   const preflight = preflightPluginBins(id, bins)
   if (!preflight.ok) throw new UpgradeRefusedError(`${id}: ${preflight.error}`)
-  const widened = diffNewPermissions(entry.permissions, newPerms) as Permission[]
-  const newBins = diffNewBins(entry.installedBins, bins)
-  const consent: UpgradeConsent = { manifestSha, permissions: newPerms, bins: consentBinsOf(bins) }
+  const declaredBins = consentBinsOf(bins)
+  const consent: UpgradeConsent = { manifestSha, permissions: newPerms, bins: declaredBins }
   const awaiting = (manifestChanged: boolean): UpgradeConsentGate => ({
     proceed: false,
     result: {
-      id, before, after, noop: false, newPermissions: widened, newBins, awaitingConsent: true, consent,
+      id, before, after, noop: false, declaredPermissions: newPerms, declaredBins, awaitingConsent: true, consent,
       ...(manifestChanged ? { manifestChanged: true } : {}),
     },
   })
-  if ((widened.length > 0 || newBins.length > 0) && !opts.accepted) return awaiting(false)
+  if ((newPerms.length > 0 || declaredBins.length > 0) && !opts.accepted) return awaiting(false)
   // A supplied consent binds THIS release whether or not it needed one: a
   // commit whose manifest, permissions or binaries differ from what was
   // consented to (a republish between preview and commit) bounces back.
@@ -288,10 +278,10 @@ export function gateUpgradeConsent(args: {
   if (opts.previewOnly) {
     return {
       proceed: false,
-      result: { id, before, after, noop: false, newPermissions: widened, newBins, awaitingConsent: false, ready: true, consent },
+      result: { id, before, after, noop: false, declaredPermissions: newPerms, declaredBins, awaitingConsent: false, ready: true, consent },
     }
   }
-  return { proceed: true, newPerms, newBins, widened, bins }
+  return { proceed: true, newPerms, declaredBins, bins }
 }
 
 /**

@@ -180,7 +180,6 @@ const installedPluginSchema = z.object({
   commitSha: z.string().optional(),
   remoteHeadSha: z.string().optional(),
   lastChecked: z.string().optional(),
-  newPermissions: z.array(nonEmptyString).optional(),
 }).passthrough()
 
 const systemPluginManifestEntrySchema = z.object({

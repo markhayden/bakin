@@ -366,8 +366,8 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?:
           pluginId,
           fromVersion: String(before.version ?? '?'),
           toVersion: String(after.version ?? '?'),
-          newPermissions: Array.isArray(result.newPermissions) ? result.newPermissions as Permission[] : [],
-          newBins: Array.isArray(result.newBins) ? result.newBins as ConsentBin[] : [],
+          declaredPermissions: Array.isArray(result.declaredPermissions) ? result.declaredPermissions as Permission[] : [],
+          declaredBins: Array.isArray(result.declaredBins) ? result.declaredBins as ConsentBin[] : [],
           yes: opts.yes === true,
         })
         if (!accepted) {

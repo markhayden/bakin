@@ -124,8 +124,6 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'storage.write': 'Write files in ~/.bakin/',
 }
 
-// Pure: returns the permissions newly requested in `next` that weren't in `prev`.
-export function newPermissions(prev: Permission[], next: Permission[]): Permission[]
 ```
 
 **Manifest validation:** `bakin-plugin.json.permissions` parsed via `z.array(PermissionSchema).default([])`. Unknown strings reject at install/upgrade with a "did you mean…" suggestion if a known permission is within edit-distance ≤ 2.
@@ -238,14 +236,15 @@ No retention. Tarballs accumulate. Follow-up issue tracks expiry policy.
   - `git fetch origin <ref>` in `~/.bakin/plugins/<id>/`
   - Compare local HEAD sha to remote → if equal: `"<id> v<version>: already up to date"`
   - Fast-forward; on failure: `"<id>: cannot fast-forward (remote history rewritten?). Remove and reinstall."`
-  - Read new manifest; validate; compute the widening diff over permissions AND binaries (`requires.bins` added or re-pinned)
-  - **If widened**: the preview answers `awaitingConsent` + a consent token bound to the target (`manifestSha` + permissions + bins); the CLI prompts (unless `--yes`) and commits with `{ accepted: true, consentToken }`. A target that changed since the preview re-prompts; a narrowing needs no consent:
+  - Read new manifest; validate; consent comes from its declaration alone — any declared permission or binary (`requires.bins`) needs consent, unchanged ones included; the lockfile is never the baseline (a forged lock entry cannot remove the prompt)
+  - **If it declares anything**: the preview answers `awaitingConsent` + the full `declaredPermissions` / `declaredBins` + a consent token bound to the target (`manifestSha` + permissions + bins); the CLI prompts (unless `--yes`) and commits with `{ accepted: true, consentToken }`. A target that changed since the preview re-prompts; only a target that declares nothing needs no consent:
     ```
     Upgrading: my-pomodoro v1.2.0 → v1.3.0
-    NEW permissions requested:
-      + network.fetch  Make outbound HTTP requests
-    NEW downloads (installed into ~/.bakin/bin, sha256-pinned):
-      + tmux 3.5a (2.0 MB)
+    Permissions requested:
+      storage.read     Read files in ~/.bakin/
+      events.emit      Broadcast Server-Sent Events to connected browsers
+    Downloads (installed into ~/.bakin/bin, sha256-pinned):
+      tmux 3.5a (2.0 MB)
     Continue? [y/N]
     ```
   - Inside the replace transaction (`src/core/plugins/replace-transaction.ts` — previous dir, binaries and ledger row restored byte for byte on any failure): `buildUserPlugin()`, install the new manifest's bins, project runtime skills
@@ -255,7 +254,7 @@ No retention. Tarballs accumulate. Follow-up issue tracks expiry policy.
   - Read recorded `source` path; missing → error: `"Original source path <path> no longer exists. Reinstall with: bakin plugins install <new-path>"`
   - Compute current source-tree sha (canonical whiskit `hashSourceTree` — sorted rel+filehash lines, skipping NON_RUNTIME_DIRS + dotfiles; `src/core/plugins/source-tree-sha.ts`); if equal → `"<id> v<version>: already up to date"`. Rows written by the legacy hasher (no `sourceTreeShaAlgo`) are verified with the legacy formula and rewritten once (canonical sha + `sourceTreeShaAlgo: 2`) instead of reporting a spurious change.
   - `cpSync` source → plugin dir (overwrites)
-  - Validate, prompt (if widened), build, update lockfile, restart-required exit
+  - Validate, prompt (if it declares permissions or binaries), build, update lockfile, restart-required exit
 
 ### 4.3 `bakin plugins remove <id>`
 
@@ -424,7 +423,7 @@ Specific to this work:
 
 **Layer A — Pure unit (no I/O beyond temp dirs):**
 - `lockfile.test.ts` — Zod schema accept/reject; atomic IO (write+read+verify; tmp file cleanup on simulated failure); every mutator (add/remove/update/idempotency); core-plugin reject in mutators
-- `permissions.test.ts` — Enum accept/reject; `newPermissions` diff (identical, removed-only, added-only, both, empty); manifest validation produces "did you mean" within edit-distance 2
+- `permissions.test.ts` — Enum accept/reject; manifest validation produces "did you mean" within edit-distance 2
 - `uninstall-snapshot.test.ts` — Snapshot fixture tree → extract → byte-equal verify; missing optional file (no settings JSON) handled; tarball lands at expected path
 - `consent-prompt.test.ts` — Inject fake stdin/stdout; `--yes` short-circuits; `n`/`N`/empty reject; permission diff display matches exact expected string
 - `is-core-plugin.test.ts` — Empty registry; populated; predicate stable across multiple init calls
@@ -436,7 +435,7 @@ Specific to this work:
 
 **Layer C — Integration (real fs, hermetic git in temp dirs):**
 - `install-flow.integration.test.ts` — Local-path install → lockfile written with correct shape, manifestSha matches, permissions captured. Github install (against hermetic bare repo) → same plus commitSha + ref recorded.
-- `upgrade-flow.integration.test.ts` — Github: push commit → upgrade detects sha drift → fast-forwards → lockfile updated. No-op short-circuit when shas equal. Permissions widened → prompt fires (consent-prompt mocked). Force-push scenario → fast-forward error surfaced. Local: modify source dir → upgrade re-syncs. Local source path missing → error message verbatim.
+- `upgrade-flow.integration.test.ts` — Github: push commit → upgrade detects sha drift → fast-forwards → lockfile updated. No-op short-circuit when shas equal. A declared permission → prompt fires with the full declaration (consent-prompt mocked). Force-push scenario → fast-forward error surfaced. Local: modify source dir → upgrade re-syncs. Local source path missing → error message verbatim.
 - `remove-flow.integration.test.ts` — Full teardown happy path: `onUninstall` called, all 7 cleanup APIs invoked (assert via per-registry post-state), tarball lands in `.uninstalled/`, plugin dir gone, settings JSON gone, runtime skills cleaned (with `.userEdited` honored — assert kept count). `onUninstall` throws → cleanup still completes, error logged.
 - `core-plugin-guard.test.ts` — Both `/api/plugins/remove` and `/api/plugins/upgrade` return 400 for any core id. Lockfile mutators throw for core ids.
 
@@ -494,7 +493,7 @@ Specific to this work:
 | 6 | `feat(plugins): hook + exec-tool unregister-by-plugin APIs + search purgeContentType` | Pure infra. No remove-flow change yet. |
 | 7 | `feat(plugins): onUninstall hook + full teardown sweep` | `BakinPlugin.onUninstall?`. Wire remove flow: hook → registry sweep (#6) → settings JSON → runtime skills (`.userEdited` honored) → tarball snapshot → fs delete → lockfile entry. The big one. |
 | 8 | `feat(plugins): permissions Zod enum + audit log on activate` | Lock the 4-permission enum, descriptions map, log on every activation. Validate manifests at install/upgrade. (#142 layer 1) |
-| 9 | `feat(plugins): install/upgrade consent prompt` | Interactive prompt at install; on upgrade only when widened. `--yes` flag. (#142 layer 2) |
+| 9 | `feat(plugins): install/upgrade consent prompt` | Interactive prompt at install and on any upgrade whose target declares permissions or binaries (the full declaration, never a lockfile diff — #898 PR I). `--yes` flag. (#142 layer 2) |
 | 10 | `test(plugins): lifecycle integration + unit coverage` | All Layer A/B/C tests. Hermetic local-git substrate. Optional `BAKIN_E2E_GITHUB=1` smoke. |
 | 11 | `docs(plugins): update knowledge + plugin-authoring + follow-up issues` | `.claude/knowledge/plugin-system.md` lifecycle section; `docs/plugin-authoring.md` (`onUninstall`, permissions, lockfile); CLAUDE.md updates if needed. Follow-up issue links inline. |
 
@@ -530,7 +529,7 @@ This spec is satisfied when:
 - [ ] Core plugins refuse `remove` and `upgrade` at API + lockfile + CLI layers
 - [ ] Manifest permissions are validated against the Zod enum at install/upgrade
 - [ ] Plugin activation logs requested permissions to audit + server.log
-- [ ] Install (and upgrade-with-widened-permissions) prompts for consent; `--yes` skips
+- [ ] Install and every upgrade whose target declares permissions/binaries prompt for consent; `--yes` skips
 - [ ] All 13 commits land in order; each compiles + passes existing tests
 - [ ] New tests cover happy + error paths for every new public function
 - [ ] `.claude/knowledge/plugin-system.md` and `docs/plugin-authoring.md` reflect the new lifecycle

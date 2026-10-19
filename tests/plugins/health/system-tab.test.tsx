@@ -822,8 +822,8 @@ describe('system mutations', () => {
       ok: false,
       awaitingConsent: true,
       noop: false,
-      newPermissions: ['storage.write'],
-      newBins: [{ name: 'tmux', version: '3.5a', sha256: 'c'.repeat(64), sizeBytes: 2_100_000 }],
+      declaredPermissions: ['storage.write'],
+      declaredBins: [{ name: 'tmux', version: '3.5a', sha256: 'c'.repeat(64), sizeBytes: 2_100_000 }],
       consentToken: 'tok-preview',
     } })
 
@@ -831,12 +831,12 @@ describe('system mutations', () => {
     expect(result.consentToken).toBe('tok-preview')
     expect(result.permissions).toEqual(['storage.write'])
     expect(result.bins).toEqual([{ name: 'tmux', version: '3.5a', sha256: 'c'.repeat(64), sizeBytes: 2_100_000 }])
-    expect(result.message).toBe('This update requests new permissions and downloads binaries.')
+    expect(result.message).toBe('This update requests permissions and downloads binaries.')
   })
 
   it('a preview with nothing to consent to is ready, with the token the commit carries', () => {
     const result = interpretPluginUpgrade('notes', { httpStatus: 200, body: {
-      ok: true, ready: true, awaitingConsent: false, noop: false, newPermissions: [], newBins: [], consentToken: 'tok-ready',
+      ok: true, ready: true, awaitingConsent: false, noop: false, declaredPermissions: [], declaredBins: [], consentToken: 'tok-ready',
     } })
     expect(result.ready).toBe(true)
     expect(result.awaitingConsent).toBe(false)
@@ -857,9 +857,9 @@ describe('system mutations', () => {
 
   it('reads a committed upgrade and a no-op from the settled result', () => {
     expect(interpretPluginUpgrade('terminal', { httpStatus: 200, body: {
-      ok: true, noop: false, awaitingConsent: false, newPermissions: ['storage.write'], newBins: [],
+      ok: true, noop: false, awaitingConsent: false, declaredPermissions: ['storage.write'], declaredBins: [],
     } }).message).toBe('terminal was updated and reactivated.')
-    const noop = interpretPluginUpgrade('notes', { httpStatus: 200, body: { ok: true, noop: true, awaitingConsent: false, newPermissions: [] } })
+    const noop = interpretPluginUpgrade('notes', { httpStatus: 200, body: { ok: true, noop: true, awaitingConsent: false, declaredPermissions: [] } })
     expect(noop.noop).toBe(true)
     expect(noop.message).toBe('notes is already current.')
   })

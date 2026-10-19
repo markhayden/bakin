@@ -36,13 +36,10 @@ export interface UpgradeConsentInput {
   pluginId: string
   fromVersion: string
   toVersion: string
-  /**
-   * Permissions that newly appear in the upgraded manifest. Only these
-   * trigger the prompt — removed permissions don't (no security concern).
-   */
-  newPermissions: Permission[]
-  /** Binary downloads the new manifest adds or re-pins. */
-  newBins?: ConsentBin[]
+  /** EVERY permission the target version declares (never a lockfile diff). */
+  declaredPermissions: Permission[]
+  /** EVERY binary download the target version declares for this platform. */
+  declaredBins?: ConsentBin[]
   io?: PromptIO
   yes?: boolean
 }
@@ -77,20 +74,22 @@ export function renderInstallPrompt(input: InstallConsentInput): string {
   return lines.join('\n')
 }
 
-/** Render the upgrade prompt body — only the *added* permissions. */
+/** Render the upgrade prompt body — the target's FULL declaration, unchanged entries included. */
 export function renderUpgradePrompt(input: UpgradeConsentInput): string {
-  const { pluginId, fromVersion, toVersion, newPermissions } = input
+  const { pluginId, fromVersion, toVersion, declaredPermissions } = input
   const lines = [`Upgrading: ${pluginId} v${fromVersion} → v${toVersion}`]
-  if (newPermissions.length > 0) {
-    lines.push(`NEW permissions requested:`)
-    const widest = newPermissions.reduce((w, p) => Math.max(w, p.length), 0)
-    for (const p of newPermissions) {
-      lines.push(`  + ${p.padEnd(widest)}  ${PERMISSION_DESCRIPTIONS[p]}`)
+  lines.push(`Permissions requested:`)
+  if (declaredPermissions.length === 0) {
+    lines.push('  (none)')
+  } else {
+    const widest = declaredPermissions.reduce((w, p) => Math.max(w, p.length), 0)
+    for (const p of declaredPermissions) {
+      lines.push(`  ${p.padEnd(widest)}    ${PERMISSION_DESCRIPTIONS[p]}`)
     }
   }
-  if (input.newBins?.length) {
-    lines.push(`NEW downloads (${BIN_DIR_NOTE}):`)
-    for (const bin of input.newBins) lines.push(binLine(bin, '  + '))
+  if (input.declaredBins?.length) {
+    lines.push(`Downloads (${BIN_DIR_NOTE}):`)
+    for (const bin of input.declaredBins) lines.push(binLine(bin))
   }
   lines.push(`Continue? [y/N] `)
   return lines.join('\n')
@@ -110,12 +109,12 @@ export async function promptInstallConsent(input: InstallConsentInput): Promise<
 }
 
 /**
- * Prompt the user to accept an upgrade. Only call this when permissions
- * actually widened (newPermissions.length > 0). `--yes` short-circuits.
+ * Prompt the user to accept an upgrade the server says needs consent. Never
+ * auto-accepts on an empty or missing declaration — the server decided
+ * consent is required, so the operator answers. `--yes` short-circuits.
  */
 export async function promptUpgradeConsent(input: UpgradeConsentInput): Promise<boolean> {
   if (input.yes) return true
-  if (input.newPermissions.length === 0 && !input.newBins?.length) return true
   const io = input.io ?? defaultIO()
   io.stdout.write(renderUpgradePrompt(input))
   return readYesNo(io)

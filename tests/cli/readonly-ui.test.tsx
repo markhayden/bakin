@@ -487,6 +487,30 @@ describe('read-only CLI TUI screens', () => {
     expect(output).not.toContain('"ok"')
   })
 
+  it('an upgrade (e.g. with --yes, no prompt) discloses every declared permission and download', () => {
+    const output = renderToString(
+      <PluginActionReport
+        actions={[{
+          action: 'upgraded',
+          pluginId: 'terminal',
+          result: {
+            ok: true,
+            id: 'terminal',
+            before: { version: '0.3.1', commitSha: '' },
+            after: { version: '0.3.2', commitSha: '' },
+            declaredPermissions: ['storage.read', 'events.emit'],
+            declaredBins: [{ name: 'tmux', version: '3.7c', sha256: 'a'.repeat(64) }],
+          },
+        }]}
+        color={false}
+      />,
+    )
+    // Every declared permission by name (never a count) + every download.
+    expect(output).toContain('Permissions requested: storage.read,')
+    expect(output).toContain('events.emit')
+    expect(output).toContain('tmux 3.7c')
+  })
+
   it('renders agents and plugins as shared TUI tables', () => {
     const agents = renderToString(
       <AgentsListReport
