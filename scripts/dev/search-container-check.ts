@@ -31,6 +31,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 const REPO = resolve(import.meta.dir, '..', '..')
+/** A 64×64 PNG — the image asset the media-leg checks import. */
+const PROBE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAeUlEQVR4nO3PQQkAMAzAwMqpfxWTNRF7HINABFzm7H7dcEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFj13vDoEA84tnsQAAAABJRU5ErkJggg=='
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 if (process.argv[2] === '--inside') await inside()
@@ -246,8 +248,6 @@ async function inside(): Promise<void> {
   finish(results)
 }
 
-/** A 64×64 PNG — the image asset the media-leg checks import. */
-const PROBE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAeUlEQVR4nO3PQQkAMAzAwMqpfxWTNRF7HINABFzm7H7dcEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFj13vDoEA84tnsQAAAABJRU5ErkJggg=='
 
 /** Polls the engine until some table's media leg (a remoteMedia template) has embedded a document. */
 async function mediaLegIndexed(): Promise<{ ok: boolean; detail: string }> {
