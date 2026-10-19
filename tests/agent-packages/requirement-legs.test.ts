@@ -184,9 +184,8 @@ describe('npm payload leg', () => {
   it('runs bun install --ignore-scripts with declared env when deps exist, and skips it on unchanged local repair (offline-safe)', async () => {
     await installPackage({ source: seedPack('1.0.0', { model: false, npmDeps: { 'fake-dep': '1.2.3' } }) })
     expect(bunRuns).toHaveLength(1)
-    expect(bunRuns[0]!.args).toEqual(['install', '--ignore-scripts'])
-    // A payload-local layout whatever the user's global bunfig says (#898 F review).
-    expect(readFileSync(join(payloadDir(), 'bunfig.toml'), 'utf-8')).toContain('linker = "hoisted"')
+    // A payload-local layout whatever any bunfig says — the CLI flag overrides config (#898 F review).
+    expect(bunRuns[0]!.args).toEqual(['install', '--ignore-scripts', '--linker=hoisted'])
     expect(bunRuns[0]!.extraEnv).toEqual({ PUPPETEER_SKIP_DOWNLOAD: '1' })
 
     rmSync(join(payloadDir(), 'run.js'), { force: true }) // drift the scripts
@@ -195,15 +194,13 @@ describe('npm payload leg', () => {
     expect(bunRuns).toHaveLength(1) // unchanged deps + node_modules present → NO second install
   })
 
-  it('a pack\'s own bunfig keeps its registry/scopes; only the layout is forced (#898 F review)', async () => {
+  it('a pack\'s own bunfig is copied verbatim (registries/scopes stay in force); the layout rides the CLI flag', async () => {
     const src = seedPack('1.0.0', { model: false, npmDeps: { 'fake-dep': '1.2.3' } })
-    writeFileSync(join(src, 'payload', 'scripts', 'bunfig.toml'), '[install]\nlinker = "isolated"\nregistry = "https://registry.example"\n\n[install.scopes]\n"@acme" = { url = "https://npm.acme.dev", token = "$ACME_TOKEN" }\n')
+    const packBunfig = '[install]\n"linker" = "isolated"\nregistry = "https://registry.example"\n\n[install.scopes]\n"@acme" = { url = "https://npm.acme.dev", token = "$ACME_TOKEN" }\n'
+    writeFileSync(join(src, 'payload', 'scripts', 'bunfig.toml'), packBunfig)
     await installPackage({ source: src })
-    const bunfig = readFileSync(join(payloadDir(), 'bunfig.toml'), 'utf-8')
-    expect(bunfig).toContain('linker = "hoisted"')
-    expect(bunfig).not.toContain('linker = "isolated"')
-    expect(bunfig).toContain('registry = "https://registry.example"')
-    expect(bunfig).toContain('"@acme" = { url = "https://npm.acme.dev", token = "$ACME_TOKEN" }')
+    expect(readFileSync(join(payloadDir(), 'bunfig.toml'), 'utf-8')).toBe(packBunfig)
+    expect(bunRuns.at(-1)!.args).toContain('--linker=hoisted')
   })
 
   it('reuse needs PROOF: a live payload whose dependency no longer resolves at its pin is reinstalled, not reused (#898 F)', async () => {

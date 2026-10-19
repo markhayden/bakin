@@ -211,12 +211,6 @@ describe('verifyNpmPayload', () => {
       expect(problems()).toEqual([expect.stringContaining('numeric')])
     })
 
-    it('a pack-shipped bunfig.toml never counts as a differing script (Bakin generates its own)', () => {
-      writeFileSync(join(source, 'bunfig.toml'), '[install]\nlinker = "isolated"\n')
-      writeFileSync(join(payload, 'bunfig.toml'), '[install]\nlinker = "hoisted"\n')
-      expect(verify()).toEqual({ ok: true })
-    })
-
     it('a pack-shipped bun lockfile that bun rewrote at install never counts as a differing script', () => {
       writeFileSync(join(source, 'bun.lock'), '{ "lockfileVersion": 1, "pack": true }\n')
       writeFileSync(join(payload, 'bun.lock'), '{ "lockfileVersion": 1, "rewritten": true }\n')

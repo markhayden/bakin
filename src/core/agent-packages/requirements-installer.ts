@@ -16,7 +16,7 @@
  * removal like bins). Downloads stream to disk — never buffered in memory.
  */
 import { createHash } from 'crypto'
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Manifest, NpmRequirement, ModelRequirement } from '../../../packages/core/src/agent-packages/manifest'
 import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
@@ -53,19 +53,8 @@ export function modelDest(dest: string): string {
   return join(getContentDir(), 'models', dest)
 }
 
-/**
- * The payload's bunfig.toml: the pack's own (registries, scopes, CA —
- * preserved verbatim) with only the LAYOUT forced — `linker = "hoisted"` in
- * `[install]`, any `linker`/`globalStore` the pack set dropped — so
- * dependencies always land inside the payload (see installNpmRequirement).
- */
-export function payloadBunfig(packBunfig: string): string {
-  const lines = packBunfig.split('\n').filter((line) => !/^\s*(linker|globalStore)\s*=/.test(line))
-  const header = lines.findIndex((line) => /^\s*\[install\]\s*$/.test(line))
-  if (header === -1) return `${lines.join('\n').trimEnd()}${lines.some((l) => l.trim()) ? '\n\n' : ''}[install]\nlinker = "hoisted"\n`
-  lines.splice(header + 1, 0, 'linker = "hoisted"')
-  return `${lines.join('\n').trimEnd()}\n`
-}
+/** The one dependency-install invocation for npm payloads (see installNpmRequirement). */
+export const NPM_INSTALL_ARGS = ['install', '--ignore-scripts', '--linker=hoisted']
 
 export interface NpmInstallResult {
   target: string
@@ -121,12 +110,6 @@ export async function installNpmRequirement(
     // The generated manifest always wins over any package.json the pack's
     // script dir happens to carry.
     writeFileSync(join(staging, 'package.json'), generated, 'utf-8')
-    // A payload-local install layout, whatever the user's global bunfig
-    // says: an isolated linker with a global store links dependencies
-    // OUTSIDE the payload, which verifyNpmPayload (rightly) rejects. The
-    // project bunfig wins over the global one; older buns ignore the key.
-    const packBunfig = join(staging, 'bunfig.toml')
-    writeFileSync(packBunfig, payloadBunfig(existsSync(packBunfig) ? readFileSync(packBunfig, 'utf-8') : ''), 'utf-8')
 
     if (canReuseModules) {
       // Unchanged deps: adopt the live install state (rename, no network).
@@ -141,7 +124,13 @@ export async function installNpmRequirement(
       // "install Bun" advice (margo, 2026-09-21). Install-time only.
       const bunPath = await ensureBunAvailable({ op: options.op })
       options.op?.op.throwIfCancelled()
-      const run = await runSystemBun(['install', '--ignore-scripts'], {
+      // A payload-local layout whatever any bunfig says (the user's global
+      // one, or the pack's — copied verbatim, so its registries/scopes stay
+      // in force): an isolated linker with a global store links deps
+      // OUTSIDE the payload, which verifyNpmPayload rightly rejects. The CLI
+      // flag overrides config; buns that predate it ignore unknown flags
+      // and only ever install hoisted.
+      const run = await runSystemBun(NPM_INSTALL_ARGS, {
         cwd: staging,
         timeoutMs: NPM_INSTALL_TIMEOUT_MS,
         extraEnv: req.env,

@@ -71,11 +71,12 @@ A capability pack is `kind: "skill-pack"` plus:
   reads only — no imports, subprocesses or network. The installer reuses a
   live payload only when it passes (so offline repair of an intact payload
   converges), and a staged payload must pass before it replaces the live
-  (each payload's `bunfig.toml` is the pack's own — registries, scopes, CA
-  kept verbatim — with only the layout forced to the hoisted linker, so a
-  user's isolated/global-store bun config cannot link deps outside it;
-  `package.json`, `bunfig.toml` and bun lockfiles are install artifacts,
-  never compared as scripts)
+  (the install runs `bun install --ignore-scripts --linker=hoisted` — the
+  CLI flag overrides any bunfig, so a user's or pack's isolated/global-store
+  layout cannot link deps outside the payload, while a pack `bunfig.toml`
+  is copied verbatim and its registries/scopes stay in force; buns that
+  predate the flag ignore it and only install hoisted. `package.json` and
+  bun lockfiles are install artifacts, never compared as scripts)
   one. It proves "dependencies resolved at declared versions" — never call
   it "integrity verified".
 - `requires.models[]` — `{ name, url, sha256, bytes, dest, env? }` into
