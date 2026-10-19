@@ -28,7 +28,7 @@ bakin stop
 bakin restart
 ```
 
-Without a service installed, `restart` is a `stop` followed by `start`. With a service installed, it asks the service manager to restart Bakin and waits for the server to respond. Good for picking up settings changes, core agent file changes, or rare plugin manifest/schema changes that don't auto-reload.
+Both act only on THIS home's server (`BAKIN_HOME`, default `~/.bakin`): the server must answer as the pid and boot its lock records, and it is stopped by an authenticated request — never by signalling a process, so another home's Bakin on the same machine is never touched. With a service installed, `stop` stops the service too (so it does not respawn) and `restart` restarts through it when the service runs this home's server, then waits for a new boot to answer. A server that holds the lock but does not answer is reported for you to inspect, never killed. Good for picking up settings changes, core agent file changes, or rare plugin manifest/schema changes that don't auto-reload.
 
 Dev-installed plugins (`bakin plugins install --dev <path>`) load on normal start because Bakin follows the symlink under `~/.bakin/plugins/<id>`. Live rebuilds for source edits only run under `bakin dev`.
 

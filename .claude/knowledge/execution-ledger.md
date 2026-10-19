@@ -266,11 +266,32 @@ failing closed. No parallel stat recorder — counts come from
 ## Server singleton
 
 `src/core/server-lock.ts` — `~/.bakin/server.lock` `{pid, port, startedAt,
-bootId}` acquired before ANY side effect in `server.ts`; a live holder
-(EPERM counts as alive) refuses startup naming the pid; stale/corrupt locks
-are swept via exclusive-create retry; released in the lifecycle shutdown.
+bootId, cliSecret}` acquired before ANY side effect in `server.ts`; a live
+holder (EPERM counts as alive) refuses startup naming the pid. The lock is
+published complete (temp file + `link`, never a partially written lock) and a
+stale/corrupt lock is swept by claim-then-verify (rename aside, re-read, only
+the claimed stale bytes are removed) so two racing boots can never both win;
+released in the lifecycle shutdown.
 EADDRINUSE routes through `lifecycle.triggerShutdown` (full graceful chain
 — the antfly child is stopped, not orphaned, #459) and exits non-zero.
+
+**Home-scoped stop/restart (#898 K, spec `.claude/specs/lifecycle-home-scope.md`).**
+`bakin stop`/`restart` act ONLY on the server this home's lock names, and only
+after it proves itself: `GET /api/version` must answer `{pid, bootId}` equal
+to the lock (`state` = `starting|serving|stopping`). Shutdown is the
+authenticated `POST /api/server/shutdown {bootId}` (`X-Bakin-Cli-Secret`;
+403 `not_this_home`, 409 `boot_mismatch`) — the CLI never signals a pid. The
+service manager is driven only when its loaded pid IS that server (or, for a
+restart with nothing running, when the unit's `BAKIN_HOME` is this home);
+`stop` then boots the unit out so it cannot respawn. A lock holder that
+doesn't answer (wedged), an answer that doesn't match (foreign), or an
+old-protocol server outside a service fails closed with a report.
+`restart` refuses while a start may already be pending (dev build, an
+in-flight restart) unless `--force`, waits ≤20 s for the old boot to go,
+and succeeds only when a NEW bootId answers. Seams: `src/cli/lifecycle-control.ts`
+(pure controller over `LifecycleIo`), `src/cli/lifecycle-io.ts` (real IO),
+`src/core/service-manager.ts` (launchctl/systemd pid parsers); the server's
+own `/api/restart` uses the service only when `loadedServicePid() === process.pid`.
 
 ## Testing
 
