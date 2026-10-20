@@ -102,11 +102,17 @@ pair (both deleted, along with the `GET /api/curated` host route):
 - **Update state is the updates engine's record (#1007).** The catalog join
   (`lib/install-state.ts`) takes the engine's snapshot keyed by record id:
   plugins read `plugin:<id>`, agents and packs find their CANONICAL lockfile
-  entry (`canonicalPackageEntries` — newest installed per id, the selection
-  the engine's inventory makes) and read `package:<id>` (falling back to
-  `hub-skill:<id>` for packs synthesized from a hub bundle); a record observed
-  for another installed identity (`updateRecordMatchesInstalled`) is no
-  answer. `updateAvailable` is `true` for an
+  package (`installedPackages()` — newest installed per id with its installed
+  manifest's hub provenance, the selection the engine's inventory makes) and
+  read `package:<id>`, or `hub-skill:<id>` when the package carries
+  `upstream`; a record observed for another installed identity
+  (`updateRecordMatchesInstalled` against the identity the SOURCE names —
+  `packageInstalledIdentity`, `hubSkillInstalledIdentity` (the hub's
+  resolved version), `pluginInstalledIdentity` (a local plugin's tree
+  digest)) is no answer. The join keeps the observation's `updateOutcome` +
+  `updateReason` beside `updateAvailable` so `blocked`/`unsupported` are
+  never "up to date" (an "Update blocked" badge; the check toast names
+  them). `updateAvailable` is `true` for an
   unskipped `update-available` record (`isUpdateOffered`), `false` for an
   observed `current`/`blocked`/`unsupported` one, and `null` when there is no
   successful observation (no record, `unknown`, no running engine) —

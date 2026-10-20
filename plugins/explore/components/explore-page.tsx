@@ -121,6 +121,11 @@ function unknownInstalledCount(entries: readonly ExploreCatalogEntry[]): number 
   return entries.filter((entry) => entry.installed && !entry.builtin && entry.updateAvailable === null).length
 }
 
+/** Installed entries the engine observed as blocked or unsupported — not an update, not "up to date" either (review r5 #7). */
+function blockedInstalled(entries: readonly ExploreCatalogEntry[]): ExploreCatalogEntry[] {
+  return entries.filter((entry) => entry.installed && !entry.builtin && (entry.updateOutcome === 'blocked' || entry.updateOutcome === 'unsupported'))
+}
+
 /** Deadline rejections arrive as DOMExceptions — surface them as a real error. */
 
 function ExplorePageInner() {
@@ -189,11 +194,16 @@ function ExplorePageInner() {
         const updates = body.entries.filter((entry) => entry.updateAvailable === true)
         // "Couldn't be checked" = rows still unknown after the pass + rows whose fresh attempt failed over an earlier verdict.
         const failed = unknownInstalledCount(body.entries) + failedWithObservation
+        const blocked = blockedInstalled(body.entries)
+        const caveats = [
+          failed > 0 ? `${failed} couldn't be checked` : null,
+          blocked.length > 0 ? `${blocked.length} blocked: ${blocked.map((entry) => `${entry.name}${entry.updateReason ? ` (${entry.updateReason})` : ''}`).join(', ')}` : null,
+        ].filter((part): part is string => part !== null)
         if (updates.length > 0) {
-          const suffix = failed > 0 ? ` (${failed} couldn't be checked)` : ''
+          const suffix = caveats.length > 0 ? ` (${caveats.join('; ')})` : ''
           toast(`${updates.length} update${updates.length === 1 ? '' : 's'} available: ${updates.map((u) => u.name).join(', ')}${suffix}`, 'success')
-        } else if (failed > 0) {
-          toast(`Couldn't check ${failed} item${failed === 1 ? '' : 's'} — network or source unreachable. Everything that could be checked is up to date.`, 'error')
+        } else if (caveats.length > 0) {
+          toast(`${caveats.join('; ')} — see Health → Updates. Everything that could be checked is up to date.`, 'error')
         } else {
           toast('Everything is up to date.', 'success')
         }

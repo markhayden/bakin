@@ -9,10 +9,18 @@ export interface ExploreCatalogEntry extends CatalogEntry {
   installed: boolean
   /**
    * The updates engine's observation for the installed subject (#1007):
-   * `true` = an unskipped update is offered, `false` = observed current,
+   * `true` = an unskipped update is offered, `false` = observed otherwise,
    * `null` = not observed yet (unknown — never "up to date").
    */
   updateAvailable: boolean | null
+  /**
+   * The observation itself, so a `blocked` subject (a vanished tracked ref,
+   * a missing local source) or an `unsupported` one is never summarized as
+   * "up to date": `skipped` = an offer the operator hid; `null` = unknown.
+   */
+  updateOutcome: 'current' | 'update-available' | 'skipped' | 'blocked' | 'unsupported' | null
+  /** Why `updateOutcome` is `blocked` or `unsupported`, for people. */
+  updateReason?: string
   /** Installed version from the relevant lockfile, when installed. */
   installedVersion: string | null
 }

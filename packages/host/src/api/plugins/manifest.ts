@@ -12,9 +12,10 @@
  * so they don't live in the manifest.
  */
 import { isCorePlugin, pluginRegistry } from '@/core/plugin-registry'
-import { isUpdateOffered, type UpdateRecord } from '@makinbakin/sdk/types'
+import { isUpdateOffered, updateRecordMatchesInstalled, type UpdateRecord } from '@makinbakin/sdk/types'
 import { createLogger } from '@/core/logger'
 import { getUpdatesEngine, getUpdatesTimer } from '@/core/updates/service'
+import { pluginInstalledIdentity } from '@/core/updates/sources/plugin'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { pluginAssetVersion } from './asset-version'
 import type { PluginContributions } from '@makinbakin/sdk/types'
@@ -103,7 +104,9 @@ export async function get(req: Request): Promise<Response> {
         ? 'core'
         : (installed?.type ?? 'local')
 
-      const record = isCore ? undefined : records.get(`plugin:${entry.id}`)
+      // A record observed for ANOTHER installed identity (an upgrade or rebuild the engine has not reconciled yet) is no answer (review r5 #5).
+      const stored = isCore ? undefined : records.get(`plugin:${entry.id}`)
+      const record = stored && installed && updateRecordMatchesInstalled(stored, pluginInstalledIdentity(installed)) ? stored : undefined
       const upgradeAvailable = upgradeAvailableOf(record)
 
       const plugin: ManifestPlugin = {

@@ -270,7 +270,7 @@ const baseEntry = {
   dependencies: [],
   defaultSelected: false,
   installed: false,
-  updateAvailable: null,
+  updateAvailable: null, updateOutcome: null,
   installedVersion: null,
 }
 
@@ -471,7 +471,7 @@ describe('ExplorePage update/refresh actions', () => {
 
   it('Check for updates runs the engine pass, re-reads the catalog and overrides displayed entries', async () => {
     fixtureEntries = [...AGENTS]
-    const calls = checkFetch({ entries: [{ ...AGENTS[0], installed: true, updateAvailable: true, installedVersion: '1.0.0' }] })
+    const calls = checkFetch({ entries: [{ ...AGENTS[0], installed: true, updateAvailable: true, updateOutcome: 'update-available', installedVersion: '1.0.0' }] })
 
     render(<ExplorePage />)
     expect(screen.queryByText('Update available')).toBeNull()
@@ -485,7 +485,7 @@ describe('ExplorePage update/refresh actions', () => {
 
   it('check with everything current toasts an up-to-date confirmation', async () => {
     fixtureEntries = [...AGENTS]
-    checkFetch({ entries: [{ ...AGENTS[0], installed: true, updateAvailable: false }] })
+    checkFetch({ entries: [{ ...AGENTS[0], installed: true, updateAvailable: false, updateOutcome: 'current' }] })
 
     render(<ExplorePage />)
     toastMock.mockClear()
@@ -499,7 +499,7 @@ describe('ExplorePage update/refresh actions', () => {
     const failed = (id: string, observedAt?: string) => ({ id, group: 'available', subject: { kind: id.slice(0, id.indexOf(':')), id: id.slice(id.indexOf(':') + 1), label: id }, outcome: observedAt ? 'current' : 'unknown', source: { kind: 'fixture', endpoint: 'f' }, fingerprint: 'fp', ...(observedAt ? { observedAt } : {}), attempt: { at: 'now', error: 'offline' } })
     checkFetch({
       // pixel's row is unknown after the pass (no successful observation); jessica keeps her earlier verdict although her fresh attempt failed.
-      entries: [{ ...AGENTS[0], installed: true, updateAvailable: null }, { ...AGENTS[1], installed: true, updateAvailable: false }],
+      entries: [{ ...AGENTS[0], installed: true, updateAvailable: null, updateOutcome: null }, { ...AGENTS[1], installed: true, updateAvailable: false, updateOutcome: 'current' }],
       // The Bakin binary's failure is not this catalog's.
       records: [failed('package:pixel'), failed('package:jessica', '2026-10-01T00:00:00.000Z'), failed('bakin:bakin')],
     })
@@ -508,20 +508,36 @@ describe('ExplorePage update/refresh actions', () => {
     toastMock.mockClear()
     fireEvent.click(screen.getByTestId('check-updates'))
     await waitFor(() => expect(toastMock).toHaveBeenCalled())
-    expect(String(toastMock.mock.calls[0][0])).toContain("Couldn't check 2 items")
+    expect(String(toastMock.mock.calls[0][0])).toContain("2 couldn't be checked")
     expect(toastMock.mock.calls[0][1]).toBe('error')
   })
 
   it('review r1 #7: an installed entry the engine has NO record for stays unknown and is counted — a successful pass never says "up to date" for it', async () => {
     fixtureEntries = [...AGENTS]
-    checkFetch({ entries: [{ ...AGENTS[0], installed: true, updateAvailable: null }], records: [] })
+    checkFetch({ entries: [{ ...AGENTS[0], installed: true, updateAvailable: null, updateOutcome: null }], records: [] })
 
     render(<ExplorePage />)
     toastMock.mockClear()
     fireEvent.click(screen.getByTestId('check-updates'))
     await waitFor(() => expect(toastMock).toHaveBeenCalled())
-    expect(String(toastMock.mock.calls[0][0])).toContain("Couldn't check 1 item")
+    expect(String(toastMock.mock.calls[0][0])).toContain("1 couldn't be checked")
     expect(String(toastMock.mock.calls[0][0])).not.toContain('Everything is up to date.')
+  })
+
+  it('review r5 #7: a blocked or unsupported subject is never summarized as "up to date" — the toast names it with the engine\'s reason', async () => {
+    fixtureEntries = [...AGENTS]
+    checkFetch({ entries: [
+      { ...AGENTS[0], installed: true, updateAvailable: false, updateOutcome: 'blocked', updateReason: 'no remote ref: release-1' },
+      { ...AGENTS[1], installed: true, updateAvailable: false, updateOutcome: 'current' },
+    ] })
+
+    render(<ExplorePage />)
+    toastMock.mockClear()
+    fireEvent.click(screen.getByTestId('check-updates'))
+    await waitFor(() => expect(toastMock).toHaveBeenCalled())
+    expect(String(toastMock.mock.calls[0][0])).toContain('1 blocked: Pixel (no remote ref: release-1)')
+    expect(String(toastMock.mock.calls[0][0])).not.toContain('Everything is up to date.')
+    expect(toastMock.mock.calls[0][1]).toBe('error')
   })
 
   it('a failed engine pass is an error banner, the catalog stays rendered', async () => {

@@ -194,6 +194,20 @@ describe('observeInstalledPackage with the engine running', () => {
     startUpdates(testDir)
     expect((await observeInstalledPackage('hub-tools')).outcome).toBe('current')
     expect((await observeInstalledPackage('hub-weather@1.0.0')).outcome).toBe('update-available')
+
+    // r5 #4: a ClawHub sync while the check waited moved ONLY the hub's resolved version (same key, same frontmatter
+    // version, empty commit, same instant) — a supersession, refused.
+    const timer = getUpdatesTimer()!
+    const realAdmit = timer.admit
+    timer.admit = async (request) => {
+      const admitted = await realAdmit(request)
+      return { ...admitted, done: admitted.done.then((run) => {
+        const dir = getPackageSourceDir(testDir, 'skill-pack', 'hub-weather', '1.0.0')
+        writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({ id: 'hub-weather', version: '1.0.0', kind: 'skill-pack', name: 'hub-weather', description: 'x', contributions: { skills: ['x'] }, upstream: { source: 'clawhub:weather', ref: '2.4.0' } }))
+        return run
+      }) }
+    }
+    await expect(observeInstalledPackage('hub-weather@1.0.0')).rejects.toBeInstanceOf(PackageSupersededError)
   })
 
   it('review r4 #3: a re-install under the SAME key while the check waited (new commit, new instant) is refused too', async () => {

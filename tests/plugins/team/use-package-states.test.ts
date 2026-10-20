@@ -261,6 +261,23 @@ describe('useAgentStore — package state plumbing', () => {
     expect(useAgentStore.getState().packageStates['orca']?.state).toBe('unmanaged')
   })
 
+  it('review r5 #2: a FAILED package read never erases the rows already known — a managed agent is not shown as unmanaged because the network blinked', async () => {
+    global.fetch = makeFetchSpy({}) as unknown as typeof global.fetch
+    await useAgentStore.getState().load()
+    expect(useAgentStore.getState().packageStates['pixel']?.state).toBe('managed')
+
+    global.fetch = makeFetchSpy({ rosterStatus: 500, pkgRejects: true }) as unknown as typeof global.fetch
+    await useAgentStore.getState().load()
+    expect(useAgentStore.getState().packageStates['pixel']?.state).toBe('managed')
+    global.fetch = makeFetchSpy({ pkgStatus: 500, pkgBody: { ok: false } }) as unknown as typeof global.fetch
+    await useAgentStore.getState().refreshPackageStates()
+    expect(useAgentStore.getState().packageStates['pixel']?.state).toBe('managed')
+    // A SUCCESSFUL empty inventory does replace them.
+    global.fetch = makeFetchSpy({ pkgBody: { ok: true, agents: [] } }) as unknown as typeof global.fetch
+    await useAgentStore.getState().refreshPackageStates()
+    expect(useAgentStore.getState().packageStates).toEqual({})
+  })
+
   it('roster fetch failure still publishes the package answer it fetched beside it (r4 #5)', async () => {
     global.fetch = makeFetchSpy({ rosterStatus: 500 }) as unknown as typeof global.fetch
 

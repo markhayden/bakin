@@ -36,6 +36,8 @@ const catalogEntryResponse = z.object({
   screenshots: z.array(z.string()),
   installed: z.boolean(),
   updateAvailable: z.boolean().nullable(),
+  updateOutcome: z.enum(['current', 'update-available', 'skipped', 'blocked', 'unsupported']).nullable(),
+  updateReason: z.string().optional(),
   installedVersion: z.string().nullable(),
 })
 

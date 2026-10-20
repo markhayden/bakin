@@ -145,8 +145,8 @@ export async function createAppServices(): Promise<AppServices> {
 /**
  * Services for a READ-ONLY in-process path (#1007 B review r3 #1 / r4 #1 —
  * the server-less `--check` verbs): the runtime adapter CONSTRUCTED, never
- * initialized — `initialize()` is write-free by pin, but Pi's warms its
- * model registry, whose stores create files under PI_HOME; a bare adapter
+ * initialized — `initialize()` is write-free by pin, but a runtime may warm
+ * caches whose stores create files under its own home; a bare adapter
  * still answers every roster and workspace READ (`agents.list`,
  * `readWorkspaceFile`, `skills.get`). Nothing else: no search
  * initialization (antfly provisioning), no secret migration, no health

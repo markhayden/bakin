@@ -24,8 +24,9 @@ mock.module('../../src/core/logger', loggerMock)
 mock.module('../../packages/core/src/logger', loggerMock)
 mock.module('../../src/core/sse', () => ({ broadcast: () => {} }))
 const LOCK_ENTRY = { source: 'github:acme/notes', type: 'github', ref: 'main', commitSha: 'a'.repeat(40), installedAt: '2026-10-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'c'.repeat(64) }
+let lockEntry: Record<string, unknown> = LOCK_ENTRY
 mock.module('@bakin/core/plugins/lockfile', () => ({
-  readPluginLockfile: () => ({ version: 1, plugins: { notes: LOCK_ENTRY } }),
+  readPluginLockfile: () => ({ version: 1, plugins: { notes: lockEntry } }),
 }))
 mock.module('@/core/plugin-registry', () => ({
   isCorePlugin: (id: string) => id === 'tasks',
@@ -59,12 +60,31 @@ function scripted(observe: (id: string) => Promise<UpdateObservation>) {
 const available: UpdateObservation = { installed: { version: '1.0.0', display: '1.0.0' }, available: { version: '1.1.0', display: '1.1.0' }, reason: 'newer-version', outcome: 'update-available', action: { kind: 'operation', start: { route: '/api/updates/plugin%3Anotes/apply' }, impact: ['download'] } }
 const current: UpdateObservation = { installed: { version: '1.0.0', display: '1.0.0' }, outcome: 'current' }
 
-afterEach(() => { stopUpdates(); resetUpdateSources() })
+// Every test boots its own engine over the same home: the persisted records never leak forward.
+afterEach(() => { stopUpdates(); resetUpdateSources(); rmSync(join(testDir, 'updates.json'), { force: true }) })
 
 describe('GET /api/plugins/manifest — upgrade projection from the updates engine', () => {
   it('without a running engine every user plugin is honestly not-upgradable with no staleness hint; core plugins never are', async () => {
     const body = await read()
     expect(body.plugins.map((p) => [p.id, p.upgradeAvailable, p.updateObservedAt])).toEqual([['tasks', false, null], ['notes', false, null]])
+  })
+
+  it('review r5 #5: a record observed for ANOTHER installed identity (an upgrade the engine has not reconciled yet) projects nothing — never "upgrade available" for the version just installed', async () => {
+    const { source } = scripted(async () => available)
+    registerUpdateSource(source)
+    const engine = startUpdates(testDir)
+    await engine.ready
+    await engine.observe('plugin:notes')
+    expect((await row()).upgradeAvailable).toBe(true)
+    // The lockfile now holds 1.1.0 (the offer was applied); the record still says "1.0.0 → 1.1.0" until the engine re-observes.
+    lockEntry = { ...LOCK_ENTRY, version: '1.1.0', commitSha: 'b'.repeat(40) }
+    try {
+      const after = await row()
+      expect(after.upgradeAvailable).toBe(false)
+      expect(after.updateObservedAt).toBeNull()
+    } finally {
+      lockEntry = LOCK_ENTRY
+    }
   })
 
   it('updateObservedAt is the record\'s last successful observation — absent before one, kept across a later failed attempt', async () => {

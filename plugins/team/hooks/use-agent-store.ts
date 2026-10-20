@@ -26,8 +26,8 @@ interface AgentStore {
    * Agent-package state per agent id, sourced from `/api/agent-packages`
    * (lockfile state + the updates engine's record for the package — the
    * route never probes a source, so the roster never waits on the network).
-   * Fetched in parallel with the roster on `load()`. Empty map when the
-   * endpoint fails — agent-packages is optional context, not load-blocking.
+   * Fetched in parallel with the roster on `load()`. A failed read keeps the
+   * last known rows — agent-packages is optional context, not load-blocking.
    */
   packageStates: Record<string, PackageStateRow>
   /** Canonical main/orchestrator agent id (resolved server-side from the runtime adapter) */
@@ -45,25 +45,26 @@ interface AgentStore {
 }
 
 /**
- * Normalize a `/api/agent-packages` response into a Record keyed by agentId.
- * Handles both the success shape and any failure (non-ok response, network
- * error, malformed payload) by returning an empty map — the agent-package
- * surface is supplementary context, not load-blocking.
+ * Normalize a `/api/agent-packages` response into a Record keyed by agentId,
+ * or null for a FAILED read (non-ok response, network error, malformed
+ * payload) — a failure keeps the last known rows, it never turns managed
+ * agents into "unmanaged" ones (review r5 #2). The agent-package surface is
+ * supplementary context, not load-blocking.
  */
 async function parsePackageStatesResponse(
   res: Response | null,
-): Promise<Record<string, PackageStateRow>> {
-  if (!res || !res.ok) return {}
+): Promise<Record<string, PackageStateRow> | null> {
+  if (!res || !res.ok) return null
   try {
     const body = await res.json() as { ok?: boolean; agents?: PackageStateRow[] }
-    if (!body.ok || !Array.isArray(body.agents)) return {}
+    if (!body.ok || !Array.isArray(body.agents)) return null
     const map: Record<string, PackageStateRow> = {}
     for (const row of body.agents) {
       map[row.agentId] = row
     }
     return map
   } catch {
-    return {}
+    return null
   }
 }
 
@@ -145,7 +146,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     // The package answer stands on its own: a failed roster never discards
     // it (and never lets an OLDER read's answer land after it, review r4 #5).
     const packageStates = await parsePackageStatesResponse(pkgRes)
-    const publishPackages = (): void => { if (generation === packageStatesGeneration) set({ packageStates }) }
+    const publishPackages = (): void => { if (generation === packageStatesGeneration && packageStates) set({ packageStates }) }
     try {
       if (!rosterRes || !rosterRes.ok) {
         publishPackages()
@@ -176,8 +177,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         agentsWithStatus: data.agents,
         displaySettings: data.displaySettings,
         teams: data.teams ?? [],
-        // A newer package read is in flight or landed: its answer wins.
-        packageStates: generation === packageStatesGeneration ? packageStates : get().packageStates,
+        // A newer package read is in flight or landed: its answer wins; a failed read keeps the last known rows.
+        packageStates: generation === packageStatesGeneration && packageStates ? packageStates : get().packageStates,
         mainAgentId: data.mainAgentId ?? null,
         loaded: true,
       })
@@ -198,7 +199,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     const generation = ++packageStatesGeneration
     const res = await fetch('/api/agent-packages').catch(() => null)
     const packageStates = await parsePackageStatesResponse(res)
-    if (generation !== packageStatesGeneration) return
+    if (generation !== packageStatesGeneration || !packageStates) return
     set({ packageStates })
   },
 

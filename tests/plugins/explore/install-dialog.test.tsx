@@ -93,7 +93,7 @@ const agentEntry: ExploreCatalogEntry = {
   defaultSelected: false,
   screenshots: [],
   installed: false,
-  updateAvailable: null,
+  updateAvailable: null, updateOutcome: null,
   installedVersion: null,
 }
 

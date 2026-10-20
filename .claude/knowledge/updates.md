@@ -420,7 +420,9 @@ through a server is an operator action: `bakin update --as human`; an
   "Check for updates" runs the plugin pass. The manifest's `upgradeAvailable`
   / `updateObservedAt` are the same projection (`GET /api/plugins/manifest`,
   `?check=1` runs the plugin pass and answers with the refreshed projection;
-  `bakin plugins list` renders its stale hint from `updateObservedAt`).
+  a record observed for another installed identity projects nothing —
+  `pluginInstalledIdentity`; `bakin plugins list` renders its stale hint
+  from `updateObservedAt`).
 - **Team / Explore:** `GET /api/agent-packages` joins each managed row with
   its `package:` record (`row.update`); the Explore catalog join reads
   `plugin:`/`package:`/`hub-skill:` records into `updateAvailable`
@@ -433,7 +435,13 @@ through a server is an operator action: `bakin update --as human`; an
   sync/migration and removal) refreshes the inventory at once so such
   records retire. The Team store drops a package-rows response that is no
   longer the newest request's (a generation per read), so overlapping
-  refreshes never put an obsolete badge back. Neither
+  refreshes never put an obsolete badge back, and a FAILED read keeps the
+  last known rows (a managed agent never shows as unmanaged because the
+  network blinked). Explore's catalog carries the observation's
+  `updateOutcome` (`current` / `update-available` / `skipped` / `blocked` /
+  `unsupported` / null) and `updateReason`: a blocked subject gets an
+  "Update blocked" badge and the check toast names it with the reason —
+  never "Everything is up to date". Neither
   route probes; Explore's "Check for updates" is `POST
   /api/updates/check?wait=1` + a re-read ("couldn't be checked" = rows still
   unknown + attempts that failed over an earlier verdict), the roster's
@@ -464,7 +472,13 @@ through a server is an operator action: `bakin update --as human`; an
   observation must name the validated install's identity
   (`updateRecordMatchesInstalled` against `packageInstalledIdentity` /
   `hubSkillInstalledIdentity` — the ONE derivation the sources use; a hub
-  skill's is the hub's resolved version). The checker module is gone.
+  skill's is the hub's resolved version, and a same-key re-install is
+  detected by key + version + commit + instant + tracking source/ref +
+  hub identity). An agent `--check` whose upstream question could not be
+  answered carries `receipt.package.checkError` — the versions on the
+  receipt are the installed ones, `changed` is false because nothing is
+  KNOWN; the CLI reports it as a failed check (exit 1), and the roster form
+  under `--json` prints ONE aggregate document. The checker module is gone.
 - **CLI `--check` without a server:** `bakin agents sync [<id>] --check`,
   `bakin packages sync <key> --check` and `bakin plugins list [--check]`
   run in-process when `server.lock` names no live server (an explicit

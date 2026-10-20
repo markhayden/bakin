@@ -317,6 +317,7 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
     let versionAfter = versionBefore
     let commitAfter = commitBefore
     let changed = false
+    let checkError: string | undefined
     const projections: ReceiptProjection[] = []
     let skipped: Array<{ target: string; reason: string; hint?: string }> = []
     let reclaimed: string[] = []
@@ -331,8 +332,10 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
           changed = status.outcome === 'update-available'
           if (status.outcome === 'blocked') op?.log(`Upstream check blocked: ${status.blockedReason ?? 'unknown reason'}`, 'warn')
         } catch (err) {
-          log.warn('Upstream check failed during --check', { packageId: owner.id, error: String(err) })
-          op?.log(`Upstream check failed: ${String(err)}`, 'warn')
+          // Never a silent "nothing newer": the receipt names the failure (review r5 #1).
+          checkError = err instanceof Error ? err.message : String(err)
+          log.warn('Upstream check failed during --check', { packageId: owner.id, error: checkError })
+          op?.log(`Upstream check failed: ${checkError}`, 'warn')
         }
       } else {
         op?.skip(SYNC_STAGES.check, 'local check only')
@@ -411,6 +414,7 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
         commitAfter,
         fetched: fetch,
         changed,
+        ...(checkError !== undefined ? { checkError } : {}),
       },
       blocks: diffBlocks(blocksBefore, await readBlockBodies(agentId)),
       projections,

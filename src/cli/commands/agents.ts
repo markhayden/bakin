@@ -303,7 +303,9 @@ async function checkAgentPackagesInProcess(agentId: string | undefined, flags: A
   ])
   const checkOne = async (id: string): Promise<Record<string, unknown>> => {
     try {
-      return { ok: true, receipt: await checkAgent(id, { trigger: 'cli' }) }
+      const receipt = await checkAgent(id, { trigger: 'cli' })
+      // An unanswered upstream question is a failed check, never a quiet "nothing newer" (review r5 #1).
+      return receipt.package?.checkError ? { ok: false, error: receipt.package.checkError, receipt } : { ok: true, receipt }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
@@ -317,15 +319,18 @@ async function checkAgentPackagesInProcess(agentId: string | undefined, flags: A
     for (const id of targets) out.push({ id, result: await checkOne(id) })
     return out
   })
-  const actions: PackageActionData[] = []
-  let anyFailed = false
-  for (const { id, result } of results) {
-    if (result.ok === false) anyFailed = true
-    if (!flags.json && process.stdout.isTTY) { actions.push({ action: 'checked', scope: 'agent', target: id, result }); continue }
-    if (!agentId) console.log(`${id}:`)
-    print(result)
+  const anyFailed = results.some(({ result }) => result.ok === false)
+  if (flags.json) {
+    // ONE document (review r5 #3): the single result for one agent, an aggregate for the roster (an empty roster is an empty list).
+    print(agentId ? results[0]!.result : { ok: !anyFailed, agents: results.map(({ id, result }) => ({ agentId: id, ...result })) })
+  } else if (process.stdout.isTTY) {
+    await printPackageActionTui(results.map(({ id, result }) => ({ action: 'checked', scope: 'agent', target: id, result })))
+  } else {
+    for (const { id, result } of results) {
+      if (!agentId) console.log(`${id}:`)
+      print(result)
+    }
   }
-  if (!flags.json && process.stdout.isTTY) await printPackageActionTui(actions)
   if (anyFailed) process.exit(1)
 }
 
@@ -387,13 +392,15 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
     agents: Array<{ agentId: string; state: string }>
   }
   const actions: PackageActionData[] = []
+  const documents: Array<Record<string, unknown>> = []
   let anyFailed = false
   for (const a of list.agents) {
     if (a.state === 'absent') continue
     try {
       const result = await syncOne(a.agentId)
       if (isFailure(result)) anyFailed = true
-      if (!flags.json && process.stdout.isTTY) {
+      if (flags.json) { documents.push({ agentId: a.agentId, ...(jsonObject(result) ?? { result }) }); continue }
+      if (process.stdout.isTTY) {
         actions.push({ action, scope: 'agent', target: a.agentId, result })
         continue
       }
@@ -401,22 +408,23 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
       print(result)
     } catch (err) {
       anyFailed = true
-      if (!flags.json && process.stdout.isTTY) {
-        actions.push({
-          action,
-          scope: 'agent',
-          target: a.agentId,
-          result: { ok: false, error: err instanceof Error ? err.message : String(err) },
-        })
+      const error = err instanceof Error ? err.message : String(err)
+      if (flags.json) { documents.push({ agentId: a.agentId, ok: false, error }); continue }
+      if (process.stdout.isTTY) {
+        actions.push({ action, scope: 'agent', target: a.agentId, result: { ok: false, error } })
         continue
       }
-      console.error(`${a.agentId}: ${err instanceof Error ? err.message : String(err)}`)
+      console.error(`${a.agentId}: ${error}`)
     }
   }
-  if (!flags.json && process.stdout.isTTY) {
-    await printPackageActionTui(actions)
-  }
+  // `--json` is ONE document for the whole roster (review r5 #3).
+  if (flags.json) print({ ok: !anyFailed, agents: documents })
+  else if (process.stdout.isTTY) await printPackageActionTui(actions)
   if (anyFailed) process.exit(1)
+}
+
+function jsonObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
 
 async function cmdAgentPackagesLessonsList(agentId: string): Promise<void> {

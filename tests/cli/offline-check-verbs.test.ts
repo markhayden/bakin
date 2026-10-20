@@ -46,7 +46,12 @@ mock.module('../../src/cli/help', () => ({
 }))
 const inProcess: Array<{ verb: string; id?: string; opts?: unknown }> = []
 mock.module('../../src/core/agent-packages/sync', () => ({
-  checkAgent: mock(async (id: string, opts: unknown) => { inProcess.push({ verb: 'checkAgent', id, opts }); return { checkOnly: true, versionBefore: '1.0.0', versionAfter: '1.1.0', changed: true, verification: { status: 'ok', findings: [] } } }),
+  checkAgent: mock(async (id: string, opts: unknown) => {
+    inProcess.push({ verb: 'checkAgent', id, opts })
+    // orca's upstream question went unanswered: the receipt names it (r5 #1).
+    const pkg = id === 'orca' ? { id: 'orca', versionBefore: '1.0.0', versionAfter: '1.0.0', changed: false, fetched: true, checkError: 'ls-remote: offline' } : { id, versionBefore: '1.0.0', versionAfter: '1.1.0', changed: true, fetched: true }
+    return { agentId: id, checkOnly: true, package: pkg, verification: { status: 'ok', findings: [] } }
+  }),
   checkPack: mock(async (id: string) => { inProcess.push({ verb: 'checkPack', id }); if (id === 'gone@1.0.0') throw new Error('package "gone@1.0.0" is not installed'); return { packageId: id, checkOnly: true, versionBefore: '1.0.0', versionAfter: '1.0.0', changed: false } }),
 }))
 mock.module('../../src/core/agent-packages/agent-state', () => ({
@@ -126,7 +131,7 @@ describe('with no server, --check runs in-process', () => {
     expect(createAppServices).not.toHaveBeenCalled()
     expect(silenced).toEqual([])
     expect(inProcess).toEqual([{ verb: 'checkAgent', id: 'pixel', opts: { trigger: 'cli' } }])
-    expect(printed[0]).toMatchObject({ ok: true, receipt: { checkOnly: true, changed: true } })
+    expect(printed[0]).toMatchObject({ ok: true, receipt: { checkOnly: true, package: { changed: true } } })
     expect(http).toEqual([])
     services = {}
     // `--json` runs the in-process work under the silenced console transport (r4 #6).
@@ -137,8 +142,15 @@ describe('with no server, --check runs in-process', () => {
     expect(printed[0]).toMatchObject({ ok: true, receipt: { checkOnly: true } })
     silenced.length = 0
     inProcess.length = 0
-    await runAgents(['agents', 'sync', '--check'])
+    printed.length = 0
+    // The roster: orca's check failed → the command fails (exit 1) and says why; --json is ONE aggregate document (r5 #1, #3).
+    expect(await exitCode(runAgents(['agents', 'sync', '--check', '--json']))).toBe('exit:1')
     expect(inProcess.map((c) => c.id)).toEqual(['pixel', 'orca'])
+    expect(printed).toHaveLength(1)
+    expect(printed[0]).toMatchObject({ ok: false, agents: [
+      { agentId: 'pixel', ok: true, receipt: { package: { changed: true } } },
+      { agentId: 'orca', ok: false, error: 'ls-remote: offline', receipt: { package: { checkError: 'ls-remote: offline' } } },
+    ] })
   })
 
   it('packages sync <key> --check asks the read-only checkPack; a refused key exits 1 with the error; --json silences runtime logs', async () => {

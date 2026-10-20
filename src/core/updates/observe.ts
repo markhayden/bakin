@@ -15,7 +15,7 @@
 import { updateRecordMatchesInstalled, type UpdateRecord } from '@makinbakin/sdk/types'
 import { UpdateSubjectNotFoundError } from './engine'
 import { getUpdatesEngine, getUpdatesTimer } from './service'
-import { packageIdOfKey, packageInstalledIdentity } from './sources/package'
+import { packageIdOfKey, packageInstalledIdentity, type InstalledPackage } from './sources/package'
 import { hubSkillInstalledIdentity } from './sources/hub-skill'
 import type { PackageEntry } from '@bakin/core/agent-packages/lockfile'
 import { createPackageUpdateSources, installedPackages } from './sources/package-wiring'
@@ -68,14 +68,22 @@ export async function observeInstalledPackage(packageKeyOrId: string, opts: { si
   // (review r3 #5, r4 #3). The identity compared is the one the SOURCE
   // names for this kind (a hub skill's is the hub's resolved version).
   const now = installedPackages().find((candidate) => candidate.id === id)
-  if (!now || now.key !== pkg.key || !sameInstall(now.entry, pkg.entry)) throw new PackageSupersededError(packageKeyOrId, now?.key ?? '(removed)')
+  if (!now || !sameInstall(now, pkg)) throw new PackageSupersededError(packageKeyOrId, now?.key ?? '(removed)')
   if (!updateRecordMatchesInstalled(observed, kind === 'hub-skill' ? hubSkillInstalledIdentity(pkg) : packageInstalledIdentity(pkg.entry))) throw new PackageSupersededError(packageKeyOrId, now.key)
   return observed
 }
 
-/** The same install: version, commit and install instant unchanged. */
-function sameInstall(a: Pick<PackageEntry, 'version' | 'commitSha' | 'installedAt'>, b: Pick<PackageEntry, 'version' | 'commitSha' | 'installedAt'>): boolean {
-  return a.version === b.version && a.commitSha === b.commitSha && a.installedAt === b.installedAt
+/**
+ * The same install: the key, the lock entry's version / commit / install
+ * instant / tracking source + ref, AND the identity the source names
+ * (a ClawHub sync can move `upstream.ref` while the frontmatter version,
+ * the empty commit and the install instant all stay — review r5 #4).
+ */
+function sameInstall(a: InstalledPackage, b: InstalledPackage): boolean {
+  if (a.key !== b.key) return false
+  const lockFields: Array<keyof Pick<PackageEntry, 'version' | 'commitSha' | 'installedAt' | 'source' | 'ref'>> = ['version', 'commitSha', 'installedAt', 'source', 'ref']
+  if (lockFields.some((field) => a.entry[field] !== b.entry[field])) return false
+  return (a.upstream?.ref ?? '') === (b.upstream?.ref ?? '') && (a.upstream?.resolvedSha ?? '') === (b.upstream?.resolvedSha ?? '')
 }
 
 async function observeDirectly(kind: 'package' | 'hub-skill', id: string, signal?: AbortSignal): Promise<UpdateObservation> {
