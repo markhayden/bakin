@@ -278,10 +278,15 @@ function childOutcome(results: HealthRepairApplyResult[]): OperationOutcome<Heal
  * `verify` re-runs the affected checks. `result.body` is the
  * `DoctorRepairApplyReport` — rows are kept on every outcome.
  */
+/** The repair operation's fingerprint — also its incident-reservation owner token (#896). */
+export function repairFingerprint(planId: string, itemIds: readonly string[]): string {
+  return `repair:${planId}:${[...itemIds].sort().join(',')}`
+}
+
 export async function startDoctorRepair(options: DoctorRepairStartOptions): Promise<OperationStartResponse> {
   void options.projectRoot
   const registry = getOperationRegistry()
-  const fingerprint = `repair:${options.planId}:${[...options.itemIds].sort().join(',')}`
+  const fingerprint = repairFingerprint(options.planId, options.itemIds)
   // Admission BEFORE ownership (#896 D3.1): the selected items' incidents are
   // reserved under this request's fingerprint before the registry sees it.
   // Identical requests attach (same token); a DIFFERENT plan over any of these

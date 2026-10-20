@@ -15,12 +15,20 @@ import {
   type OpenRepairWork,
 } from './doctor-repair-store'
 import { createTaskWithEffects, getTaskDetails } from './task-service'
+import { incidentHolder, releaseIncidents, transferIncidents } from './doctor-reservations'
 
 export interface DoctorDelegateOptions {
   contentDir: string
   projectRoot: string
   accepted: boolean
   target?: HealthRepairTarget
+  /**
+   * The caller's incident-reservation token (#896 D3.2): escalation hands the
+   * incidents it already holds over, so the delegation transfers them to its
+   * own token instead of reserving afresh, keeps them through request + task
+   * persistence, and releases them once the request file is written.
+   */
+  reservation?: string
 }
 
 export interface DoctorDelegateReport {
@@ -142,7 +150,19 @@ async function delegateOnce(options: DoctorDelegateOptions): Promise<DoctorDeleg
     incidentIds: incidents.map((incident) => incident.id),
     observationIds,
   })
+  const delegationToken = `delegation:${request.id}`
+  if (options.reservation) {
+    const handed = incidents.map((incident) => incident.id).filter((id) => incidentHolder(id) === options.reservation)
+    transferIncidents(handed, options.reservation, delegationToken)
+  }
+  try {
+    return await persistDelegation(options, request, incidents)
+  } finally {
+    releaseIncidents(delegationToken) // the written request (and its task) cover them from here
+  }
+}
 
+async function persistDelegation(options: DoctorDelegateOptions, request: DoctorRepairRequest, incidents: HealthIncident[]): Promise<DoctorDelegateReport> {
   if (incidents.length === 0) return { status: 'no_unresolved', request, incidents }
   if (!options.accepted) return { status: 'confirmation_required', request, incidents }
 

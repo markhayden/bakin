@@ -41,10 +41,12 @@ mock.module('../../src/core/app-services-store', () => ({ getAppServices: () => 
 mock.module('@bakin/core/adapters/runtime', () => ({ getRuntimeMainAgentId: async () => 'main' }))
 
 import { delegateDoctorRepair } from '../../src/core/doctor-delegate'
+import { heldIncidentIds, incidentHolder, reserveIncidents, resetIncidentReservationsForTests } from '../../src/core/doctor-reservations'
 import { getDoctorRepairRequest, listDoctorRepairRequests, updateDoctorRepairRequest } from '../../src/core/doctor-repair-store'
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
+  resetIncidentReservationsForTests()
   createTaskWithEffects.mockClear()
   taskSeq = 0
   liveTasks.clear()
@@ -87,6 +89,28 @@ describe('structured Health delegation', () => {
     const recurrence = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
     expect(recurrence.status).toBe('sent')
     expect(createTaskWithEffects).toHaveBeenCalledTimes(2)
+  })
+
+  it('takes a caller\'s reservation as a hand-off, holds it through persistence, releases once the request is written (#896)', async () => {
+    reserveIncidents(['health:search:unavailable'], 'escalation:cycle-1')
+    let holderWhileCreatingTask: string | undefined
+    createTaskWithEffects.mockImplementationOnce(async () => {
+      holderWhileCreatingTask = incidentHolder('health:search:unavailable')
+      taskSeq += 1
+      const task = { id: `task-doctor-repair-${taskSeq}` }
+      liveTasks.add(task.id)
+      return task as never
+    })
+    const result = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true, reservation: 'escalation:cycle-1' })
+    expect(result.status).toBe('sent')
+    expect(holderWhileCreatingTask).toBe(`delegation:${result.request.id}`)
+    expect(getDoctorRepairRequest(testDir, result.request.id)?.taskId).toBeDefined()
+    expect(heldIncidentIds().size).toBe(0)
+  })
+
+  it('reserves nothing on the plain path (manual delegation keeps today\'s behaviour until #896 D3.3 lands)', async () => {
+    await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true })
+    expect(heldIncidentIds().size).toBe(0)
   })
 
   it('concurrent delegations of the same incident open ONE task', async () => {

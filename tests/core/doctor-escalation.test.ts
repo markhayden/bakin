@@ -80,12 +80,18 @@ mock.module('../../src/core/task-service', () => ({
 }))
 mock.module('../../src/core/doctor-delegate', () => ({ delegateDoctorRepair: delegate }))
 mock.module('../../src/core/doctor-approvals', () => ({ openRepairApproval, openNavigateApproval, attachResurfaceApproval }))
-mock.module('../../src/core/doctor-repair', () => ({ planDoctorRepair, startDoctorRepair, awaitDoctorRepair }))
+// The fingerprint formula is the real one: the reservation tests pin that
+// escalation hands the safe subset over under EXACTLY the token
+// startDoctorRepair reserves with.
+const repairFingerprint = (planId: string, itemIds: readonly string[]) => `repair:${planId}:${[...itemIds].sort().join(',')}`
+mock.module('../../src/core/doctor-repair', () => ({ planDoctorRepair, startDoctorRepair, awaitDoctorRepair, repairFingerprint }))
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }),
 }))
 
 import { assessRepairCoverage, escalateCronIncidents, freshActionRequiredIncidents } from '../../src/core/doctor-escalation'
+import { heldIncidentIds, incidentHolder, reserveIncidents, resetIncidentReservationsForTests } from '../../src/core/doctor-reservations'
+import { waitUntil } from '../helpers/wait'
 
 function incident(overrides: Partial<HealthIncident> = {}): HealthIncident {
   return {
@@ -154,6 +160,7 @@ beforeEach(() => {
   liveRuns = new Set()
   onTaskRead = () => {}
   for (const fn of [delegate, openRepairApproval, openNavigateApproval, startDoctorRepair, awaitDoctorRepair, planDoctorRepair, escalateTaskToReview, reopenIfLeavingDone, reannounceApproval, attachResurfaceApproval]) fn.mockClear()
+  resetIncidentReservationsForTests()
   setSystemTime(new Date('2026-07-15T12:00:00.000Z'))
 })
 
@@ -437,6 +444,62 @@ describe('policy', () => {
     await escalate([repairIncident(), incident()])
     expect(startDoctorRepair).not.toHaveBeenCalled()
     expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:index-corrupt', 'health:search:unavailable'] }) }))
+  })
+
+  describe('incident reservations (#896 D3.2)', () => {
+    it('never judges an incident a repair or delegation already holds', async () => {
+      reserveIncidents(['health:search:index-corrupt'], 'repair:plan-9:x')
+      await escalate([repairIncident(), incident()])
+      expect(planDoctorRepair).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:unavailable'] }) }))
+      expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:unavailable'] }) }))
+      // The foreign hold survives the cycle untouched; the cycle's own hold is gone.
+      expect([...heldIncidentIds()]).toEqual(['health:search:index-corrupt'])
+      expect(incidentHolder('health:search:index-corrupt')).toBe('repair:plan-9:x')
+    })
+
+    it('refuses a UI repair that starts while the cycle is still planning', async () => {
+      let finishPlanning!: () => void
+      planDoctorRepair.mockImplementationOnce(() => new Promise((resolve) => {
+        finishPlanning = () => resolve({ planId: 'plan-1', basedOnReportId: 'health-report-1', target: { type: 'incidents', reportId: 'health-report-1', ids: ['x'] }, createdAt: '', expiresAt: '', items: [] })
+      }))
+      const cycle = escalate([repairIncident()])
+      await waitUntil(() => planDoctorRepair.mock.calls.length === 1, { label: 'escalation reached planning' })
+      // A tab's Apply (startDoctorRepair reserves under its fingerprint) lands mid-await.
+      expect(reserveIncidents(['health:search:index-corrupt'], 'repair:plan-7:ui')).toEqual({
+        status: 'refused', overlapping: ['health:search:index-corrupt'], heldBy: expect.stringMatching(/^escalation:/),
+      })
+      finishPlanning()
+      await cycle
+      expect(heldIncidentIds().size).toBe(0)
+    })
+
+    it('hands the safe subset to the repair operation and the rest to the delegation, then holds nothing', async () => {
+      planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe', incidentIds: ['health:search:index-corrupt'] })]
+      afterApplyIncidents = [incident()] // the safe apply fixes index-corrupt; 'unavailable' still burns → delegated
+      let holderDuringApply: string | undefined
+      startDoctorRepair.mockImplementationOnce(async () => {
+        holderDuringApply = incidentHolder('health:search:index-corrupt')
+        return { operationId: 'op-repair', bootId: 'boot-1' }
+      })
+      let holderDuringDelegate: string | undefined
+      delegate.mockImplementationOnce(async () => {
+        holderDuringDelegate = incidentHolder('health:search:unavailable')
+        return { status: 'sent' }
+      })
+      await escalate([repairIncident(), incident()])
+      // The auto-repair ran under the SAME token startDoctorRepair reserves with — it attached, never raced.
+      expect(holderDuringApply).toBe('repair:plan-1:search.restart:restart')
+      expect(holderDuringDelegate).toMatch(/^escalation:/)
+      expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ reservation: expect.stringMatching(/^escalation:/) }))
+      expect(heldIncidentIds().size).toBe(0)
+    })
+
+    it('releases everything it held when planning and delegation both fail', async () => {
+      planThrows = true
+      delegate.mockImplementationOnce(async () => { throw new Error('delegate unavailable') })
+      await escalate([repairIncident(), incident()])
+      expect(heldIncidentIds().size).toBe(0)
+    })
   })
 
   it('contains delegation failures so cron diagnostics still complete', async () => {
