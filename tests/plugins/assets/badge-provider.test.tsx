@@ -5,7 +5,10 @@ import { usePluginEvent, emitPluginEvent } from '../../../src/hooks/use-plugin-e
 import { usePluginJsonFetch } from '../../../src/hooks/use-json-fetch'
 
 let badge: { count?: number; tone?: string } | null = null
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   usePluginEvent, usePluginJsonFetch,
   useNavBadge: (_plugin: string, _nav: string, value: typeof badge) => { badge = value },
 }))

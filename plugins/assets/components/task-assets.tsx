@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { usePluginEvent } from '@makinbakin/sdk/hooks'
+import { usePluginEvent, useKeyedState } from '@makinbakin/sdk/hooks'
 import { Banner, Button, buttonVariants, DrawerSection, SystemState, Text } from '@makinbakin/sdk/ui'
 import { ListRow, ListRowActions, ListRows } from '@makinbakin/sdk/patterns'
 import { PluginLink } from '@makinbakin/sdk/navigation'
@@ -16,10 +16,11 @@ interface TaskAssetsProps {
 }
 
 export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
-  const [assets, setAssets] = useState<VersionedAssetSummary[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [unlinkError, setUnlinkError] = useState<string | null>(null)
+  // The list belongs to one task (#966b): another task starts empty + loading in the same render.
+  const [assets, setAssets] = useKeyedState<VersionedAssetSummary[]>(taskId, () => [])
+  const [loading, setLoading] = useKeyedState(taskId, () => true)
+  const [error, setError] = useKeyedState<string | null>(taskId, () => null)
+  const [unlinkError, setUnlinkError] = useKeyedState<string | null>(taskId, () => null)
   const [unlinking, setUnlinking] = useState<string | null>(null)
   const requestId = useRef(0)
   const mutation = useRef(false)
@@ -38,10 +39,9 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
     } finally {
       if (request === requestId.current) setLoading(false)
     }
-  }, [taskId])
+  }, [taskId, setAssets, setError, setLoading])
 
   useEffect(() => {
-    setAssets([]); setLoading(true); setError(null); setUnlinkError(null)
     void fetchAssets()
     // Invalidate in-flight responses for the previous task. The counter is a
     // plain ref (never a node), captured here so the cleanup reads the same

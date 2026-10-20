@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
-import { useSearch, useDebug, usePluginEvent } from '@makinbakin/sdk/hooks'
+import { useSearch, useDebug, usePluginEvent, useKeyedState } from '@makinbakin/sdk/hooks'
 import {
   usePathname,
   useQueryArrayState,
@@ -159,6 +159,17 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
 }
 
 
+/** The library listing, or null when the request failed (the caller keeps what it has). */
+async function loadAssetListing(): Promise<VersionedAssetSummary[] | null> {
+  try {
+    const r = await fetch(VERSIONED_API)
+    const d = r.ok ? await r.json() : { assets: [] }
+    return d.assets || []
+  } catch {
+    return null
+  }
+}
+
 export function VersionedAssetGrid() {
   const [debug] = useDebug()
   const [linkTo] = useQueryState('linkTo', '')
@@ -194,15 +205,15 @@ export function VersionedAssetGrid() {
   // Bulk selection — checkboxes are always visible; selecting anything
   // raises the floating bulk bar. Ephemeral (not URL-backed), clears on
   // view change.
-  const [selected, setSelected] = useState<Set<string>>(() => new Set())
-  const [bulkTags, setBulkTags] = useState<string[]>([])
+  const [selected, setSelected] = useKeyedState<Set<string>>(view, () => new Set())
+  const [bulkTags, setBulkTags] = useKeyedState<string[]>(view, () => [])
   const [bulkBusy, setBulkBusy] = useState(false)
-  const [bulkError, setBulkError] = useState<string | null>(null)
+  const [bulkError, setBulkError] = useKeyedState<string | null>(view, () => null)
   const clearSelection = useCallback(() => {
     setSelected(new Set())
     setBulkTags([])
     setBulkError(null)
-  }, [])
+  }, [setSelected, setBulkTags, setBulkError])
   const [enriching, setEnriching] = useState(false)
   // Non-null while the re-enrich confirmation is open: how many of the
   // selected assets are already enriched for their current version.
@@ -236,7 +247,6 @@ export function VersionedAssetGrid() {
     if (done === 0) { void bulkEnrich(false); return }
     setConfirmEnrich({ done, total: selected.size })
   }
-  useEffect(() => { clearSelection() }, [view, clearSelection])
   const toggleSelected = (assetId: string) => setSelected(prev => {
     const next = new Set(prev)
     if (next.has(assetId)) next.delete(assetId)
@@ -257,11 +267,7 @@ export function VersionedAssetGrid() {
   })
 
   const fetchAssets = useCallback(() => {
-    fetch(VERSIONED_API)
-      .then(r => r.ok ? r.json() : { assets: [] })
-      .then(d => setAssets(d.assets || []))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    loadAssetListing().then((list) => { if (list) setAssets(list) }).finally(() => setLoading(false))
   }, [])
 
   const fetchTrash = useCallback(() => {
@@ -271,7 +277,12 @@ export function VersionedAssetGrid() {
       .catch(() => {})
   }, [])
 
-  useEffect(() => { fetchAssets() }, [fetchAssets])
+  // The first listing: the promise callbacks set state, nothing synchronous (#966b).
+  useEffect(() => {
+    let active = true
+    loadAssetListing().then((list) => { if (active && list) setAssets(list) }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [])
   // Trash only needs refetching when entering the tab (it also changes on the
   // explicit restore/empty/permanent-delete actions, which refetch directly).
   useEffect(() => { if (view === 'trash') fetchTrash() }, [view, fetchTrash])

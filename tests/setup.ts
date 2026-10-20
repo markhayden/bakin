@@ -67,7 +67,14 @@ process.env.RTL_SKIP_AUTO_CLEANUP = 'true'
 const NativeAbortController = globalThis.AbortController
 const NativeAbortSignal = globalThis.AbortSignal
 
-GlobalRegistrator.register()
+// A real origin: against the default `about:blank` a relative `src` such as
+// `/api/assets/…/thumb` cannot resolve, and happy-dom fires the image's
+// `error` SYNCHRONOUSLY the moment React sets the attribute — every
+// <img onError> fallback flipped before the first effect ran (#966b surfaced
+// it once the effects that masked it were gone). Image loading itself stays
+// off, so a resolvable image fires neither `load` nor `error`; a test that
+// wants the broken-image path fires `error` on the element itself.
+GlobalRegistrator.register({ url: 'http://localhost/' })
 
 globalThis.AbortController = NativeAbortController
 globalThis.AbortSignal = NativeAbortSignal

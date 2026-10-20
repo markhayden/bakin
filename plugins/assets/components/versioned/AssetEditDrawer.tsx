@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import {
   Alert,
   AlertDescription,
@@ -38,20 +39,15 @@ export function AssetEditDrawer({ assetId, initialDescription, initialTags, sugg
   onOpenChange: (open: boolean) => void
   onSaved?: () => void
 }) {
-  const [description, setDescription] = useState(initialDescription)
-  const [tags, setTags] = useState<string[]>(initialTags)
+  // The form is seeded per opening of one asset with one set of initial
+  // values (#966b): reopening, or opening for another asset, re-seeds in the
+  // same render — the operator's edits survive re-renders of the same opening.
+  const seed = `${open}\u0000${assetId}\u0000${initialDescription}\u0000${initialTags.join('\n')}`
+  const [description, setDescription] = useKeyedState(seed, () => initialDescription)
+  const [tags, setTags] = useKeyedState<string[]>(seed, () => initialTags)
   const [fetchedSuggestions, setFetchedSuggestions] = useState<string[] | null>(null)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // Re-seed form state each time the drawer opens (possibly for a new asset).
-  useEffect(() => {
-    if (open) {
-      setDescription(initialDescription)
-      setTags(initialTags)
-      setError(null)
-    }
-  }, [open, assetId, initialDescription, initialTags])
+  const [error, setError] = useKeyedState<string | null>(seed, () => null)
 
   useEffect(() => {
     if (!open || suggestions !== undefined || fetchedSuggestions !== null) return
