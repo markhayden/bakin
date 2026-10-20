@@ -25,7 +25,8 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
-import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS } from './externals'
+import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS, unprovidedHostSubpath } from './externals'
+import { collectImportSpecifiers } from './import-scan'
 import { validatePluginImports, type PluginPackageJson } from './import-scan'
 import { commandFailure, runSystemBun, DEFAULT_BUILD_TIMEOUT_MS } from './command'
 import { processBuiltPluginCss } from './plugin-css'
@@ -281,11 +282,8 @@ async function buildServerWithSystemBun(
 function assertServerBundleExternalsClean(plugin: ValidatedPlugin): void {
   const bundlePath = join(plugin.distDir, 'index.js')
   if (!existsSync(bundlePath)) return
-  const bundle = readFileSync(bundlePath, 'utf-8')
-  const retained = PLUGIN_SERVER_EXTERNALS.filter((spec) => {
-    const escaped = spec.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
-    return new RegExp(`(?:\\bfrom\\s*|\\bimport\\s*\\(\\s*|\\brequire\\s*\\(\\s*)["']${escaped}["']`).test(bundle)
-  })
+  const imported = new Set(collectImportSpecifiers(bundlePath, readFileSync(bundlePath, 'utf-8')))
+  const retained = PLUGIN_SERVER_EXTERNALS.filter((spec) => imported.has(spec))
   if (retained.length === 0) return
   rmSync(bundlePath, { force: true })
   throw new WhiskitBuildError(
@@ -327,6 +325,7 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
   if (result.exitCode !== 0) {
     throw commandFailure('client-build', `Client build for "${plugin.pluginId}"`, result)
   }
+  assertClientBundleExternalsResolvable(plugin)
 
   req.onStage?.({ stage: 'css-validate', status: 'start' })
   const cssStartedAt = Date.now()
@@ -345,6 +344,37 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
       error instanceof Error ? error.message : String(error),
     )
   }
+}
+
+/**
+ * Bun's `--external <pkg>` externalizes every sub-path of the package, so a
+ * client that imports `zod/v4`, `react-dom/server` or an SDK path that is not
+ * a published entry (directly, or through a dependency) comes out of the
+ * build with a bare import the host import map cannot resolve — the plugin
+ * then dies at module load in the browser (#948). Catch it at build time,
+ * name every offender, and remove the bundle so nothing can serve it.
+ */
+function assertClientBundleExternalsResolvable(plugin: ValidatedPlugin): void {
+  const bundlePath = join(plugin.distDir, 'client.js')
+  if (!existsSync(bundlePath)) return
+  const unresolvable = new Map<string, string>()
+  // Parsed, not pattern-matched: covers `from "x"`, dynamic `import("x")`,
+  // the side-effect `import "x"` bun emits after tree-shaking, and ignores
+  // string literals that merely look like import syntax.
+  for (const specifier of collectImportSpecifiers(bundlePath, readFileSync(bundlePath, 'utf-8'))) {
+    const root = unprovidedHostSubpath(specifier)
+    if (root) unresolvable.set(specifier, root)
+  }
+  if (unresolvable.size === 0) return
+  rmSync(bundlePath, { force: true })
+  rmSync(join(plugin.distDir, 'client.css'), { force: true })
+  const detail = [...unresolvable].map(([specifier, root]) => `"${specifier}" (the host import map only resolves "${root}"${root === '@makinbakin/sdk' ? ' and its published entries' : ''})`).join(', ')
+  throw new WhiskitBuildError(
+    'client-build',
+    `client bundle for "${plugin.pluginId}" imports ${detail}. ` +
+    `Bun externalizes host-provided packages by prefix, so these stay bare imports the browser cannot resolve. ` +
+    `Import the bare package ("zod", not "zod/v4") or a published @makinbakin/sdk entry.`,
+  )
 }
 
 /**

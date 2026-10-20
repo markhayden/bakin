@@ -23,17 +23,27 @@ Bakin's plugin system is three things working in concert:
    `packages/sdk/src/slots/registry.ts` precisely so the barrel stays
    react-free — guard: `assertServerBundleExternalsClean` in
    `src/core/whiskit/build.ts`, #267 residual).
-3. A **shared runtime identity** — plugins mark `react` and
-   `@makinbakin/sdk/*` as externals. The browser import map
+3. A **shared runtime identity** — plugins mark `react`,
+   `@makinbakin/sdk/*` and `zod` as externals. The browser import map
    (`packages/host/public/index.html` + `scripts/build-vendors.ts`)
    points those specifiers at singleton vendor bundles, so every
-   plugin shares one React and one SDK with the shell.
+   plugin shares one React, one SDK and one zod with the shell (zod
+   joined in #948 — before that the SDK's routing chunk, health and
+   workflows each carried ~400 KB of their own). zod is browser-provided
+   only: a plugin still DECLARES it, because its server bundle runs
+   under `--packages external` and needs it installed, and the import
+   scan (`src/core/whiskit/import-scan.ts`) deliberately builds its
+   host-provided set from React + SDK, not from `PLUGIN_CLIENT_EXTERNALS`.
 
-Published artifacts record the externals family `react19-sdk-focused-v1` in
-their provenance. Retiring the metadata entrypoint required this new family:
+Published artifacts record the externals contract `react19-sdk-focused-v2` in
+their provenance. The focused family retired the metadata entrypoint:
 previous-family artifacts need a rebuild and are refused at install or marked
-`needs-update` by the host. Versions remain additive within a family; neither
-old hosts nor new hosts accept artifacts from a different family.
+`needs-update` by the host. Versions are additive within a family — v2 added
+zod to the provided set, so a v1 artifact (its own zod inside) still loads on
+a v2 host, while a v2 artifact on a v1 host is refused (it would 404 on
+`zod`); neither old hosts nor new hosts accept artifacts from a different
+family. The release guard (`scripts/check-plugin-contract.ts`) only gates
+FAMILY changes, so v1 → v2 shipped guard-free.
 
 A family change is therefore a fleet event, and two things keep it from
 stranding users (rc.41 left projects + terminal dark on margo until Bits
@@ -1092,11 +1102,18 @@ bun build plugins/<id>/client.tsx    (if it exists)
   --entry-naming client.[ext]
   --external react --external react-dom ...
   --external @makinbakin/sdk --external @makinbakin/sdk/ui ...
+  --external zod
 ```
 
-Client entries only externalize react + sdk; everything else (lucide
+Client entries only externalize react + sdk + zod; everything else (lucide
 icons, zustand, shadcn primitives) bundles in so the plugin is
-self-contained from the browser's POV. The externals list is the shared
+self-contained from the browser's POV. Bun's `--external <pkg>` matches
+every sub-path of the package, so a client that imports `zod/v4`,
+`react-dom/server` or an SDK path that is not a published entry (directly or
+through a dependency) would come out with a bare import the import map
+cannot resolve — `assertClientBundleExternalsResolvable` (whiskit
+`build.ts`, via `unprovidedHostSubpath` in `externals.ts`) scans the emitted
+`client.js`, names every offender and removes the bundle. The externals list is the shared
 contract in `src/core/whiskit/externals.ts` (`PLUGIN_CLIENT_EXTERNALS`).
 
 ### User plugins — `buildUserPlugin()`
@@ -1124,9 +1141,10 @@ Produces the bundles that the browser import map points at:
 packages/host/public/vendor/
   react.js, react-dom.js
   jsx-runtime.js, jsx-dev-runtime.js, tanstack-router.js
+  zod.js                 ← the one zod (#948): `export *` + default of zod 4
   sdk-index.js, sdk-ui.js, sdk-layout.js, sdk-patterns.js,
   sdk-charts.js, sdk-conversation.js, sdk-content.js,
-  sdk-navigation.js, sdk-hooks.js, sdk-components.js,
+  sdk-navigation.js, sdk-hooks.js,
   sdk-slots.js, sdk-types.js, sdk-utils.js,
   sdk-routing.js, sdk-internal.js
   sdk-shared-<hash>.js   ← code-split chunks shared by the SDK bundles
@@ -1140,10 +1158,13 @@ filenames are stable (#422, guarded by
 `tests/scripts/sdk-vendor-bundles.test.ts`).
 
 The `<script type="importmap">` in `packages/host/public/index.html`
-maps `react`, `react-dom`, `@makinbakin/sdk`, `@makinbakin/sdk/ui`, etc. to those
-files. Changes to either file must happen in lockstep — the
+maps `react`, `react-dom`, `@makinbakin/sdk`, `@makinbakin/sdk/ui`, etc. and
+`zod` to those files. Changes to either file must happen in lockstep — the
 specifier list is duplicated because the map is static HTML and the
-build script is the generator.
+build script is the generator. A vendor file the checkout serves from disk
+but the tracked embedded manifest does not name is a 404 only inside the
+compiled binary — `tests/integration/host/compiled-vendor-assets.test.ts`
+compiles the real server and fetches every import-map target out of it.
 
 ## @makinbakin/sdk Surface
 
