@@ -62,9 +62,9 @@ cannot move cleanly is deferred with an issue (§3).
 
 | Package | Blocked by | Re-check when |
 |---|---|---|
-| typescript 7.x | no compiler API until 7.1 (nine `scripts/ui/*` + `scripts/docs/lib/sdk-reference.ts` use it); typescript-eslint peer `<6.1.0` | TS 7.1 ships; typescript-eslint widens its peer |
+| typescript 7.x | no compiler API until 7.1 (nine `scripts/ui/*` + `scripts/docs/lib/sdk-reference.ts` use it); typescript-eslint peer `<6.1.0`. Re-checked 2026-10-19 (#964): 7.1 exists only as nightlies, typescript-eslint 8.71 still pins `<6.1.0` — still blocked, ledger-only | TS 7.1 ships; typescript-eslint widens its peer |
 | bun 1.4.x | #755/#756 fixed upstream in 1.4.0 and the tree is 1.4-ready (matrix run 2026-09-27, `test-suite-health.md § 5`), but 1.4.0–1.4.2's `--parallel` runner segfaults CI's shard 2 every run (oven-sh/bun#41357 class; clean on the 1.4.3 canary) | 1.4.3 release: re-run the matrix incl. the three CI shards + a compiled binary, then repin (#965) |
-| eslint-plugin-react | removed in #760 (zero rules were enabled; broken at runtime on ESLint 10; unmaintained). React lint coverage is a separate decision (`@eslint-react/eslint-plugin`) | if we want React lint rules |
+| ~~eslint-plugin-react~~ | RESOLVED 2026-10-20 (#966): React lint coverage is `@eslint-react/eslint-plugin` (`recommended-typescript` on every `.tsx`, zero-warning gate; eslint-plugin-react-hooks stays the one hooks authority). eslint-plugin-react itself stays removed | — |
 
 ## 4. Unused-dependency audit
 
