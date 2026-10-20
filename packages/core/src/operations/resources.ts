@@ -239,48 +239,47 @@ function tryAcquireOne(resource: string, identity: ResourceHolderIdentity, onRec
   mkdirSync(dirname(path), { recursive: true })
   for (let attempt = 0; attempt < ACQUIRE_ATTEMPTS; attempt++) {
     const fd = openSync(path, 'a+') // creates when absent; never truncates another holder's metadata
-    if (flock(fd, LOCK_EX | LOCK_NB) !== 0) {
-      closeSync(fd)
-      const holder = readHolderAt(path)
-      return { ok: false, holder: holder ?? { pid: -1, acquiredAt: '', title: 'Another operation' } }
-    }
-    // A holder may have released (unlinked) between our open and our lock: we
-    // would then hold an orphaned inode while a newcomer locks a fresh file.
-    // Hold only the inode the path names right now; otherwise retry.
-    let namesOurInode = false
+    // The descriptor is ours until ownership is recorded in `heldFds`: every
+    // exit before that — a refused lock, a stale inode, libc failing to load
+    // on the first flock (review r4), a metadata write on a full disk — must
+    // close it, or the open file (and any kernel lock on it) outlives the
+    // attempt until the process exits.
+    let transferred = false
     try {
-      namesOurInode = fstatSync(fd).ino === statSync(path).ino
-    } catch {
-      namesOurInode = false
-    }
-    if (!namesOurInode) {
-      closeSync(fd)
-      continue
-    }
-    // From here the descriptor holds the kernel lock: anything that throws
-    // before ownership is recorded (metadata write on a full disk, a reclaim
-    // callback) must close it, or the resource stays locked until exit.
-    const previous = readHolderAt(path)
-    try {
-      writeHolder(fd, identity)
-    } catch (err) {
-      closeSync(fd)
-      throw err
-    }
-    heldHere.set(resource, identity)
-    heldFds.set(resource, fd)
-    if (previous && (previous.pid === process.pid || !isProcessAlive(previous.pid))) {
-      // The file still named a holder that is gone: the kernel had already
-      // released its lock; this is the (informational) reclaim report.
-      log.warn('Took over an operation lock whose holder died', { resource, path, stalePid: previous.pid, staleOperation: previous.operationId })
-      try {
-        onReclaim?.({ resource, holder: previous })
-      } catch (err) {
-        releaseResource(resource)
-        throw err
+      if (flock(fd, LOCK_EX | LOCK_NB) !== 0) {
+        const holder = readHolderAt(path)
+        return { ok: false, holder: holder ?? { pid: -1, acquiredAt: '', title: 'Another operation' } }
       }
+      // A holder may have released (unlinked) between our open and our lock: we
+      // would then hold an orphaned inode while a newcomer locks a fresh file.
+      // Hold only the inode the path names right now; otherwise retry.
+      let namesOurInode = false
+      try {
+        namesOurInode = fstatSync(fd).ino === statSync(path).ino
+      } catch {
+        namesOurInode = false
+      }
+      if (!namesOurInode) continue
+      const previous = readHolderAt(path)
+      writeHolder(fd, identity)
+      heldHere.set(resource, identity)
+      heldFds.set(resource, fd)
+      transferred = true
+      if (previous && (previous.pid === process.pid || !isProcessAlive(previous.pid))) {
+        // The file still named a holder that is gone: the kernel had already
+        // released its lock; this is the (informational) reclaim report.
+        log.warn('Took over an operation lock whose holder died', { resource, path, stalePid: previous.pid, staleOperation: previous.operationId })
+        try {
+          onReclaim?.({ resource, holder: previous })
+        } catch (err) {
+          releaseResource(resource)
+          throw err
+        }
+      }
+      return { ok: true }
+    } finally {
+      if (!transferred) closeSync(fd)
     }
-    return { ok: true }
   }
   const holder = readHolderAt(path)
   return { ok: false, holder: holder ?? { pid: -1, acquiredAt: '', title: 'Another operation' } }

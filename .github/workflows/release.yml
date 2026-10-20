@@ -347,6 +347,9 @@ jobs:
         run: |
           mkdir -p "$BAKIN_HOME"
           "./dist/${DARWIN_BINARY}" mkdir
+          # The lock is unlinked on release: a lingering install.lock means
+          # the binary never got to the release path, which is a failure too.
+          test ! -e "$BAKIN_HOME/install.lock"
           "./dist/${DARWIN_BINARY}" version
 
       - name: Upload signed macOS binary
