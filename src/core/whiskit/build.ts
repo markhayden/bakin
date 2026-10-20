@@ -26,6 +26,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS, unprovidedHostSubpath } from './externals'
+import { collectImportSpecifiers } from './import-scan'
 import { validatePluginImports, type PluginPackageJson } from './import-scan'
 import { commandFailure, runSystemBun, DEFAULT_BUILD_TIMEOUT_MS } from './command'
 import { processBuiltPluginCss } from './plugin-css'
@@ -281,11 +282,8 @@ async function buildServerWithSystemBun(
 function assertServerBundleExternalsClean(plugin: ValidatedPlugin): void {
   const bundlePath = join(plugin.distDir, 'index.js')
   if (!existsSync(bundlePath)) return
-  const bundle = readFileSync(bundlePath, 'utf-8')
-  const retained = PLUGIN_SERVER_EXTERNALS.filter((spec) => {
-    const escaped = spec.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
-    return new RegExp(`(?:\\bfrom\\s*|\\bimport\\s*\\(\\s*|\\brequire\\s*\\(\\s*)["']${escaped}["']`).test(bundle)
-  })
+  const imported = new Set(collectImportSpecifiers(bundlePath, readFileSync(bundlePath, 'utf-8')))
+  const retained = PLUGIN_SERVER_EXTERNALS.filter((spec) => imported.has(spec))
   if (retained.length === 0) return
   rmSync(bundlePath, { force: true })
   throw new WhiskitBuildError(
@@ -359,12 +357,11 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
 function assertClientBundleExternalsResolvable(plugin: ValidatedPlugin): void {
   const bundlePath = join(plugin.distDir, 'client.js')
   if (!existsSync(bundlePath)) return
-  const bundle = readFileSync(bundlePath, 'utf-8')
   const unresolvable = new Map<string, string>()
-  // `from "x"` (named/namespace), `import("x")` (dynamic) and `import "x"`
-  // (the side-effect form bun emits when every binding was tree-shaken away).
-  for (const match of bundle.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"'\n]+)["']/g)) {
-    const specifier = match[1]!
+  // Parsed, not pattern-matched: covers `from "x"`, dynamic `import("x")`,
+  // the side-effect `import "x"` bun emits after tree-shaking, and ignores
+  // string literals that merely look like import syntax.
+  for (const specifier of collectImportSpecifiers(bundlePath, readFileSync(bundlePath, 'utf-8'))) {
     const root = unprovidedHostSubpath(specifier)
     if (root) unresolvable.set(specifier, root)
   }

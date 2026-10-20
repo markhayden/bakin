@@ -330,6 +330,49 @@ describe('buildPluginWithSystemBun', () => {
     expect(existsSync(join(dir, 'dist', 'client.js'))).toBe(false)
   }, 30_000)
 
+  it('the client-bundle guard parses imports — a string that looks like one is not an offender, a dynamic import after a "from" string is (#948)', async () => {
+    const ok = seedPlugin()
+    writeFileSync(join(ok, 'package.json'), JSON.stringify({ name: 'demo', version: '0.1.0', dependencies: { zod: '~4.6.5' } }))
+    writeFileSync(join(ok, 'client.tsx'), [
+      `import { registerPlugin } from '@makinbakin/sdk'`,
+      `import { z } from 'zod'`,
+      `console.log("import 'zod/v4'", "from 'zod/mini'", z.string())`,
+      `registerPlugin({ id: 'demo', slots: {} })`,
+      '',
+    ].join('\n'))
+    const built = await buildPluginWithSystemBun({ pluginDir: ok, serverBuild: false })
+    expect(built.builtClient).toBe(true)
+    expect(readFileSync(join(ok, 'dist', 'client.js'), 'utf-8')).toContain("import 'zod/v4'")
+
+    const bad = seedPlugin()
+    writeFileSync(join(bad, 'package.json'), JSON.stringify({ name: 'demo', version: '0.1.0', dependencies: { zod: '~4.6.5' } }))
+    writeFileSync(join(bad, 'client.tsx'), [
+      `import { registerPlugin } from '@makinbakin/sdk'`,
+      `console.log("from"); void import('zod/v4')`,
+      `registerPlugin({ id: 'demo', slots: {} })`,
+      '',
+    ].join('\n'))
+    await expect(buildPluginWithSystemBun({ pluginDir: bad, serverBuild: false })).rejects.toThrow(/"zod\/v4"/)
+    expect(existsSync(join(bad, 'dist', 'client.js'))).toBe(false)
+  }, 60_000)
+
+  it('a dependency that imports a zod sub-path is caught in the emitted client bundle (transitive, #948)', async () => {
+    const depDir = freshDir('zoddep')
+    writeFileSync(join(depDir, 'package.json'), JSON.stringify({ name: 'demo-zod-dep', version: '1.0.0', main: 'index.js', type: 'module' }))
+    writeFileSync(join(depDir, 'index.js'), "import { z } from 'zod/mini'\nexport const schema = z.string()\n")
+    const dir = seedPlugin()
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'demo', version: '0.1.0', dependencies: { 'demo-zod-dep': `file:${depDir}` } }))
+    writeFileSync(join(dir, 'client.tsx'), [
+      `import { registerPlugin } from '@makinbakin/sdk'`,
+      `import { schema } from 'demo-zod-dep'`,
+      `registerPlugin({ id: 'demo', slots: {} })`,
+      `console.log(schema)`,
+      '',
+    ].join('\n'))
+    await expect(buildPluginWithSystemBun({ pluginDir: dir, serverBuild: false, installDeps: true })).rejects.toThrow(/"zod\/mini".*host import map only resolves "zod"/)
+    expect(existsSync(join(dir, 'dist', 'client.js'))).toBe(false)
+  }, 60_000)
+
   it('surfaces server compile errors as stage-tagged failures with stderr detail', async () => {
     const dir = seedPlugin({ withClient: false })
     writeFileSync(join(dir, 'index.ts'), `import { missing } from './does-not-exist'\nexport default missing\n`)

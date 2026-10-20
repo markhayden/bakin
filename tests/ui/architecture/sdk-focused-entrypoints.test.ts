@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { SDK_EXPORTS } from '../../../scripts/build-sdk-package'
 import { SDK_VENDOR_TARGETS } from '../../../scripts/build-vendors'
 import { SDK_SUBPATHS } from '../../../src/core/whiskit/build'
+import { collectImportSpecifiers } from '../../../src/core/whiskit/import-scan'
 import {
   PLUGIN_CLIENT_EXTERNALS,
   REACT_EXTERNALS,
@@ -132,17 +133,21 @@ describe('focused public SDK entrypoint contract', () => {
     expect(unprovidedHostSubpath('./zod/local')).toBeNull()
   })
 
-  it('every zod import in the tree is bare — a sub-path would escape every client bundle unresolved', () => {
+  it('every zod import in the SOURCE tree is bare — a sub-path would escape every client bundle unresolved', () => {
     const roots = ['packages', 'plugins', 'src', 'storybook', 'examples']
+    // Source only: built output (plugin dist/, the host's public/ vendor +
+    // dev bundles, storybook builds) is generated checkout state.
+    const generated = new Set(['node_modules', 'dist', 'public', 'storybook-static', 'test-results'])
     const offenders: string[] = []
     const walk = (dir: string): void => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) continue
+        if (generated.has(entry.name) || entry.name.startsWith('.')) continue
         const path = join(dir, entry.name)
         if (entry.isDirectory()) { walk(path); continue }
-        if (!/\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name)) continue
-        const source = readFileSync(path, 'utf8')
-        if (/(?:\bfrom\s*|\bimport\s*\(?\s*)["']zod\/[^"']+["']/.test(source)) offenders.push(path.slice(REPO_ROOT.length + 1))
+        if (!/\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(entry.name)) continue
+        // Parsed (import, dynamic import, require, export-from) — not pattern-matched.
+        const specifiers = collectImportSpecifiers(path, readFileSync(path, 'utf8'))
+        if (specifiers.some((specifier) => specifier.startsWith('zod/'))) offenders.push(path.slice(REPO_ROOT.length + 1))
       }
     }
     for (const root of roots) if (existsSync(join(REPO_ROOT, root))) walk(join(REPO_ROOT, root))

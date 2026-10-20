@@ -91,18 +91,25 @@ function collectSourceFiles(dir: string): string[] {
   return out
 }
 
-function sourceLoader(file: string): SourceLoader {
+export function sourceLoader(file: string): SourceLoader {
   if (file.endsWith('.tsx')) return 'tsx'
   if (file.endsWith('.ts')) return 'ts'
   if (file.endsWith('.jsx')) return 'jsx'
   return 'js'
 }
 
-function collectImportSpecifiers(file: string, source: string): string[] {
+/**
+ * Every import/require/export-from specifier in a module, via Bun's
+ * transpiler (never a regex — a string literal that merely contains
+ * `import 'x'` is not an import, and `);import(` is not a specifier). Used on
+ * plugin SOURCE files here and on EMITTED bundles by the build guards.
+ */
+export function collectImportSpecifiers(file: string, source: string): string[] {
   try {
     const transpiler = new BunTranspiler({ loader: sourceLoader(file) })
+    // A shebang (`#!/usr/bin/env bun` on a bin entry) is not JS to the scanner.
     return transpiler
-      .scanImports(source)
+      .scanImports(source.startsWith('#!') ? source.slice(source.indexOf('\n') + 1) : source)
       .map((entry) => entry.path)
       .filter((specifier): specifier is string => typeof specifier === 'string' && specifier.length > 0)
   } catch (err) {

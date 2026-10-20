@@ -34,6 +34,8 @@ const realFetch: typeof fetch = (Bun as unknown as { fetch?: typeof fetch }).fet
 
 /** Mirrors scripts/build-binary.ts: the compile externals the shipped binary carries. */
 const COMPILE_EXTERNALS = ['playwright', 'playwright-core', 'chromium-bidi', 'sharp']
+/** Inside the 240 s test budget, leaving the boot its own 60 s. */
+const COMPILE_DEADLINE_MS = 150_000
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -58,6 +60,7 @@ function assertManifestCurrent(): string {
   return manifest
 }
 
+/** Compile the server within a deadline; the compiler is tracked like the server so a stall never outlives testDir. */
 async function compileServer(): Promise<string> {
   const outfile = join(testDir, 'bakin-bin')
   const proc = Bun.spawn([
@@ -65,8 +68,18 @@ async function compileServer(): Promise<string> {
     ...COMPILE_EXTERNALS.flatMap((pkg) => ['--external', pkg]),
     join(REPO_ROOT, 'server.ts'),
   ], { cwd: REPO_ROOT, stdout: 'pipe', stderr: 'pipe' })
-  const [code, err] = await Promise.all([proc.exited, new Response(proc.stderr).text()])
-  if (code !== 0) throw new Error(`bun build --compile failed (exit ${code}): ${err.slice(-1500)}`)
+  const tracked = track(proc)
+  child = tracked
+  const stderr = new Response(proc.stderr).text()
+  const finished = await Promise.race([proc.exited.then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), COMPILE_DEADLINE_MS))])
+  if (!finished) {
+    await terminate(tracked)
+    child = null
+    throw new Error(`bun build --compile did not finish within ${COMPILE_DEADLINE_MS / 1000}s`)
+  }
+  child = null
+  const code = await proc.exited
+  if (code !== 0) throw new Error(`bun build --compile failed (exit ${code}): ${(await stderr).slice(-1500)}`)
   return outfile
 }
 
