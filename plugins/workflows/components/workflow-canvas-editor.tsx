@@ -14,7 +14,7 @@
  * without special-casing.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   ReactFlow,
   Background,
@@ -381,13 +381,16 @@ export function WorkflowCanvasEditor({
     [initialDefinition, initialId, mode],
   )
 
+  // The guard's API is rebuilt every render (plain functions); the reset
+  // effect wants the LATEST reset without re-running on every render.
+  const resetUnsavedChangesGuard = useEffectEvent(() => { unsavedChangesGuard.reset() })
   useEffect(() => {
     const nextDefinition = initialDefinition ?? BLANK_DEFINITION
     setDefinition(nextDefinition)
     setState(seedState(nextDefinition))
     setEditingId(initialId)
     setSelectedId(null)
-    unsavedChangesGuard.reset()
+    resetUnsavedChangesGuard()
     setIsDirty(false)
     setNodeDrawerDirty(false)
     setWorkflowDetailsOpen(false)

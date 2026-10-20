@@ -2,6 +2,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
+import eslintReact from "@eslint-react/eslint-plugin";
 import noPluginTopLevelSideEffects from "./scripts/eslint-rules/no-plugin-top-level-side-effects.mjs";
 
 // Bakin runs across Bun server code, browser UI code, CLI scripts, and tests.
@@ -107,6 +108,41 @@ const eslintConfig = defineConfig([
         destructuredArrayIgnorePattern: "^_",
         varsIgnorePattern: "^_",
       }],
+    },
+  },
+  // React rules (#966): @eslint-react's recommended-typescript preset on
+  // every .tsx file. eslint-plugin-react-hooks stays the ONE hooks
+  // authority (rules-of-hooks / exhaustive-deps above), so the preset's
+  // duplicate exhaustive-deps is off. The lint gate is zero-warning
+  // (`--max-warnings 0`): a rule is either on and clean, off with a reason,
+  // or excepted on one line with a reason.
+  {
+    files: ["**/*.tsx"],
+    ...eslintReact.configs["recommended-typescript"],
+    rules: {
+      ...eslintReact.configs["recommended-typescript"].rules,
+      // Duplicate of react-hooks/exhaustive-deps — react-hooks owns hooks.
+      "@eslint-react/exhaustive-deps": "off",
+      // Off by decision (spec D4.4): index keys are correct for the static
+      // lists this flags; the `Ref` name suffix is a style never adopted.
+      "@eslint-react/no-array-index-key": "off",
+      "@eslint-react/naming-convention-ref-name": "off",
+      // Off until #966b: 164 effect-synced states are rewritten in their own PR.
+      "@eslint-react/set-state-in-effect": "off",
+      // Off until the fix commits of #966a flip them on (4.2–4.8).
+      "@eslint-react/no-use-context": "off",
+      "@eslint-react/no-context-provider": "off",
+      "@eslint-react/no-forward-ref": "off",
+      "@eslint-react/static-components": "off",
+      "@eslint-react/purity": "off",
+      "@eslint-react/web-api-no-leaked-fetch": "off",
+      "@eslint-react/use-state": "off",
+      "@eslint-react/no-set-state-in-component-did-update": "off",
+      "@eslint-react/naming-convention-context-name": "off",
+      "@eslint-react/dom-no-dangerously-set-innerhtml": "off",
+      "@eslint-react/no-clone-element": "off",
+      "@eslint-react/naming-convention-id-name": "off",
+      "@eslint-react/no-unnecessary-use-prefix": "off",
     },
   },
   globalIgnores([
