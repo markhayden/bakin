@@ -438,10 +438,13 @@ What the preset settled, so new code starts there:
 - **React 19 APIs:** `use(Ctx)` not `useContext`, `<Ctx value>` not
   `<Ctx.Provider>`, `ref` as a plain prop (no `forwardRef`). Context objects
   carry the `Context` suffix; `useId` results are named `id`.
-- **Pure render:** no `new Date()` / `Date.now()` in render — read the clock
-  in a state initializer (`useState(() => new Date())`) or a prop; no
-  components created during render (resolve a component once, outside the
-  render, or in a module-level map).
+- **Pure render:** no `new Date()` / `Date.now()` in render — a view that
+  depends on the clock takes it from `useNow()` (`@makinbakin/sdk/hooks`: the
+  instant at mount, refreshed every minute, so "today", countdowns and
+  "resets in …" roll over while the view stays open) or from a prop; event
+  handlers read `new Date()` at the event. No components created during
+  render (resolve a component once, outside the render, or in a
+  module-level map).
 - **Effects:** an effect-scoped `fetch` owns an `AbortController` and aborts
   it on cleanup; state is written only while the controller is live.
 - **State:** `useState` destructures to `[x, setX]`; expensive initial values
@@ -452,4 +455,3 @@ What the preset settled, so new code starts there:
 - **Markup:** `<style>{css}</style>`, never `dangerouslySetInnerHTML`;
   `cloneElement` only at the interactive-surface overlay (the one excepted
   composition point).
-
