@@ -54,9 +54,12 @@ class FakeEventSource {
 }
 ;(globalThis as Record<string, unknown>).EventSource = FakeEventSource
 
+// Captured BEFORE the module is mocked (live namespace binding): the calendars' render helpers (useNow, useKeyedState) stay real.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => {
   const actual = require('../../../src/hooks/use-schedule')
   return {
+    ...realSdkHooks,
     useAgent: (id: string) => id ? { id, name: id } : null,
     useOccurrences: actual.useOccurrences,
   }

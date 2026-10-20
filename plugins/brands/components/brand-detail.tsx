@@ -829,13 +829,17 @@ function OverviewTab({
   const [voice, setVoice] = useKeyedState<string | null>(`${brandId}\u0000${hasVoiceDoc}`, () => null)
   const [activity, setActivity] = useKeyedState<ActivityRow[]>(brandId, () => [])
 
+  // Re-read on every detail refresh (`brand.changed` hands a new `detail`):
+  // an edited voice, a changed card size or new activity must show; a read
+  // that an older refresh started never lands over a newer one.
   useEffect(() => {
+    let active = true
     void (async () => {
       try {
         const res = await fetch(`/api/plugins/brands/${brandId}/card-preview`)
         if (res.ok) {
           const body = (await res.json()) as { meta: { cardBytes: number; omitted: unknown[] }; maxBytes: number }
-          setCard({ cardBytes: body.meta.cardBytes, maxBytes: body.maxBytes, omitted: body.meta.omitted.length })
+          if (active) setCard({ cardBytes: body.meta.cardBytes, maxBytes: body.maxBytes, omitted: body.meta.omitted.length })
         }
       } catch { /* best-effort */ }
     })()
@@ -843,17 +847,18 @@ function OverviewTab({
       void (async () => {
         try {
           const res = await fetch(`/api/plugins/brands/${brandId}/docs/guidelines/voice.md`)
-          if (res.ok) setVoice(((await res.json()) as { content?: string }).content ?? '')
+          if (res.ok && active) setVoice(((await res.json()) as { content?: string }).content ?? '')
         } catch { /* best-effort */ }
       })()
     }
     void (async () => {
       try {
         const res = await fetch(`/api/plugins/brands/${brandId}/activity`)
-        if (res.ok) setActivity(((await res.json()) as { activity: ActivityRow[] }).activity ?? [])
+        if (res.ok && active) setActivity(((await res.json()) as { activity: ActivityRow[] }).activity ?? [])
       } catch { /* best-effort */ }
     })()
-  }, [brandId, hasVoiceDoc, setActivity, setCard, setVoice])
+    return () => { active = false }
+  }, [brandId, detail.guidelines, hasVoiceDoc, setActivity, setCard, setVoice])
 
   const assetCount = useMemo(() => new Set([
     ...brand.logos.map((l) => l.assetId),

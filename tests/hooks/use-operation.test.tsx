@@ -263,4 +263,23 @@ describe('startOperation', () => {
     await waitUntil(() => settles.length === 2, { label: 'the re-follow settled again' })
     expect(settles).toEqual(['op-1', 'op-1'])
   })
+
+  it('onSettle fires again after a detour through another, still-running operation (#966b review r2)', async () => {
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const id = /operations\/([^/?]+)/.exec(String(input))?.[1]
+      return json({ bootId: 'boot-a', operation: view({ id, rev: 3, status: id === 'op-live' ? 'running' : 'succeeded' }) })
+    }) as unknown as typeof fetch
+    const settles: string[] = []
+    const { result, rerender } = await actRender(() => renderHook(
+      ({ id }: { id: string | null }) => useOperation(id, { bootId: 'boot-a', onSettle: (op) => { settles.push(op?.id ?? 'none') } }),
+      { initialProps: { id: 'op-done' as string | null } },
+    ))
+    await waitUntil(() => result.current.phase === 'finished', { label: 'op-done finished' })
+    expect(settles).toEqual(['op-done'])
+    await act(async () => { rerender({ id: 'op-live' }) })
+    await waitUntil(() => result.current.phase === 'live', { label: 'op-live is live' })
+    await act(async () => { rerender({ id: 'op-done' }) })
+    await waitUntil(() => settles.length === 2, { label: 'op-done settled again after the detour' })
+    expect(settles).toEqual(['op-done', 'op-done'])
+  })
 })

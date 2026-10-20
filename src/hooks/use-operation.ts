@@ -138,13 +138,15 @@ export function useOperation<B = unknown>(id: string | null, opts: UseOperationO
 
   // One settle event per followed id, delivered to the latest callback.
   const settleEvent = useEffectEvent((operation: OperationView<B> | null, phase: OperationPhase) => { opts.onSettle?.(operation, phase) })
-  // Scoped to one follow: following nothing (id null) ends the lifecycle, so
-  // following the same operation again settles again.
-  const settledFor = useRef<string | null>(null)
+  // Scoped to one follow: every change of the followed id (to another
+  // operation, or to nothing) starts a fresh lifecycle, so following the same
+  // operation again later settles again.
+  const settledFor = useRef<{ id: string; done: boolean } | null>(null)
   useEffect(() => {
     if (!id) { settledFor.current = null; return }
-    if (!settled(state.phase) || settledFor.current === id) return
-    settledFor.current = id
+    if (settledFor.current?.id !== id) settledFor.current = { id, done: false }
+    if (!settled(state.phase) || settledFor.current.done) return
+    settledFor.current.done = true
     settleEvent(state.operation as OperationView<B> | null, state.phase)
   }, [id, state.phase, state.operation])
 
