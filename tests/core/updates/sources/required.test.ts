@@ -202,3 +202,16 @@ describe('gateway source', () => {
     expect((await unknown.observe((await unknown.inventory())[0]!, ctx())).outcome).toBe('unknown')
   })
 })
+
+describe('review round 3 — the models offer has an identity (#5)', () => {
+  it('available.digest is the sorted required model set, stable across row order and moving with a pin', async () => {
+    const { modelsDigest } = await import('../../../../src/core/updates/sources/search-models')
+    const a = { id: 'bge-small', label: 'bge-small', required: { identity: 'pin-1' }, state: 'missing' as const, remediation: 'install' as const }
+    const b = { id: 'bge-m3', label: 'bge-m3', required: { identity: 'pin-2' }, state: 'ok' as const }
+    expect(modelsDigest([a, b])).toBe(modelsDigest([b, a]))
+    expect(modelsDigest([a, b])).not.toBe(modelsDigest([{ ...a, required: { identity: 'pin-9' } }, b]))
+    const { observeSearchModels } = await import('../../../../src/core/updates/sources/search-models')
+    const offer = observeSearchModels('antfly', { name: 'antfly', status: 'broken', message: 'x', applicable: true, models: [a, b] })
+    expect(offer.available?.digest).toBe(modelsDigest([a, b]))
+  })
+})

@@ -220,8 +220,10 @@ export function useUpdateApply(onSettled?: () => void): UseUpdateApplyResult {
       if (state.status !== 'running') return
       const { record, preview } = state
       if (phase === 'restarted' || phase === 'expired') {
-        if (record.subject.kind === 'bakin' && record.available?.version) {
-          setState({ status: 'restarting', record, preview, handoff: { expectedVersion: record.available.version, oldBootId: state.start.bootId } })
+        // The preview's record is what was applied (and what the body named).
+        const expectedVersion = preview.record.available?.version
+        if (record.subject.kind === 'bakin' && expectedVersion) {
+          setState({ status: 'restarting', record, preview, handoff: { expectedVersion, oldBootId: state.start.bootId } })
           return
         }
         setState({ status: 'outcome-unknown', record, message: `Bakin restarted or lost track of the ${record.subject.label} update. Check for updates to confirm the result.` })
@@ -273,8 +275,8 @@ export function useUpdateApply(onSettled?: () => void): UseUpdateApplyResult {
 
   // The self-update's old process never reports `finished`: its `restarting`
   // stage is the handoff, exactly as the header banner treats it.
-  if (state.status === 'running' && state.record.subject.kind === 'bakin' && state.record.available?.version && restartingStageActive(followed.operation)) {
-    setState({ status: 'restarting', record: state.record, preview: state.preview, handoff: { expectedVersion: state.record.available.version, oldBootId: state.start.bootId } })
+  if (state.status === 'running' && state.record.subject.kind === 'bakin' && state.preview.record.available?.version && restartingStageActive(followed.operation)) {
+    setState({ status: 'restarting', record: state.record, preview: state.preview, handoff: { expectedVersion: state.preview.record.available.version, oldBootId: state.start.bootId } })
   }
 
   const verification = useSelfUpdateVerification(state.status === 'restarting' ? state.handoff : null)

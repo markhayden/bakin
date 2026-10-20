@@ -154,3 +154,16 @@ describe('review round 2 — the restart milestone', () => {
     expect(selfUpdateOperation('cli', deps()).fingerprint).toBe('updates:self-update:latest')
   })
 })
+
+describe('review round 3 — the deferred restart command', () => {
+  it('a restart whose deferred command fails after activation ends restart_failed and releases install-state instead of waiting forever (#3)', async () => {
+    const d = deps({ activateRestart: (p) => ({ ok: true, strategy: p.ok ? p.strategy : 'standalone-child', restartDelayMs: 10, settled: new Promise((resolve) => setTimeout(() => resolve({ ok: false, error: 'launchctl kickstart exited 1' }), 20)) }) })
+    const started = await registry.start(selfUpdateOperation('web', d))
+    const finished = await view(started.operationId, (v) => v.status === 'failed')
+    expect(finished.outcome?.code).toBe('restart_failed')
+    expect(finished.outcome?.message).toMatch(/the restart failed \(launchctl kickstart exited 1\)/)
+    // install-state is free again: another operation that needs it can start.
+    const next = await registry.start(selfUpdateOperation('web', deps({ restart: 'none' })))
+    await view(next.operationId, (v) => v.status === 'succeeded')
+  })
+})

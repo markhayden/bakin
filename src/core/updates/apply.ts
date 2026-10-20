@@ -109,13 +109,15 @@ export interface ApplyDeps {
   installComponent: (name: 'search' | 'search-models') => MaybeAsync<InstallableComponent>
   reindex: (op: OperationContext) => Promise<ReindexReport>
   reindexStage: () => MaybeAsync<OperationStagePlan>
-  pluginUpgrade: (pluginId: string, body: { accepted?: boolean; consentToken?: string }, origin: OperationOrigin) => MaybeAsync<StartOperationInput<Record<string, unknown>>>
+  pluginUpgrade: (pluginId: string, body: { accepted?: boolean; consentToken?: string; expected?: UpdateSkipTarget }, origin: OperationOrigin) => MaybeAsync<StartOperationInput<Record<string, unknown>>>
   /** The Bakin self-update as an operation (D7.11), bound to the approved release. */
   selfUpdateOperation: (origin: OperationOrigin, target: { expectedVersion?: string }) => MaybeAsync<StartOperationInput<Record<string, unknown>>>
   /** Re-observe subjects after an operation changed them (the next tick would be hours away). */
   reobserve: (ids: string[]) => MaybeAsync<void>
-  /** Calls back once the operation (started OR attached) has SUCCEEDED; never for a failure. */
-  onOperationSucceeded: (operationId: string, callback: () => void) => void
+  /** Once the operation (started OR attached) SUCCEEDS, re-observe these ids — one watch per operation, never for a failure. */
+  watchOperation: (operationId: string, ids: string[]) => void
+  /** The current search models' comparable identity (what an install would put in place), or null when not applicable. */
+  searchModelsDigest: () => MaybeAsync<string | null>
 }
 
 /** The health resource an update subject is about — how incidents point at it (#385 structured resources). */
@@ -218,7 +220,7 @@ export async function searchEngineReinstallOperation(deps: ApplyDeps, recordId: 
   }
 }
 
-async function modelsInstallOperation(deps: ApplyDeps, recordId: string, origin: OperationOrigin): Promise<StartOperationInput<Record<string, unknown>>> {
+async function modelsInstallOperation(deps: ApplyDeps, recordId: string, origin: OperationOrigin, expectedDigest: string | undefined): Promise<StartOperationInput<Record<string, unknown>>> {
   const component = await deps.installComponent('search-models')
   return {
     kind: 'updates:search-models',
@@ -226,10 +228,17 @@ async function modelsInstallOperation(deps: ApplyDeps, recordId: string, origin:
     origin,
     title: 'Install the search models',
     href: '/health?tab=updates',
-    fingerprint: `updates:apply:${recordId}`,
+    fingerprint: `updates:apply:${recordId}:${expectedDigest ?? 'unknown'}`,
     resources: [...component.resources],
     plan: component.plan,
     run: async (op): Promise<OperationOutcome<Record<string, unknown>>> => {
+      // The install reads the LIVE configuration: once the resource is held,
+      // the model set must still be the one the operator reviewed (R3 #5).
+      const live = await deps.searchModelsDigest()
+      if (expectedDigest !== undefined && live !== expectedDigest) {
+        const message = 'The search model configuration changed since the preview — check for updates and apply again.'
+        return { status: 'failed', code: 'target_changed', message, httpStatus: 200, body: { ok: false, message } }
+      }
       const result = await component.install({ autoApprove: true, allowServiceClaim: false }, op)
       if (result.status !== 'installed' && result.status !== 'noop') return { status: 'failed', code: 'install_failed', message: result.message, httpStatus: 200, body: { ok: false, result } }
       return { status: 'succeeded', code: 'ok', httpStatus: 200, body: { ok: true, result } }
@@ -281,11 +290,12 @@ export async function confirmApply(id: string, input: ConfirmApplyInput, deps: A
   }
   switch (record.subject.kind) {
     case 'plugin':
-      return start(await deps.pluginUpgrade(record.subject.id, { accepted: input.consentToken !== undefined, consentToken: input.consentToken }, input.origin))
+      // The lane refuses to install anything but the reviewed identity (R3 #1).
+      return start(await deps.pluginUpgrade(record.subject.id, { accepted: input.consentToken !== undefined, consentToken: input.consentToken, ...(input.target ? { expected: input.target } : {}) }, input.origin))
     case 'search-engine':
       return start(await searchEngineReinstallOperation(deps, id, input.origin))
     case 'search-models':
-      return start(await modelsInstallOperation(deps, id, input.origin))
+      return start(await modelsInstallOperation(deps, id, input.origin, record.available?.digest))
     case 'bakin':
       return start(await deps.selfUpdateOperation(input.origin, { expectedVersion: record.available?.version }))
     default:
@@ -301,9 +311,7 @@ export async function confirmApply(id: string, input: ConfirmApplyInput, deps: A
  * re-observation is logged; the operation's own outcome is untouched.
  */
 function reobserveWhenSucceeded(deps: ApplyDeps, operationId: string, ids: string[]): void {
-  deps.onOperationSucceeded(operationId, () => {
-    Promise.resolve(deps.reobserve(ids)).catch((error: unknown) => log.warn('Re-observation after apply failed', { ids, error: error instanceof Error ? error.message : String(error) }))
-  })
+  deps.watchOperation(operationId, ids)
 }
 
 /**
@@ -326,21 +334,22 @@ export function defaultApplyDeps(): ApplyDeps {
       const { getUpdatesTimer } = await import('./service')
       await getUpdatesTimer()?.check({ ids })
     },
-    onOperationSucceeded: (operationId, callback) => {
+    watchOperation: (operationId, ids) => {
       void (async () => {
-        const { getOperationRegistry, subscribeOperationUpdates } = await import('../operations')
-        let fired = false
-        const fire = (): void => { if (fired) return; fired = true; unsubscribe(); callback() }
-        const unsubscribe = subscribeOperationUpdates((view) => {
-          if (view.id !== operationId) return
-          if (view.status === 'succeeded') fire()
-          else if (view.status === 'failed' || view.status === 'cancelled') unsubscribe()
+        const [{ getOperationRegistry, subscribeOperationUpdates }, { watchOperationSucceeded }] = await Promise.all([import('../operations'), import('./apply-watch')])
+        const registry = getOperationRegistry()
+        watchOperationSucceeded({ get: (id) => registry.get(id), subscribe: subscribeOperationUpdates }, operationId, ids, (changed) => {
+          Promise.resolve(defaultApplyDeps().reobserve(changed)).catch((error: unknown) => log.warn('Re-observation after apply failed', { ids: changed, error: error instanceof Error ? error.message : String(error) }))
         })
-        // Attached to one that already finished: the subscription would never fire.
-        const current = getOperationRegistry().get(operationId)
-        if (current?.status === 'succeeded') fire()
-        else if (current && (current.status === 'failed' || current.status === 'cancelled')) unsubscribe()
       })()
+    },
+    searchModelsDigest: async () => {
+      const [{ getSearchAdapterSetup }, { getSettings }, { modelsDigest }] = await Promise.all([import('../search-adapter-factory'), import('../settings'), import('./sources/search-models')])
+      const search = getSettings().search
+      const setup = getSearchAdapterSetup(search.adapter, log, search.settings)
+      if (!setup?.models) return null
+      const result = await setup.models.check({})
+      return result.applicable ? modelsDigest(result.models ?? []) : null
     },
     selfUpdateOperation: async (origin, target) => {
       const [{ selfUpdateOperation }, { selfUpdate }, { activateServerRestart, prepareServerRestart }, { APP_VERSION }] = await Promise.all([

@@ -50,8 +50,7 @@ import {
   installUpgradedPluginAssets,
   manifestVersion,
   readManifest,
-  sweepDroppedBins,
-} from './upgrade-gate'
+  sweepDroppedBins, assertUpgradeTarget } from './upgrade-gate'
 import { isArtifactInstall, upgradeArtifact } from './upgrade-artifact'
 import { PLUGIN_STAGES } from './operation-plans'
 import { upgradeGithub, upgradeGithubSubpath } from './upgrade-github'
@@ -182,6 +181,8 @@ async function upgradeLocal(
   assertManifestIdStable(manifest, id)
   assertManifestSignaturePolicy(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
+  // The staging clone carries no commit identity in its result; the reviewed version is what can be held to.
+  assertUpgradeTarget(id, opts.expected, { version: newVersion })
   const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: '' } })
   if (!gate.proceed) return gate.result
 

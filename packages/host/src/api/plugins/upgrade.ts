@@ -45,6 +45,8 @@ export interface UpgradeBody {
   pluginId: string
   accepted?: boolean
   consentToken?: string
+  /** The identity the caller reviewed (version/sha/digest); the lane refuses anything else. */
+  expected?: { version?: string; sha?: string; digest?: string }
 }
 
 /** Token identity for an upgrade: the plugin being upgraded (install binds source+ref). */
@@ -133,7 +135,7 @@ async function runUpgrade(pluginId: string, body: UpgradeBody, op: OperationCont
   }
 
   try {
-    const result = await upgradePlugin(pluginId, { accepted, previewOnly: body.accepted !== true, op })
+    const result = await upgradePlugin(pluginId, { accepted, previewOnly: body.accepted !== true, op, ...(body.expected ? { expected: body.expected } : {}) })
     if ((result.awaitingConsent || result.ready) && result.consent) {
       // A token binds what was previewed; the commit echoes it back. `ready`
       // (nothing new to consent to) carries one too, so every commit is bound.

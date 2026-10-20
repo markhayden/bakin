@@ -25,6 +25,7 @@ import {
   auditUpgradeRejected,
   assertManifestIdStable,
   assertManifestSignaturePolicy,
+  assertUpgradeTarget,
   gateUpgradeConsent,
   installUpgradedPluginAssets,
   manifestVersion,
@@ -122,6 +123,7 @@ export async function upgradeGithub(
   assertManifestIdStable(manifest, id)
   assertManifestSignaturePolicy(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
+  assertUpgradeTarget(id, opts.expected, { version: newVersion, sha: remoteSha })
   const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: remoteSha } })
   if (!gate.proceed) return gate.result
 

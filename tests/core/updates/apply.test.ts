@@ -140,15 +140,16 @@ function deps(engine: UpdatesEngine, overrides: Partial<ApplyDeps> = {}): ApplyD
     reindex: async (op) => { op.stage('reindex'); return { ok: true, tables: [] } as never },
     reindexStage: () => ({ id: 'reindex', kind: 'verifying', label: 'Rebuild search tables' }),
     reobserve: async (ids) => { reobserved.push(...ids) },
-    // Fires once the registry shows the operation succeeded (started or attached); never for a failure.
-    onOperationSucceeded: (operationId, callback) => {
+    // Re-observes once the registry shows the operation succeeded (started or attached); never for a failure.
+    watchOperation: (operationId, ids) => {
       const poll = (): void => {
         const view = registry.get(operationId)
-        if (view?.status === 'succeeded') callback()
+        if (view?.status === 'succeeded') reobserved.push(...ids)
         else if (!view || view.status === 'running' || view.status === 'cancelling') setTimeout(poll, 5)
       }
       poll()
     },
+    searchModelsDigest: () => null,
     selfUpdateOperation: (origin, target) => ({
       kind: 'updates:self-update', owner: 'core', origin, title: 'Update Bakin', href: '/health', fingerprint: 'updates:self-update', resources: ['install-state'],
       plan: { stages: [{ id: 'download', kind: 'downloading', label: 'Download' }], pointOfNoReturn: 'download' },
@@ -434,11 +435,48 @@ describe('review round 2 — the reviewed target and re-observation', () => {
     await scoped.observe('plugin:projects'); await scoped.observe('plugin:terminal')
     const opened = await openRepair(['projects', 'terminal'])
     const watched: string[] = []
-    const d2 = deps(scoped, { onOperationSucceeded: (operationId, callback) => { watched.push(operationId); callback() } })
+    const d2 = deps(scoped, { watchOperation: (operationId, ids) => { watched.push(operationId); reobserved.push(...ids) } })
     const preview = await previewApply('plugin:projects', d2)
     const result = await confirmApply('plugin:projects', { target: { version: '2' }, approvalId: preview.approval!.approvalId, scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d2)
     expect(watched).toEqual([result.started.operationId])
     expect(reobserved.sort()).toEqual(['plugin:projects', 'plugin:terminal'])
     expect(opened.approval.approvalId).toBe(preview.approval!.approvalId)
+  })
+})
+
+describe('review round 3 — identity all the way down', () => {
+  const origin = 'web' as const
+
+  it('a search-models install refuses when the live model set no longer matches the reviewed digest (#5)', async () => {
+    const offer: UpdateObservation = { installed: { display: '1 of 2 models ready' }, available: { digest: 'set-A', display: 'pinned model set' }, reason: 'pin-mismatch', outcome: 'update-available', action: { kind: 'operation', start: { route: '/api/updates/search-models%3Aantfly/apply' }, impact: ['download'] } }
+    const engine = engineWith({ antfly: offer }, 'search-models')
+    await engine.observe('search-models:antfly')
+    let live = 'set-B'
+    const installs: string[] = []
+    const d = deps(engine, {
+      searchModelsDigest: () => live,
+      installComponent: (name) => fakeComponent(name, [{ id: 'pull', kind: 'downloading', label: 'Pull' }], async (_opts, op) => { installs.push(name); op.stage('pull'); return { name, status: 'installed', message: 'installed', durationMs: 1 } }),
+    })
+    const changed = await confirmApply('search-models:antfly', { target: { digest: 'set-A' }, provenance: UI_OPERATOR, origin }, d)
+    await waitUntil(() => registry.get(changed.started.operationId)?.status === 'failed', { label: 'refused once the resource was held' })
+    expect(registry.get(changed.started.operationId)?.outcome).toMatchObject({ code: 'target_changed' })
+    expect(installs).toEqual([])
+    live = 'set-A'
+    const ok = await confirmApply('search-models:antfly', { target: { digest: 'set-A' }, provenance: UI_OPERATOR, origin }, d)
+    await waitUntil(() => registry.get(ok.started.operationId)?.status === 'succeeded', { label: 'installed' })
+    expect(installs).toEqual(['search-models'])
+  })
+
+  it('the plugin lane is told which identity was reviewed, on the preview AND on the consented commit (#1)', async () => {
+    const engine = engineWith({ projects: { ...available('projects'), available: { version: '2', sha: 'c'.repeat(40), display: '2' } } })
+    await engine.observe('plugin:projects')
+    const bodies: Array<Record<string, unknown>> = []
+    const d = deps(engine, { pluginUpgrade: (pluginId, body, o) => { bodies.push(body); return { kind: 'fetch', owner: 'core', origin: o, title: pluginId, href: '/health', fingerprint: `p:${bodies.length}`, resources: [], plan: { stages: [{ id: 'fetch', kind: 'downloading', label: 'Fetch' }], pointOfNoReturn: null }, run: async () => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: { ok: true } }) } } })
+    await confirmApply('plugin:projects', { target: { version: '2', sha: 'c'.repeat(40) }, provenance: UI_OPERATOR, origin }, d)
+    await confirmApply('plugin:projects', { target: { version: '2', sha: 'c'.repeat(40) }, consentToken: 'tok', provenance: UI_OPERATOR, origin }, d)
+    expect(bodies).toEqual([
+      { accepted: false, consentToken: undefined, expected: { version: '2', sha: 'c'.repeat(40) } },
+      { accepted: true, consentToken: 'tok', expected: { version: '2', sha: 'c'.repeat(40) } },
+    ])
   })
 })

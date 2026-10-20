@@ -36,8 +36,7 @@ import {
   installUpgradedPluginAssets,
   manifestVersion,
   readManifest,
-  sweepDroppedBins,
-} from './upgrade-gate'
+  sweepDroppedBins, assertUpgradeTarget } from './upgrade-gate'
 
 const log = createLogger('plugin-upgrade-artifact')
 
@@ -136,6 +135,7 @@ export async function upgradeArtifact(
     assertManifestSignaturePolicy(manifest, id)
     const newVersion = manifestVersion(manifest, latest)
     const newCommitSha = materialized.provenance.sourceCommitSha || ''
+    assertUpgradeTarget(id, opts.expected, { version: newVersion, digest: materialized.sha256 })
     const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: newCommitSha } })
     if (!gate.proceed) return gate.result
 

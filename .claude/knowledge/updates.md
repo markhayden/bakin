@@ -110,9 +110,15 @@ worker pools), and at once on `plugin:manifest-changed` / `settings.changed`
 (the service observes server events) — an installed plugin joins, a removed
 one leaves, a changed setting retires the affected fingerprints. A source
 whose ENUMERATION fails (a hung probe, a dead remote) keeps its known
-subjects with a failed attempt — unknown is not absent. An explicit check
-for a subject id re-observes it even when the running pass already reached
-it (the caller knows it changed).
+subjects with a failed attempt — unknown is not absent — at boot too, where
+the persisted record is the known subject. An explicit check for a subject
+id re-observes it even when the running pass already reached it (the caller
+knows it changed), is observed even when scheduled work was disabled
+mid-pass, and rejects (`UpdatesStoppedError`) once the timer is stopped —
+a check never answers "done" without having looked. `POST /api/updates/check`
+validates ids against the REFRESHED inventory (a plugin installed a moment
+ago is known) and answers 404 for a subject that vanished before a waited
+pass.
 
 **One attempt, one result.** On the deadline the signal fires; a cooperative
 observer settles through the engine and records the deadline as its ONE
@@ -125,9 +131,12 @@ interruption (`CommandInterruptedError`) instead of answering `null`, so a
 probe that did not finish is a failed attempt, never a "wrong version"
 observation.
 
-Every observation publishes `updates.changed { ids }` on the shared SSE bus;
-the doctor refresh coordinator maps it to the checks that consume records
-(`plugin-artifacts` for plugin subjects, `search` for engine/model subjects).
+Every observation publishes `updates.changed { ids }` on the shared SSE bus
+as a PLUGIN-EVENT envelope (`{ type: 'plugin-event', event: 'updates.changed',
+ids }`) — the only shape the shell fans out to `usePluginEvent`; the doctor
+refresh coordinator reads the inner name and re-runs the checks that consume
+records (`plugin-artifacts` for plugin subjects, `search` for engine/model
+subjects).
 
 ## Actions and apply
 
@@ -163,7 +172,17 @@ ONE apply service (`src/core/updates/apply.ts`) behind `GET
    listed in `tests/architecture/operations-routes.test.ts`. Once the
    operation SUCCEEDS — started or attached, including a resolved approval's
    repair — the subjects it changed are re-observed (every subject in an
-   approval's scope); a failure re-observes nothing.
+   approval's scope); a failure re-observes nothing. Watches live in
+   `src/core/updates/apply-watch.ts`: ONE subscription per operation id
+   (attachments merge their ids), dropped on any terminal state and disposed
+   with the service — a stuck operation never accumulates listeners.
+   The reviewed identity goes all the way down: plugin lanes receive it as
+   `UpgradeOptions.expected` and refuse a ref that moved or a republished
+   artifact (`assertUpgradeTarget`, even under an unchanged manifest and so a
+   still-valid consent token); the search-models install re-reads the live
+   model set once it holds the resource and fails `target_changed` when it
+   no longer matches the reviewed digest (`available.digest` = the sorted
+   required model set).
 
 ## Self-update (D7.11)
 
@@ -176,7 +195,10 @@ target): a newer release published between preview and execution fails the
 update before any download ("Release changed … check for updates and apply
 again") — the operator approves one identity, never "latest". The
 `restarting` stage goes active only AFTER the restart is activated: a failed
-activation is a terminal `restart_failed`, never a handoff. The operation ends with the
+activation is a terminal `restart_failed`, never a handoff — and so is a
+deferred restart command that fails later (`RestartScheduleResult.settled`
+reports the kick/signal's own outcome; the operation races it against the
+process exit and releases `install-state` instead of waiting forever). The operation ends with the
 OLD process: a follow that ends `restarted` (or the `restarting` stage) is
 the honest terminal state and the handoff to verification. Verification is
 client-side and explicit: `{ expectedVersion, oldBootId }` → poll `GET

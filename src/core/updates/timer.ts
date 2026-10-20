@@ -62,6 +62,14 @@ export const UPDATES_CONCURRENCY = 2
 export const UPDATES_CANCEL_GRACE_MS = 5_000
 export const SUBJECT_TIMED_OUT = (ms: number): string => `check timed out after ${Math.round(ms / 1000)}s`
 
+/** `check()` after `stop()`: the timer is gone, nothing will be observed — never a silent success. */
+export class UpdatesStoppedError extends Error {
+  constructor() {
+    super('the update checker is stopped')
+    this.name = 'UpdatesStoppedError'
+  }
+}
+
 export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
   const { engine } = options
   const tickMs = options.tickMs ?? UPDATES_TICK_MS
@@ -85,6 +93,8 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
   interface Pass {
     queue: string[]
     reached: Set<string>
+    /** Ids a caller asked for by name: observed even when scheduled work is disabled mid-pass. */
+    explicit: Set<string>
     /** Ids the pass must still observe, in order; a manual request can append. */
     done: Promise<void>
     /** True for a scheduled pass: honours `enabled` between subjects. */
@@ -116,17 +126,21 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
     if (!settled) await engine.recordFailure(id, SUBJECT_TIMED_OUT(subjectTimeoutMs), { token })
   }
 
-  function runPass(initial: string[], scheduled: boolean): Pass {
+  function runPass(initial: string[], scheduled: boolean, explicitIds: readonly string[] = []): Pass {
     const queue = [...initial]
     const reached = new Set<string>()
+    const explicit = new Set(explicitIds)
     engine.setRunning(true)
     const done = (async () => {
       const workers = Array.from({ length: concurrency }, async () => {
         for (;;) {
           if (stopped) return
-          if (scheduled && !options.settings().enabled) return
           const id = queue.shift()
           if (id === undefined) return
+          // Disabled mid-pass: scheduled work stops here, but a subject someone
+          // asked for by name is still observed — a check never answers
+          // "done" without having looked.
+          if (scheduled && !options.settings().enabled && !explicit.has(id)) continue
           reached.add(id)
           await observeWithDeadline(id)
         }
@@ -136,7 +150,7 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
       if (pass === current) pass = null
       engine.setRunning(false)
     })
-    const current: Pass = { queue, reached, done, scheduled }
+    const current: Pass = { queue, reached, explicit, done, scheduled }
     pass = current
     return current
   }
@@ -169,6 +183,7 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
   return {
     async check(request = {}) {
       const { ids, run, coalesced } = await serialized(async () => {
+        if (stopped) throw new UpdatesStoppedError()
         await engine.refreshInventory()
         const inventory = await engine.inventory()
         const known = new Set(inventory.map((entry) => `${entry.subject.kind}:${entry.subject.id}`))
@@ -185,14 +200,16 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
           // caller knows the subject changed — a reached result is stale).
           const running = pass
           for (const id of ids) {
+            running.explicit.add(id)
             if (running.queue.includes(id)) continue
             if (request.ids || !running.reached.has(id)) running.queue.push(id)
           }
           return { ids, run: running, coalesced: true }
         }
-        return { ids, run: runPass(ids, false), coalesced: false }
+        return { ids, run: runPass(ids, false, ids), coalesced: false }
       })
       await run.done
+      if (stopped) throw new UpdatesStoppedError()
       return { ids, coalesced }
     },
     running: () => pass !== null,

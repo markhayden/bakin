@@ -54,7 +54,8 @@ describe('updates service', () => {
     expect(records.map((r) => r.id)).toEqual(['plugin:second', 'bakin:bakin'])
     expect(existsSync(join(testDir, UPDATES_FILE_NAME))).toBe(true)
     await engine.observe('bakin:bakin')
-    expect(broadcasts.at(-1)).toEqual({ type: 'updates.changed', ids: ['bakin:bakin'] })
+    // The plugin-event envelope is what the shell fans out to usePluginEvent (R3 #2) — a bare type never reaches a tab.
+    expect(broadcasts.at(-1)).toEqual({ type: 'plugin-event', event: 'updates.changed', ids: ['bakin:bakin'] })
   })
 
   it('reads the interval and the enabled flag from settings', async () => {

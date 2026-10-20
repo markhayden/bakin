@@ -262,3 +262,21 @@ describe('review round 2 — pass startup is serialized', () => {
     expect(plugins.maxInFlight()).toBeLessThanOrEqual(2)
   })
 })
+
+describe('review round 3 — explicit work and stop', () => {
+  it('a subject asked for by name is observed even when scheduled work is disabled mid-pass; a check after stop() rejects (#8)', async () => {
+    const plugins = scripted('plugin', ['a', 'b', 'c'])
+    const releaseA = plugins.hold('a')
+    let enabled = true
+    const { engine, timer } = harness([plugins.source], { enabled: () => enabled, firstTickMs: 10, tickMs: 10_000 })
+    await engine.ready
+    await waitUntil(() => plugins.inFlight.has('a'), { label: 'the scheduled pass is on a' })
+    const explicit = timer.check({ ids: ['plugin:c'] })
+    enabled = false
+    releaseA()
+    await explicit
+    expect(plugins.calls).toContain('c')
+    timer.stop()
+    await expect(timer.check()).rejects.toMatchObject({ name: 'UpdatesStoppedError' })
+  })
+})

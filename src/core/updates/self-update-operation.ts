@@ -119,9 +119,18 @@ export function selfUpdateOperation(origin: OperationOrigin, deps: SelfUpdateOpe
       }
       op.stage('restarting', version ? `Restarting into ${version}` : 'Restarting')
       // The old process ends here; a follower sees `restarted` and verifies.
-      await (deps.awaitProcessExit ?? (() => new Promise<void>(() => {})))()
+      // A deferred restart command that FAILS leaves this process alive: the
+      // operation must end as restart_failed and release install-state, not
+      // wait forever on an exit that never comes (R3 #3).
+      const exit = (deps.awaitProcessExit ?? (() => new Promise<void>(() => {})))().then(() => null)
+      const deferredFailure = restart.settled ? restart.settled.then((outcome) => (outcome.ok ? null : outcome.error)) : null
+      const failure = await (deferredFailure ? Promise.race([exit, deferredFailure.then((error) => (error === null ? exit : error))]) : exit)
+      if (typeof failure === 'string') {
+        const message = `Updated to ${version ?? 'the new version'}, but the restart failed (${failure}). Restart Bakin by hand to run it.`
+        return { status: 'failed', code: 'restart_failed', message, httpStatus: 200, body: { ok: false, version, message, restart: { ...restart, settled: undefined } } }
+      }
       const message = `Updated to ${version ?? 'the new version'}; restarting.`
-      return { status: 'succeeded', code: 'ok', httpStatus: 200, body: { ok: true, version, message, restart } }
+      return { status: 'succeeded', code: 'ok', httpStatus: 200, body: { ok: true, version, message, restart: { ...restart, settled: undefined } } }
     },
   }
 }

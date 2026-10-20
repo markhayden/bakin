@@ -30,6 +30,20 @@ export interface RestartScheduleResult {
   restartDelayMs: number
   childPid?: number
   error?: string
+  /**
+   * The deferred command's own outcome (the service kick or the parent
+   * signal, `restartDelayMs` later): `ok` once it ran; `{ ok: false }` when
+   * it failed — the process is still here and whoever waited on the restart
+   * must fail instead of waiting forever (#1007 review r3 #3).
+   */
+  settled?: Promise<{ ok: true } | { ok: false; error: string }>
+}
+
+type Settled = { ok: true } | { ok: false; error: string }
+function deferred(): { promise: Promise<Settled>; resolve: (value: Settled) => void } {
+  let resolve!: (value: Settled) => void
+  const promise = new Promise<Settled>((r) => { resolve = r })
+  return { promise, resolve }
 }
 
 export function restartChildCommandName(): string {
@@ -54,21 +68,24 @@ function serviceRestartStrategy(): 'launchagent' | 'systemd' | null {
 }
 
 function scheduleServiceRestart(strategy: 'launchagent' | 'systemd', delayMs: number): RestartScheduleResult {
+  const outcome = deferred()
   const timer = setTimeout(() => {
     try {
       if (strategy === 'launchagent') {
         const uid = execFileSync('id', ['-u'], { encoding: 'utf-8', timeout: SERVICE_COMMAND_TIMEOUT_MS, killSignal: 'SIGKILL' }).trim()
         execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe', timeout: SERVICE_COMMAND_TIMEOUT_MS, killSignal: 'SIGKILL' })
-        return
+      } else {
+        execFileSync('systemctl', ['--user', 'restart', `${SERVICE_LABEL}.service`], { stdio: 'pipe', timeout: SERVICE_COMMAND_TIMEOUT_MS, killSignal: 'SIGKILL' })
       }
-      execFileSync('systemctl', ['--user', 'restart', `${SERVICE_LABEL}.service`], { stdio: 'pipe', timeout: SERVICE_COMMAND_TIMEOUT_MS, killSignal: 'SIGKILL' })
+      outcome.resolve({ ok: true })
     } catch (err) {
       log.error('Scheduled service restart failed', err as Error, { strategy })
+      outcome.resolve({ ok: false, error: err instanceof Error ? err.message : String(err) })
     }
   }, delayMs)
   unrefTimer(timer)
 
-  return { ok: true, strategy, restartDelayMs: delayMs }
+  return { ok: true, strategy, restartDelayMs: delayMs, settled: outcome.promise }
 }
 
 function scheduleStandaloneRestart(delayMs: number): RestartScheduleResult {
@@ -88,11 +105,14 @@ function scheduleStandaloneRestart(delayMs: number): RestartScheduleResult {
     })
     child.unref()
 
+    const outcome = deferred()
     const timer = setTimeout(() => {
       try {
         process.kill(parentPid, 'SIGTERM')
+        outcome.resolve({ ok: true })
       } catch (err) {
         log.error('Failed to signal parent process for restart', err as Error, { parentPid })
+        outcome.resolve({ ok: false, error: err instanceof Error ? err.message : String(err) })
       }
     }, delayMs)
     unrefTimer(timer)
@@ -102,6 +122,7 @@ function scheduleStandaloneRestart(delayMs: number): RestartScheduleResult {
       strategy: 'standalone-child',
       restartDelayMs: delayMs,
       childPid: child.pid,
+      settled: outcome.promise,
     }
   } catch (err) {
     return {

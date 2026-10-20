@@ -80,3 +80,25 @@ describe('scheduleServerRestart', () => {
     expect(scheduleServerRestart(10_000).strategy).toBe('standalone-child')
   })
 })
+
+describe('review round 3 — the deferred command reports its own outcome (#3)', () => {
+  it('a standalone restart settles ok after signalling the parent; a signal that cannot be sent settles with the error', async () => {
+    const { activateServerRestart, prepareServerRestart } = await import('../../src/core/server-restart')
+    const prepared = prepareServerRestart(10, { execPath: process.execPath })
+    if (!prepared.ok) throw new Error(prepared.error)
+    const originalKill = process.kill
+    const killed: unknown[] = []
+    process.kill = ((pid: number, signal?: string | number) => { killed.push([pid, signal]); return true }) as typeof process.kill
+    try {
+      const result = activateServerRestart(prepared)
+      expect(result.ok).toBe(true)
+      expect(await result.settled).toEqual({ ok: true })
+      expect(killed).toEqual([[process.pid, 'SIGTERM']])
+      process.kill = (() => { throw new Error('EPERM') }) as typeof process.kill
+      const failing = activateServerRestart(prepared)
+      expect(await failing.settled).toEqual({ ok: false, error: 'EPERM' })
+    } finally {
+      process.kill = originalKill
+    }
+  })
+})

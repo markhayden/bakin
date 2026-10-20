@@ -227,10 +227,16 @@ describe('checkAntflyDependency identity + cancellation (#1007 D7.9)', () => {
     const pidFile = join(testDir, 'hung.pid')
     mkdirSync(join(managedBinary, '..'), { recursive: true })
     writeFileSync(managedBinary, `#!/bin/sh\necho $$ > ${JSON.stringify(pidFile)}\nexec sleep 30\n`, { mode: 0o755 })
-    const startedAt = Date.now()
     // A probe that did not finish did not answer: the engine records a failed
-    // attempt and keeps its last good observation (#1007 review r1 #5).
-    await expect(checkDependency(makePin(), DEFAULT_SETTINGS, serviceIo, { signal: AbortSignal.timeout(300) })).rejects.toMatchObject({ name: 'CommandInterruptedError', reason: 'abort' })
+    // attempt and keeps its last good observation (#1007 review r1 #5). The
+    // signal fires once the child is provably running (its pid file exists), so
+    // a loaded machine cannot abort before the shell even started.
+    const controller = new AbortController()
+    const probe = checkDependency(makePin(), DEFAULT_SETTINGS, serviceIo, { signal: controller.signal })
+    await waitUntil(() => existsSync(pidFile), { label: 'the hung child wrote its pid' })
+    const startedAt = Date.now()
+    controller.abort(new Error('check timed out after 20s'))
+    await expect(probe).rejects.toMatchObject({ name: 'CommandInterruptedError', reason: 'abort' })
     expect(Date.now() - startedAt).toBeLessThan(5_000)
     const pid = Number(readFileSync(pidFile, 'utf8').trim())
     expect(pid).toBeGreaterThan(0)

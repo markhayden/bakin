@@ -384,3 +384,25 @@ describe('review round 2 — enumeration failures, attempt tokens, deferral, req
     expect(isUpdateSkipped(record)).toBe(false)
   })
 })
+
+describe('review round 3', () => {
+  it('a source whose enumeration fails AT BOOT keeps the persisted subjects (with a failed attempt) instead of deleting them (#4)', async () => {
+    const path = join(testDir, `${randomUUID()}.json`)
+    const src = scripted('plugin', [{ id: 'a' }])
+    src.when('a', async () => available('2.0.0'))
+    const first = boot([src.source], { path })
+    await first.observe('plugin:a')
+    const broken: UpdateSource = { kind: 'plugin', inventory: async () => { throw new Error('lockfile unreadable') }, observe: src.source.observe }
+    const rebooted = boot([broken], { path })
+    await rebooted.ready
+    const kept = (await rebooted.snapshot()).records.find((r) => r.id === 'plugin:a')!
+    expect(kept.outcome).toBe('update-available')
+    expect(kept.attempt?.error).toBe('inventory check failed: lockfile unreadable')
+    // The failure backs off like any other attempt; the last good observation stands.
+    expect((await rebooted.scheduleFor('plugin:a'))!.failures).toBe(1)
+    expect(await rebooted.dueSubjects()).toEqual([])
+    // Still a known subject: observe answers (through the failing source's observe) rather than not-found.
+    await rebooted.observe('plugin:a')
+    expect((await rebooted.scheduleFor('plugin:a'))!.failures).toBe(0)
+  })
+})

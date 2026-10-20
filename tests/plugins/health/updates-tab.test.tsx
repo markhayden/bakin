@@ -130,6 +130,13 @@ describe('UpdatesTabView — rows and groups (#1007 D7.14)', () => {
     expect(document.querySelectorAll('[data-update-id][tabindex]')).toHaveLength(0)
   })
 
+  it('a standing observation with a LATER failed attempt says so on the row', () => {
+    const stale = record({ ...PLUGIN, observedAt: CHECKED_AT, attempt: { at: '2026-10-20T11:58:00.000Z', error: 'inventory check failed: lockfile unreadable' } })
+    render(<Harness updates={resource([stale])} />)
+    expect(screen.getByText(/Checked 7m ago · the last check failed: inventory check failed: lockfile unreadable/)).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Update notes' })).toBeDefined()
+  })
+
   it('presentation + visibility helpers are pure and total', () => {
     expect(presentUpdateRecord(CURRENT).label).toBe('Current')
     expect(presentUpdateRecord(record({ ...PLUGIN, outcome: 'unsupported', blockedReason: 'source checkout' })).label).toBe('Not supported here')
@@ -377,5 +384,33 @@ describe('UpdatesTabView — review round 2 (#8, #9 of round 1 pinned)', () => {
     } finally {
       console.error = originalError
     }
+  })
+})
+
+describe('UpdatesTabView — review round 3 (#6)', () => {
+  it('verifies the version the PREVIEW offered (what was applied), not the row the list showed', async () => {
+    const previewed = { ...BAKIN, available: { version: '0.3.7', display: 'v0.3.7' } }
+    let versionReads = 0
+    const restarting = finishedOperation('op-b', { httpStatus: 200, body: {} }, {
+      status: 'running', endedAt: undefined, outcome: undefined, result: undefined, title: 'Update Bakin',
+      plan: { stages: [{ id: 'restarting', kind: 'verifying', label: 'Restarting' }], pointOfNoReturn: 'restarting' },
+      stages: [{ id: 'restarting', kind: 'verifying', label: 'Restarting', status: 'active' }],
+    })
+    const bodies: unknown[] = []
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/api/operations/op-b')) return json({ bootId: 'boot-test', operation: restarting, children: [] })
+      if (url === '/api/updates/bakin%3Abakin/apply-preview') return json({ bootId: 'b', preview: { id: BAKIN.id, record: previewed, action: BAKIN.action } })
+      if (url === '/api/updates/bakin%3Abakin/apply' && init?.method === 'POST') { bodies.push(JSON.parse(String(init.body))); return operationStarted('op-b') }
+      if (url === '/api/version') { versionReads += 1; return json(versionReads < 2 ? { version: '0.3.5', bootId: 'boot-test', state: 'stopping' } : { version: '0.3.7', bootId: 'boot-new', state: 'serving' }) }
+      throw new Error(`Unexpected URL: ${url}`)
+    }) as unknown as typeof fetch
+    render(<Harness updates={resource([BAKIN])} />)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Update Bakin' })) })
+    await screen.findByRole('dialog')
+    await waitFor(() => expect(screen.getByTestId('update-apply-confirm').textContent).toBe('Update'))
+    await act(async () => { fireEvent.click(screen.getByTestId('update-apply-confirm')) })
+    await waitFor(() => expect(screen.getByTestId('updates-feedback').textContent).toBe('Bakin was updated to v0.3.7 and verified. Reload to use the new version.'), { timeout: 10_000 })
+    expect(bodies).toEqual([{ target: { version: '0.3.7' } }])
   })
 })

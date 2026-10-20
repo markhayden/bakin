@@ -138,9 +138,10 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
     inventoryEntries = new Map(entries.map((entry) => [updateRecordId(entry.subject), entry]))
     for (const id of Object.keys(file.records)) {
       if (inventoryEntries.has(id)) continue
-      const kind = file.records[id]!.subject.kind
-      const enumeration = failed.get(kind)
-      const known = previous.get(id)
+      const record = file.records[id]!
+      const enumeration = failed.get(record.subject.kind)
+      // Known from the previous inventory, or — at boot — from the persisted record itself.
+      const known = previous.get(id) ?? (enumeration ? { subject: record.subject, group: record.group, fingerprint: record.fingerprint, source: record.source } : undefined)
       if (enumeration && known) {
         // The source could not enumerate (a hung probe, a dead remote): the
         // subject is unknown for now, not gone — keep it, record the attempt.

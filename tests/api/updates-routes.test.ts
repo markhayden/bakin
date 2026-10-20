@@ -30,7 +30,7 @@ import * as updatesRoute from '../../packages/host/src/api/updates'
 import { coreRoutes } from '../../packages/host/src/core-routes'
 import { getBootId } from '../../src/core/boot-id'
 import { fingerprintOf } from '../../src/core/updates/inventory'
-import { registerUpdateSource, resetUpdateSources, startUpdates, stopUpdates } from '../../src/core/updates/service'
+import { getUpdatesEngine, registerUpdateSource, resetUpdateSources, startUpdates, stopUpdates } from '../../src/core/updates/service'
 import type { UpdateObservation, UpdateSource } from '../../src/core/updates/types'
 import { waitUntil } from '../helpers/wait'
 
@@ -84,7 +84,7 @@ describe('POST /api/updates/check', () => {
     expect(body.ids.sort()).toEqual(['plugin:projects', 'plugin:terminal'])
     expect(body.bootId).toBe(getBootId())
     await waitUntil(() => plugins.calls.length === 2, { label: 'both subjects observed by the background pass' })
-    await waitUntil(() => broadcasts.filter((b) => b.type === 'updates.changed').length >= 2, { label: 'two updates.changed broadcasts' })
+    await waitUntil(() => broadcasts.filter((b) => b.type === 'plugin-event' && b.event === 'updates.changed').length >= 2, { label: 'two updates.changed broadcasts' })
 
     const waited = await call(updatesRoute.check, 'POST', '/api/updates/check?wait=1&id=plugin%3Aprojects')
     expect(waited.status).toBe(200)
@@ -189,5 +189,26 @@ describe('review round 2 — required skips and the reviewed target', () => {
     const untargeted = await call(updatesRoute.apply, 'POST', '/api/updates/plugin%3Aprojects/apply', { headers: OPERATOR })
     expect(untargeted.status).toBe(400)
     expect(await untargeted.json()).toMatchObject({ error: 'target_required', available: { version: '2' } })
+  })
+})
+
+describe('review round 3 — check ids against the live inventory', () => {
+  it('a subject installed a moment ago is accepted (202); one that vanishes before a waited pass answers 404, never 500 (#9)', async () => {
+    const ids = ['projects']
+    const source: UpdateSource = {
+      kind: 'plugin',
+      inventory: async () => ids.map((id) => ({ subject: { kind: 'plugin' as const, id, label: id }, group: 'available' as const, fingerprint: `f:${id}`, source: { kind: 's', endpoint: id } })),
+      observe: async (entry) => available(entry.subject.id),
+    }
+    registerUpdateSource(source)
+    startUpdates(testDir)
+    await getUpdatesEngine()!.ready
+    ids.push('terminal')
+    const fresh = await call(updatesRoute.check, 'POST', '/api/updates/check?id=plugin%3Aterminal')
+    expect(fresh.status).toBe(202)
+    ids.splice(1, 1)
+    const gone = await call(updatesRoute.check, 'POST', '/api/updates/check?id=plugin%3Aterminal&wait=1')
+    expect(gone.status).toBe(404)
+    expect(await gone.json()).toMatchObject({ error: 'not_found', id: 'plugin:terminal' })
   })
 })

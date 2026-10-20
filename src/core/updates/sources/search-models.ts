@@ -31,6 +31,11 @@ function modelsEntry(adapter: string, rows: SearchAdapterModelCheck[], settings:
 
 const INSTALLABLE = new Set(['install', 'replace-variant'])
 
+/** The comparable identity of what an install would put in place: every required model and its pin, sorted. */
+export function modelsDigest(rows: readonly SearchAdapterModelCheck[]): string {
+  return fingerprintOf({ models: rows.map((row) => ({ id: row.id, required: row.required.identity })).sort((a, b) => a.id.localeCompare(b.id)) })
+}
+
 export function observeSearchModels(adapter: string, result: SearchAdapterSetupCheckResult): UpdateObservation {
   const rows = result.models ?? []
   const ready = rows.filter((row) => row.state === 'ok').length
@@ -42,7 +47,7 @@ export function observeSearchModels(adapter: string, result: SearchAdapterSetupC
   if (actionable.length > 0) {
     return {
       installed,
-      available: { display: 'pinned model set' },
+      available: { digest: modelsDigest(rows), display: 'pinned model set' },
       reason: 'pin-mismatch',
       outcome: 'update-available',
       action: SEARCH_MODELS_INSTALL_ACTION(adapter),

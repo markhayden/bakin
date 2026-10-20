@@ -142,7 +142,9 @@ export async function check(_req: Request, url: URL): Promise<Response> {
   }
   const ids = url.searchParams.getAll('id')
   const wait = url.searchParams.get('wait') === '1'
-  // Refuse unknown ids before anything runs — the timer throws before starting a pass.
+  // Refuse unknown ids against the CURRENT inventory (a plugin installed a
+  // moment ago is known; one removed a moment ago is not) before anything runs.
+  await engine.refreshInventory()
   const inventory = await engine.inventory()
   const known = new Set(inventory.map((entry) => `${entry.subject.kind}:${entry.subject.id}`))
   const missing = ids.find((id) => !known.has(id))
@@ -150,6 +152,7 @@ export async function check(_req: Request, url: URL): Promise<Response> {
   const run = timer.check({ ...(kind ? { kind } : {}), ...(ids.length > 0 ? { ids } : {}) })
   if (!wait) {
     run.catch((err: unknown) => {
+      // A subject that vanished between the answer and the pass is not an error worth a stack.
       if (!(err instanceof UpdateSubjectNotFoundError)) log.error('Update check pass failed', err)
     })
     // The pass may already have reached its subjects; the ids are what was asked for.
@@ -157,7 +160,13 @@ export async function check(_req: Request, url: URL): Promise<Response> {
     const body: UpdatesCheckResponse = { bootId: getBootId(), ids: requested, coalesced: timer.running() }
     return Response.json(body, { status: 202 })
   }
-  const result = await run
+  let result: Awaited<typeof run>
+  try {
+    result = await run
+  } catch (err) {
+    if (err instanceof UpdateSubjectNotFoundError) return Response.json({ bootId: getBootId(), error: 'not_found', id: err.id }, { status: 404 })
+    throw err
+  }
   const snapshot = await engine.snapshot()
   const body: UpdatesCheckResponse = { bootId: getBootId(), ids: result.ids, coalesced: result.coalesced, records: snapshot.records }
   return Response.json(body)

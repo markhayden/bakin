@@ -85,7 +85,10 @@ function checkedCopy(record: UpdateRecord, now: number): string | null {
   if (!at) return null
   const relative = formatRelativeTime(at, now)
   const prefix = record.observedAt ? 'Checked' : 'Last attempt'
-  return relative === 'now' ? `${prefix} just now` : /^\d+[mhd]$/.test(relative) ? `${prefix} ${relative} ago` : `${prefix} ${relative}`
+  const checked = relative === 'now' ? `${prefix} just now` : /^\d+[mhd]$/.test(relative) ? `${prefix} ${relative} ago` : `${prefix} ${relative}`
+  // An observation stands until a newer one lands, but a later failed attempt is said out loud.
+  const failedLater = record.observedAt && record.attempt?.error && Date.parse(record.attempt.at) > Date.parse(record.observedAt)
+  return failedLater ? `${checked} · the last check failed: ${record.attempt!.error}` : checked
 }
 
 function versionCopy(record: UpdateRecord): string {

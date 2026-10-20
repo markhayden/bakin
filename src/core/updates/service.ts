@@ -10,6 +10,7 @@ import { getSettings } from '../settings'
 import { broadcast } from '../sse'
 import { createLogger } from '../logger'
 import { onServerEvent } from '../server-events'
+import { disposeApplyWatches } from './apply-watch'
 import { createUpdatesEngine, type UpdatesEngine } from './engine'
 import { startUpdatesTimer, type UpdatesTimer } from './timer'
 import type { UpdateSource } from './types'
@@ -41,7 +42,9 @@ export function startUpdates(contentDir: string): UpdatesEngine {
     storePath: join(contentDir, UPDATES_FILE_NAME),
     sources: [...sources],
     intervalMs: () => getSettings().updates.intervalMs,
-    publish: (event) => broadcast({ type: event.type, ids: event.ids }),
+    // The shell fans `plugin-event` envelopes out to `usePluginEvent` (and the
+    // doctor refresh reads the inner name): anything else never reaches a tab.
+    publish: (event) => broadcast({ type: 'plugin-event', event: event.type, ids: event.ids }),
   })
   timer = startUpdatesTimer({ engine, settings: () => ({ enabled: getSettings().updates.enabled }) })
   engine.ready.catch((error) => log.error('Updates engine failed to reconcile at boot', error))
@@ -65,6 +68,7 @@ export function stopUpdates(): void {
   engine = null
   unobserve?.()
   unobserve = null
+  disposeApplyWatches()
 }
 
 /** Null until `startUpdates` ran (serverless CLI paths build their own engine). */

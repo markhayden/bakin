@@ -53,6 +53,22 @@ export interface UpgradeOptions {
   previewOnly?: boolean
   /** The preview or commit operation: lanes report fetch → check → the replace stages. */
   op?: OperationContext
+  /**
+   * The identity the operator reviewed (#1007 review r3 #1): the lane refuses
+   * to install anything else — a ref that moved upstream, a republished
+   * artifact — even when the manifest (and so the consent token) is unchanged.
+   */
+  expected?: { version?: string; sha?: string; digest?: string }
+}
+
+/** Refuse a candidate that is not the reviewed one. Fields the caller did not review (undefined) are not compared. */
+export function assertUpgradeTarget(id: string, expected: UpgradeOptions['expected'], candidate: { version?: string; sha?: string; digest?: string }): void {
+  if (!expected) return
+  const drift: string[] = []
+  if (expected.version !== undefined && candidate.version !== undefined && expected.version !== candidate.version) drift.push(`version ${candidate.version} (reviewed ${expected.version})`)
+  if (expected.sha !== undefined && candidate.sha !== undefined && expected.sha !== candidate.sha) drift.push(`commit ${candidate.sha.slice(0, 7)} (reviewed ${expected.sha.slice(0, 7)})`)
+  if (expected.digest !== undefined && candidate.digest !== undefined && expected.digest !== candidate.digest) drift.push(`artifact ${candidate.digest.slice(0, 12)} (reviewed ${expected.digest.slice(0, 12)})`)
+  if (drift.length > 0) throw new UpgradeRefusedError(`${id}: the upgrade target changed since it was reviewed — ${drift.join(', ')}. Check for updates and apply again.`)
 }
 
 export interface UpgradeResult {
