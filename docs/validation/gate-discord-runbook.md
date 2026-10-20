@@ -29,9 +29,9 @@ Spec + acceptance criteria: `SPEC.md` (US1–US7). Plan: `tasks/gate-discord/pla
    Discord ids as ambiguous ("for channels use channel:<id>"), which breaks
    the watchdog's gate alert and anything using the synthesized `general`
    alias.
-3. **Workflows plugin settings** (`~/.bakin/plugin-settings/workflows.json`):
-   `approvalChannelAlerts: true`, `approvalChannel: "approvals"`,
-   `requireRejectReason: true`.
+3. **Approval settings** (`~/.bakin/settings.json`, edited in Settings →
+   Channels / System & Alerts): `approvals: { channelAlerts: true,
+   channel: "approvals", requireRejectReason: true }`.
 4. **OpenClaw Discord channel** configured with `execApprovals.enabled: true`
    (native buttons need the interactive-approval capability).
 5. **Prompt routing:** where native approval prompts land is decided by
@@ -73,7 +73,7 @@ prompts recorded as `operator confirmation` in the report.
 
 ## Semantics being validated (post-hardening contract)
 
-- `approvalChannel` may be an alias — resolved through
+- `approvals.channel` may be an alias — resolved through
   `notifications.channelAliases` (same resolver as `bakin_exec_post_channel`).
   Resolution failure is an **error** log and no delivery; the durable approval
   record still exists so rehydration can retry after the config is fixed.

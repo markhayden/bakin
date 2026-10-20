@@ -41,9 +41,9 @@ gate-discord runbook config:
 The `discord:channel:` prefix on the approvals alias is REQUIRED — bare ids
 fall back to approver DMs (`.claude/knowledge/workflow-approvals.md`).
 
-`plugin-settings/workflows.json`:
+`settings.json` (Settings → Channels / System & Alerts):
 ```json
-{ "approvalChannelAlerts": true, "approvalChannel": "approvals", "requireRejectReason": true }
+{ "approvals": { "channelAlerts": true, "channel": "approvals", "requireRejectReason": true } }
 ```
 
 **Restart `bun run instance dev` after writing these files directly** — the

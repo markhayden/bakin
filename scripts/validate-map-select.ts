@@ -28,6 +28,7 @@ import { readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { createInterface } from 'readline/promises'
 import { getContentDir } from '../packages/core/src/content-dir'
+import type { StoredApprovalResponse } from '../packages/core/src/approvals/types'
 import { liveServerBaseUrl } from '../src/core/server-lock'
 
 // BAKIN_URL, else THIS home's live server.lock — never a guess at :3737 (these
@@ -59,7 +60,7 @@ interface ApprovalRecord {
   status: string
   owner: { taskId?: string; stepId?: string }
   deliveries: Array<{ channelId: string; ref: string }>
-  response?: { actor?: { source?: string } }
+  response?: StoredApprovalResponse
   createdAt: string
 }
 interface AssetManifest {
@@ -227,8 +228,11 @@ async function scenarioHappy(agent: string): Promise<void> {
     return i?.status === 'complete' ? i : null
   })
   const approval = latestApproval(taskId, 'selection-gate', 'approved')
-  record('gate', 'selection approval recorded with source=channel',
-    approval?.response?.actor?.source === 'channel', JSON.stringify(approval?.response?.actor))
+  // A channel decision is vouched for by its provider (#898): Discord, a
+  // channel-user actor — never operator-declared.
+  const provenance = approval?.response?.provenance
+  record('gate', 'selection approval recorded with provider provenance (discord / channel-user)',
+    provenance?.channel === 'discord' && provenance?.actor?.kind === 'channel-user', JSON.stringify(provenance))
   record('complete', 'workflow ran to completion', done.status === 'complete')
 }
 
