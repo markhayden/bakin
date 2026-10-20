@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { TriangleAlert, RefreshCw } from 'lucide-react'
 import { ChartExplainer, Sparkline } from '@makinbakin/sdk/charts'
-import { usePluginEvent, useJsonFetch, useQueryState } from '@makinbakin/sdk/hooks'
+import { usePluginEvent, useJsonFetch, useQueryState, useKeyedState } from '@makinbakin/sdk/hooks'
 import { DisclosurePanel, Grid, Inline, Panel, Section, Stack } from '@makinbakin/sdk/layout'
 import {
   KeyValue,
@@ -203,12 +203,18 @@ interface ReceiptPayload {
 }
 
 function DriftPanel({ agentId }: { agentId: string }) {
-  const [scan, setScan] = useState<ScanPayload | null>(null)
-  const [receipt, setReceipt] = useState<ReceiptPayload['receipt'] | null>(null)
-  const [loading, setLoading] = useState(true)
   const [retryNonce, setRetryNonce] = useState(0)
+  // The scan belongs to one (agent, attempt) (#966b): another agent or a retry
+  // starts loading in the same render; the effect only reads.
+  const scanKey = `${agentId}\u0000${retryNonce}`
+  const [scan, setScan] = useKeyedState<ScanPayload | null>(scanKey, () => null)
+  const [receipt, setReceipt] = useKeyedState<ReceiptPayload['receipt'] | null>(scanKey, () => null)
+  const [loading, setLoading] = useKeyedState(scanKey, () => true)
   // Sync runs as an operation (#895), followed live — no request deadline.
-  const sync = usePackageOperation()
+  // A finished sync rescans (its settle event), so Drift shows what the sync left behind.
+  const sync = usePackageOperation({
+    onSettle: (settle) => { if (settle.result?.httpStatus === 200) setRetryNonce((nonce) => nonce + 1) },
+  })
   const syncing = sync.busy
 
   useEffect(() => {
@@ -217,10 +223,6 @@ function DriftPanel({ agentId }: { agentId: string }) {
     let completed = false
     let scanBody: ScanPayload | null = null
     let receiptBody: ReceiptPayload | null = null
-
-    setLoading(true)
-    setScan(null)
-    setReceipt(null)
 
     const requests = Promise.allSettled([
       getJson<ScanPayload>(
@@ -256,18 +258,15 @@ function DriftPanel({ agentId }: { agentId: string }) {
       globalThis.clearTimeout(timeout)
       controller.abort()
     }
-  }, [agentId, retryNonce])
+  }, [agentId, retryNonce, setLoading, setReceipt, setScan])
 
-  const resetSync = sync.reset
-  useEffect(() => {
-    resetSync()
-  }, [agentId, resetSync])
-
+  // Another agent drops the previous sync in the same render it changes.
+  const [syncFor, setSyncFor] = useState(agentId)
+  if (syncFor !== agentId) {
+    setSyncFor(agentId)
+    sync.reset()
+  }
   const syncResult = sync.result
-  useEffect(() => {
-    // A finished sync rescans, so Drift shows what the sync left behind.
-    if (syncResult?.httpStatus === 200) setRetryNonce((nonce) => nonce + 1)
-  }, [syncResult])
 
   const syncError = useMemo(() => {
     if (sync.error) return sync.error
@@ -715,7 +714,8 @@ const LIVE_ACTIVITY_TTL_MS = 45_000
  * below stays ledger + audit).
  */
 function useAgentLiveActivity(agentId: string): { label: string; ts: number } | null {
-  const [chip, setChip] = useState<{ label: string; ts: number } | null>(null)
+  // The chip belongs to one agent (#966b).
+  const [chip, setChip] = useKeyedState<{ label: string; ts: number } | null>(agentId, () => null)
 
   usePluginEvent('turn-activity', (payload) => {
     if (payload.agentId !== agentId) return
@@ -738,9 +738,7 @@ function useAgentLiveActivity(agentId: string): { label: string; ts: number } | 
       setChip((prev) => (prev && Date.now() - prev.ts >= LIVE_ACTIVITY_TTL_MS ? null : prev))
     }, LIVE_ACTIVITY_TTL_MS + 500)
     return () => clearTimeout(timer)
-  }, [chip])
-
-  useEffect(() => { setChip(null) }, [agentId])
+  }, [chip, setChip])
 
   return chip
 }
@@ -754,10 +752,13 @@ function TimelinePanel({ agentId }: { agentId: string }) {
   const [windowParam, setWindowParam] = useQueryState('activity_window', '24h')
   const window: TimelineWindow = windowParam === '7d' ? '7d' : '24h'
   const [pageParam, setPageParam] = useQueryState('activityPage', '1')
-  const [events, setEvents] = useState<TimelineEventView[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [retryNonce, setRetryNonce] = useState(0)
+  // The timeline belongs to one (agent, window, attempt) (#966b): it starts
+  // loading in the same render any of them changes; the effect only reads.
+  const timelineKey = `${agentId}\u0000${window}\u0000${retryNonce}`
+  const [events, setEvents] = useKeyedState<TimelineEventView[]>(timelineKey, () => [])
+  const [loading, setLoading] = useKeyedState(timelineKey, () => true)
+  const [error, setError] = useKeyedState<string | null>(timelineKey, () => null)
   const live = useAgentLiveActivity(agentId)
   const pageSize = 10
   const activityItems = useMemo(() => groupTimelineActivity(events), [events])
@@ -773,8 +774,6 @@ function TimelinePanel({ agentId }: { agentId: string }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true)
-    setError(null)
     const timeout = globalThis.setTimeout(() => {
       controller.abort()
       setEvents([])
@@ -807,7 +806,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
       globalThis.clearTimeout(timeout)
       controller.abort()
     }
-  }, [agentId, window, retryNonce])
+  }, [agentId, window, retryNonce, setError, setEvents, setLoading])
 
   return (
     <DiagnosticsSection

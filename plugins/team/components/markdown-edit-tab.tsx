@@ -8,6 +8,7 @@
  * presentation.
  */
 import { useCallback, useEffect, useState } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import { Pencil } from 'lucide-react'
 import { MarkdownEditor } from '@makinbakin/sdk/content'
 import { Section, Stack } from '@makinbakin/sdk/layout'
@@ -22,31 +23,27 @@ export interface MarkdownEditTabProps {
 }
 
 export function MarkdownEditTab({ agentId, filename, initialContent }: MarkdownEditTabProps) {
-  const [editing, setEditing] = useState(false)
-  const [content, setContent] = useState(initialContent ?? '')
-  const [draft, setDraft] = useState('')
+  // The editor belongs to one (agent, file, loaded content) (#966b): another
+  // file or a reload re-seeds it in the same render.
+  const seed = `${agentId}\u0000${filename}\u0000${initialContent ?? ''}`
+  const [editing, setEditing] = useKeyedState(seed, () => false)
+  const [content, setContent] = useKeyedState(seed, () => initialContent ?? '')
+  const [draft, setDraft] = useKeyedState(seed, () => '')
   const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | undefined>()
+  const [saveError, setSaveError] = useKeyedState<string | undefined>(seed, () => undefined)
   const dirty = editing && draft !== content
-
-  useEffect(() => {
-    setContent(initialContent ?? '')
-    setEditing(false)
-    setDraft('')
-    setSaveError(undefined)
-  }, [initialContent, agentId, filename])
 
   const handleStartEdit = useCallback(() => {
     setDraft(content)
     setEditing(true)
     setSaveError(undefined)
-  }, [content])
+  }, [content, setDraft, setEditing, setSaveError])
 
   const handleCancel = useCallback(() => {
     setEditing(false)
     setDraft('')
     setSaveError(undefined)
-  }, [])
+  }, [setDraft, setEditing, setSaveError])
 
   const handleSave = useCallback(async () => {
     if (!dirty) return
@@ -70,7 +67,7 @@ export function MarkdownEditTab({ agentId, filename, initialContent }: MarkdownE
     } finally {
       setSaving(false)
     }
-  }, [agentId, filename, draft, dirty])
+  }, [agentId, filename, draft, dirty, setContent, setDraft, setEditing, setSaveError])
 
   useEffect(() => {
     if (!editing) return

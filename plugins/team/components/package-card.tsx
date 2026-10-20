@@ -6,7 +6,7 @@
  * import — overview-tab.tsx needs PackageCardBody, and
  * agent-detail.tsx already needs OverviewTab.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Info, RefreshCw, Trash } from 'lucide-react'
 import {
   Alert,
@@ -107,9 +107,74 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
 
   // Sync and remove run as operations (#895): the dialog follows them live and
   // the route's old answer arrives as the operation result.
-  const syncOp = usePackageOperation()
-  const removeOp = usePackageOperation()
   const removeDeletesAgent = useRef(false)
+  const syncOp = usePackageOperation({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) { setActionError(settle.error); return }
+      const settled = settle.result
+      const body = (settled.body ?? {}) as Record<string, unknown>
+      if (settled.httpStatus === 409 && body.migrationRequired) {
+        setActionError('One-time block migration required — run `bakin agents sync` and confirm, or use the Health page Repair flow.')
+        return
+      }
+      if (settled.httpStatus !== 200 || body.ok === false) {
+        setActionError(typeof body.error === 'string' ? body.error : 'Agent sync failed.')
+        return
+      }
+      const receipt = (body.receipt ?? {}) as {
+        blocks?: Array<{ action: string; file: string }>
+        skipped?: unknown[]
+        package?: { changed?: boolean; versionBefore?: string; versionAfter?: string }
+        verification?: { status?: string }
+      }
+      const recomposed = (receipt.blocks ?? []).filter((b) => b.action === 'recomposed').map((b) => b.file)
+      const skipped = receipt.skipped ?? []
+      const parts = [
+        receipt.package?.changed
+          ? `Updated ${receipt.package.versionBefore} → ${receipt.package.versionAfter}.`
+          : 'Already at the latest source.',
+        recomposed.length > 0 ? `Recomposed: ${recomposed.join(', ')}.` : 'All blocks current.',
+        skipped.length > 0 ? `${skipped.length} user-edited file(s) preserved (reclaim to overwrite).` : null,
+        `Verification: ${receipt.verification?.status ?? 'unknown'}.`,
+      ].filter(Boolean)
+      void refreshPackageStates()
+      // Sync succeeded: surface the receipt as a toast and auto-close the
+      // dialog. Errors keep the dialog open (actionError is shown inline).
+      toast(parts.join(' '), 'success')
+      setUpdateOpen(false)
+      syncOp.reset()
+    },
+  })
+  const removeOp = usePackageOperation({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) { setActionError(settle.error); return }
+      const settled = settle.result
+      const deleteAgent = removeDeletesAgent.current
+      const body = (settled.body ?? {}) as Record<string, unknown>
+      if (settled.httpStatus !== 200 || body.ok === false) {
+        setActionError(typeof body.error === 'string' ? body.error : 'Agent package removal failed.')
+        return
+      }
+      const result = body.result && typeof body.result === 'object'
+        ? body.result as { deletedAgent?: boolean; deleteAgentError?: string }
+        : null
+      if (deleteAgent && result?.deletedAgent !== true) {
+        const detail = result?.deleteAgentError ? ` ${result.deleteAgentError}` : ''
+        setActionError(`Agent package was orphaned, but the OpenClaw agent was not deleted.${detail}`)
+        void refreshPackageStates()
+        void loadAgents()
+        return
+      }
+      if (deleteAgent) {
+        void loadAgents()
+        setRemoveOpen(false)
+        router.push('/team')
+      } else {
+        setActionMessage('Agent orphaned.')
+        void refreshPackageStates()
+      }
+    },
+  })
   const actionBusy = syncOp.busy || removeOp.busy
 
   function syncPackage() {
@@ -133,80 +198,6 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
     }))
   }
 
-  useEffect(() => {
-    if (syncOp.error) setActionError(syncOp.error)
-  }, [syncOp.error])
-
-  const syncResult = syncOp.result
-  const resetSync = syncOp.reset
-  useEffect(() => {
-    const settled = syncResult
-    if (!settled) return
-    const body = (settled.body ?? {}) as Record<string, unknown>
-    if (settled.httpStatus === 409 && body.migrationRequired) {
-      setActionError('One-time block migration required — run `bakin agents sync` and confirm, or use the Health page Repair flow.')
-      return
-    }
-    if (settled.httpStatus !== 200 || body.ok === false) {
-      setActionError(typeof body.error === 'string' ? body.error : 'Agent sync failed.')
-      return
-    }
-    const receipt = (body.receipt ?? {}) as {
-      blocks?: Array<{ action: string; file: string }>
-      skipped?: unknown[]
-      package?: { changed?: boolean; versionBefore?: string; versionAfter?: string }
-      verification?: { status?: string }
-    }
-    const recomposed = (receipt.blocks ?? []).filter((b) => b.action === 'recomposed').map((b) => b.file)
-    const skipped = receipt.skipped ?? []
-    const parts = [
-      receipt.package?.changed
-        ? `Updated ${receipt.package.versionBefore} → ${receipt.package.versionAfter}.`
-        : 'Already at the latest source.',
-      recomposed.length > 0 ? `Recomposed: ${recomposed.join(', ')}.` : 'All blocks current.',
-      skipped.length > 0 ? `${skipped.length} user-edited file(s) preserved (reclaim to overwrite).` : null,
-      `Verification: ${receipt.verification?.status ?? 'unknown'}.`,
-    ].filter(Boolean)
-    void refreshPackageStates()
-    // Sync succeeded: surface the receipt as a toast and auto-close the
-    // dialog. Errors keep the dialog open (actionError is shown inline).
-    toast(parts.join(' '), 'success')
-    setUpdateOpen(false)
-    resetSync()
-  }, [syncResult, resetSync, refreshPackageStates])
-
-  useEffect(() => {
-    if (removeOp.error) setActionError(removeOp.error)
-  }, [removeOp.error])
-
-  useEffect(() => {
-    const settled = removeOp.result
-    if (!settled) return
-    const deleteAgent = removeDeletesAgent.current
-    const body = (settled.body ?? {}) as Record<string, unknown>
-    if (settled.httpStatus !== 200 || body.ok === false) {
-      setActionError(typeof body.error === 'string' ? body.error : 'Agent package removal failed.')
-      return
-    }
-    const result = body.result && typeof body.result === 'object'
-      ? body.result as { deletedAgent?: boolean; deleteAgentError?: string }
-      : null
-    if (deleteAgent && result?.deletedAgent !== true) {
-      const detail = result?.deleteAgentError ? ` ${result.deleteAgentError}` : ''
-      setActionError(`Agent package was orphaned, but the OpenClaw agent was not deleted.${detail}`)
-      void refreshPackageStates()
-      void loadAgents()
-      return
-    }
-    if (deleteAgent) {
-      void loadAgents()
-      setRemoveOpen(false)
-      router.push('/team')
-    } else {
-      setActionMessage('Agent orphaned.')
-      void refreshPackageStates()
-    }
-  }, [removeOp.result, refreshPackageStates, loadAgents, router])
 
   // Main agent is the user's persona — adopting/replacing it doesn't make
   // sense. Show a different framing instead of the Adopt button.

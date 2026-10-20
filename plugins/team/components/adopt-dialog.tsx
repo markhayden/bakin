@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { OperationProgress } from '@makinbakin/sdk/patterns'
 import {
   Alert,
@@ -42,7 +42,21 @@ export function AdoptDialog({ open, onOpenChange, agentId, onAdopted }: AdoptDia
   const [source, setSource] = useState('')
   const [error, setError] = useState<string | null>(null)
   // The adopt is an install operation (#895), followed live in the dialog.
-  const install = usePackageOperation<{ ok: boolean; error?: string }>()
+  // The settle is the operation's event (#966b).
+  const install = usePackageOperation<{ ok: boolean; error?: string }>({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) return // shown through `install.error`
+      const settled = settle.result
+      if (settled.httpStatus !== 200 || !settled.body?.ok) {
+        setError(settled.body?.error ?? `HTTP ${settled.httpStatus}`)
+        return
+      }
+      onAdopted?.()
+      onOpenChange(false)
+      setSource('')
+      install.reset()
+    },
+  })
   const submitting = install.busy
 
   const handleSubmit = async (e: FormEvent) => {
@@ -61,20 +75,6 @@ export function AdoptDialog({ open, onOpenChange, agentId, onAdopted }: AdoptDia
       }),
     }))
   }
-
-  const settled = install.result
-  const resetInstall = install.reset
-  useEffect(() => {
-    if (!settled) return
-    if (settled.httpStatus !== 200 || !settled.body?.ok) {
-      setError(settled.body?.error ?? `HTTP ${settled.httpStatus}`)
-      return
-    }
-    onAdopted?.()
-    onOpenChange(false)
-    setSource('')
-    resetInstall()
-  }, [settled, onAdopted, onOpenChange, resetInstall])
 
   const shownError = error ?? install.error
 
