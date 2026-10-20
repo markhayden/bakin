@@ -63,28 +63,34 @@ describe('bakin runtime binary dispatch', () => {
   })
 
   it('renders binary update failures with the shared TUI when stdout is a TTY', async () => {
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 500 } as Response)
-    const { dispatchCli } = await import('../../src/core/cli')
+    // No server in this home: the update runs in-process as the self-update
+    // operation; the release lookup fails and the failure is the card.
+    await withTempBakinHome('bakin-test-dispatch-update-', async () => {
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 500 } as Response)
+      const { dispatchCli } = await import('../../src/core/cli')
 
-    const result = await dispatchCli(['bun', 'bakin', 'update'])
+      const result = await dispatchCli(['bun', 'bakin', 'update'])
 
-    expect(result).toEqual({ startServer: false, exitCode: 1 })
-    expect(output()).toContain('Command failed  bakin update')
-    expect(output()).toContain('Could not fetch release info: HTTP 500')
-    expect(output()).toContain('UPDATE_FAILED')
-    expect(errorOutput()).toBe('')
+      expect(result).toEqual({ startServer: false, exitCode: 1 })
+      expect(output()).toContain('Command failed  bakin update')
+      expect(output()).toContain('Could not fetch release info: HTTP 500')
+      expect(output()).toContain('UPDATE_FAILED')
+      expect(errorOutput()).toBe('')
+    })
   })
 
   it('keeps binary update failures plain outside TTY', async () => {
     setStdoutIsTTY(false)
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 500 } as Response)
-    const { dispatchCli } = await import('../../src/core/cli')
+    await withTempBakinHome('bakin-test-dispatch-update-plain-', async () => {
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 500 } as Response)
+      const { dispatchCli } = await import('../../src/core/cli')
 
-    const result = await dispatchCli(['bun', 'bakin', 'update'])
+      const result = await dispatchCli(['bun', 'bakin', 'update'])
 
-    expect(result).toEqual({ startServer: false, exitCode: 1 })
-    expect(output()).toContain('Fetching latest release')
-    expect(errorOutput()).toContain('Could not fetch release info: HTTP 500')
+      expect(result).toEqual({ startServer: false, exitCode: 1 })
+      expect(output()).toContain('Fetching latest release')
+      expect(errorOutput()).toContain('Could not fetch release info: HTTP 500')
+    })
   })
 
   it('delegates status to the shared source CLI TUI', async () => {

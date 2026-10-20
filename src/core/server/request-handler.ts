@@ -72,8 +72,6 @@ import * as versionRoute from '../../../packages/host/src/api/version'
 import * as serverShutdownRoute from '../../../packages/host/src/api/server/shutdown'
 import * as docsRoute from '../../../packages/host/src/api/docs'
 import * as updatesRoute from '../../../packages/host/src/api/updates'
-import * as updateStatusRoute from '../../../packages/host/src/api/update/status'
-import * as updateApplyRoute from '../../../packages/host/src/api/update/apply'
 import { handleDevSse } from '../../../packages/host/src/api/dev/events'
 import * as devNotifyRoute from '../../../packages/host/src/api/dev/notify'
 import { serveHostClient } from '../../../packages/host/src/api/_static'
@@ -160,15 +158,6 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     }
     if (req.method === 'POST' && updatesRoute.applyIdFromPath(url.pathname)) {
       dispatchWebHandler(req, res, updatesRoute.apply)
-      return
-    }
-
-    if (url.pathname === '/api/update/status' && req.method === 'GET') {
-      dispatchWebHandler(req, res, updateStatusRoute.get)
-      return
-    }
-    if (url.pathname === '/api/update/apply' && req.method === 'POST') {
-      dispatchWebHandler(req, res, updateApplyRoute.post)
       return
     }
 

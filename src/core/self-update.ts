@@ -79,12 +79,27 @@ export interface SelfUpdateStatusOptions {
   now?: () => Date
 }
 
+export type SelfUpdateStage = 'download' | 'verify' | 'extract' | 'replace'
+
 export interface SelfUpdateOptions {
   execPath?: string
   platform?: string
   arch?: string
   fetchRelease?: (reporter: Pick<SelfUpdateReporter, 'log'>) => Promise<GithubRelease>
   downloadTo?: (url: string, dest: string) => Promise<void>
+  /**
+   * Staging files live at `<exec>.<suffix>.*` (#1007 D7.11): the operation
+   * keys this by its id so no two attempts ever share a path. Default `new`.
+   */
+  stagingSuffix?: string
+  /** Progress for an operation wrapper; never affects the outcome. */
+  onStage?: (stage: SelfUpdateStage) => void
+  /**
+   * Runs after the new binary is verified and extracted, BEFORE the swap —
+   * the operation proves the restart path here. A throw aborts the update
+   * with the staged files cleaned up and the running binary untouched.
+   */
+  beforeReplace?: (staged: { release: GithubRelease; newPath: string }) => Promise<void>
 }
 
 async function fetchGithubJson<T>(url: string): Promise<T> {
@@ -269,13 +284,15 @@ export async function selfUpdate(
   }
 
   const currentPath = options.execPath ?? process.execPath
-  const newPath = `${currentPath}.new`
-  const archivePath = `${currentPath}.${archiveName}`
-  const sumsPath = `${currentPath}.checksums.txt`
+  const suffix = options.stagingSuffix ?? 'new'
+  const newPath = `${currentPath}.${suffix}`
+  const archivePath = `${currentPath}.${suffix}.${archiveName}`
+  const sumsPath = `${currentPath}.${suffix}.checksums.txt`
   const tempPaths = [newPath, archivePath, sumsPath]
   const download = options.downloadTo ?? downloadTo
 
   try {
+    options.onStage?.('download')
     reporter.log(`Downloading ${archiveAsset.name} (${release.tag_name})...`)
     await download(archiveAsset.browser_download_url, archivePath)
     await download(sumAsset.browser_download_url, sumsPath)
@@ -285,6 +302,7 @@ export async function selfUpdate(
     return 1
   }
 
+  options.onStage?.('verify')
   let sums: Map<string, string>
   try {
     sums = parseChecksums(readFileSync(sumsPath, 'utf-8'))
@@ -318,6 +336,7 @@ export async function selfUpdate(
     return 1
   }
 
+  options.onStage?.('extract')
   try {
     writeFileSync(newPath, extractBakinFromTarGz(readFileSync(archivePath)))
   } catch (err) {
@@ -326,6 +345,16 @@ export async function selfUpdate(
     return 1
   }
 
+  if (options.beforeReplace) {
+    try {
+      await options.beforeReplace({ release, newPath })
+    } catch (err) {
+      cleanupFiles(tempPaths)
+      reporter.error(`Not replacing the binary: ${err instanceof Error ? err.message : String(err)}`)
+      return 1
+    }
+  }
+  options.onStage?.('replace')
   try {
     chmodSync(newPath, 0o755)
     renameSync(newPath, currentPath)

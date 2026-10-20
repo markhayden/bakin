@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { readdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -122,6 +122,67 @@ describe('selfUpdate', () => {
       expect(errors).toEqual([])
       expect(logs).toContain('Downloading bakin-linux-x64.tar.gz (v0.2.0)...')
       expect(logs).toContain('Updated to v0.2.0. Restart to run the new version.')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('selfUpdate staging + the pre-swap hook (#1007 D7.11)', () => {
+  function fixture() {
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-self-update-'))
+    const execPath = join(dir, 'bakin')
+    const newBinary = Buffer.from('#!/usr/bin/env bash\necho 0.2.0\n')
+    const archive = createBakinTarGz(newBinary)
+    const checksums = `${sha256(archive)}  bakin-linux-x64.tar.gz\n`
+    writeFileSync(execPath, 'old-binary')
+    const options = {
+      platform: 'linux', arch: 'x64', execPath,
+      fetchRelease: async () => ({ tag_name: 'v0.2.0', draft: false, prerelease: false, assets: [
+        { name: 'bakin-linux-x64.tar.gz', browser_download_url: 'https://example.test/archive' },
+        { name: 'checksums.txt', browser_download_url: 'https://example.test/checksums' },
+      ] }),
+      downloadTo: async (url: string, dest: string) => { writeFileSync(dest, url.endsWith('/archive') ? archive : checksums) },
+    }
+    return { dir, execPath, newBinary, options }
+  }
+
+  it('stages under <exec>.<suffix>.* so two attempts never share a path, and reports each stage in order', async () => {
+    const { dir, execPath, newBinary, options } = fixture()
+    const stages: string[] = []
+    const seen: string[] = []
+    try {
+      const exitCode = await selfUpdate({ log: () => {}, error: () => {} }, {
+        ...options,
+        stagingSuffix: 'op-123.new',
+        onStage: (stage) => stages.push(stage),
+        beforeReplace: async ({ newPath }) => { seen.push(newPath); seen.push(...readdirSync(dir).sort()) },
+      })
+      expect(exitCode).toBe(0)
+      expect(stages).toEqual(['download', 'verify', 'extract', 'replace'])
+      expect(seen[0]).toBe(`${execPath}.op-123.new`)
+      // While the hook ran, every staged file carried the suffix beside the untouched binary.
+      expect(seen.slice(1)).toEqual(['bakin', 'bakin.op-123.new', 'bakin.op-123.new.bakin-linux-x64.tar.gz', 'bakin.op-123.new.checksums.txt'])
+      expect(readFileSync(execPath, 'utf-8')).toBe(newBinary.toString('utf-8'))
+      expect(readdirSync(dir)).toEqual(['bakin'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('a throwing pre-swap hook aborts with the binary untouched and the staged files gone', async () => {
+    const { dir, execPath, options } = fixture()
+    const errors: string[] = []
+    try {
+      const exitCode = await selfUpdate({ log: () => {}, error: (m) => errors.push(m) }, {
+        ...options,
+        stagingSuffix: 'op-9.new',
+        beforeReplace: async () => { throw new Error('the restart cannot be scheduled') },
+      })
+      expect(exitCode).toBe(1)
+      expect(readFileSync(execPath, 'utf-8')).toBe('old-binary')
+      expect(readdirSync(dir)).toEqual(['bakin'])
+      expect(errors).toEqual(['Not replacing the binary: the restart cannot be scheduled'])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

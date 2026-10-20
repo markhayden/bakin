@@ -26,7 +26,7 @@ function resolve(
 describe('REST activity classification', () => {
   it('marks host monitoring and shell snapshot reads as routine', () => {
     expect(classify('/api/agents/health')).toBe('routine')
-    expect(classify('/api/update/status')).toBe('routine')
+    expect(classify('/api/updates')).toBe('routine')
     expect(classify('/api/dispatch')).toBe('routine')
     expect(classify('/api/plugins/manifest')).toBe('routine')
     expect(classify('/api/agents/pixel')).toBe('routine')
@@ -119,7 +119,7 @@ describe('REST activity classification', () => {
       '/api/agent-packages',
       '/api/plugins/manifest',
       '/api/plugins/:pluginId/assets/:path',
-      '/api/update/status',
+      '/api/updates',
     ]) {
       const route = coreRoutes.find((candidate) => (
         candidate.method === 'GET' && candidate.path === path

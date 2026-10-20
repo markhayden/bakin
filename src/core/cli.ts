@@ -181,63 +181,44 @@ async function checkOnboardedBeforeStart(args: string[]): Promise<number | null>
   return 1
 }
 
+/**
+ * `bakin update` (#1007 D7.11, R3′/R3″): with this home's server running, the
+ * update goes THROUGH it — the apply service starts the self-update
+ * operation, the CLI follows it and runs the explicit verification; it never
+ * replaces the binary beside a live server. A server that holds the lock but
+ * is not listening yet is waited for (bounded), never bypassed. With no
+ * server at all, the same operation runs in-process under install-state,
+ * re-checking liveness once the resource is held.
+ */
 async function cmdUpdate(): Promise<number> {
-  // Use a variable specifier so TypeScript doesn't require this optional
-  // implementation at build time.
-  let mod: { selfUpdate: (reporter?: {
-    log: (message: string) => void
-    error: (message: string) => void
-  }) => Promise<number> }
-  try {
-    mod = await import(/* @vite-ignore */ './self-update' as string) as typeof mod
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err)
-    await printCommandFailure({
-      command: 'bakin update',
-      message: 'update is not available.',
-      detail,
-      code: 'UPDATE_UNAVAILABLE',
-    }, [`update is not available: ${detail}`])
+  const events: string[] = []
+  const echo = (line: string): void => { events.push(line); if (!process.stdout.isTTY) console.log(line) }
+  const fail = async (message: string, detail: string, code: string): Promise<number> => {
+    await printCommandFailure({ command: 'bakin update', message, detail, code }, [`${message} ${detail}`.trim()])
     return 1
   }
-
-  if (!process.stdout.isTTY) return await mod.selfUpdate()
-
-  const events: Array<{ level: 'info' | 'error'; message: string }> = []
-  const reporter = {
-    log: (message: string) => events.push({ level: 'info' as const, message }),
-    error: (message: string) => events.push({ level: 'error' as const, message }),
-  }
-
+  let mod: typeof import('./updates/self-update-cli')
   try {
-    const exitCode = await mod.selfUpdate(reporter)
-    const detail = events.map(event => event.message).join('\n')
-    if (exitCode === 0) {
-      await printRuntimeAction({
-        action: 'updated',
-        target: 'Bakin binary',
-        result: { ok: true, status: 'ok' },
-        message: events.at(-1)?.message ?? 'Bakin update completed.',
-        detail,
-      })
-    } else {
-      await printCommandFailure({
-        command: 'bakin update',
-        message: events.findLast(event => event.level === 'error')?.message ?? 'Bakin update failed.',
-        detail,
-        code: 'UPDATE_FAILED',
-      })
+    mod = await import(/* @vite-ignore */ './updates/self-update-cli' as string) as typeof mod
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    return fail('update is not available.', detail, 'UPDATE_UNAVAILABLE')
+  }
+  try {
+    const result = await mod.runUpdateCommand({ echo, stdout: process.stdout })
+    switch (result.kind) {
+      case 'current':
+        await printRuntimeAction({ action: 'checked', target: 'Bakin binary', result: { ok: true, status: 'ok' }, message: result.message, detail: events.join('\n') })
+        return 0
+      case 'verified':
+        await printRuntimeAction({ action: 'updated', target: 'Bakin binary', result: { ok: true, status: 'ok' }, message: result.message, detail: events.join('\n') })
+        return 0
+      case 'failed':
+        return fail(result.message, [...events, result.detail ?? ''].filter(Boolean).join('\n'), result.code)
     }
-    return exitCode
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
-    await printCommandFailure({
-      command: 'bakin update',
-      message: 'Bakin update failed.',
-      detail: [...events.map(event => event.message), detail].join('\n'),
-      code: 'UPDATE_FAILED',
-    })
-    return 1
+    return fail('Bakin update failed.', [...events, detail].join('\n'), 'UPDATE_FAILED')
   }
 }
 

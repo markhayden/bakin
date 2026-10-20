@@ -103,6 +103,8 @@ export interface ApplyDeps {
   reindex: (op: OperationContext) => Promise<ReindexReport>
   reindexStage: () => MaybeAsync<OperationStagePlan>
   pluginUpgrade: (pluginId: string, body: { accepted?: boolean; consentToken?: string }, origin: OperationOrigin) => MaybeAsync<StartOperationInput<Record<string, unknown>>>
+  /** The Bakin self-update as an operation (D7.11). */
+  selfUpdateOperation: (origin: OperationOrigin) => MaybeAsync<StartOperationInput<Record<string, unknown>>>
 }
 
 /** The health resource an update subject is about — how incidents point at it (#385 structured resources). */
@@ -260,6 +262,8 @@ export async function confirmApply(id: string, input: ConfirmApplyInput, deps: A
       return { started: await deps.startOperation(await searchEngineReinstallOperation(deps, id, input.origin)) }
     case 'search-models':
       return { started: await deps.startOperation(await modelsInstallOperation(deps, id, input.origin)) }
+    case 'bakin':
+      return { started: await deps.startOperation(await deps.selfUpdateOperation(input.origin)) }
     default:
       throw new ApplyError(409, 'unsupported_subject', `"${record.subject.kind}" subjects cannot be applied from here yet.`, { kind: record.subject.kind })
   }
@@ -281,5 +285,20 @@ export function defaultApplyDeps(): ApplyDeps {
     reindex: async (op) => (await import('../search-operations')).runReindex(op, undefined, false),
     reindexStage: async () => (await import('../search-operations')).REINDEX_STAGE,
     pluginUpgrade: async (pluginId, body, origin) => (await import('../../../packages/host/src/api/plugins/upgrade')).pluginUpgradeOperation(pluginId, { pluginId, ...body }, origin),
+    selfUpdateOperation: async (origin) => {
+      const [{ selfUpdateOperation }, { selfUpdate }, { activateServerRestart, prepareServerRestart }, { APP_VERSION }] = await Promise.all([
+        import('./self-update-operation'),
+        import('../self-update'),
+        import('../server-restart'),
+        import('@bakin/core/constants'),
+      ])
+      return selfUpdateOperation(origin, {
+        currentVersion: () => APP_VERSION,
+        execPath: () => process.execPath,
+        selfUpdate,
+        prepareRestart: prepareServerRestart,
+        activateRestart: activateServerRestart,
+      }) as unknown as StartOperationInput<Record<string, unknown>>
+    },
   }
 }

@@ -6,6 +6,7 @@
  * standalone runs we start a detached child that waits for this parent PID to
  * disappear before booting the replacement binary.
  */
+import { accessSync, constants as fsConstants } from 'node:fs'
 import { resolve } from 'node:path'
 import { execFileSync, spawn } from 'node:child_process'
 import { getContentDir } from './content-dir'
@@ -112,10 +113,47 @@ function scheduleStandaloneRestart(delayMs: number): RestartScheduleResult {
   }
 }
 
-export function scheduleServerRestart(delayMs = DEFAULT_RESTART_DELAY_MS): RestartScheduleResult {
+/**
+ * A restart proven possible but NOT armed (#1007 D7.11, P19): the self-update
+ * operation prepares before the binary swap and activates only after it, so
+ * a restart that cannot be scheduled fails the update with the binary
+ * unchanged — never a replaced binary and no handoff.
+ */
+export type PreparedRestart =
+  | { ok: true; strategy: 'launchagent' | 'systemd'; delayMs: number }
+  | { ok: true; strategy: 'standalone-child'; delayMs: number; execPath: string; contentDir: string }
+  | { ok: false; strategy: 'launchagent' | 'systemd' | 'standalone-child'; error: string }
+
+export function prepareServerRestart(delayMs = DEFAULT_RESTART_DELAY_MS, opts: { execPath?: string } = {}): PreparedRestart {
   const serviceStrategy = serviceRestartStrategy()
-  if (serviceStrategy) return scheduleServiceRestart(serviceStrategy, delayMs)
-  return scheduleStandaloneRestart(delayMs)
+  if (serviceStrategy) return { ok: true, strategy: serviceStrategy, delayMs }
+  // Standalone: the successor command is THIS executable in THIS home; both
+  // must resolve now, before anything is swapped.
+  const execPath = opts.execPath ?? process.execPath
+  try {
+    accessSync(execPath, fsConstants.X_OK)
+  } catch (err) {
+    return { ok: false, strategy: 'standalone-child', error: `the server executable ${execPath} is not runnable (${err instanceof Error ? err.message : String(err)})` }
+  }
+  let contentDir: string
+  try {
+    contentDir = resolve(getContentDir())
+  } catch (err) {
+    return { ok: false, strategy: 'standalone-child', error: `the content directory cannot be resolved (${err instanceof Error ? err.message : String(err)})` }
+  }
+  return { ok: true, strategy: 'standalone-child', delayMs, execPath, contentDir }
+}
+
+/** Arm the restart a `prepareServerRestart` proved: the service kick or the detached successor + the parent signal. */
+export function activateServerRestart(prepared: PreparedRestart): RestartScheduleResult {
+  if (!prepared.ok) return { ok: false, strategy: prepared.strategy, restartDelayMs: DEFAULT_RESTART_DELAY_MS, error: prepared.error }
+  if (prepared.strategy !== 'standalone-child') return scheduleServiceRestart(prepared.strategy, prepared.delayMs)
+  return scheduleStandaloneRestart(prepared.delayMs)
+}
+
+/** Prepare + activate in one step — the pre-#1007 contract, kept for callers that have nothing to do in between. */
+export function scheduleServerRestart(delayMs = DEFAULT_RESTART_DELAY_MS): RestartScheduleResult {
+  return activateServerRestart(prepareServerRestart(delayMs))
 }
 
 export async function waitForRestartParentExit(parentPidText: string | undefined): Promise<void> {

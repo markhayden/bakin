@@ -137,6 +137,11 @@ function deps(engine: UpdatesEngine, overrides: Partial<ApplyDeps> = {}): ApplyD
     installComponent: (name) => fakeComponent(name, [{ id: 'download', kind: 'downloading', label: 'Download' }, { id: 'swap', kind: 'installing', label: 'Swap' }], async (_opts, op) => { op.stage('download'); op.stage('swap'); return { name, status: 'installed', message: 'installed', durationMs: 1 } }),
     reindex: async (op) => { op.stage('reindex'); return { ok: true, tables: [] } as never },
     reindexStage: () => ({ id: 'reindex', kind: 'verifying', label: 'Rebuild search tables' }),
+    selfUpdateOperation: (origin) => ({
+      kind: 'updates:self-update', owner: 'core', origin, title: 'Update Bakin', href: '/health', fingerprint: 'updates:self-update', resources: ['install-state'],
+      plan: { stages: [{ id: 'download', kind: 'downloading', label: 'Download' }], pointOfNoReturn: 'download' },
+      run: async () => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: { ok: true } }),
+    }),
     pluginUpgrade: (pluginId, body, origin) => ({
       kind: body.accepted ? 'upgrade' : 'fetch', owner: 'core', origin, title: `upgrade ${pluginId}`, href: '/health',
       fingerprint: `plugins:upgrade:${pluginId}|${body.consentToken ?? 'preview'}`, resources: body.accepted ? ['install-state'] : [],
@@ -295,7 +300,17 @@ describe('confirm without a covering approval — the subject\'s own flow', () =
     expect(started.at(-1)).toMatchObject({ kind: 'upgrade', resources: ['install-state'] })
   })
 
-  it('nothing to apply (current, blocked, unknown) and a manual action are refused; a bakin/gateway subject is not applied from here yet', async () => {
+  it('a bakin subject starts the self-update operation under install-state', async () => {
+    brokenPlugins = []
+    await refresh()
+    const engine = engineWith({ bakin: { ...available('bakin'), action: { kind: 'operation', start: { route: '/api/updates/bakin%3Abakin/apply' }, impact: ['download', 'server-restart'] } } }, 'bakin')
+    await engine.observe('bakin:bakin')
+    const result = await confirmApply('bakin:bakin', { provenance: UI_OPERATOR, origin }, deps(engine))
+    expect(typeof result.started.operationId).toBe('string')
+    expect(started.at(-1)).toMatchObject({ kind: 'updates:self-update', resources: ['install-state'] })
+  })
+
+  it('nothing to apply (current, blocked, unknown) and a manual action are refused; a gateway subject is manual by nature', async () => {
     brokenPlugins = []
     await refresh()
     const engine = engineWith({ current: { installed: { version: '1', display: '1' }, outcome: 'current' }, manual: { ...available('manual'), action: { kind: 'manual', pointer: 'do it by hand' } } })
