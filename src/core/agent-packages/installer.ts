@@ -642,7 +642,6 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     nextLock = addPackage(nextLock, parentLockfileKey, parentEntry)
 
     writeLockfile(nextLock)
-    announceAgentPackagesChanged('installed', agentId)
 
     // ─── 10. Commit staging → final install dirs ──────────────────────────
     for (const dep of resolved) {
@@ -680,6 +679,9 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
       lessonsEnabled: parentEntry.lessonsEnabled ?? [],
       dependencies: resolved.map((r) => `${r.resolvedId}@${r.manifest.version}`),
     }, 'cli')
+
+    // The install is final (staging committed, projections written, audited): only now is the lockfile's new row a fact worth reconciling against (review r3 #4).
+    announceAgentPackagesChanged('installed', agentId)
 
     return {
       packageId: resolvedTopId,
@@ -741,6 +743,8 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     if (originalLock) {
       try {
         writeLockfile(originalLock)
+        // The provisional row was visible between the write and the failure: whoever reconciled against it reconciles again.
+        announceAgentPackagesChanged('restored', agentId)
       } catch (rollbackErr) {
         log.warn('Lockfile rollback during install failure threw', {
           error: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),

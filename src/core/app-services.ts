@@ -142,6 +142,46 @@ export async function createAppServices(): Promise<AppServices> {
   return services
 }
 
+/**
+ * Services for a READ-ONLY in-process path (#1007 B review r3 #1 — the
+ * server-less `--check` verbs): the runtime adapter initialized so roster and
+ * workspace READS work (`initialize()` is write-free by conformance pin — it
+ * only threads the base URL), and nothing else — no secret migration, no
+ * search initialization (antfly provisioning can rewrite service definitions
+ * and start the engine), no health registration, no delivery bridge. Never
+ * for a server, never for an install.
+ */
+export async function createReadOnlyAppServices(): Promise<AppServices> {
+  const settings = getSettings()
+  const contentDir = getContentDir()
+  const { getSharedBakinTaskStore } = await import('./task-store')
+  const runtime = createRuntimeAdapter(settings.runtime.adapter)
+  const onToolActivity = createRuntimeToolUsageRecorder()
+  const recordTurnActivity = createRuntimeTurnUsageRecorder()
+  await runtime.initialize({
+    contentDir,
+    logger: log,
+    // Nothing a read-only path does is an adapter action worth an audit row; initialize() audits nothing by pin.
+    audit: () => {},
+    settings: settings.runtime.settings,
+    getLiveSettings: () => getSettings().runtime.settings,
+    execTools: createRuntimeExecToolProvider(),
+    onToolActivity,
+    onTurnActivity: (event: AdapterTurnActivityEvent): void => { try { onToolActivity.reconcileTurn(event) } finally { recordTurnActivity(event) } },
+    bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
+    getMcpCredential,
+  })
+  const services: AppServices = {
+    runtime,
+    // Constructed, never initialized: a read-only path never searches, and initializing would provision the engine.
+    search: createSearchAdapter(settings.search.adapter),
+    tasks: getSharedBakinTaskStore(),
+  }
+  setAppServices(services)
+  log.info('Read-only app services initialized', { runtime: `${runtime.name}@${runtime.version}` })
+  return services
+}
+
 // Re-exported from the leaf store so `import { getAppServices } from
 // './app-services'` keeps working across the codebase.
 export { getAppServices, maybeGetAppServices, setAppServices }

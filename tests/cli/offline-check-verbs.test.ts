@@ -46,25 +46,33 @@ mock.module('../../src/cli/help', () => ({
 }))
 const inProcess: Array<{ verb: string; id?: string; opts?: unknown }> = []
 mock.module('../../src/core/agent-packages/sync', () => ({
-  syncAgent: mock(async (id: string, opts: unknown) => { inProcess.push({ verb: 'syncAgent', id, opts }); return { checkOnly: true, versionBefore: '1.0.0', versionAfter: '1.1.0', changed: true, verification: { status: 'ok', findings: [] } } }),
-  syncPack: mock(async (id: string, opts: unknown) => { inProcess.push({ verb: 'syncPack', id, opts }); if (id === 'gone@1.0.0') throw new Error('package "gone@1.0.0" is not installed'); return { packageId: id, checkOnly: true, versionBefore: '1.0.0', versionAfter: '1.0.0', changed: false } }),
+  checkAgent: mock(async (id: string, opts: unknown) => { inProcess.push({ verb: 'checkAgent', id, opts }); return { checkOnly: true, versionBefore: '1.0.0', versionAfter: '1.1.0', changed: true, verification: { status: 'ok', findings: [] } } }),
+  checkPack: mock(async (id: string) => { inProcess.push({ verb: 'checkPack', id }); if (id === 'gone@1.0.0') throw new Error('package "gone@1.0.0" is not installed'); return { packageId: id, checkOnly: true, versionBefore: '1.0.0', versionAfter: '1.0.0', changed: false } }),
 }))
 mock.module('../../src/core/agent-packages/agent-state', () => ({
   listAllAgentStates: mock(async () => [{ agentId: 'pixel', state: 'managed' }, { agentId: 'orca', state: 'unmanaged' }, { agentId: 'ghost', state: 'absent' }]),
 }))
-mock.module('../../src/core/app-services', () => ({ maybeGetAppServices: () => ({}), createAppServices: mock(async () => ({})) }))
+const createAppServices = mock(async () => ({}))
+const createReadOnlyAppServices = mock(async () => ({}))
+let services: object | null = {}
+mock.module('../../src/core/app-services', () => ({ maybeGetAppServices: () => services, createAppServices, createReadOnlyAppServices }))
 let pluginPassRuns = 0
 mock.module('../../src/cli/commands/updates', () => ({
-  checkUpdatesInProcess: mock(async (kind: string) => { pluginPassRuns += 1; inProcess.push({ verb: 'checkUpdatesInProcess', id: kind }); return { records: [{ id: 'plugin:notes', outcome: 'update-available', available: { version: '1.1.0', display: '1.1.0' }, observedAt: '2026-10-20T11:00:00.000Z' }], generatedAt: 'now', running: false } }),
+  checkUpdatesInProcess: mock(async (kind: string) => { pluginPassRuns += 1; inProcess.push({ verb: 'checkUpdatesInProcess', id: kind }); return { records: [{ id: 'plugin:notes', outcome: 'update-available', installed: { version: '1.0.0', display: '1.0.0' }, available: { version: '1.1.0', display: '1.1.0' }, observedAt: '2026-10-20T11:00:00.000Z' }], generatedAt: 'now', running: false } }),
 }))
+const lockRow = (version: string) => ({ type: 'github', version, source: 'github:acme/notes', ref: 'main', commitSha: 'a'.repeat(40), installedAt: '2026-10-01T00:00:00.000Z', permissions: [], manifestSha: 'c'.repeat(64) })
 mock.module('@bakin/core/plugins/lockfile', () => ({
-  readPluginLockfile: () => ({ version: 1, plugins: { notes: { type: 'github', version: '1.0.0', source: 'github:acme/notes', ref: 'main', commitSha: 'a'.repeat(40), installedAt: '2026-10-01T00:00:00.000Z', permissions: [], manifestSha: 'c'.repeat(64) } } }),
+  // `upgraded` was upgraded offline to 1.1.0 since the server last observed it at 1.0.0 (review r3 #2).
+  readPluginLockfile: () => ({ version: 1, plugins: { notes: lockRow('1.0.0'), upgraded: lockRow('1.1.0') } }),
 }))
 // Captured BEFORE the mock (live namespace binding): the engine keeps the real helpers, only the file read is scripted.
 import * as realUpdatesStore from '../../src/core/updates/store'
 mock.module('../../src/core/updates/store', () => ({
   ...realUpdatesStore,
-  readUpdatesFile: () => ({ version: 1, records: { 'plugin:notes': { id: 'plugin:notes', outcome: 'current', observedAt: '2026-10-19T11:00:00.000Z' } }, schedule: {}, conditional: {} }),
+  readUpdatesFile: () => ({ version: 1, records: {
+    'plugin:notes': { id: 'plugin:notes', outcome: 'current', observedAt: '2026-10-19T11:00:00.000Z' },
+    'plugin:upgraded': { id: 'plugin:upgraded', outcome: 'update-available', installed: { version: '1.0.0', display: '1.0.0' }, available: { version: '1.1.0', display: '1.1.0' }, observedAt: '2026-10-19T11:00:00.000Z' },
+  }, schedule: {}, conditional: {} }),
 }))
 
 import { run as runAgents } from '../../src/cli/commands/agents'
@@ -98,9 +106,13 @@ const exitCode = async (promise: Promise<unknown>): Promise<string | null> => {
 }
 
 describe('with no server, --check runs in-process', () => {
-  it('agents sync <id> --check asks syncAgent({ check }) directly; without an id every present agent is checked', async () => {
+  it('agents sync <id> --check asks the read-only checkAgent directly; without an id every present agent is checked; services come up READ-ONLY (r3 #1)', async () => {
+    services = null
     await runAgents(['agents', 'sync', 'pixel', '--check'])
-    expect(inProcess).toEqual([{ verb: 'syncAgent', id: 'pixel', opts: { check: true, trigger: 'cli' } }])
+    expect(createReadOnlyAppServices).toHaveBeenCalledTimes(1)
+    expect(createAppServices).not.toHaveBeenCalled()
+    services = {}
+    expect(inProcess).toEqual([{ verb: 'checkAgent', id: 'pixel', opts: { trigger: 'cli' } }])
     expect(printed[0]).toMatchObject({ ok: true, receipt: { checkOnly: true, changed: true } })
     expect(http).toEqual([])
     inProcess.length = 0
@@ -108,9 +120,9 @@ describe('with no server, --check runs in-process', () => {
     expect(inProcess.map((c) => c.id)).toEqual(['pixel', 'orca'])
   })
 
-  it('packages sync <key> --check asks syncPack({ check }); a refused key exits 1 with the error', async () => {
+  it('packages sync <key> --check asks the read-only checkPack; a refused key exits 1 with the error', async () => {
     await runPackages(['packages', 'sync', 'notes@1.0.0', '--check'])
-    expect(inProcess).toEqual([{ verb: 'syncPack', id: 'notes@1.0.0', opts: { check: true } }])
+    expect(inProcess).toEqual([{ verb: 'checkPack', id: 'notes@1.0.0' }])
     expect(printed[0]).toMatchObject({ ok: true, receipt: { checkOnly: true, changed: false } })
     expect(await exitCode(runPackages(['packages', 'sync', 'gone@1.0.0', '--check']))).toBe('exit:1')
     expect(printed[1]).toMatchObject({ ok: false, error: expect.stringContaining('not installed') })
@@ -120,11 +132,19 @@ describe('with no server, --check runs in-process', () => {
     await runPlugins(['plugins', 'list', '--check', '--json'])
     expect(pluginPassRuns).toBe(1)
     expect(inProcess).toEqual([{ verb: 'checkUpdatesInProcess', id: 'plugin' }])
-    expect(printed[0]).toMatchObject({ plugins: [{ id: 'notes', version: '1.0.0', source: 'github', upgradeAvailable: true, updateObservedAt: '2026-10-20T11:00:00.000Z', status: 'unknown' }] })
+    expect(printed[0]).toMatchObject({ plugins: [
+      { id: 'notes', version: '1.0.0', source: 'github', upgradeAvailable: true, updateObservedAt: '2026-10-20T11:00:00.000Z', status: 'unknown' },
+      // The pass produced no record for it: unknown, never "up to date".
+      { id: 'upgraded', version: '1.1.0', upgradeAvailable: false, updateObservedAt: null, status: 'unknown' },
+    ] })
     printed.length = 0
     await runPlugins(['plugins', 'list', '--json'])
     expect(pluginPassRuns).toBe(1)
-    expect(printed[0]).toMatchObject({ plugins: [{ id: 'notes', upgradeAvailable: false, updateObservedAt: '2026-10-19T11:00:00.000Z' }] })
+    expect(printed[0]).toMatchObject({ plugins: [
+      { id: 'notes', upgradeAvailable: false, updateObservedAt: '2026-10-19T11:00:00.000Z' },
+      // The stored record offers the version the lockfile now holds: no answer — never "update available", never fresh.
+      { id: 'upgraded', version: '1.1.0', upgradeAvailable: false, updateObservedAt: null },
+    ] })
     expect(http).toEqual([])
   })
 

@@ -102,9 +102,10 @@ superseded version not yet forgotten) the newest wins
 without its version); the manual action names the EXACT lock key for packs
 (`bakin packages sync notes@1.0.0`) and the agent id for agents. An install
 without `@ref` records an empty lock ref and tracks the remote's DEFAULT
-branch (`git ls-remote --symref HEAD`); `@<sha>` is an immutable commit pin
-(current while the installed commit is the pin, blocked otherwise, never
-asked of `ls-remote`). The lock `ref` is the TRACKING ref (`trackingRefOf`):
+branch (`git ls-remote --symref HEAD`); a ref the remote names NO branch or
+tag for is an immutable commit pin when it is hex (`commitPinOutcome`:
+current while the installed commit is the pin, blocked otherwise) and gone
+otherwise — a branch that merely looks like a sha is still tracked. The lock `ref` is the TRACKING ref (`trackingRefOf`):
 a re-install that fetched a selected commit while tracking the default
 branch keeps the empty ref. Manifest clones ride the 5-minute GitHub
 checkout cache under the SAME spec the updater fetches with (the source as
@@ -425,8 +426,12 @@ through a server is an operator action: `bakin update --as human`; an
   `plugin:`/`package:`/`hub-skill:` records into `updateAvailable`
   (true / false / null = unknown). A record observed for ANOTHER installed
   identity (`updateRecordMatchesInstalled` — a reinstall the engine has not
-  reconciled yet) is never attached, and `agent_pkg:changed` (install, sync,
-  remove) refreshes the inventory at once so such records retire. Neither
+  reconciled yet) is never attached, and `agent_pkg:changed` (announced once
+  an install is FINAL, after a failed install's rollback as `restored`, by
+  sync/migration and removal) refreshes the inventory at once so such
+  records retire. The Team store drops a package-rows response that is no
+  longer the newest request's (a generation per read), so overlapping
+  refreshes never put an obsolete badge back. Neither
   route probes; Explore's "Check for updates" is `POST
   /api/updates/check?wait=1` + a re-read ("couldn't be checked" = rows still
   unknown + attempts that failed over an earlier verdict), the roster's
@@ -451,15 +456,24 @@ through a server is an operator action: `bakin update --as human`; an
   snapshot read a sibling's later re-observation could have overwritten. An
   exact versioned key that is not the install's canonical key is refused
   (`PackageSupersededError`), never silently answered with the newer
-  install's verdict. The checker module is gone.
+  install's verdict — re-checked AFTER the observation too (the install may
+  be superseded while the check waited its turn), and the observation must
+  name the validated install's identity (`updateRecordMatchesInstalled`). The
+  checker module is gone.
 - **CLI `--check` without a server:** `bakin agents sync [<id>] --check`,
   `bakin packages sync <key> --check` and `bakin plugins list [--check]`
   run in-process when `server.lock` names no live server (an explicit
-  `BAKIN_URL` is server-only): the same `syncAgent`/`syncPack({ check })` the
-  routes run (report-only, no resource, nothing persisted) and, for plugins,
+  `BAKIN_URL` is server-only): the read-only `checkAgent`/`checkPack`
+  entries (the routes' `sync…({ check })`; report-only, no resource,
+  nothing persisted — the install-state architecture rule keeps the writers
+  owner-only) over `createReadOnlyAppServices()` (the runtime for
+  roster/workspace reads; no search initialization, no secret migration,
+  no health registration — a read-only path never provisions) and, for
+  plugins,
   the lockfile's user plugins joined with the engine's records (`--check`
   runs the plugin pass in-process on a scratch store; a plain list reads
-  the records the server last wrote; activation state and core plugins
+  the records the server last wrote, joined only when the record's
+  installed identity is the lockfile's; activation state and core plugins
   are a server fact and are honestly absent). A sync that WRITES still needs
   the server's operation.
 - **CLI:** `bakin updates [--check] [--source <kind>] [--json]` (serverless

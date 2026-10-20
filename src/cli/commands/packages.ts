@@ -189,12 +189,12 @@ async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Prom
   exitOnFailure(operation)
 }
 
-/** `--check` with no server: the route's `syncPack({ check })` in-process — report-only, nothing persisted (review r2 #9). */
+/** `--check` with no server: the read-only `checkPack` (the route's check) in-process — report-only, nothing persisted (review r2 #9). */
 async function checkPackageInProcess(packageId: string, flags: AgentsCmdFlags): Promise<void> {
-  const { syncPack } = await import('../../core/agent-packages/sync')
+  const { checkPack } = await import('../../core/agent-packages/sync')
   let result: Record<string, unknown>
   try {
-    result = { ok: true, receipt: await syncPack(packageId, { check: true }) }
+    result = { ok: true, receipt: await checkPack(packageId) }
   } catch (err) {
     result = { ok: false, error: err instanceof Error ? err.message : String(err) }
   }

@@ -11,7 +11,7 @@
  * sync`), so the action is a manual pointer until that path is an operation.
  */
 import type { PackageEntry } from '@bakin/core/agent-packages/lockfile'
-import type { UpdateAction } from '@makinbakin/sdk/types'
+import type { UpdateAction, UpdateIdentity, UpdateSourceRef } from '@makinbakin/sdk/types'
 import { fingerprintOf } from '../inventory'
 import type { UpdateObservation, UpdateSource, UpdateSubjectInventoryEntry } from '../types'
 
@@ -70,9 +70,17 @@ function syncPointer(entry: PackageEntry, id: string, key: string): string {
   return entry.kind === 'agent' ? `bakin agents sync ${entry.agentId ?? id}` : `bakin packages sync ${key}`
 }
 
-/** `github:owner/repo@<sha>` — an immutable pin: nothing newer can ever appear under it (review r2 #6). */
+/** `github:owner/repo@<sha>` — an immutable pin: nothing newer can ever appear under it (review r2 #6). Decided only once the remote names NO ref of that name (r3 #3). */
 export function isCommitPin(ref: string): boolean {
   return /^[0-9a-f]{7,40}$/i.test(ref)
+}
+
+/** The verdict for a ref the remote does not name: current while the installed commit is the pin, blocked otherwise, gone when it is no pin at all. */
+export function commitPinOutcome(entry: Pick<PackageEntry, 'commitSha'>, ref: string, installed: UpdateIdentity, source: UpdateSourceRef): UpdateObservation {
+  if (!isCommitPin(ref)) return { installed, source, outcome: 'blocked', blockedReason: `no remote ref: ${ref}` }
+  return entry.commitSha.toLowerCase().startsWith(ref.toLowerCase())
+    ? { installed, source, outcome: 'current' }
+    : { installed, source, outcome: 'blocked', blockedReason: `the installed commit ${entry.commitSha.slice(0, 7)} is not the pinned ${ref.slice(0, 7)} — reinstall` }
 }
 
 export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
@@ -104,19 +112,15 @@ export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
 
       if (isGithubPackageSource(entry.source)) {
         const url = deps.cloneUrl(entry.source)
-        // A commit pin is immutable: the installed commit IS the pin, nothing newer can appear under it.
-        if (entry.ref && isCommitPin(entry.ref)) {
-          const source = { kind: 'git-ref', endpoint: entry.source, ref: entry.ref }
-          return entry.commitSha.toLowerCase().startsWith(entry.ref.toLowerCase())
-            ? { installed, source, outcome: 'current' }
-            : { installed, source, outcome: 'blocked', blockedReason: `the installed commit ${entry.commitSha.slice(0, 7)} is not the pinned ${entry.ref.slice(0, 7)} — reinstall` }
-        }
         // An install without `@ref` records an empty ref and tracks the remote's default branch.
         const ref = entry.ref || await deps.defaultBranch(url, signal)
         if (!ref) return { installed, outcome: 'blocked', blockedReason: 'the remote has no default branch — reinstall with an explicit @ref' }
         const source = { kind: 'git-ref', endpoint: entry.source, ref }
         const remote = await deps.lsRemote(url, ref, signal)
-        if (!remote) return { installed, source, outcome: 'blocked', blockedReason: `no remote ref: ${ref}` }
+        // The remote names no branch or tag by that name: a hex ref is a commit
+        // pin (immutable — the installed commit IS the pin), anything else is
+        // gone. A branch that merely LOOKS like a sha is still a branch (r3 #3).
+        if (!remote) return commitPinOutcome(entry, ref, installed, source)
         if (remote === entry.commitSha) return { installed, source, outcome: 'current' }
         // The ref moved: read the manifest there to name the version on offer.
         // The fetch rides a short-lived checkout cache — a checkout older than

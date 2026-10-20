@@ -219,6 +219,48 @@ describe('useAgentStore — package state plumbing', () => {
     expect(useAgentStore.getState().packageStates['orca']?.version).toBe('0.2.0')
   })
 
+  it('review r3 #6: a package read that answers AFTER a newer one never lands — overlapping refreshes keep the newest answer', async () => {
+    const first = deferred<Response>()
+    const second = deferred<Response>()
+    let reads = 0
+    global.fetch = mock((url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u === '/api/plugins/team/') return Promise.resolve(response(ROSTER_OK))
+      if (u === '/api/agent-packages') { reads += 1; return reads === 1 ? first.promise : second.promise }
+      return Promise.reject(new Error(`unexpected fetch: ${u}`))
+    }) as unknown as typeof global.fetch
+    const stale: PkgResponse = { ok: true, agents: [{ agentId: 'orca', state: 'managed', version: '0.1.0' }] }
+    const fresh: PkgResponse = { ok: true, agents: [{ agentId: 'orca', state: 'unmanaged' }] }
+
+    const older = useAgentStore.getState().refreshPackageStates()
+    const newer = useAgentStore.getState().refreshPackageStates()
+    second.resolve(response(fresh))
+    await newer
+    expect(useAgentStore.getState().packageStates['orca']?.state).toBe('unmanaged')
+    first.resolve(response(stale))
+    await older
+    expect(useAgentStore.getState().packageStates['orca']?.state).toBe('unmanaged')
+
+    // The initial load's package read is a generation too: a refresh started after it wins.
+    reads = 0
+    const loadPkg = deferred<Response>()
+    const refreshPkg = deferred<Response>()
+    global.fetch = mock((url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u === '/api/plugins/team/') return Promise.resolve(response(ROSTER_OK))
+      if (u === '/api/agent-packages') { reads += 1; return reads === 1 ? loadPkg.promise : refreshPkg.promise }
+      return Promise.reject(new Error(`unexpected fetch: ${u}`))
+    }) as unknown as typeof global.fetch
+    const loading = useAgentStore.getState().load()
+    const refreshing = useAgentStore.getState().refreshPackageStates()
+    refreshPkg.resolve(response(fresh))
+    await refreshing
+    loadPkg.resolve(response(stale))
+    await loading
+    expect(useAgentStore.getState().loaded).toBe(true)
+    expect(useAgentStore.getState().packageStates['orca']?.state).toBe('unmanaged')
+  })
+
   it('roster fetch failure short-circuits before package merge', async () => {
     global.fetch = makeFetchSpy({ rosterStatus: 500 }) as unknown as typeof global.fetch
 

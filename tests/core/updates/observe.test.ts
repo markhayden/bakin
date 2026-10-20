@@ -152,6 +152,21 @@ describe('observeInstalledPackage with the engine running', () => {
     expect((await engine.snapshot()).records.find((r) => r.id === 'package:editorial')?.outcome).toBe('current')
   })
 
+  it('review r3 #5: an install superseded WHILE the check waited is refused — the observation is the newer install\'s, never substituted', async () => {
+    seedLocalPackage('editorial', '1.0.0', '1.0.0')
+    const script = scripted(async () => ({ installed: { version: '2.0.0', display: '2.0.0' }, outcome: 'current' }))
+    registerUpdateSource(script.source)
+    startUpdates(testDir)
+    const timer = getUpdatesTimer()!
+    const realAdmit = timer.admit
+    timer.admit = async (request) => {
+      const admitted = await realAdmit(request)
+      // Between admission and the answer, a newer install of the same id lands under another key.
+      return { ...admitted, done: admitted.done.then((run) => { seedLocalPackage('editorial', '2.0.0', '2.0.0'); return run }) }
+    }
+    await expect(observeInstalledPackage('editorial@1.0.0')).rejects.toBeInstanceOf(PackageSupersededError)
+  })
+
   it('a failed observation is this check\'s failure, even over an earlier good record', async () => {
     seedLocalPackage('editorial', '1.0.0', '1.0.0')
     let fail = false

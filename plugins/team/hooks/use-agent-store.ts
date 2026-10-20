@@ -110,6 +110,14 @@ function writeRosterCache(cache: RosterCache): void {
   }
 }
 
+/**
+ * Every package-rows read (the initial load, a post-write refresh, an
+ * `updates.changed` re-read) takes a generation; a response that is no
+ * longer the newest request's is dropped, so overlapping reads can never put
+ * an obsolete update badge back (PR 8 review r3 #6).
+ */
+let packageStatesGeneration = 0
+
 const hydrated = readRosterCache()
 const hydratedMap: Record<string, AgentMeta> = {}
 for (const a of hydrated?.agents ?? []) hydratedMap[a.id] = a
@@ -129,6 +137,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   loaded: false,
 
   load: async () => {
+    const generation = ++packageStatesGeneration
     try {
       const [rosterRes, pkgRes] = await Promise.all([
         fetch('/api/plugins/team/'),
@@ -163,7 +172,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         agentsWithStatus: data.agents,
         displaySettings: data.displaySettings,
         teams: data.teams ?? [],
-        packageStates,
+        // A newer package read is in flight or landed: its answer wins.
+        packageStates: generation === packageStatesGeneration ? packageStates : get().packageStates,
         mainAgentId: data.mainAgentId ?? null,
         loaded: true,
       })
@@ -180,8 +190,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   },
 
   refreshPackageStates: async () => {
+    const generation = ++packageStatesGeneration
     const res = await fetch('/api/agent-packages').catch(() => null)
     const packageStates = await parsePackageStatesResponse(res)
+    if (generation !== packageStatesGeneration) return
     set({ packageStates })
   },
 

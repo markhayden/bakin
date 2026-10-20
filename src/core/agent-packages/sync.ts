@@ -572,6 +572,21 @@ export async function repairPackLocally(packageKey: string): Promise<ProjectorRe
  * Report-only with --check. Packs have no workspace blocks or receipts
  * file — the response IS the receipt.
  */
+/**
+ * The read-only check of one agent's package (`--check` without a server,
+ * #1007 B): `syncAgent({ check })` holds no resource and writes nothing —
+ * the routes declare the same (`resources: []`) — so this entry is what a
+ * server-less CLI calls; a sync that WRITES still runs under an owner.
+ */
+export async function checkAgent(agentId: string, opts: Pick<SyncOptions, 'trigger' | 'op'> = {}): Promise<SyncReceipt> {
+  return syncAgent(agentId, { ...opts, check: true })
+}
+
+/** The read-only check of one pack — the server-less twin of the route's `syncPack({ check })`. */
+export async function checkPack(packageId: string, opts: { op?: OperationContext } = {}): Promise<PackSyncReceipt> {
+  return syncPack(packageId, { ...opts, check: true })
+}
+
 export async function syncPack(
   packageId: string,
   opts: { check?: boolean; op?: OperationContext } = {},

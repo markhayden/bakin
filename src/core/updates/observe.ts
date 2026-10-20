@@ -12,7 +12,7 @@
  * directly and nothing is persisted — a check never writes beside a server
  * that may start meanwhile.
  */
-import type { UpdateRecord } from '@makinbakin/sdk/types'
+import { updateRecordMatchesInstalled, type UpdateRecord } from '@makinbakin/sdk/types'
 import { UpdateSubjectNotFoundError } from './engine'
 import { getUpdatesEngine, getUpdatesTimer } from './service'
 import { packageIdOfKey } from './sources/package'
@@ -58,13 +58,22 @@ export async function observeInstalledPackage(packageKeyOrId: string, opts: { si
   const kind = pkg.upstream ? 'hub-skill' : 'package'
   const recordId = `${kind}:${id}`
 
-  const recorded = await observeThroughEngine(recordId)
-  if (recorded) return recorded
+  const observed = await observeThroughEngine(recordId) ?? await observeDirectly(kind, id, opts.signal)
+  // The install the caller named must still be the one observed: another
+  // install can supersede it while the check waited its turn, and the
+  // observation is then the newer install's — refused, never substituted
+  // (review r3 #5).
+  const now = installedPackages().find((candidate) => candidate.id === id)
+  if (!now || now.key !== pkg.key) throw new PackageSupersededError(packageKeyOrId, now?.key ?? '(removed)')
+  if (!updateRecordMatchesInstalled(observed, { version: pkg.entry.version, sha: pkg.entry.commitSha || undefined })) throw new PackageSupersededError(packageKeyOrId, now.key)
+  return observed
+}
 
+async function observeDirectly(kind: 'package' | 'hub-skill', id: string, signal?: AbortSignal): Promise<UpdateObservation> {
   const source = createPackageUpdateSources().find((candidate) => candidate.kind === kind)!
   const entry = (await source.inventory()).find((candidate) => candidate.subject.id === id)
   if (!entry) throw new PackageNotTrackedError(id)
-  return source.observe(entry, { signal: opts.signal ?? new AbortController().signal, conditional: memoryConditional() })
+  return source.observe(entry, { signal: signal ?? new AbortController().signal, conditional: memoryConditional() })
 }
 
 /**

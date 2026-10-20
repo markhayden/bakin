@@ -30,6 +30,7 @@ import {
   type PluginImportInstallRequest,
 } from '../../core/plugins/import-export'
 import type { Permission } from '@bakin/core/plugins/permissions'
+import type { UpdateRecord } from '@makinbakin/sdk/types'
 import type { ConsentBin } from '../../core/plugins/consent-token'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 import type {
@@ -187,14 +188,14 @@ type OfflinePluginRow = {
 }
 
 async function listPluginsInProcess(check: boolean): Promise<{ plugins: OfflinePluginRow[]; note: string }> {
-  const [{ readPluginLockfile }, { isUpdateOffered }, { getContentDir }, { readUpdatesFile }, { UPDATES_FILE_NAME }] = await Promise.all([
+  const [{ readPluginLockfile }, { isUpdateOffered, updateRecordMatchesInstalled }, { getContentDir }, { readUpdatesFile }, { UPDATES_FILE_NAME }] = await Promise.all([
     import('@bakin/core/plugins/lockfile'),
     import('@makinbakin/sdk/types'),
     import('../../core/content-dir'),
     import('../../core/updates/store'),
     import('../../core/updates/service'),
   ])
-  const records = new Map<string, Parameters<typeof isUpdateOffered>[0] & { observedAt?: string }>()
+  const records = new Map<string, UpdateRecord>()
   if (check) {
     const { checkUpdatesInProcess } = await import('./updates')
     for (const record of (await checkUpdatesInProcess('plugin')).records) records.set(record.id, record)
@@ -203,7 +204,9 @@ async function listPluginsInProcess(check: boolean): Promise<{ plugins: OfflineP
     for (const [id, record] of Object.entries(file?.records ?? {})) records.set(id, record)
   }
   const plugins = Object.entries(readPluginLockfile().plugins).map(([id, entry]): OfflinePluginRow => {
-    const record = records.get(`plugin:${id}`)
+    // A stored record observed for another installed identity (an upgrade since the server last looked) is no answer (review r3 #2).
+    const stored = records.get(`plugin:${id}`)
+    const record = stored && updateRecordMatchesInstalled(stored, { version: entry.version, sha: entry.commitSha || undefined }) ? stored : undefined
     return {
       id,
       name: id,

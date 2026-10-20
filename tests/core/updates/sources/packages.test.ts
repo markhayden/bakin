@@ -222,22 +222,32 @@ describe('package source', () => {
     expect(warm).toEqual([{ fresh: false }])
   })
 
-  it('review r2 #6: a commit pin (`@<sha>`) is immutable — current when the installed commit is the pin, blocked when it is not; ls-remote is never asked', async () => {
-    const never = async (): Promise<never> => { throw new Error('ls-remote must not run for a pin') }
+  it('review r2 #6 / r3 #3: a ref the remote does not name is a commit pin when it is hex — current while the installed commit is the pin, blocked otherwise; a hex BRANCH the remote names is tracked like any branch', async () => {
+    const unnamed = async (): Promise<null> => null
     const ctx = { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } }
     const pinned = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: SHA_A, commitSha: SHA_A })
-    const pkg = createPackageSource(packageDeps({ installed: () => [pinned], lsRemote: never, defaultBranch: never }))
+    const pkg = createPackageSource(packageDeps({ installed: () => [pinned], lsRemote: unnamed }))
     const [entryFor] = await pkg.inventory()
     expect(await pkg.observe(entryFor!, ctx)).toMatchObject({ outcome: 'current', source: { kind: 'git-ref', ref: SHA_A } })
     const short = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: SHA_A.slice(0, 12), commitSha: SHA_A })
-    expect((await createPackageSource(packageDeps({ installed: () => [short], lsRemote: never, defaultBranch: never })).observe(entryFor!, ctx)).outcome).toBe('current')
+    expect((await createPackageSource(packageDeps({ installed: () => [short], lsRemote: unnamed })).observe(entryFor!, ctx)).outcome).toBe('current')
     const mismatched = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: SHA_A, commitSha: SHA_B })
-    expect(await createPackageSource(packageDeps({ installed: () => [mismatched], lsRemote: never, defaultBranch: never })).observe(entryFor!, ctx)).toMatchObject({ outcome: 'blocked', blockedReason: expect.stringContaining('not the pinned') })
+    expect(await createPackageSource(packageDeps({ installed: () => [mismatched], lsRemote: unnamed })).observe(entryFor!, ctx)).toMatchObject({ outcome: 'blocked', blockedReason: expect.stringContaining('not the pinned') })
+    // A non-hex ref the remote no longer names is simply gone.
+    const gone = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: 'release-1', commitSha: SHA_A })
+    expect(await createPackageSource(packageDeps({ installed: () => [gone], lsRemote: unnamed })).observe(entryFor!, ctx)).toMatchObject({ outcome: 'blocked', blockedReason: 'no remote ref: release-1' })
+    // `deadbeef` IS a branch on this remote: tracked, never a pin.
+    const hexBranch = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: 'deadbeef', commitSha: SHA_A })
+    const tracked = createPackageSource(packageDeps({ installed: () => [hexBranch], lsRemote: async (_u, ref) => (ref === 'deadbeef' ? SHA_B : null), fetchManifest: async () => ({ id: 'ops', version: '2.0.0', commitSha: SHA_B }) }))
+    expect(await tracked.observe(entryFor!, ctx)).toMatchObject({ outcome: 'update-available', available: { version: '2.0.0' } })
 
     const gh = installed('hub-tools', { source: 'github:acme/skills#tools', ref: SHA_A, commitSha: SHA_A }, { source: 'github:acme/skills#tools' })
-    const hub = createHubSkillSource(hubDeps({ installed: () => [gh], lsRemote: never, defaultBranch: never }))
+    const hub = createHubSkillSource(hubDeps({ installed: () => [gh], lsRemote: unnamed }))
     const [hubEntry] = await hub.inventory()
     expect((await hub.observe(hubEntry!, ctx)).outcome).toBe('current')
+    const hubHexBranch = installed('hub-tools', { source: 'github:acme/skills#tools', ref: 'cafebabe', commitSha: SHA_A }, { source: 'github:acme/skills#tools' })
+    const hubTracked = createHubSkillSource(hubDeps({ installed: () => [hubHexBranch], lsRemote: async (_u, ref) => (ref === 'cafebabe' ? SHA_B : null) }))
+    expect(await hubTracked.observe(hubEntry!, ctx)).toMatchObject({ outcome: 'update-available', available: { sha: SHA_B } })
   })
 
   it('a gone ref or a manifest whose id does not match is never an offer', async () => {

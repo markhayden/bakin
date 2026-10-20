@@ -290,21 +290,22 @@ async function cmdAgentPackagesDelete(agentId: string, flags: AgentsCmdFlags): P
 }
 
 /**
- * `--check` with no server runs in-process (review r2 #9): the same
- * `syncAgent({ check })` the route runs — report-only, nothing written, no
+ * `--check` with no server runs in-process (review r2 #9): the read-only
+ * `checkAgent` (the route's check) — report-only, nothing written, no
  * resource held, the upstream question asked of the updates observer with
  * nothing persisted. A sync that WRITES still needs the server's operation.
  */
 async function checkAgentPackagesInProcess(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
-  const [{ syncAgent }, { listAllAgentStates }, { createAppServices, maybeGetAppServices }] = await Promise.all([
+  const [{ checkAgent }, { listAllAgentStates }, { createReadOnlyAppServices, maybeGetAppServices }] = await Promise.all([
     import('../../core/agent-packages/sync'),
     import('../../core/agent-packages/agent-state'),
     import('../../core/app-services'),
   ])
-  if (!maybeGetAppServices()) await createAppServices()
+  // READ-ONLY services (review r3 #1): the runtime for roster/workspace reads, no search provisioning, no migrations.
+  if (!maybeGetAppServices()) await createReadOnlyAppServices()
   const checkOne = async (id: string): Promise<Record<string, unknown>> => {
     try {
-      return { ok: true, receipt: await syncAgent(id, { check: true, trigger: 'cli' }) }
+      return { ok: true, receipt: await checkAgent(id, { trigger: 'cli' }) }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }

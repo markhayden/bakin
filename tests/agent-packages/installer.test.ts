@@ -211,6 +211,8 @@ import { isResourceHeld } from '../../packages/core/src/operations'
 
 const isInstallStateHeld = () => isResourceHeld('install-state')
 import { owned } from '../helpers/owning'
+import { onServerEvent } from '../../src/core/server-events'
+import { getPackageSourceDir } from '../../packages/core/src/agent-packages/package-paths'
 
 // The core install writers assert install-state ownership (#895): call them as an owner.
 const installPackage = owned(installPackageUnowned)
@@ -498,6 +500,30 @@ describe('installPackage — refuse paths', () => {
     expect(adapterCalls.removeAgent).toEqual(['pixel'])
     expect(runtimeAgents.some(agent => agent.id === 'pixel')).toBe(false)
     expect(Object.keys(readLockfile().packages)).toEqual([])
+  })
+
+  it('review r3 #4: a failed install never announced `installed`; the rollback announces `restored` after the previous lockfile is back', async () => {
+    const seen: Array<{ kind: unknown; lockHasPixel: boolean }> = []
+    const unsubscribe = onServerEvent((event) => {
+      if (event.type !== 'agent_pkg:changed') return
+      seen.push({ kind: event.kind, lockHasPixel: Object.keys(readLockfile().packages).some((key) => key.startsWith('pixel')) })
+    })
+    try {
+      const src = seedAgentPackage()
+      const agentsParent = join(testDir, 'packages', 'agents')
+      mkdirSync(dirname(agentsParent), { recursive: true })
+      writeFileSync(agentsParent, 'not a directory', 'utf-8')
+      await expect(installPackage({ source: src })).rejects.toThrow()
+      expect(seen).toEqual([{ kind: 'restored', lockHasPixel: false }])
+      rmSync(agentsParent, { force: true })
+      seen.length = 0
+      // A successful install announces once, after the install is final (the lock row AND the install dir exist).
+      const result = await installPackage({ source: src })
+      expect(seen).toEqual([{ kind: 'installed', lockHasPixel: true }])
+      expect(existsSync(getPackageSourceDir(testDir, 'agent', result.packageId, '0.1.0'))).toBe(true)
+    } finally {
+      unsubscribe()
+    }
   })
 
   it('restores the previous lockfile when failure happens after lockfile write', async () => {
