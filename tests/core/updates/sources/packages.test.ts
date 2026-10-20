@@ -47,6 +47,7 @@ function packageDeps(over: Partial<PackageSourceDeps> = {}): PackageSourceDeps {
     hostVersion: () => '0.1.0',
     cloneUrl: (source) => `https://github.com/${source.slice('github:'.length).replace(/[@#].*$/, '')}.git`,
     lsRemote: async () => null,
+    defaultBranch: async () => null,
     fetchManifest: async () => { throw new Error('no clone expected') },
     localManifest: () => null,
     ...over,
@@ -58,6 +59,7 @@ function hubDeps(over: Partial<HubSkillSourceDeps> = {}, hub: Partial<HubSkillSo
     hostVersion: () => '0.1.0',
     cloneUrl: (source) => `https://github.com/${source.slice('github:'.length).replace(/[@#].*$/, '')}.git`,
     lsRemote: async () => null,
+    defaultBranch: async () => null,
     hub: { latest: async () => null, hasVersion: async () => false, ...hub },
     ...over,
   }
@@ -162,6 +164,61 @@ describe('package source', () => {
     // Same version, newer commit: still an update (the commit is the identity), named by the commit.
     const sameVersion = createPackageSource(packageDeps({ installed: () => [ops], lsRemote: async () => SHA_B, fetchManifest: async () => ({ id: 'ops', version: '1.0.0', commitSha: SHA_B }) }))
     expect(await engine([sameVersion]).observe('package:ops')).toMatchObject({ outcome: 'update-available', reason: 'newer-commit', available: { version: '1.0.0', sha: SHA_B, display: `1.0.0 (${SHA_B.slice(0, 7)})` } })
+  })
+
+  it('review r1 #1: an entry installed without @ref (empty lock ref) tracks the remote DEFAULT branch — resolved, compared, fetched there; a remote without one is blocked', async () => {
+    const ops = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: '', commitSha: SHA_A })
+    const asked: string[] = []
+    const moved = createPackageSource(packageDeps({
+      installed: () => [ops],
+      defaultBranch: async (url) => { asked.push(url); return 'trunk' },
+      lsRemote: async (url, ref) => (url === 'https://github.com/acme/ops.git' && ref === 'trunk' ? SHA_B : null),
+      fetchManifest: async (sourceWithRef) => { expect(sourceWithRef).toBe('github:acme/ops@trunk'); return { id: 'ops', version: '2.0.0', commitSha: SHA_B } },
+    }))
+    const [entryFor] = await moved.inventory()
+    const observed = await moved.observe(entryFor!, { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } })
+    expect(asked).toEqual(['https://github.com/acme/ops.git'])
+    expect(observed).toMatchObject({ outcome: 'update-available', available: { version: '2.0.0', sha: SHA_B }, source: { kind: 'git-ref', ref: 'trunk' } })
+
+    const same = createPackageSource(packageDeps({ installed: () => [ops], defaultBranch: async () => 'trunk', lsRemote: async () => SHA_A }))
+    expect((await same.observe(entryFor!, { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } })).outcome).toBe('current')
+
+    const headless = createPackageSource(packageDeps({ installed: () => [ops], defaultBranch: async () => null, lsRemote: async () => { throw new Error('never asked') } }))
+    expect(await headless.observe(entryFor!, { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } })).toMatchObject({ outcome: 'blocked', blockedReason: expect.stringContaining('no default branch') })
+
+    // The hub-skill github lane resolves the same way, and its re-install pointer stays UNPINNED (the source as installed).
+    const gh = installed('hub-tools', { source: 'github:acme/skills#tools', ref: '', commitSha: SHA_A }, { source: 'github:acme/skills#tools' })
+    const hub = createHubSkillSource(hubDeps({ installed: () => [gh], defaultBranch: async () => 'main', lsRemote: async (url, ref) => (ref === 'main' ? SHA_B : null) }))
+    const [hubEntry] = await hub.inventory()
+    expect(await hub.observe(hubEntry!, { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } })).toMatchObject({ outcome: 'update-available', action: { kind: 'manual', pointer: 'bakin skills install github:acme/skills#tools' } })
+  })
+
+  it('review r1 #4: a cached checkout older than the observed commit is refetched FRESH and the fresh checkout is the offer; a fresh checkout at the installed commit is current', async () => {
+    const ops = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: 'main', commitSha: SHA_A })
+    const fetches: Array<{ fresh: boolean }> = []
+    const staleCache = createPackageSource(packageDeps({
+      installed: () => [ops],
+      lsRemote: async () => SHA_B,
+      fetchManifest: async (_spec, _signal, opts) => {
+        fetches.push({ fresh: opts?.fresh === true })
+        // The 5-minute checkout cache still holds the INSTALLED commit; only a fresh clone sees B.
+        return opts?.fresh ? { id: 'ops', version: '2.0.0', commitSha: SHA_B } : { id: 'ops', version: '1.0.0', commitSha: SHA_A }
+      },
+    }))
+    const [entryFor] = await staleCache.inventory()
+    const ctx = { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } }
+    expect(await staleCache.observe(entryFor!, ctx)).toMatchObject({ outcome: 'update-available', available: { version: '2.0.0', sha: SHA_B } })
+    expect(fetches).toEqual([{ fresh: false }, { fresh: true }])
+
+    // The ref moved back between ls-remote and the fresh clone: what is there now IS the installed commit — never an offer of the installed identity.
+    const movedBack = createPackageSource(packageDeps({ installed: () => [ops], lsRemote: async () => SHA_B, fetchManifest: async () => ({ id: 'ops', version: '1.0.0', commitSha: SHA_A }) }))
+    expect((await movedBack.observe(entryFor!, ctx)).outcome).toBe('current')
+
+    // A cached checkout already AT the observed commit is used as is — one fetch.
+    const warm: Array<{ fresh: boolean }> = []
+    const cachedAtB = createPackageSource(packageDeps({ installed: () => [ops], lsRemote: async () => SHA_B, fetchManifest: async (_s, _g, opts) => { warm.push({ fresh: opts?.fresh === true }); return { id: 'ops', version: '2.0.0', commitSha: SHA_B } } }))
+    expect((await cachedAtB.observe(entryFor!, ctx)).outcome).toBe('update-available')
+    expect(warm).toEqual([{ fresh: false }])
   })
 
   it('a gone ref or a manifest whose id does not match is never an offer', async () => {

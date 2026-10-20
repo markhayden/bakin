@@ -31,7 +31,7 @@ mock.module('../../../src/core/sse', () => ({ broadcast: () => {} }))
 
 import { observeInstalledPackage, PackageNotTrackedError } from '../../../src/core/updates/observe'
 import { fingerprintOf } from '../../../src/core/updates/inventory'
-import { getUpdatesEngine, registerUpdateSource, resetUpdateSources, startUpdates, stopUpdates, UPDATES_FILE_NAME } from '../../../src/core/updates/service'
+import { getUpdatesEngine, getUpdatesTimer, registerUpdateSource, resetUpdateSources, startUpdates, stopUpdates, UPDATES_FILE_NAME } from '../../../src/core/updates/service'
 import type { UpdateObservation, UpdateSource } from '../../../src/core/updates/types'
 import { writeLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 
@@ -107,6 +107,28 @@ describe('observeInstalledPackage with the engine running', () => {
     const record = (await getUpdatesEngine()!.snapshot()).records.find((r) => r.id === 'package:editorial')
     expect(record?.outcome).toBe('update-available')
     expect(record?.observedAt).toBeDefined()
+  })
+
+  it('review r1 #2: a sibling that re-observes the package successfully before our admission settles never changes THIS check\'s answer — the attempt result, not the snapshot', async () => {
+    seedLocalPackage('editorial', '1.0.0', '1.0.0')
+    let fail = true
+    const script = scripted(async () => {
+      if (fail) { fail = false; throw new Error('ls-remote: offline') }
+      return { installed: { version: '1.0.0', display: '1.0.0' }, outcome: 'current' }
+    })
+    registerUpdateSource(script.source)
+    startUpdates(testDir)
+    const engine = getUpdatesEngine()!
+    const timer = getUpdatesTimer()!
+    // Between our attempt settling and our admission's `done` resolving, another request re-observes the subject (the pass is still open for it).
+    const realAdmit = timer.admit
+    timer.admit = async (request) => {
+      const admitted = await realAdmit(request)
+      return { ...admitted, done: admitted.done.then(async (run) => { await engine.observe('package:editorial'); return run }) }
+    }
+    await expect(observeInstalledPackage('editorial')).rejects.toThrow('ls-remote: offline')
+    expect(script.calls).toEqual(['editorial', 'editorial'])
+    expect((await engine.snapshot()).records.find((r) => r.id === 'package:editorial')?.outcome).toBe('current')
   })
 
   it('a failed observation is this check\'s failure, even over an earlier good record', async () => {

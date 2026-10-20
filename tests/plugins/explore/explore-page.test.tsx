@@ -494,13 +494,14 @@ describe('ExplorePage update/refresh actions', () => {
     expect(String(toastMock.mock.calls[0][0])).toContain('Everything is up to date')
   })
 
-  it('subjects the pass could not observe are counted as "couldn\'t be checked" — never up to date', async () => {
+  it('subjects the pass could not observe are counted as "couldn\'t be checked" — never up to date: an unknown row, and a failed attempt over an earlier verdict', async () => {
     fixtureEntries = [...AGENTS]
-    const failed = (id: string) => ({ id, group: 'available', subject: { kind: id.slice(0, id.indexOf(':')), id: id.slice(id.indexOf(':') + 1), label: id }, outcome: 'unknown', source: { kind: 'fixture', endpoint: 'f' }, fingerprint: 'fp', attempt: { at: 'now', error: 'offline' } })
+    const failed = (id: string, observedAt?: string) => ({ id, group: 'available', subject: { kind: id.slice(0, id.indexOf(':')), id: id.slice(id.indexOf(':') + 1), label: id }, outcome: observedAt ? 'current' : 'unknown', source: { kind: 'fixture', endpoint: 'f' }, fingerprint: 'fp', ...(observedAt ? { observedAt } : {}), attempt: { at: 'now', error: 'offline' } })
     checkFetch({
-      entries: [{ ...AGENTS[0], installed: true, updateAvailable: null }],
-      // Two catalog subjects failed; the Bakin binary's failure is not this catalog's.
-      records: [failed('package:pixel'), failed('plugin:messaging'), failed('bakin:bakin')],
+      // pixel's row is unknown after the pass (no successful observation); jessica keeps her earlier verdict although her fresh attempt failed.
+      entries: [{ ...AGENTS[0], installed: true, updateAvailable: null }, { ...AGENTS[1], installed: true, updateAvailable: false }],
+      // The Bakin binary's failure is not this catalog's.
+      records: [failed('package:pixel'), failed('package:jessica', '2026-10-01T00:00:00.000Z'), failed('bakin:bakin')],
     })
 
     render(<ExplorePage />)
@@ -509,6 +510,18 @@ describe('ExplorePage update/refresh actions', () => {
     await waitFor(() => expect(toastMock).toHaveBeenCalled())
     expect(String(toastMock.mock.calls[0][0])).toContain("Couldn't check 2 items")
     expect(toastMock.mock.calls[0][1]).toBe('error')
+  })
+
+  it('review r1 #7: an installed entry the engine has NO record for stays unknown and is counted — a successful pass never says "up to date" for it', async () => {
+    fixtureEntries = [...AGENTS]
+    checkFetch({ entries: [{ ...AGENTS[0], installed: true, updateAvailable: null }], records: [] })
+
+    render(<ExplorePage />)
+    toastMock.mockClear()
+    fireEvent.click(screen.getByTestId('check-updates'))
+    await waitFor(() => expect(toastMock).toHaveBeenCalled())
+    expect(String(toastMock.mock.calls[0][0])).toContain("Couldn't check 1 item")
+    expect(String(toastMock.mock.calls[0][0])).not.toContain('Everything is up to date.')
   })
 
   it('a failed engine pass is an error banner, the catalog stays rendered', async () => {

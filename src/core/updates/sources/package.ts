@@ -33,17 +33,20 @@ export interface PackageSourceDeps {
   cloneUrl: (source: string) => string
   /** `git ls-remote <url> <ref>` — the sha the ref points at, or null when the ref is gone. */
   lsRemote: (url: string, ref: string, signal: AbortSignal) => Promise<string | null>
-  /** The manifest at a github source+ref (a staged clone, removed after). Called only when the ref moved. */
-  fetchManifest: (sourceWithRef: string, signal: AbortSignal) => Promise<{ id: string; version: string; commitSha: string }>
+  /** The remote's default branch (`git ls-remote --symref <url> HEAD`), or null when it has none — for an entry installed without `@ref`. */
+  defaultBranch: (url: string, signal: AbortSignal) => Promise<string | null>
+  /**
+   * The manifest at a github source+ref (a staged clone, removed after).
+   * Called only when the ref moved; `fresh` bypasses the short-lived
+   * checkout cache (a checkout older than the observed commit is no answer).
+   */
+  fetchManifest: (sourceWithRef: string, signal: AbortSignal, opts?: { fresh?: boolean }) => Promise<{ id: string; version: string; commitSha: string }>
   /** The manifest of a local-path source, or null when the directory is gone. */
   localManifest: (path: string) => { id: string; version: string } | null
 }
 
 /** The lockfile key's id: everything before the LAST `@` (ids may carry an owner prefix). */
-export function packageIdOfKey(key: string): string {
-  const at = key.lastIndexOf('@')
-  return at === -1 ? key : key.slice(0, at)
-}
+export { packageIdOfLockKey as packageIdOfKey } from '@bakin/core/agent-packages/lockfile'
 
 export function isGithubPackageSource(source: string): boolean {
   return source.startsWith('github:')
@@ -94,14 +97,23 @@ export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
       const action: UpdateAction = { kind: 'manual', pointer: syncPointer(entry, id) }
 
       if (isGithubPackageSource(entry.source)) {
-        if (!entry.ref) return { installed, outcome: 'blocked', blockedReason: 'lockfile missing the git ref — reinstall' }
-        const source = { kind: 'git-ref', endpoint: entry.source, ref: entry.ref }
-        const remote = await deps.lsRemote(deps.cloneUrl(entry.source), entry.ref, signal)
-        if (!remote) return { installed, source, outcome: 'blocked', blockedReason: `no remote ref: ${entry.ref}` }
+        // An install without `@ref` records an empty ref and tracks the remote's default branch.
+        const url = deps.cloneUrl(entry.source)
+        const ref = entry.ref || await deps.defaultBranch(url, signal)
+        if (!ref) return { installed, outcome: 'blocked', blockedReason: 'the remote has no default branch — reinstall with an explicit @ref' }
+        const source = { kind: 'git-ref', endpoint: entry.source, ref }
+        const remote = await deps.lsRemote(url, ref, signal)
+        if (!remote) return { installed, source, outcome: 'blocked', blockedReason: `no remote ref: ${ref}` }
         if (remote === entry.commitSha) return { installed, source, outcome: 'current' }
         // The ref moved: read the manifest there to name the version on offer.
-        const manifest = await deps.fetchManifest(packageSourceWithRef(entry.source, entry.ref), signal)
+        // The fetch rides a short-lived checkout cache — a checkout older than
+        // the commit just observed is refetched fresh, and what the fresh
+        // checkout holds (not the cached bytes) is the offer.
+        const spec = packageSourceWithRef(entry.source, ref)
+        let manifest = await deps.fetchManifest(spec, signal)
+        if (manifest.commitSha && manifest.commitSha !== remote) manifest = await deps.fetchManifest(spec, signal, { fresh: true })
         if (manifest.id !== id) throw new Error(`source manifest id "${manifest.id}" does not match installed package "${id}"`)
+        if (manifest.commitSha && manifest.commitSha === entry.commitSha) return { installed, source, outcome: 'current' }
         const sha = manifest.commitSha || remote
         return {
           installed,

@@ -11,13 +11,13 @@ import { APP_VERSION } from '@bakin/core/constants'
 import { gitArgs } from '@bakin/core/net/git-args'
 import { getContentDir } from '../../content-dir'
 import { createLogger } from '../../logger'
-import { clawhubHasVersion, clawhubLatestVersion, fetchSourceAsync, parseGithubSpec } from '../../agent-packages/source-fetcher'
-import { readLockfile, type PackageEntry } from '../../../../packages/core/src/agent-packages/lockfile'
+import { clawhubHasVersion, clawhubLatestVersion, fetchSourceAsync, parseGithubSpec, resolveLocalPath } from '../../agent-packages/source-fetcher'
+import { canonicalPackageEntries, readLockfile, type PackageEntry } from '../../../../packages/core/src/agent-packages/lockfile'
 import { parseManifest, type Manifest } from '../../../../packages/core/src/agent-packages/manifest'
 import { getPackageSourceDir } from '../../../../packages/core/src/agent-packages/package-paths'
 import type { UpdateSource } from '../types'
 import { createHubSkillSource } from './hub-skill'
-import { createPackageSource, packageIdOfKey, type InstalledPackage } from './package'
+import { createPackageSource, type InstalledPackage } from './package'
 
 const log = createLogger('updates-sources')
 
@@ -29,15 +29,33 @@ const log = createLogger('updates-sources')
 export async function lsRemoteSha(url: string, ref: string, signal: AbortSignal): Promise<string | null> {
   // git filters every output row against the patterns, the peeled `^{}` row
   // included — ask for both, or an annotated tag only ever shows its tag object.
-  const proc = Bun.spawn(['git', ...gitArgs(['ls-remote', '--', url, ref, `${ref}^{}`])], { cwd: getContentDir(), stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+  return pickLsRemoteSha(await runLsRemote(['ls-remote', '--', url, ref, `${ref}^{}`], `${url} ${ref}`, signal), ref)
+}
+
+/** The remote's default branch — what a clone without `--branch` checks out — or null when HEAD is unborn/detached. */
+export async function lsRemoteDefaultBranch(url: string, signal: AbortSignal): Promise<string | null> {
+  return pickDefaultBranch(await runLsRemote(['ls-remote', '--symref', '--', url, 'HEAD'], `${url} HEAD`, signal))
+}
+
+/** `ref: refs/heads/<name>\tHEAD` from `ls-remote --symref … HEAD`; a detached or unborn HEAD prints no such row. */
+export function pickDefaultBranch(stdout: string): string | null {
+  for (const line of stdout.split('\n')) {
+    const match = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/.exec(line.trim())
+    if (match) return match[1]!
+  }
+  return null
+}
+
+async function runLsRemote(args: string[], what: string, signal: AbortSignal): Promise<string> {
+  const proc = Bun.spawn(['git', ...gitArgs(args)], { cwd: getContentDir(), stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
   const onAbort = (): void => { try { proc.kill() } catch { /* already gone */ } }
   if (signal.aborted) onAbort()
   else signal.addEventListener('abort', onAbort, { once: true })
   try {
     const [code, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()])
     if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : new Error('ls-remote aborted')
-    if (code !== 0) throw new Error(`git ls-remote ${url} ${ref} failed (exit ${code}): ${stderr.trim().slice(-300)}`)
-    return pickLsRemoteSha(stdout, ref)
+    if (code !== 0) throw new Error(`git ls-remote ${what} failed (exit ${code}): ${stderr.trim().slice(-300)}`)
+    return stdout
   } finally {
     signal.removeEventListener('abort', onAbort)
   }
@@ -76,16 +94,12 @@ export function pickLsRemoteSha(stdout: string, ref: string): string | null {
  * several keys (a superseded version not yet forgotten), the newest wins.
  */
 export function installedPackages(): InstalledPackage[] {
-  const byId = new Map<string, InstalledPackage>()
-  for (const [key, entry] of Object.entries(readLockfile().packages)) {
-    const id = packageIdOfKey(key)
+  // ONE selection per id (`canonicalPackageEntries`) shared with every lockfile consumer, so a superseded key still present never makes Team/Explore show one version beside another's record.
+  return canonicalPackageEntries(readLockfile()).map(({ key, id, entry }) => {
     const manifest = installedPackageManifest(entry.kind, id, entry.version)
     const upstream = entry.kind === 'skill-pack' && manifest?.kind === 'skill-pack' && manifest.upstream ? manifest.upstream : null
-    const candidate: InstalledPackage = { key, id, entry, upstream }
-    const held = byId.get(id)
-    if (!held || Date.parse(candidate.entry.installedAt) >= Date.parse(held.entry.installedAt)) byId.set(id, candidate)
-  }
-  return [...byId.values()]
+    return { key, id, entry, upstream }
+  })
 }
 
 function installedPackageManifest(kind: PackageEntry['kind'], id: string, version: string): Manifest | null {
@@ -104,9 +118,9 @@ function packageCloneUrl(source: string): string {
   return `https://github.com/${spec.owner}/${spec.repo}.git`
 }
 
-/** The manifest at a github source+ref: a staged clone (the fetcher's own temp dir), removed after. */
-async function fetchPackageManifest(sourceWithRef: string): Promise<{ id: string; version: string; commitSha: string }> {
-  const fetched = await fetchSourceAsync(sourceWithRef)
+/** The manifest at a github source+ref: a staged clone (the fetcher's own temp dir), removed after; the git child dies with the signal. */
+async function fetchPackageManifest(sourceWithRef: string, signal: AbortSignal, opts: { fresh?: boolean } = {}): Promise<{ id: string; version: string; commitSha: string }> {
+  const fetched = await fetchSourceAsync(sourceWithRef, { signal, fresh: opts.fresh })
   try {
     const manifest = parseManifest(JSON.parse(readFileSync(join(fetched.stagingDir, 'bakin-package.json'), 'utf-8')))
     return { id: manifest.id, version: manifest.version, commitSha: fetched.commitSha }
@@ -115,8 +129,9 @@ async function fetchPackageManifest(sourceWithRef: string): Promise<{ id: string
   }
 }
 
-function localPackageManifest(path: string): { id: string; version: string } | null {
-  const manifestPath = join(path, 'bakin-package.json')
+/** The manifest of a local-path source — resolved the way the installer resolved it (`~/`, relative to cwd, absolute). */
+export function localPackageManifest(path: string): { id: string; version: string } | null {
+  const manifestPath = join(resolveLocalPath(path), 'bakin-package.json')
   if (!existsSync(manifestPath)) return null
   const manifest = parseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
   return { id: manifest.id, version: manifest.version }
@@ -131,6 +146,7 @@ export function createPackageUpdateSources(): UpdateSource[] {
     hostVersion: () => APP_VERSION,
     cloneUrl: packageCloneUrl,
     lsRemote: lsRemoteSha,
+    defaultBranch: lsRemoteDefaultBranch,
   }
   return [
     createPackageSource({

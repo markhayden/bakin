@@ -25,7 +25,7 @@ import { fingerprintOf } from '../inventory'
 import type { UpdateObservation, UpdateSource, UpdateSubjectInventoryEntry } from '../types'
 import { isClawhubPackageSource, isGithubPackageSource, packageSourceWithRef, type InstalledPackage, type PackageSourceDeps } from './package'
 
-export interface HubSkillSourceDeps extends Pick<PackageSourceDeps, 'installed' | 'hostVersion' | 'cloneUrl' | 'lsRemote'> {
+export interface HubSkillSourceDeps extends Pick<PackageSourceDeps, 'installed' | 'hostVersion' | 'cloneUrl' | 'lsRemote' | 'defaultBranch'> {
   hub: {
     /** The hub's latest published version of a skill, or null when the hub lists none. */
     latest: (slug: string, owner: string | undefined, signal: AbortSignal) => Promise<string | null>
@@ -83,12 +83,16 @@ export function createHubSkillSource(deps: HubSkillSourceDeps): UpdateSource {
       }
 
       if (isGithubPackageSource(entry.source)) {
-        if (!entry.ref) return { installed, outcome: 'blocked', blockedReason: 'lockfile missing the git ref — reinstall' }
-        const source = { kind: 'git-ref', endpoint: entry.source, ref: entry.ref }
-        const remote = await deps.lsRemote(deps.cloneUrl(entry.source), entry.ref, signal)
-        if (!remote) return { installed, source, outcome: 'blocked', blockedReason: `no remote ref: ${entry.ref}` }
+        // An install without `@ref` records an empty ref and tracks the remote's default branch.
+        const url = deps.cloneUrl(entry.source)
+        const ref = entry.ref || await deps.defaultBranch(url, signal)
+        if (!ref) return { installed, outcome: 'blocked', blockedReason: 'the remote has no default branch — reinstall with an explicit @ref' }
+        const source = { kind: 'git-ref', endpoint: entry.source, ref }
+        const remote = await deps.lsRemote(url, ref, signal)
+        if (!remote) return { installed, source, outcome: 'blocked', blockedReason: `no remote ref: ${ref}` }
         if (remote === entry.commitSha) return { installed, source, outcome: 'current' }
-        return { installed, source, available: { sha: remote, display: remote.slice(0, 7) }, reason: 'newer-commit', outcome: 'update-available', action: action(packageSourceWithRef(entry.source, entry.ref)) }
+        // The re-install pointer keeps the source as it was installed: an explicit ref stays pinned, a default-branch install stays unpinned.
+        return { installed, source, available: { sha: remote, display: remote.slice(0, 7) }, reason: 'newer-commit', outcome: 'update-available', action: action(entry.ref ? packageSourceWithRef(entry.source, entry.ref) : entry.source) }
       }
 
       return { installed, source: { kind: 'local-path', endpoint: entry.source }, outcome: 'unsupported', blockedReason: 'a local directory has no upstream to check — re-install from it to update', action: action(entry.source) }

@@ -169,6 +169,23 @@ describe('joinInstallState', () => {
     expect(weather).toMatchObject({ installed: true, updateAvailable: true, installedVersion: '0.3.0' })
   })
 
+  it('review r1 #6: a superseded key still present never joins — the canonical (newest installed) entry carries the version AND the record, in both insertion orders', () => {
+    const v1 = { kind: 'agent', version: '1.0.0', source: 'github:x/pixel', ref: 'main', commitSha: SHA_A, installedAt: '2026-10-01T00:00:00.000Z', agentId: 'pixel', state: 'managed' }
+    const v2 = { kind: 'agent', version: '2.0.0', source: 'github:x/pixel', ref: 'main', commitSha: SHA_B, installedAt: '2026-10-15T00:00:00.000Z', agentId: 'pixel', state: 'managed' }
+    const p1 = { kind: 'skill-pack', version: '1.0.0', source: 'github:x/editorial', ref: 'main', commitSha: SHA_A, installedAt: '2026-10-01T00:00:00.000Z' }
+    const p2 = { kind: 'skill-pack', version: '2.0.0', source: 'github:x/editorial', ref: 'main', commitSha: SHA_B, installedAt: '2026-10-15T00:00:00.000Z' }
+    const records = recordMap([record({ id: 'package:pixel', outcome: 'current' }), record({ id: 'package:editorial', outcome: 'current' })])
+    for (const packages of [
+      { 'pixel@1.0.0': v1, 'pixel@2.0.0': v2, 'editorial@1.0.0': p1, 'editorial@2.0.0': p2 },
+      { 'pixel@2.0.0': v2, 'pixel@1.0.0': v1, 'editorial@2.0.0': p2, 'editorial@1.0.0': p1 },
+    ]) {
+      const src = sources({ packageLock: { version: 1, packages } as unknown as InstallStateSources['packageLock'] })
+      const [pixel, editorial] = joinInstallState([entry({ id: 'pixel', kind: 'agent' }), entry({ id: 'editorial', kind: 'skill-pack' })], src, records)
+      expect(pixel).toMatchObject({ installed: true, installedVersion: '2.0.0', updateAvailable: false })
+      expect(editorial).toMatchObject({ installed: true, installedVersion: '2.0.0', updateAvailable: false })
+    }
+  })
+
   it('updateAvailableOf: unknown and absent are null; blocked and unsupported are not updates', () => {
     expect(updateAvailableOf(undefined)).toBeNull()
     expect(updateAvailableOf(record({ id: 'plugin:x', outcome: 'unknown' }))).toBeNull()

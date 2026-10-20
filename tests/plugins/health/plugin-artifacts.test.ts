@@ -163,6 +163,18 @@ describe('checkPluginArtifacts — what the source offers this host', () => {
     expect(threw.incident?.resolution).toMatchObject({ type: 'instructions', key: 'upgrade-plugin' })
   })
 
+  it('review r1 #8: a failed attempt after a retained offer or a blocked verdict is never hidden — the offer stands AND the error is in evidence', async () => {
+    installPlugin('stale', 'react18-old-vX')
+    lockEntry('stale')
+    const offerThenFail = observed(await checkPluginArtifacts({ record: async () => record({ outcome: 'update-available', available: { version: '1.5.0', display: '1.5.0' }, attempt: { at: '2026-10-20T00:00:00.000Z', error: 'index: 503' } }) }))[0]
+    expect(offerThenFail.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'upgrade-plugin-artifact' })
+    expect(offerThenFail.evidence).toMatchObject({ compatibleVersion: '1.5.0', updateObservedAt: '2026-10-19T12:00:00.000Z', updateCheckError: 'index: 503' })
+
+    const blockedThenFail = observed(await checkPluginArtifacts({ record: async () => record({ outcome: 'blocked', blockedReason: 'no published release of stale runs on this Bakin yet (newest is 2.0.0)', attempt: { at: '2026-10-20T00:00:00.000Z', error: 'index: 503' } }) }))[0]
+    expect(blockedThenFail.incident?.resolution).toMatchObject({ type: 'instructions', key: 'await-compatible-release' })
+    expect(blockedThenFail.evidence).toMatchObject({ updateObservedAt: '2026-10-19T12:00:00.000Z', updateCheckError: 'index: 503' })
+  })
+
   it('without a running engine the default reads are unknown — the check never probes an index itself', async () => {
     installPlugin('stale', 'react18-old-vX')
     lockEntry('stale')

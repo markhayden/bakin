@@ -270,10 +270,10 @@ PluginLockEntry {
   version        // from bakin-plugin.json
   permissions    // string[], strict against PermissionSchema enum
   manifestSha    // sha256 of bakin-plugin.json
-  lastChecked?   // ISO 8601, set by `plugins list --check`
-  remoteHeadSha? // last seen remote sha (github only)
-  sourceTreeSha? // install/upgrade time tree sha (local only)
-  lastSourceTreeSha? // --check time tree sha (local only)
+  sourceTreeSha? // install/upgrade time tree sha (local only) — installed
+                  // provenance; "is there something newer" is the updates
+                  // engine's record (#1007), never a lockfile marker
+  sourceTreeShaAlgo? // which hasher produced sourceTreeSha (absent = legacy 1)
   installedSkills? // runtime skill names this plugin shipped — the
                   // authoritative allowlist for uninstall (defeats fake
                   // .installedBy markers per #119 hardening)
@@ -665,20 +665,18 @@ Committed upgrades return a `pluginAssets` report with installed,
 unchanged, and `.userEdited`-skipped runtime skills, plus `droppedBins`.
 No-op and awaiting-consent responses do not project assets.
 
-### Upgrade-available detection — `bakin plugins list --check`
+### Upgrade-available detection — `bakin plugins list [--check]`
 
-Plain `list` reads markers from the lockfile only — no network, no
-fs walk. `--check` runs per-plugin probes in parallel:
-
-- **github**: `git ls-remote <source> <ref>` → record `remoteHeadSha`
-  + `lastChecked`. `upgradeAvailable = remoteHeadSha !== commitSha`.
-- **local**: walk source dir, compute tree sha → record
-  `lastSourceTreeSha` + `lastChecked`.
-  `upgradeAvailable = lastSourceTreeSha !== sourceTreeSha` (split
-  fields so `--check` doesn't clobber the install/upgrade-time value).
-
-Plain `list` shows a 7-day staleness hint when `lastChecked` is older
-than the threshold.
+Plain `list` reads `GET /api/plugins/manifest`, whose `upgradeAvailable` /
+`updateObservedAt` are projected from the updates engine's `plugin:<id>`
+record (#1007; the engine's plugin source observes the artifact index,
+`git ls-remote` or the local source tree on its schedule — no network on
+the request path). `--check` asks for `?check=1`, which runs the engine's
+plugin pass (waited) and answers with the refreshed projection; nothing is
+written to the lockfile. Plain `list` shows a 7-day staleness hint when
+`updateObservedAt` (the last SUCCESSFUL observation) is older than the
+threshold. Lifecycle-checklist rows that mention `lastChecked` /
+`remoteHeadSha` describe the pre-#1007 design and are historical.
 
 Health System's Installed plugins inventory merges
 `/api/plugins/health/registry` with `/api/plugins/manifest`. Initial and

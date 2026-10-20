@@ -96,17 +96,29 @@ const UPDATE_CHECK_TIMEOUT_MS = 120_000
 const CATALOG_SUBJECT_KINDS: ReadonlySet<string> = new Set(['plugin', 'package', 'hub-skill'])
 
 /**
- * Run the updates engine's check pass and wait for it (#1007). Returns how
- * many catalog subjects the pass could not observe — those stay unknown on
- * the re-read catalog, never "up to date".
+ * Run the updates engine's check pass and wait for it (#1007). Returns the
+ * catalog subjects whose attempt failed while an EARLIER observation still
+ * stands — their rows keep that verdict instead of turning unknown, so the
+ * re-read catalog alone cannot count them as "couldn't be checked".
  */
-async function runUpdateCheck(signal: AbortSignal): Promise<{ failed: number }> {
+async function runUpdateCheck(signal: AbortSignal): Promise<{ failedWithObservation: number }> {
   const res = await fetch('/api/updates/check?wait=1', { method: 'POST', headers: OPERATOR_DECLARATION_HEADERS, signal })
   const body = (await res.json().catch(() => null)) as { records?: UpdateRecord[]; error?: string; message?: string } | null
   if (!res.ok) throw new Error(body?.message ?? body?.error ?? `HTTP ${res.status}`)
   const records = Array.isArray(body?.records) ? body.records : []
-  const failed = records.filter((record) => CATALOG_SUBJECT_KINDS.has(record.subject.kind) && record.attempt?.error !== undefined).length
-  return { failed }
+  const failedWithObservation = records.filter((record) => (
+    CATALOG_SUBJECT_KINDS.has(record.subject.kind) && record.attempt?.error !== undefined && record.observedAt !== undefined
+  )).length
+  return { failedWithObservation }
+}
+
+/**
+ * Installed, non-builtin entries the pass left unknown: no engine record
+ * (a pre-lockfile plugin directory, an entry installed a moment ago) or no
+ * successful observation. Unknown is never "up to date".
+ */
+function unknownInstalledCount(entries: readonly ExploreCatalogEntry[]): number {
+  return entries.filter((entry) => entry.installed && !entry.builtin && entry.updateAvailable === null).length
 }
 
 /** Deadline rejections arrive as DOMExceptions — surface them as a real error. */
@@ -159,10 +171,10 @@ function ExplorePageInner() {
     setBusyAction(action)
     setActionError(null)
     try {
-      let failed = 0
+      let failedWithObservation = 0
       let res: Response
       if (action === 'check') {
-        failed = (await runUpdateCheck(AbortSignal.timeout(UPDATE_CHECK_TIMEOUT_MS))).failed
+        failedWithObservation = (await runUpdateCheck(AbortSignal.timeout(UPDATE_CHECK_TIMEOUT_MS))).failedWithObservation
         res = await pluginFetch('explore', 'catalog', { signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS) })
       } else {
         res = await pluginFetch('explore', 'catalog/refresh', { method: 'POST', signal: AbortSignal.timeout(REMOTE_ACTION_TIMEOUT_MS) })
@@ -175,6 +187,8 @@ function ExplorePageInner() {
       setOverride(body)
       if (action === 'check') {
         const updates = body.entries.filter((entry) => entry.updateAvailable === true)
+        // "Couldn't be checked" = rows still unknown after the pass + rows whose fresh attempt failed over an earlier verdict.
+        const failed = unknownInstalledCount(body.entries) + failedWithObservation
         if (updates.length > 0) {
           const suffix = failed > 0 ? ` (${failed} couldn't be checked)` : ''
           toast(`${updates.length} update${updates.length === 1 ? '' : 's'} available: ${updates.map((u) => u.name).join(', ')}${suffix}`, 'success')

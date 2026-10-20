@@ -16,10 +16,9 @@ import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { isUpdateOffered, type UpdateRecord } from '@makinbakin/sdk/types'
 import { readPluginLockfile, type PluginLockfile } from '@bakin/core/plugins/lockfile'
-import { readLockfile, type Lockfile, type PackageEntry } from '@bakin/core/agent-packages/lockfile'
+import { canonicalPackageEntries, readLockfile, type CanonicalPackageEntry, type Lockfile } from '@bakin/core/agent-packages/lockfile'
 import { getContentDir } from '../../../src/core/content-dir'
 import type { CatalogEntry } from '../../../src/core/curated-catalog/schema'
-import { packageIdOfKey } from '../../../src/core/updates/sources/package'
 import type { ExploreCatalogEntry } from '../types'
 
 /** Engine records keyed by their id (`<kind>:<subjectId>`). */
@@ -77,25 +76,14 @@ export function gatherInstallSources(): InstallStateSources {
   }
 }
 
-interface InstalledPackage {
-  key: string
-  entry: PackageEntry
+/** The canonical entry (newest installed per id — the same selection the updates engine's inventory makes) owning this agent. */
+function findAgentEntry(lock: Lockfile, agentId: string): CanonicalPackageEntry | null {
+  return canonicalPackageEntries(lock).find((candidate) => candidate.entry.kind === 'agent' && candidate.entry.agentId === agentId) ?? null
 }
 
-function findAgentEntry(lock: Lockfile, agentId: string): InstalledPackage | null {
-  for (const [key, entry] of Object.entries(lock.packages)) {
-    if (entry.kind === 'agent' && entry.agentId === agentId) return { key, entry }
-  }
-  return null
-}
-
-/** Pack lockfile keys are `id` or `id@version` — match either. */
-function findPackEntry(lock: Lockfile, id: string, kind: CatalogEntry['kind']): InstalledPackage | null {
-  for (const [key, entry] of Object.entries(lock.packages)) {
-    if (entry.kind !== kind) continue
-    if (key === id || key.startsWith(`${id}@`)) return { key, entry }
-  }
-  return null
+/** Pack lockfile keys are `id` or `id@version`; the canonical entry for the id. */
+function findPackEntry(lock: Lockfile, id: string, kind: CatalogEntry['kind']): CanonicalPackageEntry | null {
+  return canonicalPackageEntries(lock).find((candidate) => candidate.entry.kind === kind && candidate.id === id) ?? null
 }
 
 /**
@@ -108,8 +96,7 @@ export function updateAvailableOf(record: UpdateRecord | undefined): boolean | n
 }
 
 /** A lockfile package is a `package` subject, or a `hub-skill` one when it was synthesized from a hub bundle. */
-function packageRecord(records: UpdateRecordMap, key: string): UpdateRecord | undefined {
-  const id = packageIdOfKey(key)
+function packageRecord(records: UpdateRecordMap, id: string): UpdateRecord | undefined {
   return records.get(`package:${id}`) ?? records.get(`hub-skill:${id}`)
 }
 
@@ -133,7 +120,7 @@ export function joinInstallState(
       return {
         ...entry,
         installed: installed !== null,
-        updateAvailable: installed ? updateAvailableOf(packageRecord(records, installed.key)) : null,
+        updateAvailable: installed ? updateAvailableOf(packageRecord(records, installed.id)) : null,
         installedVersion: installed?.entry.version ?? null,
       }
     }
@@ -152,7 +139,7 @@ export function joinInstallState(
     return {
       ...entry,
       installed: installed !== null,
-      updateAvailable: installed ? updateAvailableOf(packageRecord(records, installed.key)) : null,
+      updateAvailable: installed ? updateAvailableOf(packageRecord(records, installed.id)) : null,
       installedVersion: installed?.entry.version ?? null,
     }
   })

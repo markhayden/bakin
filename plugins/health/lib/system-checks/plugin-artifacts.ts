@@ -56,8 +56,8 @@ const PROVENANCE_PATH = join('.whiskit', 'build.json')
  * successful observation; `error` its last failed attempt.
  */
 type Offer =
-  | { kind: 'upgrade'; version: string; observedAt?: string }
-  | { kind: 'none'; reason: string; observedAt?: string }
+  | { kind: 'upgrade'; version: string; observedAt?: string; error?: string }
+  | { kind: 'none'; reason: string; observedAt?: string; error?: string }
   | { kind: 'unknown'; observedAt?: string; error?: string }
 
 async function offerFor(pluginId: string, pluginDir: string, deps: PluginArtifactDeps): Promise<Offer> {
@@ -71,10 +71,11 @@ async function offerFor(pluginId: string, pluginDir: string, deps: PluginArtifac
     return { kind: 'unknown' }
   }
   if (!record) return { kind: 'unknown' }
-  const observedAt = record.observedAt
-  if (record.outcome === 'update-available' && record.available?.version) return { kind: 'upgrade', version: record.available.version, observedAt }
-  if (record.outcome === 'blocked') return { kind: 'none', reason: record.blockedReason ?? 'no published release runs on this Bakin yet', observedAt }
-  return { kind: 'unknown', observedAt, error: record.attempt?.error }
+  // The two clocks ride along: a retained observation AND the last attempt's failure, never one hiding the other.
+  const clocks = { observedAt: record.observedAt, error: record.attempt?.error }
+  if (record.outcome === 'update-available' && record.available?.version) return { kind: 'upgrade', version: record.available.version, ...clocks }
+  if (record.outcome === 'blocked') return { kind: 'none', reason: record.blockedReason ?? 'no published release runs on this Bakin yet', ...clocks }
+  return { kind: 'unknown', ...clocks }
 }
 
 export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDeps): Promise<HealthCheckRunInput> {
@@ -167,7 +168,7 @@ function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid',
       reason: reason.slice(0, 4_000),
       ...(offer.kind === 'upgrade' ? { compatibleVersion: offer.version } : {}),
       updateObservedAt: offer.observedAt ?? null,
-      ...(offer.kind === 'unknown' && offer.error ? { updateCheckError: offer.error.slice(0, 1_000) } : {}),
+      ...(offer.error ? { updateCheckError: offer.error.slice(0, 1_000) } : {}),
     },
     incident: {
       key: `${status}:${id}`,

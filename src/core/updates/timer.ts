@@ -9,6 +9,7 @@
  * re-read on every tick: disabling mid-pass lets the running subjects finish
  * and schedules nothing more; an explicit check still runs when disabled.
  */
+import type { UpdateRecord } from '@makinbakin/sdk/types'
 import { createLogger } from '../logger'
 import { UpdateSubjectNotFoundError, type UpdatesEngine } from './engine'
 
@@ -46,6 +47,15 @@ export interface CheckRun {
   ids: string[]
   /** True when the request attached to a pass that was already running. */
   coalesced: boolean
+  /**
+   * THIS request's attempt result per subject it rode (a named id always
+   * rides one; a broad request only for subjects the pass had not reached):
+   * the record the engine wrote for that attempt — a failed attempt's record
+   * carries `attempt.error`. Never a later attempt's result (review r1 #2).
+   */
+  results: Map<string, UpdateRecord>
+  /** Attempts whose engine call itself rejected (the subject vanished, the store failed) — by subject id. */
+  errors: Map<string, Error>
 }
 
 /** A check the timer accepted: the ids it will observe, and the pass they ride. */
@@ -104,9 +114,11 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
   let stopped = false
   let timer: ReturnType<typeof setTimeout> | null = null
 
-  /** One admitted request's view of the pass: the subjects that were gone when THEIR attempt's turn came. */
+  /** One admitted request's view of the pass: the subjects that were gone when THEIR attempt's turn came, and each attempt's own result. */
   interface Waiter {
     missing: Set<string>
+    results: Map<string, UpdateRecord>
+    errors: Map<string, Error>
   }
 
   /** One queued observation and the requests riding it — a later attempt for the same id is a different item (review r5 #5). */
@@ -149,7 +161,20 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
       if (err instanceof UpdateSubjectNotFoundError) for (const waiter of attempt.waiters) waiter.missing.add(id)
       log.warn('update check failed to start', { id, error: err instanceof Error ? err.message : String(err) })
     }
-    const observing = engine.observe(id, { signal: controller.signal, token }).then(() => undefined, refused).finally(() => { settled = true })
+    // The attempt's FIRST settlement is its result for every request riding
+    // it: the engine's record (success or recorded failure), the deadline's
+    // record, or the engine's own rejection. A late result from an attempt
+    // the deadline already closed never replaces it.
+    const settle = (outcome: { record: UpdateRecord } | { error: unknown }): void => {
+      for (const waiter of attempt.waiters) {
+        if (waiter.results.has(id) || waiter.errors.has(id)) continue
+        if ('record' in outcome) waiter.results.set(id, outcome.record)
+        else waiter.errors.set(id, outcome.error instanceof Error ? outcome.error : new Error(String(outcome.error)))
+      }
+    }
+    const observing = engine.observe(id, { signal: controller.signal, token })
+      .then((record) => { settle({ record }) }, (err: unknown) => { refused(err); settle({ error: err }) })
+      .finally(() => { settled = true })
     const timedOut = await Promise.race([
       observing.then(() => false),
       new Promise<boolean>((resolve) => { const t = setTimeout(() => resolve(true), subjectTimeoutMs); t.unref?.() }),
@@ -159,10 +184,11 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
     await Promise.race([observing, new Promise<void>((resolve) => { const t = setTimeout(resolve, cancelGraceMs); t.unref?.() })])
     if (settled) return
     try {
-      await engine.recordFailure(id, SUBJECT_TIMED_OUT(subjectTimeoutMs), { token })
+      settle({ record: await engine.recordFailure(id, SUBJECT_TIMED_OUT(subjectTimeoutMs), { token }) })
     } catch (err) {
       // Removed during the grace: the deadline has nowhere to land — an attempt-specific result, not the pass's.
       refused(err)
+      settle({ error: err })
     }
   }
 
@@ -233,7 +259,7 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
   schedule(firstTickMs)
 
   async function admit(request: CheckRequest = {}): Promise<CheckAdmission> {
-    const waiter: Waiter = { missing: new Set() }
+    const waiter: Waiter = { missing: new Set(), results: new Map(), errors: new Map() }
     const { ids, run, coalesced } = await serialized(async () => {
       if (stopped) throw new UpdatesStoppedError()
       await engine.refreshInventory()
@@ -269,9 +295,9 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
       // Named subjects must have been LOOKED AT: one removed while THIS request's attempt waited its turn fails it.
       const gone = request.ids?.find((id) => waiter.missing.has(id))
       if (gone !== undefined) throw new UpdateSubjectNotFoundError(gone)
-      return { ids, coalesced }
+      return { ids, coalesced, results: waiter.results, errors: waiter.errors }
     })
-    return { ids, coalesced, done }
+    return { ids, coalesced, results: waiter.results, errors: waiter.errors, done }
   }
 
   return {
