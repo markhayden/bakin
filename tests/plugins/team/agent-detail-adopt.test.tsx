@@ -87,7 +87,7 @@ function setupFetch() {
     if (u === '/api/plugins/health/doctor') {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTHY_TEAM_HEALTH_REPORT) } as Response)
     }
-    if (u === '/api/agent-packages?check=1' && init?.method !== 'POST') {
+    if (u === '/api/agent-packages' && init?.method !== 'POST') {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ ok: true, agents: [{ agentId: 'pixel', state: 'managed', packageId: 'examples/pixel' }] }),
@@ -174,7 +174,7 @@ describe('PackageCard — Adopt flow', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Adopt agent' })) })
 
     // After successful adopt the store should pick up the new state
-    // from /api/agent-packages?check=1 (which our mock returns as managed).
+    // from /api/agent-packages (which our mock returns as managed).
     await waitFor(() => expect(useAgentStore.getState().packageStates['pixel']?.state).toBe('managed'))
   })
 })

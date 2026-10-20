@@ -12,7 +12,7 @@
  * so they don't live in the manifest.
  */
 import { isCorePlugin, pluginRegistry } from '@/core/plugin-registry'
-import { isUpdateSkipped, type UpdateRecord } from '@makinbakin/sdk/types'
+import { isUpdateOffered, type UpdateRecord } from '@makinbakin/sdk/types'
 import { createLogger } from '@/core/logger'
 import { getUpdatesEngine, getUpdatesTimer } from '@/core/updates/service'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
@@ -70,7 +70,7 @@ export function staleHintDaysOf(observedAt: string | undefined, now = Date.now()
 
 /** Whether the engine's record is an upgrade the operator has not skipped. */
 export function upgradeAvailableOf(record: UpdateRecord | undefined): boolean {
-  return record !== undefined && record.outcome === 'update-available' && !isUpdateSkipped(record)
+  return record !== undefined && isUpdateOffered(record)
 }
 
 export async function get(req: Request): Promise<Response> {

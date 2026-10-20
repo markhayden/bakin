@@ -402,8 +402,15 @@ through a server is an operator action: `bakin update --as human`; an
   subject's own flow. The tab label carries the count. The nav badge stays
   incidents-only; no toasts.
 - **System tab:** a plugin's "Update available" is the engine's verdict; its
-  "Check for updates" runs the plugin pass. (The manifest's own
-  `upgradeAvailable` projection migrates in PR B.)
+  "Check for updates" runs the plugin pass. The manifest's `upgradeAvailable`
+  / `staleHintDays` are the same projection (`GET /api/plugins/manifest`,
+  `?check=1` runs the plugin pass and answers with the refreshed projection).
+- **Team / Explore:** `GET /api/agent-packages` joins each managed row with
+  its `package:` record (`row.update`); the Explore catalog join reads
+  `plugin:`/`package:`/`hub-skill:` records into `updateAvailable`
+  (true / false / null = unknown). Neither route probes; Explore's "Check for
+  updates" is `POST /api/updates/check?wait=1` + a re-read, and both follow
+  `updates.changed`.
 - **Overview:** an incident whose resources name an offered update (plugin
   id, the search-engine service, the embedder setting, the active runtime)
   links "View update" to its row by record id — identity, never copy.

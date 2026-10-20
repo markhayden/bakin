@@ -23,7 +23,9 @@ interface AgentStore {
   /** Organizational teams */
   teams: OrgTeam[]
   /**
-   * Agent-package state per agent id, sourced from `/api/agent-packages`.
+   * Agent-package state per agent id, sourced from `/api/agent-packages`
+   * (lockfile state + the updates engine's record for the package — the
+   * route never probes a source, so the roster never waits on the network).
    * Fetched in parallel with the roster on `load()`. Empty map when the
    * endpoint fails — agent-packages is optional context, not load-blocking.
    */
@@ -36,7 +38,7 @@ interface AgentStore {
   /** Fetch agents + display settings + package states from the API */
   /** Reload the roster; resolves false when it could not be refreshed (the previous roster stays). */
   load: () => Promise<boolean>
-  /** Re-fetch only `/api/agent-packages` — used after Adopt to invalidate staleness */
+  /** Re-fetch only `/api/agent-packages` — after Adopt/Sync/Orphan, and on `updates.changed` for a package. */
   refreshPackageStates: () => Promise<void>
   /** Update display settings for a single agent */
   updateDisplay: (agentId: string, patch: Partial<AgentDisplaySettings>) => Promise<void>
@@ -130,7 +132,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     try {
       const [rosterRes, pkgRes] = await Promise.all([
         fetch('/api/plugins/team/'),
-        fetch('/api/agent-packages?check=1').catch(() => null),
+        fetch('/api/agent-packages').catch(() => null),
       ])
       if (!rosterRes.ok) {
         set({ loaded: true })
@@ -178,7 +180,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   },
 
   refreshPackageStates: async () => {
-    const res = await fetch('/api/agent-packages?check=1').catch(() => null)
+    const res = await fetch('/api/agent-packages').catch(() => null)
     const packageStates = await parsePackageStatesResponse(res)
     set({ packageStates })
   },

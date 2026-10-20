@@ -27,7 +27,7 @@ mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
-import { countAvailableUpdates, isUpdateSkipped, type UpdateRecord } from '@makinbakin/sdk/types'
+import { countAvailableUpdates, isUpdateOffered, isUpdateSkipped, type UpdateRecord } from '@makinbakin/sdk/types'
 import { createUpdatesEngine, UpdateRequiredError, UpdateSubjectNotFoundError, type UpdatesEngine } from '../../../src/core/updates/engine'
 import { fingerprintOf } from '../../../src/core/updates/inventory'
 import { readUpdatesFile, writeUpdatesFile, emptyUpdatesFile } from '../../../src/core/updates/store'
@@ -248,6 +248,7 @@ describe('skips', () => {
     const skipped = await engine.skip('plugin:projects')
     expect(skipped.skipped).toEqual({ version: '1.1.0', sha: 'aaa' })
     expect(isUpdateSkipped(skipped)).toBe(true)
+    expect(isUpdateOffered(skipped)).toBe(false)
     expect(countAvailableUpdates((await engine.snapshot()).records)).toBe(0)
     expect(published.at(-1)).toEqual({ type: 'updates.changed', ids: ['plugin:projects'] })
 
@@ -255,6 +256,7 @@ describe('skips', () => {
     plugins.when('projects', async () => available('1.1.0', 'bbb'))
     const again = await engine.observe('plugin:projects')
     expect(again.skipped).toBeUndefined()
+    expect(isUpdateOffered(again)).toBe(true)
     expect(countAvailableUpdates([again])).toBe(1)
 
     // Re-observing the identical identity keeps a skip in place.

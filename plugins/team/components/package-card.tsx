@@ -26,7 +26,8 @@ import {
 import { useRouter } from '@makinbakin/sdk/navigation'
 import { Inline, Panel } from '@makinbakin/sdk/layout'
 import { ConfirmDialog, CopyButton, KeyValue, OperationProgress, StatusBadge, type KeyValueItem } from '@makinbakin/sdk/patterns'
-import { toast, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
+import { toast, useAgentStore, useMainAgentId, usePluginEvent } from '@makinbakin/sdk/hooks'
+import { isUpdateOffered } from '@makinbakin/sdk/types'
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
 import { usePackageOperation } from '../hooks/use-package-operation'
@@ -102,8 +103,17 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const hasPackage = Boolean(packageState?.entry && (state === 'managed' || state === 'update-available'))
-  const updateAvailable = Boolean(packageState?.updateStatus?.upgradeAvailable || state === 'update-available')
+  const update = packageState?.update
+  const updateAvailable = Boolean((update && isUpdateOffered(update)) || state === 'update-available')
   const displayState = updateAvailable ? 'update-available' : state
+
+  // The engine observes packages on its schedule (#1007): a changed package
+  // record re-reads the rows so the badge never waits for a page reload.
+  usePluginEvent('updates.changed', (payload) => {
+    const ids = (payload as { ids?: unknown }).ids
+    if (!Array.isArray(ids) || !ids.some((id) => typeof id === 'string' && id.startsWith('package:'))) return
+    void refreshPackageStates()
+  })
 
   // Sync and remove run as operations (#895): the dialog follows them live and
   // the route's old answer arrives as the operation result.
@@ -274,14 +284,14 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
             packageId={packageState.packageId}
             version={packageState.version}
           />
-          {packageState.updateStatus?.upgradeAvailable && (
+          {update && isUpdateOffered(update) && (
             <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-accent">
-              Latest version {packageState.updateStatus.latestVersion ?? 'available'} is available.
+              Latest version {update.available?.display ?? 'available'} is available.
             </p>
           )}
-          {packageState.updateStatus?.error && (
+          {update?.attempt?.error !== undefined && (
             <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-danger">
-              Update check failed: {packageState.updateStatus.error}
+              Last update check failed: {update.attempt.error}
             </p>
           )}
         </div>
@@ -316,7 +326,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
               Bakin pulls the latest package source for {agentId}, recomposes the managed blocks (context layers + template + lessons), re-projects skills and assets, verifies the result, and writes a receipt. Content outside the managed blocks is never touched; `.userEdited` skills/assets are skipped with a reclaim hint.
             </DialogDescription>
           </DialogHeader>
-          {packageState?.updateStatus && (
+          {update && (
             <div className="border-y border-bakin-border-subtle py-bakin-4">
               <div className="grid min-w-0 gap-bakin-4 sm:grid-cols-2">
                 <div>
@@ -324,10 +334,10 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                     Current version
                   </Overline>
                   <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
-                    {packageState.updateStatus.currentVersion || packageState.version || packageState.entry?.version || 'unknown'}
+                    {update.installed?.display || packageState?.version || packageState?.entry?.version || 'unknown'}
                   </p>
                   <Text size="meta" tone="muted" mono as="p" className="mt-bakin-1">
-                    commit {packageState.updateStatus.currentCommitSha?.slice(0, 7) || packageState.entry?.commitSha?.slice(0, 7) || 'unknown'}
+                    commit {update.installed?.sha?.slice(0, 7) || packageState?.entry?.commitSha?.slice(0, 7) || 'unknown'}
                   </Text>
                 </div>
                 <div>
@@ -335,10 +345,10 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                     Available version
                   </Overline>
                   <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-signal-accent">
-                    {packageState.updateStatus.latestVersion ?? 'latest'}
+                    {update.available?.display ?? (update.outcome === 'current' ? 'up to date' : 'unknown')}
                   </p>
                   <Text size="meta" tone="muted" mono as="p" className="mt-bakin-1">
-                    commit {packageState.updateStatus.latestCommitSha?.slice(0, 7) || 'unknown'}
+                    commit {update.available?.sha?.slice(0, 7) || 'unknown'}
                   </Text>
                 </div>
               </div>

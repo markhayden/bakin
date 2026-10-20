@@ -12,7 +12,7 @@
  * from the Zustand store, which we prime per test.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -64,6 +64,7 @@ mock.module('@/hooks/use-runtime-status', () => ({
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
 
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
+import { emitPluginEvent } from '../../../src/hooks/use-plugin-event'
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
 import { PackageCardBody } from '../../../plugins/team/components/package-card'
 import { finishedOperation, operationResponse, operationStarted } from '../../helpers/operation-fetch'
@@ -291,13 +292,19 @@ describe('PackageCard — update and remove actions', () => {
       commitSha: 'abc1234567',
       installedAt: '2026-04-25T00:00:00Z',
     },
-    updateStatus: {
-      currentVersion: '0.1.0',
-      latestVersion: '0.2.0',
-      currentCommitSha: 'abc1234567',
-      latestCommitSha: 'def7654321',
-      upgradeAvailable: true,
-      checkedAt: '2026-06-01T12:00:00.000Z',
+    update: {
+      id: 'package:pixel',
+      group: 'available',
+      subject: { kind: 'package', id: 'pixel', label: 'pixel' },
+      installed: { version: '0.1.0', sha: 'abc1234567', display: '0.1.0' },
+      available: { version: '0.2.0', sha: 'def7654321', display: '0.2.0' },
+      reason: 'newer-version',
+      outcome: 'update-available',
+      source: { kind: 'git-ref', endpoint: 'github:examples/pixel', ref: 'main' },
+      fingerprint: 'fp',
+      observedAt: '2026-06-01T12:00:00.000Z',
+      attempt: { at: '2026-06-01T12:00:00.000Z' },
+      action: { kind: 'manual', pointer: 'bakin agents sync pixel' },
     },
   }
 
@@ -323,7 +330,7 @@ describe('PackageCard — update and remove actions', () => {
         const body = typeof init.body === 'string' ? JSON.parse(init.body) as { deleteAgent?: boolean } : {}
         return Promise.resolve(operationStarted(body.deleteAgent ? 'op-delete' : 'op-orphan'))
       }
-      if (u === '/api/agent-packages?check=1') {
+      if (u === '/api/agent-packages') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, agents: [UPDATE_ROW] }) } as Response)
       }
       if (u === '/api/plugins/team/') {
@@ -334,6 +341,43 @@ describe('PackageCard — update and remove actions', () => {
     global.fetch = fetchMock as unknown as typeof global.fetch
     return fetchMock
   }
+
+  it('renders the engine record: the offered version, and a failed last attempt', () => {
+    setupActionFetch()
+    render(<PackageCardBody agentId="pixel" packageState={{
+      ...UPDATE_ROW,
+      update: { ...UPDATE_ROW.update!, attempt: { at: '2026-06-02T12:00:00.000Z', error: 'ls-remote: timed out' } },
+    }} />)
+
+    expect(screen.getByText('update available')).toBeDefined()
+    expect(screen.getByText('Latest version 0.2.0 is available.')).toBeDefined()
+    expect(screen.getByText('Last update check failed: ls-remote: timed out')).toBeDefined()
+  })
+
+  it('a skipped offer is not an update — the card stays managed', () => {
+    setupActionFetch()
+    render(<PackageCardBody agentId="pixel" packageState={{
+      ...UPDATE_ROW,
+      update: { ...UPDATE_ROW.update!, skipped: { version: '0.2.0', sha: 'def7654321' } },
+    }} />)
+
+    expect(screen.queryByText('update available')).toBeNull()
+    expect(screen.getByText('managed')).toBeDefined()
+    expect(screen.queryByText('Latest version 0.2.0 is available.')).toBeNull()
+  })
+
+  it('re-reads the package rows when updates.changed names a package — and ignores other subjects', async () => {
+    const fetchMock = setupActionFetch()
+    render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
+    const packageReads = () => fetchMock.mock.calls.filter((call) => call[0] === '/api/agent-packages').length
+    expect(packageReads()).toBe(0)
+
+    await act(async () => { emitPluginEvent({ event: 'updates.changed', ids: ['plugin:projects', 'bakin:bakin'] }) })
+    expect(packageReads()).toBe(0)
+
+    await act(async () => { emitPluginEvent({ event: 'updates.changed', ids: ['package:pixel'] }) })
+    await waitFor(() => expect(packageReads()).toBe(1))
+  })
 
   it('opens the sync modal and posts to the sync route', async () => {
     const fetchMock = setupActionFetch()

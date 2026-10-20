@@ -166,9 +166,9 @@ The Teams UI exposes three contextual agent-package surfaces. Cross-agent operat
 
 ### Data Plumbing
 
-`useAgentStore.load()` issues `/api/plugins/team/` and `/api/agent-packages?check=1` in parallel and merges the package response into a `packageStates: Record<agentId, PackageStateRow>` map. A failed `/api/agent-packages` is non-fatal — the agent grid keeps working with no badges. The store also exposes `refreshPackageStates()` for post-Adopt / post-Upgrade / post-Orphan invalidation; consumers call it after a write so the UI updates without a page reload.
+`useAgentStore.load()` issues `/api/plugins/team/` and `/api/agent-packages` in parallel and merges the package response into a `packageStates: Record<agentId, PackageStateRow>` map. The route joins each managed row with the updates engine's record for its package (`row.update`, an `UpdateRecord` keyed `package:<id>`, #1007) — it never probes a source, so the roster never waits on the network. A failed `/api/agent-packages` is non-fatal — the agent grid keeps working with no badges. The store also exposes `refreshPackageStates()` for post-Adopt / post-Upgrade / post-Orphan invalidation; consumers call it after a write so the UI updates without a page reload, and `PackageCardBody` calls it on every `updates.changed` event that names a `package:` id so a scheduled engine pass lands without a reload.
 
-`PackageStateRow.state` is typed as the badge component's 6-state union (`absent | unmanaged | adopted | managed | drifted | update-available`) for forward-compat. The server still emits the base install state; `PackageCard` overlays `update-available` from `row.updateStatus.upgradeAvailable` for display/action state.
+`PackageStateRow.state` is typed as the badge component's 6-state union (`absent | unmanaged | adopted | managed | drifted | update-available`) for forward-compat. The server still emits the base install state; `PackageCard` overlays `update-available` when `isUpdateOffered(row.update)` (an unskipped `update-available` record — the ONE SDK predicate every badge and count uses) for display/action state, names the offered identity (`update.available.display`), and shows the last failed attempt (`update.attempt.error`) honestly.
 
 ### Surface 1 — Badge on AgentCardNode (`team-grid.tsx`)
 
@@ -182,7 +182,7 @@ A read-only `<PackageCard>` is embedded inside the Overview tab (post-rework) an
 
 | State | Render |
 |---|---|
-| `managed` / `adopted` | Full state badge + dl-style fields: source, ref, commit (sliced to 7 chars), installed-at, dependencies. Shows Upgrade when `updateStatus.upgradeAvailable`; shows Delete/Orphan controls. No CLI hint. |
+| `managed` / `adopted` | Full state badge + dl-style fields: source, ref, commit (sliced to 7 chars), installed-at, dependencies. Shows Upgrade when the engine record offers an update (`isUpdateOffered(row.update)`); shows Delete/Orphan controls. No CLI hint. |
 | `unmanaged` (default when no row exists) | State badge + Adopt button → opens `<AdoptDialog>`. |
 | `drifted` | State badge + CLI hint: `bakin install agent-assets` with copy button. |
 | `update-available` | Display overlay for managed/adopted packages with an in-card Upgrade button. |

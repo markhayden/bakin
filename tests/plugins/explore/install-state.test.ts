@@ -21,9 +21,10 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { joinInstallState } from '../../../plugins/explore/lib/install-state'
+import { joinInstallState, updateAvailableOf } from '../../../plugins/explore/lib/install-state'
 import type { CatalogEntry } from '../../../src/core/curated-catalog/schema'
-import type { InstallStateSources } from '../../../plugins/explore/lib/install-state'
+import type { InstallStateSources, UpdateRecordMap } from '../../../plugins/explore/lib/install-state'
+import type { UpdateRecord } from '@makinbakin/sdk/types'
 
 const SHA_A = 'a'.repeat(40)
 const SHA_B = 'b'.repeat(40)
@@ -51,6 +52,15 @@ const sources = (over: Partial<InstallStateSources> = {}): InstallStateSources =
   installedPluginDirs: new Set<string>(),
   ...over,
 })
+
+const record = (over: Partial<UpdateRecord> & Pick<UpdateRecord, 'id' | 'outcome'>): UpdateRecord => ({
+  group: 'available',
+  subject: { kind: over.id.slice(0, over.id.indexOf(':')) as UpdateRecord['subject']['kind'], id: over.id.slice(over.id.indexOf(':') + 1), label: over.id },
+  source: { kind: 'fixture', endpoint: 'fixture' },
+  fingerprint: 'fp',
+  ...over,
+})
+const recordMap = (records: UpdateRecord[]): UpdateRecordMap => new Map(records.map((r) => [r.id, r]))
 
 const pluginEntry = (over: Record<string, unknown> = {}) => ({
   type: 'github' as const,
@@ -90,27 +100,81 @@ describe('joinInstallState', () => {
     expect(absent).toMatchObject({ installed: false, installedVersion: null, updateAvailable: null })
   })
 
-  it('plugins report persisted-marker update availability', () => {
+  it('plugins project the engine record for plugin:<id> — offered, current, skipped, unknown, none', () => {
     const src = sources({
       pluginLock: {
         version: 1,
         plugins: {
-          fresh: pluginEntry({ remoteHeadSha: SHA_A }),
-          stale: pluginEntry({ remoteHeadSha: SHA_B }),
+          fresh: pluginEntry(),
+          stale: pluginEntry(),
+          hidden: pluginEntry(),
+          unseen: pluginEntry(),
+          unobserved: pluginEntry(),
         },
       } as InstallStateSources['pluginLock'],
     })
-    const [fresh, stale, absent] = joinInstallState(
+    const records = recordMap([
+      record({ id: 'plugin:fresh', outcome: 'current' }),
+      record({ id: 'plugin:stale', outcome: 'update-available', available: { version: '1.1.0', sha: SHA_B, display: '1.1.0' } }),
+      record({ id: 'plugin:hidden', outcome: 'update-available', available: { version: '1.1.0', sha: SHA_B, display: '1.1.0' }, skipped: { version: '1.1.0', sha: SHA_B } }),
+      record({ id: 'plugin:unseen', outcome: 'unknown', attempt: { at: 'now', error: 'offline' } }),
+    ])
+    const [fresh, stale, hidden, unseen, unobserved, absent] = joinInstallState(
       [
         entry({ id: 'fresh', kind: 'plugin' }),
         entry({ id: 'stale', kind: 'plugin' }),
+        entry({ id: 'hidden', kind: 'plugin' }),
+        entry({ id: 'unseen', kind: 'plugin' }),
+        entry({ id: 'unobserved', kind: 'plugin' }),
         entry({ id: 'absent', kind: 'plugin' }),
       ],
       src,
+      records,
     )
     expect(fresh).toMatchObject({ installed: true, updateAvailable: false, installedVersion: '1.0.0' })
     expect(stale).toMatchObject({ installed: true, updateAvailable: true })
+    expect(hidden).toMatchObject({ installed: true, updateAvailable: false })
+    expect(unseen).toMatchObject({ installed: true, updateAvailable: null })
+    expect(unobserved).toMatchObject({ installed: true, updateAvailable: null })
     expect(absent).toMatchObject({ installed: false, updateAvailable: null })
+  })
+
+  it('agents and packs find their record by the lockfile key id — package first, hub-skill as the fallback', () => {
+    const src = sources({
+      packageLock: {
+        version: 1,
+        packages: {
+          'pixel@1.2.0': { kind: 'agent', version: '1.2.0', source: 'github:x/pixel', ref: 'main', commitSha: SHA_A, installedAt: 'now', agentId: 'pixel', state: 'managed' },
+          'editorial@1.0.0': { kind: 'skill-pack', version: '1.0.0', source: 'github:x/editorial', ref: 'main', commitSha: SHA_A, installedAt: 'now' },
+          'hub-weather@0.3.0': { kind: 'skill-pack', version: '0.3.0', source: 'clawhub:weather', ref: '', commitSha: '', installedAt: 'now' },
+        },
+      } as unknown as InstallStateSources['packageLock'],
+    })
+    const records = recordMap([
+      record({ id: 'package:pixel', outcome: 'update-available', available: { version: '1.3.0', sha: SHA_B, display: '1.3.0' } }),
+      record({ id: 'package:editorial', outcome: 'current' }),
+      record({ id: 'hub-skill:hub-weather', outcome: 'update-available', available: { version: '0.4.0', display: '0.4.0' } }),
+    ])
+    const [pixel, editorial, weather] = joinInstallState(
+      [
+        entry({ id: 'pixel', kind: 'agent' }),
+        entry({ id: 'editorial', kind: 'skill-pack' }),
+        entry({ id: 'hub-weather', kind: 'skill-pack' }),
+      ],
+      src,
+      records,
+    )
+    expect(pixel).toMatchObject({ installed: true, updateAvailable: true, installedVersion: '1.2.0' })
+    expect(editorial).toMatchObject({ installed: true, updateAvailable: false, installedVersion: '1.0.0' })
+    expect(weather).toMatchObject({ installed: true, updateAvailable: true, installedVersion: '0.3.0' })
+  })
+
+  it('updateAvailableOf: unknown and absent are null; blocked and unsupported are not updates', () => {
+    expect(updateAvailableOf(undefined)).toBeNull()
+    expect(updateAvailableOf(record({ id: 'plugin:x', outcome: 'unknown' }))).toBeNull()
+    expect(updateAvailableOf(record({ id: 'plugin:x', outcome: 'blocked', blockedReason: 'pin vanished' }))).toBe(false)
+    expect(updateAvailableOf(record({ id: 'plugin:x', outcome: 'unsupported' }))).toBe(false)
+    expect(updateAvailableOf(record({ id: 'plugin:x', outcome: 'update-available', available: { version: '2', display: '2' } }))).toBe(true)
   })
 
   it('a plugin directory without a lock entry still counts as installed', () => {

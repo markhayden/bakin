@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { createContext, use, type ReactNode } from 'react'
 
@@ -33,12 +33,14 @@ mock.module('../../../plugins/explore/components/catalog-table', () => ({
 }))
 
 const toastMock = mock()
+const refreshMock = mock()
 
 let cachedData: unknown = null
 let cachedFor: unknown = null
 
 // Captured BEFORE the module is mocked (live namespace binding): the page's render helpers (useKeyedState) stay real.
 import * as realSdkHooks from '@makinbakin/sdk/hooks'
+import { emitPluginEvent } from '../../../src/hooks/use-plugin-event'
 mock.module('@makinbakin/sdk/hooks', () => {
   return {
     ...realSdkHooks,
@@ -53,7 +55,7 @@ mock.module('@makinbakin/sdk/hooks', () => {
         cachedFor = fixtureEntries
         cachedData = { ok: true, updatedAt: 'now', remoteUpdatedAt: null, entries: fixtureEntries }
       }
-      return { data: cachedData, loading: false, error: null, refresh: mock() }
+      return { data: cachedData, loading: false, error: null, refresh: refreshMock }
     },
   }
 })
@@ -447,39 +449,88 @@ describe('ExplorePage update/refresh actions', () => {
     globalThis.fetch = originalFetch
   })
 
-  it('Check for updates fetches ?check=1 and overrides displayed entries', async () => {
-    fixtureEntries = [...AGENTS]
-    const probed = [{ ...AGENTS[0], installed: true, updateAvailable: true, installedVersion: '1.0.0' }]
-    const fetchMock = mock((url: string) => {
-      expect(url).toBe('/api/plugins/explore/catalog?check=1')
+  /** The engine pass, then the catalog re-read: the page never asks the plugin to probe. */
+  function checkFetch(opts: { entries: unknown[]; records?: unknown[] }) {
+    const calls: Array<{ url: string; method: string }> = []
+    const fetchMock = mock((url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method ?? 'GET' })
+      if (url === '/api/updates/check?wait=1') {
+        expect(init?.method).toBe('POST')
+        return Promise.resolve(new Response(JSON.stringify({
+          bootId: 'b', ids: [], coalesced: false, records: opts.records ?? [],
+        }), { headers: { 'Content-Type': 'application/json' } }))
+      }
+      expect(url).toBe('/api/plugins/explore/catalog')
       return Promise.resolve(new Response(JSON.stringify({
-        ok: true, updatedAt: 'now', remoteUpdatedAt: null, entries: probed,
+        ok: true, updatedAt: 'now', remoteUpdatedAt: null, entries: opts.entries,
       }), { headers: { 'Content-Type': 'application/json' } }))
     })
     globalThis.fetch = fetchMock as unknown as typeof fetch
+    return calls
+  }
+
+  it('Check for updates runs the engine pass, re-reads the catalog and overrides displayed entries', async () => {
+    fixtureEntries = [...AGENTS]
+    const calls = checkFetch({ entries: [{ ...AGENTS[0], installed: true, updateAvailable: true, installedVersion: '1.0.0' }] })
 
     render(<ExplorePage />)
     expect(screen.queryByText('Update available')).toBeNull()
     toastMock.mockClear()
     fireEvent.click(screen.getByTestId('check-updates'))
     await waitFor(() => expect(screen.getByText('Update available')).toBeTruthy())
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(['POST /api/updates/check?wait=1', 'GET /api/plugins/explore/catalog'])
     // Result feedback is a toast naming the updatable entries
     expect(String(toastMock.mock.calls[0][0])).toContain('1 update available: Pixel')
   })
 
   it('check with everything current toasts an up-to-date confirmation', async () => {
     fixtureEntries = [...AGENTS]
-    const fetchMock = mock(() => Promise.resolve(new Response(JSON.stringify({
-      ok: true, updatedAt: 'now', remoteUpdatedAt: null,
-      entries: [{ ...AGENTS[0], installed: true, updateAvailable: false }],
-    }), { headers: { 'Content-Type': 'application/json' } })))
-    globalThis.fetch = fetchMock as unknown as typeof fetch
+    checkFetch({ entries: [{ ...AGENTS[0], installed: true, updateAvailable: false }] })
 
     render(<ExplorePage />)
     toastMock.mockClear()
     fireEvent.click(screen.getByTestId('check-updates'))
     await waitFor(() => expect(toastMock).toHaveBeenCalled())
     expect(String(toastMock.mock.calls[0][0])).toContain('Everything is up to date')
+  })
+
+  it('subjects the pass could not observe are counted as "couldn\'t be checked" — never up to date', async () => {
+    fixtureEntries = [...AGENTS]
+    const failed = (id: string) => ({ id, group: 'available', subject: { kind: id.slice(0, id.indexOf(':')), id: id.slice(id.indexOf(':') + 1), label: id }, outcome: 'unknown', source: { kind: 'fixture', endpoint: 'f' }, fingerprint: 'fp', attempt: { at: 'now', error: 'offline' } })
+    checkFetch({
+      entries: [{ ...AGENTS[0], installed: true, updateAvailable: null }],
+      // Two catalog subjects failed; the Bakin binary's failure is not this catalog's.
+      records: [failed('package:pixel'), failed('plugin:messaging'), failed('bakin:bakin')],
+    })
+
+    render(<ExplorePage />)
+    toastMock.mockClear()
+    fireEvent.click(screen.getByTestId('check-updates'))
+    await waitFor(() => expect(toastMock).toHaveBeenCalled())
+    expect(String(toastMock.mock.calls[0][0])).toContain("Couldn't check 2 items")
+    expect(toastMock.mock.calls[0][1]).toBe('error')
+  })
+
+  it('a failed engine pass is an error banner, the catalog stays rendered', async () => {
+    fixtureEntries = [...AGENTS]
+    globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({
+      bootId: 'b', error: 'updates_unavailable', message: 'The updates engine has not started on this server.',
+    }), { status: 503, headers: { 'Content-Type': 'application/json' } }))) as unknown as typeof fetch
+
+    render(<ExplorePage />)
+    fireEvent.click(screen.getByTestId('check-updates'))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('has not started'))
+    expect(screen.getByText('Pixel')).toBeTruthy()
+  })
+
+  it('an updates.changed event for a catalog subject re-reads the catalog; other subjects do not', async () => {
+    fixtureEntries = [...AGENTS]
+    render(<ExplorePage />)
+    refreshMock.mockClear()
+    await act(async () => { emitPluginEvent({ event: 'updates.changed', ids: ['bakin:bakin', 'search-engine:antfly'] }) })
+    expect(refreshMock).not.toHaveBeenCalled()
+    await act(async () => { emitPluginEvent({ event: 'updates.changed', ids: ['package:pixel'] }) })
+    expect(refreshMock).toHaveBeenCalledTimes(1)
   })
 
   it('Refresh catalog POSTs and surfaces failures as an error banner', async () => {

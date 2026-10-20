@@ -25,8 +25,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
-import { toast, usePluginJsonFetch, useKeyedState } from '@makinbakin/sdk/hooks'
-import { pluginFetch } from '@makinbakin/sdk/utils'
+import { toast, usePluginEvent, usePluginJsonFetch, useKeyedState } from '@makinbakin/sdk/hooks'
+import type { UpdateRecord } from '@makinbakin/sdk/types'
+import { OPERATOR_DECLARATION_HEADERS, pluginFetch } from '@makinbakin/sdk/utils'
 import { CatalogSortControl, CatalogTable } from './catalog-table'
 import { DetailDrawer } from './detail-drawer'
 import { HubSkillsSection } from './hub-skills-section'
@@ -88,6 +89,25 @@ const TAB_INTROS: Record<string, { title: string; blurb: string }> = {
  */
 const CATALOG_TIMEOUT_MS = 15_000
 const REMOTE_ACTION_TIMEOUT_MS = 60_000
+/** A waited engine pass checks every subject (20 s each, two at a time) — give it room. */
+const UPDATE_CHECK_TIMEOUT_MS = 120_000
+
+/** The engine's subject kinds this catalog lists. */
+const CATALOG_SUBJECT_KINDS: ReadonlySet<string> = new Set(['plugin', 'package', 'hub-skill'])
+
+/**
+ * Run the updates engine's check pass and wait for it (#1007). Returns how
+ * many catalog subjects the pass could not observe — those stay unknown on
+ * the re-read catalog, never "up to date".
+ */
+async function runUpdateCheck(signal: AbortSignal): Promise<{ failed: number }> {
+  const res = await fetch('/api/updates/check?wait=1', { method: 'POST', headers: OPERATOR_DECLARATION_HEADERS, signal })
+  const body = (await res.json().catch(() => null)) as { records?: UpdateRecord[]; error?: string; message?: string } | null
+  if (!res.ok) throw new Error(body?.message ?? body?.error ?? `HTTP ${res.status}`)
+  const records = Array.isArray(body?.records) ? body.records : []
+  const failed = records.filter((record) => CATALOG_SUBJECT_KINDS.has(record.subject.kind) && record.attempt?.error !== undefined).length
+  return { failed }
+}
 
 /** Deadline rejections arrive as DOMExceptions — surface them as a real error. */
 
@@ -122,21 +142,31 @@ function ExplorePageInner() {
   }
   const [installOpen, setInstallOpen] = useState(false)
   const [installEntry, setInstallEntry] = useState<ExploreCatalogEntry | null>(null)
-  // Probe/refresh responses carry state the base GET can't reproduce
-  // (agent update probes are never persisted) — they override until the
-  // next base refetch delivers, then the fresher base data wins.
+  // Check/refresh answers arrive ahead of the base read — they override
+  // until the next base refetch delivers, then the fresher base data wins.
   const [override, setOverride] = useKeyedState<ExploreCatalogResponse | null>(data, () => null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<'check' | 'refresh' | null>(null)
+
+  // Scheduled engine passes land here too: a changed catalog subject re-reads the join.
+  usePluginEvent('updates.changed', (payload) => {
+    const ids = (payload as { ids?: unknown }).ids
+    if (!Array.isArray(ids) || !ids.some((id) => typeof id === 'string' && CATALOG_SUBJECT_KINDS.has(id.slice(0, id.indexOf(':'))))) return
+    refresh()
+  })
 
   const runAction = async (action: 'check' | 'refresh') => {
     setBusyAction(action)
     setActionError(null)
     try {
-      const signal = AbortSignal.timeout(REMOTE_ACTION_TIMEOUT_MS)
-      const res = action === 'check'
-        ? await pluginFetch('explore', 'catalog?check=1', { signal })
-        : await pluginFetch('explore', 'catalog/refresh', { method: 'POST', signal })
+      let failed = 0
+      let res: Response
+      if (action === 'check') {
+        failed = (await runUpdateCheck(AbortSignal.timeout(UPDATE_CHECK_TIMEOUT_MS))).failed
+        res = await pluginFetch('explore', 'catalog', { signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS) })
+      } else {
+        res = await pluginFetch('explore', 'catalog/refresh', { method: 'POST', signal: AbortSignal.timeout(REMOTE_ACTION_TIMEOUT_MS) })
+      }
       const body = (await res.json()) as ExploreCatalogResponse & { ok: boolean; error?: string; reason?: string }
       if (!res.ok || !body.ok) {
         setActionError(body.error ?? `HTTP ${res.status}`)
@@ -145,7 +175,6 @@ function ExplorePageInner() {
       setOverride(body)
       if (action === 'check') {
         const updates = body.entries.filter((entry) => entry.updateAvailable === true)
-        const failed = body.probeErrors ?? 0
         if (updates.length > 0) {
           const suffix = failed > 0 ? ` (${failed} couldn't be checked)` : ''
           toast(`${updates.length} update${updates.length === 1 ? '' : 's'} available: ${updates.map((u) => u.name).join(', ')}${suffix}`, 'success')
@@ -273,7 +302,7 @@ function ExplorePageInner() {
           <Sparkles />
           {busyAction === 'check' ? 'Checking…' : 'Check for updates'}
         </TooltipTrigger>
-        <TooltipContent>Probe installed plugins and agents for available updates</TooltipContent>
+        <TooltipContent>Check installed plugins, agents and packs for available updates</TooltipContent>
       </Tooltip>
     </>
   )

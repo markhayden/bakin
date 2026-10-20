@@ -99,17 +99,21 @@ pair (both deleted, along with the `GET /api/curated` host route):
   a CORE_PLUGIN_IDS plugin id at all (even one the embedded catalog forgot
   to list). The embedded catalog MUST list every core plugin as builtin —
   set-equality gate in tests/core/curated-catalog.test.ts.
-- `GET /catalog?check=1` — explicit update probes, all ASYNC + parallel
-  (`checkPackageUpdateAsync` — the sync checker's execFileSync git fetch
-  would freeze the event loop on the request path): `runChecks()`
-  (`src/core/plugins/upgrade-check.ts`) persists plugin lockfile markers
-  (lockfile re-read afterwards); agent probe results fold into the response
-  ONLY. **Agent update state is never persisted anywhere upstream** — the
-  default response reports `updateAvailable: null` (unknown) for agents.
-  **Failed probes stay unknown, never "up to date"** — the checker reports
-  errors in-band (`status.error`, it does not throw), and the response
-  carries `probeErrors` so the client toast can say "couldn't check N"
-  instead of lying with "everything is up to date".
+- **Update state is the updates engine's record (#1007).** The catalog join
+  (`lib/install-state.ts`) takes the engine's snapshot keyed by record id:
+  plugins read `plugin:<id>`, agents and packs find their lockfile entry and
+  read `package:<key id>` (falling back to `hub-skill:<key id>` for packs
+  synthesized from a hub bundle). `updateAvailable` is `true` for an
+  unskipped `update-available` record (`isUpdateOffered`), `false` for an
+  observed `current`/`blocked`/`unsupported` one, and `null` when there is no
+  successful observation (no record, `unknown`, no running engine) —
+  **unknown is never "up to date"**. The route never probes a source and has
+  no `?check=1`: "Check for updates" on the page is `POST
+  /api/updates/check?wait=1` followed by a catalog re-read; the toast counts
+  the catalog subjects (`plugin`/`package`/`hub-skill`) whose attempt in that
+  pass failed as "couldn't check N". The page also re-reads on every
+  `updates.changed` event naming a catalog subject, so scheduled passes land
+  without a reload.
 - `POST /catalog/refresh` — user-triggered fetch of
   `https://raw.githubusercontent.com/markhayden/bakin-bits-official/main/catalog.json`
   (injectable fetcher for tests), zod-validated, atomically cached at

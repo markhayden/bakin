@@ -214,12 +214,13 @@ Version reporting rule: managed agent package state includes a top-level
 back to nested `entry.version` only for compatibility), not infer the version
 from an install path, source ref, package id, or stale runtime state.
 
-Update reporting rule: `GET /api/agent-packages?check=1` re-fetches the
-recorded source and returns `updateStatus` alongside the installed lockfile
-state. This check is read-only; it never mutates the installed version or
-lockfile commit. The Team detail package card uses this status to show
-`update-available` and offer Maintain-changes vs Reseed-package-templates
-upgrade modes.
+Update reporting rule: `GET /api/agent-packages` joins each managed row with
+the updates engine's record for its package (`update`, keyed
+`package:<key id>`; #1007). The route never probes a source — the engine
+observes packages on its schedule and `POST /api/updates/check` runs a pass
+on demand. The Team detail package card reads `isUpdateOffered(row.update)`
+to show `update-available` and offer Maintain-changes vs
+Reseed-package-templates upgrade modes.
 
 ## Doctor integration
 
@@ -251,7 +252,7 @@ Function-name collision avoided: package-management functions are prefixed `cmdA
 Top-level (NOT under `/api/agents/*` which is the runtime surface):
 
 ```
-GET    /api/agent-packages[?check=1]
+GET    /api/agent-packages
 POST   /api/agent-packages/install
 DELETE /api/agent-packages/{agentId}
 POST   /api/agent-packages/{agentId}/update

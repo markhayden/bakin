@@ -118,7 +118,12 @@ export function isUpdateSkipped(record: Pick<UpdateRecord, 'available' | 'skippe
   return skipped !== null && skipped === updateIdentityKey(record.available)
 }
 
+/** True when the record offers an update the operator has not skipped — the ONE predicate every badge, count and projection uses. */
+export function isUpdateOffered(record: Pick<UpdateRecord, 'outcome' | 'available' | 'skipped'>): boolean {
+  return record.outcome === 'update-available' && !isUpdateSkipped(record)
+}
+
 /** The count the Updates tab label carries: available, not skipped. */
 export function countAvailableUpdates(records: ReadonlyArray<UpdateRecord>): number {
-  return records.filter((record) => record.outcome === 'update-available' && !isUpdateSkipped(record)).length
+  return records.filter(isUpdateOffered).length
 }
