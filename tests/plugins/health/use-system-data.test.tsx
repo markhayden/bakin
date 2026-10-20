@@ -12,15 +12,18 @@ mock.module('@makinbakin/sdk/hooks', () => ({
   ...realSdkHooks, usePluginEvent }))
 
 import { useSystemData } from '../../../plugins/health/hooks/use-system-data'
+import { useUpdatesResource } from '../../../plugins/health/hooks/use-updates'
+import type { UseHealthResourceResult } from '../../../plugins/health/hooks/use-health-resource'
+import type { UpdatesData } from '../../../plugins/health/lib/updates-route-schema'
 import { finishedOperation, operationResponse, operationStarted } from '../../helpers/operation-fetch'
 
 const originalFetch = globalThis.fetch
 const OBSERVED_AT = '2026-07-13T11:55:00.000Z'
 const STALE_AT = '2099-07-13T12:00:00.000Z'
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { 'content-type': 'application/json' },
   })
 }
@@ -51,6 +54,11 @@ function healthReport(): HealthReport {
       incidents: { actionRequired: 0, watching: 0, advisory: 0, unknown: 0, acknowledged: 0 },
     },
   }
+}
+
+/** A settled, empty engine read: the System hook never fetches `/api/updates` itself (the page does). */
+function updatesStub(): UseHealthResourceResult<UpdatesData> {
+  return { data: { records: [], generatedAt: OBSERVED_AT, running: false }, error: null, backgroundError: null, loading: false, refreshing: false, refresh: mock(async () => null) }
 }
 
 function deferred<T>() {
@@ -109,7 +117,7 @@ describe('useSystemData mutation reconciliation', () => {
       throw new Error(`Unexpected URL: ${url}`)
     }) as unknown as typeof fetch
 
-    const { result } = renderHook(() => useSystemData())
+    const { result } = renderHook(() => useSystemData(updatesStub()))
     await waitFor(() => expect(result.current.pluginManifest.data?.plugins).toHaveLength(1))
 
     await act(async () => { await result.current.upgradePlugin('notes') })
@@ -185,7 +193,7 @@ describe('useSystemData plugin upgrade operations (#895)', () => {
       return null
     })
 
-    const { result } = renderHook(() => useSystemData())
+    const { result } = renderHook(() => useSystemData(updatesStub()))
     await waitFor(() => expect(result.current.pluginManifest.data?.plugins).toHaveLength(1))
     await act(async () => { await result.current.upgradePlugin('notes') })
 
@@ -211,7 +219,7 @@ describe('useSystemData plugin upgrade operations (#895)', () => {
       return null
     })
 
-    const { result } = renderHook(() => useSystemData())
+    const { result } = renderHook(() => useSystemData(updatesStub()))
     await waitFor(() => expect(result.current.pluginManifest.data?.plugins).toHaveLength(1))
     await act(async () => { await result.current.upgradePlugin('notes') })
     await waitFor(() => expect(result.current.pluginMutation.status).toBe('confirmation'))
@@ -221,6 +229,57 @@ describe('useSystemData plugin upgrade operations (#895)', () => {
     await act(async () => { await result.current.upgradePlugin('notes', result.current.pluginMutation.consentToken) })
     await waitFor(() => expect(result.current.pluginMutation.status).toBe('success'))
     expect(upgradeBodies(calls).at(-1)).toEqual({ pluginId: 'notes', accepted: true, consentToken: 'tok-consent' })
+  })
+})
+
+describe('useSystemData explicit update check (#1007 P10′)', () => {
+  it('"Check for updates" runs the engine\'s plugin pass, then re-reads the records the row renders', async () => {
+    let checked = 0
+    let updatesReads = 0
+    const calls = systemFetch((url, init) => {
+      if (url === '/api/updates/check?wait=1&source=plugin' && init?.method === 'POST') {
+        checked += 1
+        return jsonResponse({ bootId: 'boot-1', ids: ['plugin:notes'], coalesced: false, records: [] })
+      }
+      if (url === '/api/updates') {
+        updatesReads += 1
+        const offered = checked > 0
+        return jsonResponse({ bootId: 'boot-1', generatedAt: OBSERVED_AT, running: false, records: [{
+          id: 'plugin:notes', group: 'available', subject: { kind: 'plugin', id: 'notes', label: 'notes' },
+          installed: { version: '1.0.0', display: '1.0.0' }, fingerprint: 'fp',
+          source: { kind: 'artifact-index', endpoint: 'https://example.test/index.json' }, observedAt: OBSERVED_AT,
+          ...(offered
+            ? { available: { version: '1.1.0', display: '1.1.0' }, reason: 'newer-version', outcome: 'update-available', action: { kind: 'operation', start: { route: '/api/updates/plugin%3Anotes/apply' }, impact: ['download'] } }
+            : { outcome: 'current' }),
+        }] })
+      }
+      return null
+    })
+
+    const { result } = renderHook(() => useSystemData(useUpdatesResource()))
+    await waitFor(() => expect(result.current.updates.data?.records).toHaveLength(1))
+    expect(result.current.updates.data?.records[0]?.outcome).toBe('current')
+
+    await act(async () => { await result.current.checkPluginUpdates() })
+
+    expect(checked).toBe(1)
+    expect(updatesReads).toBe(2)
+    expect(result.current.updates.data?.records[0]?.outcome).toBe('update-available')
+    expect(result.current.checkingUpdates).toBe(false)
+    // The manifest is read plainly — the old `?check=1` probe is gone.
+    expect(calls.filter((c) => c.url.startsWith('/api/plugins/manifest')).every((c) => !c.url.includes('check='))).toBe(true)
+  })
+
+  it('a failed engine check is the plugin mutation\'s error, never a silent "nothing new"', async () => {
+    systemFetch((url, init) => {
+      if (url === '/api/updates/check?wait=1&source=plugin' && init?.method === 'POST') return jsonResponse({ error: 'updates_unavailable', message: 'The updates engine has not started on this server.' }, 503)
+      if (url === '/api/updates') return jsonResponse({ bootId: 'boot-1', generatedAt: OBSERVED_AT, running: false, records: [] })
+      return null
+    })
+    const { result } = renderHook(() => useSystemData(useUpdatesResource()))
+    await waitFor(() => expect(result.current.updates.data).not.toBeNull())
+    await act(async () => { expect(await result.current.checkPluginUpdates()).toBeNull() })
+    expect(result.current.pluginMutation).toMatchObject({ status: 'error', message: 'Could not check for plugin updates: The updates engine has not started on this server.' })
   })
 })
 
@@ -271,7 +330,7 @@ describe('useSystemData response validation', () => {
       throw new Error(`Unexpected URL: ${url}`)
     }) as unknown as typeof fetch
 
-    const { result } = renderHook(() => useSystemData())
+    const { result } = renderHook(() => useSystemData(updatesStub()))
 
     await waitFor(() => {
       expect(result.current.searchStatus.error).toBe('Search status returned an invalid response')

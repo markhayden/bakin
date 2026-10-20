@@ -5,9 +5,10 @@ import type {
   HealthObservation,
   HealthReport,
   SearchReadiness,
+  UpdateRecord,
 } from '@makinbakin/sdk/types'
 import type { HealthSummary, LiveNowData } from '../../../plugins/health/types'
-import { buildHealthOverviewViewModel } from '../../../plugins/health/lib/health-view-model'
+import { buildHealthOverviewViewModel, updateRecordForIncident } from '../../../plugins/health/lib/health-view-model'
 
 const NOW = Date.parse('2026-07-13T12:00:00.000Z')
 const FRESH_AT = '2026-07-13T13:00:00.000Z'
@@ -297,5 +298,41 @@ describe('acknowledged bucket (health trust overhaul)', () => {
     expect(model.needsAction).toEqual([])
     expect(model.unableToVerify).toEqual([])
     expect(model.advisories).toEqual([])
+  })
+})
+
+describe('incident → Updates row (#1007 D7.7)', () => {
+  const record = (over: Partial<UpdateRecord> & Pick<UpdateRecord, 'id' | 'subject'>): UpdateRecord => ({
+    group: 'available', outcome: 'update-available', available: { version: '2.0.0', display: '2.0.0' },
+    source: { kind: 'test', endpoint: 'x' }, fingerprint: 'fp', ...over,
+  })
+  const records: UpdateRecord[] = [
+    record({ id: 'plugin:terminal', subject: { kind: 'plugin', id: 'terminal', label: 'Terminal' } }),
+    record({ id: 'plugin:notes', subject: { kind: 'plugin', id: 'notes', label: 'Notes' }, skipped: { version: '2.0.0' } }),
+    record({ id: 'search-engine:antfly', subject: { kind: 'search-engine', id: 'antfly', label: 'Search engine' }, group: 'required', outcome: 'blocked', blockedReason: 'offline' }),
+    record({ id: 'search-models:antfly', subject: { kind: 'search-models', id: 'antfly', label: 'Search models' }, outcome: 'current', available: undefined }),
+    record({ id: 'gateway:openclaw', subject: { kind: 'gateway', id: 'openclaw', label: 'Gateway' }, group: 'required' }),
+  ]
+
+  it('matches by stable resource identity: plugin id, the search-engine service, the embedder setting, the active runtime', () => {
+    expect(updateRecordForIncident(incident({ id: 'a', resources: [{ kind: 'plugin', id: 'terminal' }] }), records)).toBe('plugin:terminal')
+    expect(updateRecordForIncident(incident({ id: 'b', resources: [{ kind: 'service', id: 'search-engine' }] }), records)).toBe('search-engine:antfly')
+    expect(updateRecordForIncident(incident({ id: 'c', resources: [{ kind: 'runtime', id: 'active' }] }), records)).toBe('gateway:openclaw')
+    // A current subject offers nothing; neither does a skipped available one, a different plugin, or an unrelated resource.
+    expect(updateRecordForIncident(incident({ id: 'd', resources: [{ kind: 'setting', id: 'search.settings.embedders' }] }), records)).toBeNull()
+    expect(updateRecordForIncident(incident({ id: 'e', resources: [{ kind: 'plugin', id: 'notes' }] }), records)).toBeNull()
+    expect(updateRecordForIncident(incident({ id: 'f', resources: [{ kind: 'plugin', id: 'other' }] }), records)).toBeNull()
+    expect(updateRecordForIncident(incident({ id: 'g', resources: [{ kind: 'service', id: 'runtime-gateway' }] }), records)).toBeNull()
+    expect(updateRecordForIncident(incident({ id: 'h', resources: [] }), records)).toBeNull()
+  })
+
+  it('stamps updateId on the Overview rows, and nothing without engine records', () => {
+    const linked = incident({ id: 'linked', disposition: 'action_required', resources: [{ kind: 'plugin', id: 'terminal' }] })
+    const plain = incident({ id: 'plain', disposition: 'action_required' })
+    const built = report({ incidents: [linked, plain], observations: [observation(linked), observation(plain)] })
+    const withRecords = buildHealthOverviewViewModel({ report: built, updates: records, now: NOW })
+    expect(withRecords.needsAction.map((row) => [row.incident.id, row.updateId])).toEqual([['linked', 'plugin:terminal'], ['plain', undefined]])
+    const without = buildHealthOverviewViewModel({ report: built, now: NOW })
+    expect(without.needsAction.every((row) => row.updateId === undefined)).toBe(true)
   })
 })

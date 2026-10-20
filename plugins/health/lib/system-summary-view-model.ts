@@ -58,7 +58,7 @@ function searchSummary(data: UseSystemDataResult): SubsystemSummary {
 }
 
 export function buildSubsystemSummaries(data: UseSystemDataResult): SubsystemSummary[] {
-  const plugins = mergeSystemPlugins(data.registry.data, data.pluginManifest.data)
+  const plugins = mergeSystemPlugins(data.registry.data, data.pluginManifest.data, data.updates.data?.records ?? null)
   const pluginIds = new Set(plugins.map((plugin) => plugin.id))
   const pluginInventoryPending = (data.registry.loading && !data.registry.data)
     || (data.pluginManifest.loading && !data.pluginManifest.data)

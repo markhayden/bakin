@@ -12,6 +12,8 @@ import { SystemWatchList } from './system-watch-list'
 import { focusSystemElement } from './system-navigation'
 import { HealthTabIntro } from './health-tab-intro'
 import { useSystemData, type UseSystemDataResult } from '../hooks/use-system-data'
+import type { UseHealthResourceResult } from '../hooks/use-health-resource'
+import type { UpdatesData } from '../lib/updates-route-schema'
 import type { SystemFinding } from '../lib/system-view-model'
 import {
   buildSubsystemSummaries,
@@ -35,9 +37,9 @@ const SUMMARY_ICON = {
   diagnostics: ShieldCheck,
 }
 
-export function SystemTab() {
+export function SystemTab({ updates }: { updates: UseHealthResourceResult<UpdatesData> }) {
   const [pluginSearch, setPluginSearch] = useQueryState('system_plugin', '')
-  const data = useSystemData()
+  const data = useSystemData(updates)
   return (
     <SystemTabView
       data={data}
@@ -77,6 +79,7 @@ export function SystemTabView({
     || data.searchTelemetry.refreshing
     || data.registry.refreshing
     || data.pluginManifest.refreshing
+    || data.updates.refreshing
     || data.report.refreshing
   const reviewEvidenceFailed = Boolean(
     data.report.error
@@ -229,6 +232,7 @@ export function SystemTabView({
         report={data.report.data}
         registry={data.registry.data}
         manifest={data.pluginManifest.data}
+        updates={data.updates.data?.records ?? null}
         evidenceState={reviewEvidenceState}
         reportCurrent={reportEvidenceCurrent}
         pluginInventoryCurrent={pluginEvidenceCurrent}
@@ -261,8 +265,9 @@ export function SystemTabView({
         live={data.live.data}
         registry={data.registry.data}
         manifest={data.pluginManifest.data}
+        updates={data.updates.data?.records ?? null}
         loading={data.registry.loading || data.pluginManifest.loading}
-        checkingUpdates={data.pluginManifest.refreshing}
+        checkingUpdates={data.checkingUpdates}
         error={data.registry.error ?? data.pluginManifest.error}
         backgroundError={data.registry.backgroundError ?? data.pluginManifest.backgroundError}
         pluginMutation={data.pluginMutation}

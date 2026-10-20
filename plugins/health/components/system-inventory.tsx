@@ -1,7 +1,7 @@
 'use client'
 
 import { useImperativeHandle, useMemo, useRef, type Ref } from 'react'
-import type { HealthCheckState, HealthReport } from '@makinbakin/sdk/types'
+import type { HealthCheckState, HealthReport, UpdateRecord } from '@makinbakin/sdk/types'
 import { DisclosurePanel, Grid, Panel } from '@makinbakin/sdk/layout'
 import {
   DataTable,
@@ -76,6 +76,8 @@ export interface SystemInventoryProps {
   live: HealthSummary | null
   registry: SystemRegistryData | null
   manifest: SystemPluginManifestData | null
+  /** The updates engine's records — the plugin rows' update verdicts (#1007). */
+  updates?: readonly UpdateRecord[] | null
   loading?: boolean
   checkingUpdates?: boolean
   error?: string | null
@@ -116,6 +118,7 @@ export function SystemInventory({
   live,
   registry,
   manifest,
+  updates = null,
   loading = false,
   checkingUpdates = false,
   error = null,
@@ -132,7 +135,7 @@ export function SystemInventory({
   const checksDisclosureRef = useRef<HTMLDetailsElement>(null)
   const pluginTableRef = useRef<HTMLDivElement>(null)
   const checkGroupRefs = useRef(new Map<string, HTMLDetailsElement>())
-  const plugins = useMemo(() => mergeSystemPlugins(registry, manifest), [manifest, registry])
+  const plugins = useMemo(() => mergeSystemPlugins(registry, manifest, updates), [manifest, registry, updates])
   const filteredPlugins = useMemo(() => {
     const query = pluginSearch.trim().toLowerCase()
     if (!query) return plugins
