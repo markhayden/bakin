@@ -13,7 +13,8 @@ D7.1–D7.15); plan + commit strategy in the `-plan.md` beside it. This PR (A)
 ships the engine, the required sources (search engine, search models, runtime
 gateway), the Bakin + plugin sources, the apply service, the self-update
 operation, Health → Updates and the CLI. PR B adds the package/hub-skill
-sources and folds the legacy consumer probes; PR C the remaining deletions.
+sources (below) and folds the legacy consumer probes; PR C the remaining
+deletions.
 
 ## Map
 
@@ -90,6 +91,36 @@ indexes with conditional headers; git refs via async `git ls-remote` through
 `gitArgs` + `Bun.spawn` (never the synchronous upgrade-gate wrapper). The
 antfly version probe runs under the observe signal and kills + reaps its
 child on abort.
+
+**Packages and hub skills (D7.12, `sources/package.ts` + `sources/hub-skill.ts`).**
+The lockfile is partitioned ONCE by provenance: a skill-pack whose installed
+manifest carries `upstream` is a `hub-skill` subject, every other entry a
+`package` — never both; when one id is installed under several keys (a
+superseded version not yet forgotten) the newest wins. The subject id is the
+package id (the lock key without its version). A github package is compared
+by `ls-remote` against the installed commit and its manifest is fetched (a
+staged clone, removed after) ONLY when the ref moved, to name the version on
+offer — same version, newer commit is still an update, named by the commit; a
+local package compares its directory's manifest version. A hub skill's
+TRACKING POLICY comes from the lock entry's original `source` string and its
+installed identity from `upstream.ref` (every ClawHub install records the
+RESOLVED version there — never read as a pin): `clawhub:<slug>` tracks latest
+(the hub's latest published version vs the installed resolved one),
+`clawhub:<slug>@<v>` is pinned (`current` unless the pinned version is gone
+from the hub ⇒ `blocked`; latest is never asked), `github:…#<ref>` compares the
+ref's `ls-remote` sha, a local directory is `unsupported`. The
+package/frontmatter version is NEVER compared for a hub skill (synthesis
+prefers the frontmatter version, which says nothing about the hub). Applying
+is the existing path — `bakin agents sync` / `bakin packages sync` for
+packages, re-install (`bakin skills install <source>`) for hub skills — so the
+action is a manual pointer. **A re-install never changes the tracking
+policy (R8′):** `installPackage({ trackingSource })` /
+`confirmSkillInstall(ref, token, op, { trackingSource })` persist the TRACKING
+source as the lock `source` while the fetch ref targets the selected version
+(the audit records `fetchedFrom`), so an unpinned skill stays unpinned after
+an update and the second update is offered too; a tracking source must name
+the same skill (slug + owner, or the same github repo/subpath) or the confirm
+refuses before anything installs.
 
 The timer (D7.5) runs an independent tick: per-subject due times
 (`settings.updates.intervalMs`, default 6 h, clamped [15 min, 7 d]), overdue

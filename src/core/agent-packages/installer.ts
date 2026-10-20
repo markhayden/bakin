@@ -81,6 +81,13 @@ export interface InstallOptions {
   /** Source spec — local path or `github:user/repo[@ref][#subpath]`. */
   source: string
   /**
+   * What the lock entry records as `source` when it differs from the fetch
+   * ref (#1007 D7.12 R8′): an update re-installs `clawhub:<slug>@<target>`
+   * (the consent-bound download target) while the skill stays tracked as
+   * `clawhub:<slug>` — the tracking policy never changes with an update.
+   */
+  trackingSource?: string
+  /**
    * The install operation (#895): reports on PACKAGE_INSTALL_PLAN. Everything
    * before `install` (fetch, manifest and conflict checks) is cancellable and
    * leaves no trace; the first projection write is the point of no return.
@@ -599,7 +606,7 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     const parentEntry: PackageEntry = {
       kind: manifest.kind,
       version: manifest.version,
-      source: options.source,
+      source: options.trackingSource ?? options.source,
       ref: topFetched.ref,
       commitSha: topFetched.commitSha,
       installedAt,
@@ -649,7 +656,8 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
       packageId: resolvedTopId,
       kind: manifest.kind,
       version: manifest.version,
-      source: options.source,
+      source: options.trackingSource ?? options.source,
+      ...(options.trackingSource ? { fetchedFrom: options.source } : {}),
       ref: topFetched.ref,
       commitSha: topFetched.commitSha,
       ...(agentId ? { agentId, state: parentEntry.state } : {}),

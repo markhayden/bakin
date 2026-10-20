@@ -82,7 +82,7 @@ Spec `.claude/specs/housekeeping-batch-2026-10.md` · Plan `.claude/specs/housek
 - [ ] PR 7 merged
 
 ## PR 8 — #1007 B `feat/1007-updates-packages`
-- [ ] 8.1 `package` + `hub-skill` sources; `trackingSource` persisted; policy tests
+- [x] 8.1 `package` + `hub-skill` sources; `trackingSource` persisted; policy tests
 - [ ] 8.2 manifest projection reads the engine; upgrade writers (artifact, github, local `lastSourceTreeSha`) stop writing markers
 - [ ] 8.3 Team store joins engine records; Explore reads engine; list.ts/explore probes + checker imports removed; screenshots
 - [ ] 8.4 sync/CLI `--check` on the shared observer; CLI stale rendering on `observedAt`

@@ -48,7 +48,7 @@ Contribution integrity rule: install/update preflights declared contributions be
 
 ## Lockfile
 
-`~/.bakin/packages/lock.json`. zod-validated, atomic IO (`tmp + rename`). Schema in `packages/core/src/agent-packages/lockfile.ts`:
+`~/.bakin/packages/lock.json`. zod-validated, atomic IO (`tmp + rename`). Schema in `packages/core/src/agent-packages/lockfile.ts`. `source` is what the entry TRACKS (the updates engine reads its policy from it — a hub skill's `clawhub:<slug>` vs `clawhub:<slug>@<v>`); when an update re-installs a different fetch ref, `installPackage({ trackingSource })` keeps `source` as the tracking source (#1007 D7.12 R8′):
 
 ```jsonc
 {

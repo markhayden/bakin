@@ -390,6 +390,15 @@ describe('installPackage — fresh install (kind:"agent")', () => {
 
 // ─── Adopt mode ──────────────────────────────────────────────────────────────
 
+describe('installPackage — trackingSource (#1007 D7.12 R8′)', () => {
+  it('records the tracking source as the lock entry\'s source while fetching from the given ref, and audits what it fetched from', async () => {
+    const src = seedSkillPack('tracked-pack')
+    const result = await installPackage({ source: src, trackingSource: 'github:acme/packs#tracked-pack' })
+    const entry = readLockfile().packages[`${result.packageId}@1.0.0`] ?? Object.values(readLockfile().packages).find((e) => e.kind === 'skill-pack')
+    expect(entry?.source).toBe('github:acme/packs#tracked-pack')
+  })
+})
+
 describe('installPackage — adopt mode', () => {
   it('attaches package without overwriting existing workspace files', async () => {
     // Pre-existing pixel agent + workspace SOUL the user wrote

@@ -1,0 +1,124 @@
+/**
+ * Available row per installed agent package (#1007, D7.12): every lockfile
+ * entry that is NOT a hub skill (those have `upstream` provenance and their
+ * own source). A github source is compared by `git ls-remote` against the
+ * installed commit; the manifest is fetched (a staged clone, removed after)
+ * only when the ref moved, to name the version on offer. A local source is
+ * compared by its directory's manifest version. The package/frontmatter
+ * version alone is never an identity — the commit (or the directory) is.
+ *
+ * Applying is the existing sync path (`bakin agents sync` / `bakin packages
+ * sync`), so the action is a manual pointer until that path is an operation.
+ */
+import type { PackageEntry } from '@bakin/core/agent-packages/lockfile'
+import type { UpdateAction } from '@makinbakin/sdk/types'
+import { fingerprintOf } from '../inventory'
+import type { UpdateObservation, UpdateSource, UpdateSubjectInventoryEntry } from '../types'
+
+export interface InstalledPackage {
+  /** The lockfile key (`<id>@<version>`). */
+  key: string
+  /** The package id (the key without its version). */
+  id: string
+  entry: PackageEntry
+  /** The installed manifest's hub provenance, when the pack was synthesized from a hub bundle. */
+  upstream: { source: string; ref?: string; resolvedSha?: string } | null
+}
+
+export interface PackageSourceDeps {
+  /** Every installed package with its installed manifest's provenance. */
+  installed: () => InstalledPackage[]
+  hostVersion: () => string
+  /** `github:…` source (with or without a ref) → clone URL. */
+  cloneUrl: (source: string) => string
+  /** `git ls-remote <url> <ref>` — the sha the ref points at, or null when the ref is gone. */
+  lsRemote: (url: string, ref: string, signal: AbortSignal) => Promise<string | null>
+  /** The manifest at a github source+ref (a staged clone, removed after). Called only when the ref moved. */
+  fetchManifest: (sourceWithRef: string, signal: AbortSignal) => Promise<{ id: string; version: string; commitSha: string }>
+  /** The manifest of a local-path source, or null when the directory is gone. */
+  localManifest: (path: string) => { id: string; version: string } | null
+}
+
+/** The lockfile key's id: everything before the LAST `@` (ids may carry an owner prefix). */
+export function packageIdOfKey(key: string): string {
+  const at = key.lastIndexOf('@')
+  return at === -1 ? key : key.slice(0, at)
+}
+
+export function isGithubPackageSource(source: string): boolean {
+  return source.startsWith('github:')
+}
+
+export function isClawhubPackageSource(source: string): boolean {
+  return source.startsWith('clawhub:')
+}
+
+/** `github:owner/repo[@ref][#subpath]` with the lock's ref folded in when the source carries none. */
+export function packageSourceWithRef(source: string, ref: string): string {
+  if (!isGithubPackageSource(source) || !ref) return source
+  const hash = source.indexOf('#')
+  const head = hash === -1 ? source : source.slice(0, hash)
+  const tail = hash === -1 ? '' : source.slice(hash)
+  return head.includes('@') ? source : `${head}@${ref}${tail}`
+}
+
+function syncPointer(entry: PackageEntry, id: string): string {
+  return entry.kind === 'agent' ? `bakin agents sync ${entry.agentId ?? id}` : `bakin packages sync ${id}`
+}
+
+export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
+  const subjects = (): InstalledPackage[] => deps.installed().filter((pkg) => pkg.upstream === null)
+  const entryFor = (pkg: InstalledPackage): UpdateSubjectInventoryEntry => ({
+    subject: { kind: 'package', id: pkg.id, label: pkg.id },
+    group: 'available',
+    fingerprint: fingerprintOf({
+      entry: { kind: pkg.entry.kind, version: pkg.entry.version, source: pkg.entry.source, ref: pkg.entry.ref, commitSha: pkg.entry.commitSha, installedAt: pkg.entry.installedAt },
+      host: deps.hostVersion(),
+    }),
+    source: isGithubPackageSource(pkg.entry.source)
+      ? { kind: 'git-ref', endpoint: pkg.entry.source, ref: pkg.entry.ref || undefined }
+      : { kind: 'local-path', endpoint: pkg.entry.source },
+  })
+
+  return {
+    kind: 'package',
+    async inventory() {
+      return subjects().map(entryFor)
+    },
+    async observe(inventoryEntry, { signal }): Promise<UpdateObservation> {
+      const id = inventoryEntry.subject.id
+      const pkg = subjects().find((candidate) => candidate.id === id)
+      if (!pkg) throw new Error(`package "${id}" is no longer installed`)
+      const { entry } = pkg
+      const installed = { version: entry.version, sha: entry.commitSha || undefined, display: entry.version }
+      const action: UpdateAction = { kind: 'manual', pointer: syncPointer(entry, id) }
+
+      if (isGithubPackageSource(entry.source)) {
+        if (!entry.ref) return { installed, outcome: 'blocked', blockedReason: 'lockfile missing the git ref — reinstall' }
+        const source = { kind: 'git-ref', endpoint: entry.source, ref: entry.ref }
+        const remote = await deps.lsRemote(deps.cloneUrl(entry.source), entry.ref, signal)
+        if (!remote) return { installed, source, outcome: 'blocked', blockedReason: `no remote ref: ${entry.ref}` }
+        if (remote === entry.commitSha) return { installed, source, outcome: 'current' }
+        // The ref moved: read the manifest there to name the version on offer.
+        const manifest = await deps.fetchManifest(packageSourceWithRef(entry.source, entry.ref), signal)
+        if (manifest.id !== id) throw new Error(`source manifest id "${manifest.id}" does not match installed package "${id}"`)
+        const sha = manifest.commitSha || remote
+        return {
+          installed,
+          source,
+          available: { version: manifest.version, sha, display: manifest.version === entry.version ? `${manifest.version} (${sha.slice(0, 7)})` : manifest.version },
+          reason: manifest.version === entry.version ? 'newer-commit' : 'newer-version',
+          outcome: 'update-available',
+          action,
+        }
+      }
+
+      const source = { kind: 'local-path', endpoint: entry.source }
+      const local = deps.localManifest(entry.source)
+      if (!local) return { installed, source, outcome: 'blocked', blockedReason: `source path missing: ${entry.source}` }
+      if (local.id !== id) throw new Error(`source manifest id "${local.id}" does not match installed package "${id}"`)
+      if (local.version === entry.version) return { installed, source, outcome: 'current' }
+      return { installed, source, available: { version: local.version, display: local.version }, reason: 'newer-version', outcome: 'update-available', action }
+    },
+  }
+}

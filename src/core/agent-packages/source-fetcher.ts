@@ -51,12 +51,13 @@ import { checkSubpath } from '../../../packages/core/src/install-core/source-gua
 import { synthesizeSkillPack, type SynthesisSourceInfo } from './skill-synthesis'
 import {
   type ClawhubClient,
+  ClawhubHttpError,
   type ClawhubVerdictState,
   createClawhubClient,
   evaluateVerdict,
   sha256Hex,
 } from './clawhub-client'
-import { parseClawhubRef } from './ref-normalize'
+import { parseClawhubRef, type ClawhubRef } from './ref-normalize'
 import { SkillRefusalError } from './errors'
 
 const log = createLogger('agent-pkg:fetch')
@@ -492,6 +493,35 @@ async function fetchGithubAsync(source: string): Promise<FetchedSource> {
 }
 
 // ─── ClawHub fetch (#687) ────────────────────────────────────────────────────
+
+/**
+ * Read-only hub questions for the updates engine (#1007 D7.12), asked through
+ * the ONE client (the arch pin keeps every hub request behind this module):
+ * the latest published version of a skill, and whether an exact version is
+ * still published. Every request aborts with the observe signal.
+ */
+export async function clawhubLatestVersion(ref: Pick<ClawhubRef, 'slug' | 'owner'>, signal: AbortSignal): Promise<string | null> {
+  try {
+    return await clawhubClientUnder(signal).resolveLatestVersion(ref.slug, ref.owner)
+  } catch (err) {
+    if (err instanceof Error && /lists no versions/.test(err.message)) return null
+    throw err
+  }
+}
+
+export async function clawhubHasVersion(ref: Pick<ClawhubRef, 'slug' | 'owner'>, version: string, signal: AbortSignal): Promise<boolean> {
+  try {
+    await clawhubClientUnder(signal).getVersionDetail(ref.slug, version, ref.owner)
+    return true
+  } catch (err) {
+    if (err instanceof ClawhubHttpError && err.status === 404) return false
+    throw err
+  }
+}
+
+function clawhubClientUnder(signal: AbortSignal): ClawhubClient {
+  return createClawhubClient({ fetcher: (url) => fetch(url, { headers: { 'user-agent': 'bakin' }, signal }) })
+}
 
 export function isClawhubSource(source: string): boolean {
   return source.startsWith('clawhub:')

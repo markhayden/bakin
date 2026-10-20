@@ -8,6 +8,7 @@ import { APP_VERSION } from '@bakin/core/constants'
 import { gitArgs } from '@bakin/core/net/git-args'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { getContentDir } from '../../content-dir'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { createLogger } from '../../logger'
 import { compareStoredSourceTreeSha } from '../../plugins/source-tree-sha'
 import { installedArtifactRuns, isArtifactInstall } from '../../plugins/upgrade-artifact'
@@ -23,6 +24,12 @@ import { createGatewaySource, type GatewaySourceDeps } from './gateway'
 import { createPluginSource } from './plugin'
 import { createSearchEngineSource, type SearchSettingsFacts } from './search-engine'
 import { createSearchModelsSource } from './search-models'
+import { createPackageSource, packageIdOfKey, type InstalledPackage } from './package'
+import { createHubSkillSource } from './hub-skill'
+import { readLockfile, type PackageEntry } from '../../../../packages/core/src/agent-packages/lockfile'
+import { parseManifest, type Manifest } from '../../../../packages/core/src/agent-packages/manifest'
+import { getPackageSourceDir } from '../../../../packages/core/src/agent-packages/package-paths'
+import { clawhubHasVersion, clawhubLatestVersion, fetchSourceAsync, parseGithubSpec } from '../../agent-packages/source-fetcher'
 
 /**
  * `git ls-remote` as an async child under the observe signal — never the
@@ -76,6 +83,60 @@ function userPluginLockEntries(): Record<string, PluginLockEntry> {
   return readPluginLockfile().plugins
 }
 
+/**
+ * Every installed agent package with its installed manifest's provenance
+ * (D7.12): a skill-pack whose manifest carries `upstream` is a hub skill,
+ * everything else a package — never both. When one id is installed under
+ * several keys (a superseded version not yet forgotten), the newest wins.
+ */
+function installedPackages(): InstalledPackage[] {
+  const byId = new Map<string, InstalledPackage>()
+  for (const [key, entry] of Object.entries(readLockfile().packages)) {
+    const id = packageIdOfKey(key)
+    const manifest = installedPackageManifest(entry.kind, id, entry.version)
+    const upstream = entry.kind === 'skill-pack' && manifest?.kind === 'skill-pack' && manifest.upstream ? manifest.upstream : null
+    const candidate: InstalledPackage = { key, id, entry, upstream }
+    const held = byId.get(id)
+    if (!held || Date.parse(candidate.entry.installedAt) >= Date.parse(held.entry.installedAt)) byId.set(id, candidate)
+  }
+  return [...byId.values()]
+}
+
+function installedPackageManifest(kind: PackageEntry['kind'], id: string, version: string): Manifest | null {
+  const path = join(getPackageSourceDir(getContentDir(), kind, id, version), 'bakin-package.json')
+  if (!existsSync(path)) return null
+  try {
+    return parseManifest(JSON.parse(readFileSync(path, 'utf-8')))
+  } catch (err) {
+    log.warn('installed package manifest unreadable — treated as a plain package', { id, version, error: err instanceof Error ? err.message : String(err) })
+    return null
+  }
+}
+
+function packageCloneUrl(source: string): string {
+  const spec = parseGithubSpec(source)
+  return `https://github.com/${spec.owner}/${spec.repo}.git`
+}
+
+/** The manifest at a github source+ref: a staged clone (the fetcher's own temp dir), removed after. */
+async function fetchPackageManifest(sourceWithRef: string): Promise<{ id: string; version: string; commitSha: string }> {
+  const fetched = await fetchSourceAsync(sourceWithRef)
+  try {
+    const manifest = parseManifest(JSON.parse(readFileSync(join(fetched.stagingDir, 'bakin-package.json'), 'utf-8')))
+    return { id: manifest.id, version: manifest.version, commitSha: fetched.commitSha }
+  } finally {
+    rmSync(fetched.stagingDir, { recursive: true, force: true })
+  }
+}
+
+function localPackageManifest(path: string): { id: string; version: string } | null {
+  const manifestPath = join(path, 'bakin-package.json')
+  if (!existsSync(manifestPath)) return null
+  const manifest = parseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
+  return { id: manifest.id, version: manifest.version }
+}
+
+
 const log = createLogger('updates-sources')
 
 function searchSettingsFacts(): SearchSettingsFacts {
@@ -106,6 +167,24 @@ export function registerCoreUpdateSources(deps: GatewaySourceDeps): void {
   registerUpdateSource(createSearchModelsSource(searchDeps))
   registerUpdateSource(createGatewaySource(deps))
   registerUpdateSource(createBakinSource({ currentVersion: () => APP_VERSION }))
+  const packageDeps = {
+    installed: installedPackages,
+    hostVersion: () => APP_VERSION,
+    cloneUrl: packageCloneUrl,
+    lsRemote: lsRemoteSha,
+  }
+  registerUpdateSource(createPackageSource({
+    ...packageDeps,
+    fetchManifest: fetchPackageManifest,
+    localManifest: localPackageManifest,
+  }))
+  registerUpdateSource(createHubSkillSource({
+    ...packageDeps,
+    hub: {
+      latest: (slug, owner, signal) => clawhubLatestVersion({ slug, owner }, signal),
+      hasVersion: (slug, version, owner, signal) => clawhubHasVersion({ slug, owner }, version, signal),
+    },
+  }))
   registerUpdateSource(createPluginSource({
     lockEntries: userPluginLockEntries,
     host: () => ({ version: APP_VERSION, platform: hostPlatform(), contract: EXTERNALS_CONTRACT }),
