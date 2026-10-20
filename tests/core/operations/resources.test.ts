@@ -5,7 +5,7 @@
  * inner writers keep working inside an operation that holds install-state).
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -253,6 +253,44 @@ describe('holdNow — the bounded synchronous writers', () => {
   })
 })
 
+describe('stale-lock reclaim is single-winner (#896 D3.5)', () => {
+  it('a reclaim marker left by a dead reclaimer is ignored after its grace', async () => {
+    const path = resourceLockPath('media-store')
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, JSON.stringify({ pid: 2 ** 22 + 7, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'dead' }))
+    const marker = `${path}.reclaim`
+    writeFileSync(marker, '')
+    const old = new Date(Date.now() - 60_000)
+    utimesSync(marker, old, old)
+    const lease = await acquire(['media-store'], { identity: identity('op-reclaim'), pollMs: { initial: 10, max: 50 } })
+    expect(readResourceHolder('media-store')?.operationId).toBe('op-reclaim')
+    expect(existsSync(marker)).toBe(false)
+    lease.release()
+  })
+
+  it('a FRESH reclaim marker makes a contender wait for the reclaimer instead of unlinking its lock', async () => {
+    const path = resourceLockPath('media-store')
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, JSON.stringify({ pid: 2 ** 22 + 7, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'dead' }))
+    const marker = `${path}.reclaim`
+    writeFileSync(marker, '')
+    let acquired = false
+    const pending = acquire(['media-store'], { identity: identity('op-late'), pollMs: { initial: 10, max: 50 } }).then((lease) => { acquired = true; return lease })
+    await settleFor(150, 'the contender must stay parked while a live reclaim marker exists')
+    expect(acquired).toBe(false)
+    // The reclaimer (a live foreign process) finishes: it swaps in its own
+    // lock and drops the marker — the contender now waits on a LIVE holder.
+    writeFileSync(path, JSON.stringify({ pid: process.ppid, operationId: 'op-winner', acquiredAt: new Date().toISOString(), title: 'winner' }))
+    unlinkSync(marker)
+    await settleFor(150, 'a live winner is never reclaimed')
+    expect(acquired).toBe(false)
+    unlinkSync(path) // the winner releases
+    const lease = await pending
+    expect(readResourceHolder('media-store')?.operationId).toBe('op-late')
+    lease.release()
+  })
+})
+
 describe('two processes', () => {
   it('waits for a live holder in another process and reclaims after it dies', async () => {
     const script = `
@@ -290,5 +328,35 @@ describe('two processes', () => {
     } finally {
       child.kill('SIGKILL')
     }
+  }, 30_000)
+
+  it('two processes racing the same dead-pid lock: exactly one reclaims, the other waits for it (#896 D3.5)', async () => {
+    const path = resourceLockPath('media-store')
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, JSON.stringify({ pid: 2 ** 22 + 7, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'dead' }))
+    const script = (name: string) => `
+      import { acquireResources } from ${JSON.stringify(join(REPO_ROOT, 'packages/core/src/operations/resources.ts'))}
+      const lease = await acquireResources(['media-store'], { identity: { title: ${JSON.stringify(name)}, operationId: ${JSON.stringify(name)} }, pollMs: { initial: 5, max: 20 } })
+      console.log('HELD ' + ${JSON.stringify(name)} + ' ' + Date.now())
+      await new Promise((resolve) => setTimeout(resolve, 1200))
+      lease.release()
+    `
+    const spawn = (name: string) => Bun.spawn(['bun', '-e', script(name)], {
+      cwd: REPO_ROOT,
+      env: { ...process.env, BAKIN_HOME: testDir, BAKIN_CONSOLE_FORMAT: 'silent' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const a = spawn('child-a')
+    const b = spawn('child-b')
+    const [outA, outB] = await Promise.all([new Response(a.stdout).text(), new Response(b.stdout).text()])
+    await Promise.all([a.exited, b.exited])
+    const held = [outA, outB].flatMap((out) => out.split('\n').filter((line) => line.startsWith('HELD ')))
+    expect(held).toHaveLength(2)
+    const times = held.map((line) => Number(line.split(' ')[2])).sort((x, y) => x - y)
+    // The loser waited for the winner's whole hold: never two holders at once.
+    expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(1000)
+    expect(existsSync(`${path}.reclaim`)).toBe(false)
+    expect(existsSync(path)).toBe(false)
   }, 30_000)
 })

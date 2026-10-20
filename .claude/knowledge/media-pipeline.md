@@ -206,7 +206,11 @@ bodies. The incident is replayed in `tests/core/media/installer.test.ts`: a
 registry stream that stalls is visible (warn log, attempt 2 of 2 `stalled`)
 and recovers on a fresh request; one that stalls on every attempt fails the
 item, the stage and the install and commits nothing. Cross-process
-single-flight is the `media-store` operation resource (`~/.bakin/locks/`).
+single-flight is the `media-store` operation resource (`~/.bakin/locks/`;
+#896 part 1 — delivered by #895, with the single-winner stale-lock reclaim
+from #896 D3.5). The `Bun.write(dest, Response)` abort bug has a minimal
+reproduction + issue text in `tasks/bun-write-abort-repro/`; TODO(#896):
+link the upstream oven-sh/bun issue here once it is filed.
 
 ## macOS code signing (rc.33 lesson)
 

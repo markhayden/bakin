@@ -54,7 +54,9 @@ export interface TransferOptions {
    * a stalled transfer and fails (margo 2026-09-21: a wedged registry stream
    * hung every installer forever — `Bun.write(dest, res)` never honors the
    * fetch abort signal once body streaming starts, so the deadline MUST be
-   * enforced by hand around each read). Default 30s.
+   * enforced by hand around each read — minimal repro + issue text in
+   * tasks/bun-write-abort-repro/; TODO(#896): link the upstream oven-sh/bun
+   * issue once filed). Default 30s.
    */
   stallTimeoutMs?: number
   /**

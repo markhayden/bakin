@@ -119,7 +119,12 @@ the core ones. Adding a fourth core resource is an approval checkpoint.
   title, acquiredAt }`; old readers only look at `pid`/`acquiredAt`.
 - Stale = dead pid, or this pid with no live holder here (a crashed
   in-process holder). Stale files are reclaimed and the reclaim is logged on
-  the waiting operation.
+  the waiting operation. **Reclaim is single-winner (#896 D3.5):** the
+  reclaim itself takes an O_EXCL `<lock>.reclaim` marker, re-reads the holder
+  under it and unlinks only the stale holder it judged — two contenders that
+  both saw the same dead pid can no longer both unlink (the second would
+  have deleted the first's fresh lock and both would have held the
+  resource). A marker left by a reclaimer that died is ignored after 10 s.
 - `acquireResources` waits abortably (a lease obtained after an abort is
   released at once); `tryAcquireResources` never waits — for background work
   (the search migration pump and boot resumption take `search-engine` this

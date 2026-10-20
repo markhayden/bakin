@@ -74,6 +74,8 @@ const PLUGIN_RESOURCE_RE = /^([a-z0-9][a-z0-9-]*):([a-z0-9][a-z0-9-]*)$/
 /** A lock file younger than this with no parseable holder is mid-write, not stale. */
 const UNPARSEABLE_GRACE_MS = 2_000
 const RECLAIM_ATTEMPTS = 3
+/** A `.reclaim` marker older than this belongs to a reclaimer that died mid-reclaim; it is ignored. */
+const RECLAIM_MARKER_GRACE_MS = 10_000
 
 const isCoreResource = (resource: string): boolean => (CORE_RESOURCES as readonly string[]).includes(resource)
 
@@ -185,6 +187,41 @@ function isStale(resource: string, path: string, holder: ResourceHolder | null):
   return holder.pid === process.pid && !heldHere.has(resource)
 }
 
+function reclaimMarkerPath(path: string): string {
+  return `${path}.reclaim`
+}
+
+/** O_EXCL claim on the reclaim of `path`; a marker left by a dead reclaimer is ignored after a short grace. */
+function takeReclaimMarker(path: string): boolean {
+  const marker = reclaimMarkerPath(path)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      closeSync(openSync(marker, 'wx'))
+      return true
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    }
+    let age = 0
+    try {
+      age = Date.now() - statSync(marker).mtimeMs
+    } catch {
+      continue // vanished between the open and the stat — retry the claim
+    }
+    if (age < RECLAIM_MARKER_GRACE_MS) return false
+    log.warn('Ignoring a reclaim marker left by a dead reclaimer', { marker, ageMs: Math.round(age) })
+    releaseReclaimMarker(path)
+  }
+  return false
+}
+
+function releaseReclaimMarker(path: string): void {
+  try {
+    unlinkSync(reclaimMarkerPath(path))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+  }
+}
+
 function tryCreate(path: string, identity: ResourceHolderIdentity): boolean {
   let fd: number
   try {
@@ -224,10 +261,27 @@ function tryAcquireOne(resource: string, identity: ResourceHolderIdentity, onRec
       return { ok: false, holder: holder ?? { pid: -1, acquiredAt: '', title: 'Another operation' } }
     }
     log.warn('Reclaiming a stale operation lock', { resource, path, stalePid: holder?.pid ?? 'unparseable', staleOperation: holder?.operationId })
+    // Single-winner reclaim (#896 D3.5): two contenders that both judged the
+    // same dead holder must not both unlink — the second would delete the
+    // FIRST one's fresh lock and both would hold the resource. The reclaim
+    // itself is an O_EXCL marker; under it the holder is re-read and unlinked
+    // only if it is still the stale one that was judged. A contender that
+    // loses the marker simply re-reads on the next attempt and sees the
+    // winner's live lock.
+    if (!takeReclaimMarker(path)) continue
     try {
-      unlinkSync(path)
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      const again = readHolderAt(path)
+      const sameStaleHolder = again === null
+        ? holder === null
+        : holder !== null && again.pid === holder.pid && again.acquiredAt === holder.acquiredAt
+      if (!sameStaleHolder) continue
+      try {
+        unlinkSync(path)
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      }
+    } finally {
+      releaseReclaimMarker(path)
     }
     onReclaim?.({ resource, holder: holder ?? { pid: -1, acquiredAt: '' } })
   }
