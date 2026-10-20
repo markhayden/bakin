@@ -275,3 +275,29 @@ describe('review round 4 — one admission path', () => {
     expect(await gone.json()).toMatchObject({ error: 'not_found', id: 'plugin:c' })
   })
 })
+
+describe('review round 5 — stop during admission', () => {
+  it('a non-wait check whose admission refresh is in flight when the engine stops answers 503, never 202 (#6)', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let held = false
+    const observed: string[] = []
+    const source: UpdateSource = {
+      kind: 'plugin',
+      inventory: async () => { if (held) await gate; return [{ subject: { kind: 'plugin' as const, id: 'projects', label: 'projects' }, group: 'available' as const, fingerprint: 'f', source: { kind: 's', endpoint: 'projects' } }] },
+      observe: async (entry) => { observed.push(entry.subject.id); return current },
+    }
+    registerUpdateSource(source)
+    startUpdates(testDir)
+    await getUpdatesEngine()!.ready
+    held = true
+    const pending = call(updatesRoute.check, 'POST', '/api/updates/check')
+    await new Promise((r) => setTimeout(r, 20))
+    stopUpdates()
+    release()
+    const res = await pending
+    expect(res.status).toBe(503)
+    expect(await res.json()).toMatchObject({ error: 'updates_unavailable' })
+    expect(observed).toEqual([])
+  })
+})

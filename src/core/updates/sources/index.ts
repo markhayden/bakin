@@ -38,11 +38,33 @@ export async function lsRemoteSha(url: string, ref: string, signal: AbortSignal)
     const [code, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()])
     if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : new Error('ls-remote aborted')
     if (code !== 0) throw new Error(`git ls-remote ${url} ${ref} failed (exit ${code}): ${stderr.trim().slice(-300)}`)
-    const sha = (stdout.split(/\s+/)[0] ?? '').trim().toLowerCase()
-    return sha ? sha : null
+    return pickLsRemoteSha(stdout, ref)
   } finally {
     signal.removeEventListener('abort', onAbort)
   }
+}
+
+/**
+ * The commit `git clone --branch <ref>` would check out, from `ls-remote`
+ * output (review r5 #3): the EXACT ref — a branch first (clone prefers it),
+ * then a tag — and for an annotated tag the PEELED commit (`<tag>^{}`),
+ * never the tag object, which is what the lanes compare against `HEAD`.
+ * A pattern match on a suffix would pick the first of several refs.
+ */
+export function pickLsRemoteSha(stdout: string, ref: string): string | null {
+  const rows = stdout.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+    const [sha, name] = line.split(/\s+/)
+    return { sha: (sha ?? '').toLowerCase(), name: name ?? '' }
+  }).filter((row) => /^[0-9a-f]{40}$/.test(row.sha))
+  const exact = (name: string) => rows.find((row) => row.name === name)
+  const pick = exact(`refs/heads/${ref}`)
+    ?? exact(`refs/tags/${ref}^{}`)
+    ?? exact(`refs/tags/${ref}`)
+    ?? exact(`${ref}^{}`)
+    ?? exact(ref)
+    ?? rows.find((row) => row.name.endsWith(`/${ref}^{}`))
+    ?? rows[0]
+  return pick?.sha ?? null
 }
 
 function userPluginLockEntries(): Record<string, PluginLockEntry> {

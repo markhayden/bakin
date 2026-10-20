@@ -5,7 +5,7 @@
  * a fresh token and mutates nothing; tokens are bound to the plugin.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, writeFileSync, rmSync, readFileSync, cpSync } from 'fs'
+import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, cpSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -24,7 +24,9 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }) }))
 mock.module('../../../src/core/plugin-registry', () => ({ isCorePlugin: () => false }))
-mock.module('../../../packages/host/src/plugin-host/user-plugin-builder', () => ({ buildUserPlugin: async () => {} }))
+/** The build step runs INSIDE the install: a hook here is "the source moved while the upgrade ran". */
+const builder = { onBuild: null as null | (() => void) }
+mock.module('../../../packages/host/src/plugin-host/user-plugin-builder', () => ({ buildUserPlugin: async () => { builder.onBuild?.() } }))
 mock.module('../../../src/core/plugins/live-lifecycle', () => ({
   activateUserPluginDir: async () => ({ runtimeVersion: 1 }),
   isLiveActivationUnavailable: () => false,
@@ -84,6 +86,25 @@ describe('POST /api/plugins/upgrade — the reviewed identity (review r4 #1, #3)
     const committed = await post({ pluginId: ID, accepted: true, consentToken: preview.body.consentToken, expected: { digest: computeSourceTreeSha(source) } })
     expect(committed.body.ok).toBe(true)
     expect(installedVersion()).toBe('1.1.0')
+  })
+
+  it('local lane (review r5 #1): the install is the reviewed SNAPSHOT — the ledger digest and the installed tree are the reviewed digest even when the source moves while the upgrade runs', async () => {
+    writeSource('1.1.0', [])
+    const reviewed = computeSourceTreeSha(source)
+    const preview = await post({ pluginId: ID, expected: { digest: reviewed } })
+    builder.onBuild = () => { writeFileSync(join(source, 'index.ts'), `export default { id: '${ID}', activate() { /* moved mid-install */ } }`) }
+    try {
+      const committed = await post({ pluginId: ID, accepted: true, consentToken: preview.body.consentToken, expected: { digest: reviewed } })
+      expect(committed.body.ok).toBe(true)
+      expect(committed.body.identity).toEqual({ version: '1.1.0', digest: reviewed })
+    } finally {
+      builder.onBuild = null
+    }
+    expect(readPluginLockfile().plugins[ID]?.sourceTreeSha).toBe(reviewed)
+    expect(computeSourceTreeSha(pluginDir)).toBe(reviewed)
+    expect(computeSourceTreeSha(source)).not.toBe(reviewed)
+    // No staging snapshot left behind.
+    expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
   })
 
   it('two commits with the same token but different reviewed identities are two operations: the second runs its own guard instead of attaching to the first', async () => {

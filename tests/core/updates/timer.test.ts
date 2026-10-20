@@ -318,3 +318,77 @@ describe('review round 4 — admission', () => {
     expect(plugins.calls).toEqual([])
   })
 })
+
+describe('review round 5 — attempts, the deadline branch and stop', () => {
+  it('a subject removed during a NON-cooperative timeout is an attempt-specific result: the pass settles normally, a broad check resolves, the named one fails, and the timer is usable after (#2)', async () => {
+    const ids = ['a', 'b', 'c']
+    const plugins = scripted('plugin', ids)
+    const source: UpdateSource = { ...plugins.source, inventory: async () => ids.map((id): UpdateSubjectInventoryEntry => ({ subject: { kind: 'plugin', id, label: id }, group: 'available', fingerprint: fingerprintOf({ id }), source: { kind: 'scripted', endpoint: id } })) }
+    plugins.hold('a') // ignores its signal — the deadline branch records the failure itself
+    const { engine, timer } = harness([source], { firstTickMs: 100_000, subjectTimeoutMs: 40, cancelGraceMs: 40 })
+    await engine.ready
+    const named = await timer.admit({ ids: ['plugin:a'] })
+    const namedOutcome = named.done.then(() => 'resolved', (err: unknown) => err) // observed now: it rejects before the test gets to it
+    const broad = await timer.admit()
+    await waitUntil(() => plugins.inFlight.has('a'), { label: 'a in flight' })
+    // a is uninstalled while it hangs; its deadline has nowhere to land.
+    ids.splice(0, 1)
+    await engine.refreshInventory()
+    // The pass is not rejected by that: every other subject is observed and both requests settle on their own terms.
+    await expect(broad.done).resolves.toMatchObject({ coalesced: true })
+    expect(await namedOutcome).toBeInstanceOf(UpdateSubjectNotFoundError)
+    expect(plugins.calls.sort()).toEqual(['a', 'b', 'c'])
+    expect(timer.running()).toBe(false)
+    expect((await engine.snapshot()).records.map((r) => r.id).sort()).toEqual(['plugin:b', 'plugin:c'])
+    // Ownership was released cleanly: the next check runs as usual.
+    await expect(timer.check({ ids: ['plugin:b'] })).resolves.toMatchObject({ ids: ['plugin:b'], coalesced: false })
+  })
+
+  it('a missing subject belongs to the attempt, not the pass: remove → missing for A, reinstall → a fresh attempt for B succeeds while the same pass is alive (#5)', async () => {
+    const ids = ['a', 'b', 'c']
+    const plugins = scripted('plugin', ids)
+    const source: UpdateSource = { ...plugins.source, inventory: async () => ids.map((id): UpdateSubjectInventoryEntry => ({ subject: { kind: 'plugin', id, label: id }, group: 'available', fingerprint: fingerprintOf({ id }), source: { kind: 'scripted', endpoint: id } })) }
+    const releaseA = plugins.hold('a')
+    const releaseB = plugins.hold('b')
+    const { engine, timer } = harness([source], { firstTickMs: 100_000 })
+    await engine.ready
+    await timer.admit({ ids: ['plugin:a', 'plugin:b'] })
+    await waitUntil(() => plugins.inFlight.size === 2, { label: 'a and b in flight' })
+    const requestA = await timer.admit({ ids: ['plugin:c'] })
+    const outcomeA = requestA.done.then(() => 'resolved', (err: unknown) => err)
+    ids.splice(2, 1)
+    await engine.refreshInventory()
+    releaseA() // the free worker takes c: gone
+    await waitUntil(() => plugins.calls.filter((id) => id === 'a').length === 1 && !plugins.inFlight.has('a'), { label: 'a settled' })
+    await settleFor(30, 'the c attempt is refused by the engine (never observed)')
+    expect(plugins.calls).not.toContain('c')
+    // c comes back; B asks for it — a NEW attempt, unaffected by A's.
+    ids.push('c')
+    await engine.refreshInventory()
+    const requestB = await timer.admit({ ids: ['plugin:c'] })
+    expect(requestB.coalesced).toBe(true)
+    releaseB() // the slot b held takes B's attempt for c — the same pass
+    await waitUntil(() => plugins.calls.includes('c'), { label: 'c observed for B' })
+    await expect(requestB.done).resolves.toMatchObject({ ids: ['plugin:c'] })
+    expect(await outcomeA).toBeInstanceOf(UpdateSubjectNotFoundError)
+  })
+
+  it('a stop that lands while the admission refresh is in flight refuses the admission — never an accepted check nobody will run (#6)', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let held = false
+    const plugins = scripted('plugin', ['a'])
+    const inner = plugins.source.inventory
+    const source: UpdateSource = { ...plugins.source, inventory: async () => { if (held) await gate; return inner() } }
+    const { engine, timer } = harness([source], { firstTickMs: 100_000 })
+    await engine.ready
+    held = true
+    const admission = timer.admit()
+    await settleFor(20, 'the admission is inside the held refresh')
+    timer.stop()
+    release()
+    await expect(admission).rejects.toMatchObject({ name: 'UpdatesStoppedError' })
+    expect(timer.running()).toBe(false)
+    expect(plugins.calls).toEqual([])
+  })
+})

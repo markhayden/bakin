@@ -406,3 +406,31 @@ describe('review round 3', () => {
     expect((await rebooted.scheduleFor('plugin:a'))!.failures).toBe(0)
   })
 })
+
+describe('review round 5 — refreshes are serialized in the engine', () => {
+  it('two refreshes never enumerate at once, and the LAST facts win — a slow enumeration started under old facts cannot resurrect a removed subject (#4)', async () => {
+    const plugins = scripted('plugin', [{ id: 'projects' }, { id: 'terminal' }])
+    const engine = boot([plugins.source])
+    await engine.ready
+    let inFlight = 0
+    let peak = 0
+    const inner = plugins.source.inventory
+    plugins.source.inventory = async () => {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      try { return await inner() } finally { inFlight -= 1 }
+    }
+    const release = plugins.holdInventory()
+    const first = engine.refreshInventory()
+    // The subject is removed while the first enumeration is held: the second refresh must run AFTER it, under the new facts.
+    plugins.remove('terminal')
+    const second = engine.refreshInventory()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(peak).toBe(1)
+    release()
+    await Promise.all([first, second])
+    expect(peak).toBe(1)
+    expect((await engine.inventory()).map((entry) => entry.subject.id)).toEqual(['projects'])
+    expect((await engine.snapshot()).records.map((r) => r.id)).toEqual(['plugin:projects'])
+  })
+})

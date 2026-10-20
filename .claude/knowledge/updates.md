@@ -122,12 +122,29 @@ search-engine enumeration runs the binary version probe), ids are validated
 against THAT inventory (a plugin installed a moment ago is known; an unknown
 id rejects with not-found before anything runs), and the admission answers
 with the accepted ids plus a `done` promise. `POST /api/updates/check` is a
-thin client: 404 for an id outside the refreshed inventory, 202 with the
-admitted ids, or (`wait=1`) the records once `done` settles. A subject
-removed AFTER admission but before its turn is remembered by the pass
-(`Pass.missing`): the request that named it rejects with not-found (404 in
-wait mode) — never a successful check that never looked — while a broad
-request simply no longer has it.
+thin client: 404 for an id outside the refreshed inventory, 503 when the
+engine stopped during the admission (re-checked after the refresh — never
+an accepted check nobody will run), 202 with the admitted ids, or
+(`wait=1`) the records once `done` settles. The pass queue holds ATTEMPTS
+(`{ id, waiters }`): a request rides the queued attempt for its id or
+appends its own, and a subject that is gone when that attempt's turn comes
+(removed after admission; or removed during a non-cooperative observer's
+grace, where the deadline has nowhere to land) is marked on THAT attempt's
+waiters only — the request that named it rejects with not-found (404 in
+wait mode), never a successful check that never looked; a broad request
+simply no longer has it; a later attempt for a reinstalled subject is its
+own, untouched by the earlier miss. Engine refusals never escape an
+attempt and the pass keeps `running` until every worker has settled
+(`Promise.allSettled`) — one subject's disappearance never rejects the
+pass or releases its ownership under a worker still observing. Inventory
+refreshes are serialized INSIDE the engine (`refreshInventory` chains), so
+the timer's admissions and the service's plugin/settings events never
+enumerate at once and a slow enumeration started under old facts can never
+reconcile after a newer one. The git-ref plugin source resolves the EXACT
+ref from `ls-remote` (`pickLsRemoteSha`): a branch first, then a tag, and
+an annotated tag's PEELED commit — what the clone's `HEAD` is and what the
+lanes hold the identity to — never the tag object (an unchanged annotated
+tag is `current`, a moved one a real offer).
 
 **One attempt, one result.** On the deadline the signal fires; a cooperative
 observer settles through the engine and records the deadline as its ONE
@@ -189,8 +206,12 @@ ONE apply service (`src/core/updates/apply.ts`) behind `GET
    as `UpgradeOptions.expected` and holds its candidate to it with
    `assertUpgradeTarget` — in-place github and subpath lanes the commit the
    ref resolves to (`{ version, sha }`), the artifact lane the published
-   tarball's sha256 (`{ version, digest }`), the local lane the live
-   source-tree digest (`{ version, digest }`) — refusing a ref that moved, a
+   tarball's sha256 (`{ version, digest }`), the local lane the digest of a
+   private SNAPSHOT of the source (`{ version, digest }` — the source is a
+   live directory someone may be editing, so the lane copies it into
+   `.upgrade-staging-*` first and reads, verifies, records and installs
+   exclusively from that snapshot: the digest the identity names is the
+   digest of the bytes that land) — refusing a ref that moved, a
    republished artifact or a moved tree even under an unchanged manifest (and
    so a still-valid consent token). A reviewed field the lane cannot report
    is itself a refusal: a lane that cannot prove the identity never installs

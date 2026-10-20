@@ -104,14 +104,23 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
   let stopped = false
   let timer: ReturnType<typeof setTimeout> | null = null
 
+  /** One admitted request's view of the pass: the subjects that were gone when THEIR attempt's turn came. */
+  interface Waiter {
+    missing: Set<string>
+  }
+
+  /** One queued observation and the requests riding it — a later attempt for the same id is a different item (review r5 #5). */
+  interface QueuedAttempt {
+    id: string
+    waiters: Set<Waiter>
+  }
+
   interface Pass {
-    queue: string[]
+    /** Attempts the pass must still run, in order; a manual request can append or ride a queued one. */
+    queue: QueuedAttempt[]
     reached: Set<string>
     /** Ids a caller asked for by name: observed even when scheduled work is disabled mid-pass. */
     explicit: Set<string>
-    /** Subjects that were gone when their turn came (removed after admission): the requests that named them fail, never silently succeed. */
-    missing: Map<string, UpdateSubjectNotFoundError>
-    /** Ids the pass must still observe, in order; a manual request can append. */
     done: Promise<void>
     /** True for a scheduled pass: honours `enabled` between subjects. */
     scheduled: boolean
@@ -124,17 +133,21 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
    * gets a bounded grace; after it the slot is released and the engine
    * records the deadline, retiring the attempt so a late result is dropped.
    */
-  async function observeWithDeadline(id: string, missing: Pass['missing']): Promise<void> {
+  async function observeWithDeadline(attempt: QueuedAttempt): Promise<void> {
+    const { id } = attempt
     const controller = new AbortController()
     const token = {}
     let settled = false
-    const observing = engine.observe(id, { signal: controller.signal, token }).then(() => undefined, (err: unknown) => {
-      // Engine refusals: logged, the pass goes on. A subject that vanished
-      // after it was admitted is remembered so the request that named it
-      // fails (review r4 #6) — a broad request simply no longer has it.
-      if (err instanceof UpdateSubjectNotFoundError) missing.set(id, err)
+    // Engine refusals never escape an attempt: the pass goes on and keeps
+    // its ownership until every worker settles. A subject that vanished
+    // after it was admitted is marked on THIS attempt's waiters, so the
+    // requests that named it fail (review r4 #6, r5 #2/#5) — a broad request
+    // simply no longer has it; a later attempt for the same id is its own.
+    const refused = (err: unknown): void => {
+      if (err instanceof UpdateSubjectNotFoundError) for (const waiter of attempt.waiters) waiter.missing.add(id)
       log.warn('update check failed to start', { id, error: err instanceof Error ? err.message : String(err) })
-    }).finally(() => { settled = true })
+    }
+    const observing = engine.observe(id, { signal: controller.signal, token }).then(() => undefined, refused).finally(() => { settled = true })
     const timedOut = await Promise.race([
       observing.then(() => false),
       new Promise<boolean>((resolve) => { const t = setTimeout(() => resolve(true), subjectTimeoutMs); t.unref?.() }),
@@ -142,35 +155,41 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
     if (!timedOut) return
     controller.abort(new Error(SUBJECT_TIMED_OUT(subjectTimeoutMs)))
     await Promise.race([observing, new Promise<void>((resolve) => { const t = setTimeout(resolve, cancelGraceMs); t.unref?.() })])
-    if (!settled) await engine.recordFailure(id, SUBJECT_TIMED_OUT(subjectTimeoutMs), { token })
+    if (settled) return
+    try {
+      await engine.recordFailure(id, SUBJECT_TIMED_OUT(subjectTimeoutMs), { token })
+    } catch (err) {
+      // Removed during the grace: the deadline has nowhere to land — an attempt-specific result, not the pass's.
+      refused(err)
+    }
   }
 
-  function runPass(initial: string[], scheduled: boolean, explicitIds: readonly string[] = []): Pass {
+  function runPass(initial: QueuedAttempt[], scheduled: boolean, explicitIds: readonly string[] = []): Pass {
     const queue = [...initial]
     const reached = new Set<string>()
     const explicit = new Set(explicitIds)
-    const missing = new Map<string, UpdateSubjectNotFoundError>()
     engine.setRunning(true)
     const done = (async () => {
       const workers = Array.from({ length: concurrency }, async () => {
         for (;;) {
           if (stopped) return
-          const id = queue.shift()
-          if (id === undefined) return
+          const attempt = queue.shift()
+          if (attempt === undefined) return
           // Disabled mid-pass: scheduled work stops here, but a subject someone
           // asked for by name is still observed — a check never answers
           // "done" without having looked.
-          if (scheduled && !options.settings().enabled && !explicit.has(id)) continue
-          reached.add(id)
-          await observeWithDeadline(id, missing)
+          if (scheduled && !options.settings().enabled && !explicit.has(attempt.id)) continue
+          reached.add(attempt.id)
+          await observeWithDeadline(attempt)
         }
       })
-      await Promise.all(workers)
+      // The pass owns `running` until EVERY worker has settled — never released by one worker's failure.
+      await Promise.allSettled(workers)
     })().finally(() => {
       if (pass === current) pass = null
       engine.setRunning(false)
     })
-    const current: Pass = { queue, reached, explicit, missing, done, scheduled }
+    const current: Pass = { queue, reached, explicit, done, scheduled }
     pass = current
     return current
   }
@@ -185,7 +204,7 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
       const due = await engine.dueSubjects()
       if (due.length === 0) return null
       log.debug('update check pass', { due: due.length })
-      return runPass(due, true)
+      return runPass(due.map((id) => ({ id, waiters: new Set<Waiter>() })), true)
     })
     if (started) await started.done
   }
@@ -201,10 +220,13 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
   schedule(firstTickMs)
 
   async function admit(request: CheckRequest = {}): Promise<CheckAdmission> {
+    const waiter: Waiter = { missing: new Set() }
     const { ids, run, coalesced } = await serialized(async () => {
       if (stopped) throw new UpdatesStoppedError()
       await engine.refreshInventory()
       const inventory = await engine.inventory()
+      // A stop that landed during the refresh: nothing will be observed — never an accepted check (review r5 #6).
+      if (stopped) throw new UpdatesStoppedError()
       const known = new Set(inventory.map((entry) => `${entry.subject.kind}:${entry.subject.id}`))
       let ids = [...known]
       if (request.kind) ids = ids.filter((id) => id.startsWith(`${request.kind}:`))
@@ -215,22 +237,24 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
       if (pass) {
         // Join the running pass. A broad request takes whatever the pass
         // already reached; an EXPLICIT id is observed again regardless (the
-        // caller knows the subject changed — a reached result is stale).
+        // caller knows the subject changed — a reached result is stale). A
+        // request rides the queued attempt for its id when there is one.
         const running = pass
         for (const id of ids) {
           running.explicit.add(id)
-          if (running.queue.includes(id)) continue
-          if (request.ids || !running.reached.has(id)) running.queue.push(id)
+          const queued = running.queue.find((attempt) => attempt.id === id)
+          if (queued) { queued.waiters.add(waiter); continue }
+          if (request.ids || !running.reached.has(id)) running.queue.push({ id, waiters: new Set([waiter]) })
         }
         return { ids, run: running, coalesced: true }
       }
-      return { ids, run: runPass(ids, false, ids), coalesced: false }
+      return { ids, run: runPass(ids.map((id) => ({ id, waiters: new Set([waiter]) })), false, ids), coalesced: false }
     })
     const done = run.done.then(() => {
       if (stopped) throw new UpdatesStoppedError()
-      // Named subjects must have been LOOKED AT: one removed while it waited its turn fails this request.
-      const gone = request.ids?.find((id) => run.missing.has(id))
-      if (gone !== undefined) throw run.missing.get(gone)!
+      // Named subjects must have been LOOKED AT: one removed while THIS request's attempt waited its turn fails it.
+      const gone = request.ids?.find((id) => waiter.missing.has(id))
+      if (gone !== undefined) throw new UpdateSubjectNotFoundError(gone)
       return { ids, coalesced }
     })
     return { ids, coalesced, done }

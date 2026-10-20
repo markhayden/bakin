@@ -182,6 +182,9 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
     })
   }
 
+  /** The refresh chain: one enumeration + reconcile at a time, in call order. */
+  let refreshing: Promise<void> = Promise.resolve()
+
   const ready: Promise<void> = (async () => {
     file = readUpdatesFile(options.storePath) ?? emptyUpdatesFile()
     const changed = reconcile(await enumerate())
@@ -234,11 +237,19 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
 
     async refreshInventory() {
       await ready
-      const changed = reconcile(await enumerate())
-      if (changed.length > 0) {
-        await persist()
-        publish(changed)
-      }
+      // Serialized HERE, where every caller participates (the timer's
+      // admissions AND the service's plugin/settings events): a slow
+      // enumeration started under old facts can never reconcile after a
+      // newer one and resurrect what it removed (review r5 #4).
+      const run = refreshing.then(async () => {
+        const changed = reconcile(await enumerate())
+        if (changed.length > 0) {
+          await persist()
+          publish(changed)
+        }
+      })
+      refreshing = run.catch(() => undefined)
+      return run
     },
 
     async dueSubjects() {
