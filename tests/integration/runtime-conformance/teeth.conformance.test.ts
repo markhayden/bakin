@@ -396,6 +396,38 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
     await runtimeConformanceChecks.perTurnModelHonesty(target) // resolves = skip-with-reason
   })
 
+  it("fails tool-policy honesty when a declared-true runtime still streams tool chunks under toolsMode:'none' (#883)", async () => {
+    const runtime = createMockRuntimeAdapter()
+    // Lie: claim enforcement, but the [[tool]] turn still "uses" its tool.
+    runtime.describeToolAccess = () => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: true, perTurnToolsMode: true })
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.toolPolicyHonesty(target))
+      .rejects.toThrow(/conformance violation: declared perTurnToolsMode=true but a toolsMode:'none' turn streamed/)
+  })
+
+  it("fails tool-policy honesty when a runtime REJECTS a toolsMode:'none' turn instead of dropping the field (#883)", async () => {
+    const runtime = createMockRuntimeAdapter()
+    // The OpenClaw-2026.9.5 class: the transport refuses the forwarded param.
+    const realSend = runtime.messaging.send.bind(runtime.messaging)
+    runtime.messaging.send = async (args) => {
+      if (args.toolsMode !== undefined) throw new Error("invalid agent params: at root: unexpected property 'toolsMode'")
+      return realSend(args)
+    }
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.toolPolicyHonesty(target))
+      .rejects.toThrow(/conformance violation: a turn carrying toolsMode:'none' was rejected/)
+  })
+
+  it('skips the enforcement leg for an HONEST perTurnToolsMode=false runtime, but still requires acceptance (#883)', async () => {
+    const runtime = createMockRuntimeAdapter() // mock default: perTurnToolsMode false
+    let streamed = 0
+    const realStream = runtime.messaging.stream.bind(runtime.messaging)
+    runtime.messaging.stream = (args) => { streamed += 1; return realStream(args) }
+    const target = { ...honestTargetShell(runtime) }
+    await runtimeConformanceChecks.toolPolicyHonesty(target) // resolves = accepted + skipped
+    expect(streamed).toBe(0)
+  })
+
   it('fails the ping check when an unserveable runtime reports true', async () => {
     const runtime = createMockRuntimeAdapter()
     const target = {

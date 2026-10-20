@@ -149,6 +149,14 @@ const target: RuntimeConformanceTarget = {
     setTimeout(() => controller.abort('conformance: mid-turn'), 250)
     return { settled }
   },
+  prepareToolsModeNoneTurn: () => {
+    // Offered no tools (noTools:'all' + an empty bridge — pinned in
+    // tests/integration/pi/turn.test.ts "toolsMode none exposes no bakin
+    // tools"), a real model cannot call one; the scripted provider answers
+    // in text and the stream must carry no tool chunk.
+    seedProvider([{ steps: [{ text: 'no tools offered, answering in text' }], usage: { prompt: 4, completion: 3 } }])
+    return 'conformance: use the echo tool'
+  },
   prepareToolTurn: () => {
     // Tool round-trip: the model "calls" the echo exec tool, then replies.
     seedProvider([
