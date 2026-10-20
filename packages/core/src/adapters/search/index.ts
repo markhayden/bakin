@@ -99,12 +99,59 @@ export interface SearchAdapter {
 export type SearchAdapterSetupCheckStatus = 'ok' | 'missing' | 'broken' | 'warn' | 'error'
 export type SearchAdapterSetupInstallStatus = 'installed' | 'skipped' | 'failed' | 'noop'
 
+/** How an adapter judges one required model (#1007, D7.9) — the adapter owns the classification; core maps `remediation` to an action and never parses messages. */
+export type SearchAdapterModelState = 'ok' | 'missing' | 'variant-mismatch' | 'unloadable' | 'unsupported'
+export type SearchAdapterModelRemediation = 'install' | 'replace-variant' | 'change-config' | 'unsupported'
+
+/**
+ * An opaque, adapter-computed identity of what is installed: built from the
+ * stat metadata, manifests, variant markers and cached load verdicts the
+ * adapter already inspects — never from content hashes (a doctor-cadence
+ * check hashing hundreds of MB blew timeouts, 2026-07-22). Two equal strings
+ * mean "nothing the adapter can see has changed".
+ */
+export interface SearchAdapterInstalledIdentity {
+  version?: string
+  identity: string
+}
+
+export interface SearchAdapterModelCheck {
+  id: string
+  label?: string
+  /** The pinned requirement's identity (pin set + variant) — separate from what is installed. */
+  required: { identity: string }
+  /** Absent when nothing of the model is installed. */
+  installed?: { identity: string }
+  state: SearchAdapterModelState
+  /** Absent when `state` is `ok`. */
+  remediation?: SearchAdapterModelRemediation
+  /** Why, for people (the engine's own diagnostic, the variant found, …). */
+  reason?: string
+}
+
 export interface SearchAdapterSetupCheckResult {
   name: string
   status: SearchAdapterSetupCheckStatus
   message: string
   remediation?: string
   details?: Record<string, unknown>
+  /**
+   * False when there is nothing on this machine to install or update: a
+   * guest endpoint, search disabled, or a service owned elsewhere. Such a
+   * result is informational — the Updates engine lists no subject for it.
+   */
+  applicable: boolean
+  /** What is installed here (the engine's version + identity), when applicable and present. */
+  installed?: SearchAdapterInstalledIdentity
+  /** What the adapter's pin requires. */
+  required?: { version: string }
+  /** The models check's per-model verdicts (empty for the engine check). */
+  models?: SearchAdapterModelCheck[]
+}
+
+export interface SearchAdapterSetupCheckOptions {
+  /** Cancellation: a probe that spawns a child kills and reaps it on abort. */
+  signal?: AbortSignal
 }
 
 export interface SearchAdapterSetupInstallResult {
@@ -128,7 +175,7 @@ export interface SearchAdapterSetupComponent {
   readonly name: string
   /** The install's stages and point of no return, declared before it starts. */
   readonly plan: OperationPlan
-  check(): Promise<SearchAdapterSetupCheckResult>
+  check(opts?: SearchAdapterSetupCheckOptions): Promise<SearchAdapterSetupCheckResult>
   install(opts: SearchAdapterSetupOptions): Promise<SearchAdapterSetupInstallResult>
 }
 

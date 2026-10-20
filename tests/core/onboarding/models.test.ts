@@ -172,6 +172,65 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
+describe('checkInferenceModels per-model rows (#1007 D7.9)', () => {
+  it('every model gets a row with a required identity; present models carry a structural installed identity and state ok', async () => {
+    for (const m of TEST_MODELS) seedModel(m.model)
+    const result = await checkInferenceModels(TEST_MODELS)
+    expect(result.applicable).toBe(true)
+    expect(result.models?.map((row) => [row.id, row.state, row.remediation])).toEqual(TEST_MODELS.map((m) => [m.model, 'ok', undefined]))
+    for (const row of result.models!) {
+      expect(row.required.identity).toMatch(/^[0-9a-f]{24}$/)
+      expect(row.installed?.identity).toMatch(/^[0-9a-f]{24}$/)
+    }
+    // Touching a file changes the installed identity, never the required one.
+    const before = result.models![0]!
+    const first = TEST_MODELS[0]!
+    writeFileSync(join(modelsRoot, first.model, 'onnx', 'model.onnx'), 'weights-v2')
+    const after = (await checkInferenceModels(TEST_MODELS)).models![0]!
+    expect(after.installed?.identity).not.toBe(before.installed?.identity)
+    expect(after.required.identity).toBe(before.required.identity)
+  })
+
+  it('a missing model is state missing / remediation install with no installed identity; an incomplete pull has one', async () => {
+    const [first, ...rest] = TEST_MODELS
+    for (const m of rest) seedModel(m.model)
+    const missing = (await checkInferenceModels(TEST_MODELS)).models!.find((row) => row.id === first!.model)!
+    expect(missing).toMatchObject({ state: 'missing', remediation: 'install' })
+    expect(missing.installed).toBeUndefined()
+    mkdirSync(join(modelsRoot, first!.model, 'onnx'), { recursive: true })
+    writeFileSync(join(modelsRoot, first!.model, 'onnx', 'model.onnx'), 'weights')
+    const incomplete = (await checkInferenceModels(TEST_MODELS)).models!.find((row) => row.id === first!.model)!
+    expect(incomplete).toMatchObject({ state: 'missing', remediation: 'install' })
+    expect(incomplete.reason).toContain('model_manifest.json missing')
+    expect(incomplete.installed?.identity).toMatch(/^[0-9a-f]{24}$/)
+  })
+
+  it('a model installed as the wrong distribution is variant-mismatch / replace-variant', async () => {
+    const clip = { label: 'CLIP visual embedder', model: 'antflydb/clipclap', kind: 'embedder' as const }
+    seedModel(clip.model)
+    // Pinned files present (names + plausible sizes) but the download marker records the default distribution.
+    writeFileSync(join(modelsRoot, clip.model, 'clipclap-clip.Q4_K.gguf'), Buffer.alloc(50_000_001))
+    writeFileSync(join(modelsRoot, clip.model, 'clipclap-clap.Q4_K.gguf'), Buffer.alloc(20_000_001))
+    writeFileSync(join(modelsRoot, clip.model, 'tokenizer.json'), '{}')
+    writeFileSync(join(modelsRoot, clip.model, '.antfly-download-complete.json'), JSON.stringify({ source: { variant: 'default' } }))
+    const row = (await checkInferenceModels([clip])).models![0]!
+    expect(row).toMatchObject({ id: clip.model, state: 'variant-mismatch', remediation: 'replace-variant' })
+    expect(row.reason).toContain('not gguf:Q4_K')
+  })
+
+  it('an invalid model id is unsupported / change-config and poisons nothing else into a false verdict', async () => {
+    const rows = (await checkInferenceModels([{ label: 'bad', model: '../etc', kind: 'embedder' }, TEST_MODELS[0]!])).models!
+    expect(rows[0]).toMatchObject({ id: '../etc', state: 'unsupported', remediation: 'change-config' })
+    expect(rows[1]).toMatchObject({ id: TEST_MODELS[0]!.model, state: 'unsupported', remediation: 'change-config' })
+  })
+
+  it('an already-aborted signal refuses the check instead of judging', async () => {
+    const controller = new AbortController()
+    controller.abort(new Error('pass cancelled'))
+    await expect(checkInferenceModels(TEST_MODELS, { signal: controller.signal })).rejects.toThrow('pass cancelled')
+  })
+})
+
 describe('checkInferenceModels', () => {
   it('treats missing models as degraded-not-broken, with the reindex remediation', async () => {
     // v0.2.0-rc.2 does NOT lazy-download at index time (bakin#456): missing

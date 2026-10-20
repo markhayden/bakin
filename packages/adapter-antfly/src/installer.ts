@@ -2,10 +2,11 @@ import { spawn } from 'child_process'
 import { chmodSync, existsSync, mkdirSync, renameSync, rmdirSync, rmSync } from 'fs'
 import { dirname, join } from 'path'
 import type { OperationContext, OperationPlan } from '@makinbakin/sdk/types'
-import type { SearchAdapterSetupOptions, SearchAdapterSetupCheckResult } from '@bakin/core/adapters/search'
+import type { SearchAdapterSetupCheckOptions, SearchAdapterSetupOptions, SearchAdapterSetupCheckResult } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import { DownloadChecksumError, downloadToFile, extractTarball, opTransfer } from '@bakin/core/net/download'
 import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
+import { fileFact, identityOf } from './identity'
 import { antflyBinaryPath, antflyHome } from './paths'
 import { ANTFLY_PIN, antflyDownloadUrl, antflyPlatformKey, type AntflyPin } from './pin'
 import { defaultServiceIo, getServiceAccess, withServiceOperation, findAntflyBinary, servicePaths, stopService, startService, type ServiceIo } from './service'
@@ -47,18 +48,63 @@ export const ANTFLY_ENGINE_PLAN: OperationPlan = {
   pointOfNoReturn: 'commit',
 }
 
-function runCommand(
+/** How long `antfly --version` may take before the probe gives up (and kills the child). */
+export const VERSION_PROBE_TIMEOUT_MS = 15_000
+const KILL_GRACE_MS = 2_000
+
+export interface RunCommandOptions {
+  signal?: AbortSignal
+  timeoutMs?: number
+}
+
+/**
+ * Run a child to completion. On the deadline or an abort the child is
+ * killed (SIGTERM, then SIGKILL after a grace) and REAPED — the promise
+ * settles only once `close` fired, so a hung executable never outlives the
+ * caller's slot (#1007, D7.5/R6).
+ */
+export function runCommand(
   cmd: string,
   args: string[],
+  opts: RunCommandOptions = {},
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
+    let killedBy: Error | null = null
+    let killTimer: ReturnType<typeof setTimeout> | null = null
+    let forceTimer: ReturnType<typeof setTimeout> | null = null
+    const cleanup = (): void => {
+      if (killTimer) clearTimeout(killTimer)
+      if (forceTimer) clearTimeout(forceTimer)
+      opts.signal?.removeEventListener('abort', onAbort)
+    }
+    const kill = (reason: Error): void => {
+      if (killedBy) return
+      killedBy = reason
+      child.kill('SIGTERM')
+      forceTimer = setTimeout(() => { try { child.kill('SIGKILL') } catch { /* already gone */ } }, KILL_GRACE_MS)
+      forceTimer.unref?.()
+    }
+    const onAbort = (): void => {
+      const reason = opts.signal?.reason
+      kill(reason instanceof Error ? reason : new Error(typeof reason === 'string' ? reason : `${cmd} ${args.join(' ')} aborted`))
+    }
+    if (opts.signal?.aborted) onAbort()
+    else opts.signal?.addEventListener('abort', onAbort, { once: true })
+    if (opts.timeoutMs !== undefined) {
+      killTimer = setTimeout(() => kill(new Error(`${cmd} ${args.join(' ')} did not finish within ${Math.round(opts.timeoutMs! / 1000)}s`)), opts.timeoutMs)
+      killTimer.unref?.()
+    }
     child.stdout?.on('data', (chunk) => { stdout += chunk.toString() })
     child.stderr?.on('data', (chunk) => { stderr += chunk.toString() })
-    child.on('error', (err) => reject(err))
-    child.on('close', (code) => resolve({ code, stdout, stderr }))
+    child.on('error', (err) => { cleanup(); reject(err) })
+    child.on('close', (code) => {
+      cleanup()
+      if (killedBy) reject(killedBy)
+      else resolve({ code, stdout, stderr })
+    })
   })
 }
 
@@ -66,9 +112,9 @@ function runCommand(
  * Run `antfly --version` and extract the semver-ish token. Returns null when
  * the binary can't be executed or prints nothing recognizable.
  */
-export async function antflyBinaryVersion(binary: string): Promise<string | null> {
+export async function antflyBinaryVersion(binary: string, opts: SearchAdapterSetupCheckOptions = {}): Promise<string | null> {
   try {
-    const { code, stdout, stderr } = await runCommand(binary, ['--version'])
+    const { code, stdout, stderr } = await runCommand(binary, ['--version'], { signal: opts.signal, timeoutMs: VERSION_PROBE_TIMEOUT_MS })
     if (code !== 0) return null
     const match = `${stdout}\n${stderr}`.match(/\d+\.\d+\.\d+[-.\w]*/)
     return match ? match[0] : null
@@ -140,28 +186,45 @@ export async function resetAntflyEngineData(
   }
 }
 
+/**
+ * The engine's installed identity (D7.9, R5′): the version it reports plus
+ * the binary's path, size and mtime — the installer publishes by rename, so
+ * there is no receipt and these stat facts ARE the identity. Opaque to core.
+ */
+function engineIdentity(binary: string, version: string | null): SearchAdapterSetupCheckResult['installed'] {
+  const fact = fileFact(binary)
+  return {
+    ...(version ? { version } : {}),
+    identity: identityOf({ version, binary, size: fact?.size ?? null, mtimeMs: fact?.mtimeMs ?? null }),
+  }
+}
+
 export async function checkAntflyDependency(
   pin: AntflyPin = ANTFLY_PIN,
   settings: AntflySettings = DEFAULT_SETTINGS,
   io: ServiceIo = defaultServiceIo(),
+  opts: SearchAdapterSetupCheckOptions = {},
 ): Promise<SearchAdapterSetupCheckResult> {
   const access = getServiceAccess(settings, io)
-  if (access.mode === 'guest') return { name: 'antfly', status: 'ok', message: access.detail }
+  const required = { version: pin.version }
+  if (access.mode === 'guest') return { name: 'antfly', status: 'ok', message: access.detail, applicable: false }
   if (!access.allowed && access.reason !== 'unclaimed-home') {
-    return { name: 'antfly', status: 'warn', message: access.detail, remediation: access.detail }
+    return { name: 'antfly', status: 'warn', message: access.detail, remediation: access.detail, applicable: false }
   }
   const binary = findAntflyBinary()
-  if (!binary) return { name: 'antfly', status: 'missing', message: 'Antfly binary not found', remediation: 'Run `bakin install search` to download the pinned Antfly release.' }
-  const version = await antflyBinaryVersion(binary)
+  if (!binary) return { name: 'antfly', status: 'missing', message: 'Antfly binary not found', remediation: 'Run `bakin install search` to download the pinned Antfly release.', applicable: true, required }
+  const version = await antflyBinaryVersion(binary, opts)
   const details = { binary, version }
-  if (binary !== antflyBinaryPath()) return { name: 'antfly', status: 'error', message: `ANTFLY_PATH points at ${binary}, but the service launches ${antflyBinaryPath()}. Unset ANTFLY_PATH for managed search.`, details }
+  const installed = engineIdentity(binary, version)
+  const base = { applicable: true as const, installed, required }
+  if (binary !== antflyBinaryPath()) return { name: 'antfly', status: 'error', message: `ANTFLY_PATH points at ${binary}, but the service launches ${antflyBinaryPath()}. Unset ANTFLY_PATH for managed search.`, details, ...base }
   if (version !== pin.version) return {
-    name: 'antfly', status: 'broken', details,
+    name: 'antfly', status: 'broken', details, ...base,
     message: version ? `Antfly at ${binary} is v${version}, but Bakin needs v${pin.version}` : `Antfly at ${binary} did not report a recognizable version`,
     remediation: 'Run `bakin install search` to download the pinned Antfly release.',
   }
-  if (!access.allowed) return { name: 'antfly', status: 'missing', message: access.detail, remediation: access.detail, details }
-  return { name: 'antfly', status: 'ok', message: `Antfly v${version} is installed at ${binary}`, details }
+  if (!access.allowed) return { name: 'antfly', status: 'missing', message: access.detail, remediation: access.detail, details, ...base }
+  return { name: 'antfly', status: 'ok', message: `Antfly v${version} is installed at ${binary}`, details, ...base }
 }
 
 export async function installAntflyDependency(

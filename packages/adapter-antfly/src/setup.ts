@@ -35,13 +35,13 @@ export function createAntflySearchSetup(
     dependency: {
       name: 'antfly',
       plan: ANTFLY_ENGINE_PLAN,
-      check: () => checkAntflyDependency(undefined, settings),
+      check: (opts) => checkAntflyDependency(undefined, settings, undefined, opts),
       install: (opts) => installAntflyDependency(opts, logger, undefined, {}, settings),
     },
     models: {
       name: 'models',
       plan: ANTFLY_MODELS_PLAN,
-      check: () => isLocalDefaultUrl(settings.url) ? checkInferenceModels(models) : Promise.resolve({ name: 'models', status: 'ok', message: 'Search models are managed at the configured external endpoint.' }),
+      check: (opts) => isLocalDefaultUrl(settings.url) ? checkInferenceModels(models, opts) : Promise.resolve({ name: 'models', status: 'ok', message: 'Search models are managed at the configured external endpoint.', applicable: false, models: [] }),
       install: (opts) => isLocalDefaultUrl(settings.url) ? installInferenceModels(opts, logger, models) : external(opts),
     },
     resetEngineData: (op) => resetAntflyEngineData(op, logger, settings),
