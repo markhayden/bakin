@@ -119,15 +119,20 @@ function UpdateRow({ record, now, focused, busy, onApply, onSkip }: UpdateRowPro
   const versions = versionCopy(record)
   const skippable = record.outcome === 'update-available' && !isUpdateSkipped(record) && record.available !== undefined
   useEffect(() => {
-    if (focused && ref.current) focusSystemElement(ref.current, { block: 'center' })
+    // A deep link reveals the row and moves focus to its first control (the
+    // row itself is not a control, so it never joins the tab order).
+    const row = ref.current
+    if (!focused || !row) return
+    const control = row.querySelector<HTMLElement>('button, a[href]')
+    if (control) focusSystemElement(control, { block: 'center' })
+    else row.scrollIntoView?.({ block: 'center' })
   }, [focused])
   return (
     <ListRow
       ref={ref}
-      tabIndex={-1}
       data-update-id={record.id}
       data-update-outcome={record.outcome}
-      className="grid min-w-0 gap-bakin-3 @[40rem]/health-updates:grid-cols-[minmax(0,1fr)_auto] @[40rem]/health-updates:items-center scroll-mt-bakin-4 outline-none focus-visible:rounded-bakin-surface focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
+      className="grid min-w-0 gap-bakin-3 @[40rem]/health-updates:grid-cols-[minmax(0,1fr)_auto] @[40rem]/health-updates:items-center scroll-mt-bakin-4"
     >
       <div className="min-w-0">
         <Inline gap="dense">

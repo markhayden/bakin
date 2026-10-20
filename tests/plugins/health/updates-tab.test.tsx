@@ -119,9 +119,11 @@ describe('UpdatesTabView — rows and groups (#1007 D7.14)', () => {
     expect(screen.getByText('2 subjects checked, last 7m ago. 1 skipped update is hidden.')).toBeDefined()
   })
 
-  it('focuses the deep-linked row', async () => {
+  it('a deep link moves focus to the row\'s first control (rows themselves stay out of the tab order)', async () => {
     render(<Harness updates={resource([PLUGIN, BAKIN])} focusId="plugin:notes" />)
-    await waitFor(() => expect(document.activeElement?.getAttribute('data-update-id')).toBe('plugin:notes'))
+    await waitFor(() => expect(document.activeElement?.closest('[data-update-id]')?.getAttribute('data-update-id')).toBe('plugin:notes'))
+    expect(document.activeElement?.tagName).toBe('BUTTON')
+    expect(document.querySelectorAll('[data-update-id][tabindex]')).toHaveLength(0)
   })
 
   it('presentation + visibility helpers are pure and total', () => {
