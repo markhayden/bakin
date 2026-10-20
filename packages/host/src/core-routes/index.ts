@@ -103,6 +103,14 @@ const pluginsAndMiscRoutes = [
   defineCoreRoute({ path: '/api/dev/notify', method: 'POST', summary: 'Emit development notification', description: 'Development-only watcher bridge for browser rebuild notifications.', visibility: 'internal', body: z.object({ type: z.string(), payload: z.unknown() }), responses: { 200: okResponse }, handler: stub }),
 ]
 
+// ─── /api/updates (#1007) ────────────────────────────────────────────────
+const updateRecord = passthrough
+export const updatesRoutes = [
+  defineCoreRoute({ path: '/api/updates', method: 'GET', activityClass: 'routine', summary: 'List update records', description: 'Every subject the updates engine tracks (Bakin, plugins, packages, hub skills, search engine and models, runtime floor) with its last observation, the two clocks and any skip, plus the server boot id and whether a check pass is running.', responses: { 200: z.object({ bootId: z.string(), records: z.array(updateRecord), generatedAt: z.string(), running: z.boolean() }), 503: errorResponse }, handler: stub }),
+  defineCoreRoute({ path: '/api/updates/check', method: 'POST', summary: 'Check for updates now', description: 'Observes every subject (not only the due ones), optionally one kind (`source=`) or specific ids (`id=`, repeatable), joining a pass that is already running. 202 while the pass runs on (results arrive as `updates.changed`); `wait=1` answers 200 with the records once the pass finished. An id outside the inventory is 404.', query: z.object({ source: z.string().optional(), id: z.string().optional(), wait: z.literal('1').optional() }), body: { contentType: 'none' }, responses: { 200: z.object({ bootId: z.string(), ids: z.array(z.string()), coalesced: z.boolean(), records: z.array(updateRecord) }), 202: z.object({ bootId: z.string(), ids: z.array(z.string()), coalesced: z.boolean() }), 400: errorResponse, 404: errorResponse, 503: errorResponse }, handler: stub }),
+  defineCoreRoute({ path: '/api/updates/:id/skip', method: 'POST', summary: 'Skip an available update', description: 'Hides the subject\'s current available identity (version + commit + digest) until it changes; the row leaves the Updates count and shows behind "show skipped". 409 when nothing is available to skip.', params: z.object({ id: z.string() }), body: { contentType: 'none' }, responses: { 200: z.object({ bootId: z.string(), record: updateRecord }), 404: errorResponse, 409: errorResponse, 503: errorResponse }, handler: stub }),
+]
+
 // ─── /api/operations (#895) ──────────────────────────────────────────────
 const operationView = z.object({ id: z.string(), rev: z.number(), bootId: z.string(), status: z.string() }).passthrough()
 const operationsRoutes = [
@@ -117,5 +125,6 @@ export const coreRoutes: ReadonlyArray<APIRoute<any, any, any, any>> = [
   ...agentsRoutes,
   ...dispatchAndPackagesRoutes,
   ...pluginsAndMiscRoutes,
+  ...updatesRoutes,
   ...operationsRoutes,
 ]

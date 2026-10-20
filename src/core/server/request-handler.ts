@@ -71,6 +71,7 @@ import * as pluginsAssetsRoute from '../../../packages/host/src/api/plugins/asse
 import * as versionRoute from '../../../packages/host/src/api/version'
 import * as serverShutdownRoute from '../../../packages/host/src/api/server/shutdown'
 import * as docsRoute from '../../../packages/host/src/api/docs'
+import * as updatesRoute from '../../../packages/host/src/api/updates'
 import * as updateStatusRoute from '../../../packages/host/src/api/update/status'
 import * as updateApplyRoute from '../../../packages/host/src/api/update/apply'
 import { handleDevSse } from '../../../packages/host/src/api/dev/events'
@@ -136,6 +137,21 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     }
     if (url.pathname === '/api/server/shutdown' && req.method === 'POST') {
       dispatchWebHandler(req, res, serverShutdownRoute.post)
+      return
+    }
+
+    // Updates engine (#1007): read, check now, skip. The apply surface is
+    // registered beside these once it exists (operations-routes inventory).
+    if (url.pathname === '/api/updates' && req.method === 'GET') {
+      dispatchWebHandler(req, res, updatesRoute.list)
+      return
+    }
+    if (url.pathname === '/api/updates/check' && req.method === 'POST') {
+      dispatchWebHandler(req, res, updatesRoute.check)
+      return
+    }
+    if (req.method === 'POST' && updatesRoute.skipUpdateIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, updatesRoute.skip)
       return
     }
 

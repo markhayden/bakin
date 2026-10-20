@@ -80,6 +80,14 @@ export function healthChecksAffectedByEvent(
     if (typeof event.pluginId === 'string') owners.add(event.pluginId)
   }
   if (name === 'plugin:settings-changed' && typeof event.pluginId === 'string') owners.add(event.pluginId)
+  // A new update observation (#1007 C7): the checks that consume engine
+  // records re-run — plugin artifacts for plugin subjects, search for the
+  // engine/models subjects.
+  if (name === 'updates.changed' && Array.isArray(event.ids)) {
+    const ids = event.ids.filter((id): id is string => typeof id === 'string')
+    if (ids.some((id) => id.startsWith('plugin:'))) system.add('plugin-artifacts')
+    if (ids.some((id) => id.startsWith('search-engine:') || id.startsWith('search-models:'))) system.add('search')
+  }
   if (file) {
     const folder = file.split('/')[0]
     if (['assets', 'brands', 'workflows', 'tasks', 'schedule', 'team'].includes(folder)) owners.add(folder)
