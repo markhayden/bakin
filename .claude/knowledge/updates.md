@@ -164,11 +164,12 @@ subpath; a submodule elsewhere in a monorepo is nobody's concern). The scan
 is SYNCHRONOUS like every other read a lane makes — a preview holds no
 resources, so no `await` may sit between its reads of the installed
 repository (another operation could replace or remove it in between) — and
-writes the plain `ls-tree -r` listing to a private scan file read back in
-fixed 64 KiB chunks (`scanGitlinkListing`: only a count and five paths are
-ever retained, so neither a buffer cap nor the heap bounds the tree it can
-judge, and no `--format` means no git-version floor); a genuine no-op
-never lists the tree. Within a
+writes the plain `ls-tree -r` listing to a private descriptor that is
+UNLINKED before git writes to it and read back in fixed 64 KiB chunks
+(`scanGitlinkListing`: only a count and five paths are ever retained, so
+neither a buffer cap nor the heap bounds the tree it can judge; no
+`--format` means no git-version floor; a crash at any point leaves no
+file); a genuine no-op never lists the tree. Within a
 pass two attempts for one subject never overlap (`Pass.active`): a repeat
 asked for while the first is in flight waits for it, so the engine's
 one-token-per-subject rule never discards a result that already landed.
@@ -310,6 +311,17 @@ client-side and explicit: `{ expectedVersion, oldBootId }` → poll `GET
 state === 'serving'` (90 s; every request and body read is bounded by what
 is left of the deadline, composed with the caller's cancellation) →
 `verified <v>` / `wrong version <v>` / `unreachable — verify by hand`. The
+CLI talks to ONE resolved target throughout (`CliTarget` from
+`resolveCliTarget`: `BAKIN_URL` as given — unreachable is the answer, never a
+replacement of THIS machine's binary and never this home's lock secret; else
+this home's live `server.lock`, waited for while it starts; else no server,
+the in-process replacement), the same target the preview and the list used.
+The in-process updates engine (`bakin updates --check` with no server) is
+for a home with NO server only: an explicit `BAKIN_URL` is never checked
+in-process (that home is not this one), and a live lock whose server is not
+answering yet owns `updates.json` — the CLI says "starting — retry" instead
+of starting a second engine over the same file, and re-checks the lock right
+before it would start one. The
 CLI hands off the moment the `restarting` stage goes active (it stops
 following; a terminal outcome from a process that is ending never comes);
 the browser does the same from the stage or a `restarted` settle, and every

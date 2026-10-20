@@ -326,6 +326,8 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     runGit(['-c', 'protocol.file.allow=always', 'submodule', 'add', '--', vendor.bareRepoPath, 'vendor'], repo.workingClonePath, env)
     const withSubmodule = pushCommit(repo.workingClonePath, fixturePluginFiles({ id: 'subhost', version: '1.1.0' }), 'add vendor submodule')
     await expect(upgradePlugin('subhost', { expected: { sha: withSubmodule } })).rejects.toThrow(/contains git submodules \(vendor\)/)
+    // The listing lived in an unlinked descriptor: nothing to sweep, even though the scan threw.
+    expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-scan'))).toEqual([])
     // Refused before the transaction: the working tree is untouched (the fetch only added objects under .git), HEAD and the ledger stay put.
     expect(headSha(pluginDir)).toBe(installedSha)
     expect(execFileSync('git', ['status', '--porcelain'], { cwd: pluginDir, encoding: 'utf-8' }).trim()).toBe('')

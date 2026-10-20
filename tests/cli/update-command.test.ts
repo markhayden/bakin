@@ -12,6 +12,8 @@ import { randomUUID } from 'node:crypto'
 const testDir = join(tmpdir(), `bakin-test-update-command-${Date.now()}-${randomUUID()}`)
 mkdirSync(testDir, { recursive: true })
 process.env.BAKIN_HOME = testDir
+// The test preload points BAKIN_URL at a dead port for the HTTP CLI; this file exercises the lock-and-local resolution, so the explicit target must be absent unless a test sets it.
+delete process.env.BAKIN_URL
 const contentDirMock = () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ home: testDir, root: testDir, db: join(testDir, 'bakin.db'), media: join(testDir, 'media') }) })
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
@@ -185,5 +187,56 @@ describe('review round 2 — terminal failures beat the handoff (#7); the review
     expect(s.calls.filter((c) => c.url.endsWith('/api/version')).length).toBe(1)
     const apply = s.calls.find((c) => c.url.endsWith('/apply'))!
     expect(JSON.parse(apply.body ?? '{}')).toEqual({ target: { version: '0.1.1' } })
+  })
+})
+
+describe('review round 14 — ONE resolved target (#1, #2)', () => {
+  const REMOTE = 'http://bakin.remote.test:3737'
+  const remoteServer = () => {
+    const calls: Array<{ url: string; headers: Record<string, string> }> = []
+    const fetch = async (url: string, init?: RequestInit): Promise<Response> => {
+      calls.push({ url, headers: Object.fromEntries([...new Headers(init?.headers as HeadersInit | undefined).entries()].map(([k, v]) => [k.toLowerCase(), v])) })
+      if (url === `${REMOTE}/api/version`) return json({ version: '0.1.0', bootId: 'boot-remote', state: 'serving' })
+      if (url === `${REMOTE}/api/updates`) return json({ bootId: 'boot-remote', records: [record('current')], generatedAt: '', running: false })
+      return json({ error: `unscripted ${url}` }, 599)
+    }
+    return { fetch, calls }
+  }
+
+  it('a BAKIN_URL target goes to THAT server even when a local server lock exists — never the local lock, never its secret', async () => {
+    const remote = remoteServer()
+    const result = await runUpdateCommand({ echo, stdout: process.stdout, liveLock: () => LOCK, fetch: remote.fetch, target: { baseUrl: REMOTE, source: 'env' }, identityHeaders: async () => ({ 'x-bakin-operator': 'declared' }) })
+    expect(result).toEqual({ kind: 'current', message: 'Bakin v0.1.0 is current.' })
+    expect(remote.calls.every((call) => call.url.startsWith(REMOTE))).toBe(true)
+    expect(remote.calls.some((call) => call.url.startsWith(BASE))).toBe(false)
+    expect(remote.calls.find((call) => call.url === `${REMOTE}/api/updates`)?.headers['x-bakin-cli-secret']).toBeUndefined()
+  })
+
+  it('a BAKIN_URL target with NO local server never replaces the local binary: the remote is used, or its unreachability is the answer', async () => {
+    const remote = remoteServer()
+    let localRuns = 0
+    const used = await runUpdateCommand({ echo, stdout: process.stdout, liveLock: () => null, fetch: remote.fetch, target: { baseUrl: REMOTE, source: 'env' }, runLocal: async () => { localRuns += 1; return { kind: 'verified', message: 'local' } }, identityHeaders: async () => ({}) })
+    expect(used.kind).toBe('current')
+    const down = async (): Promise<Response> => { throw Object.assign(new Error('ECONNREFUSED'), { code: 'ECONNREFUSED' }) }
+    const unreachable = await runUpdateCommand({ echo, stdout: process.stdout, liveLock: () => null, fetch: down, target: { baseUrl: REMOTE, source: 'env' }, runLocal: async () => { localRuns += 1; return { kind: 'verified', message: 'local' } }, pollMs: 1, identityHeaders: async () => ({}) })
+    expect(unreachable).toMatchObject({ kind: 'failed', code: 'SERVER_UNREACHABLE', message: `Bakin at ${REMOTE} (BAKIN_URL) did not answer.` })
+    expect(localRuns).toBe(0)
+  })
+
+  it('without an explicit target the environment decides: BAKIN_URL wins over the local lock, and no lock means the local path', async () => {
+    const remote = remoteServer()
+    process.env.BAKIN_URL = REMOTE
+    try {
+      const result = await runUpdateCommand({ echo, stdout: process.stdout, liveLock: () => LOCK, fetch: remote.fetch, identityHeaders: async () => ({}) })
+      expect(result.kind).toBe('current')
+      expect(remote.calls.some((call) => call.url.startsWith(BASE))).toBe(false)
+    } finally {
+      delete process.env.BAKIN_URL
+    }
+    let localRuns = 0
+    const local = await runUpdateCommand({ echo, stdout: process.stdout, liveLock: () => null, fetch: remote.fetch, runLocal: async () => { localRuns += 1; return { kind: 'verified', message: 'local' } } })
+    expect(local).toEqual({ kind: 'verified', message: 'local' })
+    expect(localRuns).toBe(1)
+    expect(remote.calls.filter((call) => call.url.startsWith(REMOTE)).length).toBeGreaterThan(0)
   })
 })

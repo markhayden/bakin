@@ -42,7 +42,11 @@ const logs: string[] = []
 class ExitCalled extends Error { constructor(readonly code: string) { super(code) } }
 
 class NotRunning extends Error { constructor() { super('not running'); this.name = 'BakinNotRunningError' } }
+const cliTarget: { baseUrl: string; source: 'env' | 'lock' | 'none'; pid?: number } = { baseUrl: 'http://localhost:3737', source: 'none' }
+let liveLock: { pid: number; port: number } | null = null
+mock.module('../../src/core/server-lock', () => ({ readLiveServerLock: () => liveLock }))
 mock.module('../../src/cli/http', () => ({
+  get CLI_TARGET() { return cliTarget },
   BakinNotRunningError: NotRunning,
   isServerConnectionError: (err: unknown) => err instanceof NotRunning,
   jsonObject: (value: unknown) => (typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null),
@@ -93,7 +97,8 @@ mock.module('../../src/core/updates/service', () => ({
   getUpdatesTimer: () => ({ check: async (request: Record<string, unknown>) => { inProcessChecks.push(request); return { ids: [], coalesced: false } } }),
 }))
 let selfUpdateResult: Record<string, unknown> = { kind: 'verified', message: 'Updated to 0.3.6 and verified.' }
-mock.module('../../src/core/updates/self-update-cli', () => ({ runUpdateCommand: mock(async () => selfUpdateResult) }))
+const selfUpdateCalls: Array<Record<string, unknown>> = []
+mock.module('../../src/core/updates/self-update-cli', () => ({ runUpdateCommand: mock(async (input: Record<string, unknown>) => { selfUpdateCalls.push(input); return selfUpdateResult }) }))
 
 import { run } from '../../src/cli/commands/updates'
 
@@ -249,5 +254,44 @@ describe('review round 1 — JSON output still exits non-zero on failure (#12)',
     selfUpdateResult = { kind: 'verified', message: 'Updated to 0.3.6 and verified.' }
     expect(await exitCode(run(['updates', 'apply', 'bakin:bakin', '--json']))).toBeNull()
     expect(printed).toEqual([selfUpdateResult])
+  })
+})
+
+describe('review round 14 — the in-process engine is for a home with NO server (#1, #2)', () => {
+  it('an explicit BAKIN_URL that is unreachable is the answer — this home is never checked in-process for it', async () => {
+    serverRunning = false
+    cliTarget.source = 'env'
+    cliTarget.baseUrl = 'http://bakin.remote.test:3737'
+    try {
+      expect(await exitCode(run(['updates', '--check']))).toBe('SERVER_UNREACHABLE')
+      expect(inProcessChecks).toEqual([])
+    } finally {
+      cliTarget.source = 'none'
+      cliTarget.baseUrl = 'http://localhost:3737'
+    }
+  })
+
+  it('a live server lock whose server is not answering yet owns the home: "starting — retry", never a competing engine', async () => {
+    serverRunning = false
+    liveLock = { pid: process.pid, port: 3799 }
+    try {
+      expect(await exitCode(run(['updates', '--check']))).toBe('SERVER_STARTING')
+      expect(inProcessChecks).toEqual([])
+    } finally {
+      liveLock = null
+    }
+  })
+
+  it('applying bakin:bakin hands the CLI\'s resolved target to the self-update, so a BAKIN_URL apply never replaces the local binary', async () => {
+    serverRunning = true
+    cliTarget.source = 'env'
+    cliTarget.baseUrl = 'http://bakin.remote.test:3737'
+    try {
+      await run(['updates', 'apply', 'bakin:bakin', '--yes'])
+      expect(selfUpdateCalls.at(-1)?.target).toEqual({ baseUrl: 'http://bakin.remote.test:3737', source: 'env' })
+    } finally {
+      cliTarget.source = 'none'
+      cliTarget.baseUrl = 'http://localhost:3737'
+    }
   })
 })

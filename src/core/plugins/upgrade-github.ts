@@ -68,36 +68,34 @@ const LISTING_CHUNK_BYTES = 64 * 1024
  * A line is `<mode> <type> <sha>\t<path>` — plain `ls-tree` output, no
  * `--format` (that needs git 2.36; this reads what every git prints).
  */
-export function scanGitlinkListing(path: string, options: { limit?: number; chunkBytes?: number } = {}): { total: number; paths: string[] } {
+export function scanGitlinkListing(fd: number, options: { limit?: number; chunkBytes?: number } = {}): { total: number; paths: string[] } {
   const limit = options.limit ?? GITLINKS_NAMED
   const buffer = Buffer.alloc(options.chunkBytes ?? LISTING_CHUNK_BYTES)
   const decoder = new TextDecoder()
   const paths: string[] = []
   let total = 0
   let carry = ''
+  let position = 0
   const take = (line: string): void => {
     if (!line.startsWith('160000 ')) return
     total += 1
     if (paths.length < limit) paths.push(line.slice(line.indexOf('\t') + 1))
   }
-  const fd = openSync(path, 'r')
-  try {
-    for (;;) {
-      const read = readSync(fd, buffer, 0, buffer.length, null)
-      if (read === 0) break
-      carry += decoder.decode(buffer.subarray(0, read), { stream: true })
-      let newline = carry.indexOf('\n')
-      while (newline !== -1) {
-        take(carry.slice(0, newline))
-        carry = carry.slice(newline + 1)
-        newline = carry.indexOf('\n')
-      }
+  for (;;) {
+    // Positioned reads: the descriptor was just written to by git, its cursor is at the end.
+    const read = readSync(fd, buffer, 0, buffer.length, position)
+    if (read === 0) break
+    position += read
+    carry += decoder.decode(buffer.subarray(0, read), { stream: true })
+    let newline = carry.indexOf('\n')
+    while (newline !== -1) {
+      take(carry.slice(0, newline))
+      carry = carry.slice(newline + 1)
+      newline = carry.indexOf('\n')
     }
-    carry += decoder.decode()
-    if (carry) take(carry)
-  } finally {
-    closeSync(fd)
   }
+  carry += decoder.decode()
+  if (carry) take(carry)
   return { total, paths }
 }
 
@@ -119,20 +117,19 @@ export function scanGitlinkListing(path: string, options: { limit?: number; chun
  * size of a tree the lane can judge.
  */
 function assertNoGitlinks(id: string, repoDir: string, sha: string, subpath?: string): void {
+  // The listing lives in an UNLINKED descriptor (review r14 #3): git writes
+  // to it, the scan reads it back, and a crash at any point leaves no file.
   const scanFile = join(getContentDir(), 'plugins', `.upgrade-scan-${id}-${Date.now()}-${process.pid}`)
-  const out = openSync(scanFile, 'w')
+  const fd = openSync(scanFile, 'w+')
   let scan: { total: number; paths: string[] }
   try {
-    try {
-      execFileSync('git', gitArgs(['ls-tree', '-r', '--', sha, ...(subpath ? [subpath] : [])]), {
-        cwd: repoDir, stdio: ['ignore', out, 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-      })
-    } finally {
-      closeSync(out)
-    }
-    scan = scanGitlinkListing(scanFile)
-  } finally {
     rmSync(scanFile, { force: true })
+    execFileSync('git', gitArgs(['ls-tree', '-r', '--', sha, ...(subpath ? [subpath] : [])]), {
+      cwd: repoDir, stdio: ['ignore', fd, 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    })
+    scan = scanGitlinkListing(fd)
+  } finally {
+    closeSync(fd)
   }
   if (scan.total === 0) return
   throw new UpgradeRefusedError(`${id}: ${sha.slice(0, 7)}${subpath ? ` (${subpath})` : ''} contains git submodules (${scan.paths.join(', ')}${scan.total > scan.paths.length ? ', …' : ''}), which the upgrade cannot verify. Vendor them into the tree or reinstall.`)

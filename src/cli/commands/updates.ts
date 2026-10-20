@@ -12,7 +12,7 @@
  * applying needs `--as human`, never an unconditional declaration.
  */
 import { countAvailableUpdates, isUpdateSkipped, type UpdateRecord, type UpdateSubjectKind, UPDATE_SUBJECT_KINDS } from '@makinbakin/sdk/types'
-import { apiGet, apiPost, cliFetch, isServerConnectionError, jsonObject, BakinNotRunningError } from '../http'
+import { apiGet, apiPost, cliFetch, isServerConnectionError, jsonObject, BakinNotRunningError, CLI_TARGET } from '../http'
 import { confirmPrompt, exitCommandFailure, exitUnknownSubcommand, exitUsage } from '../help'
 import { print, printTable } from '../output'
 import { operationBody, startAndFollow } from '../operation-command'
@@ -75,6 +75,12 @@ function printRecords(snapshot: UpdatesSnapshotBody): void {
   if (countAvailableUpdates(records) > 0) console.log('\nApply one with: bakin updates apply <id> --as human')
 }
 
+/** This home's live server lock, re-read now (a pid that is alive owns the home even before it listens). */
+async function liveServerLockNow(): Promise<{ pid: number; port: number } | null> {
+  const { readLiveServerLock } = await import('../../core/server-lock')
+  return readLiveServerLock()
+}
+
 /** The engine's pass without a server: the same sources over this home, in-process. */
 async function checkInProcess(kind: UpdateSubjectKind | undefined): Promise<UpdatesSnapshotBody> {
   const [{ getContentDir }, { readRuntimeAdapterStrict }, { createRuntimeAdapter }, { registerCoreUpdateSources }, { startUpdates, stopUpdates, getUpdatesTimer }] = await Promise.all([
@@ -88,6 +94,9 @@ async function checkInProcess(kind: UpdateSubjectKind | undefined): Promise<Upda
   // compatibility is whatever it already knows — serverless, that is "unknown".
   const runtime = createRuntimeAdapter(readRuntimeAdapterStrict())
   registerCoreUpdateSources({ runtime: () => runtime })
+  // Ownership re-checked at the last moment: a server that came alive since the first probe owns this home's engine.
+  const live = await liveServerLockNow()
+  if (live) await exitCommandFailure('Bakin is starting — retry.', { command: 'bakin updates', detail: `server.lock names pid ${live.pid} on port ${live.port}; the home is that server's to check.`, code: 'SERVER_STARTING' })
   const engine = startUpdates(getContentDir())
   try {
     await engine.ready
@@ -115,6 +124,17 @@ async function cmdUpdatesList(args: string[]): Promise<void> {
     snapshot = await apiGet('/api/updates') as UpdatesSnapshotBody
   } catch (err) {
     if (!(err instanceof BakinNotRunningError) && !isServerConnectionError(err)) throw err
+    // The in-process engine is for a home with NO server (review r14 #2): an
+    // explicit remote target is not this home, and a live lock whose server
+    // is not answering yet owns `updates.json` — a second engine would write
+    // over its observations.
+    if (CLI_TARGET.source === 'env') {
+      await exitCommandFailure(`Bakin at ${CLI_TARGET.baseUrl} (BAKIN_URL) is unreachable.`, { command: 'bakin updates', detail: 'An explicit BAKIN_URL is never checked in-process: this home is not that server\'s home. Check the URL, or unset it to check this home.', code: 'SERVER_UNREACHABLE' })
+    }
+    const live = await liveServerLockNow()
+    if (live) {
+      await exitCommandFailure('Bakin is starting — retry.', { command: 'bakin updates', detail: `server.lock names pid ${live.pid} on port ${live.port}, but it is not answering yet. The home is that server's to check.`, code: 'SERVER_STARTING' })
+    }
     if (!check) {
       await exitCommandFailure('Bakin is not running.', { command: 'bakin updates', detail: 'Start it, or run `bakin updates --check` to check this home in-process.', code: 'SERVER_UNAVAILABLE' })
     }
@@ -181,7 +201,8 @@ async function cmdUpdatesApply(args: string[]): Promise<void> {
   // The Bakin binary has its own path: restart handoff + explicit verification (D7.11).
   if (id === BAKIN_RECORD_ID) {
     const { runUpdateCommand } = await import('../../core/updates/self-update-cli')
-    const result = await runUpdateCommand({ echo: (line) => { if (!json) console.log(line) }, stdout: process.stdout })
+    // The same target the preview and the list used: a BAKIN_URL target is never a local replacement.
+    const result = await runUpdateCommand({ echo: (line) => { if (!json) console.log(line) }, stdout: process.stdout, target: CLI_TARGET })
     if (json) print(result)
     else if (result.kind !== 'failed') console.log(result.message)
     // A failure exits non-zero in every output mode (JSON keeps its one document).

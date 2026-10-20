@@ -15,7 +15,7 @@ import { APP_VERSION } from '@bakin/core/constants'
 import type { OperationView, UpdateRecord } from '@makinbakin/sdk/types'
 import { verifySelfUpdateFromCli } from '../../cli/self-update-verify'
 import { startAndFollow, type CommandOperationResult } from '../../cli/operation-command'
-import { readLiveServerLock, type ServerLock } from '../server-lock'
+import { readLiveServerLock, type ServerLock, resolveCliTarget, type CliTarget } from '../server-lock'
 
 export type UpdateCommandResult =
   | { kind: 'current'; message: string }
@@ -35,6 +35,14 @@ export interface UpdateCommandDeps {
   startAndFollow?: (start: () => Promise<unknown>, opts: { onUpdate: (operation: OperationView) => boolean }) => Promise<CommandOperationResult>
   /** The identity headers this invocation carries (#898); the shared CLI plumbing by default. */
   identityHeaders?: () => Promise<Record<string, string>>
+  /**
+   * The ONE server this invocation talks to (review r14 #1): the CLI's
+   * resolved target — `BAKIN_URL` as given (never a local replacement, never
+   * the local lock's secret), else this home's live `server.lock`, else no
+   * server (the in-process replacement). Resolved from the environment and
+   * the live lock by default.
+   */
+  target?: CliTarget
 }
 
 const BAKIN_RECORD_ID = 'bakin:bakin'
@@ -44,10 +52,6 @@ const CLI_HEADERS: Record<string, string> = { 'X-Bakin-Origin': 'cli', 'Content-
 async function defaultIdentityHeaders(): Promise<Record<string, string>> {
   const [{ cliIdentity }, { identityHeaders }] = await Promise.all([import('../../cli/http'), import('../../cli/identity')])
   return identityHeaders(await cliIdentity())
-}
-
-function baseUrlOf(lock: ServerLock): string {
-  return `http://localhost:${lock.port}`
 }
 
 /** Wait (bounded) for a live-but-not-listening server to answer `/api/version`. */
@@ -91,15 +95,24 @@ export async function runUpdateCommand(input: UpdateCommandDeps): Promise<Update
     pollMs: input.pollMs ?? 500,
   }
   const lock = deps.liveLock()
-  if (!lock) {
+  const server = input.target ?? resolveCliTarget(process.env, lock)
+  if (server.source === 'none') {
     const local = input.runLocal ?? (async () => runLocalSelfUpdate(input.echo))
     return local()
   }
-  const baseUrl = baseUrlOf(lock)
-  if (!(await waitForListening(baseUrl, deps))) {
-    return { kind: 'failed', code: 'SERVER_STARTING', message: 'Bakin is starting — retry.', detail: `server.lock names pid ${lock.pid} on port ${lock.port}, but it did not answer within ${Math.round(deps.listenWaitMs / 1000)}s. The binary is never replaced beside a live server.` }
+  const baseUrl = server.baseUrl
+  if (server.source === 'env') {
+    // An explicit remote target is used as given: unreachable is an error,
+    // never a fallback to replacing THIS machine's binary.
+    if (!(await waitForListening(baseUrl, { ...deps, listenWaitMs: 0 }))) {
+      return { kind: 'failed', code: 'SERVER_UNREACHABLE', message: `Bakin at ${baseUrl} (BAKIN_URL) did not answer.`, detail: 'The binary is never replaced for a target set by BAKIN_URL — check the URL, or unset it to update this home.' }
+    }
+  } else if (!(await waitForListening(baseUrl, deps))) {
+    return { kind: 'failed', code: 'SERVER_STARTING', message: 'Bakin is starting — retry.', detail: `server.lock names pid ${server.pid ?? lock?.pid ?? '?'} on port ${lock?.port ?? '?'}, but it did not answer within ${Math.round(deps.listenWaitMs / 1000)}s. The binary is never replaced beside a live server.` }
   }
-  const headers = { ...CLI_HEADERS, ...(await (input.identityHeaders ?? defaultIdentityHeaders)()), ...(lock.cliSecret ? { 'X-Bakin-Cli-Secret': lock.cliSecret } : {}) }
+  // The per-boot CLI secret belongs to THIS home's server; a remote target never sees it.
+  const secret = server.source === 'lock' ? lock?.cliSecret : undefined
+  const headers = { ...CLI_HEADERS, ...(await (input.identityHeaders ?? defaultIdentityHeaders)()), ...(secret ? { 'X-Bakin-Cli-Secret': secret } : {}) }
   const listed = await deps.fetch(`${baseUrl}/api/updates`, { headers })
   if (!listed.ok) return { kind: 'failed', code: 'UPDATE_FAILED', message: 'Could not read the update records.', detail: `GET /api/updates answered HTTP ${listed.status}` }
   const records = ((await listed.json()) as { records?: UpdateRecord[] }).records ?? []
