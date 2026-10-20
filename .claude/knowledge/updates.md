@@ -153,9 +153,10 @@ yields null and the subject is `blocked`. The in-place github lane fetches
 that exact ref and works from `FETCH_HEAD^{commit}` — the peeled commit —
 for the manifest read and the identity, never `origin/<ref>` (a tag has
 none; `origin/refs/heads/x` is nothing), and places the reviewed commit
-EXACTLY: the copied clone is `reset --hard` to it and `clean -fdx` (the
-install sentinel excepted), so a hand-edited tracked file or an untracked
-leftover never survives into the install the sha vouches for. Within a
+EXACTLY: the copied clone is `reset --hard` to it and `clean -ffdx` (the
+install sentinel excepted; the second `-f` removes vendored nested
+repositories too), so a hand-edited tracked file or an untracked leftover
+never survives into the install the sha vouches for. Within a
 pass two attempts for one subject never overlap (`Pass.active`): a repeat
 asked for while the first is in flight waits for it, so the engine's
 one-token-per-subject rule never discards a result that already landed.
@@ -163,8 +164,10 @@ Health → Updates keeps a `current` row visible when its LATEST check
 failed (`laterFailedAttempt`): the failure is said on the row and the tab
 never folds it into "Everything is current"; group headings count UPDATES
 and name the rest (`groupHeading`: "Required (0 updates, 1 check failed)",
-"Available (1 update, 1 blocked)", neutral tone without an update) so a
-heading never contradicts the tab badge.
+"Available (1 update, 1 not checked yet, 1 blocked)" — a failed check is an
+attempt that carried an error, a subject nobody has looked at yet is
+"not checked yet"; neutral tone without an update) so a heading never
+contradicts the tab badge.
 
 **One attempt, one result.** On the deadline the signal fires; a cooperative
 observer settles through the engine and records the deadline as its ONE
@@ -233,15 +236,19 @@ ONE apply service (`src/core/updates/apply.ts`) behind `GET
    and installs exclusively from that snapshot: the digest the identity
    names is the digest of the bytes that land. The snapshot is the
    install's transfer set — `copyLocalSource`, the ONE policy both install
-   staging and the upgrade use: root `dist`/`node_modules`/`.git` never
-   ride (the build regenerates output and dependencies), everything else
+   staging and the upgrade use: root `dist`/`.git` never ride (the build
+   regenerates output), root `node_modules` rides only when the package
+   declares no dependencies (vendored — the builder's own `hasDeclaredDeps`
+   predicate decides; declared ones are regenerated), everything else
    does, dot entries and nested dist included — and the lockfile digest
    (algo 3, `computeSourceTreeSha`) covers exactly that set, so a `dist`
    symlink can never ride in as a live input outside the transaction and no
    runtime input install keeps is dropped; a symlink anywhere inside the
    snapshot is refused outright (`symlinksIn`) — the hasher ignores links,
-   so no digest could vouch for what one points at) — refusing a ref that
-   moved, a
+   so no digest could vouch for what one points at; a legacy lockfile row
+   migrates to the new digest only against the INSTALLED tree — a change
+   the old formula could not see is an upgrade, not a baseline) — refusing
+   a ref that moved, a
    republished artifact or a moved tree even under an unchanged manifest (and
    so a still-valid consent token). A reviewed field the lane cannot report
    is itself a refusal: a lane that cannot prove the identity never installs

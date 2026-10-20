@@ -118,10 +118,13 @@ export function visibleUpdateRecords(records: readonly UpdateRecord[], group: Up
  */
 export function groupHeading(name: string, rows: readonly UpdateRecord[]): { label: string; tone: 'neutral' | 'accent' | 'danger'; updates: number } {
   const updates = rows.filter((row) => row.outcome === 'update-available').length
-  const failed = rows.filter((row) => row.outcome === 'unknown' || laterFailedAttempt(row)).length
+  // A failed check is an ATTEMPT that carried an error; a subject nobody has looked at yet is simply unchecked (review r9 #4).
+  const failed = rows.filter((row) => (row.outcome === 'unknown' && row.attempt?.error !== undefined) || laterFailedAttempt(row)).length
+  const unchecked = rows.filter((row) => row.outcome === 'unknown' && row.attempt === undefined).length
   const blocked = rows.filter((row) => row.outcome === 'blocked' || row.outcome === 'unsupported').length
   const others = [
     failed > 0 ? `${failed} ${failed === 1 ? 'check' : 'checks'} failed` : null,
+    unchecked > 0 ? `${unchecked} not checked yet` : null,
     blocked > 0 ? `${blocked} blocked` : null,
   ].filter((part): part is string => part !== null)
   const label = others.length === 0 ? `${name} (${updates})` : `${name} (${updates} ${updates === 1 ? 'update' : 'updates'}, ${others.join(', ')})`

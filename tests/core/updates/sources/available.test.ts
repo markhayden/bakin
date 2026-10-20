@@ -134,7 +134,7 @@ describe('plugin source', () => {
       artifactSource: () => ({ baseUrl: 'https://github.com/markhayden/bakin-bits-official/releases/latest/download', pluginId: 'projects' }),
       cloneUrl: (source) => `https://github.com/${source.slice('github:'.length).split('#')[0]}.git`,
       lsRemote: async () => null,
-      localTree: () => ({ changed: false, liveSha: 'live' }),
+      localTree: (_id: string) => ({ changed: false, liveSha: 'live' }),
       ...overrides,
     }
   }
@@ -176,7 +176,7 @@ describe('plugin source', () => {
     const dir = join(testDir, 'local-plugin')
     mkdirSync(dir, { recursive: true })
     const entry = lock({ type: 'local', source: dir, ref: '', commitSha: '', sourceTreeSha: 'old', sourceTreeShaAlgo: 2 })
-    const changed = await createPluginSource(deps({ lockEntries: () => ({ projects: entry }), artifact: () => ({ installed: false, runs: false }), localTree: () => ({ changed: true, liveSha: 'new' }) })).observe({ subject: { kind: 'plugin', id: 'projects', label: 'projects' }, group: 'available', fingerprint: 'f', source: { kind: 'local-path', endpoint: dir } }, ctx())
+    const changed = await createPluginSource(deps({ lockEntries: () => ({ projects: entry }), artifact: () => ({ installed: false, runs: false }), localTree: (_id: string) => ({ changed: true, liveSha: 'new' }) })).observe({ subject: { kind: 'plugin', id: 'projects', label: 'projects' }, group: 'available', fingerprint: 'f', source: { kind: 'local-path', endpoint: dir } }, ctx())
     expect(changed).toMatchObject({ outcome: 'update-available', reason: 'newer-commit', available: { digest: 'new', display: 'local changes' } })
     const missing = await createPluginSource(deps({ lockEntries: () => ({ projects: { ...entry, source: join(testDir, 'nope') } }), artifact: () => ({ installed: false, runs: false }) })).observe({ subject: { kind: 'plugin', id: 'projects', label: 'projects' }, group: 'available', fingerprint: 'f', source: { kind: 'local-path', endpoint: dir } }, ctx())
     expect(missing.outcome).toBe('blocked')
@@ -204,7 +204,7 @@ describe('review round 1 — artifact identity (#10)', () => {
     artifactSource: () => ({ baseUrl: 'https://github.com/markhayden/bakin-bits-official/releases/latest/download', pluginId: 'projects' }),
     cloneUrl: (source) => source,
     lsRemote: async () => null,
-    localTree: () => ({ changed: false, liveSha: 'live' }),
+    localTree: (_id: string) => ({ changed: false, liveSha: 'live' }),
     fetch: async () => new Response(JSON.stringify({ version: 1, plugins: { projects: { latest: '1.1.0', versions: { '1.1.0': { platforms: { neutral: { url: 'https://example.test/1.1.0.tgz', sha256: sha, externalsContract: 'react19-sdk-focused-v2', bakinRange: '>=0.0.0' } } } } } } }), { status: 200, headers: { 'content-type': 'application/json' } }),
   })
   const context = () => ({ signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } })

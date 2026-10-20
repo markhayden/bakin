@@ -150,7 +150,7 @@ async function upgradeLocal(
   // Legacy-aware compare: a stored algo-1 sha is verified with the legacy
   // hasher so hasher consolidation never forces a spurious rebuild of an
   // untouched source (see source-tree-sha.ts).
-  const cmp = compareStoredSourceTreeSha(entry, sourcePath)
+  const cmp = compareStoredSourceTreeSha(entry, sourcePath, pluginDir)
   const newTreeSha = cmp.liveSha
   if (entry.sourceTreeSha && !cmp.changed) {
     if (cmp.needsAlgoMigration) {

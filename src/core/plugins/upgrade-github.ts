@@ -162,11 +162,12 @@ export async function upgradeGithub(
       // In-place lane: the new tree is the OLD clone (with the fetched objects)
       // moved to the reviewed commit EXACTLY (review r8 #1): tracked files are
       // reset to it and every untracked or ignored leftover — a local edit, a
-      // stale dist, node_modules — is removed (the build regenerates output
-      // and dependencies). Only the transaction's own sentinel survives.
+      // stale dist, node_modules, a vendored nested repository (`-ff`, review
+      // r9 #1) — is removed (the build regenerates output and dependencies).
+      // Only the transaction's own root-level sentinel survives.
       cpSync(previousDir!, dir, { recursive: true, dereference: false })
       git(['reset', '--hard', remoteSha], dir)
-      git(['clean', '-fdx', '-e', INSTALL_SENTINEL, '--', '.'], dir)
+      git(['clean', '-ffdx', '-e', `/${INSTALL_SENTINEL}`, '--', '.'], dir)
     },
   build: buildUserPlugin,
     bins: gate.bins,

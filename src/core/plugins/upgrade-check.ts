@@ -115,7 +115,7 @@ async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvai
     // Legacy-aware compare: a stored algo-1 sha is verified with the
     // legacy hasher so hasher consolidation never reports a spurious
     // "upgrade available" for an untouched source.
-    const cmp = compareStoredSourceTreeSha(entry, entry.source)
+    const cmp = compareStoredSourceTreeSha(entry, entry.source, join(getContentDir(), 'plugins', id))
     return {
       id,
       upgradeAvailable: cmp.changed,

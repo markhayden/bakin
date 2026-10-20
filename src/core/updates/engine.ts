@@ -200,7 +200,7 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
     // The server's own retry hint wins over a shorter backoff; the cap still holds.
     const backoff = Math.min(Math.max(BACKOFF_BASE_MS * 2 ** (failures - 1), retryAfterMs ?? 0), BACKOFF_MAX_MS)
     file.records[id] = { ...previous, attempt: { at, error } }
-    file.schedule[id] = { ...schedule, lastCheckedAt: at, nextDueAt: iso(now() + backoff), failures }
+    file.schedule[id] = { ...schedule, lastCheckedAt: at, nextDueAt: iso(Date.parse(at) + backoff), failures }
   }
 
   function requireEntry(id: string): UpdateSubjectInventoryEntry {
@@ -321,7 +321,8 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
         // A skip survives only while the available identity it targeted is still the one offered.
         if (previous.skipped && updateIdentityKey(previous.skipped) === updateIdentityKey(next.available)) next.skipped = previous.skipped
         file.records[id] = stripUndefined(next)
-        file.schedule[id] = { lastCheckedAt: at, nextDueAt: iso(now() + interval()), failures: 0 }
+        // One instant for both clocks: the due time is EXACTLY one interval after the check (never a millisecond later).
+        file.schedule[id] = { lastCheckedAt: at, nextDueAt: iso(Date.parse(at) + interval()), failures: 0 }
       }
       await persist()
       publish([id])

@@ -34,8 +34,8 @@ export interface PluginSourceDeps {
   cloneUrl: (source: string) => string
   /** `git ls-remote <url> <ref>` — the sha the ref points at, or null when the ref is gone. */
   lsRemote: (url: string, ref: string, signal: AbortSignal) => Promise<string | null>
-  /** The live source-tree sha of a local install vs the recorded one. */
-  localTree: (entry: PluginLockEntry) => { changed: boolean; liveSha: string }
+  /** The live source-tree sha of a local install vs the recorded one (the installed tree under `<plugins>/<id>` is the baseline for legacy rows). */
+  localTree: (id: string, entry: PluginLockEntry) => { changed: boolean; liveSha: string }
   fetch?: FetchLike
 }
 
@@ -100,7 +100,7 @@ export function createPluginSource(deps: PluginSourceDeps): UpdateSource {
       }
 
       if (!existsSync(entry.source)) return { installed, outcome: 'blocked', blockedReason: `source path missing: ${entry.source}` }
-      const tree = deps.localTree(entry)
+      const tree = deps.localTree(id, entry)
       const source = { kind: 'local-path', endpoint: entry.source }
       if (!tree.changed) return { installed, source, outcome: 'current' }
       return { installed, source, available: { digest: tree.liveSha, display: 'local changes' }, reason: 'newer-commit', outcome: 'update-available', action: upgrade }

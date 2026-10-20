@@ -117,6 +117,6 @@ export function registerCoreUpdateSources(deps: GatewaySourceDeps): void {
     artifactSource: (source) => { const gh = githubArtifactSource(source); return { baseUrl: gh.baseUrl, pluginId: gh.pluginId } },
     cloneUrl: githubCloneUrl,
     lsRemote: lsRemoteSha,
-    localTree: (entry) => { const cmp = compareStoredSourceTreeSha(entry, entry.source); return { changed: cmp.changed, liveSha: cmp.liveSha } },
+    localTree: (id, entry) => { const cmp = compareStoredSourceTreeSha(entry, entry.source, join(getContentDir(), 'plugins', id)); return { changed: cmp.changed, liveSha: cmp.liveSha } },
   }))
 }

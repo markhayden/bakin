@@ -160,6 +160,11 @@ describe('UpdatesTabView — rows and groups (#1007 D7.14)', () => {
     expect(groupHeading('Required', [ENGINE]).tone).toBe('danger')
     expect(groupHeading('Required', [failedRequired]).tone).toBe('neutral')
     expect(groupHeading('Available', [PLUGIN, blocked]).tone).toBe('accent')
+    // A subject nobody has looked at yet is "not checked yet", never a failed check (review r9 #4).
+    const unchecked = record({ ...PLUGIN, id: 'plugin:fresh', subject: { kind: 'plugin', id: 'fresh', label: 'fresh' }, outcome: 'unknown', available: undefined, reason: undefined, action: undefined, observedAt: undefined, attempt: undefined })
+    const failedUnknown = record({ ...unchecked, id: 'plugin:failing', subject: { kind: 'plugin', id: 'failing', label: 'failing' }, attempt: { at: '2026-10-20T11:58:00.000Z', error: 'ls-remote failed' } })
+    expect(groupHeading('Available', [unchecked]).label).toBe('Available (0 updates, 1 not checked yet)')
+    expect(groupHeading('Available', [unchecked, failedUnknown, PLUGIN]).label).toBe('Available (1 update, 1 check failed, 1 not checked yet)')
   })
 
   it('presentation + visibility helpers are pure and total', () => {

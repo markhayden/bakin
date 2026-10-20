@@ -296,9 +296,12 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     const pluginDir = join(testDir, 'plugins', 'pristine')
     const installedSha = headSha(pluginDir)
     writePluginLockfile(addPlugin(readPluginLockfile(), 'pristine', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'main', commitSha: installedSha, version: '1.0.0' })))
-    // Someone edits the installed clone by hand and leaves a stray file.
+    // Someone edits the installed clone by hand, leaves a stray file and a vendored nested repository (git clean needs -ff for it).
     writeFileSync(join(pluginDir, 'helper.ts'), 'export const helper = "edited locally"')
     writeFileSync(join(pluginDir, 'stray.txt'), 'leftover')
+    mkdirSync(join(pluginDir, 'vendored'), { recursive: true })
+    execFileSync('git', ['init', '-q'], { cwd: join(pluginDir, 'vendored') })
+    writeFileSync(join(pluginDir, 'vendored', 'lib.ts'), 'export const vendored = true')
     // Upstream changes ONLY the manifest.
     const manifestOnly = pushCommit(repo.workingClonePath, { 'bakin-plugin.json': JSON.stringify({ ...JSON.parse(fixturePluginFiles({ id: 'pristine', version: '1.0.0' })['bakin-plugin.json']!), version: '1.0.1' }) }, 'manifest only')
 
@@ -306,6 +309,7 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     expect(result.after.commitSha).toBe(manifestOnly)
     expect(readFileSync(join(pluginDir, 'helper.ts'), 'utf-8')).toBe('export const helper = "reviewed"')
     expect(existsSync(join(pluginDir, 'stray.txt'))).toBe(false)
+    expect(existsSync(join(pluginDir, 'vendored'))).toBe(false)
     expect(execFileSync('git', ['status', '--porcelain', '--ignored'], { cwd: pluginDir, encoding: 'utf-8' }).trim()).toBe('')
     expect(headSha(pluginDir)).toBe(manifestOnly)
   })

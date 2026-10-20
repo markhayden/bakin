@@ -134,7 +134,8 @@ export function readPluginPackageJson(pluginDir: string): PluginPackageJson {
   }
 }
 
-function hasDeclaredDeps(pkg: PluginPackageJson): boolean {
+/** Whether the build's dependency install runs — the same predicate decides whether a local source's root `node_modules` is regenerated (skipped by the transfer) or vendored (transferred and hashed). */
+export function hasDeclaredDeps(pkg: PluginPackageJson): boolean {
   return (
     Object.keys(pkg.dependencies ?? {}).length > 0 ||
     Object.keys(pkg.devDependencies ?? {}).length > 0

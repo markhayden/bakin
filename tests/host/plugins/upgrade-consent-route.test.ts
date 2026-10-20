@@ -151,6 +151,8 @@ describe('POST /api/plugins/upgrade — the reviewed identity (review r4 #1, #3)
     mkdirSync(external, { recursive: true })
     writeFileSync(join(external, 'index.js'), 'export default "reviewed build"')
     symlinkSync(external, join(source, 'dist'))
+    // Declared dependencies: root node_modules is the build's to regenerate, never transferred.
+    writeFileSync(join(source, 'package.json'), JSON.stringify({ name: ID, version: '1.1.0', dependencies: { dep: '^1' } }))
     mkdirSync(join(source, 'node_modules', 'dep'), { recursive: true })
     writeFileSync(join(source, 'node_modules', 'dep', 'index.js'), 'export const dep = 1')
     writeFileSync(join(source, '.runtime.json'), '{"keep":true}')
