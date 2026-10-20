@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import { pluginFetchJson } from '@makinbakin/sdk/utils'
 import { Grid, Stack } from '@makinbakin/sdk/layout'
 import { StatTile } from '@makinbakin/sdk/patterns'
@@ -101,18 +102,21 @@ export function LimitDialog({
   /** Providers the catalog knows, for a per-provider limit. */
   providers?: readonly string[]
 }) {
-  const [coverage, setCoverage] = useState<CoverageWire | null>(null)
-  const [coverageError, setCoverageError] = useState<string | null>(null)
-  const [scope, setScope] = useState<GuidedScope>('global')
-  const [scopeId, setScopeId] = useState('')
-  const [lane, setLane] = useState<'metered' | 'subscription'>('metered')
-  const [monthly, setMonthly] = useState('')
-  const [dailyOn, setDailyOn] = useState(false)
-  const [daily, setDaily] = useState('')
-  const [reaction, setReaction] = useState<'defer' | 'pause'>('defer')
-  const [fieldError, setFieldError] = useState<string | null>(null)
-  const [scopeError, setScopeError] = useState<string | null>(null)
-  const [dailyError, setDailyError] = useState<string | null>(null)
+  // Every opening starts from a clean draft — a dismissed dialog's numbers
+  // must not reappear as if chosen. The draft is keyed by `open` (#966b), so
+  // the reset lands in the same render the dialog opens.
+  const [coverage, setCoverage] = useKeyedState<CoverageWire | null>(open, () => null)
+  const [coverageError, setCoverageError] = useKeyedState<string | null>(open, () => null)
+  const [scope, setScope] = useKeyedState<GuidedScope>(open, () => 'global')
+  const [scopeId, setScopeId] = useKeyedState(open, () => '')
+  const [lane, setLane] = useKeyedState<'metered' | 'subscription'>(open, () => 'metered')
+  const [monthly, setMonthly] = useKeyedState(open, () => '')
+  const [dailyOn, setDailyOn] = useKeyedState(open, () => false)
+  const [daily, setDaily] = useKeyedState(open, () => '')
+  const [reaction, setReaction] = useKeyedState<'defer' | 'pause'>(open, () => 'defer')
+  const [fieldError, setFieldError] = useKeyedState<string | null>(open, () => null)
+  const [scopeError, setScopeError] = useKeyedState<string | null>(open, () => null)
+  const [dailyError, setDailyError] = useKeyedState<string | null>(open, () => null)
   const unit = lane === 'metered' ? 'USD' : 'tokens'
   // The server's suggestion is for everything-metered; any other identity gets its observed basis and no prefill.
   const suggested = scope === 'global' && lane === 'metered'
@@ -120,20 +124,6 @@ export function LimitDialog({
   useEffect(() => {
     if (!open) return
     const controller = new AbortController()
-    // Every opening starts from a clean draft — a dismissed dialog's numbers
-    // must not reappear as if chosen.
-    setCoverage(null)
-    setCoverageError(null)
-    setFieldError(null)
-    setScopeError(null)
-    setDailyError(null)
-    setScope('global')
-    setScopeId('')
-    setLane('metered')
-    setMonthly('')
-    setDailyOn(false)
-    setDaily('')
-    setReaction('defer')
     pluginFetchJson<CoverageWire>('spend', 'coverage', { label: 'Coverage', timeoutMs: 20_000, signal: controller.signal })
       .then((data) => {
         setCoverage(data)
@@ -146,7 +136,7 @@ export function LimitDialog({
         setCoverageError(err instanceof Error ? err.message : String(err))
       })
     return () => controller.abort()
-  }, [open])
+  }, [open, setCoverage, setCoverageError, setMonthly])
 
   const submit = async () => {
     if (scope !== 'global' && !scopeId) {
