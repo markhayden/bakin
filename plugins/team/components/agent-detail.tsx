@@ -109,12 +109,14 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
+    const controller = new AbortController()
     setLoading(true)
-    fetch(`/api/plugins/team/${agentId}`)
+    fetch(`/api/plugins/team/${agentId}`, { signal: controller.signal })
       .then((response) => response.json())
       .then((data) => setProfile(data))
-      .catch(() => setProfile(null))
-      .finally(() => setLoading(false))
+      .catch(() => { if (!controller.signal.aborted) setProfile(null) })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
   }, [agentId])
 
   const handleModelChange = async (modelId: string) => {
@@ -472,10 +474,13 @@ export function SkillsTab({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/plugins/team/${agentId}/skills`)
+    const controller = new AbortController()
+    fetch(`/api/plugins/team/${agentId}/skills`, { signal: controller.signal })
       .then((response) => response.json())
       .then((data) => setSkills(data.skills ?? []))
-      .finally(() => setLoading(false))
+      .catch(() => {})
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
   }, [agentId])
 
   useEffect(() => {
@@ -483,10 +488,13 @@ export function SkillsTab({ agentId }: { agentId: string }) {
       setSkillContent(null)
       return
     }
+    const controller = new AbortController()
     setSkillContent(null)
-    fetch(`/api/plugins/team/${agentId}/skills/${selectedSkill}`)
+    fetch(`/api/plugins/team/${agentId}/skills/${selectedSkill}`, { signal: controller.signal })
       .then((response) => response.json())
       .then((data) => setSkillContent(data.content ?? null))
+      .catch(() => {})
+    return () => controller.abort()
   }, [agentId, selectedSkill])
 
   if (loading) {
@@ -557,10 +565,13 @@ export function MemoryTab({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/plugins/team/${agentId}/memory`)
+    const controller = new AbortController()
+    fetch(`/api/plugins/team/${agentId}/memory`, { signal: controller.signal })
       .then((response) => response.json())
       .then((data) => setFiles(data.files ?? []))
-      .finally(() => setLoading(false))
+      .catch(() => {})
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
   }, [agentId])
 
   useEffect(() => {
@@ -568,10 +579,13 @@ export function MemoryTab({ agentId }: { agentId: string }) {
       setContent(null)
       return
     }
+    const controller = new AbortController()
     setContent(null)
-    fetch(`/api/plugins/team/${agentId}/memory/${selectedFile}`)
+    fetch(`/api/plugins/team/${agentId}/memory/${selectedFile}`, { signal: controller.signal })
       .then((response) => response.json())
       .then((data) => setContent(data.content ?? null))
+      .catch(() => {})
+    return () => controller.abort()
   }, [agentId, selectedFile])
 
   if (loading) {

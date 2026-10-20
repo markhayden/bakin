@@ -82,15 +82,15 @@ export function WorkflowAgentSelect({
 
   const [teams, setTeams] = useState<SelectableTeam[]>([])
   useEffect(() => {
-    let active = true
-    fetch('/api/plugins/team/teams')
+    const controller = new AbortController()
+    fetch('/api/plugins/team/teams', { signal: controller.signal })
       .then((response) => response.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data as { teams?: SelectableTeam[] })?.teams
-        if (active && Array.isArray(list)) setTeams(list)
+        if (Array.isArray(list)) setTeams(list)
       })
       .catch(() => {})
-    return () => { active = false }
+    return () => controller.abort()
   }, [])
 
   return (

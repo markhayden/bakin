@@ -177,16 +177,20 @@ export function Header() {
   const { paused: dispatchPaused, resuming, resume } = useSpendStatus()
 
   useEffect(() => {
-    fetch('/api/version').then(r => r.json()).then(d => setVersion(d.version)).catch(() => {})
+    const controller = new AbortController()
+    fetch('/api/version', { signal: controller.signal }).then(r => r.json()).then(d => setVersion(d.version)).catch(() => {})
+    return () => controller.abort()
   }, [])
 
   useEffect(() => {
-    fetch('/api/update/status')
+    const controller = new AbortController()
+    fetch('/api/update/status', { signal: controller.signal })
       .then(r => r.json())
       .then(d => {
         if (d && typeof d === 'object') setUpdateStatus(d as BakinUpdateStatus)
       })
       .catch(() => {})
+    return () => controller.abort()
   }, [])
 
   useEffect(() => {

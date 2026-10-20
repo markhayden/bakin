@@ -103,13 +103,13 @@ function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
   // Deliberately NOT `useJsonFetch`: this loads the raw text body, and the
   // SDK hook is JSON-only.
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
     setContent(null)
-    fetch(fileUrl)
+    fetch(fileUrl, { signal: controller.signal })
       .then(r => r.text())
-      .then(t => { if (!cancelled) setContent(t) })
-      .catch(() => { if (!cancelled) setContent('Failed to load content') })
-    return () => { cancelled = true }
+      .then(t => { if (!controller.signal.aborted) setContent(t) })
+      .catch(() => { if (!controller.signal.aborted) setContent('Failed to load content') })
+    return () => controller.abort()
   }, [fileUrl])
 
   const startEdit = () => { setDraft(content ?? ''); setError(null); setEditing(true) }
