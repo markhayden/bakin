@@ -1,6 +1,8 @@
 /** Self-update as an operation (#1007 D7.11): staging keyed by the operation, the restart proven before the swap and armed after it, the process ends the operation. */
 import { afterAll, afterEach, describe, expect, it, mock } from 'bun:test'
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer, type ServerResponse } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -170,20 +172,23 @@ describe('review round 3 — the deferred restart command', () => {
 
 describe('review round 4 — cancellation while the update is still reversible', () => {
   /** A release server whose archive body stalls forever after its headers (the margo 2026-09-21 transfer shape). */
-  function stalledReleaseServer(): { url: string; requests: string[]; stop: () => void } {
+  async function stalledReleaseServer(): Promise<{ url: string; requests: string[]; stop: () => void }> {
     const requests: string[] = []
-    const server = Bun.serve({
-      port: 0,
-      fetch(req) {
-        const path = new URL(req.url).pathname
-        requests.push(path)
-        if (path === '/archive') {
-          return new Response(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([0x1f, 0x8b])) /* then nothing, ever */ } }), { headers: { 'Content-Type': 'application/gzip' } })
-        }
-        return new Response('not found', { status: 404 })
-      },
+    const open = new Set<ServerResponse>()
+    const server = createServer((req, res) => {
+      const path = req.url ?? '/'
+      requests.push(path)
+      if (path === '/archive') {
+        open.add(res)
+        res.writeHead(200, { 'Content-Type': 'application/gzip' })
+        res.write(Buffer.from([0x1f, 0x8b])) // then nothing, ever
+        return
+      }
+      res.writeHead(404).end('not found')
     })
-    return { url: `http://127.0.0.1:${server.port}`, requests, stop: () => server.stop(true) }
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    return { url: `http://127.0.0.1:${port}`, requests, stop: () => { for (const res of open) res.destroy(); server.close() } }
   }
 
   it('a stalled archive download is cancellable: the transfer aborts, staging is cleaned, the binary is untouched, the operation ends cancelled and install-state is free (#4)', async () => {
@@ -191,7 +196,7 @@ describe('review round 4 — cancellation while the update is still reversible',
     mkdirSync(dir, { recursive: true })
     const execPath = join(dir, 'bakin')
     writeFileSync(execPath, 'old-binary')
-    const release = stalledReleaseServer()
+    const release = await stalledReleaseServer()
     try {
       const d = deps({
         execPath: () => execPath,

@@ -54,20 +54,20 @@ describe('gateUpgradeConsent — consent comes from the TARGET declaration, neve
 
   it('a forged lock entry that already "has" every permission and binary cannot remove the prompt', () => {
     const forged = entryWith({ permissions: ['events.emit'], installedBins: [{ name: 'tool', sha256: A, member: 'bin/tool-a' }] })
-    const gate = gateUpgradeConsent({ id: 'terminal', entry: forged, manifest, manifestSha: 'd'.repeat(64), before, after, opts: { previewOnly: true } })
+    const gate = gateUpgradeConsent({ id: 'terminal', entry: forged, manifest, manifestSha: 'd'.repeat(64), before, after, identity: after, opts: { previewOnly: true } })
     expect(gate).toMatchObject({ proceed: false, result: { awaitingConsent: true, declaredPermissions: ['events.emit'] } })
     if (gate.proceed) throw new Error('expected a prompt')
     expect(gate.result.declaredBins.map((b) => [b.name, b.member])).toEqual([['tool', 'bin/tool-a']])
   })
 
   it('unchanged declarations still prompt (and disclose everything)', () => {
-    const gate = gateUpgradeConsent({ id: 'terminal', entry: entryWith({ permissions: ['events.emit'] }), manifest, manifestSha: 'd'.repeat(64), before, after, opts: {} })
+    const gate = gateUpgradeConsent({ id: 'terminal', entry: entryWith({ permissions: ['events.emit'] }), manifest, manifestSha: 'd'.repeat(64), before, after, identity: after, opts: {} })
     expect(gate).toMatchObject({ proceed: false, result: { awaitingConsent: true } })
   })
 
   it('a target that declares nothing needs no consent', () => {
     const empty = { id: 'terminal', version: '1.5.0', permissions: [] }
-    const gate = gateUpgradeConsent({ id: 'terminal', entry: entryWith({ permissions: ['events.emit'] }), manifest: empty, manifestSha: 'd'.repeat(64), before, after, opts: { previewOnly: true } })
+    const gate = gateUpgradeConsent({ id: 'terminal', entry: entryWith({ permissions: ['events.emit'] }), manifest: empty, manifestSha: 'd'.repeat(64), before, after, identity: after, opts: { previewOnly: true } })
     expect(gate).toMatchObject({ proceed: false, result: { awaitingConsent: false, ready: true, declaredPermissions: [], declaredBins: [] } })
   })
 })
@@ -81,9 +81,9 @@ describe('gateUpgradeConsent — a supplied consent always binds the release', (
     const manifest = { id: 'terminal', version: '1.5.0', permissions: [] }
     const before = { version: '1.0.0', commitSha: '' }
     const after = { version: '1.5.0', commitSha: '' }
-    const matching = gateUpgradeConsent({ id: 'terminal', entry, manifest, manifestSha: 'd'.repeat(64), before, after, opts: { accepted: { manifestSha: 'd'.repeat(64), permissions: [], bins: [] } } })
+    const matching = gateUpgradeConsent({ id: 'terminal', entry, manifest, manifestSha: 'd'.repeat(64), before, after, identity: after, opts: { accepted: { manifestSha: 'd'.repeat(64), permissions: [], bins: [] } } })
     expect(matching.proceed).toBe(true)
-    const republished = gateUpgradeConsent({ id: 'terminal', entry, manifest, manifestSha: 'e'.repeat(64), before, after, opts: { accepted: { manifestSha: 'd'.repeat(64), permissions: [], bins: [] } } })
+    const republished = gateUpgradeConsent({ id: 'terminal', entry, manifest, manifestSha: 'e'.repeat(64), before, after, identity: after, opts: { accepted: { manifestSha: 'd'.repeat(64), permissions: [], bins: [] } } })
     expect(republished).toMatchObject({ proceed: false, result: { awaitingConsent: true, manifestChanged: true } })
   })
 })
