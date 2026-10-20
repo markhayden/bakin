@@ -26,10 +26,10 @@ const FIXTURES = join(import.meta.dir, '../fixtures/tool-access')
 const golden = (name: string) => readFileSync(join(FIXTURES, `${name}.md`), 'utf-8').replace(/\n$/, '')
 
 const CASES: Record<string, { access: RuntimeToolAccess; agentId: string }> = {
-  'in-process': { access: { style: 'in-process' }, agentId: 'scout' },
-  mcp: { access: { style: 'mcp', mcpServerTemplate: 'bakin-<agent>' }, agentId: 'scout' },
+  'in-process': { access: { style: 'in-process', perTurnToolsMode: true }, agentId: 'scout' },
+  mcp: { access: { style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnToolsMode: false }, agentId: 'scout' },
   'cli-shim': {
-    access: { style: 'cli-shim', shimCommand: 'mcporter call bakin-<agent>.<tool> <args>' },
+    access: { style: 'cli-shim', shimCommand: 'mcporter call bakin-<agent>.<tool> <args>', perTurnToolsMode: false },
     agentId: 'scout',
   },
 }
@@ -42,7 +42,7 @@ describe('renderToolAccessInstructions', () => {
   }
 
   it('in-process renders bare calls and NO cheat-sheet', () => {
-    const out = renderToolAccessInstructions({ style: 'in-process' }, { agentId: 'scout' })
+    const out = renderToolAccessInstructions({ style: 'in-process', perTurnToolsMode: true }, { agentId: 'scout' })
     expect(out).toContain('bakin_exec_tasks_get taskId=<id>')
     expect(out).not.toContain('mcporter')
     expect(out).not.toContain('.bakin_exec_')
@@ -52,7 +52,7 @@ describe('renderToolAccessInstructions', () => {
 
   it('mcp prefixes tools with the per-agent server and omits the cheat-sheet', () => {
     const out = renderToolAccessInstructions(
-      { style: 'mcp', mcpServerTemplate: 'bakin-<agent>' },
+      { style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnToolsMode: false },
       { agentId: 'rolo' },
     )
     expect(out).toContain('bakin-rolo.bakin_exec_tasks_get')
@@ -61,7 +61,7 @@ describe('renderToolAccessInstructions', () => {
 
   it('cli-shim carries the full cheat-sheet with the shim command substituted', () => {
     const out = renderToolAccessInstructions(
-      { style: 'cli-shim', shimCommand: 'run bakin-<agent> <tool> <args>' },
+      { style: 'cli-shim', shimCommand: 'run bakin-<agent> <tool> <args>', perTurnToolsMode: false },
       { agentId: 'pixel' },
     )
     expect(out).toContain('Core tools you will use')
@@ -79,7 +79,7 @@ describe('renderToolAccessInstructions', () => {
   })
 
   it('cli-shim without a shimCommand falls back to a labelled placeholder, not empty', () => {
-    const out = renderToolAccessInstructions({ style: 'cli-shim' }, { agentId: 'scout' })
+    const out = renderToolAccessInstructions({ style: 'cli-shim', perTurnToolsMode: false }, { agentId: 'scout' })
     expect(out).toContain('<shim-command>')
     expect(out).toContain('Core tools you will use')
   })

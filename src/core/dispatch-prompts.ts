@@ -30,7 +30,7 @@ import type {
  * dispatch always has them; this only stabilizes the pure builder + fixture
  * paths, which never run inside a live runtime).
  */
-const DEFAULT_TOOL_ACCESS: RuntimeToolAccess = { style: 'mcp', mcpServerTemplate: 'bakin-<agent>' }
+const DEFAULT_TOOL_ACCESS: RuntimeToolAccess = { style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnToolsMode: false }
 
 export function resolveToolAccess(): RuntimeToolAccess {
   try {

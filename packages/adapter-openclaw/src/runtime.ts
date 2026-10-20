@@ -1139,7 +1139,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   /** OpenClaw agents reach Bakin exec tools via their native MCP client (verified: Phase-0 spike). */
   // perTurnExecToolFiltering false: exec tools ride session-static per-agent
   // MCP servers — toolsAllow/toolsDeny are unenforceable per turn here.
-  describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: false })
+  // perTurnToolsMode false: the 2026.9.5 agent RPC accepts no per-turn tool
+  // policy at all (#883) — toolsMode is dropped with a warning.
+  describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: false, perTurnToolsMode: false })
   /** `<agentId>:<policy kind>` keys already warned about (warnUnenforceableToolPolicy). */
   private readonly warnedUnenforceableToolPolicy = new Set<string>()
 

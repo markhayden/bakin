@@ -385,6 +385,17 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(agentRequest?.params).not.toHaveProperty('toolsMode')
   })
 
+  it('declares that neither exec-tool filters nor toolsMode are enforced per turn (#883 honesty)', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    expect(runtime.describeToolAccess()).toEqual({
+      style: 'mcp',
+      mcpServerTemplate: 'bakin-<agent>',
+      perTurnExecToolFiltering: false,
+      perTurnToolsMode: false,
+    })
+  })
+
   it('an unenforceable toolsMode warns ONCE per agent, never silently (#883)', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const warns: Array<{ msg: string; data: unknown }> = []

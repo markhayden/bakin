@@ -65,7 +65,7 @@ beforeEach(() => { clearKeys() })
 
 function capabilitySetWith(input: { imageInput: boolean; audioInput: boolean }) {
   return {
-    toolCalling: { mode: 'native' as const, access: { style: 'cli-shim' as const } },
+    toolCalling: { mode: 'native' as const, access: { style: 'cli-shim' as const, perTurnToolsMode: false } },
     delivery: { mode: 'native' as const },
     imageGen: { mode: 'unavailable' as const },
     memory: { mode: 'native' as const },

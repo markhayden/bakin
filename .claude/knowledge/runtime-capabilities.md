@@ -279,9 +279,11 @@ Consumer: chat's compaction bar (kit `ContextMeter`).
 **Specified contract semantics (T29/T30):** `ping()` = "can serve a turn,
 cheaply probed" (Pi checks initialized + ≥1 LLM credential — never an LLM
 call); `restart()` = "re-read all durable config"; `MessageArgs.toolsAllow`
-/`toolsDeny` scope Bakin EXEC TOOLS only (native tool policy is
-adapter-private via `toolsMode`; OpenClaw warns-and-ignores since MCP
-servers are session-static); `MessageArgs.oversizedOutputBytes` is a typed
+/`toolsDeny` scope Bakin EXEC TOOLS only (native tool policy rides
+`toolsMode`; Pi enforces both per turn, OpenClaw warns-and-ignores BOTH —
+MCP servers are session-static and the 2026.9.5 agent RPC accepts no
+tool-policy property at all, #883 — and declares it via
+`describeToolAccess().perTurnExecToolFiltering` / `.perTurnToolsMode`); `MessageArgs.oversizedOutputBytes` is a typed
 field (no metadata bag) honored by both adapters' turn diagnoses;
 `updatePermissions` and `tools.invoke` are DELETED (dead surface);
 `agents.updateAllowlist` patches AGENT IDS (the subagent-dispatch

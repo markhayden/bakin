@@ -12,7 +12,7 @@ const log = createLogger('bakin-skill')
 // The bakin skill is one shared document (not per-agent), so it renders the
 // tool-access section with a generic `<agent>` placeholder. Conservative
 // out-of-process `mcp` default when app services aren't up.
-const DEFAULT_TOOL_ACCESS: RuntimeToolAccess = { style: 'mcp', mcpServerTemplate: 'bakin-<agent>' }
+const DEFAULT_TOOL_ACCESS: RuntimeToolAccess = { style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnToolsMode: false }
 
 function activeToolAccess(): RuntimeToolAccess {
   try {

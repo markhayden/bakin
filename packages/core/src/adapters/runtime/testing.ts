@@ -491,7 +491,7 @@ export function createMockRuntimeAdapter(
     // mcp-prefixed bytes; tests override per-case.
     capabilities: async (_opts?: { agentId?: string }) => mockCapabilities(false),
 
-    describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: true }),
+    describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: true, perTurnToolsMode: false }),
 
     // Conservative default: no credentials configured; tests override.
     credentialStatus: async (_opts?: { agentId?: string }) => ({ llmProviders: [], channels: [] }),
@@ -533,7 +533,7 @@ function mockCapabilities(deliveryNative: boolean) {
   return {
     toolCalling: {
       mode: 'native' as const,
-      access: { style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: true },
+      access: { style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: true, perTurnToolsMode: false },
     },
     delivery: { mode: deliveryNative ? ('native' as const) : ('unavailable' as const) },
     imageGen: { mode: 'unavailable' as const },

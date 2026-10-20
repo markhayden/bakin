@@ -22,9 +22,21 @@ const CAPABILITY_LABELS: Record<string, string> = {
 }
 
 export interface CapabilitiesPayload {
-  toolCalling?: { mode?: string; access?: { style?: string } }
+  toolCalling?: { mode?: string; access?: { style?: string; perTurnToolsMode?: boolean } }
   input?: { imageInput?: boolean; audioInput?: boolean }
   [key: string]: unknown
+}
+
+/**
+ * `mcp · per-turn tool policy not enforced` — the style plus whether a
+ * `toolsMode: 'none'` turn really runs without tools on this runtime (#883
+ * honesty; OpenClaw drops the field, Pi enforces it).
+ */
+function toolAccessDetail(access: { style?: string; perTurnToolsMode?: boolean } | undefined): string | undefined {
+  const style = access?.style
+  if (!style) return undefined
+  if (typeof access?.perTurnToolsMode !== 'boolean') return style
+  return `${style} · per-turn tool policy ${access.perTurnToolsMode ? 'enforced' : 'not enforced'}`
 }
 
 /** Flatten a CapabilitySet into ordered matrix rows (input modality last). */
@@ -38,7 +50,7 @@ export function capabilityRows(capabilities: CapabilitiesPayload | null | undefi
       key: 'toolCalling',
       label: CAPABILITY_LABELS.toolCalling,
       mode: toolCalling.mode ?? 'native',
-      detail: toolCalling.access?.style,
+      detail: toolAccessDetail(toolCalling.access),
     })
   }
 

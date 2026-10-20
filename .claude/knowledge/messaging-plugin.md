@@ -15,9 +15,11 @@ Planning sessions are plugin-owned durable records. The plugin stores visible us
 Live runtime turns can be scoped per request with `RuntimeMessageArgs`:
 `toolsMode`, `toolsAllow`, and `toolsDeny`. Use this on
 `ctx.runtime.messaging.send()` or `.stream()` when a planning/prep turn needs a
-hard tool boundary, for example `toolsMode: 'none'` for text-only planning. This
-is separate from cron `toolsAllow`, plugin manifest permissions, and workflow
-step ownership.
+hard tool boundary, for example `toolsMode: 'none'` for text-only planning. Pi
+enforces it; OpenClaw cannot (#883) and drops it with a warning, so check
+`ctx.runtime.describeToolAccess().perTurnToolsMode` before depending on a
+text-only turn. This is separate from cron `toolsAllow`, plugin manifest
+permissions, and workflow step ownership.
 
 The official plugin must use task-backed scheduling for production work:
 

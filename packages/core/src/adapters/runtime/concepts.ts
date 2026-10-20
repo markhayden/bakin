@@ -426,6 +426,15 @@ export interface RuntimeToolAccess {
    * this and refuse rather than degrade fail-open.
    */
   perTurnExecToolFiltering?: boolean
+  /**
+   * Whether this runtime ENFORCES `MessageArgs.toolsMode` per turn — i.e.
+   * `toolsMode: 'none'` really withholds every tool for that one turn.
+   * In-process runtimes do (Pi runs the turn with no tool bridge); OpenClaw
+   * cannot since 2026.9.5 closed its agent RPC schema with no tool-policy
+   * property (#883) — it drops the field with a warning. Callers needing a
+   * text-only turn feature-detect this and refuse rather than degrade.
+   */
+  perTurnToolsMode: boolean
 }
 
 /**

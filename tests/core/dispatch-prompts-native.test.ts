@@ -26,16 +26,16 @@ import type { AppServices } from '@bakin/core/app-services'
 
 describe('tool invocation styles', () => {
   test('toolHelpers renders per the supplied access style', () => {
-    const bare = toolHelpers('rolo', { style: 'in-process' })
+    const bare = toolHelpers('rolo', { style: 'in-process', perTurnToolsMode: true })
     expect(bare.mc('bakin_exec_tasks_get', 'taskId=t1')).toBe('bakin_exec_tasks_get taskId=t1')
 
-    const mcp = toolHelpers('rolo', { style: 'mcp', mcpServerTemplate: 'bakin-<agent>' })
+    const mcp = toolHelpers('rolo', { style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnToolsMode: false })
     expect(mcp.mc('bakin_exec_tasks_get', 'taskId=t1')).toBe('bakin-rolo.bakin_exec_tasks_get taskId=t1')
   })
 
   test('in-process runtime → bare calls + direct header, never a server prefix', () => {
     const runtime = createMockRuntimeAdapter({
-      describeToolAccess: () => ({ style: 'in-process' as const }),
+      describeToolAccess: () => ({ style: 'in-process' as const, perTurnToolsMode: true }),
     })
     setAppServices({ runtime } as unknown as AppServices)
     expect(resolveToolAccess().style).toBe('in-process')
@@ -53,7 +53,7 @@ describe('tool invocation styles', () => {
 
   test('mcp runtime → native MCP header + per-agent prefixed calls', () => {
     const runtime = createMockRuntimeAdapter({
-      describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' }),
+      describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>', perTurnToolsMode: false }),
     })
     setAppServices({ runtime } as unknown as AppServices)
     expect(resolveToolAccess().style).toBe('mcp')

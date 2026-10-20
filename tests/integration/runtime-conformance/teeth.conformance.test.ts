@@ -67,7 +67,7 @@ function createBrokenAdapter() {
     // their own per-lie adapters below.
     capabilities: async () => ({
       ...(await base.capabilities()),
-      toolCalling: { mode: 'native' as const, access: { style: 'in-process' as const } },
+      toolCalling: { mode: 'native' as const, access: { style: 'in-process' as const, perTurnToolsMode: true } },
     }),
   }
   return broken
