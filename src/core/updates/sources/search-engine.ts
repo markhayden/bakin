@@ -24,11 +24,16 @@ export interface SearchSourceDeps {
 }
 
 const INVENTORY_TIMEOUT_MS = 20_000
-export const SEARCH_ENGINE_INSTALL_ACTION: UpdateAction = {
-  kind: 'operation',
-  start: { route: '/api/runtime/onboarding/install', body: { component: 'search' } },
-  impact: ['download', 'search-interruption', 'reindex'],
+/** Every operation action starts through the one apply service (D7.4); the record id is the route's subject. */
+export function applyRoute(recordId: string): string {
+  return `/api/updates/${encodeURIComponent(recordId)}/apply`
 }
+
+export const SEARCH_ENGINE_INSTALL_ACTION = (adapter: string): UpdateAction => ({
+  kind: 'operation',
+  start: { route: applyRoute(`search-engine:${adapter}`) },
+  impact: ['download', 'search-interruption', 'reindex'],
+})
 
 function engineEntry(adapter: string, result: SearchAdapterSetupCheckResult, settings: SearchSettingsFacts): UpdateSubjectInventoryEntry {
   return {
@@ -43,7 +48,8 @@ function engineEntry(adapter: string, result: SearchAdapterSetupCheckResult, set
   }
 }
 
-export function observeSearchEngine(result: SearchAdapterSetupCheckResult): UpdateObservation {
+export function observeSearchEngine(adapter: string, result: SearchAdapterSetupCheckResult): UpdateObservation {
+  const install = SEARCH_ENGINE_INSTALL_ACTION(adapter)
   const installed = result.installed
     ? { version: result.installed.version, display: result.installed.version ? `v${result.installed.version}` : 'installed (version unknown)' }
     : { display: 'not installed' }
@@ -54,10 +60,10 @@ export function observeSearchEngine(result: SearchAdapterSetupCheckResult): Upda
     case 'missing':
       // Binary absent → install; binary present but the service unclaimed → the
       // adapter's remediation is the operator's call, not a download.
-      if (!result.installed) return { installed, available, reason: 'pin-mismatch', outcome: 'update-available', action: SEARCH_ENGINE_INSTALL_ACTION }
+      if (!result.installed) return { installed, available, reason: 'pin-mismatch', outcome: 'update-available', action: install }
       return { installed, available, outcome: 'blocked', blockedReason: result.message, action: { kind: 'manual', pointer: result.remediation ?? result.message } }
     case 'broken':
-      return { installed, available, reason: 'pin-mismatch', outcome: 'update-available', action: SEARCH_ENGINE_INSTALL_ACTION }
+      return { installed, available, reason: 'pin-mismatch', outcome: 'update-available', action: install }
     default:
       return { installed, available, outcome: 'blocked', blockedReason: result.message, action: { kind: 'manual', pointer: result.remediation ?? result.message } }
   }
@@ -81,7 +87,7 @@ export function createSearchEngineSource(deps: SearchSourceDeps): UpdateSource {
     async observe(_entry, { signal }) {
       const result = await check(signal)
       if (!result) throw new Error('the search engine is no longer applicable on this installation')
-      return observeSearchEngine(result)
+      return observeSearchEngine(deps.settings().adapter, result)
     },
   }
 }

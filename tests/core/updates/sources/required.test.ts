@@ -66,7 +66,7 @@ describe('search-engine source', () => {
       const source = createSearchEngineSource({ setup: () => fakeSetup(() => result).setup, settings })
       const [e] = await source.inventory()
       const observation = await source.observe(e!, { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } })
-      expect(observation).toMatchObject({ outcome: 'update-available', reason: 'pin-mismatch', available: { version: '0.2.5' }, action: { kind: 'operation', start: { route: '/api/runtime/onboarding/install', body: { component: 'search' } } } })
+      expect(observation).toMatchObject({ outcome: 'update-available', reason: 'pin-mismatch', available: { version: '0.2.5' }, action: { kind: 'operation', start: { route: '/api/updates/search-engine%3Aantfly/apply' }, impact: ['download', 'search-interruption', 'reindex'] } })
     }
     const missing = createSearchEngineSource({ setup: () => fakeSetup(() => engineMissing).setup, settings })
     expect((await missing.observe((await missing.inventory())[0]!, { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } })).installed).toEqual({ display: 'not installed' })
@@ -132,7 +132,7 @@ describe('search-models source', () => {
 
     const partial = createSearchModelsSource({ setup: () => fakeSetup(() => engineOk(), () => modelsResult('missing', [row('a/b', 'ok'), row('c/d', 'missing', 'install', { reason: 'not downloaded yet' })])).setup, settings })
     const observation = await partial.observe((await partial.inventory())[0]!, ctx())
-    expect(observation).toMatchObject({ outcome: 'update-available', reason: 'pin-mismatch', installed: { display: '1 of 2 models ready' }, action: { kind: 'operation', start: { body: { component: 'search-models' } }, impact: ['download'] } })
+    expect(observation).toMatchObject({ outcome: 'update-available', reason: 'pin-mismatch', installed: { display: '1 of 2 models ready' }, action: { kind: 'operation', start: { route: '/api/updates/search-models%3Aantfly/apply' }, impact: ['download'] } })
     expect(observation.blockedReason).toBeUndefined()
   })
 

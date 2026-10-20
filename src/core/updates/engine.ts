@@ -18,7 +18,7 @@ import { isUpdateSkipped, updateIdentityKey, type UpdateRecord, type UpdatesSnap
 import { createLogger } from '../logger'
 import { collectInventory, updateRecordId } from './inventory'
 import { emptyUpdatesFile, readUpdatesFile, writeUpdatesFile, type UpdatesFile } from './store'
-import type { ConditionalStore, UpdateObservation, UpdateScheduleEntry, UpdateSource, UpdateSubjectInventoryEntry } from './types'
+import { UpdateCheckError, type ConditionalStore, type UpdateObservation, type UpdateScheduleEntry, type UpdateSource, type UpdateSubjectInventoryEntry } from './types'
 
 const log = createLogger('updates')
 
@@ -160,11 +160,12 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
   })()
 
   /** The failure branch both `observe` and `recordFailure` share: attempt + backoff, observation untouched. */
-  function applyFailure(id: string, live: UpdateSubjectInventoryEntry, at: string, error: string): void {
+  function applyFailure(id: string, live: UpdateSubjectInventoryEntry, at: string, error: string, retryAfterMs?: number): void {
     const previous = file.records[id] ?? unknownRecord(live)
     const schedule = file.schedule[id] ?? { failures: 0 }
     const failures = schedule.failures + 1
-    const backoff = Math.min(BACKOFF_BASE_MS * 2 ** (failures - 1), BACKOFF_MAX_MS)
+    // The server's own retry hint wins over a shorter backoff; the cap still holds.
+    const backoff = Math.min(Math.max(BACKOFF_BASE_MS * 2 ** (failures - 1), retryAfterMs ?? 0), BACKOFF_MAX_MS)
     file.records[id] = { ...previous, attempt: { at, error } }
     file.schedule[id] = { ...schedule, lastCheckedAt: at, nextDueAt: iso(now() + backoff), failures }
   }
@@ -220,10 +221,12 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
       const signal = opts.signal ?? new AbortController().signal
       let observation: UpdateObservation | null = null
       let error: string | null = null
+      let retryAfterMs: number | undefined
       try {
         observation = await source.observe(entry, { signal, conditional })
       } catch (err) {
         error = err instanceof Error ? err.message : String(err)
+        if (err instanceof UpdateCheckError) retryAfterMs = err.retryAfterMs
       }
       const at = iso(now())
       // The inventory may have moved while we observed: a stale result is dropped.
@@ -237,7 +240,7 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
         return structuredClone(file.records[id]!)
       }
       if (!observation) {
-        applyFailure(id, live, at, error ?? 'unknown error')
+        applyFailure(id, live, at, error ?? 'unknown error', retryAfterMs)
         await persist()
         publish([id])
         return structuredClone(file.records[id]!)

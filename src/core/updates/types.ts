@@ -74,6 +74,18 @@ export interface UpdateSource {
   observe(entry: UpdateSubjectInventoryEntry, opts: ObserveOptions): Promise<UpdateObservation>
 }
 
+/**
+ * A failed observation that knows when to try again (a 403/429 with
+ * `Retry-After` / `X-RateLimit-Reset`): the engine's backoff never schedules
+ * the next attempt before `retryAfterMs` has passed.
+ */
+export class UpdateCheckError extends Error {
+  constructor(message: string, readonly retryAfterMs?: number) {
+    super(message)
+    this.name = 'UpdateCheckError'
+  }
+}
+
 /** Per-subject scheduling state (D7.5). */
 export interface UpdateScheduleEntry {
   lastCheckedAt?: string

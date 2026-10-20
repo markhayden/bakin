@@ -8,14 +8,14 @@ import type { SearchAdapterModelCheck, SearchAdapterSetupCheckResult } from '@ba
 import { fingerprintOf } from '../inventory'
 import type { UpdateAction } from '@makinbakin/sdk/types'
 import type { UpdateObservation, UpdateSource, UpdateSubjectInventoryEntry } from '../types'
-import type { SearchSettingsFacts, SearchSourceDeps } from './search-engine'
+import { applyRoute, type SearchSettingsFacts, type SearchSourceDeps } from './search-engine'
 
 const INVENTORY_TIMEOUT_MS = 20_000
-export const SEARCH_MODELS_INSTALL_ACTION: UpdateAction = {
+export const SEARCH_MODELS_INSTALL_ACTION = (adapter: string): UpdateAction => ({
   kind: 'operation',
-  start: { route: '/api/runtime/onboarding/install', body: { component: 'search-models' } },
+  start: { route: applyRoute(`search-models:${adapter}`) },
   impact: ['download'],
-}
+})
 
 function modelsEntry(adapter: string, rows: SearchAdapterModelCheck[], settings: SearchSettingsFacts): UpdateSubjectInventoryEntry {
   return {
@@ -31,7 +31,7 @@ function modelsEntry(adapter: string, rows: SearchAdapterModelCheck[], settings:
 
 const INSTALLABLE = new Set(['install', 'replace-variant'])
 
-export function observeSearchModels(result: SearchAdapterSetupCheckResult): UpdateObservation {
+export function observeSearchModels(adapter: string, result: SearchAdapterSetupCheckResult): UpdateObservation {
   const rows = result.models ?? []
   const ready = rows.filter((row) => row.state === 'ok').length
   const installed = { display: rows.length === 0 ? 'no models required' : `${ready} of ${rows.length} models ready` }
@@ -45,7 +45,7 @@ export function observeSearchModels(result: SearchAdapterSetupCheckResult): Upda
       available: { display: 'pinned model set' },
       reason: 'pin-mismatch',
       outcome: 'update-available',
-      action: SEARCH_MODELS_INSTALL_ACTION,
+      action: SEARCH_MODELS_INSTALL_ACTION(adapter),
       ...(stuck.length > 0 ? { blockedReason: `also not installable here — ${describe(stuck)}` } : {}),
     }
   }
@@ -70,7 +70,7 @@ export function createSearchModelsSource(deps: SearchSourceDeps): UpdateSource {
     async observe(_entry, { signal }) {
       const result = await check(signal)
       if (!result) throw new Error('search models are no longer applicable on this installation')
-      return observeSearchModels(result)
+      return observeSearchModels(deps.settings().adapter, result)
     },
   }
 }

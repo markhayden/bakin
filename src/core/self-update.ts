@@ -27,9 +27,9 @@ import { basename } from 'node:path'
 
 import { extractBakinFromTarGz, releaseArchiveNameForTriple } from './release-archive'
 
-const LATEST_RELEASE_API = 'https://api.github.com/repos/markhayden/bakin/releases/latest'
-const RELEASES_API = 'https://api.github.com/repos/markhayden/bakin/releases?per_page=20'
-const GITHUB_HEADERS = { 'User-Agent': 'bakin-self-update', Accept: 'application/vnd.github+json' }
+export const LATEST_RELEASE_API = 'https://api.github.com/repos/markhayden/bakin/releases/latest'
+export const RELEASES_API = 'https://api.github.com/repos/markhayden/bakin/releases?per_page=20'
+export const GITHUB_HEADERS = { 'User-Agent': 'bakin-self-update', Accept: 'application/vnd.github+json' }
 
 export interface GithubAsset {
   name: string
@@ -41,6 +41,8 @@ export interface GithubRelease {
   draft?: boolean
   prerelease?: boolean
   assets: GithubAsset[]
+  /** The release page — the Updates row's notes link. */
+  html_url?: string
 }
 
 export interface SelfUpdateReporter {
@@ -106,7 +108,7 @@ export async function fetchLatestRelease(reporter: Pick<SelfUpdateReporter, 'log
   return release
 }
 
-function normalizeVersion(value: string): string {
+export function normalizeVersion(value: string): string {
   return value.trim().replace(/^v/i, '')
 }
 
@@ -121,7 +123,7 @@ function parseVersion(value: string): { major: number; minor: number; patch: num
   }
 }
 
-function compareVersions(a: string, b: string): number {
+export function compareVersions(a: string, b: string): number {
   const left = parseVersion(a)
   const right = parseVersion(b)
   if (!left || !right) return 0
@@ -135,7 +137,7 @@ function compareVersions(a: string, b: string): number {
   return left.prerelease.localeCompare(right.prerelease)
 }
 
-function selfUpdateSupport(currentVersion: string, execPath: string): { supported: true } | { supported: false; reason: string } {
+export function selfUpdateSupport(currentVersion: string, execPath: string): { supported: true } | { supported: false; reason: string } {
   const executable = basename(execPath)
   if (currentVersion.includes('dev') || executable === 'bun' || executable.startsWith('bun-')) {
     return { supported: false, reason: 'source/dev runtime' }
@@ -186,7 +188,7 @@ export async function getSelfUpdateStatus(options: SelfUpdateStatusOptions): Pro
   }
 }
 
-function currentTriple(platform: string = process.platform, arch: string = process.arch): string | null {
+export function currentTriple(platform: string = process.platform, arch: string = process.arch): string | null {
   const plat = platform
   if (plat === 'darwin' && arch === 'arm64') return 'darwin-arm64'
   if (plat === 'linux' && arch === 'x64') return 'linux-x64'
