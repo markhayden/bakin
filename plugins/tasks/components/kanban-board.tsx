@@ -444,19 +444,20 @@ export function KanbanBoard() {
   // landed (resolving against the empty initial board ate deep links on fresh
   // loads). The drawer shows a SNAPSHOT taken once per id: the detail form
   // re-initializes on task identity, so re-deriving on every board refresh
-  // would reset an in-progress edit.
-  useEffect(() => {
-    if (!taskIdParam || !boardLoaded || detailTask?.task.id === taskIdParam) return
+  // would reset an in-progress edit. Adjusted during render (#966b): the
+  // snapshot lands in the same pass as the id, and a task that only appears
+  // on a later refresh is picked up then.
+  if (taskIdParam && boardLoaded && detailTask?.task.id !== taskIdParam) {
+    let next: { task: Task; columnId: ColumnId } | null = null
     for (const [colId, colTasks] of Object.entries(boardData.columns) as [ColumnId, Task[]][]) {
       const match = colTasks.find(t => t.id === taskIdParam)
-      if (match) {
-        setDetailTask({ task: match, columnId: colId })
-        setEditing(false)
-        return
-      }
+      if (match) { next = { task: match, columnId: colId }; break }
     }
-    setDetailTask(null)
-  }, [taskIdParam, boardLoaded, boardData.columns, detailTask])
+    if ((next?.task.id ?? null) !== (detailTask?.task.id ?? null)) {
+      setDetailTask(next)
+      setEditing(false)
+    }
+  }
   // The URL is the open state; the snapshot only counts while it matches the
   // URL, so Back/Forward never shows a stale task under a new id.
   const drawerTask = detailTask !== null && detailTask.task.id === taskIdParam ? detailTask : null

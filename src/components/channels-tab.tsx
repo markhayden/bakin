@@ -165,9 +165,9 @@ export function ChannelsTab({ highlightKey }: { highlightKey?: string }) {
 
   // A settings/token save flips the bridge to `connecting`; show
   // "reconnecting…" until the SSE-fed snapshot settles.
-  useEffect(() => {
-    if (settlingSince && state && state !== 'connecting') setSettlingSince(null)
-  }, [settlingSince, state])
+  // Adjusted during render (#966b): the settling marker clears in the same
+  // pass the snapshot leaves `connecting`, never a frame later.
+  if (settlingSince && state && state !== 'connecting') setSettlingSince(null)
 
   // `?field=` focuses the owning control (the kit focus ring is the
   // highlight). The owning control may render after the snapshot (settings

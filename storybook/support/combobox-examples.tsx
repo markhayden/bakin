@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import { Stack } from '@makinbakin/sdk/layout'
 import { Button, Combobox, ComboboxChip, ComboboxChipRemove, ComboboxChips, ComboboxClear, ComboboxContent, ComboboxControl, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList, ComboboxStatus, ComboboxTrigger, ComboboxValue, Field, FieldDescription, FieldError, FieldLabel, Spinner } from '@makinbakin/sdk/ui'
 
@@ -48,14 +49,13 @@ async function searchCatalog(query: string, attempt: number): Promise<RuntimeOpt
 export function AsyncSelectionExample() {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<RuntimeOption | null>(runtimeOptions[0])
-  const [items, setItems] = useState<RuntimeOption[]>([])
-  const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
+  // Per search (#966b): a new query or retry starts loading with an empty catalog.
+  const [items, setItems] = useKeyedState<RuntimeOption[]>(`${query}\u0000${attempt}`, () => [])
+  const [phase, setPhase] = useKeyedState<'loading' | 'ready' | 'error'>(`${query}\u0000${attempt}`, () => 'loading')
   const [unavailable, setUnavailable] = useState(false)
   useEffect(() => {
     let current = true
-    setPhase('loading')
-    setItems([])
     void searchCatalog(query, attempt).then(results => {
       if (!current) return
       setItems(results)
@@ -63,7 +63,7 @@ export function AsyncSelectionExample() {
     }, () => { if (current) setPhase('error') })
     // A late result from an old query must not replace the current catalog.
     return () => { current = false }
-  }, [query, attempt])
+  }, [query, attempt, setItems, setPhase])
 
   return <Stack gap="section">
     <Field invalid={unavailable} name="asyncRuntime"><FieldLabel>Remote runtime</FieldLabel>

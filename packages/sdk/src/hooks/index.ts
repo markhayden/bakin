@@ -58,6 +58,8 @@ export { useSSE } from '@/hooks/use-sse'
 export { usePluginEvent, emitPluginEvent, type PluginEventPayload } from '@/hooks/use-plugin-event'
 /** A render-safe clock: the instant at mount, refreshed on an interval (default 60 s). */
 export { useNow } from '@bakin/ui'
+/** useState that resets when a key changes — adjust state on a prop change without an effect. */
+export { useKeyedState } from '@bakin/ui'
 /** Follow one server operation live (rev/boot guards, reconcile, expired vs restarted vs unreachable). */
 export { useOperation } from '@/hooks/use-operation'
 /** Call a converted long-running route and get its `{ operationId, bootId }`. */

@@ -13,6 +13,7 @@ import {
   type Ref,
   type ReactNode,
 } from 'react'
+import { useKeyedState } from '../behaviors/use-keyed-state'
 
 import { usePersistedLeadingEdgeResize } from '../behaviors/use-persisted-leading-edge-resize'
 import { Button } from '../primitives/button'
@@ -210,7 +211,8 @@ export function Composer({
   maxHeight = DEFAULT_MAX_HEIGHT,
   className,
 }: ComposerProps) {
-  const [value, setValue] = useState(() => readDraft(storageKey))
+  // One draft per storage key (#966b): switching conversations swaps the value in the same render.
+  const [value, setValue] = useKeyedState(storageKey, () => readDraft(storageKey))
   const [dropActive, setDropActive] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const composingRef = useRef(false)
@@ -233,7 +235,6 @@ export function Composer({
   })
 
   useEffect(() => {
-    setValue(readDraft(storageKey))
     historyPositionRef.current = null
     if (autoFocus) textareaRef.current?.focus()
   }, [storageKey, autoFocus])
@@ -251,7 +252,7 @@ export function Composer({
   const setDraft = useCallback((next: string) => {
     setValue(next)
     writeStorage(draftKey(storageKey), next)
-  }, [storageKey])
+  }, [storageKey, setValue])
 
   const valueRef = useRef(value)
   valueRef.current = value

@@ -1,4 +1,4 @@
-import { createContext, use, useCallback, useEffect, useState } from 'react'
+import { createContext, use, useCallback, useState } from 'react'
 
 const STORAGE_KEY = 'bakin-activity-log-open'
 
@@ -9,17 +9,17 @@ export const ActivityContext = createContext({ open: false, toggle: () => {}, cl
 export const useActivityContext = () => use(ActivityContext)
 
 export function ActivityProvider({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(DEFAULT_OPEN)
-
-  // Sync from localStorage after hydration to avoid server/client mismatch
-  useEffect(() => {
+  // Seeded from localStorage in the initializer (#966b): the shell is
+  // client-rendered only, so there is no server frame to mismatch with.
+  const [open, setOpen] = useState(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored !== null) {
-        setOpen(stored === 'true')
-      }
-    } catch {}
-  }, [])
+      if (stored !== null) return stored === 'true'
+    } catch {
+      // storage blocked — fall through to the default
+    }
+    return DEFAULT_OPEN
+  })
   const toggle = useCallback(() => setOpen((prev) => {
     const next = !prev
     try { localStorage.setItem(STORAGE_KEY, String(next)) } catch {}

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useCallback, useEffect, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, type CSSProperties, type ReactNode } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { ResizeHandle, usePersistedLeadingEdgeResize } from '../../packages/host/src/ui/resize'
@@ -64,11 +65,8 @@ export function Drawer({
     storageKey: getDrawerWidthStorageKey(storageKey),
     disabled: !open,
   })
-  const [showDirtyConfirm, setShowDirtyConfirm] = useState(false)
-
-  useEffect(() => {
-    if (!open) setShowDirtyConfirm(false)
-  }, [open])
+  // Per opening (#966b): closing the drawer drops a pending dirty prompt with it.
+  const [showDirtyConfirm, setShowDirtyConfirm] = useKeyedState(open, () => false)
 
   const requestClose = useCallback(() => {
     if (busy) return
@@ -77,12 +75,12 @@ export function Drawer({
     } else {
       onOpenChange(false)
     }
-  }, [busy, dirty, onOpenChange])
+  }, [busy, dirty, onOpenChange, setShowDirtyConfirm])
 
   const confirmDiscard = useCallback(() => {
     setShowDirtyConfirm(false)
     onOpenChange(false)
-  }, [onOpenChange])
+  }, [onOpenChange, setShowDirtyConfirm])
 
   return (
     <>

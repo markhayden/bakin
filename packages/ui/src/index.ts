@@ -9,6 +9,7 @@ export type { PrivateUiBoundaryProbeProps } from './private-ui-boundary-probe'
 
 export { copyToClipboard } from './behaviors/clipboard'
 export { useNow } from './behaviors/use-now'
+export { useKeyedState } from './behaviors/use-keyed-state'
 
 export { PageShell } from './layout/page-shell'
 export type { PageShellGap, PageShellPadding, PageShellProps, PageShellWidth } from './layout/page-shell'

@@ -13,7 +13,8 @@ import {
   type NodeChange,
   type NodeProps,
 } from '@xyflow/react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 
 import '@xyflow/react/dist/style.css'
 
@@ -153,22 +154,18 @@ export function WorkflowStoryWorkspace({
 }: {
   orientation: PageCanvasOrientation
 }) {
-  const [nodes, setNodes] = useState<StoryNode[]>(() => createNodes(orientation))
-  const [selectedId, setSelectedId] = useState<WorkflowNodeId | null>('assemble')
-
-  useEffect(() => {
-    setNodes(createNodes(orientation))
-    setSelectedId('assemble')
-  }, [orientation])
+  // Per orientation (#966b): a new layout starts from its own nodes and selection.
+  const [nodes, setNodes] = useKeyedState<StoryNode[]>(orientation, () => createNodes(orientation))
+  const [selectedId, setSelectedId] = useKeyedState<WorkflowNodeId | null>(orientation, () => 'assemble')
 
   const selectNode = useCallback((id: WorkflowNodeId | null) => {
     setSelectedId(id)
     setNodes((current) => current.map((node) => ({ ...node, selected: node.id === id })))
-  }, [])
+  }, [setNodes, setSelectedId])
 
   const onNodesChange = useCallback((changes: NodeChange<StoryNode>[]) => {
     setNodes((current) => applyNodeChanges(changes, current))
-  }, [])
+  }, [setNodes])
 
   const moveSelected = useCallback((delta: -1 | 1) => {
     if (!selectedId) return
@@ -184,7 +181,7 @@ export function WorkflowStoryWorkspace({
           }
         : node
     )))
-  }, [orientation, selectedId])
+  }, [orientation, selectedId, setNodes])
 
   const selectedNode = nodes.find((node) => node.id === selectedId)
   const axis = orientation === 'vertical' ? 'y' : 'x'

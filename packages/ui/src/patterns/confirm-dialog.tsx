@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useKeyedState } from '../behaviors/use-keyed-state'
 
 import { Button } from '../primitives/button'
 import {
@@ -80,11 +81,8 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const inputId = React.useId()
-  const [typed, setTyped] = React.useState('')
-
-  React.useEffect(() => {
-    setTyped('')
-  }, [open, confirmValue])
+  // The typed confirmation belongs to one opening of one prompt (#966b).
+  const [typed, setTyped] = useKeyedState(`${open}\u0000${confirmValue ?? ''}`, () => '')
 
   const confirmBlocked = confirmValue !== undefined && typed !== confirmValue
 

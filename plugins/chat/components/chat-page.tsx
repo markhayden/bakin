@@ -13,10 +13,10 @@
  * Keyboard shortcuts (page-scoped): ⌘⇧O new chat (launcher), ⌥↑/⌥↓
  * previous/next chat, ⇧Esc focus the composer.
  */
-import { useRef, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { useRef, Suspense, useCallback, useEffect, useMemo } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { writeComposerDraft, type ComposerHandle } from '@makinbakin/sdk/conversation'
-import { toast, usePluginEvent } from '@makinbakin/sdk/hooks'
+import { toast, usePluginEvent, useKeyedState } from '@makinbakin/sdk/hooks'
 import { useQueryState, useRouter } from '@makinbakin/sdk/navigation'
 import {
   PageBody,
@@ -113,10 +113,7 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
   )
 
   // Live in-flight indicators: seed from the list, keep fresh via events.
-  const [streamingIds, setStreamingIds] = useState<ReadonlySet<string>>(() => new Set())
-  useEffect(() => {
-    setStreamingIds(new Set(chats.filter((c) => c.streaming).map((c) => c.id)))
-  }, [chats])
+  const [streamingIds, setStreamingIds] = useKeyedState<ReadonlySet<string>>(chats, () => new Set(chats.filter((c) => c.streaming).map((c) => c.id)))
   usePluginEvent('chat.chunk', (payload) => {
     const id = payload.chatId as string
     setStreamingIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)))
@@ -128,7 +125,7 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
       next.delete(id)
       return next
     })
-  }, [])
+  }, [setStreamingIds])
   usePluginEvent('chat.done', (payload) => clearStreaming(payload.chatId as string))
   usePluginEvent('chat.error', (payload) => clearStreaming(payload.chatId as string))
 
