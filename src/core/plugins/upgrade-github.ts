@@ -54,6 +54,21 @@ export function githubCloneUrl(source: string): string {
  * it and compute the manifestSha from the bytes. Identical to what
  * `readManifest` would compute after a checkout.
  */
+/**
+ * A reviewed commit that carries gitlinks (submodules) is refused (review
+ * r10 #1): the lane resets and cleans the superproject only, so an
+ * initialized submodule copied from the previous install could keep an old
+ * commit or a local edit the build then consumes under the reviewed sha.
+ * Submodules are unsupported until they are materialized and verified.
+ */
+function assertNoGitlinks(id: string, pluginDir: string, sha: string): void {
+  const tree = git(['ls-tree', '-r', '--', sha], pluginDir)
+  const gitlinks = tree.split('\n').filter((line) => line.startsWith('160000 ')).map((line) => line.split('\t')[1] ?? line)
+  if (gitlinks.length > 0) {
+    throw new UpgradeRefusedError(`${id}: ${sha.slice(0, 7)} contains git submodules (${gitlinks.slice(0, 3).join(', ')}${gitlinks.length > 3 ? ', …' : ''}), which the in-place upgrade cannot verify. Vendor them into the tree or reinstall.`)
+  }
+}
+
 /** The manifest at an exact commit — the fetched ref's peeled sha, never a remote-tracking name a tag or a qualified ref has no counterpart for. */
 function readRemoteManifest(pluginDir: string, sha: string, ref: string): { manifest: Record<string, unknown>; manifestSha: string } {
   const raw = git(['show', `${sha}:bakin-plugin.json`], pluginDir)
@@ -107,6 +122,7 @@ export async function upgradeGithub(
 
   const remoteSha = git(['rev-parse', 'FETCH_HEAD^{commit}'], pluginDir).toLowerCase()
   const localSha = git(['rev-parse', 'HEAD'], pluginDir).toLowerCase()
+  assertNoGitlinks(id, pluginDir, remoteSha)
 
   // True noop — local HEAD already matches remote AND lockfile commitSha
   // is in sync. Nothing on disk or in the lockfile needs to change.

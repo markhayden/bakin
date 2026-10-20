@@ -314,6 +314,25 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     expect(headSha(pluginDir)).toBe(manifestOnly)
   })
 
+  it('in-place lane (review r10 #1): a reviewed commit that carries a submodule is refused — the lane cannot vouch for a gitlink\'s contents', async () => {
+    const env = { GIT_AUTHOR_NAME: 'Bakin Test', GIT_AUTHOR_EMAIL: 'test@bakin.local', GIT_COMMITTER_NAME: 'Bakin Test', GIT_COMMITTER_EMAIL: 'test@bakin.local' }
+    const vendor = createBareRepo(testDir, 'submodule-vendor', { 'lib.ts': 'export const vendored = true' })
+    const repo = createBareRepo(testDir, 'submodule-host', fixturePluginFiles({ id: 'subhost', version: '1.0.0' }))
+    cloneRepoIntoPluginsDir({ pluginId: 'subhost', cloneUrl: repo.cloneUrl })
+    const pluginDir = join(testDir, 'plugins', 'subhost')
+    const installedSha = headSha(pluginDir)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'subhost', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'main', commitSha: installedSha, version: '1.0.0' })))
+    // Upstream adds a submodule (and bumps the manifest).
+    runGit(['-c', 'protocol.file.allow=always', 'submodule', 'add', '--', vendor.bareRepoPath, 'vendor'], repo.workingClonePath, env)
+    const withSubmodule = pushCommit(repo.workingClonePath, fixturePluginFiles({ id: 'subhost', version: '1.1.0' }), 'add vendor submodule')
+    await expect(upgradePlugin('subhost', { expected: { sha: withSubmodule } })).rejects.toThrow(/contains git submodules \(vendor\)/)
+    // Refused before the transaction: the working tree is untouched (the fetch only added objects under .git), HEAD and the ledger stay put.
+    expect(headSha(pluginDir)).toBe(installedSha)
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: pluginDir, encoding: 'utf-8' }).trim()).toBe('')
+    expect(existsSync(join(pluginDir, 'vendor'))).toBe(false)
+    expect(readPluginLockfile().plugins['subhost']?.commitSha).toBe(installedSha)
+  })
+
   it('refuses to upgrade when remote history was rewritten (force-push)', async () => {
     const repo = createBareRepo(testDir, 'rewind-fixture', fixturePluginFiles({ id: 'rewind', version: '1.0.0' }))
     cloneRepoIntoPluginsDir({ pluginId: 'rewind', cloneUrl: repo.cloneUrl })

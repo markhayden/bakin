@@ -100,14 +100,15 @@ function hashFile(path: string): string {
  * of the same source (deliberate design decision; see
  * .claude/knowledge/plugin-lifecycle.md).
  */
-export function computeSourceTreeSha(rootDir: string): string {
+export function computeSourceTreeSha(rootDir: string, options: { omitRootEntries?: ReadonlySet<string> } = {}): string {
   const policy = localTransferPolicy(rootDir)
+  const omit = options.omitRootEntries ?? new Set<string>()
   const lines: string[] = []
   const walk = (current: string): void => {
     for (const entry of readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const full = join(current, entry.name)
       const rel = relative(rootDir, full).split(sep).join('/')
-      if (!policy.transfers(rel)) continue
+      if (!policy.transfers(rel) || (current === rootDir && omit.has(entry.name))) continue
       if (entry.isDirectory()) walk(full)
       else if (entry.isFile()) lines.push(`${rel}\n${hashFile(full)}`)
     }
@@ -207,19 +208,28 @@ export function compareStoredSourceTreeSha(
   if (entry.sourceTreeShaAlgo === SOURCE_TREE_SHA_ALGO) {
     return { liveSha, changed: liveSha !== entry.sourceTreeSha, needsAlgoMigration: false }
   }
-  // Legacy row. A match under the lockfile hasher can only mean the stored
-  // value already came from it (fixtures written without the algo field) —
-  // unchanged, stamp the algo.
-  if (liveSha === entry.sourceTreeSha) {
-    return { liveSha, changed: false, needsAlgoMigration: true }
-  }
-  // Algo 2 rows hold the Whiskit formula; older ones the pre-consolidation formula.
-  const legacyLiveSha = entry.sourceTreeShaAlgo === 2 ? hashSourceTree(sourcePath) : legacySourceTreeSha(sourcePath)
-  if (legacyLiveSha !== entry.sourceTreeSha) {
+  // Legacy row: is the source unchanged under the formula that WROTE the
+  // row? Algo 2 rows hold the Whiskit formula; rows without the field hold
+  // the pre-consolidation formula — or the lockfile formula itself, for
+  // fixtures written before the field existed. (The two current formulas
+  // coincide on a tree without dot entries or nested dist, so a bare match
+  // under the lockfile hasher never short-circuits the installed baseline.)
+  const unchangedUnderOwnFormula = entry.sourceTreeShaAlgo === 2
+    ? hashSourceTree(sourcePath) === entry.sourceTreeSha
+    : liveSha === entry.sourceTreeSha || legacySourceTreeSha(sourcePath) === entry.sourceTreeSha
+  if (!unchangedUnderOwnFormula) {
     return { liveSha, changed: true, needsAlgoMigration: false }
   }
-  // Unchanged as far as the old formula could see: the installed tree is the only honest baseline for what it could not.
-  const installedSha = existsSync(installedDir) ? computeSourceTreeSha(installedDir) : null
+  // Unchanged as far as the old formula could see: the installed tree is the
+  // only honest baseline for what it could not. A dependency lockfile the
+  // INSTALLER generated (`bun install` writes one when the source ships
+  // none) is the build's, not the source's — omitted from the baseline
+  // (review r10 #2); a lockfile the source ships is compared like any file.
+  const installerGenerated = new Set(BUN_LOCKFILES.filter((name) => !existsSync(join(sourcePath, name)) && existsSync(join(installedDir, name))))
+  const installedSha = existsSync(installedDir) ? computeSourceTreeSha(installedDir, { omitRootEntries: installerGenerated }) : null
   const changed = installedSha === null || liveSha !== installedSha
   return { liveSha, changed, needsAlgoMigration: !changed }
 }
+
+/** The lockfiles `bun install --ignore-scripts` may create inside an installed plugin. */
+const BUN_LOCKFILES = ['bun.lock', 'bun.lockb'] as const

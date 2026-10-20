@@ -188,6 +188,27 @@ describe('computeSourceTreeSha — the lockfile hasher (algo 3)', () => {
     expect(compareStoredSourceTreeSha({ sourceTreeSha: stored, sourceTreeShaAlgo: 2 }, dir, join(testDir, 'nowhere')).changed).toBe(true)
   })
 
+  it('review r10 #2: an unchanged legacy source with declared dependencies migrates even though the installed copy carries the installer-generated bun.lock, dist and node_modules', () => {
+    const dir = join(testDir, 'algo2-built')
+    writeFixturePlugin(dir, { id: 'algo2-built', version: '1.0.0' })
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'algo2-built', version: '1.0.0', dependencies: { lodash: '^4' } }), 'utf-8')
+    const stored = hashSourceTree(dir)
+    const installed = installedOf(dir)
+    cpSync(dir, installed, { recursive: true })
+    // What the build left behind: the lockfile it wrote, its output, its dependencies.
+    writeFileSync(join(installed, 'bun.lock'), '{"lockfileVersion":1}', 'utf-8')
+    mkdirSync(join(installed, 'dist'), { recursive: true })
+    writeFileSync(join(installed, 'dist', 'index.js'), 'built', 'utf-8')
+    mkdirSync(join(installed, 'node_modules', 'lodash'), { recursive: true })
+    writeFileSync(join(installed, 'node_modules', 'lodash', 'index.js'), 'module.exports = {}', 'utf-8')
+    const cmp = compareStoredSourceTreeSha({ sourceTreeSha: stored, sourceTreeShaAlgo: 2 }, dir, installed)
+    expect(cmp.changed).toBe(false)
+    expect(cmp.needsAlgoMigration).toBe(true)
+    // A lockfile the SOURCE ships is compared like any other file.
+    writeFileSync(join(dir, 'bun.lock'), '{"lockfileVersion":1,"changed":true}', 'utf-8')
+    expect(compareStoredSourceTreeSha({ sourceTreeSha: hashSourceTree(dir), sourceTreeShaAlgo: 2 }, dir, installed).changed).toBe(true)
+  })
+
   it('review r9 #3: root node_modules is vendored (transferred + hashed) when the package declares no dependencies, regenerated (skipped) when it does', () => {
     const vendored = join(testDir, 'vendored')
     writeFixturePlugin(vendored, { id: 'vendored', version: '1.0.0' })

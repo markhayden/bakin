@@ -156,7 +156,9 @@ none; `origin/refs/heads/x` is nothing), and places the reviewed commit
 EXACTLY: the copied clone is `reset --hard` to it and `clean -ffdx` (the
 install sentinel excepted; the second `-f` removes vendored nested
 repositories too), so a hand-edited tracked file or an untracked leftover
-never survives into the install the sha vouches for. Within a
+never survives into the install the sha vouches for; a reviewed commit that
+carries gitlinks (submodules) is refused outright — the lane resets the
+superproject only and cannot vouch for a submodule's contents. Within a
 pass two attempts for one subject never overlap (`Pass.active`): a repeat
 asked for while the first is in flight waits for it, so the engine's
 one-token-per-subject rule never discards a result that already landed.
@@ -247,7 +249,9 @@ ONE apply service (`src/core/updates/apply.ts`) behind `GET
    snapshot is refused outright (`symlinksIn`) — the hasher ignores links,
    so no digest could vouch for what one points at; a legacy lockfile row
    migrates to the new digest only against the INSTALLED tree — a change
-   the old formula could not see is an upgrade, not a baseline) — refusing
+   the old formula could not see is an upgrade, not a baseline; a Bun
+   lockfile the installer generated is omitted from that baseline, one the
+   source ships is compared) — refusing
    a ref that moved, a
    republished artifact or a moved tree even under an unchanged manifest (and
    so a still-valid consent token). A reviewed field the lane cannot report
