@@ -392,3 +392,16 @@ describe('review round 5 — attempts, the deadline branch and stop', () => {
     expect(plugins.calls).toEqual([])
   })
 })
+
+describe('review round 6 — duplicate ids', () => {
+  it('a repeated id is ONE attempt: one observation, one result, never two workers superseding each other (#4)', async () => {
+    const plugins = scripted('plugin', ['a', 'b'])
+    const { engine, timer } = harness([plugins.source], { firstTickMs: 100_000 })
+    await engine.ready
+    const run = await timer.check({ ids: ['plugin:a', 'plugin:a'] })
+    expect(run.ids).toEqual(['plugin:a'])
+    expect(plugins.calls).toEqual(['a'])
+    expect(plugins.maxInFlight()).toBe(1)
+    expect((await engine.snapshot()).records.find((r) => r.id === 'plugin:a')?.outcome).toBe('current')
+  })
+})

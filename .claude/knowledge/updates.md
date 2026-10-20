@@ -140,11 +140,16 @@ pass or releases its ownership under a worker still observing. Inventory
 refreshes are serialized INSIDE the engine (`refreshInventory` chains), so
 the timer's admissions and the service's plugin/settings events never
 enumerate at once and a slow enumeration started under old facts can never
-reconcile after a newer one. The git-ref plugin source resolves the EXACT
-ref from `ls-remote` (`pickLsRemoteSha`): a branch first, then a tag, and
-an annotated tag's PEELED commit — what the clone's `HEAD` is and what the
-lanes hold the identity to — never the tag object (an unchanged annotated
-tag is `current`, a moved one a real offer).
+reconcile after a newer one. A repeated id in one request is ONE attempt.
+The git-ref plugin source asks `ls-remote` for `<ref>` AND `<ref>^{}` (git
+filters the peeled row against the patterns too) and resolves ONLY an
+exact candidate (`pickLsRemoteSha`): for a bare name the branch first,
+then the tag; for a `refs/...` name that ref — and for an annotated tag
+the PEELED commit, what the clone's `HEAD` is and what the lanes hold the
+identity to, never the tag object (an unchanged annotated tag is
+`current`, a moved one a real offer). A suffix match, a remote-tracking
+row or "the first row" is never an answer: a tracked ref that is gone
+yields null and the subject is `blocked`.
 
 **One attempt, one result.** On the deadline the signal fires; a cooperative
 observer settles through the engine and records the deadline as its ONE
@@ -208,10 +213,13 @@ ONE apply service (`src/core/updates/apply.ts`) behind `GET
    ref resolves to (`{ version, sha }`), the artifact lane the published
    tarball's sha256 (`{ version, digest }`), the local lane the digest of a
    private SNAPSHOT of the source (`{ version, digest }` — the source is a
-   live directory someone may be editing, so the lane copies it into
-   `.upgrade-staging-*` first and reads, verifies, records and installs
-   exclusively from that snapshot: the digest the identity names is the
-   digest of the bytes that land) — refusing a ref that moved, a
+   live directory someone may be editing, so the lane resolves a symlinked
+   root, copies it into `.upgrade-staging-*` and reads, verifies, records
+   and installs exclusively from that snapshot: the digest the identity
+   names is the digest of the bytes that land; a symlink INSIDE the tree is
+   refused outright — the hasher ignores links, so no digest could vouch for
+   what one points at — `runtimeSymlinksIn`, same skip set as the hasher) —
+   refusing a ref that moved, a
    republished artifact or a moved tree even under an unchanged manifest (and
    so a still-valid consent token). A reviewed field the lane cannot report
    is itself a refusal: a lane that cannot prove the identity never installs

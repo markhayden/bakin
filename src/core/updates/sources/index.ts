@@ -30,7 +30,9 @@ import { createSearchModelsSource } from './search-models'
  * `gitArgs`; an abort kills the child and the promise settles on exit.
  */
 export async function lsRemoteSha(url: string, ref: string, signal: AbortSignal): Promise<string | null> {
-  const proc = Bun.spawn(['git', ...gitArgs(['ls-remote', '--', url, ref])], { cwd: getContentDir(), stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+  // git filters every output row against the patterns, the peeled `^{}` row
+  // included — ask for both, or an annotated tag only ever shows its tag object.
+  const proc = Bun.spawn(['git', ...gitArgs(['ls-remote', '--', url, ref, `${ref}^{}`])], { cwd: getContentDir(), stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
   const onAbort = (): void => { try { proc.kill() } catch { /* already gone */ } }
   if (signal.aborted) onAbort()
   else signal.addEventListener('abort', onAbort, { once: true })
@@ -46,10 +48,13 @@ export async function lsRemoteSha(url: string, ref: string, signal: AbortSignal)
 
 /**
  * The commit `git clone --branch <ref>` would check out, from `ls-remote`
- * output (review r5 #3): the EXACT ref — a branch first (clone prefers it),
- * then a tag — and for an annotated tag the PEELED commit (`<tag>^{}`),
- * never the tag object, which is what the lanes compare against `HEAD`.
- * A pattern match on a suffix would pick the first of several refs.
+ * output (review r5 #3, r6 #3): ONLY an exact candidate — for a bare name
+ * the branch first (clone prefers it), then the tag; for a fully qualified
+ * `refs/...` name that ref itself — and for an annotated tag the PEELED
+ * commit (`<tag>^{}`), never the tag object, which is what the lanes compare
+ * against `HEAD`. A suffix match (`feature/main` for `main`), a
+ * remote-tracking row or "the first row" is never an answer: when the
+ * tracked ref is gone the result is null and the subject is blocked.
  */
 export function pickLsRemoteSha(stdout: string, ref: string): string | null {
   const rows = stdout.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
@@ -57,14 +62,14 @@ export function pickLsRemoteSha(stdout: string, ref: string): string | null {
     return { sha: (sha ?? '').toLowerCase(), name: name ?? '' }
   }).filter((row) => /^[0-9a-f]{40}$/.test(row.sha))
   const exact = (name: string) => rows.find((row) => row.name === name)
-  const pick = exact(`refs/heads/${ref}`)
-    ?? exact(`refs/tags/${ref}^{}`)
-    ?? exact(`refs/tags/${ref}`)
-    ?? exact(`${ref}^{}`)
-    ?? exact(ref)
-    ?? rows.find((row) => row.name.endsWith(`/${ref}^{}`))
-    ?? rows[0]
-  return pick?.sha ?? null
+  const candidates = ref.startsWith('refs/')
+    ? [`${ref}^{}`, ref]
+    : [`refs/heads/${ref}`, `refs/tags/${ref}^{}`, `refs/tags/${ref}`]
+  for (const name of candidates) {
+    const row = exact(name)
+    if (row) return row.sha
+  }
+  return null
 }
 
 function userPluginLockEntries(): Record<string, PluginLockEntry> {

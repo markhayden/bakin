@@ -232,7 +232,8 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
       if (request.kind) ids = ids.filter((id) => id.startsWith(`${request.kind}:`))
       if (request.ids) {
         for (const id of request.ids) if (!known.has(id)) throw new UpdateSubjectNotFoundError(id)
-        ids = request.ids
+        // One attempt per subject: a repeated id must not occupy two workers (the second would supersede the first).
+        ids = [...new Set(request.ids)]
       }
       if (pass) {
         // Join the running pass. A broad request takes whatever the pass

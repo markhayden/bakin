@@ -15,9 +15,10 @@
  * legacy one survives here ONLY to migrate stored values.
  */
 import { readFileSync, readdirSync, statSync } from 'fs'
-import { join, relative } from 'path'
+import { join, relative, sep } from 'path'
 import { createHash } from 'crypto'
 import type { PluginLockEntry } from '@bakin/core/plugins/lockfile'
+import { NON_RUNTIME_DIRS } from '@/core/whiskit/import-scan'
 import { hashSourceTree } from '@/core/whiskit/source-hash'
 
 /**
@@ -36,6 +37,28 @@ export const SOURCE_TREE_SHA_ALGO = 2
  */
 export function computeSourceTreeSha(rootDir: string): string {
   return hashSourceTree(rootDir)
+}
+
+/**
+ * The runtime symlinks a source tree carries, as `/`-joined paths relative
+ * to `rootDir` — walking exactly what the canonical hasher walks (the same
+ * skip set: `NON_RUNTIME_DIRS` + dotfiles). The hasher IGNORES symlinks, so a
+ * digest can never vouch for what a link points at; a local upgrade refuses
+ * a snapshot that carries one instead of installing bytes nobody reviewed
+ * (#1007 review r6 #1).
+ */
+export function runtimeSymlinksIn(rootDir: string): string[] {
+  const found: string[] = []
+  const walk = (current: string): void => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      if (NON_RUNTIME_DIRS.has(entry.name) || entry.name.startsWith('.')) continue
+      const full = join(current, entry.name)
+      if (entry.isSymbolicLink()) found.push(relative(rootDir, full).split(sep).join('/'))
+      else if (entry.isDirectory()) walk(full)
+    }
+  }
+  walk(rootDir)
+  return found.sort()
 }
 
 /**

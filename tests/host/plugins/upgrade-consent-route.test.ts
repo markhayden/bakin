@@ -5,7 +5,7 @@
  * a fresh token and mutates nothing; tokens are bound to the plugin.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, cpSync } from 'fs'
+import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, cpSync, lstatSync, symlinkSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -24,9 +24,20 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }) }))
 mock.module('../../../src/core/plugin-registry', () => ({ isCorePlugin: () => false }))
-/** The build step runs INSIDE the install: a hook here is "the source moved while the upgrade ran". */
-const builder = { onBuild: null as null | (() => void) }
-mock.module('../../../packages/host/src/plugin-host/user-plugin-builder', () => ({ buildUserPlugin: async () => { builder.onBuild?.() } }))
+mock.module('../../../packages/host/src/plugin-host/user-plugin-builder', () => ({ buildUserPlugin: async () => {} }))
+/**
+ * The consent gate runs AFTER the identity is verified and BEFORE the replace
+ * transaction places anything: a hook there is "the source moved between the
+ * review and the placement" — the race review r5 #1 closed (captured before
+ * the mock so the pass-through never recurses).
+ */
+import * as realGate from '../../../src/core/plugins/upgrade-gate'
+const realGateUpgradeConsent = realGate.gateUpgradeConsent
+const gateHook = { beforeGate: null as null | (() => void) }
+mock.module('../../../src/core/plugins/upgrade-gate', () => ({
+  ...realGate,
+  gateUpgradeConsent: (args: Parameters<typeof realGateUpgradeConsent>[0]) => { gateHook.beforeGate?.(); return realGateUpgradeConsent(args) },
+}))
 mock.module('../../../src/core/plugins/live-lifecycle', () => ({
   activateUserPluginDir: async () => ({ runtimeVersion: 1 }),
   isLiveActivationUnavailable: () => false,
@@ -88,22 +99,49 @@ describe('POST /api/plugins/upgrade — the reviewed identity (review r4 #1, #3)
     expect(installedVersion()).toBe('1.1.0')
   })
 
-  it('local lane (review r5 #1): the install is the reviewed SNAPSHOT — the ledger digest and the installed tree are the reviewed digest even when the source moves while the upgrade runs', async () => {
+  it('local lane (review r5 #1): the install is the reviewed SNAPSHOT — the ledger digest and the installed tree are the reviewed digest even when the source moves between the verification and the placement', async () => {
     writeSource('1.1.0', [])
     const reviewed = computeSourceTreeSha(source)
     const preview = await post({ pluginId: ID, expected: { digest: reviewed } })
-    builder.onBuild = () => { writeFileSync(join(source, 'index.ts'), `export default { id: '${ID}', activate() { /* moved mid-install */ } }`) }
+    gateHook.beforeGate = () => { writeFileSync(join(source, 'index.ts'), `export default { id: '${ID}', activate() { /* moved after the review */ } }`) }
     try {
       const committed = await post({ pluginId: ID, accepted: true, consentToken: preview.body.consentToken, expected: { digest: reviewed } })
       expect(committed.body.ok).toBe(true)
       expect(committed.body.identity).toEqual({ version: '1.1.0', digest: reviewed })
     } finally {
-      builder.onBuild = null
+      gateHook.beforeGate = null
     }
     expect(readPluginLockfile().plugins[ID]?.sourceTreeSha).toBe(reviewed)
     expect(computeSourceTreeSha(pluginDir)).toBe(reviewed)
     expect(computeSourceTreeSha(source)).not.toBe(reviewed)
     // No staging snapshot left behind.
+    expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
+  })
+
+  it('local lane (review r6 #1): a symlinked source ROOT is resolved and installs as a real tree; a symlink INSIDE the source is refused — the digest cannot vouch for it', async () => {
+    // Root symlink: the lock entry keeps pointing at the link, the snapshot is the real directory.
+    const real = join(testDir, 'real-source')
+    rmSync(source, { recursive: true, force: true })
+    mkdirSync(real, { recursive: true })
+    writeFileSync(join(real, 'bakin-plugin.json'), JSON.stringify({ id: ID, name: ID, version: '1.1.0', bakin: '*', description: 'route fixture', permissions: [] }))
+    writeFileSync(join(real, 'index.ts'), `export default { id: '${ID}', activate() {} }`)
+    symlinkSync(real, source)
+    const reviewed = computeSourceTreeSha(source)
+    const preview = await post({ pluginId: ID, expected: { digest: reviewed } })
+    const committed = await post({ pluginId: ID, accepted: true, consentToken: preview.body.consentToken, expected: { digest: reviewed } })
+    expect(committed.body.ok).toBe(true)
+    expect(installedVersion()).toBe('1.1.0')
+    expect(lstatSync(pluginDir).isSymbolicLink()).toBe(false)
+    expect(computeSourceTreeSha(pluginDir)).toBe(reviewed)
+
+    // Nested symlink: refused before anything is placed.
+    writeFileSync(join(testDir, 'elsewhere.ts'), 'export const live = true')
+    symlinkSync(join(testDir, 'elsewhere.ts'), join(real, 'linked.ts'))
+    writeFileSync(join(real, 'bakin-plugin.json'), JSON.stringify({ id: ID, name: ID, version: '1.2.0', bakin: '*', description: 'route fixture', permissions: [] }))
+    const refused = await post({ pluginId: ID })
+    expect(refused.status).toBe(400)
+    expect(String(refused.body.error)).toMatch(/symlinked entries \(linked\.ts\)/)
+    expect(installedVersion()).toBe('1.1.0')
     expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
   })
 
