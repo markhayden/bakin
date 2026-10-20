@@ -1,7 +1,7 @@
 'use client'
 
 import { cva } from 'class-variance-authority'
-import { createContext, useContext, type ComponentProps } from 'react'
+import { createContext, use, type ComponentProps } from 'react'
 
 import { cn, mergeClassName } from '../utils'
 import { Button } from './button'
@@ -146,7 +146,7 @@ export function InputGroupText({ className, ...props }: InputGroupTextProps) {
 export type InputGroupInputProps = Omit<InputProps, 'size' | 'variant'>
 
 export function InputGroupInput({ className, ...props }: InputGroupInputProps) {
-  const size = useContext(InputGroupAppearance)
+  const size = use(InputGroupAppearance)
   return (
     <Input
       data-slot="input-group-control"
@@ -165,7 +165,7 @@ type WithoutAppearance<T> = T extends unknown ? Omit<T, 'size' | 'variant'> : ne
 export type InputGroupTextareaProps = WithoutAppearance<TextareaProps>
 
 export function InputGroupTextarea({ className, ...props }: InputGroupTextareaProps) {
-  const size = useContext(InputGroupAppearance)
+  const size = use(InputGroupAppearance)
   return (
     <Textarea
       data-slot="input-group-control"

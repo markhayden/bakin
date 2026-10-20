@@ -1,7 +1,7 @@
 'use client'
 
 import { Combobox as ComboboxPrimitive } from '@base-ui/react/combobox'
-import { createContext, useContext } from 'react'
+import { createContext, use } from 'react'
 import { cn, mergeClassName } from '../utils'
 import { controlGroupFocus, controlStyles, type ControlSize, type ControlVariant } from './control-styles'
 import { inputClasses } from './input'
@@ -33,7 +33,7 @@ export function ComboboxControl({ size = 'md', variant = 'outlined', width = 'fu
 
 export type ComboboxInputProps = Omit<ComboboxPrimitive.Input.Props, 'size'> & { htmlSize?: number }
 export function ComboboxInput({ className, htmlSize, ...props }: ComboboxInputProps) {
-  const size = useContext(Appearance)
+  const size = use(Appearance)
   return <ComboboxPrimitive.Input data-slot="combobox-input" size={htmlSize}
     className={mergeClassName(cn(controlStyles({ size }), inputClasses,
       'w-0 min-w-bakin-8 flex-1 border-0 bg-transparent shadow-none focus-visible:outline-none disabled:opacity-100',

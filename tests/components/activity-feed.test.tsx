@@ -31,9 +31,9 @@ import { ActivityFeed } from '@/components/tasks/activity-feed'
 describe('ActivityFeed typography', () => {
   it('renders Live Activity body text with the existing compact Text meta size', () => {
     render(
-      <ActivityContext.Provider value={{ open: true, toggle: mock(), close: mock() }}>
+      <ActivityContext value={{ open: true, toggle: mock(), close: mock() }}>
         <ActivityFeed />
-      </ActivityContext.Provider>,
+      </ActivityContext>,
     )
 
     const body = screen.getByText('This body copy should render at the compact metadata size.')

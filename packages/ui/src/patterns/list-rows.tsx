@@ -1,4 +1,4 @@
-import { createContext, forwardRef, useContext, useId } from 'react'
+import { createContext, forwardRef, use, useId } from 'react'
 import type { CSSProperties, ComponentPropsWithoutRef, ReactNode } from 'react'
 
 import { cn } from '../utils'
@@ -140,15 +140,15 @@ export function ListRows({
   style,
   ...props
 }: ListRowsProps) {
-  const groupLabelId = useContext(ListRowGroupLabelContext)
+  const groupLabelId = use(ListRowGroupLabelContext)
   const hasOwnLabel =
     props['aria-label'] !== undefined || props['aria-labelledby'] !== undefined
   const columnsState: ListRowsColumnsState | null = columns
     ? { at: columnsAt, align: columnsAlign }
     : null
   return (
-    <ListRowsColumnsContext.Provider value={columnsState}>
-      <ListRowsSizeContext.Provider value={size}>
+    <ListRowsColumnsContext value={columnsState}>
+      <ListRowsSizeContext value={size}>
       <ul
         aria-labelledby={hasOwnLabel ? undefined : groupLabelId}
         {...props}
@@ -168,8 +168,8 @@ export function ListRows({
           className,
         )}
       />
-      </ListRowsSizeContext.Provider>
-    </ListRowsColumnsContext.Provider>
+      </ListRowsSizeContext>
+    </ListRowsColumnsContext>
   )
 }
 
@@ -189,8 +189,8 @@ export const ListRow = forwardRef<HTMLLIElement, ListRowProps>(function ListRow(
   { className, interactive, selected = false, children, ...props },
   ref,
 ) {
-  const columns = useContext(ListRowsColumnsContext)
-  const size = useContext(ListRowsSizeContext)
+  const columns = use(ListRowsColumnsContext)
+  const size = use(ListRowsSizeContext)
   return (
     <li
       ref={ref}
@@ -258,7 +258,7 @@ export type ListRowLabelsProps = ComponentPropsWithoutRef<'li'>
  */
 export const ListRowLabels = forwardRef<HTMLLIElement, ListRowLabelsProps>(
   function ListRowLabels({ className, ...props }, ref) {
-    const columns = useContext(ListRowsColumnsContext)
+    const columns = use(ListRowsColumnsContext)
     return (
       <li
         ref={ref}
@@ -355,9 +355,9 @@ export function ListRowGroup({
       >
         {label}
       </Label>
-      <ListRowGroupLabelContext.Provider value={labelId}>
+      <ListRowGroupLabelContext value={labelId}>
         {children}
-      </ListRowGroupLabelContext.Provider>
+      </ListRowGroupLabelContext>
     </div>
   )
 }

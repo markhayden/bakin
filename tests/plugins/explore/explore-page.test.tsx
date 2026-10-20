@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, use, type ReactNode } from 'react'
 
 // Pure client-component test — the isolation mocks are belt-and-braces per
 // the repo's test rules.
@@ -79,15 +79,15 @@ const TabsMockContext = createContext<{ onValueChange?: (value: unknown) => void
 mock.module('@makinbakin/sdk/ui', () => ({
   Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   Tabs: ({ children, onValueChange }: { children: ReactNode; value?: string; onValueChange?: (value: unknown) => void }) => (
-    <TabsMockContext.Provider value={{ onValueChange }}>
+    <TabsMockContext value={{ onValueChange }}>
       <div>{children}</div>
-    </TabsMockContext.Provider>
+    </TabsMockContext>
   ),
   TabsList: ({ children }: { children: ReactNode; variant?: string; activateOnFocus?: boolean }) => (
     <div role="tablist">{children}</div>
   ),
   TabsTrigger: ({ children, value }: { children: ReactNode; value: string }) => {
-    const { onValueChange } = useContext(TabsMockContext)
+    const { onValueChange } = use(TabsMockContext)
     return (
       <button data-testid={`tab-${value}`} onClick={() => onValueChange?.(value)}>
         {children}

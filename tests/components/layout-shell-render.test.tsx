@@ -19,13 +19,13 @@ import { LayoutShell } from '../../packages/host/src/components/layout/layout-sh
 function renderShell({ collapsed = false } = {}) {
   const toggle = mock()
   const view = render(
-    <SidebarContext.Provider value={{ collapsed, toggle }}>
-      <ActivityContext.Provider value={{ open: false, toggle: mock(), close: mock() }}>
+    <SidebarContext value={{ collapsed, toggle }}>
+      <ActivityContext value={{ open: false, toggle: mock(), close: mock() }}>
         <LayoutShell sidebar={<div data-testid="nav-content" />}>
           <div data-testid="page-content" />
         </LayoutShell>
-      </ActivityContext.Provider>
-    </SidebarContext.Provider>,
+      </ActivityContext>
+    </SidebarContext>,
   )
   return { ...view, toggle }
 }

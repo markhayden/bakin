@@ -93,7 +93,7 @@ function TabsList({
 }: TabsPrimitive.List.Props & VariantProps<typeof tabsListVariants>) {
   const scrollRef = useScrollEdges(variant === "underline")
   return (
-    <TabsListVariantContext.Provider value={variant ?? "default"}>
+    <TabsListVariantContext value={variant ?? "default"}>
       <TabsPrimitive.List
         ref={scrollRef}
         data-slot="tabs-list"
@@ -101,7 +101,7 @@ function TabsList({
         className={cn(tabsListVariants({ variant }), className)}
         {...props}
       />
-    </TabsListVariantContext.Provider>
+    </TabsListVariantContext>
   )
 }
 
@@ -124,7 +124,7 @@ const tabsTriggerVariants = cva("", {
 })
 
 function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
-  const listVariant = React.useContext(TabsListVariantContext)
+  const listVariant = React.use(TabsListVariantContext)
   const triggerVariant = listVariant === "underline" ? "underline" : "default"
   return (
     <TabsPrimitive.Tab

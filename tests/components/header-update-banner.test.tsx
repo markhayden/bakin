@@ -14,9 +14,9 @@ mock.module('@makinbakin/sdk/hooks', () => ({
 
 function renderHeader() {
   render(
-    <SidebarContext.Provider value={{ collapsed: false, toggle: mock() }}>
+    <SidebarContext value={{ collapsed: false, toggle: mock() }}>
       <Header />
-    </SidebarContext.Provider>,
+    </SidebarContext>,
   )
 }
 
@@ -109,11 +109,11 @@ describe('Header update banner', () => {
     global.fetch = mock(() => Promise.resolve(response({}))) as unknown as typeof global.fetch
     await act(async () => {
       render(
-        <ActivityContext.Provider value={{ open: false, toggle: toggleActivity, close: mock() }}>
-          <SidebarContext.Provider value={{ collapsed: false, toggle: mock() }}>
+        <ActivityContext value={{ open: false, toggle: toggleActivity, close: mock() }}>
+          <SidebarContext value={{ collapsed: false, toggle: mock() }}>
             <Header />
-          </SidebarContext.Provider>
-        </ActivityContext.Provider>,
+          </SidebarContext>
+        </ActivityContext>,
       )
     })
 

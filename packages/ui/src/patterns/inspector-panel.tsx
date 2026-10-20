@@ -27,7 +27,7 @@ export type InspectorPanelProps = NativePanelProps &
 export function InspectorPanel({ className, label, labelledBy, side = false, ...props }: InspectorPanelProps) {
   const context = React.useMemo(() => ({ side }), [side])
   return (
-    <InspectorPanelContext.Provider value={context}>
+    <InspectorPanelContext value={context}>
       <section
         {...props}
         aria-label={label}
@@ -40,7 +40,7 @@ export function InspectorPanel({ className, label, labelledBy, side = false, ...
           className,
         )}
       />
-    </InspectorPanelContext.Provider>
+    </InspectorPanelContext>
   )
 }
 
@@ -62,7 +62,7 @@ export function InspectorPanelHeader({
   title,
   ...props
 }: InspectorPanelHeaderProps) {
-  const { side } = React.useContext(InspectorPanelContext)
+  const { side } = React.use(InspectorPanelContext)
   return (
     <header
       {...props}
@@ -119,7 +119,7 @@ export function InspectorPanelContent({
   state,
   ...props
 }: InspectorPanelContentProps) {
-  const { side } = React.useContext(InspectorPanelContext)
+  const { side } = React.use(InspectorPanelContext)
   const hasState = state !== undefined && state !== null
   return (
     <div
@@ -143,7 +143,7 @@ export function InspectorPanelContent({
 
 export type InspectorPanelFooterProps = React.ComponentPropsWithoutRef<'footer'>
 export function InspectorPanelFooter({ className, ...props }: InspectorPanelFooterProps) {
-  const { side } = React.useContext(InspectorPanelContext)
+  const { side } = React.use(InspectorPanelContext)
   return (
     <footer
       {...props}
