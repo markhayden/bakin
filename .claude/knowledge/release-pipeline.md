@@ -177,3 +177,24 @@ Fallback installer:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | bash
 ```
+
+## macOS entitlements (hardened runtime)
+
+`scripts/release/bakin.entitlements` is applied by `scripts/sign-macos-binary.ts`
+(`codesign --options runtime --entitlements …`). It carries two groups:
+
+- `com.apple.security.cs.disable-library-validation` — the media store dlopens
+  sharp's npm-signed native prebuild (margo, rc.33).
+- `com.apple.security.cs.allow-jit`, `allow-unsigned-executable-memory`,
+  `disable-executable-page-protection` — operation resource locks are held
+  with flock(2) through `bun:ffi`, and Bun's FFI generates executable call
+  trampolines at dlopen time that the hardened runtime refuses without these
+  (Bun's documented set for compiled executables; #896 D3.5).
+
+The signing job then runs the SIGNED binary against a throwaway home
+(`bakin mkdir` + `bakin version`): `mkdir` is an install-class verb that holds
+`install-state` in-process, so a hardened binary that cannot take a lock fails
+the release there, never on an operator's box. Locally compiled macOS binaries
+are linker-signed by Bun and cannot be re-signed (`codesign` refuses strict
+validation), which is why this smoke lives in the release job — the darwin
+binary is cross-compiled on the Linux build job and signed on macOS.

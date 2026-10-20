@@ -257,15 +257,28 @@ function tryAcquireOne(resource: string, identity: ResourceHolderIdentity, onRec
       closeSync(fd)
       continue
     }
+    // From here the descriptor holds the kernel lock: anything that throws
+    // before ownership is recorded (metadata write on a full disk, a reclaim
+    // callback) must close it, or the resource stays locked until exit.
     const previous = readHolderAt(path)
-    writeHolder(fd, identity)
+    try {
+      writeHolder(fd, identity)
+    } catch (err) {
+      closeSync(fd)
+      throw err
+    }
     heldHere.set(resource, identity)
     heldFds.set(resource, fd)
     if (previous && (previous.pid === process.pid || !isProcessAlive(previous.pid))) {
       // The file still named a holder that is gone: the kernel had already
       // released its lock; this is the (informational) reclaim report.
       log.warn('Took over an operation lock whose holder died', { resource, path, stalePid: previous.pid, staleOperation: previous.operationId })
-      onReclaim?.({ resource, holder: previous })
+      try {
+        onReclaim?.({ resource, holder: previous })
+      } catch (err) {
+        releaseResource(resource)
+        throw err
+      }
     }
     return { ok: true }
   }
@@ -378,13 +391,18 @@ export async function acquireResources(resources: Iterable<string>, opts: Acquir
 export function tryAcquireResources(resources: Iterable<string>, identity: ResourceHolderIdentity): ResourceLease | { busy: ResourceWait } {
   const wanted = sortResources(resources).filter((r) => !heldInContext(r))
   const taken: string[] = []
-  for (const resource of wanted) {
-    const attempt = tryAcquireOne(resource, identity)
-    if (!attempt.ok) {
-      lease(taken).release()
-      return { busy: { resource, holder: attempt.holder } }
+  try {
+    for (const resource of wanted) {
+      const attempt = tryAcquireOne(resource, identity)
+      if (!attempt.ok) {
+        lease(taken).release()
+        return { busy: { resource, holder: attempt.holder } }
+      }
+      taken.push(resource)
     }
-    taken.push(resource)
+  } catch (err) {
+    lease(taken).release() // a later acquisition threw: nothing stays held
+    throw err
   }
   return lease(taken)
 }

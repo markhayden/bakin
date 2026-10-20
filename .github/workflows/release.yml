@@ -333,6 +333,21 @@ jobs:
         run: |
           chmod +x "dist/${DARWIN_BINARY}"
           bun run scripts/sign-macos-binary.ts --binary "dist/${DARWIN_BINARY}"
+      - name: Smoke the signed binary (hardened runtime must take a resource lock)
+        # Operation locks are flock(2) through bun:ffi; the hardened runtime
+        # refuses Bun's FFI trampolines without the executable-memory
+        # entitlements in scripts/release/bakin.entitlements (#896). `mkdir`
+        # is an install-class verb that runs in-process and holds
+        # install-state, so a signed binary that cannot lock fails HERE,
+        # never on an operator's box. A throwaway home is safe for mkdir
+        # (never for serve/start).
+        env:
+          BAKIN_HOME: ${{ runner.temp }}/bakin-smoke-home
+          BAKIN_CONSOLE_FORMAT: silent
+        run: |
+          mkdir -p "$BAKIN_HOME"
+          "./dist/${DARWIN_BINARY}" mkdir
+          "./dist/${DARWIN_BINARY}" version
 
       - name: Upload signed macOS binary
         uses: actions/upload-artifact@v5
