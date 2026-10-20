@@ -70,7 +70,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
-import { useQueryState, usePluginEvent, toast } from '@makinbakin/sdk/hooks'
+import { useQueryState, usePluginEvent, toast, useKeyedState } from '@makinbakin/sdk/hooks'
 import {
   ArrowLeft, Palette, Rocket, Pencil, Plus, Check, TriangleAlert, ExternalLink,
   FileText, BookOpen, ImageIcon, Trash, Sparkles, Info,
@@ -820,12 +820,13 @@ function OverviewTab({
   brand: BrandManifest; detail: DetailResponse; brandId: string; onGoTo: (tab: string) => void
   onEditDoc: (kind: DocKind, name: string, create?: boolean) => void
 }) {
-  const [card, setCard] = useState<CardPreview | null>(null)
-  const [voice, setVoice] = useState<string | null>(null)
-  const [activity, setActivity] = useState<ActivityRow[]>([])
+  // The overview belongs to one brand (#966b): another brand starts empty in
+  // the same render; the effect only loads.
+  const [card, setCard] = useKeyedState<CardPreview | null>(brandId, () => null)
+  const [voice, setVoice] = useKeyedState<string | null>(brandId, () => null)
+  const [activity, setActivity] = useKeyedState<ActivityRow[]>(brandId, () => [])
 
   useEffect(() => {
-    setCard(null); setVoice(null); setActivity([])
     void (async () => {
       try {
         const res = await fetch(`/api/plugins/brands/${brandId}/card-preview`)
@@ -849,7 +850,7 @@ function OverviewTab({
         if (res.ok) setActivity(((await res.json()) as { activity: ActivityRow[] }).activity ?? [])
       } catch { /* best-effort */ }
     })()
-  }, [brandId, detail.guidelines])
+  }, [brandId, detail.guidelines, setActivity, setCard, setVoice])
 
   const assetCount = useMemo(() => new Set([
     ...brand.logos.map((l) => l.assetId),
@@ -1371,11 +1372,18 @@ function BrandAssetsSection({
     })
   }, [brand.logos, onSave])
 
+  // The owner's "add a logo" request opens the picker in the same render it
+  // arrives — including the render this tab mounts with the request already
+  // pending (#966b); the acknowledgement is the owner's state, so it is sent
+  // from an effect (a callback, never a setState of our own).
+  const [logoRequestSeen, setLogoRequestSeen] = useState(false)
+  if (logoRequestSeen !== logoPickerRequested) {
+    setLogoRequestSeen(logoPickerRequested)
+    if (logoPickerRequested) openLogoPicker()
+  }
   useEffect(() => {
-    if (!logoPickerRequested) return
-    openLogoPicker()
-    onLogoPickerRequestHandled()
-  }, [logoPickerRequested, onLogoPickerRequestHandled, openLogoPicker])
+    if (logoPickerRequested) onLogoPickerRequestHandled()
+  }, [logoPickerRequested, onLogoPickerRequestHandled])
 
   const tile = (assetId: string, patch: (current: BrandManifest) => ManifestPatch, extra?: React.ReactNode) => (
     <AssetTile

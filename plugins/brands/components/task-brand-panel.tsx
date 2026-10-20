@@ -8,8 +8,8 @@
  * dispatch would get right now. Turns "why was this off-brand?" into a
  * lookup instead of an argument.
  */
-import { useEffect, useState } from 'react'
-import { useDebug, useJsonFetch } from '@makinbakin/sdk/hooks'
+import { useState } from 'react'
+import { useDebug, useJsonFetch, useKeyedState } from '@makinbakin/sdk/hooks'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { Inline, Panel } from '@makinbakin/sdk/layout'
 import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
@@ -58,7 +58,8 @@ const SOURCE_LABEL: Record<TaskBrandInfo['source'], string> = {
 
 export function TaskBrandPanel({ taskId }: { taskId?: string }) {
   const [debug] = useDebug()
-  const [preview, setPreview] = useState<string | null>(null)
+  // The card preview belongs to one task (#966b).
+  const [preview, setPreview] = useKeyedState<string | null>(taskId, () => null)
   const [lessonOpen, setLessonOpen] = useState(false)
   const [lessonTitle, setLessonTitle] = useState('')
   const [lessonBody, setLessonBody] = useState('')
@@ -72,9 +73,6 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
   )
   const injections = injectionsData?.injections ?? []
 
-  useEffect(() => {
-    setPreview(null)
-  }, [taskId])
 
   if (!taskId || !brand) return null
 
