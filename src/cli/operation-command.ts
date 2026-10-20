@@ -10,7 +10,7 @@
  *   plain progress lines go to stderr;
  * - TTY: live progress on stdout, then the command's own result card.
  */
-import type { OperationStartResponse } from '@makinbakin/sdk/types'
+import type { OperationStartResponse, OperationView } from '@makinbakin/sdk/types'
 import { jsonObject, type OperationFollowResult } from './http'
 import { createOperationRenderer, describeResult, followAndRender, operationExitCode, silentOperationRenderer } from './operation-renderer'
 
@@ -26,7 +26,7 @@ export interface CommandOperationResult {
 
 export async function startAndFollow(
   start: () => Promise<unknown>,
-  opts: { json: boolean; stdout?: { isTTY?: boolean } },
+  opts: { json: boolean; stdout?: { isTTY?: boolean }; onUpdate?: (operation: OperationView) => boolean | void },
 ): Promise<CommandOperationResult> {
   const started = jsonObject(await start()) as Partial<OperationStartResponse> | null
   if (typeof started?.operationId !== 'string' || typeof started.bootId !== 'string') {
@@ -40,7 +40,7 @@ export async function startAndFollow(
       : createOperationRenderer({ mode: 'plain', write: (text) => { process.stderr.write(text) } })
   const follow = await followAndRender(
     { operationId: started.operationId, bootId: started.bootId },
-    renderer ? { renderer } : {},
+    { ...(renderer ? { renderer } : {}), ...(opts.onUpdate ? { onUpdate: opts.onUpdate } : {}) },
   )
   const result = follow.operation?.result
   return {

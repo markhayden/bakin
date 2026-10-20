@@ -354,6 +354,8 @@ export async function followAndRender(
     renderer?: OperationRenderer
     signals?: Pick<NodeJS.Process, 'on' | 'off'>
     baseUrl?: string
+    /** Sees every view the renderer sees; returning true stops following (the operation keeps running). */
+    onUpdate?: (operation: OperationView) => boolean | void
   } = {},
 ): Promise<OperationFollowResult> {
   const write = opts.write ?? ((text: string) => { process.stdout.write(text) })
@@ -387,6 +389,7 @@ export async function followAndRender(
       onUpdate: ({ operation, children }) => {
         latest = operation
         renderer.update(operation, children)
+        if (opts.onUpdate?.(operation) === true) detach.abort()
       },
     })
     renderer.finish(result)

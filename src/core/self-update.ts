@@ -100,6 +100,12 @@ export interface SelfUpdateOptions {
    * with the staged files cleaned up and the running binary untouched.
    */
   beforeReplace?: (staged: { release: GithubRelease; newPath: string }) => Promise<void>
+  /**
+   * The release the operator approved (#1007 review): the update refuses to
+   * install anything else — a newer release published since the preview is
+   * reported, never silently installed.
+   */
+  expectedVersion?: string
 }
 
 async function fetchGithubJson<T>(url: string): Promise<T> {
@@ -268,6 +274,11 @@ export async function selfUpdate(
     release = await (options.fetchRelease ?? fetchLatestRelease)(reporter)
   } catch (err) {
     reporter.error(`Could not fetch release info: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
+
+  if (options.expectedVersion !== undefined && normalizeVersion(release.tag_name) !== normalizeVersion(options.expectedVersion)) {
+    reporter.error(`Release changed: ${release.tag_name} is now the latest, but this update was approved for v${normalizeVersion(options.expectedVersion)}. Check for updates and apply again.`)
     return 1
   }
 

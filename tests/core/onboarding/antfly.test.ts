@@ -223,18 +223,15 @@ describe('checkAntflyDependency identity + cancellation (#1007 D7.9)', () => {
     expect(result.installed).toBeUndefined()
   })
 
-  it('a hung binary is killed and reaped under the signal — the check answers within the deadline and no child survives', async () => {
+  it('a hung binary is killed and reaped under the signal — the check REJECTS as interrupted within the deadline (never a version verdict) and no child survives', async () => {
     const pidFile = join(testDir, 'hung.pid')
     mkdirSync(join(managedBinary, '..'), { recursive: true })
     writeFileSync(managedBinary, `#!/bin/sh\necho $$ > ${JSON.stringify(pidFile)}\nexec sleep 30\n`, { mode: 0o755 })
     const startedAt = Date.now()
-    const result = await checkDependency(makePin(), DEFAULT_SETTINGS, serviceIo, { signal: AbortSignal.timeout(300) })
+    // A probe that did not finish did not answer: the engine records a failed
+    // attempt and keeps its last good observation (#1007 review r1 #5).
+    await expect(checkDependency(makePin(), DEFAULT_SETTINGS, serviceIo, { signal: AbortSignal.timeout(300) })).rejects.toMatchObject({ name: 'CommandInterruptedError', reason: 'abort' })
     expect(Date.now() - startedAt).toBeLessThan(5_000)
-    expect(result.status).toBe('broken')
-    expect(result.message).toContain('did not report a recognizable version')
-    expect(result.applicable).toBe(true)
-    expect(result.installed?.version).toBeUndefined()
-    expect(result.installed?.identity).toMatch(/^[0-9a-f]{24}$/)
     const pid = Number(readFileSync(pidFile, 'utf8').trim())
     expect(pid).toBeGreaterThan(0)
     await waitUntil(() => { try { process.kill(pid, 0); return false } catch { return true } }, { label: 'the hung child is gone' })

@@ -50,6 +50,8 @@ export interface SelfUpdateOperationDeps {
   refuseIfServerLive?: () => string | null
   /** Mirrors the updater's log lines (the CLI prints them). */
   echo?: (line: string) => void
+  /** The release the operator approved; the updater refuses any other (#1007 review). */
+  expectedVersion?: string
 }
 
 const STAGE_OF: Record<SelfUpdateStage, string> = { download: 'download', verify: 'verify', extract: 'verify', replace: 'swap' }
@@ -80,6 +82,7 @@ export function selfUpdateOperation(origin: OperationOrigin, deps: SelfUpdateOpe
       const exitCode = await deps.selfUpdate(reporter, {
         execPath: deps.execPath(),
         stagingSuffix: `${op.id}.new`,
+        ...(deps.expectedVersion !== undefined ? { expectedVersion: deps.expectedVersion } : {}),
         onStage: (stage) => op.stage(STAGE_OF[stage]),
         beforeReplace: async (staged) => {
           release = staged.release

@@ -246,3 +246,26 @@ describe('getSelfUpdateStatus', () => {
     expect(status.error).toBe('network unavailable')
   })
 })
+
+describe('selfUpdate is bound to the approved release (#1007 review r1 #2)', () => {
+  it('refuses a release that is not the one the operator approved — before any download', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-self-update-'))
+    const execPath = join(dir, 'bakin')
+    writeFileSync(execPath, 'old-binary')
+    const downloads: string[] = []
+    const errors: string[] = []
+    const code = await selfUpdate({ log: () => {}, error: (m) => errors.push(m) }, {
+      platform: 'linux', arch: 'x64', execPath, expectedVersion: '0.2.0',
+      fetchRelease: async () => ({ tag_name: 'v0.3.0', draft: false, prerelease: false, assets: [
+        { name: 'bakin-linux-x64.tar.gz', browser_download_url: 'https://example.test/archive' },
+        { name: 'checksums.txt', browser_download_url: 'https://example.test/checksums' },
+      ] }),
+      downloadTo: async (url) => { downloads.push(url) },
+    })
+    expect(code).toBe(1)
+    expect(errors).toEqual(['Release changed: v0.3.0 is now the latest, but this update was approved for v0.2.0. Check for updates and apply again.'])
+    expect(downloads).toEqual([])
+    expect(readFileSync(execPath, 'utf8')).toBe('old-binary')
+    rmSync(dir, { recursive: true, force: true })
+  })
+})

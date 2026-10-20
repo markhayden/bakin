@@ -127,3 +127,13 @@ describe('selfUpdateOperation', () => {
     expect(finished.outcome?.message).toMatch(/Updated to v0\.2\.0, but the restart could not be scheduled \(spawn EACCES\)\. Restart Bakin by hand/)
   })
 })
+
+describe('review round 1 — the approved release', () => {
+  it('the operation hands the approved version to the updater, which refuses anything else (#2)', async () => {
+    const seen: Array<string | undefined> = []
+    const d = deps({ expectedVersion: '0.2.0', selfUpdate: async (_reporter, options) => { seen.push(options.expectedVersion); return 0 }, restart: 'none' })
+    const { operationId } = await registry.start(selfUpdateOperation('web', d))
+    await view(operationId, (v) => v.status === 'succeeded')
+    expect(seen).toEqual(['0.2.0'])
+  })
+})

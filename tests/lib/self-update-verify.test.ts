@@ -67,3 +67,27 @@ describe('verifySelfUpdate', () => {
     expect(s.polls).toEqual([])
   })
 })
+
+describe('review round 1 — the deadline bounds every request (#6)', () => {
+  it('a connection that never answers (or a body that never ends) is aborted at the deadline — unreachable, not pending forever', async () => {
+    let clock = 0
+    const aborted: string[] = []
+    const fetch = async (_url: string, init?: { signal?: AbortSignal }): Promise<Response> => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => { aborted.push(String((init.signal?.reason as Error | undefined)?.message)); reject(init.signal?.reason) }, { once: true })
+    })
+    const result = await verifySelfUpdate({ expectedVersion: '0.1.1', oldBootId: 'old', fetch, timeoutMs: 100, pollMs: 0, now: () => clock, sleep: async () => { clock += 50 } })
+    expect(result.status).toBe('unreachable')
+    expect(aborted.length).toBeGreaterThan(0)
+    expect(aborted.every((reason) => reason === 'verification deadline')).toBe(true)
+  })
+
+  it('the caller\'s cancellation reaches an in-flight request', async () => {
+    const controller = new AbortController()
+    const fetch = async (_url: string, init?: { signal?: AbortSignal }): Promise<Response> => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+    })
+    const verifying = verifySelfUpdate({ expectedVersion: '0.1.1', oldBootId: 'old', fetch, signal: controller.signal, ...instant })
+    controller.abort()
+    expect(await verifying).toEqual({ status: 'unreachable', expectedVersion: '0.1.1', lastError: 'cancelled' })
+  })
+})

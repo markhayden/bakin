@@ -73,16 +73,18 @@ export function createPluginSource(deps: PluginSourceDeps): UpdateSource {
           const latest = index.plugins[gh.pluginId]?.latest ?? null
           const source = { kind: 'artifact-index', endpoint: url }
           if (!latest) return { installed, source, outcome: 'blocked', blockedReason: `no published artifact for ${gh.pluginId}` }
-          const compatible = newestCompatibleVersion(index, gh.pluginId, { platform: host.platform, hostContract: host.contract, hostVersion: host.version })?.version ?? null
-          if (!compatible) {
+          const newest = newestCompatibleVersion(index, gh.pluginId, { platform: host.platform, hostContract: host.contract, hostVersion: host.version })
+          if (!newest) {
             return { installed, source, outcome: 'blocked', blockedReason: `no published release of ${gh.pluginId} runs on this Bakin yet (newest is ${latest})` }
           }
-          const target = artifactUpgradeTarget(entry.version, deps.artifact(id).runs, compatible)
+          const target = artifactUpgradeTarget(entry.version, deps.artifact(id).runs, newest.version)
           if (!target) return { installed, source, outcome: 'current' }
+          // The digest is part of the identity: a second rebuild published under
+          // the same version is a NEW offer (and a skip of the first one lapses).
           return {
             installed,
             source,
-            available: { version: target, display: target === entry.version ? `${target} (rebuilt for this Bakin)` : target },
+            available: { version: target, digest: newest.entry.sha256, display: target === entry.version ? `${target} (rebuilt for this Bakin)` : target },
             reason: target === entry.version ? 'compatible-rebuild' : 'newer-version',
             outcome: 'update-available',
             action: upgrade,

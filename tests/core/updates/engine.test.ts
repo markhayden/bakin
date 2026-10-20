@@ -271,3 +271,45 @@ describe('skips', () => {
     await expect(engine.skip('plugin:projects')).rejects.toThrow(/nothing to skip/)
   })
 })
+
+describe('review round 1 — scheduling honesty', () => {
+  it('a shortened interval reschedules every successfully checked subject without a restart; a lengthened one defers them (#11)', async () => {
+    let interval = 6 * HOUR
+    const src = scripted('plugin', [{ id: 'a' }])
+    src.when('a', async () => current)
+    const engine = createUpdatesEngine({ storePath: join(testDir, `${randomUUID()}.json`), sources: [src.source], now: () => now, intervalMs: () => interval })
+    engines.push(engine)
+    await engine.observe('plugin:a')
+    now = T0 + 2 * HOUR
+    expect(await engine.dueSubjects()).toEqual([])
+    interval = 1 * HOUR
+    expect(await engine.dueSubjects()).toEqual(['plugin:a'])
+    interval = 12 * HOUR
+    expect(await engine.dueSubjects()).toEqual([])
+    // A failed subject keeps its recorded backoff, whatever the interval.
+    src.when('a', async () => { throw new Error('offline') })
+    await engine.observe('plugin:a')
+    interval = 1
+    expect(await engine.dueSubjects()).toEqual([])
+  })
+
+  it('a result from an attempt the timer already gave up on is dropped: recordFailure retires the attempt in flight (#3)', async () => {
+    const src = scripted('plugin', [{ id: 'a' }])
+    let release!: (value: UpdateObservation) => void
+    src.when('a', () => new Promise<UpdateObservation>((resolve) => { release = resolve }))
+    const engine = boot([src.source])
+    const pending = engine.observe('plugin:a')
+    await engine.recordFailure('plugin:a', 'check timed out after 20s')
+    release(available('9.9.9'))
+    await pending
+    const record = (await engine.snapshot()).records.find((r) => r.id === 'plugin:a')!
+    expect(record.outcome).toBe('unknown')
+    expect(record.attempt?.error).toBe('check timed out after 20s')
+    expect(record.available).toBeUndefined()
+    expect((await engine.scheduleFor('plugin:a'))!.failures).toBe(1)
+    // The next attempt is a fresh one and lands normally.
+    src.when('a', async () => available('9.9.9'))
+    await engine.observe('plugin:a')
+    expect((await engine.snapshot()).records.find((r) => r.id === 'plugin:a')!.outcome).toBe('update-available')
+  })
+})

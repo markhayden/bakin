@@ -12,7 +12,7 @@
  *   came alive meanwhile refuses the local path.
  */
 import { APP_VERSION } from '@bakin/core/constants'
-import type { UpdateRecord } from '@makinbakin/sdk/types'
+import type { OperationView, UpdateRecord } from '@makinbakin/sdk/types'
 import { verifySelfUpdateFromCli } from '../../cli/self-update-verify'
 import { startAndFollow, type CommandOperationResult } from '../../cli/operation-command'
 import { readLiveServerLock, type ServerLock } from '../server-lock'
@@ -31,8 +31,8 @@ export interface UpdateCommandDeps {
   pollMs?: number
   /** The in-process operation (no server). Resolves to the operation's outcome. */
   runLocal?: () => Promise<UpdateCommandResult>
-  /** Start + follow the server's operation (the CLI's renderer); tests inject a scripted follow. */
-  startAndFollow?: (start: () => Promise<unknown>) => Promise<CommandOperationResult>
+  /** Start + follow the server's operation (the CLI's renderer); `onUpdate` returning true stops the follow. Tests inject a scripted follow. */
+  startAndFollow?: (start: () => Promise<unknown>, opts: { onUpdate: (operation: OperationView) => boolean }) => Promise<CommandOperationResult>
   /** The identity headers this invocation carries (#898); the shared CLI plumbing by default. */
   identityHeaders?: () => Promise<Record<string, string>>
 }
@@ -112,20 +112,28 @@ export async function runUpdateCommand(input: UpdateCommandDeps): Promise<Update
   const expectedVersion = record.available?.version ?? record.available?.display ?? ''
   input.echo(`Updating Bakin ${record.installed?.display ?? ''} → ${record.available?.display ?? expectedVersion}`.trim())
   let handoff: { operationId: string; bootId: string } | null = null
-  const follow = input.startAndFollow ?? ((start) => startAndFollow(start, { json: false, stdout: input.stdout }))
+  // The restart milestone IS the handoff: the moment the `restarting` stage
+  // goes active the follow stops and the bounded verification starts —
+  // waiting for a terminal outcome would wait on a process that is ending.
+  let restartSeen = false
+  const atRestart = (operation: OperationView): boolean => {
+    if (operation.stages.some((stage) => stage.id === 'restarting' && stage.status !== 'pending')) restartSeen = true
+    return restartSeen
+  }
+  const follow = input.startAndFollow ?? ((start, opts) => startAndFollow(start, { json: false, stdout: input.stdout, onUpdate: opts.onUpdate }))
   const followed = await follow(async () => {
     const res = await deps.fetch(`${baseUrl}/api/updates/${encodeURIComponent(BAKIN_RECORD_ID)}/apply`, { method: 'POST', headers, body: '{}' })
     const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
     if (!res.ok) throw new UpdateApplyRefusedError(res.status, body)
     handoff = { operationId: String(body?.operationId), bootId: String(body?.bootId) }
     return body
-  }).catch((error: unknown) => {
+  }, { onUpdate: atRestart }).catch((error: unknown) => {
     if (error instanceof UpdateApplyRefusedError) return error
     throw error
   })
   if (followed instanceof UpdateApplyRefusedError) return followed.result()
   const restartHandoff = handoff as { operationId: string; bootId: string } | null
-  const reachedRestart = followed.follow.phase === 'restarted'
+  const reachedRestart = restartSeen || followed.follow.phase === 'restarted'
     || followed.follow.operation?.stages.some((stage) => stage.id === 'restarting' && stage.status !== 'pending') === true
   if (!reachedRestart || !restartHandoff) {
     const message = followed.follow.operation?.outcome?.message ?? 'Bakin update did not reach the restart.'

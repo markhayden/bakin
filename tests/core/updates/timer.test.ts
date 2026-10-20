@@ -85,14 +85,15 @@ function scripted(kind: UpdateSource['kind'], ids: string[]): Scripted {
 const timers: UpdatesTimer[] = []
 afterEach(() => { for (const timer of timers.splice(0)) timer.stop() })
 
-function harness(sources: UpdateSource[], opts: { enabled?: () => boolean; tickMs?: number; firstTickMs?: number; subjectTimeoutMs?: number } = {}): { engine: UpdatesEngine; timer: UpdatesTimer } {
-  const engine = createUpdatesEngine({ storePath: join(testDir, `${randomUUID()}.json`), sources, intervalMs: 3_600_000 })
+function harness(sources: UpdateSource[], opts: { enabled?: () => boolean; tickMs?: number; firstTickMs?: number; subjectTimeoutMs?: number; cancelGraceMs?: number; intervalMs?: number | (() => number) } = {}): { engine: UpdatesEngine; timer: UpdatesTimer } {
+  const engine = createUpdatesEngine({ storePath: join(testDir, `${randomUUID()}.json`), sources, intervalMs: opts.intervalMs ?? 3_600_000 })
   const timer = startUpdatesTimer({
     engine,
     settings: () => ({ enabled: opts.enabled?.() ?? true }),
     tickMs: opts.tickMs ?? 25,
     firstTickMs: opts.firstTickMs ?? 25,
     subjectTimeoutMs: opts.subjectTimeoutMs ?? 5_000,
+    cancelGraceMs: opts.cancelGraceMs ?? 30,
   })
   timers.push(timer)
   return { engine, timer }
@@ -200,5 +201,42 @@ describe('check now', () => {
     expect(two.coalesced).toBe(true)
     expect(plugins.calls).toEqual(['a', 'b', 'c'])
     expect(timer.running()).toBe(false)
+  })
+})
+
+describe('review round 1 — deadlines and inventory', () => {
+  it('a cooperative observer records its deadline failure exactly once (no double count); a late result from a hung one is dropped (#3)', async () => {
+    const plugins = scripted('plugin', ['slow', 'hung'])
+    plugins.hold('slow', { honourSignal: true })
+    const releaseHung = plugins.hold('hung')
+    const { engine } = harness([plugins.source], { subjectTimeoutMs: 40, cancelGraceMs: 30 })
+    await waitUntil(async () => {
+      const { records } = await engine.snapshot()
+      return records.every((r) => r.attempt?.error !== undefined)
+    }, { label: 'both subjects hit their deadline' })
+    await settleFor(80, 'a second failure for the same deadline would land after the grace')
+    expect((await engine.scheduleFor('plugin:slow'))!.failures).toBe(1)
+    expect((await engine.scheduleFor('plugin:hung'))!.failures).toBe(1)
+    releaseHung() // the hung observer finally answers "current" — too late
+    await settleFor(60, 'a late result must not overwrite the recorded failure')
+    const hung = (await engine.snapshot()).records.find((r) => r.id === 'plugin:hung')!
+    expect(hung.outcome).toBe('unknown')
+    expect(hung.attempt?.error).toMatch(/timed out/)
+    expect((await engine.scheduleFor('plugin:hung'))!.failures).toBe(1)
+  })
+
+  it('every pass and every explicit check refresh the inventory first: an installed subject is observed, a removed one dropped (#1)', async () => {
+    const ids = ['one']
+    const plugins = scripted('plugin', ids)
+    const { engine, timer } = harness([plugins.source], { firstTickMs: 10_000, tickMs: 10_000 })
+    await timer.check()
+    expect((await engine.snapshot()).records.map((r) => r.id)).toEqual(['plugin:one'])
+    ids.push('two')
+    await timer.check()
+    expect((await engine.snapshot()).records.map((r) => r.id).sort()).toEqual(['plugin:one', 'plugin:two'])
+    expect((await engine.snapshot()).records.find((r) => r.id === 'plugin:two')!.outcome).toBe('current')
+    ids.splice(0, 1)
+    await timer.check({ kind: 'plugin' })
+    expect((await engine.snapshot()).records.map((r) => r.id)).toEqual(['plugin:two'])
   })
 })

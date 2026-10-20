@@ -24,6 +24,7 @@ mock.module('../../../../packages/core/src/logger', loggerMock)
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 import type { PluginLockEntry } from '@bakin/core/plugins/lockfile'
+import { updateIdentityKey } from '@makinbakin/sdk/types'
 import { createUpdatesEngine } from '../../../../src/core/updates/engine'
 import type { FetchLike } from '../../../../src/core/updates/net'
 import { BAKIN_RECORD_ID, createBakinSource } from '../../../../src/core/updates/sources/bakin'
@@ -191,5 +192,30 @@ describe('plugin source', () => {
     entry = lock({ version: '0.11.5' })
     const c = (await source.inventory())[0]!.fingerprint
     expect(new Set([a, b, c]).size).toBe(3)
+  })
+})
+
+describe('review round 1 — artifact identity (#10)', () => {
+  const lockEntry: PluginLockEntry = { source: 'github:markhayden/bakin-bits-official#plugins/projects', type: 'github', ref: '', commitSha: '', installedAt: '2026-10-01T00:00:00.000Z', version: '0.11.4', permissions: [], manifestSha: 'm1' }
+  const sourceDeps = (sha: string): PluginSourceDeps => ({
+    lockEntries: () => ({ projects: lockEntry }),
+    host: () => ({ version: '0.0.1-rc.41', platform: 'darwin-arm64', contract: 'react19-sdk-focused-v2' }),
+    artifact: () => ({ installed: true, runs: true }),
+    artifactSource: () => ({ baseUrl: 'https://github.com/markhayden/bakin-bits-official/releases/latest/download', pluginId: 'projects' }),
+    cloneUrl: (source) => source,
+    lsRemote: async () => null,
+    localTree: () => ({ changed: false, liveSha: 'live' }),
+    fetch: async () => new Response(JSON.stringify({ version: 1, plugins: { projects: { latest: '1.1.0', versions: { '1.1.0': { platforms: { neutral: { url: 'https://example.test/1.1.0.tgz', sha256: sha, externalsContract: 'react19-sdk-focused-v2', bakinRange: '>=0.0.0' } } } } } } }), { status: 200, headers: { 'content-type': 'application/json' } }),
+  })
+  const context = () => ({ signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } })
+
+  it('an artifact offer carries the selected entry\'s sha256 as its digest: two publications under one version are two offers, so a skip of the first lapses', async () => {
+    const first = createPluginSource(sourceDeps('1'.repeat(64)))
+    const [entry] = await first.inventory()
+    const offered = await first.observe(entry!, context())
+    expect(offered).toMatchObject({ outcome: 'update-available', available: { version: '1.1.0', digest: '1'.repeat(64) } })
+    const republished = await createPluginSource(sourceDeps('2'.repeat(64))).observe(entry!, context())
+    expect(republished.available?.digest).toBe('2'.repeat(64))
+    expect(updateIdentityKey(offered.available)).not.toBe(updateIdentityKey(republished.available))
   })
 })

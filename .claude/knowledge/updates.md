@@ -96,7 +96,27 @@ failure backoff 15 min doubling to 24 h per subject (a source's
 `retryAfterMs` wins). "Check now" (`POST /api/updates/check[?source=|?id=]`)
 coalesces into a running pass and queues the subjects it has not reached;
 `wait=1` answers with the records after the pass. `settings.updates.enabled`
-is re-read each tick; disabling lets the running subject finish.
+is re-read each tick; disabling lets the running subject finish. The interval
+is read at scheduling time too: a successfully checked subject is due one
+CURRENT interval after it ran (shortening the setting reschedules everything
+without a restart); a failed one keeps its recorded backoff.
+
+**The inventory is refreshed** at the start of every pass and every explicit
+check, and at once on `plugin:manifest-changed` / `settings.changed` (the
+service observes server events) — an installed plugin joins, a removed one
+leaves, a changed setting retires the affected fingerprints. After an apply
+operation SUCCEEDS the apply service re-observes that subject (the next pass
+would be hours away).
+
+**One attempt, one result.** On the deadline the signal fires; a cooperative
+observer settles through the engine and records the deadline as its ONE
+failure. An observer that ignores its signal gets a bounded grace
+(`UPDATES_CANCEL_GRACE_MS`), then the slot is released and
+`engine.recordFailure` retires the attempt — a result that lands later is
+dropped, never counted twice. The antfly version probe propagates an
+interruption (`CommandInterruptedError`) instead of answering `null`, so a
+probe that did not finish is a failed attempt, never a "wrong version"
+observation.
 
 Every observation publishes `updates.changed { ids }` on the shared SSE bus;
 the doctor refresh coordinator maps it to the checks that consume records
@@ -135,13 +155,23 @@ ONE apply service (`src/core/updates/apply.ts`) behind `GET
 
 `selfUpdateOperation` (download → verify → prepare-restart → swap [point of
 no return] → restarting) is the ONLY caller of `selfUpdate(` (architecture
-pinned). Staging files are keyed by operation id. The operation ends with the
+pinned). Staging files are keyed by operation id. The operation is BOUND to
+the previewed release (`expectedVersion` from the record): a newer release
+published between preview and execution fails the update before any
+download ("Release changed … check for updates and apply again") — the
+operator approves one identity, never "latest". The operation ends with the
 OLD process: a follow that ends `restarted` (or the `restarting` stage) is
 the honest terminal state and the handoff to verification. Verification is
 client-side and explicit: `{ expectedVersion, oldBootId }` → poll `GET
 /api/version` until `bootId !== oldBootId && version === expectedVersion &&
-state === 'serving'` (90 s) → `verified <v>` / `wrong version <v>` /
-`unreachable — verify by hand`. The server publishes `server.lock` under
+state === 'serving'` (90 s; every request and body read is bounded by what
+is left of the deadline, composed with the caller's cancellation) →
+`verified <v>` / `wrong version <v>` / `unreachable — verify by hand`. The
+CLI hands off the moment the `restarting` stage goes active (it stops
+following; a terminal outcome from a process that is ending never comes);
+the browser does the same from the stage or a `restarted` settle, and every
+other settle (failed, cancelled, expired) is reported in the dialog with
+Update available again. The server publishes `server.lock` under
 `install-state`, so a swap can never race a starting server.
 
 `bakin update`: with this home's server running (`server.lock`) it waits for
@@ -159,10 +189,14 @@ through a server is an operator action: `bakin update --as human`; an
 
 - **Health → Updates** (`?tab=updates`): Required and Available groups, every
   non-current record as a row with the state in words, skipped rows behind
-  `?updates_skipped=1`, `?update=<id>` focuses a row; Check for updates runs
-  a waited pass. The whole apply flow lives in one `ConfirmDialog` (impact +
-  full approval scope → progress → consent / restart handoff → result). The
-  tab label carries the count. The nav badge stays incidents-only; no toasts.
+  `?updates_skipped=1` (only an AVAILABLE update can be skipped — a required
+  one is what the installation needs), `?update=<id>` reveals a row and
+  focuses its first control; Check for updates runs a waited pass. The whole
+  apply flow lives in one `ConfirmDialog` (impact + full approval scope →
+  progress → consent / restart handoff → result); an apply that resolved a
+  covering approval settles on the REPAIR's outcome, never decoded as the
+  subject's own flow. The tab label carries the count. The nav badge stays
+  incidents-only; no toasts.
 - **System tab:** a plugin's "Update available" is the engine's verdict; its
   "Check for updates" runs the plugin pass. (The manifest's own
   `upgradeAvailable` projection migrates in PR B.)

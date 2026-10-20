@@ -180,10 +180,22 @@ export function Header() {
   // `restarting` stage) is the handoff — verification is explicit (D7.11).
   const { operation: updateView, phase: updatePhase } = useOperation(updateOperation?.operationId ?? null, {
     bootId: updateOperation?.bootId,
-    onSettle: (_operation, phase) => {
-      if (phase === 'restarted' && updateOperation && bakinRecord?.available?.version) {
-        setHandoff({ expectedVersion: bakinRecord.available.version, oldBootId: updateOperation.bootId })
+    onSettle: (operation, phase) => {
+      if (!updateOperation) return
+      if (phase === 'restarted') {
+        // The old process is gone: the only honest terminal state — verify the new one.
+        if (bakinRecord?.available?.version) setHandoff({ expectedVersion: bakinRecord.available.version, oldBootId: updateOperation.bootId })
+        else setUpdateError('Bakin restarted, but the release it was updating to is no longer known — check its version by hand.')
+        return
       }
+      // Every other settle releases the active operation so Update can be tried again.
+      setUpdateOperation(null)
+      if (phase === 'expired' || phase === 'unreachable') {
+        setUpdateError('Bakin lost track of the update — check for updates and try again.')
+        return
+      }
+      if (operation?.status === 'failed') setUpdateError(operation.outcome?.message ?? 'Bakin update failed.')
+      else if (operation?.status === 'cancelled') setUpdateError('The update was cancelled before anything changed.')
     },
   })
   const restarting = updateView?.stages.some((stage) => stage.id === 'restarting' && stage.status === 'active') ?? false
@@ -191,16 +203,13 @@ export function Header() {
     setHandoff({ expectedVersion: bakinRecord.available.version, oldBootId: updateOperation.bootId })
   }
   const verification = useSelfUpdateVerification(handoff)
-  const updateFailed = updatePhase === 'finished' && updateView?.status === 'failed'
   const updateMessage = verification.status === 'verifying'
     ? `Restarting into v${verification.handoff.expectedVersion}…`
     : verification.status !== 'idle'
       ? verification.summary
-      : updateFailed
-        ? null
-        : updateOperation
-          ? (updateView?.stages.find((stage) => stage.status === 'active')?.label ?? 'Starting the update…')
-          : null
+      : updateOperation && updatePhase !== 'finished'
+        ? (updateView?.stages.find((stage) => stage.status === 'active')?.label ?? 'Starting the update…')
+        : null
 
   useEffect(() => {
     const controller = new AbortController()

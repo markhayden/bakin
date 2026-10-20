@@ -215,7 +215,8 @@ describe('UpdatesTabView — apply, the whole flow inside the dialog', () => {
 
     await act(async () => { fireEvent.click(screen.getByTestId('update-apply-confirm')) })
     expect(bodies).toEqual([{ approvalId: 'apr-1', scopeHash: 'hash-1' }])
-    await waitFor(() => expect(screen.getByTestId('updates-feedback').textContent).toBe('Search engine 1.1.0 was installed and the search indexes were rebuilt.'))
+    // Resolving the covering approval ran the REPAIR, so the outcome is the repair's — never decoded as the subject's own flow.
+    await waitFor(() => expect(screen.getByTestId('updates-feedback').textContent).toBe('Applied the Health repair “Repair the search engine”.'))
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(updates.refresh).toHaveBeenCalledWith('background')
   })

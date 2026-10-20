@@ -63,6 +63,14 @@ export interface RunCommandOptions {
  * settles only once `close` fired, so a hung executable never outlives the
  * caller's slot (#1007, D7.5/R6).
  */
+/** The child was killed by the deadline or the caller's signal: the probe did not finish — it did not answer. */
+export class CommandInterruptedError extends Error {
+  constructor(message: string, readonly reason: 'timeout' | 'abort') {
+    super(message)
+    this.name = 'CommandInterruptedError'
+  }
+}
+
 export function runCommand(
   cmd: string,
   args: string[],
@@ -89,12 +97,12 @@ export function runCommand(
     }
     const onAbort = (): void => {
       const reason = opts.signal?.reason
-      kill(reason instanceof Error ? reason : new Error(typeof reason === 'string' ? reason : `${cmd} ${args.join(' ')} aborted`))
+      kill(new CommandInterruptedError(reason instanceof Error ? reason.message : typeof reason === 'string' ? reason : `${cmd} ${args.join(' ')} aborted`, 'abort'))
     }
     if (opts.signal?.aborted) onAbort()
     else opts.signal?.addEventListener('abort', onAbort, { once: true })
     if (opts.timeoutMs !== undefined) {
-      killTimer = setTimeout(() => kill(new Error(`${cmd} ${args.join(' ')} did not finish within ${Math.round(opts.timeoutMs! / 1000)}s`)), opts.timeoutMs)
+      killTimer = setTimeout(() => kill(new CommandInterruptedError(`${cmd} ${args.join(' ')} did not finish within ${Math.round(opts.timeoutMs! / 1000)}s`, 'timeout')), opts.timeoutMs)
       killTimer.unref?.()
     }
     child.stdout?.on('data', (chunk) => { stdout += chunk.toString() })
@@ -110,7 +118,9 @@ export function runCommand(
 
 /**
  * Run `antfly --version` and extract the semver-ish token. Returns null when
- * the binary can't be executed or prints nothing recognizable.
+ * the binary ran and printed nothing recognizable (or failed to start). A
+ * probe the deadline or the caller's signal INTERRUPTED throws instead: it
+ * did not answer, and "did not answer" must never read as "wrong version".
  */
 export async function antflyBinaryVersion(binary: string, opts: SearchAdapterSetupCheckOptions = {}): Promise<string | null> {
   try {
@@ -118,7 +128,8 @@ export async function antflyBinaryVersion(binary: string, opts: SearchAdapterSet
     if (code !== 0) return null
     const match = `${stdout}\n${stderr}`.match(/\d+\.\d+\.\d+[-.\w]*/)
     return match ? match[0] : null
-  } catch {
+  } catch (err) {
+    if (err instanceof CommandInterruptedError) throw err
     return null
   }
 }

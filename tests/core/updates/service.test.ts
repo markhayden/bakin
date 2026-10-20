@@ -30,7 +30,8 @@ import { resetSettingsCache } from '../../../src/core/settings'
 import { fingerprintOf } from '../../../src/core/updates/inventory'
 import { getUpdatesEngine, getUpdatesTimer, registerUpdateSource, registeredUpdateSources, resetUpdateSources, startUpdates, stopUpdates, UPDATES_FILE_NAME } from '../../../src/core/updates/service'
 import type { UpdateSource } from '../../../src/core/updates/types'
-import { waitUntil } from '../../helpers/wait'
+import { settleFor, waitUntil } from '../../helpers/wait'
+import { observeServerEvent } from '../../../src/core/server-events'
 
 afterEach(() => { stopUpdates(); resetUpdateSources(); broadcasts.length = 0 })
 
@@ -78,5 +79,47 @@ describe('updates service', () => {
     stopUpdates()
     expect(getUpdatesEngine()).toBeNull()
     expect(getUpdatesTimer()).toBeNull()
+  })
+})
+
+describe('review round 1 — live settings and inventory events', () => {
+  it('a changed interval reschedules a running engine without a restart (#11)', async () => {
+    writeFileSync(join(testDir, 'settings.json'), JSON.stringify({ updates: { enabled: true, intervalMs: 6 * 60 * 60 * 1000 } }))
+    resetSettingsCache()
+    registerUpdateSource(source('bakin', 'bakin'))
+    const engine = startUpdates(testDir)
+    await engine.observe('bakin:bakin')
+    expect(await engine.dueSubjects()).toEqual([])
+    writeFileSync(join(testDir, 'settings.json'), JSON.stringify({ updates: { enabled: true, intervalMs: 15 * 60 * 1000 } }))
+    resetSettingsCache()
+    await engine.observe('bakin:bakin')
+    const schedule = await engine.scheduleFor('bakin:bakin')
+    expect(Date.parse(schedule!.nextDueAt!) - Date.parse(schedule!.lastCheckedAt!)).toBe(15 * 60 * 1000)
+    rmSync(join(testDir, 'settings.json'))
+    resetSettingsCache()
+  })
+
+  it('a plugin manifest change or a settings write refreshes the inventory at once; after stopUpdates the observer is gone (#1)', async () => {
+    const ids = ['first']
+    const plugins: UpdateSource = {
+      kind: 'plugin',
+      inventory: async () => ids.map((id) => ({ subject: { kind: 'plugin' as const, id, label: id }, group: 'available' as const, fingerprint: fingerprintOf({ id }), source: { kind: 's', endpoint: id } })),
+      observe: async () => ({ installed: { version: '1', display: '1' }, outcome: 'current' as const }),
+    }
+    registerUpdateSource(plugins)
+    const engine = startUpdates(testDir)
+    await engine.ready
+    expect((await engine.snapshot()).records.map((r) => r.id)).toEqual(['plugin:first'])
+    ids.push('second')
+    observeServerEvent({ type: 'plugin:manifest-changed', pluginId: 'second', action: 'installed' })
+    await waitUntil(async () => (await engine.snapshot()).records.length === 2, { label: 'the installed plugin joined the inventory' })
+    ids.splice(0, 1)
+    observeServerEvent({ type: 'settings.changed' })
+    await waitUntil(async () => (await engine.snapshot()).records.map((r) => r.id).join() === 'plugin:second', { label: 'the removed plugin left' })
+    stopUpdates()
+    ids.push('third')
+    observeServerEvent({ type: 'plugin:manifest-changed', pluginId: 'third', action: 'installed' })
+    await settleFor(40, 'a stopped service must not touch the retired engine')
+    expect((await engine.snapshot()).records.map((r) => r.id)).toEqual(['plugin:second'])
   })
 })

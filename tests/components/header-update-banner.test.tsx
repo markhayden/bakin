@@ -251,3 +251,39 @@ describe('Header update banner', () => {
     }
   })
 })
+
+describe('Header update banner — settled operations (#1007 review r1 #7)', () => {
+  const updatesResponse = (outcome: 'update-available') => response({ bootId: 'boot-old', generatedAt: '2026-10-20T12:00:00.000Z', running: false, records: [{
+    id: 'bakin:bakin', group: 'available', subject: { kind: 'bakin', id: 'bakin', label: 'Bakin' }, outcome,
+    installed: { version: '0.1.0', display: 'v0.1.0' }, available: { version: '0.2.0', sha: 'abc', display: 'v0.2.0' }, reason: 'newer-version',
+    action: { kind: 'operation', start: { route: '/api/updates/bakin%3Abakin/apply' }, impact: ['download', 'server-restart'] },
+    source: { kind: 'github-release', endpoint: 'x' }, fingerprint: 'f',
+  }] })
+  const op = (status: 'failed' | 'cancelled', message?: string) => ({ id: 'op-1', bootId: 'boot-old', rev: 2, status, kind: 'updates:self-update', owner: 'core', origin: 'web', title: 'Update Bakin', href: '/health', fingerprint: 'x', resources: ['install-state'], plan: { stages: [{ id: 'download', kind: 'downloading', label: 'Download the release' }], pointOfNoReturn: 'download' }, startedAt: '2026-10-20T12:00:00.000Z', endedAt: '2026-10-20T12:00:01.000Z', lastProgressAt: '2026-10-20T12:00:01.000Z', lastLivenessAt: '2026-10-20T12:00:01.000Z', stages: [{ id: 'download', kind: 'downloading', label: 'Download the release', status: status === 'failed' ? 'failed' : 'skipped' }], cancellable: false, children: [], log: [], outcome: { code: status === 'failed' ? 'update_failed' : 'cancelled', ...(message ? { message } : {}) } })
+
+  it('a failed operation shows its outcome and releases Update for a retry; an expired one says Bakin lost track', async () => {
+    let answer: unknown = op('failed', 'Checksum mismatch for bakin-darwin-arm64.tar.gz')
+    global.fetch = mock((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/version') return Promise.resolve(response({ version: '0.1.0', bootId: 'boot-old', state: 'serving' }))
+      if (url === '/api/updates') return Promise.resolve(updatesResponse('update-available'))
+      if (url === '/api/updates/bakin%3Abakin/apply') return Promise.resolve(response({ operationId: 'op-1', bootId: 'boot-old' }, 202))
+      if (url.startsWith('/api/operations/op-1')) return Promise.resolve(answer === null ? response({ bootId: 'boot-old', error: 'not_found' }, 404) : response({ bootId: 'boot-old', operation: answer }))
+      if (url === '/api/dispatch') return Promise.resolve(response({ secondsUntilNext: 120, dispatching: false }))
+      return Promise.resolve(response({}))
+    }) as unknown as typeof global.fetch
+    renderHeader()
+    const open = await screen.findByRole('button', { name: 'Update Bakin' })
+    await act(async () => { fireEvent.click(open) })
+    const confirm = await screen.findByRole('button', { name: /^Update$|Update now|Update Bakin/ })
+    await act(async () => { fireEvent.click(confirm) })
+    await waitFor(() => expect(screen.getByText('Checksum mismatch for bakin-darwin-arm64.tar.gz')).toBeDefined())
+    const retry = screen.getByRole('button', { name: /^Update$|Update now|Update Bakin/ }) as HTMLButtonElement
+    expect(retry.disabled).toBe(false)
+
+    answer = null // the same boot no longer has the record
+    await act(async () => { fireEvent.click(retry) })
+    await waitFor(() => expect(screen.getByText('Bakin lost track of the update — check for updates and try again.')).toBeDefined())
+    expect((screen.getByRole('button', { name: /^Update$|Update now|Update Bakin/ }) as HTMLButtonElement).disabled).toBe(false)
+  })
+})

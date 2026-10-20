@@ -54,7 +54,8 @@ mock.module('../../../src/core/task-store', () => ({
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 import { listApprovalRecords } from '../../../packages/core/src/approvals'
-import { createOperationRegistry, type OperationContext, type OperationView } from '@bakin/core/operations'
+import { settleFor, waitUntil } from '../../helpers/wait'
+import { createOperationRegistry, type OperationContext, type OperationOrigin, type OperationView } from '@bakin/core/operations'
 import { clearApprovalKinds } from '../../../src/core/approvals/kinds'
 import { assertOperatorDecision, listPendingApprovals, resolveApproval, resolveApprovalWithResult, settleApprovalFollowUps } from '../../../src/core/approvals/service'
 import { ApprovalRefusedError, ApprovalResolveError } from '../../../src/core/approvals/errors'
@@ -121,6 +122,7 @@ function engineWith(records: Record<string, UpdateObservation>, kind: UpdateSour
   return createUpdatesEngine({ storePath: join(testDir, `${randomUUID()}.json`), sources: [source], intervalMs: 3_600_000 })
 }
 const started: Array<{ kind: string; resources: string[]; fingerprint: string }> = []
+const reobserved: string[] = []
 const memoryRegistry = () => createOperationRegistry({ bootId: () => 'boot-test', publish: () => {}, audit: () => {} })
 let registry = memoryRegistry()
 const fakeComponent = (name: string, stages: Array<{ id: string; kind: 'downloading' | 'installing' | 'verifying'; label: string }>, install: InstallableComponent['install']): InstallableComponent => ({
@@ -137,7 +139,8 @@ function deps(engine: UpdatesEngine, overrides: Partial<ApplyDeps> = {}): ApplyD
     installComponent: (name) => fakeComponent(name, [{ id: 'download', kind: 'downloading', label: 'Download' }, { id: 'swap', kind: 'installing', label: 'Swap' }], async (_opts, op) => { op.stage('download'); op.stage('swap'); return { name, status: 'installed', message: 'installed', durationMs: 1 } }),
     reindex: async (op) => { op.stage('reindex'); return { ok: true, tables: [] } as never },
     reindexStage: () => ({ id: 'reindex', kind: 'verifying', label: 'Rebuild search tables' }),
-    selfUpdateOperation: (origin) => ({
+    reobserve: async (id) => { reobserved.push(id) },
+    selfUpdateOperation: (origin, target) => ({
       kind: 'updates:self-update', owner: 'core', origin, title: 'Update Bakin', href: '/health', fingerprint: 'updates:self-update', resources: ['install-state'],
       plan: { stages: [{ id: 'download', kind: 'downloading', label: 'Download' }], pointOfNoReturn: 'download' },
       run: async () => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: { ok: true } }),
@@ -345,5 +348,33 @@ describe('confirm without a covering approval — the subject\'s own flow', () =
     expect(seen.map((s) => s.step)).toEqual(['install', 'reindex'])
     expect(seen[0]!.op).toBe(seen[1]!.op) // the same operation context: one lease, never released between them
     expect(view!.stages.map((s) => [s.id, s.status])).toEqual([['download', 'done'], ['swap', 'done'], ['reindex', 'done']])
+  })
+})
+
+describe('review round 1 — after the operation', () => {
+  const bakinRecord: UpdateObservation = { installed: { version: '0.1.0', display: 'v0.1.0' }, available: { version: '0.1.1', display: 'v0.1.1' }, reason: 'newer-version', outcome: 'update-available', action: { kind: 'operation', start: { route: '/api/updates/bakin%3Abakin/apply' }, impact: ['download', 'server-restart'] } }
+  const selfUpdateOp = (origin: OperationOrigin, outcome: 'succeeded' | 'failed') => ({
+    kind: 'updates:self-update', owner: 'core' as const, origin, title: 'Update Bakin', href: '/health', fingerprint: `x:${outcome}`, resources: ['install-state' as const],
+    plan: { stages: [{ id: 'download', kind: 'downloading' as const, label: 'Download' }], pointOfNoReturn: 'download' },
+    run: async () => (outcome === 'succeeded' ? { status: 'succeeded' as const, code: 'ok', httpStatus: 200, body: { ok: true } } : { status: 'failed' as const, code: 'update_failed', message: 'nope', httpStatus: 200, body: { ok: false } }),
+  })
+
+  it('a bakin apply binds the self-update to the previewed release; a succeeded operation re-observes its subject, a failed one does not (#1, #2)', async () => {
+    reobserved.length = 0
+    const engine = engineWith({ bakin: bakinRecord }, 'bakin')
+    await engine.observe('bakin:bakin')
+    let bound: string | undefined
+    const d = deps(engine, { selfUpdateOperation: (origin, target) => { bound = target.expectedVersion; return selfUpdateOp(origin, 'succeeded') } })
+    const { started } = await confirmApply('bakin:bakin', { provenance: UI_OPERATOR, origin: 'web' }, d)
+    expect(bound).toBe('0.1.1')
+    await waitUntil(() => registry.get(started.operationId)?.status === 'succeeded', { label: 'operation finished' })
+    await waitUntil(() => reobserved.length === 1, { label: 're-observed once' })
+    expect(reobserved).toEqual(['bakin:bakin'])
+
+    reobserved.length = 0
+    const second = await confirmApply('bakin:bakin', { provenance: UI_OPERATOR, origin: 'web' }, deps(engine, { selfUpdateOperation: (origin) => selfUpdateOp(origin, 'failed') }))
+    await waitUntil(() => registry.get(second.started.operationId)?.status === 'failed', { label: 'operation failed' })
+    await settleFor(30, 'a failed operation never re-observes')
+    expect(reobserved).toEqual([])
   })
 })

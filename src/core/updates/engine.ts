@@ -43,7 +43,8 @@ export interface UpdatesEngineOptions {
   storePath: string
   sources: ReadonlyArray<UpdateSource>
   /** Regular re-check interval after a successful observation. */
-  intervalMs: number
+  /** The check interval — read at scheduling time, so a settings edit takes effect without a restart. */
+  intervalMs: number | (() => number)
   now?: () => number
   publish?: (event: UpdatesChangedEvent) => void
 }
@@ -82,6 +83,9 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
   let inventoryEntries = new Map<string, UpdateSubjectInventoryEntry>()
   let running = false
   let writing: Promise<void> = Promise.resolve()
+  /** Per subject: the attempt in flight. A result from an older attempt (one the timer already gave up on) is dropped. */
+  const attempts = new Map<string, number>()
+  const interval = (): number => (typeof options.intervalMs === 'function' ? options.intervalMs() : options.intervalMs)
 
   const conditional: ConditionalStore = {
     get: (key) => file.conditional[key],
@@ -176,8 +180,16 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
     return entry
   }
 
+  /**
+   * When a subject is next due. A successful check is due one CURRENT
+   * interval after it ran (so shortening the interval reschedules every
+   * subject); a failed one keeps its recorded backoff.
+   */
   function dueAt(schedule: UpdateScheduleEntry | undefined): number {
-    return schedule?.nextDueAt ? Date.parse(schedule.nextDueAt) : Number.NEGATIVE_INFINITY
+    if (!schedule?.nextDueAt) return Number.NEGATIVE_INFINITY
+    const recorded = Date.parse(schedule.nextDueAt)
+    if (schedule.failures === 0 && schedule.lastCheckedAt) return Math.min(recorded, Date.parse(schedule.lastCheckedAt) + interval())
+    return recorded
   }
 
   return {
@@ -219,6 +231,8 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
       const source = sourcesByKind.get(entry.subject.kind)
       if (!source) throw new UpdateSubjectNotFoundError(id)
       const signal = opts.signal ?? new AbortController().signal
+      const attempt = (attempts.get(id) ?? 0) + 1
+      attempts.set(id, attempt)
       let observation: UpdateObservation | null = null
       let error: string | null = null
       let retryAfterMs: number | undefined
@@ -229,6 +243,9 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
         if (err instanceof UpdateCheckError) retryAfterMs = err.retryAfterMs
       }
       const at = iso(now())
+      // The timer gave up on this attempt (recorded its deadline) or a newer
+      // one started: whatever this one found is stale and is dropped.
+      if (attempts.get(id) !== attempt) return structuredClone(file.records[id] ?? unknownRecord(entry))
       // The inventory may have moved while we observed: a stale result is dropped.
       const live = inventoryEntries.get(id)
       if (!live) throw new UpdateSubjectNotFoundError(id)
@@ -266,7 +283,7 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
         // A skip survives only while the available identity it targeted is still the one offered.
         if (previous.skipped && updateIdentityKey(previous.skipped) === updateIdentityKey(next.available)) next.skipped = previous.skipped
         file.records[id] = stripUndefined(next)
-        file.schedule[id] = { lastCheckedAt: at, nextDueAt: iso(now() + options.intervalMs), failures: 0 }
+        file.schedule[id] = { lastCheckedAt: at, nextDueAt: iso(now() + interval()), failures: 0 }
       }
       await persist()
       publish([id])
@@ -276,6 +293,8 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
     async recordFailure(id, error) {
       await ready
       const live = requireEntry(id)
+      // Retire the attempt in flight: its late result must not overwrite this failure.
+      attempts.set(id, (attempts.get(id) ?? 0) + 1)
       applyFailure(id, live, iso(now()), error)
       await persist()
       publish([id])

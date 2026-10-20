@@ -29,6 +29,8 @@ export interface UpdatesTimerOptions {
   subjectTimeoutMs?: number
   /** Global bound of subjects observed at once. Default 2. */
   concurrency?: number
+  /** After the deadline, how long a cooperative observer gets to settle (and record its own failure) before the slot is released and the deadline recorded. Default 5 s. */
+  cancelGraceMs?: number
   now?: () => number
 }
 
@@ -57,6 +59,7 @@ export interface UpdatesTimer {
 export const UPDATES_TICK_MS = 60_000
 export const UPDATES_SUBJECT_TIMEOUT_MS = 20_000
 export const UPDATES_CONCURRENCY = 2
+export const UPDATES_CANCEL_GRACE_MS = 5_000
 export const SUBJECT_TIMED_OUT = (ms: number): string => `check timed out after ${Math.round(ms / 1000)}s`
 
 export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
@@ -65,6 +68,7 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
   const firstTickMs = options.firstTickMs ?? tickMs
   const subjectTimeoutMs = options.subjectTimeoutMs ?? UPDATES_SUBJECT_TIMEOUT_MS
   const concurrency = Math.max(1, options.concurrency ?? UPDATES_CONCURRENCY)
+  const cancelGraceMs = options.cancelGraceMs ?? UPDATES_CANCEL_GRACE_MS
 
   /** The one running pass, if any. */
   let pass: Pass | null = null
@@ -80,29 +84,28 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
     scheduled: boolean
   }
 
+  /**
+   * One attempt: observe under a deadline. On the deadline the signal fires
+   * and a cooperative observer settles through the engine (recording the
+   * deadline as ITS failure — once). An observer that ignores its signal
+   * gets a bounded grace; after it the slot is released and the engine
+   * records the deadline, retiring the attempt so a late result is dropped.
+   */
   async function observeWithDeadline(id: string): Promise<void> {
     const controller = new AbortController()
-    let timedOut = false
-    const deadline = setTimeout(() => {
-      timedOut = true
-      controller.abort(new Error(SUBJECT_TIMED_OUT(subjectTimeoutMs)))
-    }, subjectTimeoutMs)
-    try {
-      await Promise.race([
-        engine.observe(id, { signal: controller.signal }).then(() => undefined, (err: unknown) => {
-          // Not-found and other engine refusals: logged, the pass goes on.
-          log.warn('update check failed to start', { id, error: err instanceof Error ? err.message : String(err) })
-        }),
-        new Promise<void>((resolve) => { controller.signal.addEventListener('abort', () => resolve(), { once: true }) }),
-      ])
-      if (timedOut) {
-        // The source ignored its signal (or is still finishing): release the
-        // slot now and record the failure; a late success still lands.
-        await engine.recordFailure(id, SUBJECT_TIMED_OUT(subjectTimeoutMs))
-      }
-    } finally {
-      clearTimeout(deadline)
-    }
+    let settled = false
+    const observing = engine.observe(id, { signal: controller.signal }).then(() => undefined, (err: unknown) => {
+      // Not-found and other engine refusals: logged, the pass goes on.
+      log.warn('update check failed to start', { id, error: err instanceof Error ? err.message : String(err) })
+    }).finally(() => { settled = true })
+    const timedOut = await Promise.race([
+      observing.then(() => false),
+      new Promise<boolean>((resolve) => { const t = setTimeout(() => resolve(true), subjectTimeoutMs); t.unref?.() }),
+    ])
+    if (!timedOut) return
+    controller.abort(new Error(SUBJECT_TIMED_OUT(subjectTimeoutMs)))
+    await Promise.race([observing, new Promise<void>((resolve) => { const t = setTimeout(resolve, cancelGraceMs); t.unref?.() })])
+    if (!settled) await engine.recordFailure(id, SUBJECT_TIMED_OUT(subjectTimeoutMs))
   }
 
   function runPass(initial: string[], scheduled: boolean): Pass {
@@ -133,6 +136,8 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
   async function tick(): Promise<void> {
     if (stopped || pass) return
     if (!options.settings().enabled) return
+    // Installed/removed subjects and changed settings join or leave here.
+    await engine.refreshInventory()
     const due = await engine.dueSubjects()
     if (due.length === 0) return
     log.debug('update check pass', { due: due.length })
@@ -151,6 +156,7 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
 
   return {
     async check(request = {}) {
+      await engine.refreshInventory()
       const inventory = await engine.inventory()
       const known = new Set(inventory.map((entry) => `${entry.subject.kind}:${entry.subject.id}`))
       let ids = [...known]

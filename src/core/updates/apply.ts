@@ -33,6 +33,9 @@ import type { HealthReport, UpdateAction, UpdateRecord } from '@makinbakin/sdk/t
 import type { InstallableComponent } from '../onboarding/types'
 import type { ReindexReport } from '../search-operations'
 import type { UpdatesEngine } from './engine'
+import { createLogger } from '../logger'
+
+const log = createLogger('updates-apply')
 
 export type ApplyErrorCode =
   | 'not_found'
@@ -103,8 +106,10 @@ export interface ApplyDeps {
   reindex: (op: OperationContext) => Promise<ReindexReport>
   reindexStage: () => MaybeAsync<OperationStagePlan>
   pluginUpgrade: (pluginId: string, body: { accepted?: boolean; consentToken?: string }, origin: OperationOrigin) => MaybeAsync<StartOperationInput<Record<string, unknown>>>
-  /** The Bakin self-update as an operation (D7.11). */
-  selfUpdateOperation: (origin: OperationOrigin) => MaybeAsync<StartOperationInput<Record<string, unknown>>>
+  /** The Bakin self-update as an operation (D7.11), bound to the approved release. */
+  selfUpdateOperation: (origin: OperationOrigin, target: { expectedVersion?: string }) => MaybeAsync<StartOperationInput<Record<string, unknown>>>
+  /** Re-observe a subject after its operation changed it (the next tick would be hours away). */
+  reobserve: (id: string) => MaybeAsync<void>
 }
 
 /** The health resource an update subject is about — how incidents point at it (#385 structured resources). */
@@ -253,19 +258,39 @@ export async function confirmApply(id: string, input: ConfirmApplyInput, deps: A
   if (!record.action) throw new ApplyError(409, 'nothing_to_apply', `"${id}" has no action.`)
   if (record.action.kind === 'manual') throw new ApplyError(409, 'manual_action', record.action.pointer, { pointer: record.action.pointer })
 
+  const start = async (operation: StartOperationInput<Record<string, unknown>>): Promise<ConfirmApplyResult> =>
+    ({ started: await deps.startOperation(reobserveAfter(operation, id, deps)) })
   switch (record.subject.kind) {
-    case 'plugin': {
-      const started = await deps.startOperation(await deps.pluginUpgrade(record.subject.id, { accepted: input.consentToken !== undefined, consentToken: input.consentToken }, input.origin))
-      return { started }
-    }
+    case 'plugin':
+      return start(await deps.pluginUpgrade(record.subject.id, { accepted: input.consentToken !== undefined, consentToken: input.consentToken }, input.origin))
     case 'search-engine':
-      return { started: await deps.startOperation(await searchEngineReinstallOperation(deps, id, input.origin)) }
+      return start(await searchEngineReinstallOperation(deps, id, input.origin))
     case 'search-models':
-      return { started: await deps.startOperation(await modelsInstallOperation(deps, id, input.origin)) }
+      return start(await modelsInstallOperation(deps, id, input.origin))
     case 'bakin':
-      return { started: await deps.startOperation(await deps.selfUpdateOperation(input.origin)) }
+      return start(await deps.selfUpdateOperation(input.origin, { expectedVersion: record.available?.version }))
     default:
       throw new ApplyError(409, 'unsupported_subject', `"${record.subject.kind}" subjects cannot be applied from here yet.`, { kind: record.subject.kind })
+  }
+}
+
+/**
+ * The operation as started, plus one hook: when it succeeds, the subject is
+ * re-observed so its record reflects what just changed (a plugin upgrade's
+ * new lock entry, the reinstalled engine) instead of waiting for the next
+ * scheduled pass. A failed re-observation is logged; the operation's own
+ * outcome is untouched.
+ */
+function reobserveAfter<B>(operation: StartOperationInput<B>, id: string, deps: ApplyDeps): StartOperationInput<B> {
+  return {
+    ...operation,
+    run: async (op) => {
+      const outcome = await operation.run(op)
+      if (outcome.status === 'succeeded') {
+        Promise.resolve(deps.reobserve(id)).catch((error: unknown) => log.warn('Re-observation after apply failed', { id, error: error instanceof Error ? error.message : String(error) }))
+      }
+      return outcome
+    },
   }
 }
 
@@ -285,7 +310,11 @@ export function defaultApplyDeps(): ApplyDeps {
     reindex: async (op) => (await import('../search-operations')).runReindex(op, undefined, false),
     reindexStage: async () => (await import('../search-operations')).REINDEX_STAGE,
     pluginUpgrade: async (pluginId, body, origin) => (await import('../../../packages/host/src/api/plugins/upgrade')).pluginUpgradeOperation(pluginId, { pluginId, ...body }, origin),
-    selfUpdateOperation: async (origin) => {
+    reobserve: async (id) => {
+      const { getUpdatesTimer } = await import('./service')
+      await getUpdatesTimer()?.check({ ids: [id] })
+    },
+    selfUpdateOperation: async (origin, target) => {
       const [{ selfUpdateOperation }, { selfUpdate }, { activateServerRestart, prepareServerRestart }, { APP_VERSION }] = await Promise.all([
         import('./self-update-operation'),
         import('../self-update'),
@@ -298,6 +327,7 @@ export function defaultApplyDeps(): ApplyDeps {
         selfUpdate,
         prepareRestart: prepareServerRestart,
         activateRestart: activateServerRestart,
+        ...(target.expectedVersion !== undefined ? { expectedVersion: target.expectedVersion } : {}),
       }) as unknown as StartOperationInput<Record<string, unknown>>
     },
   }

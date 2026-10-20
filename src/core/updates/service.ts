@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { getSettings } from '../settings'
 import { broadcast } from '../sse'
 import { createLogger } from '../logger'
+import { onServerEvent } from '../server-events'
 import { createUpdatesEngine, type UpdatesEngine } from './engine'
 import { startUpdatesTimer, type UpdatesTimer } from './timer'
 import type { UpdateSource } from './types'
@@ -20,6 +21,7 @@ export const UPDATES_FILE_NAME = 'updates.json'
 const sources: UpdateSource[] = []
 let engine: UpdatesEngine | null = null
 let timer: UpdatesTimer | null = null
+let unobserve: (() => void) | null = null
 
 /** Register a source for the next `startUpdates`. One source per kind; a second registration of a kind replaces the first. */
 export function registerUpdateSource(source: UpdateSource): void {
@@ -38,11 +40,21 @@ export function startUpdates(contentDir: string): UpdatesEngine {
   engine = createUpdatesEngine({
     storePath: join(contentDir, UPDATES_FILE_NAME),
     sources: [...sources],
-    intervalMs: getSettings().updates.intervalMs,
+    intervalMs: () => getSettings().updates.intervalMs,
     publish: (event) => broadcast({ type: event.type, ids: event.ids }),
   })
   timer = startUpdatesTimer({ engine, settings: () => ({ enabled: getSettings().updates.enabled }) })
   engine.ready.catch((error) => log.error('Updates engine failed to reconcile at boot', error))
+  // A plugin install/remove/upgrade or a settings write changes the subject
+  // set or its fingerprints before the next tick would notice.
+  const started = engine
+  unobserve?.()
+  unobserve = onServerEvent((event) => {
+    if (engine !== started) return
+    const type = typeof event.type === 'string' ? event.type : ''
+    if (type !== 'plugin:manifest-changed' && type !== 'settings.changed') return
+    started.refreshInventory().catch((error) => log.warn('Updates inventory refresh failed', { event: type, error: error instanceof Error ? error.message : String(error) }))
+  })
   log.info('Updates started', { sources: sources.map((source) => source.kind) })
   return engine
 }
@@ -51,6 +63,8 @@ export function stopUpdates(): void {
   timer?.stop()
   timer = null
   engine = null
+  unobserve?.()
+  unobserve = null
 }
 
 /** Null until `startUpdates` ran (serverless CLI paths build their own engine). */

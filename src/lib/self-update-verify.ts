@@ -48,8 +48,15 @@ export async function verifySelfUpdate(options: VerifySelfUpdateOptions): Promis
   let lastError: string | undefined
   for (;;) {
     if (options.signal?.aborted) return { status: 'unreachable', expectedVersion: options.expectedVersion, lastError: 'cancelled' }
+    // Every request (and its body read) is bounded by what is left of the
+    // deadline, composed with the caller's cancellation: a hung connection
+    // or a body that never ends can only cost the remaining budget.
+    const request = new AbortController()
+    const onCancel = (): void => request.abort(options.signal?.reason ?? new Error('cancelled'))
+    options.signal?.addEventListener('abort', onCancel, { once: true })
+    const budget = setTimeout(() => request.abort(new Error('verification deadline')), Math.max(0, deadline - now()))
     try {
-      const res = await options.fetch(`${options.baseUrl ?? ''}/api/version`, { signal: options.signal })
+      const res = await options.fetch(`${options.baseUrl ?? ''}/api/version`, { signal: request.signal })
       if (res.ok) {
         const answer = (await res.json()) as Partial<VersionAnswer>
         if (typeof answer.bootId === 'string' && typeof answer.version === 'string') {
@@ -65,7 +72,11 @@ export async function verifySelfUpdate(options: VerifySelfUpdateOptions): Promis
       }
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err)
+    } finally {
+      clearTimeout(budget)
+      options.signal?.removeEventListener('abort', onCancel)
     }
+    if (options.signal?.aborted) return { status: 'unreachable', expectedVersion: options.expectedVersion, lastError: 'cancelled' }
     if (now() >= deadline) return { status: 'unreachable', expectedVersion: options.expectedVersion, ...(lastError ? { lastError } : {}) }
     await sleep(pollMs)
   }

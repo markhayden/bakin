@@ -183,8 +183,9 @@ async function cmdUpdatesApply(args: string[]): Promise<void> {
     const { runUpdateCommand } = await import('../../core/updates/self-update-cli')
     const result = await runUpdateCommand({ echo: (line) => { if (!json) console.log(line) }, stdout: process.stdout })
     if (json) print(result)
-    else if (result.kind === 'failed') await exitCommandFailure(result.message, { command: 'bakin updates apply', detail: result.detail, code: result.code })
-    else console.log(result.message)
+    else if (result.kind !== 'failed') console.log(result.message)
+    // A failure exits non-zero in every output mode (JSON keeps its one document).
+    if (result.kind === 'failed') await exitCommandFailure(result.message, { command: 'bakin updates apply', detail: result.detail, code: result.code, ...(json ? { plainLines: [] } : {}) })
     return
   }
 

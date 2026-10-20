@@ -238,3 +238,15 @@ describe('bakin updates apply', () => {
     expect(await exitCode(run(['updates', 'apply', 'bakin:bakin']))).toBe('OPERATOR_REQUIRED')
   })
 })
+
+describe('review round 1 — JSON output still exits non-zero on failure (#12)', () => {
+  it('bakin:bakin under --json prints the result document AND fails the command', async () => {
+    selfUpdateResult = { kind: 'failed', code: 'UPDATE_FAILED', message: 'Checksum mismatch', detail: 'update_failed' }
+    expect(await exitCode(run(['updates', 'apply', 'bakin:bakin', '--json']))).toBe('UPDATE_FAILED')
+    expect(printed).toEqual([selfUpdateResult])
+    printed.length = 0
+    selfUpdateResult = { kind: 'verified', message: 'Updated to 0.3.6 and verified.' }
+    expect(await exitCode(run(['updates', 'apply', 'bakin:bakin', '--json']))).toBeNull()
+    expect(printed).toEqual([selfUpdateResult])
+  })
+})

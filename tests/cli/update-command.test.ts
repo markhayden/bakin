@@ -151,3 +151,20 @@ describe('runUpdateCommand with no server', () => {
     expect(s.calls).toEqual([])
   })
 })
+
+describe('review round 1 — the restart milestone is the handoff (#4)', () => {
+  it('the follow stops the moment the restarting stage goes active and verification starts, without waiting for a terminal outcome', async () => {
+    const s = server({ versions: [{ version: '0.1.0', bootId: 'boot-old', state: 'serving' }, { version: '0.1.1', bootId: 'boot-new', state: 'serving' }] })
+    const seen: boolean[] = []
+    const follow: NonNullable<Parameters<typeof runUpdateCommand>[0]['startAndFollow']> = async (start, opts) => {
+      await start()
+      seen.push(opts.onUpdate(runningView('download') as never))
+      seen.push(opts.onUpdate(runningView('restarting') as never))
+      // The follower detached at the milestone: no terminal view, the operation is still "running".
+      return { follow: { phase: 'detached' as const, operation: runningView('restarting') as never, children: [] }, body: null, httpStatus: null, exitCode: 130 as const }
+    }
+    const result = await runUpdateCommand({ echo, liveLock: () => LOCK, fetch: s.fetch, pollMs: 1, stdout: { isTTY: false }, startAndFollow: follow, identityHeaders: async () => ({ 'X-Bakin-Operator': 'declared' }) })
+    expect(seen).toEqual([false, true])
+    expect(result).toEqual({ kind: 'verified', message: 'Updated to 0.1.1 and verified.' })
+  })
+})

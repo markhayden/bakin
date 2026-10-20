@@ -12,7 +12,7 @@
  * verification (D7.11). Nothing here re-derives an update: the engine's
  * record is the only source.
  */
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   isUpdateSkipped,
   type OperationPhase,
@@ -144,7 +144,8 @@ export type UpdateApplyState =
   | { status: 'previewing'; record: UpdateRecord }
   | { status: 'ready'; record: UpdateRecord; preview: ApplyPreviewData }
   | { status: 'starting'; record: UpdateRecord; preview: ApplyPreviewData }
-  | { status: 'running'; record: UpdateRecord; preview: ApplyPreviewData; start: OperationStartResponse }
+  /** `viaApproval`: the apply resolved a covering Health approval — the operation is that repair, not the subject's own flow. */
+  | { status: 'running'; record: UpdateRecord; preview: ApplyPreviewData; start: OperationStartResponse; viaApproval: boolean }
   /** A plugin upgrade's preview widened permissions or binaries: commit only with its token. */
   | { status: 'consent'; record: UpdateRecord; preview: ApplyPreviewData; consent: PluginUpgradeResult & { consentToken: string } }
   /** The Bakin binary was swapped; the server is coming back — verification is explicit (D7.11). */
@@ -196,7 +197,7 @@ export function useUpdateApply(onSettled?: () => void): UseUpdateApplyResult {
     setState({ status: 'starting', record, preview })
     try {
       const started = await startUpdateApply(record.id, body)
-      setState({ status: 'running', record, preview, start: started })
+      setState({ status: 'running', record, preview, start: started, viaApproval: body.approvalId !== undefined })
     } catch (error) {
       setState({ status: 'failed', record, preview, error: errorMessage(error) })
     }
@@ -221,7 +222,10 @@ export function useUpdateApply(onSettled?: () => void): UseUpdateApplyResult {
         setState({ status: 'failed', record, preview, error: `The ${record.subject.label} update was cancelled before anything changed.` })
         return
       }
-      if (record.subject.kind === 'plugin') {
+      // A plugin's OWN flow answers like the upgrade route (consent, ready,
+      // noop); a covering repair answers as a repair report — only the
+      // operation's status says what happened.
+      if (record.subject.kind === 'plugin' && !state.viaApproval) {
         let result: PluginUpgradeResult
         try {
           result = interpretPluginUpgrade(record.subject.id, view.result)
@@ -251,7 +255,7 @@ export function useUpdateApply(onSettled?: () => void): UseUpdateApplyResult {
         onSettled?.()
         return
       }
-      setState({ status: 'done', record, message: settledMessage(record, view) })
+      setState({ status: 'done', record, message: state.viaApproval && preview.approval ? `Applied the Health repair “${preview.approval.title}”.` : settledMessage(record, view) })
       onSettled?.()
     },
   })
@@ -263,14 +267,22 @@ export function useUpdateApply(onSettled?: () => void): UseUpdateApplyResult {
   }
 
   const verification = useSelfUpdateVerification(state.status === 'restarting' ? state.handoff : null)
-  if (state.status === 'restarting' && verification.status !== 'idle' && verification.status !== 'verifying') {
+  // The verification settles the apply after commit (it refreshes the
+  // page-owned records through `onSettled`, which must never run during a
+  // render); keyed on the verification outcome, once per handoff.
+  const restartingRecord = state.status === 'restarting' ? state.record : null
+  const restartingPreview = state.status === 'restarting' ? state.preview : null
+  useEffect(() => {
+    if (!restartingRecord || !restartingPreview) return
+    if (verification.status === 'idle' || verification.status === 'verifying') return
     if (verification.status === 'verified') {
-      setState({ status: 'done', record: state.record, message: `Bakin was updated to v${verification.version} and verified. Reload to use the new version.` })
+      setState({ status: 'done', record: restartingRecord, message: `Bakin was updated to v${verification.version} and verified. Reload to use the new version.` })
       onSettled?.()
     } else {
-      setState({ status: 'failed', record: state.record, preview: state.preview, error: `The restart could not be verified: ${verification.summary}.` })
+      setState({ status: 'failed', record: restartingRecord, preview: restartingPreview, error: `The restart could not be verified: ${verification.summary}.` })
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- settles once per verification outcome; onSettled is the page's stable refresh
+  }, [verification, restartingRecord, restartingPreview])
 
   const open = useCallback(async (record: UpdateRecord) => {
     setState({ status: 'previewing', record })
