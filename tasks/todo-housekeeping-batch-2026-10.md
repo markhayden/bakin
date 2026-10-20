@@ -86,7 +86,7 @@ Spec `.claude/specs/housekeeping-batch-2026-10.md` · Plan `.claude/specs/housek
 - [x] 8.2 manifest projection reads the engine; upgrade writers (artifact, github, local `lastSourceTreeSha`) stop writing markers
 - [x] 8.3 Team store joins engine records; Explore reads engine; list.ts/explore probes + checker imports removed; screenshots
 - [x] 8.4 sync/CLI `--check` on the shared observer; CLI stale rendering on `observedAt`
-- [ ] 8.5 Health `plugin-artifacts` consumes observations; private probe + cache deleted; doc
+- [x] 8.5 Health `plugin-artifacts` consumes observations; private probe + cache deleted; doc
 - [ ] 8.6 deletions: `checker.ts`, `upgrade-check.ts` + re-export, lockfile markers, `computeUpgradeAvailable`, `staleHintDays`; perf check; docs incl. layered-context.md:96
 - [ ] PR 8 merged
 

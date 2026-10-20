@@ -55,7 +55,15 @@ import { writeProvenance, WHISKIT_PROVENANCE_VERSION } from '../../../src/core/w
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 
 const target = { type: 'all_actionable' as const, reportId: 'report-1' }
-const deps = { publishedVersions: async () => ({ pluginId: 'terminal', latest: '2.0.0', compatible: '1.5.0' }) }
+const offering = (version: string) => ({
+  record: async () => ({
+    id: 'plugin:terminal', group: 'available' as const, subject: { kind: 'plugin' as const, id: 'terminal', label: 'terminal' },
+    installed: { version: '1.0.0', display: '1.0.0' }, available: { version, display: version },
+    reason: (version === '1.0.0' ? 'compatible-rebuild' : 'newer-version') as 'compatible-rebuild' | 'newer-version', outcome: 'update-available' as const,
+    source: { kind: 'artifact-index', endpoint: 'https://example.test/index.json' }, fingerprint: 'fp', observedAt: '2026-10-19T12:00:00.000Z',
+  }),
+})
+const deps = offering('1.5.0')
 
 function installStranded(id: string): void {
   const dir = join(testDir, 'plugins', id)
@@ -150,7 +158,7 @@ describe('upgrade-plugin-artifact repair', () => {
   it('a stranded plugin whose compatible build carries the SAME version is still offered', async () => {
     installStranded('terminal')
     previewVersion = '1.0.0'
-    const sameVersion = { publishedVersions: async () => ({ pluginId: 'terminal', latest: '1.0.0', compatible: '1.0.0' }) }
+    const sameVersion = offering('1.0.0')
     const [item] = await upgradePluginArtifactRepair(sameVersion).plan(target)
     expect(item!.changes[0]!.target).toBe(`plugin:terminal@1.0.0#${'d'.repeat(64)}!${'7'.repeat(64)}`)
   })
