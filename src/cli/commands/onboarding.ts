@@ -188,14 +188,15 @@ async function cmdOnboardingInstallSingle(target: InstallableName, args: string[
         const check = await withTtyRuntimeLogsSilenced({ isTTY, verbose }, () => installableComponent(target).check())
         return check.status === 'ok' ? null : `${check.message.replace(/\.$/, '')}. Install ${target} now?`
       })()
-    if (question) {
-      if (!await askYesNo(question, true)) {
-        // Declined: nothing starts — not every installer gates on approval.
-        await printOnboardingInstallTui({ name: target, status: 'skipped', message: `Skipped — run \`bakin install ${target}\` when you're ready.`, durationMs: 0 })
-        return
-      }
-      autoApprove = true
+    if (question && !await askYesNo(question, true)) {
+      // Declined: nothing starts — not every installer gates on approval.
+      await printOnboardingInstallTui({ name: target, status: 'skipped', message: `Skipped — run \`bakin install ${target}\` when you're ready.`, durationMs: 0 })
+      return
     }
+    // Asked and accepted, or the check found nothing to ask about: the typed
+    // command is the approval either way, so an installer that still finds
+    // work never skips it as "not approved".
+    autoApprove = true
   }
   await installAndReport(target, {
     autoApprove,

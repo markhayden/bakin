@@ -584,7 +584,13 @@ mv "$stage" "$5/$owner/$name--antfly-a2cdf31c"
   it('an existing default-layout install (the ONNX set Linux cannot load) is re-pulled and replaced', async () => {
     installFakeBinary(PULL_VARIANT)
     seedDefaultLayout()
-    expect((await checkInferenceModels([CLIPCLAP])).status).toBe('ok')
+    // The check and the installer agree: what the installer would re-pull,
+    // the check reports — an `ok` here meant the CLI never asked, and the
+    // unapproved install skipped.
+    const check = await checkInferenceModels([CLIPCLAP])
+    expect(check.status).toBe('warn')
+    expect(check.message).toContain('visual embedder')
+    expect(check.remediation).toContain('bakin install search-models')
     const result = await installInferenceModels(optsAutoYes, undefined, [CLIPCLAP])
     expect(result.status).toBe('installed')
     expect(existsSync(join(target, 'text_projection.onnx'))).toBe(false)

@@ -159,6 +159,24 @@ export async function checkInferenceModels(models: InferenceModel[]) {
       },
     }
   }
+  // Complete and loadable, but not the pinned variant: the installer re-pulls
+  // these, so the check must say so — an `ok` here meant `bakin install
+  // search-models` asked nothing and its unapproved install skipped.
+  const stale = missing.length === 0
+    ? models.flatMap((m) => {
+      const why = modelVariantMismatch(m.model)
+      return why ? [{ model: m, why }] : []
+    })
+    : []
+  if (stale.length > 0) {
+    return {
+      name: 'models',
+      status: 'warn' as const,
+      message: `${stale.map((s) => s.model.label).join(', ')} ${stale.length === 1 ? 'is' : 'are'} not the pinned download (${stale.map((s) => s.why).join('; ')}). Search still works here.`,
+      remediation: 'Run `bakin install search-models`: it re-downloads the pinned form and replaces the old install.',
+      details: { root: inferenceModelsRoot(), stale: stale.map((s) => ({ label: s.model.label, model: s.model.model, reason: s.why })) },
+    }
+  }
   if (missing.length === 0) {
     // Structural verification only — pinned file NAMES and sizes, which is
     // what catches the wrong-distribution crash-loop class. sha256 hashing

@@ -833,7 +833,12 @@ tried (0.2.2/0.2.5/0.3.0-rc.1, static and glibc, identical vectors) and is
 what 0.3's default pull already fetches. A variant pull installs as
 `<name>--antfly-<hash>`; the installer moves it to `antflydb/clipclap` (old
 install renamed aside, restored on failure, swept after), and an existing
-default-layout install counts as needing a re-pull (`modelVariantMismatch`).
+default-layout install counts as needing a re-pull (`modelVariantMismatch`)
+— and the check says so (`warn`, "not the pinned download"): the check
+and the installer must agree on what needs work, because a terminal
+`bakin install` only asks when the check is not ok, and an `ok` that the
+installer disagreed with once skipped the re-pull as "not approved". The
+typed command is the approval whenever there is nothing to ask.
 Pruning the ONNX files in place does NOT work — the engine checks the
 download marker (`error.InvalidManagedDownload`). The safety net stays for
 the next model that can't load: `model-load.ts` asks the engine itself
