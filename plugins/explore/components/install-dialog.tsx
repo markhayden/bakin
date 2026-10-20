@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import {
   Alert,
@@ -115,7 +115,14 @@ export function InstallDialog({
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({})
   // Every install is an operation (#895), followed live. Plugins are preview
   // → commit: the preview ends with the consent prompt or `ready`.
-  const install = useInstallOperation<InstallResponseBody>()
+  // The settle is the operation's event (#966b): the hook calls back once per
+  // start with the body the route used to answer, or the reason it failed.
+  const install = useInstallOperation<InstallResponseBody>({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) { setError(settle.error); return }
+      handleInstallOutcome(settle.result.body ?? {}, settle.result.httpStatus < 400, settle.result.httpStatus)
+    },
+  })
   const busy = submitting || install.busy
 
   // Curated entries carry a ref pin — honor it exactly like onboarding does
@@ -181,17 +188,6 @@ export function InstallDialog({
     consentToken?: string
     capability?: Parameters<typeof keyStepFrom>[0]['capability']
   }
-
-  const installResult = install.result
-  const installStartError = install.error
-  useEffect(() => {
-    if (installStartError) setError(installStartError)
-  }, [installStartError])
-  useEffect(() => {
-    if (!installResult) return
-    handleInstallOutcome(installResult.body ?? {}, installResult.httpStatus < 400, installResult.httpStatus)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleInstallOutcome is render-scoped; the result settles once
-  }, [installResult])
 
   /** Terminal handling for a settled install operation (its result is the route's old body). */
   const handleInstallOutcome = (responseBody: InstallResponseBody, httpOk: boolean, status: number) => {
