@@ -63,7 +63,7 @@ Spec `.claude/specs/housekeeping-batch-2026-10.md` · Plan `.claude/specs/housek
 - [x] 6.1 build contract in ONE commit: externals v2 + `/vendor/zod.js` + import map + four tests + embedded manifest + perf baseline + compiled-binary vendor test + Playwright smoke/screenshots
 - [x] 6.2 SDK zod peer; published JS externalizes; tarball check; reference-plugin consumer green
 - [x] 6.3 docs (plugin-system, author docs, binary-size, scaffold comment)
-- [ ] PR 6 merged
+- [x] PR 6 merged
 - [ ] Bits companion `chore/zod-4.6-externals` opened (CLIENT_EXTERNAL + contract v2 + ~4.6.5 + patch bumps + SDK pin + bundle assertion); #948 closed when merged
 
 ## PR 7 — #1007 A `feat/1007-updates-engine`
