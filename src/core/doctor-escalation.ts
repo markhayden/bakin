@@ -300,6 +300,8 @@ async function escalateOnce(
       const safeItems = plan?.items.filter((item) => item.safety === 'safe') ?? []
       /** incidentId → the failed safe attempt that led to the operator (#896 D3.4). */
       const failures = new Map<string, RepairFailure>()
+      /** Incidents whose auto-repair settled WITHOUT a report: operator-review, whatever was proposed (D3.4b). */
+      const noReport = new Set<string>()
       if (plan && safeItems.length > 0) {
         // The same repair operation every surface runs (#895), started by the
         // system and awaited in-process — it shows in the tray like any other.
@@ -319,22 +321,27 @@ async function escalateOnce(
             itemIds: safeItemIds,
             confirmedItemIds: [],
             origin: 'system',
+            releaseTo: cycleToken, // the incidents come straight back here at settle — no window
           })
         } catch (err) {
-          releaseIncidents(fingerprint, safeIncidentIds) // never started — nothing will settle
+          transferIncidents(safeIncidentIds, fingerprint, cycleToken) // never started — take them back
           throw err
         }
         const { view, report: applied } = await awaitDoctorRepair(started.operationId)
-        // Settled: the operation released its reservation; this is the
-        // belt-and-braces for a twin that never ran (attached to a settling one).
-        releaseIncidents(fingerprint, safeIncidentIds)
+        // Settled: the operation handed the incidents back (releaseTo). A twin
+        // that attached to someone else's run may have released them instead —
+        // take back whatever is still under the fingerprint, then re-claim.
+        transferIncidents(safeIncidentIds.filter((id) => incidentHolder(id) === fingerprint), fingerprint, cycleToken)
         const at = new Date().toISOString()
         if (!applied) {
           // The attempt itself died (cancelled, crashed, no report): nothing
           // was applied — record the receipt and let the partition hand these
           // incidents to the operator instead of ending the cycle (#896 D3.4b).
           const error = view.outcome?.message ?? `auto-repair ${view.status} without a report`
-          for (const id of safeIncidentIds) failures.set(id, { operationId: started.operationId, stage: view.status, error, at })
+          for (const id of safeIncidentIds) {
+            failures.set(id, { operationId: started.operationId, stage: view.status, error, at })
+            noReport.add(id)
+          }
           log.warn('Auto-repair settled without a report; handing its incidents to the operator', { operationId: started.operationId, status: view.status, incidentIds: safeIncidentIds })
           remaining = claimForCycle(remaining, cycleToken)
         } else {
@@ -367,12 +374,15 @@ async function escalateOnce(
       // 2.–4. Partition what is left.
       const nonSafeItems = plan?.items.filter((item) => item.safety !== 'safe') ?? []
       const proposedIncidentIds = new Set(nonSafeItems.flatMap((item) => item.incidentIds))
-      const repairIncidents = remaining.filter((incident) => incident.resolution.type === 'repair' && proposedIncidentIds.has(incident.id))
+      // No-report incidents take precedence over any proposal: an attempt
+      // that died says nothing about what the next one would do (D3.4b).
+      const repairIncidents = remaining.filter((incident) => incident.resolution.type === 'repair' && proposedIncidentIds.has(incident.id) && !noReport.has(incident.id))
       const navigateIncidents = remaining.filter((incident) => incident.resolution.type === 'navigate')
       // A repair-type incident with no executable proposal — its safe repair
-      // failed, planning threw, or nothing was proposed — goes to the OPERATOR,
-      // never to an agent that would re-run the same installer (#896 D3.4).
-      const operatorIncidents = remaining.filter((incident) => incident.resolution.type === 'repair' && !proposedIncidentIds.has(incident.id))
+      // failed, planning threw, nothing was proposed, or the attempt settled
+      // without a report — goes to the OPERATOR, never to an agent that would
+      // re-run the same installer (#896 D3.4).
+      const operatorIncidents = remaining.filter((incident) => incident.resolution.type === 'repair' && (!proposedIncidentIds.has(incident.id) || noReport.has(incident.id)))
       const delegateIncidents = remaining.filter((incident) => !repairIncidents.includes(incident) && !navigateIncidents.includes(incident) && !operatorIncidents.includes(incident))
 
       if (plan && repairIncidents.length > 0) {

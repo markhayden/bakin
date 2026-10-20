@@ -697,6 +697,9 @@ const routes = [
           itemIds: body.itemIds,
           confirmedItemIds: body.confirmedItemIds,
           origin: operationOriginFromRequest(req),
+          // An agent applying from inside its own delegated task is the one
+          // hand-off past the task's hold (#896 D3.1).
+          ...(provenance.actor.kind === 'agent' && provenance.actor.id ? { actingAgentId: provenance.actor.id } : {}),
         })
         return Response.json(started, { status: started.attached ? 200 : 202 })
       } catch (err) {

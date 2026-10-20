@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdtempSync, rmSync } from 'fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -141,6 +141,23 @@ describe('structured Health delegation', () => {
     expect(listDoctorRepairRequests(testDir)).toHaveLength(0)
     // The foreign hold is untouched.
     expect(incidentHolder('health:search:unavailable')).toBe('repair:plan-3:search.rebuild:rebuild')
+  })
+
+  it.each([
+    ['a fresh reservation', undefined],
+    ['a handed-over reservation', 'escalation:cycle-1'],
+  ])('releases %s when the request write itself fails (#896 review)', async (_label, reservation) => {
+    if (reservation) reserveIncidents(['health:search:unavailable'], reservation)
+    mkdirSync(testDir, { recursive: true })
+    chmodSync(testDir, 0o500) // the request directory cannot be created → the first write throws
+    try {
+      const failure = await delegateDoctorRepair({ contentDir: testDir, projectRoot: testDir, accepted: true, ...(reservation ? { reservation } : {}) }).catch((err: unknown) => err)
+      expect(failure).toBeInstanceOf(Error)
+      expect(createTaskWithEffects).not.toHaveBeenCalled()
+      expect(heldIncidentIds().size).toBe(0)
+    } finally {
+      chmodSync(testDir, 0o700)
+    }
   })
 
   it('concurrent delegations of the same incident open ONE task', async () => {

@@ -23,7 +23,7 @@
  *   with `holdNow`, never waiting.
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { CORE_RESOURCES } from '@makinbakin/sdk/types'
@@ -191,27 +191,81 @@ function reclaimMarkerPath(path: string): string {
   return `${path}.reclaim`
 }
 
-/** O_EXCL claim on the reclaim of `path`; a marker left by a dead reclaimer is ignored after a short grace. */
+/**
+ * O_EXCL claim on the reclaim of `path`. The marker records its owner's pid;
+ * it is abandoned when that process is dead or the marker is older than the
+ * grace (a reclaim is a handful of syscalls). An abandoned marker is taken
+ * over EXCLUSIVELY: `rename` is atomic, so of two contenders that both judged
+ * it abandoned only one moves it — and the mover checks the inode it moved is
+ * the one it judged, so a fresh replacement marker written in between is put
+ * back, never removed on an earlier observation.
+ */
 function takeReclaimMarker(path: string): boolean {
   const marker = reclaimMarkerPath(path)
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      closeSync(openSync(marker, 'wx'))
+      const fd = openSync(marker, 'wx')
+      try {
+        writeSync(fd, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }))
+      } finally {
+        closeSync(fd)
+      }
       return true
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
     }
-    let age = 0
+    const judged = readReclaimMarker(marker)
+    if (!judged) continue // vanished between the open and the stat — retry the claim
+    const abandoned = (judged.pid !== null && !isProcessAlive(judged.pid)) || judged.ageMs > RECLAIM_MARKER_GRACE_MS
+    if (!abandoned) return false
+    const tomb = `${marker}.abandoned-${process.pid}-${Date.now()}`
     try {
-      age = Date.now() - statSync(marker).mtimeMs
-    } catch {
-      continue // vanished between the open and the stat — retry the claim
+      renameSync(marker, tomb)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue // another contender took it first
+      throw err
     }
-    if (age < RECLAIM_MARKER_GRACE_MS) return false
-    log.warn('Ignoring a reclaim marker left by a dead reclaimer', { marker, ageMs: Math.round(age) })
-    releaseReclaimMarker(path)
+    let movedIno: number | bigint | null = null
+    try {
+      movedIno = statSync(tomb).ino
+    } catch {
+      movedIno = null
+    }
+    if (movedIno !== judged.ino) {
+      // A fresh marker replaced the abandoned one after the judgement: it is
+      // live — give it back untouched and let its owner finish.
+      try {
+        renameSync(tomb, marker)
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      }
+      return false
+    }
+    try {
+      unlinkSync(tomb)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+    }
+    log.warn('Took over an abandoned reclaim marker', { marker, ownerPid: judged.pid, ageMs: Math.round(judged.ageMs) })
   }
   return false
+}
+
+/** The marker's owner pid (null when unparseable), its age, and the inode that was judged. */
+function readReclaimMarker(marker: string): { pid: number | null; ageMs: number; ino: number | bigint } | null {
+  try {
+    const stat = statSync(marker)
+    let pid: number | null = null
+    try {
+      const parsed = JSON.parse(readFileSync(marker, 'utf-8')) as { pid?: unknown }
+      if (typeof parsed.pid === 'number' && Number.isInteger(parsed.pid) && parsed.pid > 0) pid = parsed.pid
+    } catch {
+      pid = null
+    }
+    return { pid, ageMs: Date.now() - stat.mtimeMs, ino: stat.ino }
+  } catch {
+    return null
+  }
 }
 
 function releaseReclaimMarker(path: string): void {
@@ -270,10 +324,14 @@ function tryAcquireOne(resource: string, identity: ResourceHolderIdentity, onRec
     // winner's live lock.
     if (!takeReclaimMarker(path)) continue
     try {
+      // Re-judge under the marker: the file must still be the holder that was
+      // judged AND still stale. An unparseable file counts as "the same" only
+      // while it is older than the unparseable grace — a contender between
+      // its O_EXCL open and its write is a FRESH empty file, never reclaimed.
       const again = readHolderAt(path)
       const sameStaleHolder = again === null
-        ? holder === null
-        : holder !== null && again.pid === holder.pid && again.acquiredAt === holder.acquiredAt
+        ? holder === null && isStale(resource, path, null)
+        : holder !== null && again.pid === holder.pid && again.acquiredAt === holder.acquiredAt && isStale(resource, path, again)
       if (!sameStaleHolder) continue
       try {
         unlinkSync(path)

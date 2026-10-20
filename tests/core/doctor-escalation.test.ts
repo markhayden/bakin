@@ -453,6 +453,24 @@ describe('policy', () => {
     expect(delegate).not.toHaveBeenCalled()
   })
 
+  it('no report beats any proposal: a safe + non-safe plan for one incident still goes to the operator when the attempt died (#896 review)', async () => {
+    planItems = [
+      item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe' }),
+      item({}), // a non-safe proposal for the same incident
+    ]
+    awaitDoctorRepair.mockImplementationOnce(async () => ({ view: { id: 'op-repair', status: 'failed', outcome: { code: 'unexpected', message: 'worker died' } }, report: null }) as never)
+    let holderDuringReview: string | undefined
+    openOperatorReview.mockImplementationOnce(async () => {
+      holderDuringReview = incidentHolder('health:search:index-corrupt')
+      return { request: { id: 'repair-review' }, taskId: 'task-operator-review' }
+    })
+    await escalate([repairIncident()])
+    expect(openRepairApproval).not.toHaveBeenCalled()
+    expect(openOperatorReview).toHaveBeenCalledWith(expect.objectContaining({ reason: { failure: expect.objectContaining({ stage: 'failed', error: 'worker died' }) } }))
+    // No window: the incident is back under the cycle's token before the disposition is written.
+    expect(holderDuringReview).toMatch(/^escalation:/)
+  })
+
   it('an auto-repair that settles WITHOUT a report hands its incidents to the operator instead of ending the cycle (#896 D3.4b)', async () => {
     planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe' })]
     awaitDoctorRepair.mockImplementationOnce(async () => ({ view: { id: 'op-repair', status: 'cancelled', outcome: { code: 'cancelled', message: 'cancelled before apply' } }, report: null }) as never)

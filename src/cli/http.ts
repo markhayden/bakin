@@ -132,22 +132,37 @@ export async function apiGet(path: string): Promise<unknown> {
 
 /**
  * POST whose protocol includes refusals a command must RENDER, not
- * swallow: an `expect`ed status answers `{ status, body }` with the JSON
- * body decoded (#896: 409 repair_in_flight); every other non-2xx keeps
- * today's thrown, formatted error.
+ * swallow: a status in `expect` answers `{ status, body }` ONLY when the
+ * JSON body matches that status's schema (#896: 409 repair_in_flight); any
+ * other non-2xx — including an unrelated or malformed body on an expected
+ * status — keeps today's thrown, formatted error.
  */
-export async function apiPostExpecting(path: string, body: unknown, expect: readonly number[]): Promise<{ status: number; body: unknown }> {
+export async function apiPostExpecting<T>(
+  path: string,
+  body: unknown,
+  expect: Readonly<Record<number, { safeParse(value: unknown): { success: true; data: T } | { success: false } }>>,
+): Promise<{ status: number; body: T }> {
   const identityHeaderSet = identityHeaders(await cliIdentity())
   const res = await fetch(`${serverBaseUrl()}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...CLI_ORIGIN_HEADER, ...identityHeaderSet },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  if (!res.ok && !expect.includes(res.status)) {
-    const text = await res.text()
-    throw new Error(formatApiError(res.status, text))
+  const text = await res.text()
+  const schema = expect[res.status]
+  if (schema) {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      parsed = undefined
+    }
+    const result = schema.safeParse(parsed)
+    if (result.success) return { status: res.status, body: result.data }
+    if (!res.ok) throw new Error(formatApiError(res.status, text))
   }
-  return { status: res.status, body: await res.json() }
+  if (!res.ok) throw new Error(formatApiError(res.status, text))
+  return { status: res.status, body: JSON.parse(text) as T }
 }
 
 export async function apiPost(path: string, body?: unknown): Promise<unknown> {

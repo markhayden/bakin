@@ -174,12 +174,14 @@ async function delegateOnce(options: DoctorDelegateOptions): Promise<DoctorDeleg
       return { status: 'repair_in_flight', incidents: targeted, overlapping: admission.overlapping, heldBy: admission.heldBy }
     }
   }
-  const request = createDoctorRepairRequest(options.contentDir, {
-    plan,
-    incidentIds: delegatedIds,
-    observationIds,
-  })
   try {
+    // Everything from the first write on sits inside the cleanup block: a
+    // failed request write (ENOSPC, permissions) must not leak the hold.
+    const request = createDoctorRepairRequest(options.contentDir, {
+      plan,
+      incidentIds: delegatedIds,
+      observationIds,
+    })
     return await persistDelegation(options, request, incidents)
   } finally {
     releaseIncidents(delegationToken) // the written request (and its task) cover them from here

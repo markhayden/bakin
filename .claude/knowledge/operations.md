@@ -124,7 +124,7 @@ the core ones. Adding a fourth core resource is an approval checkpoint.
   under it and unlinks only the stale holder it judged — two contenders that
   both saw the same dead pid can no longer both unlink (the second would
   have deleted the first's fresh lock and both would have held the
-  resource). A marker left by a reclaimer that died is ignored after 10 s.
+  resource). The marker names its owner's pid; one whose owner is dead or that is older than 10 s is taken over by an atomic `rename` whose mover re-checks the inode it moved (a fresh replacement marker is put back, never removed on an earlier observation). Under the marker the holder is re-judged: an unparseable file is only reclaimed while it is older than the unparseable grace — a contender between its O_EXCL open and its write is a FRESH empty file.
 - `acquireResources` waits abortably (a lease obtained after an abort is
   released at once); `tryAcquireResources` never waits — for background work
   (the search migration pump and boot resumption take `search-engine` this

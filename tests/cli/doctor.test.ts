@@ -108,6 +108,19 @@ describe('doctor --delegate refusals (#896 repair_in_flight)', () => {
     expect(harness.output()).toContain('health:search:unavailable')
   })
 
+  it.each([
+    ['an unrelated 409', { error: 'something else entirely' }],
+    ['a malformed refusal', { status: 'repair_in_flight', incidents: [] }],
+  ])('%s is NOT rendered as a refusal — it stays a formatted API error (#896 review)', async (_label, body) => {
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--delegate', '--yes', '--json']
+    fetchMock.mockResolvedValueOnce(harness.jsonResponse(actionableHealthReport))
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 409, headers: { 'content-type': 'application/json' } }))
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow()
+    expect(harness.output()).not.toContain('REPAIR_IN_FLIGHT')
+    expect(harness.output()).not.toContain('"status": "repair_in_flight"')
+  })
+
   it('TTY mode: renders the refusal screen and exits 1 (no "board task was created")', async () => {
     setStdoutIsTTY(true)
     try {

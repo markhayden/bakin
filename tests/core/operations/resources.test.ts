@@ -291,6 +291,41 @@ describe('stale-lock reclaim is single-winner (#896 D3.5)', () => {
   })
 })
 
+describe('reclaim never touches a fresh lock (#896 review)', () => {
+  it('a fresh EMPTY lock file (a contender between its open and its write) is never reclaimed', async () => {
+    const path = resourceLockPath('media-store')
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, '')
+    const busy = await holdNow(['media-store'], { title: 'contender' }, async () => {}).catch((err: unknown) => err)
+    expect(busy).toBeInstanceOf(ResourceBusyError)
+    expect(existsSync(path)).toBe(true)
+    expect(readFileSync(path, 'utf-8')).toBe('')
+  })
+
+  it('a reclaim marker whose owner pid is DEAD is taken over at once; one whose owner is alive is waited for', async () => {
+    const path = resourceLockPath('media-store')
+    mkdirSync(dirname(path), { recursive: true })
+    const stale = JSON.stringify({ pid: 2 ** 22 + 7, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'dead' })
+    const marker = `${path}.reclaim`
+    writeFileSync(path, stale)
+    writeFileSync(marker, JSON.stringify({ pid: 2 ** 22 + 9, at: new Date().toISOString() })) // fresh, but its owner is gone
+    const lease = await acquire(['media-store'], { identity: identity('op-takeover'), pollMs: { initial: 10, max: 50 } })
+    expect(readResourceHolder('media-store')?.operationId).toBe('op-takeover')
+    expect(existsSync(marker)).toBe(false)
+    lease.release()
+
+    writeFileSync(path, stale)
+    writeFileSync(marker, JSON.stringify({ pid: process.ppid, at: new Date().toISOString() })) // fresh AND alive
+    let acquired = false
+    const pending = acquire(['media-store'], { identity: identity('op-polite'), pollMs: { initial: 10, max: 50 } }).then((l) => { acquired = true; return l })
+    await settleFor(150, 'a live reclaimer is never taken over inside the grace')
+    expect(acquired).toBe(false)
+    unlinkSync(marker)
+    unlinkSync(path)
+    ;(await pending).release()
+  })
+})
+
 describe('two processes', () => {
   it('waits for a live holder in another process and reclaims after it dies', async () => {
     const script = `
@@ -330,16 +365,23 @@ describe('two processes', () => {
     }
   }, 30_000)
 
-  it('two processes racing the same dead-pid lock: exactly one reclaims, the other waits for it (#896 D3.5)', async () => {
+  it('two processes racing the same dead-pid lock: exactly one reclaims, the other holds only after it released (#896 D3.5)', async () => {
     const path = resourceLockPath('media-store')
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, JSON.stringify({ pid: 2 ** 22 + 7, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'dead' }))
+    const go = join(testDir, 'go')
+    // Both children inspect the stale lock as close to simultaneously as the
+    // OS allows: each reports READY, then busy-waits on the barrier file.
     const script = (name: string) => `
+      import { existsSync } from 'node:fs'
       import { acquireResources } from ${JSON.stringify(join(REPO_ROOT, 'packages/core/src/operations/resources.ts'))}
-      const lease = await acquireResources(['media-store'], { identity: { title: ${JSON.stringify(name)}, operationId: ${JSON.stringify(name)} }, pollMs: { initial: 5, max: 20 } })
-      console.log('HELD ' + ${JSON.stringify(name)} + ' ' + Date.now())
-      await new Promise((resolve) => setTimeout(resolve, 1200))
+      console.log('READY')
+      while (!existsSync(${JSON.stringify(go)})) Bun.sleepSync(1)
+      const lease = await acquireResources(['media-store'], { identity: { title: ${JSON.stringify(name)}, operationId: ${JSON.stringify(name)} }, pollMs: { initial: 2, max: 10 } })
+      console.log('ACQUIRED ' + ${JSON.stringify(name)} + ' ' + Date.now())
+      await new Promise((resolve) => setTimeout(resolve, 600))
       lease.release()
+      console.log('RELEASED ' + ${JSON.stringify(name)} + ' ' + Date.now())
     `
     const spawn = (name: string) => Bun.spawn(['bun', '-e', script(name)], {
       cwd: REPO_ROOT,
@@ -347,16 +389,33 @@ describe('two processes', () => {
       stdout: 'pipe',
       stderr: 'pipe',
     })
-    const a = spawn('child-a')
-    const b = spawn('child-b')
-    const [outA, outB] = await Promise.all([new Response(a.stdout).text(), new Response(b.stdout).text()])
-    await Promise.all([a.exited, b.exited])
-    const held = [outA, outB].flatMap((out) => out.split('\n').filter((line) => line.startsWith('HELD ')))
-    expect(held).toHaveLength(2)
-    const times = held.map((line) => Number(line.split(' ')[2])).sort((x, y) => x - y)
-    // The loser waited for the winner's whole hold: never two holders at once.
-    expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(1000)
-    expect(existsSync(`${path}.reclaim`)).toBe(false)
-    expect(existsSync(path)).toBe(false)
+    const children = [spawn('child-a'), spawn('child-b')]
+    const readers = children.map((child) => child.stdout.getReader())
+    const outputs = ['', '']
+    const readUntil = async (i: number, marker: string) => {
+      const deadline = Date.now() + 20_000
+      while (!outputs[i]!.includes(marker) && Date.now() < deadline) {
+        const { value, done } = await readers[i]!.read()
+        if (done) break
+        outputs[i] += new TextDecoder().decode(value)
+      }
+    }
+    try {
+      await Promise.all([readUntil(0, 'READY'), readUntil(1, 'READY')])
+      writeFileSync(go, '')
+      await Promise.all([readUntil(0, 'RELEASED'), readUntil(1, 'RELEASED')])
+      await Promise.all(children.map((child) => child.exited))
+      const intervals = outputs.map((out) => ({
+        acquired: Number(/ACQUIRED \S+ (\d+)/.exec(out)?.[1]),
+        released: Number(/RELEASED \S+ (\d+)/.exec(out)?.[1]),
+      })).sort((x, y) => x.acquired - y.acquired)
+      expect(intervals.every((i) => Number.isFinite(i.acquired) && Number.isFinite(i.released))).toBe(true)
+      // Disjoint holds: the second acquisition happens only after the first release.
+      expect(intervals[1]!.acquired).toBeGreaterThanOrEqual(intervals[0]!.released)
+      expect(existsSync(`${path}.reclaim`)).toBe(false)
+      expect(existsSync(path)).toBe(false)
+    } finally {
+      for (const child of children) child.kill('SIGKILL')
+    }
   }, 30_000)
 })

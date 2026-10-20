@@ -23,7 +23,8 @@ import {
   DoctorRepairConfirmationError,
   DoctorRepairStalePlanError,
 } from './doctor-repair-plans'
-import { releaseIncidents, reserveIncidents } from './doctor-reservations'
+import { releaseIncidents, reserveIncidents, transferIncidents } from './doctor-reservations'
+import { getDoctorRepairRequest, openRepairWorkByIncident } from './doctor-repair-store'
 import { checkEvaluatedFresh } from './doctor-autoclose'
 import {
   CHILD_PARTIAL_CODE,
@@ -249,6 +250,20 @@ export const REPAIR_PARENT_PLAN: OperationPlan = {
 
 export interface DoctorRepairStartOptions extends DoctorRepairApplyOptions {
   origin: OperationOrigin
+  /**
+   * The agent this apply acts for (CLI agent context, #898). A repair-type
+   * incident an OPEN delegated task is working refuses every other caller
+   * (`repair_in_flight`, held by that task); the task's own agent is the one
+   * explicit hand-off — it is doing the work it was asked to do.
+   */
+  actingAgentId?: string
+  /**
+   * Owner token that takes the incident reservation back when the operation
+   * settles (escalation hands the safe subset over and wants it back before
+   * it records each disposition — no window for a delegation to grab it).
+   * Absent: the reservation is released at settle.
+   */
+  releaseTo?: string
 }
 
 /** Validation failures keep today's 409 bodies (D22). */
@@ -297,6 +312,17 @@ export async function startDoctorRepair(options: DoctorRepairStartOptions): Prom
   const incidentIds = [...new Set(
     (stored?.items ?? []).filter((item) => options.itemIds.includes(item.id)).flatMap((item) => item.incidentIds),
   )]
+  // Durable admission: an OPEN delegated task (a live agent run) already
+  // works the incident — refuse unless this apply IS that task's agent.
+  const working = await delegatedTaskWorking(options.contentDir, incidentIds, options.actingAgentId)
+  if (working) {
+    throw new OperationRejectedError(409, {
+      error: `Repair task ${working.taskId} is already working ${working.incidentId}.`,
+      code: 'repair_in_flight',
+      overlapping: [working.incidentId],
+      heldBy: `task:${working.taskId}`,
+    })
+  }
   const reservation = incidentIds.length > 0 ? reserveIncidents(incidentIds, fingerprint) : null
   if (reservation?.status === 'refused') {
     throw new OperationRejectedError(409, {
@@ -335,7 +361,7 @@ export async function startDoctorRepair(options: DoctorRepairStartOptions): Prom
         try {
           return await runDoctorRepair(op, options, validated!, current!)
         } finally {
-          releaseIncidents(fingerprint)
+          settleReservation(fingerprint, incidentIds, options.releaseTo)
         }
       },
     })
@@ -343,9 +369,35 @@ export async function startDoctorRepair(options: DoctorRepairStartOptions): Prom
     // Validation refused (or the registry threw) before anything ran: a
     // reservation this request GRANTED must not outlive it. An attached
     // request never releases — the running twin owns the incidents.
-    if (owns) releaseIncidents(fingerprint)
+    if (owns) settleReservation(fingerprint, incidentIds, options.releaseTo)
     throw error
   }
+}
+
+/** At settle the incidents go back to the caller that handed them over, or free. */
+function settleReservation(fingerprint: string, incidentIds: readonly string[], releaseTo: string | undefined): void {
+  if (releaseTo && transferIncidents(incidentIds, fingerprint, releaseTo)) return
+  releaseIncidents(fingerprint)
+}
+
+/**
+ * The newest OPEN delegated request whose task still exists, for any of these
+ * incidents — unless the caller is that task's own agent (the hand-off).
+ */
+async function delegatedTaskWorking(contentDir: string, incidentIds: readonly string[], actingAgentId: string | undefined): Promise<{ taskId: string; incidentId: string } | null> {
+  if (incidentIds.length === 0) return null
+  const index = openRepairWorkByIncident(contentDir)
+  const { getTaskDetails } = await import('./task-service')
+  for (const incidentId of incidentIds) {
+    for (const work of index.get(incidentId) ?? []) {
+      const request = getDoctorRepairRequest(contentDir, work.requestId)
+      if (request?.kind !== 'delegate') continue
+      if (!await getTaskDetails(work.taskId).catch(() => null)) continue // task gone — the request covers nothing
+      if (actingAgentId && request.agentId === actingAgentId) break // the owning agent acts for its task
+      return { taskId: work.taskId, incidentId }
+    }
+  }
+  return null
 }
 
 async function runDoctorRepair(

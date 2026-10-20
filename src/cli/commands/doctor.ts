@@ -2,6 +2,7 @@
  * `bakin doctor [--full] [--fix] [--delegate] [repair ...]` — canonical
  * Health reports, targeted deterministic repair, and delegated repair.
  */
+import { z } from 'zod'
 import type {
   HealthCheckState,
   HealthIncident,
@@ -412,9 +413,21 @@ async function runDoctorDelegateApply(report: HealthReport, incidents: [HealthIn
     reportId: report.id,
     ids: incidents.map(incident => incident.id) as [string, ...string[]],
   }
-  const { body } = await apiPostExpecting('/api/plugins/health/doctor/delegate', { accepted: true, target }, [409])
-  return body as CliDoctorDelegateReport
+  const { body } = await apiPostExpecting<CliDoctorDelegateReport>(
+    '/api/plugins/health/doctor/delegate',
+    { accepted: true, target },
+    { 409: repairInFlightSchema },
+  )
+  return body
 }
+
+/** The ONE 409 the delegate command renders; any other 409 is a thrown, formatted error. */
+const repairInFlightSchema = z.object({
+  status: z.literal('repair_in_flight'),
+  incidents: z.array(z.custom<HealthIncident>((value) => typeof value === 'object' && value !== null)),
+  overlapping: z.array(z.string()).min(1),
+  heldBy: z.string().min(1),
+})
 
 function repairApplyExitCode(report: CliDoctorRepairApply): DoctorExitCode {
   if (report.results.some(result => result.status === 'failed')) return 1
