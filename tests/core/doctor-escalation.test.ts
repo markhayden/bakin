@@ -21,7 +21,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 let mode = true
 let cooldownMs = 6 * 60 * 60_000
 let staleAfterMs = 12 * 60 * 60_000
-type Req = { id: string; incidentIds: string[]; taskId?: string; createdAt: string; status: string; approvalId?: string; events: Array<{ ts: string; type: string; message: string; data?: Record<string, unknown> }> }
+type Req = { id: string; kind?: 'delegate' | 'approval-repair' | 'approval-navigate' | 'operator-review'; incidentIds: string[]; taskId?: string; createdAt: string; status: string; approvalId?: string; events: Array<{ ts: string; type: string; message: string; data?: Record<string, unknown> }> }
 let requests: Req[] = []
 let liveRuns = new Set<string>()
 let onTaskRead = () => {}
@@ -282,6 +282,25 @@ describe('per-incident cover (bounded, resurfacing — spec D-G1/D-G3)', () => {
     expect(reannounceApproval).not.toHaveBeenCalled()
     expect(delegate).not.toHaveBeenCalled()
     expect(outcome?.resurfacedTaskIds).toEqual([])
+  })
+
+  it('an open operator-review request covers its incidents like any other (#896 D3.4)', async () => {
+    requests = [coveringRequest(1 * HOUR, { kind: 'operator-review' })]
+    taskColumns = { 'task-1': 'review' }
+    expect(await covered(['health:search:unavailable'])).toEqual(new Set(['health:search:unavailable']))
+    await escalate([incident()])
+    expect(delegate).not.toHaveBeenCalled()
+    expect(openRepairApproval).not.toHaveBeenCalled()
+  })
+
+  it('resurfaces an operator-review task with its own copy and NEVER attaches a navigate approval (#896 D3.4)', async () => {
+    requests = [coveringRequest(34 * HOUR, { kind: 'operator-review' })]
+    taskColumns = { 'task-1': 'todo' }
+    await escalate([incident()])
+    expect(escalateTaskToReview).toHaveBeenCalledWith('task-1', expect.stringMatching(/could not be automated and still needs you/))
+    expect(attachResurfaceApproval).not.toHaveBeenCalled()
+    expect(reannounceApproval).not.toHaveBeenCalled()
+    expect(delegate).not.toHaveBeenCalled()
   })
 
   it('re-judges current state before mutating: a request verified after the assessment is not resurfaced', async () => {

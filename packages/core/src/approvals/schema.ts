@@ -54,9 +54,17 @@ const proposedChangeSchema = z.object({
   description: z.string(),
 })
 
+export const repairFailureSchema = z.object({
+  operationId: z.string(),
+  stage: z.string(),
+  error: z.string(),
+  at: z.string(),
+})
+
 export const repairProposalSchema = z.object({
   reportId: z.string(),
   observationIds: z.array(z.string()),
+  failure: repairFailureSchema.optional(),
   items: z.array(z.object({
     actionId: z.string(),
     itemId: z.string(),

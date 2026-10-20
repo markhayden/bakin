@@ -65,6 +65,27 @@ describe('versioned doctor repair request records', () => {
   })
 })
 
+describe('operator-review requests carry the failed attempt (#896 D3.4)', () => {
+  it('round-trips kind operator-review with a failure receipt, and a proposal\'s failure', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-repair-store-'))
+    try {
+      const failure = { operationId: 'op-1', stage: 'installing', error: 'download stalled', at: '2026-10-20T00:00:00.000Z' }
+      const created = createDoctorRepairRequest(dir, {
+        kind: 'operator-review', incidentIds: ['health:media:store-missing'], observationIds: ['health.media:sharp'], checkIds: ['media.sharp'], failure,
+      })
+      expect(getDoctorRepairRequest(dir, created.id)).toMatchObject({ kind: 'operator-review', failure })
+      const proposal = { reportId: 'health-report-1', observationIds: ['health.media:sharp'], items: [], failure }
+      const withProposal = createDoctorRepairRequest(dir, {
+        kind: 'approval-repair', incidentIds: ['health:media:store-missing'], observationIds: ['health.media:sharp'], proposal,
+      })
+      expect(getDoctorRepairRequest(dir, withProposal.id)?.proposal?.failure).toEqual(failure)
+      expect(listDoctorRepairRequests(dir).map((request) => request.kind).sort()).toEqual(['approval-repair', 'operator-review'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('request files are validated on read (#898)', () => {
   function withDir(run: (dir: string, shard: string) => void): void {
     const dir = mkdtempSync(join(tmpdir(), 'bakin-repair-store-'))

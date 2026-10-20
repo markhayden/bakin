@@ -18,7 +18,7 @@
  * Task-service/task-store are imported lazily (same as escalation) to keep
  * this module out of their import cycles.
  */
-import { describeApprovalProvenance, findPendingApproval, getApprovalRecord, type ApprovalRecord, type RepairProposal } from '@bakin/core/approvals'
+import { describeApprovalProvenance, findPendingApproval, getApprovalRecord, type ApprovalRecord, type RepairFailure, type RepairProposal } from '@bakin/core/approvals'
 import type {
   HealthIncident,
   HealthRepairChange,
@@ -160,6 +160,12 @@ function repairApprovalId(requestId: string, generation: number): string {
   return generation === 0 ? `health-repair:${requestId}` : `health-repair:${requestId}:${generation}`
 }
 
+/** The failed attempt that led to this ask — the operator sees WHY before deciding. */
+function failureLines(failure: RepairFailure | undefined): string[] {
+  if (!failure) return []
+  return ['', `The automatic repair already failed at ${failure.stage}: ${failure.error} (operation ${failure.operationId}, ${failure.at}).`]
+}
+
 function repairApprovalBody(incidents: readonly HealthIncident[], proposal: RepairProposal): string {
   return [
     'Bakin Health proposes a repair that changes state and needs your approval before it runs.',
@@ -168,6 +174,7 @@ function repairApprovalBody(incidents: readonly HealthIncident[], proposal: Repa
     '',
     'Proposed changes:',
     ...describeProposedChanges(proposal),
+    ...failureLines(proposal.failure),
     '',
     'Apply runs exactly these changes after re-checking that nothing moved; Dismiss snoozes the incidents for 7 days.',
   ].join('\n')
@@ -227,6 +234,56 @@ export async function openRepairApproval(input: {
     event('approval-requested', 'Posted the repair proposal for approval.', { approvalId }),
   ], { status: 'sent', taskId: task.id, approvalId })
   return { request: sent, approval, taskId: task.id }
+}
+
+/**
+ * ONE review task — no approval, nothing to apply — for repair-type
+ * incidents the doctor could not fix on its own (#896 D3.4): the safe
+ * repair failed, planning threw, or the apply settled without a report.
+ * Covered like every other open request; resurfaced with its own copy;
+ * auto-closed when the originating checks verify healthy.
+ */
+export async function openOperatorReview(input: {
+  contentDir: string
+  report: HealthReport
+  incidents: readonly HealthIncident[]
+  /** Why it needs the operator: the failed attempt, or the planner's error. */
+  reason: { failure: RepairFailure } | { plannerError: string }
+}): Promise<{ request: DoctorRepairRequest; taskId: string }> {
+  const observationIds = [...new Set(input.incidents.flatMap((incident) => incident.observationIds))]
+  const request = createDoctorRepairRequest(input.contentDir, {
+    kind: 'operator-review',
+    incidentIds: input.incidents.map((incident) => incident.id),
+    observationIds,
+    checkIds: checkIdsForObservations(input.report, observationIds),
+    ...('failure' in input.reason ? { failure: input.reason.failure } : {}),
+  })
+  const absoluteHref = new URL('/health', bakinBaseUrl()).toString()
+  const why = 'failure' in input.reason
+    ? `The automatic repair already failed at ${input.reason.failure.stage}: ${input.reason.failure.error} (operation ${input.reason.failure.operationId}, ${input.reason.failure.at}).`
+    : `Health could not plan a repair: ${input.reason.plannerError}`
+  const description = [
+    summarizeIncidents(input.incidents),
+    ...incidentLines(input.incidents),
+    '',
+    why,
+    `This is not something an agent can fix by re-running the installer — it needs you: ${absoluteHref}`,
+    '',
+    'The task closes on its own once Health verifies the fix.',
+  ].join('\n')
+  const { createTaskWithEffects } = await import('./task-service')
+  const task = await createTaskWithEffects({
+    title: `Health: needs you — ${summarizeIncidents(input.incidents)}`,
+    column: 'review',
+    description,
+    createdBy: 'system',
+    source: { pluginId: 'health', entityType: 'doctor-repair', entityId: request.id, purpose: 'operator-review' },
+    channel: 'system',
+  })
+  const sent = appendEvents(input.contentDir, request.id, [
+    event('task-created', `Created review task ${task.id}.`, { taskId: task.id, reason: 'failure' in input.reason ? 'repair-failed' : 'unplannable' }),
+  ], { status: 'sent', taskId: task.id })
+  return { request: sent, taskId: task.id }
 }
 
 /** ONE review task + ONE `health-navigate` approval per operator-only incident. */

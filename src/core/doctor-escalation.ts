@@ -172,12 +172,22 @@ async function resurfaceRequest(requestId: string, ctx: ResurfaceContext): Promi
   if (verdict.kind !== 'resurface') return null
   if (getLiveRun(taskId)) return null
   const hours = Math.round(ctx.staleAfterMs / 3_600_000)
-  const message = verdict.reason === 'closed-unfixed'
-    ? 'Health: this task was closed, but its incident still fails — reopened in Review for you.'
-    : `Health: not fixed after ${hours}h — handed back to you.`
+  // An operator-review request has nothing to approve or delegate: the SAME
+  // task comes back to Review with its own copy — never a navigate approval
+  // that would read "the delegated repair did not fix this" (#896 D3.4).
+  const operatorReview = request.kind === 'operator-review'
+  const message = operatorReview
+    ? (verdict.reason === 'closed-unfixed'
+      ? 'Health: this task was closed, but the repair it needs you for still fails — reopened in Review.'
+      : `Health: still failing after ${hours}h — the repair could not be automated and still needs you.`)
+    : verdict.reason === 'closed-unfixed'
+      ? 'Health: this task was closed, but its incident still fails — reopened in Review for you.'
+      : `Health: not fixed after ${hours}h — handed back to you.`
   if (escalateTaskToReview(taskId, message)) reopenIfLeavingDone(taskId, 'review', 'health', 'system')
-  const announced = request.approvalId ? reannounceApproval(request.approvalId) : false
-  if (!announced) attachResurfaceApproval({ contentDir: ctx.contentDir, request, incidents: ctx.incidents })
+  if (!operatorReview) {
+    const announced = request.approvalId ? reannounceApproval(request.approvalId) : false
+    if (!announced) attachResurfaceApproval({ contentDir: ctx.contentDir, request, incidents: ctx.incidents })
+  }
   updateDoctorRepairRequest(ctx.contentDir, request.id, (current) => ({
     ...current,
     events: [...current.events, { ts: new Date().toISOString(), type: 'resurfaced', message, data: { reason: verdict.reason } }],

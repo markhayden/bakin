@@ -81,7 +81,7 @@ import {
   canonicalChangeSet,
   healthRepairApprovalKind,
   openNavigateApproval,
-  openRepairApproval,
+  openOperatorReview, openRepairApproval,
   pendingRepairApprovalFor,
   recoverInterruptedApplies,
   registerDoctorApprovalKinds,
@@ -149,6 +149,30 @@ async function seed() {
   }, 'Approvals Test')
   await refresh('exec-1')
 }
+
+describe('openOperatorReview (#896 D3.4)', () => {
+  it('opens ONE review task with the failure receipt and no approval', async () => {
+    const report = getHealthReport()
+    const incident = report.incidents.find((row) => row.id.includes('corrupt'))!
+    const failure = { operationId: 'op-7', stage: 'installing', error: 'download stalled', at: '2026-10-20T00:00:00.000Z' }
+    const opened = await openOperatorReview({ contentDir: testDir, report, incidents: [incident], reason: { failure } })
+    expect(opened.request).toMatchObject({ kind: 'operator-review', status: 'sent', taskId: opened.taskId, failure, incidentIds: [incident.id] })
+    expect(opened.request.approvalId).toBeUndefined()
+    expect(createTaskWithEffects.mock.calls.at(-1)?.[0]).toMatchObject({
+      column: 'review', createdBy: 'system',
+      source: { pluginId: 'health', entityId: opened.request.id, purpose: 'operator-review' },
+      description: expect.stringContaining('already failed at installing: download stalled'),
+    })
+  })
+
+  it('names the planner error when nothing could be planned', async () => {
+    const report = getHealthReport()
+    const incident = report.incidents.find((row) => row.id.includes('corrupt'))!
+    const opened = await openOperatorReview({ contentDir: testDir, report, incidents: [incident], reason: { plannerError: 'action unregistered' } })
+    expect(opened.request.failure).toBeUndefined()
+    expect(createTaskWithEffects.mock.calls.at(-1)?.[0]).toMatchObject({ description: expect.stringContaining('could not plan a repair: action unregistered') })
+  })
+})
 
 async function openRepair() {
   const report = getHealthReport()

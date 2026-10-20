@@ -226,6 +226,14 @@ describe('reconcileRepairRequests', () => {
     expect(moveTaskWithEffects).not.toHaveBeenCalled()
   })
 
+  it('closes an operator-review request the same way once its checks verify healthy (#896 D3.4)', async () => {
+    const { requestId, taskId } = openRequest('review', { kind: 'operator-review', failure: { operationId: 'op-1', stage: 'installing', error: 'download stalled', at: new Date().toISOString() } })
+    mode = 'healthy'
+    await reconcileRepairRequests(testDir)
+    expect(getDoctorRepairRequest(testDir, requestId)!.status).toBe('verified')
+    expect(tasks.get(taskId)!.column).toBe('done')
+  })
+
   it('derives the originating checks for requests that stored an empty check list', async () => {
     const { requestId, taskId } = openRequest('blocked', { checkIds: [] })
     mode = 'healthy'
