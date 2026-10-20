@@ -212,6 +212,22 @@ describe('onboarding component CLI commands', () => {
     expect(output()).toContain('Skipped')
   })
 
+  it('a check that reports ok asks nothing, and the typed command is the approval — the install never skips as "not approved"', async () => {
+    const realCheck = installables['plugin-assets'].check
+    installables['plugin-assets'].check = async () => ({ name: 'plugin-assets', status: 'ok', message: 'Plugin assets ready.' })
+    try {
+      process.argv = ['bun', 'cli/bakin.ts', 'install', 'plugin-assets']
+      const { main } = await import('../../cli/bakin')
+      await main()
+    } finally {
+      installables['plugin-assets'].check = realCheck
+    }
+
+    expect(askYesNo).not.toHaveBeenCalled()
+    expect(pluginAssetsInstall).toHaveBeenCalledTimes(1)
+    expect(pluginAssetsInstall.mock.calls[0]?.[0]).toMatchObject({ autoApprove: true })
+  })
+
   it('with BAKIN_URL the prompt names the remote Bakin, never this machine\'s check — and declining contacts nothing', async () => {
     process.env.BAKIN_URL = 'http://10.0.0.9:3737'
     askYesNo.mockImplementationOnce(async () => false)

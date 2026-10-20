@@ -135,31 +135,37 @@ export async function checkInferenceModels(models: InferenceModel[]) {
       details: { root: inferenceModelsRoot(), invalid: unsafe.map((m) => m.model) },
     }
   }
+  // Three independent findings, so none hides another (a missing reranker
+  // must not mask an embedder that can't load):
+  // - missing: not downloaded (or incomplete) — the install fetches it;
+  // - stale: complete but not the pinned variant — the install re-pulls it
+  //   (an `ok` here once meant `bakin install search-models` asked nothing
+  //   and its unapproved install skipped);
+  // - unloadable: the engine itself failed to load it here (#993) — degraded
+  //   and named. Stale → the re-pull fixes it. Pinned → the install
+  //   hash-checks its files (#1006) and re-pulls damaged ones, which this
+  //   structural check cannot see, so it says "may". Custom → nothing to
+  //   install.
   const missing = missingModelEntries(models)
-  // Present but known not to load on this machine (#993): the engine boots
-  // without it, so this is degraded, not broken — and says which leg.
-  const unloadable = missing.length === 0
-    ? models.flatMap((m) => {
-      const verdict = modelLoadVerdict(m.model)
-      return verdict && !verdict.loadable ? [{ model: m, reason: verdict.reason ?? 'the engine could not load it' }] : []
-    })
-    : []
-  if (unloadable.length > 0) {
-    const names = unloadable.map((u) => u.model.label).join(', ')
-    return {
-      name: 'models',
-      status: 'warn' as const,
-      message: `${names} can't load on this machine (engine ${ANTFLY_PIN.version}, ${process.platform}-${process.arch}) — the search that relies on ${unloadable.length === 1 ? 'it is' : 'them is'} unavailable here. Everything else is unaffected.`,
-      remediation: unloadable.some((u) => modelVariantMismatch(u.model.model) !== null)
-        ? 'Run `bakin install search-models`: it re-downloads the model in the form that loads on this machine.'
-        : 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
-      details: {
-        root: inferenceModelsRoot(),
-        unloadable: unloadable.map((u) => ({ label: u.model.label, model: u.model.model, reason: u.reason })),
-      },
-    }
-  }
-  if (missing.length === 0) {
+  const present = models.filter((m) => !missing.some((e) => e.model === m))
+  const stale = present.flatMap((m) => {
+    const why = modelVariantMismatch(m.model)
+    return why ? [{ model: m, why }] : []
+  })
+  const unloadable = present.flatMap((m) => {
+    const verdict = modelLoadVerdict(m.model)
+    return verdict && !verdict.loadable ? [{ model: m, reason: verdict.reason ?? 'the engine could not load it' }] : []
+  })
+  const isStale = (model: InferenceModel) => stale.some((s) => s.model === model)
+  const staleUnloadable = unloadable.filter((u) => isStale(u.model))
+  const maybeDamaged = unloadable.filter((u) => !isStale(u.model) && isPinnedModel(u.model.model))
+  const unfixable = unloadable.filter((u) => !isStale(u.model) && !isPinnedModel(u.model.model))
+  const machine = `engine ${ANTFLY_PIN.version}, ${process.platform}-${process.arch}`
+  const labels = (list: Array<{ model: InferenceModel }>) => list.map((x) => x.model.label).join(', ')
+  const verb = (list: unknown[], one: string, many: string) => (list.length === 1 ? one : many)
+  const root = inferenceModelsRoot()
+
+  if (missing.length === 0 && stale.length === 0 && unloadable.length === 0) {
     // Structural verification only — pinned file NAMES and sizes, which is
     // what catches the wrong-distribution crash-loop class. sha256 hashing
     // lives on the INSTALL path (skip check + staged verify): checks run on
@@ -170,26 +176,55 @@ export async function checkInferenceModels(models: InferenceModel[]) {
       name: 'models',
       status: 'ok' as const,
       message: models.every((m) => isPinnedModel(m.model))
-        ? `All ${models.length} search models present at ${inferenceModelsRoot()} (files present — integrity is hash-checked at install/repair)`
-        : `All ${models.length} search models present at ${inferenceModelsRoot()} (files present — pinned models are hash-checked at install/repair; custom models are checked structurally only)`,
-      details: { root: inferenceModelsRoot(), models: models.map((m) => m.model) },
+        ? `All ${models.length} search models present at ${root} (files present — integrity is hash-checked at install/repair)`
+        : `All ${models.length} search models present at ${root} (files present — pinned models are hash-checked at install/repair; custom models are checked structurally only)`,
+      details: { root, models: models.map((m) => m.model) },
     }
   }
-  const { impact, remediation } = describeMissingModels(missing.map((e) => e.model))
+
+  const missingImpact = missing.length > 0 ? describeMissingModels(missing.map((e) => e.model)) : null
+  const message = [
+    ...(missingImpact ? [`${missing.length} of ${models.length} search model${missing.length === 1 ? '' : 's'} not downloaded - ${missingImpact.impact}.`] : []),
+    ...(stale.length > 0 ? [`${labels(stale)} ${verb(stale, 'is', 'are')} not the pinned download (${stale.map((s) => s.why).join('; ')}).`] : []),
+    ...(staleUnloadable.length > 0 ? [`${labels(staleUnloadable)} can't load on this machine (${machine}) until re-downloaded.`] : []),
+    ...(stale.length > 0 && staleUnloadable.length === 0 && missing.length === 0 ? ['Search still works here.'] : []),
+    ...(maybeDamaged.length > 0
+      ? [`${labels(maybeDamaged)} can't load on this machine (${machine}) — if ${verb(maybeDamaged, 'its', 'their')} files are damaged, \`bakin install search-models\` re-downloads them (it hash-checks pinned files).`]
+      : []),
+    ...(unfixable.length > 0
+      ? [missing.length > 0 || stale.length > 0 || maybeDamaged.length > 0
+        ? `${labels(unfixable)} can't load on this machine either (${machine}), and installing won't change that.`
+        : `${labels(unfixable)} can't load on this machine (${machine}) — the search that relies on ${verb(unfixable, 'it is', 'them is')} unavailable here. Everything else is unaffected.`]
+      : []),
+  ].join(' ')
+  const details = {
+    root,
+    ...(missing.length > 0 ? { missing: missing.map((e) => ({ label: e.model.label, model: e.model.model, path: modelPath(e.model), reason: e.reason })) } : {}),
+    ...(stale.length > 0 ? { stale: stale.map((s) => ({ label: s.model.label, model: s.model.model, reason: s.why })) } : {}),
+    ...(unloadable.length > 0 ? { unloadable: unloadable.map((u) => ({ label: u.model.label, model: u.model.model, reason: u.reason })) } : {}),
+  }
+  // `missing` / `broken` = install work (onboarding installs, the wizard
+  // asks); `warn` = only can't-load, where an install at most re-checks.
+  if (missingImpact) {
+    return { name: 'models', status: 'missing' as const, message, remediation: missingImpact.remediation, details }
+  }
+  if (stale.length > 0) {
+    return {
+      name: 'models',
+      status: 'broken' as const,
+      message,
+      remediation: 'Run `bakin install search-models`: it re-downloads the model in the pinned form and replaces the old install.',
+      details,
+    }
+  }
   return {
     name: 'models',
-    status: 'missing' as const,
-    message: `${missing.length} of ${models.length} search model${missing.length === 1 ? '' : 's'} not downloaded - ${impact}`,
-    remediation,
-    details: {
-      root: inferenceModelsRoot(),
-      missing: missing.map((e) => ({
-        label: e.model.label,
-        model: e.model.model,
-        path: modelPath(e.model),
-        reason: e.reason,
-      })),
-    },
+    status: 'warn' as const,
+    message,
+    remediation: maybeDamaged.length > 0
+      ? 'Run `bakin install search-models`: it hash-checks the pinned files and re-downloads damaged ones. If they are intact, the engine cannot run this model here — point that embedder at a model that loads on this platform.'
+      : 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
+    details,
   }
 }
 

@@ -19,6 +19,12 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
+// The reindex pre-flight reads the models check — never this machine's real models.
+let modelsCheck: { name: string; status: string; message: string; remediation?: string } = { name: 'search-models', status: 'ok', message: 'All search models present.' }
+mock.module('../../src/core/onboarding/search-models', () => ({
+  searchModelsComponent: { name: 'search-models', check: async () => modelsCheck },
+}))
+
 const harness = setupTtyCliHarness({ defaultFetchJson: { ok: true } })
 const { fetchMock, output, errorOutput, jsonResponse } = harness
 
@@ -221,6 +227,46 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
     expect(output()).toContain('agent_lessons')
     expect(output()).toContain('schema missing')
     expect(output()).not.toContain('Reindexing tasks into search')
+  })
+
+  it('the reindex pre-flight says what the models check found — a working old download is never called missing', async () => {
+    const { main } = await import('../../cli/bakin')
+    modelsCheck = { name: 'search-models', status: 'broken', message: 'visual embedder is not the pinned download (installed as the default distribution, not gguf:Q4_K). Search still works here.', remediation: 'Run `bakin install search-models`: it re-downloads the pinned form and replaces the old install.' }
+    try {
+      const report = { ok: true, total: 1, errors: 0, parked: 0, tables: [{ table: 'bakin_tasks', indexed: 1, result: 'skipped' }] }
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ operationId: 'op-reindex', bootId: TEST_BOOT_ID }), { status: 202 }))
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+        bootId: TEST_BOOT_ID,
+        operation: finishedOperation('op-reindex', { httpStatus: 200, body: report }),
+        children: [],
+      }), { status: 200 }))
+      process.argv = ['bun', 'cli/bakin.ts', 'reindex']
+      await main().catch(() => {})
+    } finally {
+      modelsCheck = { name: 'search-models', status: 'ok', message: 'All search models present.' }
+    }
+    expect(output()).toContain('WARNING: visual embedder is not the pinned download')
+    expect(output()).toContain('Search still works here.')
+    expect(output()).not.toContain('search models are missing')
+  })
+
+  it('a missing reranker is reported as the check words it — reindex never calls semantic search dead for it', async () => {
+    const { main } = await import('../../cli/bakin')
+    modelsCheck = { name: 'search-models', status: 'missing', message: '1 of 3 search models not downloaded - result reranking is unavailable until it is (indexing and search are unaffected)', remediation: 'Run `bakin install search-models`.' }
+    try {
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ operationId: 'op-reindex', bootId: TEST_BOOT_ID }), { status: 202 }))
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+        bootId: TEST_BOOT_ID,
+        operation: finishedOperation('op-reindex', { httpStatus: 200, body: { ok: true, total: 0, errors: 0, parked: 0, tables: [] } }),
+        children: [],
+      }), { status: 200 }))
+      process.argv = ['bun', 'cli/bakin.ts', 'reindex']
+      await main().catch(() => {})
+    } finally {
+      modelsCheck = { name: 'search-models', status: 'ok', message: 'All search models present.' }
+    }
+    expect(output()).toContain('result reranking is unavailable')
+    expect(output()).not.toContain('semantic search stays dead')
   })
 
   it('follows the reset operation and reports its rebuild', async () => {

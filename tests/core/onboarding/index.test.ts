@@ -407,6 +407,28 @@ describe('runOnboard orchestrator', () => {
       expect(result.markerWritten).toBe(true)
     })
 
+    it('a warning the install could not fix survives it — rechecked, never reported as a bare ok', async () => {
+      const broken = { name: 'search-models', status: 'broken' as const, message: 'visual embedder is not the pinned download.' }
+      const remaining = { name: 'search-models', status: 'warn' as const, message: "custom embedder can't load on this machine.", remediation: 'Nothing to install.' }
+      Object.defineProperty(scripts['search-models'], 'check', { get: () => scripts['search-models'].installCalls > 0 ? remaining : broken, configurable: true })
+      scripts['search-models'].install = { name: 'search-models', status: 'installed', message: 'Pulled 1 model: visual embedder.', durationMs: 5 }
+      const result = await runOnboard(opts)
+      const outcome = result.outcomes.find((o) => o.name === 'search-models')
+      expect(scripts['search-models'].installCalls).toBe(1)
+      expect(outcome?.finalStatus).toBe('warn')
+      expect(outcome?.message).toContain("custom embedder can't load")
+      expect(outcome?.remediation).toBe('Nothing to install.')
+      expect(result.exitCode).toBe(2)
+    })
+
+    it('a recheck that is not a warning keeps the install\'s ok (a service still starting never fails a good install)', async () => {
+      scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
+      scripts.search.install = { name: 'search', status: 'installed', message: 'search installed', durationMs: 1 }
+      const result = await runOnboard(opts)
+      expect(scripts.search.checkCalls).toBe(2)
+      expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('ok')
+    })
+
     it('treats install:noop as ok', async () => {
       scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
       scripts.search.install = { name: 'search', status: 'noop', message: 'search already installed', durationMs: 0 }

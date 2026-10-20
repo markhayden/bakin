@@ -143,8 +143,8 @@ async function cmdSearchStats(): Promise<void> {
 }
 
 async function cmdReindex(options: { table?: string; rebuild?: boolean; force?: boolean } = {}): Promise<void> {
-  // Pre-flight: reindexing with models missing "works" (documents land in
-  // the tables) while every semantic query stays dead — a silently confusing
+  // Pre-flight: reindexing with an embedder missing "works" (documents land
+  // in the tables) while its semantic leg stays dead — a silently confusing
   // state. Name it before doing the work, at the moment it matters. Goes
   // through the onboarding component so the ACTIVE settings decide which
   // models are required (custom embedders in, disabled reranker out) —
@@ -153,11 +153,14 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean; force?: 
   try {
     const { searchModelsComponent } = await import('../../core/onboarding/search-models')
     const modelsCheck = await searchModelsComponent.check()
-    if (modelsCheck && modelsCheck.status !== 'ok') {
-      console.log('WARNING: search models are missing — this reindex will populate tables, but semantic search stays dead until `bakin install search-models` runs (then reindex again).')
+    // The check's own words: a missing reranker, an old download that still
+    // works and a model this machine can't run each mean something different.
+    if (modelsCheck.status !== 'ok') {
+      console.log(`WARNING: ${modelsCheck.message}${modelsCheck.remediation ? ` ${modelsCheck.remediation}` : ''}`)
     }
-  } catch {
+  } catch (err) {
     // Pre-flight is advisory only — never block a reindex on it.
+    console.log(`WARNING: could not check the search models before reindexing (${err instanceof Error ? err.message : String(err)}).`)
   }
 
   const params: string[] = []

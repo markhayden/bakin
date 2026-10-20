@@ -293,7 +293,27 @@ async function runComponent(
     const durationMs = Date.now() - start
     switch (install.status) {
       case 'installed':
-      case 'noop':
+      case 'noop': {
+        // An install can fix part of what the check found and leave a warning
+        // nothing installs away (a model that can't load beside one it
+        // re-pulled) — say that, never a bare ok. Only a recheck that WARNS
+        // changes the outcome: a service still starting must not turn a
+        // successful install into an error.
+        const after = await component.check().catch((err: unknown) => {
+          log.warn('Post-install recheck failed', { component: component.name, error: String(err) })
+          return null
+        })
+        if (after?.status === 'warn') {
+          return {
+            name: component.name,
+            finalStatus: 'warn',
+            check: after,
+            message: `${install.message} ${after.message}`,
+            remediation: after.remediation,
+            details: after.details,
+            durationMs: Date.now() - start,
+          }
+        }
         return {
           name: component.name,
           finalStatus: 'ok',
@@ -302,6 +322,7 @@ async function runComponent(
           details: check.details,
           durationMs,
         }
+      }
       case 'skipped':
         return {
           name: component.name,

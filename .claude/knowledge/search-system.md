@@ -833,7 +833,28 @@ tried (0.2.2/0.2.5/0.3.0-rc.1, static and glibc, identical vectors) and is
 what 0.3's default pull already fetches. A variant pull installs as
 `<name>--antfly-<hash>`; the installer moves it to `antflydb/clipclap` (old
 install renamed aside, restored on failure, swept after), and an existing
-default-layout install counts as needing a re-pull (`modelVariantMismatch`).
+default-layout install counts as needing a re-pull (`modelVariantMismatch`)
+— and the check says so. The models check collects three findings
+independently and names every one (none hides another): missing (→
+`missing`), complete but not the pinned variant (→ `broken`, "not the pinned
+download … Search still works here", or "can't load … until re-downloaded"),
+and can't-load (→ `warn` only when it is the sole finding). A pinned model
+that can't load may just be damaged: the check is structural, the install
+hash-checks pinned files (#1006), so the message says "if its files are
+damaged, `bakin install search-models` re-downloads them"; only a CUSTOM
+model that can't load gets "installing won't change that". `missing` /
+`broken` mean install work (onboarding installs, the wizard asks) — except
+an invalid model id, which returns `missing` with a settings fix. Onboarding
+rechecks after a successful install and keeps a remaining WARNING (a model
+nothing can fix beside one it re-pulled); any other recheck result leaves the
+install's ok, so a service still starting never fails a good install. The check and the installer
+must agree on what needs work: a terminal `bakin install` only asks when the
+check is not ok, and an `ok` the installer disagreed with once skipped the
+re-pull as "not approved". The check can never see everything (hash-only
+damage is install-time work), so the typed command is the approval whenever
+there is nothing to ask. `bakin reindex`'s pre-flight prints the check's own
+message and remediation (a missing reranker, an old download that works and
+a model that can't load each mean something different).
 Pruning the ONNX files in place does NOT work — the engine checks the
 download marker (`error.InvalidManagedDownload`). The safety net stays for
 the next model that can't load: `model-load.ts` asks the engine itself
