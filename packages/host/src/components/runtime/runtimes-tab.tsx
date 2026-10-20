@@ -229,7 +229,7 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
   // Busy from the moment the request is sent: a preview and a switch (or two
   // clicks) must never race to own the one follower.
   const [starting, setStarting] = useState<'preview' | 'switch' | null>(null)
-  // The settle is the operation's event (#966b). The switch keeps running on
+  // The settle is the operation's event (issue 966b). The switch keeps running on
   // the server whatever this tab does; only its outcome can go missing (a
   // restart, a lost record).
   const followed = useOperation<SwitchResultPayload>(operation?.start.operationId ?? null, {

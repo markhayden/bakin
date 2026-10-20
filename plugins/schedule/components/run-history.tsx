@@ -21,7 +21,7 @@ function runTone(status: string): StatusTone {
 
 export function RunHistory({ jobId }: { jobId: string }) {
   const { runs, loading } = useRunHistory(jobId)
-  // Paging belongs to one job (#966b): another job starts on page one, collapsed.
+  // Paging belongs to one job (issue 966b): another job starts on page one, collapsed.
   const [page, setPage] = useKeyedState(jobId, () => 1)
   const [showAll, setShowAll] = useKeyedState(jobId, () => false)
 

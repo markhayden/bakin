@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useKeyedState } from '@makinbakin/sdk/hooks'
 import { Stack } from '@makinbakin/sdk/layout'
 import { Button, Combobox, ComboboxChip, ComboboxChipRemove, ComboboxChips, ComboboxClear, ComboboxContent, ComboboxControl, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList, ComboboxStatus, ComboboxTrigger, ComboboxValue, Field, FieldDescription, FieldError, FieldLabel, Spinner } from '@makinbakin/sdk/ui'
 
@@ -50,9 +49,17 @@ export function AsyncSelectionExample() {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<RuntimeOption | null>(runtimeOptions[0])
   const [attempt, setAttempt] = useState(0)
-  // Per search (#966b): a new query or retry starts loading with an empty catalog.
-  const [items, setItems] = useKeyedState<RuntimeOption[]>(`${query}\u0000${attempt}`, () => [])
-  const [phase, setPhase] = useKeyedState<'loading' | 'ready' | 'error'>(`${query}\u0000${attempt}`, () => 'loading')
+  // Per search (issue 966b): a new query or retry starts loading with an empty
+  // catalog, adjusted during render (the public catalog composes only the
+  // focused SDK entrypoints, so no keyed-state hook here).
+  const [items, setItems] = useState<RuntimeOption[]>([])
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [searchedFor, setSearchedFor] = useState(`${query}\u0000${attempt}`)
+  if (searchedFor !== `${query}\u0000${attempt}`) {
+    setSearchedFor(`${query}\u0000${attempt}`)
+    setItems([])
+    setPhase('loading')
+  }
   const [unavailable, setUnavailable] = useState(false)
   useEffect(() => {
     let current = true

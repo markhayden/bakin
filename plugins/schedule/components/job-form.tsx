@@ -79,7 +79,7 @@ export function JobForm({
   })), [registeredTeams])
 
   // The fields are seeded per (initial, mode) — a drawer that shows another
-  // job re-seeds in the same render the job changes (#966b). Callers pass a
+  // job re-seeds in the same render the job changes (issue 966b). Callers pass a
   // stable `initial`; a fresh object every render would reset the form.
   const seed = useMemo(() => ({ initial, mode }), [initial, mode])
   const [name, setName] = useKeyedState(seed, () => initial?.name ?? '')

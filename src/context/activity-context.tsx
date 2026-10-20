@@ -9,7 +9,7 @@ export const ActivityContext = createContext({ open: false, toggle: () => {}, cl
 export const useActivityContext = () => use(ActivityContext)
 
 export function ActivityProvider({ children }: { children: React.ReactNode }) {
-  // Seeded from localStorage in the initializer (#966b): the shell is
+  // Seeded from localStorage in the initializer (issue 966b): the shell is
   // client-rendered only, so there is no server frame to mismatch with.
   const [open, setOpen] = useState(() => {
     try {

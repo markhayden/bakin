@@ -68,7 +68,7 @@ export function AgentForm({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
 
   // The catalog can arrive after mount: when it CHANGES, an empty model picks
-  // the preferred entry in the same render (#966b); a chosen model is kept.
+  // the preferred entry in the same render (issue 966b); a chosen model is kept.
   const [modelsSeen, setModelsSeen] = useState(availableModels)
   if (modelsSeen !== availableModels) {
     setModelsSeen(availableModels)

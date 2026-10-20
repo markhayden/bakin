@@ -263,7 +263,7 @@ export function WorkflowCanvasEditor({
   onCancel,
 }: WorkflowCanvasEditorProps) {
   const baseDefinition = initialDefinition ?? BLANK_DEFINITION
-  // The editor is seeded per (mode, source, id, definition) (#966b): opening
+  // The editor is seeded per (mode, source, id, definition) (issue 966b): opening
   // another workflow re-seeds every piece of editor state in the same render
   // the subject changes. Callers pass a stable `initialDefinition`.
   const editorSeed = useMemo(() => ({ mode, source, initialId, initialDefinition }), [mode, source, initialId, initialDefinition])
@@ -490,7 +490,7 @@ export function WorkflowCanvasEditor({
   }, [setError, setNodeDrawerDirty])
 
   // The "apply or cancel first" message is only true while the drawer is
-  // dirty — adjusted during render (#966b).
+  // dirty — adjusted during render (issue 966b).
   if (!nodeDrawerDirty && error === NODE_DRAWER_DIRTY_MESSAGE) setError(null)
 
   const handleAutoArrange = useCallback(() => {

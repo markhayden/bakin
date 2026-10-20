@@ -24,7 +24,10 @@ mock.module('../../../plugins/tasks/components/task-run-history', () => ({
   TaskRunHistory: () => null,
 }))
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useAgent: (agentId: string) => agentId ? { id: agentId, name: agentId } : null,
   useAgentList: () => [],
   useAgentStore: (selector: (state: { displaySettings: Record<string, never>; teams: never[] }) => unknown) => selector({

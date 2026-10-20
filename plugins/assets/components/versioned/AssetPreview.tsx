@@ -94,7 +94,7 @@ export function AssetPreview({ assetId, type, mimeType, version, currentFile, on
 function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
   assetId: string; fileUrl: string; mimeType: string; currentFile: string; onSaved?: () => void
 }) {
-  // The body belongs to one file (#966b): another version starts unloaded in the same render.
+  // The body belongs to one file (issue 966b): another version starts unloaded in the same render.
   const [content, setContent] = useKeyedState<string | null>(fileUrl, () => null)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')

@@ -8,7 +8,10 @@ const root = join(tmpdir(), `bakin-task-summary-${Date.now()}`)
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => root, getBakinPaths: () => ({ root }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => root, getBakinPaths: () => ({ root }) }))
 mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => root, getOpenClawPath: (...parts: string[]) => join(root, ...parts), resetOpenClawHome() {} }))
-mock.module('@makinbakin/sdk/hooks', () => ({ usePluginEvent }))
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
+mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks, usePluginEvent }))
 import { useTaskSummary } from '../../plugins/tasks/hooks/use-task-summary'
 
 function response(review: number) { return Response.json({ blocked: 0, review }) }

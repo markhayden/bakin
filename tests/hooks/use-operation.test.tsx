@@ -248,4 +248,19 @@ describe('startOperation', () => {
     await waitUntil(() => second.result.current.phase === 'expired', { label: 'expired' })
     expect(expired).toEqual([[null, 'expired']])
   })
+
+  it('onSettle is scoped to one follow: following nothing and then the same operation again settles again (#966b review)', async () => {
+    globalThis.fetch = mock(async () => json({ bootId: 'boot-a', operation: view({ rev: 3, status: 'succeeded' }) })) as unknown as typeof fetch
+    const settles: string[] = []
+    const { result, rerender } = await actRender(() => renderHook(
+      ({ id }: { id: string | null }) => useOperation(id, { bootId: 'boot-a', onSettle: (op) => { settles.push(op?.id ?? 'none') } }),
+      { initialProps: { id: 'op-1' as string | null } },
+    ))
+    await waitUntil(() => result.current.phase === 'finished', { label: 'first follow finished' })
+    expect(settles).toEqual(['op-1'])
+    await act(async () => { rerender({ id: null }) })
+    await act(async () => { rerender({ id: 'op-1' }) })
+    await waitUntil(() => settles.length === 2, { label: 'the re-follow settled again' })
+    expect(settles).toEqual(['op-1', 'op-1'])
+  })
 })

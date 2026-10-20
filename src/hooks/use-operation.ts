@@ -31,7 +31,7 @@ export interface UseOperationOptions<B = unknown> {
    * final view), or expired / restarted (the outcome went missing — the
    * view is whatever was last seen, possibly null). The settle is the
    * operation's event; consumers record outcomes here, never in an effect
-   * watching `phase` (#966b).
+   * watching `phase` (issue 966b).
    */
   onSettle?: (operation: OperationView<B> | null, phase: OperationPhase) => void
 }
@@ -138,9 +138,12 @@ export function useOperation<B = unknown>(id: string | null, opts: UseOperationO
 
   // One settle event per followed id, delivered to the latest callback.
   const settleEvent = useEffectEvent((operation: OperationView<B> | null, phase: OperationPhase) => { opts.onSettle?.(operation, phase) })
+  // Scoped to one follow: following nothing (id null) ends the lifecycle, so
+  // following the same operation again settles again.
   const settledFor = useRef<string | null>(null)
   useEffect(() => {
-    if (!id || !settled(state.phase) || settledFor.current === id) return
+    if (!id) { settledFor.current = null; return }
+    if (!settled(state.phase) || settledFor.current === id) return
     settledFor.current = id
     settleEvent(state.operation as OperationView<B> | null, state.phase)
   }, [id, state.phase, state.operation])

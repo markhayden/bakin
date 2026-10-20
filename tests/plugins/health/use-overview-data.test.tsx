@@ -6,7 +6,10 @@ import type { HealthReport, SearchReadiness } from '@makinbakin/sdk/types'
 import '../../rtl-settle'
 
 import { usePluginEvent } from '../../../src/hooks/use-plugin-event'
-mock.module('@makinbakin/sdk/hooks', () => ({ usePluginEvent }))
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
+mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks, usePluginEvent }))
 
 import { useOverviewData } from '../../../plugins/health/hooks/use-overview-data'
 

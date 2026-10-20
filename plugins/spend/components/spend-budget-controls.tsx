@@ -74,7 +74,7 @@ function CapInput({
 }) {
   const [text, setText] = useState(value === undefined ? '' : String(value))
   // A committed value that diverges from what the text parses to replaces the
-  // text in the same render it arrives (#966b) — typing "2." (unparseable)
+  // text in the same render it arrives (issue 966b) — typing "2." (unparseable)
   // must not be clobbered by the stale prop.
   const [syncedValue, setSyncedValue] = useState(value)
   if (syncedValue !== value) {

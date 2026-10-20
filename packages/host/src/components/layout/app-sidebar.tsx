@@ -39,7 +39,7 @@ export function AppSidebar({
     }
     return initial
   })
-  // Adjusted during render on navigation (#966b): the section that owns the
+  // Adjusted during render on navigation (issue 966b): the section that owns the
   // new path opens and the one that owned the old path closes, in the same
   // pass as the pathname — the user's own toggles elsewhere are kept.
   const [expandedFor, setExpandedFor] = useState(pathname)
@@ -56,6 +56,21 @@ export function AppSidebar({
         else if (wasActive) next.delete(item.id)
       }
       return next
+    })
+  }
+  // A registry/manifest refresh can introduce the active group (or its
+  // children) after mount: it opens too, without touching other toggles.
+  const [navSeen, setNavSeen] = useState(allNavItems)
+  if (navSeen !== allNavItems) {
+    setNavSeen(allNavItems)
+    setExpandedIds((current) => {
+      let next: Set<string> | null = null
+      for (const item of allNavItems) {
+        if (!item.children?.length || !isNavActive(pathname, item.href) || current.has(item.id)) continue
+        next ??= new Set(current)
+        next.add(item.id)
+      }
+      return next ?? current
     })
   }
 

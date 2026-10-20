@@ -27,7 +27,10 @@ mock.module('@/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('@/core/watcher', () => ({ registerSyncHook: mock(), registerUnlinkHook: mock() }))
-mock.module('@makinbakin/sdk/hooks', () => ({ useAgent: () => ({ name: 'Margo' }) }))
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
+mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks, useAgent: () => ({ name: 'Margo' }) }))
 let sortQuery = 'completedAt:desc'
 mock.module('@makinbakin/sdk/navigation', () => ({
   useQueryState: () => {

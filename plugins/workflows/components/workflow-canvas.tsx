@@ -333,7 +333,7 @@ export function WorkflowCanvas({ definition, subWorkflows, skillDrift, onNodeCli
     () => buildGraph(definition, subWorkflows, skillDrift),
     [definition, subWorkflows, skillDrift],
   )
-  // The node state belongs to one built graph (#966b): a new definition re-seeds it in the same render.
+  // The node state belongs to one built graph (issue 966b): a new definition re-seeds it in the same render.
   const [nodes, setNodes] = useKeyedState<Node[]>(initialNodes, () => initialNodes)
 
   const onNodesChange = useCallback(

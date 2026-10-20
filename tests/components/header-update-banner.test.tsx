@@ -6,7 +6,10 @@ import { ActivityContext } from '@/context/activity-context'
 import { SidebarContext } from '@/context/sidebar-context'
 import { Header } from '../../packages/host/src/components/layout/header'
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useDebug: () => [false, mock()] as const,
   useContentStore: (selector: (state: { connected: boolean }) => unknown) => selector({ connected: true }),
   toast: mock(),

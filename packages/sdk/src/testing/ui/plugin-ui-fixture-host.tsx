@@ -247,7 +247,7 @@ export function PluginUiFixtureHost({
     }
   }, [registrations])
   // Readiness is read from the registry (an external store), never set from
-  // the effect (#966b): the pages render once this host's registrations are in.
+  // the effect (issue 966b): the pages render once this host's registrations are in.
   const registrationsReady = useSyncExternalStore(subscribeRegistry, () => installedRegistrations.has(registrations))
 
   const context = useMemo<FixtureContextValue>(() => ({

@@ -65,7 +65,7 @@ export function Drawer({
     storageKey: getDrawerWidthStorageKey(storageKey),
     disabled: !open,
   })
-  // Per opening (#966b): closing the drawer drops a pending dirty prompt with it.
+  // Per opening (issue 966b): closing the drawer drops a pending dirty prompt with it.
   const [showDirtyConfirm, setShowDirtyConfirm] = useKeyedState(open, () => false)
 
   const requestClose = useCallback(() => {

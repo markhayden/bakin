@@ -153,7 +153,7 @@ export function ActivityTab() {
     setKind(nextValue)
   }
 
-  // Adjusted during render (#966b): a selection or deep-link request made
+  // Adjusted during render (issue 966b): a selection or deep-link request made
   // under another filter is dropped in the same pass the filter changes.
   if (failureTarget && failureTarget.filterKey !== failureFilterKey) setFailureTarget(null)
   if (failureRequest && failureRequest.filterKey !== failureFilterKey) setFailureRequest(null)
@@ -184,7 +184,7 @@ export function ActivityTab() {
 
   // A restore request is attempted once (the ref) and is DONE when the
   // restored focus lands: the focus event is the handler that clears it
-  // (#966b — nothing is set from the effect itself). The first-pattern target
+  // (issue 966b — nothing is set from the effect itself). The first-pattern target
   // lives in the failure groups, which report the landed focus back.
   const restoreAttempted = useRef<number | null>(null)
   const handleRestoredFocus = useCallback((requestId: number) => {

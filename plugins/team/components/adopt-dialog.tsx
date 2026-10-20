@@ -42,7 +42,7 @@ export function AdoptDialog({ open, onOpenChange, agentId, onAdopted }: AdoptDia
   const [source, setSource] = useState('')
   const [error, setError] = useState<string | null>(null)
   // The adopt is an install operation (#895), followed live in the dialog.
-  // The settle is the operation's event (#966b).
+  // The settle is the operation's event (issue 966b).
   const install = usePackageOperation<{ ok: boolean; error?: string }>({
     onSettle: (settle) => {
       if (settle.error !== undefined) return // shown through `install.error`

@@ -16,7 +16,7 @@ interface TaskAssetsProps {
 }
 
 export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
-  // The list belongs to one task (#966b): another task starts empty + loading in the same render.
+  // The list belongs to one task (issue 966b): another task starts empty + loading in the same render.
   const [assets, setAssets] = useKeyedState<VersionedAssetSummary[]>(taskId, () => [])
   const [loading, setLoading] = useKeyedState(taskId, () => true)
   const [error, setError] = useKeyedState<string | null>(taskId, () => null)

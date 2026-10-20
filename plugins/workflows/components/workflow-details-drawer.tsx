@@ -43,7 +43,7 @@ export function WorkflowDetailsDrawer({
   applyLabel?: string
   applying?: boolean
 }) {
-  // The form follows the definition it edits (#966b): a changed name or
+  // The form follows the definition it edits (issue 966b): a changed name or
   // description re-seeds it in the same render.
   const seed = `${definition.name}\u0000${definition.description ?? ''}`
   const [name, setName] = useKeyedState(seed, () => definition.name)

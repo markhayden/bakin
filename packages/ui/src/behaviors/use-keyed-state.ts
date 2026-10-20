@@ -7,7 +7,7 @@ import { useCallback, useState, type Dispatch, type SetStateAction } from 'react
  * as the prop and nothing paints a stale frame). Use it where a component
  * keeps local state "per thing" (a draft per conversation, a typed
  * confirmation per dialog opening, a snapshot per id) and would otherwise
- * re-seed that state from a `useEffect` (#966b).
+ * re-seed that state from a `useEffect` (issue 966b).
  */
 export function useKeyedState<T>(key: unknown, initial: () => T): [T, Dispatch<SetStateAction<T>>] {
   const [slot, setSlot] = useState<{ key: unknown; value: T }>(() => ({ key, value: initial() }))

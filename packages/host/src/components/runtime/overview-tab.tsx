@@ -189,7 +189,7 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
   // Busy from the moment the request is sent, so a second click (or closing
   // the dialog) can't race the first repair's acceptance.
   const [starting, setStarting] = useState(false)
-  // The settle is the operation's event (#966b): the hook calls back once
+  // The settle is the operation's event (issue 966b): the hook calls back once
   // when the followed repair finishes, expires or outlives a restart.
   const followed = useOperation<ComponentInstallBody>(repair?.start.operationId ?? null, {
     ...(repair ? { bootId: repair.start.bootId } : {}),

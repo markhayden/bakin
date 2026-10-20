@@ -103,7 +103,7 @@ export function LimitDialog({
   providers?: readonly string[]
 }) {
   // Every opening starts from a clean draft — a dismissed dialog's numbers
-  // must not reappear as if chosen. The draft is keyed by `open` (#966b), so
+  // must not reappear as if chosen. The draft is keyed by `open` (issue 966b), so
   // the reset lands in the same render the dialog opens.
   const [coverage, setCoverage] = useKeyedState<CoverageWire | null>(open, () => null)
   const [coverageError, setCoverageError] = useKeyedState<string | null>(open, () => null)

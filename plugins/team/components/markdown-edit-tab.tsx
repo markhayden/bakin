@@ -23,7 +23,7 @@ export interface MarkdownEditTabProps {
 }
 
 export function MarkdownEditTab({ agentId, filename, initialContent }: MarkdownEditTabProps) {
-  // The editor belongs to one (agent, file, loaded content) (#966b): another
+  // The editor belongs to one (agent, file, loaded content) (issue 966b): another
   // file or a reload re-seeds it in the same render.
   const seed = `${agentId}\u0000${filename}\u0000${initialContent ?? ''}`
   const [editing, setEditing] = useKeyedState(seed, () => false)

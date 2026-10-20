@@ -277,7 +277,7 @@ export function VersionedAssetGrid() {
       .catch(() => {})
   }, [])
 
-  // The first listing: the promise callbacks set state, nothing synchronous (#966b).
+  // The first listing: the promise callbacks set state, nothing synchronous (issue 966b).
   useEffect(() => {
     let active = true
     loadAssetListing().then((list) => { if (active && list) setAssets(list) }).finally(() => { if (active) setLoading(false) })

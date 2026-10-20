@@ -215,7 +215,7 @@ export function Header() {
   // still hold its focus trap and scroll lock — close it when the viewport
   // grows past the mobile breakpoint instead of leaving it invisibly modal.
   // The breakpoint is an external store; the close lands in the same render
-  // the viewport crosses it (#966b).
+  // the viewport crosses it (issue 966b).
   const desktopViewport = useMediaQuery('(min-width: 768px)')
   if (mobileOpen && desktopViewport) setMobileOpen(false)
 

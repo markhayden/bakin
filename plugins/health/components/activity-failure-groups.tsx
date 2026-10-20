@@ -358,8 +358,10 @@ export function ActivityFailureGroups({
   const matchingGroupElementId = matchingGroup ? failureGroupElementId(matchingGroup) : null
   const requestId = failureRequest?.requestId
 
-  // A new deep-link request opens the details in the same render it arrives (#966b).
-  const [expandedForRequest, setExpandedForRequest] = useState(requestId)
+  // A deep-link request opens the details in the same render it arrives —
+  // including the render this component mounts with (an exact-target fetch
+  // remounts it while the request is pending) (issue 966b).
+  const [expandedForRequest, setExpandedForRequest] = useState<number | undefined>(undefined)
   if (expandedForRequest !== requestId) {
     setExpandedForRequest(requestId)
     if (requestId !== undefined) setDetailsExpanded(true)

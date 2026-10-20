@@ -21,7 +21,10 @@ const repairIncident = {
   title: 'Search index is stale',
 } as HealthIncident
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   usePathname: () => currentPath,
   useQueryState: (_key: string, defaultValue: string) => {
     const [value, setValue] = useState(requestedTab || defaultValue)

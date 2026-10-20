@@ -16,7 +16,10 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 mock.module('@/core/logger', () => ({ createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }) }))
 mock.module('@/core/watcher', () => ({ registerSyncHook: mock(), registerUnlinkHook: mock() }))
-mock.module('@makinbakin/sdk/hooks', () => ({ useAgent: () => ({ id: 'chef', name: 'Chef' }) }))
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
+mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks, useAgent: () => ({ id: 'chef', name: 'Chef' }) }))
 import { JobList } from '../../../plugins/schedule/components/job-list'
 import type { ScheduleJob } from '@makinbakin/sdk/hooks'
 

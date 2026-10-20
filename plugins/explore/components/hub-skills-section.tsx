@@ -291,7 +291,7 @@ export function HubSkillsSection() {
   // no request deadlines: a slow hub or a large download shows its progress.
   type PreviewBody = { ok: boolean; refused?: boolean; error?: string; preview?: SkillPreviewWire }
   type InstallBody = { ok: boolean; refused?: boolean; drift?: boolean; error?: string; warnings?: string[]; preview?: SkillPreviewWire }
-  // Each outcome is handled in the operation's settle callback (#966b) — the
+  // Each outcome is handled in the operation's settle callback (issue 966b) — the
   // hook calls back once per start with the route's answer or the start error.
   const previewOp = useInstallOperation<PreviewBody>({
     onSettle: (settle) => {

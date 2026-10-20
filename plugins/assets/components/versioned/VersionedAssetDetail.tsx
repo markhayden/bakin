@@ -82,7 +82,7 @@ export function VersionedAssetDetail() {
     loadManifest(assetId).then(setManifest).finally(() => setLoading(false))
   }, [assetId])
 
-  // The first read: the promise callbacks set state, nothing synchronous (#966b).
+  // The first read: the promise callbacks set state, nothing synchronous (issue 966b).
   useEffect(() => {
     let active = true
     loadManifest(assetId).then((asset) => { if (active) setManifest(asset) }).finally(() => { if (active) setLoading(false) })

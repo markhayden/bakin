@@ -18,7 +18,7 @@ export interface UseInstallOperationOptions<B> {
    * Called once per start: with the settled operation's result (the body the
    * route used to answer), or with the reason the start itself failed. The
    * settle is the operation's event — consumers record outcomes here, never
-   * in an effect watching `result` (#966b).
+   * in an effect watching `result` (issue 966b).
    */
   onSettle?: (settle: InstallOperationSettle<B>) => void
 }

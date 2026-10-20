@@ -594,7 +594,7 @@ export function StepDetailDrawer({
   onSkillRepaired,
 }: StepDetailDrawerProps) {
   const [repairingSkill, setRepairingSkill] = useState<string | null>(null)
-  // The repair error belongs to one opening of one step (#966b).
+  // The repair error belongs to one opening of one step (issue 966b).
   const [repairError, setRepairError] = useKeyedState<string | null>(`${open}\u0000${step?.id ?? ''}`, () => null)
   const driftReports = useMemo(() => {
     const skillNames = stepSkillNames(step)

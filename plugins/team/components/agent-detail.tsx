@@ -96,7 +96,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     setSkillParam('')
     setFileParam('')
   }
-  // Per agent (#966b): another agent starts loading in the same render; the effect only reads.
+  // Per agent (issue 966b): another agent starts loading in the same render; the effect only reads.
   const [loading, setLoading] = useKeyedState(agentId, () => true)
   const [avatarKey, setAvatarKey] = useState(0)
   const avatarInputRef = useRef<FileInputHandle>(null)
@@ -471,7 +471,7 @@ export function SkillsTab({ agentId }: { agentId: string }) {
   // from the URL) and a stale id shows the first skill without rewriting it.
   const [skillParam, setSkillParam] = useQueryState('skill', '')
   const selectedSkill = skills.some((skill) => skill.id === skillParam) ? skillParam : (skills[0]?.id ?? null)
-  // The content belongs to one (agent, skill) (#966b): another pick starts unloaded in the same render.
+  // The content belongs to one (agent, skill) (issue 966b): another pick starts unloaded in the same render.
   const [skillContent, setSkillContent] = useKeyedState<string | null>(`${agentId}\u0000${selectedSkill ?? ''}`, () => null)
   const [loading, setLoading] = useState(true)
 
@@ -559,7 +559,7 @@ export function MemoryTab({ agentId }: { agentId: string }) {
   // `?file=<name>` is the selection; same default/stale rules as the Skills tab.
   const [fileParam, setFileParam] = useQueryState('file', '')
   const selectedFile = files.includes(fileParam) ? fileParam : (files[0] ?? null)
-  // The content belongs to one (agent, file) (#966b).
+  // The content belongs to one (agent, file) (issue 966b).
   const [content, setContent] = useKeyedState<string | null>(`${agentId}\u0000${selectedFile ?? ''}`, () => null)
   const [loading, setLoading] = useState(true)
 

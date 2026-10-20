@@ -12,7 +12,7 @@ export function AssetsBadgeProvider() {
   usePluginEvent('asset.unmanaged', refresh)
   usePluginEvent('bakin.reconcile', refresh)
 
-  // The last valid count is adopted during render (#966b); the effect only
+  // The last valid count is adopted during render (issue 966b); the effect only
   // schedules retries after an invalid or failed read.
   if (!loading && valid && !error && count !== data.count) setCount(data.count)
 

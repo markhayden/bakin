@@ -34,7 +34,10 @@ const fakeStore = {
 }
 /** The operator pressed the toast's own close control: the store drops it, nobody untracked it. */
 const userCloses = (id: string) => fakeStore.getState().dismiss(id)
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useNavBadge,
   toast,
   emitPluginEvent: (payload: Record<string, unknown>) => { emitted.push(payload) },

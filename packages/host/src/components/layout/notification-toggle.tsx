@@ -10,7 +10,7 @@ import {
 } from '@/lib/browser-notify'
 
 export function NotificationToggle() {
-  // Read once at mount in the initializers (#966b): the browser's support and
+  // Read once at mount in the initializers (issue 966b): the browser's support and
   // the stored preference are facts of this document, not a server frame.
   const [enabled, setEnabled] = useState(() => isNotificationsEnabled())
   const [supported] = useState(() => isNotificationsSupported())

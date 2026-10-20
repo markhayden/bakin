@@ -30,7 +30,10 @@ mock.module('../../../plugins/tasks/hooks/use-task-summary', () => ({
 // setNavBadge wiring) is covered in tests/components/use-nav-badge.test.tsx.
 // Here we only assert the provider derives + passes the right badge.
 const useNavBadge = mock()
-mock.module('@makinbakin/sdk/hooks', () => ({ useNavBadge }))
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
+mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks, useNavBadge }))
 
 import { render } from '@testing-library/react'
 import '../../rtl-settle'

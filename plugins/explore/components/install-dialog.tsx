@@ -115,7 +115,7 @@ export function InstallDialog({
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({})
   // Every install is an operation (#895), followed live. Plugins are preview
   // → commit: the preview ends with the consent prompt or `ready`.
-  // The settle is the operation's event (#966b): the hook calls back once per
+  // The settle is the operation's event (issue 966b): the hook calls back once per
   // start with the body the route used to answer, or the reason it failed.
   const install = useInstallOperation<InstallResponseBody>({
     onSettle: (settle) => {

@@ -47,7 +47,7 @@ export function RepairDialog({
 }) {
   const repair = useRepairPlan(target)
   const { planRepair } = repair
-  // Per opening (#966b): the selection and the live-region copy reset with `open`.
+  // Per opening (issue 966b): the selection and the live-region copy reset with `open`.
   const [selected, setSelected] = useKeyedState<Set<string>>(open, () => new Set())
   const [announcement, setAnnouncement] = useKeyedState<string>(open, () => (open ? 'Planning repair options.' : ''))
 

@@ -63,7 +63,7 @@ function deriveTeamId(label: string): string {
 export function TeamFormDialog({ open, mode, agents, mainAgentId, triggerRef, onClose, onSaved }: TeamFormDialogProps) {
   // Capture the baseline once per opening. `agents`/`mainAgentId` are read at
   // open time on purpose: a roster refresh mid-edit must not reset the form.
-  // The form is keyed by the opening (#966b): a create starts from its
+  // The form is keyed by the opening (issue 966b): a create starts from its
   // initial draft in the same render it opens; an edit starts empty and the
   // effect below reads the raw team record.
   const openedFor = mode.kind === 'edit' ? `edit:${mode.teamId}` : 'create'

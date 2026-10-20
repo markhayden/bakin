@@ -662,7 +662,7 @@ function PluginFailureBanner({ pluginIds, onDismiss }: { pluginIds: string[]; on
 
 export function PluginHost({ children }: { children: ReactNode }) {
   const [attempt, setAttempt] = useState(0)
-  // One boot result per attempt (#966b): a retry starts from "not booted" in the same render.
+  // One boot result per attempt (issue 966b): a retry starts from "not booted" in the same render.
   const [boot, setBoot] = useKeyedState<PluginBootResult | null>(attempt, () => null)
   const [failuresDismissed, setFailuresDismissed] = useState(false)
 

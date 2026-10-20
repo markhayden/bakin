@@ -107,7 +107,7 @@ export function SystemSearchSection({
   const enrichmentUnavailable = telemetry?.enrichmentEvidence?.status === 'unavailable'
   const enrichmentNotConfigured = telemetry?.enrichmentEvidence?.status === 'not_configured'
   const [detailsOpen, setDetailsOpen] = useState(technicalDetailsOpen)
-  // The owner asking for the technical details opens them in the same render (#966b);
+  // The owner asking for the technical details opens them in the same render (issue 966b);
   // the operator can still close them afterwards.
   const [openedFor, setOpenedFor] = useState(technicalDetailsOpen)
   if (openedFor !== technicalDetailsOpen) {

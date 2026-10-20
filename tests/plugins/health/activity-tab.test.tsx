@@ -11,7 +11,10 @@ import '../../rtl-settle'
 const queryInitialValues = new Map<string, string>()
 const queryWrites: Array<{ key: string; value: string }> = []
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useQueryState: (key: string, defaultValue: string) => {
     const [value, setValue] = useState(queryInitialValues.get(key) ?? defaultValue)
     const writeValue = (next: string) => {

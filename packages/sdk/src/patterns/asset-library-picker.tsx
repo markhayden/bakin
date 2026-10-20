@@ -112,7 +112,7 @@ export function AssetLibraryPicker({
   loadAssets = defaultLoadAssets,
   uploadAsset = defaultUploadAsset,
 }: AssetLibraryPickerProps) {
-  // Per opening (#966b): the query, the upload error and the listing reset
+  // Per opening (issue 966b): the query, the upload error and the listing reset
   // with `open`, so each opening starts fresh without an effect re-seeding them.
   const [state, setState] = useKeyedState<LoadState>(open, () => ({ status: 'loading' }))
   const [query, setQuery] = useKeyedState(open, () => '')

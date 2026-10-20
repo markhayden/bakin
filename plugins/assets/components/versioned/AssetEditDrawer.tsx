@@ -40,7 +40,7 @@ export function AssetEditDrawer({ assetId, initialDescription, initialTags, sugg
   onSaved?: () => void
 }) {
   // The form is seeded per opening of one asset with one set of initial
-  // values (#966b): reopening, or opening for another asset, re-seeds in the
+  // values (issue 966b): reopening, or opening for another asset, re-seeds in the
   // same render — the operator's edits survive re-renders of the same opening.
   const seed = `${open}\u0000${assetId}\u0000${initialDescription}\u0000${initialTags.join('\n')}`
   const [description, setDescription] = useKeyedState(seed, () => initialDescription)

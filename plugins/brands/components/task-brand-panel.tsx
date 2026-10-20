@@ -58,7 +58,7 @@ const SOURCE_LABEL: Record<TaskBrandInfo['source'], string> = {
 
 export function TaskBrandPanel({ taskId }: { taskId?: string }) {
   const [debug] = useDebug()
-  // The card preview belongs to one task (#966b).
+  // The card preview belongs to one task (issue 966b).
   const [preview, setPreview] = useKeyedState<string | null>(taskId, () => null)
   const [lessonOpen, setLessonOpen] = useState(false)
   const [lessonTitle, setLessonTitle] = useState('')

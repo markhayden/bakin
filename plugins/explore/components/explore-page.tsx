@@ -104,7 +104,7 @@ function ExplorePageInner() {
   // Filtering reads the local draft for instant feedback; only the URL
   // write is debounced (same reason PluginHeader's search debounces —
   // the param is for deep-linking, keystrokes aren't).
-  // The draft is keyed by the URL param (#966b): when it changes underneath
+  // The draft is keyed by the URL param (issue 966b): when it changes underneath
   // us (sidebar re-click clears ?q=, back/forward, shared links) the draft
   // resyncs in the same render — otherwise the grid stays filtered by text
   // the URL no longer claims. A pending debounced commit converges to the

@@ -13,8 +13,7 @@ import {
   type NodeChange,
   type NodeProps,
 } from '@xyflow/react'
-import { useCallback } from 'react'
-import { useKeyedState } from '@makinbakin/sdk/hooks'
+import { useCallback, useState } from 'react'
 
 import '@xyflow/react/dist/style.css'
 
@@ -154,9 +153,17 @@ export function WorkflowStoryWorkspace({
 }: {
   orientation: PageCanvasOrientation
 }) {
-  // Per orientation (#966b): a new layout starts from its own nodes and selection.
-  const [nodes, setNodes] = useKeyedState<StoryNode[]>(orientation, () => createNodes(orientation))
-  const [selectedId, setSelectedId] = useKeyedState<WorkflowNodeId | null>(orientation, () => 'assemble')
+  // Per orientation (issue 966b): a new layout starts from its own nodes and
+  // selection, adjusted during render (the public catalog composes only the
+  // focused SDK entrypoints, so no keyed-state hook here).
+  const [nodes, setNodes] = useState<StoryNode[]>(() => createNodes(orientation))
+  const [selectedId, setSelectedId] = useState<WorkflowNodeId | null>('assemble')
+  const [laidOutFor, setLaidOutFor] = useState(orientation)
+  if (laidOutFor !== orientation) {
+    setLaidOutFor(orientation)
+    setNodes(createNodes(orientation))
+    setSelectedId('assemble')
+  }
 
   const selectNode = useCallback((id: WorkflowNodeId | null) => {
     setSelectedId(id)

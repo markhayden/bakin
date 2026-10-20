@@ -211,7 +211,7 @@ export function Composer({
   maxHeight = DEFAULT_MAX_HEIGHT,
   className,
 }: ComposerProps) {
-  // One draft per storage key (#966b): switching conversations swaps the value in the same render.
+  // One draft per storage key (issue 966b): switching conversations swaps the value in the same render.
   const [value, setValue] = useKeyedState(storageKey, () => readDraft(storageKey))
   const [dropActive, setDropActive] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)

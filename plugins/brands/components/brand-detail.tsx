@@ -820,10 +820,13 @@ function OverviewTab({
   brand: BrandManifest; detail: DetailResponse; brandId: string; onGoTo: (tab: string) => void
   onEditDoc: (kind: DocKind, name: string, create?: boolean) => void
 }) {
-  // The overview belongs to one brand (#966b): another brand starts empty in
+  // The overview belongs to one brand (issue 966b): another brand starts empty in
   // the same render; the effect only loads.
   const [card, setCard] = useKeyedState<CardPreview | null>(brandId, () => null)
-  const [voice, setVoice] = useKeyedState<string | null>(brandId, () => null)
+  // The voice follows whether the brand still carries voice.md: a refresh that
+  // removed the document drops the displayed voice in the same render.
+  const hasVoiceDoc = detail.guidelines.some((d) => d.name === 'voice.md')
+  const [voice, setVoice] = useKeyedState<string | null>(`${brandId}\u0000${hasVoiceDoc}`, () => null)
   const [activity, setActivity] = useKeyedState<ActivityRow[]>(brandId, () => [])
 
   useEffect(() => {
@@ -836,7 +839,7 @@ function OverviewTab({
         }
       } catch { /* best-effort */ }
     })()
-    if (detail.guidelines.some((d) => d.name === 'voice.md')) {
+    if (hasVoiceDoc) {
       void (async () => {
         try {
           const res = await fetch(`/api/plugins/brands/${brandId}/docs/guidelines/voice.md`)
@@ -850,7 +853,7 @@ function OverviewTab({
         if (res.ok) setActivity(((await res.json()) as { activity: ActivityRow[] }).activity ?? [])
       } catch { /* best-effort */ }
     })()
-  }, [brandId, detail.guidelines, setActivity, setCard, setVoice])
+  }, [brandId, hasVoiceDoc, setActivity, setCard, setVoice])
 
   const assetCount = useMemo(() => new Set([
     ...brand.logos.map((l) => l.assetId),
@@ -1374,7 +1377,7 @@ function BrandAssetsSection({
 
   // The owner's "add a logo" request opens the picker in the same render it
   // arrives — including the render this tab mounts with the request already
-  // pending (#966b); the acknowledgement is the owner's state, so it is sent
+  // pending (issue 966b); the acknowledgement is the owner's state, so it is sent
   // from an effect (a callback, never a setState of our own).
   const [logoRequestSeen, setLogoRequestSeen] = useState(false)
   if (logoRequestSeen !== logoPickerRequested) {

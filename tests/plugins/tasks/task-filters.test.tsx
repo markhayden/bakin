@@ -35,7 +35,10 @@ mock.module('@makinbakin/sdk/patterns', () => ({
   FacetFilter: () => <div data-testid="facet-filter" />,
 }))
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useAgentIds: () => ['margo'],
   useAgentStore: (selector: (state: { agentMap: Record<string, { name: string; headshot?: string }>; displaySettings: Record<string, { displayName?: string; accentColor?: string }> }) => unknown) => selector({
     agentMap: { margo: { name: 'Margo' } },

@@ -38,7 +38,7 @@ export function AssetThumb({ assetId, type, version, hasThumb, className }: {
     if (hasThumb !== false) return version != null ? assetThumbUrl(assetId, version) : assetThumbUrl(assetId)
     return version != null ? assetVersionUrl(assetId, version) : assetCurrentUrl(assetId)
   }, [assetId, hasThumb, type, version])
-  // A failed load belongs to one source (#966b): a new source gets a fresh try.
+  // A failed load belongs to one source (issue 966b): a new source gets a fresh try.
   const [failed, setFailed] = useKeyedState(imageSrc, () => false)
 
   if (imageSrc && !failed) {

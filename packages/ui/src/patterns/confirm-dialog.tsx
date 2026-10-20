@@ -81,7 +81,7 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const inputId = React.useId()
-  // The typed confirmation belongs to one opening of one prompt (#966b).
+  // The typed confirmation belongs to one opening of one prompt (issue 966b).
   const [typed, setTyped] = useKeyedState(`${open}\u0000${confirmValue ?? ''}`, () => '')
 
   const confirmBlocked = confirmValue !== undefined && typed !== confirmValue

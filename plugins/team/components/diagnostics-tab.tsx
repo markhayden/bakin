@@ -204,7 +204,7 @@ interface ReceiptPayload {
 
 function DriftPanel({ agentId }: { agentId: string }) {
   const [retryNonce, setRetryNonce] = useState(0)
-  // The scan belongs to one (agent, attempt) (#966b): another agent or a retry
+  // The scan belongs to one (agent, attempt) (issue 966b): another agent or a retry
   // starts loading in the same render; the effect only reads.
   const scanKey = `${agentId}\u0000${retryNonce}`
   const [scan, setScan] = useKeyedState<ScanPayload | null>(scanKey, () => null)
@@ -714,7 +714,7 @@ const LIVE_ACTIVITY_TTL_MS = 45_000
  * below stays ledger + audit).
  */
 function useAgentLiveActivity(agentId: string): { label: string; ts: number } | null {
-  // The chip belongs to one agent (#966b).
+  // The chip belongs to one agent (issue 966b).
   const [chip, setChip] = useKeyedState<{ label: string; ts: number } | null>(agentId, () => null)
 
   usePluginEvent('turn-activity', (payload) => {
@@ -753,7 +753,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
   const window: TimelineWindow = windowParam === '7d' ? '7d' : '24h'
   const [pageParam, setPageParam] = useQueryState('activityPage', '1')
   const [retryNonce, setRetryNonce] = useState(0)
-  // The timeline belongs to one (agent, window, attempt) (#966b): it starts
+  // The timeline belongs to one (agent, window, attempt) (issue 966b): it starts
   // loading in the same render any of them changes; the effect only reads.
   const timelineKey = `${agentId}\u0000${window}\u0000${retryNonce}`
   const [events, setEvents] = useKeyedState<TimelineEventView[]>(timelineKey, () => [])

@@ -165,7 +165,7 @@ export function ChannelsTab({ highlightKey }: { highlightKey?: string }) {
 
   // A settings/token save flips the bridge to `connecting`; show
   // "reconnecting…" until the SSE-fed snapshot settles.
-  // Adjusted during render (#966b): the settling marker clears in the same
+  // Adjusted during render (issue 966b): the settling marker clears in the same
   // pass the snapshot leaves `connecting`, never a frame later.
   if (settlingSince && state && state !== 'connecting') setSettlingSince(null)
 
