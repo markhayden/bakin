@@ -110,7 +110,7 @@ export function StackedColumnChart({
   dataTableExpandable = true,
 }: StackedColumnChartProps) {
   const tooltipId = useId()
-  const [hidden, setHidden] = useState<Set<string>>(new Set())
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set())
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const series = useMemo(
     () => deriveSeries(data, declaredSeries, seriesKeys),

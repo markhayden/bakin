@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useReducer } from 'react'
 import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug } from 'lucide-react'
 import { useAgent, useContentStore } from '@makinbakin/sdk/hooks'
 import { DisclosurePanel } from '@makinbakin/sdk/layout'
@@ -89,11 +89,11 @@ export function ActivityFeed() {
   const { open, toggle } = useActivityContext()
   const events = useContentStore((s) => s.activityEvents)
   const debug = useContentStore((s) => s.debug)
-  const [, setTick] = useState(0)
-
-  // Force re-render every 30s to keep relative timestamps fresh
+  // Re-render every 30s to keep relative timestamps fresh: the reducer idiom
+  // for a render tick nobody reads.
+  const [, rerender] = useReducer((n: number) => n + 1, 0)
   useEffect(() => {
-    const timer = setInterval(() => setTick((t) => t + 1), 30_000)
+    const timer = setInterval(rerender, 30_000)
     return () => clearInterval(timer)
   }, [])
 

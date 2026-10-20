@@ -297,7 +297,7 @@ export function CalendarGrid<T extends CalendarGridItem>({
   const todayKey = localDayKey(currentInstant)
   const todayStart = startOfLocalDay(currentInstant).getTime()
 
-  const [expandedDays, setExpandedDays] = React.useState<ReadonlySet<string>>(new Set())
+  const [expandedDays, setExpandedDays] = React.useState<ReadonlySet<string>>(() => new Set())
   const toggleDay = (dayKey: string): void => {
     setExpandedDays((previous) => {
       const next = new Set(previous)

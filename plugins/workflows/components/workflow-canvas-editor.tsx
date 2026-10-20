@@ -278,7 +278,7 @@ export function WorkflowCanvasEditor({
   const [copyFieldErrors, setCopyFieldErrors] = useState<WorkflowDialogFieldErrors>({})
   const [creatingLocalCopy, setCreatingLocalCopy] = useState(false)
   const [copyName, setCopyName] = useState(baseDefinition.name ? `${baseDefinition.name} Copy` : '')
-  const [copyId, setCopyId] = useState(baseDefinition.name ? slugify(`${baseDefinition.name} Copy`) : '')
+  const [copyId, setCopyId] = useState(() => baseDefinition.name ? slugify(`${baseDefinition.name} Copy`) : '')
   const [copyIdEdited, setCopyIdEdited] = useState(false)
   const [copyDescription, setCopyDescription] = useState(baseDefinition.description ?? '')
   const [disableOriginal, setDisableOriginal] = useState(true)
