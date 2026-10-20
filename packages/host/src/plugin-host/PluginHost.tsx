@@ -35,6 +35,7 @@
  * undefined there.
  */
 import { useEffect, useState, type ReactNode } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import { type PluginContributions } from '@makinbakin/sdk'
 import {
   configureLazyPlugins,
@@ -660,15 +661,15 @@ function PluginFailureBanner({ pluginIds, onDismiss }: { pluginIds: string[]; on
 }
 
 export function PluginHost({ children }: { children: ReactNode }) {
-  const [boot, setBoot] = useState<PluginBootResult | null>(null)
   const [attempt, setAttempt] = useState(0)
+  // One boot result per attempt (#966b): a retry starts from "not booted" in the same render.
+  const [boot, setBoot] = useKeyedState<PluginBootResult | null>(attempt, () => null)
   const [failuresDismissed, setFailuresDismissed] = useState(false)
 
   // Not a fetch: gates readiness on the module-level plugin boot promise.
   // `attempt` re-runs it after a failed-manifest retry.
   useEffect(() => {
     let cancelled = false
-    setBoot(null)
     const bootPromise = attempt === 0 ? acquirePluginBoot() : restartPluginBoot()
     ;(async () => {
       const result = await bootPromise
@@ -678,7 +679,7 @@ export function PluginHost({ children }: { children: ReactNode }) {
       cancelled = true
       releasePluginBoot()
     }
-  }, [attempt])
+  }, [attempt, setBoot])
   const ready = boot !== null
 
   // Install the lazy demand loader: <Slot> and the plugin route catch-all

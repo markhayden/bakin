@@ -8,7 +8,7 @@ import { OperationsTray } from '../operations/operations-tray'
 import { openGlobalSearch } from '../search/use-search-hotkey'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useActivityContext } from '@/context/activity-context'
-import { useDebug } from '@makinbakin/sdk/hooks'
+import { useDebug, useMediaQuery } from '@makinbakin/sdk/hooks'
 import {
   Alert,
   AlertDescription,
@@ -214,16 +214,10 @@ export function Header() {
   // The drawer is `md:hidden`, but a Sheet that is open while hidden would
   // still hold its focus trap and scroll lock — close it when the viewport
   // grows past the mobile breakpoint instead of leaving it invisibly modal.
-  useEffect(() => {
-    if (!mobileOpen || typeof window.matchMedia !== 'function') return
-    const desktop = window.matchMedia('(min-width: 768px)')
-    const closeOnDesktop = () => {
-      if (desktop.matches) setMobileOpen(false)
-    }
-    closeOnDesktop()
-    desktop.addEventListener('change', closeOnDesktop)
-    return () => desktop.removeEventListener('change', closeOnDesktop)
-  }, [mobileOpen])
+  // The breakpoint is an external store; the close lands in the same render
+  // the viewport crosses it (#966b).
+  const desktopViewport = useMediaQuery('(min-width: 768px)')
+  if (mobileOpen && desktopViewport) setMobileOpen(false)
 
   async function applyUpdate() {
     setUpdating(true)

@@ -229,4 +229,23 @@ describe('startOperation', () => {
     expect((err as OperationStartError).message).toBe('Already installed')
     expect((err as OperationStartError).body).toEqual({ error: 'Already installed' })
   })
+
+  it('onSettle fires once per followed operation — with the final view when it finishes, with null when it expires (#966b)', async () => {
+    globalThis.fetch = mock(async () => json({ bootId: 'boot-a', operation: view({ rev: 3, status: 'succeeded' }) })) as unknown as typeof fetch
+    const settles: Array<[string | null, string]> = []
+    const { result } = await actRender(() => renderHook(() => useOperation('op-1', { bootId: 'boot-a', onSettle: (op, phase) => { settles.push([op?.id ?? null, phase]) } })))
+    await waitUntil(() => result.current.phase === 'finished', { label: 'finished' })
+    expect(settles).toEqual([['op-1', 'finished']])
+    // Later events for the same operation never re-fire the settle.
+    event(view({ rev: 4, status: 'succeeded' }))
+    await act(async () => emitPluginEvent({ event: 'bakin.reconcile' }))
+    await act(() => settleFor(30, 'a settled operation reports once'))
+    expect(settles).toHaveLength(1)
+
+    globalThis.fetch = mock(async () => json({ bootId: 'boot-a', error: 'not_found' }, 404)) as unknown as typeof fetch
+    const expired: Array<[string | null, string]> = []
+    const second = await actRender(() => renderHook(() => useOperation('op-2', { bootId: 'boot-a', onSettle: (op, phase) => { expired.push([op?.id ?? null, phase]) } })))
+    await waitUntil(() => second.result.current.phase === 'expired', { label: 'expired' })
+    expect(expired).toEqual([[null, 'expired']])
+  })
 })

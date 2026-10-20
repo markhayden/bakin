@@ -3,13 +3,13 @@
  * plain language), and whether setup is healthy. Every non-native state
  * says what happens instead — the reader never has to decode an enum.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Wrench } from 'lucide-react'
 import { startOperation, toast, useJsonFetch, useOperation, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { ConfirmDialog, OperationProgress, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
-import { isOperationFinished, type OperationStartResponse } from '@makinbakin/sdk/types'
+import { type OperationStartResponse } from '@makinbakin/sdk/types'
 import { RuntimeTable } from './runtime-table'
 import { Badge, Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { capabilityRows } from '../../lib/runtime-report'
@@ -189,7 +189,30 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
   // Busy from the moment the request is sent, so a second click (or closing
   // the dialog) can't race the first repair's acceptance.
   const [starting, setStarting] = useState(false)
-  const followed = useOperation<ComponentInstallBody>(repair?.start.operationId ?? null, repair ? { bootId: repair.start.bootId } : {})
+  // The settle is the operation's event (#966b): the hook calls back once
+  // when the followed repair finishes, expires or outlives a restart.
+  const followed = useOperation<ComponentInstallBody>(repair?.start.operationId ?? null, {
+    ...(repair ? { bootId: repair.start.bootId } : {}),
+    onSettle: (settled, settledPhase) => {
+      if (!repair) return
+      if (settledPhase === 'restarted' || settledPhase === 'expired') {
+        setRepair(null)
+        setRepairError('Bakin restarted or lost track of the repair. The checks below were re-run — confirm the result there.')
+        onRescan()
+        return
+      }
+      if (!settled) return
+      setRepair(null)
+      const message = settled.result?.body?.result?.message
+      if (settled.status === 'succeeded') {
+        toast(`Repaired ${repair.name}${message ? ` — ${message}` : ''}`, 'success')
+        setConfirmTarget(null)
+      } else {
+        setRepairError(settled.status === 'cancelled' ? 'The repair was cancelled before anything changed.' : message ?? settled.outcome?.message ?? `The repair ${settled.status}.`)
+      }
+      onRescan()
+    },
+  })
   const repairing = repair !== null || starting
   // The closing dialog keeps rendering during its exit animation — hold the
   // last target so it never flashes "Repair undefined?".
@@ -219,27 +242,9 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
     }
   }
 
+
   const view = followed.operation
   const phase = followed.phase
-  useEffect(() => {
-    if (!repair) return
-    if (phase === 'restarted' || phase === 'expired') {
-      setRepair(null)
-      setRepairError('Bakin restarted or lost track of the repair. The checks below were re-run — confirm the result there.')
-      onRescan()
-      return
-    }
-    if (!view || !isOperationFinished(view.status)) return
-    setRepair(null)
-    const message = view.result?.body?.result?.message
-    if (view.status === 'succeeded') {
-      toast(`Repaired ${repair.name}${message ? ` — ${message}` : ''}`, 'success')
-      setConfirmTarget(null)
-    } else {
-      setRepairError(view.status === 'cancelled' ? 'The repair was cancelled before anything changed.' : message ?? view.outcome?.message ?? `The repair ${view.status}.`)
-    }
-    onRescan()
-  }, [repair, view, phase, onRescan])
 
   const columns: ReadonlyArray<DataTableColumn<OnboardingComponentStatus>> = [
     {

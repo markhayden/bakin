@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Fragment, useState, useSyncExternalStore } from 'react'
 import type { NavItem } from '@makinbakin/sdk'
 import {
   getNavBadgesSnapshot,
@@ -39,11 +39,13 @@ export function AppSidebar({
     }
     return initial
   })
-  const prevPathRef = useRef(pathname)
-
-  useEffect(() => {
-    const previousPath = prevPathRef.current
-    prevPathRef.current = pathname
+  // Adjusted during render on navigation (#966b): the section that owns the
+  // new path opens and the one that owned the old path closes, in the same
+  // pass as the pathname — the user's own toggles elsewhere are kept.
+  const [expandedFor, setExpandedFor] = useState(pathname)
+  if (expandedFor !== pathname) {
+    const previousPath = expandedFor
+    setExpandedFor(pathname)
     setExpandedIds((current) => {
       const next = new Set(current)
       for (const item of allNavItems) {
@@ -55,7 +57,7 @@ export function AppSidebar({
       }
       return next
     })
-  }, [allNavItems, pathname])
+  }
 
   const toggleExpand = (id: string) => {
     setExpandedIds((current) => {

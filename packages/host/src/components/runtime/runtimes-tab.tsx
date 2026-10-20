@@ -7,7 +7,7 @@
  * output. Preview and switch are operations (#895), followed live with
  * `useOperation` and shown with `OperationProgress`.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { startOperation, useOperation } from '@makinbakin/sdk/hooks'
 import { DisclosurePanel, Inline, Stack } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
@@ -36,7 +36,7 @@ import {
   SystemState,
   Text,
 } from '@makinbakin/sdk/ui'
-import { isOperationFinished, type OperationStartResponse } from '@makinbakin/sdk/types'
+import { type OperationStartResponse } from '@makinbakin/sdk/types'
 import { ExtensionsSection } from './extensions-section'
 import { RuntimeTable } from './runtime-table'
 import { describeRequestError } from '../../lib/request-error'
@@ -229,7 +229,25 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
   // Busy from the moment the request is sent: a preview and a switch (or two
   // clicks) must never race to own the one follower.
   const [starting, setStarting] = useState<'preview' | 'switch' | null>(null)
-  const followed = useOperation<SwitchResultPayload>(operation?.start.operationId ?? null, operation ? { bootId: operation.start.bootId } : {})
+  // The settle is the operation's event (#966b). The switch keeps running on
+  // the server whatever this tab does; only its outcome can go missing (a
+  // restart, a lost record).
+  const followed = useOperation<SwitchResultPayload>(operation?.start.operationId ?? null, {
+    ...(operation ? { bootId: operation.start.bootId } : {}),
+    onSettle: (settled, settledPhase) => {
+      if (!operation) return
+      if (settledPhase === 'restarted' || settledPhase === 'expired') {
+        setOperation(null)
+        setResult(failedResult(operation.target, operation.dryRun, 'Bakin restarted or lost track of the switch — check the active runtime above.'))
+        if (!operation.dryRun) onSwitched()
+        return
+      }
+      if (!settled) return
+      setOperation(null)
+      setResult(settled.result?.body ?? failedResult(operation.target, operation.dryRun, settled.outcome?.message ?? `The switch ${settled.status}.`))
+      if (!operation.dryRun) onSwitched()
+    },
+  })
   const running: 'preview' | 'switch' | null = operation ? (operation.dryRun ? 'preview' : 'switch') : starting
 
   const others = report.adapters.filter((name) => name !== report.adapter)
@@ -276,23 +294,9 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
     }
   }, [target, operation, starting, adoptCron, copyWorkspaces, failedResult])
 
+
   const view = followed.operation
   const phase = followed.phase
-  useEffect(() => {
-    if (!operation) return
-    // The switch keeps running on the server whatever this tab does; only
-    // its outcome can go missing (a restart, a lost record).
-    if (phase === 'restarted' || phase === 'expired') {
-      setOperation(null)
-      setResult(failedResult(operation.target, operation.dryRun, 'Bakin restarted or lost track of the switch — check the active runtime above.'))
-      if (!operation.dryRun) onSwitched()
-      return
-    }
-    if (!view || !isOperationFinished(view.status)) return
-    setOperation(null)
-    setResult(view.result?.body ?? failedResult(operation.target, operation.dryRun, view.outcome?.message ?? `The switch ${view.status}.`))
-    if (!operation.dryRun) onSwitched()
-  }, [operation, view, phase, failedResult, onSwitched])
 
   if (others.length === 0) {
     return (

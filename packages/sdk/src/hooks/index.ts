@@ -60,6 +60,8 @@ export { usePluginEvent, emitPluginEvent, type PluginEventPayload } from '@/hook
 export { useNow } from '@bakin/ui'
 /** useState that resets when a key changes — adjust state on a prop change without an effect. */
 export { useKeyedState } from '@bakin/ui'
+/** Whether a CSS media query matches, as an external-store read (false without matchMedia). */
+export { useMediaQuery } from '@bakin/ui'
 /** Follow one server operation live (rev/boot guards, reconcile, expired vs restarted vs unreachable). */
 export { useOperation } from '@/hooks/use-operation'
 /** Call a converted long-running route and get its `{ operationId, bootId }`. */
