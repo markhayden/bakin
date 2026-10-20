@@ -77,9 +77,16 @@ function useFixtureContext(): FixtureContextValue {
 
 class PluginFixturePageBoundary extends Component<
   { pluginId: string; pathname: string; children: ReactNode },
-  { error: Error | null }
+  { error: Error | null; pathname: string }
 > {
-  state: { error: Error | null } = { error: null }
+  state: { error: Error | null; pathname: string } = { error: null, pathname: this.props.pathname }
+
+  // Navigating away resets the boundary so the next page renders fresh —
+  // derived from props, never a setState in componentDidUpdate.
+  static getDerivedStateFromProps(props: { pathname: string }, state: { error: Error | null; pathname: string }): { error: Error | null; pathname: string } | null {
+    if (props.pathname === state.pathname) return null
+    return { error: null, pathname: props.pathname }
+  }
 
   static getDerivedStateFromError(error: Error): { error: Error } {
     return { error }
@@ -90,12 +97,6 @@ class PluginFixturePageBoundary extends Component<
       `[bakin] plugin UI fixture page "${this.props.pluginId}" crashed at ${this.props.pathname}:`,
       error,
     )
-  }
-
-  componentDidUpdate(previous: { pathname: string }): void {
-    if (previous.pathname !== this.props.pathname && this.state.error) {
-      this.setState({ error: null })
-    }
   }
 
   render(): ReactNode {

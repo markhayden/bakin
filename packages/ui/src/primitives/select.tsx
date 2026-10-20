@@ -120,9 +120,9 @@ export function SelectLabel({ className, ...props }: SelectLabelProps) {
 }
 
 export function SelectItem({ className, children, description, ...props }: SelectItemProps) {
-  const ids = React.useId()
-  const labelId = `${ids}-label`
-  const descriptionId = `${ids}-description`
+  const id = React.useId()
+  const labelId = `${id}-label`
+  const descriptionId = `${id}-description`
   return (
     <SelectPrimitive.Item
       data-slot="select-item"

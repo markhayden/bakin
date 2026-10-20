@@ -13,7 +13,7 @@ export const Combobox = ComboboxPrimitive.Root
 export type ComboboxValueProps = ComboboxPrimitive.Value.Props
 export const ComboboxValue = ComboboxPrimitive.Value
 
-const Appearance = createContext<ControlSize>('md')
+const AppearanceContext = createContext<ControlSize>('md')
 export type ComboboxControlProps = ComboboxPrimitive.InputGroup.Props & { size?: ControlSize; variant?: ControlVariant; width?: 'full' | 'auto' }
 const minimumHeight: Record<ControlSize, string> = {
   sm: 'min-h-bakin-8',
@@ -22,18 +22,18 @@ const minimumHeight: Record<ControlSize, string> = {
 }
 
 export function ComboboxControl({ size = 'md', variant = 'outlined', width = 'full', className, ...props }: ComboboxControlProps) {
-  return <Appearance value={size}><ComboboxPrimitive.InputGroup data-slot="combobox-control" data-size={size} data-variant={variant} data-width={width}
+  return <AppearanceContext value={size}><ComboboxPrimitive.InputGroup data-slot="combobox-control" data-size={size} data-variant={variant} data-width={width}
     className={mergeClassName(cn(controlStyles({ size: null, variant }), minimumHeight[size],
       'group/combobox flex max-w-full self-start items-center gap-bakin-1 p-0', width === 'full' ? 'w-full' : 'w-fit',
       controlGroupFocus,
       'data-invalid:border-bakin-signal-danger data-disabled:opacity-[var(--bakin-state-opacity-disabled)]',
       'data-readonly:[&_[data-slot=combobox-clear]]:hidden data-readonly:[&_[data-slot=combobox-chip-remove]]:hidden',
-    ), className)} {...props} /></Appearance>
+    ), className)} {...props} /></AppearanceContext>
 }
 
 export type ComboboxInputProps = Omit<ComboboxPrimitive.Input.Props, 'size'> & { htmlSize?: number }
 export function ComboboxInput({ className, htmlSize, ...props }: ComboboxInputProps) {
-  const size = use(Appearance)
+  const size = use(AppearanceContext)
   return <ComboboxPrimitive.Input data-slot="combobox-input" size={htmlSize}
     className={mergeClassName(cn(controlStyles({ size }), inputClasses,
       'w-0 min-w-bakin-8 flex-1 border-0 bg-transparent shadow-none focus-visible:outline-none disabled:opacity-100',

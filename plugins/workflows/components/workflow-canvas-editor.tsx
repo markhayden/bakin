@@ -1048,7 +1048,7 @@ export function WorkflowCanvasEditor({
             />
 
             <div className="relative min-h-0 min-w-0 flex-1 bg-bakin-canvas-default [--xy-edge-stroke:var(--bakin-color-border-subtle)] [--xy-edge-stroke-width:2]">
-          <style dangerouslySetInnerHTML={{ __html: RESET_NODE_STYLES }} />
+          <style>{RESET_NODE_STYLES}</style>
           <ReactFlow
             nodes={nodes}
             edges={edges}
