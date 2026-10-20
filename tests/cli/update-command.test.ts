@@ -315,6 +315,51 @@ describe('review round 16 — a successor on another port, and silent runtime lo
     expect(calls.some((url) => url.includes('/cancel'))).toBe(false)
   })
 
+  it('the restart milestone arriving BEFORE the successor publishes its port: the verification follows the live lock to the new port (review r17 #1)', async () => {
+    const NEW_PORT = 3801
+    const NEW = `http://localhost:${NEW_PORT}`
+    const live = server({ versions: [{ version: '0.1.0', bootId: 'boot-old', state: 'serving' }] })
+    const calls: string[] = []
+    const scripted = async (url: string, init?: RequestInit): Promise<Response> => {
+      calls.push(url)
+      // The old port is dead after the swap; the successor answers on the new one.
+      if (url === `${BASE}/api/version` && calls.filter((u) => u === `${BASE}/api/version`).length > 1) throw Object.assign(new Error('ECONNREFUSED'), { code: 'ECONNREFUSED' })
+      if (url === `${NEW}/api/version`) return json({ version: '0.1.1', bootId: 'boot-new', state: 'serving' })
+      return live.fetch(url, init)
+    }
+    let polls = 0
+    const liveLock = (): ServerLock | null => { polls += 1; return polls < 6 ? LOCK : { ...LOCK, port: NEW_PORT, bootId: 'boot-new' } }
+    // The milestone is seen at once (the injected follow hands off immediately); the lock moves only later.
+    const result = await runUpdateCommand({ echo, stdout: process.stdout, liveLock, fetch: scripted, pollMs: 5, target: { baseUrl: BASE, source: 'lock', pid: LOCK.pid }, identityHeaders: async () => ({ 'x-bakin-operator': 'declared' }),
+      startAndFollow: async (start) => { await start(); return { follow: { phase: 'restarted', operation: null, children: [] }, body: null, httpStatus: null, exitCode: 130 } } })
+    expect(result).toEqual({ kind: 'verified', message: 'Updated to 0.1.1 and verified.' })
+    expect(calls.some((url) => url === `${NEW}/api/version`)).toBe(true)
+  })
+
+  it('a restart between the first lock read and the apply is NOT a successor of the operation: the baseline is the apply\'s boot id, and the follow runs on (review r17 #2)', async () => {
+    // Lock read first as boot A; by the time the apply answers, the server is boot B on the same port — and B's operation is still downloading.
+    const first: ServerLock = { ...LOCK, bootId: 'boot-a' }
+    const second: ServerLock = { ...LOCK, bootId: 'boot-b' }
+    let reads = 0
+    const liveLock = (): ServerLock => { reads += 1; return reads === 1 ? first : second }
+    const live = server({ versions: [{ version: '0.1.0', bootId: 'boot-b', state: 'serving' }, { version: '0.1.1', bootId: 'boot-c', state: 'serving' }], applyBody: { operationId: 'op-1', bootId: 'boot-b' } })
+    const delayedApply = async (url: string, init?: RequestInit): Promise<Response> => {
+      if (url === `${BASE}/api/updates/bakin%3Abakin/apply`) await new Promise((r) => setTimeout(r, 30))
+      return live.fetch(url, init)
+    }
+    const seen = { abortedDuringDownload: null as boolean | null }
+    const result = await runUpdateCommand({ echo, stdout: process.stdout, liveLock, fetch: delayedApply, pollMs: 5, target: { baseUrl: BASE, source: 'lock', pid: LOCK.pid }, identityHeaders: async () => ({ 'x-bakin-operator': 'declared' }),
+      startAndFollow: async (start, opts) => {
+        await start()
+        // B's operation downloads for a while; the watcher must not have latched A→B as a successor.
+        await new Promise((r) => setTimeout(r, 60))
+        seen.abortedDuringDownload = opts.signal.aborted
+        return { follow: { phase: 'restarted', operation: null, children: [] }, body: null, httpStatus: null, exitCode: 130 }
+      } })
+    expect(seen.abortedDuringDownload).toBe(false)
+    expect(result).toEqual({ kind: 'verified', message: 'Updated to 0.1.1 and verified.' })
+  })
+
   it('an explicit BAKIN_URL target stays fixed: a changed local lock never redirects its follow or verification', async () => {
     const REMOTE = 'http://bakin.remote.test:3737'
     const seen: Array<{ baseUrl: string }> = []

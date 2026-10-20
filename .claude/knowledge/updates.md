@@ -333,10 +333,13 @@ one document — the follow renders nothing, and the runtime logger's console
 transport is silenced around the offline paths (`withSilentConsoleLogs`,
 the logger's own knob, restored after — the file transport stays on). A
 lock-selected server may come back on ANOTHER port: while the follow runs
-the CLI polls the live `server.lock`, and a boot id past the one the
-operation started on is the successor's announcement — the follow stops
-(the old operation is never cancelled) and the bounded verification runs at
-the successor's port; an explicit `BAKIN_URL` target stays fixed. The
+the CLI polls the live `server.lock`, and a boot id past the one the APPLY
+answered with (never the lock read before the apply — a restart in between
+is not the operation's successor) is the successor's announcement — the
+follow stops (the old operation is never cancelled) and the bounded
+verification runs at the successor's port, and every verification poll
+keeps following the live lock (the restart milestone may arrive before the
+successor publishes its port); an explicit `BAKIN_URL` target stays fixed. The
 CLI hands off the moment the `restarting` stage goes active (it stops
 following; a terminal outcome from a process that is ending never comes);
 the browser does the same from the stage or a `restarted` settle, and every

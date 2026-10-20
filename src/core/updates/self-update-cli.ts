@@ -145,16 +145,19 @@ export async function runUpdateCommand(input: UpdateCommandDeps): Promise<Update
   const follow = input.startAndFollow ?? ((start, opts) => startAndFollow(start, { json: input.json ?? false, stdout: input.stdout, onUpdate: opts.onUpdate, baseUrl, signal: opts.signal }))
   // A lock-selected server may come back on ANOTHER port (review r16 #2): the
   // live lock is the successor's announcement. When its boot id moves past the
-  // one the operation started on, the follow stops (the old operation is
+  // one the operation STARTED on — the apply's answer, never the lock read
+  // before it (a restart between that read and the apply is not a successor
+  // of the operation, review r17 #2) — the follow stops (the old operation is
   // never cancelled) and the bounded verification runs at the successor's
   // port. An explicit BAKIN_URL target stays fixed — it is not this home.
   const stop = new AbortController()
   let successor: { bootId: string; port: number } | null = null
   const watchSuccessor = server.source === 'lock'
     ? setInterval(() => {
+      const startedBoot = handoff?.bootId
+      if (!startedBoot) return
       const live = deps.liveLock()
-      const startedBoot = handoff?.bootId ?? lock?.bootId
-      if (live && startedBoot && live.bootId !== startedBoot && Number.isInteger(live.port) && live.port > 0) {
+      if (live && live.bootId !== startedBoot && Number.isInteger(live.port) && live.port > 0) {
         successor = { bootId: live.bootId, port: live.port }
         stop.abort()
       }
@@ -187,7 +190,16 @@ export async function runUpdateCommand(input: UpdateCommandDeps): Promise<Update
   }
   if (successorBoot) input.echo(`Bakin came back on port ${successorBoot.port}; verifying there.`)
   const verifyBaseUrl = successorBoot ? `http://localhost:${successorBoot.port}` : baseUrl
-  const verification = await verifySelfUpdateFromCli({ expectedVersion, oldBootId: restartHandoff.bootId, log: input.echo, baseUrl: verifyBaseUrl, fetch: (url, init) => deps.fetch(url, init) })
+  // Successor discovery continues THROUGH the verification for a lock-selected
+  // server (review r17 #1): the restart milestone may arrive before the
+  // successor publishes its port, so every poll goes to where the live lock
+  // says Bakin is now. An explicit BAKIN_URL target stays fixed.
+  const liveBaseUrl = (): string => {
+    if (server.source !== 'lock') return verifyBaseUrl
+    const live = deps.liveLock()
+    return live && Number.isInteger(live.port) && live.port > 0 ? `http://localhost:${live.port}` : verifyBaseUrl
+  }
+  const verification = await verifySelfUpdateFromCli({ expectedVersion, oldBootId: restartHandoff.bootId, log: input.echo, baseUrl: verifyBaseUrl, fetch: (url, init) => deps.fetch(url.startsWith(verifyBaseUrl) ? `${liveBaseUrl()}${url.slice(verifyBaseUrl.length)}` : url, init) })
   if (verification.status === 'verified') return { kind: 'verified', message: `Updated to ${verification.version} and verified.` }
   if (verification.status === 'wrong-version') return { kind: 'failed', code: 'UPDATE_WRONG_VERSION', message: `Bakin came back as ${verification.version}, not ${expectedVersion}.` }
   return { kind: 'failed', code: 'UPDATE_UNVERIFIED', message: 'Bakin did not come back within 90s — verify by hand.', detail: verification.lastError }
