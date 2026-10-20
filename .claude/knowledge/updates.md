@@ -157,8 +157,13 @@ EXACTLY: the copied clone is `reset --hard` to it and `clean -ffdx` (the
 install sentinel excepted; the second `-f` removes vendored nested
 repositories too), so a hand-edited tracked file or an untracked leftover
 never survives into the install the sha vouches for; a reviewed commit that
-carries gitlinks (submodules) is refused outright — the lane resets the
-superproject only and cannot vouch for a submodule's contents. Within a
+carries gitlinks (submodules) is refused outright — the in-place lane resets
+the superproject only and cannot vouch for a submodule's contents, the
+subpath lane's non-recursive clone would install it EMPTY (scoped to the
+subpath; a submodule elsewhere in a monorepo is nobody's concern). The scan
+streams `git ls-tree -r` (`collectGitlinks`, bounded retained output — a
+large gitlink-free tree never trips a buffer cap) and a genuine no-op never
+lists the tree. Within a
 pass two attempts for one subject never overlap (`Pass.active`): a repeat
 asked for while the first is in flight waits for it, so the engine's
 one-token-per-subject rule never discards a result that already landed.

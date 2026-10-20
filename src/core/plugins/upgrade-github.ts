@@ -7,6 +7,7 @@
 import { existsSync, cpSync, rmSync } from 'fs'
 import { join } from 'path'
 import { createHash } from 'crypto'
+import { gitArgs } from '@bakin/core/net/git-args'
 import { getContentDir } from '@/core/content-dir'
 import {
   type PluginLockEntry,
@@ -54,18 +55,52 @@ export function githubCloneUrl(source: string): string {
  * it and compute the manifestSha from the bytes. Identical to what
  * `readManifest` would compute after a checkout.
  */
+/** How many gitlink paths a refusal names — the listing is streamed and never retained beyond these. */
+const GITLINKS_NAMED = 5
+
 /**
- * A reviewed commit that carries gitlinks (submodules) is refused (review
- * r10 #1): the lane resets and cleans the superproject only, so an
- * initialized submodule copied from the previous install could keep an old
- * commit or a local edit the build then consumes under the reviewed sha.
- * Submodules are unsupported until they are materialized and verified.
+ * The gitlink (submodule) paths in a streamed `git ls-tree -r` listing,
+ * read incrementally with bounded retained output (review r11 #2): a large
+ * gitlink-free tree never trips a buffer cap, and at most `limit` paths are
+ * kept. A line is `<mode> <type> <sha>\t<path>`; gitlinks are mode 160000.
  */
-function assertNoGitlinks(id: string, pluginDir: string, sha: string): void {
-  const tree = git(['ls-tree', '-r', '--', sha], pluginDir)
-  const gitlinks = tree.split('\n').filter((line) => line.startsWith('160000 ')).map((line) => line.split('\t')[1] ?? line)
-  if (gitlinks.length > 0) {
-    throw new UpgradeRefusedError(`${id}: ${sha.slice(0, 7)} contains git submodules (${gitlinks.slice(0, 3).join(', ')}${gitlinks.length > 3 ? ', …' : ''}), which the in-place upgrade cannot verify. Vendor them into the tree or reinstall.`)
+export async function collectGitlinks(listing: ReadableStream<Uint8Array>, limit = GITLINKS_NAMED): Promise<{ paths: string[]; total: number }> {
+  const decoder = new TextDecoder()
+  const paths: string[] = []
+  let total = 0
+  let rest = ''
+  const take = (line: string): void => {
+    if (!line.startsWith('160000 ')) return
+    total += 1
+    if (paths.length < limit) paths.push(line.slice(line.indexOf('\t') + 1))
+  }
+  for await (const chunk of listing) {
+    rest += decoder.decode(chunk, { stream: true })
+    const lines = rest.split('\n')
+    rest = lines.pop() ?? ''
+    for (const line of lines) take(line)
+  }
+  rest += decoder.decode()
+  if (rest) take(rest)
+  return { paths, total }
+}
+
+/**
+ * A reviewed commit that carries gitlinks (submodules) under `subpath` (the
+ * whole tree for the in-place lane) is refused (review r10 #1, r11 #1): the
+ * in-place lane resets and cleans the superproject only, so an initialized
+ * submodule copied from the previous install could keep an old commit or a
+ * local edit the build then consumes under the reviewed sha; the subpath
+ * lane's non-recursive clone would leave one EMPTY and install an
+ * incomplete plugin under that sha. Submodules outside the subpath are
+ * someone else's. Unsupported until they are materialized and verified.
+ */
+async function assertNoGitlinks(id: string, repoDir: string, sha: string, subpath?: string): Promise<void> {
+  const proc = Bun.spawn(['git', ...gitArgs(['ls-tree', '-r', '--', sha, ...(subpath ? [subpath] : [])])], { cwd: repoDir, stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+  const [{ paths, total }, code, stderr] = await Promise.all([collectGitlinks(proc.stdout), proc.exited, new Response(proc.stderr).text()])
+  if (code !== 0) throw new UpgradeRefusedError(`${id}: could not list ${sha.slice(0, 7)} (git ls-tree exit ${code}): ${stderr.trim().slice(-300)}`)
+  if (total > 0) {
+    throw new UpgradeRefusedError(`${id}: ${sha.slice(0, 7)}${subpath ? ` (${subpath})` : ''} contains git submodules (${paths.join(', ')}${total > paths.length ? ', …' : ''}), which the upgrade cannot verify. Vendor them into the tree or reinstall.`)
   }
 }
 
@@ -122,7 +157,6 @@ export async function upgradeGithub(
 
   const remoteSha = git(['rev-parse', 'FETCH_HEAD^{commit}'], pluginDir).toLowerCase()
   const localSha = git(['rev-parse', 'HEAD'], pluginDir).toLowerCase()
-  assertNoGitlinks(id, pluginDir, remoteSha)
 
   // True noop — local HEAD already matches remote AND lockfile commitSha
   // is in sync. Nothing on disk or in the lockfile needs to change.
@@ -137,6 +171,9 @@ export async function upgradeGithub(
       awaitingConsent: false,
     }
   }
+
+  // A genuine no-op never lists the tree; anything else is refused before it is read.
+  await assertNoGitlinks(id, pluginDir, remoteSha)
 
   // Read the remote manifest WITHOUT mutating the working tree. Consent gate
   // runs against this. If the user declines, no disk change happens.
@@ -267,6 +304,8 @@ export async function upgradeGithubSubpath(
         awaitingConsent: false,
       }
     }
+
+    await assertNoGitlinks(id, stagingDir, remoteSha, subpath)
 
     const subpathDir = join(stagingDir, subpath)
     if (!existsSync(subpathDir)) {

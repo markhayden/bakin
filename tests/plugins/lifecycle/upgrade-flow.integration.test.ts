@@ -333,6 +333,31 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     expect(readPluginLockfile().plugins['subhost']?.commitSha).toBe(installedSha)
   })
 
+  it('subpath lane (review r11 #1): a submodule INSIDE the subpath is refused with the tree and ledger untouched; one elsewhere in the monorepo is nobody\'s concern', async () => {
+    const env = { GIT_AUTHOR_NAME: 'Bakin Test', GIT_AUTHOR_EMAIL: 'test@bakin.local', GIT_COMMITTER_NAME: 'Bakin Test', GIT_COMMITTER_EMAIL: 'test@bakin.local' }
+    const nested = (files: Record<string, string>) => Object.fromEntries(Object.entries(files).map(([k, v]) => [`plugins/sub/${k}`, v]))
+    const vendor = createBareRepo(testDir, 'subpath-vendor', { 'lib.ts': 'export const vendored = true' })
+    const repo = createBareRepo(testDir, 'subpath-submodule-host', nested(fixturePluginFiles({ id: 'subsub', version: '1.0.0' })))
+    const pluginDir = join(testDir, 'plugins', 'subsub')
+    mkdirSync(pluginDir, { recursive: true })
+    for (const [name, body] of Object.entries(fixturePluginFiles({ id: 'subsub', version: '1.0.0' }))) writeFileSync(join(pluginDir, name), body)
+    const installedSha = headSha(repo.workingClonePath)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'subsub', makeLockEntry({ cloneUrl: `${repo.cloneUrl}#plugins/sub`, ref: 'main', commitSha: installedSha, version: '1.0.0' })))
+    // A submodule elsewhere in the monorepo: the subpath upgrade goes through.
+    runGit(['-c', 'protocol.file.allow=always', 'submodule', 'add', '--', vendor.bareRepoPath, 'other/vendor'], repo.workingClonePath, env)
+    const elsewhere = pushCommit(repo.workingClonePath, nested(fixturePluginFiles({ id: 'subsub', version: '1.1.0' })), 'submodule elsewhere + bump')
+    const upgraded = await upgradePlugin('subsub', { expected: { sha: elsewhere } })
+    expect(upgraded.after).toEqual({ version: '1.1.0', commitSha: elsewhere })
+    // A submodule INSIDE the subpath: refused, nothing placed.
+    runGit(['-c', 'protocol.file.allow=always', 'submodule', 'add', '--', vendor.bareRepoPath, 'plugins/sub/vendor'], repo.workingClonePath, env)
+    const inside = pushCommit(repo.workingClonePath, nested(fixturePluginFiles({ id: 'subsub', version: '1.2.0' })), 'submodule inside + bump')
+    const treeBefore = treeDigest(pluginDir)
+    await expect(upgradePlugin('subsub', { expected: { sha: inside } })).rejects.toThrow(/\(plugins\/sub\) contains git submodules \(plugins\/sub\/vendor\)/)
+    expect(treeDigest(pluginDir)).toEqual(treeBefore)
+    expect(readPluginLockfile().plugins['subsub']?.commitSha).toBe(elsewhere)
+    expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
+  })
+
   it('refuses to upgrade when remote history was rewritten (force-push)', async () => {
     const repo = createBareRepo(testDir, 'rewind-fixture', fixturePluginFiles({ id: 'rewind', version: '1.0.0' }))
     cloneRepoIntoPluginsDir({ pluginId: 'rewind', cloneUrl: repo.cloneUrl })
