@@ -1107,7 +1107,13 @@ bun build plugins/<id>/client.tsx    (if it exists)
 
 Client entries only externalize react + sdk + zod; everything else (lucide
 icons, zustand, shadcn primitives) bundles in so the plugin is
-self-contained from the browser's POV. The externals list is the shared
+self-contained from the browser's POV. Bun's `--external <pkg>` matches
+every sub-path of the package, so a client that imports `zod/v4`,
+`react-dom/server` or an SDK path that is not a published entry (directly or
+through a dependency) would come out with a bare import the import map
+cannot resolve — `assertClientBundleExternalsResolvable` (whiskit
+`build.ts`, via `unprovidedHostSubpath` in `externals.ts`) scans the emitted
+`client.js`, names every offender and removes the bundle. The externals list is the shared
 contract in `src/core/whiskit/externals.ts` (`PLUGIN_CLIENT_EXTERNALS`).
 
 ### User plugins — `buildUserPlugin()`

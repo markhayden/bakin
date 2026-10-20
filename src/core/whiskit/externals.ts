@@ -56,6 +56,33 @@ export const ZOD_EXTERNALS: string[] = ['zod']
 export const PLUGIN_CLIENT_EXTERNALS: string[] = [...REACT_EXTERNALS, ...SDK_EXTERNALS, ...ZOD_EXTERNALS]
 
 /**
+ * The package roots the host provides. Bun's `--external <pkg>` matches every
+ * sub-path of the package too, so a client bundle keeps e.g. `zod/v4` or
+ * `@makinbakin/sdk/not-an-entry` as a BARE import — which the import map
+ * (exact specifiers only) cannot resolve. The client build refuses such a
+ * bundle; see `unprovidedHostSubpath`.
+ */
+const HOST_PROVIDED_ROOTS: string[] = ['react', 'react-dom', '@tanstack/react-router', '@makinbakin/sdk', ...ZOD_EXTERNALS]
+
+function packageRoot(specifier: string): string {
+  const parts = specifier.split('/')
+  return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]!
+}
+
+/**
+ * The host-provided package root a specifier belongs to WITHOUT the import
+ * map resolving that exact specifier — or null when the specifier is either
+ * provided exactly (`zod`, `react/jsx-runtime`, every SDK entry) or not a
+ * host package at all. Relative/absolute paths are never host packages.
+ */
+export function unprovidedHostSubpath(specifier: string): string | null {
+  if (specifier.startsWith('.') || specifier.startsWith('/')) return null
+  if (PLUGIN_CLIENT_EXTERNALS.includes(specifier)) return null
+  const root = packageRoot(specifier)
+  return HOST_PROVIDED_ROOTS.includes(root) ? root : null
+}
+
+/**
  * Server bundles externalize React + router only; the SDK is inlined and other
  * node_modules are kept external via Bun's `--packages external`.
  */

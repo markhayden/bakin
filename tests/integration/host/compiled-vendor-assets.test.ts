@@ -72,6 +72,28 @@ async function compileServer(): Promise<string> {
 
 interface BootedBinary { baseUrl: string; stop(): Promise<string> }
 
+interface Child { proc: ReturnType<typeof Bun.spawn>; finished: boolean }
+
+/** The child, if one is alive — afterAll terminates it before the home is removed. */
+let child: Child | null = null
+
+function track(proc: ReturnType<typeof Bun.spawn>): Child {
+  const tracked: Child = { proc, finished: false }
+  void proc.exited.then(() => { tracked.finished = true })
+  return tracked
+}
+
+/** SIGTERM, then SIGKILL after a bounded wait; always resolves once the child is gone. */
+async function terminate(tracked: Child): Promise<void> {
+  if (tracked.finished) return
+  tracked.proc.kill()
+  const graceful = await Promise.race([tracked.proc.exited.then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000))])
+  if (!graceful) {
+    tracked.proc.kill('SIGKILL')
+    await tracked.proc.exited
+  }
+}
+
 async function bootBinary(binary: string): Promise<BootedBinary> {
   const home = join(testDir, 'home')
   const cwd = join(testDir, 'empty-cwd')
@@ -98,6 +120,8 @@ async function bootBinary(binary: string): Promise<BootedBinary> {
     NODE_ENV: 'test',
   })
   const proc = Bun.spawn([binary, 'serve'], { cwd, env, stdout: 'pipe', stderr: 'pipe' })
+  const tracked = track(proc)
+  child = tracked
   const chunks: string[] = []
   const drain = async (stream: ReadableStream<Uint8Array> | null): Promise<void> => {
     if (!stream) return
@@ -109,31 +133,37 @@ async function bootBinary(binary: string): Promise<BootedBinary> {
   const deadline = Date.now() + 60_000
   let exited: number | null = null
   void proc.exited.then((code) => { exited = code })
-  for (;;) {
-    if (exited !== null) throw new Error(`binary exited ${exited} before boot:\n${chunks.join('').slice(-2000)}`)
-    try {
-      const res = await realFetch(`${baseUrl}/api/plugins/manifest`)
-      if (res.status === 200) break
-    } catch {
-      // not listening yet
+  try {
+    for (;;) {
+      if (exited !== null) throw new Error(`binary exited ${exited} before boot:\n${chunks.join('').slice(-2000)}`)
+      try {
+        // Bounded: a socket that accepts and never answers must not outlive the deadline.
+        const res = await realFetch(`${baseUrl}/api/plugins/manifest`, { signal: AbortSignal.timeout(2_000) })
+        if (res.status === 200) break
+      } catch {
+        // not listening yet (or a timed-out probe) — keep polling
+      }
+      if (Date.now() > deadline) throw new Error(`binary did not boot within 60s:\n${chunks.join('').slice(-2000)}`)
+      await new Promise((resolve) => setTimeout(resolve, 250))
     }
-    if (Date.now() > deadline) {
-      proc.kill()
-      throw new Error(`binary did not boot within 60s:\n${chunks.join('').slice(-2000)}`)
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250))
+  } catch (err) {
+    await terminate(tracked)
+    child = null
+    throw err
   }
   return {
     baseUrl,
     async stop() {
-      proc.kill()
-      await proc.exited
+      await terminate(tracked)
+      child = null
       return chunks.join('')
     },
   }
 }
 
-afterAll(() => {
+afterAll(async () => {
+  // Never delete the home under a still-running child (graceful shutdown writes into it).
+  if (child) await terminate(child)
   rmSync(testDir, { recursive: true, force: true })
 })
 
@@ -147,13 +177,13 @@ describe('compiled vendor assets', () => {
     const binary = await compileServer()
     const booted = await bootBinary(binary)
     try {
-      const zod = await realFetch(`${booted.baseUrl}/vendor/zod.js`)
+      const zod = await realFetch(`${booted.baseUrl}/vendor/zod.js`, { signal: AbortSignal.timeout(10_000) })
       expect(zod.status).toBe(200)
       expect(zod.headers.get('content-type') ?? '').toMatch(/javascript/)
       const zodSource = await zod.text()
       expect(zodSource).toContain('_zod.def')
 
-      const shell = await realFetch(`${booted.baseUrl}/`)
+      const shell = await realFetch(`${booted.baseUrl}/`, { signal: AbortSignal.timeout(10_000) })
       expect(shell.status).toBe(200)
       const html = await shell.text()
       const map = html.match(/<script type="importmap">\s*([\s\S]*?)\s*<\/script>/)
@@ -163,12 +193,12 @@ describe('compiled vendor assets', () => {
       expect(imports['zod']).toMatch(/^\/vendor\/zod\.js(\?v=.+)?$/)
       // Every mapped vendor file resolves out of the binary — one dead entry breaks every plugin.
       for (const target of new Set(Object.values(imports))) {
-        const res = await realFetch(`${booted.baseUrl}${target}`)
+        const res = await realFetch(`${booted.baseUrl}${target}`, { signal: AbortSignal.timeout(10_000) })
         expect({ target, status: res.status }).toEqual({ target, status: 200 })
       }
 
       // Control: nothing is served from disk — an unknown vendor path is a 404, not a checkout file.
-      const missing = await realFetch(`${booted.baseUrl}/vendor/not-a-bundle.js`)
+      const missing = await realFetch(`${booted.baseUrl}/vendor/not-a-bundle.js`, { signal: AbortSignal.timeout(10_000) })
       expect(missing.status).toBe(404)
     } finally {
       await booted.stop()

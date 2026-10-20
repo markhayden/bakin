@@ -311,6 +311,25 @@ describe('buildPluginWithSystemBun', () => {
     expect(existsSync(join(dir, 'dist'))).toBe(false)
   })
 
+  it('a client import of an unmapped host-provided subpath (zod/v4) is rejected after the build, bundle removed (#948)', async () => {
+    // Bun's --external matches by package prefix, so a declared zod lets
+    // `zod/v4` through the source scan and out of the client build as a bare
+    // import — which the host import map only resolves for `zod` itself.
+    const dir = seedPlugin()
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'demo', version: '0.1.0', dependencies: { zod: '~4.6.5' } }))
+    writeFileSync(join(dir, 'client.tsx'), [
+      `import { registerPlugin } from '@makinbakin/sdk'`,
+      `import { z } from 'zod/v4'`,
+      `registerPlugin({ id: 'demo', slots: {} })`,
+      `void z`,
+      '',
+    ].join('\n'))
+    // `z` is unused, so bun tree-shakes the binding and emits the side-effect
+    // form `import"zod/v4"` — the guard has to see that shape too.
+    await expect(buildPluginWithSystemBun({ pluginDir: dir, serverBuild: false })).rejects.toThrow(/"zod\/v4".*host import map only resolves "zod"/)
+    expect(existsSync(join(dir, 'dist', 'client.js'))).toBe(false)
+  }, 30_000)
+
   it('surfaces server compile errors as stage-tagged failures with stderr detail', async () => {
     const dir = seedPlugin({ withClient: false })
     writeFileSync(join(dir, 'index.ts'), `import { missing } from './does-not-exist'\nexport default missing\n`)

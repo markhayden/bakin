@@ -25,7 +25,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
-import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS } from './externals'
+import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS, unprovidedHostSubpath } from './externals'
 import { validatePluginImports, type PluginPackageJson } from './import-scan'
 import { commandFailure, runSystemBun, DEFAULT_BUILD_TIMEOUT_MS } from './command'
 import { processBuiltPluginCss } from './plugin-css'
@@ -327,6 +327,7 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
   if (result.exitCode !== 0) {
     throw commandFailure('client-build', `Client build for "${plugin.pluginId}"`, result)
   }
+  assertClientBundleExternalsResolvable(plugin)
 
   req.onStage?.({ stage: 'css-validate', status: 'start' })
   const cssStartedAt = Date.now()
@@ -345,6 +346,38 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
       error instanceof Error ? error.message : String(error),
     )
   }
+}
+
+/**
+ * Bun's `--external <pkg>` externalizes every sub-path of the package, so a
+ * client that imports `zod/v4`, `react-dom/server` or an SDK path that is not
+ * a published entry (directly, or through a dependency) comes out of the
+ * build with a bare import the host import map cannot resolve — the plugin
+ * then dies at module load in the browser (#948). Catch it at build time,
+ * name every offender, and remove the bundle so nothing can serve it.
+ */
+function assertClientBundleExternalsResolvable(plugin: ValidatedPlugin): void {
+  const bundlePath = join(plugin.distDir, 'client.js')
+  if (!existsSync(bundlePath)) return
+  const bundle = readFileSync(bundlePath, 'utf-8')
+  const unresolvable = new Map<string, string>()
+  // `from "x"` (named/namespace), `import("x")` (dynamic) and `import "x"`
+  // (the side-effect form bun emits when every binding was tree-shaken away).
+  for (const match of bundle.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"'\n]+)["']/g)) {
+    const specifier = match[1]!
+    const root = unprovidedHostSubpath(specifier)
+    if (root) unresolvable.set(specifier, root)
+  }
+  if (unresolvable.size === 0) return
+  rmSync(bundlePath, { force: true })
+  rmSync(join(plugin.distDir, 'client.css'), { force: true })
+  const detail = [...unresolvable].map(([specifier, root]) => `"${specifier}" (the host import map only resolves "${root}"${root === '@makinbakin/sdk' ? ' and its published entries' : ''})`).join(', ')
+  throw new WhiskitBuildError(
+    'client-build',
+    `client bundle for "${plugin.pluginId}" imports ${detail}. ` +
+    `Bun externalizes host-provided packages by prefix, so these stay bare imports the browser cannot resolve. ` +
+    `Import the bare package ("zod", not "zod/v4") or a published @makinbakin/sdk entry.`,
+  )
 }
 
 /**

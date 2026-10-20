@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 import { SDK_EXPORTS } from '../../../scripts/build-sdk-package'
@@ -10,6 +10,7 @@ import {
   REACT_EXTERNALS,
   SDK_EXTERNALS,
   ZOD_EXTERNALS,
+  unprovidedHostSubpath,
 } from '../../../src/core/whiskit/externals'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -117,5 +118,34 @@ describe('focused public SDK entrypoint contract', () => {
     // Only the bare specifier is provided; every zod import in the tree is bare
     // (no zod/v4, zod/mini), so no sub-path needs a map entry — and none gets one.
     expect(Object.keys(importMap).filter((specifier) => specifier.startsWith('zod/'))).toEqual([])
+  })
+
+  it('a sub-path of a host-provided package that the import map does not list is unprovided — bun externalizes by prefix', () => {
+    expect(unprovidedHostSubpath('zod/v4')).toBe('zod')
+    expect(unprovidedHostSubpath('zod/mini')).toBe('zod')
+    expect(unprovidedHostSubpath('@makinbakin/sdk/not-an-entry')).toBe('@makinbakin/sdk')
+    expect(unprovidedHostSubpath('react-dom/server')).toBe('react-dom')
+    expect(unprovidedHostSubpath('@tanstack/react-router/ssr')).toBe('@tanstack/react-router')
+    for (const provided of PLUGIN_CLIENT_EXTERNALS) expect(unprovidedHostSubpath(provided)).toBeNull()
+    expect(unprovidedHostSubpath('zodiac')).toBeNull()
+    expect(unprovidedHostSubpath('react-hook-form')).toBeNull()
+    expect(unprovidedHostSubpath('./zod/local')).toBeNull()
+  })
+
+  it('every zod import in the tree is bare — a sub-path would escape every client bundle unresolved', () => {
+    const roots = ['packages', 'plugins', 'src', 'storybook', 'examples']
+    const offenders: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) continue
+        const path = join(dir, entry.name)
+        if (entry.isDirectory()) { walk(path); continue }
+        if (!/\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name)) continue
+        const source = readFileSync(path, 'utf8')
+        if (/(?:\bfrom\s*|\bimport\s*\(?\s*)["']zod\/[^"']+["']/.test(source)) offenders.push(path.slice(REPO_ROOT.length + 1))
+      }
+    }
+    for (const root of roots) if (existsSync(join(REPO_ROOT, root))) walk(join(REPO_ROOT, root))
+    expect(offenders).toEqual([])
   })
 })
