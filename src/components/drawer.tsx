@@ -1,7 +1,6 @@
 'use client'
 
-import { useCallback, type CSSProperties, type ReactNode } from 'react'
-import { useKeyedState } from '@makinbakin/sdk/hooks'
+import { useCallback, type CSSProperties, type ReactNode, useState } from 'react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { ResizeHandle, usePersistedLeadingEdgeResize } from '../../packages/host/src/ui/resize'
@@ -65,8 +64,16 @@ export function Drawer({
     storageKey: getDrawerWidthStorageKey(storageKey),
     disabled: !open,
   })
-  // Per opening (issue 966b): closing the drawer drops a pending dirty prompt with it.
-  const [showDirtyConfirm, setShowDirtyConfirm] = useKeyedState(open, () => false)
+  // Per opening (issue 966b): closing the drawer drops a pending dirty prompt
+  // with it — adjusted during render. Inlined rather than useKeyedState: the
+  // Drawer is exported through `@makinbakin/sdk/ui`, and an import from the
+  // hooks entry would pull the whole hooks graph into the ui bundle.
+  const [showDirtyConfirm, setShowDirtyConfirm] = useState(false)
+  const [promptFor, setPromptFor] = useState(open)
+  if (promptFor !== open) {
+    setPromptFor(open)
+    setShowDirtyConfirm(false)
+  }
 
   const requestClose = useCallback(() => {
     if (busy) return

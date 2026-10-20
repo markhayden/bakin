@@ -847,14 +847,18 @@ function OverviewTab({
       void (async () => {
         try {
           const res = await fetch(`/api/plugins/brands/${brandId}/docs/guidelines/voice.md`)
-          if (res.ok && active) setVoice(((await res.json()) as { content?: string }).content ?? '')
+          if (!res.ok) return
+          const body = (await res.json()) as { content?: string }
+          if (active) setVoice(body.content ?? '')
         } catch { /* best-effort */ }
       })()
     }
     void (async () => {
       try {
         const res = await fetch(`/api/plugins/brands/${brandId}/activity`)
-        if (res.ok && active) setActivity(((await res.json()) as { activity: ActivityRow[] }).activity ?? [])
+        if (!res.ok) return
+        const body = (await res.json()) as { activity: ActivityRow[] }
+        if (active) setActivity(body.activity ?? [])
       } catch { /* best-effort */ }
     })()
     return () => { active = false }
