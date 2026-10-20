@@ -15,9 +15,10 @@
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { isUpdateOffered, updateRecordMatchesInstalled, type UpdateRecord } from '@makinbakin/sdk/types'
-import { readPluginLockfile, type PluginLockfile } from '@bakin/core/plugins/lockfile'
+import { readPluginLockfile, type PluginLockEntry, type PluginLockfile } from '@bakin/core/plugins/lockfile'
 import { canonicalPackageEntries, readLockfile, type CanonicalPackageEntry, type Lockfile } from '@bakin/core/agent-packages/lockfile'
 import { getContentDir } from '../../../src/core/content-dir'
+import { pluginInstalledIdentity } from '../../../src/core/updates/sources/plugin'
 import type { CatalogEntry } from '../../../src/core/curated-catalog/schema'
 import type { ExploreCatalogEntry } from '../types'
 
@@ -105,10 +106,10 @@ function packageRecord(records: UpdateRecordMap, installed: CanonicalPackageEntr
 }
 
 /** A plugin record observed for another installed identity (a reinstall the engine has not reconciled yet) is no answer. */
-function pluginRecord(records: UpdateRecordMap, id: string, installed: { version: string; commitSha?: string }): UpdateRecord | undefined {
+function pluginRecord(records: UpdateRecordMap, id: string, installed: Pick<PluginLockEntry, 'type' | 'version' | 'commitSha' | 'sourceTreeSha'>): UpdateRecord | undefined {
   const record = records.get(`plugin:${id}`)
   if (!record) return undefined
-  return updateRecordMatchesInstalled(record, { version: installed.version, sha: installed.commitSha || undefined }) ? record : undefined
+  return updateRecordMatchesInstalled(record, pluginInstalledIdentity(installed)) ? record : undefined
 }
 
 export function joinInstallState(

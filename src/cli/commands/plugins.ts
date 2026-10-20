@@ -188,12 +188,13 @@ type OfflinePluginRow = {
 }
 
 async function listPluginsInProcess(check: boolean): Promise<{ plugins: OfflinePluginRow[]; note: string }> {
-  const [{ readPluginLockfile }, { isUpdateOffered, updateRecordMatchesInstalled }, { getContentDir }, { readUpdatesFile }, { UPDATES_FILE_NAME }] = await Promise.all([
+  const [{ readPluginLockfile }, { isUpdateOffered, updateRecordMatchesInstalled }, { getContentDir }, { readUpdatesFile }, { UPDATES_FILE_NAME }, { pluginInstalledIdentity }] = await Promise.all([
     import('@bakin/core/plugins/lockfile'),
     import('@makinbakin/sdk/types'),
     import('../../core/content-dir'),
     import('../../core/updates/store'),
     import('../../core/updates/service'),
+    import('../../core/updates/sources/plugin'),
   ])
   const records = new Map<string, UpdateRecord>()
   if (check) {
@@ -206,7 +207,7 @@ async function listPluginsInProcess(check: boolean): Promise<{ plugins: OfflineP
   const plugins = Object.entries(readPluginLockfile().plugins).map(([id, entry]): OfflinePluginRow => {
     // A stored record observed for another installed identity (an upgrade since the server last looked) is no answer (review r3 #2).
     const stored = records.get(`plugin:${id}`)
-    const record = stored && updateRecordMatchesInstalled(stored, { version: entry.version, sha: entry.commitSha || undefined }) ? stored : undefined
+    const record = stored && updateRecordMatchesInstalled(stored, pluginInstalledIdentity(entry)) ? stored : undefined
     return {
       id,
       name: id,
@@ -223,7 +224,8 @@ async function listPluginsInProcess(check: boolean): Promise<{ plugins: OfflineP
 
 async function cmdPluginsList(opts: { json?: boolean; check?: boolean } = {}): Promise<void> {
   if (currentOperationMode().kind === 'local') {
-    const { plugins, note } = await listPluginsInProcess(opts.check === true)
+    const { withSilentLogsIf } = await import('./agents')
+    const { plugins, note } = await withSilentLogsIf(opts.json === true, () => listPluginsInProcess(opts.check === true))
     if (opts.json) { print({ plugins, note }); return }
     console.error(note)
     if (process.stdout.isTTY) { await printPluginsListTui(plugins); return }

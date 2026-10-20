@@ -425,8 +425,10 @@ through a server is an operator action: `bakin update --as human`; an
   its `package:` record (`row.update`); the Explore catalog join reads
   `plugin:`/`package:`/`hub-skill:` records into `updateAvailable`
   (true / false / null = unknown). A record observed for ANOTHER installed
-  identity (`updateRecordMatchesInstalled` — a reinstall the engine has not
-  reconciled yet) is never attached, and `agent_pkg:changed` (announced once
+  identity (`updateRecordMatchesInstalled` — version, commit, and for a
+  local plugin its tree digest (`pluginInstalledIdentity`), so a rebuild
+  retires the offer it installed; a reinstall the engine has not reconciled
+  yet) is never attached, and `agent_pkg:changed` (announced once
   an install is FINAL, after a failed install's rollback as `restored`, by
   sync/migration and removal) refreshes the inventory at once so such
   records retire. The Team store drops a package-rows response that is no
@@ -457,19 +459,24 @@ through a server is an operator action: `bakin update --as human`; an
   exact versioned key that is not the install's canonical key is refused
   (`PackageSupersededError`), never silently answered with the newer
   install's verdict — re-checked AFTER the observation too (the install may
-  be superseded while the check waited its turn), and the observation must
-  name the validated install's identity (`updateRecordMatchesInstalled`). The
-  checker module is gone.
+  be superseded while the check waited its turn — under a new key OR the
+  same key: version, commit and install instant must match), and the
+  observation must name the validated install's identity
+  (`updateRecordMatchesInstalled` against `packageInstalledIdentity` /
+  `hubSkillInstalledIdentity` — the ONE derivation the sources use; a hub
+  skill's is the hub's resolved version). The checker module is gone.
 - **CLI `--check` without a server:** `bakin agents sync [<id>] --check`,
   `bakin packages sync <key> --check` and `bakin plugins list [--check]`
   run in-process when `server.lock` names no live server (an explicit
   `BAKIN_URL` is server-only): the read-only `checkAgent`/`checkPack`
   entries (the routes' `sync…({ check })`; report-only, no resource,
   nothing persisted — the install-state architecture rule keeps the writers
-  owner-only) over `createReadOnlyAppServices()` (the runtime for
-  roster/workspace reads; no search initialization, no secret migration,
-  no health registration — a read-only path never provisions) and, for
-  plugins,
+  owner-only) over `createReadOnlyAppServices()` (the runtime CONSTRUCTED,
+  never initialized — Pi's `initialize()` warms a registry whose stores
+  create files under PI_HOME; a bare adapter answers every roster/workspace
+  read; no search initialization, no secret migration, no health
+  registration — a read-only path never provisions; `--json` runs the work
+  under `withSilentConsoleLogs`) and, for plugins,
   the lockfile's user plugins joined with the engine's records (`--check`
   runs the plugin pass in-process on a scratch store; a plain list reads
   the records the server last wrote, joined only when the record's

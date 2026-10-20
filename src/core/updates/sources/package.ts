@@ -65,6 +65,11 @@ export function packageSourceWithRef(source: string, ref: string): string {
   return head.includes('@') ? source : `${head}@${ref}${tail}`
 }
 
+/** The installed identity a package record names (the observer and `observeInstalledPackage` derive it HERE, never twice). */
+export function packageInstalledIdentity(entry: Pick<PackageEntry, 'version' | 'commitSha'>): UpdateIdentity {
+  return { version: entry.version, sha: entry.commitSha || undefined, display: entry.version }
+}
+
 /** The command that applies an update: agents by agent id, packs by the EXACT lockfile key the route looks up (review r2 #2). */
 function syncPointer(entry: PackageEntry, id: string, key: string): string {
   return entry.kind === 'agent' ? `bakin agents sync ${entry.agentId ?? id}` : `bakin packages sync ${key}`
@@ -107,7 +112,7 @@ export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
       const pkg = subjects().find((candidate) => candidate.id === id)
       if (!pkg) throw new Error(`package "${id}" is no longer installed`)
       const { entry } = pkg
-      const installed = { version: entry.version, sha: entry.commitSha || undefined, display: entry.version }
+      const installed = packageInstalledIdentity(entry)
       const action: UpdateAction = { kind: 'manual', pointer: syncPointer(entry, id, pkg.key) }
 
       if (isGithubPackageSource(entry.source)) {

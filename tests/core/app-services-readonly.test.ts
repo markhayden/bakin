@@ -1,8 +1,8 @@
 /**
- * `createReadOnlyAppServices()` (PR 8 review r3 #1): the runtime comes up
- * for roster/workspace reads and NOTHING else is touched — the search
- * adapter is constructed but never initialized (antfly provisioning), no
- * health check registers.
+ * `createReadOnlyAppServices()` (PR 8 review r3 #1 / r4 #1): the runtime is
+ * constructed for roster/workspace reads and NOTHING is initialized — not
+ * the runtime (Pi's initialize warms a registry whose stores create files),
+ * not the search adapter (antfly provisioning); no health check registers.
  */
 import { afterAll, describe, expect, it, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'node:fs'
@@ -53,15 +53,12 @@ import { createReadOnlyAppServices, maybeGetAppServices } from '../../src/core/a
 afterAll(() => { delete process.env.BAKIN_HOME; rmSync(testDir, { recursive: true, force: true }) })
 
 describe('createReadOnlyAppServices', () => {
-  it('initializes the runtime only: no search initialization, no health registration', async () => {
+  it('constructs the runtime and NEVER initializes it (r4 #1): no runtime initialize, no search initialization, no health registration', async () => {
     const services = await createReadOnlyAppServices()
-    expect(runtimeInit).toHaveBeenCalledTimes(1)
+    expect(runtimeInit).not.toHaveBeenCalled()
     expect(searchInit).not.toHaveBeenCalled()
     expect(healthRegistrations).toEqual([])
     expect(services.runtime.name).toBe('fake')
     expect(maybeGetAppServices()).toBe(services)
-    // No delivery bridge rides a read-only path.
-    const init = runtimeInit.mock.calls[0]?.[0] as Record<string, unknown> | undefined
-    expect(init && 'channelBridge' in init).toBe(false)
   })
 })

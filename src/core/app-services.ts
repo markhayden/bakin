@@ -143,42 +143,27 @@ export async function createAppServices(): Promise<AppServices> {
 }
 
 /**
- * Services for a READ-ONLY in-process path (#1007 B review r3 #1 — the
- * server-less `--check` verbs): the runtime adapter initialized so roster and
- * workspace READS work (`initialize()` is write-free by conformance pin — it
- * only threads the base URL), and nothing else — no secret migration, no
- * search initialization (antfly provisioning can rewrite service definitions
- * and start the engine), no health registration, no delivery bridge. Never
- * for a server, never for an install.
+ * Services for a READ-ONLY in-process path (#1007 B review r3 #1 / r4 #1 —
+ * the server-less `--check` verbs): the runtime adapter CONSTRUCTED, never
+ * initialized — `initialize()` is write-free by pin, but Pi's warms its
+ * model registry, whose stores create files under PI_HOME; a bare adapter
+ * still answers every roster and workspace READ (`agents.list`,
+ * `readWorkspaceFile`, `skills.get`). Nothing else: no search
+ * initialization (antfly provisioning), no secret migration, no health
+ * registration, no delivery bridge. Never for a server, never for an
+ * install, never for a turn.
  */
 export async function createReadOnlyAppServices(): Promise<AppServices> {
   const settings = getSettings()
-  const contentDir = getContentDir()
   const { getSharedBakinTaskStore } = await import('./task-store')
-  const runtime = createRuntimeAdapter(settings.runtime.adapter)
-  const onToolActivity = createRuntimeToolUsageRecorder()
-  const recordTurnActivity = createRuntimeTurnUsageRecorder()
-  await runtime.initialize({
-    contentDir,
-    logger: log,
-    // Nothing a read-only path does is an adapter action worth an audit row; initialize() audits nothing by pin.
-    audit: () => {},
-    settings: settings.runtime.settings,
-    getLiveSettings: () => getSettings().runtime.settings,
-    execTools: createRuntimeExecToolProvider(),
-    onToolActivity,
-    onTurnActivity: (event: AdapterTurnActivityEvent): void => { try { onToolActivity.reconcileTurn(event) } finally { recordTurnActivity(event) } },
-    bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
-    getMcpCredential,
-  })
   const services: AppServices = {
-    runtime,
+    runtime: createRuntimeAdapter(settings.runtime.adapter),
     // Constructed, never initialized: a read-only path never searches, and initializing would provision the engine.
     search: createSearchAdapter(settings.search.adapter),
     tasks: getSharedBakinTaskStore(),
   }
   setAppServices(services)
-  log.info('Read-only app services initialized', { runtime: `${runtime.name}@${runtime.version}` })
+  log.info('Read-only app services ready', { runtime: `${services.runtime.name}@${services.runtime.version}` })
   return services
 }
 

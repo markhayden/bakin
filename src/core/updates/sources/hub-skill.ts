@@ -19,7 +19,7 @@
  * the installer persists `trackingSource` as the lock `source` while the
  * fetch ref targets the selected version (R8′).
  */
-import type { UpdateAction } from '@makinbakin/sdk/types'
+import type { UpdateAction, UpdateIdentity } from '@makinbakin/sdk/types'
 import { parseClawhubRef } from '../../agent-packages/ref-normalize'
 import { fingerprintOf } from '../inventory'
 import type { UpdateObservation, UpdateSource, UpdateSubjectInventoryEntry } from '../types'
@@ -32,6 +32,12 @@ export interface HubSkillSourceDeps extends Pick<PackageSourceDeps, 'installed' 
     /** Whether the hub still publishes this exact version. */
     hasVersion: (slug: string, version: string, owner: string | undefined, signal: AbortSignal) => Promise<boolean>
   }
+}
+
+/** The installed identity a hub-skill record names: the hub's RESOLVED version (`upstream.ref`), never the frontmatter version; the commit when one is known. */
+export function hubSkillInstalledIdentity(pkg: Pick<InstalledPackage, 'entry' | 'upstream'>): UpdateIdentity {
+  const resolved = pkg.upstream?.ref ?? ''
+  return { version: resolved || undefined, sha: pkg.entry.commitSha || pkg.upstream?.resolvedSha || undefined, display: resolved || pkg.entry.version }
 }
 
 export function createHubSkillSource(deps: HubSkillSourceDeps): UpdateSource {
@@ -62,7 +68,7 @@ export function createHubSkillSource(deps: HubSkillSourceDeps): UpdateSource {
       if (!pkg) throw new Error(`hub skill "${id}" is no longer installed`)
       const { entry, upstream } = pkg
       const resolved = upstream?.ref ?? ''
-      const installed = { version: resolved || undefined, sha: entry.commitSha || upstream?.resolvedSha || undefined, display: resolved || entry.version }
+      const installed = hubSkillInstalledIdentity(pkg)
       const action = (target: string): UpdateAction => ({ kind: 'manual', pointer: `bakin skills install ${target}` })
 
       if (isClawhubPackageSource(entry.source)) {

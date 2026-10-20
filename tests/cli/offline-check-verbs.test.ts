@@ -62,8 +62,19 @@ mock.module('../../src/cli/commands/updates', () => ({
 }))
 const lockRow = (version: string) => ({ type: 'github', version, source: 'github:acme/notes', ref: 'main', commitSha: 'a'.repeat(40), installedAt: '2026-10-01T00:00:00.000Z', permissions: [], manifestSha: 'c'.repeat(64) })
 mock.module('@bakin/core/plugins/lockfile', () => ({
-  // `upgraded` was upgraded offline to 1.1.0 since the server last observed it at 1.0.0 (review r3 #2).
-  readPluginLockfile: () => ({ version: 1, plugins: { notes: lockRow('1.0.0'), upgraded: lockRow('1.1.0') } }),
+  // `upgraded` was upgraded offline to 1.1.0 since the server last observed it at 1.0.0 (review r3 #2);
+  // `local` was REBUILT offline — same version, empty sha, a new tree digest (review r4 #4).
+  readPluginLockfile: () => ({ version: 1, plugins: {
+    notes: lockRow('1.0.0'),
+    upgraded: lockRow('1.1.0'),
+    local: { type: 'local', version: '0.3.0', source: '/src/local', ref: '', commitSha: '', sourceTreeSha: 'f'.repeat(64), sourceTreeShaAlgo: 3, installedAt: '2026-10-01T00:00:00.000Z', permissions: [], manifestSha: 'c'.repeat(64) },
+  } }),
+}))
+const silenced: string[] = []
+import * as realLogger from '../../src/core/logger'
+mock.module('../../src/core/logger', () => ({
+  ...realLogger,
+  withSilentConsoleLogs: async <T,>(fn: () => Promise<T>): Promise<T> => { silenced.push('on'); return fn() },
 }))
 // Captured BEFORE the mock (live namespace binding): the engine keeps the real helpers, only the file read is scripted.
 import * as realUpdatesStore from '../../src/core/updates/store'
@@ -72,6 +83,7 @@ mock.module('../../src/core/updates/store', () => ({
   readUpdatesFile: () => ({ version: 1, records: {
     'plugin:notes': { id: 'plugin:notes', outcome: 'current', observedAt: '2026-10-19T11:00:00.000Z' },
     'plugin:upgraded': { id: 'plugin:upgraded', outcome: 'update-available', installed: { version: '1.0.0', display: '1.0.0' }, available: { version: '1.1.0', display: '1.1.0' }, observedAt: '2026-10-19T11:00:00.000Z' },
+    'plugin:local': { id: 'plugin:local', outcome: 'update-available', installed: { version: '0.3.0', digest: 'e'.repeat(64), display: '0.3.0' }, available: { digest: 'f'.repeat(64), display: 'local changes' }, observedAt: '2026-10-19T11:00:00.000Z' },
   }, schedule: {}, conditional: {} }),
 }))
 
@@ -91,6 +103,7 @@ beforeEach(() => {
   delete process.env.BAKIN_URL
   liveLock = null
   http.length = 0
+  silenced.length = 0
   inProcess.length = 0
   printed.length = 0
   logs.length = 0
@@ -111,17 +124,31 @@ describe('with no server, --check runs in-process', () => {
     await runAgents(['agents', 'sync', 'pixel', '--check'])
     expect(createReadOnlyAppServices).toHaveBeenCalledTimes(1)
     expect(createAppServices).not.toHaveBeenCalled()
-    services = {}
+    expect(silenced).toEqual([])
     expect(inProcess).toEqual([{ verb: 'checkAgent', id: 'pixel', opts: { trigger: 'cli' } }])
     expect(printed[0]).toMatchObject({ ok: true, receipt: { checkOnly: true, changed: true } })
     expect(http).toEqual([])
+    services = {}
+    // `--json` runs the in-process work under the silenced console transport (r4 #6).
+    inProcess.length = 0
+    printed.length = 0
+    await runAgents(['agents', 'sync', 'pixel', '--check', '--json'])
+    expect(silenced).toEqual(['on'])
+    expect(printed[0]).toMatchObject({ ok: true, receipt: { checkOnly: true } })
+    silenced.length = 0
     inProcess.length = 0
     await runAgents(['agents', 'sync', '--check'])
     expect(inProcess.map((c) => c.id)).toEqual(['pixel', 'orca'])
   })
 
-  it('packages sync <key> --check asks the read-only checkPack; a refused key exits 1 with the error', async () => {
+  it('packages sync <key> --check asks the read-only checkPack; a refused key exits 1 with the error; --json silences runtime logs', async () => {
+    await runPackages(['packages', 'sync', 'notes@1.0.0', '--check', '--json'])
+    expect(silenced).toEqual(['on'])
+    silenced.length = 0
+    inProcess.length = 0
+    printed.length = 0
     await runPackages(['packages', 'sync', 'notes@1.0.0', '--check'])
+    expect(silenced).toEqual([])
     expect(inProcess).toEqual([{ verb: 'checkPack', id: 'notes@1.0.0' }])
     expect(printed[0]).toMatchObject({ ok: true, receipt: { checkOnly: true, changed: false } })
     expect(await exitCode(runPackages(['packages', 'sync', 'gone@1.0.0', '--check']))).toBe('exit:1')
@@ -136,16 +163,26 @@ describe('with no server, --check runs in-process', () => {
       { id: 'notes', version: '1.0.0', source: 'github', upgradeAvailable: true, updateObservedAt: '2026-10-20T11:00:00.000Z', status: 'unknown' },
       // The pass produced no record for it: unknown, never "up to date".
       { id: 'upgraded', version: '1.1.0', upgradeAvailable: false, updateObservedAt: null, status: 'unknown' },
+      { id: 'local', version: '0.3.0', upgradeAvailable: false, updateObservedAt: null, status: 'unknown' },
     ] })
+    // `--json` is one document: the in-process work ran under the silenced console transport (r4 #6).
+    expect(silenced).toEqual(['on'])
     printed.length = 0
+    silenced.length = 0
     await runPlugins(['plugins', 'list', '--json'])
     expect(pluginPassRuns).toBe(1)
     expect(printed[0]).toMatchObject({ plugins: [
       { id: 'notes', upgradeAvailable: false, updateObservedAt: '2026-10-19T11:00:00.000Z' },
       // The stored record offers the version the lockfile now holds: no answer — never "update available", never fresh.
       { id: 'upgraded', version: '1.1.0', upgradeAvailable: false, updateObservedAt: null },
+      // The stored offer was observed for the PREVIOUS tree digest: the rebuild installed exactly those changes — no answer.
+      { id: 'local', version: '0.3.0', upgradeAvailable: false, updateObservedAt: null },
     ] })
     expect(http).toEqual([])
+    // Without --json the console transport stays as it is.
+    silenced.length = 0
+    await runPlugins(['plugins', 'list'])
+    expect(silenced).toEqual([])
   })
 
   it('a sync that WRITES still needs the server; with a live server every verb rides HTTP', async () => {

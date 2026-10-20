@@ -301,8 +301,6 @@ async function checkAgentPackagesInProcess(agentId: string | undefined, flags: A
     import('../../core/agent-packages/agent-state'),
     import('../../core/app-services'),
   ])
-  // READ-ONLY services (review r3 #1): the runtime for roster/workspace reads, no search provisioning, no migrations.
-  if (!maybeGetAppServices()) await createReadOnlyAppServices()
   const checkOne = async (id: string): Promise<Record<string, unknown>> => {
     try {
       return { ok: true, receipt: await checkAgent(id, { trigger: 'cli' }) }
@@ -310,11 +308,18 @@ async function checkAgentPackagesInProcess(agentId: string | undefined, flags: A
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
   }
-  const targets = agentId ? [agentId] : (await listAllAgentStates()).filter((a) => a.state !== 'absent').map((a) => a.agentId)
+  // `--json` is ONE document: the runtime's console logs stay off stdout (review r4 #6).
+  const results = await withSilentLogsIf(Boolean(flags.json), async () => {
+    // READ-ONLY services (review r3 #1): the runtime for roster/workspace reads, no search provisioning, no migrations.
+    if (!maybeGetAppServices()) await createReadOnlyAppServices()
+    const targets = agentId ? [agentId] : (await listAllAgentStates()).filter((a) => a.state !== 'absent').map((a) => a.agentId)
+    const out: Array<{ id: string; result: Record<string, unknown> }> = []
+    for (const id of targets) out.push({ id, result: await checkOne(id) })
+    return out
+  })
   const actions: PackageActionData[] = []
   let anyFailed = false
-  for (const id of targets) {
-    const result = await checkOne(id)
+  for (const { id, result } of results) {
     if (result.ok === false) anyFailed = true
     if (!flags.json && process.stdout.isTTY) { actions.push({ action: 'checked', scope: 'agent', target: id, result }); continue }
     if (!agentId) console.log(`${id}:`)
@@ -322,6 +327,13 @@ async function checkAgentPackagesInProcess(agentId: string | undefined, flags: A
   }
   if (!flags.json && process.stdout.isTTY) await printPackageActionTui(actions)
   if (anyFailed) process.exit(1)
+}
+
+/** Run `fn` with the logger's console transport off when JSON output was asked for — the document is the whole of stdout. */
+export async function withSilentLogsIf<T>(json: boolean, fn: () => Promise<T>): Promise<T> {
+  if (!json) return fn()
+  const { withSilentConsoleLogs } = await import('../../core/logger')
+  return withSilentConsoleLogs(fn)
 }
 
 async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {

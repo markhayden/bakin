@@ -211,6 +211,17 @@ describe('joinInstallState', () => {
     expect(messaging).toMatchObject({ installed: true, updateAvailable: null, installedVersion: '1.1.0' })
     expect(pixel).toMatchObject({ installed: true, updateAvailable: null, installedVersion: '1.3.0' })
     expect(weather).toMatchObject({ installed: true, updateAvailable: true })
+
+    // A LOCAL plugin rebuilt since the observation: same version, new tree digest — the stored offer is no answer (r4 #4).
+    const rebuilt = sources({ pluginLock: { version: 1, plugins: { mine: pluginEntry({ type: 'local', source: '/src/mine', ref: '', commitSha: '', sourceTreeSha: 'f'.repeat(64), sourceTreeShaAlgo: 3 }) } } as InstallStateSources['pluginLock'] })
+    const [mine] = joinInstallState([entry({ id: 'mine', kind: 'plugin' })], rebuilt, recordMap([
+      record({ id: 'plugin:mine', outcome: 'update-available', installed: { version: '1.0.0', digest: 'e'.repeat(64), display: '1.0.0' }, available: { digest: 'f'.repeat(64), display: 'local changes' } }),
+    ]))
+    expect(mine).toMatchObject({ installed: true, updateAvailable: null })
+    const [mineStill] = joinInstallState([entry({ id: 'mine', kind: 'plugin' })], rebuilt, recordMap([
+      record({ id: 'plugin:mine', outcome: 'update-available', installed: { version: '1.0.0', digest: 'f'.repeat(64), display: '1.0.0' }, available: { digest: '0'.repeat(64), display: 'local changes' } }),
+    ]))
+    expect(mineStill).toMatchObject({ installed: true, updateAvailable: true })
   })
 
   it('updateAvailableOf: unknown and absent are null; blocked and unsupported are not updates', () => {

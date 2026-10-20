@@ -33,7 +33,11 @@ import { observeInstalledPackage, PackageNotTrackedError, PackageSupersededError
 import { fingerprintOf } from '../../../src/core/updates/inventory'
 import { getUpdatesEngine, getUpdatesTimer, registerUpdateSource, resetUpdateSources, startUpdates, stopUpdates, UPDATES_FILE_NAME } from '../../../src/core/updates/service'
 import type { UpdateObservation, UpdateSource } from '../../../src/core/updates/types'
-import { writeLockfile } from '../../../packages/core/src/agent-packages/lockfile'
+import { readLockfile, writeLockfile } from '../../../packages/core/src/agent-packages/lockfile'
+import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
+
+const SHA_A = 'a'.repeat(40)
+const SHA_B = 'b'.repeat(40)
 
 afterAll(() => { delete process.env.BAKIN_HOME; rmSync(testDir, { recursive: true, force: true }) })
 afterEach(() => { stopUpdates(); resetUpdateSources() })
@@ -163,6 +167,50 @@ describe('observeInstalledPackage with the engine running', () => {
       const admitted = await realAdmit(request)
       // Between admission and the answer, a newer install of the same id lands under another key.
       return { ...admitted, done: admitted.done.then((run) => { seedLocalPackage('editorial', '2.0.0', '2.0.0'); return run }) }
+    }
+    await expect(observeInstalledPackage('editorial@1.0.0')).rejects.toBeInstanceOf(PackageSupersededError)
+  })
+
+  it('review r4 #2: a hub skill\'s observation names the HUB\'s resolved version, not the frontmatter version — the guard compares the identity the source names', async () => {
+    // A github hub skill tracking `main`, frontmatter version 1.0.0, hub ref "main" — and a ClawHub one resolved to 2.3.0 with frontmatter 1.0.0.
+    const skill = (id: string, source: string, upstream: { source: string; ref?: string; resolvedSha?: string }) => {
+      const dir = getPackageSourceDir(testDir, 'skill-pack', id, '1.0.0')
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({ id, version: '1.0.0', kind: 'skill-pack', name: id, description: 'x', contributions: { skills: ['x'] }, upstream }))
+      return { kind: 'skill-pack' as const, version: '1.0.0', source, ref: source.startsWith('github:') ? 'main' : '', commitSha: source.startsWith('github:') ? SHA_A : '', installedAt: '2026-10-01T00:00:00.000Z' }
+    }
+    writeLockfile({ version: 1, packages: {
+      'hub-tools@1.0.0': skill('hub-tools', 'github:acme/skills#tools', { source: 'github:acme/skills#tools', ref: 'main', resolvedSha: SHA_A }),
+      'hub-weather@1.0.0': skill('hub-weather', 'clawhub:weather', { source: 'clawhub:weather', ref: '2.3.0' }),
+    } })
+    const hub: UpdateSource = {
+      kind: 'hub-skill',
+      inventory: async () => ['hub-tools', 'hub-weather'].map((id) => ({ subject: { kind: 'hub-skill' as const, id, label: id }, group: 'available' as const, fingerprint: fingerprintOf({ id }), source: { kind: 's', endpoint: id } })),
+      observe: async (entry) => (entry.subject.id === 'hub-tools'
+        ? { installed: { version: 'main', sha: SHA_A, display: 'main' }, outcome: 'current' }
+        : { installed: { version: '2.3.0', display: '2.3.0' }, available: { version: '2.4.0', display: '2.4.0' }, reason: 'newer-version', outcome: 'update-available' }),
+    }
+    registerUpdateSource(hub)
+    startUpdates(testDir)
+    expect((await observeInstalledPackage('hub-tools')).outcome).toBe('current')
+    expect((await observeInstalledPackage('hub-weather@1.0.0')).outcome).toBe('update-available')
+  })
+
+  it('review r4 #3: a re-install under the SAME key while the check waited (new commit, new instant) is refused too', async () => {
+    seedLocalPackage('editorial', '1.0.0', '1.0.0')
+    const script = scripted(async () => ({ installed: { version: '1.0.0', display: '1.0.0' }, outcome: 'current' }))
+    registerUpdateSource(script.source)
+    startUpdates(testDir)
+    const timer = getUpdatesTimer()!
+    const realAdmit = timer.admit
+    timer.admit = async (request) => {
+      const admitted = await realAdmit(request)
+      return { ...admitted, done: admitted.done.then((run) => {
+        const lock = readLockfile()
+        const entry = lock.packages['editorial@1.0.0']!
+        writeLockfile({ ...lock, packages: { 'editorial@1.0.0': { ...entry, commitSha: SHA_B, installedAt: '2026-10-21T00:00:00.000Z' } } })
+        return run
+      }) }
     }
     await expect(observeInstalledPackage('editorial@1.0.0')).rejects.toBeInstanceOf(PackageSupersededError)
   })

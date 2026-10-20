@@ -138,12 +138,17 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
   load: async () => {
     const generation = ++packageStatesGeneration
+    const [rosterRes, pkgRes] = await Promise.all([
+      fetch('/api/plugins/team/').catch(() => null),
+      fetch('/api/agent-packages').catch(() => null),
+    ])
+    // The package answer stands on its own: a failed roster never discards
+    // it (and never lets an OLDER read's answer land after it, review r4 #5).
+    const packageStates = await parsePackageStatesResponse(pkgRes)
+    const publishPackages = (): void => { if (generation === packageStatesGeneration) set({ packageStates }) }
     try {
-      const [rosterRes, pkgRes] = await Promise.all([
-        fetch('/api/plugins/team/'),
-        fetch('/api/agent-packages').catch(() => null),
-      ])
-      if (!rosterRes.ok) {
+      if (!rosterRes || !rosterRes.ok) {
+        publishPackages()
         set({ loaded: true })
         return false
       }
@@ -164,7 +169,6 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       for (const a of agents) {
         agentMap[a.id] = a
       }
-      const packageStates = await parsePackageStatesResponse(pkgRes)
       set({
         agents,
         agentIds: agents.map((a) => a.id),
@@ -184,6 +188,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       })
       return true
     } catch {
+      publishPackages()
       set({ loaded: true })
       return false
     }

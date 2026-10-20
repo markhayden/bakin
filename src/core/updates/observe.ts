@@ -15,7 +15,9 @@
 import { updateRecordMatchesInstalled, type UpdateRecord } from '@makinbakin/sdk/types'
 import { UpdateSubjectNotFoundError } from './engine'
 import { getUpdatesEngine, getUpdatesTimer } from './service'
-import { packageIdOfKey } from './sources/package'
+import { packageIdOfKey, packageInstalledIdentity } from './sources/package'
+import { hubSkillInstalledIdentity } from './sources/hub-skill'
+import type { PackageEntry } from '@bakin/core/agent-packages/lockfile'
 import { createPackageUpdateSources, installedPackages } from './sources/package-wiring'
 import { UpdatesStoppedError, type CheckRun } from './timer'
 import type { ConditionalStore, UpdateObservation } from './types'
@@ -60,13 +62,20 @@ export async function observeInstalledPackage(packageKeyOrId: string, opts: { si
 
   const observed = await observeThroughEngine(recordId) ?? await observeDirectly(kind, id, opts.signal)
   // The install the caller named must still be the one observed: another
-  // install can supersede it while the check waited its turn, and the
-  // observation is then the newer install's — refused, never substituted
-  // (review r3 #5).
+  // install can supersede it while the check waited its turn — under a new
+  // key OR the same key (a re-install of an agent keeps its key) — and the
+  // observation is then the newer install's: refused, never substituted
+  // (review r3 #5, r4 #3). The identity compared is the one the SOURCE
+  // names for this kind (a hub skill's is the hub's resolved version).
   const now = installedPackages().find((candidate) => candidate.id === id)
-  if (!now || now.key !== pkg.key) throw new PackageSupersededError(packageKeyOrId, now?.key ?? '(removed)')
-  if (!updateRecordMatchesInstalled(observed, { version: pkg.entry.version, sha: pkg.entry.commitSha || undefined })) throw new PackageSupersededError(packageKeyOrId, now.key)
+  if (!now || now.key !== pkg.key || !sameInstall(now.entry, pkg.entry)) throw new PackageSupersededError(packageKeyOrId, now?.key ?? '(removed)')
+  if (!updateRecordMatchesInstalled(observed, kind === 'hub-skill' ? hubSkillInstalledIdentity(pkg) : packageInstalledIdentity(pkg.entry))) throw new PackageSupersededError(packageKeyOrId, now.key)
   return observed
+}
+
+/** The same install: version, commit and install instant unchanged. */
+function sameInstall(a: Pick<PackageEntry, 'version' | 'commitSha' | 'installedAt'>, b: Pick<PackageEntry, 'version' | 'commitSha' | 'installedAt'>): boolean {
+  return a.version === b.version && a.commitSha === b.commitSha && a.installedAt === b.installedAt
 }
 
 async function observeDirectly(kind: 'package' | 'hub-skill', id: string, signal?: AbortSignal): Promise<UpdateObservation> {

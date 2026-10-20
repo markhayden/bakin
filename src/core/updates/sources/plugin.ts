@@ -12,7 +12,7 @@ import { INDEX_FILENAME, parseArtifactsIndex, type ArtifactsIndex } from '../../
 import { artifactUpgradeTarget, newestCompatibleVersion } from '../../whiskit/compatible-version'
 import { fingerprintOf } from '../inventory'
 import { conditionalFetchJson, type FetchLike } from '../net'
-import type { UpdateAction } from '@makinbakin/sdk/types'
+import type { UpdateAction, UpdateIdentity } from '@makinbakin/sdk/types'
 import type { UpdateObservation, UpdateSource, UpdateSubjectInventoryEntry } from '../types'
 import { applyRoute } from './search-engine'
 
@@ -39,6 +39,16 @@ export interface PluginSourceDeps {
   fetch?: FetchLike
 }
 
+/** The installed identity a plugin record names: version + commit for github, version + the installed tree digest for local (a rebuild changes the digest, not the version — review r4 #4). */
+export function pluginInstalledIdentity(entry: Pick<PluginLockEntry, 'type' | 'version' | 'commitSha' | 'sourceTreeSha'>): UpdateIdentity {
+  return {
+    version: entry.version,
+    sha: entry.commitSha || undefined,
+    ...(entry.type === 'local' && entry.sourceTreeSha ? { digest: entry.sourceTreeSha } : {}),
+    display: entry.version,
+  }
+}
+
 export function createPluginSource(deps: PluginSourceDeps): UpdateSource {
   const entryFor = (id: string, entry: PluginLockEntry): UpdateSubjectInventoryEntry => ({
     subject: { kind: 'plugin', id, label: id },
@@ -61,7 +71,7 @@ export function createPluginSource(deps: PluginSourceDeps): UpdateSource {
       const id = inventoryEntry.subject.id
       const entry = deps.lockEntries()[id]
       if (!entry) throw new Error(`plugin "${id}" is no longer in the lockfile`)
-      const installed = { version: entry.version, sha: entry.commitSha || undefined, display: entry.version }
+      const installed = pluginInstalledIdentity(entry)
       const upgrade: UpdateAction = { kind: 'operation', start: { route: applyRoute(`plugin:${id}`) }, impact: ['download'] }
 
       if (entry.type === 'github') {

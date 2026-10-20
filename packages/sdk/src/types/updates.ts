@@ -136,11 +136,13 @@ export function updateStaleDays(observedAt: string | null | undefined, now = Dat
  * record the engine has not yet retired after a reinstall is never trusted
  * (it would offer the version just installed).
  */
-export function updateRecordMatchesInstalled(record: Pick<UpdateRecord, 'installed'>, installed: { version?: string; sha?: string }): boolean {
+export function updateRecordMatchesInstalled(record: Pick<UpdateRecord, 'installed'>, installed: { version?: string; sha?: string; digest?: string }): boolean {
   // A record that names no installed identity (an `unknown` observation) has nothing to disagree with; the fingerprint retirement is its guard.
   if (!record.installed) return true
   if (record.installed.version !== undefined && installed.version !== undefined && record.installed.version !== installed.version) return false
   if (record.installed.sha && installed.sha && record.installed.sha !== installed.sha) return false
+  // A local tree digest (a rebuild keeps the version, changes the digest).
+  if (record.installed.digest && installed.digest && record.installed.digest !== installed.digest) return false
   return true
 }
 
