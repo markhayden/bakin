@@ -143,7 +143,9 @@ export function createPluginScaffold(name: string): PluginScaffoldResult {
           type: 'module',
           dependencies: {
             // zod 4 brands schema types with the literal minor; a plugin must
-            // share the SDK's minor, so the pin is a tilde.
+            // share the SDK's minor, so the pin is a tilde. The browser gets
+            // zod from the host's import map (#948), but the server bundle
+            // resolves it from this install — so it stays declared.
             zod: '~4.6.5',
           },
           devDependencies: {

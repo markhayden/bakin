@@ -65,6 +65,8 @@ import type { PluginContext } from '@makinbakin/sdk/types'
 
 Do not import host files, `src`, `packages/host`, another plugin's internals, or Bakin path aliases. If a plugin needs something that is not in `@makinbakin/sdk`, that is an SDK gap.
 
+The host provides `react`, `react-dom`, `@tanstack/react-router`, every `@makinbakin/sdk/*` entry, and `zod` to the browser through its import map, so client bundles never carry their own copy. Keep `zod` declared in your `package.json` anyway (pinned `~4.6.5`, the SDK's peer line): the server bundle resolves it from your install, and the build rejects an undeclared import.
+
 ## Related
 
 - [Build a Plugin](/docs/extending/plugins/build/): the full authoring path
