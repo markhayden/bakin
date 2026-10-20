@@ -100,6 +100,23 @@ function formatEntry(entry: LogEntry): string {
   return parts.join('\n')
 }
 
+/**
+ * Run `fn` with the console transport silenced (the file transport is
+ * untouched) and the previous format restored after — for a `--json` command
+ * whose stdout must stay ONE document while runtime code logs. The format is
+ * read on every line, so the switch is live for the duration.
+ */
+export async function withSilentConsoleLogs<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = process.env.BAKIN_CONSOLE_FORMAT
+  process.env.BAKIN_CONSOLE_FORMAT = 'silent'
+  try {
+    return await fn()
+  } finally {
+    if (previous === undefined) delete process.env.BAKIN_CONSOLE_FORMAT
+    else process.env.BAKIN_CONSOLE_FORMAT = previous
+  }
+}
+
 function consoleFormat(): ConsoleFormat {
   const configured = process.env.BAKIN_CONSOLE_FORMAT
   if (configured === 'pretty' || configured === 'verbose' || configured === 'plain' || configured === 'silent') {

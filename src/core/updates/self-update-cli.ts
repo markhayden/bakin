@@ -11,6 +11,7 @@
  *   the swap), re-checking liveness once the resource is held; a server that
  *   came alive meanwhile refuses the local path.
  */
+import { withSilentConsoleLogs } from '../logger'
 import { APP_VERSION } from '@bakin/core/constants'
 import type { OperationView, UpdateRecord } from '@makinbakin/sdk/types'
 import { verifySelfUpdateFromCli } from '../../cli/self-update-verify'
@@ -32,7 +33,7 @@ export interface UpdateCommandDeps {
   /** The in-process operation (no server). Resolves to the operation's outcome. */
   runLocal?: () => Promise<UpdateCommandResult>
   /** Start + follow the server's operation (the CLI's renderer); `onUpdate` returning true stops the follow. Tests inject a scripted follow. */
-  startAndFollow?: (start: () => Promise<unknown>, opts: { onUpdate: (operation: OperationView) => boolean; baseUrl: string; json: boolean }) => Promise<CommandOperationResult>
+  startAndFollow?: (start: () => Promise<unknown>, opts: { onUpdate: (operation: OperationView) => boolean; baseUrl: string; json: boolean; signal: AbortSignal }) => Promise<CommandOperationResult>
   /** The identity headers this invocation carries (#898); the shared CLI plumbing by default. */
   identityHeaders?: () => Promise<Record<string, string>>
   /**
@@ -100,7 +101,9 @@ export async function runUpdateCommand(input: UpdateCommandDeps): Promise<Update
   const server = input.target ?? resolveCliTarget(process.env, lock)
   if (server.source === 'none') {
     const local = input.runLocal ?? (async () => runLocalSelfUpdate(input.echo))
-    return local()
+    // `--json`: stdout stays ONE document — the runtime logger's console lines
+    // (`Started: Update Bakin`, …) are silenced for the local operation (review r16 #1).
+    return input.json ? withSilentConsoleLogs(local) : local()
   }
   const baseUrl = server.baseUrl
   if (server.source === 'env') {
@@ -139,26 +142,52 @@ export async function runUpdateCommand(input: UpdateCommandDeps): Promise<Update
   }
   const target = { ...(record.available?.version ? { version: record.available.version } : {}), ...(record.available?.sha ? { sha: record.available.sha } : {}), ...(record.available?.digest ? { digest: record.available.digest } : {}) }
   // The follow rides the SAME resolved server as the reads, the apply and the verification (review r15 #2).
-  const follow = input.startAndFollow ?? ((start, opts) => startAndFollow(start, { json: input.json ?? false, stdout: input.stdout, onUpdate: opts.onUpdate, baseUrl }))
-  const followed = await follow(async () => {
-    const res = await deps.fetch(`${baseUrl}/api/updates/${encodeURIComponent(BAKIN_RECORD_ID)}/apply`, { method: 'POST', headers, body: JSON.stringify({ target }) })
-    const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
-    if (!res.ok) throw new UpdateApplyRefusedError(res.status, body)
-    handoff = { operationId: String(body?.operationId), bootId: String(body?.bootId) }
-    return body
-  }, { onUpdate: atRestart, baseUrl, json: input.json ?? false }).catch((error: unknown) => {
-    if (error instanceof UpdateApplyRefusedError) return error
-    throw error
-  })
+  const follow = input.startAndFollow ?? ((start, opts) => startAndFollow(start, { json: input.json ?? false, stdout: input.stdout, onUpdate: opts.onUpdate, baseUrl, signal: opts.signal }))
+  // A lock-selected server may come back on ANOTHER port (review r16 #2): the
+  // live lock is the successor's announcement. When its boot id moves past the
+  // one the operation started on, the follow stops (the old operation is
+  // never cancelled) and the bounded verification runs at the successor's
+  // port. An explicit BAKIN_URL target stays fixed — it is not this home.
+  const stop = new AbortController()
+  let successor: { bootId: string; port: number } | null = null
+  const watchSuccessor = server.source === 'lock'
+    ? setInterval(() => {
+      const live = deps.liveLock()
+      const startedBoot = handoff?.bootId ?? lock?.bootId
+      if (live && startedBoot && live.bootId !== startedBoot && Number.isInteger(live.port) && live.port > 0) {
+        successor = { bootId: live.bootId, port: live.port }
+        stop.abort()
+      }
+    }, deps.pollMs)
+    : null
+  watchSuccessor?.unref?.()
+  let followed: CommandOperationResult | UpdateApplyRefusedError
+  try {
+    followed = await follow(async () => {
+      const res = await deps.fetch(`${baseUrl}/api/updates/${encodeURIComponent(BAKIN_RECORD_ID)}/apply`, { method: 'POST', headers, body: JSON.stringify({ target }) })
+      const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
+      if (!res.ok) throw new UpdateApplyRefusedError(res.status, body)
+      handoff = { operationId: String(body?.operationId), bootId: String(body?.bootId) }
+      return body
+    }, { onUpdate: atRestart, baseUrl, json: input.json ?? false, signal: stop.signal }).catch((error: unknown) => {
+      if (error instanceof UpdateApplyRefusedError) return error
+      throw error
+    })
+  } finally {
+    if (watchSuccessor) clearInterval(watchSuccessor)
+  }
   if (followed instanceof UpdateApplyRefusedError) return followed.result()
   const restartHandoff = handoff as { operationId: string; bootId: string } | null
-  const reachedRestart = restartSeen || followed.follow.phase === 'restarted'
+  const successorBoot = successor as { bootId: string; port: number } | null
+  const reachedRestart = restartSeen || successorBoot !== null || followed.follow.phase === 'restarted'
     || (followed.follow.operation?.status === 'running' && followed.follow.operation.stages.some((stage) => stage.id === 'restarting' && stage.status === 'active'))
   if (!reachedRestart || !restartHandoff) {
     const message = followed.follow.operation?.outcome?.message ?? 'Bakin update did not reach the restart.'
     return { kind: 'failed', code: 'UPDATE_FAILED', message, detail: followed.follow.operation?.outcome?.code }
   }
-  const verification = await verifySelfUpdateFromCli({ expectedVersion, oldBootId: restartHandoff.bootId, log: input.echo, baseUrl, fetch: (url, init) => deps.fetch(url, init) })
+  if (successorBoot) input.echo(`Bakin came back on port ${successorBoot.port}; verifying there.`)
+  const verifyBaseUrl = successorBoot ? `http://localhost:${successorBoot.port}` : baseUrl
+  const verification = await verifySelfUpdateFromCli({ expectedVersion, oldBootId: restartHandoff.bootId, log: input.echo, baseUrl: verifyBaseUrl, fetch: (url, init) => deps.fetch(url, init) })
   if (verification.status === 'verified') return { kind: 'verified', message: `Updated to ${verification.version} and verified.` }
   if (verification.status === 'wrong-version') return { kind: 'failed', code: 'UPDATE_WRONG_VERSION', message: `Bakin came back as ${verification.version}, not ${expectedVersion}.` }
   return { kind: 'failed', code: 'UPDATE_UNVERIFIED', message: 'Bakin did not come back within 90s — verify by hand.', detail: verification.lastError }

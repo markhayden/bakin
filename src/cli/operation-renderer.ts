@@ -354,6 +354,8 @@ export async function followAndRender(
     renderer?: OperationRenderer
     signals?: Pick<NodeJS.Process, 'on' | 'off'>
     baseUrl?: string
+    /** Stop following from outside (the operation keeps running) — a successor server booted, say. */
+    signal?: AbortSignal
     /** Sees every view the renderer sees; returning true stops following (the operation keeps running). */
     onUpdate?: (operation: OperationView) => boolean | void
   } = {},
@@ -361,6 +363,8 @@ export async function followAndRender(
   const write = opts.write ?? ((text: string) => { process.stdout.write(text) })
   const renderer = opts.renderer ?? createOperationRenderer({ mode: opts.mode ?? detectRenderMode(Boolean(opts.json)), write })
   const detach = new AbortController()
+  if (opts.signal?.aborted) detach.abort()
+  else opts.signal?.addEventListener('abort', () => detach.abort(), { once: true })
   let latest: OperationView | null = null
   let presses = 0
   const signals = opts.signals ?? process

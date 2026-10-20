@@ -1,2 +1,2 @@
 // Re-export from @bakin/core
-export { createLogger } from '../../packages/core/src/logger'
+export { createLogger, withSilentConsoleLogs } from '../../packages/core/src/logger'

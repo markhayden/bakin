@@ -28,10 +28,13 @@ export async function startAndFollow(
   start: () => Promise<unknown>,
   opts: {
     json: boolean
-    stdout?: { isTTY?: boolean }
+    /** The TTY decision AND where a TTY renderer writes (an injected stdout is observed, not only inspected). */
+    stdout?: { isTTY?: boolean; write?: (text: string) => unknown }
     onUpdate?: (operation: OperationView) => boolean | void
     /** The server the operation was started on — the follow (and a Ctrl-C cancel) go there, never the CLI's cached default. */
     baseUrl?: string
+    /** Stop following from outside (the operation keeps running). */
+    signal?: AbortSignal
   },
 ): Promise<CommandOperationResult> {
   const started = jsonObject(await start()) as Partial<OperationStartResponse> | null
@@ -44,9 +47,16 @@ export async function startAndFollow(
     : tty
       ? undefined
       : createOperationRenderer({ mode: 'plain', write: (text) => { process.stderr.write(text) } })
+  const stdoutWrite = opts.stdout?.write
   const follow = await followAndRender(
     { operationId: started.operationId, bootId: started.bootId },
-    { ...(renderer ? { renderer } : {}), ...(opts.onUpdate ? { onUpdate: opts.onUpdate } : {}), ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}) },
+    {
+      ...(renderer ? { renderer } : {}),
+      ...(stdoutWrite ? { write: (text: string) => { stdoutWrite.call(opts.stdout, text) } } : {}),
+      ...(opts.onUpdate ? { onUpdate: opts.onUpdate } : {}),
+      ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    },
   )
   const result = follow.operation?.result
   return {

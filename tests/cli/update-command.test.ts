@@ -17,7 +17,11 @@ delete process.env.BAKIN_URL
 const contentDirMock = () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ home: testDir, root: testDir, db: join(testDir, 'bakin.db'), media: join(testDir, 'media') }) })
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
-const loggerMock = () => ({ createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }) })
+// Capture-before-mock: the real logger module minus its console output (`withSilentConsoleLogs` stays real).
+const loggerMock = () => {
+  const actual = require('../../packages/core/src/logger') as typeof import('../../packages/core/src/logger')
+  return { ...actual, createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }) }
+}
 mock.module('../../src/core/logger', loggerMock)
 mock.module('../../packages/core/src/logger', loggerMock)
 afterAll(() => { delete process.env.BAKIN_HOME; rmSync(testDir, { recursive: true, force: true }) })
@@ -269,5 +273,83 @@ describe('review round 15 — the follow rides the resolved target and honours -
     expect(reads.some((url) => url.startsWith(`${BASE}/api/operations/op-1`))).toBe(true)
     expect(reads.some((url) => url.includes('localhost:3737'))).toBe(false)
     expect(written).toEqual([])
+    // The writer is observed, not only inspected: the same flow WITHOUT --json renders onto it (review r16 #3).
+    const rendered: string[] = []
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => live.fetch(String(input), init)) as typeof fetch
+    try {
+      const plain = server({ versions: [{ version: '0.1.0', bootId: 'boot-old', state: 'serving' }], operationReads: [{ bootId: 'boot-old', view: failedView }] })
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => plain.fetch(String(input), init)) as typeof fetch
+      await runUpdateCommand({ echo, stdout: { isTTY: true, write: (text: string) => { rendered.push(text); return true } } as unknown as NodeJS.WriteStream, liveLock: () => LOCK, fetch: plain.fetch, json: false, identityHeaders: async () => ({ 'x-bakin-operator': 'declared' }) })
+    } finally {
+      globalThis.fetch = realFetch
+    }
+    expect(rendered.length).toBeGreaterThan(0)
+  })
+})
+
+describe('review round 16 — a successor on another port, and silent runtime logs under --json (#1, #2)', () => {
+  it('a lock-selected server that comes back on ANOTHER port after a missed restart milestone: the follow stops on the successor\'s boot id, the old operation is never cancelled, and the verification runs at the new port', async () => {
+    const NEW_PORT = 3800
+    const NEW = `http://localhost:${NEW_PORT}`
+    const live = server({ versions: [{ version: '0.1.0', bootId: 'boot-old', state: 'serving' }] })
+    const calls: string[] = []
+    // The old server vanishes right after the apply started (transport failures on every follow read); the successor answers on the new port.
+    const scripted = async (url: string, init?: RequestInit): Promise<Response> => {
+      calls.push(url)
+      if (url.startsWith(`${BASE}/api/operations/`)) throw Object.assign(new Error('ECONNREFUSED'), { code: 'ECONNREFUSED' })
+      if (url === `${NEW}/api/version`) return json({ version: '0.1.1', bootId: 'boot-new', state: 'serving' })
+      return live.fetch(url, init)
+    }
+    let polls = 0
+    const liveLock = (): ServerLock | null => { polls += 1; return polls < 4 ? LOCK : { ...LOCK, port: NEW_PORT, bootId: 'boot-new', cliSecret: 'secret-2' } }
+    const realFetch = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => scripted(String(input), init)) as typeof globalThis.fetch
+    try {
+      const result = await runUpdateCommand({ echo, stdout: { isTTY: false } as NodeJS.WriteStream, liveLock, fetch: scripted, pollMs: 5, json: true, target: { baseUrl: BASE, source: 'lock', pid: LOCK.pid }, identityHeaders: async () => ({ 'x-bakin-operator': 'declared' }) })
+      expect(result).toEqual({ kind: 'verified', message: 'Updated to 0.1.1 and verified.' })
+    } finally {
+      globalThis.fetch = realFetch
+    }
+    expect(lines).toContain(`Bakin came back on port ${NEW_PORT}; verifying there.`)
+    expect(calls.some((url) => url === `${NEW}/api/version`)).toBe(true)
+    expect(calls.some((url) => url.includes('/cancel'))).toBe(false)
+  })
+
+  it('an explicit BAKIN_URL target stays fixed: a changed local lock never redirects its follow or verification', async () => {
+    const REMOTE = 'http://bakin.remote.test:3737'
+    const seen: Array<{ baseUrl: string }> = []
+    const remote = async (url: string): Promise<Response> => {
+      if (url === `${REMOTE}/api/version`) return json({ version: '0.1.1', bootId: 'boot-remote-new', state: 'serving' })
+      if (url === `${REMOTE}/api/updates`) return json({ bootId: 'boot-remote', records: [record('update-available')], generatedAt: '', running: false })
+      if (url === `${REMOTE}/api/updates/bakin%3Abakin/apply`) return json({ operationId: 'op-1', bootId: 'boot-remote' }, 202)
+      return json({ error: `unscripted ${url}` }, 599)
+    }
+    const result = await runUpdateCommand({ echo, stdout: process.stdout, liveLock: () => ({ ...LOCK, bootId: 'boot-moved', port: 3800 }), fetch: remote, pollMs: 1, target: { baseUrl: REMOTE, source: 'env' }, identityHeaders: async () => ({ 'x-bakin-operator': 'declared' }),
+      startAndFollow: async (start, opts) => { seen.push({ baseUrl: opts.baseUrl }); await start(); await new Promise((r) => setTimeout(r, 20)); expect(opts.signal.aborted).toBe(false); return { follow: { phase: 'restarted', operation: null, children: [] }, body: null, httpStatus: null, exitCode: 130 } } })
+    expect(seen).toEqual([{ baseUrl: REMOTE }])
+    expect(result.kind).toBe('verified')
+  })
+
+  it('offline `--json` runs the local operation with the runtime logger\'s console transport silenced and restores it after (#1); without --json the transport is untouched', async () => {
+    // The logger reads BAKIN_CONSOLE_FORMAT on every line (`consoleFormat()`), so the
+    // format in force INSIDE the local operation is the whole policy; the logger's
+    // own `silent` behaviour is pinned by its suite. The loggers are mocked here.
+    const originalFormat = process.env.BAKIN_CONSOLE_FORMAT
+    process.env.BAKIN_CONSOLE_FORMAT = 'pretty' // the production console transport, not the test preload's silence
+    const formatsInside: Array<string | undefined> = []
+    try {
+      const runLocal = async () => { formatsInside.push(process.env.BAKIN_CONSOLE_FORMAT); return { kind: 'verified' as const, message: 'local' } }
+      await runUpdateCommand({ echo, stdout: process.stdout, liveLock: () => null, target: { baseUrl: 'http://localhost:3737', source: 'none' }, json: true, runLocal })
+      expect(formatsInside).toEqual(['silent'])
+      expect(process.env.BAKIN_CONSOLE_FORMAT).toBe('pretty') // restored
+      await runUpdateCommand({ echo, stdout: process.stdout, liveLock: () => null, target: { baseUrl: 'http://localhost:3737', source: 'none' }, json: false, runLocal })
+      expect(formatsInside).toEqual(['silent', 'pretty'])
+      // Restored even when the operation throws.
+      await expect(runUpdateCommand({ echo, stdout: process.stdout, liveLock: () => null, target: { baseUrl: 'http://localhost:3737', source: 'none' }, json: true, runLocal: async () => { throw new Error('boom') } })).rejects.toThrow('boom')
+      expect(process.env.BAKIN_CONSOLE_FORMAT).toBe('pretty')
+    } finally {
+      if (originalFormat === undefined) delete process.env.BAKIN_CONSOLE_FORMAT
+      else process.env.BAKIN_CONSOLE_FORMAT = originalFormat
+    }
   })
 })

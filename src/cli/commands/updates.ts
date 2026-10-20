@@ -78,6 +78,12 @@ function printRecords(snapshot: UpdatesSnapshotBody): void {
   if (countAvailableUpdates(records) > 0) console.log('\nApply one with: bakin updates apply <id> --as human')
 }
 
+/** The runtime logger's console transport off for a `--json` command (one stdout document). */
+async function withSilentRuntimeLogs<T>(fn: () => Promise<T>): Promise<T> {
+  const { withSilentConsoleLogs } = await import('../../core/logger')
+  return withSilentConsoleLogs(fn)
+}
+
 /** This home's live server lock, re-read now (a pid that is alive owns the home even before it listens). */
 async function liveServerLockNow(): Promise<{ pid: number; port: number } | null> {
   const { readLiveServerLock } = await import('../../core/server-lock')
@@ -150,7 +156,8 @@ async function cmdUpdatesList(args: string[]): Promise<void> {
     if (!check) {
       await exitCommandFailure('Bakin is not running.', { command: 'bakin updates', detail: 'Start it, or run `bakin updates --check` to check this home in-process.', code: 'SERVER_UNAVAILABLE' })
     }
-    snapshot = await checkInProcess(kind)
+    // `--json`: the runtime logger's console lines (`Updates started`, …) would precede the document.
+    snapshot = json ? await withSilentRuntimeLogs(() => checkInProcess(kind)) : await checkInProcess(kind)
   }
   if (json) {
     print(snapshot)

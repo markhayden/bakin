@@ -92,9 +92,11 @@ mock.module('../../src/core/updates/sources', () => ({ registerCoreUpdateSources
 mock.module('../../src/core/runtime-adapter-factory', () => ({ createRuntimeAdapter: () => ({ name: 'mock' }) }))
 mock.module('../../packages/core/src/settings', () => ({ readRuntimeAdapterStrict: () => 'pi' }))
 const engineStarts: Array<{ home: string; storePath?: string; seededFromHome: boolean }> = []
+let startLogsOnce: (() => void) | null = null
 mock.module('../../src/core/updates/service', () => ({
   UPDATES_FILE_NAME: 'updates.json',
   startUpdates: (home: string, options?: { storePath?: string }) => {
+    startLogsOnce?.()
     engineStarts.push({ home, storePath: options?.storePath, seededFromHome: options?.storePath !== undefined && existsSync(options.storePath) })
     return { ready: Promise.resolve(), snapshot: async () => ({ records: [ENGINE], generatedAt: 'x', running: false }) }
   },
@@ -301,6 +303,28 @@ describe('review round 14 — the in-process engine is for a home with NO server
     expect(engineStarts[0]!.seededFromHome).toBe(true)
     expect(readFileSync(join(testHome, 'updates.json'), 'utf-8')).toBe(before)
     expect(existsSync(engineStarts[0]!.storePath!)).toBe(false) // the scratch copy is gone with the check
+  })
+
+  it('offline `--check --json` keeps stdout one document: the runtime logger\'s console transport is silenced while the in-process engine runs, and restored after (review r16 #1)', async () => {
+    serverRunning = false
+    const originalFormat = process.env.BAKIN_CONSOLE_FORMAT
+    process.env.BAKIN_CONSOLE_FORMAT = 'pretty'
+    const formatsAtStart: Array<string | undefined> = []
+    try {
+      engineStarts.length = 0
+      // What the real service's `Updates started` line would see when the engine starts.
+      startLogsOnce = () => { formatsAtStart.push(process.env.BAKIN_CONSOLE_FORMAT) }
+      await run(['updates', '--check', '--json'])
+      expect(formatsAtStart).toEqual(['silent'])
+      expect(printed.at(-1)).toMatchObject({ running: false })
+      expect(process.env.BAKIN_CONSOLE_FORMAT).toBe('pretty')
+      await run(['updates', '--check'])
+      expect(formatsAtStart).toEqual(['silent', 'pretty'])
+    } finally {
+      startLogsOnce = null
+      if (originalFormat === undefined) delete process.env.BAKIN_CONSOLE_FORMAT
+      else process.env.BAKIN_CONSOLE_FORMAT = originalFormat
+    }
   })
 
   it('applying bakin:bakin hands the CLI\'s resolved target (and --json) to the self-update, so a BAKIN_URL apply never replaces the local binary', async () => {
