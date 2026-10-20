@@ -18,10 +18,12 @@ import {
 } from './health-contract'
 import {
   claimRepairApplication,
+  getStoredRepairPlan,
   createStoredRepairPlan,
   DoctorRepairConfirmationError,
   DoctorRepairStalePlanError,
 } from './doctor-repair-plans'
+import { releaseIncidents, reserveIncidents } from './doctor-reservations'
 import { checkEvaluatedFresh } from './doctor-autoclose'
 import {
   CHILD_PARTIAL_CODE,
@@ -279,31 +281,66 @@ function childOutcome(results: HealthRepairApplyResult[]): OperationOutcome<Heal
 export async function startDoctorRepair(options: DoctorRepairStartOptions): Promise<OperationStartResponse> {
   void options.projectRoot
   const registry = getOperationRegistry()
+  const fingerprint = `repair:${options.planId}:${[...options.itemIds].sort().join(',')}`
+  // Admission BEFORE ownership (#896 D3.1): the selected items' incidents are
+  // reserved under this request's fingerprint before the registry sees it.
+  // Identical requests attach (same token); a DIFFERENT plan over any of these
+  // incidents — another tab, escalation, a delegation — is refused here, so
+  // two repairs never work one incident. A plan the store no longer holds
+  // reserves nothing: validate answers STALE_PLAN for it as today.
+  const stored = getStoredRepairPlan(options.planId)
+  const incidentIds = [...new Set(
+    (stored?.items ?? []).filter((item) => options.itemIds.includes(item.id)).flatMap((item) => item.incidentIds),
+  )]
+  const reservation = incidentIds.length > 0 ? reserveIncidents(incidentIds, fingerprint) : null
+  if (reservation?.status === 'refused') {
+    throw new OperationRejectedError(409, {
+      error: 'A repair is already working these incidents.',
+      code: 'repair_in_flight',
+      overlapping: reservation.overlapping,
+      heldBy: reservation.heldBy,
+    })
+  }
+  const owns = reservation?.status === 'granted'
   let validated: ReturnType<typeof claimRepairApplication> | undefined
   let current: HealthReport | undefined
-  return registry.start<DoctorRepairApplyReport>({
-    kind: 'repair',
-    owner: 'core',
-    origin: options.origin,
-    title: options.itemIds.length === 1 ? 'Apply a Health repair' : `Apply ${options.itemIds.length} Health repairs`,
-    href: '/health',
-    fingerprint: `repair:${options.planId}:${[...options.itemIds].sort().join(',')}`,
-    plan: REPAIR_PARENT_PLAN,
-    validate: () => {
-      current = getHealthReport()
-      try {
-        validated = claimRepairApplication({
-          planId: options.planId,
-          itemIds: options.itemIds,
-          confirmedItemIds: options.confirmedItemIds,
-          report: current,
-        })
-      } catch (error) {
-        rejectAsToday(error)
-      }
-    },
-    run: (op) => runDoctorRepair(op, options, validated!, current!),
-  })
+  try {
+    return await registry.start<DoctorRepairApplyReport>({
+      kind: 'repair',
+      owner: 'core',
+      origin: options.origin,
+      title: options.itemIds.length === 1 ? 'Apply a Health repair' : `Apply ${options.itemIds.length} Health repairs`,
+      href: '/health',
+      fingerprint,
+      plan: REPAIR_PARENT_PLAN,
+      validate: () => {
+        current = getHealthReport()
+        try {
+          validated = claimRepairApplication({
+            planId: options.planId,
+            itemIds: options.itemIds,
+            confirmedItemIds: options.confirmedItemIds,
+            report: current,
+          })
+        } catch (error) {
+          rejectAsToday(error)
+        }
+      },
+      run: async (op) => {
+        try {
+          return await runDoctorRepair(op, options, validated!, current!)
+        } finally {
+          releaseIncidents(fingerprint)
+        }
+      },
+    })
+  } catch (error) {
+    // Validation refused (or the registry threw) before anything ran: a
+    // reservation this request GRANTED must not outlive it. An attached
+    // request never releases — the running twin owns the incidents.
+    if (owns) releaseIncidents(fingerprint)
+    throw error
+  }
 }
 
 async function runDoctorRepair(

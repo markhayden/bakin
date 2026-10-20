@@ -222,6 +222,34 @@ describe('targeted canonical doctor repair', () => {
     expect(late).toMatchObject({ httpStatus: 409, body: { code: 'STALE_PLAN' } })
   })
 
+  it('refuses a DIFFERENT plan over an incident a running repair holds — 409 repair_in_flight — and frees it at settle (#896)', async () => {
+    const report = getHealthReport()
+    const first = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const second = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    expect(second.planId).not.toBe(first.planId)
+    expect(first.items[0].incidentIds.length).toBeGreaterThan(0)
+    let releaseApply!: () => void
+    applyBarrier = new Promise<void>((resolve) => { releaseApply = resolve })
+
+    const started = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: first.planId, itemIds: [first.items[0].id], confirmedItemIds: [], origin: 'web' })
+    const refusal = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: second.planId, itemIds: [second.items[0].id], confirmedItemIds: [], origin: 'web' })
+      .catch((err: unknown) => err)
+    expect(refusal).toBeInstanceOf(OperationRejectedError)
+    expect(refusal).toMatchObject({ httpStatus: 409, body: { code: 'repair_in_flight', overlapping: first.items[0].incidentIds } })
+    // Nothing started for the refused plan, and its plan is NOT consumed.
+    expect(getOperationRegistry().list().filter((view) => view.kind === 'repair')).toHaveLength(1)
+    expect(applyAction).toHaveBeenCalledTimes(1)
+
+    releaseApply()
+    await awaitDoctorRepair(started.operationId)
+    // The reservation died with the operation: the second plan may run now (its
+    // target evidence changed because the first repair healed it → STALE_PLAN,
+    // which is validation, not admission).
+    const late = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: second.planId, itemIds: [second.items[0].id], confirmedItemIds: [], origin: 'web' })
+      .catch((err: unknown) => err)
+    expect(late).toMatchObject({ httpStatus: 409, body: { code: 'STALE_PLAN' } })
+  })
+
   it('answers immediately while an action is still blocked (the 202 never waits for the repair)', async () => {
     const report = getHealthReport()
     const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
