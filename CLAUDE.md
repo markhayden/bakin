@@ -40,7 +40,7 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
   bakin.db                 — Execution ledger (SQLite, WAL): run claims, cron fires, completions, idempotency
   usage.db                 — Durable usage history (SQLite): per-(session, day, model) token/cost rollups scanned from runtime session transcripts (#359) + scan_days coverage receipts (complete sweeps only)
   server.lock              — Server singleton lock ({pid, port, startedAt, bootId})
-  install.lock             — The install-state operation resource (packs, plugins, plugin assets, skills; O_EXCL, holder metadata)
+  install.lock             — The install-state operation resource (packs, plugins, plugin assets, skills; flock-held, holder metadata)
   locks/                   — The other operation resource locks (media-store, search-engine, <pluginId>/<name>; #895)
   plugin-settings/         — Per-plugin configuration (id.json); spend.json = limits + billing overrides (one-shot upgraded from models.json, backup models.json.pre-spend.bak); models/{pending-writes,pending-restart}.json + models/snapshots/ (#907)
   plugins/<id>/            — Installed addon plugins (source + generated dist/)

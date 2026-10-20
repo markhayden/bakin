@@ -5,7 +5,7 @@
  * inner writers keep working inside an operation that holds install-state).
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -157,7 +157,7 @@ describe('acquire and release', () => {
     expect(existsSync(resourceLockPath('media-store'))).toBe(false)
   })
 
-  it('reclaims a lock whose holder pid is dead, and reports the reclaim', async () => {
+  it('takes a lock whose recorded holder is dead at once (the kernel already released it) and reports the takeover', async () => {
     mkdirSync(join(testDir, 'locks'), { recursive: true })
     writeFileSync(resourceLockPath('media-store'), JSON.stringify({ pid: 999_999, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'Old repair' }))
     const reclaimed: string[] = []
@@ -166,7 +166,7 @@ describe('acquire and release', () => {
     expect(readResourceHolder('media-store')?.operationId).toBe('op-1')
   })
 
-  it('reclaims a lock naming this process that no live operation here holds', async () => {
+  it('takes a lock file naming this process that no live operation here holds', async () => {
     writeFileSync(resourceLockPath('install-state'), JSON.stringify({ pid: process.pid, bootId: 'boot-a', operationId: 'ghost', acquiredAt: new Date().toISOString() }))
     await acquire(['install-state'], { identity: identity('op-1') })
     expect(readResourceHolder('install-state')?.operationId).toBe('op-1')
@@ -242,92 +242,64 @@ describe('holdNow — the bounded synchronous writers', () => {
     expect(readResourceHolder('install-state')?.operationId).toBe('op-1')
   })
 
-  it('never takes over a lock another live process holds', async () => {
+  it('never takes over a lock another live process holds — even one whose metadata is empty', async () => {
     const path = resourceLockPath('install-state')
     mkdirSync(dirname(path), { recursive: true })
-    const foreign = { pid: process.ppid, acquiredAt: new Date().toISOString(), title: 'Another Bakin' }
-    writeFileSync(path, JSON.stringify(foreign))
-    const busy = await holdNow(['install-state'], { title: 'Unlink' }, async () => {}).catch((err: unknown) => err)
-    expect(busy).toBeInstanceOf(ResourceBusyError)
-    expect(JSON.parse(readFileSync(path, 'utf-8')).pid).toBe(process.ppid)
-  })
+    const child = spawnHolder('install-state', { writeMetadata: false })
+    try {
+      await child.held
+      expect(readFileSync(path, 'utf-8')).toBe('') // nothing to judge by — the kernel lock is the truth
+      const busy = await holdNow(['install-state'], { title: 'Unlink' }, async () => {}).catch((err: unknown) => err)
+      expect(busy).toBeInstanceOf(ResourceBusyError)
+      expect(existsSync(path)).toBe(true)
+    } finally {
+      child.kill()
+    }
+  }, 20_000)
 })
 
-describe('stale-lock reclaim is single-winner (#896 D3.5)', () => {
-  it('a reclaim marker left by a dead reclaimer is ignored after its grace', async () => {
-    const path = resourceLockPath('media-store')
-    mkdirSync(dirname(path), { recursive: true })
-    writeFileSync(path, JSON.stringify({ pid: 2 ** 22 + 7, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'dead' }))
-    const marker = `${path}.reclaim`
-    writeFileSync(marker, '')
-    const old = new Date(Date.now() - 60_000)
-    utimesSync(marker, old, old)
-    const lease = await acquire(['media-store'], { identity: identity('op-reclaim'), pollMs: { initial: 10, max: 50 } })
-    expect(readResourceHolder('media-store')?.operationId).toBe('op-reclaim')
-    expect(existsSync(marker)).toBe(false)
-    lease.release()
-  })
 
-  it('a FRESH reclaim marker makes a contender wait for the reclaimer instead of unlinking its lock', async () => {
-    const path = resourceLockPath('media-store')
-    mkdirSync(dirname(path), { recursive: true })
-    writeFileSync(path, JSON.stringify({ pid: 2 ** 22 + 7, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'dead' }))
-    const marker = `${path}.reclaim`
-    writeFileSync(marker, '')
-    let acquired = false
-    const pending = acquire(['media-store'], { identity: identity('op-late'), pollMs: { initial: 10, max: 50 } }).then((lease) => { acquired = true; return lease })
-    await settleFor(150, 'the contender must stay parked while a live reclaim marker exists')
-    expect(acquired).toBe(false)
-    // The reclaimer (a live foreign process) finishes: it swaps in its own
-    // lock and drops the marker — the contender now waits on a LIVE holder.
-    writeFileSync(path, JSON.stringify({ pid: process.ppid, operationId: 'op-winner', acquiredAt: new Date().toISOString(), title: 'winner' }))
-    unlinkSync(marker)
-    await settleFor(150, 'a live winner is never reclaimed')
-    expect(acquired).toBe(false)
-    unlinkSync(path) // the winner releases
-    const lease = await pending
-    expect(readResourceHolder('media-store')?.operationId).toBe('op-late')
-    lease.release()
+/** A child process that takes and HOLDS a resource lock until killed; `held` resolves once it has it. */
+function spawnHolder(resource: string, opts: { writeMetadata: boolean } = { writeMetadata: true }) {
+  const script = opts.writeMetadata
+    ? `
+      import { acquireResources } from ${JSON.stringify(join(REPO_ROOT, 'packages/core/src/operations/resources.ts'))}
+      await acquireResources([${JSON.stringify(resource)}], { identity: { title: 'Child holder', operationId: 'child' } })
+      console.log('HELD')
+      setInterval(() => {}, 1000)
+    `
+    : `
+      import { dlopen, FFIType } from 'bun:ffi'
+      import { openSync } from 'node:fs'
+      import { resourceLockPath } from ${JSON.stringify(join(REPO_ROOT, 'packages/core/src/operations/resources.ts'))}
+      const libc = dlopen(process.platform === 'darwin' ? 'libSystem.B.dylib' : 'libc.so.6', { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } })
+      const fd = openSync(resourceLockPath(${JSON.stringify(resource)}), 'a+')
+      if (libc.symbols.flock(fd, 2 | 4) !== 0) throw new Error('child could not lock')
+      console.log('HELD')
+      setInterval(() => {}, 1000)
+    `
+  const child = Bun.spawn(['bun', '-e', script], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, BAKIN_HOME: testDir, BAKIN_CONSOLE_FORMAT: 'silent' },
+    stdout: 'pipe',
+    stderr: 'pipe',
   })
-})
-
-describe('reclaim never touches a fresh lock (#896 review)', () => {
-  it('a fresh EMPTY lock file (a contender between its open and its write) is never reclaimed', async () => {
-    const path = resourceLockPath('media-store')
-    mkdirSync(dirname(path), { recursive: true })
-    writeFileSync(path, '')
-    const busy = await holdNow(['media-store'], { title: 'contender' }, async () => {}).catch((err: unknown) => err)
-    expect(busy).toBeInstanceOf(ResourceBusyError)
-    expect(existsSync(path)).toBe(true)
-    expect(readFileSync(path, 'utf-8')).toBe('')
-  })
-
-  it('a reclaim marker whose owner pid is DEAD is taken over at once; one whose owner is alive is waited for', async () => {
-    const path = resourceLockPath('media-store')
-    mkdirSync(dirname(path), { recursive: true })
-    const stale = JSON.stringify({ pid: 2 ** 22 + 7, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'dead' })
-    const marker = `${path}.reclaim`
-    writeFileSync(path, stale)
-    writeFileSync(marker, JSON.stringify({ pid: 2 ** 22 + 9, at: new Date().toISOString() })) // fresh, but its owner is gone
-    const lease = await acquire(['media-store'], { identity: identity('op-takeover'), pollMs: { initial: 10, max: 50 } })
-    expect(readResourceHolder('media-store')?.operationId).toBe('op-takeover')
-    expect(existsSync(marker)).toBe(false)
-    lease.release()
-
-    writeFileSync(path, stale)
-    writeFileSync(marker, JSON.stringify({ pid: process.ppid, at: new Date().toISOString() })) // fresh AND alive
-    let acquired = false
-    const pending = acquire(['media-store'], { identity: identity('op-polite'), pollMs: { initial: 10, max: 50 } }).then((l) => { acquired = true; return l })
-    await settleFor(150, 'a live reclaimer is never taken over inside the grace')
-    expect(acquired).toBe(false)
-    unlinkSync(marker)
-    unlinkSync(path)
-    ;(await pending).release()
-  })
-})
+  const held = (async () => {
+    const reader = child.stdout.getReader()
+    let out = ''
+    const deadline = Date.now() + 20_000
+    while (!out.includes('HELD') && Date.now() < deadline) {
+      const { value, done } = await reader.read()
+      if (done) break
+      out += new TextDecoder().decode(value)
+    }
+    if (!out.includes('HELD')) throw new Error(`child never held the lock: ${out}`)
+  })()
+  return { held, kill: () => child.kill('SIGKILL'), pid: child.pid }
+}
 
 describe('two processes', () => {
-  it('waits for a live holder in another process and reclaims after it dies', async () => {
+  it('waits for a live holder in another process and takes the lock the moment it dies', async () => {
     const script = `
       import { acquireResources } from ${JSON.stringify(join(REPO_ROOT, 'packages/core/src/operations/resources.ts'))}
       await acquireResources(['media-store'], { identity: { title: 'Child repair', operationId: 'child' } })
@@ -412,7 +384,6 @@ describe('two processes', () => {
       expect(intervals.every((i) => Number.isFinite(i.acquired) && Number.isFinite(i.released))).toBe(true)
       // Disjoint holds: the second acquisition happens only after the first release.
       expect(intervals[1]!.acquired).toBeGreaterThanOrEqual(intervals[0]!.released)
-      expect(existsSync(`${path}.reclaim`)).toBe(false)
       expect(existsSync(path)).toBe(false)
     } finally {
       for (const child of children) child.kill('SIGKILL')

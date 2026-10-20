@@ -421,10 +421,18 @@ async function runDoctorDelegateApply(report: HealthReport, incidents: [HealthIn
   return body
 }
 
+/** Every field the plain, JSON and TTY delegate renderers read from an incident; the rest passes through. */
+const renderedIncidentSchema = z.looseObject({
+  id: z.string().min(1),
+  title: z.string(),
+  impact: z.string(),
+  status: z.string(),
+})
+
 /** The ONE 409 the delegate command renders; any other 409 is a thrown, formatted error. */
 const repairInFlightSchema = z.object({
   status: z.literal('repair_in_flight'),
-  incidents: z.array(z.custom<HealthIncident>((value) => typeof value === 'object' && value !== null)),
+  incidents: z.array(renderedIncidentSchema.transform((incident) => incident as unknown as HealthIncident)),
   overlapping: z.array(z.string()).min(1),
   heldBy: z.string().min(1),
 })

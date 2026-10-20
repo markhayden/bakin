@@ -23,7 +23,8 @@
  *   with `holdNow`, never waiting.
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { closeSync, existsSync, fstatSync, ftruncateSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { dlopen, FFIType } from 'bun:ffi'
 import { dirname, join } from 'node:path'
 
 import { CORE_RESOURCES } from '@makinbakin/sdk/types'
@@ -71,11 +72,8 @@ export interface AcquireResourcesOptions {
 }
 
 const PLUGIN_RESOURCE_RE = /^([a-z0-9][a-z0-9-]*):([a-z0-9][a-z0-9-]*)$/
-/** A lock file younger than this with no parseable holder is mid-write, not stale. */
-const UNPARSEABLE_GRACE_MS = 2_000
-const RECLAIM_ATTEMPTS = 3
-/** A `.reclaim` marker older than this belongs to a reclaimer that died mid-reclaim; it is ignored. */
-const RECLAIM_MARKER_GRACE_MS = 10_000
+/** Attempts to pin the inode the path names (a release between our open and our lock retries). */
+const ACQUIRE_ATTEMPTS = 3
 
 const isCoreResource = (resource: string): boolean => (CORE_RESOURCES as readonly string[]).includes(resource)
 
@@ -135,8 +133,42 @@ export function runHolding<T>(resources: Iterable<string>, fn: () => T): T {
 }
 
 // ---------------------------------------------------------------------------
-// Lock files
+// Lock files — held by flock(2) on an open descriptor
+//
+// The lock IS the kernel's exclusion: a holder keeps its descriptor open and
+// locked for the lease's lifetime; a holder that dies (any signal, any
+// crash) has its lock released by the kernel; a waiter never judges, moves
+// or unlinks another process's file. The JSON inside is purely informational
+// (who holds it — for `waitingFor` and logs) and is written only AFTER the
+// lock is held, so a contender can never read a half-written holder. This
+// replaced the O_EXCL-create + stale-pid-reclaim scheme (#896 D3.5 review):
+// every unlink-based reclaim had a window in which two contenders could both
+// pass the staleness check and the second would delete the first's fresh lock.
 // ---------------------------------------------------------------------------
+
+const LOCK_EX = 2
+const LOCK_NB = 4
+
+type LibcFlock = { symbols: { flock: (fd: number, operation: number) => number } }
+let libc: LibcFlock | null = null
+function flock(fd: number, operation: number): number {
+  if (!libc) {
+    const candidates = process.platform === 'darwin'
+      ? ['libSystem.B.dylib']
+      : ['libc.so.6', 'libc.musl-x86_64.so.1', 'libc.musl-aarch64.so.1', 'libc.so']
+    let lastError: unknown
+    for (const name of candidates) {
+      try {
+        libc = dlopen(name, { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } }) as unknown as LibcFlock
+        break
+      } catch (err) {
+        lastError = err
+      }
+    }
+    if (!libc) throw new Error(`operation locks need flock(2) from libc: ${lastError instanceof Error ? lastError.message : String(lastError)}`)
+  }
+  return libc.symbols.flock(fd, operation)
+}
 
 function isProcessAlive(pid: number): boolean {
   try {
@@ -167,200 +199,101 @@ export function readResourceHolder(resource: string): ResourceHolder | null {
   return readHolderAt(resourceLockPath(resource))
 }
 
-/** True when some live process holds `resource` (this one or another). */
+/** True when some live process holds `resource` (this one or another): the kernel lock is taken. */
 export function isResourceHeld(resource: string): boolean {
   const path = resourceLockPath(resource)
   if (!existsSync(path)) return false
-  const holder = readHolderAt(path)
-  return holder ? isProcessAlive(holder.pid) : true
-}
-
-function isStale(resource: string, path: string, holder: ResourceHolder | null): boolean {
-  if (!holder) {
-    try {
-      return Date.now() - statSync(path).mtimeMs > UNPARSEABLE_GRACE_MS
-    } catch {
-      return false
-    }
-  }
-  if (!isProcessAlive(holder.pid)) return true
-  return holder.pid === process.pid && !heldHere.has(resource)
-}
-
-function reclaimMarkerPath(path: string): string {
-  return `${path}.reclaim`
-}
-
-/**
- * O_EXCL claim on the reclaim of `path`. The marker records its owner's pid;
- * it is abandoned when that process is dead or the marker is older than the
- * grace (a reclaim is a handful of syscalls). An abandoned marker is taken
- * over EXCLUSIVELY: `rename` is atomic, so of two contenders that both judged
- * it abandoned only one moves it — and the mover checks the inode it moved is
- * the one it judged, so a fresh replacement marker written in between is put
- * back, never removed on an earlier observation.
- */
-function takeReclaimMarker(path: string): boolean {
-  const marker = reclaimMarkerPath(path)
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const fd = openSync(marker, 'wx')
-      try {
-        writeSync(fd, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }))
-      } finally {
-        closeSync(fd)
-      }
-      return true
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-    }
-    const judged = readReclaimMarker(marker)
-    if (!judged) continue // vanished between the open and the stat — retry the claim
-    const abandoned = (judged.pid !== null && !isProcessAlive(judged.pid)) || judged.ageMs > RECLAIM_MARKER_GRACE_MS
-    if (!abandoned) return false
-    const tomb = `${marker}.abandoned-${process.pid}-${Date.now()}`
-    try {
-      renameSync(marker, tomb)
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue // another contender took it first
-      throw err
-    }
-    let movedIno: number | bigint | null = null
-    try {
-      movedIno = statSync(tomb).ino
-    } catch {
-      movedIno = null
-    }
-    if (movedIno !== judged.ino) {
-      // A fresh marker replaced the abandoned one after the judgement: it is
-      // live — give it back untouched and let its owner finish.
-      try {
-        renameSync(tomb, marker)
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-      }
-      return false
-    }
-    try {
-      unlinkSync(tomb)
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-    }
-    log.warn('Took over an abandoned reclaim marker', { marker, ownerPid: judged.pid, ageMs: Math.round(judged.ageMs) })
-  }
-  return false
-}
-
-/** The marker's owner pid (null when unparseable), its age, and the inode that was judged. */
-function readReclaimMarker(marker: string): { pid: number | null; ageMs: number; ino: number | bigint } | null {
-  try {
-    const stat = statSync(marker)
-    let pid: number | null = null
-    try {
-      const parsed = JSON.parse(readFileSync(marker, 'utf-8')) as { pid?: unknown }
-      if (typeof parsed.pid === 'number' && Number.isInteger(parsed.pid) && parsed.pid > 0) pid = parsed.pid
-    } catch {
-      pid = null
-    }
-    return { pid, ageMs: Date.now() - stat.mtimeMs, ino: stat.ino }
-  } catch {
-    return null
-  }
-}
-
-function releaseReclaimMarker(path: string): void {
-  try {
-    unlinkSync(reclaimMarkerPath(path))
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-  }
-}
-
-function tryCreate(path: string, identity: ResourceHolderIdentity): boolean {
   let fd: number
   try {
-    fd = openSync(path, 'wx')
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false
-    throw err
+    fd = openSync(path, 'r')
+  } catch {
+    return false
   }
   try {
-    const holder: ResourceHolder = {
-      pid: process.pid,
-      ...(identity.bootId ? { bootId: identity.bootId } : {}),
-      ...(identity.operationId ? { operationId: identity.operationId } : {}),
-      title: identity.title,
-      acquiredAt: new Date().toISOString(),
-    }
-    writeSync(fd, JSON.stringify(holder, null, 2))
+    return flock(fd, LOCK_EX | LOCK_NB) !== 0
   } finally {
-    closeSync(fd)
+    closeSync(fd) // closing drops the probe lock if the probe took it
   }
-  return true
+}
+
+/** Descriptors this process holds locks on, by resource (closed on release). */
+const heldFds = new Map<string, number>()
+
+function writeHolder(fd: number, identity: ResourceHolderIdentity): void {
+  const holder: ResourceHolder = {
+    pid: process.pid,
+    ...(identity.bootId ? { bootId: identity.bootId } : {}),
+    ...(identity.operationId ? { operationId: identity.operationId } : {}),
+    title: identity.title,
+    acquiredAt: new Date().toISOString(),
+  }
+  ftruncateSync(fd, 0)
+  writeSync(fd, JSON.stringify(holder, null, 2), 0)
 }
 
 type TryOne = { ok: true } | { ok: false; holder: ResourceHolder }
 
-/** One non-blocking attempt, reclaiming stale holders. */
+/** One non-blocking attempt: take the kernel lock on the inode the path names. */
 function tryAcquireOne(resource: string, identity: ResourceHolderIdentity, onReclaim?: (wait: ResourceWait) => void): TryOne {
   const path = resourceLockPath(resource)
   mkdirSync(dirname(path), { recursive: true })
-  for (let attempt = 0; attempt < RECLAIM_ATTEMPTS; attempt++) {
-    if (tryCreate(path, identity)) {
-      heldHere.set(resource, identity)
-      return { ok: true }
-    }
-    const holder = readHolderAt(path)
-    if (!isStale(resource, path, holder)) {
+  for (let attempt = 0; attempt < ACQUIRE_ATTEMPTS; attempt++) {
+    const fd = openSync(path, 'a+') // creates when absent; never truncates another holder's metadata
+    if (flock(fd, LOCK_EX | LOCK_NB) !== 0) {
+      closeSync(fd)
+      const holder = readHolderAt(path)
       return { ok: false, holder: holder ?? { pid: -1, acquiredAt: '', title: 'Another operation' } }
     }
-    log.warn('Reclaiming a stale operation lock', { resource, path, stalePid: holder?.pid ?? 'unparseable', staleOperation: holder?.operationId })
-    // Single-winner reclaim (#896 D3.5): two contenders that both judged the
-    // same dead holder must not both unlink — the second would delete the
-    // FIRST one's fresh lock and both would hold the resource. The reclaim
-    // itself is an O_EXCL marker; under it the holder is re-read and unlinked
-    // only if it is still the stale one that was judged. A contender that
-    // loses the marker simply re-reads on the next attempt and sees the
-    // winner's live lock.
-    if (!takeReclaimMarker(path)) continue
+    // A holder may have released (unlinked) between our open and our lock: we
+    // would then hold an orphaned inode while a newcomer locks a fresh file.
+    // Hold only the inode the path names right now; otherwise retry.
+    let namesOurInode = false
     try {
-      // Re-judge under the marker: the file must still be the holder that was
-      // judged AND still stale. An unparseable file counts as "the same" only
-      // while it is older than the unparseable grace — a contender between
-      // its O_EXCL open and its write is a FRESH empty file, never reclaimed.
-      const again = readHolderAt(path)
-      const sameStaleHolder = again === null
-        ? holder === null && isStale(resource, path, null)
-        : holder !== null && again.pid === holder.pid && again.acquiredAt === holder.acquiredAt && isStale(resource, path, again)
-      if (!sameStaleHolder) continue
-      try {
-        unlinkSync(path)
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-      }
-    } finally {
-      releaseReclaimMarker(path)
+      namesOurInode = fstatSync(fd).ino === statSync(path).ino
+    } catch {
+      namesOurInode = false
     }
-    onReclaim?.({ resource, holder: holder ?? { pid: -1, acquiredAt: '' } })
+    if (!namesOurInode) {
+      closeSync(fd)
+      continue
+    }
+    const previous = readHolderAt(path)
+    writeHolder(fd, identity)
+    heldHere.set(resource, identity)
+    heldFds.set(resource, fd)
+    if (previous && (previous.pid === process.pid || !isProcessAlive(previous.pid))) {
+      // The file still named a holder that is gone: the kernel had already
+      // released its lock; this is the (informational) reclaim report.
+      log.warn('Took over an operation lock whose holder died', { resource, path, stalePid: previous.pid, staleOperation: previous.operationId })
+      onReclaim?.({ resource, holder: previous })
+    }
+    return { ok: true }
   }
   const holder = readHolderAt(path)
   return { ok: false, holder: holder ?? { pid: -1, acquiredAt: '', title: 'Another operation' } }
 }
 
-/** Releases one resource this process holds. Never removes a live foreign holder's file. */
+/** Releases one resource this process holds: unlink the path, then drop the kernel lock. */
 export function releaseResource(resource: string): void {
-  const path = resourceLockPath(resource)
+  const fd = heldFds.get(resource)
   heldHere.delete(resource)
-  if (!existsSync(path)) return
-  const holder = readHolderAt(path)
-  if (holder && holder.pid !== process.pid && isProcessAlive(holder.pid)) {
-    log.warn('Refusing to release a lock held by another live process', { resource, holderPid: holder.pid, path })
-    return
-  }
+  heldFds.delete(resource)
+  if (fd === undefined) return
+  const path = resourceLockPath(resource)
+  // Unlink BEFORE closing: a waiter that already opened this inode gets the
+  // lock when we close, sees the path no longer names its inode, and retries
+  // on the fresh file — never two holders on two inodes.
   try {
     unlinkSync(path)
   } catch (err) {
-    log.warn('Failed to release an operation lock', { resource, path, error: err instanceof Error ? err.message : String(err) })
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.warn('Failed to remove an operation lock file', { resource, path, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+  try {
+    closeSync(fd)
+  } catch (err) {
+    log.warn('Failed to close an operation lock descriptor', { resource, path, error: err instanceof Error ? err.message : String(err) })
   }
 }
 

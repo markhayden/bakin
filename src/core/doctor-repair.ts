@@ -313,8 +313,12 @@ export async function startDoctorRepair(options: DoctorRepairStartOptions): Prom
     (stored?.items ?? []).filter((item) => options.itemIds.includes(item.id)).flatMap((item) => item.incidentIds),
   )]
   // Durable admission: an OPEN delegated task (a live agent run) already
-  // works the incident — refuse unless this apply IS that task's agent.
-  const working = await delegatedTaskWorking(options.contentDir, incidentIds, options.actingAgentId)
+  // works the incident — refuse unless this apply IS that task's agent. The
+  // dependency is loaded FIRST; from here to `registry.start` nothing yields,
+  // so the durable check and the reservation are one synchronous admission
+  // (a delegation cannot finish persistence in between).
+  const { getTaskWithColumn } = await import('./task-store')
+  const working = delegatedTaskWorking(options.contentDir, incidentIds, options.actingAgentId, getTaskWithColumn)
   if (working) {
     throw new OperationRejectedError(409, {
       error: `Repair task ${working.taskId} is already working ${working.incidentId}.`,
@@ -333,6 +337,10 @@ export async function startDoctorRepair(options: DoctorRepairStartOptions): Prom
     })
   }
   const owns = reservation?.status === 'granted'
+  // The hand-back is keyed by fingerprint, not by caller: a request that
+  // ATTACHES to a running twin never runs its own settle, so the twin's
+  // settle consults this and honours the attacher's releaseTo.
+  if (options.releaseTo) handBackByFingerprint.set(fingerprint, options.releaseTo)
   let validated: ReturnType<typeof claimRepairApplication> | undefined
   let current: HealthReport | undefined
   try {
@@ -361,7 +369,7 @@ export async function startDoctorRepair(options: DoctorRepairStartOptions): Prom
         try {
           return await runDoctorRepair(op, options, validated!, current!)
         } finally {
-          settleReservation(fingerprint, incidentIds, options.releaseTo)
+          settleReservation(fingerprint, incidentIds)
         }
       },
     })
@@ -369,13 +377,18 @@ export async function startDoctorRepair(options: DoctorRepairStartOptions): Prom
     // Validation refused (or the registry threw) before anything ran: a
     // reservation this request GRANTED must not outlive it. An attached
     // request never releases — the running twin owns the incidents.
-    if (owns) settleReservation(fingerprint, incidentIds, options.releaseTo)
+    if (owns) settleReservation(fingerprint, incidentIds)
     throw error
   }
 }
 
-/** At settle the incidents go back to the caller that handed them over, or free. */
-function settleReservation(fingerprint: string, incidentIds: readonly string[], releaseTo: string | undefined): void {
+/** fingerprint → owner token that takes the incidents back at settle (set by whichever caller asked). */
+const handBackByFingerprint = new Map<string, string>()
+
+/** At settle the incidents go back to the caller that asked for them (attached or not), or free. */
+function settleReservation(fingerprint: string, incidentIds: readonly string[]): void {
+  const releaseTo = handBackByFingerprint.get(fingerprint)
+  handBackByFingerprint.delete(fingerprint)
   if (releaseTo && transferIncidents(incidentIds, fingerprint, releaseTo)) return
   releaseIncidents(fingerprint)
 }
@@ -383,16 +396,26 @@ function settleReservation(fingerprint: string, incidentIds: readonly string[], 
 /**
  * The newest OPEN delegated request whose task still exists, for any of these
  * incidents — unless the caller is that task's own agent (the hand-off).
+ * Synchronous on purpose (see the caller); request and task reads are
+ * memoised so a wide apply does not re-read one request per incident.
  */
-async function delegatedTaskWorking(contentDir: string, incidentIds: readonly string[], actingAgentId: string | undefined): Promise<{ taskId: string; incidentId: string } | null> {
+function delegatedTaskWorking(
+  contentDir: string,
+  incidentIds: readonly string[],
+  actingAgentId: string | undefined,
+  getTaskWithColumn: (taskId: string) => unknown,
+): { taskId: string; incidentId: string } | null {
   if (incidentIds.length === 0) return null
   const index = openRepairWorkByIncident(contentDir)
-  const { getTaskDetails } = await import('./task-service')
+  const requests = new Map<string, ReturnType<typeof getDoctorRepairRequest>>()
+  const tasksExist = new Map<string, boolean>()
   for (const incidentId of incidentIds) {
     for (const work of index.get(incidentId) ?? []) {
-      const request = getDoctorRepairRequest(contentDir, work.requestId)
+      if (!requests.has(work.requestId)) requests.set(work.requestId, getDoctorRepairRequest(contentDir, work.requestId))
+      const request = requests.get(work.requestId)
       if (request?.kind !== 'delegate') continue
-      if (!await getTaskDetails(work.taskId).catch(() => null)) continue // task gone — the request covers nothing
+      if (!tasksExist.has(work.taskId)) tasksExist.set(work.taskId, Boolean(getTaskWithColumn(work.taskId)))
+      if (!tasksExist.get(work.taskId)) continue // task gone — the request covers nothing
       if (actingAgentId && request.agentId === actingAgentId) break // the owning agent acts for its task
       return { taskId: work.taskId, incidentId }
     }

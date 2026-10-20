@@ -18,7 +18,13 @@ mock.module('../../src/core/settings', () => ({
 }))
 mock.module('../../src/core/onboarding/state', () => ({ isOnboarded: () => true }))
 const liveTasks = new Set<string>()
-mock.module('../../src/core/task-service', () => ({ getTaskDetails: async (id: string) => (liveTasks.has(id) ? { task: { id }, column: 'todo' } : null) }))
+// Admission reads the task store synchronously (no yield between the durable
+// check and the reservation); only that one read is faked, the rest is real.
+import * as realTaskStore from '../../src/core/task-store'
+mock.module('../../src/core/task-store', () => ({
+  ...realTaskStore,
+  getTaskWithColumn: (id: string) => (liveTasks.has(id) ? { task: { id }, column: 'todo' } : null),
+}))
 
 mock.module('../../src/core/logger', () => ({ createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }) }))
 
@@ -285,6 +291,23 @@ describe('targeted canonical doctor repair', () => {
     const started = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [], origin: 'system', releaseTo: 'escalation:cycle-9' })
     await awaitDoctorRepair(started.operationId)
     expect(incidentHolder(incidentId)).toBe('escalation:cycle-9')
+    resetIncidentReservationsForTests()
+  })
+
+  it('an ATTACHING caller\'s releaseTo is honoured by the running twin\'s settle (#896 review)', async () => {
+    resetIncidentReservationsForTests()
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const incidentId = plan.items[0].incidentIds[0]!
+    let releaseApply!: () => void
+    applyBarrier = new Promise<void>((resolve) => { releaseApply = resolve })
+    const options = { contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [], origin: 'web' as const }
+    const first = await startDoctorRepair(options) // a UI apply: no hand-back
+    const second = await startDoctorRepair({ ...options, origin: 'system', releaseTo: 'escalation:cycle-3' }) // escalation attaches
+    expect(second).toMatchObject({ operationId: first.operationId, attached: true })
+    releaseApply()
+    await awaitDoctorRepair(first.operationId)
+    expect(incidentHolder(incidentId)).toBe('escalation:cycle-3')
     resetIncidentReservationsForTests()
   })
 

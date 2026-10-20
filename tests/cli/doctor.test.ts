@@ -111,6 +111,7 @@ describe('doctor --delegate refusals (#896 repair_in_flight)', () => {
   it.each([
     ['an unrelated 409', { error: 'something else entirely' }],
     ['a malformed refusal', { status: 'repair_in_flight', incidents: [] }],
+    ['a refusal with a malformed incident', { status: 'repair_in_flight', incidents: [{ id: 'x', title: { bad: 'object' } }], overlapping: ['x'], heldBy: 'repair:y' }],
   ])('%s is NOT rendered as a refusal — it stays a formatted API error (#896 review)', async (_label, body) => {
     process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--delegate', '--yes', '--json']
     fetchMock.mockResolvedValueOnce(harness.jsonResponse(actionableHealthReport))
