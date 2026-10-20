@@ -123,6 +123,13 @@ export function isUpdateOffered(record: Pick<UpdateRecord, 'outcome' | 'availabl
   return record.outcome === 'update-available' && !isUpdateSkipped(record)
 }
 
+/** Days since the last successful observation when older than `thresholdDays`, else null (a staleness hint, never a verdict). */
+export function updateStaleDays(observedAt: string | null | undefined, now = Date.now(), thresholdDays = 7): number | null {
+  if (!observedAt) return null
+  const days = Math.floor((now - Date.parse(observedAt)) / (24 * 60 * 60 * 1000))
+  return Number.isFinite(days) && days > thresholdDays ? days : null
+}
+
 /** The count the Updates tab label carries: available, not skipped. */
 export function countAvailableUpdates(records: ReadonlyArray<UpdateRecord>): number {
   return records.filter(isUpdateOffered).length

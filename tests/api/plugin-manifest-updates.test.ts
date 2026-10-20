@@ -43,7 +43,7 @@ import { fingerprintOf } from '../../src/core/updates/inventory'
 import { getUpdatesEngine, registerUpdateSource, resetUpdateSources, startUpdates, stopUpdates } from '../../src/core/updates/service'
 import type { UpdateObservation, UpdateSource } from '../../src/core/updates/types'
 
-interface ManifestBody { plugins: Array<{ id: string; upgradeAvailable: boolean; staleHintDays: number | null }> }
+interface ManifestBody { plugins: Array<{ id: string; upgradeAvailable: boolean; staleHintDays: number | null; updateObservedAt: string | null }> }
 const read = async (query = ''): Promise<ManifestBody> => (await (await get(new Request(`http://localhost/api/plugins/manifest${query}`))).json()) as ManifestBody
 const row = async (query = '') => (await read(query)).plugins.find((p) => p.id === 'notes')!
 
@@ -64,7 +64,22 @@ afterEach(() => { stopUpdates(); resetUpdateSources() })
 describe('GET /api/plugins/manifest — upgrade projection from the updates engine', () => {
   it('without a running engine every user plugin is honestly not-upgradable with no staleness hint; core plugins never are', async () => {
     const body = await read()
-    expect(body.plugins.map((p) => [p.id, p.upgradeAvailable, p.staleHintDays])).toEqual([['tasks', false, null], ['notes', false, null]])
+    expect(body.plugins.map((p) => [p.id, p.upgradeAvailable, p.staleHintDays, p.updateObservedAt])).toEqual([['tasks', false, null, null], ['notes', false, null, null]])
+  })
+
+  it('updateObservedAt is the record\'s last successful observation — absent before one, kept across a later failed attempt', async () => {
+    let fail = false
+    const { source } = scripted(async () => { if (fail) throw new Error('offline'); return current })
+    registerUpdateSource(source)
+    const engine = startUpdates(testDir)
+    await engine.ready
+    expect((await row()).updateObservedAt).toBeNull()
+    await engine.observe('plugin:notes')
+    const observedAt = (await engine.snapshot()).records.find((r) => r.id === 'plugin:notes')!.observedAt!
+    expect((await row()).updateObservedAt).toBe(observedAt)
+    fail = true
+    await engine.observe('plugin:notes')
+    expect((await row()).updateObservedAt).toBe(observedAt)
   })
 
   it('an unskipped update-available record is an upgrade; a skipped one is not; current is not — the lockfile markers are never read', async () => {

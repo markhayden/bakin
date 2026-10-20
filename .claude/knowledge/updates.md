@@ -414,6 +414,18 @@ through a server is an operator action: `bakin update --as human`; an
 - **Overview:** an incident whose resources name an offered update (plugin
   id, the search-engine service, the embedder setting, the active runtime)
   links "View update" to its row by record id — identity, never copy.
+- **In-process callers (`src/core/updates/observe.ts`):**
+  `observeInstalledPackage(keyOrId)` is what `bakin agents sync --check` /
+  `bakin packages sync --check` ask (`sync.ts`) instead of probing. In a
+  server it rides the timer's admission (`admit({ ids: ['package:<id>'] })`
+  — joins a running pass, the engine records + broadcasts) and answers with
+  the fresh record, throwing when THAT attempt failed even over an earlier
+  good observation; without an engine the package/hub-skill sources
+  (`sources/package-wiring.ts`, the same two the server registers) observe
+  directly and nothing is persisted. The receipt's `versionAfter`/`commitAfter`
+  come from `available`, `changed` = `update-available`; a `blocked` outcome
+  is logged on the operation. The sync verbs themselves stay HTTP (they are
+  operations on the server); the checker module is gone.
 - **CLI:** `bakin updates [--check] [--source <kind>] [--json]` (serverless
   `--check` builds the engine in-process over this home), `updates skip <id>`,
   `updates apply <id> [--yes] --as human` (preview → confirm → follow; the

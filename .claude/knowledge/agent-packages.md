@@ -240,7 +240,7 @@ Two-file pattern (`cli/bakin.ts` is HTTP-client; `src/core/cli.ts` is binary dis
 - `bakin agents orphan <id> [--keep-blocks] [--force]`
 - `bakin agents delete <id> [--keep-blocks] [--force]`
 - `bakin agents remove <id> [--keep-blocks] [--delete-agent|--delete|--orphan] [--force]` — compatibility spelling; default is orphan
-- `bakin agents sync [<id>] [--check] [--reclaim <target>|--reclaim-all] [--yes]` — no id = sync every agent (managed: fetch + recompose + verify + receipt; unmanaged: context block only). Prompts once for the one-time block migration on legacy installs.
+- `bakin agents sync [<id>] [--check] [--reclaim <target>|--reclaim-all] [--yes]` — no id = sync every agent (managed: fetch + recompose + verify + receipt; unmanaged: context block only). Prompts once for the one-time block migration on legacy installs. `--check` asks the updates engine's observer (`src/core/updates/observe.ts`, #1007) for the upstream state — report-only, never a private probe.
 - `bakin agents lessons {list,enable,disable} <id> [<lesson-id>]` — toggling = lockfile change + local sync (SOUL block recomposes)
 - `bakin packages {list,install,remove,sync}` — for non-agent kinds; refuses remove on refCount > 0 unless `--force`
 - `bakin check agent-sync` / `bakin install agent-sync` — drift report + local repair via the onboarding component

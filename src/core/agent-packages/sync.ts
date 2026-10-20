@@ -58,7 +58,7 @@ import { installManifestRequirements } from './requirements-installer'
 import { assertResourceHeld } from '@bakin/core/operations'
 import { SYNC_STAGES } from './operation-plans'
 import { updatePackageById } from './updater'
-import { checkPackageUpdateAsync } from './checker'
+import { observeInstalledPackage } from '../updates/observe'
 import {
   COMPOSABLE_FILES,
   type SyncFinding,
@@ -325,10 +325,11 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
       if (fetch) {
         op?.stage(SYNC_STAGES.check, owner.id)
         try {
-          const status = await checkPackageUpdateAsync(owner.id)
-          versionAfter = status.latestVersion ?? versionBefore
-          commitAfter = status.latestCommitSha ?? commitBefore
-          changed = status.upgradeAvailable === true
+          const status = await observeInstalledPackage(owner.id)
+          versionAfter = status.available?.version ?? versionBefore
+          commitAfter = status.available?.sha ?? commitBefore
+          changed = status.outcome === 'update-available'
+          if (status.outcome === 'blocked') op?.log(`Upstream check blocked: ${status.blockedReason ?? 'unknown reason'}`, 'warn')
         } catch (err) {
           log.warn('Upstream check failed during --check', { packageId: owner.id, error: String(err) })
           op?.log(`Upstream check failed: ${String(err)}`, 'warn')
@@ -580,7 +581,8 @@ export async function syncPack(
 
   if (opts.check) {
     op?.stage(SYNC_STAGES.check, packageId)
-    const status = await checkPackageUpdateAsync(packageId)
+    const status = await observeInstalledPackage(packageId)
+    if (status.outcome === 'blocked') op?.log(`Upstream check blocked: ${status.blockedReason ?? 'unknown reason'}`, 'warn')
     op?.skip(SYNC_STAGES.verify, 'packs have no workspace to scan')
     return {
       packageId,
@@ -588,10 +590,10 @@ export async function syncPack(
       syncedAt: new Date().toISOString(),
       checkOnly: true,
       versionBefore: entry.version,
-      versionAfter: status.latestVersion ?? entry.version,
+      versionAfter: status.available?.version ?? entry.version,
       commitBefore: entry.commitSha,
-      commitAfter: status.latestCommitSha ?? entry.commitSha,
-      changed: status.upgradeAvailable === true,
+      commitAfter: status.available?.sha ?? entry.commitSha,
+      changed: status.outcome === 'update-available',
     }
   }
 

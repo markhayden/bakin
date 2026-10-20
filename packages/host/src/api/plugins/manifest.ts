@@ -12,7 +12,7 @@
  * so they don't live in the manifest.
  */
 import { isCorePlugin, pluginRegistry } from '@/core/plugin-registry'
-import { isUpdateOffered, type UpdateRecord } from '@makinbakin/sdk/types'
+import { isUpdateOffered, updateStaleDays, type UpdateRecord } from '@makinbakin/sdk/types'
 import { createLogger } from '@/core/logger'
 import { getUpdatesEngine, getUpdatesTimer } from '@/core/updates/service'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
@@ -45,11 +45,13 @@ interface ManifestPlugin {
    */
   upgradeAvailable: boolean
   /**
-   * Days since `lastChecked` if older than the staleness threshold (7 days),
-   * otherwise null. Surfaces as a "(last checked N days ago — run with
-   * --check)" hint in the CLI.
+   * Days since the engine's last successful observation if older than the
+   * staleness threshold (7 days), otherwise null. Retired in favour of
+   * `updateObservedAt` (8.6).
    */
   staleHintDays: number | null
+  /** ISO instant of the updates engine's last successful observation of this plugin; null for core plugins and before the first one. */
+  updateObservedAt: string | null
   status: 'active' | 'failed'
   errorCode?: string
   errorMessage?: string
@@ -63,9 +65,7 @@ interface ManifestResponse {
 
 /** Days since the engine last successfully observed the plugin when older than the staleness threshold, else null. */
 export function staleHintDaysOf(observedAt: string | undefined, now = Date.now()): number | null {
-  if (!observedAt) return null
-  const days = Math.floor((now - Date.parse(observedAt)) / (1000 * 60 * 60 * 24))
-  return days > STALE_HINT_DAYS ? days : null
+  return updateStaleDays(observedAt, now, STALE_HINT_DAYS)
 }
 
 /** Whether the engine's record is an upgrade the operator has not skipped. */
@@ -131,6 +131,7 @@ export async function get(req: Request): Promise<Response> {
         installed,
         upgradeAvailable,
         staleHintDays,
+        updateObservedAt: record?.observedAt ?? null,
         status: entry.status,
         contributes: entry.contributes,
       }
