@@ -325,6 +325,18 @@ export interface BakinSettings {
     channel: string
     requireRejectReason: boolean
   }
+  /**
+   * Update checks (#1007): the core engine re-checks every subject
+   * (Bakin release, plugins, packages, hub skills, search engine/models,
+   * gateway floor) on its own timer. `enabled` false schedules nothing (a
+   * running subject finishes); explicit "Check now" still works.
+   * `intervalMs` is the re-check interval after a successful observation,
+   * clamped to [15 min, 7 d]; failures back off on their own.
+   */
+  updates: {
+    enabled: boolean
+    intervalMs: number
+  }
   integrations: {
     discord: DiscordIntegrationSettings
   }
@@ -494,6 +506,10 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     channel: 'general',
     requireRejectReason: true,
   },
+  updates: {
+    enabled: true,
+    intervalMs: 6 * 60 * 60 * 1000, // 6 hours
+  },
   integrations: {
     discord: {
       enabled: false,
@@ -580,6 +596,23 @@ function normalizeDoctorSettings(input: BakinSettings['doctor']): BakinSettings[
   return { ...input, sensitivity, escalation }
 }
 
+export const UPDATES_INTERVAL_MIN_MS = 15 * 60 * 1000
+export const UPDATES_INTERVAL_MAX_MS = 7 * 24 * 60 * 60 * 1000
+
+/** Strict boolean; a finite interval clamped to [15 min, 7 d]; anything else is the default. */
+export function normalizeUpdatesSettings(input: Partial<BakinSettings['updates']> | undefined): BakinSettings['updates'] {
+  const defaults = DEFAULT_SETTINGS.updates
+  const rawEnabled: unknown = input?.enabled
+  const rawInterval: unknown = input?.intervalMs
+  const intervalMs = typeof rawInterval === 'number' && Number.isFinite(rawInterval)
+    ? Math.min(UPDATES_INTERVAL_MAX_MS, Math.max(UPDATES_INTERVAL_MIN_MS, Math.round(rawInterval)))
+    : defaults.intervalMs
+  return {
+    enabled: typeof rawEnabled === 'boolean' ? rawEnabled : defaults.enabled,
+    intervalMs,
+  }
+}
+
 function normalizeApprovalsSettings(input: BakinSettings['approvals'] | undefined): BakinSettings['approvals'] {
   const defaults = DEFAULT_SETTINGS.approvals
   const channel = typeof input?.channel === 'string' && input.channel.trim() !== '' ? input.channel.trim() : defaults.channel
@@ -640,6 +673,7 @@ function normalizeSettings(settings: BakinSettings): BakinSettings {
     diagnostics: normalizeDiagnosticsSettings(settings.diagnostics),
     doctor: normalizeDoctorSettings(settings.doctor),
     approvals: normalizeApprovalsSettings(settings.approvals),
+    updates: normalizeUpdatesSettings(settings.updates),
     integrations: normalizeIntegrationsSettings(settings.integrations),
     plugins: normalizePluginSettings(settings.plugins),
   }

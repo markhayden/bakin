@@ -141,6 +141,21 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       description: 'Every doctor cycle: apply safe repairs directly, turn destructive repairs and operator-only findings into approval tasks in the review column, and delegate what is left to the main agent as one repair task. Off keeps Health dashboard-only. Default on.',
       default: true,
     },
+    // ── Update checks (#1007) ─────────────────────────────────────────
+    {
+      key: 'updates.enabled',
+      type: 'boolean',
+      label: 'Check for updates automatically',
+      description: 'Bakin re-checks every subject on Health → Updates (Bakin release, plugins, agent packages, hub skills, search engine and models, runtime floor) on its own schedule. Off schedules nothing — a running check finishes, and "Check now" still works. Default on.',
+      default: true,
+    },
+    {
+      key: 'updates.intervalMs',
+      type: 'number',
+      label: 'Update check interval (ms)',
+      description: 'How long after a successful check a subject is checked again. Clamped to 15 minutes – 7 days; failed checks back off on their own (15 min doubling to 24 h). Default 21600000 (6 h).',
+      default: 21600000,
+    },
     // ── Agent token burn (#385) ───────────────────────────────────────
     {
       key: 'burn.windowHours',

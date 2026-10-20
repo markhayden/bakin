@@ -1,0 +1,204 @@
+/** The update scheduler: due subjects, concurrency bound, per-subject deadline, coalescing, disable semantics (#1007, D7.5). */
+import { afterAll, afterEach, describe, expect, it, mock } from 'bun:test'
+import { mkdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+
+const testDir = join(tmpdir(), `bakin-test-updates-timer-${Date.now()}-${randomUUID()}`)
+mkdirSync(testDir, { recursive: true })
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, root: testDir, db: join(testDir, 'bakin.db'), media: join(testDir, 'media') }),
+})
+mock.module('../../../src/core/content-dir', contentDirMock)
+mock.module('../../../packages/core/src/content-dir', contentDirMock)
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+const loggerMock = () => ({ createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }) })
+mock.module('../../../src/core/logger', loggerMock)
+mock.module('../../../packages/core/src/logger', loggerMock)
+afterAll(() => rmSync(testDir, { recursive: true, force: true }))
+
+import { createUpdatesEngine, UpdateSubjectNotFoundError, type UpdatesEngine } from '../../../src/core/updates/engine'
+import { fingerprintOf } from '../../../src/core/updates/inventory'
+import { startUpdatesTimer, type UpdatesTimer } from '../../../src/core/updates/timer'
+import type { UpdateObservation, UpdateSource, UpdateSubjectInventoryEntry } from '../../../src/core/updates/types'
+import { settleFor, waitUntil } from '../../helpers/wait'
+
+const current: UpdateObservation = { installed: { version: '1', display: '1' }, outcome: 'current' }
+
+interface Scripted {
+  source: UpdateSource
+  /** Subject ids currently being observed. */
+  inFlight: Set<string>
+  maxInFlight: () => number
+  calls: string[]
+  /** Hold a subject's observation until released (or forever). */
+  hold: (id: string, opts?: { honourSignal?: boolean }) => () => void
+}
+
+function scripted(kind: UpdateSource['kind'], ids: string[]): Scripted {
+  const inFlight = new Set<string>()
+  const calls: string[] = []
+  let peak = 0
+  const holds = new Map<string, { release: () => void; honourSignal: boolean; gate: Promise<void> }>()
+  const source: UpdateSource = {
+    kind,
+    inventory: async () => ids.map((id): UpdateSubjectInventoryEntry => ({
+      subject: { kind, id, label: id }, group: 'available', fingerprint: fingerprintOf({ id }), source: { kind: 'scripted', endpoint: `scripted://${id}` },
+    })),
+    observe: async (entry, { signal }) => {
+      const id = entry.subject.id
+      calls.push(id)
+      inFlight.add(id)
+      peak = Math.max(peak, inFlight.size)
+      try {
+        const hold = holds.get(id)
+        if (hold) {
+          if (hold.honourSignal) {
+            await Promise.race([hold.gate, new Promise<never>((_, reject) => { signal.addEventListener('abort', () => reject(signal.reason), { once: true }) })])
+          } else {
+            await hold.gate
+          }
+        }
+        return current
+      } finally {
+        inFlight.delete(id)
+      }
+    },
+  }
+  return {
+    source, inFlight, calls, maxInFlight: () => peak,
+    hold(id, opts = {}) {
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => { release = resolve })
+      holds.set(id, { release, honourSignal: opts.honourSignal ?? false, gate })
+      return release
+    },
+  }
+}
+
+const timers: UpdatesTimer[] = []
+afterEach(() => { for (const timer of timers.splice(0)) timer.stop() })
+
+function harness(sources: UpdateSource[], opts: { enabled?: () => boolean; tickMs?: number; firstTickMs?: number; subjectTimeoutMs?: number } = {}): { engine: UpdatesEngine; timer: UpdatesTimer } {
+  const engine = createUpdatesEngine({ storePath: join(testDir, `${randomUUID()}.json`), sources, intervalMs: 3_600_000 })
+  const timer = startUpdatesTimer({
+    engine,
+    settings: () => ({ enabled: opts.enabled?.() ?? true }),
+    tickMs: opts.tickMs ?? 25,
+    firstTickMs: opts.firstTickMs ?? 25,
+    subjectTimeoutMs: opts.subjectTimeoutMs ?? 5_000,
+  })
+  timers.push(timer)
+  return { engine, timer }
+}
+
+describe('scheduled passes', () => {
+  it('a tick observes every due subject with at most two in flight, and nothing is due again until the interval passes', async () => {
+    const plugins = scripted('plugin', ['a', 'b', 'c', 'd'])
+    const releases = ['a', 'b', 'c', 'd'].map((id) => plugins.hold(id))
+    const { engine, timer } = harness([plugins.source])
+    await waitUntil(() => plugins.inFlight.size === 2, { label: 'two subjects in flight' })
+    await settleFor(40, 'the third subject must wait for a slot')
+    expect(plugins.inFlight.size).toBe(2)
+    for (const release of releases) release()
+    await waitUntil(async () => (await engine.snapshot()).records.every((r) => r.outcome === 'current'), { label: 'every subject observed' })
+    expect(plugins.maxInFlight()).toBe(2)
+    expect(await engine.dueSubjects()).toEqual([])
+    await waitUntil(() => !timer.running(), { label: 'pass finished' })
+    await settleFor(60, 'later ticks find nothing due and start nothing')
+    expect(plugins.calls.length).toBe(4)
+  })
+
+  it('a hung subject is timed out, its slot released and its failure recorded; a sibling that finishes keeps its observation', async () => {
+    const plugins = scripted('plugin', ['hung', 'fine', 'after'])
+    plugins.hold('hung') // never released, ignores its signal
+    const { engine } = harness([plugins.source], { subjectTimeoutMs: 60 })
+    await waitUntil(async () => (await engine.snapshot()).records.find((r) => r.id === 'plugin:after')?.outcome === 'current', { label: 'the subject behind the hung one still ran' })
+    await waitUntil(async () => (await engine.snapshot()).records.find((r) => r.id === 'plugin:hung')?.attempt !== undefined, { label: 'the hung subject hit its deadline' })
+    const hung = (await engine.snapshot()).records.find((r) => r.id === 'plugin:hung')!
+    expect(hung.outcome).toBe('unknown')
+    expect(hung.attempt?.error).toMatch(/timed out/)
+    expect(plugins.inFlight.has('hung')).toBe(true) // the source is still stuck — only the slot was released
+    expect((await engine.scheduleFor('plugin:hung'))!.failures).toBe(1)
+    const fine = (await engine.snapshot()).records.find((r) => r.id === 'plugin:fine')!
+    expect(fine.outcome).toBe('current')
+    expect(fine.attempt?.error).toBeUndefined()
+  })
+
+  it('a source that honours its signal fails with the deadline reason through the engine', async () => {
+    const plugins = scripted('plugin', ['slow'])
+    plugins.hold('slow', { honourSignal: true })
+    const { engine } = harness([plugins.source], { subjectTimeoutMs: 40 })
+    await waitUntil(async () => (await engine.snapshot()).records[0]?.attempt?.error !== undefined, { label: 'deadline failure recorded' })
+    expect((await engine.snapshot()).records[0]!.attempt?.error).toMatch(/timed out after/)
+  })
+
+  it('disabled schedules nothing; disabling mid-pass lets the running subjects finish and starts no more', async () => {
+    let enabled = false
+    const plugins = scripted('plugin', ['a', 'b', 'c', 'd'])
+    const { engine, timer } = harness([plugins.source], { enabled: () => enabled })
+    await settleFor(80, 'no scheduled pass while disabled')
+    expect(plugins.calls).toEqual([])
+    const releaseA = plugins.hold('a')
+    const releaseB = plugins.hold('b')
+    enabled = true
+    await waitUntil(() => plugins.inFlight.size === 2, { label: 'pass started with two subjects' })
+    enabled = false
+    releaseA(); releaseB()
+    await waitUntil(() => !timer.running(), { label: 'pass ended' })
+    expect(plugins.calls.sort()).toEqual(['a', 'b'])
+    expect((await engine.snapshot()).records.filter((r) => r.outcome === 'current').map((r) => r.id).sort()).toEqual(['plugin:a', 'plugin:b'])
+  })
+})
+
+describe('check now', () => {
+  it('observes every subject (not only the due ones), optionally filtered by kind or ids, even while disabled', async () => {
+    const plugins = scripted('plugin', ['a', 'b'])
+    const packages = scripted('package', ['p'])
+    const { engine, timer } = harness([plugins.source, packages.source], { enabled: () => false, firstTickMs: 10_000 })
+    await engine.ready
+    const all = await timer.check()
+    expect(all.ids.sort()).toEqual(['package:p', 'plugin:a', 'plugin:b'])
+    expect(all.coalesced).toBe(false)
+    expect((await engine.snapshot()).records.every((r) => r.outcome === 'current')).toBe(true)
+    expect(await engine.dueSubjects()).toEqual([])
+    const kind = await timer.check({ kind: 'package' })
+    expect(kind.ids).toEqual(['package:p'])
+    const ids = await timer.check({ ids: ['plugin:b'] })
+    expect(ids.ids).toEqual(['plugin:b'])
+    expect(plugins.calls.filter((id) => id === 'b').length).toBe(2)
+    expect(packages.calls.length).toBe(2)
+  })
+
+  it('an id outside the inventory is refused with not-found before anything runs', async () => {
+    const plugins = scripted('plugin', ['a'])
+    const { timer } = harness([plugins.source], { firstTickMs: 10_000 })
+    await expect(timer.check({ ids: ['plugin:nope'] })).rejects.toBeInstanceOf(UpdateSubjectNotFoundError)
+    expect(plugins.calls).toEqual([])
+  })
+
+  it('a check during a running pass joins it: unreached subjects are queued, reached ones are not observed twice, and it resolves when the pass ends', async () => {
+    const plugins = scripted('plugin', ['a', 'b', 'c'])
+    const releaseA = plugins.hold('a')
+    const releaseB = plugins.hold('b')
+    const { engine, timer } = harness([plugins.source], { firstTickMs: 10_000 })
+    await engine.ready
+    const first = timer.check({ ids: ['plugin:a', 'plugin:b'] })
+    await waitUntil(() => plugins.inFlight.size === 2, { label: 'a and b in flight' })
+    const second = timer.check({ ids: ['plugin:a', 'plugin:c'] })
+    await settleFor(30, 'the joined check must wait for the pass')
+    expect(plugins.calls).toEqual(['a', 'b'])
+    releaseA(); releaseB()
+    const [one, two] = await Promise.all([first, second])
+    expect(one.coalesced).toBe(false)
+    expect(two.coalesced).toBe(true)
+    expect(plugins.calls).toEqual(['a', 'b', 'c'])
+    expect(timer.running()).toBe(false)
+  })
+})

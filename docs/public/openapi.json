@@ -10642,6 +10642,10 @@
                               "acked",
                               "snoozed"
                             ]
+                          },
+                          "repairTaskId": {
+                            "type": "string",
+                            "minLength": 1
                           }
                         },
                         "required": [
@@ -16456,6 +16460,10 @@
                               "acked",
                               "snoozed"
                             ]
+                          },
+                          "repairTaskId": {
+                            "type": "string",
+                            "minLength": 1
                           }
                         },
                         "required": [
@@ -20999,6 +21007,10 @@
                               "acked",
                               "snoozed"
                             ]
+                          },
+                          "repairTaskId": {
+                            "type": "string",
+                            "minLength": 1
                           }
                         },
                         "required": [

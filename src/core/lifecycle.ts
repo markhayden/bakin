@@ -9,6 +9,7 @@ import * as dispatch from './dispatch'
 import * as watchdog from './watchdog'
 import * as watcher from './watcher'
 import * as doctor from './doctor'
+import { stopUpdates } from './updates/service'
 import { maybeGetAppServices } from './app-services'
 import { shutdownDeliveryBridge } from './delivery'
 import { stopChannelReadiness } from './delivery/readiness'
@@ -121,6 +122,7 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
     dispatch.stop()
     watchdog.stop()
     doctor.stop()
+    stopUpdates()
 
     // Stop file watching
     await watcher.stop()

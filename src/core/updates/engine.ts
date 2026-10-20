@@ -65,6 +65,8 @@ export interface UpdatesEngine {
   scheduleFor(id: string): Promise<UpdateScheduleEntry | undefined>
   /** Observe one subject through its source and apply the result (success or failure). */
   observe(id: string, opts?: ObserveOpts): Promise<UpdateRecord>
+  /** Record a failed attempt without a source result (the timer's deadline); the last good observation survives. */
+  recordFailure(id: string, error: string): Promise<UpdateRecord>
   /** Hide the current available identity until it changes. */
   skip(id: string): Promise<UpdateRecord>
   /** Mark that a check pass is running (for the snapshot's `running`). */
@@ -157,6 +159,16 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
     if (changed.length > 0) log.info('updates reconciled at boot', { changed: changed.length, subjects: inventoryEntries.size })
   })()
 
+  /** The failure branch both `observe` and `recordFailure` share: attempt + backoff, observation untouched. */
+  function applyFailure(id: string, live: UpdateSubjectInventoryEntry, at: string, error: string): void {
+    const previous = file.records[id] ?? unknownRecord(live)
+    const schedule = file.schedule[id] ?? { failures: 0 }
+    const failures = schedule.failures + 1
+    const backoff = Math.min(BACKOFF_BASE_MS * 2 ** (failures - 1), BACKOFF_MAX_MS)
+    file.records[id] = { ...previous, attempt: { at, error } }
+    file.schedule[id] = { ...schedule, lastCheckedAt: at, nextDueAt: iso(now() + backoff), failures }
+  }
+
   function requireEntry(id: string): UpdateSubjectInventoryEntry {
     const entry = inventoryEntries.get(id)
     if (!entry) throw new UpdateSubjectNotFoundError(id)
@@ -224,9 +236,14 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
         publish([id])
         return structuredClone(file.records[id]!)
       }
+      if (!observation) {
+        applyFailure(id, live, at, error ?? 'unknown error')
+        await persist()
+        publish([id])
+        return structuredClone(file.records[id]!)
+      }
       const previous = file.records[id] ?? unknownRecord(live)
-      const schedule = file.schedule[id] ?? { failures: 0 }
-      if (observation) {
+      {
         const next: UpdateRecord = {
           id,
           group: live.group,
@@ -247,12 +264,16 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
         if (previous.skipped && updateIdentityKey(previous.skipped) === updateIdentityKey(next.available)) next.skipped = previous.skipped
         file.records[id] = stripUndefined(next)
         file.schedule[id] = { lastCheckedAt: at, nextDueAt: iso(now() + options.intervalMs), failures: 0 }
-      } else {
-        const failures = schedule.failures + 1
-        const backoff = Math.min(BACKOFF_BASE_MS * 2 ** (failures - 1), BACKOFF_MAX_MS)
-        file.records[id] = { ...previous, attempt: { at, error: error ?? 'unknown error' } }
-        file.schedule[id] = { ...schedule, lastCheckedAt: at, nextDueAt: iso(now() + backoff), failures }
       }
+      await persist()
+      publish([id])
+      return structuredClone(file.records[id]!)
+    },
+
+    async recordFailure(id, error) {
+      await ready
+      const live = requireEntry(id)
+      applyFailure(id, live, iso(now()), error)
       await persist()
       publish([id])
       return structuredClone(file.records[id]!)
