@@ -147,6 +147,14 @@ describe('doctor repair CLI UI', () => {
     expect(rendered).not.toContain("┃ 🐷 Bakin'")
   })
 
+  it('renders a repair_in_flight refusal: holder, held incidents, no task copy (#896)', () => {
+    const refusal = { status: 'repair_in_flight' as const, incidents: delegateReport.incidents, overlapping: delegateReport.incidents.map((incident) => incident.id), heldBy: 'repair:plan-1:search.restart:restart' }
+    const result = renderToString(<DoctorDelegateResult report={refusal} color={false} />)
+    expect(result).toContain('Repair in flight')
+    expect(result).toContain('repair:plan-1:search.restart:restart')
+    expect(result).not.toContain('A board task was created')
+  })
+
   it('renders delegated repair preview and sent result from canonical incidents', () => {
     const preview = renderToString(<DoctorDelegatePreview incidents={delegateReport.incidents} color={false} />)
     const result = renderToString(<DoctorDelegateResult report={delegateReport} color={false} />)

@@ -130,6 +130,26 @@ export async function apiGet(path: string): Promise<unknown> {
   return api(path)
 }
 
+/**
+ * POST whose protocol includes refusals a command must RENDER, not
+ * swallow: an `expect`ed status answers `{ status, body }` with the JSON
+ * body decoded (#896: 409 repair_in_flight); every other non-2xx keeps
+ * today's thrown, formatted error.
+ */
+export async function apiPostExpecting(path: string, body: unknown, expect: readonly number[]): Promise<{ status: number; body: unknown }> {
+  const identityHeaderSet = identityHeaders(await cliIdentity())
+  const res = await fetch(`${serverBaseUrl()}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...CLI_ORIGIN_HEADER, ...identityHeaderSet },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (!res.ok && !expect.includes(res.status)) {
+    const text = await res.text()
+    throw new Error(formatApiError(res.status, text))
+  }
+  return { status: res.status, body: await res.json() }
+}
+
 export async function apiPost(path: string, body?: unknown): Promise<unknown> {
   return api(path, {
     method: 'POST',

@@ -15,7 +15,8 @@ import {
   type OpenRepairWork,
 } from './doctor-repair-store'
 import { createTaskWithEffects, getTaskDetails } from './task-service'
-import { incidentHolder, releaseIncidents, transferIncidents } from './doctor-reservations'
+import { randomUUID } from 'crypto'
+import { incidentHolder, releaseIncidents, reserveIncidents, transferIncidents } from './doctor-reservations'
 
 export interface DoctorDelegateOptions {
   contentDir: string
@@ -31,11 +32,25 @@ export interface DoctorDelegateOptions {
   reservation?: string
 }
 
-export interface DoctorDelegateReport {
+export type DoctorDelegateReport = DoctorDelegateOutcome | DoctorDelegateRefusal
+
+export interface DoctorDelegateOutcome {
   /** `already_delegated`: every targeted incident already has an open repair task (`request` is that work). */
   status: 'confirmation_required' | 'sent' | 'no_unresolved' | 'already_delegated'
   request: DoctorRepairRequest
   incidents: HealthIncident[]
+}
+
+/**
+ * Admission refused (#896 D3.3): a repair or another delegation already
+ * holds at least one targeted incident. Nothing was written — no request,
+ * no task. `overlapping` names the held incidents, `heldBy` the owner token.
+ */
+export interface DoctorDelegateRefusal {
+  status: 'repair_in_flight'
+  incidents: HealthIncident[]
+  overlapping: string[]
+  heldBy: string
 }
 
 export interface DoctorDelegateVerificationReport {
@@ -145,16 +160,25 @@ async function delegateOnce(options: DoctorDelegateOptions): Promise<DoctorDeleg
     if (existing) return { status: 'already_delegated', request: existing, incidents: targeted }
   }
   const observationIds = [...new Set(incidents.flatMap((incident) => incident.observationIds))]
+  // Admission (#896 D3.3): hold the incidents under this delegation's own
+  // token before anything is written. A caller that already holds them
+  // (escalation) hands them over; anyone else reserves afresh and is refused
+  // while a repair or another delegation holds any of them.
+  const delegationToken = `delegation:${randomUUID()}`
+  const delegatedIds = incidents.map((incident) => incident.id)
+  if (options.reservation) {
+    transferIncidents(delegatedIds.filter((id) => incidentHolder(id) === options.reservation), options.reservation, delegationToken)
+  } else if (delegatedIds.length > 0) {
+    const admission = reserveIncidents(delegatedIds, delegationToken)
+    if (admission.status === 'refused') {
+      return { status: 'repair_in_flight', incidents: targeted, overlapping: admission.overlapping, heldBy: admission.heldBy }
+    }
+  }
   const request = createDoctorRepairRequest(options.contentDir, {
     plan,
-    incidentIds: incidents.map((incident) => incident.id),
+    incidentIds: delegatedIds,
     observationIds,
   })
-  const delegationToken = `delegation:${request.id}`
-  if (options.reservation) {
-    const handed = incidents.map((incident) => incident.id).filter((id) => incidentHolder(id) === options.reservation)
-    transferIncidents(handed, options.reservation, delegationToken)
-  }
   try {
     return await persistDelegation(options, request, incidents)
   } finally {

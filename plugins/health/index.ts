@@ -735,7 +735,7 @@ const routes = [
           ...(body.target ? { target: body.target as HealthRepairTarget } : {}),
         })
         return Response.json(report, {
-          status: report.status === 'confirmation_required' ? 409 : 200,
+          status: report.status === 'confirmation_required' || report.status === 'repair_in_flight' ? 409 : 200,
         })
       } catch (err) {
         log.error('Health repair delegation failed', err)
