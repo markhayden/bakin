@@ -19,7 +19,6 @@
  * - `./upgrade-gate` — types, refusal error, consent/manifest gates
  * - `./upgrade-github` — in-place fast-forward + subpath staging-clone lanes
  * - `./upgrade-artifact` — Whiskit published-artifact lane
- * - `./upgrade-check` — the read-only `--check` probe (batched lockfile write)
  * - `./source-tree-sha` — local source-tree hashing
  */
 import { existsSync, cpSync, realpathSync, rmSync } from 'fs'
@@ -56,7 +55,6 @@ import { PLUGIN_STAGES } from './operation-plans'
 import { upgradeGithub, upgradeGithubSubpath } from './upgrade-github'
 
 export { type UpgradeConsent, type UpgradeOptions, type UpgradeResult, UpgradeRefusedError } from './upgrade-gate'
-export { runChecks, type UpgradeAvailability } from './upgrade-check'
 export { isArtifactInstall } from './upgrade-artifact'
 export { computeSourceTreeSha } from './source-tree-sha'
 

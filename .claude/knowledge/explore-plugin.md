@@ -122,9 +122,10 @@ pair (both deleted, along with the `GET /api/curated` host route):
   failures leave the existing cache untouched. NEVER fetched automatically
   (page load does zero network).
 
-`computeUpgradeAvailable(entry)` was extracted from the plugins manifest
-handler into `packages/core/src/plugins/lockfile.ts` so the manifest route
-and explore's join share one implementation.
+The manifest route and Explore's join share ONE "is this an update"
+predicate: `isUpdateOffered(record)` from `@makinbakin/sdk/types` over the
+updates engine's record (`computeUpgradeAvailable` over lockfile markers is
+gone, #1007).
 
 ## Install flows (client)
 

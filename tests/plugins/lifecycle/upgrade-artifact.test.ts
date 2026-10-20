@@ -76,8 +76,8 @@ import { materializeArtifact } from '../../../src/core/whiskit/consumer-install'
 import { addPlugin, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { parseManifestPermissions } from '../../../packages/core/src/plugins/permissions'
 import { httpIndexResolver } from '../../../src/core/whiskit/resolver'
-import { computeUpgradeAvailable, readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
-import { isArtifactInstall, runChecks, upgradePlugin as upgradePluginUnowned } from '../../../src/core/plugins/upgrade'
+import { getPluginLockfilePath, readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
+import { isArtifactInstall, upgradePlugin as upgradePluginUnowned } from '../../../src/core/plugins/upgrade'
 import { owned } from '../../helpers/owning'
 
 // The core install writers assert install-state ownership (#895): call them as an owner.
@@ -163,52 +163,6 @@ async function installVersion(v: string): Promise<string> {
   return installDir
 }
 
-describe('artifact-lane check (runChecks)', () => {
-  it('reports the latest published version instead of probing git', async () => {
-    await publishVersion('0.1.0')
-    const installDir = await installVersion('0.1.0')
-    expect(isArtifactInstall(installDir)).toBe(true)
-
-    // Same version published — no upgrade.
-    let results = await runChecks(['messaging'])
-    expect(results[0].error).toBeUndefined()
-    expect(results[0].upgradeAvailable).toBe(false)
-    expect(results[0].remoteArtifactVersion).toBe('0.1.0')
-
-    // New version published — upgrade available, marker persisted.
-    await publishVersion('0.2.0')
-    results = await runChecks(['messaging'])
-    expect(results[0].upgradeAvailable).toBe(true)
-    expect(results[0].remoteArtifactVersion).toBe('0.2.0')
-
-    const entry = readPluginLockfile().plugins['messaging']
-    expect(entry.remoteArtifactVersion).toBe('0.2.0')
-    expect(entry.lastChecked).toBeDefined()
-  })
-
-  it('a definitive "nothing runs on this Bakin" replaces an earlier positive check (never a stale upgrade marker)', async () => {
-    await publishVersion('0.1.0')
-    await installVersion('0.1.0')
-    await publishVersion('0.2.0')
-    expect((await runChecks(['messaging']))[0].upgradeAvailable).toBe(true)
-
-    // Every published release now targets another host contract family.
-    const indexPath = join(releaseDir, INDEX_FILENAME)
-    const index = readArtifactsIndex(indexPath)
-    for (const version of Object.values(index.plugins.messaging!.versions)) {
-      for (const artifact of Object.values(version.platforms)) artifact.externalsContract = 'react20-some-other-family-v1'
-    }
-    writeArtifactsIndex(indexPath, index)
-
-    const [result] = await runChecks(['messaging'])
-    expect(result).toMatchObject({ upgradeAvailable: false, notice: expect.stringContaining('runs on this Bakin yet') })
-    expect(result.error).toBeUndefined()
-    const entry = readPluginLockfile().plugins['messaging']
-    expect(entry.remoteArtifactVersion).toBe('0.1.0')
-    expect(computeUpgradeAvailable(entry)).toBe(false)
-  })
-})
-
 describe('artifact-lane upgrade (upgradePlugin)', () => {
   it('refetches the latest artifact and atomically replaces the install', async () => {
     await publishVersion('0.1.0')
@@ -235,8 +189,10 @@ describe('artifact-lane upgrade (upgradePlugin)', () => {
     const entry = readPluginLockfile().plugins['messaging']
     expect(entry.version).toBe('0.2.0')
     expect(entry.upgradedAt).toBeDefined()
-    expect(entry.remoteArtifactVersion).toBeUndefined()
-    expect(entry.remoteArtifactRebuild).toBeUndefined()
+    const rawRow = (JSON.parse(readFileSync(getPluginLockfilePath(), 'utf-8')) as { plugins: Record<string, Record<string, unknown>> }).plugins['messaging']!
+    expect(Object.keys(rawRow)).not.toContain('remoteArtifactVersion')
+    expect(Object.keys(rawRow)).not.toContain('remoteArtifactRebuild')
+    expect(Object.keys(rawRow)).not.toContain('lastChecked')
   })
 
   it('S14: a failure after the new tree landed restores the previous artifact install byte for byte', async () => {

@@ -55,9 +55,7 @@ const PluginLockEntrySchema = z.object({
   version: z.string().min(1),        // from bakin-plugin.json
   permissions: z.array(PermissionSchema), // see §3.3
   manifestSha: z.string().min(1),    // sha256 of bakin-plugin.json — drives "permissions changed?"
-  lastChecked: z.string().optional(),// ISO 8601, set by `list --check`
-  remoteHeadSha: z.string().optional(),  // last seen remote HEAD sha (github only)
-  sourceTreeSha: z.string().optional(),  // last seen local source tree sha (local only)
+  sourceTreeSha: z.string().optional(),  // local source tree sha at install/upgrade (local only) — installed provenance; "is there something newer" is the updates engine's record (#1007), never a lockfile marker
   sourceTreeShaAlgo: z.number().int().optional(), // absent = legacy algo 1; 2 = whiskit hashSourceTree (migrated); 3 = the lockfile hasher (the local transfer set)
   installedSkills: z.array(z.string()).optional(), // runtime skills this plugin projected — uninstall allowlist
   installedBins: z.array(z.object({ name, sha256 })).optional(), // binaries this plugin installed into ~/.bakin/bin

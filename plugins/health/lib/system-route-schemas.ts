@@ -178,8 +178,6 @@ export const systemRegistryResponseSchema = z.object({
 const installedPluginSchema = z.object({
   version: z.string().optional(),
   commitSha: z.string().optional(),
-  remoteHeadSha: z.string().optional(),
-  lastChecked: z.string().optional(),
 }).passthrough()
 
 const systemPluginManifestEntrySchema = z.object({
@@ -190,7 +188,8 @@ const systemPluginManifestEntrySchema = z.object({
   source: z.enum(['core', 'github', 'local']),
   installed: installedPluginSchema.nullable(),
   upgradeAvailable: z.boolean(),
-  staleHintDays: nonNegativeInteger.nullable(),
+  /** The updates engine's last successful observation; null for core plugins and before the first one. */
+  updateObservedAt: z.string().nullable().optional(),
   status: z.enum(['active', 'failed']).optional(),
   errorCode: nonEmptyString.optional(),
   errorMessage: z.string().optional(),

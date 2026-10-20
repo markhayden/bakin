@@ -118,48 +118,24 @@ export const PluginLockEntrySchema = z.object({
   permissions: z.array(PermissionSchema),
   /** sha256 of `bakin-plugin.json` — drives the "permissions changed?" check on upgrade. */
   manifestSha: z.string().min(1),
-  /** ISO 8601, set by `bakin plugins list --check`. */
-  lastChecked: z.string().optional(),
-  /** Last seen remote HEAD sha — written by `bakin plugins list --check` (github only). */
-  remoteHeadSha: z.string().refine(
-    s => /^[a-f0-9]{40}$/.test(s),
-    { message: 'remoteHeadSha must be a 40-char lowercase hex sha' },
-  ).optional(),
-  /**
-   * Latest published artifact version observed by `bakin plugins list
-   * --check` (Whiskit artifact installs only). Compared against `version`
-   * to decide upgrade availability — the artifact lane is version-based,
-   * with no remote git sha to fast-forward against.
-   */
-  remoteArtifactVersion: z.string().optional(),
-  /**
-   * `--check` found a compatible REBUILD published under the installed
-   * version while the installed artifact cannot run on this host (a contract
-   * change) — an upgrade even though the version numbers match.
-   */
-  remoteArtifactRebuild: z.boolean().optional(),
   /**
    * Local source-tree sha at install/upgrade time (local only). Symmetric
    * with `commitSha` for github sources — captures what was on disk when
-   * the plugin was last installed/rebuilt.
+   * the plugin was last installed/rebuilt. "Is there something newer" is
+   * the updates engine's record (#1007) — the lockfile holds installed
+   * provenance only, never a check marker.
    */
   sourceTreeSha: z.string().optional(),
   /**
-   * Which hashing algorithm produced `sourceTreeSha`/`lastSourceTreeSha`.
-   * Absent = legacy algorithm 1 (concatenated rel+bytes, skipping only
-   * node_modules/dist/.git). 2 = the canonical Whiskit `hashSourceTree`
-   * (rel+filehash lines, skipping NON_RUNTIME_DIRS + dotfiles) — see
-   * `src/core/plugins/source-tree-sha.ts`. Legacy entries are migrated
-   * to algorithm 2 the first time a check/upgrade observes the source
-   * unchanged under the legacy formula.
+   * Which hashing algorithm produced `sourceTreeSha`. Absent = legacy
+   * algorithm 1 (concatenated rel+bytes, skipping only node_modules/dist/.git).
+   * 2 = the canonical Whiskit `hashSourceTree` (rel+filehash lines, skipping
+   * NON_RUNTIME_DIRS + dotfiles); 3 = the lockfile hasher over the local
+   * transfer set — see `src/core/plugins/source-tree-sha.ts`. Legacy entries
+   * are migrated the first time an upgrade observes the source unchanged
+   * under the legacy formula.
    */
   sourceTreeShaAlgo: z.number().int().optional(),
-  /**
-   * Live source-tree sha last observed by `bakin plugins list --check`
-   * (local only). Symmetric with `remoteHeadSha`. Compared against
-   * `sourceTreeSha` to determine whether an upgrade is available.
-   */
-  lastSourceTreeSha: z.string().optional(),
   /**
    * Runtime skill names (one segment, no slashes) this plugin installed
    * via `defaults/runtime-skills/<name>/SKILL.md` at install/upgrade
@@ -381,24 +357,4 @@ export function addLinkedPlugin(
 /** Type guard — true when the entry was registered via `bakin plugins link`. */
 export function isLinked(entry: PluginLockEntry): boolean {
   return entry.linked === true && typeof entry.linkedSource === 'string' && entry.linkedSource.length > 0
-}
-
-/**
- * Compute upgrade availability from the persisted probe markers written by
- * `bakin plugins list --check` — same source of truth whether or not a check
- * ran this request. Never true for core plugins (they have no lock entry).
- */
-export function computeUpgradeAvailable(entry: PluginLockEntry): boolean {
-  if (entry.type === 'github' && entry.remoteArtifactVersion) {
-    // Whiskit artifact installs are version-based — `--check` records the
-    // latest published artifact version instead of a remote sha.
-    return entry.remoteArtifactRebuild === true || entry.remoteArtifactVersion !== entry.version
-  }
-  if (entry.type === 'github' && entry.remoteHeadSha) {
-    return entry.remoteHeadSha !== entry.commitSha
-  }
-  if (entry.type === 'local' && entry.lastSourceTreeSha && entry.sourceTreeSha) {
-    return entry.lastSourceTreeSha !== entry.sourceTreeSha
-  }
-  return false
 }

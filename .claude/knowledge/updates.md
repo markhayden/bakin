@@ -403,8 +403,9 @@ through a server is an operator action: `bakin update --as human`; an
   incidents-only; no toasts.
 - **System tab:** a plugin's "Update available" is the engine's verdict; its
   "Check for updates" runs the plugin pass. The manifest's `upgradeAvailable`
-  / `staleHintDays` are the same projection (`GET /api/plugins/manifest`,
-  `?check=1` runs the plugin pass and answers with the refreshed projection).
+  / `updateObservedAt` are the same projection (`GET /api/plugins/manifest`,
+  `?check=1` runs the plugin pass and answers with the refreshed projection;
+  `bakin plugins list` renders its stale hint from `updateObservedAt`).
 - **Team / Explore:** `GET /api/agent-packages` joins each managed row with
   its `package:` record (`row.update`); the Explore catalog join reads
   `plugin:`/`package:`/`hub-skill:` records into `updateAvailable`

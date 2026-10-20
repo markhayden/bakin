@@ -1,6 +1,6 @@
 /**
- * Available row per installed plugin (#1007, D7.6): the three probes
- * `upgrade-check.ts` ran synchronously, as async observers — the artifact
+ * Available row per installed plugin (#1007, D7.6): the three probes the
+ * retired `upgrade-check.ts` ran synchronously, as async observers — the artifact
  * index with a persisted validator, `git ls-remote` through `gitArgs` under
  * the observe signal, and the local source-tree comparison. The record id is
  * `plugin:<id>`; the fingerprint carries the lock entry AND the host facts

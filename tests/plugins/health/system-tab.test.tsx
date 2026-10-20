@@ -181,17 +181,17 @@ function systemData(): UseSystemDataResult {
     pluginManifest: resource({ plugins: [
       {
         id: 'broken', name: 'Broken connector', version: '1.0.0', source: 'local',
-        installed: { version: '1.0.0' }, upgradeAvailable: false, staleHintDays: null,
+        installed: { version: '1.0.0' }, upgradeAvailable: false,
         status: 'failed', errorCode: 'MISSING_DEPENDENCY',
         errorMessage: 'Activation stopped before routes were registered.', missingDependencies: ['calendar-api'],
       },
       {
         id: 'assets', name: 'Assets', version: '1.2.0', source: 'core',
-        installed: null, upgradeAvailable: false, staleHintDays: null, status: 'active',
+        installed: null, upgradeAvailable: false, status: 'active',
       },
       {
         id: 'notes', name: 'Notes', version: '1.0.0', latestVersion: '1.1.0', source: 'github',
-        installed: { version: '1.0.0' }, upgradeAvailable: true, staleHintDays: null, status: 'active',
+        installed: { version: '1.0.0' }, upgradeAvailable: true, status: 'active',
       },
     ] }),
     updates: resource({ records: [pluginUpdate('notes')], generatedAt: OBSERVED_AT, running: false }),
@@ -683,7 +683,7 @@ describe('SystemTabView', () => {
     data.pluginManifest = resource<SystemPluginManifestData>({ plugins: [
       {
         id: 'notes', name: 'Notes', version: '1.0.0', latestVersion: '1.1.0', source: 'github',
-        installed: { version: '1.0.0' }, upgradeAvailable: true, staleHintDays: null, status: 'active',
+        installed: { version: '1.0.0' }, upgradeAvailable: true, status: 'active',
       },
     ] })
 
@@ -724,7 +724,7 @@ describe('SystemTabView', () => {
     }] })
     data.pluginManifest = resource<SystemPluginManifestData>({ plugins: [{
       id: 'notes', name: 'Notes', version: '1.0.0', source: 'github', installed: { version: '1.0.0' },
-      upgradeAvailable: false, staleHintDays: null, status: 'failed', errorMessage: 'Activation failed.',
+      upgradeAvailable: false, status: 'failed', errorMessage: 'Activation failed.',
     }] })
 
     render(<SystemTabView data={data} />)

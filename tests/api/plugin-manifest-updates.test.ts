@@ -1,4 +1,4 @@
-/** `GET /api/plugins/manifest` reads the updates engine for `upgradeAvailable`/`staleHintDays`; `?check=1` runs the engine's plugin pass (#1007 B 8.2). */
+/** `GET /api/plugins/manifest` reads the updates engine for `upgradeAvailable`/`updateObservedAt`; `?check=1` runs the engine's plugin pass (#1007 B 8.2/8.6). */
 import { afterAll, afterEach, describe, expect, it, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -38,12 +38,12 @@ mock.module('@/core/plugin-registry', () => ({
 }))
 afterAll(() => { delete process.env.BAKIN_HOME; rmSync(testDir, { recursive: true, force: true }) })
 
-import { get, staleHintDaysOf } from '../../packages/host/src/api/plugins/manifest'
+import { get } from '../../packages/host/src/api/plugins/manifest'
 import { fingerprintOf } from '../../src/core/updates/inventory'
 import { getUpdatesEngine, registerUpdateSource, resetUpdateSources, startUpdates, stopUpdates } from '../../src/core/updates/service'
 import type { UpdateObservation, UpdateSource } from '../../src/core/updates/types'
 
-interface ManifestBody { plugins: Array<{ id: string; upgradeAvailable: boolean; staleHintDays: number | null; updateObservedAt: string | null }> }
+interface ManifestBody { plugins: Array<{ id: string; upgradeAvailable: boolean; updateObservedAt: string | null }> }
 const read = async (query = ''): Promise<ManifestBody> => (await (await get(new Request(`http://localhost/api/plugins/manifest${query}`))).json()) as ManifestBody
 const row = async (query = '') => (await read(query)).plugins.find((p) => p.id === 'notes')!
 
@@ -64,7 +64,7 @@ afterEach(() => { stopUpdates(); resetUpdateSources() })
 describe('GET /api/plugins/manifest — upgrade projection from the updates engine', () => {
   it('without a running engine every user plugin is honestly not-upgradable with no staleness hint; core plugins never are', async () => {
     const body = await read()
-    expect(body.plugins.map((p) => [p.id, p.upgradeAvailable, p.staleHintDays, p.updateObservedAt])).toEqual([['tasks', false, null, null], ['notes', false, null, null]])
+    expect(body.plugins.map((p) => [p.id, p.upgradeAvailable, p.updateObservedAt])).toEqual([['tasks', false, null], ['notes', false, null]])
   })
 
   it('updateObservedAt is the record\'s last successful observation — absent before one, kept across a later failed attempt', async () => {
@@ -109,18 +109,5 @@ describe('GET /api/plugins/manifest — upgrade projection from the updates engi
     // A plain read runs nothing.
     await row()
     expect(plugins.calls).toEqual(['notes', 'notes'])
-  })
-
-  it('staleHintDays comes from the record\'s observedAt (older than 7 days ⇒ the age in days, otherwise null)', async () => {
-    const plugins = scripted(async () => current)
-    registerUpdateSource(plugins.source)
-    const engine = startUpdates(testDir)
-    await engine.ready
-    await engine.observe('plugin:notes')
-    expect((await row()).staleHintDays).toBeNull()
-    const now = Date.parse('2026-10-20T12:00:00.000Z')
-    expect(staleHintDaysOf('2026-10-15T12:00:00.000Z', now)).toBeNull()
-    expect(staleHintDaysOf('2026-10-01T12:00:00.000Z', now)).toBe(19)
-    expect(staleHintDaysOf(undefined, now)).toBeNull()
   })
 })

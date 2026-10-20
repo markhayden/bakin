@@ -74,13 +74,13 @@ published):
   was approved, then activates — and `gateUpgradeConsent` validates a
   supplied consent EVERY time (manifest, permissions, binaries), not only
   when something new needed consent, so a republish between preview and
-  commit bounces. Index reads are bounded (8 s, no retries), concurrent
-  across plugins and cached per source (10 min; failures 1 min), so a slow
-  release host never costs the check its local verdict. A compatible rebuild
-  under the installed version persists as `remoteArtifactRebuild` so
-  `computeUpgradeAvailable` keeps reporting it. No compatible release yet ⇒ the incident
-  says so (`await-compatible-release`) instead of pointing at an upgrade that
-  would refuse. `artifactUpgradeTarget` is the one upgrade decision (a working
+  commit bounces. What the source offers is the updates engine's `plugin:<id>`
+  record (#1007) — the check never reads an index itself, so a slow release
+  host never costs it its local verdict; a compatible rebuild under the
+  installed version is the record's `compatible-rebuild` offer. No compatible
+  release yet ⇒ the incident says so (`await-compatible-release`, the
+  record's `blocked` reason) instead of pointing at an upgrade that would
+  refuse. `artifactUpgradeTarget` is the one upgrade decision (a working
   install only moves forward; a stranded one takes any compatible release;
   "runs" includes the installed artifact's `bakinRange`), shared by the
   upgrade lane and `--check`, so availability never names a release the
@@ -687,11 +687,13 @@ action runs the updates engine's plugin pass (`POST /api/updates/check?source=pl
 and the manifest's own `?check=1` runs that same pass server-side (waited)
 before answering. Core/built-in plugin versions stay sourced from bundled
 plugin exports; user plugin versions come from the lockfile rows, while
-`upgradeAvailable` / `staleHintDays` are projected from the updates engine's
-records (an unskipped `update-available` record; the age of its `observedAt`)
-— the lockfile's check markers are never read by the manifest, and the
-upgrade lanes no longer write them (#1007 B; the markers themselves are
-deleted once the CLI `--check` verbs move to the engine). Exceptions (activation failures and available
+`upgradeAvailable` / `updateObservedAt` are projected from the updates engine's
+records (an unskipped `update-available` record — `isUpdateOffered`; its last
+successful `observedAt`). The lockfile holds installed provenance only: the
+pre-#1007 check markers (`lastChecked`, `remoteHeadSha`,
+`remoteArtifactVersion`, `remoteArtifactRebuild`, `lastSourceTreeSha`) and
+`computeUpgradeAvailable` are gone — a legacy row's markers strip on read,
+never rewritten. Exceptions (activation failures and available
 updates) render before the full inventory. The in-list Update action calls the same
 `POST /api/plugins/upgrade` endpoint as CLI upgrade and handles
 `awaitingConsent` before mutating disk.

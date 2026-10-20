@@ -12,7 +12,7 @@
  * so they don't live in the manifest.
  */
 import { isCorePlugin, pluginRegistry } from '@/core/plugin-registry'
-import { isUpdateOffered, updateStaleDays, type UpdateRecord } from '@makinbakin/sdk/types'
+import { isUpdateOffered, type UpdateRecord } from '@makinbakin/sdk/types'
 import { createLogger } from '@/core/logger'
 import { getUpdatesEngine, getUpdatesTimer } from '@/core/updates/service'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
@@ -22,7 +22,6 @@ import { startStartupSpan } from '@/core/startup-diagnostics'
 
 const log = createLogger('plugin-manifest')
 
-const STALE_HINT_DAYS = 7
 
 interface ManifestPlugin {
   id: string
@@ -38,18 +37,8 @@ interface ManifestPlugin {
   source: 'core' | 'github' | 'local'
   /** Lockfile entry for user-installed plugins; null for core. */
   installed: PluginLockEntry | null
-  /**
-   * True iff a remote update is detected. Always false at C3 — C5 wires
-   * `bakin plugins list --check` to populate `lastChecked` + remote shas
-   * and compute this flag.
-   */
+  /** The updates engine offers an unskipped update for this plugin (`isUpdateOffered` on its `plugin:<id>` record). */
   upgradeAvailable: boolean
-  /**
-   * Days since the engine's last successful observation if older than the
-   * staleness threshold (7 days), otherwise null. Retired in favour of
-   * `updateObservedAt` (8.6).
-   */
-  staleHintDays: number | null
   /** ISO instant of the updates engine's last successful observation of this plugin; null for core plugins and before the first one. */
   updateObservedAt: string | null
   status: 'active' | 'failed'
@@ -61,11 +50,6 @@ interface ManifestPlugin {
 
 interface ManifestResponse {
   plugins: ManifestPlugin[]
-}
-
-/** Days since the engine last successfully observed the plugin when older than the staleness threshold, else null. */
-export function staleHintDaysOf(observedAt: string | undefined, now = Date.now()): number | null {
-  return updateStaleDays(observedAt, now, STALE_HINT_DAYS)
 }
 
 /** Whether the engine's record is an upgrade the operator has not skipped. */
@@ -96,8 +80,8 @@ export async function get(req: Request): Promise<Response> {
       }
     }
     // The engine's records, read once per request: `upgradeAvailable` is an
-    // unskipped offer, `staleHintDays` the age of the last successful
-    // observation. The lockfile's own check markers are never consulted.
+    // unskipped offer, `updateObservedAt` the last successful observation.
+    // The lockfile holds installed provenance only.
     const records = new Map<string, UpdateRecord>()
     const engine = getUpdatesEngine()
     if (engine) for (const record of (await engine.snapshot()).records) records.set(record.id, record)
@@ -120,7 +104,6 @@ export async function get(req: Request): Promise<Response> {
         : (installed?.type ?? 'local')
 
       const record = isCore ? undefined : records.get(`plugin:${entry.id}`)
-      const staleHintDays = staleHintDaysOf(record?.observedAt)
       const upgradeAvailable = upgradeAvailableOf(record)
 
       const plugin: ManifestPlugin = {
@@ -130,7 +113,6 @@ export async function get(req: Request): Promise<Response> {
         source,
         installed,
         upgradeAvailable,
-        staleHintDays,
         updateObservedAt: record?.observedAt ?? null,
         status: entry.status,
         contributes: entry.contributes,

@@ -18,7 +18,7 @@ const registry: SystemRegistryData = { plugins: [
 ] }
 const manifest: SystemPluginManifestData = { plugins: registry.plugins.map(plugin => ({
   id: plugin.id, name: plugin.name, version: plugin.version, source: 'local', status: plugin.status,
-  installed: { version: plugin.version }, upgradeAvailable: plugin.id === 'editorial', latestVersion: '1.1.0', staleHintDays: null,
+  installed: { version: plugin.version }, upgradeAvailable: plugin.id === 'editorial', latestVersion: '1.1.0',
 })) }
 const search: SearchHealthData = { enabled: true, engineReachable: true, tables: [
   { logical: 'bakin_editorial_publication_history', physical: 'bakin_editorial_publication_history_v3_fp123', pluginId: 'editorial', schemaVersion: 3, state: 'migrating', phase: 'parked', healthy: false, docCount: 142, journalPending: 7, lastIndexedAt: 1768474800000, lastRebuildAt: null, legs: [{ name: 'embedding', totalIndexed: 120, rebuilding: true, pending: 22, error: 'Embedding provider temporarily unavailable' }] },
