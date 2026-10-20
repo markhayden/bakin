@@ -26,7 +26,7 @@
  * with a token instead of upgrading; the commit holds install-state and its
  * point of no return is the replace transaction's journal-first rename.
  */
-import { OperationCancelledError, operationOriginFromRequest, type OperationContext, type OperationOutcome } from '@bakin/core/operations'
+import { OperationCancelledError, operationOriginFromRequest, type OperationContext, type OperationOrigin, type OperationOutcome, type StartOperationInput } from '@bakin/core/operations'
 import { createLogger } from '@/core/logger'
 import { upgradePlugin, UpgradeRefusedError, type UpgradeConsent } from '@/core/plugins/upgrade'
 import { PLUGIN_COMMIT_PLAN, PLUGIN_PREVIEW_PLAN, PLUGIN_STAGES, PREVIEW_CODES } from '@/core/plugins/operation-plans'
@@ -41,7 +41,7 @@ import { outcomeFromResponse, startOperationResponse } from '../operations'
 
 const log = createLogger('plugin-upgrade')
 
-interface UpgradeBody {
+export interface UpgradeBody {
   pluginId: string
   accepted?: boolean
   consentToken?: string
@@ -88,11 +88,20 @@ export async function post(req: Request): Promise<Response> {
     }, { status: 400 })
   }
 
+  return startOperationResponse<Record<string, unknown>>(pluginUpgradeOperation(pluginId, body, operationOriginFromRequest(req)))
+}
+
+/**
+ * The upgrade as an operation — preview (nothing held, ends with a consent
+ * token) or commit (install-state, the replace transaction). Shared with
+ * the Updates apply service (#1007 D7.4), which runs the SAME flow.
+ */
+export function pluginUpgradeOperation(pluginId: string, body: UpgradeBody, origin: OperationOrigin): StartOperationInput<Record<string, unknown>> {
   const commit = body.accepted === true
-  return startOperationResponse<Record<string, unknown>>({
+  return {
     kind: commit ? 'upgrade' : 'fetch',
     owner: 'core',
-    origin: operationOriginFromRequest(req),
+    origin,
     title: `${commit ? 'Upgrade' : 'Check for an upgrade to'} ${pluginId}`,
     href: '/health',
     fingerprint: commit
@@ -101,7 +110,7 @@ export async function post(req: Request): Promise<Response> {
     resources: commit ? ['install-state'] : [],
     plan: commit ? PLUGIN_COMMIT_PLAN : PLUGIN_PREVIEW_PLAN,
     run: (op) => runUpgrade(pluginId, body, op),
-  })
+  }
 }
 
 async function runUpgrade(pluginId: string, body: UpgradeBody, op: OperationContext): Promise<OperationOutcome<Record<string, unknown>>> {

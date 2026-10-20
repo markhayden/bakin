@@ -34,10 +34,12 @@ import { registerUpdateSource, resetUpdateSources, startUpdates, stopUpdates } f
 import type { UpdateObservation, UpdateSource } from '../../src/core/updates/types'
 import { waitUntil } from '../helpers/wait'
 
-const call = (handler: (req: Request, url: URL) => Promise<Response>, method: string, path: string) => {
+const call = (handler: (req: Request, url: URL) => Promise<Response>, method: string, path: string, init: { headers?: Record<string, string>; body?: string } = {}) => {
   const url = new URL(`http://localhost${path}`)
-  return handler(new Request(url, { method }), url)
+  return handler(new Request(url, { method, ...init }), url)
 }
+/** The UI/CLI declare the operator (#898); a bare POST is an undeclared caller and is refused. */
+const OPERATOR = { 'X-Bakin-Operator': 'declared' }
 
 function scripted(kind: UpdateSource['kind'], ids: string[], observe: (id: string) => Promise<UpdateObservation>) {
   const calls: string[] = []
@@ -134,6 +136,38 @@ describe('POST /api/updates/:id/skip', () => {
 describe('route declarations', () => {
   it('the three updates routes are declared for the docs and validators', () => {
     const paths = coreRoutes.filter((route) => route.path.startsWith('/api/updates')).map((route) => `${route.method} ${route.path}`).sort()
-    expect(paths).toEqual(['GET /api/updates', 'POST /api/updates/:id/skip', 'POST /api/updates/check'])
+    expect(paths).toEqual(['GET /api/updates', 'GET /api/updates/:id/apply-preview', 'POST /api/updates/:id/apply', 'POST /api/updates/:id/skip', 'POST /api/updates/check'])
+  })
+})
+
+describe('GET /api/updates/:id/apply-preview and POST /api/updates/:id/apply', () => {
+  it('404 for an unknown subject, 409 with the refusal code for nothing to apply, 403 with the refusal code for an agent', async () => {
+    registerUpdateSource(scripted('plugin', ['projects', 'terminal'], async (id) => (id === 'projects' ? available(id) : current)).source)
+    startUpdates(testDir)
+    await call(updatesRoute.check, 'POST', '/api/updates/check?wait=1')
+    const missing = await call(updatesRoute.applyPreview, 'GET', '/api/updates/plugin%3Anope/apply-preview')
+    expect(missing.status).toBe(404)
+    const preview = await call(updatesRoute.applyPreview, 'GET', '/api/updates/plugin%3Aprojects/apply-preview')
+    expect(preview.status).toBe(200)
+    expect(await preview.json()).toMatchObject({ bootId: getBootId(), preview: { id: 'plugin:projects', record: { outcome: 'update-available' }, action: { kind: 'operation' } } })
+    const undeclared = await call(updatesRoute.apply, 'POST', '/api/updates/plugin%3Aterminal/apply')
+    expect(undeclared.status).toBe(403)
+    expect(await undeclared.json()).toMatchObject({ error: 'approval_decision', refusalCode: 'undeclared' })
+    const nothing = await call(updatesRoute.apply, 'POST', '/api/updates/plugin%3Aterminal/apply', { headers: OPERATOR })
+    expect(nothing.status).toBe(409)
+    expect(await nothing.json()).toMatchObject({ bootId: getBootId(), error: 'nothing_to_apply' })
+    const url = new URL('http://localhost/api/updates/plugin%3Aprojects/apply')
+    const agent = await updatesRoute.apply(new Request(url, { method: 'POST', headers: { 'X-Bakin-Agent-Context': 'scout' }, body: '{}' }), url)
+    expect(agent.status).toBe(403)
+    expect(await agent.json()).toMatchObject({ error: 'approval_decision', refusalCode: expect.any(String) })
+    const bad = await updatesRoute.apply(new Request(url, { method: 'POST', headers: OPERATOR, body: '{not json' }), url)
+    expect(bad.status).toBe(400)
+  })
+
+  it('the path matchers only accept their own shapes', () => {
+    expect(updatesRoute.applyPreviewIdFromPath('/api/updates/plugin%3Aprojects/apply-preview')).toBe('plugin:projects')
+    expect(updatesRoute.applyIdFromPath('/api/updates/plugin%3Aprojects/apply')).toBe('plugin:projects')
+    expect(updatesRoute.applyIdFromPath('/api/updates/plugin%3Aprojects/apply-preview')).toBeNull()
+    expect(updatesRoute.skipUpdateIdFromPath('/api/updates/plugin%3Aprojects/apply')).toBeNull()
   })
 })

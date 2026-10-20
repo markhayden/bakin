@@ -154,6 +154,14 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       dispatchWebHandler(req, res, updatesRoute.skip)
       return
     }
+    if (req.method === 'GET' && updatesRoute.applyPreviewIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, updatesRoute.applyPreview)
+      return
+    }
+    if (req.method === 'POST' && updatesRoute.applyIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, updatesRoute.apply)
+      return
+    }
 
     if (url.pathname === '/api/update/status' && req.method === 'GET') {
       dispatchWebHandler(req, res, updateStatusRoute.get)

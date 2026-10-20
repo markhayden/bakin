@@ -4,24 +4,106 @@
  *   GET  /api/updates                       → { bootId, records, generatedAt, running }
  *   POST /api/updates/check[?source=|?id=]  → 202 { bootId, ids, coalesced } (pass runs on; `wait=1` ⇒ 200 with the snapshot)
  *   POST /api/updates/:id/skip              → { bootId, record } · 404 · 409 nothing_to_skip
+ *   GET  /api/updates/:id/apply-preview     → { bootId, preview } · 404 · 409 multiple_covering_approvals
+ *   POST /api/updates/:id/apply             → 202 { operationId, bootId } (D7.4: resolves a covering approval
+ *                                             by its full scope, or runs the subject's own flow) · 403 agents ·
+ *                                             409 scope_changed | approval_required | nothing_to_apply | manual_action
  *
- * Every answer carries the boot id (expired vs restarted). The apply
- * surface (`apply-preview`, `apply`) lives in its own slice. Before the
+ * Every answer carries the boot id (expired vs restarted). Before the
  * engine starts (or on a serverless CLI path) the surface is 503.
  */
+import { z } from 'zod'
+import { approvalProvenanceFromRequest } from '@bakin/core/approvals/provenance'
+import { OperationRejectedError, operationOriginFromRequest } from '@bakin/core/operations'
 import { UPDATE_SUBJECT_KINDS, type UpdateRecord, type UpdatesSnapshot } from '@makinbakin/sdk/types'
+import { ApprovalRefusedError, approvalErrorStatus } from '@/core/approvals/errors'
 import { getBootId } from '@/core/boot-id'
 import { createLogger } from '@/core/logger'
+import { ApplyError, confirmApply, previewApply } from '@/core/updates/apply'
 import { UpdateSubjectNotFoundError } from '@/core/updates/engine'
 import { getUpdatesEngine, getUpdatesTimer } from '@/core/updates/service'
 
 const log = createLogger('updates-routes')
 
 const SKIP_PATH = /^\/api\/updates\/([^/]+)\/skip$/
+const PREVIEW_PATH = /^\/api\/updates\/([^/]+)\/apply-preview$/
+const APPLY_PATH = /^\/api\/updates\/([^/]+)\/apply$/
 
 export function skipUpdateIdFromPath(pathname: string): string | null {
   const match = SKIP_PATH.exec(pathname)
   return match ? decodeURIComponent(match[1]!) : null
+}
+export function applyPreviewIdFromPath(pathname: string): string | null {
+  const match = PREVIEW_PATH.exec(pathname)
+  return match ? decodeURIComponent(match[1]!) : null
+}
+export function applyIdFromPath(pathname: string): string | null {
+  const match = APPLY_PATH.exec(pathname)
+  return match ? decodeURIComponent(match[1]!) : null
+}
+
+const ApplyBodySchema = z.object({
+  approvalId: z.string().min(1).optional(),
+  scopeHash: z.string().min(1).optional(),
+  consentToken: z.string().min(1).optional(),
+})
+
+function applyFailure(err: unknown): Response | null {
+  if (err instanceof ApplyError) return Response.json({ bootId: getBootId(), ...err.body() }, { status: err.status })
+  if (err instanceof OperationRejectedError) return Response.json(err.body, { status: err.httpStatus })
+  const approvalStatus = approvalErrorStatus(err)
+  if (approvalStatus !== null) {
+    return Response.json({
+      bootId: getBootId(),
+      error: 'approval_decision',
+      message: err instanceof Error ? err.message : String(err),
+      // Agent refusal vs a missing declaration, machine-readable (#898 D-H6).
+      ...(err instanceof ApprovalRefusedError ? { refusalCode: err.code } : {}),
+    }, { status: approvalStatus === 404 || approvalStatus === 503 ? 500 : approvalStatus })
+  }
+  return null
+}
+
+export async function applyPreview(_req: Request, url: URL): Promise<Response> {
+  const id = applyPreviewIdFromPath(url.pathname)
+  if (!id) return Response.json({ bootId: getBootId(), error: 'not_found' }, { status: 404 })
+  try {
+    const preview = await previewApply(id)
+    return Response.json({ bootId: getBootId(), preview })
+  } catch (err) {
+    const failure = applyFailure(err)
+    if (failure) return failure
+    throw err
+  }
+}
+
+export async function apply(req: Request, url: URL): Promise<Response> {
+  const id = applyIdFromPath(url.pathname)
+  if (!id) return Response.json({ bootId: getBootId(), error: 'not_found' }, { status: 404 })
+  let raw: unknown = {}
+  const text = await req.text()
+  if (text.trim() !== '') {
+    try {
+      raw = JSON.parse(text)
+    } catch {
+      return Response.json({ bootId: getBootId(), error: 'invalid_body', message: 'Invalid JSON body' }, { status: 400 })
+    }
+  }
+  const parsed = ApplyBodySchema.safeParse(raw)
+  if (!parsed.success) return Response.json({ bootId: getBootId(), error: 'invalid_body', message: parsed.error.issues[0]?.message ?? 'invalid body' }, { status: 400 })
+  try {
+    const result = await confirmApply(id, {
+      ...parsed.data,
+      provenance: approvalProvenanceFromRequest(req),
+      origin: operationOriginFromRequest(req),
+    })
+    return Response.json({ ...result.started, ...(result.approvalId ? { approvalId: result.approvalId } : {}) }, { status: result.started.attached ? 200 : 202 })
+  } catch (err) {
+    const failure = applyFailure(err)
+    if (failure) return failure
+    log.error('Update apply failed to start', err, { id })
+    throw err
+  }
 }
 
 export interface UpdatesListResponse extends UpdatesSnapshot {
