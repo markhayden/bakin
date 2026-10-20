@@ -430,8 +430,8 @@ zero-warning (`bun run lint` passes `--max-warnings 0`): a rule is on and
 clean, off with a reason in the config, or excepted on one line with a
 reason. The two reasoned offs are `no-array-index-key` (index keys are
 correct for the static lists it flags) and `naming-convention-ref-name` (a
-suffix style never adopted); `set-state-in-effect` is off until #966b lands
-the effect-synced-state rewrite.
+suffix style never adopted). `set-state-in-effect` is ON (#966b rewrote the
+164 effect-synced states).
 
 What the preset settled, so new code starts there:
 
@@ -452,6 +452,19 @@ What the preset settled, so new code starts there:
   `const [, rerender] = useReducer((n: number) => n + 1, 0)`.
 - **Class boundaries** reset from props with `getDerivedStateFromProps`, never
   a `setState` in `componentDidUpdate`.
+- **No `setState` in an effect** (`set-state-in-effect`, including through a
+  helper the effect calls). The allowed shapes, in order of preference:
+  `useKeyedState(key, init)` (`@makinbakin/sdk/hooks`) for state that belongs
+  to one subject — a draft per conversation, a form per opening, a snapshot
+  per id — it re-seeds in the same render the key changes; adjusting state
+  during render for a prop change (`const [seen, setSeen] = useState(prop);
+  if (seen !== prop) { setSeen(prop); … }`); the operation's own settle
+  event (`useOperation` / `useInstallOperation` / `usePackageOperation`
+  `onSettle`) for recording an outcome; `useSyncExternalStore` for a value
+  the browser or a registry owns (`useMediaQuery`, the fixture host's
+  readiness); a lazy initializer for anything readable at mount. An effect
+  keeps only the side effect — the fetch, the focus, the listener, the
+  callback to an owner — and its promise callbacks may set state.
 - **Markup:** `<style>{css}</style>`, never `dangerouslySetInnerHTML`;
   `cloneElement` only at the interactive-surface overlay (the one excepted
   composition point).

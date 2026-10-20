@@ -128,10 +128,9 @@ const eslintConfig = defineConfig([
       // lists this flags; the `Ref` name suffix is a style never adopted.
       "@eslint-react/no-array-index-key": "off",
       "@eslint-react/naming-convention-ref-name": "off",
-      // Off until #966b: 164 effect-synced states are rewritten in their own PR.
-      "@eslint-react/set-state-in-effect": "off",
-      // Everything else runs at the preset's severity (#966a fixed every
-      // finding; the gate is zero-warning, so warn and error both block).
+      // Everything else runs at the preset's severity (#966 fixed every
+      // finding — set-state-in-effect last, 164 sites; the gate is
+      // zero-warning, so warn and error both block).
     },
   },
   globalIgnores([
