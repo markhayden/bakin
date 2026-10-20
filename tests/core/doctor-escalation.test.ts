@@ -264,6 +264,15 @@ describe('per-incident cover (bounded, resurfacing — spec D-G1/D-G3)', () => {
     expect(reopenIfLeavingDone).toHaveBeenCalledWith('task-1', 'review', 'health', 'system')
   })
 
+  it('a task closed to ARCHIVED while its incident still fails is reopened through the ledger too — archiving kept its completion row (#896 review r7)', async () => {
+    requests = [coveringRequest(7 * HOUR)] // past the cooldown: closed-while-failing resurfaces
+    taskColumns = { 'task-1': 'archived' }
+    const outcome = await escalate([incident()])
+    expect(taskColumns['task-1']).toBe('review')
+    expect(reopenIfLeavingDone).toHaveBeenCalledWith('task-1', 'review', 'health', 'system')
+    expect(outcome?.resurfacedTaskIds).toEqual(['task-1'])
+  })
+
   it('a stale BLOCKED task is handed back like any other: moved to Review, announced, no reopen (#896 review r6)', async () => {
     requests = [coveringRequest(34 * HOUR)]
     taskColumns = { 'task-1': 'blocked' }

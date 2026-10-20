@@ -184,9 +184,11 @@ async function resurfaceRequest(requestId: string, ctx: ResurfaceContext): Promi
     : verdict.reason === 'closed-unfixed'
       ? 'Health: this task was closed, but its incident still fails — reopened in Review for you.'
       : `Health: not fixed after ${hours}h — handed back to you.`
-  // Only a task leaving Done has a completion row to unfreeze; Blocked, To Do
-  // and In Progress move without touching the ledger.
-  if (escalateTaskToReview(taskId, message) === 'done') reopenIfLeavingDone(taskId, 'review', 'health', 'system')
+  // Only a task leaving Done or Archived has a completion row to unfreeze
+  // (archiving a done task keeps its row — lifecycle, not reopen); Blocked,
+  // To Do and In Progress move without touching the ledger.
+  const left = escalateTaskToReview(taskId, message)
+  if (left === 'done' || left === 'archived') reopenIfLeavingDone(taskId, 'review', 'health', 'system')
   if (!operatorReview) {
     const announced = request.approvalId ? reannounceApproval(request.approvalId) : false
     if (!announced) attachResurfaceApproval({ contentDir: ctx.contentDir, request, incidents: ctx.incidents })
