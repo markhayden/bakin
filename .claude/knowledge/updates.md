@@ -161,8 +161,12 @@ carries gitlinks (submodules) is refused outright — the in-place lane resets
 the superproject only and cannot vouch for a submodule's contents, the
 subpath lane's non-recursive clone would install it EMPTY (scoped to the
 subpath; a submodule elsewhere in a monorepo is nobody's concern). The scan
-streams `git ls-tree -r` (`collectGitlinks`, bounded retained output — a
-large gitlink-free tree never trips a buffer cap) and a genuine no-op never
+is SYNCHRONOUS like every other read a lane makes — a preview holds no
+resources, so no `await` may sit between its reads of the installed
+repository (another operation could replace or remove it in between) — and
+asks git for the object MODE alone (`ls-tree -r --format=%(objectmode)`,
+~7 bytes per entry, so a large gitlink-free tree never approaches a buffer
+cap); paths are listed only to name a refusal, and a genuine no-op never
 lists the tree. Within a
 pass two attempts for one subject never overlap (`Pass.active`): a repeat
 asked for while the first is in flight waits for it, so the engine's

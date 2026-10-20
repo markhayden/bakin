@@ -19,8 +19,23 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', 'storybook-static-public'])
 // Bakin may start one is with `gitArgs(...)` as the argument vector. The
 // lookahead sits right after the comma so whitespace cannot backtrack past it.
 const RAW_GIT_SPAWN = /\b(?:execFileSync|execFile|execFileAsync|spawn|spawnSync)\(\s*['"]git['"]\s*,(?!\s*gitArgs\()/g
+// Bun's array form (`Bun.spawn(['git', ...])`) carries the vector inline: the
+// rest of it must be `...gitArgs(...)`, nothing else (review r12 #3).
+const ARRAY_GIT_SPAWN = /\b(?:Bun\.spawn|Bun\.spawnSync|spawn|spawnSync|execFile|execFileSync)\(\s*\[\s*['"]git['"]\s*,(?!\s*\.\.\.gitArgs\()/g
 // Shell-string spawns cannot carry the vector at all.
 const SHELL_GIT = /\b(?:execSync|exec)\(\s*[`'"]git\s/g
+const PATTERNS = [RAW_GIT_SPAWN, ARRAY_GIT_SPAWN, SHELL_GIT]
+
+/** Line numbers of every git spawn in `text` that does not carry `gitArgs`. */
+function gitSpawnOffenders(text: string): number[] {
+  const lines: number[] = []
+  for (const re of PATTERNS) {
+    re.lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = re.exec(text)) !== null) lines.push(text.slice(0, match.index).split('\n').length)
+  }
+  return lines.sort((a, b) => a - b)
+}
 
 function* sourceFiles(dir: string): Generator<string> {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -39,16 +54,30 @@ describe('git spawns carry the foreground-only config', () => {
       if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) continue
       for (const file of sourceFiles(root)) {
         const text = readFileSync(file, 'utf-8')
-        for (const re of [RAW_GIT_SPAWN, SHELL_GIT]) {
-          re.lastIndex = 0
-          let match: RegExpExecArray | null
-          while ((match = re.exec(text)) !== null) {
-            const line = text.slice(0, match.index).split('\n').length
-            offenders.push(`${relative(ROOT, file)}:${line}`)
-          }
-        }
+        for (const line of gitSpawnOffenders(text)) offenders.push(`${relative(ROOT, file)}:${line}`)
       }
     }
     expect(offenders).toEqual([])
+  })
+
+  it('the scanner has teeth for every spawn form: wrapped calls pass, unwrapped ones are named', () => {
+    const wrapped = [
+      "execFileSync('git', gitArgs(['fetch']), { cwd })",
+      "spawn('git', gitArgs(['ls-remote', url]), opts)",
+      "Bun.spawn(['git', ...gitArgs(['ls-remote', '--', url, ref])], { cwd })",
+      "Bun.spawnSync(['git', ...gitArgs(['rev-parse', 'HEAD'])])",
+      "spawn(['git', ...gitArgs(['status'])])",
+    ].join('\n')
+    expect(gitSpawnOffenders(wrapped)).toEqual([])
+    const unwrapped = [
+      "execFileSync('git', ['fetch'], { cwd })",
+      "spawn('git',   ['ls-remote', url])",
+      "Bun.spawn(['git', 'ls-remote', '--', url, ref], { cwd })",
+      "Bun.spawnSync([ 'git', ...args ])",
+      "spawn(['git', 'status'])",
+      "execSync('git gc --auto')",
+      "exec(`git fetch ${remote}`)",
+    ].join('\n')
+    expect(gitSpawnOffenders(unwrapped)).toEqual([1, 2, 3, 4, 5, 6, 7])
   })
 })

@@ -1,4 +1,4 @@
-/** The gitlink scan streams `git ls-tree -r` with bounded retained output (#1007 review r11 #2). */
+/** The gitlink scan reads object MODES alone (bounded by construction) and names paths only to refuse (#1007 review r11 #2, r12 #1). */
 import { afterAll, describe, expect, it, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -23,43 +23,22 @@ mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
-import { collectGitlinks } from '../../../src/core/plugins/upgrade-github'
+import { countGitlinkModes, gitlinkPathsIn } from '../../../src/core/plugins/upgrade-github'
 
-const BLOB = (n: number) => `100644 blob ${'a'.repeat(40)}\tsrc/deeply/nested/directory/with/a/long/path/component/file-${n}.ts\n`
-const GITLINK = (path: string) => `160000 commit ${'b'.repeat(40)}\t${path}\n`
-
-/** A listing streamed in chunks that split lines at arbitrary byte offsets. */
-function stream(text: string, chunkSize: number): ReadableStream<Uint8Array> {
-  const bytes = new TextEncoder().encode(text)
-  let offset = 0
-  return new ReadableStream({
-    pull(controller) {
-      if (offset >= bytes.length) { controller.close(); return }
-      controller.enqueue(bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)))
-      offset += chunkSize
-    },
-  })
-}
-
-describe('collectGitlinks', () => {
-  it('a gitlink-free listing well past the 10 MiB exec buffer streams through with nothing retained', async () => {
-    let listing = ''
-    let n = 0
-    while (listing.length < 11 * 1024 * 1024) listing += BLOB(n++)
-    const { paths, total } = await collectGitlinks(stream(listing, 64 * 1024))
-    expect(total).toBe(0)
-    expect(paths).toEqual([])
-    expect(n).toBeGreaterThan(90_000)
+describe('the gitlink listing parsers', () => {
+  it('a mode-only listing of a million entries is ~7 MB and counts its gitlinks exactly', () => {
+    const modes = Array.from({ length: 1_000_000 }, (_, i) => (i % 250_000 === 7 ? '160000' : i % 3 === 0 ? '100755' : '100644'))
+    const listing = modes.join('\n') + '\n'
+    expect(listing.length).toBeLessThan(8 * 1024 * 1024)
+    expect(countGitlinkModes(listing)).toBe(4)
+    expect(countGitlinkModes('100644\n100644\n')).toBe(0)
+    expect(countGitlinkModes('')).toBe(0)
   })
 
-  it('gitlinks are found across chunk boundaries, counted in full and named up to the limit', async () => {
-    const listing = BLOB(1) + GITLINK('vendor/one') + BLOB(2) + GITLINK('vendor/two') + GITLINK('vendor/three') + BLOB(3) + GITLINK('tail')
-    for (const chunkSize of [1, 7, 64, 100_000]) {
-      const { paths, total } = await collectGitlinks(stream(listing, chunkSize), 2)
-      expect(total).toBe(4)
-      expect(paths).toEqual(['vendor/one', 'vendor/two'])
-    }
-    // A listing without a trailing newline still yields its last line.
-    expect((await collectGitlinks(stream(GITLINK('last').trimEnd(), 5))).paths).toEqual(['last'])
+  it('paths are named from a mode+path listing up to the limit, gitlinks only, with or without a trailing newline', () => {
+    const listing = '100644 src/index.ts\n160000 vendor/one\n100644 src/x y.ts\n160000 vendor/two\n160000 vendor/three'
+    expect(gitlinkPathsIn(listing, 2)).toEqual(['vendor/one', 'vendor/two'])
+    expect(gitlinkPathsIn(listing)).toEqual(['vendor/one', 'vendor/two', 'vendor/three'])
+    expect(gitlinkPathsIn('100644 a\n')).toEqual([])
   })
 })

@@ -5,6 +5,7 @@
  * against the remote/staged manifest BEFORE any working-tree mutation.
  */
 import { existsSync, cpSync, rmSync } from 'fs'
+import { execFileSync } from 'child_process'
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { gitArgs } from '@bakin/core/net/git-args'
@@ -55,34 +56,27 @@ export function githubCloneUrl(source: string): string {
  * it and compute the manifestSha from the bytes. Identical to what
  * `readManifest` would compute after a checkout.
  */
-/** How many gitlink paths a refusal names — the listing is streamed and never retained beyond these. */
+/** How many gitlink paths a refusal names. */
 const GITLINKS_NAMED = 5
+/** A mode-only listing is ~7 bytes per entry; this covers tens of millions of entries without a cap. */
+const LISTING_MAX_BUFFER = 256 * 1024 * 1024
 
-/**
- * The gitlink (submodule) paths in a streamed `git ls-tree -r` listing,
- * read incrementally with bounded retained output (review r11 #2): a large
- * gitlink-free tree never trips a buffer cap, and at most `limit` paths are
- * kept. A line is `<mode> <type> <sha>\t<path>`; gitlinks are mode 160000.
- */
-export async function collectGitlinks(listing: ReadableStream<Uint8Array>, limit = GITLINKS_NAMED): Promise<{ paths: string[]; total: number }> {
-  const decoder = new TextDecoder()
-  const paths: string[] = []
+/** Gitlink entries in a `git ls-tree -r --format=%(objectmode)` listing (one mode per line). */
+export function countGitlinkModes(listing: string): number {
   let total = 0
-  let rest = ''
-  const take = (line: string): void => {
-    if (!line.startsWith('160000 ')) return
-    total += 1
-    if (paths.length < limit) paths.push(line.slice(line.indexOf('\t') + 1))
+  for (const line of listing.split('\n')) if (line === '160000') total += 1
+  return total
+}
+
+/** Up to `limit` gitlink paths in a `--format=%(objectmode) %(path)` listing. */
+export function gitlinkPathsIn(listing: string, limit = GITLINKS_NAMED): string[] {
+  const paths: string[] = []
+  for (const line of listing.split('\n')) {
+    if (!line.startsWith('160000 ')) continue
+    paths.push(line.slice('160000 '.length))
+    if (paths.length >= limit) break
   }
-  for await (const chunk of listing) {
-    rest += decoder.decode(chunk, { stream: true })
-    const lines = rest.split('\n')
-    rest = lines.pop() ?? ''
-    for (const line of lines) take(line)
-  }
-  rest += decoder.decode()
-  if (rest) take(rest)
-  return { paths, total }
+  return paths
 }
 
 /**
@@ -94,14 +88,23 @@ export async function collectGitlinks(listing: ReadableStream<Uint8Array>, limit
  * lane's non-recursive clone would leave one EMPTY and install an
  * incomplete plugin under that sha. Submodules outside the subpath are
  * someone else's. Unsupported until they are materialized and verified.
+ *
+ * SYNCHRONOUS on purpose (review r12 #1): a preview holds no resources, so
+ * nothing in a lane may await between its reads of the installed
+ * repository — another operation could replace or remove it in between.
+ * The listing asks git for the object MODE alone (~7 bytes per entry, no
+ * paths), so a large gitlink-free tree never approaches a buffer cap
+ * (review r11 #2); paths are listed only to name a refusal.
  */
-async function assertNoGitlinks(id: string, repoDir: string, sha: string, subpath?: string): Promise<void> {
-  const proc = Bun.spawn(['git', ...gitArgs(['ls-tree', '-r', '--', sha, ...(subpath ? [subpath] : [])])], { cwd: repoDir, stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
-  const [{ paths, total }, code, stderr] = await Promise.all([collectGitlinks(proc.stdout), proc.exited, new Response(proc.stderr).text()])
-  if (code !== 0) throw new UpgradeRefusedError(`${id}: could not list ${sha.slice(0, 7)} (git ls-tree exit ${code}): ${stderr.trim().slice(-300)}`)
-  if (total > 0) {
-    throw new UpgradeRefusedError(`${id}: ${sha.slice(0, 7)}${subpath ? ` (${subpath})` : ''} contains git submodules (${paths.join(', ')}${total > paths.length ? ', …' : ''}), which the upgrade cannot verify. Vendor them into the tree or reinstall.`)
-  }
+function assertNoGitlinks(id: string, repoDir: string, sha: string, subpath?: string): void {
+  const scope = subpath ? [subpath] : []
+  const list = (format: string): string => execFileSync('git', gitArgs(['ls-tree', '-r', `--format=${format}`, '--', sha, ...scope]), {
+    cwd: repoDir, encoding: 'utf-8', maxBuffer: LISTING_MAX_BUFFER, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+  })
+  const total = countGitlinkModes(list('%(objectmode)'))
+  if (total === 0) return
+  const paths = gitlinkPathsIn(list('%(objectmode) %(path)'))
+  throw new UpgradeRefusedError(`${id}: ${sha.slice(0, 7)}${subpath ? ` (${subpath})` : ''} contains git submodules (${paths.join(', ')}${total > paths.length ? ', …' : ''}), which the upgrade cannot verify. Vendor them into the tree or reinstall.`)
 }
 
 /** The manifest at an exact commit — the fetched ref's peeled sha, never a remote-tracking name a tag or a qualified ref has no counterpart for. */
@@ -173,7 +176,7 @@ export async function upgradeGithub(
   }
 
   // A genuine no-op never lists the tree; anything else is refused before it is read.
-  await assertNoGitlinks(id, pluginDir, remoteSha)
+  assertNoGitlinks(id, pluginDir, remoteSha)
 
   // Read the remote manifest WITHOUT mutating the working tree. Consent gate
   // runs against this. If the user declines, no disk change happens.
@@ -305,7 +308,7 @@ export async function upgradeGithubSubpath(
       }
     }
 
-    await assertNoGitlinks(id, stagingDir, remoteSha, subpath)
+    assertNoGitlinks(id, stagingDir, remoteSha, subpath)
 
     const subpathDir = join(stagingDir, subpath)
     if (!existsSync(subpathDir)) {
