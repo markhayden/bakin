@@ -83,6 +83,7 @@ export type {
   ProviderCredentialInventory,
   RuntimeConfigChangeKind,
   RestartAdvice,
+  RuntimeCompatibility,
   RuntimeRoutingPolicy,
   RuntimeRoutingSupport,
   CapabilitySet,

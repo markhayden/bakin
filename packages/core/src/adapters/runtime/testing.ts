@@ -1,6 +1,7 @@
 import { writeFileSync } from 'fs'
 import { join } from 'path'
 import type {
+  RuntimeCompatibility,
   AgentRuntimeAdapter,
   ChatChunk,
   CronJob,
@@ -69,6 +70,16 @@ export function mockRestartAdvice(
 ): NonNullable<AgentRuntimeAdapter['restartAdvice']> {
   const isSingle = typeof (advice as RestartAdvice).needed === 'boolean'
   return (change) => (isSingle ? (advice as RestartAdvice) : (advice as Partial<Record<typeof change, RestartAdvice>>)[change])
+}
+
+/**
+ * Opt-in compatibility evidence for the mock (#1007 D7.10). The default
+ * mock omits the member (no external process to be compatible with).
+ *
+ * Usage: `createMockRuntimeAdapter({ compatibility: mockCompatibility({ required: '4', observed: '4', state: 'ok' }) })`
+ */
+export function mockCompatibility(value: RuntimeCompatibility): NonNullable<AgentRuntimeAdapter['compatibility']> {
+  return () => ({ ...value })
 }
 
 /**

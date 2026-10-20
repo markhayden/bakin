@@ -86,7 +86,10 @@ export async function runStartupRecovery(contentDir: string, port: number): Prom
   // ~60 s from now. Sources registered earlier in boot; a failure here
   // leaves Health → Updates empty, never blocks the server.
   try {
+    const { registerCoreUpdateSources } = await import('../updates/sources')
     const { startUpdates } = await import('../updates/service')
+    const { getAppServices } = await import('../app-services')
+    registerCoreUpdateSources({ runtime: () => getAppServices().runtime })
     startUpdates(contentDir)
   } catch (err) {
     log.error('Updates engine failed to start', err)

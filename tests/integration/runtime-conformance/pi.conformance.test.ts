@@ -225,4 +225,4 @@ const target: RuntimeConformanceTarget = {
   },
 }
 
-runRuntimeConformanceSuite('pi (fake provider)', () => target, { cron: 'absent', contextStats: 'present', credentials: 'present', restartAdvice: 'present', resolveId: 'present' })
+runRuntimeConformanceSuite('pi (fake provider)', () => target, { cron: 'absent', contextStats: 'present', credentials: 'present', restartAdvice: 'present', compatibility: 'absent', resolveId: 'present' })

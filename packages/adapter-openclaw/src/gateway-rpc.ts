@@ -14,7 +14,40 @@ const GATEWAY_MAX_PROTOCOL_VERSION = 10
  * advertise minProtocol 1 so an older gateway completes the handshake and we
  * can fail with OUR actionable message instead of a server-side mismatch.
  */
-const GATEWAY_REQUIRED_PROTOCOL = 4
+export const GATEWAY_REQUIRED_PROTOCOL = 4
+
+/** What the last connect handshake reported — the ONLY evidence `compatibility()` answers from (#1007 D7.10). */
+export interface GatewayHandshakeEvidence {
+  protocol: number | null
+  serverVersion: string | null
+  belowFloor: boolean
+  at: string
+}
+
+let lastHandshake: GatewayHandshakeEvidence | null = null
+
+function recordHandshake(payload: unknown): GatewayHandshakeEvidence {
+  const record = isRecord(payload) ? payload : {}
+  const protocol = typeof record.protocol === 'number' ? record.protocol : null
+  const server = isRecord(record.server) ? record.server : {}
+  lastHandshake = {
+    protocol,
+    serverVersion: typeof server.version === 'string' ? server.version : null,
+    belowFloor: protocol === null || protocol < GATEWAY_REQUIRED_PROTOCOL,
+    at: new Date().toISOString(),
+  }
+  return lastHandshake
+}
+
+/** Cached at every connect ACK (accepted or refused for the floor); null until a handshake happened this process. */
+export function lastGatewayHandshake(): GatewayHandshakeEvidence | null {
+  return lastHandshake ? { ...lastHandshake } : null
+}
+
+/** Test seam. */
+export function _resetGatewayHandshakeForTests(): void {
+  lastHandshake = null
+}
 /** tool-stream agent events are only sent to connections declaring this cap. */
 const GATEWAY_CLIENT_CAPS = ['tool-events']
 const DEFAULT_REQUEST_TIMEOUT_MS = 10000
@@ -320,6 +353,7 @@ export class OpenClawGatewayRpcClient {
     // entry can't outlive a wedged handshake; it must never fire first.
     this.sendRequest('connect', params, { timeoutMs: CONNECT_TIMEOUT_MS * 2, expectFinal: false })
       .then((payload) => {
+        recordHandshake(payload)
         const protocolError = protocolFloorError(payload, this.label())
         if (protocolError) {
           this.failConnect(protocolError)

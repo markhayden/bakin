@@ -219,6 +219,27 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
       .rejects.toThrow(/needed must be a boolean/)
   })
 
+  it('fails the compatibility declaration check on a throwing stub, on omission, and on a malformed verdict (#1007)', async () => {
+    const base = createMockRuntimeAdapter()
+    const stubbed = { ...base, compatibility: () => { throw new Error('unsupported') } }
+    await expect(
+      runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(quietTarget(stubbed), { compatibility: 'absent' }),
+    ).rejects.toThrow(/member omission/)
+    await expect(
+      runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(quietTarget(base), { compatibility: 'present' }),
+    ).rejects.toThrow(/omits the member/)
+    const malformed = { ...base, compatibility: () => ({ required: '4', state: 'fine' as unknown as 'ok' }) }
+    await expect(
+      runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(quietTarget(malformed), { compatibility: 'present' }),
+    ).rejects.toThrow(/state must be/)
+    const judgedWithoutEvidence = { ...base, compatibility: () => ({ required: '4', state: 'below-floor' as const }) }
+    await expect(
+      runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(quietTarget(judgedWithoutEvidence), { compatibility: 'present' }),
+    ).rejects.toThrow(/observed value it judged/)
+    const honest = { ...base, compatibility: () => ({ required: '4', observed: '3', observedAt: new Date().toISOString(), state: 'below-floor' as const }) }
+    await runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(quietTarget(honest), { compatibility: 'present' })
+  })
+
   it('fails the threaded-sessionId check', async () => {
     await expect(runtimeConformanceChecks.threadedSendReturnsSessionId(brokenTarget()))
       .rejects.toThrow(/conformance violation: threaded send returned no metadata.sessionId/)
