@@ -16,7 +16,7 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
-import { replacePluginDir } from './replace-transaction'
+import { INSTALL_SENTINEL, replacePluginDir } from './replace-transaction'
 import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
   type UpgradeOptions,
@@ -159,11 +159,15 @@ export async function upgradeGithub(
     id,
     op: 'upgrade',
     place: (dir, previousDir) => {
-    // In-place lane: the new tree is the OLD clone (with the fetched
-    // objects) fast-forwarded — copy the backup in and merge on top.
-    cpSync(previousDir!, dir, { recursive: true, dereference: false })
-    if (localSha !== remoteSha) git(['merge', '--ff-only', remoteSha], dir)
-  },
+      // In-place lane: the new tree is the OLD clone (with the fetched objects)
+      // moved to the reviewed commit EXACTLY (review r8 #1): tracked files are
+      // reset to it and every untracked or ignored leftover — a local edit, a
+      // stale dist, node_modules — is removed (the build regenerates output
+      // and dependencies). Only the transaction's own sentinel survives.
+      cpSync(previousDir!, dir, { recursive: true, dereference: false })
+      git(['reset', '--hard', remoteSha], dir)
+      git(['clean', '-fdx', '-e', INSTALL_SENTINEL, '--', '.'], dir)
+    },
   build: buildUserPlugin,
     bins: gate.bins,
     binIdentity: { pluginId: id, version: newVersion, ref: entry.ref, commitSha: remoteSha },

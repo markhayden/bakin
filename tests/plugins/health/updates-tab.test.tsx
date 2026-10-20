@@ -16,7 +16,7 @@ mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testD
 mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db'), media: join(testDir, 'media') }) }))
 mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => join(testDir, 'openclaw'), getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts), resetOpenClawHome: () => {} }))
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
-import { UpdatesTabView, presentUpdateRecord, visibleUpdateRecords } from '../../../plugins/health/components/updates-tab'
+import { UpdatesTabView, groupHeading, presentUpdateRecord, visibleUpdateRecords } from '../../../plugins/health/components/updates-tab'
 import type { UseHealthResourceResult } from '../../../plugins/health/hooks/use-health-resource'
 import { useUpdatesActions } from '../../../plugins/health/hooks/use-updates'
 import type { UpdatesData } from '../../../plugins/health/lib/updates-route-schema'
@@ -146,6 +146,20 @@ describe('UpdatesTabView — rows and groups (#1007 D7.14)', () => {
     expect(screen.getByText(/Nothing newer was published as of the last successful check; the latest check failed./)).toBeDefined()
     expect(screen.queryByRole('button', { name: /^Update / })).toBeNull()
     expect(visibleUpdateRecords([current, CURRENT], 'available', false).map((r) => r.id)).toEqual([current.id])
+    // The heading counts UPDATES (none) and names the failed check; the tone is neutral (review r8 #3).
+    expect(screen.getByRole('heading', { level: 2, name: 'Available (0 updates, 1 check failed)' })).toBeDefined()
+  })
+
+  it('group headings count updates, never the rows kept visible for a failed check or a block (review r8 #3)', () => {
+    const failedRequired = record({ ...ENGINE, outcome: 'current', available: undefined, reason: undefined, action: undefined, observedAt: CHECKED_AT, attempt: { at: '2026-10-20T11:58:00.000Z', error: 'probe timed out' } })
+    const blocked = record({ ...PLUGIN, id: 'plugin:blocked', subject: { kind: 'plugin', id: 'blocked', label: 'blocked' }, outcome: 'blocked', available: undefined, action: undefined, blockedReason: 'no release runs here' })
+    render(<Harness updates={resource([failedRequired, PLUGIN, blocked])} />)
+    expect(screen.getByRole('heading', { level: 2, name: 'Required (0 updates, 1 check failed)' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 2, name: 'Available (1 update, 1 blocked)' })).toBeDefined()
+    expect(groupHeading('Required', [ENGINE]).label).toBe('Required (1)')
+    expect(groupHeading('Required', [ENGINE]).tone).toBe('danger')
+    expect(groupHeading('Required', [failedRequired]).tone).toBe('neutral')
+    expect(groupHeading('Available', [PLUGIN, blocked]).tone).toBe('accent')
   })
 
   it('presentation + visibility helpers are pure and total', () => {

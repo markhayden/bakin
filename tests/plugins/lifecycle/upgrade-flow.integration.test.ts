@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { execFileSync } from 'child_process'
-import { mkdirSync, rmSync, existsSync, writeFileSync, readdirSync } from 'fs'
+import { mkdirSync, rmSync, existsSync, writeFileSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -288,6 +288,26 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     const qualified = await upgradePlugin('tagref', { expected: { sha: next } })
     expect(qualified.after).toEqual({ version: '1.2.0', commitSha: next })
     expect(headSha(join(testDir, 'plugins', 'tagref'))).toBe(next)
+  })
+
+  it('in-place lane (review r8 #1): a local edit to a tracked file and an untracked leftover never survive — the installed tree is the reviewed commit exactly', async () => {
+    const repo = createBareRepo(testDir, 'pristine-fixture', { ...fixturePluginFiles({ id: 'pristine', version: '1.0.0' }), 'helper.ts': 'export const helper = "reviewed"' })
+    cloneRepoIntoPluginsDir({ pluginId: 'pristine', cloneUrl: repo.cloneUrl })
+    const pluginDir = join(testDir, 'plugins', 'pristine')
+    const installedSha = headSha(pluginDir)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'pristine', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'main', commitSha: installedSha, version: '1.0.0' })))
+    // Someone edits the installed clone by hand and leaves a stray file.
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const helper = "edited locally"')
+    writeFileSync(join(pluginDir, 'stray.txt'), 'leftover')
+    // Upstream changes ONLY the manifest.
+    const manifestOnly = pushCommit(repo.workingClonePath, { 'bakin-plugin.json': JSON.stringify({ ...JSON.parse(fixturePluginFiles({ id: 'pristine', version: '1.0.0' })['bakin-plugin.json']!), version: '1.0.1' }) }, 'manifest only')
+
+    const result = await upgradePlugin('pristine', { expected: { sha: manifestOnly } })
+    expect(result.after.commitSha).toBe(manifestOnly)
+    expect(readFileSync(join(pluginDir, 'helper.ts'), 'utf-8')).toBe('export const helper = "reviewed"')
+    expect(existsSync(join(pluginDir, 'stray.txt'))).toBe(false)
+    expect(execFileSync('git', ['status', '--porcelain', '--ignored'], { cwd: pluginDir, encoding: 'utf-8' }).trim()).toBe('')
+    expect(headSha(pluginDir)).toBe(manifestOnly)
   })
 
   it('refuses to upgrade when remote history was rewritten (force-push)', async () => {

@@ -111,6 +111,23 @@ export function visibleUpdateRecords(records: readonly UpdateRecord[], group: Up
     .sort((left, right) => left.subject.label.localeCompare(right.subject.label) || left.id.localeCompare(right.id))
 }
 
+/**
+ * A group heading counts UPDATES; rows kept visible for another reason
+ * (a failed check, a blocked or unsupported subject) are named separately so
+ * the heading never contradicts the tab badge (review r8 #3).
+ */
+export function groupHeading(name: string, rows: readonly UpdateRecord[]): { label: string; tone: 'neutral' | 'accent' | 'danger'; updates: number } {
+  const updates = rows.filter((row) => row.outcome === 'update-available').length
+  const failed = rows.filter((row) => row.outcome === 'unknown' || laterFailedAttempt(row)).length
+  const blocked = rows.filter((row) => row.outcome === 'blocked' || row.outcome === 'unsupported').length
+  const others = [
+    failed > 0 ? `${failed} ${failed === 1 ? 'check' : 'checks'} failed` : null,
+    blocked > 0 ? `${blocked} blocked` : null,
+  ].filter((part): part is string => part !== null)
+  const label = others.length === 0 ? `${name} (${updates})` : `${name} (${updates} ${updates === 1 ? 'update' : 'updates'}, ${others.join(', ')})`
+  return { label, tone: updates > 0 ? (name === 'Required' ? 'danger' : 'accent') : 'neutral', updates }
+}
+
 export function skippedUpdateCount(records: readonly UpdateRecord[]): number {
   return records.filter((record) => record.outcome === 'update-available' && isUpdateSkipped(record)).length
 }
@@ -270,6 +287,8 @@ export function UpdatesTabView({ updates, actions, showSkipped, onShowSkippedCha
   const required = useMemo(() => visibleUpdateRecords(records, 'required', showSkipped), [records, showSkipped])
   const available = useMemo(() => visibleUpdateRecords(records, 'available', showSkipped), [records, showSkipped])
   const skipped = skippedUpdateCount(records)
+  const requiredHeading = useMemo(() => groupHeading('Required', required), [required])
+  const availableHeading = useMemo(() => groupHeading('Available', available), [available])
   const { state } = actions.apply
   const dialogOpen = UPDATE_APPLY_DIALOG_STATUSES.has(state.status)
   const dialogRecord = state.status === 'idle' ? null : state.record
@@ -328,7 +347,7 @@ export function UpdatesTabView({ updates, actions, showSkipped, onShowSkippedCha
       ) : (
         <Stack gap="section">
           {required.length > 0 && (
-            <ListRowGroup label={`Required (${required.length})`} headerVariant="section" headerTone="danger" headingLevel={2} data-testid="updates-required">
+            <ListRowGroup label={requiredHeading.label} headerVariant="section" headerTone={requiredHeading.tone} headingLevel={2} data-testid="updates-required">
               <ListRows variant="separated" columns={UPDATE_ROW_COLUMNS} columnsAt="lg">
                 {required.map((record) => (
                   <UpdateRow key={record.id} record={record} now={now} focused={focusId === record.id} busy={busy} onApply={(row) => void actions.apply.open(row)} onSkip={(row) => void actions.skip(row)} />
@@ -337,7 +356,7 @@ export function UpdatesTabView({ updates, actions, showSkipped, onShowSkippedCha
             </ListRowGroup>
           )}
           {available.length > 0 && (
-            <ListRowGroup label={`Available (${available.length})`} headerVariant="section" headerTone="accent" headingLevel={2} data-testid="updates-available">
+            <ListRowGroup label={availableHeading.label} headerVariant="section" headerTone={availableHeading.tone} headingLevel={2} data-testid="updates-available">
               <ListRows variant="separated" columns={UPDATE_ROW_COLUMNS} columnsAt="lg">
                 {available.map((record) => (
                   <UpdateRow key={record.id} record={record} now={now} focused={focusId === record.id} busy={busy} onApply={(row) => void actions.apply.open(row)} onSkip={(row) => void actions.skip(row)} />

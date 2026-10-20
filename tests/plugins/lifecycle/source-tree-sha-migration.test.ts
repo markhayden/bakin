@@ -114,11 +114,44 @@ function localEntry(opts: {
   }
 }
 
-describe('computeSourceTreeSha — canonical hasher', () => {
-  it('delegates to the whiskit hashSourceTree (published-artifact formula)', () => {
-    const dir = join(testDir, 'canon')
-    writeFixturePlugin(dir, { id: 'canon', version: '1.0.0' })
-    expect(computeSourceTreeSha(dir)).toBe(hashSourceTree(dir))
+describe('computeSourceTreeSha — the lockfile hasher (algo 3)', () => {
+  it('covers exactly the transfer set: dot entries and nested dist/node_modules are in, root dist/node_modules/.git and the install sentinel are out (#1007 review r8 #2)', () => {
+    const dir = join(testDir, 'transfer-set')
+    writeFixturePlugin(dir, { id: 'transfer-set', version: '1.0.0' })
+    const base = computeSourceTreeSha(dir)
+    // Runtime inputs install keeps are part of the identity…
+    writeFileSync(join(dir, '.runtime.json'), '{"a":1}', 'utf-8')
+    const withDot = computeSourceTreeSha(dir)
+    expect(withDot).not.toBe(base)
+    mkdirSync(join(dir, 'assets', 'dist'), { recursive: true })
+    writeFileSync(join(dir, 'assets', 'dist', 'schema.json'), '{}', 'utf-8')
+    const withNested = computeSourceTreeSha(dir)
+    expect(withNested).not.toBe(withDot)
+    // …while regenerated / non-runtime root trees and the transaction's own marker never are.
+    mkdirSync(join(dir, 'dist'), { recursive: true })
+    writeFileSync(join(dir, 'dist', 'index.js'), 'built', 'utf-8')
+    mkdirSync(join(dir, 'node_modules', 'dep'), { recursive: true })
+    writeFileSync(join(dir, 'node_modules', 'dep', 'index.js'), 'dep', 'utf-8')
+    mkdirSync(join(dir, '.git'), { recursive: true })
+    writeFileSync(join(dir, '.git', 'HEAD'), 'ref: refs/heads/main', 'utf-8')
+    writeFileSync(join(dir, '.bakin-install.json'), '{}', 'utf-8')
+    expect(computeSourceTreeSha(dir)).toBe(withNested)
+    // The Whiskit provenance formula answers a different question and differs on purpose (dot entries, nested dist).
+    expect(computeSourceTreeSha(dir)).not.toBe(hashSourceTree(dir))
+  })
+
+  it('an algo-2 (Whiskit formula) row migrates once when the source is unchanged, and still reports a real change', () => {
+    const dir = join(testDir, 'algo2')
+    writeFixturePlugin(dir, { id: 'algo2', version: '1.0.0' })
+    const stored = hashSourceTree(dir)
+    const same = compareStoredSourceTreeSha({ sourceTreeSha: stored, sourceTreeShaAlgo: 2 }, dir)
+    expect(same.changed).toBe(false)
+    expect(same.needsAlgoMigration).toBe(true)
+    expect(same.liveSha).toBe(computeSourceTreeSha(dir))
+    writeFileSync(join(dir, 'extra.txt'), 'new content', 'utf-8')
+    const diff = compareStoredSourceTreeSha({ sourceTreeSha: stored, sourceTreeShaAlgo: 2 }, dir)
+    expect(diff.changed).toBe(true)
+    expect(diff.needsAlgoMigration).toBe(false)
   })
 
   it('legacy hasher produces a DIFFERENT hash for the same tree (why migration exists)', () => {

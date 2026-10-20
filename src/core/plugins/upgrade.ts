@@ -23,7 +23,7 @@
  * - `./source-tree-sha` — local source-tree hashing
  */
 import { existsSync, cpSync, realpathSync, rmSync } from 'fs'
-import { basename, join } from 'path'
+import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { isCorePlugin } from '@/core/plugin-registry'
 import { assertResourceHeld } from '@bakin/core/operations'
@@ -36,7 +36,7 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
-import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha, computeSourceTreeSha, isOutsideSourceDigest, symlinksIn } from './source-tree-sha'
+import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha, computeSourceTreeSha, copyLocalSource, symlinksIn } from './source-tree-sha'
 import { replacePluginDir } from './replace-transaction'
 import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
@@ -183,13 +183,12 @@ async function upgradeLocal(
   const stagingDir = join(pluginsRoot, `.upgrade-staging-${id}-${Date.now()}-${process.pid}`)
   try {
     // A symlinked source ROOT is resolved so the snapshot is a real directory.
-    // The snapshot carries ONLY what the digest covers: generated output,
-    // dependency trees and dot entries are never copied (the build regenerates
-    // them), and a symlink anywhere inside is refused — the hasher cannot
-    // vouch for what a link points at, so the digest would not cover the
-    // build's inputs.
-    const realSource = realpathSync(sourcePath)
-    cpSync(realSource, stagingDir, { recursive: true, dereference: false, filter: (src) => src === realSource || !isOutsideSourceDigest(basename(src)) })
+    // The snapshot is the install's transfer set (`copyLocalSource` — root
+    // dist/node_modules/.git never ride, everything else does) and the digest
+    // covers exactly that set; a symlink anywhere inside is refused — the
+    // hasher cannot vouch for what a link points at, so the digest would not
+    // cover the build's inputs.
+    copyLocalSource(realpathSync(sourcePath), stagingDir)
     const links = symlinksIn(stagingDir)
     if (links.length > 0) {
       throw new UpgradeRefusedError(`${id}: the source carries symlinked entries (${links.slice(0, 3).join(', ')}${links.length > 3 ? ', …' : ''}) — a reviewed digest cannot cover them. Materialize them and check again.`)
