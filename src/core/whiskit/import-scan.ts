@@ -2,8 +2,9 @@
  * Plugin import scanner — enforces the plugin import contract at build time.
  *
  * Every import in a plugin's source must be one of: relative/absolute, a Node
- * builtin, a host-provided external (React / SDK surface — see externals.ts), or
- * a package declared in the plugin's own package.json. Anything else (app
+ * builtin, a host-provided external (React / SDK surface — see externals.ts;
+ * zod is browser-provided only and must stay declared), or a package declared
+ * in the plugin's own package.json. Anything else (app
  * internals via `@/`, Bakin internals via `@bakin/*`, the retired `@bakin/sdk`,
  * or an undeclared third-party package) is a violation.
  *
@@ -15,9 +16,13 @@
 import { readFileSync, readdirSync, type Dirent } from 'node:fs'
 import { join } from 'node:path'
 import { builtinModules } from 'node:module'
-import { PLUGIN_CLIENT_EXTERNALS } from './externals'
+import { REACT_EXTERNALS, SDK_EXTERNALS } from './externals'
 
-const HOST_PROVIDED_IMPORTS = new Set<string>(PLUGIN_CLIENT_EXTERNALS)
+// React + the SDK surface are provided on BOTH sides (the import map in the
+// browser, the host process on the server). zod is in PLUGIN_CLIENT_EXTERNALS
+// too (#948), but only the browser gets it from the host — a server bundle
+// under --packages external needs it installed, so it stays a declared dep.
+const HOST_PROVIDED_IMPORTS = new Set<string>([...REACT_EXTERNALS, ...SDK_EXTERNALS])
 const BUILTIN_IMPORTS = new Set<string>([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),

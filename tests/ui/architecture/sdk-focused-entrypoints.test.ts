@@ -9,6 +9,7 @@ import {
   PLUGIN_CLIENT_EXTERNALS,
   REACT_EXTERNALS,
   SDK_EXTERNALS,
+  ZOD_EXTERNALS,
 } from '../../../src/core/whiskit/externals'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -89,7 +90,7 @@ describe('focused public SDK entrypoint contract', () => {
     const ui = readJson('packages/ui/package.json')
     const importMap = browserImportMap()
 
-    expect(PLUGIN_CLIENT_EXTERNALS).toEqual([...REACT_EXTERNALS, ...SDK_EXTERNALS])
+    expect(PLUGIN_CLIENT_EXTERNALS).toEqual([...REACT_EXTERNALS, ...SDK_EXTERNALS, ...ZOD_EXTERNALS])
     expect(new Set(PLUGIN_CLIENT_EXTERNALS).size).toBe(PLUGIN_CLIENT_EXTERNALS.length)
     expect(importMap['react-dom']).toBe('/vendor/react-dom.js')
     expect(importMap['react-dom/client']).toBe('/vendor/react-dom.js')
@@ -103,5 +104,16 @@ describe('focused public SDK entrypoint contract', () => {
     expect(ui.dependencies?.['react-dom']).toBeUndefined()
     expect(html.match(/<link rel="stylesheet" href="\/globals\.css"/g)).toHaveLength(1)
     expect(Object.keys(importMap).filter((specifier) => specifier.endsWith('.css'))).toEqual([])
+  })
+
+  it('zod is host-provided in the browser: one vendor bundle behind the import map (#948)', () => {
+    const importMap = browserImportMap()
+
+    expect(ZOD_EXTERNALS).toEqual(['zod'])
+    expect(PLUGIN_CLIENT_EXTERNALS).toContain('zod')
+    expect(importMap['zod']).toBe('/vendor/zod.js')
+    // Only the bare specifier is provided; every zod import in the tree is bare
+    // (no zod/v4, zod/mini), so no sub-path needs a map entry — and none gets one.
+    expect(Object.keys(importMap).filter((specifier) => specifier.startsWith('zod/'))).toEqual([])
   })
 })

@@ -297,6 +297,20 @@ describe('buildPluginWithSystemBun', () => {
     expect(existsSync(join(dir, 'dist'))).toBe(false)
   })
 
+  it('zod is host-provided in the browser but still a declared dependency — an undeclared zod import is rejected (#948)', async () => {
+    // The server bundle runs under --packages external, so zod has to be
+    // installed in the plugin dir; the import scan must not wave it through
+    // just because the import map now provides it to client bundles.
+    const dir = seedPlugin({ withClient: false })
+    writeFileSync(join(dir, 'index.ts'), [
+      `import { z } from 'zod'`,
+      `export default { id: 'demo', activate() { return z.string() } }`,
+      '',
+    ].join('\n'))
+    expect(buildPluginWithSystemBun({ pluginDir: dir })).rejects.toThrow(/zod is not declared in package.json/)
+    expect(existsSync(join(dir, 'dist'))).toBe(false)
+  })
+
   it('surfaces server compile errors as stage-tagged failures with stderr detail', async () => {
     const dir = seedPlugin({ withClient: false })
     writeFileSync(join(dir, 'index.ts'), `import { missing } from './does-not-exist'\nexport default missing\n`)

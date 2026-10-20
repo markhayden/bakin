@@ -1,5 +1,7 @@
 /** The release contract guard: a family change ships only when every official plugin has a compatible release. */
 import { describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { checkContractTransition, contractFromSource, officialPlugins, reportContractGuard } from '../../scripts/check-plugin-contract'
 import type { ArtifactsIndex } from '../../src/core/whiskit/artifacts-index'
 
@@ -65,6 +67,19 @@ describe('checkContractTransition', () => {
 })
 
 describe('guard inputs', () => {
+  it('the shipped contract is the focused family at v2 — a release past v1 is a same-family, guard-free transition (#948)', async () => {
+    const source = readFileSync(join(import.meta.dir, '../../src/core/whiskit/externals.ts'), 'utf8')
+    expect(contractFromSource(source)).toBe('react19-sdk-focused-v2')
+    const result = await checkContractTransition({
+      previousContract: 'react19-sdk-focused-v1',
+      currentContract: contractFromSource(source)!,
+      hostVersion: '0.0.1-rc.42',
+      plugins: PLUGINS,
+      fetchIndex: async () => { throw new Error('must not fetch within one family') },
+    })
+    expect(result).toEqual({ ok: true, reason: 'same-family', checked: [] })
+  })
+
   it('reads the contract out of externals.ts source', () => {
     expect(contractFromSource("export const EXTERNALS_CONTRACT = 'react19-sdk-makinbakin-v2'\n")).toBe('react19-sdk-makinbakin-v2')
     expect(contractFromSource('nothing here')).toBeNull()

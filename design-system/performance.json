@@ -135,10 +135,6 @@
       "bytes": 1814
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-58j7c7nq.js",
-      "bytes": 403294
-    },
-    {
       "path": "packages/host/public/vendor/sdk-shared-5df0ry12.js",
       "bytes": 3566
     },
@@ -195,6 +191,10 @@
       "bytes": 337306
     },
     {
+      "path": "packages/host/public/vendor/sdk-shared-qhhrp0p9.js",
+      "bytes": 11636
+    },
+    {
       "path": "packages/host/public/vendor/sdk-shared-rw9d8kzy.js",
       "bytes": 28402
     },
@@ -225,6 +225,10 @@
     {
       "path": "packages/host/public/vendor/tanstack-router.js",
       "bytes": 98225
+    },
+    {
+      "path": "packages/host/public/vendor/zod.js",
+      "bytes": 395718
     }
   ],
   "pluginClients": [
@@ -238,7 +242,7 @@
       "repository": "bakin-bits-official",
       "pluginId": "messaging",
       "path": "bakin-bits-official/plugins/messaging/dist/client.js",
-      "bytes": 714085
+      "bytes": 251513
     },
     {
       "repository": "bakin-bits-official",
@@ -262,7 +266,7 @@
       "repository": "bakin",
       "pluginId": "brands",
       "path": "plugins/brands/dist/client.js",
-      "bytes": 93477
+      "bytes": 93509
     },
     {
       "repository": "bakin",
@@ -280,7 +284,7 @@
       "repository": "bakin",
       "pluginId": "health",
       "path": "plugins/health/dist/client.js",
-      "bytes": 629847
+      "bytes": 237680
     },
     {
       "repository": "bakin",
@@ -322,7 +326,7 @@
       "repository": "bakin",
       "pluginId": "workflows",
       "path": "plugins/workflows/dist/client.js",
-      "bytes": 749609
+      "bytes": 356801
     }
   ]
 }
