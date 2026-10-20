@@ -1986,8 +1986,9 @@ describe('ActivityTab', () => {
       (options as { failureGroupOffset?: number }).failureGroupOffset === 25
     ))).toBe(true)
     expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '1h', kind: 'all', includeRoutine: true })
-    expect(screen.queryByRole('group', { name: 'API · Search Reindex' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Review failure patterns 1–2 of 40' }))
+    // The clamp lands in the same render as the shrunken total (#966b), so the
+    // last valid page shows with the details still open — the page change
+    // asked for them expanded; nothing collapses on the way back.
     expect(screen.getByRole('group', { name: 'API · Search Reindex' })).toBeDefined()
   })
 

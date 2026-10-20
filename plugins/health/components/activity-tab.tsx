@@ -3,7 +3,7 @@
 import { useQueryState } from '@makinbakin/sdk/hooks'
 import { Alert, AlertDescription, Banner, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Text } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { ActivityBreakdown, type ActivityFailureSelection } from './activity-breakdown'
 import { ActivityEventStream } from './activity-event-stream'
 import {
@@ -153,17 +153,20 @@ export function ActivityTab() {
     setKind(nextValue)
   }
 
-  useEffect(() => {
-    setFailureTarget((current) => current?.filterKey === failureFilterKey ? current : null)
-    setFailureRequest((current) => current?.filterKey === failureFilterKey ? current : null)
-  }, [failureFilterKey])
+  // Adjusted during render (#966b): a selection or deep-link request made
+  // under another filter is dropped in the same pass the filter changes.
+  if (failureTarget && failureTarget.filterKey !== failureFilterKey) setFailureTarget(null)
+  if (failureRequest && failureRequest.filterKey !== failureFilterKey) setFailureRequest(null)
 
-  useEffect(() => {
-    if (pageOffset === undefined || pageLimit === undefined || pageTotal === undefined) return
-    if (pageOffset === 0 || pageOffset < pageTotal || pageOffset !== failureGroupOffset) return
+  // A page past the end (patterns resolved since) clamps to the last page in
+  // the same render the total arrives; the next fetch asks for that page.
+  if (
+    pageOffset !== undefined && pageLimit !== undefined && pageTotal !== undefined
+    && pageOffset !== 0 && pageOffset >= pageTotal && pageOffset === failureGroupOffset
+  ) {
     const lastPageOffset = pageTotal === 0 ? 0 : Math.floor((pageTotal - 1) / pageLimit) * pageLimit
-    setFailurePage({ key: failureFilterKey, offset: lastPageOffset })
-  }, [failureFilterKey, failureGroupOffset, pageLimit, pageOffset, pageTotal])
+    if (lastPageOffset !== failureGroupOffset) setFailurePage({ key: failureFilterKey, offset: lastPageOffset })
+  }
 
   useEffect(() => {
     const pending = pendingDisclosureFocus.current
@@ -179,15 +182,27 @@ export function ActivityTab() {
     pendingDisclosureFocus.current = null
   }, [data, resource.loading])
 
+  // A restore request is attempted once (the ref) and is DONE when the
+  // restored focus lands: the focus event is the handler that clears it
+  // (#966b — nothing is set from the effect itself). The first-pattern target
+  // lives in the failure groups, which report the landed focus back.
+  const restoreAttempted = useRef<number | null>(null)
+  const handleRestoredFocus = useCallback((requestId: number) => {
+    setFailurePageRestore((current) => current?.requestId === requestId ? null : current)
+  }, [])
   useEffect(() => {
-    if (!failurePageRestoreReady) return
-    if (failurePageRestore?.focusTarget === 'disclosure') {
-      const disclosure = document.getElementById('activity-failure-pattern-disclosure')
-      if (!disclosure) return
-      focusActivityElement(disclosure, { block: 'center' })
-    }
-    setFailurePageRestore((current) => current?.requestId === failurePageRestore?.requestId ? null : current)
-  }, [failurePageRestore?.focusTarget, failurePageRestore?.requestId, failurePageRestoreReady])
+    if (!failurePageRestoreReady || !failurePageRestore) return
+    const { requestId, focusTarget } = failurePageRestore
+    if (restoreAttempted.current === requestId) return
+    restoreAttempted.current = requestId
+    if (focusTarget !== 'disclosure') return
+    const disclosure = document.getElementById('activity-failure-pattern-disclosure')
+    if (!disclosure) return
+    const onRestoredFocus = () => handleRestoredFocus(requestId)
+    disclosure.addEventListener('focus', onRestoredFocus, { once: true })
+    focusActivityElement(disclosure, { block: 'center' })
+    return () => disclosure.removeEventListener('focus', onRestoredFocus)
+  }, [failurePageRestore, failurePageRestoreReady, handleRestoredFocus])
 
   useEffect(() => {
     if (!attentionHashWasInitial.current || !data || handledAttentionHash.current) return
@@ -291,6 +306,7 @@ export function ActivityTab() {
               pageFocusRequestId={failurePageRestoreReady && failurePageRestore?.focusTarget === 'first-pattern'
                 ? failurePageRestore.requestId
                 : undefined}
+              onPageFocusRestored={handleRestoredFocus}
               onDetailsExpandedChange={(expanded) => {
                 if (expanded) return
                 if (activeFailureTarget) {

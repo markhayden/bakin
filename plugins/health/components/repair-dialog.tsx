@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import type { HealthRepairTarget } from '@makinbakin/sdk/types'
 import { OperationProgress, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
@@ -46,19 +47,18 @@ export function RepairDialog({
 }) {
   const repair = useRepairPlan(target)
   const { planRepair } = repair
-  const [selected, setSelected] = useState<Set<string>>(() => new Set())
-  const [announcement, setAnnouncement] = useState('')
+  // Per opening (#966b): the selection and the live-region copy reset with `open`.
+  const [selected, setSelected] = useKeyedState<Set<string>>(open, () => new Set())
+  const [announcement, setAnnouncement] = useKeyedState<string>(open, () => (open ? 'Planning repair options.' : ''))
 
   useEffect(() => {
     if (!open) return
-    setSelected(new Set())
-    setAnnouncement('Planning repair options.')
     void planRepair().then((plan) => {
       if (!plan) return
       setSelected(new Set(plan.items.filter((item) => item.safety === 'safe').map((item) => item.id)))
       setAnnouncement(`Repair plan ready with ${plan.items.length} option${plan.items.length === 1 ? '' : 's'}.`)
     })
-  }, [open, planRepair])
+  }, [open, planRepair, setSelected, setAnnouncement])
 
   const selectedItems = useMemo(
     () => repair.plan?.items.filter((item) => selected.has(item.id)) ?? [],
@@ -107,7 +107,7 @@ export function RepairDialog({
           ? 'Repairs applied and the selected issue no longer appears in fresh evidence.'
           : 'Repairs applied, but verification found that the issue still needs attention.')
     onApplied?.()
-  }, [repair.operation, repair.phase, repair.result, onApplied])
+  }, [repair.operation, repair.phase, repair.result, onApplied, setAnnouncement])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

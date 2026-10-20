@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { SearchReadiness, SearchStageStatus } from '@makinbakin/sdk/types'
 import { DisclosurePanel, Grid, Panel, Section } from '@makinbakin/sdk/layout'
 import {
@@ -107,10 +107,13 @@ export function SystemSearchSection({
   const enrichmentUnavailable = telemetry?.enrichmentEvidence?.status === 'unavailable'
   const enrichmentNotConfigured = telemetry?.enrichmentEvidence?.status === 'not_configured'
   const [detailsOpen, setDetailsOpen] = useState(technicalDetailsOpen)
-
-  useEffect(() => {
+  // The owner asking for the technical details opens them in the same render (#966b);
+  // the operator can still close them afterwards.
+  const [openedFor, setOpenedFor] = useState(technicalDetailsOpen)
+  if (openedFor !== technicalDetailsOpen) {
+    setOpenedFor(technicalDetailsOpen)
     if (technicalDetailsOpen) setDetailsOpen(true)
-  }, [technicalDetailsOpen])
+  }
 
   const indexColumns: ReadonlyArray<DataTableColumn<SearchIndexTable>> = [
     {
