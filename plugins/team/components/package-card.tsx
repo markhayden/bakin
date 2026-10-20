@@ -26,9 +26,10 @@ import {
 import { useRouter } from '@makinbakin/sdk/navigation'
 import { Inline, Panel } from '@makinbakin/sdk/layout'
 import { ConfirmDialog, CopyButton, KeyValue, OperationProgress, StatusBadge, type KeyValueItem } from '@makinbakin/sdk/patterns'
-import { toast, useAgentStore, useMainAgentId, usePluginEvent } from '@makinbakin/sdk/hooks'
+import { toast, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { isUpdateOffered } from '@makinbakin/sdk/types'
 import { PackageStateBadge } from './package-state-badge'
+import { packageDisplayState } from '../lib/package-display-state'
 import { AdoptDialog } from './adopt-dialog'
 import { usePackageOperation } from '../hooks/use-package-operation'
 import type { PackageStateRow } from '../types'
@@ -104,16 +105,11 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const hasPackage = Boolean(packageState?.entry && (state === 'managed' || state === 'update-available'))
   const update = packageState?.update
-  const updateAvailable = Boolean((update && isUpdateOffered(update)) || state === 'update-available')
-  const displayState = updateAvailable ? 'update-available' : state
-
-  // The engine observes packages on its schedule (#1007): a changed package
-  // record re-reads the rows so the badge never waits for a page reload.
-  usePluginEvent('updates.changed', (payload) => {
-    const ids = (payload as { ids?: unknown }).ids
-    if (!Array.isArray(ids) || !ids.some((id) => typeof id === 'string' && id.startsWith('package:'))) return
-    void refreshPackageStates()
-  })
+  // ONE derivation with the grid badge; the `updates.changed` re-read lives
+  // with the roster (the host's AgentThemeProvider), so a scheduled engine
+  // pass lands on every Team surface, not only while this card is mounted.
+  const displayState = packageState ? packageDisplayState(packageState) : state
+  const updateAvailable = displayState === 'update-available'
 
   // Sync and remove run as operations (#895): the dialog follows them live and
   // the route's old answer arrives as the operation result.

@@ -186,6 +186,33 @@ describe('joinInstallState', () => {
     }
   })
 
+  it('review r2 #3: a record observed for another installed identity is no answer — the row stays unknown (packages and plugins); a hub skill\'s hub identity is not compared', () => {
+    const src = sources({
+      pluginLock: { version: 1, plugins: { messaging: pluginEntry({ version: '1.1.0' }) } } as InstallStateSources['pluginLock'],
+      packageLock: {
+        version: 1,
+        packages: {
+          'pixel@1.3.0': { kind: 'agent', version: '1.3.0', source: 'github:x/pixel', ref: 'main', commitSha: SHA_B, installedAt: 'now', agentId: 'pixel', state: 'managed' },
+          'hub-weather@0.4.0': { kind: 'skill-pack', version: '0.4.0', source: 'clawhub:weather', ref: '', commitSha: '', installedAt: 'now' },
+        },
+      } as unknown as InstallStateSources['packageLock'],
+    })
+    const records = recordMap([
+      // Observed for 1.0.0 — the lockfile now holds 1.1.0 (just upgraded): no answer, never "update available" for the version just installed.
+      record({ id: 'plugin:messaging', outcome: 'update-available', installed: { version: '1.0.0', display: '1.0.0' }, available: { version: '1.1.0', sha: SHA_B, display: '1.1.0' } }),
+      record({ id: 'package:pixel', outcome: 'update-available', installed: { version: '1.2.0', sha: SHA_A, display: '1.2.0' }, available: { version: '1.3.0', sha: SHA_B, display: '1.3.0' } }),
+      record({ id: 'hub-skill:hub-weather', outcome: 'update-available', installed: { version: '0.4.0', display: '0.4.0' }, available: { version: '0.5.0', display: '0.5.0' } }),
+    ])
+    const [messaging, pixel, weather] = joinInstallState(
+      [entry({ id: 'messaging', kind: 'plugin' }), entry({ id: 'pixel', kind: 'agent' }), entry({ id: 'hub-weather', kind: 'skill-pack' })],
+      src,
+      records,
+    )
+    expect(messaging).toMatchObject({ installed: true, updateAvailable: null, installedVersion: '1.1.0' })
+    expect(pixel).toMatchObject({ installed: true, updateAvailable: null, installedVersion: '1.3.0' })
+    expect(weather).toMatchObject({ installed: true, updateAvailable: true })
+  })
+
   it('updateAvailableOf: unknown and absent are null; blocked and unsupported are not updates', () => {
     expect(updateAvailableOf(undefined)).toBeNull()
     expect(updateAvailableOf(record({ id: 'plugin:x', outcome: 'unknown' }))).toBeNull()

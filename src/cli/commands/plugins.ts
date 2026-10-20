@@ -6,6 +6,7 @@
  * CLI entry's import graph.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { APP_VERSION } from '../../../packages/core/src/constants'
 import { assemblePluginArtifact, indexFromEntries } from '../../core/whiskit/publish'
 import {
@@ -17,6 +18,7 @@ import {
 } from '../../core/whiskit/artifacts-index'
 import { apiGet, apiPost, apiPostJson, cliFetch, jsonObject } from '../http'
 import { operationBody, startAndFollow } from '../operation-command'
+import { currentOperationMode } from '../operation-mode'
 import { print } from '../output'
 import { exitCommandIssue, exitUsage, exitUnknownSubcommand } from '../help'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from '../../core/cli/plugin-install-args'
@@ -165,7 +167,69 @@ async function cmdPluginsPublish(
   console.log(`  index:    ${indexPath}`)
 }
 
+/**
+ * `bakin plugins list` with no server (review r2 #9): the user-installed
+ * plugins from this home's lockfile, joined with the updates engine's
+ * records — `--check` runs the plugin pass in-process (nonpersistent), a
+ * plain list reads the records the server last wrote. Activation state is a
+ * server fact and core plugins are only known to a running server, so both
+ * are honestly absent.
+ */
+type OfflinePluginRow = {
+  id: string
+  name: string
+  version: string
+  source: string
+  installed: unknown
+  upgradeAvailable: boolean
+  updateObservedAt: string | null
+  status: 'unknown'
+}
+
+async function listPluginsInProcess(check: boolean): Promise<{ plugins: OfflinePluginRow[]; note: string }> {
+  const [{ readPluginLockfile }, { isUpdateOffered }, { getContentDir }, { readUpdatesFile }, { UPDATES_FILE_NAME }] = await Promise.all([
+    import('@bakin/core/plugins/lockfile'),
+    import('@makinbakin/sdk/types'),
+    import('../../core/content-dir'),
+    import('../../core/updates/store'),
+    import('../../core/updates/service'),
+  ])
+  const records = new Map<string, Parameters<typeof isUpdateOffered>[0] & { observedAt?: string }>()
+  if (check) {
+    const { checkUpdatesInProcess } = await import('./updates')
+    for (const record of (await checkUpdatesInProcess('plugin')).records) records.set(record.id, record)
+  } else {
+    const file = readUpdatesFile(join(getContentDir(), UPDATES_FILE_NAME))
+    for (const [id, record] of Object.entries(file?.records ?? {})) records.set(id, record)
+  }
+  const plugins = Object.entries(readPluginLockfile().plugins).map(([id, entry]): OfflinePluginRow => {
+    const record = records.get(`plugin:${id}`)
+    return {
+      id,
+      name: id,
+      version: entry.version,
+      source: entry.type,
+      installed: entry,
+      upgradeAvailable: record !== undefined && isUpdateOffered(record),
+      updateObservedAt: record?.observedAt ?? null,
+      status: 'unknown',
+    }
+  })
+  return { plugins, note: 'Bakin is not running: user-installed plugins from the lockfile only (core plugins and activation state need the server).' }
+}
+
 async function cmdPluginsList(opts: { json?: boolean; check?: boolean } = {}): Promise<void> {
+  if (currentOperationMode().kind === 'local') {
+    const { plugins, note } = await listPluginsInProcess(opts.check === true)
+    if (opts.json) { print({ plugins, note }); return }
+    console.error(note)
+    if (process.stdout.isTTY) { await printPluginsListTui(plugins); return }
+    console.log('Installed plugins (lockfile):')
+    for (const plugin of plugins) {
+      console.log(`  ${plugin.id.padEnd(20)} ${plugin.source.padEnd(8)} ${plugin.version.padEnd(8)} ${plugin.upgradeAvailable ? 'update available' : 'unknown'}`)
+    }
+    return
+  }
   const path = opts.check ? '/api/plugins/manifest?check=1' : '/api/plugins/manifest'
   const manifest = await apiGet(path) as { plugins: Array<Record<string, unknown>> }
   if (opts.json) {

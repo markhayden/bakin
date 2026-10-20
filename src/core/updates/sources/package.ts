@@ -65,8 +65,14 @@ export function packageSourceWithRef(source: string, ref: string): string {
   return head.includes('@') ? source : `${head}@${ref}${tail}`
 }
 
-function syncPointer(entry: PackageEntry, id: string): string {
-  return entry.kind === 'agent' ? `bakin agents sync ${entry.agentId ?? id}` : `bakin packages sync ${id}`
+/** The command that applies an update: agents by agent id, packs by the EXACT lockfile key the route looks up (review r2 #2). */
+function syncPointer(entry: PackageEntry, id: string, key: string): string {
+  return entry.kind === 'agent' ? `bakin agents sync ${entry.agentId ?? id}` : `bakin packages sync ${key}`
+}
+
+/** `github:owner/repo@<sha>` — an immutable pin: nothing newer can ever appear under it (review r2 #6). */
+export function isCommitPin(ref: string): boolean {
+  return /^[0-9a-f]{7,40}$/i.test(ref)
 }
 
 export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
@@ -94,11 +100,18 @@ export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
       if (!pkg) throw new Error(`package "${id}" is no longer installed`)
       const { entry } = pkg
       const installed = { version: entry.version, sha: entry.commitSha || undefined, display: entry.version }
-      const action: UpdateAction = { kind: 'manual', pointer: syncPointer(entry, id) }
+      const action: UpdateAction = { kind: 'manual', pointer: syncPointer(entry, id, pkg.key) }
 
       if (isGithubPackageSource(entry.source)) {
-        // An install without `@ref` records an empty ref and tracks the remote's default branch.
         const url = deps.cloneUrl(entry.source)
+        // A commit pin is immutable: the installed commit IS the pin, nothing newer can appear under it.
+        if (entry.ref && isCommitPin(entry.ref)) {
+          const source = { kind: 'git-ref', endpoint: entry.source, ref: entry.ref }
+          return entry.commitSha.toLowerCase().startsWith(entry.ref.toLowerCase())
+            ? { installed, source, outcome: 'current' }
+            : { installed, source, outcome: 'blocked', blockedReason: `the installed commit ${entry.commitSha.slice(0, 7)} is not the pinned ${entry.ref.slice(0, 7)} — reinstall` }
+        }
+        // An install without `@ref` records an empty ref and tracks the remote's default branch.
         const ref = entry.ref || await deps.defaultBranch(url, signal)
         if (!ref) return { installed, outcome: 'blocked', blockedReason: 'the remote has no default branch — reinstall with an explicit @ref' }
         const source = { kind: 'git-ref', endpoint: entry.source, ref }
@@ -108,8 +121,12 @@ export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
         // The ref moved: read the manifest there to name the version on offer.
         // The fetch rides a short-lived checkout cache — a checkout older than
         // the commit just observed is refetched fresh, and what the fresh
-        // checkout holds (not the cached bytes) is the offer.
-        const spec = packageSourceWithRef(entry.source, ref)
+        // checkout holds (not the cached bytes) is the offer. The spec is the
+        // one the updater fetches with (the source as installed; the lock ref
+        // folded in only when it recorded one), so a fresh clone here is the
+        // checkout a sync right after reuses — never two cache keys for one
+        // package (review r2 #5).
+        const spec = entry.ref ? packageSourceWithRef(entry.source, entry.ref) : entry.source
         let manifest = await deps.fetchManifest(spec, signal)
         if (manifest.commitSha && manifest.commitSha !== remote) manifest = await deps.fetchManifest(spec, signal, { fresh: true })
         if (manifest.id !== id) throw new Error(`source manifest id "${manifest.id}" does not match installed package "${id}"`)

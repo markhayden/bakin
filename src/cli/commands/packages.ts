@@ -6,6 +6,7 @@
  */
 import { apiGet, apiPost, apiDelete } from '../http'
 import { exitOnFailure, operationBody, startAndFollow } from '../operation-command'
+import { currentOperationMode } from '../operation-mode'
 import { print } from '../output'
 import { exitUsage, exitUnknownSubcommand, promptYesNo } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
@@ -188,7 +189,22 @@ async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Prom
   exitOnFailure(operation)
 }
 
+/** `--check` with no server: the route's `syncPack({ check })` in-process — report-only, nothing persisted (review r2 #9). */
+async function checkPackageInProcess(packageId: string, flags: AgentsCmdFlags): Promise<void> {
+  const { syncPack } = await import('../../core/agent-packages/sync')
+  let result: Record<string, unknown>
+  try {
+    result = { ok: true, receipt: await syncPack(packageId, { check: true }) }
+  } catch (err) {
+    result = { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+  if (!flags.json && process.stdout.isTTY) await printPackageActionTui({ action: 'checked', scope: 'package', target: packageId, result })
+  else print(result)
+  if (result.ok === false) process.exit(1)
+}
+
 async function cmdPackagesSync(packageId: string, flags: AgentsCmdFlags): Promise<void> {
+  if (flags.check && currentOperationMode().kind === 'local') { await checkPackageInProcess(packageId, flags); return }
   const body: Record<string, unknown> = {}
   if (flags.check) body.check = true
   const operation = await startAndFollow(() => apiPost(`/api/packages/${encodeURIComponent(packageId)}/sync`, body), { json: Boolean(flags.json) })

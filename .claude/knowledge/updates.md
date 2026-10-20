@@ -96,8 +96,22 @@ child on abort.
 The lockfile is partitioned ONCE by provenance: a skill-pack whose installed
 manifest carries `upstream` is a `hub-skill` subject, every other entry a
 `package` — never both; when one id is installed under several keys (a
-superseded version not yet forgotten) the newest wins. The subject id is the
-package id (the lock key without its version). A github package is compared
+superseded version not yet forgotten) the newest wins
+(`canonicalPackageEntries`, the ONE selection Team, Explore and
+`findAgentPackage` share). The subject id is the package id (the lock key
+without its version); the manual action names the EXACT lock key for packs
+(`bakin packages sync notes@1.0.0`) and the agent id for agents. An install
+without `@ref` records an empty lock ref and tracks the remote's DEFAULT
+branch (`git ls-remote --symref HEAD`); `@<sha>` is an immutable commit pin
+(current while the installed commit is the pin, blocked otherwise, never
+asked of `ls-remote`). The lock `ref` is the TRACKING ref (`trackingRefOf`):
+a re-install that fetched a selected commit while tracking the default
+branch keeps the empty ref. Manifest clones ride the 5-minute GitHub
+checkout cache under the SAME spec the updater fetches with (the source as
+installed, the lock ref folded in only when recorded); a cached checkout
+older than the observed commit is refetched `fresh`, the git child dies
+with the observe signal, and a retired or expired checkout directory is
+deleted (one directory per key). A github package is compared
 by `ls-remote` against the installed commit and its manifest is fetched (a
 staged clone, removed after) ONLY when the ref moved, to name the version on
 offer — same version, newer commit is still an update, named by the commit; a
@@ -409,9 +423,16 @@ through a server is an operator action: `bakin update --as human`; an
 - **Team / Explore:** `GET /api/agent-packages` joins each managed row with
   its `package:` record (`row.update`); the Explore catalog join reads
   `plugin:`/`package:`/`hub-skill:` records into `updateAvailable`
-  (true / false / null = unknown). Neither route probes; Explore's "Check for
-  updates" is `POST /api/updates/check?wait=1` + a re-read, and both follow
-  `updates.changed`.
+  (true / false / null = unknown). A record observed for ANOTHER installed
+  identity (`updateRecordMatchesInstalled` — a reinstall the engine has not
+  reconciled yet) is never attached, and `agent_pkg:changed` (install, sync,
+  remove) refreshes the inventory at once so such records retire. Neither
+  route probes; Explore's "Check for updates" is `POST
+  /api/updates/check?wait=1` + a re-read ("couldn't be checked" = rows still
+  unknown + attempts that failed over an earlier verdict), the roster's
+  `updates.changed` re-read lives in the host `AgentThemeProvider` (grid
+  badge and detail card derive `update-available` through ONE
+  `packageDisplayState`), and Explore follows `updates.changed` too.
 - **Overview:** an incident whose resources name an offered update (plugin
   id, the search-engine service, the embedder setting, the active runtime)
   links "View update" to its row by record id — identity, never copy.
@@ -425,8 +446,22 @@ through a server is an operator action: `bakin update --as human`; an
   (`sources/package-wiring.ts`, the same two the server registers) observe
   directly and nothing is persisted. The receipt's `versionAfter`/`commitAfter`
   come from `available`, `changed` = `update-available`; a `blocked` outcome
-  is logged on the operation. The sync verbs themselves stay HTTP (they are
-  operations on the server); the checker module is gone.
+  is logged on the operation. The answer is THIS admission's attempt result
+  (`CheckRun.results`/`errors`, the attempt's first settlement) — never a
+  snapshot read a sibling's later re-observation could have overwritten. An
+  exact versioned key that is not the install's canonical key is refused
+  (`PackageSupersededError`), never silently answered with the newer
+  install's verdict. The checker module is gone.
+- **CLI `--check` without a server:** `bakin agents sync [<id>] --check`,
+  `bakin packages sync <key> --check` and `bakin plugins list [--check]`
+  run in-process when `server.lock` names no live server (an explicit
+  `BAKIN_URL` is server-only): the same `syncAgent`/`syncPack({ check })` the
+  routes run (report-only, no resource, nothing persisted) and, for plugins,
+  the lockfile's user plugins joined with the engine's records (`--check`
+  runs the plugin pass in-process on a scratch store; a plain list reads
+  the records the server last wrote; activation state and core plugins
+  are a server fact and are honestly absent). A sync that WRITES still needs
+  the server's operation.
 - **CLI:** `bakin updates [--check] [--source <kind>] [--json]` (serverless
   `--check` builds the engine in-process over this home), `updates skip <id>`,
   `updates apply <id> [--yes] --as human` (preview → confirm → follow; the

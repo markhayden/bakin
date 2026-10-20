@@ -306,10 +306,11 @@ describe('GET /api/agent-packages', () => {
       ['package:examples/pixel', record('package:examples/pixel', 'update-available')],
       ['package:orca', record('package:orca', 'current')],
     ])
+    const lockEntry = (version: string, commitSha = '') => ({ kind: 'agent' as const, version, source: 'github:examples/pixel', ref: 'main', commitSha, installedAt: '2026-10-01T00:00:00.000Z' })
     const rows = joinPackageUpdates([
-      { agentId: 'pixel', state: 'managed', packageId: 'examples/pixel@0.1.0' },
-      { agentId: 'orca', state: 'managed', packageId: 'orca' },
-      { agentId: 'ghost', state: 'managed', packageId: 'ghost@1.0.0' },
+      { agentId: 'pixel', state: 'managed', packageId: 'examples/pixel@0.1.0', entry: lockEntry('0.1.0') },
+      { agentId: 'orca', state: 'managed', packageId: 'orca', entry: lockEntry('1.0.0') },
+      { agentId: 'ghost', state: 'managed', packageId: 'ghost@1.0.0', entry: lockEntry('1.0.0') },
       { agentId: 'free', state: 'unmanaged' },
     ], records)
 
@@ -317,6 +318,24 @@ describe('GET /api/agent-packages', () => {
     expect(rows[1]?.update?.outcome).toBe('current')
     expect(rows[2]?.update).toBeUndefined()
     expect(rows[3]?.update).toBeUndefined()
+  })
+
+  it('review r2 #3: a record observed for ANOTHER installed identity (a reinstall the engine has not reconciled yet) is never attached — it would offer the version just installed', () => {
+    const offer: UpdateRecord = {
+      id: 'package:pixel', group: 'available', subject: { kind: 'package', id: 'pixel', label: 'pixel' },
+      installed: { version: '0.1.0', sha: 'a'.repeat(40), display: '0.1.0' }, available: { version: '0.2.0', sha: 'b'.repeat(40), display: '0.2.0' },
+      reason: 'newer-version', outcome: 'update-available', source: { kind: 'git-ref', endpoint: 'github:examples/pixel' }, fingerprint: 'fp',
+    }
+    const records = new Map([['package:pixel', offer]])
+    const lockEntry = (version: string, commitSha: string) => ({ kind: 'agent' as const, version, source: 'github:examples/pixel', ref: 'main', commitSha, installedAt: '2026-10-01T00:00:00.000Z' })
+    const [stillOld, justUpdated, sameVersionOtherCommit] = joinPackageUpdates([
+      { agentId: 'pixel', state: 'managed', packageId: 'pixel@0.1.0', entry: lockEntry('0.1.0', 'a'.repeat(40)) },
+      { agentId: 'pixel', state: 'managed', packageId: 'pixel@0.2.0', entry: lockEntry('0.2.0', 'b'.repeat(40)) },
+      { agentId: 'pixel', state: 'managed', packageId: 'pixel@0.1.0', entry: lockEntry('0.1.0', 'c'.repeat(40)) },
+    ], records)
+    expect(stillOld?.update?.outcome).toBe('update-available')
+    expect(justUpdated?.update).toBeUndefined()
+    expect(sameVersionOtherCommit?.update).toBeUndefined()
   })
 })
 

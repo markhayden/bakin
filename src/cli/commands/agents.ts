@@ -8,6 +8,7 @@
  */
 import { apiGet, apiPost, apiDelete } from '../http'
 import { exitOnFailure, operationBody, startAndFollow } from '../operation-command'
+import { currentOperationMode } from '../operation-mode'
 import { print, printTable } from '../output'
 import { exitUsage, exitUnknownSubcommand, confirmPrompt } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
@@ -288,7 +289,42 @@ async function cmdAgentPackagesDelete(agentId: string, flags: AgentsCmdFlags): P
   await cmdAgentPackagesRemove(agentId, { ...flags, deleteAgent: true })
 }
 
+/**
+ * `--check` with no server runs in-process (review r2 #9): the same
+ * `syncAgent({ check })` the route runs — report-only, nothing written, no
+ * resource held, the upstream question asked of the updates observer with
+ * nothing persisted. A sync that WRITES still needs the server's operation.
+ */
+async function checkAgentPackagesInProcess(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
+  const [{ syncAgent }, { listAllAgentStates }, { createAppServices, maybeGetAppServices }] = await Promise.all([
+    import('../../core/agent-packages/sync'),
+    import('../../core/agent-packages/agent-state'),
+    import('../../core/app-services'),
+  ])
+  if (!maybeGetAppServices()) await createAppServices()
+  const checkOne = async (id: string): Promise<Record<string, unknown>> => {
+    try {
+      return { ok: true, receipt: await syncAgent(id, { check: true, trigger: 'cli' }) }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+  const targets = agentId ? [agentId] : (await listAllAgentStates()).filter((a) => a.state !== 'absent').map((a) => a.agentId)
+  const actions: PackageActionData[] = []
+  let anyFailed = false
+  for (const id of targets) {
+    const result = await checkOne(id)
+    if (result.ok === false) anyFailed = true
+    if (!flags.json && process.stdout.isTTY) { actions.push({ action: 'checked', scope: 'agent', target: id, result }); continue }
+    if (!agentId) console.log(`${id}:`)
+    print(result)
+  }
+  if (!flags.json && process.stdout.isTTY) await printPackageActionTui(actions)
+  if (anyFailed) process.exit(1)
+}
+
 async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
+  if (flags.check && currentOperationMode().kind === 'local') { await checkAgentPackagesInProcess(agentId, flags); return }
   const body: Record<string, unknown> = {}
   if (flags.check) body.check = true
   if (flags.reclaimAll) body.reclaim = 'all'

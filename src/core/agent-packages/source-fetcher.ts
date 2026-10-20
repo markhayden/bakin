@@ -95,7 +95,7 @@ interface ParsedGithubSpec {
 const GITHUB_PREFIX = 'github:'
 
 /** True iff the input looks like a github source spec. */
-function isGithubSource(source: string): boolean {
+export function isGithubSource(source: string): boolean {
   return source.startsWith(GITHUB_PREFIX)
 }
 

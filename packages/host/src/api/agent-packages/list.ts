@@ -11,7 +11,7 @@
  * The Teams UI uses this for state badges; the CLI uses it for
  * `bakin agents list`. Distinct from `/api/agents` (runtime status).
  */
-import type { UpdateRecord } from '@makinbakin/sdk/types'
+import { updateRecordMatchesInstalled, type UpdateRecord } from '@makinbakin/sdk/types'
 import { listAllAgentStates, type AgentStateInfo } from '@/core/agent-packages/agent-state'
 import { getUpdatesEngine } from '@/core/updates/service'
 import { packageIdOfKey } from '@/core/updates/sources/package'
@@ -32,7 +32,9 @@ async function packageRecords(): Promise<ReadonlyMap<string, UpdateRecord>> {
 export function joinPackageUpdates(states: readonly AgentStateInfo[], records: ReadonlyMap<string, UpdateRecord>): AgentPackageRow[] {
   return states.map((state) => {
     const record = state.packageId ? records.get(`package:${packageIdOfKey(state.packageId)}`) : undefined
-    return record ? { ...state, update: record } : state
+    // A record observed for another installed identity (the engine has not reconciled a reinstall yet) is no answer for this row.
+    if (!record || !state.entry || !updateRecordMatchesInstalled(record, { version: state.entry.version, sha: state.entry.commitSha || undefined })) return state
+    return { ...state, update: record }
   })
 }
 

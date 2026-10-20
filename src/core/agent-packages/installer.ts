@@ -31,6 +31,7 @@ import { existsSync, rmSync, statSync } from 'fs'
 import type { OperationContext } from '@makinbakin/sdk/types'
 import { commitStaging } from '../install-core/transaction'
 import { createLogger } from '../logger'
+import { announceAgentPackagesChanged } from './change-events'
 import { SkillRefusalError } from './errors'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
@@ -50,8 +51,7 @@ import {
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import {
   type FetchedSource,
-  fetchSourceAsync,
-} from './source-fetcher'
+  fetchSourceAsync, isGithubSource, parseGithubSpec } from './source-fetcher'
 import {
   resolveDependenciesAsync,
   type ResolvedDep,
@@ -321,6 +321,19 @@ function manifestToCreateAgent(manifest: Manifest): AdapterCreateAgentInput {
 }
 
 // ─── Main install function ───────────────────────────────────────────────────
+
+/**
+ * The lock `ref` is the TRACKING ref, never the fetched identity (review r2
+ * #7): a re-install that fetched `github:acme/skills@<sha>#tools` while
+ * tracking `github:acme/skills#tools` records an empty ref (the default
+ * branch), and one tracking `@v2` records `v2` — the updates engine derives
+ * github tracking from this ref, the commit from `commitSha`. Without a
+ * tracking source (or for clawhub/local tracking) the fetched ref stands.
+ */
+export function trackingRefOf(trackingSource: string | undefined, fetchedRef: string): string {
+  if (!trackingSource || !isGithubSource(trackingSource)) return fetchedRef
+  return parseGithubSpec(trackingSource).ref ?? ''
+}
 
 export async function installPackage(options: InstallOptions): Promise<InstallResult> {
   // The caller owns install-state — an install operation, or a local one
@@ -607,7 +620,7 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
       kind: manifest.kind,
       version: manifest.version,
       source: options.trackingSource ?? options.source,
-      ref: topFetched.ref,
+      ref: trackingRefOf(options.trackingSource, topFetched.ref),
       commitSha: topFetched.commitSha,
       installedAt,
       projections: parentResult.projections,
@@ -629,6 +642,7 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     nextLock = addPackage(nextLock, parentLockfileKey, parentEntry)
 
     writeLockfile(nextLock)
+    announceAgentPackagesChanged('installed', agentId)
 
     // ─── 10. Commit staging → final install dirs ──────────────────────────
     for (const dep of resolved) {
@@ -658,7 +672,7 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
       version: manifest.version,
       source: options.trackingSource ?? options.source,
       ...(options.trackingSource ? { fetchedFrom: options.source } : {}),
-      ref: topFetched.ref,
+      ref: trackingRefOf(options.trackingSource, topFetched.ref),
       commitSha: topFetched.commitSha,
       ...(agentId ? { agentId, state: parentEntry.state } : {}),
       ...(adopted ? { adopted: true } : {}),

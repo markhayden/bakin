@@ -12,7 +12,7 @@
  * from the Zustand store, which we prime per test.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -64,7 +64,6 @@ mock.module('@/hooks/use-runtime-status', () => ({
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
 
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
-import { emitPluginEvent } from '../../../src/hooks/use-plugin-event'
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
 import { PackageCardBody } from '../../../plugins/team/components/package-card'
 import { finishedOperation, operationResponse, operationStarted } from '../../helpers/operation-fetch'
@@ -364,19 +363,6 @@ describe('PackageCard — update and remove actions', () => {
     expect(screen.queryByText('update available')).toBeNull()
     expect(screen.getByText('managed')).toBeDefined()
     expect(screen.queryByText('Latest version 0.2.0 is available.')).toBeNull()
-  })
-
-  it('re-reads the package rows when updates.changed names a package — and ignores other subjects', async () => {
-    const fetchMock = setupActionFetch()
-    render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
-    const packageReads = () => fetchMock.mock.calls.filter((call) => call[0] === '/api/agent-packages').length
-    expect(packageReads()).toBe(0)
-
-    await act(async () => { emitPluginEvent({ event: 'updates.changed', ids: ['plugin:projects', 'bakin:bakin'] }) })
-    expect(packageReads()).toBe(0)
-
-    await act(async () => { emitPluginEvent({ event: 'updates.changed', ids: ['package:pixel'] }) })
-    await waitFor(() => expect(packageReads()).toBe(1))
   })
 
   it('opens the sync modal and posts to the sync route', async () => {

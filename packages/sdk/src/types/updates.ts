@@ -130,6 +130,20 @@ export function updateStaleDays(observedAt: string | null | undefined, now = Dat
   return Number.isFinite(days) && days > thresholdDays ? days : null
 }
 
+/**
+ * True when the record was observed for THIS installed identity: the
+ * version matches, and the sha when both sides carry one. A join over a
+ * record the engine has not yet retired after a reinstall is never trusted
+ * (it would offer the version just installed).
+ */
+export function updateRecordMatchesInstalled(record: Pick<UpdateRecord, 'installed'>, installed: { version?: string; sha?: string }): boolean {
+  // A record that names no installed identity (an `unknown` observation) has nothing to disagree with; the fingerprint retirement is its guard.
+  if (!record.installed) return true
+  if (record.installed.version !== undefined && installed.version !== undefined && record.installed.version !== installed.version) return false
+  if (record.installed.sha && installed.sha && record.installed.sha !== installed.sha) return false
+  return true
+}
+
 /** The count the Updates tab label carries: available, not skipped. */
 export function countAvailableUpdates(records: ReadonlyArray<UpdateRecord>): number {
   return records.filter(isUpdateOffered).length

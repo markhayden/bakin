@@ -36,6 +36,14 @@ export class PackageNotTrackedError extends Error {
   }
 }
 
+/** A versioned key that is not the installed package's canonical key: the engine observes the newest install, never a superseded one under its name (review r2 #4). */
+export class PackageSupersededError extends Error {
+  constructor(readonly requestedKey: string, readonly canonicalKey: string) {
+    super(`"${requestedKey}" is superseded by "${canonicalKey}" — the installed package is observed under its newest key`)
+    this.name = 'PackageSupersededError'
+  }
+}
+
 /**
  * Observe one installed package (a lockfile key or its id) and answer with
  * what its source says now. Throws when the observation failed — the caller
@@ -45,6 +53,8 @@ export async function observeInstalledPackage(packageKeyOrId: string, opts: { si
   const id = packageIdOfKey(packageKeyOrId)
   const pkg = installedPackages().find((candidate) => candidate.id === id)
   if (!pkg) throw new PackageNotTrackedError(id)
+  // An exact key names ONE install: a superseded key is refused, never silently answered with the newer install's verdict.
+  if (packageKeyOrId !== id && packageKeyOrId !== pkg.key) throw new PackageSupersededError(packageKeyOrId, pkg.key)
   const kind = pkg.upstream ? 'hub-skill' : 'package'
   const recordId = `${kind}:${id}`
 

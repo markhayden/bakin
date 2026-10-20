@@ -29,7 +29,7 @@ mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 mock.module('../../../src/core/sse', () => ({ broadcast: () => {} }))
 
-import { observeInstalledPackage, PackageNotTrackedError } from '../../../src/core/updates/observe'
+import { observeInstalledPackage, PackageNotTrackedError, PackageSupersededError } from '../../../src/core/updates/observe'
 import { fingerprintOf } from '../../../src/core/updates/inventory'
 import { getUpdatesEngine, getUpdatesTimer, registerUpdateSource, resetUpdateSources, startUpdates, stopUpdates, UPDATES_FILE_NAME } from '../../../src/core/updates/service'
 import type { UpdateObservation, UpdateSource } from '../../../src/core/updates/types'
@@ -74,6 +74,27 @@ describe('observeInstalledPackage without an engine', () => {
     const observed = await observeInstalledPackage('editorial')
     expect(observed.outcome).toBe('blocked')
     expect(observed.blockedReason).toContain('source path missing')
+  })
+
+  it('review r2 #4: an exact key that is not the newest install is refused — never silently answered with the newer install\'s verdict', async () => {
+    const older = join(testDir, 'sources', `editorial-old-${randomUUID()}`)
+    const newer = join(testDir, 'sources', `editorial-new-${randomUUID()}`)
+    for (const [dir, version] of [[older, '1.5.0'], [newer, '2.0.0']] as const) {
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({ id: 'editorial', version, kind: 'skill-pack', name: 'editorial', description: 'x', contributions: { skills: ['research'] } }))
+    }
+    writeLockfile({
+      version: 1,
+      packages: {
+        'editorial@1.0.0': { kind: 'skill-pack', version: '1.0.0', source: older, ref: '', commitSha: '', installedAt: '2026-10-01T00:00:00.000Z' },
+        'editorial@2.0.0': { kind: 'skill-pack', version: '2.0.0', source: newer, ref: '', commitSha: '', installedAt: '2026-10-15T00:00:00.000Z' },
+      },
+    })
+    await expect(observeInstalledPackage('editorial@1.0.0')).rejects.toBeInstanceOf(PackageSupersededError)
+    await expect(observeInstalledPackage('editorial@1.0.0')).rejects.toThrow('superseded by "editorial@2.0.0"')
+    // The canonical key and the bare id observe the NEWER install's source.
+    expect((await observeInstalledPackage('editorial@2.0.0')).outcome).toBe('current')
+    expect((await observeInstalledPackage('editorial')).outcome).toBe('current')
   })
 
   it('an id the lockfile does not hold is refused, never "current"', async () => {

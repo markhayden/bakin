@@ -23,7 +23,7 @@ import type { UpdateAction } from '@makinbakin/sdk/types'
 import { parseClawhubRef } from '../../agent-packages/ref-normalize'
 import { fingerprintOf } from '../inventory'
 import type { UpdateObservation, UpdateSource, UpdateSubjectInventoryEntry } from '../types'
-import { isClawhubPackageSource, isGithubPackageSource, packageSourceWithRef, type InstalledPackage, type PackageSourceDeps } from './package'
+import { isClawhubPackageSource, isGithubPackageSource, packageSourceWithRef, type InstalledPackage, type PackageSourceDeps, isCommitPin } from './package'
 
 export interface HubSkillSourceDeps extends Pick<PackageSourceDeps, 'installed' | 'hostVersion' | 'cloneUrl' | 'lsRemote' | 'defaultBranch'> {
   hub: {
@@ -83,8 +83,15 @@ export function createHubSkillSource(deps: HubSkillSourceDeps): UpdateSource {
       }
 
       if (isGithubPackageSource(entry.source)) {
-        // An install without `@ref` records an empty ref and tracks the remote's default branch.
         const url = deps.cloneUrl(entry.source)
+        // A commit pin is immutable: the installed commit IS the pin.
+        if (entry.ref && isCommitPin(entry.ref)) {
+          const source = { kind: 'git-ref', endpoint: entry.source, ref: entry.ref }
+          return entry.commitSha.toLowerCase().startsWith(entry.ref.toLowerCase())
+            ? { installed, source, outcome: 'current' }
+            : { installed, source, outcome: 'blocked', blockedReason: `the installed commit ${entry.commitSha.slice(0, 7)} is not the pinned ${entry.ref.slice(0, 7)} — reinstall`, action: action(entry.source) }
+        }
+        // An install without `@ref` records an empty ref and tracks the remote's default branch.
         const ref = entry.ref || await deps.defaultBranch(url, signal)
         if (!ref) return { installed, outcome: 'blocked', blockedReason: 'the remote has no default branch — reinstall with an explicit @ref' }
         const source = { kind: 'git-ref', endpoint: entry.source, ref }

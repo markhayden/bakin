@@ -14,7 +14,7 @@
  */
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
-import { isUpdateOffered, type UpdateRecord } from '@makinbakin/sdk/types'
+import { isUpdateOffered, updateRecordMatchesInstalled, type UpdateRecord } from '@makinbakin/sdk/types'
 import { readPluginLockfile, type PluginLockfile } from '@bakin/core/plugins/lockfile'
 import { canonicalPackageEntries, readLockfile, type CanonicalPackageEntry, type Lockfile } from '@bakin/core/agent-packages/lockfile'
 import { getContentDir } from '../../../src/core/content-dir'
@@ -95,9 +95,20 @@ export function updateAvailableOf(record: UpdateRecord | undefined): boolean | n
   return isUpdateOffered(record)
 }
 
-/** A lockfile package is a `package` subject, or a `hub-skill` one when it was synthesized from a hub bundle. */
-function packageRecord(records: UpdateRecordMap, id: string): UpdateRecord | undefined {
-  return records.get(`package:${id}`) ?? records.get(`hub-skill:${id}`)
+/** A lockfile package is a `package` subject, or a `hub-skill` one when it was synthesized from a hub bundle; a record observed for another installed identity is no answer. */
+function packageRecord(records: UpdateRecordMap, installed: CanonicalPackageEntry): UpdateRecord | undefined {
+  const record = records.get(`package:${installed.id}`) ?? records.get(`hub-skill:${installed.id}`)
+  if (!record) return undefined
+  // Hub skills carry the hub's resolved version as their installed identity; packages carry the lock entry's.
+  if (record.subject.kind === 'hub-skill') return record
+  return updateRecordMatchesInstalled(record, { version: installed.entry.version, sha: installed.entry.commitSha || undefined }) ? record : undefined
+}
+
+/** A plugin record observed for another installed identity (a reinstall the engine has not reconciled yet) is no answer. */
+function pluginRecord(records: UpdateRecordMap, id: string, installed: { version: string; commitSha?: string }): UpdateRecord | undefined {
+  const record = records.get(`plugin:${id}`)
+  if (!record) return undefined
+  return updateRecordMatchesInstalled(record, { version: installed.version, sha: installed.commitSha || undefined }) ? record : undefined
 }
 
 export function joinInstallState(
@@ -120,7 +131,7 @@ export function joinInstallState(
       return {
         ...entry,
         installed: installed !== null,
-        updateAvailable: installed ? updateAvailableOf(packageRecord(records, installed.id)) : null,
+        updateAvailable: installed ? updateAvailableOf(packageRecord(records, installed)) : null,
         installedVersion: installed?.entry.version ?? null,
       }
     }
@@ -130,7 +141,7 @@ export function joinInstallState(
       return {
         ...entry,
         installed: installed !== null || sources.installedPluginDirs.has(entry.id),
-        updateAvailable: installed ? updateAvailableOf(records.get(`plugin:${entry.id}`)) : null,
+        updateAvailable: installed ? updateAvailableOf(pluginRecord(records, entry.id, installed)) : null,
         installedVersion: installed?.version ?? null,
       }
     }
@@ -139,7 +150,7 @@ export function joinInstallState(
     return {
       ...entry,
       installed: installed !== null,
-      updateAvailable: installed ? updateAvailableOf(packageRecord(records, installed.id)) : null,
+      updateAvailable: installed ? updateAvailableOf(packageRecord(records, installed)) : null,
       installedVersion: installed?.entry.version ?? null,
     }
   })

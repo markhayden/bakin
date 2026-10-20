@@ -216,7 +216,12 @@ from an install path, source ref, package id, or stale runtime state.
 
 Update reporting rule: `GET /api/agent-packages` joins each managed row with
 the updates engine's record for its package (`update`, keyed
-`package:<key id>`; #1007). The route never probes a source — the engine
+`package:<key id>`; #1007) — only when the record was observed for the row's
+installed identity (`updateRecordMatchesInstalled`); installs and removals
+announce `agent_pkg:changed` (`change-events.ts`) so the engine retires a
+record for an identity just replaced. The lock entry's `ref` is the TRACKING
+ref (`trackingRefOf`): empty for a default-branch install, the tracked
+`@ref` otherwise — never the commit a re-install happened to fetch. The route never probes a source — the engine
 observes packages on its schedule and `POST /api/updates/check` runs a pass
 on demand. The Team detail package card reads `isUpdateOffered(row.update)`
 to show `update-available` and offer Maintain-changes vs
@@ -240,7 +245,7 @@ Two-file pattern (`cli/bakin.ts` is HTTP-client; `src/core/cli.ts` is binary dis
 - `bakin agents orphan <id> [--keep-blocks] [--force]`
 - `bakin agents delete <id> [--keep-blocks] [--force]`
 - `bakin agents remove <id> [--keep-blocks] [--delete-agent|--delete|--orphan] [--force]` — compatibility spelling; default is orphan
-- `bakin agents sync [<id>] [--check] [--reclaim <target>|--reclaim-all] [--yes]` — no id = sync every agent (managed: fetch + recompose + verify + receipt; unmanaged: context block only). Prompts once for the one-time block migration on legacy installs. `--check` asks the updates engine's observer (`src/core/updates/observe.ts`, #1007) for the upstream state — report-only, never a private probe.
+- `bakin agents sync [<id>] [--check] [--reclaim <target>|--reclaim-all] [--yes]` — no id = sync every agent (managed: fetch + recompose + verify + receipt; unmanaged: context block only). Prompts once for the one-time block migration on legacy installs. `--check` asks the updates engine's observer (`src/core/updates/observe.ts`, #1007) for the upstream state — report-only, never a private probe; with no server it runs in-process (the same `syncAgent({ check })`, nothing persisted).
 - `bakin agents lessons {list,enable,disable} <id> [<lesson-id>]` — toggling = lockfile change + local sync (SOUL block recomposes)
 - `bakin packages {list,install,remove,sync}` — for non-agent kinds; refuses remove on refCount > 0 unless `--force`
 - `bakin check agent-sync` / `bakin install agent-sync` — drift report + local repair via the onboarding component

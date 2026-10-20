@@ -39,6 +39,28 @@ interface CacheEntry {
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
+/**
+ * Retire a cache entry's checkout: once its clone has settled, one macrotask
+ * later — any reader that already held the resolved promise copies out of it
+ * synchronously in its own microtask, so nothing reads a deleted directory.
+ * Bounded by the number of live keys (review r2 #1): every replacement
+ * (expired or `fresh`) and every expired entry swept on a later call goes.
+ */
+function retire(entry: CacheEntry): void {
+  entry.promise.then(
+    ({ checkoutDir }) => { const t = setTimeout(() => rmSync(checkoutDir, { recursive: true, force: true }), 0); t.unref?.() },
+    () => { /* a failed clone already removed its directory */ },
+  )
+}
+
+function sweepExpired(now: number, except?: string): void {
+  for (const [key, entry] of cache) {
+    if (key === except || now - entry.createdAt < CACHE_TTL_MS) continue
+    cache.delete(key)
+    retire(entry)
+  }
+}
+
 let cacheRoot: string | null = null
 const cache = new Map<string, CacheEntry>()
 
@@ -127,15 +149,21 @@ export async function getCachedGithubCheckout(args: {
   signal?: AbortSignal
   /** Ignore a cached checkout and clone again (the caller knows the ref moved past it). */
   fresh?: boolean
+  /** The clock (tests). */
+  now?: () => number
 }): Promise<CachedGithubCheckout> {
   const ref = args.ref?.trim() ?? ''
   const key = cacheKey(args.cloneUrl, ref)
-  const now = Date.now()
-  const existing = args.fresh ? undefined : cache.get(key)
+  const now = (args.now ?? Date.now)()
+  sweepExpired(now, key)
+  const held = cache.get(key)
+  const existing = args.fresh ? undefined : held
   if (existing && now - existing.createdAt < CACHE_TTL_MS) {
     return await abortable(existing.promise, args.signal)
   }
 
+  // Replacing (expired, or fresh by request): the old checkout is retired once the new clone is in place.
+  if (held) retire(held)
   const promise = cloneIntoCache(args.cloneUrl, ref, args.git ?? realGitAsync, args.signal)
   cache.set(key, { createdAt: now, promise })
   try {
@@ -182,6 +210,11 @@ export async function materializeCachedGithubSource(args: {
   mkdirSync(args.stagingDir, { recursive: true })
   cpSync(sourceDir, args.stagingDir, { recursive: true, dereference: false })
   return checkout
+}
+
+/** Checkout directories the cache currently holds (tests). */
+export function __cachedCheckoutCountForTests(): number {
+  return cache.size
 }
 
 export function resetGithubSourceCacheForTests(): void {

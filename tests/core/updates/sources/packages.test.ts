@@ -173,7 +173,8 @@ describe('package source', () => {
       installed: () => [ops],
       defaultBranch: async (url) => { asked.push(url); return 'trunk' },
       lsRemote: async (url, ref) => (url === 'https://github.com/acme/ops.git' && ref === 'trunk' ? SHA_B : null),
-      fetchManifest: async (sourceWithRef) => { expect(sourceWithRef).toBe('github:acme/ops@trunk'); return { id: 'ops', version: '2.0.0', commitSha: SHA_B } },
+      // The spec is the source AS INSTALLED (no @trunk): the same checkout-cache key a sync right after reuses (review r2 #5).
+      fetchManifest: async (sourceWithRef) => { expect(sourceWithRef).toBe('github:acme/ops'); return { id: 'ops', version: '2.0.0', commitSha: SHA_B } },
     }))
     const [entryFor] = await moved.inventory()
     const observed = await moved.observe(entryFor!, { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } })
@@ -221,6 +222,24 @@ describe('package source', () => {
     expect(warm).toEqual([{ fresh: false }])
   })
 
+  it('review r2 #6: a commit pin (`@<sha>`) is immutable — current when the installed commit is the pin, blocked when it is not; ls-remote is never asked', async () => {
+    const never = async (): Promise<never> => { throw new Error('ls-remote must not run for a pin') }
+    const ctx = { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } }
+    const pinned = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: SHA_A, commitSha: SHA_A })
+    const pkg = createPackageSource(packageDeps({ installed: () => [pinned], lsRemote: never, defaultBranch: never }))
+    const [entryFor] = await pkg.inventory()
+    expect(await pkg.observe(entryFor!, ctx)).toMatchObject({ outcome: 'current', source: { kind: 'git-ref', ref: SHA_A } })
+    const short = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: SHA_A.slice(0, 12), commitSha: SHA_A })
+    expect((await createPackageSource(packageDeps({ installed: () => [short], lsRemote: never, defaultBranch: never })).observe(entryFor!, ctx)).outcome).toBe('current')
+    const mismatched = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: SHA_A, commitSha: SHA_B })
+    expect(await createPackageSource(packageDeps({ installed: () => [mismatched], lsRemote: never, defaultBranch: never })).observe(entryFor!, ctx)).toMatchObject({ outcome: 'blocked', blockedReason: expect.stringContaining('not the pinned') })
+
+    const gh = installed('hub-tools', { source: 'github:acme/skills#tools', ref: SHA_A, commitSha: SHA_A }, { source: 'github:acme/skills#tools' })
+    const hub = createHubSkillSource(hubDeps({ installed: () => [gh], lsRemote: never, defaultBranch: never }))
+    const [hubEntry] = await hub.inventory()
+    expect((await hub.observe(hubEntry!, ctx)).outcome).toBe('current')
+  })
+
   it('a gone ref or a manifest whose id does not match is never an offer', async () => {
     const ops = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: 'main', commitSha: SHA_A })
     const gone = createPackageSource(packageDeps({ installed: () => [ops], lsRemote: async () => null }))
@@ -234,7 +253,7 @@ describe('package source', () => {
   it('a local package compares its directory manifest version; a missing directory is blocked', async () => {
     const notes = installed('notes', { kind: 'skill-pack', source: '/Users/me/packs/notes', version: '1.0.0' })
     const newer = createPackageSource(packageDeps({ installed: () => [notes], localManifest: () => ({ id: 'notes', version: '1.1.0' }) }))
-    expect(await engine([newer]).observe('package:notes')).toMatchObject({ outcome: 'update-available', reason: 'newer-version', available: { version: '1.1.0' }, action: { kind: 'manual', pointer: 'bakin packages sync notes' } })
+    expect(await engine([newer]).observe('package:notes')).toMatchObject({ outcome: 'update-available', reason: 'newer-version', available: { version: '1.1.0' }, action: { kind: 'manual', pointer: 'bakin packages sync notes@1.0.0' } })
     const same = createPackageSource(packageDeps({ installed: () => [notes], localManifest: () => ({ id: 'notes', version: '1.0.0' }) }))
     expect((await engine([same]).observe('package:notes')).outcome).toBe('current')
     const missing = createPackageSource(packageDeps({ installed: () => [notes] }))

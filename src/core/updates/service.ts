@@ -58,14 +58,17 @@ export function startUpdates(contentDir: string, options: StartUpdatesOptions = 
   })
   timer = startUpdatesTimer({ engine, settings: () => ({ enabled: getSettings().updates.enabled }) })
   engine.ready.catch((error) => log.error('Updates engine failed to reconcile at boot', error))
-  // A plugin install/remove/upgrade or a settings write changes the subject
-  // set or its fingerprints before the next tick would notice.
+  // A plugin install/remove/upgrade, an agent-package install/sync/remove
+  // (`agent_pkg:changed`, review r2 #3) or a settings write changes the
+  // subject set or its fingerprints before the next tick would notice — a
+  // record for the identity just replaced is retired at once, so no surface
+  // keeps offering the version that was just installed.
   const started = engine
   unobserve?.()
   unobserve = onServerEvent((event) => {
     if (engine !== started) return
     const type = typeof event.type === 'string' ? event.type : ''
-    if (type !== 'plugin:manifest-changed' && type !== 'settings.changed') return
+    if (type !== 'plugin:manifest-changed' && type !== 'settings.changed' && type !== 'agent_pkg:changed') return
     started.refreshInventory().catch((error) => log.warn('Updates inventory refresh failed', { event: type, error: error instanceof Error ? error.message : String(error) }))
   })
   log.info('Updates started', { sources: sources.map((source) => source.kind) })

@@ -101,9 +101,12 @@ pair (both deleted, along with the `GET /api/curated` host route):
   set-equality gate in tests/core/curated-catalog.test.ts.
 - **Update state is the updates engine's record (#1007).** The catalog join
   (`lib/install-state.ts`) takes the engine's snapshot keyed by record id:
-  plugins read `plugin:<id>`, agents and packs find their lockfile entry and
-  read `package:<key id>` (falling back to `hub-skill:<key id>` for packs
-  synthesized from a hub bundle). `updateAvailable` is `true` for an
+  plugins read `plugin:<id>`, agents and packs find their CANONICAL lockfile
+  entry (`canonicalPackageEntries` — newest installed per id, the selection
+  the engine's inventory makes) and read `package:<id>` (falling back to
+  `hub-skill:<id>` for packs synthesized from a hub bundle); a record observed
+  for another installed identity (`updateRecordMatchesInstalled`) is no
+  answer. `updateAvailable` is `true` for an
   unskipped `update-available` record (`isUpdateOffered`), `false` for an
   observed `current`/`blocked`/`unsupported` one, and `null` when there is no
   successful observation (no record, `unknown`, no running engine) —
@@ -111,7 +114,9 @@ pair (both deleted, along with the `GET /api/curated` host route):
   no `?check=1`: "Check for updates" on the page is `POST
   /api/updates/check?wait=1` followed by a catalog re-read; the toast counts
   the catalog subjects (`plugin`/`package`/`hub-skill`) whose attempt in that
-  pass failed as "couldn't check N". The page also re-reads on every
+  pass failed over an earlier verdict, plus installed rows still unknown
+  after the re-read, as "couldn't check N" — an entry with no engine record
+  is never "up to date". The page also re-reads on every
   `updates.changed` event naming a catalog subject, so scheduled passes land
   without a reload.
 - `POST /catalog/refresh` — user-triggered fetch of

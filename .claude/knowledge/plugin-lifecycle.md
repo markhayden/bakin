@@ -315,6 +315,11 @@ stale-plugin  Stale Plugin      0.5.0      github         (last checked 12 days 
 - Nothing is persisted on the lockfile; the engine records what it found in
   `~/.bakin/updates.json` and broadcasts `updates.changed`
 - Render the same table with fresh STATUS info
+- With no server (`server.lock` names no live pid; an explicit `BAKIN_URL` is
+  server-only): the lockfile's user plugins joined with the engine's records
+  — `--check` runs the plugin pass in-process on a scratch store, a plain
+  list reads the stored records; status is `unknown` and core plugins are
+  absent (both are server facts), said on stderr
 
 ### 4.5 Plugin activation logging (#142 layer 1)
 

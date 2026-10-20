@@ -204,7 +204,7 @@ function installRuntimeMock(): void {
   ;(globalThis as TestGlobal).__bakinAppServices = { runtime }
 }
 
-import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
+import { installPackage as installPackageUnowned, trackingRefOf } from '../../src/core/agent-packages/installer'
 import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
 import { isResourceHeld } from '../../packages/core/src/operations'
@@ -396,6 +396,20 @@ describe('installPackage — trackingSource (#1007 D7.12 R8′)', () => {
     const result = await installPackage({ source: src, trackingSource: 'github:acme/packs#tracked-pack' })
     const entry = readLockfile().packages[`${result.packageId}@1.0.0`] ?? Object.values(readLockfile().packages).find((e) => e.kind === 'skill-pack')
     expect(entry?.source).toBe('github:acme/packs#tracked-pack')
+    // The lock REF is the tracking ref (review r2 #7): none here, so the default branch — never the fetched identity.
+    expect(entry?.ref).toBe('')
+  })
+
+  it('review r2 #7: the lock ref follows the TRACKING source — a tracked @ref is recorded, a selected commit never becomes the pin', async () => {
+    const src = seedSkillPack('tracked-pack')
+    const result = await installPackage({ source: src, trackingSource: 'github:acme/packs@v2#tracked-pack', replace: true })
+    const entry = readLockfile().packages[`${result.packageId}@1.0.0`] ?? Object.values(readLockfile().packages).find((e) => e.kind === 'skill-pack')
+    expect(entry?.source).toBe('github:acme/packs@v2#tracked-pack')
+    expect(entry?.ref).toBe('v2')
+    expect(trackingRefOf('github:acme/skills#tools', 'c'.repeat(40))).toBe('')
+    expect(trackingRefOf('github:acme/skills@v3#tools', 'c'.repeat(40))).toBe('v3')
+    expect(trackingRefOf('clawhub:weather', '1.2.0')).toBe('1.2.0')
+    expect(trackingRefOf(undefined, 'main')).toBe('main')
   })
 })
 

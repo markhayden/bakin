@@ -90,8 +90,12 @@ async function liveServerLockNow(): Promise<{ pid: number; port: number } | null
   return readLiveServerLock()
 }
 
-/** The engine's pass without a server: the same sources over this home, in-process. */
-async function checkInProcess(kind: UpdateSubjectKind | undefined): Promise<UpdatesSnapshotBody> {
+/**
+ * The engine's pass without a server: the same sources over this home,
+ * in-process. Shared with `bakin plugins list --check` (review r2 #9) —
+ * report-only, nonpersistent.
+ */
+export async function checkUpdatesInProcess(kind: UpdateSubjectKind | undefined): Promise<UpdatesSnapshotBody> {
   const [{ getContentDir }, { readRuntimeAdapterStrict }, { createRuntimeAdapter }, { registerCoreUpdateSources }, { startUpdates, stopUpdates, getUpdatesTimer, UPDATES_FILE_NAME }] = await Promise.all([
     import('../../core/content-dir'),
     import('../../../packages/core/src/settings'),
@@ -157,7 +161,7 @@ async function cmdUpdatesList(args: string[]): Promise<void> {
       await exitCommandFailure('Bakin is not running.', { command: 'bakin updates', detail: 'Start it, or run `bakin updates --check` to check this home in-process.', code: 'SERVER_UNAVAILABLE' })
     }
     // `--json`: the runtime logger's console lines (`Updates started`, …) would precede the document.
-    snapshot = json ? await withSilentRuntimeLogs(() => checkInProcess(kind)) : await checkInProcess(kind)
+    snapshot = json ? await withSilentRuntimeLogs(() => checkUpdatesInProcess(kind)) : await checkUpdatesInProcess(kind)
   }
   if (json) {
     print(snapshot)
