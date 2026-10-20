@@ -683,9 +683,15 @@ than the threshold.
 Health System's Installed plugins inventory merges
 `/api/plugins/health/registry` with `/api/plugins/manifest`. Initial and
 background reads use cached manifest state; the explicit **Check for updates**
-action adds `check=1`. Core/built-in plugin versions stay sourced from bundled
-plugin exports; user plugin versions and upgrade availability come from the
-plugin lockfile manifest rows. Exceptions (activation failures and available
+action runs the updates engine's plugin pass (`POST /api/updates/check?source=plugin`),
+and the manifest's own `?check=1` runs that same pass server-side (waited)
+before answering. Core/built-in plugin versions stay sourced from bundled
+plugin exports; user plugin versions come from the lockfile rows, while
+`upgradeAvailable` / `staleHintDays` are projected from the updates engine's
+records (an unskipped `update-available` record; the age of its `observedAt`)
+— the lockfile's check markers are never read by the manifest, and the
+upgrade lanes no longer write them (#1007 B; the markers themselves are
+deleted once the CLI `--check` verbs move to the engine). Exceptions (activation failures and available
 updates) render before the full inventory. The in-list Update action calls the same
 `POST /api/plugins/upgrade` endpoint as CLI upgrade and handles
 `awaitingConsent` before mutating disk.

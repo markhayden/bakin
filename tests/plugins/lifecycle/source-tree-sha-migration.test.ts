@@ -373,7 +373,8 @@ describe('upgradePlugin (local) — one-time lockfile migration on noop', () => 
     const canonical = computeSourceTreeSha(sourcePath)
     expect(entry.sourceTreeSha).toBe(canonical)
     expect(entry.sourceTreeShaAlgo).toBe(SOURCE_TREE_SHA_ALGO)
-    expect(entry.lastSourceTreeSha).toBe(canonical)
+    // The lane writes installed provenance only: the --check marker is left exactly as the row had it (the updates engine owns "is there something newer", #1007 B).
+    expect(entry.lastSourceTreeSha).toBe(legacySha)
   })
 
   it('legacy row + genuinely changed source: full upgrade runs and stamps the canonical algo', async () => {

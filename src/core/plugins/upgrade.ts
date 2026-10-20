@@ -154,13 +154,12 @@ async function upgradeLocal(
   const newTreeSha = cmp.liveSha
   if (entry.sourceTreeSha && !cmp.changed) {
     if (cmp.needsAlgoMigration) {
-      // One-time reset: rewrite the row under the canonical hasher so the
-      // next check/upgrade (and the manifest route's lastSourceTreeSha
-      // comparison) takes the canonical fast path.
+      // One-time reset: rewrite the row under the lockfile hasher so the next
+      // check/upgrade takes the fast path. Installed provenance only — the
+      // updates engine owns "is there something newer" (#1007 B).
       writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
         sourceTreeSha: newTreeSha,
         sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
-        ...(entry.lastSourceTreeSha ? { lastSourceTreeSha: newTreeSha } : {}),
       }))
     }
     return {

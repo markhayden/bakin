@@ -231,11 +231,12 @@ describe('artifact-lane upgrade (upgradePlugin)', () => {
     expect(readFileSync(join(installDir, 'dist', 'index.js'), 'utf-8')).toContain("version: '0.2.0'")
     expect(isArtifactInstall(installDir)).toBe(true)
 
-    // Lockfile updated.
+    // Lockfile updated — installed provenance only; the lane writes no check marker (the updates engine owns "is there something newer", #1007 B).
     const entry = readPluginLockfile().plugins['messaging']
     expect(entry.version).toBe('0.2.0')
     expect(entry.upgradedAt).toBeDefined()
-    expect(entry.remoteArtifactVersion).toBe('0.2.0')
+    expect(entry.remoteArtifactVersion).toBeUndefined()
+    expect(entry.remoteArtifactRebuild).toBeUndefined()
   })
 
   it('S14: a failure after the new tree landed restores the previous artifact install byte for byte', async () => {
