@@ -158,8 +158,9 @@ describe('OpenClaw runtime Gateway chat', () => {
     // (audit M3: they once restricted native tools like 'read').
     expect(agentRequest?.params).not.toHaveProperty('toolsAllow')
     expect(agentRequest?.params).not.toHaveProperty('toolsDeny')
-    // toolsMode is the sanctioned native on/off knob and still flows.
-    expect(agentRequest?.params.toolsMode).toBe('auto')
+    // toolsMode never reaches the wire either: OpenClaw 2026.9.5's closed
+    // `agent` schema has no tool-policy property at all (#883).
+    expect(agentRequest?.params).not.toHaveProperty('toolsMode')
     // The unenforceable filters are ignored LOUDLY, never silently.
     expect(warns.some((data) => {
       const d = data as { toolsAllow?: number; toolsDeny?: number } | undefined
@@ -350,7 +351,7 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(agentRequest?.params).not.toHaveProperty('thinking')
   })
 
-  it('forwards toolsMode ONLY — exec-tool filters never become native policy (T29)', async () => {
+  it('never forwards tool policy — toolsMode and the exec-tool filters stay off the wire (#883, T29)', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
 
@@ -364,12 +365,12 @@ describe('OpenClaw runtime Gateway chat', () => {
 
     const ws = FakeWebSocket.instances[0]!
     const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
-    expect(agentRequest?.params).toMatchObject({ toolsMode: 'none' })
+    expect(agentRequest?.params).not.toHaveProperty('toolsMode')
     expect(agentRequest?.params).not.toHaveProperty('toolsAllow')
     expect(agentRequest?.params).not.toHaveProperty('toolsDeny')
   })
 
-  it('forwards per-turn tool policy on messaging streams', async () => {
+  it('drops toolsMode on messaging streams too (#883)', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
 
@@ -381,7 +382,34 @@ describe('OpenClaw runtime Gateway chat', () => {
 
     const ws = FakeWebSocket.instances[0]!
     const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
-    expect(agentRequest?.params).toMatchObject({ toolsMode: 'none' })
+    expect(agentRequest?.params).not.toHaveProperty('toolsMode')
+  })
+
+  it('an unenforceable toolsMode warns ONCE per agent, never silently (#883)', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const warns: Array<{ msg: string; data: unknown }> = []
+    const runtime = createOpenClawRuntimeAdapter()
+    await runtime.initialize({
+      contentDir: join(process.env.OPENCLAW_HOME!, 'bakin'),
+      logger: {
+        debug: () => {},
+        info: () => {},
+        warn: (msg, data) => { warns.push({ msg, data }) },
+        error: () => {},
+      },
+    })
+
+    await runtime.messaging.send({ agentId: 'pixel', content: 'Plan without tools.', toolsMode: 'none' })
+    await runtime.messaging.send({ agentId: 'pixel', content: 'Plan again without tools.', toolsMode: 'none' })
+
+    const policyWarns = warns.filter((entry) => (entry.data as { toolsMode?: string } | undefined)?.toolsMode === 'none')
+    expect(policyWarns).toHaveLength(1)
+    expect(policyWarns[0]!.data).toMatchObject({ agentId: 'pixel', toolsMode: 'none' })
+    for (const ws of FakeWebSocket.instances) {
+      for (const frame of ws.sentFrames.filter((f) => f.method === 'agent')) {
+        expect(frame.params).not.toHaveProperty('toolsMode')
+      }
+    }
   })
 
   it('waits for the Gateway final response after the accepted ack', async () => {

@@ -54,10 +54,9 @@ function metric(name: string, value: string): void {
 const TINY_PROMPT = 'Reply with exactly the word: ok'
 const runStamp = Date.now()
 
-// NOTE: no toolsMode/toolsAllow here — the current containerized OpenClaw
-// rejects them as unexpected agent params ("invalid agent params: unexpected
-// property 'toolsMode'"). Pre-existing adapter↔gateway contract drift,
-// surfaced by the typed-error pipeline; tracked separately.
+// NOTE: no toolsMode/toolsAllow here — OpenClaw 2026.9.5's closed `agent`
+// RPC schema accepts no per-turn tool policy at all; the adapter drops the
+// contract fields with one warning per agent instead of sending them (#883).
 async function timedSend(agentId: string, threadId: string, prompt = TINY_PROMPT): Promise<{ ms: number; content: string; sessionId?: string; startedAt: number; endedAt: number }> {
   const startedAt = Date.now()
   const result = await runtime.messaging.send({ agentId, content: prompt, threadId })
