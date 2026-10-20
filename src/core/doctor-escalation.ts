@@ -28,6 +28,7 @@ import type { HealthIncident, HealthRepairPlan, HealthReport } from '../../packa
 import type { DoctorRepairRequest } from './doctor-repair-store'
 import { createLogger } from './logger'
 import { heldIncidentIds, incidentHolder, releaseIncidents, reserveIncidents, transferIncidents } from './doctor-reservations'
+import type { RepairFailure } from '@bakin/core/approvals'
 import { getSettings } from './settings'
 
 const log = createLogger('doctor-escalation')
@@ -216,6 +217,8 @@ export interface EscalationOutcome {
   /** Existing repair tasks handed back to the operator this cycle (spec D-G3). */
   resurfacedTaskIds: string[]
   repairApprovalTaskId: string | null
+  /** The ONE review task for repair incidents nothing could fix automatically (#896 D3.4). */
+  operatorReviewTaskId: string | null
   navigateApprovalTaskIds: string[]
   delegatedIncidentIds: string[]
 }
@@ -253,7 +256,8 @@ async function escalateOnce(
 
   const cycleToken = `escalation:${randomUUID()}`
 
-  const outcome: EscalationOutcome = { autoApplied: [], resurfacedTaskIds: [], repairApprovalTaskId: null, navigateApprovalTaskIds: [], delegatedIncidentIds: [] }
+  const outcome: EscalationOutcome = { autoApplied: [], resurfacedTaskIds: [], repairApprovalTaskId: null, operatorReviewTaskId: null,
+    navigateApprovalTaskIds: [], delegatedIncidentIds: [] }
   try {
     const freshIds = new Set(fresh.map((incident) => incident.id))
     const coverage = await assessRepairCoverage(contentDir, freshIds, Date.now(), escalationCooldownMs, escalationStaleAfterMs)
@@ -282,6 +286,7 @@ async function escalateOnce(
       const { planDoctorRepair, startDoctorRepair, awaitDoctorRepair, repairFingerprint } = await import('./doctor-repair')
       let working = report
       let plan: HealthRepairPlan | null = null
+      let plannerError: string | null = null
       try {
         plan = await planDoctorRepair({
           contentDir,
@@ -289,9 +294,12 @@ async function escalateOnce(
           target: { type: 'incidents', reportId: report.id, ids: remaining.map((incident) => incident.id) as [string, ...string[]] },
         })
       } catch (err) {
+        plannerError = err instanceof Error ? err.message : String(err)
         log.warn('Health repair planning failed; escalating without auto-repair', err, { incidentIds: remaining.map((incident) => incident.id) })
       }
       const safeItems = plan?.items.filter((item) => item.safety === 'safe') ?? []
+      /** incidentId → the failed safe attempt that led to the operator (#896 D3.4). */
+      const failures = new Map<string, RepairFailure>()
       if (plan && safeItems.length > 0) {
         // The same repair operation every surface runs (#895), started by the
         // system and awaited in-process — it shows in the tray like any other.
@@ -320,17 +328,39 @@ async function escalateOnce(
         // Settled: the operation released its reservation; this is the
         // belt-and-braces for a twin that never ran (attached to a settling one).
         releaseIncidents(fingerprint, safeIncidentIds)
-        if (!applied) throw new Error(`Auto-repair ${view.status}: ${view.outcome?.message ?? 'no report'}`)
-        working = applied.report
-        const stillOpen = new Set(freshActionRequiredIncidents(working).map((incident) => incident.id))
-        outcome.autoApplied = remaining.filter((incident) => !stillOpen.has(incident.id)).map((incident) => incident.id)
-        // What still burns after the apply is judged next — hold it again.
-        remaining = claimForCycle(working.incidents.filter((incident) => stillOpen.has(incident.id) && remaining.some((row) => row.id === incident.id)), cycleToken)
-        log.info('Auto-applied safe Health repairs', {
-          items: safeItemIds,
-          resolved: outcome.autoApplied,
-          remaining: remaining.map((incident) => incident.id),
-        })
+        const at = new Date().toISOString()
+        if (!applied) {
+          // The attempt itself died (cancelled, crashed, no report): nothing
+          // was applied — record the receipt and let the partition hand these
+          // incidents to the operator instead of ending the cycle (#896 D3.4b).
+          const error = view.outcome?.message ?? `auto-repair ${view.status} without a report`
+          for (const id of safeIncidentIds) failures.set(id, { operationId: started.operationId, stage: view.status, error, at })
+          log.warn('Auto-repair settled without a report; handing its incidents to the operator', { operationId: started.operationId, status: view.status, incidentIds: safeIncidentIds })
+          remaining = claimForCycle(remaining, cycleToken)
+        } else {
+          working = applied.report
+          for (const result of applied.results) {
+            if (result.status !== 'failed') continue
+            for (const item of safeItems.filter((row) => row.id === result.itemId)) {
+              for (const id of item.incidentIds) failures.set(id, { operationId: started.operationId, stage: result.actionId, error: result.message, at })
+            }
+          }
+          const stillOpen = new Set(freshActionRequiredIncidents(working).map((incident) => incident.id))
+          outcome.autoApplied = remaining.filter((incident) => !stillOpen.has(incident.id)).map((incident) => incident.id)
+          // What still burns after the apply is judged next — hold it again.
+          remaining = claimForCycle(working.incidents.filter((incident) => stillOpen.has(incident.id) && remaining.some((row) => row.id === incident.id)), cycleToken)
+          // Applied cleanly, yet still reproducing: that is a failure too.
+          for (const incident of remaining) {
+            if (safeIncidentIds.includes(incident.id) && !failures.has(incident.id)) {
+              failures.set(incident.id, { operationId: started.operationId, stage: 'verify', error: 'applied, but the incident still reproduces', at })
+            }
+          }
+          log.info('Auto-applied safe Health repairs', {
+            items: safeItemIds,
+            resolved: outcome.autoApplied,
+            remaining: remaining.map((incident) => incident.id),
+          })
+        }
         if (remaining.length === 0) return outcome
       }
 
@@ -339,17 +369,23 @@ async function escalateOnce(
       const proposedIncidentIds = new Set(nonSafeItems.flatMap((item) => item.incidentIds))
       const repairIncidents = remaining.filter((incident) => incident.resolution.type === 'repair' && proposedIncidentIds.has(incident.id))
       const navigateIncidents = remaining.filter((incident) => incident.resolution.type === 'navigate')
-      const delegateIncidents = remaining.filter((incident) => !repairIncidents.includes(incident) && !navigateIncidents.includes(incident))
+      // A repair-type incident with no executable proposal — its safe repair
+      // failed, planning threw, or nothing was proposed — goes to the OPERATOR,
+      // never to an agent that would re-run the same installer (#896 D3.4).
+      const operatorIncidents = remaining.filter((incident) => incident.resolution.type === 'repair' && !proposedIncidentIds.has(incident.id))
+      const delegateIncidents = remaining.filter((incident) => !repairIncidents.includes(incident) && !navigateIncidents.includes(incident) && !operatorIncidents.includes(incident))
 
       if (plan && repairIncidents.length > 0) {
         const { openRepairApproval } = await import('./doctor-approvals')
         const repairIds = new Set(repairIncidents.map((incident) => incident.id))
+        const receipt = repairIncidents.map((incident) => failures.get(incident.id)).find((row): row is RepairFailure => row !== undefined)
         const opened = await openRepairApproval({
           contentDir,
           report: working,
           incidents: repairIncidents,
           items: nonSafeItems.filter((item) => item.incidentIds.some((id) => repairIds.has(id))),
           plan,
+          ...(receipt ? { failure: receipt } : {}),
         })
         outcome.repairApprovalTaskId = opened.taskId
         releaseIncidents(cycleToken, repairIncidents.map((incident) => incident.id)) // the approval task covers them now
@@ -361,6 +397,16 @@ async function escalateOnce(
           outcome.navigateApprovalTaskIds.push(opened.taskId)
           releaseIncidents(cycleToken, [incident.id])
         }
+      }
+      if (operatorIncidents.length > 0) {
+        const { openOperatorReview } = await import('./doctor-approvals')
+        const withReceipt = operatorIncidents.find((incident) => failures.has(incident.id))
+        const reason = withReceipt
+          ? { failure: failures.get(withReceipt.id)! }
+          : { plannerError: plannerError ?? 'no repair action was proposed for this incident' }
+        const opened = await openOperatorReview({ contentDir, report: working, incidents: operatorIncidents, reason })
+        outcome.operatorReviewTaskId = opened.taskId
+        releaseIncidents(cycleToken, operatorIncidents.map((incident) => incident.id))
       }
       if (delegateIncidents.length > 0) {
         const { delegateDoctorRepair } = await import('./doctor-delegate')

@@ -20,7 +20,7 @@ provider and one place to decide: the task the approval belongs to.
 | kind | owner fields | opened by |
 |---|---|---|
 | `workflow-gate` | `taskId, workflowId, runId, stepId` | the workflow engine, every gate (`requestGateApproval`) |
-| `health-repair` | `taskId, requestId, incidentIds, proposal` (frozen `{reportId, observationIds, items[{actionId,itemId,safety,changes[]}]}`, plan review R1) | escalation, for non-safe repair items |
+| `health-repair` | `taskId, requestId, incidentIds, proposal` (frozen `{reportId, observationIds, items[{actionId,itemId,safety,changes[]}], failure?}`, plan review R1; `failure` = the safe attempt that already failed, #896) | escalation, for non-safe repair items |
 | `health-navigate` | `taskId, requestId, incidentIds, href` | escalation, for operator-only incidents |
 
 Store verbs (`store.ts`): `createApprovalRecord` (idempotent — a pending record

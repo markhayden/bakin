@@ -208,8 +208,10 @@ export async function openRepairApproval(input: {
   incidents: readonly HealthIncident[]
   items: readonly HealthRepairPlanItem[]
   plan: HealthRepairPlan
+  /** The safe attempt that already failed for these incidents (#896 D3.4) — frozen into the proposal. */
+  failure?: RepairFailure
 }): Promise<OpenedApproval> {
-  const proposal = freezeProposal(input.report, input.items)
+  const proposal = { ...freezeProposal(input.report, input.items), ...(input.failure ? { failure: input.failure } : {}) }
   const request = createDoctorRepairRequest(input.contentDir, {
     kind: 'approval-repair',
     plan: input.plan,
