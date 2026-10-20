@@ -13,24 +13,24 @@ Spec `.claude/specs/housekeeping-batch-2026-10.md` · Plan `.claude/specs/housek
 - [x] 1.2 boolean-only `doctor.escalation` + settings test + fixture fix
 - [x] 1.3 retire compat defaults in `doctorRepairRequestSchema`; repoint validation scripts
 - [x] docs (approvals.md, doctor-and-health-checks.md, CLAUDE.md, spec status lines, gate-discord runbook)
-- [ ] PR 1 merged, #945 closed
+- [x] PR 1 merged, #945 closed
 
 ## PR 2 — #883 `fix/883-openclaw-tools-mode`
-- [ ] 2.1 adapter stops emitting `toolsMode`; warn once per agent; tests flipped
-- [ ] 2.2 `perTurnToolsMode` on the tool-access descriptor (Pi true / OpenClaw false / mock false); prompts untouched
-- [ ] 2.3 Imitation Crab closed-schema validation + test
-- [ ] 2.4 conformance `toolPolicyAcceptance` + teeth
-- [ ] docs (adapter-architecture, runtime-capabilities, messaging-plugin, validate.ts comment, #880 spec status)
-- [ ] PR 2 merged, #883 closed
+- [x] 2.1 adapter stops emitting `toolsMode`; warn once per agent; tests flipped
+- [x] 2.2 `perTurnToolsMode` on the tool-access descriptor (Pi true / OpenClaw false / mock false); prompts untouched
+- [x] 2.3 Imitation Crab closed-schema validation + test
+- [x] 2.4 conformance `toolPolicyAcceptance` + teeth
+- [x] docs (adapter-architecture, runtime-capabilities, messaging-plugin, validate.ts comment, #880 spec status)
+- [x] PR 2 merged, #883 closed
 
 ## PR 3 — #896 `fix/896-repair-reservation`
-- [ ] 3.1 reservation primitive + unit tests
-- [ ] 3.2 `startDoctorRepair` reserves by fingerprint; attach test still green
-- [ ] 3.3 escalation reserves/transfers/holds; delegation handoff via `reservation`; interleaving tests (internal)
-- [ ] 3.4 `repair_in_flight` end to end: refusal + 409 + CLI `expect` transport + three renderers + UI dialog + tests
-- [ ] 3.5 `operator-review` kind + `failure` receipt (schema, coverage, resurfacing, auto-close, tests)
-- [ ] 3.6 partition: failed/unplannable/no-report safe repairs → operator
-- [ ] 3.7 single-winner stale-lock reclaim + cross-process test; Bun repro + issue text; docs
+- [x] 3.1 reservation primitive + unit tests
+- [x] 3.2 `startDoctorRepair` reserves by fingerprint; attach test still green
+- [x] 3.3 escalation reserves/transfers/holds; delegation handoff via `reservation`; interleaving tests (internal)
+- [x] 3.4 `repair_in_flight` end to end: refusal + 409 + CLI `expect` transport + three renderers + tests (no browser delegate surface exists)
+- [x] 3.5 `operator-review` kind + `failure` receipt (schema, coverage, resurfacing, auto-close, tests)
+- [x] 3.6 partition: failed/unplannable/no-report safe repairs → operator
+- [x] 3.7 single-winner stale-lock reclaim + cross-process test; Bun repro + issue text; docs
 - [ ] PR 3 merged, #896 closed citing #895; repro handed to Mark
 
 ## PR 4 — #966a `chore/966-react-lint`
