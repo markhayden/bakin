@@ -130,6 +130,42 @@ export async function apiGet(path: string): Promise<unknown> {
   return api(path)
 }
 
+/**
+ * POST whose protocol includes refusals a command must RENDER, not
+ * swallow: a status in `expect` answers `{ status, body }` ONLY when the
+ * JSON body matches that status's schema (#896: 409 repair_in_flight); any
+ * other non-2xx — including an unrelated or malformed body on an expected
+ * status — keeps today's thrown, formatted error.
+ */
+export async function apiPostExpecting<T>(
+  path: string,
+  body: unknown,
+  expect: Readonly<Record<number, { safeParse(value: unknown): { success: true; data: T } | { success: false } }>>,
+): Promise<{ status: number; body: T }> {
+  const identityHeaderSet = identityHeaders(await cliIdentity())
+  const res = await fetch(`${serverBaseUrl()}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...CLI_ORIGIN_HEADER, ...identityHeaderSet },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  // A 2xx answers like `api()` does (json()); only a non-2xx is read as text
+  // so the formatted error can quote the body verbatim.
+  if (res.ok) return { status: res.status, body: await res.json() as T }
+  const text = await res.text()
+  const schema = expect[res.status]
+  if (schema) {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      parsed = undefined
+    }
+    const result = schema.safeParse(parsed)
+    if (result.success) return { status: res.status, body: result.data }
+  }
+  throw new Error(formatApiError(res.status, text))
+}
+
 export async function apiPost(path: string, body?: unknown): Promise<unknown> {
   return api(path, {
     method: 'POST',

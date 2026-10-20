@@ -9,7 +9,7 @@ const testDir = join(tmpdir(), `bakin-test-doctor-repair-${Date.now()}-${randomU
 const contentDirMock = () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir, home: testDir, db: join(testDir, 'bakin.db'), media: join(testDir, 'media') }) })
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
-afterAll(() => rmSync(testDir, { recursive: true, force: true }))
+afterAll(() => { closeDb(); rmSync(testDir, { recursive: true, force: true }) })
 
 const appendAudit = mock()
 mock.module('../../src/core/audit', () => ({ appendAudit }))
@@ -17,14 +17,31 @@ mock.module('../../src/core/settings', () => ({
   getSettings: () => ({ doctor: { intervalMs: 60_000, requireOnboard: false, escalation: false, escalationCooldownMs: 60_000, sensitivity: 'standard' } }),
 }))
 mock.module('../../src/core/onboarding/state', () => ({ isOnboarded: () => true }))
+const liveTasks = new Set<string>()
+const taskColumns = new Map<string, string>()
+// Admission reads the task store synchronously (no yield between the durable
+// check and the reservation); only that one read is faked, the rest is real.
+import * as realTaskStore from '../../src/core/task-store'
+// Captured BEFORE the module is mocked: the namespace import is a live binding
+// and would otherwise resolve to the mock itself (infinite recursion).
+const realGetTaskWithColumn = realTaskStore.getTaskWithColumn
+mock.module('../../src/core/task-store', () => ({
+  ...realTaskStore,
+  getTaskWithColumn: (id: string) => (liveTasks.has(id) ? { task: { id }, column: taskColumns.get(id) ?? 'todo' } : realGetTaskWithColumn(id)),
+}))
+
 mock.module('../../src/core/logger', () => ({ createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }) }))
 
 import { applyHealthCheckRun, getHealthReport, resetHealthReportCache } from '../../src/core/doctor-report-cache'
 import { runHealthCheck } from '../../src/core/doctor-checks'
 import { awaitDoctorRepair, planDoctorRepair, startDoctorRepair, type DoctorRepairApplyOptions } from '../../src/core/doctor-repair'
 import { clearStoredRepairPlans } from '../../src/core/doctor-repair-plans'
+import { createDoctorRepairRequest, updateDoctorRepairRequest } from '../../src/core/doctor-repair-store'
+import { incidentHolder, resetIncidentReservationsForTests } from '../../src/core/doctor-reservations'
 import { _resetOperationRegistryForTests, getOperationRegistry } from '../../src/core/operations'
 import { OperationRejectedError } from '@bakin/core/operations'
+import { blockTask, createTask, escalateTaskToReview, moveTask } from '../../src/core/task-store'
+import { closeDb } from '../../packages/core/src/storage/db'
 import { healthRepairApplyReportSchema } from '../../plugins/health/lib/route-schemas'
 
 /** Start the repair operation and wait for its report, as every in-process caller does. */
@@ -220,6 +237,128 @@ describe('targeted canonical doctor repair', () => {
     // A later identical apply is a new request against a consumed plan: stale.
     const late = await startDoctorRepair(options).catch((err: unknown) => err)
     expect(late).toMatchObject({ httpStatus: 409, body: { code: 'STALE_PLAN' } })
+  })
+
+  it('refuses a DIFFERENT plan over an incident a running repair holds — 409 repair_in_flight — and frees it at settle (#896)', async () => {
+    const report = getHealthReport()
+    const first = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const second = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    expect(second.planId).not.toBe(first.planId)
+    expect(first.items[0].incidentIds.length).toBeGreaterThan(0)
+    let releaseApply!: () => void
+    applyBarrier = new Promise<void>((resolve) => { releaseApply = resolve })
+
+    const started = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: first.planId, itemIds: [first.items[0].id], confirmedItemIds: [], origin: 'web' })
+    const refusal = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: second.planId, itemIds: [second.items[0].id], confirmedItemIds: [], origin: 'web' })
+      .catch((err: unknown) => err)
+    expect(refusal).toBeInstanceOf(OperationRejectedError)
+    expect(refusal).toMatchObject({ httpStatus: 409, body: { code: 'repair_in_flight', overlapping: first.items[0].incidentIds } })
+    // Nothing started for the refused plan, and its plan is NOT consumed.
+    expect(getOperationRegistry().list().filter((view) => view.kind === 'repair')).toHaveLength(1)
+    expect(applyAction).toHaveBeenCalledTimes(1)
+
+    releaseApply()
+    await awaitDoctorRepair(started.operationId)
+    // The reservation died with the operation: the second plan may run now (its
+    // target evidence changed because the first repair healed it → STALE_PLAN,
+    // which is validation, not admission).
+    const late = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: second.planId, itemIds: [second.items[0].id], confirmedItemIds: [], origin: 'web' })
+      .catch((err: unknown) => err)
+    expect(late).toMatchObject({ httpStatus: 409, body: { code: 'STALE_PLAN' } })
+  })
+
+  it('refuses an apply over an incident an OPEN delegated task is working — unless the caller is that task\'s agent (#896 review)', async () => {
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: testDir, projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const incidentId = plan.items[0].incidentIds[0]!
+    const request = createDoctorRepairRequest(testDir, { kind: 'delegate', incidentIds: [incidentId], observationIds: plan.items[0].observationIds })
+    updateDoctorRepairRequest(testDir, request.id, (r) => ({ ...r, status: 'sent', taskId: 'task-live', agentId: 'main' }))
+    liveTasks.add('task-live')
+    try {
+      const options = { contentDir: testDir, projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [], origin: 'web' as const }
+      const refusal = await startDoctorRepair(options).catch((err: unknown) => err)
+      expect(refusal).toMatchObject({ httpStatus: 409, body: { code: 'repair_in_flight', overlapping: [incidentId], heldBy: 'task:task-live' } })
+      expect(getOperationRegistry().list()).toEqual([])
+      expect(incidentHolder(incidentId)).toBeUndefined()
+      // The owning agent applying from inside its task is the hand-off.
+      const started = await startDoctorRepair({ ...options, actingAgentId: 'main' })
+      await awaitDoctorRepair(started.operationId)
+      expect(applyAction).toHaveBeenCalledTimes(1)
+    } finally {
+      liveTasks.delete('task-live')
+    }
+  })
+
+  it('a delegated task handed back to the operator (resurfaced to Review) no longer blocks the operator\'s apply (#896 review r5)', async () => {
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: testDir, projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const incidentId = plan.items[0].incidentIds[0]!
+    const request = createDoctorRepairRequest(testDir, { kind: 'delegate', incidentIds: [incidentId], observationIds: plan.items[0].observationIds })
+    // Resurfacing keeps kind `delegate` + status `sent` and appends the window mark; the task moves to Review.
+    updateDoctorRepairRequest(testDir, request.id, (r) => ({ ...r, status: 'sent', taskId: 'task-handed', agentId: 'main', events: [...r.events, { ts: new Date().toISOString(), type: 'resurfaced', message: 'handed back' }] }))
+    liveTasks.add('task-handed')
+    const options = { contentDir: testDir, projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [], origin: 'web' as const }
+    try {
+      for (const column of ['inProgress', 'blocked']) {
+        taskColumns.set('task-handed', column)
+        const refusal = await startDoctorRepair(options).catch((err: unknown) => err)
+        expect(refusal).toMatchObject({ httpStatus: 409, body: { code: 'repair_in_flight', heldBy: 'task:task-handed' } })
+      }
+      taskColumns.set('task-handed', 'review')
+      const started = await startDoctorRepair(options)
+      await awaitDoctorRepair(started.operationId)
+      expect(applyAction).toHaveBeenCalledTimes(1)
+    } finally {
+      liveTasks.delete('task-handed')
+      taskColumns.delete('task-handed')
+    }
+  })
+
+  it('the real sequence: a delegated task the agent BLOCKED is refused until Health hands it back to Review, then the operator applies (#896 review r6)', async () => {
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: testDir, projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const incidentId = plan.items[0].incidentIds[0]!
+    const task = await createTask('Health: restart Search', 'todo', 'main')
+    await moveTask(task.id, 'inProgress')
+    await blockTask(task.id, 'installer hung at 40%')
+    const request = createDoctorRepairRequest(testDir, { kind: 'delegate', incidentIds: [incidentId], observationIds: plan.items[0].observationIds })
+    updateDoctorRepairRequest(testDir, request.id, (r) => ({ ...r, status: 'sent', taskId: task.id, agentId: 'main' }))
+    const options = { contentDir: testDir, projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [], origin: 'web' as const }
+    const refusal = await startDoctorRepair(options).catch((err: unknown) => err)
+    expect(refusal).toMatchObject({ httpStatus: 409, body: { code: 'repair_in_flight', heldBy: `task:${task.id}` } })
+    // Escalation's resurface: the ONE move Health makes, blocked reason on the log line.
+    expect(escalateTaskToReview(task.id, 'Health: not fixed after 12h — handed back to you.')).toBe('blocked')
+    const started = await startDoctorRepair(options)
+    await awaitDoctorRepair(started.operationId)
+    expect(applyAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('hands the reservation back to releaseTo at settle instead of freeing it (#896 review)', async () => {
+    resetIncidentReservationsForTests()
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const incidentId = plan.items[0].incidentIds[0]!
+    const started = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [], origin: 'system', releaseTo: 'escalation:cycle-9' })
+    await awaitDoctorRepair(started.operationId)
+    expect(incidentHolder(incidentId)).toBe('escalation:cycle-9')
+    resetIncidentReservationsForTests()
+  })
+
+  it('an ATTACHING caller\'s releaseTo is honoured by the running twin\'s settle (#896 review)', async () => {
+    resetIncidentReservationsForTests()
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const incidentId = plan.items[0].incidentIds[0]!
+    let releaseApply!: () => void
+    applyBarrier = new Promise<void>((resolve) => { releaseApply = resolve })
+    const options = { contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [], origin: 'web' as const }
+    const first = await startDoctorRepair(options) // a UI apply: no hand-back
+    const second = await startDoctorRepair({ ...options, origin: 'system', releaseTo: 'escalation:cycle-3' }) // escalation attaches
+    expect(second).toMatchObject({ operationId: first.operationId, attached: true })
+    releaseApply()
+    await awaitDoctorRepair(first.operationId)
+    expect(incidentHolder(incidentId)).toBe('escalation:cycle-3')
+    resetIncidentReservationsForTests()
   })
 
   it('answers immediately while an action is still blocked (the 202 never waits for the repair)', async () => {

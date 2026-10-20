@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { HealthReportStatus } from '@makinbakin/sdk/types'
-import { setupTtyCliHarness } from './helpers/tty-cli-harness'
-import { advisoryHealthReport, makeHealthReport } from './doctor-fixtures'
+// Warm Ink before exercising the CLI's lazy TUI import under Bun's module-isolated runner.
+import 'ink'
+import { setStdoutIsTTY, setupTtyCliHarness } from './helpers/tty-cli-harness'
+import { actionableHealthReport, advisoryHealthReport, makeHealthReport } from './doctor-fixtures'
 import { healthReportSchema } from '../../plugins/health/lib/route-schemas'
 
 function onboardingComponent(name: string) {
@@ -73,5 +75,64 @@ describe('doctor CLI canonical report', () => {
       'core:offline:plugin-assets:unverified',
       'core:offline:server-checks:unverified',
     ])
+  })
+})
+
+describe('doctor --delegate refusals (#896 repair_in_flight)', () => {
+  const refusal = {
+    status: 'repair_in_flight',
+    incidents: [],
+    overlapping: ['health:search:unavailable'],
+    heldBy: 'repair:plan-1:search.restart:restart',
+  }
+  const refusedResponse = () => new Response(JSON.stringify(refusal), { status: 409, headers: { 'content-type': 'application/json' } })
+
+  it('JSON mode: the decoded 409 is the data, error REPAIR_IN_FLIGHT, exit 1', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--delegate', '--yes', '--json']
+    fetchMock.mockResolvedValueOnce(harness.jsonResponse(actionableHealthReport))
+    fetchMock.mockResolvedValueOnce(refusedResponse())
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+    const printed = JSON.parse(String(harness.log.mock.calls.at(-1)![0]))
+    expect(printed).toMatchObject({ ok: false, exitCode: 1, data: { status: 'repair_in_flight', heldBy: 'repair:plan-1:search.restart:restart' }, error: { code: 'REPAIR_IN_FLIGHT' } })
+    expect(fetchMock.mock.calls[1][0]).toContain('/api/plugins/health/doctor/delegate')
+  })
+
+  it('plain mode: names the holder and the held incidents, exit 1', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--delegate', '--yes']
+    fetchMock.mockResolvedValueOnce(harness.jsonResponse(actionableHealthReport))
+    fetchMock.mockResolvedValueOnce(refusedResponse())
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+    expect(harness.output()).toContain('Not delegated: a repair is already working these incidents (held by repair:plan-1:search.restart:restart)')
+    expect(harness.output()).toContain('health:search:unavailable')
+  })
+
+  it.each([
+    ['an unrelated 409', { error: 'something else entirely' }],
+    ['a malformed refusal', { status: 'repair_in_flight', incidents: [] }],
+    ['a refusal with a malformed incident', { status: 'repair_in_flight', incidents: [{ id: 'x', title: { bad: 'object' } }], overlapping: ['x'], heldBy: 'repair:y' }],
+  ])('%s is NOT rendered as a refusal — it stays a formatted API error (#896 review)', async (_label, body) => {
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--delegate', '--yes', '--json']
+    fetchMock.mockResolvedValueOnce(harness.jsonResponse(actionableHealthReport))
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 409, headers: { 'content-type': 'application/json' } }))
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow()
+    expect(harness.output()).not.toContain('REPAIR_IN_FLIGHT')
+    expect(harness.output()).not.toContain('"status": "repair_in_flight"')
+  })
+
+  it('TTY mode: renders the refusal screen and exits 1 (no "board task was created")', async () => {
+    setStdoutIsTTY(true)
+    try {
+      process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--delegate', '--yes']
+      fetchMock.mockResolvedValueOnce(harness.jsonResponse(actionableHealthReport))
+      fetchMock.mockResolvedValueOnce(refusedResponse())
+      const { main } = await import('../../cli/bakin')
+      await expect(main()).rejects.toThrow('exit:1')
+      expect(harness.output()).not.toContain('A board task was created')
+    } finally {
+      setStdoutIsTTY(false)
+    }
   })
 })

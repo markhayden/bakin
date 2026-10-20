@@ -34,6 +34,16 @@ export interface RepairProposal {
   reportId: string
   observationIds: string[]
   items: ProposedRepairItem[]
+  /** Why the operator is being asked: the safe auto-repair that already failed (#896 D3.4). */
+  failure?: RepairFailure
+}
+
+/** The receipt of a repair attempt that failed before this proposal was raised. */
+export interface RepairFailure {
+  operationId: string
+  stage: string
+  error: string
+  at: string
 }
 
 export type ApprovalOwner =

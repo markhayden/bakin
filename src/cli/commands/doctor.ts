@@ -2,6 +2,7 @@
  * `bakin doctor [--full] [--fix] [--delegate] [repair ...]` — canonical
  * Health reports, targeted deterministic repair, and delegated repair.
  */
+import { z } from 'zod'
 import type {
   HealthCheckState,
   HealthIncident,
@@ -15,7 +16,7 @@ import type {
   HealthReportStatus,
   SearchReadinessStage,
 } from '@makinbakin/sdk/types'
-import { apiGet, apiPost, type OperationFollowResult } from '../http'
+import { apiGet, apiPost, type OperationFollowResult, apiPostExpecting } from '../http'
 import { describeResult, followAndRender, operationExitCode, silentOperationRenderer } from '../operation-renderer'
 import { print } from '../output'
 import { exitUsage, exitUnknownSubcommand, promptYesNo } from '../help'
@@ -34,11 +35,14 @@ interface CliDoctorRepairApply {
   report: HealthReport
 }
 
-interface CliDoctorDelegateReport {
-  status: 'confirmation_required' | 'sent' | 'no_unresolved' | 'already_delegated'
-  request: Record<string, unknown>
-  incidents: HealthIncident[]
-}
+type CliDoctorDelegateReport =
+  | {
+    status: 'confirmation_required' | 'sent' | 'no_unresolved' | 'already_delegated'
+    request: Record<string, unknown>
+    incidents: HealthIncident[]
+  }
+  /** 409 from the server: a repair or another delegation holds these incidents (#896). */
+  | { status: 'repair_in_flight'; incidents: HealthIncident[]; overlapping: string[]; heldBy: string }
 
 interface OfflineCheckResult {
   name: string
@@ -409,8 +413,29 @@ async function runDoctorDelegateApply(report: HealthReport, incidents: [HealthIn
     reportId: report.id,
     ids: incidents.map(incident => incident.id) as [string, ...string[]],
   }
-  return await apiPost('/api/plugins/health/doctor/delegate', { accepted: true, target }) as CliDoctorDelegateReport
+  const { body } = await apiPostExpecting<CliDoctorDelegateReport>(
+    '/api/plugins/health/doctor/delegate',
+    { accepted: true, target },
+    { 409: repairInFlightSchema },
+  )
+  return body
 }
+
+/** Every field the plain, JSON and TTY delegate renderers read from an incident; the rest passes through. */
+const renderedIncidentSchema = z.looseObject({
+  id: z.string().min(1),
+  title: z.string(),
+  impact: z.string(),
+  status: z.string(),
+})
+
+/** The ONE 409 the delegate command renders; any other 409 is a thrown, formatted error. */
+const repairInFlightSchema = z.object({
+  status: z.literal('repair_in_flight'),
+  incidents: z.array(renderedIncidentSchema.transform((incident) => incident as unknown as HealthIncident)),
+  overlapping: z.array(z.string()).min(1),
+  heldBy: z.string().min(1),
+})
 
 function repairApplyExitCode(report: CliDoctorRepairApply): DoctorExitCode {
   if (report.results.some(result => result.status === 'failed')) return 1
@@ -478,6 +503,12 @@ function printDoctorDelegatePreview(incidents: readonly HealthIncident[]): void 
 }
 
 function printDoctorDelegateResult(report: CliDoctorDelegateReport): void {
+  if (report.status === 'repair_in_flight') {
+    console.log(`Not delegated: a repair is already working these incidents (held by ${report.heldBy}).`)
+    for (const id of report.overlapping) console.log(`  ${id}`)
+    console.log('Wait for it to settle — Health re-judges them on its next cycle.')
+    return
+  }
   if (report.status === 'no_unresolved') {
     console.log('No action-required incidents need delegated repair.')
     return
@@ -655,8 +686,12 @@ async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: 
   }
 
   const report = await runDoctorDelegateApply(current, incidents as [HealthIncident, ...HealthIncident[]])
+  const refused = report.status === 'repair_in_flight'
   if (options.json) {
-    printDoctorCommandJson('doctor --delegate', report, 0)
+    printDoctorCommandJson('doctor --delegate', report, refused ? 1 : 0, refused
+      ? { code: 'REPAIR_IN_FLIGHT', message: `A repair is already working ${report.overlapping.join(', ')} (held by ${report.heldBy}); nothing was delegated.` }
+      : null)
+    if (refused) process.exit(1)
     return
   }
   if (options.isTTY) {
@@ -665,6 +700,7 @@ async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: 
   } else {
     printDoctorDelegateResult(report)
   }
+  if (refused) process.exit(1)
 }
 
 function doctorRepairRecord(value: unknown): Record<string, unknown> | null {

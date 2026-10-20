@@ -18,10 +18,13 @@ import {
 } from './health-contract'
 import {
   claimRepairApplication,
+  getStoredRepairPlan,
   createStoredRepairPlan,
   DoctorRepairConfirmationError,
   DoctorRepairStalePlanError,
 } from './doctor-repair-plans'
+import { releaseIncidents, reserveIncidents, transferIncidents } from './doctor-reservations'
+import { getDoctorRepairRequest, openRepairWorkByIncident } from './doctor-repair-store'
 import { checkEvaluatedFresh } from './doctor-autoclose'
 import {
   CHILD_PARTIAL_CODE,
@@ -247,6 +250,22 @@ export const REPAIR_PARENT_PLAN: OperationPlan = {
 
 export interface DoctorRepairStartOptions extends DoctorRepairApplyOptions {
   origin: OperationOrigin
+  /**
+   * The agent this apply acts for (CLI agent context, #898). A repair-type
+   * incident a delegated task is still WORKING refuses every other caller
+   * (`repair_in_flight`, held by that task); the task's own agent is the one
+   * explicit hand-off — it is doing the work it was asked to do. A task that
+   * was handed back (resurfaced to Review) or closed holds nothing: the
+   * operator was asked to take over, so the operator may apply.
+   */
+  actingAgentId?: string
+  /**
+   * Owner token that takes the incident reservation back when the operation
+   * settles (escalation hands the safe subset over and wants it back before
+   * it records each disposition — no window for a delegation to grab it).
+   * Absent: the reservation is released at settle.
+   */
+  releaseTo?: string
 }
 
 /** Validation failures keep today's 409 bodies (D22). */
@@ -276,34 +295,146 @@ function childOutcome(results: HealthRepairApplyResult[]): OperationOutcome<Heal
  * `verify` re-runs the affected checks. `result.body` is the
  * `DoctorRepairApplyReport` — rows are kept on every outcome.
  */
+/** The repair operation's fingerprint — also its incident-reservation owner token (#896). */
+export function repairFingerprint(planId: string, itemIds: readonly string[]): string {
+  return `repair:${planId}:${[...itemIds].sort().join(',')}`
+}
+
 export async function startDoctorRepair(options: DoctorRepairStartOptions): Promise<OperationStartResponse> {
   void options.projectRoot
   const registry = getOperationRegistry()
+  const fingerprint = repairFingerprint(options.planId, options.itemIds)
+  // Admission BEFORE ownership (#896 D3.1): the selected items' incidents are
+  // reserved under this request's fingerprint before the registry sees it.
+  // Identical requests attach (same token); a DIFFERENT plan over any of these
+  // incidents — another tab, escalation, a delegation — is refused here, so
+  // two repairs never work one incident. A plan the store no longer holds
+  // reserves nothing: validate answers STALE_PLAN for it as today.
+  const stored = getStoredRepairPlan(options.planId)
+  const incidentIds = [...new Set(
+    (stored?.items ?? []).filter((item) => options.itemIds.includes(item.id)).flatMap((item) => item.incidentIds),
+  )]
+  // Durable admission: an OPEN delegated task (a live agent run) already
+  // works the incident — refuse unless this apply IS that task's agent. The
+  // dependency is loaded FIRST; from here to `registry.start` nothing yields,
+  // so the durable check and the reservation are one synchronous admission
+  // (a delegation cannot finish persistence in between).
+  const { getTaskWithColumn } = await import('./task-store')
+  const working = delegatedTaskWorking(options.contentDir, incidentIds, options.actingAgentId, getTaskWithColumn)
+  if (working) {
+    throw new OperationRejectedError(409, {
+      error: `Repair task ${working.taskId} is already working ${working.incidentId}.`,
+      code: 'repair_in_flight',
+      overlapping: [working.incidentId],
+      heldBy: `task:${working.taskId}`,
+    })
+  }
+  const reservation = incidentIds.length > 0 ? reserveIncidents(incidentIds, fingerprint) : null
+  if (reservation?.status === 'refused') {
+    throw new OperationRejectedError(409, {
+      error: 'A repair is already working these incidents.',
+      code: 'repair_in_flight',
+      overlapping: reservation.overlapping,
+      heldBy: reservation.heldBy,
+    })
+  }
+  const owns = reservation?.status === 'granted'
+  // The hand-back is keyed by fingerprint, not by caller: a request that
+  // ATTACHES to a running twin never runs its own settle, so the twin's
+  // settle consults this and honours the attacher's releaseTo.
+  if (options.releaseTo) handBackByFingerprint.set(fingerprint, options.releaseTo)
   let validated: ReturnType<typeof claimRepairApplication> | undefined
   let current: HealthReport | undefined
-  return registry.start<DoctorRepairApplyReport>({
-    kind: 'repair',
-    owner: 'core',
-    origin: options.origin,
-    title: options.itemIds.length === 1 ? 'Apply a Health repair' : `Apply ${options.itemIds.length} Health repairs`,
-    href: '/health',
-    fingerprint: `repair:${options.planId}:${[...options.itemIds].sort().join(',')}`,
-    plan: REPAIR_PARENT_PLAN,
-    validate: () => {
-      current = getHealthReport()
-      try {
-        validated = claimRepairApplication({
-          planId: options.planId,
-          itemIds: options.itemIds,
-          confirmedItemIds: options.confirmedItemIds,
-          report: current,
-        })
-      } catch (error) {
-        rejectAsToday(error)
+  try {
+    return await registry.start<DoctorRepairApplyReport>({
+      kind: 'repair',
+      owner: 'core',
+      origin: options.origin,
+      title: options.itemIds.length === 1 ? 'Apply a Health repair' : `Apply ${options.itemIds.length} Health repairs`,
+      href: '/health',
+      fingerprint,
+      plan: REPAIR_PARENT_PLAN,
+      validate: () => {
+        current = getHealthReport()
+        try {
+          validated = claimRepairApplication({
+            planId: options.planId,
+            itemIds: options.itemIds,
+            confirmedItemIds: options.confirmedItemIds,
+            report: current,
+          })
+        } catch (error) {
+          rejectAsToday(error)
+        }
+      },
+      run: async (op) => {
+        try {
+          return await runDoctorRepair(op, options, validated!, current!)
+        } finally {
+          settleReservation(fingerprint, incidentIds)
+        }
+      },
+    })
+  } catch (error) {
+    // Validation refused (or the registry threw) before anything ran: a
+    // reservation this request GRANTED must not outlive it. An attached
+    // request never releases — the running twin owns the incidents.
+    if (owns) settleReservation(fingerprint, incidentIds)
+    throw error
+  }
+}
+
+/** fingerprint → owner token that takes the incidents back at settle (set by whichever caller asked). */
+const handBackByFingerprint = new Map<string, string>()
+
+/** At settle the incidents go back to the caller that asked for them (attached or not), or free. */
+function settleReservation(fingerprint: string, incidentIds: readonly string[]): void {
+  const releaseTo = handBackByFingerprint.get(fingerprint)
+  handBackByFingerprint.delete(fingerprint)
+  if (releaseTo && transferIncidents(incidentIds, fingerprint, releaseTo)) return
+  releaseIncidents(fingerprint)
+}
+
+/**
+ * The newest OPEN delegated request whose task still exists, for any of these
+ * incidents — unless the caller is that task's own agent (the hand-off).
+ * Synchronous on purpose (see the caller); request and task reads are
+ * memoised so a wide apply does not re-read one request per incident.
+ */
+/**
+ * Columns from which no agent runs a task: Review is where escalation puts a
+ * delegated task it hands back to the operator (`resurfaceRequest`) and
+ * where an agent parks finished work for a human; closed columns are closed.
+ * A delegated task there no longer holds its incidents (#896 review r5).
+ */
+const HANDED_BACK_COLUMNS: ReadonlySet<string> = new Set(['review', 'done', 'archived'])
+
+function delegatedTaskWorking(
+  contentDir: string,
+  incidentIds: readonly string[],
+  actingAgentId: string | undefined,
+  getTaskWithColumn: (taskId: string) => { column: string } | null,
+): { taskId: string; incidentId: string } | null {
+  if (incidentIds.length === 0) return null
+  const index = openRepairWorkByIncident(contentDir)
+  const requests = new Map<string, ReturnType<typeof getDoctorRepairRequest>>()
+  const tasksWorking = new Map<string, boolean>()
+  for (const incidentId of incidentIds) {
+    for (const work of index.get(incidentId) ?? []) {
+      if (!requests.has(work.requestId)) requests.set(work.requestId, getDoctorRepairRequest(contentDir, work.requestId))
+      const request = requests.get(work.requestId)
+      if (request?.kind !== 'delegate') continue
+      if (!tasksWorking.has(work.taskId)) {
+        const column = getTaskWithColumn(work.taskId)?.column
+        // Task gone → the request covers nothing; handed back or closed → the operator's to take.
+        tasksWorking.set(work.taskId, column !== undefined && !HANDED_BACK_COLUMNS.has(column))
       }
-    },
-    run: (op) => runDoctorRepair(op, options, validated!, current!),
-  })
+      if (!tasksWorking.get(work.taskId)) continue
+      if (actingAgentId && request.agentId === actingAgentId) break // the owning agent acts for its task
+      return { taskId: work.taskId, incidentId }
+    }
+  }
+  return null
 }
 
 async function runDoctorRepair(

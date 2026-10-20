@@ -1185,6 +1185,16 @@ describe('Health Plugin Routes', () => {
       expect(delegateDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({ accepted: false }))
     })
 
+    it('answers 409 repair_in_flight when a repair already holds a targeted incident (#896)', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/delegate')!
+      delegateDoctorRepairMock.mockResolvedValueOnce({
+        status: 'repair_in_flight', incidents: [], overlapping: ['health:search:unavailable'], heldBy: 'repair:plan-1:search.restart:restart',
+      } as never)
+      const { status, body } = await callRoute(route, activated.ctx, { body: { accepted: true } })
+      expect(status).toBe(409)
+      expect(body).toMatchObject({ status: 'repair_in_flight', overlapping: ['health:search:unavailable'], heldBy: 'repair:plan-1:search.restart:restart' })
+    })
+
     it('creates a delegated repair request when accepted=true', async () => {
       const route = findRoute(activated.routes, 'POST', '/doctor/delegate')!
 

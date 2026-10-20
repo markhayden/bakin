@@ -475,8 +475,10 @@ export function addTaskLog(identifier: string, author: string, message: string, 
  * table refuses. This is the ONE documented exception, used only by Health's
  * resurfacing of a repair that sat past its window or was closed while its
  * incident still fails; it never runs for an agent or a turn. A task already
- * in Review or Blocked stays put (its blocked reason is context the operator
- * needs). The reason always goes on the task log so the hand-off explains
+ * in Review just gets the log line. A Blocked task moves too — handed back
+ * means the operator's to take, and admission reads the column (#896) — with
+ * its blocked reason carried onto the log line so that context survives the
+ * move. The reason always goes on the task log so the hand-off explains
  * itself. Synchronous on purpose: Health's resurface re-judges and mutates in
  * one uninterrupted block. Returns the column the task LEFT, or null.
  */
@@ -484,9 +486,10 @@ export function escalateTaskToReview(identifier: string, reason: string): string
   const task = requireTask(identifier)
   const store = getSharedBakinTaskStore()
   const from = asColumnId(task)
-  const moves = from !== 'review' && from !== 'blocked'
+  const moves = from !== 'review'
   if (moves) store.updateSync(task.id, columnPatch('review'))
-  store.appendLogSync(task.id, { timestamp: new Date().toISOString(), author: 'health', message: reason })
+  const message = from === 'blocked' && task.blockedReason ? `${reason} (was blocked: ${task.blockedReason})` : reason
+  store.appendLogSync(task.id, { timestamp: new Date().toISOString(), author: 'health', message })
   return moves ? from : null
 }
 

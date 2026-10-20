@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
-import { repairProposalSchema, type RepairProposal } from '@bakin/core/approvals'
+import { repairFailureSchema, repairProposalSchema, type RepairFailure, type RepairProposal } from '@bakin/core/approvals'
 import type { HealthRepairPlan } from '../../packages/core/src/plugin-types'
 import { createLogger } from './logger'
 
@@ -24,7 +24,12 @@ export class DoctorRepairRequestNotFoundError extends Error {
  *   approval-navigate — a review task holding a `health-navigate` approval
  *                       (operator-only action; Dismiss is the one decision)
  */
-export type DoctorRepairRequestKind = 'delegate' | 'approval-repair' | 'approval-navigate'
+/**
+ * `operator-review` (#896 D3.4): a repair-type incident whose safe repair
+ * failed, could not be planned, or settled without a report — ONE review
+ * task for the operator, no approval (nothing to apply), never an agent.
+ */
+export type DoctorRepairRequestKind = 'delegate' | 'approval-repair' | 'approval-navigate' | 'operator-review'
 
 /**
  * planned → sent → (applying →) completed | verified | failed | dismissed.
@@ -59,6 +64,8 @@ export interface DoctorRepairRequest {
   approvalId?: string
   /** approval-repair: the frozen proposal the approval was granted for (R1). */
   proposal?: RepairProposal
+  /** operator-review / approval-repair: the failed attempt that led here. */
+  failure?: RepairFailure
   events: DoctorRepairRequestEvent[]
 }
 
@@ -96,7 +103,7 @@ const isoTime = z.string().refine((value) => Number.isFinite(Date.parse(value)),
 const doctorRepairRequestSchema = z.object({
   version: z.literal(2),
   id: z.string().min(1),
-  kind: z.enum(['delegate', 'approval-repair', 'approval-navigate']),
+  kind: z.enum(['delegate', 'approval-repair', 'approval-navigate', 'operator-review']),
   status: z.enum(['planned', 'sent', 'applying', 'completed', 'verified', 'failed', 'dismissed']),
   createdAt: isoTime,
   updatedAt: isoTime,
@@ -108,6 +115,7 @@ const doctorRepairRequestSchema = z.object({
   agentId: z.string().optional(),
   approvalId: z.string().optional(),
   proposal: repairProposalSchema.optional(),
+  failure: repairFailureSchema.optional(),
   events: z.array(z.object({
     ts: z.string(),
     type: z.string(),
@@ -147,6 +155,7 @@ const CREATED_MESSAGE: Record<DoctorRepairRequestKind, string> = {
   delegate: 'Delegated Health repair request planned.',
   'approval-repair': 'Health repair proposal awaiting approval.',
   'approval-navigate': 'Health incident awaiting operator action.',
+  'operator-review': 'Health repair could not be automated — review task for the operator.',
 }
 
 export function createDoctorRepairRequest(
@@ -159,6 +168,7 @@ export function createDoctorRepairRequest(
     checkIds?: string[]
     proposal?: RepairProposal
     events?: DoctorRepairRequestEvent[]
+    failure?: RepairFailure
   },
 ): DoctorRepairRequest {
   const ts = nowIso()
@@ -175,6 +185,7 @@ export function createDoctorRepairRequest(
     observationIds: [...new Set(input.observationIds)].sort(),
     checkIds: [...new Set(input.checkIds ?? [])].sort(),
     ...(input.proposal ? { proposal: structuredClone(input.proposal) } : {}),
+    ...(input.failure ? { failure: { ...input.failure } } : {}),
     events: input.events ?? [{ ts, type: 'created', message: CREATED_MESSAGE[kind] }],
   }
   atomicWriteJson(requestPath(contentDir, request), request)

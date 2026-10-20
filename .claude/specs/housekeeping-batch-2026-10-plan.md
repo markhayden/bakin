@@ -117,7 +117,7 @@ One conventional commit per slice, scope = the plugin/module touched. Gate befor
 | 3.4 | `feat(doctor): manual delegation refuses repair_in_flight end to end (409, CLI transport + renderers, UI dialog)` | alone **(P3: refusal production + HTTP mapping + transport + renderers + tests in ONE commit)** |
 | 3.5 | `feat(doctor): operator-review requests + failure receipts on repair proposals` | {3.5, 3.6} |
 | 3.6 | `fix(doctor): failed or unplannable safe repairs go to the operator, never an agent` | alone |
-| 3.7 | `fix(operations): stale-lock reclaim is single-winner` | alone |
+| 3.7 | `fix(operations): stale-lock reclaim is single-winner` → delivered as flock-held locks after review (spec D3.5 note) | alone |
 
 ### Task 3.1: Reservation primitive
 - Acceptance: `src/core/doctor-reservations.ts` (new): `reserveIncidents(ids, owner)` → granted / attached / refused `{ overlapping, heldBy }`; `transfer(ids, from, to)` atomic; `release(owner, ids?)`; `heldIncidentIds()`. New `tests/core/doctor-reservations.test.ts`: free, same-owner attach, cross-owner refusal, partial overlap, transfer, release-all.

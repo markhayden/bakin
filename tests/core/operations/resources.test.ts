@@ -157,7 +157,7 @@ describe('acquire and release', () => {
     expect(existsSync(resourceLockPath('media-store'))).toBe(false)
   })
 
-  it('reclaims a lock whose holder pid is dead, and reports the reclaim', async () => {
+  it('takes a lock whose recorded holder is dead at once (the kernel already released it) and reports the takeover', async () => {
     mkdirSync(join(testDir, 'locks'), { recursive: true })
     writeFileSync(resourceLockPath('media-store'), JSON.stringify({ pid: 999_999, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'Old repair' }))
     const reclaimed: string[] = []
@@ -166,7 +166,7 @@ describe('acquire and release', () => {
     expect(readResourceHolder('media-store')?.operationId).toBe('op-1')
   })
 
-  it('reclaims a lock naming this process that no live operation here holds', async () => {
+  it('takes a lock file naming this process that no live operation here holds', async () => {
     writeFileSync(resourceLockPath('install-state'), JSON.stringify({ pid: process.pid, bootId: 'boot-a', operationId: 'ghost', acquiredAt: new Date().toISOString() }))
     await acquire(['install-state'], { identity: identity('op-1') })
     expect(readResourceHolder('install-state')?.operationId).toBe('op-1')
@@ -242,19 +242,64 @@ describe('holdNow — the bounded synchronous writers', () => {
     expect(readResourceHolder('install-state')?.operationId).toBe('op-1')
   })
 
-  it('never takes over a lock another live process holds', async () => {
+  it('never takes over a lock another live process holds — even one whose metadata is empty', async () => {
     const path = resourceLockPath('install-state')
     mkdirSync(dirname(path), { recursive: true })
-    const foreign = { pid: process.ppid, acquiredAt: new Date().toISOString(), title: 'Another Bakin' }
-    writeFileSync(path, JSON.stringify(foreign))
-    const busy = await holdNow(['install-state'], { title: 'Unlink' }, async () => {}).catch((err: unknown) => err)
-    expect(busy).toBeInstanceOf(ResourceBusyError)
-    expect(JSON.parse(readFileSync(path, 'utf-8')).pid).toBe(process.ppid)
-  })
+    const child = spawnHolder('install-state', { writeMetadata: false })
+    try {
+      await child.held
+      expect(readFileSync(path, 'utf-8')).toBe('') // nothing to judge by — the kernel lock is the truth
+      const busy = await holdNow(['install-state'], { title: 'Unlink' }, async () => {}).catch((err: unknown) => err)
+      expect(busy).toBeInstanceOf(ResourceBusyError)
+      expect(existsSync(path)).toBe(true)
+    } finally {
+      child.kill()
+    }
+  }, 20_000)
 })
 
+
+/** A child process that takes and HOLDS a resource lock until killed; `held` resolves once it has it. */
+function spawnHolder(resource: string, opts: { writeMetadata: boolean } = { writeMetadata: true }) {
+  const script = opts.writeMetadata
+    ? `
+      import { acquireResources } from ${JSON.stringify(join(REPO_ROOT, 'packages/core/src/operations/resources.ts'))}
+      await acquireResources([${JSON.stringify(resource)}], { identity: { title: 'Child holder', operationId: 'child' } })
+      console.log('HELD')
+      setInterval(() => {}, 1000)
+    `
+    : `
+      import { dlopen, FFIType } from 'bun:ffi'
+      import { openSync } from 'node:fs'
+      import { resourceLockPath } from ${JSON.stringify(join(REPO_ROOT, 'packages/core/src/operations/resources.ts'))}
+      const libc = dlopen(process.platform === 'darwin' ? 'libSystem.B.dylib' : 'libc.so.6', { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } })
+      const fd = openSync(resourceLockPath(${JSON.stringify(resource)}), 'a+')
+      if (libc.symbols.flock(fd, 2 | 4) !== 0) throw new Error('child could not lock')
+      console.log('HELD')
+      setInterval(() => {}, 1000)
+    `
+  const child = Bun.spawn(['bun', '-e', script], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, BAKIN_HOME: testDir, BAKIN_CONSOLE_FORMAT: 'silent' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const held = (async () => {
+    const reader = child.stdout.getReader()
+    let out = ''
+    const deadline = Date.now() + 20_000
+    while (!out.includes('HELD') && Date.now() < deadline) {
+      const { value, done } = await reader.read()
+      if (done) break
+      out += new TextDecoder().decode(value)
+    }
+    if (!out.includes('HELD')) throw new Error(`child never held the lock: ${out}`)
+  })()
+  return { held, kill: () => child.kill('SIGKILL'), pid: child.pid }
+}
+
 describe('two processes', () => {
-  it('waits for a live holder in another process and reclaims after it dies', async () => {
+  it('waits for a live holder in another process and takes the lock the moment it dies', async () => {
     const script = `
       import { acquireResources } from ${JSON.stringify(join(REPO_ROOT, 'packages/core/src/operations/resources.ts'))}
       await acquireResources(['media-store'], { identity: { title: 'Child repair', operationId: 'child' } })
@@ -289,6 +334,59 @@ describe('two processes', () => {
       expect(readResourceHolder('media-store')?.operationId).toBe('op-1')
     } finally {
       child.kill('SIGKILL')
+    }
+  }, 30_000)
+
+  it('two processes racing the same dead-pid lock: exactly one reclaims, the other holds only after it released (#896 D3.5)', async () => {
+    const path = resourceLockPath('media-store')
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, JSON.stringify({ pid: 2 ** 22 + 7, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'dead' }))
+    const go = join(testDir, 'go')
+    // Both children inspect the stale lock as close to simultaneously as the
+    // OS allows: each reports READY, then busy-waits on the barrier file.
+    const script = (name: string) => `
+      import { existsSync } from 'node:fs'
+      import { acquireResources } from ${JSON.stringify(join(REPO_ROOT, 'packages/core/src/operations/resources.ts'))}
+      console.log('READY')
+      while (!existsSync(${JSON.stringify(go)})) Bun.sleepSync(1)
+      const lease = await acquireResources(['media-store'], { identity: { title: ${JSON.stringify(name)}, operationId: ${JSON.stringify(name)} }, pollMs: { initial: 2, max: 10 } })
+      console.log('ACQUIRED ' + ${JSON.stringify(name)} + ' ' + Date.now())
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      lease.release()
+      console.log('RELEASED ' + ${JSON.stringify(name)} + ' ' + Date.now())
+    `
+    const spawn = (name: string) => Bun.spawn(['bun', '-e', script(name)], {
+      cwd: REPO_ROOT,
+      env: { ...process.env, BAKIN_HOME: testDir, BAKIN_CONSOLE_FORMAT: 'silent' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const children = [spawn('child-a'), spawn('child-b')]
+    const readers = children.map((child) => child.stdout.getReader())
+    const outputs = ['', '']
+    const readUntil = async (i: number, marker: string) => {
+      const deadline = Date.now() + 20_000
+      while (!outputs[i]!.includes(marker) && Date.now() < deadline) {
+        const { value, done } = await readers[i]!.read()
+        if (done) break
+        outputs[i] += new TextDecoder().decode(value)
+      }
+    }
+    try {
+      await Promise.all([readUntil(0, 'READY'), readUntil(1, 'READY')])
+      writeFileSync(go, '')
+      await Promise.all([readUntil(0, 'RELEASED'), readUntil(1, 'RELEASED')])
+      await Promise.all(children.map((child) => child.exited))
+      const intervals = outputs.map((out) => ({
+        acquired: Number(/ACQUIRED \S+ (\d+)/.exec(out)?.[1]),
+        released: Number(/RELEASED \S+ (\d+)/.exec(out)?.[1]),
+      })).sort((x, y) => x.acquired - y.acquired)
+      expect(intervals.every((i) => Number.isFinite(i.acquired) && Number.isFinite(i.released))).toBe(true)
+      // Disjoint holds: the second acquisition happens only after the first release.
+      expect(intervals[1]!.acquired).toBeGreaterThanOrEqual(intervals[0]!.released)
+      expect(existsSync(path)).toBe(false)
+    } finally {
+      for (const child of children) child.kill('SIGKILL')
     }
   }, 30_000)
 })

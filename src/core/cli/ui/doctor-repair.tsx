@@ -55,11 +55,14 @@ export interface DoctorRepairRequestData {
   events?: unknown
 }
 
-export interface DoctorDelegateReportData {
-  status: 'confirmation_required' | 'sent' | 'no_unresolved' | 'already_delegated'
-  request: DoctorRepairRequestData
-  incidents: HealthIncident[]
-}
+export type DoctorDelegateReportData =
+  | {
+    status: 'confirmation_required' | 'sent' | 'no_unresolved' | 'already_delegated'
+    request: DoctorRepairRequestData
+    incidents: HealthIncident[]
+  }
+  /** Admission refused (#896): a repair or another delegation holds these incidents; nothing was written. */
+  | { status: 'repair_in_flight'; incidents: HealthIncident[]; overlapping: string[]; heldBy: string }
 
 export interface DoctorRepairVerificationData {
   request?: unknown
@@ -522,6 +525,25 @@ export function DoctorDelegateResult({ report, color = true, showBrand }: {
 }) {
   if (report.status === 'no_unresolved') {
     return <DoctorDelegatePreview incidents={[]} color={color} />
+  }
+  if (report.status === 'repair_in_flight') {
+    const held = new Set(report.overlapping)
+    return (
+      <Box flexDirection="column">
+        <ScreenHeader title="Repair in flight" subtitle="A repair is already working these incidents — nothing was delegated" color={color} showBrand={showBrand} />
+        <SummaryStrip items={[
+          { label: 'held by', value: report.heldBy },
+          { label: 'incidents', value: String(report.overlapping.length) },
+        ]} color={color} />
+        <Section title="Already being worked" color={color}>
+          <FindingRows rows={incidentRows(report.incidents.filter((incident) => held.has(incident.id)))} color={color} />
+        </Section>
+        <NextActions
+          color={color}
+          actions={['Wait for the running repair to settle — Health re-judges these incidents on its next cycle.']}
+        />
+      </Box>
+    )
   }
 
   const requestId = requestValue(report.request, 'id') ?? '(unknown)'
