@@ -228,11 +228,15 @@ async function scenarioHappy(agent: string): Promise<void> {
     return i?.status === 'complete' ? i : null
   })
   const approval = latestApproval(taskId, 'selection-gate', 'approved')
-  // A channel decision is vouched for by its provider (#898): Discord, a
-  // channel-user actor — never operator-declared.
+  // A channel decision is vouched for by its provider (#898): the Discord
+  // bridge reports `discord`, an OpenClaw native channel reports `runtime` —
+  // either way a channel-user actor with provider evidence, never
+  // operator-declared.
   const provenance = approval?.response?.provenance
-  record('gate', 'selection approval recorded with provider provenance (discord / channel-user)',
-    provenance?.channel === 'discord' && provenance?.actor?.kind === 'channel-user', JSON.stringify(provenance))
+  record('gate', 'selection approval recorded with provider provenance (channel-user, provider evidence)',
+    (provenance?.channel === 'discord' || provenance?.channel === 'runtime')
+      && provenance?.actor?.kind === 'channel-user' && provenance?.evidence === 'provider',
+    JSON.stringify(provenance))
   record('complete', 'workflow ran to completion', done.status === 'complete')
 }
 

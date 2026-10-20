@@ -92,7 +92,7 @@ variants per run, and the prompt gate blocks generation until you approve.
 1. `happy` — full journey; proves fan-out ids/context, ordered join,
    consolidation end state (1 asset / 3 versions / winner current / losers
    trashed), both Discord gates (selection approval must record
-   `source: 'channel'`).
+   provider provenance: `channel` is `discord` or `runtime`, `actor.kind` is `channel-user`, `evidence` is `provider`).
 2. `reject-prompt` — spend guard: rejection rewinds with ZERO children spawned.
 3. `retry-child` — per-child cancel via route → join blocks → retry reuses the
    childTaskId → join completes ordered.
