@@ -489,7 +489,14 @@ through a server is an operator action: `bakin update --as human`; an
   unreadable manifest by its `clawhub:` source): an unreadable installed
   manifest is a `blocked` verdict on the subject that owns it
   (`manifestError`), never a silent re-partition that would drop the
-  observation and the skip. The checker module is gone.
+  observation and the skip — the hub-skill fingerprint is DURABLE (lock
+  fields + host, never `upstream.ref`), and the engine discards a skip only
+  when a DIFFERENT offer is established (a `blocked`/`current` observation
+  keeps it). KNOWN LIMIT: an unflagged GITHUB hub skill whose manifest is
+  unreadable is observed as a package (blocked, "manifest unreadable —
+  reinstall") until it is reinstalled. An `installAs` alias compares the
+  upstream manifest with the INSTALLED manifest's id (`manifestId`), the
+  subject and action keep the alias. The checker module is gone.
 - **CLI `--check` without a server:** `bakin agents sync [<id>] --check`,
   `bakin packages sync <key> --check` and `bakin plugins list [--check]`
   run in-process when `server.lock` names no live server (an explicit

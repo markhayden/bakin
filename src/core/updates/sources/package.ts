@@ -30,6 +30,12 @@ export interface InstalledPackage {
   upstream: { source: string; ref?: string; resolvedSha?: string } | null
   /** The installed manifest exists but could not be read/parsed: the install is broken evidence, not a plain package. */
   manifestError?: string
+  /**
+   * The installed manifest's own id — what the upstream manifest must still
+   * name. `installAs` makes the lock id an ALIAS of it (review r7 #1), so the
+   * subject/action keep the alias while identity compares here.
+   */
+  manifestId?: string
 }
 
 export interface PackageSourceDeps {
@@ -147,7 +153,7 @@ export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
         const spec = entry.ref ? packageSourceWithRef(entry.source, entry.ref) : entry.source
         let manifest = await deps.fetchManifest(spec, signal)
         if (manifest.commitSha && manifest.commitSha !== remote) manifest = await deps.fetchManifest(spec, signal, { fresh: true })
-        if (manifest.id !== id) throw new Error(`source manifest id "${manifest.id}" does not match installed package "${id}"`)
+        if (manifest.id !== (pkg.manifestId ?? id)) throw new Error(`source manifest id "${manifest.id}" does not match installed package "${pkg.manifestId ?? id}"`)
         if (manifest.commitSha && manifest.commitSha === entry.commitSha) return { installed, source, outcome: 'current' }
         const sha = manifest.commitSha || remote
         return {
@@ -163,7 +169,7 @@ export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
       const source = { kind: 'local-path', endpoint: entry.source }
       const local = deps.localManifest(entry.source)
       if (!local) return { installed, source, outcome: 'blocked', blockedReason: `source path missing: ${entry.source}` }
-      if (local.id !== id) throw new Error(`source manifest id "${local.id}" does not match installed package "${id}"`)
+      if (local.id !== (pkg.manifestId ?? id)) throw new Error(`source manifest id "${local.id}" does not match installed package "${pkg.manifestId ?? id}"`)
       if (local.version === entry.version) return { installed, source, outcome: 'current' }
       return { installed, source, available: { version: local.version, display: local.version }, reason: 'newer-version', outcome: 'update-available', action }
     },

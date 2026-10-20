@@ -264,6 +264,31 @@ describe('package source', () => {
     expect(await hub.observe(hubEntry!, ctx)).toMatchObject({ outcome: 'blocked', blockedReason: expect.stringContaining('unreadable') })
   })
 
+  it('review r7 #1: an `installAs` alias — the lock id differs from the installed manifest id — compares the upstream manifest with the INSTALLED manifest id (local and github), while the subject keeps the alias', async () => {
+    const ctx = { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } }
+    const localAlias = { ...installed('writer', { kind: 'agent', agentId: 'writer', source: '/src/editorial-agent', ref: '', commitSha: '' }), manifestId: 'editorial-agent' }
+    const local = createPackageSource(packageDeps({ installed: () => [localAlias], localManifest: () => ({ id: 'editorial-agent', version: '1.1.0' }) }))
+    const [localEntry] = await local.inventory()
+    expect(localEntry!.subject.id).toBe('writer')
+    expect(await local.observe(localEntry!, ctx)).toMatchObject({ outcome: 'update-available', available: { version: '1.1.0' }, action: { pointer: 'bakin agents sync writer' } })
+
+    const ghAlias = { ...installed('writer', { kind: 'agent', agentId: 'writer', source: 'github:acme/editorial', ref: 'main', commitSha: SHA_A }), manifestId: 'editorial-agent' }
+    const gh = createPackageSource(packageDeps({ installed: () => [ghAlias], lsRemote: async () => SHA_B, fetchManifest: async () => ({ id: 'editorial-agent', version: '2.0.0', commitSha: SHA_B }) }))
+    const [ghEntry] = await gh.inventory()
+    expect(await gh.observe(ghEntry!, ctx)).toMatchObject({ outcome: 'update-available', available: { version: '2.0.0', sha: SHA_B } })
+    // Without a readable installed manifest the lock id is all there is — a mismatch is still refused.
+    const bare = createPackageSource(packageDeps({ installed: () => [installed('writer', { kind: 'agent', agentId: 'writer', source: 'github:acme/editorial', ref: 'main', commitSha: SHA_A })], lsRemote: async () => SHA_B, fetchManifest: async () => ({ id: 'editorial-agent', version: '2.0.0', commitSha: SHA_B }) }))
+    await expect(bare.observe(ghEntry!, ctx)).rejects.toThrow('does not match installed package "writer"')
+  })
+
+  it('review r7 #3: a hub skill\'s inventory fingerprint is its DURABLE identity — an unreadable manifest (no upstream.ref to read) leaves it unchanged, so the record survives reconciliation', async () => {
+    const whole = installed('hub-weather', { source: 'clawhub:weather' }, { source: 'clawhub:weather', ref: '1.2.0' })
+    const broken = { ...installed('hub-weather', { source: 'clawhub:weather' }, { source: 'clawhub:weather' }), manifestError: 'Unexpected token' }
+    const [wholeEntry] = await createHubSkillSource(hubDeps({ installed: () => [whole] })).inventory()
+    const [brokenEntry] = await createHubSkillSource(hubDeps({ installed: () => [broken] })).inventory()
+    expect(brokenEntry!.fingerprint).toBe(wholeEntry!.fingerprint)
+  })
+
   it('a gone ref or a manifest whose id does not match is never an offer', async () => {
     const ops = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: 'main', commitSha: SHA_A })
     const gone = createPackageSource(packageDeps({ installed: () => [ops], lsRemote: async () => null }))

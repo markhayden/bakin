@@ -98,11 +98,13 @@ export function installedPackages(): InstalledPackage[] {
   return canonicalPackageEntries(readLockfile()).map(({ key, id, entry }) => {
     const read = installedPackageManifest(entry.kind, id, entry.version)
     const manifestUpstream = entry.kind === 'skill-pack' && read.manifest?.kind === 'skill-pack' && read.manifest.upstream ? read.manifest.upstream : null
-    // Ownership (r6 #2): the ledger's `hub` flag first; a pre-flag install by its manifest; an unreadable manifest by its
-    // lock source (a `clawhub:` source can only be a hub skill) — never a silent flip to "package".
-    const hub = entry.hub ?? (read.manifest ? manifestUpstream !== null : isClawhubPackageSource(entry.source))
+    // Ownership (r6 #2, r7 #4): the ledger's `hub` flag first; otherwise a manifest with `upstream` OR a `clawhub:` lock
+    // source (a hub by definition — a legacy manifest without `upstream` and an unreadable one alike) — never a silent
+    // flip to "package". KNOWN LIMIT: an unflagged GITHUB hub skill whose manifest is unreadable is observed as a package
+    // (blocked, "manifest unreadable — reinstall") until it is reinstalled.
+    const hub = entry.hub ?? (manifestUpstream !== null || isClawhubPackageSource(entry.source))
     const upstream = manifestUpstream ?? (hub ? { source: entry.source } : null)
-    return { key, id, entry, upstream, ...(read.error ? { manifestError: read.error } : {}) }
+    return { key, id, entry, upstream, ...(read.error ? { manifestError: read.error } : {}), ...(read.manifest ? { manifestId: read.manifest.id } : {}) }
   })
 }
 

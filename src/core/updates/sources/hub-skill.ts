@@ -45,9 +45,10 @@ export function createHubSkillSource(deps: HubSkillSourceDeps): UpdateSource {
   const entryFor = (pkg: InstalledPackage): UpdateSubjectInventoryEntry => ({
     subject: { kind: 'hub-skill', id: pkg.id, label: pkg.id },
     group: 'available',
+    // DURABLE identity only — the lock entry and the host: a re-install moves `installedAt`, so the hub's resolved version
+    // never needs to ride here, and an unreadable manifest (no `upstream.ref` to read) never retires the record (review r7 #3).
     fingerprint: fingerprintOf({
       entry: { version: pkg.entry.version, source: pkg.entry.source, ref: pkg.entry.ref, commitSha: pkg.entry.commitSha, installedAt: pkg.entry.installedAt },
-      upstream: pkg.upstream,
       host: deps.hostVersion(),
     }),
     source: isClawhubPackageSource(pkg.entry.source)

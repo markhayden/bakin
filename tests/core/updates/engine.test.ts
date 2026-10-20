@@ -265,6 +265,22 @@ describe('skips', () => {
     expect(isUpdateSkipped(same)).toBe(true)
   })
 
+  it('PR 8 r7 #3: a skip survives observations that establish NO offer (current, blocked) and is discarded only by a DIFFERENT offer — a repaired manifest never resurfaces the hidden one', async () => {
+    const plugins = scripted('plugin', [{ id: 'projects' }])
+    plugins.when('projects', async () => available('1.1.0', 'aaa'))
+    const engine = boot([plugins.source])
+    await engine.observe('plugin:projects')
+    await engine.skip('plugin:projects')
+    plugins.when('projects', async () => ({ installed: { version: '1.0.0', display: '1.0.0' }, outcome: 'blocked', blockedReason: 'the installed manifest is unreadable — reinstall' }))
+    expect((await engine.observe('plugin:projects')).skipped).toEqual({ version: '1.1.0', sha: 'aaa' })
+    plugins.when('projects', async () => current)
+    expect((await engine.observe('plugin:projects')).skipped).toEqual({ version: '1.1.0', sha: 'aaa' })
+    plugins.when('projects', async () => available('1.1.0', 'aaa'))
+    expect(isUpdateOffered(await engine.observe('plugin:projects'))).toBe(false)
+    plugins.when('projects', async () => available('1.2.0', 'ccc'))
+    expect(isUpdateOffered(await engine.observe('plugin:projects'))).toBe(true)
+  })
+
   it('skipping a record with nothing available is refused', async () => {
     const plugins = scripted('plugin', [{ id: 'projects' }])
     plugins.when('projects', async () => current)

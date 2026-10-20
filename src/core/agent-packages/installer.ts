@@ -597,6 +597,8 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
         ref: dep.spec.ref,
         commitSha: dep.fetched.commitSha,
         installedAt: existing?.installedAt ?? installedAt,
+        // Hub provenance is a ledger fact for dependencies too (review r7 #2).
+        ...(dep.manifest.kind === 'skill-pack' && dep.manifest.upstream ? { hub: true } : {}),
         projections: projectedFor?.result.projections ?? [],
         refCount: existing?.refCount ?? 0,
         dependents: existing?.dependents ?? [],

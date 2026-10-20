@@ -284,7 +284,7 @@ function seedAgentPackage(opts: { id?: string; emoji?: string; deps?: { skills?:
   return dir
 }
 
-function seedSkillPack(name: string): string {
+function seedSkillPack(name: string, opts: { upstream?: { source: string; ref?: string } } = {}): string {
   const dir = join(testDir, `${name}-skill-pack`)
   mkdirSync(join(dir, 'skills', name), { recursive: true })
   writeFileSync(
@@ -295,6 +295,7 @@ function seedSkillPack(name: string): string {
       name,
       version: '0.3.1',
       contributions: { skills: [`skills/${name}`] },
+      ...(opts.upstream ? { upstream: opts.upstream } : {}),
     }),
   )
   writeFileSync(join(dir, 'skills', name, 'SKILL.md'), `# ${name}`)
@@ -712,6 +713,14 @@ describe('installPackage — single-level dependency', () => {
     expect(lock.packages[depKey].refCount).toBe(1)
     expect(lock.packages[depKey].dependents).toEqual(['pixel-with-deps'])
     expect(lock.packages['pixel-with-deps'].dependencies).toEqual([depKey])
+    expect(lock.packages[depKey].hub).toBeUndefined()
+  })
+
+  it('PR 8 r7 #2: a hub skill-pack installed as a DEPENDENCY carries the ledger flag too', async () => {
+    const skillPackSrc = seedSkillPack('hub-image-gen', { upstream: { source: 'clawhub:image-gen', ref: '0.3.1' } })
+    const agentSrc = seedAgentPackage({ id: 'pixel-with-hub-dep', deps: { skills: [skillPackSrc] } })
+    await installPackage({ source: agentSrc })
+    expect(readLockfile().packages['hub-image-gen@0.3.1']?.hub).toBe(true)
   })
 
   it('skill-pack deps land at global ~/.openclaw/skills/<name>/', async () => {

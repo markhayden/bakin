@@ -355,18 +355,48 @@ describe('PackageCard — update and remove actions', () => {
 
   it('review r6 #3: when the last package read failed, the card says the state is LAST KNOWN and offers a retry that re-reads the rows', async () => {
     const fetchMock = setupActionFetch()
-    useAgentStore.setState({ packageStatesError: 'Package state read failed (HTTP 500).', packageStatesAt: '2026-10-20T12:00:00.000Z' })
+    act(() => { useAgentStore.setState({ packageStatesError: 'Package state read failed (HTTP 500).', packageStatesAt: '2026-10-20T12:00:00.000Z' }) })
     render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
     const notice = screen.getByTestId('package-state-stale')
     expect(notice.textContent).toContain('Package state read failed (HTTP 500).')
-    expect(notice.textContent).toContain('last read')
+    expect(notice.textContent).toContain('Last read')
     // The last known state still renders.
     expect(screen.getByText('update available')).toBeDefined()
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry' })) })
-    await waitFor(() => expect(fetchMock.mock.calls.some((call) => call[0] === '/api/agent-packages')).toBe(true))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+    })
+    expect(fetchMock.mock.calls.some((call) => call[0] === '/api/agent-packages')).toBe(true)
     // The re-read succeeded: the signal clears and the notice goes.
-    await waitFor(() => expect(useAgentStore.getState().packageStatesError).toBeNull())
-    await waitFor(() => expect(screen.queryByTestId('package-state-stale')).toBeNull())
+    expect(useAgentStore.getState().packageStatesError).toBeNull()
+    expect(screen.queryByTestId('package-state-stale')).toBeNull()
+  })
+
+  it('review r7 #5: with NO successful read yet the card says the state is unavailable and offers Retry — never a default "unmanaged" with Adopt, for the main agent too', async () => {
+    const fetchMock = setupActionFetch()
+    // Store writes land inside act: cards rendered by earlier tests may still be mounted and subscribed.
+    act(() => { useAgentStore.setState({ packageStatesError: 'Package state could not be reached.', packageStatesAt: null, mainAgentId: 'main' }) })
+    const { unmount } = render(<PackageCardBody agentId="pixel" packageState={undefined} />)
+    expect(screen.getByTestId('package-state-unavailable').textContent).toContain('Package state could not be reached.')
+    expect(screen.queryByRole('button', { name: /Adopt/ })).toBeNull()
+    expect(screen.queryByText('unmanaged')).toBeNull()
+    // The click, the re-read and the trailing busy-state reset all land inside ONE act: a 0 ms macrotask drains the
+    // (already-resolved) fetch mocks before act flushes.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+    })
+    expect(fetchMock.mock.calls.some((call) => call[0] === '/api/agent-packages')).toBe(true)
+    expect(useAgentStore.getState().packageStatesError).toBeNull()
+    expect(screen.queryByTestId('package-state-unavailable')).toBeNull()
+    unmount()
+
+    act(() => { useAgentStore.setState({ packageStatesError: 'Package state could not be reached.', packageStatesAt: null, mainAgentId: 'main' }) })
+    const main = render(<PackageCardBody agentId="main" packageState={undefined} />)
+    expect(screen.getByTestId('package-state-unavailable')).toBeDefined()
+    expect(screen.queryByText('Self-managed')).toBeNull()
+    main.unmount()
+    act(() => { useAgentStore.setState({ packageStatesError: null, packageStatesAt: null }) })
   })
 
   it('a skipped offer is not an update — the card stays managed', () => {

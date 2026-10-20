@@ -67,20 +67,25 @@ describe('installedPackages — ownership never flips on an unreadable manifest 
       'hubby@1.0.0': row({ source: 'clawhub:hubby' }),
       'plain@1.0.0': row({ source: 'github:acme/plain' }),
       'fine@1.0.0': row({ source: 'github:acme/fine' }),
+      'legacy@1.0.0': row({ source: 'clawhub:legacy' }),
     } })
     manifestAt('flagged', '{ not json')
     manifestAt('parsed', JSON.stringify({ id: 'parsed', version: '1.0.0', kind: 'skill-pack', name: 'parsed', description: 'x', contributions: { skills: ['x'] }, upstream: { source: 'github:acme/skills#parsed', ref: 'main', resolvedSha: 'a'.repeat(40) } }))
     manifestAt('hubby', '{ not json')
     manifestAt('plain', '{ not json')
     manifestAt('fine', JSON.stringify({ id: 'fine', version: '1.0.0', kind: 'skill-pack', name: 'fine', description: 'x', contributions: { skills: ['x'] } }))
+    // A readable LEGACY manifest without `upstream` under a clawhub source is still a hub skill (r7 #4).
+    manifestAt('legacy', JSON.stringify({ id: 'legacy', version: '1.0.0', kind: 'skill-pack', name: 'legacy', description: 'x', contributions: { skills: ['x'] } }))
     const byId = new Map(installedPackages().map((pkg) => [pkg.id, pkg]))
     expect(byId.get('flagged')).toMatchObject({ upstream: { source: 'github:acme/skills#flagged' }, manifestError: expect.any(String) })
     expect(byId.get('parsed')).toMatchObject({ upstream: { source: 'github:acme/skills#parsed', ref: 'main' } })
     expect(byId.get('parsed')?.manifestError).toBeUndefined()
     expect(byId.get('hubby')).toMatchObject({ upstream: { source: 'clawhub:hubby' }, manifestError: expect.any(String) })
     expect(byId.get('plain')).toMatchObject({ upstream: null, manifestError: expect.any(String) })
-    expect(byId.get('fine')).toMatchObject({ upstream: null })
+    expect(byId.get('fine')).toMatchObject({ upstream: null, manifestId: 'fine' })
     expect(byId.get('fine')?.manifestError).toBeUndefined()
+    expect(byId.get('legacy')).toMatchObject({ upstream: { source: 'clawhub:legacy' } })
+    expect(byId.get('legacy')?.manifestError).toBeUndefined()
     // The sources partition on that ownership: the two unreadable hub skills stay `hub-skill` subjects, `plain` a package.
     const [pkgSource, hubSource] = createPackageUpdateSources()
     expect(hubSource!.kind).toBe('hub-skill')

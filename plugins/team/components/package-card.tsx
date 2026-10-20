@@ -10,6 +10,7 @@ import { useRef, useState } from 'react'
 import { Info, RefreshCw, Trash } from 'lucide-react'
 import {
   Alert,
+  AlertAction,
   AlertDescription,
   AlertTitle,
   Badge,
@@ -97,7 +98,8 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const isMain = agentId === mainAgentId
   const refreshPackageStates = useAgentStore((s) => s.refreshPackageStates)
   const packageStatesError = useAgentStore((s) => s.packageStatesError)
-  const packageStatesAt = useAgentStore((s) => s.packageStatesAt)
+  // Read only while there is something to say: `packageStatesAt` moves on every successful read, and this card must not re-render for it.
+  const packageStatesAt = useAgentStore((s) => (s.packageStatesError ? s.packageStatesAt : null))
   const loadAgents = useAgentStore((s) => s.load)
   const [adoptOpen, setAdoptOpen] = useState(false)
   const [updateOpen, setUpdateOpen] = useState(false)
@@ -112,6 +114,11 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   // pass lands on every Team surface, not only while this card is mounted.
   const displayState = packageState ? packageDisplayState(packageState) : state
   const updateAvailable = displayState === 'update-available'
+  const [retrying, setRetrying] = useState(false)
+  const retryPackageRead = async (): Promise<void> => {
+    setRetrying(true)
+    try { await refreshPackageStates() } finally { setRetrying(false) }
+  }
 
   // Sync and remove run as operations (#895): the dialog follows them live and
   // the route's old answer arrives as the operation result.
@@ -207,6 +214,20 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   }
 
 
+  // No successful package read yet (review r7 #5): nothing is KNOWN about
+  // this agent's package — never a default "unmanaged" with an Adopt button,
+  // for the main agent too. The defined recovery composition (Alert
+  // WithAction): title, description, one local action.
+  if (packageStatesError !== null && packageStatesAt === null) {
+    return (
+      <Alert tone="attention" data-testid="package-state-unavailable">
+        <AlertTitle>Package state unavailable</AlertTitle>
+        <AlertDescription>{packageStatesError} Nothing is known about this agent's package yet.</AlertDescription>
+        <AlertAction><Button size="xs" variant="outline" busy={retrying} onClick={() => { void retryPackageRead() }}>Retry</Button></AlertAction>
+      </Alert>
+    )
+  }
+
   // Main agent is the user's persona — adopting/replacing it doesn't make
   // sense. Show a different framing instead of the Adopt button.
   if (isMain && (state === 'unmanaged' || state === 'absent')) {
@@ -225,14 +246,12 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
 
   return (
     <div className="grid gap-bakin-3">
-      {packageStatesError && (
+      {packageStatesError && packageStatesAt && (
         // The rows below are LAST KNOWN (review r6 #3): the latest read failed, and the badge/actions describe that earlier state.
         <Alert tone="attention" data-testid="package-state-stale">
-          <AlertDescription>
-            {packageStatesError} Showing the package state last read{packageStatesAt ? ` at ${new Date(packageStatesAt).toLocaleTimeString()}` : ' before'}.
-            {' '}
-            <Button size="xs" variant="ghost" onClick={() => { void refreshPackageStates() }}>Retry</Button>
-          </AlertDescription>
+          <AlertTitle>Package state is from an earlier read</AlertTitle>
+          <AlertDescription>{packageStatesError} Last read {new Date(packageStatesAt).toLocaleString()}.</AlertDescription>
+          <AlertAction><Button size="xs" variant="outline" busy={retrying} onClick={() => { void retryPackageRead() }}>Retry</Button></AlertAction>
         </Alert>
       )}
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
