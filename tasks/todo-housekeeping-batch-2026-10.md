@@ -9,10 +9,10 @@ Spec `.claude/specs/housekeeping-batch-2026-10.md` · Plan `.claude/specs/housek
 - [ ] CI green → squash-merge → issue closed with evidence
 
 ## PR 1 — #945 `chore/945-approvals-upgrade-deletion`
-- [ ] 1.1 delete upgrade modules + boot call + `importApprovalRecord`
-- [ ] 1.2 boolean-only `doctor.escalation` + settings test + fixture fix
-- [ ] 1.3 retire compat defaults in `doctorRepairRequestSchema`; repoint validation scripts
-- [ ] docs (approvals.md, doctor-and-health-checks.md, CLAUDE.md, spec status lines, gate-discord runbook)
+- [x] 1.1 delete upgrade modules + boot call + `importApprovalRecord`
+- [x] 1.2 boolean-only `doctor.escalation` + settings test + fixture fix
+- [x] 1.3 retire compat defaults in `doctorRepairRequestSchema`; repoint validation scripts
+- [x] docs (approvals.md, doctor-and-health-checks.md, CLAUDE.md, spec status lines, gate-discord runbook)
 - [ ] PR 1 merged, #945 closed
 
 ## PR 2 — #883 `fix/883-openclaw-tools-mode`
