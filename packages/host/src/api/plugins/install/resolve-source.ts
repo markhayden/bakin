@@ -7,7 +7,7 @@
  * installs. Every failure tears down the staging dir and returns the exact
  * error Response the monolithic handler produced.
  */
-import { existsSync, cpSync, rmSync, realpathSync } from 'fs'
+import { existsSync, rmSync, realpathSync } from 'fs'
 import { homedir } from 'os'
 import { join, resolve, isAbsolute, sep } from 'path'
 import { execFileSync } from 'child_process'
