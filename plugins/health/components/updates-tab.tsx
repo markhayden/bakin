@@ -184,7 +184,7 @@ function ApplyDialogBody({ state, actions }: { state: UpdateApplyState; actions:
         <>
           <Text size="meta" as="p" className="font-bakin-typography-family-mono tabular-nums">{versionCopy(preview.record)}</Text>
           {impacts.length > 0 && (
-            <ul className="m-0 list-disc space-y-bakin-1 pl-bakin-5 text-bakin-typography-size-meta text-bakin-text-muted" aria-label="What this update does">
+            <ul className="m-0 list-disc space-y-bakin-1 pl-bakin-6 text-bakin-typography-size-meta text-bakin-text-muted" aria-label="What this update does">
               {impacts.map((impact) => <li key={impact}>{IMPACT_COPY[impact]}</li>)}
               {action?.kind === 'operation' && action.downloadBytes !== undefined && (
                 <li>Download size: {formatBytes(action.downloadBytes)}.</li>
@@ -195,7 +195,7 @@ function ApplyDialogBody({ state, actions }: { state: UpdateApplyState; actions:
             <Alert tone="attention" data-testid="update-apply-approval">
               <AlertDescription>
                 <span className="block font-bakin-typography-weight-medium">Applying approves the pending Health repair “{preview.approval.title}” in full:</span>
-                <ul className="m-0 mt-bakin-1 list-disc space-y-bakin-1 pl-bakin-5">
+                <ul className="m-0 mt-bakin-1 list-disc space-y-bakin-1 pl-bakin-6">
                   {preview.approval.items.flatMap((item) => item.changes).map((change) => (
                     <li key={`${change.target}:${change.action}`}>{change.description}</li>
                   ))}
