@@ -181,9 +181,11 @@ async function upgradeLocal(
   assertManifestIdStable(manifest, id)
   assertManifestSignaturePolicy(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
-  // The staging clone carries no commit identity in its result; the reviewed version is what can be held to.
-  assertUpgradeTarget(id, opts.expected, { version: newVersion })
-  const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: '' } })
+  // A local source has no commit; its identity is the live source-tree digest
+  // the update source offered — a tree that moved since the review is refused (review r4 #1).
+  const identity = { version: newVersion, digest: newTreeSha }
+  assertUpgradeTarget(id, opts.expected, identity)
+  const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: '' }, identity })
   if (!gate.proceed) return gate.result
 
   // Consent accepted (or unnecessary). Replace the plugin dir inside the
@@ -220,6 +222,7 @@ async function upgradeLocal(
     before,
     after: { version: newVersion, commitSha: '' },
     noop: false,
+    identity,
     declaredPermissions: gate.newPerms,
     declaredBins: gate.declaredBins,
     awaitingConsent: false,

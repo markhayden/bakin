@@ -265,18 +265,56 @@ describe('review round 2 — pass startup is serialized', () => {
 
 describe('review round 3 — explicit work and stop', () => {
   it('a subject asked for by name is observed even when scheduled work is disabled mid-pass; a check after stop() rejects (#8)', async () => {
-    const plugins = scripted('plugin', ['a', 'b', 'c'])
+    const plugins = scripted('plugin', ['a', 'b', 'c', 'd'])
     const releaseA = plugins.hold('a')
+    const releaseB = plugins.hold('b')
     let enabled = true
     const { engine, timer } = harness([plugins.source], { enabled: () => enabled, firstTickMs: 10, tickMs: 10_000 })
     await engine.ready
-    await waitUntil(() => plugins.inFlight.has('a'), { label: 'the scheduled pass is on a' })
-    const explicit = timer.check({ ids: ['plugin:c'] })
+    // Both workers held: c is admitted and PENDING when the disable lands (r4 review).
+    await waitUntil(() => plugins.inFlight.has('a') && plugins.inFlight.has('b'), { label: 'the scheduled pass is on a and b' })
+    const admitted = await timer.admit({ ids: ['plugin:c'] })
+    expect(admitted.coalesced).toBe(true)
+    expect(plugins.calls).not.toContain('c')
     enabled = false
-    releaseA()
-    await explicit
+    releaseA(); releaseB()
+    await admitted.done
     expect(plugins.calls).toContain('c')
+    // The scheduled sibling nobody asked for was dropped by the disable.
+    expect(plugins.calls).not.toContain('d')
     timer.stop()
     await expect(timer.check()).rejects.toMatchObject({ name: 'UpdatesStoppedError' })
+  })
+})
+
+describe('review round 4 — admission', () => {
+  it('a named subject removed after admission but before its turn fails THAT check with not-found; a broad check simply no longer has it (#6)', async () => {
+    const ids = ['a', 'b', 'c']
+    const inventory = async () => ids.map((id): UpdateSubjectInventoryEntry => ({ subject: { kind: 'plugin', id, label: id }, group: 'available', fingerprint: fingerprintOf({ id }), source: { kind: 'scripted', endpoint: id } }))
+    const plugins = scripted('plugin', ids)
+    const source: UpdateSource = { ...plugins.source, inventory }
+    const releaseA = plugins.hold('a')
+    const releaseB = plugins.hold('b')
+    const { engine, timer } = harness([source], { firstTickMs: 100_000 })
+    await engine.ready
+    const broad = await timer.admit({ ids: ['plugin:a', 'plugin:b'] })
+    await waitUntil(() => plugins.inFlight.size === 2, { label: 'a and b in flight' })
+    const named = await timer.admit({ ids: ['plugin:c'] })
+    expect(named.coalesced).toBe(true)
+    ids.splice(2, 1)
+    await engine.refreshInventory()
+    releaseA(); releaseB()
+    await expect(named.done).rejects.toBeInstanceOf(UpdateSubjectNotFoundError)
+    await expect(broad.done).resolves.toMatchObject({ ids: ['plugin:a', 'plugin:b'] })
+    expect(plugins.calls).not.toContain('c')
+  })
+
+  it('admission validates against the inventory refreshed under the serialized startup: an unknown id rejects before any pass starts', async () => {
+    const plugins = scripted('plugin', ['a'])
+    const { engine, timer } = harness([plugins.source], { firstTickMs: 100_000 })
+    await engine.ready
+    await expect(timer.admit({ ids: ['plugin:nope'] })).rejects.toBeInstanceOf(UpdateSubjectNotFoundError)
+    expect(timer.running()).toBe(false)
+    expect(plugins.calls).toEqual([])
   })
 })

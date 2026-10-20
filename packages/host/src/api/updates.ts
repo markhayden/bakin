@@ -22,6 +22,7 @@ import { createLogger } from '@/core/logger'
 import { ApplyError, confirmApply, previewApply } from '@/core/updates/apply'
 import { UpdateRequiredError, UpdateSubjectNotFoundError } from '@/core/updates/engine'
 import { getUpdatesEngine, getUpdatesTimer } from '@/core/updates/service'
+import { UpdatesStoppedError, type CheckAdmission } from '@/core/updates/timer'
 
 const log = createLogger('updates-routes')
 
@@ -142,29 +143,33 @@ export async function check(_req: Request, url: URL): Promise<Response> {
   }
   const ids = url.searchParams.getAll('id')
   const wait = url.searchParams.get('wait') === '1'
-  // Refuse unknown ids against the CURRENT inventory (a plugin installed a
-  // moment ago is known; one removed a moment ago is not) before anything runs.
-  await engine.refreshInventory()
-  const inventory = await engine.inventory()
-  const known = new Set(inventory.map((entry) => `${entry.subject.kind}:${entry.subject.id}`))
-  const missing = ids.find((id) => !known.has(id))
-  if (missing) return Response.json({ bootId: getBootId(), error: 'not_found', id: missing }, { status: 404 })
-  const run = timer.check({ ...(kind ? { kind } : {}), ...(ids.length > 0 ? { ids } : {}) })
-  if (!wait) {
-    run.catch((err: unknown) => {
-      // A subject that vanished between the answer and the pass is not an error worth a stack.
-      if (!(err instanceof UpdateSubjectNotFoundError)) log.error('Update check pass failed', err)
-    })
-    // The pass may already have reached its subjects; the ids are what was asked for.
-    const requested = ids.length > 0 ? ids : [...known].filter((id) => !kind || id.startsWith(`${kind}:`))
-    const body: UpdatesCheckResponse = { bootId: getBootId(), ids: requested, coalesced: timer.running() }
-    return Response.json(body, { status: 202 })
-  }
-  let result: Awaited<typeof run>
+  // ONE admission path: the timer refreshes the inventory (serialized with
+  // every other pass startup — concurrent requests never fan out probes) and
+  // refuses an id outside it before anything runs; a subject installed a
+  // moment ago is known, one removed a moment ago is not.
+  let admitted: CheckAdmission
   try {
-    result = await run
+    admitted = await timer.admit({ ...(kind ? { kind } : {}), ...(ids.length > 0 ? { ids } : {}) })
   } catch (err) {
     if (err instanceof UpdateSubjectNotFoundError) return Response.json({ bootId: getBootId(), error: 'not_found', id: err.id }, { status: 404 })
+    if (err instanceof UpdatesStoppedError) return unavailable()
+    throw err
+  }
+  if (!wait) {
+    admitted.done.catch((err: unknown) => {
+      // A subject that vanished between the answer and its turn is not an error worth a stack.
+      if (!(err instanceof UpdateSubjectNotFoundError)) log.error('Update check pass failed', err)
+    })
+    const body: UpdatesCheckResponse = { bootId: getBootId(), ids: admitted.ids, coalesced: admitted.coalesced }
+    return Response.json(body, { status: 202 })
+  }
+  let result: Awaited<CheckAdmission['done']>
+  try {
+    result = await admitted.done
+  } catch (err) {
+    // Admitted, then removed before its turn: the check never looked at it.
+    if (err instanceof UpdateSubjectNotFoundError) return Response.json({ bootId: getBootId(), error: 'not_found', id: err.id }, { status: 404 })
+    if (err instanceof UpdatesStoppedError) return unavailable()
     throw err
   }
   const snapshot = await engine.snapshot()

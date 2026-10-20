@@ -26,6 +26,8 @@
  * with a token instead of upgrading; the commit holds install-state and its
  * point of no return is the replace transaction's journal-first rename.
  */
+import { createHash } from 'node:crypto'
+import { join } from 'node:path'
 import { OperationCancelledError, operationOriginFromRequest, type OperationContext, type OperationOrigin, type OperationOutcome, type StartOperationInput } from '@bakin/core/operations'
 import { createLogger } from '@/core/logger'
 import { upgradePlugin, UpgradeRefusedError, type UpgradeConsent } from '@/core/plugins/upgrade'
@@ -36,7 +38,6 @@ import { isCorePlugin } from '@/core/plugin-registry'
 import { appendAudit } from '@/core/audit'
 import { getContentDir } from '@/core/content-dir'
 import { activateUserPluginDir } from '@/core/plugins/live-lifecycle'
-import { join } from 'path'
 import { outcomeFromResponse, startOperationResponse } from '../operations'
 
 const log = createLogger('plugin-upgrade')
@@ -51,6 +52,13 @@ export interface UpgradeBody {
 
 /** Token identity for an upgrade: the plugin being upgraded (install binds source+ref). */
 const upgradeConsentSource = (pluginId: string): string => `upgrade:${pluginId}`
+
+/** What distinguishes one upgrade request from another: the full consent token and the reviewed identity, hashed. */
+export function upgradeRequestKey(body: Pick<UpgradeBody, 'consentToken' | 'expected'>): string {
+  const expected = body.expected ?? {}
+  const canonical = { token: body.consentToken ?? '', version: expected.version ?? '', sha: expected.sha ?? '', digest: expected.digest ?? '' }
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 32)
+}
 
 export async function post(req: Request): Promise<Response> {
   let body: UpgradeBody
@@ -106,9 +114,10 @@ export function pluginUpgradeOperation(pluginId: string, body: UpgradeBody, orig
     origin,
     title: `${commit ? 'Upgrade' : 'Check for an upgrade to'} ${pluginId}`,
     href: '/health',
-    fingerprint: commit
-      ? `plugins:upgrade:${pluginId}|${(body.consentToken ?? '').slice(0, 24)}`
-      : `plugins:upgrade-preview:${pluginId}`,
+    // Identical requests attach; a request for ANOTHER reviewed identity or
+    // consent never joins a live operation whose guard it did not run
+    // (review r4 #3): the whole token and the canonical identity are hashed in.
+    fingerprint: `plugins:${commit ? 'upgrade' : 'upgrade-preview'}:${pluginId}|${upgradeRequestKey(body)}`,
     resources: commit ? ['install-state'] : [],
     plan: commit ? PLUGIN_COMMIT_PLAN : PLUGIN_PREVIEW_PLAN,
     run: (op) => runUpgrade(pluginId, body, op),

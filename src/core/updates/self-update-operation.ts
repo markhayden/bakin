@@ -83,6 +83,9 @@ export function selfUpdateOperation(origin: OperationOrigin, deps: SelfUpdateOpe
       const exitCode = await deps.selfUpdate(reporter, {
         execPath: deps.execPath(),
         stagingSuffix: `${op.id}.new`,
+        // Cancel before the swap aborts the release fetch and the transfers;
+        // the updater cleans its staging and the lease is released (R4 #4).
+        signal: op.signal,
         ...(deps.expectedVersion !== undefined ? { expectedVersion: deps.expectedVersion } : {}),
         onStage: (stage) => op.stage(STAGE_OF[stage]),
         beforeReplace: async (staged) => {
@@ -99,6 +102,8 @@ export function selfUpdateOperation(origin: OperationOrigin, deps: SelfUpdateOpe
           op.throwIfCancelled()
         },
       })
+      // A cancel the updater honoured is the operation's cancelled outcome, never a failure.
+      op.throwIfCancelled()
       if (exitCode !== 0 || (restartMode === 'server' && !prepared)) {
         const message = errors.at(-1) ?? 'Bakin update failed.'
         return { status: 'failed', code: 'update_failed', message, httpStatus: 200, body: { ok: false, message } }

@@ -30,7 +30,7 @@ import * as updatesRoute from '../../packages/host/src/api/updates'
 import { coreRoutes } from '../../packages/host/src/core-routes'
 import { getBootId } from '../../src/core/boot-id'
 import { fingerprintOf } from '../../src/core/updates/inventory'
-import { getUpdatesEngine, registerUpdateSource, resetUpdateSources, startUpdates, stopUpdates } from '../../src/core/updates/service'
+import { getUpdatesEngine, getUpdatesTimer, registerUpdateSource, resetUpdateSources, startUpdates, stopUpdates } from '../../src/core/updates/service'
 import type { UpdateObservation, UpdateSource } from '../../src/core/updates/types'
 import { waitUntil } from '../helpers/wait'
 
@@ -210,5 +210,68 @@ describe('review round 3 — check ids against the live inventory', () => {
     const gone = await call(updatesRoute.check, 'POST', '/api/updates/check?id=plugin%3Aterminal&wait=1')
     expect(gone.status).toBe(404)
     expect(await gone.json()).toMatchObject({ error: 'not_found', id: 'plugin:terminal' })
+  })
+})
+
+describe('review round 4 — one admission path', () => {
+  it('concurrent check requests never fan out inventory probes: ONE serialized enumeration per request, every subject observed once (#5)', async () => {
+    let inventoryInFlight = 0
+    let inventoryPeak = 0
+    let inventoryCalls = 0
+    const observed: string[] = []
+    const source: UpdateSource = {
+      kind: 'search-engine',
+      inventory: async () => {
+        inventoryCalls += 1
+        inventoryInFlight += 1
+        inventoryPeak = Math.max(inventoryPeak, inventoryInFlight)
+        await new Promise((r) => setTimeout(r, 15)) // a binary version probe
+        inventoryInFlight -= 1
+        return [{ subject: { kind: 'search-engine' as const, id: 'antfly', label: 'antfly' }, group: 'required' as const, fingerprint: 'f', source: { kind: 's', endpoint: 'antfly' } }]
+      },
+      // Slow enough that every admission lands while the one pass is still on it.
+      observe: async (entry) => { observed.push(entry.subject.id); await new Promise((r) => setTimeout(r, 150)); return current },
+    }
+    registerUpdateSource(source)
+    startUpdates(testDir)
+    await getUpdatesEngine()!.ready
+    const boot = inventoryCalls
+    const answers = await Promise.all([1, 2, 3].map(() => call(updatesRoute.check, 'POST', '/api/updates/check?wait=1')))
+    expect(answers.map((r) => r.status)).toEqual([200, 200, 200])
+    expect(inventoryCalls - boot).toBe(3)
+    expect(inventoryPeak).toBe(1)
+    // Three requests joined one pass; the subject was looked at once for it.
+    expect(observed).toEqual(['antfly'])
+  })
+
+  it('a subject removed AFTER it was admitted but before its turn answers 404 — the check never looked at it (#6)', async () => {
+    const ids = ['a', 'b', 'c']
+    const gates = new Map<string, () => void>()
+    const source: UpdateSource = {
+      kind: 'plugin',
+      inventory: async () => ids.map((id) => ({ subject: { kind: 'plugin' as const, id, label: id }, group: 'available' as const, fingerprint: `f:${id}`, source: { kind: 's', endpoint: id } })),
+      observe: async (entry) => {
+        const id = entry.subject.id
+        if (id === 'a' || id === 'b') await new Promise<void>((resolve) => gates.set(id, resolve))
+        return current
+      },
+    }
+    registerUpdateSource(source)
+    startUpdates(testDir)
+    const engine = getUpdatesEngine()!
+    await engine.ready
+    // Both workers busy on a and b; c is admitted and waits its turn.
+    const broad = call(updatesRoute.check, 'POST', '/api/updates/check?id=plugin%3Aa&id=plugin%3Ab&wait=1')
+    await waitUntil(() => gates.size === 2, { label: 'a and b in flight' })
+    const queued = call(updatesRoute.check, 'POST', '/api/updates/check?id=plugin%3Ac&wait=1')
+    await waitUntil(() => getUpdatesTimer()!.running(), { label: 'the pass is running' })
+    // c is uninstalled while it waits; the inventory refreshes.
+    ids.splice(2, 1)
+    await engine.refreshInventory()
+    for (const release of gates.values()) release()
+    expect((await broad).status).toBe(200)
+    const gone = await queued
+    expect(gone.status).toBe(404)
+    expect(await gone.json()).toMatchObject({ error: 'not_found', id: 'plugin:c' })
   })
 })

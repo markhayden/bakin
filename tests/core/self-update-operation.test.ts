@@ -1,6 +1,6 @@
 /** Self-update as an operation (#1007 D7.11): staging keyed by the operation, the restart proven before the swap and armed after it, the process ends the operation. */
 import { afterAll, afterEach, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -16,7 +16,7 @@ mock.module('../../packages/core/src/logger', loggerMock)
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 import { createOperationRegistry, type OperationView } from '@bakin/core/operations'
-import type { SelfUpdateOptions } from '../../src/core/self-update'
+import { selfUpdate as realSelfUpdate, type SelfUpdateOptions } from '../../src/core/self-update'
 import type { PreparedRestart } from '../../src/core/server-restart'
 import { SELF_UPDATE_PLAN, selfUpdateOperation, type SelfUpdateOperationDeps } from '../../src/core/updates/self-update-operation'
 import { waitUntil } from '../helpers/wait'
@@ -165,5 +165,88 @@ describe('review round 3 — the deferred restart command', () => {
     // install-state is free again: another operation that needs it can start.
     const next = await registry.start(selfUpdateOperation('web', deps({ restart: 'none' })))
     await view(next.operationId, (v) => v.status === 'succeeded')
+  })
+})
+
+describe('review round 4 — cancellation while the update is still reversible', () => {
+  /** A release server whose archive body stalls forever after its headers (the margo 2026-09-21 transfer shape). */
+  function stalledReleaseServer(): { url: string; requests: string[]; stop: () => void } {
+    const requests: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const path = new URL(req.url).pathname
+        requests.push(path)
+        if (path === '/archive') {
+          return new Response(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([0x1f, 0x8b])) /* then nothing, ever */ } }), { headers: { 'Content-Type': 'application/gzip' } })
+        }
+        return new Response('not found', { status: 404 })
+      },
+    })
+    return { url: `http://127.0.0.1:${server.port}`, requests, stop: () => server.stop(true) }
+  }
+
+  it('a stalled archive download is cancellable: the transfer aborts, staging is cleaned, the binary is untouched, the operation ends cancelled and install-state is free (#4)', async () => {
+    const dir = join(testDir, `cancel-${randomUUID()}`)
+    mkdirSync(dir, { recursive: true })
+    const execPath = join(dir, 'bakin')
+    writeFileSync(execPath, 'old-binary')
+    const release = stalledReleaseServer()
+    try {
+      const d = deps({
+        execPath: () => execPath,
+        selfUpdate: (reporter, options) => realSelfUpdate(reporter, {
+          ...options,
+          platform: 'linux', arch: 'x64',
+          fetchRelease: async () => ({ tag_name: 'v0.2.0', draft: false, prerelease: false, assets: [
+            { name: 'bakin-linux-x64.tar.gz', browser_download_url: `${release.url}/archive` },
+            { name: 'checksums.txt', browser_download_url: `${release.url}/checksums` },
+          ] }),
+        }),
+      })
+      const started = await registry.start(selfUpdateOperation('web', d))
+      await waitUntil(() => release.requests.includes('/archive'), { label: 'the archive transfer started' })
+      await waitUntil(() => readdirSync(dir).length > 1, { label: 'a staging file exists' })
+      expect(registry.cancel(started.operationId)).toBe('cancelling')
+      const finished = await view(started.operationId, (v) => v.status === 'cancelled' || v.status === 'failed' || v.status === 'succeeded')
+      expect(finished.status).toBe('cancelled')
+      expect(finished.stages.find((s) => s.id === 'swap')?.status).not.toBe('done')
+      expect(readFileSync(execPath, 'utf-8')).toBe('old-binary')
+      expect(readdirSync(dir)).toEqual(['bakin'])
+      expect(d.calls).toEqual([])
+      // The lease is released: the next install-state operation runs at once.
+      const next = await registry.start(selfUpdateOperation('web', deps({ restart: 'none' })))
+      await view(next.operationId, (v) => v.status === 'succeeded')
+    } finally {
+      release.stop()
+    }
+  })
+
+  it('a cancel during the release fetch aborts it the same way, before anything is downloaded', async () => {
+    const dir = join(testDir, `cancel-fetch-${randomUUID()}`)
+    mkdirSync(dir, { recursive: true })
+    const execPath = join(dir, 'bakin')
+    writeFileSync(execPath, 'old-binary')
+    let fetching = false
+    const downloads: string[] = []
+    const d = deps({
+      execPath: () => execPath,
+      selfUpdate: (reporter, options) => realSelfUpdate(reporter, {
+        ...options,
+        platform: 'linux', arch: 'x64',
+        fetchRelease: (_reporter, signal) => new Promise((_resolve, reject) => {
+          fetching = true
+          signal!.addEventListener('abort', () => reject(signal!.reason), { once: true })
+        }),
+        downloadTo: async (url) => { downloads.push(url) },
+      }),
+    })
+    const started = await registry.start(selfUpdateOperation('cli', d))
+    await waitUntil(() => fetching, { label: 'the release fetch is in flight' })
+    registry.cancel(started.operationId)
+    const finished = await view(started.operationId, (v) => v.status === 'cancelled' || v.status === 'failed')
+    expect(finished.status).toBe('cancelled')
+    expect(downloads).toEqual([])
+    expect(readdirSync(dir)).toEqual(['bakin'])
   })
 })

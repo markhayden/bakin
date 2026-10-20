@@ -231,6 +231,36 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     expect(result.after.version).toBe('1.1.0')
   })
 
+  it('subpath lane (review r4 #1): a ref that moved past the reviewed commit is refused and nothing changes; the reviewed commit itself installs', async () => {
+    const nested = (files: Record<string, string>) => Object.fromEntries(Object.entries(files).map(([k, v]) => [`plugins/sub/${k}`, v]))
+    const repo = createBareRepo(testDir, 'sub-target-fixture', nested(fixturePluginFiles({ id: 'subtarget', version: '1.0.0' })))
+    const pluginDir = join(testDir, 'plugins', 'subtarget')
+    mkdirSync(pluginDir, { recursive: true })
+    for (const [name, body] of Object.entries(fixturePluginFiles({ id: 'subtarget', version: '1.0.0' }))) writeFileSync(join(pluginDir, name), body)
+    const installedSha = headSha(repo.workingClonePath)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'subtarget', makeLockEntry({
+      cloneUrl: `${repo.cloneUrl}#plugins/sub`, ref: 'main', commitSha: installedSha, version: '1.0.0',
+    })))
+    // The operator reviewed this commit (same manifest as what lands later — the consent token alone cannot tell them apart)…
+    const reviewedSha = pushCommit(repo.workingClonePath, nested({ ...fixturePluginFiles({ id: 'subtarget', version: '1.1.0' }), 'index.ts': 'export default { id: "subtarget", activate() { /* reviewed */ } }' }), 'reviewed')
+    // …and the ref moved on to code nobody reviewed, under the SAME manifest.
+    const movedSha = pushCommit(repo.workingClonePath, nested({ ...fixturePluginFiles({ id: 'subtarget', version: '1.1.0' }), 'index.ts': 'export default { id: "subtarget", activate() { /* unreviewed */ } }' }), 'moved')
+    expect(movedSha).not.toBe(reviewedSha)
+    const treeBefore = treeDigest(pluginDir)
+    const rowBefore = readPluginLockfile().plugins['subtarget']
+
+    await expect(upgradePlugin('subtarget', { expected: { sha: reviewedSha } })).rejects.toThrow(/changed since it was reviewed — commit/)
+    expect(treeDigest(pluginDir)).toEqual(treeBefore)
+    expect(readPluginLockfile().plugins['subtarget']).toEqual(rowBefore)
+    expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
+
+    // Reviewing the tip installs it, and the result names the identity that was verified.
+    const result = await upgradePlugin('subtarget', { expected: { sha: movedSha } })
+    expect(result.noop).toBe(false)
+    expect(result.identity).toEqual({ version: '1.1.0', sha: movedSha })
+    expect(readPluginLockfile().plugins['subtarget']?.commitSha).toBe(movedSha)
+  })
+
   it('refuses to upgrade when remote history was rewritten (force-push)', async () => {
     const repo = createBareRepo(testDir, 'rewind-fixture', fixturePluginFiles({ id: 'rewind', version: '1.0.0' }))
     cloneRepoIntoPluginsDir({ pluginId: 'rewind', cloneUrl: repo.cloneUrl })

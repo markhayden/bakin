@@ -123,8 +123,9 @@ export async function upgradeGithub(
   assertManifestIdStable(manifest, id)
   assertManifestSignaturePolicy(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
-  assertUpgradeTarget(id, opts.expected, { version: newVersion, sha: remoteSha })
-  const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: remoteSha } })
+  const identity = { version: newVersion, sha: remoteSha }
+  assertUpgradeTarget(id, opts.expected, identity)
+  const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: remoteSha }, identity })
   if (!gate.proceed) return gate.result
 
   // The merge-base check runs BEFORE the transaction (read-only on the
@@ -182,6 +183,7 @@ export async function upgradeGithub(
     before,
     after: { version: newVersion, commitSha: remoteSha },
     noop: false,
+    identity,
     declaredPermissions: gate.newPerms,
     declaredBins: gate.declaredBins,
     awaitingConsent: false,
@@ -257,7 +259,10 @@ export async function upgradeGithubSubpath(
     assertManifestIdStable(manifest, id)
     assertManifestSignaturePolicy(manifest, id)
     const newVersion = manifestVersion(manifest, entry.version)
-    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: remoteSha } })
+    // The staging clone's HEAD is the commit this lane would copy in: the reviewed sha is held to (review r4 #1).
+    const identity = { version: newVersion, sha: remoteSha }
+    assertUpgradeTarget(id, opts.expected, identity)
+    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: remoteSha }, identity })
     if (!gate.proceed) return gate.result
 
     // Consent accepted (or unnecessary). Replace the plugin dir inside the
@@ -293,6 +298,7 @@ export async function upgradeGithubSubpath(
       before,
       after: { version: newVersion, commitSha: remoteSha },
       noop: false,
+      identity,
       declaredPermissions: gate.newPerms,
       declaredBins: gate.declaredBins,
       awaitingConsent: false,

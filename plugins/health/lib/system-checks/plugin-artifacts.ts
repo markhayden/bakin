@@ -204,16 +204,18 @@ interface UpgradeIdentity {
   id: string
   version: string
   manifestSha: string
+  /** The published artifact's sha256 — the bytes the approval covers. */
+  digest: string
 }
 
-function upgradeTarget(id: string, version: string, manifestSha: string): string {
-  return `plugin:${id}@${version}#${manifestSha}`
+function upgradeTarget(id: string, version: string, manifestSha: string, digest: string): string {
+  return `plugin:${id}@${version}#${manifestSha}!${digest}`
 }
 
-/** The plugin/version/manifest an approved change names, or null for a permission/bin row. */
+/** The plugin/version/manifest/artifact an approved change names, or null for a permission/bin row. */
 function parseUpgradeTarget(target: string): UpgradeIdentity | null {
-  const match = /^plugin:([a-z0-9][a-z0-9-]*)@([^#]+)#([0-9a-f]{64})$/.exec(target)
-  return match ? { id: match[1]!, version: match[2]!, manifestSha: match[3]! } : null
+  const match = /^plugin:([a-z0-9][a-z0-9-]*)@([^#]+)#([0-9a-f]{64})!([0-9a-f]{64})$/.exec(target)
+  return match ? { id: match[1]!, version: match[2]!, manifestSha: match[3]!, digest: match[4]! } : null
 }
 
 function approvedBins(items: ReadonlyArray<{ changes: ReadonlyArray<{ target: string }> }>, id: string): string[] {
@@ -259,12 +261,19 @@ export function upgradePluginArtifactRepair(deps: PluginArtifactDeps = defaultDe
           if (!preview.consent) continue
           // Identity lives in the TARGETS: an approval freezes the change set
           // and Apply refuses when a re-plan's targets differ, so the version,
-          // full manifest sha and every binary's sha are what gets approved.
+          // full manifest sha, the artifact's sha256 and every binary's sha
+          // are what gets approved — a republish under the same version and
+          // manifest is a different artifact and never rides an old approval.
+          const digest = preview.identity?.digest
+          if (!digest) {
+            log.warn('Upgrade preview carried no artifact digest; not proposing it', { pluginId: plugin.id })
+            continue
+          }
           changes.push({
             kind: 'file' as const,
-            target: upgradeTarget(plugin.id, preview.after.version, preview.consent.manifestSha),
+            target: upgradeTarget(plugin.id, preview.after.version, preview.consent.manifestSha, digest),
             action: 'update' as const,
-            description: `Upgrade ${plugin.id} ${preview.before.version} → ${preview.after.version} (manifest ${preview.consent.manifestSha.slice(0, 12)}).`,
+            description: `Upgrade ${plugin.id} ${preview.before.version} → ${preview.after.version} (manifest ${preview.consent.manifestSha.slice(0, 12)}, artifact ${digest.slice(0, 12)}).`,
           })
           for (const permission of preview.declaredPermissions) {
             changes.push({ kind: 'setting' as const, target: `plugin:${plugin.id}:permission:${permission}`, action: 'create' as const, description: `${plugin.id} is granted the "${permission}" permission.` })
@@ -306,13 +315,14 @@ export function upgradePluginArtifactRepair(deps: PluginArtifactDeps = defaultDe
             op.item('upgrade', { id, label: id, status: 'skipped', message: 'already current' })
             continue
           }
-          // Commit ONLY what was approved: same version, same manifest, and
-          // (through the consent) the same permissions and binaries.
+          // Commit ONLY what was approved: same version, same manifest, same
+          // artifact bytes, and (through the consent) the same permissions and
+          // binaries. The lane holds the commit to the approved identity too.
           if (!preview.consent || preview.after.version !== want.version || preview.consent.manifestSha !== want.manifestSha
-            || !sameBins(preview.declaredBins, approvedBins(items, id))) {
+            || preview.identity?.digest !== want.digest || !sameBins(preview.declaredBins, approvedBins(items, id))) {
             throw new UpgradeRefusedError(`${id}: the published release changed since it was approved (approved ${want.version}) — rerun Health to review the new change set.`)
           }
-          const result = await upgradePlugin(id, { accepted: preview.consent })
+          const result = await upgradePlugin(id, { accepted: preview.consent, expected: { version: want.version, digest: want.digest } })
           if (result.awaitingConsent) throw new UpgradeRefusedError(`${id}: its manifest changed since the preview — rerun Health to review the new change set.`)
           upgraded.push(id)
           op.item('upgrade', { id, label: `${id} → ${result.after.version}`, status: 'done' })

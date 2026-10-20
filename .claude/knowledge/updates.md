@@ -115,10 +115,19 @@ the persisted record is the known subject. An explicit check for a subject
 id re-observes it even when the running pass already reached it (the caller
 knows it changed), is observed even when scheduled work was disabled
 mid-pass, and rejects (`UpdatesStoppedError`) once the timer is stopped —
-a check never answers "done" without having looked. `POST /api/updates/check`
-validates ids against the REFRESHED inventory (a plugin installed a moment
-ago is known) and answers 404 for a subject that vanished before a waited
-pass.
+a check never answers "done" without having looked. Checks enter through ONE
+admission path, `timer.admit()`: the inventory is refreshed once, inside the
+serialized pass startup (concurrent requests never fan out probes — a
+search-engine enumeration runs the binary version probe), ids are validated
+against THAT inventory (a plugin installed a moment ago is known; an unknown
+id rejects with not-found before anything runs), and the admission answers
+with the accepted ids plus a `done` promise. `POST /api/updates/check` is a
+thin client: 404 for an id outside the refreshed inventory, 202 with the
+admitted ids, or (`wait=1`) the records once `done` settles. A subject
+removed AFTER admission but before its turn is remembered by the pass
+(`Pass.missing`): the request that named it rejects with not-found (404 in
+wait mode) — never a successful check that never looked — while a broad
+request simply no longer has it.
 
 **One attempt, one result.** On the deadline the signal fires; a cooperative
 observer settles through the engine and records the deadline as its ONE
@@ -176,13 +185,28 @@ ONE apply service (`src/core/updates/apply.ts`) behind `GET
    `src/core/updates/apply-watch.ts`: ONE subscription per operation id
    (attachments merge their ids), dropped on any terminal state and disposed
    with the service — a stuck operation never accumulates listeners.
-   The reviewed identity goes all the way down: plugin lanes receive it as
-   `UpgradeOptions.expected` and refuse a ref that moved or a republished
-   artifact (`assertUpgradeTarget`, even under an unchanged manifest and so a
-   still-valid consent token); the search-models install re-reads the live
-   model set once it holds the resource and fails `target_changed` when it
-   no longer matches the reviewed digest (`available.digest` = the sorted
-   required model set).
+   The reviewed identity goes all the way down: EVERY plugin lane receives it
+   as `UpgradeOptions.expected` and holds its candidate to it with
+   `assertUpgradeTarget` — in-place github and subpath lanes the commit the
+   ref resolves to (`{ version, sha }`), the artifact lane the published
+   tarball's sha256 (`{ version, digest }`), the local lane the live
+   source-tree digest (`{ version, digest }`) — refusing a ref that moved, a
+   republished artifact or a moved tree even under an unchanged manifest (and
+   so a still-valid consent token). A reviewed field the lane cannot report
+   is itself a refusal: a lane that cannot prove the identity never installs
+   on it. Every non-noop `UpgradeResult` carries that verified `identity`.
+   Health's `upgrade-plugin-artifact` repair freezes it in its approved
+   targets (`plugin:<id>@<version>#<manifestSha>!<artifactSha256>`) and
+   commits with `expected: { version, digest }`, so a covering approval
+   resolved through `confirmApply` is bound to the artifact bytes it showed —
+   a republish under the same version and manifest is a different artifact
+   and never rides an old approval. The upgrade operation's fingerprint hashes
+   the FULL consent token and the canonical reviewed identity
+   (`upgradeRequestKey`): identical requests attach, a request for another
+   identity is its own operation and runs its own guard. The search-models
+   install re-reads the live model set once it holds the resource and fails
+   `target_changed` when it no longer matches the reviewed digest
+   (`available.digest` = the sorted required model set).
 
 ## Self-update (D7.11)
 
@@ -193,7 +217,15 @@ the approved version, so a request for another release never attaches. The
 operation is BOUND to that release (`expectedVersion` from the reviewed
 target): a newer release published between preview and execution fails the
 update before any download ("Release changed … check for updates and apply
-again") — the operator approves one identity, never "latest". The
+again") — the operator approves one identity, never "latest". While the
+update is still reversible it is cancellable: the operation's signal reaches
+the updater (`SelfUpdateOptions.signal`), the release fetch runs under a
+30 s deadline composed with it, and both transfers ride the shared
+`downloadToFile` primitive (stall window, 10 min attempt deadline, abort —
+never a raw fetch piped to disk); a cancel aborts the transfer, removes the
+staging files, leaves the binary untouched and ends the operation
+`cancelled` (the updater's exit is mapped through `op.throwIfCancelled()`),
+releasing `install-state` instead of stranding it behind a stalled body. The
 `restarting` stage goes active only AFTER the restart is activated: a failed
 activation is a terminal `restart_failed`, never a handoff — and so is a
 deferred restart command that fails later (`RestartScheduleResult.settled`

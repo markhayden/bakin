@@ -25,17 +25,21 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }) }))
 
 type Consent = { manifestSha: string; permissions: string[]; bins: Array<{ name: string; version: string; sha256: string }> }
-const calls: Array<{ id: string; previewOnly?: boolean; accepted?: Consent }> = []
+type Expected = { version?: string; sha?: string; digest?: string }
+const calls: Array<{ id: string; previewOnly?: boolean; accepted?: Consent; expected?: Expected }> = []
 let previewManifest = 'd'.repeat(64)
 let previewVersion = '1.5.0'
+/** The published tarball's sha256 the artifact lane verifies — part of the frozen target (review r4 #2). */
+let previewDigest = '7'.repeat(64)
 let commitAwaitsConsent = false
 class UpgradeRefusedError extends Error {}
 mock.module('../../../src/core/plugins/upgrade', () => ({
   UpgradeRefusedError,
-  upgradePlugin: async (id: string, opts: { previewOnly?: boolean; accepted?: Consent }) => {
-    calls.push({ id, previewOnly: opts.previewOnly, accepted: opts.accepted })
+  upgradePlugin: async (id: string, opts: { previewOnly?: boolean; accepted?: Consent; expected?: Expected }) => {
+    calls.push({ id, previewOnly: opts.previewOnly, accepted: opts.accepted, expected: opts.expected })
+    if (opts.expected?.digest !== undefined && opts.expected.digest !== previewDigest) throw new UpgradeRefusedError(`${id}: the upgrade target changed since it was reviewed — artifact ${previewDigest.slice(0, 12)} (reviewed ${opts.expected.digest.slice(0, 12)}).`)
     const consent = { manifestSha: previewManifest, permissions: ['network'], bins: [{ name: 'ttyd', version: '1.7.7', sha256: 'e'.repeat(64) }] }
-    const base = { id, before: { version: '1.0.0', commitSha: '' }, after: { version: previewVersion, commitSha: '' }, noop: false }
+    const base = { id, before: { version: '1.0.0', commitSha: '' }, after: { version: previewVersion, commitSha: '' }, noop: false, identity: { version: previewVersion, digest: previewDigest } }
     if (opts.previewOnly) return { ...base, declaredPermissions: ['network'], declaredBins: consent.bins, awaitingConsent: true, consent }
     if (commitAwaitsConsent) return { ...base, declaredPermissions: [], declaredBins: [], awaitingConsent: true, consent }
     return { ...base, declaredPermissions: ['network'], declaredBins: consent.bins, awaitingConsent: false }
@@ -77,6 +81,7 @@ beforeEach(() => {
   activated.length = 0
   previewManifest = 'd'.repeat(64)
   previewVersion = '1.5.0'
+  previewDigest = '7'.repeat(64)
   commitAwaitsConsent = false
 })
 
@@ -90,11 +95,11 @@ describe('upgrade-plugin-artifact repair', () => {
     const [item] = await upgradePluginArtifactRepair(deps).plan(target)
     expect(item!.safety).toBe('manual')
     expect(item!.changes.map((c) => c.target)).toEqual([
-      `plugin:terminal@1.5.0#${'d'.repeat(64)}`,
+      `plugin:terminal@1.5.0#${'d'.repeat(64)}!${'7'.repeat(64)}`,
       'plugin:terminal:permission:network',
       `plugin:terminal:bin:ttyd@1.7.7#${'e'.repeat(64)}`,
     ])
-    expect(item!.changes[0]!.description).toContain('1.0.0 → 1.5.0 (manifest dddddddddddd)')
+    expect(item!.changes[0]!.description).toContain('1.0.0 → 1.5.0 (manifest dddddddddddd, artifact 777777777777)')
     expect(calls.every((c) => c.previewOnly)).toBe(true) // planning never commits
   })
 
@@ -121,6 +126,8 @@ describe('upgrade-plugin-artifact repair', () => {
     expectRepairContract(repair, run)
     const commit = calls.find((c) => !c.previewOnly)
     expect(commit?.accepted?.manifestSha).toBe('d'.repeat(64))
+    // The lane is held to the approved identity too, not only the consent.
+    expect(commit?.expected).toEqual({ version: '1.5.0', digest: '7'.repeat(64) })
     expect(activated).toEqual([join(testDir, 'plugins', 'terminal')])
     expect(run.results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['health.plugin-artifacts'] })
   })
@@ -137,7 +144,7 @@ describe('upgrade-plugin-artifact repair', () => {
     expect(activated).toEqual([])
     // ...and a re-plan names the new identity, so a frozen approval can't match it.
     const replanned = await repair.plan(target)
-    expect(replanned[0]!.changes[0]!.target).toBe(`plugin:terminal@2.0.0#${'f'.repeat(64)}`)
+    expect(replanned[0]!.changes[0]!.target).toBe(`plugin:terminal@2.0.0#${'f'.repeat(64)}!${'7'.repeat(64)}`)
   })
 
   it('a stranded plugin whose compatible build carries the SAME version is still offered', async () => {
@@ -145,7 +152,24 @@ describe('upgrade-plugin-artifact repair', () => {
     previewVersion = '1.0.0'
     const sameVersion = { publishedVersions: async () => ({ pluginId: 'terminal', latest: '1.0.0', compatible: '1.0.0' }) }
     const [item] = await upgradePluginArtifactRepair(sameVersion).plan(target)
-    expect(item!.changes[0]!.target).toBe(`plugin:terminal@1.0.0#${'d'.repeat(64)}`)
+    expect(item!.changes[0]!.target).toBe(`plugin:terminal@1.0.0#${'d'.repeat(64)}!${'7'.repeat(64)}`)
+  })
+
+  it('review r4 #2: a republish under the SAME version and manifest is a different artifact — the approval does not cover it, nothing installs', async () => {
+    installStranded('terminal')
+    const repair = upgradePluginArtifactRepair(deps)
+    const approved = await repair.plan(target)
+    previewDigest = '8'.repeat(64)
+    const run = await runRepairContract(repair, approved)
+    expect(run.results[0]).toMatchObject({ status: 'failed', message: expect.stringContaining('changed since it was approved') })
+    expect(calls.some((c) => !c.previewOnly)).toBe(false)
+    expect(activated).toEqual([])
+  })
+
+  it('a preview that cannot name the artifact digest is not proposed', async () => {
+    installStranded('terminal')
+    previewDigest = ''
+    expect(await upgradePluginArtifactRepair(deps).plan(target)).toEqual([])
   })
 
   it('a manifest that changed between preview and commit fails the item instead of upgrading unconsented', async () => {
