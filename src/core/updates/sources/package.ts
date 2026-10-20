@@ -21,8 +21,15 @@ export interface InstalledPackage {
   /** The package id (the key without its version). */
   id: string
   entry: PackageEntry
-  /** The installed manifest's hub provenance, when the pack was synthesized from a hub bundle. */
+  /**
+   * The installed manifest's hub provenance, when the pack was synthesized
+   * from a hub bundle. A hub skill whose manifest is unreadable keeps its
+   * ownership (`{ source }` from the lock entry, no `ref`) — never silently
+   * a package (review r6 #2).
+   */
   upstream: { source: string; ref?: string; resolvedSha?: string } | null
+  /** The installed manifest exists but could not be read/parsed: the install is broken evidence, not a plain package. */
+  manifestError?: string
 }
 
 export interface PackageSourceDeps {
@@ -114,6 +121,8 @@ export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
       const { entry } = pkg
       const installed = packageInstalledIdentity(entry)
       const action: UpdateAction = { kind: 'manual', pointer: syncPointer(entry, id, pkg.key) }
+      // Unreadable installed evidence is reported, never probed around (r6 #2).
+      if (pkg.manifestError) return { installed, outcome: 'blocked', blockedReason: `the installed manifest is unreadable (${pkg.manifestError}) — reinstall`, action }
 
       if (isGithubPackageSource(entry.source)) {
         const url = deps.cloneUrl(entry.source)

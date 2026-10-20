@@ -134,6 +134,15 @@ const PackageEntrySchema = z.object({
   commitSha: z.string(),
   installedAt: z.string().min(1),
 
+  /**
+   * True for a skill-pack synthesized from a hub bundle (ClawHub, a GitHub
+   * skill repo): the updates engine tracks it as a `hub-skill` subject. The
+   * ledger carries it so that OWNERSHIP never depends on re-reading the
+   * installed manifest (an unreadable one must not turn a hub skill into a
+   * package and drop its observation and skip — PR 8 review r6 #2).
+   */
+  hub: z.boolean().optional(),
+
   // Agent-only fields (present iff kind === 'agent')
   state: PackageStateSchema.optional(),
   agentId: z.string().optional(),

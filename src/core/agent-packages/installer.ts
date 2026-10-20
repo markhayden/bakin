@@ -626,6 +626,8 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
       projections: parentResult.projections,
       dependencies: resolved.map((r) => `${r.resolvedId}@${r.manifest.version}`),
     }
+    // Hub provenance is a ledger fact (r6 #2): ownership of the `hub-skill:` subject never hinges on re-reading the manifest.
+    if (manifest.kind === 'skill-pack' && manifest.upstream) parentEntry.hub = true
     if (manifest.kind === 'agent' && agentId) {
       parentEntry.state = 'managed'
       parentEntry.agentId = agentId

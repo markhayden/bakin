@@ -17,7 +17,7 @@ import { parseManifest, type Manifest } from '../../../../packages/core/src/agen
 import { getPackageSourceDir } from '../../../../packages/core/src/agent-packages/package-paths'
 import type { UpdateSource } from '../types'
 import { createHubSkillSource } from './hub-skill'
-import { createPackageSource, type InstalledPackage } from './package'
+import { createPackageSource, isClawhubPackageSource, type InstalledPackage } from './package'
 
 const log = createLogger('updates-sources')
 
@@ -96,20 +96,26 @@ export function pickLsRemoteSha(stdout: string, ref: string): string | null {
 export function installedPackages(): InstalledPackage[] {
   // ONE selection per id (`canonicalPackageEntries`) shared with every lockfile consumer, so a superseded key still present never makes Team/Explore show one version beside another's record.
   return canonicalPackageEntries(readLockfile()).map(({ key, id, entry }) => {
-    const manifest = installedPackageManifest(entry.kind, id, entry.version)
-    const upstream = entry.kind === 'skill-pack' && manifest?.kind === 'skill-pack' && manifest.upstream ? manifest.upstream : null
-    return { key, id, entry, upstream }
+    const read = installedPackageManifest(entry.kind, id, entry.version)
+    const manifestUpstream = entry.kind === 'skill-pack' && read.manifest?.kind === 'skill-pack' && read.manifest.upstream ? read.manifest.upstream : null
+    // Ownership (r6 #2): the ledger's `hub` flag first; a pre-flag install by its manifest; an unreadable manifest by its
+    // lock source (a `clawhub:` source can only be a hub skill) — never a silent flip to "package".
+    const hub = entry.hub ?? (read.manifest ? manifestUpstream !== null : isClawhubPackageSource(entry.source))
+    const upstream = manifestUpstream ?? (hub ? { source: entry.source } : null)
+    return { key, id, entry, upstream, ...(read.error ? { manifestError: read.error } : {}) }
   })
 }
 
-function installedPackageManifest(kind: PackageEntry['kind'], id: string, version: string): Manifest | null {
+/** The installed manifest, or the reason it could not be read — an absent file is neither (a pre-manifest install). */
+function installedPackageManifest(kind: PackageEntry['kind'], id: string, version: string): { manifest: Manifest | null; error?: string } {
   const path = join(getPackageSourceDir(getContentDir(), kind, id, version), 'bakin-package.json')
-  if (!existsSync(path)) return null
+  if (!existsSync(path)) return { manifest: null }
   try {
-    return parseManifest(JSON.parse(readFileSync(path, 'utf-8')))
+    return { manifest: parseManifest(JSON.parse(readFileSync(path, 'utf-8'))) }
   } catch (err) {
-    log.warn('installed package manifest unreadable — treated as a plain package', { id, version, error: err instanceof Error ? err.message : String(err) })
-    return null
+    const error = err instanceof Error ? err.message : String(err)
+    log.warn('installed package manifest unreadable — reported on its subject, never re-partitioned', { id, version, error })
+    return { manifest: null, error }
   }
 }
 

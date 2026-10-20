@@ -96,6 +96,8 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const router = useRouter()
   const isMain = agentId === mainAgentId
   const refreshPackageStates = useAgentStore((s) => s.refreshPackageStates)
+  const packageStatesError = useAgentStore((s) => s.packageStatesError)
+  const packageStatesAt = useAgentStore((s) => s.packageStatesAt)
   const loadAgents = useAgentStore((s) => s.load)
   const [adoptOpen, setAdoptOpen] = useState(false)
   const [updateOpen, setUpdateOpen] = useState(false)
@@ -223,6 +225,16 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
 
   return (
     <div className="grid gap-bakin-3">
+      {packageStatesError && (
+        // The rows below are LAST KNOWN (review r6 #3): the latest read failed, and the badge/actions describe that earlier state.
+        <Alert tone="attention" data-testid="package-state-stale">
+          <AlertDescription>
+            {packageStatesError} Showing the package state last read{packageStatesAt ? ` at ${new Date(packageStatesAt).toLocaleTimeString()}` : ' before'}.
+            {' '}
+            <Button size="xs" variant="ghost" onClick={() => { void refreshPackageStates() }}>Retry</Button>
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
         <PackageStateBadge state={displayState} packageId={packageState?.packageId} />
         <Inline gap="dense">

@@ -70,6 +70,8 @@ export function createHubSkillSource(deps: HubSkillSourceDeps): UpdateSource {
       const resolved = upstream?.ref ?? ''
       const installed = hubSkillInstalledIdentity(pkg)
       const action = (target: string): UpdateAction => ({ kind: 'manual', pointer: `bakin skills install ${target}` })
+      // Unreadable installed evidence is reported under THIS subject (ownership kept, skip kept), never probed around (r6 #2).
+      if (pkg.manifestError) return { installed, outcome: 'blocked', blockedReason: `the installed manifest is unreadable (${pkg.manifestError}) — reinstall`, action: action(entry.source) }
 
       if (isClawhubPackageSource(entry.source)) {
         const ref = parseClawhubRef(entry.source)

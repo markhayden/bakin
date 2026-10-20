@@ -102,7 +102,7 @@ beforeEach(() => {
   // Reset store between tests so cross-test state doesn't leak.
   useAgentStore.setState({
     agents: [], agentIds: [], agentMap: {}, agentsWithStatus: [],
-    displaySettings: {}, teams: [], packageStates: {},
+    displaySettings: {}, teams: [], packageStates: {}, packageStatesAt: null, packageStatesError: null,
     mainAgentId: null, loaded: false,
   })
 })
@@ -272,10 +272,14 @@ describe('useAgentStore — package state plumbing', () => {
     global.fetch = makeFetchSpy({ pkgStatus: 500, pkgBody: { ok: false } }) as unknown as typeof global.fetch
     await useAgentStore.getState().refreshPackageStates()
     expect(useAgentStore.getState().packageStates['pixel']?.state).toBe('managed')
-    // A SUCCESSFUL empty inventory does replace them.
+    // …and says so (review r6 #3): the rows are LAST KNOWN until a read succeeds again.
+    expect(useAgentStore.getState().packageStatesError).toContain('read failed')
+    expect(useAgentStore.getState().packageStatesAt).toEqual(expect.any(String))
+    // A SUCCESSFUL empty inventory does replace them and clears the signal.
     global.fetch = makeFetchSpy({ pkgBody: { ok: true, agents: [] } }) as unknown as typeof global.fetch
     await useAgentStore.getState().refreshPackageStates()
     expect(useAgentStore.getState().packageStates).toEqual({})
+    expect(useAgentStore.getState().packageStatesError).toBeNull()
   })
 
   it('roster fetch failure still publishes the package answer it fetched beside it (r4 #5)', async () => {

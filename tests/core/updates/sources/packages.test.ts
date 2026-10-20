@@ -250,6 +250,20 @@ describe('package source', () => {
     expect(await hubTracked.observe(hubEntry!, ctx)).toMatchObject({ outcome: 'update-available', available: { sha: SHA_B } })
   })
 
+  it('review r6 #2: an unreadable installed manifest is a blocked verdict on ITS subject — a package stays a package, a hub skill a hub skill (skip kept), nothing is probed', async () => {
+    const never = async (): Promise<never> => { throw new Error('nothing must be probed') }
+    const ctx = { signal: new AbortController().signal, conditional: { get: () => undefined, set: () => {} } }
+    const broken = { ...installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: 'main', commitSha: SHA_A }), manifestError: 'Unexpected token' }
+    const pkg = createPackageSource(packageDeps({ installed: () => [broken], lsRemote: never, defaultBranch: never, fetchManifest: never }))
+    const [entryFor] = await pkg.inventory()
+    expect(await pkg.observe(entryFor!, ctx)).toMatchObject({ outcome: 'blocked', blockedReason: expect.stringContaining('unreadable') })
+    const hubBroken = { ...installed('hub-weather', { source: 'clawhub:weather' }, { source: 'clawhub:weather' }), manifestError: 'Unexpected token' }
+    const hub = createHubSkillSource(hubDeps({ installed: () => [hubBroken] }, { latest: never, hasVersion: never }))
+    const [hubEntry] = await hub.inventory()
+    expect(hubEntry!.subject.kind).toBe('hub-skill')
+    expect(await hub.observe(hubEntry!, ctx)).toMatchObject({ outcome: 'blocked', blockedReason: expect.stringContaining('unreadable') })
+  })
+
   it('a gone ref or a manifest whose id does not match is never an offer', async () => {
     const ops = installed('ops', { kind: 'workflow-pack', source: 'github:acme/ops', ref: 'main', commitSha: SHA_A })
     const gone = createPackageSource(packageDeps({ installed: () => [ops], lsRemote: async () => null }))

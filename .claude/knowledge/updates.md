@@ -437,7 +437,9 @@ through a server is an operator action: `bakin update --as human`; an
   longer the newest request's (a generation per read), so overlapping
   refreshes never put an obsolete badge back, and a FAILED read keeps the
   last known rows (a managed agent never shows as unmanaged because the
-  network blinked). Explore's catalog carries the observation's
+  network blinked) with a signal — `packageStatesError` /
+  `packageStatesAt`; the detail card shows "last read at …" with a Retry
+  until a read succeeds again. Explore's catalog carries the observation's
   `updateOutcome` (`current` / `update-available` / `skipped` / `blocked` /
   `unsupported` / null) and `updateReason`: a blocked subject gets an
   "Update blocked" badge and the check toast names it with the reason —
@@ -474,11 +476,20 @@ through a server is an operator action: `bakin update --as human`; an
   `hubSkillInstalledIdentity` — the ONE derivation the sources use; a hub
   skill's is the hub's resolved version, and a same-key re-install is
   detected by key + version + commit + instant + tracking source/ref +
-  hub identity). An agent `--check` whose upstream question could not be
-  answered carries `receipt.package.checkError` — the versions on the
-  receipt are the installed ones, `changed` is false because nothing is
-  KNOWN; the CLI reports it as a failed check (exit 1), and the roster form
-  under `--json` prints ONE aggregate document. The checker module is gone.
+  hub identity). Both receipts carry the verdict: `checkOutcome` /
+  `checkReason` (`blocked`/`unsupported` are neither updates nor
+  "unchanged" — the CLI renderer says "Upstream blocked: <reason>") and,
+  for an agent, `checkError` when the upstream question could not be
+  answered — the versions on the receipt are the installed ones, `changed`
+  is false because nothing is KNOWN; the sync ROUTE answers that as a failed
+  operation (502 `check_failed`, `{ ok: false, error, receipt }`), the CLI
+  as a failed check (exit 1), and the roster form under `--json` prints ONE
+  aggregate document. Ownership of a hub skill is a LEDGER fact (lock
+  `hub: true`, written at install; a pre-flag install by its manifest, an
+  unreadable manifest by its `clawhub:` source): an unreadable installed
+  manifest is a `blocked` verdict on the subject that owns it
+  (`manifestError`), never a silent re-partition that would drop the
+  observation and the skip. The checker module is gone.
 - **CLI `--check` without a server:** `bakin agents sync [<id>] --check`,
   `bakin packages sync <key> --check` and `bakin plugins list [--check]`
   run in-process when `server.lock` names no live server (an explicit

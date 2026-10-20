@@ -23,7 +23,9 @@ const loggerMock = () => ({ createLogger: () => ({ info: mock(), warn: mock(), e
 mock.module('../../../../src/core/logger', loggerMock)
 mock.module('../../../../packages/core/src/logger', loggerMock)
 
-import { localPackageManifest, pickDefaultBranch } from '../../../../src/core/updates/sources/package-wiring'
+import { createPackageUpdateSources, installedPackages, localPackageManifest, pickDefaultBranch } from '../../../../src/core/updates/sources/package-wiring'
+import { writeLockfile, type PackageEntry } from '../../../../packages/core/src/agent-packages/lockfile'
+import { getPackageSourceDir } from '../../../../packages/core/src/agent-packages/package-paths'
 
 const originalHome = process.env.HOME
 afterEach(() => { process.env.HOME = originalHome })
@@ -47,5 +49,41 @@ describe('localPackageManifest', () => {
     expect(localPackageManifest('~/packs/notes')).toEqual({ id: 'notes', version: '1.2.0' })
     expect(localPackageManifest(join(testDir, 'packs', 'notes'))).toEqual({ id: 'notes', version: '1.2.0' })
     expect(localPackageManifest('~/packs/gone')).toBeNull()
+  })
+})
+
+describe('installedPackages — ownership never flips on an unreadable manifest (PR 8 review r6 #2)', () => {
+  const row = (over: Partial<PackageEntry>): PackageEntry => ({ kind: 'skill-pack', version: '1.0.0', source: 'clawhub:weather', ref: '', commitSha: '', installedAt: '2026-10-01T00:00:00.000Z', ...over })
+  const manifestAt = (id: string, content: string) => {
+    const dir = getPackageSourceDir(testDir, 'skill-pack', id, '1.0.0')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'bakin-package.json'), content)
+  }
+
+  it('the ledger flag, a readable manifest, or a clawhub source keep a hub skill a hub skill; an unreadable manifest is reported, not re-partitioned', () => {
+    writeLockfile({ version: 1, packages: {
+      'flagged@1.0.0': row({ source: 'github:acme/skills#flagged', hub: true }),
+      'parsed@1.0.0': row({ source: 'github:acme/skills#parsed' }),
+      'hubby@1.0.0': row({ source: 'clawhub:hubby' }),
+      'plain@1.0.0': row({ source: 'github:acme/plain' }),
+      'fine@1.0.0': row({ source: 'github:acme/fine' }),
+    } })
+    manifestAt('flagged', '{ not json')
+    manifestAt('parsed', JSON.stringify({ id: 'parsed', version: '1.0.0', kind: 'skill-pack', name: 'parsed', description: 'x', contributions: { skills: ['x'] }, upstream: { source: 'github:acme/skills#parsed', ref: 'main', resolvedSha: 'a'.repeat(40) } }))
+    manifestAt('hubby', '{ not json')
+    manifestAt('plain', '{ not json')
+    manifestAt('fine', JSON.stringify({ id: 'fine', version: '1.0.0', kind: 'skill-pack', name: 'fine', description: 'x', contributions: { skills: ['x'] } }))
+    const byId = new Map(installedPackages().map((pkg) => [pkg.id, pkg]))
+    expect(byId.get('flagged')).toMatchObject({ upstream: { source: 'github:acme/skills#flagged' }, manifestError: expect.any(String) })
+    expect(byId.get('parsed')).toMatchObject({ upstream: { source: 'github:acme/skills#parsed', ref: 'main' } })
+    expect(byId.get('parsed')?.manifestError).toBeUndefined()
+    expect(byId.get('hubby')).toMatchObject({ upstream: { source: 'clawhub:hubby' }, manifestError: expect.any(String) })
+    expect(byId.get('plain')).toMatchObject({ upstream: null, manifestError: expect.any(String) })
+    expect(byId.get('fine')).toMatchObject({ upstream: null })
+    expect(byId.get('fine')?.manifestError).toBeUndefined()
+    // The sources partition on that ownership: the two unreadable hub skills stay `hub-skill` subjects, `plain` a package.
+    const [pkgSource, hubSource] = createPackageUpdateSources()
+    expect(hubSource!.kind).toBe('hub-skill')
+    expect(pkgSource!.kind).toBe('package')
   })
 })

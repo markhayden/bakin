@@ -12,7 +12,7 @@
  * from the Zustand store, which we prime per test.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -351,6 +351,22 @@ describe('PackageCard — update and remove actions', () => {
     expect(screen.getByText('update available')).toBeDefined()
     expect(screen.getByText('Latest version 0.2.0 is available.')).toBeDefined()
     expect(screen.getByText('Last update check failed: ls-remote: timed out')).toBeDefined()
+  })
+
+  it('review r6 #3: when the last package read failed, the card says the state is LAST KNOWN and offers a retry that re-reads the rows', async () => {
+    const fetchMock = setupActionFetch()
+    useAgentStore.setState({ packageStatesError: 'Package state read failed (HTTP 500).', packageStatesAt: '2026-10-20T12:00:00.000Z' })
+    render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
+    const notice = screen.getByTestId('package-state-stale')
+    expect(notice.textContent).toContain('Package state read failed (HTTP 500).')
+    expect(notice.textContent).toContain('last read')
+    // The last known state still renders.
+    expect(screen.getByText('update available')).toBeDefined()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry' })) })
+    await waitFor(() => expect(fetchMock.mock.calls.some((call) => call[0] === '/api/agent-packages')).toBe(true))
+    // The re-read succeeded: the signal clears and the notice goes.
+    await waitFor(() => expect(useAgentStore.getState().packageStatesError).toBeNull())
+    await waitFor(() => expect(screen.queryByTestId('package-state-stale')).toBeNull())
   })
 
   it('a skipped offer is not an update — the card stays managed', () => {

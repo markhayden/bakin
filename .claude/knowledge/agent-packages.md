@@ -221,7 +221,10 @@ installed identity (`updateRecordMatchesInstalled`); installs and removals
 announce `agent_pkg:changed` (`change-events.ts`) so the engine retires a
 record for an identity just replaced. The lock entry's `ref` is the TRACKING
 ref (`trackingRefOf`): empty for a default-branch install, the tracked
-`@ref` otherwise — never the commit a re-install happened to fetch. The route never probes a source — the engine
+`@ref` otherwise — never the commit a re-install happened to fetch. A
+skill-pack synthesized from a hub bundle carries `hub: true` in its lock
+entry (the ledger owns the `hub-skill:` subject; an unreadable installed
+manifest never turns it into a package). The route never probes a source — the engine
 observes packages on its schedule and `POST /api/updates/check` runs a pass
 on demand. The Team detail package card reads `isUpdateOffered(row.update)`
 to show `update-available` and offer Maintain-changes vs

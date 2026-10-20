@@ -59,6 +59,7 @@ import { assertResourceHeld } from '@bakin/core/operations'
 import { SYNC_STAGES } from './operation-plans'
 import { updatePackageById } from './updater'
 import { observeInstalledPackage } from '../updates/observe'
+import type { UpdateOutcome } from '@makinbakin/sdk/types'
 import {
   COMPOSABLE_FILES,
   type SyncFinding,
@@ -318,6 +319,8 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
     let commitAfter = commitBefore
     let changed = false
     let checkError: string | undefined
+    let checkOutcome: UpdateOutcome | undefined
+    let checkReason: string | undefined
     const projections: ReceiptProjection[] = []
     let skipped: Array<{ target: string; reason: string; hint?: string }> = []
     let reclaimed: string[] = []
@@ -330,6 +333,9 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
           versionAfter = status.available?.version ?? versionBefore
           commitAfter = status.available?.sha ?? commitBefore
           changed = status.outcome === 'update-available'
+          // The verdict rides the receipt (review r6 #4): blocked/unsupported are not "unchanged".
+          checkOutcome = status.outcome
+          checkReason = status.blockedReason
           if (status.outcome === 'blocked') op?.log(`Upstream check blocked: ${status.blockedReason ?? 'unknown reason'}`, 'warn')
         } catch (err) {
           // Never a silent "nothing newer": the receipt names the failure (review r5 #1).
@@ -415,6 +421,8 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
         fetched: fetch,
         changed,
         ...(checkError !== undefined ? { checkError } : {}),
+        ...(checkOutcome !== undefined ? { checkOutcome } : {}),
+        ...(checkReason !== undefined ? { checkReason } : {}),
       },
       blocks: diffBlocks(blocksBefore, await readBlockBodies(agentId)),
       projections,
@@ -545,6 +553,10 @@ export interface PackSyncReceipt {
   commitBefore: string
   commitAfter: string
   changed: boolean
+  /** `--check` only: the observer's verdict — `blocked`/`unsupported` are neither updates nor "unchanged" (review r6 #4). */
+  checkOutcome?: 'current' | 'update-available' | 'blocked' | 'unsupported' | 'unknown'
+  /** Why `checkOutcome` is `blocked` or `unsupported`. */
+  checkReason?: string
 }
 
 /** Lockfile lookup shared by the standalone-pack verbs — packs only. */
@@ -613,6 +625,8 @@ export async function syncPack(
       commitBefore: entry.commitSha,
       commitAfter: status.available?.sha ?? entry.commitSha,
       changed: status.outcome === 'update-available',
+      checkOutcome: status.outcome,
+      ...(status.blockedReason !== undefined ? { checkReason: status.blockedReason } : {}),
     }
   }
 

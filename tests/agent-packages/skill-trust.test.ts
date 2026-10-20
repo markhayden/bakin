@@ -202,6 +202,8 @@ describe('trackingSource — a re-install keeps the tracking policy (#1007 D7.12
     const confirmed = await confirmSkillInstall(src, preview.preview.consentToken, undefined, { trackingSource: src })
     expect(confirmed.status).toBe('installed')
     const entries = Object.values(readLockfile().packages)
+    // Hub provenance is a ledger fact (PR 8 review r6 #2): ownership of the `hub-skill:` subject never hinges on the installed manifest.
+    expect(entries.map((e) => e.hub)).toEqual(entries.map(() => true))
     expect(entries.map((e) => e.source)).toEqual([src])
   })
 })

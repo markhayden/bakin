@@ -81,6 +81,17 @@ function installRuntimeMock(): void {
   ;(globalThis as TestGlobal).__bakinAppServices = { runtime: appRuntime }
 }
 
+let observeMode: 'real' | 'throw' | 'blocked' = 'real'
+import * as realObserve from '../../src/core/updates/observe'
+mock.module('../../src/core/updates/observe', () => ({
+  ...realObserve,
+  observeInstalledPackage: async (key: string) => {
+    if (observeMode === 'throw') throw new Error('ls-remote: offline')
+    if (observeMode === 'blocked') return { installed: { version: '0.1.0', display: '0.1.0' }, outcome: 'blocked', blockedReason: 'no remote ref: release-1' }
+    return realObserve.observeInstalledPackage(key)
+  },
+}))
+
 import * as installRoute from '../../packages/host/src/api/agent-packages/install'
 import * as listRoute from '../../packages/host/src/api/agent-packages/list'
 import { joinPackageUpdates } from '../../packages/host/src/api/agent-packages/list'
@@ -274,6 +285,39 @@ describe('GET /api/agent-packages', () => {
     const { req: again, url: againUrl } = makeRequest('POST', '/api/agent-packages/pixel/sync', {})
     const againRes = await settleRoute(dynamicRoute.handler(again, againUrl))
     expect(againRes.status).toBe(200)
+  })
+
+  it('review r6 #1/#4: a --check whose upstream question went unanswered FAILS the operation (502, ok:false, the receipt attached); a blocked verdict is a 200 that says blocked, never "unchanged"', async () => {
+    const src = seedAgentPackage()
+    {
+      const { req } = makeRequest('POST', '/api/agent-packages/install', { source: src })
+      await settleRoute(installRoute.post(req))
+    }
+    observeMode = 'throw'
+    try {
+      const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/sync', { check: true })
+      const res = await settleRoute(dynamicRoute.handler(req, url))
+      expect(res.status).toBe(502)
+      const body = await res.json()
+      expect(body.ok).toBe(false)
+      expect(body.error).toBe('ls-remote: offline')
+      expect(body.receipt.package.checkError).toBe('ls-remote: offline')
+      expect(body.receipt.package.changed).toBe(false)
+    } finally {
+      observeMode = 'real'
+    }
+    observeMode = 'blocked'
+    try {
+      const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/sync', { check: true })
+      const res = await settleRoute(dynamicRoute.handler(req, url))
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ok).toBe(true)
+      expect(body.receipt.package).toMatchObject({ changed: false, checkOutcome: 'blocked', checkReason: 'no remote ref: release-1' })
+      expect(body.receipt.package.checkError).toBeUndefined()
+    } finally {
+      observeMode = 'real'
+    }
   })
 
   it('carries no update record without a running updates engine — the route never probes a source', async () => {

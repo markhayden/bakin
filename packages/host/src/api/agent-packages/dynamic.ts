@@ -234,6 +234,8 @@ async function handleSync(req: Request, agentId: string): Promise<Response> {
       try {
         const receipt = await syncAgent(agentId, { check, reclaim, trigger: 'rest', op })
         if (!check) await reloadAgentPackageRegistries({ kind: 'synced', agentId })
+        // A check whose upstream question went unanswered is a FAILED check (review r6 #1) — never a quiet 200 "unchanged".
+        if (check && receipt.package?.checkError) return responseOutcome(502, { ok: false, error: receipt.package.checkError, receipt }, 'check_failed')
         return responseOutcome(200, { ok: true, receipt })
       } catch (err) {
         if (err instanceof OperationCancelledError) throw err
