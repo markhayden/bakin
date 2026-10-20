@@ -287,3 +287,32 @@ describe('Header update banner — settled operations (#1007 review r1 #7)', () 
     expect((screen.getByRole('button', { name: /^Update$|Update now|Update Bakin/ }) as HTMLButtonElement).disabled).toBe(false)
   })
 })
+
+describe('Header update banner — the release is captured at start; a failed verification releases Update (#1007 review r2 #1, #6)', () => {
+  it('the apply names the identity on screen; a new boot serving another version is reported and Update is a retry', async () => {
+    const restarting = { id: 'op-1', bootId: 'boot-old', rev: 3, status: 'running', kind: 'updates:self-update', owner: 'core', origin: 'web', title: 'Update Bakin', href: '/health', fingerprint: 'x', resources: ['install-state'], plan: { stages: [{ id: 'download', kind: 'downloading', label: 'Download the release' }, { id: 'restarting', kind: 'verifying', label: 'Restart into the new version' }], pointOfNoReturn: 'restarting' }, startedAt: '2026-10-20T12:00:00.000Z', lastProgressAt: '2026-10-20T12:00:02.000Z', lastLivenessAt: '2026-10-20T12:00:02.000Z', stages: [{ id: 'download', kind: 'downloading', label: 'Download the release', status: 'done' }, { id: 'restarting', kind: 'verifying', label: 'Restart into the new version', status: 'active' }], cancellable: false, children: [], log: [] }
+    const bodies: unknown[] = []
+    let versionAnswers = 0
+    global.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/version') {
+        versionAnswers += 1
+        // The header's own read, then the verification's polls: a NEW boot serving the wrong version.
+        return Promise.resolve(response(versionAnswers === 1 ? { version: '0.1.0', bootId: 'boot-old', state: 'serving' } : { version: '0.9.9', bootId: 'boot-new', state: 'serving' }))
+      }
+      if (url === '/api/updates') return Promise.resolve(response({ bootId: 'boot-old', generatedAt: '2026-10-20T12:00:00.000Z', running: false, records: [{ id: 'bakin:bakin', group: 'available', subject: { kind: 'bakin', id: 'bakin', label: 'Bakin' }, outcome: 'update-available', installed: { version: '0.1.0', display: 'v0.1.0' }, available: { version: '0.2.0', sha: 'abc', display: 'v0.2.0' }, reason: 'newer-version', action: { kind: 'operation', start: { route: '/api/updates/bakin%3Abakin/apply' }, impact: ['download', 'server-restart'] }, source: { kind: 'github-release', endpoint: 'x' }, fingerprint: 'f' }] }))
+      if (url === '/api/updates/bakin%3Abakin/apply') { bodies.push(JSON.parse(String(init?.body))); return Promise.resolve(response({ operationId: 'op-1', bootId: 'boot-old' }, 202)) }
+      if (url.startsWith('/api/operations/op-1')) return Promise.resolve(response({ bootId: 'boot-old', operation: restarting }))
+      if (url === '/api/dispatch') return Promise.resolve(response({ secondsUntilNext: 120, dispatching: false }))
+      return Promise.resolve(response({}))
+    }) as unknown as typeof global.fetch
+    renderHeader()
+    const open = await screen.findByRole('button', { name: 'Update Bakin' })
+    await act(async () => { fireEvent.click(open) })
+    const confirm = await screen.findByRole('button', { name: /^Update$|Update now|Update Bakin/ })
+    await act(async () => { fireEvent.click(confirm) })
+    await waitFor(() => expect(bodies).toEqual([{ target: { version: '0.2.0', sha: 'abc' } }]))
+    await waitFor(() => expect(screen.getByText('Bakin came back as v0.9.9, not v0.2.0.')).toBeDefined(), { timeout: 5_000 })
+    expect((screen.getByRole('button', { name: /^Update$|Update now|Update Bakin/ }) as HTMLButtonElement).disabled).toBe(false)
+  })
+})

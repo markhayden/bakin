@@ -4,7 +4,7 @@
  * backoff bookkeeping, and identity-keyed skips (#1007, D7.2/D7.3).
  */
 import { afterAll, afterEach, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -28,7 +28,7 @@ mock.module('../../../packages/core/src/logger', loggerMock)
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 import { countAvailableUpdates, isUpdateSkipped, type UpdateRecord } from '@makinbakin/sdk/types'
-import { createUpdatesEngine, UpdateSubjectNotFoundError, type UpdatesEngine } from '../../../src/core/updates/engine'
+import { createUpdatesEngine, UpdateRequiredError, UpdateSubjectNotFoundError, type UpdatesEngine } from '../../../src/core/updates/engine'
 import { fingerprintOf } from '../../../src/core/updates/inventory'
 import { readUpdatesFile, writeUpdatesFile, emptyUpdatesFile } from '../../../src/core/updates/store'
 import type { UpdateObservation, UpdateSource, UpdateSubjectInventoryEntry } from '../../../src/core/updates/types'
@@ -311,5 +311,76 @@ describe('review round 1 — scheduling honesty', () => {
     src.when('a', async () => available('9.9.9'))
     await engine.observe('plugin:a')
     expect((await engine.snapshot()).records.find((r) => r.id === 'plugin:a')!.outcome).toBe('update-available')
+  })
+})
+
+describe('review round 2 — enumeration failures, attempt tokens, deferral, required skips', () => {
+  it('a source whose enumeration fails keeps its known subjects with a failed attempt — never deletes them (#2)', async () => {
+    const src = scripted('plugin', [{ id: 'a' }])
+    src.when('a', async () => available('2.0.0'))
+    let broken = false
+    const flaky: UpdateSource = { kind: 'plugin', inventory: async () => { if (broken) throw new Error('the probe hung'); return src.source.inventory() }, observe: src.source.observe }
+    const engine = boot([flaky])
+    await engine.observe('plugin:a')
+    broken = true
+    await engine.refreshInventory()
+    const kept = (await engine.snapshot()).records.find((r) => r.id === 'plugin:a')!
+    expect(kept.outcome).toBe('update-available')
+    expect(kept.attempt?.error).toBe('inventory check failed: the probe hung')
+    expect((await engine.scheduleFor('plugin:a'))!.failures).toBe(1)
+    // The subject is still observable (the inventory entry survived) and recovers with its source.
+    broken = false
+    await engine.refreshInventory()
+    await engine.observe('plugin:a')
+    expect((await engine.scheduleFor('plugin:a'))!.failures).toBe(0)
+  })
+
+  it('recordFailure retires only the attempt it names: a newer attempt keeps the subject (#3)', async () => {
+    const src = scripted('plugin', [{ id: 'a' }])
+    const stale = {}
+    const fresh = {}
+    let release!: (value: UpdateObservation) => void
+    src.when('a', () => new Promise<UpdateObservation>((resolve) => { release = resolve }))
+    const engine = boot([src.source])
+    const pending = engine.observe('plugin:a', { token: fresh })
+    // An older deadline (its attempt is long gone) must not touch the fresh attempt.
+    await engine.recordFailure('plugin:a', 'check timed out after 20s', { token: stale })
+    expect((await engine.scheduleFor('plugin:a'))!.failures).toBe(0)
+    release(available('2.0.0'))
+    await pending
+    expect((await engine.snapshot()).records.find((r) => r.id === 'plugin:a')!.outcome).toBe('update-available')
+  })
+
+  it('lengthening the interval defers a successful check; an invalidated subject is due now regardless (#8)', async () => {
+    let interval = 6 * HOUR
+    const src = scripted('plugin', [{ id: 'a' }])
+    src.when('a', async () => current)
+    const engine = createUpdatesEngine({ storePath: join(testDir, `${randomUUID()}.json`), sources: [src.source], now: () => now, intervalMs: () => interval })
+    engines.push(engine)
+    await engine.observe('plugin:a')
+    now = T0 + 7 * HOUR
+    expect(await engine.dueSubjects()).toEqual(['plugin:a'])
+    interval = 12 * HOUR
+    expect(await engine.dueSubjects()).toEqual([])
+    src.setFingerprint('a', 'moved')
+    await engine.refreshInventory()
+    expect(await engine.dueSubjects()).toEqual(['plugin:a'])
+  })
+
+  it('a required update cannot be skipped; a skip persisted before the group moved lapses at reconcile (#9)', async () => {
+    const src = scripted('search-engine', [{ id: 'antfly', group: 'required' }])
+    src.when('antfly', async () => ({ ...available('0.2.5'), reason: 'pin-mismatch' }))
+    const path = join(testDir, `${randomUUID()}.json`)
+    const engine = boot([src.source], { path })
+    await engine.observe('search-engine:antfly')
+    await expect(engine.skip('search-engine:antfly')).rejects.toBeInstanceOf(UpdateRequiredError)
+    // Forge a persisted required skip (an older build), then boot over it.
+    const file = JSON.parse(readFileSync(path, 'utf8')) as { records: Record<string, Record<string, unknown>> }
+    file.records['search-engine:antfly']!.skipped = { version: '0.2.5' }
+    writeFileSync(path, JSON.stringify(file))
+    const rebooted = boot([src.source], { path })
+    const record = (await rebooted.snapshot()).records.find((r) => r.id === 'search-engine:antfly')!
+    expect(record.skipped).toBeUndefined()
+    expect(isUpdateSkipped(record)).toBe(false)
   })
 })

@@ -117,12 +117,15 @@ export async function runUpdateCommand(input: UpdateCommandDeps): Promise<Update
   // waiting for a terminal outcome would wait on a process that is ending.
   let restartSeen = false
   const atRestart = (operation: OperationView): boolean => {
-    if (operation.stages.some((stage) => stage.id === 'restarting' && stage.status !== 'pending')) restartSeen = true
+    // A terminal failure (restart_failed) is reported as such; only a live
+    // restart in progress is the handoff.
+    if (operation.status === 'running' && operation.stages.some((stage) => stage.id === 'restarting' && stage.status === 'active')) restartSeen = true
     return restartSeen
   }
+  const target = { ...(record.available?.version ? { version: record.available.version } : {}), ...(record.available?.sha ? { sha: record.available.sha } : {}), ...(record.available?.digest ? { digest: record.available.digest } : {}) }
   const follow = input.startAndFollow ?? ((start, opts) => startAndFollow(start, { json: false, stdout: input.stdout, onUpdate: opts.onUpdate }))
   const followed = await follow(async () => {
-    const res = await deps.fetch(`${baseUrl}/api/updates/${encodeURIComponent(BAKIN_RECORD_ID)}/apply`, { method: 'POST', headers, body: '{}' })
+    const res = await deps.fetch(`${baseUrl}/api/updates/${encodeURIComponent(BAKIN_RECORD_ID)}/apply`, { method: 'POST', headers, body: JSON.stringify({ target }) })
     const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
     if (!res.ok) throw new UpdateApplyRefusedError(res.status, body)
     handoff = { operationId: String(body?.operationId), bootId: String(body?.bootId) }
@@ -134,7 +137,7 @@ export async function runUpdateCommand(input: UpdateCommandDeps): Promise<Update
   if (followed instanceof UpdateApplyRefusedError) return followed.result()
   const restartHandoff = handoff as { operationId: string; bootId: string } | null
   const reachedRestart = restartSeen || followed.follow.phase === 'restarted'
-    || followed.follow.operation?.stages.some((stage) => stage.id === 'restarting' && stage.status !== 'pending') === true
+    || (followed.follow.operation?.status === 'running' && followed.follow.operation.stages.some((stage) => stage.id === 'restarting' && stage.status === 'active'))
   if (!reachedRestart || !restartHandoff) {
     const message = followed.follow.operation?.outcome?.message ?? 'Bakin update did not reach the restart.'
     return { kind: 'failed', code: 'UPDATE_FAILED', message, detail: followed.follow.operation?.outcome?.code }

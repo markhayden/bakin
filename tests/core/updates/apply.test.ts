@@ -139,7 +139,16 @@ function deps(engine: UpdatesEngine, overrides: Partial<ApplyDeps> = {}): ApplyD
     installComponent: (name) => fakeComponent(name, [{ id: 'download', kind: 'downloading', label: 'Download' }, { id: 'swap', kind: 'installing', label: 'Swap' }], async (_opts, op) => { op.stage('download'); op.stage('swap'); return { name, status: 'installed', message: 'installed', durationMs: 1 } }),
     reindex: async (op) => { op.stage('reindex'); return { ok: true, tables: [] } as never },
     reindexStage: () => ({ id: 'reindex', kind: 'verifying', label: 'Rebuild search tables' }),
-    reobserve: async (id) => { reobserved.push(id) },
+    reobserve: async (ids) => { reobserved.push(...ids) },
+    // Fires once the registry shows the operation succeeded (started or attached); never for a failure.
+    onOperationSucceeded: (operationId, callback) => {
+      const poll = (): void => {
+        const view = registry.get(operationId)
+        if (view?.status === 'succeeded') callback()
+        else if (!view || view.status === 'running' || view.status === 'cancelling') setTimeout(poll, 5)
+      }
+      poll()
+    },
     selfUpdateOperation: (origin, target) => ({
       kind: 'updates:self-update', owner: 'core', origin, title: 'Update Bakin', href: '/health', fingerprint: 'updates:self-update', resources: ['install-state'],
       plan: { stages: [{ id: 'download', kind: 'downloading', label: 'Download' }], pointOfNoReturn: 'download' },
@@ -228,9 +237,9 @@ describe('confirm with a covering approval', () => {
     await engine.observe('plugin:projects')
     const opened = await openRepair(['projects', 'terminal'])
     const d = deps(engine)
-    await expect(confirmApply('plugin:projects', { provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'approval_required' })
+    await expect(confirmApply('plugin:projects', { target: { version: '2' }, provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'approval_required' })
     const preview = await previewApply('plugin:projects', d)
-    const result = await confirmApply('plugin:projects', { approvalId: preview.approval!.approvalId, scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d)
+    const result = await confirmApply('plugin:projects', { target: { version: '2' }, approvalId: preview.approval!.approvalId, scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d)
     expect(result.approvalId).toBe(opened.approval.approvalId)
     expect(typeof result.started.operationId).toBe('string')
     await settleApprovalFollowUps()
@@ -246,10 +255,10 @@ describe('confirm with a covering approval', () => {
     const opened = await openRepair(['projects'])
     const d = deps(engine)
     const preview = await previewApply('plugin:projects', d)
-    await expect(confirmApply('plugin:projects', { approvalId: preview.approval!.approvalId, scopeHash: 'deadbeefdeadbeef', provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'scope_changed' })
-    await expect(confirmApply('plugin:projects', { approvalId: 'health-repair:other', scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'scope_changed' })
+    await expect(confirmApply('plugin:projects', { target: { version: '2' }, approvalId: preview.approval!.approvalId, scopeHash: 'deadbeefdeadbeef', provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'scope_changed' })
+    await expect(confirmApply('plugin:projects', { target: { version: '2' }, approvalId: 'health-repair:other', scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'scope_changed' })
     await resolveApproval(opened.approval.approvalId, { option: 'dismiss', provenance: UI_OPERATOR })
-    await expect(confirmApply('plugin:projects', { approvalId: preview.approval!.approvalId, scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'scope_changed' })
+    await expect(confirmApply('plugin:projects', { target: { version: '2' }, approvalId: preview.approval!.approvalId, scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'scope_changed' })
   })
 
   it('a proposal that no longer matches fresh evidence does not start: the approval path refuses plan-changed (409) and a fresh proposal waits on the task', async () => {
@@ -259,7 +268,7 @@ describe('confirm with a covering approval', () => {
     const d = deps(engine)
     const preview = await previewApply('plugin:projects', d)
     planTarget = 'something-else' // the re-plan at apply time proposes a different change set
-    const err = await confirmApply('plugin:projects', { approvalId: preview.approval!.approvalId, scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d).catch((e: unknown) => e)
+    const err = await confirmApply('plugin:projects', { target: { version: '2' }, approvalId: preview.approval!.approvalId, scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d).catch((e: unknown) => e)
     // The one approval path's own refusal, not re-wrapped: the route maps it to its 409.
     expect(err).toBeInstanceOf(ApprovalResolveError)
     expect((err as ApprovalResolveError).status).toBe(409)
@@ -278,7 +287,7 @@ describe('confirm with a covering approval', () => {
     const preview = await previewApply('plugin:projects', d)
     const outcomes = await Promise.allSettled([
       resolveApprovalWithResult(opened.approval.approvalId, { option: 'apply', provenance: UI_OPERATOR }), // Health's route path
-      confirmApply('plugin:projects', { approvalId: preview.approval!.approvalId, scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d),
+      confirmApply('plugin:projects', { target: { version: '2' }, approvalId: preview.approval!.approvalId, scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d),
     ])
     await settleApprovalFollowUps()
     expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1)
@@ -295,10 +304,10 @@ describe('confirm without a covering approval — the subject\'s own flow', () =
     const engine = engineWith({ projects: available('projects') })
     await engine.observe('plugin:projects')
     const d = deps(engine)
-    const preview = await confirmApply('plugin:projects', { provenance: UI_OPERATOR, origin }, d)
+    const preview = await confirmApply('plugin:projects', { target: { version: '2' }, provenance: UI_OPERATOR, origin }, d)
     expect(typeof preview.started.operationId).toBe('string')
     expect(started.at(-1)).toMatchObject({ kind: 'fetch', resources: [] })
-    const commit = await confirmApply('plugin:projects', { consentToken: 'tok-1', provenance: UI_OPERATOR, origin }, d)
+    const commit = await confirmApply('plugin:projects', { target: { version: '2' }, consentToken: 'tok-1', provenance: UI_OPERATOR, origin }, d)
     expect(typeof commit.started.operationId).toBe('string')
     expect(started.at(-1)).toMatchObject({ kind: 'upgrade', resources: ['install-state'] })
   })
@@ -308,7 +317,7 @@ describe('confirm without a covering approval — the subject\'s own flow', () =
     await refresh()
     const engine = engineWith({ bakin: { ...available('bakin'), action: { kind: 'operation', start: { route: '/api/updates/bakin%3Abakin/apply' }, impact: ['download', 'server-restart'] } } }, 'bakin')
     await engine.observe('bakin:bakin')
-    const result = await confirmApply('bakin:bakin', { provenance: UI_OPERATOR, origin }, deps(engine))
+    const result = await confirmApply('bakin:bakin', { target: { version: '2' }, provenance: UI_OPERATOR, origin }, deps(engine))
     expect(typeof result.started.operationId).toBe('string')
     expect(started.at(-1)).toMatchObject({ kind: 'updates:self-update', resources: ['install-state'] })
   })
@@ -319,11 +328,11 @@ describe('confirm without a covering approval — the subject\'s own flow', () =
     const engine = engineWith({ current: { installed: { version: '1', display: '1' }, outcome: 'current' }, manual: { ...available('manual'), action: { kind: 'manual', pointer: 'do it by hand' } } })
     await engine.observe('plugin:current'); await engine.observe('plugin:manual')
     const d = deps(engine)
-    await expect(confirmApply('plugin:current', { provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'nothing_to_apply' })
-    await expect(confirmApply('plugin:manual', { provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'manual_action', extra: { pointer: 'do it by hand' } })
+    await expect(confirmApply('plugin:current', { target: { version: '2' }, provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'nothing_to_apply' })
+    await expect(confirmApply('plugin:manual', { target: { version: '2' }, provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'manual_action', extra: { pointer: 'do it by hand' } })
     const gateway = engineWith({ openclaw: { ...available('openclaw'), reason: 'below-floor' } }, 'gateway')
     await gateway.observe('gateway:openclaw')
-    await expect(confirmApply('gateway:openclaw', { provenance: UI_OPERATOR, origin }, deps(gateway))).rejects.toMatchObject({ code: 'unsupported_subject' })
+    await expect(confirmApply('gateway:openclaw', { target: { version: '2' }, provenance: UI_OPERATOR, origin }, deps(gateway))).rejects.toMatchObject({ code: 'unsupported_subject' })
     expect(started).toEqual([])
   })
 
@@ -340,7 +349,7 @@ describe('confirm without a covering approval — the subject\'s own flow', () =
     const input = await searchEngineReinstallOperation(d, 'search-engine:antfly', origin)
     expect(input.resources).toEqual(['search-engine'])
     expect(input.plan.stages.map((s) => s.id)).toEqual(['download', 'swap', 'reindex'])
-    const result = await confirmApply('search-engine:antfly', { provenance: UI_OPERATOR, origin }, d)
+    const result = await confirmApply('search-engine:antfly', { target: { version: '2' }, provenance: UI_OPERATOR, origin }, d)
     expect(started.at(-1)).toMatchObject({ kind: 'updates:search-engine', resources: ['search-engine'] })
     let view: OperationView | null = null
     for (let i = 0; i < 200 && view?.status !== 'succeeded'; i++) { view = registry.get(result.started.operationId); await new Promise((r) => setTimeout(r, 5)) }
@@ -365,16 +374,71 @@ describe('review round 1 — after the operation', () => {
     await engine.observe('bakin:bakin')
     let bound: string | undefined
     const d = deps(engine, { selfUpdateOperation: (origin, target) => { bound = target.expectedVersion; return selfUpdateOp(origin, 'succeeded') } })
-    const { started } = await confirmApply('bakin:bakin', { provenance: UI_OPERATOR, origin: 'web' }, d)
+    const { started } = await confirmApply('bakin:bakin', { target: { version: '0.1.1' }, provenance: UI_OPERATOR, origin: 'web' }, d)
     expect(bound).toBe('0.1.1')
     await waitUntil(() => registry.get(started.operationId)?.status === 'succeeded', { label: 'operation finished' })
     await waitUntil(() => reobserved.length === 1, { label: 're-observed once' })
     expect(reobserved).toEqual(['bakin:bakin'])
 
     reobserved.length = 0
-    const second = await confirmApply('bakin:bakin', { provenance: UI_OPERATOR, origin: 'web' }, deps(engine, { selfUpdateOperation: (origin) => selfUpdateOp(origin, 'failed') }))
+    const second = await confirmApply('bakin:bakin', { target: { version: '0.1.1' }, provenance: UI_OPERATOR, origin: 'web' }, deps(engine, { selfUpdateOperation: (origin) => selfUpdateOp(origin, 'failed') }))
     await waitUntil(() => registry.get(second.started.operationId)?.status === 'failed', { label: 'operation failed' })
     await settleFor(30, 'a failed operation never re-observes')
     expect(reobserved).toEqual([])
+  })
+})
+
+describe('review round 2 — the reviewed target and re-observation', () => {
+  const origin = 'web' as const
+
+  it('an apply names the identity the operator reviewed: missing is 400, moved since the preview is 409 target_changed (#1)', async () => {
+    const records = { projects: available('projects') }
+    const engine = engineWith(records)
+    await engine.observe('plugin:projects')
+    const d = deps(engine)
+    await expect(confirmApply('plugin:projects', { provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'target_required', status: 400 })
+    // A background observation moved the offer between the preview and the confirm.
+    records.projects = { ...available('projects'), available: { version: '3', display: '3' } }
+    await engine.observe('plugin:projects')
+    await expect(confirmApply('plugin:projects', { target: { version: '2' }, provenance: UI_OPERATOR, origin }, d)).rejects.toMatchObject({ code: 'target_changed', status: 409, extra: { available: { version: '3' } } })
+    expect(started).toEqual([])
+    const ok = await confirmApply('plugin:projects', { target: { version: '3' }, provenance: UI_OPERATOR, origin }, d)
+    expect(ok.started.operationId).toBeTruthy()
+  })
+
+  it('re-observation follows the OPERATION: an attached apply re-observes too, and a resolved approval re-observes every subject in its scope (#5)', async () => {
+    reobserved.length = 0
+    const engine = engineWith({ projects: available('projects') })
+    await engine.observe('plugin:projects')
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const d = deps(engine, {
+      pluginUpgrade: (pluginId, body, o) => ({
+        kind: 'upgrade', owner: 'core', origin: o, title: `upgrade ${pluginId}`, href: '/health', fingerprint: `plugins:upgrade:${pluginId}|${body.consentToken ?? 'preview'}`, resources: ['install-state'],
+        plan: { stages: [{ id: 'commit', kind: 'installing', label: 'Commit' }], pointOfNoReturn: null },
+        run: async () => { await gate; return { status: 'succeeded', code: 'ok', httpStatus: 200, body: { ok: true } } },
+      }),
+    })
+    const first = await confirmApply('plugin:projects', { target: { version: '2' }, consentToken: 'tok', provenance: UI_OPERATOR, origin }, d)
+    const second = await confirmApply('plugin:projects', { target: { version: '2' }, consentToken: 'tok', provenance: UI_OPERATOR, origin }, d)
+    expect(second.started.operationId).toBe(first.started.operationId)
+    expect(second.started.attached).toBe(true)
+    await settleFor(30, 'nothing is re-observed before the operation succeeds')
+    expect(reobserved).toEqual([])
+    release()
+    await waitUntil(() => reobserved.length === 2, { label: 'both callers re-observed once the shared operation succeeded' })
+    expect(reobserved).toEqual(['plugin:projects', 'plugin:projects'])
+
+    reobserved.length = 0
+    const scoped = engineWith({ projects: available('projects'), terminal: available('terminal') })
+    await scoped.observe('plugin:projects'); await scoped.observe('plugin:terminal')
+    const opened = await openRepair(['projects', 'terminal'])
+    const watched: string[] = []
+    const d2 = deps(scoped, { onOperationSucceeded: (operationId, callback) => { watched.push(operationId); callback() } })
+    const preview = await previewApply('plugin:projects', d2)
+    const result = await confirmApply('plugin:projects', { target: { version: '2' }, approvalId: preview.approval!.approvalId, scopeHash: preview.approval!.scopeHash, provenance: UI_OPERATOR, origin }, d2)
+    expect(watched).toEqual([result.started.operationId])
+    expect(reobserved.sort()).toEqual(['plugin:projects', 'plugin:terminal'])
+    expect(opened.approval.approvalId).toBe(preview.approval!.approvalId)
   })
 })

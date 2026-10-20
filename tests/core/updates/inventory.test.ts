@@ -47,16 +47,19 @@ describe('fingerprintOf', () => {
 
 describe('collectInventory', () => {
   it('prefixes every subject id with its kind and keeps each source\'s own order', async () => {
-    const entries = await collectInventory([source('plugin', ['projects', 'terminal']), source('package', ['projects'])])
+    const { entries, failed } = await collectInventory([source('plugin', ['projects', 'terminal']), source('package', ['projects'])])
+    expect(failed.size).toBe(0)
     expect(entries.map((entry) => updateRecordId(entry.subject))).toEqual(['plugin:projects', 'plugin:terminal', 'package:projects'])
   })
 
   it('a source whose inventory throws is reported, not fatal: the other sources still enumerate', async () => {
     const broken: UpdateSource = { kind: 'gateway', inventory: async () => { throw new Error('runtime down') }, observe: async () => { throw new Error('x') } }
     const failures: string[] = []
-    const entries = await collectInventory([broken, source('bakin', ['bakin'])], { onSourceError: (kind, error) => failures.push(`${kind}:${error.message}`) })
+    const { entries, failed } = await collectInventory([broken, source('bakin', ['bakin'])], { onSourceError: (kind, error) => failures.push(`${kind}:${error.message}`) })
     expect(entries.map((entry) => updateRecordId(entry.subject))).toEqual(['bakin:bakin'])
     expect(failures).toEqual(['gateway:runtime down'])
+    expect([...failed.keys()]).toEqual(['gateway'])
+    expect(failed.get('gateway')?.message).toBe('runtime down')
   })
 
   it('a source that returns a subject of another kind is rejected (ids are partitioned by kind)', async () => {
@@ -66,7 +69,7 @@ describe('collectInventory', () => {
       observe: async () => { throw new Error('x') },
     }
     const failures: string[] = []
-    const entries = await collectInventory([liar], { onSourceError: (kind, error) => failures.push(`${kind}:${error.message}`) })
+    const { entries } = await collectInventory([liar], { onSourceError: (kind, error) => failures.push(`${kind}:${error.message}`) })
     expect(entries).toEqual([])
     expect(failures[0]).toMatch(/^package:.*hub-skill/)
   })

@@ -60,9 +60,12 @@ observation; a subject with no success yet is `unknown` with the error on
 a message string.
 
 **Skip is an identity, not a flag.** `skipped` holds the full available
-identity (version + sha + digest); `isUpdateSkipped` compares it with the
-current `available`, so two successive same-version commits are two distinct
-skips and the row returns on its own when the source moves. The tab count is
+identity (version + sha + digest; artifact offers carry the index entry's
+sha256 as `digest`); `isUpdateSkipped` compares it with the current
+`available`, so two successive same-version commits are two distinct skips
+and the row returns on its own when the source moves. A REQUIRED update
+cannot be skipped — the engine refuses (`409 required` over HTTP) and a skip
+persisted before the group moved lapses at reconcile. The tab count is
 `countAvailableUpdates` (update-available, not skipped — required rows count
 too).
 
@@ -102,17 +105,21 @@ CURRENT interval after it ran (shortening the setting reschedules everything
 without a restart); a failed one keeps its recorded backoff.
 
 **The inventory is refreshed** at the start of every pass and every explicit
-check, and at once on `plugin:manifest-changed` / `settings.changed` (the
-service observes server events) — an installed plugin joins, a removed one
-leaves, a changed setting retires the affected fingerprints. After an apply
-operation SUCCEEDS the apply service re-observes that subject (the next pass
-would be hours away).
+check (pass startup is serialized, so a tick and a check never run two
+worker pools), and at once on `plugin:manifest-changed` / `settings.changed`
+(the service observes server events) — an installed plugin joins, a removed
+one leaves, a changed setting retires the affected fingerprints. A source
+whose ENUMERATION fails (a hung probe, a dead remote) keeps its known
+subjects with a failed attempt — unknown is not absent. An explicit check
+for a subject id re-observes it even when the running pass already reached
+it (the caller knows it changed).
 
 **One attempt, one result.** On the deadline the signal fires; a cooperative
 observer settles through the engine and records the deadline as its ONE
 failure. An observer that ignores its signal gets a bounded grace
 (`UPDATES_CANCEL_GRACE_MS`), then the slot is released and
-`engine.recordFailure` retires the attempt — a result that lands later is
+`engine.recordFailure` retires THAT attempt (the timer names it with a
+token; a newer attempt is left alone) — a result that lands later is
 dropped, never counted twice. The antfly version probe propagates an
 interruption (`CommandInterruptedError`) instead of answering `null`, so a
 probe that did not finish is a failed attempt, never a "wrong version"
@@ -139,7 +146,11 @@ ONE apply service (`src/core/updates/apply.ts`) behind `GET
    multiple_covering_approvals` with a pointer to Health.
 2. **Confirm.** `assertOperatorDecision` first (agents, in-process agent
    tool calls and undeclared callers are refused `403` — #898 provenance
-   comes from the transport, never the body). With `{ approvalId, scopeHash }`
+   comes from the transport, never the body). The body names the available
+   identity the operator REVIEWED (`target: { version?, sha?, digest? }` —
+   the preview's record): missing ⇒ `400 target_required`, moved since the
+   preview ⇒ `409 target_changed` with the current offer — a background
+   observation can never change what gets installed. With `{ approvalId, scopeHash }`
    the service resolves the approval through the one approval path (`409
    scope_changed` when the hash moved or it is no longer pending); with a
    covering approval and no scope ⇒ `409 approval_required`. Otherwise it
@@ -149,17 +160,23 @@ ONE apply service (`src/core/updates/apply.ts`) behind `GET
    (`searchEngineReinstallOperation`); search models install; Bakin = the
    self-update operation. `409 nothing_to_apply` / `manual_action` /
    `unsupported_subject` otherwise. Every route that starts an operation is
-   listed in `tests/architecture/operations-routes.test.ts`.
+   listed in `tests/architecture/operations-routes.test.ts`. Once the
+   operation SUCCEEDS — started or attached, including a resolved approval's
+   repair — the subjects it changed are re-observed (every subject in an
+   approval's scope); a failure re-observes nothing.
 
 ## Self-update (D7.11)
 
 `selfUpdateOperation` (download → verify → prepare-restart → swap [point of
 no return] → restarting) is the ONLY caller of `selfUpdate(` (architecture
-pinned). Staging files are keyed by operation id. The operation is BOUND to
-the previewed release (`expectedVersion` from the record): a newer release
-published between preview and execution fails the update before any
-download ("Release changed … check for updates and apply again") — the
-operator approves one identity, never "latest". The operation ends with the
+pinned). Staging files are keyed by operation id and the fingerprint carries
+the approved version, so a request for another release never attaches. The
+operation is BOUND to that release (`expectedVersion` from the reviewed
+target): a newer release published between preview and execution fails the
+update before any download ("Release changed … check for updates and apply
+again") — the operator approves one identity, never "latest". The
+`restarting` stage goes active only AFTER the restart is activated: a failed
+activation is a terminal `restart_failed`, never a handoff. The operation ends with the
 OLD process: a follow that ends `restarted` (or the `restarting` stage) is
 the honest terminal state and the handoff to verification. Verification is
 client-side and explicit: `{ expectedVersion, oldBootId }` → poll `GET

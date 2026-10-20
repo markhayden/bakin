@@ -211,7 +211,8 @@ async function cmdUpdatesApply(args: string[]): Promise<void> {
   }
 
   const approval = preview.approval
-  let body: Record<string, unknown> = approval ? { approvalId: approval.approvalId, scopeHash: approval.scopeHash } : {}
+  const target = { ...(record.available?.version ? { version: record.available.version } : {}), ...(record.available?.sha ? { sha: record.available.sha } : {}), ...(record.available?.digest ? { digest: record.available.digest } : {}) }
+  let body: Record<string, unknown> = { target, ...(approval ? { approvalId: approval.approvalId, scopeHash: approval.scopeHash } : {}) }
   for (;;) {
     const started = await postApply(id!, body)
     if (!started.ok) {
@@ -234,11 +235,11 @@ async function cmdUpdatesApply(args: string[]): Promise<void> {
       if (!yes && !(await confirmPrompt('Approve and apply?'))) {
         await exitCommandFailure('Not applied.', { command: 'bakin updates apply', detail: 'The preview asked for consent; confirm it or pass --yes.', code: 'NOT_CONFIRMED' })
       }
-      body = { consentToken: result.consentToken }
+      body = { target, consentToken: result.consentToken }
       continue
     }
     if (operation.exitCode === 0 && result.ready === true && typeof result.consentToken === 'string') {
-      body = { consentToken: result.consentToken }
+      body = { target, consentToken: result.consentToken }
       continue
     }
     if (json) print(result)

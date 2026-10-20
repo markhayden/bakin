@@ -182,7 +182,8 @@ describe('bakin updates apply', () => {
 
     await run(['updates', 'apply', 'plugin:notes', '--yes'])
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(['GET /api/updates/plugin%3Anotes/apply-preview', 'POST /api/updates/plugin%3Anotes/apply'])
-    expect(calls[1]?.body).toEqual({})
+    // The identity the operator reviewed rides the apply (R2 #1).
+    expect(calls[1]?.body).toEqual({ target: { version: '1.1.0' } })
     expect(logs[0]).toBe('Update notes: 1.0.0 → 1.1.0')
     expect(logs[1]).toBe('  - Downloads an artifact from its pinned source and verifies it.')
     expect(logs.at(-1)).toBe('notes was updated and reactivated.')
@@ -192,7 +193,7 @@ describe('bakin updates apply', () => {
     preview = { id: ENGINE.id, record: ENGINE, action: ENGINE.action, approval: { approvalId: 'apr-1', title: 'Repair the search engine', scopeHash: 'hash-1', items: [{ changes: [{ description: 'Install antfly v0.2.5.' }] }] } }
     followBodies = [{ ok: true, result: { message: 'installed' } }]
     await run(['updates', 'apply', 'search-engine:antfly', '--yes'])
-    expect(calls[1]?.body).toEqual({ approvalId: 'apr-1', scopeHash: 'hash-1' })
+    expect(calls[1]?.body).toEqual({ target: { version: '1.1.0' }, approvalId: 'apr-1', scopeHash: 'hash-1' })
     expect(logs).toContain('  Applying approves the pending Health repair "Repair the search engine" in full:')
     expect(logs).toContain('    - Install antfly v0.2.5.')
     expect(logs.at(-1)).toBe('Search engine was updated.')
@@ -207,14 +208,14 @@ describe('bakin updates apply', () => {
       { ok: true, message: 'notes was updated and reactivated.' },
     ]
     await run(['updates', 'apply', 'plugin:notes', '--yes'])
-    expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([{}, { consentToken: 'tok-1' }])
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([{ target: { version: '1.1.0' } }, { target: { version: '1.1.0' }, consentToken: 'tok-1' }])
     expect(logs).toContain('  permissions: storage.write')
     expect(logs).toContain('  binaries: rg 14.1.0')
 
     calls.length = 0
     followBodies = [{ ok: true, ready: true, consentToken: 'tok-ready' }, { ok: true, message: 'done' }]
     await run(['updates', 'apply', 'plugin:notes', '--yes'])
-    expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([{}, { consentToken: 'tok-ready' }])
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([{ target: { version: '1.1.0' } }, { target: { version: '1.1.0' }, consentToken: 'tok-ready' }])
   })
 
   it('an undeclared operator is refused by the server; the CLI says to pass --as human', async () => {

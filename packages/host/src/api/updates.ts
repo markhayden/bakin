@@ -3,7 +3,7 @@
  *
  *   GET  /api/updates                       → { bootId, records, generatedAt, running }
  *   POST /api/updates/check[?source=|?id=]  → 202 { bootId, ids, coalesced } (pass runs on; `wait=1` ⇒ 200 with the snapshot)
- *   POST /api/updates/:id/skip              → { bootId, record } · 404 · 409 nothing_to_skip
+ *   POST /api/updates/:id/skip              → { bootId, record } · 404 · 409 nothing_to_skip | required
  *   GET  /api/updates/:id/apply-preview     → { bootId, preview } · 404 · 409 multiple_covering_approvals
  *   POST /api/updates/:id/apply             → 202 { operationId, bootId } (D7.4: resolves a covering approval
  *                                             by its full scope, or runs the subject's own flow) · 403 agents ·
@@ -20,7 +20,7 @@ import { ApprovalRefusedError, approvalErrorStatus } from '@/core/approvals/erro
 import { getBootId } from '@/core/boot-id'
 import { createLogger } from '@/core/logger'
 import { ApplyError, confirmApply, previewApply } from '@/core/updates/apply'
-import { UpdateSubjectNotFoundError } from '@/core/updates/engine'
+import { UpdateRequiredError, UpdateSubjectNotFoundError } from '@/core/updates/engine'
 import { getUpdatesEngine, getUpdatesTimer } from '@/core/updates/service'
 
 const log = createLogger('updates-routes')
@@ -43,6 +43,8 @@ export function applyIdFromPath(pathname: string): string | null {
 }
 
 const ApplyBodySchema = z.object({
+  /** The available identity the caller reviewed (R2 #1); required whenever the record offers one. */
+  target: z.object({ version: z.string().min(1).optional(), sha: z.string().min(1).optional(), digest: z.string().min(1).optional() }).optional(),
   approvalId: z.string().min(1).optional(),
   scopeHash: z.string().min(1).optional(),
   consentToken: z.string().min(1).optional(),
@@ -171,6 +173,7 @@ export async function skip(_req: Request, url: URL): Promise<Response> {
     return Response.json({ bootId: getBootId(), record })
   } catch (err) {
     if (err instanceof UpdateSubjectNotFoundError) return Response.json({ bootId: getBootId(), error: 'not_found', id }, { status: 404 })
+    if (err instanceof UpdateRequiredError) return Response.json({ bootId: getBootId(), error: 'required', id, message: err.message }, { status: 409 })
     if (err instanceof Error && /nothing to skip/.test(err.message)) {
       return Response.json({ bootId: getBootId(), error: 'nothing_to_skip', id, message: err.message }, { status: 409 })
     }

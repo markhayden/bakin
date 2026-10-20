@@ -63,7 +63,8 @@ export function selfUpdateOperation(origin: OperationOrigin, deps: SelfUpdateOpe
     origin,
     title: 'Update Bakin',
     href: '/health?tab=updates',
-    fingerprint: 'updates:self-update',
+    // One operation per approved release: a request for another version never attaches to this one.
+    fingerprint: `updates:self-update:${deps.expectedVersion ?? 'latest'}`,
     resources: ['install-state'],
     plan: SELF_UPDATE_PLAN,
     run: async (op): Promise<OperationOutcome<SelfUpdateResultBody>> => {
@@ -108,12 +109,15 @@ export function selfUpdateOperation(origin: OperationOrigin, deps: SelfUpdateOpe
         const message = `Updated to ${version ?? 'the new version'}. Start Bakin to run it.`
         return { status: 'succeeded', code: 'ok', httpStatus: 200, body: { ok: true, version, message } }
       }
-      op.stage('restarting', version ? `Restarting into ${version}` : 'Restarting')
+      // The restart is ARMED first; only a successful activation is the
+      // handoff milestone (`restarting` active) a follower may act on — a
+      // failed activation is a terminal failure, never a handoff (R2 #7).
       const restart = deps.activateRestart(prepared)
       if (!restart.ok) {
         const message = `Updated to ${version ?? 'the new version'}, but the restart could not be scheduled (${restart.error ?? 'unknown'}). Restart Bakin by hand to run it.`
         return { status: 'failed', code: 'restart_failed', message, httpStatus: 200, body: { ok: false, version, message, restart } }
       }
+      op.stage('restarting', version ? `Restarting into ${version}` : 'Restarting')
       // The old process ends here; a follower sees `restarted` and verifies.
       await (deps.awaitProcessExit ?? (() => new Promise<void>(() => {})))()
       const message = `Updated to ${version ?? 'the new version'}; restarting.`

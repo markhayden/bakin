@@ -16,7 +16,7 @@
  */
 import { isUpdateSkipped, updateIdentityKey, type UpdateRecord, type UpdatesSnapshot } from '@makinbakin/sdk/types'
 import { createLogger } from '../logger'
-import { collectInventory, updateRecordId } from './inventory'
+import { collectInventory, updateRecordId, type InventoryCollection } from './inventory'
 import { emptyUpdatesFile, readUpdatesFile, writeUpdatesFile, type UpdatesFile } from './store'
 import { UpdateCheckError, type ConditionalStore, type UpdateObservation, type UpdateScheduleEntry, type UpdateSource, type UpdateSubjectInventoryEntry } from './types'
 
@@ -26,6 +26,14 @@ export const INVENTORY_CHANGED = 'inventory changed'
 /** Backoff after a failed attempt: 15 min doubling per consecutive failure, capped at 24 h (D7.5). */
 export const BACKOFF_BASE_MS = 15 * 60_000
 export const BACKOFF_MAX_MS = 24 * 3_600_000
+
+/** A required update is what the installation needs; it cannot be hidden. */
+export class UpdateRequiredError extends Error {
+  constructor(readonly id: string) {
+    super(`"${id}" is a required update — it cannot be skipped`)
+    this.name = 'UpdateRequiredError'
+  }
+}
 
 export class UpdateSubjectNotFoundError extends Error {
   readonly code = 'update_subject_not_found'
@@ -51,6 +59,8 @@ export interface UpdatesEngineOptions {
 
 export interface ObserveOpts {
   signal?: AbortSignal
+  /** The attempt's identity: `recordFailure` with the same token retires THIS attempt only (a newer one is left alone). */
+  token?: object
 }
 
 export interface UpdatesEngine {
@@ -67,7 +77,7 @@ export interface UpdatesEngine {
   /** Observe one subject through its source and apply the result (success or failure). */
   observe(id: string, opts?: ObserveOpts): Promise<UpdateRecord>
   /** Record a failed attempt without a source result (the timer's deadline); the last good observation survives. */
-  recordFailure(id: string, error: string): Promise<UpdateRecord>
+  recordFailure(id: string, error: string, opts?: { token?: object }): Promise<UpdateRecord>
   /** Hide the current available identity until it changes. */
   skip(id: string): Promise<UpdateRecord>
   /** Mark that a check pass is running (for the snapshot's `running`). */
@@ -84,7 +94,7 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
   let running = false
   let writing: Promise<void> = Promise.resolve()
   /** Per subject: the attempt in flight. A result from an older attempt (one the timer already gave up on) is dropped. */
-  const attempts = new Map<string, number>()
+  const attempts = new Map<string, object>()
   const interval = (): number => (typeof options.intervalMs === 'function' ? options.intervalMs() : options.intervalMs)
 
   const conditional: ConditionalStore = {
@@ -122,15 +132,26 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
   }
 
   /** Align records + schedule with the inventory. Returns the ids that changed. */
-  function reconcile(entries: UpdateSubjectInventoryEntry[]): string[] {
+  function reconcile({ entries, failed }: InventoryCollection): string[] {
     const changed: string[] = []
+    const previous = inventoryEntries
     inventoryEntries = new Map(entries.map((entry) => [updateRecordId(entry.subject), entry]))
     for (const id of Object.keys(file.records)) {
-      if (!inventoryEntries.has(id)) {
-        delete file.records[id]
-        delete file.schedule[id]
+      if (inventoryEntries.has(id)) continue
+      const kind = file.records[id]!.subject.kind
+      const enumeration = failed.get(kind)
+      const known = previous.get(id)
+      if (enumeration && known) {
+        // The source could not enumerate (a hung probe, a dead remote): the
+        // subject is unknown for now, not gone — keep it, record the attempt.
+        inventoryEntries.set(id, known)
+        applyFailure(id, known, iso(now()), `inventory check failed: ${enumeration.message}`)
         changed.push(id)
+        continue
       }
+      delete file.records[id]
+      delete file.schedule[id]
+      changed.push(id)
     }
     for (const [id, entry] of inventoryEntries) {
       const existing = file.records[id]
@@ -139,18 +160,22 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
         file.schedule[id] = { failures: 0 }
         changed.push(id)
       } else if (existing.fingerprint !== entry.fingerprint) {
+        // Invalidated: never successfully checked under this identity, due now.
         file.records[id] = unknownRecord(entry, { at: iso(now()), error: INVENTORY_CHANGED })
-        file.schedule[id] = { ...(file.schedule[id] ?? { failures: 0 }), nextDueAt: iso(now()) }
+        file.schedule[id] = { failures: 0, nextDueAt: iso(now()) }
         changed.push(id)
       } else {
         // Subject/group/source labels may have moved without affecting eligibility.
-        file.records[id] = { ...existing, subject: entry.subject, group: entry.group }
+        const next = { ...existing, subject: entry.subject, group: entry.group }
+        // A required update is never skippable; a skip persisted before the group moved lapses.
+        if (next.group === 'required' && next.skipped) { delete next.skipped; changed.push(id) }
+        file.records[id] = next
       }
     }
     return changed
   }
 
-  async function enumerate(): Promise<UpdateSubjectInventoryEntry[]> {
+  async function enumerate(): Promise<InventoryCollection> {
     return collectInventory(options.sources, {
       onSourceError: (kind, error) => log.warn('update source failed to enumerate — skipped this pass', { kind, error: error.message }),
     })
@@ -182,14 +207,15 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
 
   /**
    * When a subject is next due. A successful check is due one CURRENT
-   * interval after it ran (so shortening the interval reschedules every
-   * subject); a failed one keeps its recorded backoff.
+   * interval after it ran — shortening the interval reschedules every
+   * subject, lengthening it defers them; a failed one keeps its recorded
+   * backoff; an invalidated one (no `lastCheckedAt`) is due at its recorded
+   * time, i.e. now.
    */
   function dueAt(schedule: UpdateScheduleEntry | undefined): number {
     if (!schedule?.nextDueAt) return Number.NEGATIVE_INFINITY
-    const recorded = Date.parse(schedule.nextDueAt)
-    if (schedule.failures === 0 && schedule.lastCheckedAt) return Math.min(recorded, Date.parse(schedule.lastCheckedAt) + interval())
-    return recorded
+    if (schedule.failures === 0 && schedule.lastCheckedAt) return Date.parse(schedule.lastCheckedAt) + interval()
+    return Date.parse(schedule.nextDueAt)
   }
 
   return {
@@ -231,7 +257,7 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
       const source = sourcesByKind.get(entry.subject.kind)
       if (!source) throw new UpdateSubjectNotFoundError(id)
       const signal = opts.signal ?? new AbortController().signal
-      const attempt = (attempts.get(id) ?? 0) + 1
+      const attempt = opts.token ?? {}
       attempts.set(id, attempt)
       let observation: UpdateObservation | null = null
       let error: string | null = null
@@ -251,7 +277,7 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
       if (!live) throw new UpdateSubjectNotFoundError(id)
       if (live.fingerprint !== entry.fingerprint) {
         file.records[id] = unknownRecord(live, { at, error: INVENTORY_CHANGED })
-        file.schedule[id] = { ...(file.schedule[id] ?? { failures: 0 }), nextDueAt: at }
+        file.schedule[id] = { failures: 0, nextDueAt: at }
         await persist()
         publish([id])
         return structuredClone(file.records[id]!)
@@ -290,11 +316,13 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
       return structuredClone(file.records[id]!)
     },
 
-    async recordFailure(id, error) {
+    async recordFailure(id, error, opts = {}) {
       await ready
       const live = requireEntry(id)
-      // Retire the attempt in flight: its late result must not overwrite this failure.
-      attempts.set(id, (attempts.get(id) ?? 0) + 1)
+      // Only the attempt that hit the deadline is retired: a newer attempt
+      // (a check that started meanwhile) owns the subject now.
+      if (opts.token && attempts.get(id) !== opts.token) return structuredClone(file.records[id] ?? unknownRecord(live))
+      attempts.set(id, {})
       applyFailure(id, live, iso(now()), error)
       await persist()
       publish([id])
@@ -308,6 +336,7 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
       if (!record || !record.available || updateIdentityKey(record.available) === null) {
         throw new Error(`"${id}" has nothing to skip — no available identity`)
       }
+      if (record.group === 'required') throw new UpdateRequiredError(id)
       const { version, sha, digest } = record.available
       record.skipped = stripUndefined({ version, sha, digest })
       await persist()

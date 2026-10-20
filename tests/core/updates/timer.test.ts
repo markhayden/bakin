@@ -184,7 +184,7 @@ describe('check now', () => {
     expect(plugins.calls).toEqual([])
   })
 
-  it('a check during a running pass joins it: unreached subjects are queued, reached ones are not observed twice, and it resolves when the pass ends', async () => {
+  it('a check during a running pass joins it: a BROAD request takes what the pass reached, an EXPLICIT id is observed again (the caller knows it changed), and both resolve when the pass ends', async () => {
     const plugins = scripted('plugin', ['a', 'b', 'c'])
     const releaseA = plugins.hold('a')
     const releaseB = plugins.hold('b')
@@ -192,14 +192,17 @@ describe('check now', () => {
     await engine.ready
     const first = timer.check({ ids: ['plugin:a', 'plugin:b'] })
     await waitUntil(() => plugins.inFlight.size === 2, { label: 'a and b in flight' })
-    const second = timer.check({ ids: ['plugin:a', 'plugin:c'] })
-    await settleFor(30, 'the joined check must wait for the pass')
+    const broad = timer.check({ kind: 'plugin' })
+    const explicit = timer.check({ ids: ['plugin:a'] })
+    await settleFor(30, 'the joined checks must wait for the pass')
     expect(plugins.calls).toEqual(['a', 'b'])
     releaseA(); releaseB()
-    const [one, two] = await Promise.all([first, second])
+    const [one, two, three] = await Promise.all([first, broad, explicit])
     expect(one.coalesced).toBe(false)
     expect(two.coalesced).toBe(true)
-    expect(plugins.calls).toEqual(['a', 'b', 'c'])
+    expect(three.coalesced).toBe(true)
+    // c was unreached (broad queued it); a was reached but explicitly asked for again (R2 #4).
+    expect(plugins.calls).toEqual(['a', 'b', 'c', 'a'])
     expect(timer.running()).toBe(false)
   })
 })
@@ -238,5 +241,24 @@ describe('review round 1 — deadlines and inventory', () => {
     ids.splice(0, 1)
     await timer.check({ kind: 'plugin' })
     expect((await engine.snapshot()).records.map((r) => r.id)).toEqual(['plugin:two'])
+  })
+})
+
+describe('review round 2 — pass startup is serialized', () => {
+  it('a tick and an explicit check that start together never run two worker pools: every subject is observed once, concurrency holds (#3)', async () => {
+    const plugins = scripted('plugin', ['a', 'b', 'c', 'd'])
+    let gate: Promise<void> = Promise.resolve()
+    let release!: () => void
+    const slowInventory: UpdateSource = { kind: 'plugin', inventory: async () => { await gate; return plugins.source.inventory() }, observe: plugins.source.observe }
+    const { engine, timer } = harness([slowInventory], { firstTickMs: 10, tickMs: 10_000 })
+    await engine.ready
+    gate = new Promise<void>((resolve) => { release = resolve })
+    await settleFor(30, 'the tick is inside its inventory refresh')
+    const explicit = timer.check()
+    release()
+    await explicit
+    await waitUntil(() => !timer.running(), { label: 'the pass ended' })
+    expect([...plugins.calls].sort()).toEqual(['a', 'b', 'c', 'd'])
+    expect(plugins.maxInFlight()).toBeLessThanOrEqual(2)
   })
 })

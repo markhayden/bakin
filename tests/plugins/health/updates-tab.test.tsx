@@ -4,6 +4,7 @@ import { afterAll, afterEach, describe, expect, it, mock } from 'bun:test'
 import { rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { useState } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { UpdateRecord } from '@makinbakin/sdk/types'
 import '../../rtl-settle'
@@ -214,7 +215,8 @@ describe('UpdatesTabView — apply, the whole flow inside the dialog', () => {
     ])
 
     await act(async () => { fireEvent.click(screen.getByTestId('update-apply-confirm')) })
-    expect(bodies).toEqual([{ approvalId: 'apr-1', scopeHash: 'hash-1' }])
+    // The identity on screen (the preview's record) is what the apply must install (R2 #1).
+    expect(bodies).toEqual([{ approvalId: 'apr-1', scopeHash: 'hash-1', target: { version: '1.1.0' } }])
     // Resolving the covering approval ran the REPAIR, so the outcome is the repair's — never decoded as the subject's own flow.
     await waitFor(() => expect(screen.getByTestId('updates-feedback').textContent).toBe('Applied the Health repair “Repair the search engine”.'))
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -252,7 +254,7 @@ describe('UpdatesTabView — apply, the whole flow inside the dialog', () => {
 
     await act(async () => { fireEvent.click(screen.getByTestId('update-apply-confirm')) })
     await waitFor(() => expect(screen.getByTestId('updates-feedback').textContent).toBe('notes was updated and reactivated.'))
-    expect(bodies).toEqual([{}, { consentToken: 'tok-1' }])
+    expect(bodies).toEqual([{ target: { version: '1.1.0' } }, { consentToken: 'tok-1', target: { version: '1.1.0' } }])
   })
 
   it('a refused start keeps the dialog open with the server\'s reason; closing it returns to the list', async () => {
@@ -298,5 +300,82 @@ describe('UpdatesTabView — apply, the whole flow inside the dialog', () => {
     await act(async () => { fireEvent.click(screen.getByTestId('update-apply-confirm')) })
     await waitFor(() => expect(screen.getByTestId('updates-feedback').textContent).toBe('Bakin was updated to v0.3.6 and verified. Reload to use the new version.'), { timeout: 10_000 })
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+describe('UpdatesTabView — review round 2 (#8, #9 of round 1 pinned)', () => {
+  const REPAIR_OK = { httpStatus: 200, body: { ok: true, applied: 1, items: [{ id: 'upgrade-plugin-artifact', status: 'applied' }] } }
+
+  it('a plugin apply that resolved a covering approval settles on the REPAIR: a repair-shaped success is done, a failed repair is the failure — never decoded as the upgrader\'s consent/noop fields', async () => {
+    const operations = new Map([
+      ['op-repair', finishedOperation('op-repair', REPAIR_OK, { title: 'Apply 1 Health repair', outcome: { code: 'ok' } })],
+      ['op-broken', finishedOperation('op-broken', { httpStatus: 200, body: { ok: false, items: [] } }, { title: 'Apply 1 Health repair', status: 'failed', outcome: { code: 'repair_failed', message: 'The artifact failed verification after download.' } })],
+    ])
+    let next = 'op-repair'
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const op = operationResponse(url, operations)
+      if (op) return op
+      if (url === '/api/updates/plugin%3Anotes/apply-preview') {
+        return json({ bootId: 'b', preview: { id: PLUGIN.id, record: PLUGIN, action: PLUGIN.action, approval: { approvalId: 'apr-2', taskId: 'task-2', title: 'Upgrade notes to a release this Bakin can run', incidentIds: ['inc-2'], observationIds: ['obs-2'], subjectIds: [PLUGIN.id], scopeHash: 'hash-2', items: [{ actionId: 'upgrade-plugin-artifact', itemId: 'upgrade-plugin-artifact', safety: 'manual', changes: [{ kind: 'file', target: 'notes', action: 'update', description: 'Upgrade notes 1.0.0 → 1.1.0.' }] }] } } })
+      }
+      if (url === '/api/updates/plugin%3Anotes/apply' && init?.method === 'POST') return operationStarted(next)
+      throw new Error(`Unexpected URL: ${url}`)
+    }) as unknown as typeof fetch
+    render(<Harness updates={resource([PLUGIN])} />)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Update notes' })) })
+    await screen.findByRole('dialog')
+    await waitFor(() => expect(screen.getByTestId('update-apply-approval')).toBeDefined())
+    await act(async () => { fireEvent.click(screen.getByTestId('update-apply-confirm')) })
+    await waitFor(() => expect(screen.getByTestId('updates-feedback').textContent).toBe('Applied the Health repair “Upgrade notes to a release this Bakin can run”.'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    cleanup()
+
+    next = 'op-broken'
+    render(<Harness updates={resource([PLUGIN])} />)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Update notes' })) })
+    await screen.findByRole('dialog')
+    await waitFor(() => expect(screen.getByTestId('update-apply-approval')).toBeDefined())
+    await act(async () => { fireEvent.click(screen.getByTestId('update-apply-confirm')) })
+    await waitFor(() => expect(screen.getByRole('dialog').textContent).toContain('The artifact failed verification after download.'))
+    expect(screen.queryByTestId('updates-feedback')).toBeNull()
+  })
+
+  it('the Bakin verification settles the apply through a parent-owned refresh without a render-phase update (#9)', async () => {
+    const warnings: string[] = []
+    const originalError = console.error
+    console.error = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); originalError(...args) }
+    let versionReads = 0
+    const restarting = finishedOperation('op-b', { httpStatus: 200, body: {} }, {
+      status: 'running', endedAt: undefined, outcome: undefined, result: undefined, title: 'Update Bakin',
+      plan: { stages: [{ id: 'download', kind: 'downloading', label: 'Download' }, { id: 'restarting', kind: 'verifying', label: 'Restarting' }], pointOfNoReturn: 'restarting' },
+      stages: [{ id: 'download', kind: 'downloading', label: 'Download', status: 'done' }, { id: 'restarting', kind: 'verifying', label: 'Restarting', status: 'active' }],
+    })
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/api/operations/op-b')) return json({ bootId: 'boot-test', operation: restarting, children: [] })
+      if (url === '/api/updates/bakin%3Abakin/apply-preview') return json({ bootId: 'b', preview: { id: BAKIN.id, record: BAKIN, action: BAKIN.action } })
+      if (url === '/api/updates/bakin%3Abakin/apply' && init?.method === 'POST') return operationStarted('op-b')
+      if (url === '/api/version') { versionReads += 1; return json(versionReads < 2 ? { version: '0.3.5', bootId: 'boot-test', state: 'stopping' } : { version: '0.3.6', bootId: 'boot-new', state: 'serving' }) }
+      throw new Error(`Unexpected URL: ${url}`)
+    }) as unknown as typeof fetch
+    // A parent that owns the records and re-renders on every refresh — what the Health page does.
+    function Page() {
+      const [refreshes, setRefreshes] = useState(0)
+      const updates = { ...resource([BAKIN]), refresh: mock(async () => { setRefreshes((n) => n + 1); return null }) }
+      return <div><span data-testid="refreshes">{refreshes}</span><Harness updates={updates} /></div>
+    }
+    try {
+      render(<Page />)
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Update Bakin' })) })
+      await screen.findByRole('dialog')
+      await waitFor(() => expect(screen.getByTestId('update-apply-confirm').textContent).toBe('Update'))
+      await act(async () => { fireEvent.click(screen.getByTestId('update-apply-confirm')) })
+      await waitFor(() => expect(screen.getByTestId('updates-feedback').textContent).toBe('Bakin was updated to v0.3.6 and verified. Reload to use the new version.'), { timeout: 10_000 })
+      await waitFor(() => expect(screen.getByTestId('refreshes').textContent).toBe('1'))
+      expect(warnings.filter((w) => w.includes('Cannot update a component'))).toEqual([])
+    } finally {
+      console.error = originalError
+    }
   })
 })

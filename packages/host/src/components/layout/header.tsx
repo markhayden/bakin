@@ -170,7 +170,8 @@ export function Header() {
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
-  const [updateOperation, setUpdateOperation] = useState<{ operationId: string; bootId: string } | null>(null)
+  /** The started update, with the release it was approved for — immutable once started (the record may move). */
+  const [updateOperation, setUpdateOperation] = useState<{ operationId: string; bootId: string; expectedVersion: string } | null>(null)
   const [handoff, setHandoff] = useState<SelfUpdateHandoff | null>(null)
   const { collapsed, toggle } = useSidebarContext()
   const { open: activityOpen, toggle: toggleActivity } = useActivityContext()
@@ -184,8 +185,7 @@ export function Header() {
       if (!updateOperation) return
       if (phase === 'restarted') {
         // The old process is gone: the only honest terminal state — verify the new one.
-        if (bakinRecord?.available?.version) setHandoff({ expectedVersion: bakinRecord.available.version, oldBootId: updateOperation.bootId })
-        else setUpdateError('Bakin restarted, but the release it was updating to is no longer known — check its version by hand.')
+        setHandoff({ expectedVersion: updateOperation.expectedVersion, oldBootId: updateOperation.bootId })
         return
       }
       // Every other settle releases the active operation so Update can be tried again.
@@ -199,10 +199,19 @@ export function Header() {
     },
   })
   const restarting = updateView?.stages.some((stage) => stage.id === 'restarting' && stage.status === 'active') ?? false
-  if (restarting && !handoff && updateOperation && bakinRecord?.available?.version) {
-    setHandoff({ expectedVersion: bakinRecord.available.version, oldBootId: updateOperation.bootId })
+  if (restarting && !handoff && updateOperation) {
+    setHandoff({ expectedVersion: updateOperation.expectedVersion, oldBootId: updateOperation.bootId })
   }
   const verification = useSelfUpdateVerification(handoff)
+  // A verification that did not end in the new version is a failure the
+  // operator can act on (retry, or check by hand): release the operation.
+  if (updateOperation && (verification.status === 'wrong-version' || verification.status === 'unreachable')) {
+    setUpdateOperation(null)
+    setHandoff(null)
+    setUpdateError(verification.status === 'wrong-version'
+      ? `Bakin came back as v${verification.version}, not v${verification.handoff.expectedVersion}.`
+      : `Bakin did not come back within 90 s — verify by hand${verification.lastError ? ` (${verification.lastError})` : ''}.`)
+  }
   const updateMessage = verification.status === 'verifying'
     ? `Restarting into v${verification.handoff.expectedVersion}…`
     : verification.status !== 'idle'
@@ -275,11 +284,15 @@ export function Header() {
   if (mobileOpen && desktopViewport) setMobileOpen(false)
 
   async function applyUpdate() {
+    const available = bakinRecord?.available
+    if (!available?.version) return
     setUpdating(true)
     setUpdateError(null)
     try {
-      const started = await startOperation(() => fetch(BAKIN_APPLY_ROUTE, { method: 'POST', headers: { 'Content-Type': 'application/json', ...OPERATOR_DECLARATION_HEADERS }, body: '{}' }))
-      setUpdateOperation({ operationId: started.operationId, bootId: started.bootId })
+      // The identity on screen is the one the apply must install (R2 #1).
+      const target = { version: available.version, ...(available.sha ? { sha: available.sha } : {}), ...(available.digest ? { digest: available.digest } : {}) }
+      const started = await startOperation(() => fetch(BAKIN_APPLY_ROUTE, { method: 'POST', headers: { 'Content-Type': 'application/json', ...OPERATOR_DECLARATION_HEADERS }, body: JSON.stringify({ target }) }))
+      setUpdateOperation({ operationId: started.operationId, bootId: started.bootId, expectedVersion: available.version })
     } catch (err) {
       setUpdateError(err instanceof Error ? err.message : String(err))
     } finally {

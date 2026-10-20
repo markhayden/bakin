@@ -137,3 +137,20 @@ describe('review round 1 — the approved release', () => {
     expect(seen).toEqual(['0.2.0'])
   })
 })
+
+describe('review round 2 — the restart milestone', () => {
+  it('a restart activation that fails never shows the restarting stage active: the failure is terminal, not a handoff (#7)', async () => {
+    const d = deps({ activateRestart: () => ({ ok: false, strategy: 'standalone-child', restartDelayMs: 10, error: 'spawn EACCES' }) })
+    const started = await registry.start(selfUpdateOperation('web', d))
+    const finished = await view(started.operationId, (v) => v.status === 'failed')
+    expect(finished.outcome?.code).toBe('restart_failed')
+    expect(finished.stages.find((s) => s.id === 'restarting')?.status).not.toBe('active')
+    expect(finished.stages.some((s) => s.status === 'active')).toBe(false)
+  })
+
+  it('the operation fingerprint carries the approved release, so another version never attaches (#1)', () => {
+    expect(selfUpdateOperation('web', deps({ expectedVersion: '0.2.0' })).fingerprint).toBe('updates:self-update:0.2.0')
+    expect(selfUpdateOperation('web', deps({ expectedVersion: '0.3.0' })).fingerprint).toBe('updates:self-update:0.3.0')
+    expect(selfUpdateOperation('cli', deps()).fingerprint).toBe('updates:self-update:latest')
+  })
+})

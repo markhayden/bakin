@@ -35,13 +35,13 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 /** A scripted server: version answers (in order, last repeats), the record, the apply start, and the operation reads. */
 function server(opts: { versions: Array<{ version: string; bootId: string; state: string } | 'down'>; outcome?: 'current' | 'update-available' | 'unsupported'; operationReads?: Array<{ bootId: string; view?: unknown; status?: number }>; applyStatus?: number; applyBody?: unknown }) {
-  const calls: Array<{ url: string; method: string; headers: Record<string, string> }> = []
+  const calls: Array<{ url: string; method: string; headers: Record<string, string>; body?: string }> = []
   let versionIndex = 0
   let readIndex = 0
   const fetch = async (url: string, init?: RequestInit): Promise<Response> => {
     // happy-dom's Headers keeps the caller's casing; normalize so assertions read lowercase names.
     const headers = Object.fromEntries([...new Headers(init?.headers as HeadersInit | undefined).entries()].map(([k, v]) => [k.toLowerCase(), v]))
-    calls.push({ url, method: init?.method ?? 'GET', headers })
+    calls.push({ url, method: init?.method ?? 'GET', headers, ...(typeof init?.body === 'string' ? { body: init.body } : {}) })
     if (url === `${BASE}/api/version`) {
       const answer = opts.versions[Math.min(versionIndex, opts.versions.length - 1)]!
       versionIndex += 1
@@ -166,5 +166,24 @@ describe('review round 1 — the restart milestone is the handoff (#4)', () => {
     const result = await runUpdateCommand({ echo, liveLock: () => LOCK, fetch: s.fetch, pollMs: 1, stdout: { isTTY: false }, startAndFollow: follow, identityHeaders: async () => ({ 'X-Bakin-Operator': 'declared' }) })
     expect(seen).toEqual([false, true])
     expect(result).toEqual({ kind: 'verified', message: 'Updated to 0.1.1 and verified.' })
+  })
+})
+
+describe('review round 2 — terminal failures beat the handoff (#7); the reviewed target rides the apply (#1)', () => {
+  it('a restart_failed terminal view is reported as the failure it is — no verification, no 90 s wait', async () => {
+    const s = server({ versions: [{ version: '0.1.0', bootId: 'boot-old', state: 'serving' }] })
+    const failed = { ...runningView('restarting'), status: 'failed', outcome: { code: 'restart_failed', message: 'Updated to v0.1.1, but the restart could not be scheduled (spawn EACCES). Restart Bakin by hand to run it.' }, stages: [{ id: 'download', kind: 'downloading', label: 'Download', status: 'done' }, { id: 'swap', kind: 'committing', label: 'Swap', status: 'done' }, { id: 'restarting', kind: 'verifying', label: 'Restart', status: 'failed' }] }
+    const seen: boolean[] = []
+    const follow: NonNullable<Parameters<typeof runUpdateCommand>[0]['startAndFollow']> = async (start, opts) => {
+      await start()
+      seen.push(opts.onUpdate(failed as never))
+      return { follow: { phase: 'finished' as const, operation: failed as never, children: [] }, body: null, httpStatus: 200, exitCode: 1 as const }
+    }
+    const result = await runUpdateCommand({ echo, liveLock: () => LOCK, fetch: s.fetch, pollMs: 1, stdout: { isTTY: false }, startAndFollow: follow, identityHeaders: async () => ({ 'X-Bakin-Operator': 'declared' }) })
+    expect(seen).toEqual([false])
+    expect(result).toMatchObject({ kind: 'failed', code: 'UPDATE_FAILED', message: expect.stringMatching(/restart could not be scheduled/), detail: 'restart_failed' })
+    expect(s.calls.filter((c) => c.url.endsWith('/api/version')).length).toBe(1)
+    const apply = s.calls.find((c) => c.url.endsWith('/apply'))!
+    expect(JSON.parse(apply.body ?? '{}')).toEqual({ target: { version: '0.1.1' } })
   })
 })

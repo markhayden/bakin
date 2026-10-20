@@ -29,7 +29,7 @@ import {
   type OperationStartResponse,
   type StartOperationInput,
 } from '@bakin/core/operations'
-import type { HealthReport, UpdateAction, UpdateRecord } from '@makinbakin/sdk/types'
+import { updateIdentityKey, type HealthReport, type UpdateAction, type UpdateRecord, type UpdateSkipTarget } from '@makinbakin/sdk/types'
 import type { InstallableComponent } from '../onboarding/types'
 import type { ReindexReport } from '../search-operations'
 import type { UpdatesEngine } from './engine'
@@ -47,6 +47,8 @@ export type ApplyErrorCode =
   | 'manual_action'
   | 'unsupported_subject'
   | 'approval_decision'
+  | 'target_required'
+  | 'target_changed'
 
 export class ApplyError extends Error {
   constructor(readonly status: 400 | 404 | 409 | 500 | 503, readonly code: ApplyErrorCode, message: string, readonly extra: Record<string, unknown> = {}) {
@@ -79,6 +81,8 @@ export interface ApplyPreview {
 }
 
 export interface ConfirmApplyInput {
+  /** The available identity the operator reviewed (version/sha/digest): the apply refuses anything else. */
+  target?: UpdateSkipTarget
   approvalId?: string
   scopeHash?: string
   /** Plugin / hub-skill flows: the consent token the preview phase issued. */
@@ -108,8 +112,10 @@ export interface ApplyDeps {
   pluginUpgrade: (pluginId: string, body: { accepted?: boolean; consentToken?: string }, origin: OperationOrigin) => MaybeAsync<StartOperationInput<Record<string, unknown>>>
   /** The Bakin self-update as an operation (D7.11), bound to the approved release. */
   selfUpdateOperation: (origin: OperationOrigin, target: { expectedVersion?: string }) => MaybeAsync<StartOperationInput<Record<string, unknown>>>
-  /** Re-observe a subject after its operation changed it (the next tick would be hours away). */
-  reobserve: (id: string) => MaybeAsync<void>
+  /** Re-observe subjects after an operation changed them (the next tick would be hours away). */
+  reobserve: (ids: string[]) => MaybeAsync<void>
+  /** Calls back once the operation (started OR attached) has SUCCEEDED; never for a failure. */
+  onOperationSucceeded: (operationId: string, callback: () => void) => void
 }
 
 /** The health resource an update subject is about — how incidents point at it (#385 structured resources). */
@@ -235,6 +241,14 @@ export async function confirmApply(id: string, input: ConfirmApplyInput, deps: A
   // Refuse agents and undeclared callers before anything is read or started (#898).
   await deps.assertOperator(input.provenance)
   const preview = await previewApply(id, deps)
+  // The operator reviewed ONE identity; a background observation between the
+  // preview and this confirm must not change what gets installed (R2 #1).
+  if (preview.record.available && updateIdentityKey(preview.record.available) !== null) {
+    if (!input.target) throw new ApplyError(400, 'target_required', 'Say which available identity you reviewed (`target`): the apply refuses to guess.', { available: preview.record.available })
+    if (updateIdentityKey(input.target) !== updateIdentityKey(preview.record.available)) {
+      throw new ApplyError(409, 'target_changed', `The available ${preview.record.subject.label} changed since the preview (${preview.record.available.display}) — review it again.`, { available: preview.record.available })
+    }
+  }
 
   if (input.approvalId !== undefined) {
     const scope = preview.approval
@@ -247,6 +261,8 @@ export async function confirmApply(id: string, input: ConfirmApplyInput, deps: A
       const failure = (result as { startFailure?: unknown } | null)?.startFailure
       throw new ApplyError(500, 'approval_decision', typeof failure === 'string' ? failure : 'The approved repair did not start; the linked task carries the reason.', { approvalId: scope.approvalId })
     }
+    // The repair may touch more than this subject: every subject in its scope is re-observed.
+    reobserveWhenSucceeded(deps, started.data.operationId, scope.subjectIds.length > 0 ? scope.subjectIds : [id])
     return { started: started.data, approvalId: scope.approvalId }
   }
   if (preview.approval) {
@@ -258,8 +274,11 @@ export async function confirmApply(id: string, input: ConfirmApplyInput, deps: A
   if (!record.action) throw new ApplyError(409, 'nothing_to_apply', `"${id}" has no action.`)
   if (record.action.kind === 'manual') throw new ApplyError(409, 'manual_action', record.action.pointer, { pointer: record.action.pointer })
 
-  const start = async (operation: StartOperationInput<Record<string, unknown>>): Promise<ConfirmApplyResult> =>
-    ({ started: await deps.startOperation(reobserveAfter(operation, id, deps)) })
+  const start = async (operation: StartOperationInput<Record<string, unknown>>): Promise<ConfirmApplyResult> => {
+    const started = await deps.startOperation(operation)
+    reobserveWhenSucceeded(deps, started.operationId, [id])
+    return { started }
+  }
   switch (record.subject.kind) {
     case 'plugin':
       return start(await deps.pluginUpgrade(record.subject.id, { accepted: input.consentToken !== undefined, consentToken: input.consentToken }, input.origin))
@@ -275,23 +294,16 @@ export async function confirmApply(id: string, input: ConfirmApplyInput, deps: A
 }
 
 /**
- * The operation as started, plus one hook: when it succeeds, the subject is
- * re-observed so its record reflects what just changed (a plugin upgrade's
- * new lock entry, the reinstalled engine) instead of waiting for the next
- * scheduled pass. A failed re-observation is logged; the operation's own
- * outcome is untouched.
+ * Once the operation SUCCEEDS — whether this call started it or attached to
+ * one already running, and including a resolved approval's repair — the
+ * subjects it changed are re-observed, so their records reflect the new
+ * installation instead of waiting hours for the next pass. A failed
+ * re-observation is logged; the operation's own outcome is untouched.
  */
-function reobserveAfter<B>(operation: StartOperationInput<B>, id: string, deps: ApplyDeps): StartOperationInput<B> {
-  return {
-    ...operation,
-    run: async (op) => {
-      const outcome = await operation.run(op)
-      if (outcome.status === 'succeeded') {
-        Promise.resolve(deps.reobserve(id)).catch((error: unknown) => log.warn('Re-observation after apply failed', { id, error: error instanceof Error ? error.message : String(error) }))
-      }
-      return outcome
-    },
-  }
+function reobserveWhenSucceeded(deps: ApplyDeps, operationId: string, ids: string[]): void {
+  deps.onOperationSucceeded(operationId, () => {
+    Promise.resolve(deps.reobserve(ids)).catch((error: unknown) => log.warn('Re-observation after apply failed', { ids, error: error instanceof Error ? error.message : String(error) }))
+  })
 }
 
 /**
@@ -310,9 +322,25 @@ export function defaultApplyDeps(): ApplyDeps {
     reindex: async (op) => (await import('../search-operations')).runReindex(op, undefined, false),
     reindexStage: async () => (await import('../search-operations')).REINDEX_STAGE,
     pluginUpgrade: async (pluginId, body, origin) => (await import('../../../packages/host/src/api/plugins/upgrade')).pluginUpgradeOperation(pluginId, { pluginId, ...body }, origin),
-    reobserve: async (id) => {
+    reobserve: async (ids) => {
       const { getUpdatesTimer } = await import('./service')
-      await getUpdatesTimer()?.check({ ids: [id] })
+      await getUpdatesTimer()?.check({ ids })
+    },
+    onOperationSucceeded: (operationId, callback) => {
+      void (async () => {
+        const { getOperationRegistry, subscribeOperationUpdates } = await import('../operations')
+        let fired = false
+        const fire = (): void => { if (fired) return; fired = true; unsubscribe(); callback() }
+        const unsubscribe = subscribeOperationUpdates((view) => {
+          if (view.id !== operationId) return
+          if (view.status === 'succeeded') fire()
+          else if (view.status === 'failed' || view.status === 'cancelled') unsubscribe()
+        })
+        // Attached to one that already finished: the subscription would never fire.
+        const current = getOperationRegistry().get(operationId)
+        if (current?.status === 'succeeded') fire()
+        else if (current && (current.status === 'failed' || current.status === 'cancelled')) unsubscribe()
+      })()
     },
     selfUpdateOperation: async (origin, target) => {
       const [{ selfUpdateOperation }, { selfUpdate }, { activateServerRestart, prepareServerRestart }, { APP_VERSION }] = await Promise.all([

@@ -91,3 +91,16 @@ describe('review round 1 — the deadline bounds every request (#6)', () => {
     expect(await verifying).toEqual({ status: 'unreachable', expectedVersion: '0.1.1', lastError: 'cancelled' })
   })
 })
+
+describe('review round 2 — a stalled body is bounded too (round 1 #6)', () => {
+  it('headers arrive but the body never ends: the deadline aborts the read — unreachable, never pending', async () => {
+    let clock = 0
+    const fetch = async (_url: string, init?: { signal?: AbortSignal }): Promise<Response> => ({
+      ok: true,
+      status: 200,
+      json: () => new Promise<never>((_resolve, reject) => { init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true }) }),
+    } as unknown as Response)
+    const result = await verifySelfUpdate({ expectedVersion: '0.1.1', oldBootId: 'old', fetch, timeoutMs: 100, pollMs: 0, now: () => clock, sleep: async () => { clock += 50 } })
+    expect(result).toMatchObject({ status: 'unreachable', lastError: 'verification deadline' })
+  })
+})

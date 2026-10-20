@@ -19,6 +19,7 @@ import {
   type OperationStartResponse,
   type OperationView,
   type UpdateRecord,
+  type UpdateSkipTarget,
   type UpdateSubjectKind,
 } from '@makinbakin/sdk/types'
 import {
@@ -104,6 +105,8 @@ export async function previewUpdateApply(id: string): Promise<ApplyPreviewData> 
 }
 
 export interface StartUpdateApplyBody {
+  /** The available identity the operator reviewed; the server refuses anything else. */
+  target?: UpdateSkipTarget
   approvalId?: string
   scopeHash?: string
   consentToken?: string
@@ -111,6 +114,13 @@ export interface StartUpdateApplyBody {
 
 export async function startUpdateApply(id: string, body: StartUpdateApplyBody): Promise<OperationStartResponse> {
   return await startOperation(() => fetch(updateRouteFor(id, 'apply'), { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) }))
+}
+
+/** The comparable part of what the operator saw — what the apply must install. */
+export function reviewedTarget(record: Pick<UpdateRecord, 'available'>): UpdateSkipTarget | undefined {
+  const available = record.available
+  if (!available) return undefined
+  return { ...(available.version ? { version: available.version } : {}), ...(available.sha ? { sha: available.sha } : {}), ...(available.digest ? { digest: available.digest } : {}) }
 }
 
 /** The engine's records, read once per page and re-read on every `updates.changed`. */
@@ -196,7 +206,8 @@ export function useUpdateApply(onSettled?: () => void): UseUpdateApplyResult {
   const startWith = useCallback(async (record: UpdateRecord, preview: ApplyPreviewData, body: StartUpdateApplyBody) => {
     setState({ status: 'starting', record, preview })
     try {
-      const started = await startUpdateApply(record.id, body)
+      // The preview's record is what the operator read in the dialog.
+      const started = await startUpdateApply(record.id, { ...body, target: reviewedTarget(preview.record) })
       setState({ status: 'running', record, preview, start: started, viaApproval: body.approvalId !== undefined })
     } catch (error) {
       setState({ status: 'failed', record, preview, error: errorMessage(error) })

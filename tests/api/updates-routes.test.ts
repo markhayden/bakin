@@ -171,3 +171,23 @@ describe('GET /api/updates/:id/apply-preview and POST /api/updates/:id/apply', (
     expect(updatesRoute.skipUpdateIdFromPath('/api/updates/plugin%3Aprojects/apply')).toBeNull()
   })
 })
+
+describe('review round 2 — required skips and the reviewed target', () => {
+  it('skipping a required update is 409 required; an apply without the reviewed target is 400 target_required', async () => {
+    const required: UpdateSource = {
+      kind: 'search-engine',
+      inventory: async () => [{ subject: { kind: 'search-engine', id: 'antfly', label: 'Search engine' }, group: 'required', fingerprint: 'f', source: { kind: 'adapter', endpoint: 'antfly' } }],
+      observe: async () => ({ installed: { version: '0.1.9', display: 'v0.1.9' }, available: { version: '0.2.5', display: 'v0.2.5' }, reason: 'pin-mismatch', outcome: 'update-available', action: { kind: 'operation', start: { route: '/api/updates/search-engine%3Aantfly/apply' }, impact: ['download'] } }),
+    }
+    registerUpdateSource(required)
+    registerUpdateSource(scripted('plugin', ['projects'], async (id) => available(id)).source)
+    startUpdates(testDir)
+    await call(updatesRoute.check, 'POST', '/api/updates/check?wait=1')
+    const refused = await call(updatesRoute.skip, 'POST', '/api/updates/search-engine%3Aantfly/skip')
+    expect(refused.status).toBe(409)
+    expect(await refused.json()).toMatchObject({ error: 'required', id: 'search-engine:antfly' })
+    const untargeted = await call(updatesRoute.apply, 'POST', '/api/updates/plugin%3Aprojects/apply', { headers: OPERATOR })
+    expect(untargeted.status).toBe(400)
+    expect(await untargeted.json()).toMatchObject({ error: 'target_required', available: { version: '2' } })
+  })
+})

@@ -72,6 +72,13 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
 
   /** The one running pass, if any. */
   let pass: Pass | null = null
+  /** Pass startup (inventory refresh + creation) is serialized, so a tick and a check never start two. */
+  let startup: Promise<unknown> = Promise.resolve()
+  const serialized = <T>(fn: () => Promise<T>): Promise<T> => {
+    const run = startup.then(fn, fn)
+    startup = run.then(() => undefined, () => undefined)
+    return run
+  }
   let stopped = false
   let timer: ReturnType<typeof setTimeout> | null = null
 
@@ -93,8 +100,9 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
    */
   async function observeWithDeadline(id: string): Promise<void> {
     const controller = new AbortController()
+    const token = {}
     let settled = false
-    const observing = engine.observe(id, { signal: controller.signal }).then(() => undefined, (err: unknown) => {
+    const observing = engine.observe(id, { signal: controller.signal, token }).then(() => undefined, (err: unknown) => {
       // Not-found and other engine refusals: logged, the pass goes on.
       log.warn('update check failed to start', { id, error: err instanceof Error ? err.message : String(err) })
     }).finally(() => { settled = true })
@@ -105,7 +113,7 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
     if (!timedOut) return
     controller.abort(new Error(SUBJECT_TIMED_OUT(subjectTimeoutMs)))
     await Promise.race([observing, new Promise<void>((resolve) => { const t = setTimeout(resolve, cancelGraceMs); t.unref?.() })])
-    if (!settled) await engine.recordFailure(id, SUBJECT_TIMED_OUT(subjectTimeoutMs))
+    if (!settled) await engine.recordFailure(id, SUBJECT_TIMED_OUT(subjectTimeoutMs), { token })
   }
 
   function runPass(initial: string[], scheduled: boolean): Pass {
@@ -134,14 +142,18 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
   }
 
   async function tick(): Promise<void> {
-    if (stopped || pass) return
-    if (!options.settings().enabled) return
-    // Installed/removed subjects and changed settings join or leave here.
-    await engine.refreshInventory()
-    const due = await engine.dueSubjects()
-    if (due.length === 0) return
-    log.debug('update check pass', { due: due.length })
-    await runPass(due, true).done
+    const started = await serialized(async () => {
+      if (stopped || pass) return null
+      if (!options.settings().enabled) return null
+      // Installed/removed subjects and changed settings join or leave here.
+      await engine.refreshInventory()
+      if (stopped || pass) return null
+      const due = await engine.dueSubjects()
+      if (due.length === 0) return null
+      log.debug('update check pass', { due: due.length })
+      return runPass(due, true)
+    })
+    if (started) await started.done
   }
 
   function schedule(delay: number): void {
@@ -156,25 +168,32 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
 
   return {
     async check(request = {}) {
-      await engine.refreshInventory()
-      const inventory = await engine.inventory()
-      const known = new Set(inventory.map((entry) => `${entry.subject.kind}:${entry.subject.id}`))
-      let ids = [...known]
-      if (request.kind) ids = ids.filter((id) => id.startsWith(`${request.kind}:`))
-      if (request.ids) {
-        const { UpdateSubjectNotFoundError } = await import('./engine')
-        for (const id of request.ids) if (!known.has(id)) throw new UpdateSubjectNotFoundError(id)
-        ids = request.ids
-      }
-      if (pass) {
-        // Join the running pass: queue whatever it has not reached yet.
-        const running = pass
-        for (const id of ids) if (!running.reached.has(id) && !running.queue.includes(id)) running.queue.push(id)
-        await running.done
-        return { ids, coalesced: true }
-      }
-      await runPass(ids, false).done
-      return { ids, coalesced: false }
+      const { ids, run, coalesced } = await serialized(async () => {
+        await engine.refreshInventory()
+        const inventory = await engine.inventory()
+        const known = new Set(inventory.map((entry) => `${entry.subject.kind}:${entry.subject.id}`))
+        let ids = [...known]
+        if (request.kind) ids = ids.filter((id) => id.startsWith(`${request.kind}:`))
+        if (request.ids) {
+          const { UpdateSubjectNotFoundError } = await import('./engine')
+          for (const id of request.ids) if (!known.has(id)) throw new UpdateSubjectNotFoundError(id)
+          ids = request.ids
+        }
+        if (pass) {
+          // Join the running pass. A broad request takes whatever the pass
+          // already reached; an EXPLICIT id is observed again regardless (the
+          // caller knows the subject changed — a reached result is stale).
+          const running = pass
+          for (const id of ids) {
+            if (running.queue.includes(id)) continue
+            if (request.ids || !running.reached.has(id)) running.queue.push(id)
+          }
+          return { ids, run: running, coalesced: true }
+        }
+        return { ids, run: runPass(ids, false), coalesced: false }
+      })
+      await run.done
+      return { ids, coalesced }
     },
     running: () => pass !== null,
     stop() {
