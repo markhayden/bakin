@@ -148,6 +148,9 @@ export async function apiPostExpecting<T>(
     headers: { 'Content-Type': 'application/json', ...CLI_ORIGIN_HEADER, ...identityHeaderSet },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+  // A 2xx answers like `api()` does (json()); only a non-2xx is read as text
+  // so the formatted error can quote the body verbatim.
+  if (res.ok) return { status: res.status, body: await res.json() as T }
   const text = await res.text()
   const schema = expect[res.status]
   if (schema) {
@@ -159,10 +162,8 @@ export async function apiPostExpecting<T>(
     }
     const result = schema.safeParse(parsed)
     if (result.success) return { status: res.status, body: result.data }
-    if (!res.ok) throw new Error(formatApiError(res.status, text))
   }
-  if (!res.ok) throw new Error(formatApiError(res.status, text))
-  return { status: res.status, body: JSON.parse(text) as T }
+  throw new Error(formatApiError(res.status, text))
 }
 
 export async function apiPost(path: string, body?: unknown): Promise<unknown> {
