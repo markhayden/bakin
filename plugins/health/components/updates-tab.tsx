@@ -23,6 +23,9 @@ import type { UseHealthResourceResult } from '../hooks/use-health-resource'
 import { isApplicableUpdate, UPDATE_APPLY_DIALOG_STATUSES, useUpdatesActions, type UpdateApplyState, type UseUpdatesActionsResult } from '../hooks/use-updates'
 import type { ApplyPreviewData, UpdatesData } from '../lib/updates-route-schema'
 
+/** Content + trailing actions share one template across the rows (the kit's `columns` contract), stacking below `lg`. */
+const UPDATE_ROW_COLUMNS = 'minmax(0,1fr) auto'
+
 const KIND_LABEL: Record<UpdateSubjectKind, string> = {
   bakin: 'Bakin',
   plugin: 'Plugin',
@@ -133,7 +136,7 @@ function UpdateRow({ record, now, focused, busy, onApply, onSkip }: UpdateRowPro
       ref={ref}
       data-update-id={record.id}
       data-update-outcome={record.outcome}
-      className="grid min-w-0 gap-bakin-3 @[40rem]/health-updates:grid-cols-[minmax(0,1fr)_auto] @[40rem]/health-updates:items-center scroll-mt-bakin-4"
+      className="min-w-0 scroll-mt-bakin-4"
     >
       <div className="min-w-0">
         <Inline gap="dense">
@@ -150,7 +153,7 @@ function UpdateRow({ record, now, focused, busy, onApply, onSkip }: UpdateRowPro
           {checked ? ` · ${checked}` : ''}
         </Text>
       </div>
-      <ListRowActions className="justify-self-start gap-bakin-1 @[40rem]/health-updates:justify-self-end">
+      <ListRowActions className="gap-bakin-1">
         {record.notesUrl && (
           <a
             href={record.notesUrl}
@@ -265,7 +268,7 @@ export function UpdatesTabView({ updates, actions, showSkipped, onShowSkippedCha
   const lastCheck = records.map((record) => record.observedAt ?? record.attempt?.at ?? '').filter(Boolean).sort().at(-1) ?? null
 
   return (
-    <div className="@container/health-updates space-y-bakin-6" data-testid="health-updates-tab">
+    <div className="space-y-bakin-6" data-testid="health-updates-tab">
       <HealthTabIntro
         title="Updates"
         description="Required and available updates for Bakin, its plugins, agent packages and the search engine. Required means the installation cannot work as configured until it is applied."
@@ -317,7 +320,7 @@ export function UpdatesTabView({ updates, actions, showSkipped, onShowSkippedCha
         <Stack gap="section">
           {required.length > 0 && (
             <ListRowGroup label={`Required (${required.length})`} headerVariant="section" headerTone="danger" headingLevel={2} data-testid="updates-required">
-              <ListRows variant="separated">
+              <ListRows variant="separated" columns={UPDATE_ROW_COLUMNS} columnsAt="lg">
                 {required.map((record) => (
                   <UpdateRow key={record.id} record={record} now={now} focused={focusId === record.id} busy={busy} onApply={(row) => void actions.apply.open(row)} onSkip={(row) => void actions.skip(row)} />
                 ))}
@@ -326,7 +329,7 @@ export function UpdatesTabView({ updates, actions, showSkipped, onShowSkippedCha
           )}
           {available.length > 0 && (
             <ListRowGroup label={`Available (${available.length})`} headerVariant="section" headerTone="accent" headingLevel={2} data-testid="updates-available">
-              <ListRows variant="separated">
+              <ListRows variant="separated" columns={UPDATE_ROW_COLUMNS} columnsAt="lg">
                 {available.map((record) => (
                   <UpdateRow key={record.id} record={record} now={now} focused={focusId === record.id} busy={busy} onApply={(row) => void actions.apply.open(row)} onSkip={(row) => void actions.skip(row)} />
                 ))}
