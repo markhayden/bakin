@@ -34,7 +34,7 @@ const BAKIN_URL = liveServerBaseUrl() ?? (() => {
   console.error(`No Bakin server is running for ${getContentDir()} — start it or set BAKIN_URL.`)
   process.exit(1)
 })()
-const APPROVALS_DIR = join(getContentDir(), 'workflows', 'approvals')
+const APPROVALS_DIR = join(getContentDir(), 'approvals')
 
 const GATE_WAIT_MS = 15 * 60 * 1000 // real agent turn precedes the gate
 const DECISION_WAIT_MS = 10 * 60 * 1000

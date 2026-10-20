@@ -96,16 +96,14 @@ const isoTime = z.string().refine((value) => Number.isFinite(Date.parse(value)),
 const doctorRepairRequestSchema = z.object({
   version: z.literal(2),
   id: z.string().min(1),
-  // Requests written before approvals lived in core carry neither
-  // `kind` nor `checkIds` (margo still holds some — retire with #945).
-  kind: z.enum(['delegate', 'approval-repair', 'approval-navigate']).default('delegate'),
+  kind: z.enum(['delegate', 'approval-repair', 'approval-navigate']),
   status: z.enum(['planned', 'sent', 'applying', 'completed', 'verified', 'failed', 'dismissed']),
   createdAt: isoTime,
   updatedAt: isoTime,
   plan: z.custom<HealthRepairPlan>((value) => typeof value === 'object' && value !== null && typeof (value as { planId?: unknown }).planId === 'string').optional(),
   incidentIds: z.array(z.string()),
   observationIds: z.array(z.string()),
-  checkIds: z.array(z.string()).default([]),
+  checkIds: z.array(z.string()),
   taskId: z.string().optional(),
   agentId: z.string().optional(),
   approvalId: z.string().optional(),
