@@ -21,14 +21,16 @@ export function CalendarToday({
   onSelectJob: (job: ScheduleJob) => void
 }) {
   // Pure render (#966): the day view follows the minute clock, so the date
-  // heading and the day window roll over at midnight.
+  // heading, the occurrence window and the grid's day roll over at midnight
+  // together (the ISO window only changes when midnight does, so the
+  // occurrences hook refetches once per day, not per tick).
   const now = useNow()
 
   const dayStart = useMemo(() => {
-    const d = new Date()
+    const d = new Date(now)
     d.setHours(0, 0, 0, 0)
     return d
-  }, [])
+  }, [now])
   const dayEnd = useMemo(() => {
     const d = new Date(dayStart)
     d.setDate(d.getDate() + 1)

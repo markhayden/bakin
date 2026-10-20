@@ -454,6 +454,35 @@ describe('Schedule calendar views (occurrence-fed)', () => {
 
     expect(screen.queryByText('ghost-job')).toBeNull()
   })
+  it('Today: the heading, the occurrence window and the grid day roll over together at midnight (#966)', async () => {
+    // The minute clock is a real setInterval; capture its tick so the rollover is driven, not awaited.
+    const ticks: Array<() => void> = []
+    const realSetInterval = globalThis.setInterval
+    globalThis.setInterval = ((fn: () => void) => { ticks.push(fn); return 1 }) as unknown as typeof setInterval
+    setSystemTime(new Date(2026, 9, 15, 23, 30, 0))
+    try {
+      await act(async () => {
+        render(<CalendarToday jobs={[]} onSelectJob={() => {}} />)
+      })
+      const midnight = (y: number, m: number, d: number) => new Date(y, m, d, 0, 0, 0, 0).toISOString()
+      expect(screen.getByText(/October 15, 2026/)).toBeDefined()
+      const firstWindow = fetchCalls.filter((u) => u.includes('/occurrences')).at(-1)!
+      expect(decodeURIComponent(firstWindow)).toContain(midnight(2026, 9, 15))
+      expect(screen.getByText(/Thu/)).toBeDefined() // the grid's day column
+
+      setSystemTime(new Date(2026, 9, 16, 0, 5, 0)) // past midnight while the view is open
+      await act(async () => { for (const tick of ticks) tick() })
+      expect(screen.getByText(/October 16, 2026/)).toBeDefined()
+      const rolledWindow = fetchCalls.filter((u) => u.includes('/occurrences')).at(-1)!
+      expect(decodeURIComponent(rolledWindow)).toContain(midnight(2026, 9, 16))
+      expect(decodeURIComponent(rolledWindow)).toContain(midnight(2026, 9, 17))
+      expect(screen.getByText(/Fri/)).toBeDefined()
+    } finally {
+      globalThis.setInterval = realSetInterval
+      setSystemTime()
+    }
+  })
+
   it('Month: "Today" reads the clock at the click — after a rollover under an open view it lands on the new month (#966)', async () => {
     setSystemTime(new Date(2026, 9, 15, 12, 0, 0)) // October
     try {
