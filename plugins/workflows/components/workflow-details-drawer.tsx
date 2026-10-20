@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import { X } from 'lucide-react'
 import {
   Button,
@@ -43,14 +43,12 @@ export function WorkflowDetailsDrawer({
   applyLabel?: string
   applying?: boolean
 }) {
-  const [name, setName] = useState(definition.name)
-  const [description, setDescription] = useState(definition.description ?? '')
+  // The form follows the definition it edits (#966b): a changed name or
+  // description re-seeds it in the same render.
+  const seed = `${definition.name}\u0000${definition.description ?? ''}`
+  const [name, setName] = useKeyedState(seed, () => definition.name)
+  const [description, setDescription] = useKeyedState(seed, () => definition.description ?? '')
   const canApply = name.trim().length > 0
-
-  useEffect(() => {
-    setName(definition.name)
-    setDescription(definition.description ?? '')
-  }, [definition.description, definition.name])
 
   return (
     <InspectorPanel label="Workflow details" side>

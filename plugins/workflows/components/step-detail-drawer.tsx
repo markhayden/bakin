@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle, Avatar, AvatarFallback, Badge, Button, Drawer, DrawerSection, Overline, Separator, Text } from '@makinbakin/sdk/ui'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { Panel, Section, Stack } from '@makinbakin/sdk/layout'
 import { KeyValue, ListRow, ListRows, type KeyValueItem } from '@makinbakin/sdk/patterns'
-import { useAgent } from '@makinbakin/sdk/hooks'
+import { useAgent, useKeyedState } from '@makinbakin/sdk/hooks'
 import { WorkflowAgentAvatar } from './workflow-agent-identity'
 import {
   useNotificationChannels,
@@ -594,16 +594,13 @@ export function StepDetailDrawer({
   onSkillRepaired,
 }: StepDetailDrawerProps) {
   const [repairingSkill, setRepairingSkill] = useState<string | null>(null)
-  const [repairError, setRepairError] = useState<string | null>(null)
+  // The repair error belongs to one opening of one step (#966b).
+  const [repairError, setRepairError] = useKeyedState<string | null>(`${open}\u0000${step?.id ?? ''}`, () => null)
   const driftReports = useMemo(() => {
     const skillNames = stepSkillNames(step)
     if (skillNames.length === 0 || !skillDrift) return []
     return skillDrift.reports.filter(report => skillNames.includes(report.skillName))
   }, [step, skillDrift])
-
-  useEffect(() => {
-    setRepairError(null)
-  }, [open, step?.id])
 
   async function handleRepair(report: WorkflowSkillDriftReport) {
     setRepairingSkill(report.skillName)

@@ -14,7 +14,8 @@
  * without special-casing.
  */
 
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, useLayoutEffect } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import {
   ReactFlow,
   Background,
@@ -262,32 +263,38 @@ export function WorkflowCanvasEditor({
   onCancel,
 }: WorkflowCanvasEditorProps) {
   const baseDefinition = initialDefinition ?? BLANK_DEFINITION
-  const [definition, setDefinition] = useState<WorkflowDefinition>(baseDefinition)
-  const [state, setState] = useState<EditorState>(() => seedState(baseDefinition))
-  const [editingId, setEditingId] = useState(initialId)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // The editor is seeded per (mode, source, id, definition) (#966b): opening
+  // another workflow re-seeds every piece of editor state in the same render
+  // the subject changes. Callers pass a stable `initialDefinition`.
+  const editorSeed = useMemo(() => ({ mode, source, initialId, initialDefinition }), [mode, source, initialId, initialDefinition])
+  const [definition, setDefinition] = useKeyedState<WorkflowDefinition>(editorSeed, () => baseDefinition)
+  const [state, setState] = useKeyedState<EditorState>(editorSeed, () => seedState(baseDefinition))
+  const [editingId, setEditingId] = useKeyedState(editorSeed, () => initialId)
+  const [selectedId, setSelectedId] = useKeyedState<string | null>(editorSeed, () => null)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useKeyedState<string | null>(editorSeed, () => null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [isDirty, setIsDirty] = useState(false)
-  const [nodeDrawerDirty, setNodeDrawerDirty] = useState(false)
-  const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false)
-  const [effectiveSource, setEffectiveSource] = useState(source)
-  const [managedCopyOpen, setManagedCopyOpen] = useState(false)
-  const [copyError, setCopyError] = useState<string | null>(null)
-  const [copyFieldErrors, setCopyFieldErrors] = useState<WorkflowDialogFieldErrors>({})
+  const [isDirty, setIsDirty] = useKeyedState(editorSeed, () => false)
+  const [nodeDrawerDirty, setNodeDrawerDirty] = useKeyedState(editorSeed, () => false)
+  const [workflowDetailsOpen, setWorkflowDetailsOpen] = useKeyedState(editorSeed, () => false)
+  const [effectiveSource, setEffectiveSource] = useKeyedState(editorSeed, () => source)
+  // The managed-copy prompt follows the effective source of an edit; the
+  // operator can dismiss it (it is state, keyed by what it is about).
+  const [managedCopyOpen, setManagedCopyOpen] = useKeyedState(`${effectiveSource}\u0000${mode}`, () => mode === 'edit' && (effectiveSource === 'plugin' || effectiveSource === 'agent-package'))
+  const [copyError, setCopyError] = useKeyedState<string | null>(editorSeed, () => null)
+  const [copyFieldErrors, setCopyFieldErrors] = useKeyedState<WorkflowDialogFieldErrors>(editorSeed, () => ({}))
   const [creatingLocalCopy, setCreatingLocalCopy] = useState(false)
-  const [copyName, setCopyName] = useState(baseDefinition.name ? `${baseDefinition.name} Copy` : '')
-  const [copyId, setCopyId] = useState(() => baseDefinition.name ? slugify(`${baseDefinition.name} Copy`) : '')
-  const [copyIdEdited, setCopyIdEdited] = useState(false)
-  const [copyDescription, setCopyDescription] = useState(baseDefinition.description ?? '')
-  const [disableOriginal, setDisableOriginal] = useState(true)
+  const [copyName, setCopyName] = useKeyedState(editorSeed, () => baseDefinition.name ? `${baseDefinition.name} Copy` : '')
+  const [copyId, setCopyId] = useKeyedState(editorSeed, () => baseDefinition.name ? slugify(`${baseDefinition.name} Copy`) : '')
+  const [copyIdEdited, setCopyIdEdited] = useKeyedState(editorSeed, () => false)
+  const [copyDescription, setCopyDescription] = useKeyedState(editorSeed, () => baseDefinition.description ?? '')
+  const [disableOriginal, setDisableOriginal] = useKeyedState(editorSeed, () => true)
   const [paletteCollapsed, setPaletteCollapsed] = useState(() => (
     typeof window !== 'undefined'
     && typeof window.matchMedia === 'function'
     && window.matchMedia('(max-width: 47.999rem)').matches
   ))
-  const [createSetupOpen, setCreateSetupOpen] = useState(mode === 'create' && !initialDefinition?.id)
+  const [createSetupOpen, setCreateSetupOpen] = useKeyedState(editorSeed, () => mode === 'create' && !initialDefinition?.id)
 
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
   const lastFitViewKeyRef = useRef<string | null>(null)
@@ -359,7 +366,7 @@ export function WorkflowCanvasEditor({
     })
     setWorkflowDetailsOpen(false)
     setSelectedId(id)
-  }, [hasCompletionStep, nodeDrawerDirty, state.order])
+  }, [hasCompletionStep, nodeDrawerDirty, state.order, setError, setIsDirty, setNodeDrawerDirty, setSelectedId, setState, setWorkflowDetailsOpen])
   const openStepPalette = useCallback(() => {
     setPaletteCollapsed(false)
   }, [])
@@ -384,36 +391,11 @@ export function WorkflowCanvasEditor({
   // The guard's API is rebuilt every render (plain functions); the reset
   // effect wants the LATEST reset without re-running on every render.
   const resetUnsavedChangesGuard = useEffectEvent(() => { unsavedChangesGuard.reset() })
-  useEffect(() => {
-    const nextDefinition = initialDefinition ?? BLANK_DEFINITION
-    setDefinition(nextDefinition)
-    setState(seedState(nextDefinition))
-    setEditingId(initialId)
-    setSelectedId(null)
-    resetUnsavedChangesGuard()
-    setIsDirty(false)
-    setNodeDrawerDirty(false)
-    setWorkflowDetailsOpen(false)
-    setError(null)
-    setEffectiveSource(source)
-    setCopyError(null)
-    setCopyFieldErrors({})
-    setCopyName(nextDefinition.name ? `${nextDefinition.name} Copy` : '')
-    setCopyId(nextDefinition.name ? slugify(`${nextDefinition.name} Copy`) : '')
-    setCopyIdEdited(false)
-    setCopyDescription(nextDefinition.description ?? '')
-    setDisableOriginal(true)
-    setCreateSetupOpen(mode === 'create' && !nextDefinition.id)
-  }, [mode, source, initialId, initialDefinition])
-
-  useEffect(() => {
-    if (mode !== 'edit') return
-    if (effectiveSource === 'plugin' || effectiveSource === 'agent-package') {
-      setManagedCopyOpen(true)
-      return
-    }
-    setManagedCopyOpen(false)
-  }, [effectiveSource, mode])
+  // A new subject also forgets any pending exit decision (the state itself
+  // re-seeds through `editorSeed` above). A layout effect: it must settle the
+  // pending navigation as "stay" BEFORE the guard's own clean-again effect
+  // would let it through.
+  useLayoutEffect(() => { resetUnsavedChangesGuard() }, [editorSeed])
 
   useEffect(() => {
     if (state.order.length === 0) return
@@ -463,7 +445,7 @@ export function WorkflowCanvasEditor({
         return changed ? { ...prev, positions: nextPositions, measurements: nextMeasurements } : prev
       })
     },
-    [],
+    [setIsDirty, setState],
   )
   const onNodeClick = useCallback(
     (_e: React.MouseEvent, node: Node) => {
@@ -474,7 +456,7 @@ export function WorkflowCanvasEditor({
       setWorkflowDetailsOpen(false)
       setSelectedId(node.id === TRIGGER_NODE_ID || node.id === APPEND_NODE_ID ? null : node.id)
     },
-    [nodeDrawerDirty, selectedId],
+    [nodeDrawerDirty, selectedId, setError, setSelectedId, setWorkflowDetailsOpen],
   )
   const onPaneClick = useCallback(() => {
     if (nodeDrawerDirty) {
@@ -482,12 +464,12 @@ export function WorkflowCanvasEditor({
       return
     }
     setSelectedId(null)
-  }, [nodeDrawerDirty])
+  }, [nodeDrawerDirty, setError, setSelectedId])
 
   const closeNodeDrawer = useCallback(() => {
     setNodeDrawerDirty(false)
     setSelectedId(null)
-  }, [])
+  }, [setNodeDrawerDirty, setSelectedId])
 
   const openWorkflowDetails = useCallback(() => {
     if (nodeDrawerDirty) {
@@ -496,32 +478,25 @@ export function WorkflowCanvasEditor({
     }
     setSelectedId(null)
     setWorkflowDetailsOpen(true)
-  }, [nodeDrawerDirty])
+  }, [nodeDrawerDirty, setError, setSelectedId, setWorkflowDetailsOpen])
 
   const closeWorkflowDetails = useCallback(() => {
     setWorkflowDetailsOpen(false)
-  }, [])
+  }, [setWorkflowDetailsOpen])
 
   const setDrawerDirty = useCallback((dirty: boolean) => {
     setNodeDrawerDirty(dirty)
     if (dirty) setError(null)
-  }, [])
+  }, [setError, setNodeDrawerDirty])
 
-  const cancelNodeSelectionChangeMessage = useCallback(() => {
-    if (error === NODE_DRAWER_DIRTY_MESSAGE) setError(null)
-  }, [error])
-
-  useEffect(
-    () => {
-      if (!nodeDrawerDirty) cancelNodeSelectionChangeMessage()
-    },
-    [cancelNodeSelectionChangeMessage, nodeDrawerDirty],
-  )
+  // The "apply or cancel first" message is only true while the drawer is
+  // dirty — adjusted during render (#966b).
+  if (!nodeDrawerDirty && error === NODE_DRAWER_DIRTY_MESSAGE) setError(null)
 
   const handleAutoArrange = useCallback(() => {
     setState((prev) => autoArrangeState(prev))
     setIsDirty(true)
-  }, [])
+  }, [setIsDirty, setState])
 
   const handleApply = useCallback(
     (patch: Record<string, unknown>) => {
@@ -562,7 +537,7 @@ export function WorkflowCanvasEditor({
       setNodeDrawerDirty(false)
       setSelectedId(null)
     },
-    [selectedId, state.steps],
+    [selectedId, state.steps, setError, setIsDirty, setNodeDrawerDirty, setSelectedId, setState],
   )
 
   const moveSelectedStep = useCallback((delta: -1 | 1) => {
@@ -577,7 +552,7 @@ export function WorkflowCanvasEditor({
       order.splice(next, 0, moved)
       return autoArrangeState({ ...prev, order })
     })
-  }, [selectedId])
+  }, [selectedId, setIsDirty, setState])
 
   const duplicateSelectedStep = useCallback(() => {
     if (!selectedId) return
@@ -600,7 +575,7 @@ export function WorkflowCanvasEditor({
         positions: { ...prev.positions, [id]: { x: 0, y: 0 } },
       })
     })
-  }, [selectedId])
+  }, [selectedId, setIsDirty, setState])
 
   const deleteSelectedStep = useCallback(() => {
     if (!selectedId) return
@@ -622,7 +597,7 @@ export function WorkflowCanvasEditor({
       })
     })
     setSelectedId(null)
-  }, [selectedId])
+  }, [selectedId, setIsDirty, setSelectedId, setState])
 
   useEffect(() => {
     if (!selectedId) return
