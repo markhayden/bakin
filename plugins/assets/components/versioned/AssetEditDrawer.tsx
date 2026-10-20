@@ -61,7 +61,7 @@ export function AssetEditDrawer({ assetId, initialDescription, initialTags, sugg
       .then((d: { assets?: VersionedAssetSummary[] }) => {
         const all = new Set<string>()
         for (const a of d.assets ?? []) for (const t of a.tags ?? []) all.add(t)
-        setFetchedSuggestions([...all].sort())
+        if (!controller.signal.aborted) setFetchedSuggestions([...all].sort())
       })
       .catch(() => { if (!controller.signal.aborted) setFetchedSuggestions([]) })
     return () => controller.abort()

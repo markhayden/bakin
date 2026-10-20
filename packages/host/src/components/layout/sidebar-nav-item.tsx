@@ -81,21 +81,13 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Zap,
 }
 
-export function resolveNavIcon(name: string | undefined) {
-  return (name && ICONS[name]) || Puzzle
-}
-
 /**
- * The ONE place a nav icon is looked up and rendered. `resolveNavIcon`
- * returns a module-level lucide component (never a component created
- * during render), which the static-components rule cannot see through —
- * the exception lives here so every call site renders `<NavIcon>`.
+ * The ONE place a nav icon is looked up and rendered: a direct map read of a
+ * module-level lucide component (never a component created during render).
  */
 function NavIcon({ name, className }: { name: string | undefined; className: string }) {
-  /* eslint-disable @eslint-react/static-components -- resolveNavIcon returns a stable module-level lucide component; the rule only sees a call result and reports both the lookup and its use */
-  const Icon = resolveNavIcon(name)
+  const Icon = (name && ICONS[name]) || Puzzle
   return <Icon className={className} />
-  /* eslint-enable @eslint-react/static-components */
 }
 
 interface SidebarNavItemProps {

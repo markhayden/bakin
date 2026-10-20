@@ -174,4 +174,23 @@ describe('Header update banner', () => {
       expect(document.documentElement.style.getPropertyValue('--bakin-shell-top')).toBe('8rem')
     })
   })
+
+  it('aborts the version and update-status requests when the header unmounts (#966 leaked fetch)', async () => {
+    const signals = new Map<string, AbortSignal | undefined>()
+    global.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      signals.set(String(input), init?.signal ?? undefined)
+      return new Promise<Response>(() => {}) // never settles — the unmount must not wait on it
+    }) as unknown as typeof global.fetch
+    const view = render(
+      <SidebarContext value={{ collapsed: false, toggle: mock() }}>
+        <Header />
+      </SidebarContext>,
+    )
+    await act(async () => {})
+    expect(signals.get('/api/version')?.aborted).toBe(false)
+    expect(signals.get('/api/update/status')?.aborted).toBe(false)
+    await act(async () => { view.unmount() })
+    expect(signals.get('/api/version')?.aborted).toBe(true)
+    expect(signals.get('/api/update/status')?.aborted).toBe(true)
+  })
 })

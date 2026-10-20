@@ -83,4 +83,24 @@ describe('AssetEditDrawer', () => {
     })
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
+
+  it('aborts the tag-suggestion request on unmount and ignores its late body (#966 leaked fetch)', async () => {
+    let signal: AbortSignal | undefined
+    let resolveBody!: (value: Response) => void
+    globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+      requests.push({ url: String(input), method: init?.method ?? 'GET', body: null })
+      signal = init?.signal ?? undefined
+      return new Promise<Response>((resolve) => { resolveBody = resolve })
+    }) as typeof fetch
+    const view = render(
+      <AssetEditDrawer assetId="asset-launch-hero" initialDescription="Launch hero" initialTags={[]} open onOpenChange={() => {}} />,
+    )
+    await waitFor(() => expect(requests.some((r) => r.url === '/api/plugins/assets/versioned')).toBe(true))
+    expect(signal?.aborted).toBe(false)
+    view.unmount()
+    expect(signal?.aborted).toBe(true)
+    // The body arriving after the abort is dropped — no state update lands on the unmounted drawer.
+    resolveBody(Response.json({ assets: [{ id: 'a', tags: ['late'] }] }))
+    await new Promise((r) => setTimeout(r, 0))
+  })
 })

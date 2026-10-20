@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useNow } from '@makinbakin/sdk/hooks'
 import { Grid } from '@makinbakin/sdk/layout'
 import { StatTile } from '@makinbakin/sdk/patterns'
 
@@ -32,9 +32,10 @@ export function UtilizationTiles({
   resets?: boolean
   now?: number
 }) {
-  // Pure render (#966): the clock is read in a state initializer, not during render.
-  const [mountedNow] = useState(() => Date.now())
-  const now = nowOverride ?? mountedNow
+  // Pure render (#966): the tiles follow the minute clock, so "resets in …"
+  // counts down while the page is open; a caller may pin `now` instead.
+  const tick = useNow()
+  const now = nowOverride ?? tick.getTime()
   if (!spend.facets) return null
 
   const tiles = rules.flatMap((rule) => (

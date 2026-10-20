@@ -6,11 +6,23 @@
  * client-routed element with the row's classes merged in.
  * Contract: storybook/public/lists/list-rows.stories.tsx — InteractiveRows.
  */
-import { describe, expect, it, mock } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import { createRef } from 'react'
 import '../../rtl-settle'
+import * as realRouter from '../../../packages/sdk/src/navigation/router'
+// The client router is the one thing the test environment shims (tests/shims/
+// tanstack-router.ts); PluginLink navigates through this wrapper, so it is
+// the seam where routed activation is observable.
+const push = mock((_to: string) => {})
+mock.module('../../../packages/sdk/src/navigation/router', () => ({
+  ...realRouter,
+  useRouter: () => ({ push, replace: mock(), back: mock() }),
+}))
+import { ListRow, ListRows } from '@makinbakin/sdk/patterns'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+
+beforeEach(() => push.mockClear())
 
 describe('ListRow — interactive surface', () => {
   it('forwards ref to the <li> and routes whole-surface activation through the overlay button', () => {
@@ -62,5 +74,28 @@ describe('ListRow — interactive surface', () => {
     expect(link.className).toContain('absolute')
     link.focus()
     expect(document.activeElement).toBe(link)
+  })
+
+  it('a PluginLink overlay is client-routed: a plain click navigates without a full load, modifier clicks fall through to the browser', () => {
+    render(
+      <ListRows aria-label="Items">
+        <ListRow interactive={{ label: 'Open item', render: <PluginLink to="/items/1" /> }}>
+          Item
+        </ListRow>
+      </ListRows>,
+    )
+    const link = screen.getByRole('link', { name: 'Open item' })
+    expect(link.getAttribute('href')).toBe('/items/1')
+    expect(link.getAttribute('data-slot')).toBe('surface-overlay')
+    // Keyboard reach: a native anchor with an href — focusable and Enter-activatable by the platform.
+    expect(link.tabIndex).toBe(0)
+    link.focus()
+    expect(document.activeElement).toBe(link)
+    const plain = fireEvent.click(link, { button: 0 })
+    expect(plain).toBe(false) // default prevented: the router took it
+    expect(push).toHaveBeenCalledWith('/items/1')
+    const modified = fireEvent.click(link, { button: 0, metaKey: true })
+    expect(modified).toBe(true) // left to the browser (new tab)
+    expect(push).toHaveBeenCalledTimes(1)
   })
 })

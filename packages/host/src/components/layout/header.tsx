@@ -178,7 +178,7 @@ export function Header() {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/version', { signal: controller.signal }).then(r => r.json()).then(d => setVersion(d.version)).catch(() => {})
+    fetch('/api/version', { signal: controller.signal }).then(r => r.json()).then(d => { if (!controller.signal.aborted) setVersion(d.version) }).catch(() => {})
     return () => controller.abort()
   }, [])
 
@@ -187,7 +187,7 @@ export function Header() {
     fetch('/api/update/status', { signal: controller.signal })
       .then(r => r.json())
       .then(d => {
-        if (d && typeof d === 'object') setUpdateStatus(d as BakinUpdateStatus)
+        if (!controller.signal.aborted && d && typeof d === 'object') setUpdateStatus(d as BakinUpdateStatus)
       })
       .catch(() => {})
     return () => controller.abort()

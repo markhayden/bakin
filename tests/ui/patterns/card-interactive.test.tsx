@@ -4,10 +4,20 @@
  * exception) — whole-surface activation with an accessible name, nested
  * controls independent, a `render` overlay merged and focusable.
  */
-import { describe, expect, it, mock } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { Card } from '@makinbakin/sdk/ui'
+import { createRef } from 'react'
 import '../../rtl-settle'
+import * as realRouter from '../../../packages/sdk/src/navigation/router'
+const push = mock((_to: string) => {})
+mock.module('../../../packages/sdk/src/navigation/router', () => ({
+  ...realRouter,
+  useRouter: () => ({ push, replace: mock(), back: mock() }),
+}))
+import { Card } from '@makinbakin/sdk/ui'
+import { PluginLink } from '@makinbakin/sdk/navigation'
+
+beforeEach(() => push.mockClear())
 
 describe('Card — interactive surface', () => {
   it('routes whole-card activation through the overlay button and leaves nested controls independent', () => {
@@ -40,5 +50,27 @@ describe('Card — interactive surface', () => {
     expect(link.className).toContain('custom-link')
     link.focus()
     expect(document.activeElement).toBe(link)
+  })
+
+  it('forwards ref to the card element (ref is a plain prop)', () => {
+    const ref = createRef<HTMLDivElement>()
+    render(<Card ref={ref}><p>Asset</p></Card>)
+    const card = document.querySelector('[data-slot="card"]')
+    expect(card).not.toBeNull()
+    expect(ref.current).toBe(card as HTMLDivElement)
+  })
+
+  it('a PluginLink overlay is client-routed: a plain click navigates, a modifier click falls through', () => {
+    render(
+      <Card interactive={{ label: 'Open the asset', render: <PluginLink to="/assets/1" /> }}>
+        <p>Asset</p>
+      </Card>,
+    )
+    const link = screen.getByRole('link', { name: 'Open the asset' })
+    expect(link.tabIndex).toBe(0)
+    expect(fireEvent.click(link, { button: 0 })).toBe(false)
+    expect(push).toHaveBeenCalledWith('/assets/1')
+    expect(fireEvent.click(link, { button: 0, ctrlKey: true })).toBe(true)
+    expect(push).toHaveBeenCalledTimes(1)
   })
 })

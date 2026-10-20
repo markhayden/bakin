@@ -87,7 +87,7 @@ export function WorkflowAgentSelect({
       .then((response) => response.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data as { teams?: SelectableTeam[] })?.teams
-        if (Array.isArray(list)) setTeams(list)
+        if (!controller.signal.aborted && Array.isArray(list)) setTeams(list)
       })
       .catch(() => {})
     return () => controller.abort()

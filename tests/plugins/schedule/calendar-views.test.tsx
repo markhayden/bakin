@@ -4,7 +4,7 @@
  * placement math lives in lib/occurrences.ts (kind-aware, tz/DST-correct);
  * the views are pure renderers of fetched instants in browser-local time.
  */
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -453,6 +453,27 @@ describe('Schedule calendar views (occurrence-fed)', () => {
     })
 
     expect(screen.queryByText('ghost-job')).toBeNull()
+  })
+  it('Month: "Today" reads the clock at the click — after a rollover under an open view it lands on the new month (#966)', async () => {
+    setSystemTime(new Date(2026, 9, 15, 12, 0, 0)) // October
+    try {
+      await act(async () => {
+        render(<CalendarMonthly jobs={[]} onSelectJob={() => {}} />)
+      })
+      const nav = screen.getByLabelText('Month navigation')
+      expect(nav.textContent).toMatch(/Oct/)
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Next month' })) })
+      expect(nav.textContent).toMatch(/Nov/)
+      setSystemTime(new Date(2026, 10, 3, 12, 0, 0)) // the clock rolls into November while the view is open
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Today' })) })
+      expect(nav.textContent).toMatch(/Nov/)
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Previous month' })) })
+      expect(nav.textContent).toMatch(/Oct/)
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Today' })) })
+      expect(nav.textContent).toMatch(/Nov/) // a mount-time clock would have gone back to October
+    } finally {
+      setSystemTime()
+    }
   })
 })
 

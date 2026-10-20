@@ -121,7 +121,8 @@ const eslintConfig = defineConfig([
     ...eslintReact.configs["recommended-typescript"],
     rules: {
       ...eslintReact.configs["recommended-typescript"].rules,
-      // Duplicate of react-hooks/exhaustive-deps — react-hooks owns hooks.
+      // Duplicates of react-hooks/rules-of-hooks + exhaustive-deps — react-hooks owns hooks.
+      "@eslint-react/rules-of-hooks": "off",
       "@eslint-react/exhaustive-deps": "off",
       // Off by decision (spec D4.4): index keys are correct for the static
       // lists this flags; the `Ref` name suffix is a style never adopted.

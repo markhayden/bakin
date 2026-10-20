@@ -1,9 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Clock } from 'lucide-react'
 import { CalendarGrid } from '@makinbakin/sdk/patterns'
-import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
+import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent, useNow } from '@makinbakin/sdk/hooks'
 import { OccurrenceCard, jobsById } from './calendar-weekly'
 import { EventChip, eventInstant } from './event-popover'
 import { Text } from '@makinbakin/sdk/ui'
@@ -20,8 +20,9 @@ export function CalendarToday({
   jobs: ScheduleJob[]
   onSelectJob: (job: ScheduleJob) => void
 }) {
-  // Pure render (#966): the view's "now" is fixed at mount.
-  const [now] = useState(() => new Date())
+  // Pure render (#966): the day view follows the minute clock, so the date
+  // heading and the day window roll over at midnight.
+  const now = useNow()
 
   const dayStart = useMemo(() => {
     const d = new Date()
