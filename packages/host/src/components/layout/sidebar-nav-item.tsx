@@ -85,6 +85,19 @@ export function resolveNavIcon(name: string | undefined) {
   return (name && ICONS[name]) || Puzzle
 }
 
+/**
+ * The ONE place a nav icon is looked up and rendered. `resolveNavIcon`
+ * returns a module-level lucide component (never a component created
+ * during render), which the static-components rule cannot see through —
+ * the exception lives here so every call site renders `<NavIcon>`.
+ */
+function NavIcon({ name, className }: { name: string | undefined; className: string }) {
+  /* eslint-disable @eslint-react/static-components -- resolveNavIcon returns a stable module-level lucide component; the rule only sees a call result and reports both the lookup and its use */
+  const Icon = resolveNavIcon(name)
+  return <Icon className={className} />
+  /* eslint-enable @eslint-react/static-components */
+}
+
 interface SidebarNavItemProps {
   item: NavItem
   collapsed: boolean
@@ -113,7 +126,6 @@ function CollapsedNavGroup({
 }: Pick<SidebarNavItemProps, 'item' | 'pathname' | 'badges' | 'onNavigate'>) {
   const [open, setOpen] = useState(false)
   const suppressRestoredFocusRef = useRef(false)
-  const Icon = resolveNavIcon(item.icon)
   const active = isNavActive(pathname, item.href)
   const parentBadge = badges.get(item.id) ?? item.badge
   const rollupTone = collapsedParentRollupTone(item, parentBadge, badges)
@@ -142,7 +154,7 @@ function CollapsedNavGroup({
         className={cn(navRowClass(active, true), 'relative')}
         aria-label={`${item.label}${rollupAriaSuffix}`}
       >
-        <Icon className="size-bakin-4 shrink-0" />
+        <NavIcon name={item.icon} className="size-bakin-4 shrink-0" />
         {rollupTone && <NavBadgeDot tone={rollupTone} />}
       </PopoverTrigger>
       <PopoverContent side="right" align="start" sideOffset={8} className="w-48 gap-0.5 p-1.5">
@@ -150,7 +162,6 @@ function CollapsedNavGroup({
           <PopoverTitle>{item.label}</PopoverTitle>
         </PopoverHeader>
         {item.children!.map((child) => {
-          const ChildIcon = resolveNavIcon(child.icon)
           const childActive = isNavActive(pathname, child.href)
           const childBadge = badges.get(child.id) ?? child.badge
           return (
@@ -164,7 +175,7 @@ function CollapsedNavGroup({
               aria-current={childActive ? 'page' : undefined}
               aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
             >
-              <ChildIcon className="size-3.5 shrink-0" />
+              <NavIcon name={child.icon} className="size-3.5 shrink-0" />
               <span className="min-w-0 flex-1 truncate">{child.label}</span>
               <NavBadge badge={childBadge} />
             </Link>
@@ -184,7 +195,6 @@ export function SidebarNavItem({
   onToggle,
   onNavigate,
 }: SidebarNavItemProps) {
-  const Icon = resolveNavIcon(item.icon)
   const hasChildren = Boolean(item.children?.length)
   const active = isNavActive(pathname, item.href)
   const badgeFor = (target: NavItem): NavBadgeData | undefined => badges.get(target.id) ?? target.badge
@@ -206,7 +216,7 @@ export function SidebarNavItem({
           aria-controls={groupId}
           aria-label={`${item.label}${navBadgeAriaSuffix(headerBadge)}`}
         >
-          <Icon className="size-bakin-4 shrink-0" />
+          <NavIcon name={item.icon} className="size-bakin-4 shrink-0" />
           <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
           <NavBadge badge={headerBadge} />
           <ChevronRight
@@ -220,7 +230,6 @@ export function SidebarNavItem({
             className="mx-bakin-1 mb-bakin-1 mt-bakin-1 flex flex-col overflow-hidden rounded-bakin-control bg-bakin-border-subtle/20 py-bakin-1"
           >
             {item.children!.map((child) => {
-              const ChildIcon = resolveNavIcon(child.icon)
               const childActive = isNavActive(pathname, child.href)
               const childBadge = badgeFor(child)
               return (
@@ -234,7 +243,7 @@ export function SidebarNavItem({
                   aria-current={childActive ? 'page' : undefined}
                   aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
                 >
-                  <ChildIcon className="size-3.5 shrink-0" />
+                  <NavIcon name={child.icon} className="size-3.5 shrink-0" />
                   <span className="min-w-0 flex-1 truncate">{child.label}</span>
                   <NavBadge badge={childBadge} />
                 </Link>
@@ -260,7 +269,7 @@ export function SidebarNavItem({
       aria-current={active ? 'page' : undefined}
       aria-label={`${item.label}${navBadgeAriaSuffix(flatBadge)}`}
     >
-      <Icon className="size-bakin-4 shrink-0" />
+      <NavIcon name={item.icon} className="size-bakin-4 shrink-0" />
       {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
       {!collapsed && <NavBadge badge={flatBadge} />}
       {collapsed && flatTone && <NavBadgeDot tone={flatTone} />}

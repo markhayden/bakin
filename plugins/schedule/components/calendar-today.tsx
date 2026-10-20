@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Clock } from 'lucide-react'
 import { CalendarGrid } from '@makinbakin/sdk/patterns'
 import { useOccurrences, type ScheduleJob, type ScheduleOccurrence, type ScheduledDomainEvent } from '@makinbakin/sdk/hooks'
@@ -20,7 +20,8 @@ export function CalendarToday({
   jobs: ScheduleJob[]
   onSelectJob: (job: ScheduleJob) => void
 }) {
-  const now = new Date()
+  // Pure render (#966): the view's "now" is fixed at mount.
+  const [now] = useState(() => new Date())
 
   const dayStart = useMemo(() => {
     const d = new Date()

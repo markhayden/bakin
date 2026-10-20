@@ -291,7 +291,9 @@ export function CalendarGrid<T extends CalendarGridItem>({
   className,
 }: CalendarGridProps<T>) {
   const paged = scroll === 'page'
-  const currentInstant = now ?? new Date()
+  // Pure render (#966): the fallback instant is fixed at mount, never re-read per render.
+  const [mountedAt] = React.useState(() => new Date())
+  const currentInstant = now ?? mountedAt
   const todayKey = localDayKey(currentInstant)
   const todayStart = startOfLocalDay(currentInstant).getTime()
 

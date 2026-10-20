@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { Grid } from '@makinbakin/sdk/layout'
 import { StatTile } from '@makinbakin/sdk/patterns'
 
@@ -23,7 +24,7 @@ export function UtilizationTiles({
   rules,
   spend,
   resets = false,
-  now = Date.now(),
+  now: nowOverride,
 }: {
   rules: BudgetRuleWire[]
   spend: SpendResponse
@@ -31,6 +32,9 @@ export function UtilizationTiles({
   resets?: boolean
   now?: number
 }) {
+  // Pure render (#966): the clock is read in a state initializer, not during render.
+  const [mountedNow] = useState(() => Date.now())
+  const now = nowOverride ?? mountedNow
   if (!spend.facets) return null
 
   const tiles = rules.flatMap((rule) => (

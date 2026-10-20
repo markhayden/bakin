@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Feedback } from '@dnd-kit/dom'
 import { useSortable } from '@dnd-kit/react/sortable'
 import {
@@ -148,7 +148,9 @@ export function TaskCardContent({
   }, [childTaskId])
   const isComplete = task.checked || columnId === 'done' || columnId === 'archived'
   const availableAtMs = getTaskAvailableAtMs(task)
-  const isFutureScheduled = availableAtMs !== null && availableAtMs > Date.now()
+  // Pure render (#966): compare against the instant the card mounted (cards re-mount on column moves).
+  const [mountedAt] = useState(() => Date.now())
+  const isFutureScheduled = availableAtMs !== null && availableAtMs > mountedAt
   const dispatchFailure = getLatestDispatchFailure(task.log)
 
   const hasMetadata = Boolean(task.workflowId || task.projectId || task.brandId || (!task.brandId && warnUnbranded && !isComplete))

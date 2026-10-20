@@ -21,7 +21,8 @@ export function CalendarMonthly({
   jobs: ScheduleJob[]
   onSelectJob: (job: ScheduleJob) => void
 }) {
-  const now = new Date()
+  // Pure render (#966): the view's "now" is fixed at mount.
+  const [now] = useState(() => new Date())
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth())
 
