@@ -153,11 +153,16 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean; force?: 
   try {
     const { searchModelsComponent } = await import('../../core/onboarding/search-models')
     const modelsCheck = await searchModelsComponent.check()
-    if (modelsCheck && modelsCheck.status !== 'ok') {
+    if (modelsCheck.status === 'missing') {
       console.log('WARNING: search models are missing — this reindex will populate tables, but semantic search stays dead until `bakin install search-models` runs (then reindex again).')
+    } else if (modelsCheck.status !== 'ok') {
+      // Anything else (an old download that still works, a model this
+      // machine can't run) says what it means — never "missing".
+      console.log(`WARNING: ${modelsCheck.message}${modelsCheck.remediation ? ` ${modelsCheck.remediation}` : ''}`)
     }
-  } catch {
+  } catch (err) {
     // Pre-flight is advisory only — never block a reindex on it.
+    console.log(`WARNING: could not check the search models before reindexing (${err instanceof Error ? err.message : String(err)}).`)
   }
 
   const params: string[] = []

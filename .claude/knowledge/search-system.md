@@ -834,11 +834,15 @@ what 0.3's default pull already fetches. A variant pull installs as
 `<name>--antfly-<hash>`; the installer moves it to `antflydb/clipclap` (old
 install renamed aside, restored on failure, swept after), and an existing
 default-layout install counts as needing a re-pull (`modelVariantMismatch`)
-— and the check says so (`warn`, "not the pinned download"): the check
-and the installer must agree on what needs work, because a terminal
-`bakin install` only asks when the check is not ok, and an `ok` that the
-installer disagreed with once skipped the re-pull as "not approved". The
-typed command is the approval whenever there is nothing to ask.
+— and the check says so (`broken`, "not the pinned download … Search still
+works here"; also when the old layout can't load). `broken` = an install
+fixes it, so onboarding installs it and the wizard asks; `warn` is kept for
+a model that can't load with nothing to install. The check and the installer
+must agree on what needs work: a terminal `bakin install` only asks when the
+check is not ok, and an `ok` the installer disagreed with once skipped the
+re-pull as "not approved". The typed command is the approval whenever there
+is nothing to ask. `bakin reindex`'s pre-flight prints the check's own
+message — only `missing` means semantic search is dead.
 Pruning the ONNX files in place does NOT work — the engine checks the
 download marker (`error.InvalidManagedDownload`). The safety net stays for
 the next model that can't load: `model-load.ts` asks the engine itself
