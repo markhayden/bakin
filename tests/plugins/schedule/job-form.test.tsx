@@ -9,7 +9,11 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
+// Captured BEFORE the module is mocked (live namespace binding): the form's
+// render helpers (useKeyedState) stay real under the narrow roster mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useMainAgentId: () => 'main',
   useAgentList: () => [],
   useAgentStore: (selector: (state: { displaySettings: Record<string, never>; teams: never[] }) => unknown) => selector({ displaySettings: {}, teams: [] }),
@@ -69,5 +73,21 @@ describe('JobForm task prompt gate', () => {
 
     await act(async () => { fireEvent.change(screen.getByRole('textbox', { name: /task prompt/i }), { target: { value: 'Summarize yesterday for the team' } }) })
     expect(isDisabled(submitButton())).toBe(false)
+  })
+})
+
+describe('JobForm seeding (#966b)', () => {
+  it('a different initial re-seeds every field in the same render; the same initial keeps the operator\'s edits', async () => {
+    const first = { name: 'Nightly digest', schedule: '0 3 * * *', taskPrompt: 'Summarize the day for the team', owner: 'main' }
+    const view = render(<JobForm mode="edit" submitting={false} onCancel={() => {}} onSubmit={async () => {}} initial={first} />)
+    const name = () => screen.getByRole('textbox', { name: /^name/i }) as HTMLInputElement
+    expect(name().value).toBe('Nightly digest')
+    await act(async () => { fireEvent.change(name(), { target: { value: 'Nightly digest (edited)' } }) })
+    view.rerender(<JobForm mode="edit" submitting={false} onCancel={() => {}} onSubmit={async () => {}} initial={first} />)
+    expect(name().value).toBe('Nightly digest (edited)')
+    const second = { name: 'Weekly report', schedule: '0 9 * * 1', taskPrompt: 'Write the weekly report', owner: 'main' }
+    view.rerender(<JobForm mode="edit" submitting={false} onCancel={() => {}} onSubmit={async () => {}} initial={second} />)
+    expect(name().value).toBe('Weekly report')
+    expect((screen.getByLabelText('Schedule') as HTMLInputElement).value).toBe('0 9 * * 1')
   })
 })

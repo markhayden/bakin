@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRunHistory } from '@makinbakin/sdk/hooks'
+import { useKeyedState, useRunHistory } from '@makinbakin/sdk/hooks'
 import {
   ListRow,
   ListRows,
@@ -22,13 +21,9 @@ function runTone(status: string): StatusTone {
 
 export function RunHistory({ jobId }: { jobId: string }) {
   const { runs, loading } = useRunHistory(jobId)
-  const [page, setPage] = useState(1)
-  const [showAll, setShowAll] = useState(false)
-
-  useEffect(() => {
-    setPage(1)
-    setShowAll(false)
-  }, [jobId])
+  // Paging belongs to one job (#966b): another job starts on page one, collapsed.
+  const [page, setPage] = useKeyedState(jobId, () => 1)
+  const [showAll, setShowAll] = useKeyedState(jobId, () => false)
 
   if (loading) {
     return (
