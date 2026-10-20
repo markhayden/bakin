@@ -4,7 +4,7 @@
  * staging-clone flow for monorepo subpath installs. Consent gates run
  * against the remote/staged manifest BEFORE any working-tree mutation.
  */
-import { existsSync, cpSync, rmSync } from 'fs'
+import { existsSync, cpSync, rmSync, openSync, readSync, closeSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { join } from 'path'
 import { createHash } from 'crypto'
@@ -58,25 +58,47 @@ export function githubCloneUrl(source: string): string {
  */
 /** How many gitlink paths a refusal names. */
 const GITLINKS_NAMED = 5
-/** A mode-only listing is ~7 bytes per entry; this covers tens of millions of entries without a cap. */
-const LISTING_MAX_BUFFER = 256 * 1024 * 1024
+/** The read window of the listing scan — the only listing bytes ever in memory at once. */
+const LISTING_CHUNK_BYTES = 64 * 1024
 
-/** Gitlink entries in a `git ls-tree -r --format=%(objectmode)` listing (one mode per line). */
-export function countGitlinkModes(listing: string): number {
-  let total = 0
-  for (const line of listing.split('\n')) if (line === '160000') total += 1
-  return total
-}
-
-/** Up to `limit` gitlink paths in a `--format=%(objectmode) %(path)` listing. */
-export function gitlinkPathsIn(listing: string, limit = GITLINKS_NAMED): string[] {
+/**
+ * Scan a `git ls-tree -r` listing written to `path` in fixed-size chunks,
+ * retaining only the gitlink count and up to `limit` gitlink paths (review
+ * r13 #1): a pathological tree never allocates a line array in the heap.
+ * A line is `<mode> <type> <sha>\t<path>` — plain `ls-tree` output, no
+ * `--format` (that needs git 2.36; this reads what every git prints).
+ */
+export function scanGitlinkListing(path: string, options: { limit?: number; chunkBytes?: number } = {}): { total: number; paths: string[] } {
+  const limit = options.limit ?? GITLINKS_NAMED
+  const buffer = Buffer.alloc(options.chunkBytes ?? LISTING_CHUNK_BYTES)
+  const decoder = new TextDecoder()
   const paths: string[] = []
-  for (const line of listing.split('\n')) {
-    if (!line.startsWith('160000 ')) continue
-    paths.push(line.slice('160000 '.length))
-    if (paths.length >= limit) break
+  let total = 0
+  let carry = ''
+  const take = (line: string): void => {
+    if (!line.startsWith('160000 ')) return
+    total += 1
+    if (paths.length < limit) paths.push(line.slice(line.indexOf('\t') + 1))
   }
-  return paths
+  const fd = openSync(path, 'r')
+  try {
+    for (;;) {
+      const read = readSync(fd, buffer, 0, buffer.length, null)
+      if (read === 0) break
+      carry += decoder.decode(buffer.subarray(0, read), { stream: true })
+      let newline = carry.indexOf('\n')
+      while (newline !== -1) {
+        take(carry.slice(0, newline))
+        carry = carry.slice(newline + 1)
+        newline = carry.indexOf('\n')
+      }
+    }
+    carry += decoder.decode()
+    if (carry) take(carry)
+  } finally {
+    closeSync(fd)
+  }
+  return { total, paths }
 }
 
 /**
@@ -92,19 +114,28 @@ export function gitlinkPathsIn(listing: string, limit = GITLINKS_NAMED): string[
  * SYNCHRONOUS on purpose (review r12 #1): a preview holds no resources, so
  * nothing in a lane may await between its reads of the installed
  * repository — another operation could replace or remove it in between.
- * The listing asks git for the object MODE alone (~7 bytes per entry, no
- * paths), so a large gitlink-free tree never approaches a buffer cap
- * (review r11 #2); paths are listed only to name a refusal.
+ * The listing goes to a private scan file and is read back in fixed chunks
+ * (`scanGitlinkListing`), so neither a buffer cap nor the heap bounds the
+ * size of a tree the lane can judge.
  */
 function assertNoGitlinks(id: string, repoDir: string, sha: string, subpath?: string): void {
-  const scope = subpath ? [subpath] : []
-  const list = (format: string): string => execFileSync('git', gitArgs(['ls-tree', '-r', `--format=${format}`, '--', sha, ...scope]), {
-    cwd: repoDir, encoding: 'utf-8', maxBuffer: LISTING_MAX_BUFFER, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-  })
-  const total = countGitlinkModes(list('%(objectmode)'))
-  if (total === 0) return
-  const paths = gitlinkPathsIn(list('%(objectmode) %(path)'))
-  throw new UpgradeRefusedError(`${id}: ${sha.slice(0, 7)}${subpath ? ` (${subpath})` : ''} contains git submodules (${paths.join(', ')}${total > paths.length ? ', …' : ''}), which the upgrade cannot verify. Vendor them into the tree or reinstall.`)
+  const scanFile = join(getContentDir(), 'plugins', `.upgrade-scan-${id}-${Date.now()}-${process.pid}`)
+  const out = openSync(scanFile, 'w')
+  let scan: { total: number; paths: string[] }
+  try {
+    try {
+      execFileSync('git', gitArgs(['ls-tree', '-r', '--', sha, ...(subpath ? [subpath] : [])]), {
+        cwd: repoDir, stdio: ['ignore', out, 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      })
+    } finally {
+      closeSync(out)
+    }
+    scan = scanGitlinkListing(scanFile)
+  } finally {
+    rmSync(scanFile, { force: true })
+  }
+  if (scan.total === 0) return
+  throw new UpgradeRefusedError(`${id}: ${sha.slice(0, 7)}${subpath ? ` (${subpath})` : ''} contains git submodules (${scan.paths.join(', ')}${scan.total > scan.paths.length ? ', …' : ''}), which the upgrade cannot verify. Vendor them into the tree or reinstall.`)
 }
 
 /** The manifest at an exact commit — the fetched ref's peeled sha, never a remote-tracking name a tag or a qualified ref has no counterpart for. */

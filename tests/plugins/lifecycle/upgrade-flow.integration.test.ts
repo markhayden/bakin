@@ -358,6 +358,23 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
   })
 
+  it('a preview holds nothing and reads the installed repository SYNCHRONOUSLY: a replacement queued right behind the call cannot interleave with its reads (review r12 #1)', async () => {
+    const repo = createBareRepo(testDir, 'preview-race-fixture', fixturePluginFiles({ id: 'previewrace', version: '1.0.0' }))
+    cloneRepoIntoPluginsDir({ pluginId: 'previewrace', cloneUrl: repo.cloneUrl })
+    const pluginDir = join(testDir, 'plugins', 'previewrace')
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'previewrace', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'main', commitSha: headSha(pluginDir), version: '1.0.0' })))
+    const bumped = pushCommit(repo.workingClonePath, fixturePluginFiles({ id: 'previewrace', version: '1.1.0' }), 'bump')
+    // Unowned, previewOnly: every read of the installed clone happens before the call yields.
+    const preview = upgradePluginUnowned('previewrace', { previewOnly: true })
+    // A removal "queued behind" the preview: synchronous, right after the call returned its promise.
+    rmSync(pluginDir, { recursive: true, force: true })
+    const result = await preview
+    expect(result.noop).toBe(false)
+    expect(result.identity).toEqual({ version: '1.1.0', sha: bumped })
+    expect(result.ready ?? result.awaitingConsent).toBe(true)
+    expect(existsSync(pluginDir)).toBe(false) // the preview never put it back
+  })
+
   it('refuses to upgrade when remote history was rewritten (force-push)', async () => {
     const repo = createBareRepo(testDir, 'rewind-fixture', fixturePluginFiles({ id: 'rewind', version: '1.0.0' }))
     cloneRepoIntoPluginsDir({ pluginId: 'rewind', cloneUrl: repo.cloneUrl })

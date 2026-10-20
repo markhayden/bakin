@@ -164,10 +164,11 @@ subpath; a submodule elsewhere in a monorepo is nobody's concern). The scan
 is SYNCHRONOUS like every other read a lane makes — a preview holds no
 resources, so no `await` may sit between its reads of the installed
 repository (another operation could replace or remove it in between) — and
-asks git for the object MODE alone (`ls-tree -r --format=%(objectmode)`,
-~7 bytes per entry, so a large gitlink-free tree never approaches a buffer
-cap); paths are listed only to name a refusal, and a genuine no-op never
-lists the tree. Within a
+writes the plain `ls-tree -r` listing to a private scan file read back in
+fixed 64 KiB chunks (`scanGitlinkListing`: only a count and five paths are
+ever retained, so neither a buffer cap nor the heap bounds the tree it can
+judge, and no `--format` means no git-version floor); a genuine no-op
+never lists the tree. Within a
 pass two attempts for one subject never overlap (`Pass.active`): a repeat
 asked for while the first is in flight waits for it, so the engine's
 one-token-per-subject rule never discards a result that already landed.
