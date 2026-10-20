@@ -46,7 +46,7 @@ export function RepairDialog({
 }) {
   const repair = useRepairPlan(target)
   const { planRepair } = repair
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [announcement, setAnnouncement] = useState('')
 
   useEffect(() => {

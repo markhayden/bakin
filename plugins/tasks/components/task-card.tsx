@@ -18,7 +18,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react'
-import { useAgent, useAgentColor, useAgentDisplayName } from '@makinbakin/sdk/hooks'
+import { useAgent, useAgentColor, useAgentDisplayName, useNow } from '@makinbakin/sdk/hooks'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import {
   AgentAvatar,
@@ -148,7 +148,10 @@ export function TaskCardContent({
   }, [childTaskId])
   const isComplete = task.checked || columnId === 'done' || columnId === 'archived'
   const availableAtMs = getTaskAvailableAtMs(task)
-  const isFutureScheduled = availableAtMs !== null && availableAtMs > Date.now()
+  // Pure render (#966): the card follows the minute clock, so a scheduled task
+  // stops reading as "later" once its time arrives while the board is open.
+  const now = useNow()
+  const isFutureScheduled = availableAtMs !== null && availableAtMs > now.getTime()
   const dispatchFailure = getLatestDispatchFailure(task.log)
 
   const hasMetadata = Boolean(task.workflowId || task.projectId || task.brandId || (!task.brandId && warnUnbranded && !isComplete))

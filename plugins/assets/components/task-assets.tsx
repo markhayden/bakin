@@ -43,7 +43,11 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
   useEffect(() => {
     setAssets([]); setLoading(true); setError(null); setUnlinkError(null)
     void fetchAssets()
-    return () => { requestId.current++ }
+    // Invalidate in-flight responses for the previous task. The counter is a
+    // plain ref (never a node), captured here so the cleanup reads the same
+    // object the effect saw.
+    const requests = requestId
+    return () => { requests.current++ }
   }, [fetchAssets])
 
   // Auto-refresh on asset + workflow events for this task (over the shell's

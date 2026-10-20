@@ -38,7 +38,7 @@ export function AgentFilter({
   compact = false,
   className,
 }: AgentFilterProps) {
-  const parentOwnsIndicator = React.useContext(FilterIndicatorContext)
+  const parentOwnsIndicator = React.use(FilterIndicatorContext)
   const itemRefs = React.useRef<Array<HTMLButtonElement | null>>([])
   const items = React.useMemo<AgentFilterOption[]>(
     () => [{ value: allValue, label: allLabel }, ...options],

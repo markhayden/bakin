@@ -63,7 +63,7 @@ export function Page({
   ...props
 }: PageProps) {
   return (
-    <PageScrollContext.Provider value={scroll}>
+    <PageScrollContext value={scroll}>
       <PageShell
         {...props}
         className={cn(scroll === 'contained' && containedClasses, className)}
@@ -76,6 +76,6 @@ export function Page({
       >
         {children}
       </PageShell>
-    </PageScrollContext.Provider>
+    </PageScrollContext>
   )
 }

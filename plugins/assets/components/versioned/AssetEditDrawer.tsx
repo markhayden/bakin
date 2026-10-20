@@ -55,14 +55,16 @@ export function AssetEditDrawer({ assetId, initialDescription, initialTags, sugg
 
   useEffect(() => {
     if (!open || suggestions !== undefined || fetchedSuggestions !== null) return
-    fetch(VERSIONED_API)
+    const controller = new AbortController()
+    fetch(VERSIONED_API, { signal: controller.signal })
       .then(r => r.ok ? r.json() : { assets: [] })
       .then((d: { assets?: VersionedAssetSummary[] }) => {
         const all = new Set<string>()
         for (const a of d.assets ?? []) for (const t of a.tags ?? []) all.add(t)
-        setFetchedSuggestions([...all].sort())
+        if (!controller.signal.aborted) setFetchedSuggestions([...all].sort())
       })
-      .catch(() => setFetchedSuggestions([]))
+      .catch(() => { if (!controller.signal.aborted) setFetchedSuggestions([]) })
+    return () => controller.abort()
   }, [open, suggestions, fetchedSuggestions])
 
   const dirty = description !== initialDescription || tags.join('\n') !== initialTags.join('\n')

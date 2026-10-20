@@ -113,7 +113,7 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
   )
 
   // Live in-flight indicators: seed from the list, keep fresh via events.
-  const [streamingIds, setStreamingIds] = useState<ReadonlySet<string>>(new Set())
+  const [streamingIds, setStreamingIds] = useState<ReadonlySet<string>>(() => new Set())
   useEffect(() => {
     setStreamingIds(new Set(chats.filter((c) => c.streaming).map((c) => c.id)))
   }, [chats])

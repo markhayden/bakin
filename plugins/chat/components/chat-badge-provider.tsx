@@ -25,13 +25,15 @@ export function ChatBadgeProvider() {
   const settingsRef = useRef<ChatAttentionSettings>(DEFAULT_ATTENTION_SETTINGS)
 
   useEffect(() => {
-    void fetch('/api/plugin-settings/chat')
+    const controller = new AbortController()
+    void fetch('/api/plugin-settings/chat', { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) return
         const values = (await res.json()) as Partial<ChatAttentionSettings>
         settingsRef.current = { ...DEFAULT_ATTENTION_SETTINGS, ...values }
       })
       .catch(() => {})
+    return () => controller.abort()
   }, [])
 
   useConversationAttention({

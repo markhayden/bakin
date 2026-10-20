@@ -420,3 +420,38 @@ popup; Base UI's closed-popup Escape shortcut clears the selection.
 Use `WorkspacePage viewport="visual"` and `WorkspacePageBody inputAccessory` for persistent input controls above a software keyboard. The kit owns visible-viewport measurement, listener cleanup, host intersection, and safe-area padding. Default host geometry and flow pages keep their existing behavior. The editor owns its internal scroll.
 
 Public references: `pages/workspace-page.stories.tsx — KeyboardAwareInput` and `recipes/terminal-input.stories.tsx — CompactAndExpanded`. Compose `/ui` Button, `/layout` Inline/Stack/Panel, and `/patterns` WorkspacePage; terminal byte encoding and ownership stay in the plugin. Keep 44px compact key targets, normal keyboard traversal, one click per action, and pointer focus preservation. Expanded keys use a bounded scrollable Panel above the compact groups. Do not set global viewport/body styles or overlay the editor with controls.
+
+## React lint contract (#966)
+
+`eslint.config.mjs` runs `@eslint-react/eslint-plugin`'s `recommended-typescript`
+preset on every `.tsx` file next to `eslint-plugin-react-hooks` (the ONE hooks
+authority — the preset's duplicate `exhaustive-deps` is off). The gate is
+zero-warning (`bun run lint` passes `--max-warnings 0`): a rule is on and
+clean, off with a reason in the config, or excepted on one line with a
+reason. The two reasoned offs are `no-array-index-key` (index keys are
+correct for the static lists it flags) and `naming-convention-ref-name` (a
+suffix style never adopted); `set-state-in-effect` is off until #966b lands
+the effect-synced-state rewrite.
+
+What the preset settled, so new code starts there:
+
+- **React 19 APIs:** `use(Ctx)` not `useContext`, `<Ctx value>` not
+  `<Ctx.Provider>`, `ref` as a plain prop (no `forwardRef`). Context objects
+  carry the `Context` suffix; `useId` results are named `id`.
+- **Pure render:** no `new Date()` / `Date.now()` in render — a view that
+  depends on the clock takes it from `useNow()` (`@makinbakin/sdk/hooks`: the
+  instant at mount, refreshed every minute, so "today", countdowns and
+  "resets in …" roll over while the view stays open) or from a prop; event
+  handlers read `new Date()` at the event. No components created during
+  render (resolve a component once, outside the render, or in a
+  module-level map).
+- **Effects:** an effect-scoped `fetch` owns an `AbortController` and aborts
+  it on cleanup; state is written only while the controller is live.
+- **State:** `useState` destructures to `[x, setX]`; expensive initial values
+  take a lazy initializer; a render tick nobody reads is
+  `const [, rerender] = useReducer((n: number) => n + 1, 0)`.
+- **Class boundaries** reset from props with `getDerivedStateFromProps`, never
+  a `setState` in `componentDidUpdate`.
+- **Markup:** `<style>{css}</style>`, never `dangerouslySetInnerHTML`;
+  `cloneElement` only at the interactive-surface overlay (the one excepted
+  composition point).

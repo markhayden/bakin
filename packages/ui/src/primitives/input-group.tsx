@@ -1,7 +1,7 @@
 'use client'
 
 import { cva } from 'class-variance-authority'
-import { createContext, useContext, type ComponentProps } from 'react'
+import { createContext, use, type ComponentProps } from 'react'
 
 import { cn, mergeClassName } from '../utils'
 import { Button } from './button'
@@ -12,13 +12,13 @@ import type { InputProps } from './input'
 import { Textarea } from './textarea'
 import type { TextareaProps } from './textarea'
 
-const InputGroupAppearance = createContext<ControlSize>('md')
+const InputGroupAppearanceContext = createContext<ControlSize>('md')
 
 export type InputGroupProps = ComponentProps<'div'> & { size?: ControlSize; variant?: ControlVariant }
 
 export function InputGroup({ className, size = 'md', variant = 'outlined', ...props }: InputGroupProps) {
   return (
-    <InputGroupAppearance value={size}><div
+    <InputGroupAppearanceContext value={size}><div
       data-slot="input-group"
       data-size={size}
       data-variant={variant}
@@ -41,7 +41,7 @@ export function InputGroup({ className, size = 'md', variant = 'outlined', ...pr
         className,
       )}
       {...props}
-    /></InputGroupAppearance>
+    /></InputGroupAppearanceContext>
   )
 }
 
@@ -146,7 +146,7 @@ export function InputGroupText({ className, ...props }: InputGroupTextProps) {
 export type InputGroupInputProps = Omit<InputProps, 'size' | 'variant'>
 
 export function InputGroupInput({ className, ...props }: InputGroupInputProps) {
-  const size = useContext(InputGroupAppearance)
+  const size = use(InputGroupAppearanceContext)
   return (
     <Input
       data-slot="input-group-control"
@@ -165,7 +165,7 @@ type WithoutAppearance<T> = T extends unknown ? Omit<T, 'size' | 'variant'> : ne
 export type InputGroupTextareaProps = WithoutAppearance<TextareaProps>
 
 export function InputGroupTextarea({ className, ...props }: InputGroupTextareaProps) {
-  const size = useContext(InputGroupAppearance)
+  const size = use(InputGroupAppearanceContext)
   return (
     <Textarea
       data-slot="input-group-control"

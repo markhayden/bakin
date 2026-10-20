@@ -1,5 +1,6 @@
 'use client'
 
+import { useNow } from '@makinbakin/sdk/hooks'
 import { Grid } from '@makinbakin/sdk/layout'
 import { StatTile } from '@makinbakin/sdk/patterns'
 
@@ -23,7 +24,7 @@ export function UtilizationTiles({
   rules,
   spend,
   resets = false,
-  now = Date.now(),
+  now: nowOverride,
 }: {
   rules: BudgetRuleWire[]
   spend: SpendResponse
@@ -31,6 +32,10 @@ export function UtilizationTiles({
   resets?: boolean
   now?: number
 }) {
+  // Pure render (#966): the tiles follow the minute clock, so "resets in …"
+  // counts down while the page is open; a caller may pin `now` instead.
+  const tick = useNow()
+  const now = nowOverride ?? tick.getTime()
   if (!spend.facets) return null
 
   const tiles = rules.flatMap((rule) => (

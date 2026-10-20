@@ -87,9 +87,9 @@ export function WorkspacePage({
       </PageShell>
   )
   return (
-    <WorkspacePageContext.Provider value={context}>
+    <WorkspacePageContext value={context}>
       {visual ? <div ref={visible} data-slot="workspace-viewport" className="h-full min-h-0 w-full min-w-0 overflow-hidden">{shell}</div> : shell}
-    </WorkspacePageContext.Provider>
+    </WorkspacePageContext>
   )
 }
 
@@ -100,7 +100,7 @@ export function WorkspacePageHeader({
   className,
   ...props
 }: WorkspacePageHeaderProps) {
-  const { mode, visual, compact } = React.useContext(WorkspacePageContext)
+  const { mode, visual, compact } = React.use(WorkspacePageContext)
 
   return (
     <div
@@ -154,7 +154,7 @@ export function WorkspacePageCompactHeader({
   title,
   ...props
 }: WorkspacePageCompactHeaderProps) {
-  const { flow, visual, setCompact } = React.useContext(WorkspacePageContext)
+  const { flow, visual, setCompact } = React.use(WorkspacePageContext)
   // Desktop shows this row only once it is actually stuck (the full header
   // has scrolled away) — pre-scroll it would duplicate the identity and
   // actions. Mobile keeps it always visible: the immersive full header
@@ -342,7 +342,7 @@ export function WorkspacePageBody({
   inputAccessory,
   ...props
 }: WorkspacePageBodyProps) {
-  const { mode, flow } = React.useContext(WorkspacePageContext)
+  const { mode, flow } = React.use(WorkspacePageContext)
 
   return (
     <div

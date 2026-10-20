@@ -27,14 +27,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <TooltipProvider>
-      <SidebarContext.Provider value={sidebar}>
+      <SidebarContext value={sidebar}>
         <ActivityProvider>
           <AgentThemeProvider>
             <DebugSeed />
             <SSEProvider>{children}</SSEProvider>
           </AgentThemeProvider>
         </ActivityProvider>
-      </SidebarContext.Provider>
+      </SidebarContext>
       <Toaster />
     </TooltipProvider>
   )

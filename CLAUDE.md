@@ -100,6 +100,7 @@ Run `bun run ui:conformance --quick` for UI changes and the full mode for
 merge-ready migrations or supported-contract changes.
 
 - **TypeScript strict mode** — no `any` leaking across module boundaries
+- **React lint (#966)** — `@eslint-react` `recommended-typescript` on every `.tsx` beside `eslint-plugin-react-hooks` (the one hooks authority); `bun run lint` is zero-warning (`--max-warnings 0`): a rule is on and clean, off with a reason in `eslint.config.mjs`, or excepted on one line with a reason. Contract: `.claude/knowledge/style-guide.md` § React lint contract
 - **Zod** for validation at system boundaries (API inputs, file parsing, settings)
 - **Functional preference** — pure functions over classes where practical
 - **Logging:** `const log = createLogger('module')` from `@bakin/core` (re-exported as `src/core/logger`)

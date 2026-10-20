@@ -14,7 +14,7 @@
  * without special-casing.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   ReactFlow,
   Background,
@@ -278,7 +278,7 @@ export function WorkflowCanvasEditor({
   const [copyFieldErrors, setCopyFieldErrors] = useState<WorkflowDialogFieldErrors>({})
   const [creatingLocalCopy, setCreatingLocalCopy] = useState(false)
   const [copyName, setCopyName] = useState(baseDefinition.name ? `${baseDefinition.name} Copy` : '')
-  const [copyId, setCopyId] = useState(baseDefinition.name ? slugify(`${baseDefinition.name} Copy`) : '')
+  const [copyId, setCopyId] = useState(() => baseDefinition.name ? slugify(`${baseDefinition.name} Copy`) : '')
   const [copyIdEdited, setCopyIdEdited] = useState(false)
   const [copyDescription, setCopyDescription] = useState(baseDefinition.description ?? '')
   const [disableOriginal, setDisableOriginal] = useState(true)
@@ -381,13 +381,16 @@ export function WorkflowCanvasEditor({
     [initialDefinition, initialId, mode],
   )
 
+  // The guard's API is rebuilt every render (plain functions); the reset
+  // effect wants the LATEST reset without re-running on every render.
+  const resetUnsavedChangesGuard = useEffectEvent(() => { unsavedChangesGuard.reset() })
   useEffect(() => {
     const nextDefinition = initialDefinition ?? BLANK_DEFINITION
     setDefinition(nextDefinition)
     setState(seedState(nextDefinition))
     setEditingId(initialId)
     setSelectedId(null)
-    unsavedChangesGuard.reset()
+    resetUnsavedChangesGuard()
     setIsDirty(false)
     setNodeDrawerDirty(false)
     setWorkflowDetailsOpen(false)
@@ -1045,7 +1048,7 @@ export function WorkflowCanvasEditor({
             />
 
             <div className="relative min-h-0 min-w-0 flex-1 bg-bakin-canvas-default [--xy-edge-stroke:var(--bakin-color-border-subtle)] [--xy-edge-stroke-width:2]">
-          <style dangerouslySetInnerHTML={{ __html: RESET_NODE_STYLES }} />
+          <style>{RESET_NODE_STYLES}</style>
           <ReactFlow
             nodes={nodes}
             edges={edges}

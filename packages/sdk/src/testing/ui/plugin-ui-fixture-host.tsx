@@ -9,16 +9,7 @@ import {
   createRouter,
   useLocation,
 } from '@tanstack/react-router'
-import {
-  Component,
-  createContext,
-  useContext,
-  useLayoutEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from 'react'
+import { Component, createContext, use, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Button, SystemState, ToastRegion, TooltipProvider } from '@bakin/ui'
 import type { SystemStateKind } from '@bakin/ui'
 
@@ -79,16 +70,23 @@ interface FixtureContextValue {
 const FixtureContext = createContext<FixtureContextValue | null>(null)
 
 function useFixtureContext(): FixtureContextValue {
-  const value = useContext(FixtureContext)
+  const value = use(FixtureContext)
   if (!value) throw new Error('Plugin UI fixture route rendered outside PluginUiFixtureHost')
   return value
 }
 
 class PluginFixturePageBoundary extends Component<
   { pluginId: string; pathname: string; children: ReactNode },
-  { error: Error | null }
+  { error: Error | null; pathname: string }
 > {
-  state: { error: Error | null } = { error: null }
+  state: { error: Error | null; pathname: string } = { error: null, pathname: this.props.pathname }
+
+  // Navigating away resets the boundary so the next page renders fresh —
+  // derived from props, never a setState in componentDidUpdate.
+  static getDerivedStateFromProps(props: { pathname: string }, state: { error: Error | null; pathname: string }): { error: Error | null; pathname: string } | null {
+    if (props.pathname === state.pathname) return null
+    return { error: null, pathname: props.pathname }
+  }
 
   static getDerivedStateFromError(error: Error): { error: Error } {
     return { error }
@@ -99,12 +97,6 @@ class PluginFixturePageBoundary extends Component<
       `[bakin] plugin UI fixture page "${this.props.pluginId}" crashed at ${this.props.pathname}:`,
       error,
     )
-  }
-
-  componentDidUpdate(previous: { pathname: string }): void {
-    if (previous.pathname !== this.props.pathname && this.state.error) {
-      this.setState({ error: null })
-    }
   }
 
   render(): ReactNode {
@@ -258,7 +250,7 @@ export function PluginUiFixtureHost({
     onStateAction,
   }), [slots, surfaceState, onStateAction])
   return (
-    <FixtureContext.Provider value={context}>
+    <FixtureContext value={context}>
       <TooltipProvider>
         <main
           className={className}
@@ -272,6 +264,6 @@ export function PluginUiFixtureHost({
         </main>
         <ToastRegion label="Plugin fixture notifications" data-bakin-plugin-fixture-overlay-root />
       </TooltipProvider>
-    </FixtureContext.Provider>
+    </FixtureContext>
   )
 }

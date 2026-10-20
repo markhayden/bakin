@@ -9,7 +9,7 @@
  * callers derive the id from the registration registry rather than trusting
  * contribution markup to identify itself.
  */
-import { createContext, useContext, type JSX, type ReactNode } from 'react'
+import { createContext, use, type JSX, type ReactNode } from 'react'
 import { PluginPortalOwnershipProvider } from '@bakin/ui'
 
 const PluginOwnershipContext = createContext<string | null>(null)
@@ -21,17 +21,17 @@ interface PluginOwnershipRootProps {
 
 export function PluginOwnershipRoot({ pluginId, children }: PluginOwnershipRootProps): JSX.Element {
   return (
-    <PluginOwnershipContext.Provider value={pluginId}>
+    <PluginOwnershipContext value={pluginId}>
       <PluginPortalOwnershipProvider pluginId={pluginId}>
         <div className="contents" data-bakin-plugin={pluginId}>
           {children}
         </div>
       </PluginPortalOwnershipProvider>
-    </PluginOwnershipContext.Provider>
+    </PluginOwnershipContext>
   )
 }
 
 /** Current host-injected plugin id, used by ownership-aware SDK internals. */
 export function usePluginOwnership(): string | null {
-  return useContext(PluginOwnershipContext)
+  return use(PluginOwnershipContext)
 }

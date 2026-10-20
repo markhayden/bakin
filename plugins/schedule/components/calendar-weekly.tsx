@@ -135,8 +135,9 @@ export function CalendarWeekly({
   jobs: ScheduleJob[]
   onSelectJob: (job: ScheduleJob) => void
 }) {
-  const now = new Date()
-  const [weekStart, setWeekStart] = useState(() => getWeekStart(now))
+  // Pure render (#966): the initial view is the week at mount; "Today" reads
+  // the clock at the click, so it still lands on this week after a rollover.
+  const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()))
   const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart])
   const weekEnd = useMemo(() => {
     const d = new Date(weekStart)
@@ -212,7 +213,7 @@ export function CalendarWeekly({
 
   const prev = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n })
   const next = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n })
-  const goToday = () => setWeekStart(getWeekStart(now))
+  const goToday = () => setWeekStart(getWeekStart(new Date()))
 
   // Occurrences (minus collapsed recurring series) and domain events flow
   // into the shared CalendarGrid; the kit owns hour-by-day placement.

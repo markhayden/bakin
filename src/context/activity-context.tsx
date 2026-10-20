@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, use, useCallback, useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'bakin-activity-log-open'
 
@@ -6,7 +6,7 @@ const STORAGE_KEY = 'bakin-activity-log-open'
 const DEFAULT_OPEN = true
 
 export const ActivityContext = createContext({ open: false, toggle: () => {}, close: () => {} })
-export const useActivityContext = () => useContext(ActivityContext)
+export const useActivityContext = () => use(ActivityContext)
 
 export function ActivityProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(DEFAULT_OPEN)
@@ -31,8 +31,8 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
     return false
   }), [])
   return (
-    <ActivityContext.Provider value={{ open, toggle, close }}>
+    <ActivityContext value={{ open, toggle, close }}>
       {children}
-    </ActivityContext.Provider>
+    </ActivityContext>
   )
 }

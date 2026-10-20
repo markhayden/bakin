@@ -31,17 +31,17 @@ Spec `.claude/specs/housekeeping-batch-2026-10.md` · Plan `.claude/specs/housek
 - [x] 3.5 `operator-review` kind + `failure` receipt (schema, coverage, resurfacing, auto-close, tests)
 - [x] 3.6 partition: failed/unplannable/no-report safe repairs → operator
 - [x] 3.7 single-winner stale-lock reclaim + cross-process test; Bun repro + issue text; docs
-- [ ] PR 3 merged, #896 closed citing #895; repro handed to Mark
+- [x] PR 3 merged (#1012 → bb7ab909b, 8 Codex rounds), #896 closed; repro handed to Mark in the batch report
 
 ## PR 4 — #966a `chore/966-react-lint`
-- [ ] 4.1 plugin + preset + `--max-warnings 0` (rules with findings off) + the 3 pre-existing hook warnings fixed
-- [ ] 4.2 context API modernization (51)
-- [ ] 4.3 ref as prop (5) + ListRow AND Card parity tests
-- [ ] 4.4 static components (9) + purity (6)
-- [ ] 4.5 leaked fetch (11)
-- [ ] 4.6 use-state (8) + innerHTML audit (2)
-- [ ] 4.7 singles + scoped `cloneElement` exception
-- [ ] 4.8 flip on; reasoned offs; style-guide, dependency-sweeps (TS row re-dated), CLAUDE.md
+- [x] 4.1 plugin + preset + `--max-warnings 0` (rules with findings off) + the 3 pre-existing hook warnings fixed
+- [x] 4.2 context API modernization (51)
+- [x] 4.3 ref as prop (5) + ListRow AND Card parity tests
+- [x] 4.4 static components (9) + purity (6)
+- [x] 4.5 leaked fetch (11)
+- [x] 4.6 use-state (8) + innerHTML audit (2)
+- [x] 4.7 singles + scoped `cloneElement` exception
+- [x] 4.8 flip on; reasoned offs; style-guide, dependency-sweeps (TS row re-dated), CLAUDE.md
 - [ ] `ui:conformance --full` green
 - [ ] PR 4 merged
 

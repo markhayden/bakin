@@ -194,7 +194,7 @@ export function VersionedAssetGrid() {
   // Bulk selection — checkboxes are always visible; selecting anything
   // raises the floating bulk bar. Ephemeral (not URL-backed), clears on
   // view change.
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [bulkTags, setBulkTags] = useState<string[]>([])
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)

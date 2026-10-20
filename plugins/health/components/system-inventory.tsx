@@ -1,6 +1,6 @@
 'use client'
 
-import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
+import { useImperativeHandle, useMemo, useRef, type Ref } from 'react'
 import type { HealthCheckState, HealthReport } from '@makinbakin/sdk/types'
 import { DisclosurePanel, Grid, Panel } from '@makinbakin/sdk/layout'
 import {
@@ -110,7 +110,8 @@ function revealDisclosure(disclosure: HTMLDetailsElement | null): void {
   if (summary) focusSystemElement(summary)
 }
 
-export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventoryProps>(function SystemInventory({
+export function SystemInventory({
+  ref,
   report,
   live,
   registry,
@@ -125,7 +126,7 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
   onPluginSearchChange,
   onCheckUpdates,
   onUpgrade,
-}, ref) {
+}: SystemInventoryProps & { ref?: Ref<SystemInventoryHandle> }) {
   const pluginsDisclosureRef = useRef<HTMLDetailsElement>(null)
   const hostDisclosureRef = useRef<HTMLDetailsElement>(null)
   const checksDisclosureRef = useRef<HTMLDetailsElement>(null)
@@ -470,4 +471,4 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
       </DisclosurePanel>
     </div>
   )
-})
+}

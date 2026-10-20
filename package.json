@@ -57,7 +57,7 @@
     "prestart": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:assets-manifest",
     "start": "bun run prestart && bun run server.ts serve",
     "server": "bun run server.ts serve",
-    "lint": "eslint src packages plugins tests scripts storybook .storybook dev cli server.ts bakin.config.ts playwright.ui.config.ts playwright.browser.config.ts vitest.config.ts eslint.config.mjs",
+    "lint": "eslint --max-warnings 0 src packages plugins tests scripts storybook .storybook dev cli server.ts bakin.config.ts playwright.ui.config.ts playwright.browser.config.ts vitest.config.ts eslint.config.mjs",
     "lint:home-bypasses": "bun run scripts/bin/check-home-bypasses.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "verify:compiled-pdf": "bun run scripts/verify-compiled-pdf.ts",
@@ -129,6 +129,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@eslint-react/eslint-plugin": "^5.28.2",
     "@eslint/js": "^10.0.1",
     "@fontsource/inter": "5.3.0",
     "@fontsource/jetbrains-mono": "5.3.0",
