@@ -57,7 +57,7 @@ Spec `.claude/specs/housekeeping-batch-2026-10.md` · Plan `.claude/specs/housek
 - [x] 5.9 team (31)
 - [x] 5.10 workflows (24)
 - [x] 5.11 rule on; lint clean; conformance full; screenshots ×3
-- [ ] PR 5 merged, #966 closed
+- [x] PR 5 merged, #966 closed
 
 ## PR 6 — #948 `feat/948-zod-vendor`
 - [ ] 6.1 build contract in ONE commit: externals v2 + `/vendor/zod.js` + import map + four tests + embedded manifest + perf baseline + compiled-binary vendor test + Playwright smoke/screenshots
