@@ -58,6 +58,10 @@ export const SDK_EXPORTS: SdkExportEntry[] = [
   { exportPath: './internal', source: 'packages/sdk/src/internal/index.ts', importPath: './internal/index.js', typesPath: './internal/index.d.ts' },
 ]
 
+// Peers the published JS leaves bare. In the browser the host's import map
+// provides each (React family, router, zod — one copy, #948); on the server
+// the consumer's own install does. zod is a tilde peer: zod 4 brands schema
+// types with the literal minor, so the consumer must share the host's line.
 const EXTERNAL_JS_PEERS = [
   '@tanstack/react-router',
   'axe-core',
@@ -67,6 +71,7 @@ const EXTERNAL_JS_PEERS = [
   'react-dom/client',
   'react/jsx-runtime',
   'react/jsx-dev-runtime',
+  'zod',
 ]
 
 const FORBIDDEN_BARE_PREFIXES = [
