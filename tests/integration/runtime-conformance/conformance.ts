@@ -76,6 +76,14 @@ export interface RuntimeConformanceTarget {
    */
   prepareToolsModeNoneTurn?(): string | Promise<string>
   /**
+   * Runner-side evidence for the enforcement leg, called after the
+   * `toolsMode: 'none'` stream settles: a runner that can see what the model
+   * was actually offered (a scripted provider's captured request) throws
+   * here when tools were offered. The stream alone cannot distinguish "no
+   * tools were offered" from "the scripted model happened not to call one".
+   */
+  assertToolsModeNoneEnforced?(): void | Promise<void>
+  /**
    * A stream that must end in TERMINAL FAILURE (typed `error` chunk, no
    * `done`, iterator never throws). The target owns the recipe AND any env
    * restore — the returned iterable is consumed to completion.
@@ -683,6 +691,11 @@ export const runtimeConformanceChecks = {
     }
     if (chunks.some((c) => c.type === 'error')) fail("toolsMode:'none' turn streamed an error chunk")
     assertDoneExactlyOnceAndLast(chunks)
+    try {
+      await target.assertToolsModeNoneEnforced?.()
+    } catch (err) {
+      fail(`declared perTurnToolsMode=true but the runner's enforcement evidence says tools were offered under toolsMode:'none' (${err instanceof Error ? err.message : String(err)})`)
+    }
   },
 
   /**

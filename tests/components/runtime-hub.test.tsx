@@ -39,7 +39,7 @@ const report: CapabilityReport = {
   adapters: ['openclaw', 'pi'],
   runtime: { name: 'pi', version: '0.1.0' },
   capabilities: {
-    toolCalling: { mode: 'native', access: { style: 'in-process' } },
+    toolCalling: { mode: 'native', access: { style: 'in-process', perTurnToolsMode: true } },
     delivery: { mode: 'unavailable' },
     imageGen: { mode: 'native' },
     memory: { mode: 'native' },
@@ -59,6 +59,19 @@ afterEach(() => {
 })
 
 describe('OverviewTab', () => {
+  it('says on the Tool access tile when per-turn tool policy is NOT enforced (#883 honesty)', async () => {
+    const dropped: CapabilityReport = {
+      ...report,
+      adapter: 'openclaw',
+      capabilities: { ...report.capabilities, toolCalling: { mode: 'native', access: { style: 'mcp', perTurnToolsMode: false } } },
+      toolAccess: { style: 'mcp', ok: true, issues: [] },
+    }
+    await act(async () => {
+      render(<OverviewTab report={dropped} onRefreshOnboarding={() => {}} onboarding={[]} />)
+    })
+    expect(screen.getByText(/Per-turn tool policy is not enforced: a text-only turn keeps its tools/)).toBeTruthy()
+  })
+
   it('speaks plain language: honest unavailable copy, legend, credential tiles, setup rows', async () => {
     await act(async () => {
       render(
@@ -75,6 +88,8 @@ describe('OverviewTab', () => {
     // Identity + credentials
     expect(screen.getByText('pi')).toBeTruthy()
     expect(screen.getByText(/anthropic · subscription/)).toBeTruthy()
+    // Tool access tile says whether a text-only turn is really tool-free (#883).
+    expect(screen.getByText(/Per-turn tool policy is enforced: a text-only turn runs without tools/)).toBeTruthy()
     // Honest unavailable copy for delivery on pi — never a bare enum
     const capabilities = within(screen.getByRole('table', { name: 'Runtime capabilities' }))
     expect(capabilities.getByText(/Alerts and approvals appear in the app/)).toBeTruthy()

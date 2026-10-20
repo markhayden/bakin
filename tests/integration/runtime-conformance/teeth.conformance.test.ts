@@ -405,6 +405,19 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
       .rejects.toThrow(/conformance violation: declared perTurnToolsMode=true but a toolsMode:'none' turn streamed/)
   })
 
+  it("fails tool-policy honesty when the runner's provider evidence says tools were offered under toolsMode:'none' (#883)", async () => {
+    const runtime = createMockRuntimeAdapter()
+    runtime.describeToolAccess = () => ({ style: 'in-process', perTurnExecToolFiltering: true, perTurnToolsMode: true })
+    const target: RuntimeConformanceTarget = {
+      ...honestTargetShell(runtime),
+      // The stream looks clean (no [[tool]] marker) — only the evidence hook can tell.
+      prepareToolsModeNoneTurn: () => 'teeth: plain text',
+      assertToolsModeNoneEnforced: () => { throw new Error('2 tool(s) were offered to the model') },
+    }
+    await expect(runtimeConformanceChecks.toolPolicyHonesty(target))
+      .rejects.toThrow(/conformance violation: declared perTurnToolsMode=true but the runner's enforcement evidence says tools were offered/)
+  })
+
   it("fails tool-policy honesty when a runtime REJECTS a toolsMode:'none' turn instead of dropping the field (#883)", async () => {
     const runtime = createMockRuntimeAdapter()
     // The OpenClaw-2026.9.5 class: the transport refuses the forwarded param.

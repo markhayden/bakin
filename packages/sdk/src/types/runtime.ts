@@ -152,6 +152,31 @@ export interface WorkspaceFile {
   content?: string
 }
 
+/** How agents on this runtime reach Bakin's exec tools. */
+export type RuntimeToolAccessStyle = 'in-process' | 'mcp' | 'cli-shim'
+
+/**
+ * The runtime's tool-access descriptor — feature-detect per-turn policy
+ * support here before relying on a restricted turn.
+ */
+export interface RuntimeToolAccess {
+  style: RuntimeToolAccessStyle
+  /** 'mcp': per-agent server-name template, e.g. `bakin-<agent>`. */
+  mcpServerTemplate?: string
+  /** 'cli-shim': shell command template. */
+  shimCommand?: string
+  /** One canonical, style-appropriate example call. */
+  example?: string
+  /** Whether `toolsAllow`/`toolsDeny` are enforced per turn (in-process runtimes). */
+  perTurnExecToolFiltering?: boolean
+  /**
+   * Whether `toolsMode: 'none'` really withholds every tool for that turn.
+   * Pi: true. OpenClaw: false — its gateway accepts no per-turn tool policy,
+   * the field is dropped with a warning (#883).
+   */
+  perTurnToolsMode: boolean
+}
+
 /** Provider-agnostic interface for agent runtime adapters (OpenClaw, etc.). */
 export interface AgentRuntimeAdapter {
   agents: {
@@ -162,6 +187,8 @@ export interface AgentRuntimeAdapter {
     send(input: RuntimeMessageArgs): Promise<RuntimeMessageResult>
     stream(input: RuntimeMessageArgs): AsyncIterable<RuntimeChatChunk>
   }
+  /** How this runtime reaches Bakin tools and which per-turn policies it enforces. */
+  describeToolAccess(): RuntimeToolAccess
   /**
    * OPTIONAL: absent when the active runtime has no channel surface (e.g.
    * in-process runtimes). Feature-detect (`if (runtime.channels)`) — never

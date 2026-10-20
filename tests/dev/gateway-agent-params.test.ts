@@ -5,8 +5,25 @@
  * live box does. The property list lives in agent-params-schema.ts and is
  * copied from the installed 2026.9.5 dist (AgentParamsSchema).
  */
-import { describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { handleGatewayRpcRequest } from '../../dev/imitation-crab/gateway'
+
+// A successful agent call writes session files under getMockHome() — never
+// the developer's real ~/.imitationcrab.
+const originalEnv = { ...process.env }
+let mockHome = ''
+beforeAll(() => {
+  mockHome = mkdtempSync(join(tmpdir(), 'bakin-crab-schema-'))
+  process.env.IMITATION_CRAB_HOME = mockHome
+  delete process.env.OPENCLAW_MOCK_HOME
+})
+afterAll(() => {
+  process.env = { ...originalEnv }
+  rmSync(mockHome, { recursive: true, force: true })
+})
 
 const VALID = { agentId: 'pixel', message: 'Say ok.', idempotencyKey: 'k-1', deliver: false, timeout: 30 }
 

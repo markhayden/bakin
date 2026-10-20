@@ -41,11 +41,11 @@ describe('capabilityRows', () => {
 
   it('says whether per-turn tool policy is enforced on the tool-calling row (#883 honesty)', () => {
     const enforced = capabilityRows({ ...PI_CAPS, toolCalling: { mode: 'native', access: { style: 'in-process', perTurnToolsMode: true } } })
-    expect(enforced[0]).toMatchObject({ key: 'toolCalling', detail: 'in-process · per-turn tool policy enforced' })
+    expect(enforced[0]).toMatchObject({ key: 'toolCalling', detail: 'in-process', perTurnToolPolicy: true })
     const dropped = capabilityRows({ ...PI_CAPS, toolCalling: { mode: 'native', access: { style: 'mcp', perTurnToolsMode: false } } })
-    expect(dropped[0]).toMatchObject({ key: 'toolCalling', detail: 'mcp · per-turn tool policy not enforced' })
-    // A payload from an older server that never declared it keeps the bare style.
-    expect(capabilityRows(PI_CAPS)[0]?.detail).toBe('in-process')
+    expect(dropped[0]).toMatchObject({ key: 'toolCalling', detail: 'mcp', perTurnToolPolicy: false })
+    // A payload from an older server that never declared it carries no verdict.
+    expect(capabilityRows(PI_CAPS)[0]).not.toHaveProperty('perTurnToolPolicy')
   })
 
   it('renders text-only input honestly and tolerates null payloads', () => {
