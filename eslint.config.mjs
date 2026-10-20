@@ -130,7 +130,6 @@ const eslintConfig = defineConfig([
       // Off until #966b: 164 effect-synced states are rewritten in their own PR.
       "@eslint-react/set-state-in-effect": "off",
       // Off until the fix commits of #966a flip them on (4.2–4.8).
-      "@eslint-react/no-forward-ref": "off",
       "@eslint-react/static-components": "off",
       "@eslint-react/purity": "off",
       "@eslint-react/web-api-no-leaked-fetch": "off",

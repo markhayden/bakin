@@ -65,9 +65,9 @@ const TONE_TIME: Record<CalendarItemTone, string> = {
  * consumers own the slots (identity, marker, popovers around the item) and
  * the cell layout it sits in — the item never carries its own margins.
  */
-export const CalendarItem = React.forwardRef<HTMLButtonElement, CalendarItemProps>(
-  function CalendarItem(
+export function CalendarItem(
     {
+      ref,
       title,
       time,
       detail,
@@ -80,8 +80,7 @@ export const CalendarItem = React.forwardRef<HTMLButtonElement, CalendarItemProp
       className,
       type = 'button',
       ...props
-    },
-    ref,
+    }: CalendarItemProps & { ref?: React.Ref<HTMLButtonElement> },
   ) {
     const expanded = density === 'expanded'
     return (
@@ -161,5 +160,4 @@ export const CalendarItem = React.forwardRef<HTMLButtonElement, CalendarItemProp
         </span>
       </button>
     )
-  },
-)
+}

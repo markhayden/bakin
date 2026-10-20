@@ -1,4 +1,4 @@
-import { createContext, forwardRef, use, useId } from 'react'
+import { createContext, use, useId, type Ref } from 'react'
 import type { CSSProperties, ComponentPropsWithoutRef, ReactNode } from 'react'
 
 import { cn } from '../utils'
@@ -185,9 +185,8 @@ export type ListRowProps = ComponentPropsWithoutRef<'li'> & {
 }
 
 /** Composition-friendly semantic row with canonical list spacing. */
-export const ListRow = forwardRef<HTMLLIElement, ListRowProps>(function ListRow(
-  { className, interactive, selected = false, children, ...props },
-  ref,
+export function ListRow(
+  { ref, className, interactive, selected = false, children, ...props }: ListRowProps & { ref?: Ref<HTMLLIElement> },
 ) {
   const columns = use(ListRowsColumnsContext)
   const size = use(ListRowsSizeContext)
@@ -216,7 +215,7 @@ export const ListRow = forwardRef<HTMLLIElement, ListRowProps>(function ListRow(
       {children}
     </li>
   )
-})
+}
 
 export interface ListRowActionsProps extends ComponentPropsWithoutRef<'div'> {
   /** `hover` floats the cluster in on row hover/focus; `always` renders inline. */
@@ -256,8 +255,7 @@ export type ListRowLabelsProps = ComponentPropsWithoutRef<'li'>
  * `ListRowsProps.columns`), and a decorative row must not inflate the list's
  * item count or reading order.
  */
-export const ListRowLabels = forwardRef<HTMLLIElement, ListRowLabelsProps>(
-  function ListRowLabels({ className, ...props }, ref) {
+export function ListRowLabels({ ref, className, ...props }: ListRowLabelsProps & { ref?: Ref<HTMLLIElement> }) {
     const columns = use(ListRowsColumnsContext)
     return (
       <li
@@ -277,8 +275,7 @@ export const ListRowLabels = forwardRef<HTMLLIElement, ListRowLabelsProps>(
         )}
       />
     )
-  },
-)
+}
 
 export interface ListRowGroupProps extends ComponentPropsWithoutRef<'div'> {
   /** Group heading rendered above the group's rows. */
