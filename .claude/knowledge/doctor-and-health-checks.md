@@ -292,7 +292,7 @@ Each completed full sweep appends `doctor.run` with report ID, registered count,
 
 - `intervalMs` — full-sweep cadence
 - `requireOnboard` — whether the core onboarding check applies
-- `escalation` — boolean (default true); legacy `off|notify|task` strings coerce until the one-shot upgrade is deleted
+- `escalation` — boolean (default true); any non-boolean value falls back to the default
 - `escalationCooldownMs` — any repair request younger than this covers its incidents (no one-task-per-cycle churn)
 - `escalationStaleAfterMs` — how long an open todo/inProgress task covers a still-burning incident
 
