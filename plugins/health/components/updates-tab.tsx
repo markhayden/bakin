@@ -117,7 +117,8 @@ function UpdateRow({ record, now, focused, busy, onApply, onSkip }: UpdateRowPro
   const presentation = presentUpdateRecord(record)
   const checked = checkedCopy(record, now)
   const versions = versionCopy(record)
-  const skippable = record.outcome === 'update-available' && !isUpdateSkipped(record) && record.available !== undefined
+  // A required update is something the installation needs; only an optional one can be skipped.
+  const skippable = record.group === 'available' && record.outcome === 'update-available' && !isUpdateSkipped(record) && record.available !== undefined
   useEffect(() => {
     // A deep link reveals the row and moves focus to its first control (the
     // row itself is not a control, so it never joins the tab order).

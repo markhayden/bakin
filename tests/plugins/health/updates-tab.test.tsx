@@ -85,6 +85,9 @@ describe('UpdatesTabView — rows and groups (#1007 D7.14)', () => {
     expect(within(required).queryByRole('button', { name: 'Update OpenClaw gateway' })).toBeNull()
     expect(within(required).getByText(/Upgrade the runtime, then restart it\./)).toBeDefined()
     expect(within(required).getByRole('button', { name: 'Update Search engine' })).toBeDefined()
+    // Required updates cannot be skipped; optional ones can.
+    expect(within(required).queryByRole('button', { name: /^Skip/ })).toBeNull()
+    expect(within(available).getByRole('button', { name: 'Skip notes 1.1.0' })).toBeDefined()
     expect(within(available).getByRole('button', { name: 'Update notes' })).toBeDefined()
     expect(within(available).getByRole('link', { name: 'Release notes for Bakin' }).getAttribute('href')).toBe('https://example.test/notes')
     expect(within(available).getByText('v0.3.5 → v0.3.6')).toBeDefined()
