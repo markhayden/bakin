@@ -137,48 +137,57 @@ export async function checkInferenceModels(models: InferenceModel[]) {
   }
   const missing = missingModelEntries(models)
   // Present but known not to load on this machine (#993): the engine boots
-  // without it, so this is degraded, not broken — and says which leg.
+  // without it, so this is degraded, not missing — and says which leg.
   const unloadable = missing.length === 0
     ? models.flatMap((m) => {
       const verdict = modelLoadVerdict(m.model)
       return verdict && !verdict.loadable ? [{ model: m, reason: verdict.reason ?? 'the engine could not load it' }] : []
     })
     : []
-  if (unloadable.length > 0) {
-    const names = unloadable.map((u) => u.model.label).join(', ')
-    const repairable = unloadable.some((u) => modelVariantMismatch(u.model.model) !== null)
-    return {
-      name: 'models',
-      // `broken` = an install fixes it (onboarding installs, the wizard asks);
-      // `warn` = nothing to install, the engine just can't run it here.
-      status: repairable ? 'broken' as const : 'warn' as const,
-      message: `${names} can't load on this machine (engine ${ANTFLY_PIN.version}, ${process.platform}-${process.arch}) — the search that relies on ${unloadable.length === 1 ? 'it is' : 'them is'} unavailable here. Everything else is unaffected.`,
-      remediation: repairable
-        ? 'Run `bakin install search-models`: it re-downloads the model in the form that loads on this machine.'
-        : 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
-      details: {
-        root: inferenceModelsRoot(),
-        unloadable: unloadable.map((u) => ({ label: u.model.label, model: u.model.model, reason: u.reason })),
-      },
-    }
-  }
-  // Complete and loadable, but not the pinned variant: the installer re-pulls
-  // these, so the check must say so — an `ok` here meant `bakin install
-  // search-models` asked nothing and its unapproved install skipped. `broken`
-  // like an engine off its pin: it works today, and the install fixes it.
+  // Complete but not the pinned variant: the installer re-pulls these, so the
+  // check must say so — an `ok` here meant `bakin install search-models`
+  // asked nothing and its unapproved install skipped. Any of them makes the
+  // whole check `broken` (an install fixes it: onboarding installs, the
+  // wizard asks), even beside a model nothing can fix; `warn` is only for
+  // can't-load with nothing to install.
   const stale = missing.length === 0
     ? models.flatMap((m) => {
       const why = modelVariantMismatch(m.model)
       return why ? [{ model: m, why }] : []
     })
     : []
+  const isStale = (model: InferenceModel) => stale.some((s) => s.model === model)
+  const unfixable = unloadable.filter((u) => !isStale(u.model))
+  const machine = `engine ${ANTFLY_PIN.version}, ${process.platform}-${process.arch}`
+  const labels = (list: Array<{ model: InferenceModel }>) => list.map((x) => x.model.label).join(', ')
+  const details = {
+    root: inferenceModelsRoot(),
+    ...(stale.length > 0 ? { stale: stale.map((s) => ({ label: s.model.label, model: s.model.model, reason: s.why })) } : {}),
+    ...(unloadable.length > 0 ? { unloadable: unloadable.map((u) => ({ label: u.model.label, model: u.model.model, reason: u.reason })) } : {}),
+  }
   if (stale.length > 0) {
+    const staleUnloadable = unloadable.filter((u) => isStale(u.model))
     return {
       name: 'models',
       status: 'broken' as const,
-      message: `${stale.map((s) => s.model.label).join(', ')} ${stale.length === 1 ? 'is' : 'are'} not the pinned download (${stale.map((s) => s.why).join('; ')}). Search still works here.`,
-      remediation: 'Run `bakin install search-models`: it re-downloads the pinned form and replaces the old install.',
-      details: { root: inferenceModelsRoot(), stale: stale.map((s) => ({ label: s.model.label, model: s.model.model, reason: s.why })) },
+      message: [
+        `${labels(stale)} ${stale.length === 1 ? 'is' : 'are'} not the pinned download (${stale.map((s) => s.why).join('; ')}).`,
+        staleUnloadable.length > 0
+          ? `${labels(staleUnloadable)} can't load on this machine (${machine}) until re-downloaded.`
+          : 'Search still works here.',
+        ...(unfixable.length > 0 ? [`${labels(unfixable)} can't load on this machine either, and installing won't change that.`] : []),
+      ].join(' '),
+      remediation: 'Run `bakin install search-models`: it re-downloads the model in the pinned form and replaces the old install.',
+      details,
+    }
+  }
+  if (unloadable.length > 0) {
+    return {
+      name: 'models',
+      status: 'warn' as const,
+      message: `${labels(unloadable)} can't load on this machine (${machine}) — the search that relies on ${unloadable.length === 1 ? 'it is' : 'them is'} unavailable here. Everything else is unaffected.`,
+      remediation: 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
+      details,
     }
   }
   if (missing.length === 0) {

@@ -613,6 +613,25 @@ mv "$stage" "$5/$owner/$name--antfly-a2cdf31c"
     expect(check.remediation).toContain('re-downloads the model')
   })
 
+  it('a model nothing can fix never hides one an install fixes — the check stays broken and names both', async () => {
+    seedDefaultLayout()
+    const OTHER: InferenceModel = { label: 'custom embedder', model: 'acme/unpinned-embedder', kind: 'embedder' }
+    const otherDir = join(modelsRoot, 'acme', 'unpinned-embedder')
+    mkdirSync(otherDir, { recursive: true })
+    writeFileSync(join(otherDir, 'model_manifest.json'), '{"type":"embedder"}')
+    writeFileSync(join(otherDir, 'model.onnx'), 'weights')
+    writeFileSync(join(otherDir, '.antfly-download-complete.json'), JSON.stringify({ marker: 'pull-1' }))
+    const rejects: ProbeRunner = async (_binary, args) => args[0] === '--version'
+      ? { code: 0, output: `antfly ${ANTFLY_PIN.version} (zig)`, timedOut: false, spawnFailed: false, aborted: false }
+      : { code: 1, output: 'antfly inference: startup failed (error.MissingWeight)', timedOut: false, spawnFailed: false, aborted: false }
+    expect((await probeModelLoad('/bin/antfly', OTHER.model, { run: rejects }))?.loadable).toBe(false)
+    const check = await checkInferenceModels([CLIPCLAP, OTHER])
+    expect(check.status).toBe('broken')
+    expect(check.message).toContain('visual embedder is not the pinned download')
+    expect(check.message).toContain("custom embedder can't load on this machine either")
+    expect(check.remediation).toContain('bakin install search-models')
+  })
+
   it('a crash between the two renames is finished by the next install — the backup is restored, trash never is', async () => {
     seedDefaultLayout()
     const aside = join(modelsRoot, 'antflydb', '.bakin-replacing-clipclap')
