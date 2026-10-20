@@ -292,11 +292,11 @@ Each completed full sweep appends `doctor.run` with report ID, registered count,
 
 - `intervalMs` — full-sweep cadence
 - `requireOnboard` — whether the core onboarding check applies
-- `escalation` — boolean (default true); legacy `off|notify|task` strings coerce until the one-shot upgrade is deleted
+- `escalation` — boolean (default true); any non-boolean value falls back to the default
 - `escalationCooldownMs` — any repair request younger than this covers its incidents (no one-task-per-cycle churn)
 - `escalationStaleAfterMs` — how long an open todo/inProgress task covers a still-burning incident
 
-**Request files are validated on read (#898):** every repair-request file passes a zod schema (`src/core/doctor-repair-store.ts`); a malformed one is skipped and logged on its own — it never aborts the listing (which would silently stop escalation) and reads as absent for get/update. A request whose `createdAt` is in the future covers nothing, checked before cooldown or column logic (no clamping). The legacy `kind`/`checkIds` defaults stay until #945.
+**Request files are validated on read (#898):** every repair-request file passes a zod schema (`src/core/doctor-repair-store.ts`); a malformed one is skipped and logged on its own — it never aborts the listing (which would silently stop escalation) and reads as absent for get/update. A request whose `createdAt` is in the future covers nothing, checked before cooldown or column logic (no clamping). A pre-#942 file without `kind`/`checkIds` is simply invalid (the compat defaults were retired in #945): it is skipped and logged, and escalation re-judges its incidents fresh.
 
 **Repair brief:** besides the sanctioned fixes, the delegated brief's integrity rules forbid fabricating Bakin-internal state AND silencing — no ack/snooze, no doctor/escalation settings changes, no moving the task to review to go quiet; a blocked, clearly reported task is the success path.
 

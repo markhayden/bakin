@@ -226,7 +226,7 @@ describe('reconcileRepairRequests', () => {
     expect(moveTaskWithEffects).not.toHaveBeenCalled()
   })
 
-  it('derives the originating checks for pre-approvals requests that stored none', async () => {
+  it('derives the originating checks for requests that stored an empty check list', async () => {
     const { requestId, taskId } = openRequest('blocked', { checkIds: [] })
     mode = 'healthy'
     await reconcileRepairRequests(testDir)

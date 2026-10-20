@@ -92,7 +92,7 @@ describe('request files are validated on read (#898)', () => {
     })
   })
 
-  it('a pre-approvals request without kind or checkIds still reads with the legacy defaults', () => {
+  it('a pre-#942 request without kind or checkIds is invalid — logged and ignored, never defaulted (#945)', () => {
     withDir((dir, shard) => {
       const legacy = {
         version: 2, id: 'repair-legacy', status: 'sent',
@@ -100,7 +100,17 @@ describe('request files are validated on read (#898)', () => {
         plan: plan(), incidentIds: ['health:search:down'], observationIds: [], taskId: 'task-1', events: [],
       }
       writeFileSync(join(shard, 'repair-legacy.json'), JSON.stringify(legacy))
-      expect(getDoctorRepairRequest(dir, 'repair-legacy')).toEqual({ ...legacy, kind: 'delegate', checkIds: [] } as never)
+      // Each retired default on its own: a file missing ONLY checkIds, and one
+      // missing ONLY kind, are both invalid — restoring either default would
+      // let its fixture read again.
+      writeFileSync(join(shard, 'repair-no-checkids.json'), JSON.stringify({ ...legacy, id: 'repair-no-checkids', kind: 'delegate' }))
+      writeFileSync(join(shard, 'repair-no-kind.json'), JSON.stringify({ ...legacy, id: 'repair-no-kind', checkIds: [] }))
+      warn.mockClear()
+      expect(getDoctorRepairRequest(dir, 'repair-legacy')).toBeNull()
+      expect(getDoctorRepairRequest(dir, 'repair-no-checkids')).toBeNull()
+      expect(getDoctorRepairRequest(dir, 'repair-no-kind')).toBeNull()
+      expect(listDoctorRepairRequests(dir)).toEqual([])
+      expect(warn.mock.calls.map((call) => String(call[0]))).toContain('Skipping invalid doctor repair request')
     })
   })
 })

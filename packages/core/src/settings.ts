@@ -276,9 +276,7 @@ export interface BakinSettings {
      * task is open — blocked/review cover indefinitely, todo/in-progress
      * until escalationStaleAfterMs — and rate-limited by
      * escalationCooldownMs). false keeps the dashboard-only behavior.
-     * Manual `bakin doctor` runs are never affected. The old string modes
-     * ('off' | 'notify' | 'task') are coerced on load: 'off' → false, else
-     * true (the one-shot upgrade rewrites the file).
+     * Manual `bakin doctor` runs are never affected.
      */
     escalation: boolean
     /** Minimum gap before re-escalating the SAME error set as a new task. */
@@ -320,8 +318,7 @@ export interface BakinSettings {
    * repairs. `channelAlerts` renders approval cards on the runtime channel
    * (`channel` = channel id or notifications.channelAliases alias);
    * `requireRejectReason` makes the Bakin UI and fallback page demand a
-   * typed reason (channel button rejects record a default one). Moved here
-   * from the workflows plugin's settings by the one-shot approvals upgrade.
+   * typed reason (channel button rejects record a default one).
    */
   approvals: {
     channelAlerts: boolean
@@ -578,10 +575,8 @@ function normalizeDoctorSettings(input: BakinSettings['doctor']): BakinSettings[
   const sensitivity = input.sensitivity === 'developer' || input.sensitivity === 'standard' || input.sensitivity === 'quiet'
     ? input.sensitivity
     : DEFAULT_SETTINGS.doctor.sensitivity
-  // Legacy string modes coerce until the one-shot approvals upgrade has
-  // rewritten the file: 'off' → false, 'notify' | 'task' → true.
   const raw: unknown = input.escalation
-  const escalation = typeof raw === 'boolean' ? raw : raw === 'off' ? false : raw === 'notify' || raw === 'task' ? true : DEFAULT_SETTINGS.doctor.escalation
+  const escalation = typeof raw === 'boolean' ? raw : DEFAULT_SETTINGS.doctor.escalation
   return { ...input, sensitivity, escalation }
 }
 

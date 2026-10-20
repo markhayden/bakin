@@ -25,6 +25,7 @@
 import { readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { createInterface } from 'readline/promises'
+import { APPROVAL_OPERATOR_HEADER } from '../packages/core/src/approvals/provenance'
 import { getContentDir } from '../packages/core/src/content-dir'
 import { liveServerBaseUrl } from '../src/core/server-lock'
 
@@ -34,7 +35,7 @@ const BAKIN_URL = liveServerBaseUrl() ?? (() => {
   console.error(`No Bakin server is running for ${getContentDir()} — start it or set BAKIN_URL.`)
   process.exit(1)
 })()
-const APPROVALS_DIR = join(getContentDir(), 'workflows', 'approvals')
+const APPROVALS_DIR = join(getContentDir(), 'approvals')
 
 const GATE_WAIT_MS = 15 * 60 * 1000 // real agent turn precedes the gate
 const DECISION_WAIT_MS = 10 * 60 * 1000
@@ -284,8 +285,16 @@ async function scenarioUiApprove(workflowId: string, agent: string): Promise<voi
     'Validation run: write a short post about sunsets. Keep it under 3 sentences.')
   const delivered = await verifyDelivery(taskId, 'US4')
 
-  await api(`/api/plugins/workflows/gates/${encodeURIComponent(taskId)}/approve`, { method: 'POST', body: '{}' })
-  record('US4', 'REST gate approve succeeded', true, `POST /gates/${taskId}/approve`)
+  // The ONE decision path (#898): resolve the durable record as a DECLARED
+  // operator — the same call the board makes. Confirm first: this is the
+  // operator's decision, the script only carries it.
+  await pause('Press Enter to approve this gate from the Bakin API as the operator.')
+  await api(`/api/approvals/${encodeURIComponent(delivered.approvalId)}/resolve`, {
+    method: 'POST',
+    headers: { [APPROVAL_OPERATOR_HEADER]: 'declared' },
+    body: JSON.stringify({ option: 'approve' }),
+  })
+  record('US4', 'REST approval resolve succeeded', true, `POST /api/approvals/${delivered.approvalId}/resolve`)
 
   const resolved = await waitForRecordStatus(delivered.approvalId, 'approved')
   record('US4', 'durable approval record resolved from the UI decision', true, resolved.approvalId)

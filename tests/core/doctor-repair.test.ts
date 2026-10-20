@@ -14,7 +14,7 @@ afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 const appendAudit = mock()
 mock.module('../../src/core/audit', () => ({ appendAudit }))
 mock.module('../../src/core/settings', () => ({
-  getSettings: () => ({ doctor: { intervalMs: 60_000, requireOnboard: false, escalation: 'off', escalationCooldownMs: 60_000, sensitivity: 'standard' } }),
+  getSettings: () => ({ doctor: { intervalMs: 60_000, requireOnboard: false, escalation: false, escalationCooldownMs: 60_000, sensitivity: 'standard' } }),
 }))
 mock.module('../../src/core/onboarding/state', () => ({ isOnboarded: () => true }))
 mock.module('../../src/core/logger', () => ({ createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }) }))

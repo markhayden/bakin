@@ -25,7 +25,7 @@ provider and one place to decide: the task the approval belongs to.
 
 Store verbs (`store.ts`): `createApprovalRecord` (idempotent — a pending record
 is refreshed, a resolved one is returned untouched so a replay never reopens
-a decision), `importApprovalRecord`, `getApprovalRecord`,
+a decision), `getApprovalRecord`,
 `listApprovalRecords({status, taskIds, kind})`, `updateApprovalDeliveries`,
 `resolveApprovalRecord` (**compare-and-set** on `pending`; `approve|apply` →
 `approved`, `reject|dismiss` → `rejected`; throws `ApprovalNotFoundError` /
@@ -243,22 +243,9 @@ is a false positive in the safe direction.
   boot: fresh targeted checks → verified or failed+blocked; the pending record
   is withdrawn (`interrupted`).
 
-## One-shot upgrades (delete after margo has booted PR 2 once)
-
-`src/core/approvals/settings-upgrade.ts` moves `approvalChannelAlerts` /
-`approvalChannel` / `requireRejectReason` from `plugin-settings/workflows.json`
-into `settings.approvals`, drops `notifyOnGate`, and rewrites
-`doctor.escalation` strings (`off`→false, `notify|task`→true) with a
-`workflows.json.pre-approvals.bak` backup. `records-upgrade.ts` moves
-`~/.bakin/workflows/approvals/*.json` into the core store as
-`workflow-gate` records with deliveries intact (live Discord cards keep
-resolving). Both run in `server.ts` after `createAppServices()`, before
-plugin init; `normalizeDoctorSettings` coerces the legacy strings on every
-load until the files are deleted.
-
 ## Tests
 
-`tests/core/approvals/{store,service,rehydration,channel-wiring,settings-upgrade,records-upgrade}.test.ts`,
+`tests/core/approvals/{store,service,rehydration,channel-wiring}.test.ts`,
 `tests/host/{approvals-api,approvals-attention}.test.*`,
 `tests/plugins/workflows/{approval-kind,notifications,gate-decision-page,gate-hooks}.test.ts`,
 `tests/core/{doctor-approvals,doctor-escalation,doctor-autoclose}.test.ts`,

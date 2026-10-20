@@ -55,6 +55,21 @@ describe('Settings', () => {
     expect(getSettings().doctor.sensitivity).toBe('quiet')
   })
 
+  it('doctor.escalation is a plain boolean — anything else falls back to the default (#945)', () => {
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ doctor: { escalation: false } }))
+    resetSettingsCache()
+    expect(getSettings().doctor.escalation).toBe(false)
+
+    // The retired string modes are not coerced any more: 'off' used to mean
+    // false; now it is just an invalid value and the default (true) wins.
+    for (const junk of ['off', 'notify', 'task', null, 0, 'false']) {
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ doctor: { escalation: junk } }))
+      resetSettingsCache()
+      expect(getSettings().doctor.escalation).toBe(true)
+    }
+  })
+
   it('returns doctor defaults including requireOnboard', () => {
     const settings = getSettings()
     expect(settings.doctor.intervalMs).toBe(30 * 60 * 1000)
