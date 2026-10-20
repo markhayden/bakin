@@ -37,10 +37,15 @@ export function ScheduleInput({
   const [loading, setLoading] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
+  // An emptied value drops the last parse in the same render (issue 966b); the
+  // owner is told from the effect below, which is where the parse requests live.
+  if (!value.trim() && (parsed !== null || error !== null)) {
+    setParsed(null)
+    setError(null)
+  }
+
   useEffect(() => {
     if (!value.trim()) {
-      setParsed(null)
-      setError(null)
       onParsed?.(null)
       return
     }

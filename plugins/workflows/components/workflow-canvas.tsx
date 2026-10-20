@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import {
   ReactFlow,
   Background,
@@ -332,17 +333,13 @@ export function WorkflowCanvas({ definition, subWorkflows, skillDrift, onNodeCli
     () => buildGraph(definition, subWorkflows, skillDrift),
     [definition, subWorkflows, skillDrift],
   )
-  const [nodes, setNodes] = useState<Node[]>(initialNodes)
+  // The node state belongs to one built graph (issue 966b): a new definition re-seeds it in the same render.
+  const [nodes, setNodes] = useKeyedState<Node[]>(initialNodes, () => initialNodes)
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes(nds => applyNodeChanges(changes, nds)),
-    [],
+    [setNodes],
   )
-
-  // Reset nodes when definition changes.
-  useEffect(() => {
-    setNodes(initialNodes)
-  }, [initialNodes])
 
   return (
     <div className="h-full w-full bg-bakin-canvas-default [--xy-edge-stroke:var(--bakin-color-border-subtle)] [--xy-edge-stroke-width:2]">

@@ -4,7 +4,7 @@
  * checklist, and route states (UX cleanup spec §7b/§7g/§7h).
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { settleReact } from '../../rtl-settle'
 import { join } from 'path'
@@ -367,5 +367,32 @@ describe('route states', () => {
     render(<BrandDetail brandId="acme" onBack={() => {}} />)
     expect(document.querySelector('[data-brand-detail-loading]')).not.toBeNull()
     expect(document.querySelector('[data-slot="system-state"]')?.getAttribute('data-kind')).toBe('loading')
+  })
+
+  it('a voice body that resolves after the brand refreshed without voice.md never lands (issue 966b review r3)', async () => {
+    const { emitPluginEvent } = await import('../../../src/hooks/use-plugin-event')
+    let detailReads = 0
+    let resolveVoice!: (body: { content: string }) => void
+    const voiceBody = new Promise<{ content: string }>((resolve) => { resolveVoice = resolve })
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/api/plugins/brands/acme') && method === 'GET') {
+        detailReads += 1
+        // The first detail carries voice.md; the refresh after brand.changed no longer does.
+        const guidelines = detailReads === 1 ? [{ name: 'voice.md', bytes: 12 }] : []
+        return new Response(JSON.stringify({ brand: makeBrand(false), guidelines, lessons: [], fingerprint: `sha256:${detailReads}`, completeness: COMPLETENESS }), { status: 200 })
+      }
+      if (url.endsWith('/docs/guidelines/voice.md')) return { ok: true, status: 200, json: () => voiceBody } as unknown as Response
+      if (url.endsWith('/blocked-tasks')) return new Response(JSON.stringify({ perTask: {} }), { status: 200 })
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    await renderDetail()
+    await waitFor(() => expect(detailReads).toBe(1))
+    await act(async () => { emitPluginEvent({ event: 'brand.changed', brandId: 'acme' }) })
+    await waitFor(() => expect(detailReads).toBe(2))
+    await act(async () => { resolveVoice({ content: 'OLD VOICE BODY' }) })
+    await settleReact()
+    expect(screen.queryByText(/OLD VOICE BODY/)).toBeNull()
   })
 })

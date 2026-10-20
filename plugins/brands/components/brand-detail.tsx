@@ -70,7 +70,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
-import { useQueryState, usePluginEvent, toast } from '@makinbakin/sdk/hooks'
+import { useQueryState, usePluginEvent, toast, useKeyedState } from '@makinbakin/sdk/hooks'
 import {
   ArrowLeft, Palette, Rocket, Pencil, Plus, Check, TriangleAlert, ExternalLink,
   FileText, BookOpen, ImageIcon, Trash, Sparkles, Info,
@@ -820,36 +820,49 @@ function OverviewTab({
   brand: BrandManifest; detail: DetailResponse; brandId: string; onGoTo: (tab: string) => void
   onEditDoc: (kind: DocKind, name: string, create?: boolean) => void
 }) {
-  const [card, setCard] = useState<CardPreview | null>(null)
-  const [voice, setVoice] = useState<string | null>(null)
-  const [activity, setActivity] = useState<ActivityRow[]>([])
+  // The overview belongs to one brand (issue 966b): another brand starts empty in
+  // the same render; the effect only loads.
+  const [card, setCard] = useKeyedState<CardPreview | null>(brandId, () => null)
+  // The voice follows whether the brand still carries voice.md: a refresh that
+  // removed the document drops the displayed voice in the same render.
+  const hasVoiceDoc = detail.guidelines.some((d) => d.name === 'voice.md')
+  const [voice, setVoice] = useKeyedState<string | null>(`${brandId}\u0000${hasVoiceDoc}`, () => null)
+  const [activity, setActivity] = useKeyedState<ActivityRow[]>(brandId, () => [])
 
+  // Re-read on every detail refresh (`brand.changed` hands a new `detail`):
+  // an edited voice, a changed card size or new activity must show; a read
+  // that an older refresh started never lands over a newer one.
   useEffect(() => {
-    setCard(null); setVoice(null); setActivity([])
+    let active = true
     void (async () => {
       try {
         const res = await fetch(`/api/plugins/brands/${brandId}/card-preview`)
         if (res.ok) {
           const body = (await res.json()) as { meta: { cardBytes: number; omitted: unknown[] }; maxBytes: number }
-          setCard({ cardBytes: body.meta.cardBytes, maxBytes: body.maxBytes, omitted: body.meta.omitted.length })
+          if (active) setCard({ cardBytes: body.meta.cardBytes, maxBytes: body.maxBytes, omitted: body.meta.omitted.length })
         }
       } catch { /* best-effort */ }
     })()
-    if (detail.guidelines.some((d) => d.name === 'voice.md')) {
+    if (hasVoiceDoc) {
       void (async () => {
         try {
           const res = await fetch(`/api/plugins/brands/${brandId}/docs/guidelines/voice.md`)
-          if (res.ok) setVoice(((await res.json()) as { content?: string }).content ?? '')
+          if (!res.ok) return
+          const body = (await res.json()) as { content?: string }
+          if (active) setVoice(body.content ?? '')
         } catch { /* best-effort */ }
       })()
     }
     void (async () => {
       try {
         const res = await fetch(`/api/plugins/brands/${brandId}/activity`)
-        if (res.ok) setActivity(((await res.json()) as { activity: ActivityRow[] }).activity ?? [])
+        if (!res.ok) return
+        const body = (await res.json()) as { activity: ActivityRow[] }
+        if (active) setActivity(body.activity ?? [])
       } catch { /* best-effort */ }
     })()
-  }, [brandId, detail.guidelines])
+    return () => { active = false }
+  }, [brandId, detail.guidelines, hasVoiceDoc, setActivity, setCard, setVoice])
 
   const assetCount = useMemo(() => new Set([
     ...brand.logos.map((l) => l.assetId),
@@ -1371,11 +1384,18 @@ function BrandAssetsSection({
     })
   }, [brand.logos, onSave])
 
+  // The owner's "add a logo" request opens the picker in the same render it
+  // arrives — including the render this tab mounts with the request already
+  // pending (issue 966b); the acknowledgement is the owner's state, so it is sent
+  // from an effect (a callback, never a setState of our own).
+  const [logoRequestSeen, setLogoRequestSeen] = useState(false)
+  if (logoRequestSeen !== logoPickerRequested) {
+    setLogoRequestSeen(logoPickerRequested)
+    if (logoPickerRequested) openLogoPicker()
+  }
   useEffect(() => {
-    if (!logoPickerRequested) return
-    openLogoPicker()
-    onLogoPickerRequestHandled()
-  }, [logoPickerRequested, onLogoPickerRequestHandled, openLogoPicker])
+    if (logoPickerRequested) onLogoPickerRequestHandled()
+  }, [logoPickerRequested, onLogoPickerRequestHandled])
 
   const tile = (assetId: string, patch: (current: BrandManifest) => ManifestPatch, extra?: React.ReactNode) => (
     <AssetTile

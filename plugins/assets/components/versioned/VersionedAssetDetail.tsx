@@ -43,6 +43,17 @@ import { VersionRow } from './VersionRow'
 import { assetVersionUrl, assetExportUrl, VERSIONED_API } from './asset-urls'
 import type { VersionedAssetManifest } from './types'
 
+/** The asset's manifest, or null when it is gone or the request failed. */
+async function loadManifest(assetId: string): Promise<VersionedAssetManifest | null> {
+  try {
+    const r = await fetch(`${VERSIONED_API}/${encodeURIComponent(assetId)}`)
+    const d = r.ok ? await r.json() : { asset: null }
+    return d.asset ?? null
+  } catch {
+    return null
+  }
+}
+
 export function VersionedAssetDetail() {
   const { assetId } = useParams<{ assetId: string }>()
   const router = useRouter()
@@ -68,14 +79,15 @@ export function VersionedAssetDetail() {
   const versionInputRef = useRef<FileInputHandle | null>(null)
 
   const fetchManifest = useCallback(() => {
-    fetch(`${VERSIONED_API}/${encodeURIComponent(assetId)}`)
-      .then(r => r.ok ? r.json() : { asset: null })
-      .then(d => setManifest(d.asset))
-      .catch(() => setManifest(null))
-      .finally(() => setLoading(false))
+    loadManifest(assetId).then(setManifest).finally(() => setLoading(false))
   }, [assetId])
 
-  useEffect(() => { fetchManifest() }, [fetchManifest])
+  // The first read: the promise callbacks set state, nothing synchronous (issue 966b).
+  useEffect(() => {
+    let active = true
+    loadManifest(assetId).then((asset) => { if (active) setManifest(asset) }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [assetId])
 
   usePluginEvent('asset.removed', (d) => { if (d.assetId === assetId) router.push('/assets') })
   usePluginEvent('asset.changed', (d) => { if (d.assetId === assetId) fetchManifest() })

@@ -229,4 +229,57 @@ describe('startOperation', () => {
     expect((err as OperationStartError).message).toBe('Already installed')
     expect((err as OperationStartError).body).toEqual({ error: 'Already installed' })
   })
+
+  it('onSettle fires once per followed operation — with the final view when it finishes, with null when it expires (#966b)', async () => {
+    globalThis.fetch = mock(async () => json({ bootId: 'boot-a', operation: view({ rev: 3, status: 'succeeded' }) })) as unknown as typeof fetch
+    const settles: Array<[string | null, string]> = []
+    const { result } = await actRender(() => renderHook(() => useOperation('op-1', { bootId: 'boot-a', onSettle: (op, phase) => { settles.push([op?.id ?? null, phase]) } })))
+    await waitUntil(() => result.current.phase === 'finished', { label: 'finished' })
+    expect(settles).toEqual([['op-1', 'finished']])
+    // Later events for the same operation never re-fire the settle.
+    event(view({ rev: 4, status: 'succeeded' }))
+    await act(async () => emitPluginEvent({ event: 'bakin.reconcile' }))
+    await act(() => settleFor(30, 'a settled operation reports once'))
+    expect(settles).toHaveLength(1)
+
+    globalThis.fetch = mock(async () => json({ bootId: 'boot-a', error: 'not_found' }, 404)) as unknown as typeof fetch
+    const expired: Array<[string | null, string]> = []
+    const second = await actRender(() => renderHook(() => useOperation('op-2', { bootId: 'boot-a', onSettle: (op, phase) => { expired.push([op?.id ?? null, phase]) } })))
+    await waitUntil(() => second.result.current.phase === 'expired', { label: 'expired' })
+    expect(expired).toEqual([[null, 'expired']])
+  })
+
+  it('onSettle is scoped to one follow: following nothing and then the same operation again settles again (#966b review)', async () => {
+    globalThis.fetch = mock(async () => json({ bootId: 'boot-a', operation: view({ rev: 3, status: 'succeeded' }) })) as unknown as typeof fetch
+    const settles: string[] = []
+    const { result, rerender } = await actRender(() => renderHook(
+      ({ id }: { id: string | null }) => useOperation(id, { bootId: 'boot-a', onSettle: (op) => { settles.push(op?.id ?? 'none') } }),
+      { initialProps: { id: 'op-1' as string | null } },
+    ))
+    await waitUntil(() => result.current.phase === 'finished', { label: 'first follow finished' })
+    expect(settles).toEqual(['op-1'])
+    await act(async () => { rerender({ id: null }) })
+    await act(async () => { rerender({ id: 'op-1' }) })
+    await waitUntil(() => settles.length === 2, { label: 'the re-follow settled again' })
+    expect(settles).toEqual(['op-1', 'op-1'])
+  })
+
+  it('onSettle fires again after a detour through another, still-running operation (#966b review r2)', async () => {
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const id = /operations\/([^/?]+)/.exec(String(input))?.[1]
+      return json({ bootId: 'boot-a', operation: view({ id, rev: 3, status: id === 'op-live' ? 'running' : 'succeeded' }) })
+    }) as unknown as typeof fetch
+    const settles: string[] = []
+    const { result, rerender } = await actRender(() => renderHook(
+      ({ id }: { id: string | null }) => useOperation(id, { bootId: 'boot-a', onSettle: (op) => { settles.push(op?.id ?? 'none') } }),
+      { initialProps: { id: 'op-done' as string | null } },
+    ))
+    await waitUntil(() => result.current.phase === 'finished', { label: 'op-done finished' })
+    expect(settles).toEqual(['op-done'])
+    await act(async () => { rerender({ id: 'op-live' }) })
+    await waitUntil(() => result.current.phase === 'live', { label: 'op-live is live' })
+    await act(async () => { rerender({ id: 'op-done' }) })
+    await waitUntil(() => settles.length === 2, { label: 'op-done settled again after the detour' })
+    expect(settles).toEqual(['op-done', 'op-done'])
+  })
 })

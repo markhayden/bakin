@@ -6,7 +6,10 @@ import { ActivityContext } from '@/context/activity-context'
 import { SidebarContext } from '@/context/sidebar-context'
 import { Header } from '../../packages/host/src/components/layout/header'
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useDebug: () => [false, mock()] as const,
   useContentStore: (selector: (state: { connected: boolean }) => unknown) => selector({ connected: true }),
   toast: mock(),
@@ -192,5 +195,35 @@ describe('Header update banner', () => {
     await act(async () => { view.unmount() })
     expect(signals.get('/api/version')?.aborted).toBe(true)
     expect(signals.get('/api/update/status')?.aborted).toBe(true)
+  })
+
+  it('closes the mobile navigation sheet when the viewport grows past the breakpoint (#966b)', async () => {
+    let matches = false
+    const listeners = new Set<() => void>()
+    const originalMatchMedia = window.matchMedia
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({
+        media: query,
+        get matches() { return matches },
+        addEventListener: (_: string, cb: () => void) => { listeners.add(cb) },
+        removeEventListener: (_: string, cb: () => void) => { listeners.delete(cb) },
+      }),
+    })
+    try {
+      renderHeader()
+      await act(async () => {})
+      // The header's own toggle is the one button carrying aria-expanded (the sheet adds its own close control).
+      const toggle = () => document.querySelector('button[aria-expanded]') as HTMLButtonElement
+      await act(async () => { fireEvent.click(toggle()) })
+      expect(toggle().getAttribute('aria-expanded')).toBe('true')
+      expect(toggle().getAttribute('aria-label')).toBe('Close navigation')
+      matches = true
+      await act(async () => { for (const cb of listeners) cb() })
+      expect(toggle().getAttribute('aria-expanded')).toBe('false')
+      expect(toggle().getAttribute('aria-label')).toBe('Open navigation')
+    } finally {
+      Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia })
+    }
   })
 })

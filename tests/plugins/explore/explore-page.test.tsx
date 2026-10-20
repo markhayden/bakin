@@ -37,8 +37,11 @@ const toastMock = mock()
 let cachedData: unknown = null
 let cachedFor: unknown = null
 
+// Captured BEFORE the module is mocked (live namespace binding): the page's render helpers (useKeyedState) stay real.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => {
   return {
+    ...realSdkHooks,
     toast: toastMock,
     useAgent: (agentId: string) => agentId ? { name: 'Pixel', headshot: '/agents/pixel.png' } : null,
     useAgentColor: () => '#ff4f91',

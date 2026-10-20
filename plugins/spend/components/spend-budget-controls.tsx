@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Plus, Trash } from 'lucide-react'
 import { Inline, Section, Stack } from '@makinbakin/sdk/layout'
 import { AgentAvatar, ListRow, ListRows } from '@makinbakin/sdk/patterns'
@@ -73,15 +73,17 @@ function CapInput({
   onChange: (value: number | undefined) => void
 }) {
   const [text, setText] = useState(value === undefined ? '' : String(value))
-  useEffect(() => {
-    // Sync only when the committed value diverges from what the text parses
-    // to — typing "2." (unparseable) must not be clobbered by the stale prop.
+  // A committed value that diverges from what the text parses to replaces the
+  // text in the same render it arrives (issue 966b) — typing "2." (unparseable)
+  // must not be clobbered by the stale prop.
+  const [syncedValue, setSyncedValue] = useState(value)
+  if (syncedValue !== value) {
+    setSyncedValue(value)
     const parsed = parseCapInput(text)
     if (parsed !== value && !(value === undefined && text.trim() !== '' && parsed === undefined)) {
       setText(value === undefined ? '' : String(value))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value])
+  }
   return (
     <Field name={label}>
       <FieldLabel>{label}</FieldLabel>

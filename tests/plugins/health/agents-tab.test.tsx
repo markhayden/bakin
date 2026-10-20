@@ -15,7 +15,10 @@ mock.module('@tanstack/react-router', () => ({
   useNavigate: () => () => undefined,
 }))
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useQueryState: (key: string, initial: string) => {
     queryKeys.push(key)
     const [value, setValue] = useState(querySeed[key] ?? initial)

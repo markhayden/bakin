@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
+import { useKeyedState } from '@bakin/ui/behaviors'
 import { Button, FileInput, type FileInputHandle } from '@bakin/ui'
 
 import { AssetPicker, type AssetPickerCollection } from '@bakin/ui/patterns'
@@ -111,10 +112,12 @@ export function AssetLibraryPicker({
   loadAssets = defaultLoadAssets,
   uploadAsset = defaultUploadAsset,
 }: AssetLibraryPickerProps) {
-  const [state, setState] = useState<LoadState>({ status: 'loading' })
-  const [query, setQuery] = useState('')
+  // Per opening (issue 966b): the query, the upload error and the listing reset
+  // with `open`, so each opening starts fresh without an effect re-seeding them.
+  const [state, setState] = useKeyedState<LoadState>(open, () => ({ status: 'loading' }))
+  const [query, setQuery] = useKeyedState(open, () => '')
   const [uploading, setUploading] = useState(false)
-  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useKeyedState<string | null>(open, () => null)
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<FileInputHandle>(null)
 
@@ -125,14 +128,17 @@ export function AssetLibraryPicker({
     } catch {
       setState({ status: 'error' })
     }
-  }, [loadAssets])
+  }, [loadAssets, setState])
 
   useEffect(() => {
     if (!open) return
-    setQuery('')
-    setUploadError(null)
-    void load()
-  }, [open, load])
+    let current = true
+    loadAssets().then(
+      (assets) => { if (current) setState({ status: 'ready', assets }) },
+      () => { if (current) setState({ status: 'error' }) },
+    )
+    return () => { current = false }
+  }, [open, loadAssets, setState])
 
   const pick = useCallback((assetId: string) => {
     onPick(assetId)
@@ -150,7 +156,7 @@ export function AssetLibraryPicker({
     } finally {
       setUploading(false)
     }
-  }, [pick, uploadAsset])
+  }, [pick, uploadAsset, setUploadError])
 
   const dropZoneProps = {
     onDragOver: (event: DragEvent) => {

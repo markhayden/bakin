@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render } from '@testing-library/react'
 import '../rtl-settle'
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   usePathname: () => '/tasks',
   useSearchParams: () => new URLSearchParams(),
 }))

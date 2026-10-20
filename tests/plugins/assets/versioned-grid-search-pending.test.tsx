@@ -47,7 +47,10 @@ interface SearchHookState {
 }
 const searchState: SearchHookState = { results: [], loading: false, status: 'ok', meta: null }
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useSearch: () => ({
     results: searchState.results,
     aggregations: {},

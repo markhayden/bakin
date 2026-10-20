@@ -25,7 +25,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
-import { toast, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
+import { toast, usePluginJsonFetch, useKeyedState } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { CatalogSortControl, CatalogTable } from './catalog-table'
 import { DetailDrawer } from './detail-drawer'
@@ -104,15 +104,15 @@ function ExplorePageInner() {
   // Filtering reads the local draft for instant feedback; only the URL
   // write is debounced (same reason PluginHeader's search debounces —
   // the param is for deep-linking, keystrokes aren't).
-  const [searchDraft, setSearchDraft] = useState(query)
+  // The draft is keyed by the URL param (issue 966b): when it changes underneath
+  // us (sidebar re-click clears ?q=, back/forward, shared links) the draft
+  // resyncs in the same render — otherwise the grid stays filtered by text
+  // the URL no longer claims. A pending debounced commit converges to the
+  // same value, so this never fights typing; the effect only drops the timer.
+  const [searchDraft, setSearchDraft] = useKeyedState(query, () => query)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current) }, [])
-  // Resync the draft when the URL param changes underneath us (sidebar
-  // re-click clears ?q=, back/forward, shared links) — otherwise the grid
-  // stays filtered by text the URL no longer claims. A pending debounced
-  // commit converges to the same value, so this never fights typing.
   useEffect(() => {
-    setSearchDraft(query)
     if (searchTimer.current) clearTimeout(searchTimer.current)
   }, [query])
   const onSearchChange = (value: string) => {
@@ -125,10 +125,7 @@ function ExplorePageInner() {
   // Probe/refresh responses carry state the base GET can't reproduce
   // (agent update probes are never persisted) — they override until the
   // next base refetch delivers, then the fresher base data wins.
-  const [override, setOverride] = useState<ExploreCatalogResponse | null>(null)
-  useEffect(() => {
-    setOverride(null)
-  }, [data])
+  const [override, setOverride] = useKeyedState<ExploreCatalogResponse | null>(data, () => null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<'check' | 'refresh' | null>(null)
 

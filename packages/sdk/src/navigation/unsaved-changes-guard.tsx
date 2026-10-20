@@ -120,9 +120,11 @@ export function useUnsavedChangesGuard({
   }, [hasUnsavedChanges, tanStackRouter])
 
   // Clean again (saved or discarded): nothing is left to lose, so a
-  // navigation still waiting on the decision goes through.
+  // navigation still waiting on the decision goes through. The blocker's
+  // own continuation returns the state to idle once it resolves; the
+  // dialog below never shows a blocked state while nothing is unsaved.
   useEffect(() => {
-    if (!hasUnsavedChanges && settleBlocker('proceed')) setRouteBlocker({ status: 'idle' })
+    if (!hasUnsavedChanges) settleBlocker('proceed')
   }, [hasUnsavedChanges])
 
   // Unmounting with a navigation still waiting: let it go through rather than
@@ -219,7 +221,7 @@ export function useUnsavedChangesGuard({
 
   const dialog = (
     <UnsavedChangesDialog
-      open={confirmingExit || routeBlocker.status === 'blocked'}
+      open={confirmingExit || (routeBlocker.status === 'blocked' && hasUnsavedChanges)}
       busy={saving}
       canSaveInPlace={canSaveInPlace}
       saveDisabled={saveDisabled}

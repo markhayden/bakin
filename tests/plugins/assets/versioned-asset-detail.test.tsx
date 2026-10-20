@@ -31,7 +31,10 @@ mock.module('@makinbakin/sdk/navigation', () => ({
   }),
 }))
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useAgent: (agentId: string) => ({ id: agentId, name: agentId }),
   useAgentColor: () => 'var(--bakin-color-signal-accent)',
   useAgentDisplayName: (agentId: string) => agentId,

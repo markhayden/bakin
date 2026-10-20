@@ -28,7 +28,11 @@ mock.module('@makinbakin/sdk/navigation', () => ({
     return { requestExit: () => {}, reset: () => {}, dialog: null }
   },
 }))
+// Captured BEFORE the module is mocked (live namespace binding): the page's
+// components use the SDK's render helpers (useKeyedState, useNow) unchanged.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useAgentList: () => [{ id: 'main', name: 'Main', emoji: '🤖', role: '', headshot: '' }],
   usePluginEvent: () => {},
   emitPluginEvent: () => {},

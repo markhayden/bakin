@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useEffectEvent, useReducer, useRef } from 'react'
 import {
   isOperationFinished,
   type OperationCancelResult,
@@ -23,9 +23,17 @@ import { usePluginEvent } from './use-plugin-event'
  * backoff, keeping the last view on screen.
  */
 
-export interface UseOperationOptions {
+export interface UseOperationOptions<B = unknown> {
   /** The boot id from the start response; adopted from the first read when omitted. */
   bootId?: string
+  /**
+   * Called once per followed operation when it settles: finished (with its
+   * final view), or expired / restarted (the outcome went missing — the
+   * view is whatever was last seen, possibly null). The settle is the
+   * operation's event; consumers record outcomes here, never in an effect
+   * watching `phase` (issue 966b).
+   */
+  onSettle?: (operation: OperationView<B> | null, phase: OperationPhase) => void
 }
 
 export interface UseOperationResult<B = unknown> {
@@ -121,12 +129,26 @@ function settled(phase: OperationPhase): boolean {
   return phase === 'finished' || phase === 'expired' || phase === 'restarted'
 }
 
-export function useOperation<B = unknown>(id: string | null, opts: UseOperationOptions = {}): UseOperationResult<B> {
+export function useOperation<B = unknown>(id: string | null, opts: UseOperationOptions<B> = {}): UseOperationResult<B> {
   const [state, dispatch] = useReducer(reducer, initialFollowState(id, opts.bootId))
   if (state.id !== id) dispatch({ type: 'reset', id, bootId: opts.bootId })
 
   const phaseRef = useRef(state.phase)
   phaseRef.current = state.phase
+
+  // One settle event per followed id, delivered to the latest callback.
+  const settleEvent = useEffectEvent((operation: OperationView<B> | null, phase: OperationPhase) => { opts.onSettle?.(operation, phase) })
+  // Scoped to one follow: every change of the followed id (to another
+  // operation, or to nothing) starts a fresh lifecycle, so following the same
+  // operation again later settles again.
+  const settledFor = useRef<{ id: string; done: boolean } | null>(null)
+  useEffect(() => {
+    if (!id) { settledFor.current = null; return }
+    if (settledFor.current?.id !== id) settledFor.current = { id, done: false }
+    if (!settled(state.phase) || settledFor.current.done) return
+    settledFor.current.done = true
+    settleEvent(state.operation as OperationView<B> | null, state.phase)
+  }, [id, state.phase, state.operation])
 
   const read = useCallback(async (signal?: AbortSignal) => {
     if (!id) return

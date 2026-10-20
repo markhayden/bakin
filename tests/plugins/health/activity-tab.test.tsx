@@ -11,7 +11,10 @@ import '../../rtl-settle'
 const queryInitialValues = new Map<string, string>()
 const queryWrites: Array<{ key: string; value: string }> = []
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useQueryState: (key: string, defaultValue: string) => {
     const [value, setValue] = useState(queryInitialValues.get(key) ?? defaultValue)
     const writeValue = (next: string) => {
@@ -1986,8 +1989,9 @@ describe('ActivityTab', () => {
       (options as { failureGroupOffset?: number }).failureGroupOffset === 25
     ))).toBe(true)
     expect(useActivityDataMock).toHaveBeenLastCalledWith({ window: '1h', kind: 'all', includeRoutine: true })
-    expect(screen.queryByRole('group', { name: 'API · Search Reindex' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Review failure patterns 1–2 of 40' }))
+    // The clamp lands in the same render as the shrunken total (#966b), so the
+    // last valid page shows with the details still open — the page change
+    // asked for them expanded; nothing collapses on the way back.
     expect(screen.getByRole('group', { name: 'API · Search Reindex' })).toBeDefined()
   })
 

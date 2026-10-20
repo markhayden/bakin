@@ -7,6 +7,7 @@
  * /versioned/:assetId/version upload route (history stays immutable).
  */
 import { useEffect, useState } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import { Download, Pencil, Save, X } from 'lucide-react'
 import { Alert, AlertDescription, Avatar, AvatarFallback, Button, Text, Textarea } from '@makinbakin/sdk/ui'
 import { MarkdownContent } from '@makinbakin/sdk/content'
@@ -93,7 +94,8 @@ export function AssetPreview({ assetId, type, mimeType, version, currentFile, on
 function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
   assetId: string; fileUrl: string; mimeType: string; currentFile: string; onSaved?: () => void
 }) {
-  const [content, setContent] = useState<string | null>(null)
+  // The body belongs to one file (issue 966b): another version starts unloaded in the same render.
+  const [content, setContent] = useKeyedState<string | null>(fileUrl, () => null)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
@@ -104,13 +106,12 @@ function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
   // SDK hook is JSON-only.
   useEffect(() => {
     const controller = new AbortController()
-    setContent(null)
     fetch(fileUrl, { signal: controller.signal })
       .then(r => r.text())
       .then(t => { if (!controller.signal.aborted) setContent(t) })
       .catch(() => { if (!controller.signal.aborted) setContent('Failed to load content') })
     return () => controller.abort()
-  }, [fileUrl])
+  }, [fileUrl, setContent])
 
   const startEdit = () => { setDraft(content ?? ''); setError(null); setEditing(true) }
 

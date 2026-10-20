@@ -12,9 +12,12 @@ export function AssetsBadgeProvider() {
   usePluginEvent('asset.unmanaged', refresh)
   usePluginEvent('bakin.reconcile', refresh)
 
+  // The last valid count is adopted during render (issue 966b); the effect only
+  // schedules retries after an invalid or failed read.
+  if (!loading && valid && !error && count !== data.count) setCount(data.count)
+
   useEffect(() => {
     if (loading) return
-    if (valid && !error) setCount(data.count)
     if (!error && (data === null || valid)) { attempts.current = 0; return }
     const retry = setTimeout(refresh, Math.min(1000 * 2 ** attempts.current++, 30_000))
     return () => clearTimeout(retry)

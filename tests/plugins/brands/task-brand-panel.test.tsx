@@ -4,7 +4,10 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import '../../rtl-settle'
 import { settleReact } from '../../rtl-settle'
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useDebug: () => [false],
   useJsonFetch: (url: string | null) => {
     if (url?.includes('task-context')) {

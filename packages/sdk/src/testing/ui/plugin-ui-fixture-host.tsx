@@ -9,7 +9,7 @@ import {
   createRouter,
   useLocation,
 } from '@tanstack/react-router'
-import { Component, createContext, use, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { Component, createContext, use, useLayoutEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import { Button, SystemState, ToastRegion, TooltipProvider } from '@bakin/ui'
 import type { SystemStateKind } from '@bakin/ui'
 
@@ -139,6 +139,9 @@ function FixtureSystemState({ kind, onAction }: {
   return <SystemState kind={kind} scope="section" />
 }
 
+/** Registration arrays this host has installed into the client registry (see PluginUiFixtureHost). */
+const installedRegistrations = new WeakSet<readonly PluginRegistration[]>()
+
 function RegisteredPluginPage() {
   useSyncExternalStore(subscribeRegistry, getRegistryVersion, getRegistryVersion)
   const { slots, surfaceState, onStateAction } = useFixtureContext()
@@ -229,20 +232,23 @@ export function PluginUiFixtureHost({
   className,
 }: PluginUiFixtureHostProps) {
   const route = normalizePluginUiFixtureRoute(fixture.route)
-  const [registrationsReady, setRegistrationsReady] = useState(false)
-
   useLayoutEffect(() => installPluginUiFixture(fixture), [fixture])
   useLayoutEffect(() => {
-    setRegistrationsReady(false)
+    // Marked installed BEFORE registering so the registry notification the
+    // registrations raise is what flips the subscribed read below.
+    installedRegistrations.add(registrations)
     for (const registration of registrations) {
       unregisterPlugin(registration.id)
       registerPlugin(registration)
     }
-    setRegistrationsReady(true)
     return () => {
+      installedRegistrations.delete(registrations)
       for (const registration of registrations) unregisterPlugin(registration.id)
     }
   }, [registrations])
+  // Readiness is read from the registry (an external store), never set from
+  // the effect (issue 966b): the pages render once this host's registrations are in.
+  const registrationsReady = useSyncExternalStore(subscribeRegistry, () => installedRegistrations.has(registrations))
 
   const context = useMemo<FixtureContextValue>(() => ({
     slots,

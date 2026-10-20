@@ -42,21 +42,21 @@ Spec `.claude/specs/housekeeping-batch-2026-10.md` · Plan `.claude/specs/housek
 - [x] 4.6 use-state (8) + innerHTML audit (2)
 - [x] 4.7 singles + scoped `cloneElement` exception
 - [x] 4.8 flip on; reasoned offs; style-guide, dependency-sweeps (TS row re-dated), CLAUDE.md
-- [ ] `ui:conformance --full` green
-- [ ] PR 4 merged
+- [x] `ui:conformance --full` green
+- [x] PR 4 merged
 
 ## PR 5 — #966b `refactor/966-set-state-in-effect`
-- [ ] 5.1 sdk/ui/host shells/chat/tasks/storybook (18)
-- [ ] 5.2 host runtime tabs, sidebar, header, notification toggle, PluginHost (14)
-- [ ] 5.3 health (8)
-- [ ] 5.4 spend (13)
-- [ ] 5.5 schedule (16)
-- [ ] 5.6 assets (16)
-- [ ] 5.7 explore (19)
-- [ ] 5.8 brands (5)
-- [ ] 5.9 team (31)
-- [ ] 5.10 workflows (24)
-- [ ] 5.11 rule on; lint clean; conformance full; screenshots ×3
+- [x] 5.1 sdk/ui/host shells/chat/tasks/storybook (18)
+- [x] 5.2 host runtime tabs, sidebar, header, notification toggle, PluginHost (14)
+- [x] 5.3 health (8)
+- [x] 5.4 spend (13)
+- [x] 5.5 schedule (16)
+- [x] 5.6 assets (16)
+- [x] 5.7 explore (19)
+- [x] 5.8 brands (5)
+- [x] 5.9 team (31)
+- [x] 5.10 workflows (24)
+- [x] 5.11 rule on; lint clean; conformance full; screenshots ×3
 - [ ] PR 5 merged, #966 closed
 
 ## PR 6 — #948 `feat/948-zod-vendor`

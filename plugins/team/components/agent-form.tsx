@@ -67,13 +67,16 @@ export function AgentForm({
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!availableModels.length) return
+  // The catalog can arrive after mount: when it CHANGES, an empty model picks
+  // the preferred entry in the same render (issue 966b); a chosen model is kept.
+  const [modelsSeen, setModelsSeen] = useState(availableModels)
+  if (modelsSeen !== availableModels) {
+    setModelsSeen(availableModels)
     const preferred = availableModels.find((candidate) => candidate.isDefault)
       ?? availableModels.find((candidate) => candidate.configured)
       ?? availableModels[0]
-    if (preferred) setModel((current) => current || preferred.id)
-  }, [availableModels])
+    if (preferred && !model) setModel(preferred.id)
+  }
 
   useEffect(() => {
     pluginFetch('team', 'teams')

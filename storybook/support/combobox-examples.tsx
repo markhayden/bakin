@@ -48,14 +48,21 @@ async function searchCatalog(query: string, attempt: number): Promise<RuntimeOpt
 export function AsyncSelectionExample() {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<RuntimeOption | null>(runtimeOptions[0])
+  const [attempt, setAttempt] = useState(0)
+  // Per search (issue 966b): a new query or retry starts loading with an empty
+  // catalog, adjusted during render (the public catalog composes only the
+  // focused SDK entrypoints, so no keyed-state hook here).
   const [items, setItems] = useState<RuntimeOption[]>([])
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [attempt, setAttempt] = useState(0)
+  const [searchedFor, setSearchedFor] = useState(`${query}\u0000${attempt}`)
+  if (searchedFor !== `${query}\u0000${attempt}`) {
+    setSearchedFor(`${query}\u0000${attempt}`)
+    setItems([])
+    setPhase('loading')
+  }
   const [unavailable, setUnavailable] = useState(false)
   useEffect(() => {
     let current = true
-    setPhase('loading')
-    setItems([])
     void searchCatalog(query, attempt).then(results => {
       if (!current) return
       setItems(results)
@@ -63,7 +70,7 @@ export function AsyncSelectionExample() {
     }, () => { if (current) setPhase('error') })
     // A late result from an old query must not replace the current catalog.
     return () => { current = false }
-  }, [query, attempt])
+  }, [query, attempt, setItems, setPhase])
 
   return <Stack gap="section">
     <Field invalid={unavailable} name="asyncRuntime"><FieldLabel>Remote runtime</FieldLabel>

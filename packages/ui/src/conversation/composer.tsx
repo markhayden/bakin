@@ -210,7 +210,15 @@ export function Composer({
   maxHeight = DEFAULT_MAX_HEIGHT,
   className,
 }: ComposerProps) {
+  // One draft per storage key (issue 966b): switching conversations swaps the
+  // value in the same render. Inlined rather than useKeyedState so the
+  // conversation entry's reachable graph stays what it was.
   const [value, setValue] = useState(() => readDraft(storageKey))
+  const [draftFor, setDraftFor] = useState(storageKey)
+  if (draftFor !== storageKey) {
+    setDraftFor(storageKey)
+    setValue(readDraft(storageKey))
+  }
   const [dropActive, setDropActive] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const composingRef = useRef(false)
@@ -233,7 +241,6 @@ export function Composer({
   })
 
   useEffect(() => {
-    setValue(readDraft(storageKey))
     historyPositionRef.current = null
     if (autoFocus) textareaRef.current?.focus()
   }, [storageKey, autoFocus])
@@ -251,7 +258,7 @@ export function Composer({
   const setDraft = useCallback((next: string) => {
     setValue(next)
     writeStorage(draftKey(storageKey), next)
-  }, [storageKey])
+  }, [storageKey, setValue])
 
   const valueRef = useRef(value)
   valueRef.current = value

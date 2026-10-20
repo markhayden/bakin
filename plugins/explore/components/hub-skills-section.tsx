@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Download, ShieldAlert, ShieldCheck, Trash } from 'lucide-react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
@@ -291,15 +291,68 @@ export function HubSkillsSection() {
   // no request deadlines: a slow hub or a large download shows its progress.
   type PreviewBody = { ok: boolean; refused?: boolean; error?: string; preview?: SkillPreviewWire }
   type InstallBody = { ok: boolean; refused?: boolean; drift?: boolean; error?: string; warnings?: string[]; preview?: SkillPreviewWire }
-  const previewOp = useInstallOperation<PreviewBody>()
-  const installOp = useInstallOperation<InstallBody>()
+  // Each outcome is handled in the operation's settle callback (issue 966b) — the
+  // hook calls back once per start with the route's answer or the start error.
+  const previewOp = useInstallOperation<PreviewBody>({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) { setBoxError(settle.error); return }
+      const body = settle.result.body
+      if (!body?.ok || !body.preview) {
+        setBoxError(body?.refused ? `Refused: ${body.error}` : body?.error ?? `HTTP ${settle.result.httpStatus}`)
+      } else {
+        setDrift(false)
+        setPreview(body.preview)
+      }
+      previewOp.reset()
+    },
+  })
+  const installOp = useInstallOperation<InstallBody>({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) { setDrawerError(settle.error); return }
+      const body = settle.result.body
+      const p = installing
+      installOp.reset()
+      if (body?.ok && p) {
+        const needsKey = p.requirements.secrets.some((s) => s.required)
+        toast(
+          needsKey
+            ? `${p.skillName} installed — add its key in Settings → Integrations & Keys to make it ready.`
+            : `${p.skillName} installed.`,
+          'success',
+        )
+        closeDrawer()
+        setRef('')
+        refresh()
+        return
+      }
+      if (body?.drift && body.preview) {
+        setPreview(body.preview)
+        setDrift(true)
+        return
+      }
+      setDrawerError(body?.refused ? `Refused: ${body.error}` : body?.error ?? `HTTP ${settle.result.httpStatus}`)
+    },
+  })
   const previewBusy = previewOp.busy
   const installBusy = installOp.busy
   const [installing, setInstalling] = useState<SkillPreviewWire | null>(null)
   const [boxError, setBoxError] = useState<string | null>(null)
   const [removing, setRemoving] = useState<{ skillName: string; packageId: string } | null>(null)
   // Removal is a remove operation (#895); the confirm stays busy until it settles.
-  const removeOp = useInstallOperation<{ ok?: boolean; error?: string }>()
+  const removeOp = useInstallOperation<{ ok?: boolean; error?: string }>({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) {
+        toast(settle.error, 'error')
+      } else if (settle.result.httpStatus >= 400 || settle.result.body?.ok === false) {
+        toast(`Remove failed: ${settle.result.body?.error ?? `HTTP ${settle.result.httpStatus}`}`, 'error')
+      } else {
+        toast(`${removing?.skillName ?? 'Skill'} removed.`, 'success')
+      }
+      setRemoving(null)
+      removeOp.reset()
+      refresh()
+    },
+  })
   const removeBusy = removeOp.busy
 
   const closeDrawer = () => {
@@ -320,24 +373,6 @@ export function HubSkillsSection() {
     }))
   }
 
-  const previewResult = previewOp.result
-  const previewError = previewOp.error
-  const resetPreview = previewOp.reset
-  useEffect(() => {
-    if (previewError) setBoxError(previewError)
-  }, [previewError])
-  useEffect(() => {
-    if (!previewResult) return
-    const body = previewResult.body
-    if (!body?.ok || !body.preview) {
-      setBoxError(body?.refused ? `Refused: ${body.error}` : body?.error ?? `HTTP ${previewResult.httpStatus}`)
-    } else {
-      setDrift(false)
-      setPreview(body.preview)
-    }
-    resetPreview()
-  }, [previewResult, resetPreview])
-
   const runInstall = async (p: SkillPreviewWire) => {
     setDrawerError(null)
     setInstalling(p)
@@ -348,61 +383,10 @@ export function HubSkillsSection() {
     }))
   }
 
-  const installResult = installOp.result
-  const installError = installOp.error
-  const resetInstall = installOp.reset
-  useEffect(() => {
-    if (installError) setDrawerError(installError)
-  }, [installError])
-  useEffect(() => {
-    if (!installResult) return
-    const body = installResult.body
-    const p = installing
-    resetInstall()
-    if (body?.ok && p) {
-      const needsKey = p.requirements.secrets.some((s) => s.required)
-      toast(
-        needsKey
-          ? `${p.skillName} installed — add its key in Settings → Integrations & Keys to make it ready.`
-          : `${p.skillName} installed.`,
-        'success',
-      )
-      closeDrawer()
-      setRef('')
-      refresh()
-      return
-    }
-    if (body?.drift && body.preview) {
-      setPreview(body.preview)
-      setDrift(true)
-      return
-    }
-    setDrawerError(body?.refused ? `Refused: ${body.error}` : body?.error ?? `HTTP ${installResult.httpStatus}`)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per settled install
-  }, [installResult])
-
   const runRemove = async () => {
     if (!removing) return
     await removeOp.start(() => fetch(`/api/packages/${encodeURIComponent(removing.packageId)}`, { method: 'DELETE' }))
   }
-
-  const removeResult = removeOp.result
-  const removeError = removeOp.error
-  const resetRemove = removeOp.reset
-  useEffect(() => {
-    if (!removeResult && !removeError) return
-    if (removeError) {
-      toast(removeError, 'error')
-    } else if (removeResult && (removeResult.httpStatus >= 400 || removeResult.body?.ok === false)) {
-      toast(`Remove failed: ${removeResult.body?.error ?? `HTTP ${removeResult.httpStatus}`}`, 'error')
-    } else {
-      toast(`${removing?.skillName ?? 'Skill'} removed.`, 'success')
-    }
-    setRemoving(null)
-    resetRemove()
-    refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per settled removal
-  }, [removeResult, removeError])
 
   const installed = data?.managed ?? []
 
