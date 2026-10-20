@@ -32,7 +32,7 @@ export interface UpdateCommandDeps {
   /** The in-process operation (no server). Resolves to the operation's outcome. */
   runLocal?: () => Promise<UpdateCommandResult>
   /** Start + follow the server's operation (the CLI's renderer); `onUpdate` returning true stops the follow. Tests inject a scripted follow. */
-  startAndFollow?: (start: () => Promise<unknown>, opts: { onUpdate: (operation: OperationView) => boolean }) => Promise<CommandOperationResult>
+  startAndFollow?: (start: () => Promise<unknown>, opts: { onUpdate: (operation: OperationView) => boolean; baseUrl: string; json: boolean }) => Promise<CommandOperationResult>
   /** The identity headers this invocation carries (#898); the shared CLI plumbing by default. */
   identityHeaders?: () => Promise<Record<string, string>>
   /**
@@ -43,6 +43,8 @@ export interface UpdateCommandDeps {
    * the live lock by default.
    */
   target?: CliTarget
+  /** `--json`: stdout stays ONE document — the follow renders nothing (review r15 #3). */
+  json?: boolean
 }
 
 const BAKIN_RECORD_ID = 'bakin:bakin'
@@ -136,14 +138,15 @@ export async function runUpdateCommand(input: UpdateCommandDeps): Promise<Update
     return restartSeen
   }
   const target = { ...(record.available?.version ? { version: record.available.version } : {}), ...(record.available?.sha ? { sha: record.available.sha } : {}), ...(record.available?.digest ? { digest: record.available.digest } : {}) }
-  const follow = input.startAndFollow ?? ((start, opts) => startAndFollow(start, { json: false, stdout: input.stdout, onUpdate: opts.onUpdate }))
+  // The follow rides the SAME resolved server as the reads, the apply and the verification (review r15 #2).
+  const follow = input.startAndFollow ?? ((start, opts) => startAndFollow(start, { json: input.json ?? false, stdout: input.stdout, onUpdate: opts.onUpdate, baseUrl }))
   const followed = await follow(async () => {
     const res = await deps.fetch(`${baseUrl}/api/updates/${encodeURIComponent(BAKIN_RECORD_ID)}/apply`, { method: 'POST', headers, body: JSON.stringify({ target }) })
     const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
     if (!res.ok) throw new UpdateApplyRefusedError(res.status, body)
     handoff = { operationId: String(body?.operationId), bootId: String(body?.bootId) }
     return body
-  }, { onUpdate: atRestart }).catch((error: unknown) => {
+  }, { onUpdate: atRestart, baseUrl, json: input.json ?? false }).catch((error: unknown) => {
     if (error instanceof UpdateApplyRefusedError) return error
     throw error
   })

@@ -240,3 +240,34 @@ describe('review round 14 — ONE resolved target (#1, #2)', () => {
     expect(remote.calls.filter((call) => call.url.startsWith(REMOTE)).length).toBeGreaterThan(0)
   })
 })
+
+describe('review round 15 — the follow rides the resolved target and honours --json (#2, #3)', () => {
+  it('the injected follow is handed the resolved base URL and the JSON mode', async () => {
+    // After the handoff the verification polls /api/version: the server comes back on a new boot at once.
+    const live = server({ versions: [{ version: '0.1.0', bootId: 'boot-old', state: 'serving' }, { version: '0.1.1', bootId: 'boot-new', state: 'serving' }] })
+    const seen: Array<{ baseUrl: string; json: boolean }> = []
+    const result = await runUpdateCommand({ echo, stdout: process.stdout, liveLock: () => LOCK, fetch: live.fetch, json: true, pollMs: 1, identityHeaders: async () => ({ 'x-bakin-operator': 'declared' }),
+      startAndFollow: async (start, opts) => { seen.push({ baseUrl: opts.baseUrl, json: opts.json }); await start(); return { follow: { phase: 'restarted', operation: null, children: [] }, body: null, httpStatus: null, exitCode: 130 } } })
+    expect(seen).toEqual([{ baseUrl: BASE, json: true }])
+    expect(result.kind).toBe('verified')
+  })
+
+  it('with the REAL helper: the follow reads the operation from the SELECTED server (not the CLI\'s cached default) and --json writes nothing to stdout', async () => {
+    // The CLI's cached target (module load, no BAKIN_URL, no lock) is localhost:3737; the selected server is 3799.
+    const reads: string[] = []
+    const failedView = { ...runningView('download'), status: 'failed', outcome: { status: 'failed', code: 'update_failed', message: 'Download failed: HTTP 500', httpStatus: 200, body: {} }, endedAt: new Date().toISOString(), stages: [{ id: 'download', kind: 'downloading', label: 'Download', status: 'failed' }, { id: 'restarting', kind: 'verifying', label: 'Restart', status: 'pending' }] }
+    const live = server({ versions: [{ version: '0.1.0', bootId: 'boot-old', state: 'serving' }], operationReads: [{ bootId: 'boot-old', view: failedView }] })
+    const realFetch = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => { const url = String(input); reads.push(url); return live.fetch(url, init) }) as typeof fetch
+    const written: string[] = []
+    try {
+      const result = await runUpdateCommand({ echo, stdout: { isTTY: true, write: (text: string) => { written.push(text); return true } } as unknown as NodeJS.WriteStream, liveLock: () => LOCK, fetch: live.fetch, json: true, identityHeaders: async () => ({ 'x-bakin-operator': 'declared' }) })
+      expect(result).toMatchObject({ kind: 'failed', code: 'UPDATE_FAILED', message: 'Download failed: HTTP 500' })
+    } finally {
+      globalThis.fetch = realFetch
+    }
+    expect(reads.some((url) => url.startsWith(`${BASE}/api/operations/op-1`))).toBe(true)
+    expect(reads.some((url) => url.includes('localhost:3737'))).toBe(false)
+    expect(written).toEqual([])
+  })
+})

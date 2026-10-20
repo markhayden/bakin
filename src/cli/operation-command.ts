@@ -26,7 +26,13 @@ export interface CommandOperationResult {
 
 export async function startAndFollow(
   start: () => Promise<unknown>,
-  opts: { json: boolean; stdout?: { isTTY?: boolean }; onUpdate?: (operation: OperationView) => boolean | void },
+  opts: {
+    json: boolean
+    stdout?: { isTTY?: boolean }
+    onUpdate?: (operation: OperationView) => boolean | void
+    /** The server the operation was started on — the follow (and a Ctrl-C cancel) go there, never the CLI's cached default. */
+    baseUrl?: string
+  },
 ): Promise<CommandOperationResult> {
   const started = jsonObject(await start()) as Partial<OperationStartResponse> | null
   if (typeof started?.operationId !== 'string' || typeof started.bootId !== 'string') {
@@ -40,7 +46,7 @@ export async function startAndFollow(
       : createOperationRenderer({ mode: 'plain', write: (text) => { process.stderr.write(text) } })
   const follow = await followAndRender(
     { operationId: started.operationId, bootId: started.bootId },
-    { ...(renderer ? { renderer } : {}), ...(opts.onUpdate ? { onUpdate: opts.onUpdate } : {}) },
+    { ...(renderer ? { renderer } : {}), ...(opts.onUpdate ? { onUpdate: opts.onUpdate } : {}), ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}) },
   )
   const result = follow.operation?.result
   return {

@@ -4,7 +4,7 @@
  * the HTTP client, the operation follow and the exits mocked.
  */
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { rmSync } from 'fs'
+import { rmSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { UpdateRecord } from '@makinbakin/sdk/types'
@@ -91,8 +91,13 @@ let inProcessChecks: Array<Record<string, unknown>> = []
 mock.module('../../src/core/updates/sources', () => ({ registerCoreUpdateSources: () => {} }))
 mock.module('../../src/core/runtime-adapter-factory', () => ({ createRuntimeAdapter: () => ({ name: 'mock' }) }))
 mock.module('../../packages/core/src/settings', () => ({ readRuntimeAdapterStrict: () => 'pi' }))
+const engineStarts: Array<{ home: string; storePath?: string; seededFromHome: boolean }> = []
 mock.module('../../src/core/updates/service', () => ({
-  startUpdates: () => ({ ready: Promise.resolve(), snapshot: async () => ({ records: [ENGINE], generatedAt: 'x', running: false }) }),
+  UPDATES_FILE_NAME: 'updates.json',
+  startUpdates: (home: string, options?: { storePath?: string }) => {
+    engineStarts.push({ home, storePath: options?.storePath, seededFromHome: options?.storePath !== undefined && existsSync(options.storePath) })
+    return { ready: Promise.resolve(), snapshot: async () => ({ records: [ENGINE], generatedAt: 'x', running: false }) }
+  },
   stopUpdates: () => {},
   getUpdatesTimer: () => ({ check: async (request: Record<string, unknown>) => { inProcessChecks.push(request); return { ids: [], coalesced: false } } }),
 }))
@@ -282,13 +287,32 @@ describe('review round 14 — the in-process engine is for a home with NO server
     }
   })
 
-  it('applying bakin:bakin hands the CLI\'s resolved target to the self-update, so a BAKIN_URL apply never replaces the local binary', async () => {
+  it('the in-process check runs on a SCRATCH copy of this home\'s records — it reads them for continuity and never writes `updates.json` (#1)', async () => {
+    serverRunning = false
+    engineStarts.length = 0
+    mkdirSync(testHome, { recursive: true })
+    writeFileSync(join(testHome, 'updates.json'), JSON.stringify({ version: 1, records: {}, schedule: {}, conditional: {} }))
+    const before = readFileSync(join(testHome, 'updates.json'), 'utf-8')
+    await run(['updates', '--check'])
+    expect(engineStarts).toHaveLength(1)
+    expect(engineStarts[0]!.home).toBe(testHome)
+    expect(engineStarts[0]!.storePath).toBeDefined()
+    expect(engineStarts[0]!.storePath!.startsWith(testHome)).toBe(false)
+    expect(engineStarts[0]!.seededFromHome).toBe(true)
+    expect(readFileSync(join(testHome, 'updates.json'), 'utf-8')).toBe(before)
+    expect(existsSync(engineStarts[0]!.storePath!)).toBe(false) // the scratch copy is gone with the check
+  })
+
+  it('applying bakin:bakin hands the CLI\'s resolved target (and --json) to the self-update, so a BAKIN_URL apply never replaces the local binary', async () => {
     serverRunning = true
     cliTarget.source = 'env'
     cliTarget.baseUrl = 'http://bakin.remote.test:3737'
     try {
       await run(['updates', 'apply', 'bakin:bakin', '--yes'])
       expect(selfUpdateCalls.at(-1)?.target).toEqual({ baseUrl: 'http://bakin.remote.test:3737', source: 'env' })
+      expect(selfUpdateCalls.at(-1)?.json).toBe(false)
+      await run(['updates', 'apply', 'bakin:bakin', '--yes', '--json'])
+      expect(selfUpdateCalls.at(-1)?.json).toBe(true)
     } finally {
       cliTarget.source = 'none'
       cliTarget.baseUrl = 'http://localhost:3737'

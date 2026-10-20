@@ -36,10 +36,20 @@ export function registeredUpdateSources(): ReadonlyArray<UpdateSource> {
   return sources
 }
 
-export function startUpdates(contentDir: string): UpdatesEngine {
+export interface StartUpdatesOptions {
+  /**
+   * Where the records persist. The server owns `<home>/updates.json`; an
+   * offline CLI check runs on a SCRATCH copy so it never writes beside a
+   * server that starts meanwhile, nor beside another offline check
+   * (review r15 #1).
+   */
+  storePath?: string
+}
+
+export function startUpdates(contentDir: string, options: StartUpdatesOptions = {}): UpdatesEngine {
   stopUpdates()
   engine = createUpdatesEngine({
-    storePath: join(contentDir, UPDATES_FILE_NAME),
+    storePath: options.storePath ?? join(contentDir, UPDATES_FILE_NAME),
     sources: [...sources],
     intervalMs: () => getSettings().updates.intervalMs,
     // The shell fans `plugin-event` envelopes out to `usePluginEvent` (and the

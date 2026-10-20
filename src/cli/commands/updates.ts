@@ -11,6 +11,9 @@
  * verification). Operator identity is the shared CLI plumbing's (#898):
  * applying needs `--as human`, never an unconditional declaration.
  */
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { countAvailableUpdates, isUpdateSkipped, type UpdateRecord, type UpdateSubjectKind, UPDATE_SUBJECT_KINDS } from '@makinbakin/sdk/types'
 import { apiGet, apiPost, cliFetch, isServerConnectionError, jsonObject, BakinNotRunningError, CLI_TARGET } from '../http'
 import { confirmPrompt, exitCommandFailure, exitUnknownSubcommand, exitUsage } from '../help'
@@ -83,7 +86,7 @@ async function liveServerLockNow(): Promise<{ pid: number; port: number } | null
 
 /** The engine's pass without a server: the same sources over this home, in-process. */
 async function checkInProcess(kind: UpdateSubjectKind | undefined): Promise<UpdatesSnapshotBody> {
-  const [{ getContentDir }, { readRuntimeAdapterStrict }, { createRuntimeAdapter }, { registerCoreUpdateSources }, { startUpdates, stopUpdates, getUpdatesTimer }] = await Promise.all([
+  const [{ getContentDir }, { readRuntimeAdapterStrict }, { createRuntimeAdapter }, { registerCoreUpdateSources }, { startUpdates, stopUpdates, getUpdatesTimer, UPDATES_FILE_NAME }] = await Promise.all([
     import('../../core/content-dir'),
     import('../../../packages/core/src/settings'),
     import('../../core/runtime-adapter-factory'),
@@ -97,13 +100,22 @@ async function checkInProcess(kind: UpdateSubjectKind | undefined): Promise<Upda
   // Ownership re-checked at the last moment: a server that came alive since the first probe owns this home's engine.
   const live = await liveServerLockNow()
   if (live) await exitCommandFailure('Bakin is starting — retry.', { command: 'bakin updates', detail: `server.lock names pid ${live.pid} on port ${live.port}; the home is that server's to check.`, code: 'SERVER_STARTING' })
-  const engine = startUpdates(getContentDir())
+  // NONPERSISTENT (review r15 #1): the engine runs on a scratch copy of this
+  // home's records — continuity for the reader, and never a whole-snapshot
+  // write over `updates.json` beside a server that starts meanwhile or
+  // another offline check. The server's own pass records what it finds.
+  const home = getContentDir()
+  const scratchDir = mkdtempSync(join(tmpdir(), 'bakin-updates-check-'))
+  const storePath = join(scratchDir, UPDATES_FILE_NAME)
+  if (existsSync(join(home, UPDATES_FILE_NAME))) copyFileSync(join(home, UPDATES_FILE_NAME), storePath)
+  const engine = startUpdates(home, { storePath })
   try {
     await engine.ready
     await getUpdatesTimer()!.check(kind ? { kind } : {})
     return await engine.snapshot()
   } finally {
     stopUpdates()
+    rmSync(scratchDir, { recursive: true, force: true })
   }
 }
 
@@ -202,7 +214,7 @@ async function cmdUpdatesApply(args: string[]): Promise<void> {
   if (id === BAKIN_RECORD_ID) {
     const { runUpdateCommand } = await import('../../core/updates/self-update-cli')
     // The same target the preview and the list used: a BAKIN_URL target is never a local replacement.
-    const result = await runUpdateCommand({ echo: (line) => { if (!json) console.log(line) }, stdout: process.stdout, target: CLI_TARGET })
+    const result = await runUpdateCommand({ echo: (line) => { if (!json) console.log(line) }, stdout: process.stdout, target: CLI_TARGET, json })
     if (json) print(result)
     else if (result.kind !== 'failed') console.log(result.message)
     // A failure exits non-zero in every output mode (JSON keeps its one document).

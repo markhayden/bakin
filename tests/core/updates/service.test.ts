@@ -124,3 +124,17 @@ describe('review round 1 — live settings and inventory events', () => {
     expect((await engine.snapshot()).records.map((r) => r.id)).toEqual(['plugin:second'])
   })
 })
+
+describe('review round 15 — an offline check never writes the home\'s records', () => {
+  it('startUpdates(home, { storePath }) persists to that path only; the home\'s updates.json is untouched (#1)', async () => {
+    registerUpdateSource(source('bakin', 'bakin'))
+    const home = join(testDir, `home-${randomUUID()}`)
+    mkdirSync(home, { recursive: true })
+    const scratch = join(testDir, `scratch-${randomUUID()}.json`)
+    const engine = startUpdates(home, { storePath: scratch })
+    await engine.ready
+    await engine.observe('bakin:bakin')
+    await waitUntil(() => existsSync(scratch), { label: 'the scratch store persisted' })
+    expect(existsSync(join(home, UPDATES_FILE_NAME))).toBe(false)
+  })
+})

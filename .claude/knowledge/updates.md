@@ -321,7 +321,15 @@ for a home with NO server only: an explicit `BAKIN_URL` is never checked
 in-process (that home is not this one), and a live lock whose server is not
 answering yet owns `updates.json` — the CLI says "starting — retry" instead
 of starting a second engine over the same file, and re-checks the lock right
-before it would start one. The
+before it would start one. The offline engine is NONPERSISTENT: it runs on
+a scratch copy of the home's records (`startUpdates(home, { storePath })`,
+continuity for the reader) and never writes `updates.json`, so a server that
+starts meanwhile — or another offline check — can never be overwritten by a
+stale whole-snapshot write; the server's own pass records what it finds.
+The follow of a self-update (and a Ctrl-C cancel) go to the SAME resolved
+server as the reads, the apply and the verification (`startAndFollow`
+`baseUrl`), never the HTTP CLI's load-time default; `--json` keeps stdout
+one document — the follow renders nothing. The
 CLI hands off the moment the `restarting` stage goes active (it stops
 following; a terminal outcome from a process that is ending never comes);
 the browser does the same from the stage or a `restarted` settle, and every
