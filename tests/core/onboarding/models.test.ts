@@ -647,6 +647,28 @@ mv "$stage" "$5/$owner/$name--antfly-a2cdf31c"
     expect(check.remediation).toContain('bakin install search-models')
   })
 
+  it('a pinned model that cannot load may just be damaged — the check points at the hash-checking install, never "nothing to install"', async () => {
+    seedDefaultLayout()
+    // The pinned variant (not stale): only a damaged file explains a failed load.
+    writeFileSync(join(target, '.antfly-download-complete.json'), JSON.stringify({ version: 2, source: { owner: 'antflydb', name: 'clipclap', variant: 'gguf:Q4_K' }, artifacts: [] }))
+    const MISSING: InferenceModel = { label: 'reranker', model: 'acme/reranker', kind: 'reranker' }
+    const rejects: ProbeRunner = async (_binary, args) => args[0] === '--version'
+      ? { code: 0, output: `antfly ${ANTFLY_PIN.version} (zig)`, timedOut: false, spawnFailed: false, aborted: false }
+      : { code: 1, output: 'antfly inference: startup failed (error.MissingWeight)', timedOut: false, spawnFailed: false, aborted: false }
+    expect((await probeModelLoad('/bin/antfly', CLIPCLAP.model, { run: rejects }))?.loadable).toBe(false)
+
+    const alone = await checkInferenceModels([CLIPCLAP])
+    expect(alone.status).toBe('warn')
+    expect(alone.message).toContain('if its files are damaged')
+    expect(alone.remediation).toContain('hash-checks the pinned files')
+    expect(alone.remediation).not.toContain('Nothing to install')
+
+    const mixed = await checkInferenceModels([CLIPCLAP, MISSING])
+    expect(mixed.status).toBe('missing')
+    expect(mixed.message).toContain('if its files are damaged')
+    expect(mixed.message).not.toContain("installing won't change that")
+  })
+
   it('a crash between the two renames is finished by the next install — the backup is restored, trash never is', async () => {
     seedDefaultLayout()
     const aside = join(modelsRoot, 'antflydb', '.bakin-replacing-clipclap')

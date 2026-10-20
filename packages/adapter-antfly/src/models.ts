@@ -142,7 +142,10 @@ export async function checkInferenceModels(models: InferenceModel[]) {
   //   (an `ok` here once meant `bakin install search-models` asked nothing
   //   and its unapproved install skipped);
   // - unloadable: the engine itself failed to load it here (#993) — degraded
-  //   and named, and only an install-fixable one when it is also stale.
+  //   and named. Stale → the re-pull fixes it. Pinned → the install
+  //   hash-checks its files (#1006) and re-pulls damaged ones, which this
+  //   structural check cannot see, so it says "may". Custom → nothing to
+  //   install.
   const missing = missingModelEntries(models)
   const present = models.filter((m) => !missing.some((e) => e.model === m))
   const stale = present.flatMap((m) => {
@@ -155,7 +158,8 @@ export async function checkInferenceModels(models: InferenceModel[]) {
   })
   const isStale = (model: InferenceModel) => stale.some((s) => s.model === model)
   const staleUnloadable = unloadable.filter((u) => isStale(u.model))
-  const unfixable = unloadable.filter((u) => !isStale(u.model))
+  const maybeDamaged = unloadable.filter((u) => !isStale(u.model) && isPinnedModel(u.model.model))
+  const unfixable = unloadable.filter((u) => !isStale(u.model) && !isPinnedModel(u.model.model))
   const machine = `engine ${ANTFLY_PIN.version}, ${process.platform}-${process.arch}`
   const labels = (list: Array<{ model: InferenceModel }>) => list.map((x) => x.model.label).join(', ')
   const verb = (list: unknown[], one: string, many: string) => (list.length === 1 ? one : many)
@@ -184,8 +188,11 @@ export async function checkInferenceModels(models: InferenceModel[]) {
     ...(stale.length > 0 ? [`${labels(stale)} ${verb(stale, 'is', 'are')} not the pinned download (${stale.map((s) => s.why).join('; ')}).`] : []),
     ...(staleUnloadable.length > 0 ? [`${labels(staleUnloadable)} can't load on this machine (${machine}) until re-downloaded.`] : []),
     ...(stale.length > 0 && staleUnloadable.length === 0 && missing.length === 0 ? ['Search still works here.'] : []),
+    ...(maybeDamaged.length > 0
+      ? [`${labels(maybeDamaged)} can't load on this machine (${machine}) — if ${verb(maybeDamaged, 'its', 'their')} files are damaged, \`bakin install search-models\` re-downloads them (it hash-checks pinned files).`]
+      : []),
     ...(unfixable.length > 0
-      ? [missing.length > 0 || stale.length > 0
+      ? [missing.length > 0 || stale.length > 0 || maybeDamaged.length > 0
         ? `${labels(unfixable)} can't load on this machine either (${machine}), and installing won't change that.`
         : `${labels(unfixable)} can't load on this machine (${machine}) — the search that relies on ${verb(unfixable, 'it is', 'them is')} unavailable here. Everything else is unaffected.`]
       : []),
@@ -196,8 +203,8 @@ export async function checkInferenceModels(models: InferenceModel[]) {
     ...(stale.length > 0 ? { stale: stale.map((s) => ({ label: s.model.label, model: s.model.model, reason: s.why })) } : {}),
     ...(unloadable.length > 0 ? { unloadable: unloadable.map((u) => ({ label: u.model.label, model: u.model.model, reason: u.reason })) } : {}),
   }
-  // `missing` / `broken` = an install fixes it (onboarding installs, the
-  // wizard asks); `warn` = only can't-load with nothing to install.
+  // `missing` / `broken` = install work (onboarding installs, the wizard
+  // asks); `warn` = only can't-load, where an install at most re-checks.
   if (missingImpact) {
     return { name: 'models', status: 'missing' as const, message, remediation: missingImpact.remediation, details }
   }
@@ -214,7 +221,9 @@ export async function checkInferenceModels(models: InferenceModel[]) {
     name: 'models',
     status: 'warn' as const,
     message,
-    remediation: 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
+    remediation: maybeDamaged.length > 0
+      ? 'Run `bakin install search-models`: it hash-checks the pinned files and re-downloads damaged ones. If they are intact, the engine cannot run this model here — point that embedder at a model that loads on this platform.'
+      : 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
     details,
   }
 }
