@@ -5357,6 +5357,26 @@
                               "null"
                             ]
                           },
+                          "updateOutcome": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "current",
+                                  "update-available",
+                                  "skipped",
+                                  "blocked",
+                                  "unsupported"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "updateReason": {
+                            "type": "string"
+                          },
                           "installedVersion": {
                             "type": [
                               "string",
@@ -5380,6 +5400,7 @@
                           "screenshots",
                           "installed",
                           "updateAvailable",
+                          "updateOutcome",
                           "installedVersion"
                         ],
                         "additionalProperties": false
@@ -5523,6 +5544,26 @@
                               "null"
                             ]
                           },
+                          "updateOutcome": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "current",
+                                  "update-available",
+                                  "skipped",
+                                  "blocked",
+                                  "unsupported"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "updateReason": {
+                            "type": "string"
+                          },
                           "installedVersion": {
                             "type": [
                               "string",
@@ -5546,6 +5587,7 @@
                           "screenshots",
                           "installed",
                           "updateAvailable",
+                          "updateOutcome",
                           "installedVersion"
                         ],
                         "additionalProperties": false
