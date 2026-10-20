@@ -9,11 +9,16 @@ Canonical reference (the originating spec shipped and was retired).
 - RC tag: `vMAJOR.MINOR.PATCH-rc.N`, npm dist-tag `next`, GitHub prerelease.
 - Workspace package versions stay non-publishable (`0.0.0-workspace`); root stays `0.0.0-dev`.
 - `packages/core/src/generated-version.ts` is stamped at build time.
-- Browser self-update checks call `/api/update/status`, which looks up the
-  latest GitHub release and compares it to `/api/version`. The route refuses
-  source/dev/Bun runtimes so the UI banner only appears for compiled `bakin`
-  binaries where `POST /api/update/apply` can safely invoke the existing
-  self-update path.
+- The updates engine's `bakin` source (`src/core/updates/sources/bakin.ts`,
+  #1007) looks up the latest GitHub release with a conditional request and
+  records it as the `bakin:bakin` record; source/dev/Bun runtimes get
+  `unsupported` with a manual pointer, so the header banner, Health → Updates
+  and `bakin update` only offer a release where the compiled binary can be
+  replaced. Applying is the self-update OPERATION (download → verify →
+  prepare-restart → swap → restarting) started by `POST
+  /api/updates/bakin:bakin/apply`; the old process ends it and the client
+  verifies the new boot explicitly. Runbook: `.claude/knowledge/updates.md`
+  § Self-update.
 
 ## Maintainer Commands
 

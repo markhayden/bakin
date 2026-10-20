@@ -189,9 +189,11 @@ Avatars are **per-installation content** stored as `~/.bakin/agents/{id}/avatar.
 
 `APP_VERSION` is exported from `packages/core/src/constants.ts` and served by the `/api/version` endpoint. The header displays it as `v{version}`. Bump this constant when cutting releases.
 
-The shell may render a fixed Bakin update banner above the header when
-`/api/update/status` reports a newer binary release. The banner sets
-`--bakin-header-top` and `--bakin-shell-top` on `document.documentElement` so
-the fixed header/sidebar/content move down together instead of overlapping.
-Source/dev/Bun runtimes are unsupported for browser self-update and should not
-show the banner.
+The shell may render a fixed Bakin update banner above the header when the
+updates engine's `bakin:bakin` record (`GET /api/updates`, re-read on
+`updates.changed`, #1007) offers a newer release that is not skipped. The
+banner sets `--bakin-header-top` and `--bakin-shell-top` on
+`document.documentElement` so the fixed header/sidebar/content move down
+together instead of overlapping. Source/dev/Bun runtimes are `unsupported` in
+that record and never show the banner; Update starts the self-update
+operation and Skip hides that release identity (`.claude/knowledge/updates.md`).
