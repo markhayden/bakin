@@ -19,6 +19,9 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import { handleGatewayRpcRequest, resetGatewayObservations } from '../../dev/imitation-crab/gateway'
 import { waitUntil } from '../helpers/wait'
 
+// Every agent RPC needs a non-empty idempotencyKey (2026.9.5 closed schema, #883).
+let agentKeySeq = 0
+
 afterAll(() => {
   rmSync(tempDir, { recursive: true, force: true })
 })
@@ -49,9 +52,9 @@ function eventPayloads(frames: Frame[], event: string): Array<Record<string, unk
 describe('mock gateway agent RPC', () => {
   it('returns final agent text payloads through the Gateway RPC contract', async () => {
     const res = await handleGatewayRpcRequest('agent', {
+      idempotencyKey: `k-${++agentKeySeq}`,
       agentId: 'jessica',
       message: 'Plan next week',
-      expectFinal: true,
     })
 
     expect(res.ok).toBe(true)
@@ -68,9 +71,9 @@ describe('mock gateway agent RPC', () => {
 
     try {
       const res = await handleGatewayRpcRequest('agent', {
+        idempotencyKey: `k-${++agentKeySeq}`,
         agentId: 'rolo',
         message: 'Plan outdoor content',
-        expectFinal: true,
       })
 
       expect(res.ok).toBe(true)
@@ -96,7 +99,6 @@ describe('mock gateway push-event streaming', () => {
       agentId: 'jessica',
       message: 'Stream a few deltas for the frame shape test',
       idempotencyKey: 'idem-frame-shape',
-      expectFinal: true,
     })
 
     // Accepted ack res on the request id, BEFORE any event frame.
@@ -150,7 +152,6 @@ describe('mock gateway push-event streaming', () => {
       agentId: 'pixel',
       message: 'List things [[tool]] and report back',
       idempotencyKey: 'idem-tool-turn',
-      expectFinal: true,
     })
 
     const agents = eventPayloads(frames, 'agent')
@@ -170,7 +171,6 @@ describe('mock gateway push-event streaming', () => {
       agentId: 'rolo',
       message: 'Drop one [[dropped-delta]] delta somewhere in the middle of this reply',
       idempotencyKey: 'idem-dropped',
-      expectFinal: true,
     })
 
     const deltas = eventPayloads(frames, 'chat').filter((c) => c.state === 'delta')
@@ -199,7 +199,6 @@ describe('mock gateway push-event streaming', () => {
           idempotencyKey: 'idem-abort',
           sessionId: 'sess-abort',
           sessionKey: 'agent:patch:explicit:sess-abort',
-          expectFinal: true,
         },
         { requestId: 'req-abort', push: (frame) => frames.push(frame as Frame) },
       )
