@@ -23,12 +23,12 @@ const group: UsageFailureGroup = {
 } as UsageFailureGroup
 const baseProps = {
   groups: [group],
-  failures: [group.latestFailure],
+  failures: [group.latestFailure!],
   totalFailures: 1,
   unverified: [],
   totalUnverified: 0,
   buckets: [],
-  coverage: { startsAt: '2026-07-12T11:10:00.000Z', hasFullWindow: true, reason: 'full_window' as const },
+  coverage: { startsAt: '2026-07-12T11:10:00.000Z', hasFullWindow: true as const, reason: 'full_window' as const },
   page: { total: 1, offset: 0, limit: 25, hasMore: false },
 }
 const disclosure = () => document.getElementById('activity-failure-pattern-disclosure')
