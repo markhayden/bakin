@@ -149,7 +149,16 @@ the PEELED commit, what the clone's `HEAD` is and what the lanes hold the
 identity to, never the tag object (an unchanged annotated tag is
 `current`, a moved one a real offer). A suffix match, a remote-tracking
 row or "the first row" is never an answer: a tracked ref that is gone
-yields null and the subject is `blocked`.
+yields null and the subject is `blocked`. The in-place github lane fetches
+that exact ref and works from `FETCH_HEAD^{commit}` — the peeled commit —
+for the manifest read, the identity and the fast-forward merge, never
+`origin/<ref>` (a tag has none; `origin/refs/heads/x` is nothing). Within a
+pass two attempts for one subject never overlap (`Pass.active`): a repeat
+asked for while the first is in flight waits for it, so the engine's
+one-token-per-subject rule never discards a result that already landed.
+Health → Updates keeps a `current` row visible when its LATEST check
+failed (`laterFailedAttempt`): the failure is said on the row and the tab
+never folds it into "Everything is current".
 
 **One attempt, one result.** On the deadline the signal fires; a cooperative
 observer settles through the engine and records the deadline as its ONE
@@ -216,10 +225,14 @@ ONE apply service (`src/core/updates/apply.ts`) behind `GET
    live directory someone may be editing, so the lane resolves a symlinked
    root, copies it into `.upgrade-staging-*` and reads, verifies, records
    and installs exclusively from that snapshot: the digest the identity
-   names is the digest of the bytes that land; a symlink INSIDE the tree is
-   refused outright — the hasher ignores links, so no digest could vouch for
-   what one points at — `runtimeSymlinksIn`, same skip set as the hasher) —
-   refusing a ref that moved, a
+   names is the digest of the bytes that land. The snapshot carries ONLY
+   what the digest covers — generated output, dependency trees and dot
+   entries (`isOutsideSourceDigest`, the hasher's skip set) are never
+   copied (the build regenerates `dist`, `bun install` the dependencies), so
+   a `dist` or dotdir symlink can never ride in as a live input outside the
+   transaction; and a symlink anywhere inside the snapshot is refused
+   outright (`symlinksIn`) — the hasher ignores links, so no digest could
+   vouch for what one points at) — refusing a ref that moved, a
    republished artifact or a moved tree even under an unchanged manifest (and
    so a still-valid consent token). A reviewed field the lane cannot report
    is itself a refusal: a lane that cannot prove the identity never installs

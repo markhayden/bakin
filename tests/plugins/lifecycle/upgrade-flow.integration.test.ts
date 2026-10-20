@@ -54,6 +54,7 @@ import {
   forcePushRewind,
   gitAvailable,
   pushCommit,
+  runGit,
 } from '../../fixtures/plugins/hermetic-git'
 import {
   type PluginLockEntry,
@@ -259,6 +260,34 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     expect(result.noop).toBe(false)
     expect(result.identity).toEqual({ version: '1.1.0', sha: movedSha })
     expect(readPluginLockfile().plugins['subtarget']?.commitSha).toBe(movedSha)
+  })
+
+  it('in-place lane (review r7 #2): an annotated tag ref upgrades to the tag\'s PEELED commit; a qualified refs/heads/<branch> ref works too — neither has an origin/<ref>', async () => {
+    const env = { GIT_AUTHOR_NAME: 'Bakin Test', GIT_AUTHOR_EMAIL: 'test@bakin.local', GIT_COMMITTER_NAME: 'Bakin Test', GIT_COMMITTER_EMAIL: 'test@bakin.local' }
+    const repo = createBareRepo(testDir, 'tagref-fixture', fixturePluginFiles({ id: 'tagref', version: '1.0.0' }))
+    cloneRepoIntoPluginsDir({ pluginId: 'tagref', cloneUrl: repo.cloneUrl })
+    const installedSha = headSha(join(testDir, 'plugins', 'tagref'))
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'tagref', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'v1.1.0', commitSha: installedSha, version: '1.0.0' })))
+    const bumped = pushCommit(repo.workingClonePath, fixturePluginFiles({ id: 'tagref', version: '1.1.0' }), 'bump to 1.1.0')
+    runGit(['tag', '-a', 'v1.1.0', '-m', 'release 1.1.0'], repo.workingClonePath, env)
+    runGit(['push', 'origin', 'v1.1.0'], repo.workingClonePath, env)
+    const tagObject = runGit(['rev-parse', 'v1.1.0'], repo.workingClonePath).toLowerCase()
+    expect(tagObject).not.toBe(bumped)
+
+    const tagged = await upgradePlugin('tagref', { expected: { sha: bumped } })
+    expect(tagged.noop).toBe(false)
+    expect(tagged.after).toEqual({ version: '1.1.0', commitSha: bumped })
+    expect(readPluginLockfile().plugins['tagref']?.commitSha).toBe(bumped)
+    expect(headSha(join(testDir, 'plugins', 'tagref'))).toBe(bumped)
+    // Same tag again: current, no churn.
+    expect((await upgradePlugin('tagref')).noop).toBe(true)
+
+    // A qualified branch ref.
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'tagref', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'refs/heads/main', commitSha: bumped, version: '1.1.0' })))
+    const next = pushCommit(repo.workingClonePath, fixturePluginFiles({ id: 'tagref', version: '1.2.0' }), 'bump to 1.2.0')
+    const qualified = await upgradePlugin('tagref', { expected: { sha: next } })
+    expect(qualified.after).toEqual({ version: '1.2.0', commitSha: next })
+    expect(headSha(join(testDir, 'plugins', 'tagref'))).toBe(next)
   })
 
   it('refuses to upgrade when remote history was rewritten (force-push)', async () => {

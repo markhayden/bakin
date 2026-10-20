@@ -405,3 +405,29 @@ describe('review round 6 — duplicate ids', () => {
     expect((await engine.snapshot()).records.find((r) => r.id === 'plugin:a')?.outcome).toBe('current')
   })
 })
+
+describe('review round 7 — one attempt per subject at a time', () => {
+  it('a repeat attempt for a subject still in flight waits for it: the first result is kept, the repeat runs after (#3)', async () => {
+    const plugins = scripted('plugin', ['a', 'b'])
+    const releaseA = plugins.hold('a')
+    const releaseB = plugins.hold('b')
+    const { engine, timer } = harness([plugins.source], { firstTickMs: 100_000 })
+    await engine.ready
+    const first = await timer.admit({ ids: ['plugin:a', 'plugin:b'] })
+    await waitUntil(() => plugins.inFlight.size === 2, { label: 'a and b in flight' })
+    const repeat = await timer.admit({ ids: ['plugin:a'] })
+    expect(repeat.coalesced).toBe(true)
+    // b's worker frees up and takes the queued a — but a is still active, so it waits.
+    releaseB()
+    await waitUntil(() => !plugins.inFlight.has('b'), { label: 'b settled' })
+    await settleFor(40, 'the repeat attempt for a must not start while the first is in flight')
+    expect(plugins.calls.filter((id) => id === 'a')).toEqual(['a'])
+    expect(plugins.inFlight.size).toBe(1)
+    releaseA()
+    await expect(first.done).resolves.toMatchObject({ ids: ['plugin:a', 'plugin:b'] })
+    await expect(repeat.done).resolves.toMatchObject({ ids: ['plugin:a'] })
+    expect(plugins.calls.filter((id) => id === 'a')).toEqual(['a', 'a'])
+    expect(plugins.maxInFlight()).toBe(2)
+    expect((await engine.snapshot()).records.find((r) => r.id === 'plugin:a')?.outcome).toBe('current')
+  })
+})

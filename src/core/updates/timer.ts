@@ -118,6 +118,8 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
   interface Pass {
     /** Attempts the pass must still run, in order; a manual request can append or ride a queued one. */
     queue: QueuedAttempt[]
+    /** Subjects being observed right now: a repeat attempt waits for its predecessor to settle (review r7 #3). */
+    active: Map<string, Promise<void>>
     reached: Set<string>
     /** Ids a caller asked for by name: observed even when scheduled work is disabled mid-pass. */
     explicit: Set<string>
@@ -166,6 +168,7 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
 
   function runPass(initial: QueuedAttempt[], scheduled: boolean, explicitIds: readonly string[] = []): Pass {
     const queue = [...initial]
+    const active = new Map<string, Promise<void>>()
     const reached = new Set<string>()
     const explicit = new Set(explicitIds)
     engine.setRunning(true)
@@ -179,8 +182,18 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
           // asked for by name is still observed — a check never answers
           // "done" without having looked.
           if (scheduled && !options.settings().enabled && !explicit.has(attempt.id)) continue
+          // Two attempts for one subject never overlap: the engine keeps one
+          // attempt token per subject, and a newer one would discard the
+          // older result — even a successful one — so the repeat waits.
+          while (active.has(attempt.id)) await active.get(attempt.id)
           reached.add(attempt.id)
-          await observeWithDeadline(attempt)
+          const observation = observeWithDeadline(attempt)
+          active.set(attempt.id, observation)
+          try {
+            await observation
+          } finally {
+            if (active.get(attempt.id) === observation) active.delete(attempt.id)
+          }
         }
       })
       // The pass owns `running` until EVERY worker has settled — never released by one worker's failure.
@@ -189,7 +202,7 @@ export function startUpdatesTimer(options: UpdatesTimerOptions): UpdatesTimer {
       if (pass === current) pass = null
       engine.setRunning(false)
     })
-    const current: Pass = { queue, reached, explicit, done, scheduled }
+    const current: Pass = { queue, active, reached, explicit, done, scheduled }
     pass = current
     return current
   }

@@ -40,18 +40,27 @@ export function computeSourceTreeSha(rootDir: string): string {
 }
 
 /**
- * The runtime symlinks a source tree carries, as `/`-joined paths relative
- * to `rootDir` — walking exactly what the canonical hasher walks (the same
- * skip set: `NON_RUNTIME_DIRS` + dotfiles). The hasher IGNORES symlinks, so a
- * digest can never vouch for what a link points at; a local upgrade refuses
- * a snapshot that carries one instead of installing bytes nobody reviewed
- * (#1007 review r6 #1).
+ * True for an entry the canonical hasher does not cover: generated output
+ * and dependency trees (`NON_RUNTIME_DIRS`) and dot entries. A snapshot of a
+ * source carries NONE of these (the build regenerates `dist`, `bun install`
+ * the dependencies), so the reviewed digest covers every byte the build sees
+ * — a `dist` or dotdir symlink can no longer ride into the installed plugin
+ * as a live input outside the transaction (#1007 review r7 #1).
  */
-export function runtimeSymlinksIn(rootDir: string): string[] {
+export function isOutsideSourceDigest(name: string): boolean {
+  return NON_RUNTIME_DIRS.has(name) || name.startsWith('.')
+}
+
+/**
+ * Every symlink a tree carries, as `/`-joined paths relative to `rootDir`.
+ * The hasher IGNORES symlinks, so a digest can never vouch for what a link
+ * points at; a local upgrade refuses a snapshot that carries one instead
+ * of installing bytes nobody reviewed (#1007 review r6 #1).
+ */
+export function symlinksIn(rootDir: string): string[] {
   const found: string[] = []
   const walk = (current: string): void => {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
-      if (NON_RUNTIME_DIRS.has(entry.name) || entry.name.startsWith('.')) continue
       const full = join(current, entry.name)
       if (entry.isSymbolicLink()) found.push(relative(rootDir, full).split(sep).join('/'))
       else if (entry.isDirectory()) walk(full)

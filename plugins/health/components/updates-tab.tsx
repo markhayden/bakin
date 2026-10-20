@@ -76,8 +76,15 @@ export function presentUpdateRecord(record: UpdateRecord): RowPresentation {
     case 'unknown':
       return { label: 'Could not check', tone: 'neutral', detail: record.attempt?.error ? `The last check failed: ${record.attempt.error}` : 'No check has succeeded yet.' }
     case 'current':
-      return { label: 'Current', tone: 'success', detail: 'Nothing newer is published.' }
+      return laterFailedAttempt(record)
+        ? { label: 'Current', tone: 'success', detail: 'Nothing newer was published as of the last successful check; the latest check failed.' }
+        : { label: 'Current', tone: 'success', detail: 'Nothing newer is published.' }
   }
+}
+
+/** An observation stands until a newer one lands — but a failed attempt AFTER it is a fact the tab must not hide (review r7 #4). */
+export function laterFailedAttempt(record: Pick<UpdateRecord, 'observedAt' | 'attempt'>): boolean {
+  return Boolean(record.observedAt && record.attempt?.error && Date.parse(record.attempt.at) > Date.parse(record.observedAt))
 }
 
 function checkedCopy(record: UpdateRecord, now: number): string | null {
@@ -87,8 +94,7 @@ function checkedCopy(record: UpdateRecord, now: number): string | null {
   const prefix = record.observedAt ? 'Checked' : 'Last attempt'
   const checked = relative === 'now' ? `${prefix} just now` : /^\d+[mhd]$/.test(relative) ? `${prefix} ${relative} ago` : `${prefix} ${relative}`
   // An observation stands until a newer one lands, but a later failed attempt is said out loud.
-  const failedLater = record.observedAt && record.attempt?.error && Date.parse(record.attempt.at) > Date.parse(record.observedAt)
-  return failedLater ? `${checked} · the last check failed: ${record.attempt!.error}` : checked
+  return laterFailedAttempt(record) ? `${checked} · the last check failed: ${record.attempt!.error}` : checked
 }
 
 function versionCopy(record: UpdateRecord): string {
@@ -98,10 +104,10 @@ function versionCopy(record: UpdateRecord): string {
   return installed ?? available ?? ''
 }
 
-/** Rows a group shows: everything not current; skipped rows only on request. */
+/** Rows a group shows: everything not current, plus a current row whose latest check FAILED (never hidden behind "everything is current"); skipped rows only on request. */
 export function visibleUpdateRecords(records: readonly UpdateRecord[], group: UpdateRecord['group'], showSkipped: boolean): UpdateRecord[] {
   return records
-    .filter((record) => record.group === group && record.outcome !== 'current' && (showSkipped || !isUpdateSkipped(record)))
+    .filter((record) => record.group === group && (record.outcome !== 'current' || laterFailedAttempt(record)) && (showSkipped || !isUpdateSkipped(record)))
     .sort((left, right) => left.subject.label.localeCompare(right.subject.label) || left.id.localeCompare(right.id))
 }
 

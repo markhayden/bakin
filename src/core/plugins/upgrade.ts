@@ -23,7 +23,7 @@
  * - `./source-tree-sha` — local source-tree hashing
  */
 import { existsSync, cpSync, realpathSync, rmSync } from 'fs'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { isCorePlugin } from '@/core/plugin-registry'
 import { assertResourceHeld } from '@bakin/core/operations'
@@ -36,7 +36,7 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
-import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha, computeSourceTreeSha, runtimeSymlinksIn } from './source-tree-sha'
+import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha, computeSourceTreeSha, isOutsideSourceDigest, symlinksIn } from './source-tree-sha'
 import { replacePluginDir } from './replace-transaction'
 import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
@@ -182,11 +182,15 @@ async function upgradeLocal(
   const pluginsRoot = join(getContentDir(), 'plugins')
   const stagingDir = join(pluginsRoot, `.upgrade-staging-${id}-${Date.now()}-${process.pid}`)
   try {
-    // A symlinked source ROOT is resolved so the snapshot is a real directory;
-    // a symlink INSIDE the tree is refused — the hasher cannot vouch for what
-    // a link points at, so the digest would not cover the build's inputs.
-    cpSync(realpathSync(sourcePath), stagingDir, { recursive: true, dereference: false })
-    const links = runtimeSymlinksIn(stagingDir)
+    // A symlinked source ROOT is resolved so the snapshot is a real directory.
+    // The snapshot carries ONLY what the digest covers: generated output,
+    // dependency trees and dot entries are never copied (the build regenerates
+    // them), and a symlink anywhere inside is refused — the hasher cannot
+    // vouch for what a link points at, so the digest would not cover the
+    // build's inputs.
+    const realSource = realpathSync(sourcePath)
+    cpSync(realSource, stagingDir, { recursive: true, dereference: false, filter: (src) => src === realSource || !isOutsideSourceDigest(basename(src)) })
+    const links = symlinksIn(stagingDir)
     if (links.length > 0) {
       throw new UpgradeRefusedError(`${id}: the source carries symlinked entries (${links.slice(0, 3).join(', ')}${links.length > 3 ? ', …' : ''}) — a reviewed digest cannot cover them. Materialize them and check again.`)
     }

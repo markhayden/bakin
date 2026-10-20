@@ -54,17 +54,18 @@ export function githubCloneUrl(source: string): string {
  * it and compute the manifestSha from the bytes. Identical to what
  * `readManifest` would compute after a checkout.
  */
-function readRemoteManifest(pluginDir: string, ref: string): { manifest: Record<string, unknown>; manifestSha: string } {
-  const raw = git(['show', `origin/${ref}:bakin-plugin.json`], pluginDir)
+/** The manifest at an exact commit — the fetched ref's peeled sha, never a remote-tracking name a tag or a qualified ref has no counterpart for. */
+function readRemoteManifest(pluginDir: string, sha: string, ref: string): { manifest: Record<string, unknown>; manifestSha: string } {
+  const raw = git(['show', `${sha}:bakin-plugin.json`], pluginDir)
   if (!raw) {
-    throw new UpgradeRefusedError(`origin/${ref} has no bakin-plugin.json`)
+    throw new UpgradeRefusedError(`${ref} (${sha.slice(0, 7)}) has no bakin-plugin.json`)
   }
   let manifest: Record<string, unknown>
   try {
     manifest = JSON.parse(raw)
   } catch (err) {
     throw new UpgradeRefusedError(
-      `origin/${ref}/bakin-plugin.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      `${ref}/bakin-plugin.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
     )
   }
   const manifestSha = createHash('sha256').update(raw, 'utf-8').digest('hex')
@@ -98,9 +99,13 @@ export async function upgradeGithub(
   // This lets us inspect the remote manifest before deciding whether to
   // commit the upgrade (consent gate runs against the remote state, not a
   // post-mutation working tree).
+  // The EXACT ref (a branch, a tag — annotated or not — or a qualified
+  // `refs/...` name) lands on FETCH_HEAD; its PEELED commit is the one
+  // immutable identity every later step uses (review r7 #2): a tag has no
+  // `origin/<tag>` and `origin/refs/heads/x` is nothing.
   git(['fetch', 'origin', '--', entry.ref], pluginDir)
 
-  const remoteSha = git(['rev-parse', `origin/${entry.ref}`], pluginDir).toLowerCase()
+  const remoteSha = git(['rev-parse', 'FETCH_HEAD^{commit}'], pluginDir).toLowerCase()
   const localSha = git(['rev-parse', 'HEAD'], pluginDir).toLowerCase()
 
   // True noop — local HEAD already matches remote AND lockfile commitSha
@@ -119,7 +124,7 @@ export async function upgradeGithub(
 
   // Read the remote manifest WITHOUT mutating the working tree. Consent gate
   // runs against this. If the user declines, no disk change happens.
-  const { manifest, manifestSha } = readRemoteManifest(pluginDir, entry.ref)
+  const { manifest, manifestSha } = readRemoteManifest(pluginDir, remoteSha, entry.ref)
   assertManifestIdStable(manifest, id)
   assertManifestSignaturePolicy(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
@@ -157,7 +162,7 @@ export async function upgradeGithub(
     // In-place lane: the new tree is the OLD clone (with the fetched
     // objects) fast-forwarded — copy the backup in and merge on top.
     cpSync(previousDir!, dir, { recursive: true, dereference: false })
-    if (localSha !== remoteSha) git(['merge', '--ff-only', `origin/${entry.ref}`], dir)
+    if (localSha !== remoteSha) git(['merge', '--ff-only', remoteSha], dir)
   },
   build: buildUserPlugin,
     bins: gate.bins,

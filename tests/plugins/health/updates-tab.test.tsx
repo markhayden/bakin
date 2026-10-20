@@ -137,6 +137,17 @@ describe('UpdatesTabView — rows and groups (#1007 D7.14)', () => {
     expect(screen.getByRole('button', { name: 'Update notes' })).toBeDefined()
   })
 
+  it('a CURRENT subject whose latest check failed is still shown with the failure — never folded into "Everything is current" (review r7 #4)', () => {
+    const current = record({ ...CURRENT, observedAt: CHECKED_AT, attempt: { at: '2026-10-20T11:58:00.000Z', error: 'check timed out after 20s' } })
+    render(<Harness updates={resource([current])} />)
+    expect(screen.queryByText('Everything is current')).toBeNull()
+    expect(screen.getByText('Current')).toBeDefined()
+    expect(screen.getByText(/Checked 7m ago · the last check failed: check timed out after 20s/)).toBeDefined()
+    expect(screen.getByText(/Nothing newer was published as of the last successful check; the latest check failed./)).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^Update / })).toBeNull()
+    expect(visibleUpdateRecords([current, CURRENT], 'available', false).map((r) => r.id)).toEqual([current.id])
+  })
+
   it('presentation + visibility helpers are pure and total', () => {
     expect(presentUpdateRecord(CURRENT).label).toBe('Current')
     expect(presentUpdateRecord(record({ ...PLUGIN, outcome: 'unsupported', blockedReason: 'source checkout' })).label).toBe('Not supported here')

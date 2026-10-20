@@ -5,7 +5,7 @@
  * a fresh token and mutates nothing; tokens are bound to the plugin.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, cpSync, lstatSync, symlinkSync } from 'fs'
+import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, cpSync, existsSync, lstatSync, symlinkSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -142,6 +142,34 @@ describe('POST /api/plugins/upgrade — the reviewed identity (review r4 #1, #3)
     expect(refused.status).toBe(400)
     expect(String(refused.body.error)).toMatch(/symlinked entries \(linked\.ts\)/)
     expect(installedVersion()).toBe('1.1.0')
+    expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
+  })
+
+  it('local lane (review r7 #1): generated output, dependency trees and dot entries are never copied — a `dist` symlink to a live directory does not ride into the installed plugin', async () => {
+    writeSource('1.1.0', [])
+    const external = join(testDir, 'external-dist')
+    mkdirSync(external, { recursive: true })
+    writeFileSync(join(external, 'index.js'), 'export default "reviewed build"')
+    symlinkSync(external, join(source, 'dist'))
+    mkdirSync(join(source, 'node_modules', 'dep'), { recursive: true })
+    writeFileSync(join(source, 'node_modules', 'dep', 'index.js'), 'export const dep = 1')
+    writeFileSync(join(source, '.env'), 'SECRET=1')
+    const reviewed = computeSourceTreeSha(source)
+    const preview = await post({ pluginId: ID, expected: { digest: reviewed } })
+    expect(preview.body.ready).toBe(true)
+    // The link's target moves after the review: the install must not carry the link at all.
+    gateHook.beforeGate = () => { writeFileSync(join(external, 'index.js'), 'export default "unreviewed build"') }
+    try {
+      const committed = await post({ pluginId: ID, accepted: true, consentToken: preview.body.consentToken, expected: { digest: reviewed } })
+      expect(committed.body.ok).toBe(true)
+    } finally {
+      gateHook.beforeGate = null
+    }
+    expect(installedVersion()).toBe('1.1.0')
+    expect(existsSync(join(pluginDir, 'dist'))).toBe(false)
+    expect(existsSync(join(pluginDir, 'node_modules'))).toBe(false)
+    expect(existsSync(join(pluginDir, '.env'))).toBe(false)
+    expect(computeSourceTreeSha(pluginDir)).toBe(reviewed)
     expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
   })
 
