@@ -231,7 +231,8 @@ describe('models + capabilities', () => {
   })
 
   test('describeToolAccess declares in-process invocation', () => {
-    expect(adapter.describeToolAccess!()).toEqual({ style: 'in-process', perTurnExecToolFiltering: true })
+    // Pi enforces both per-turn knobs in-process: exec-tool filters AND toolsMode (#883).
+    expect(adapter.describeToolAccess!()).toEqual({ style: 'in-process', perTurnExecToolFiltering: true, perTurnToolsMode: true })
   })
 })
 

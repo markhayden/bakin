@@ -70,7 +70,6 @@ describe('openclaw 2026.6.11 workaround regressions', () => {
           message: 'Count slowly',
           idempotencyKey: 'idem-defect-pin',
           sessionId: 'sess-defect-pin',
-          expectFinal: true,
         },
         { requestId: 'req-defect', push: (frame) => frames.push(frame as Frame) },
       )
@@ -113,7 +112,6 @@ describe('openclaw 2026.6.11 workaround regressions', () => {
           idempotencyKey: 'idem-workaround-pin',
           sessionId: 'sess-workaround-pin',
           sessionKey: 'agent:patch:explicit:sess-workaround-pin',
-          expectFinal: true,
         },
         { requestId: 'req-workaround', push: (frame) => frames.push(frame as Frame) },
       )

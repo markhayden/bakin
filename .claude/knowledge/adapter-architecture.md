@@ -329,9 +329,12 @@ one layer as evidence that the others should be loosened:
   work, block work, or post an output according to the active step type.
 - Runtime messaging tool policy controls the tools available to one live
   runtime agent turn. `RuntimeMessageArgs` supports `toolsMode`, `toolsAllow`,
-  and `toolsDeny`; the OpenClaw adapter forwards these to Gateway agent
-  requests. Use `toolsMode: 'none'` when a delegated turn must produce text
-  only.
+  and `toolsDeny`. Pi enforces them in-process; the OpenClaw adapter forwards
+  NONE of them (its 2026.9.5 gateway accepts no per-turn tool policy, #883)
+  and drops them with one warning per agent — feature-detect via
+  `describeToolAccess().perTurnToolsMode` / `perTurnExecToolFiltering` before
+  relying on a restricted turn. Use `toolsMode: 'none'` when a delegated turn
+  must produce text only.
 - Runtime cron `toolsAllow` is native isolated cron agent policy. It is exposed
   as `CronJob.toolsAllow` for scheduling visibility and is separate from live
   messaging policy and MCP routing.

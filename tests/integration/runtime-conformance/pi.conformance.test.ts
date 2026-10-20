@@ -149,6 +149,23 @@ const target: RuntimeConformanceTarget = {
     setTimeout(() => controller.abort('conformance: mid-turn'), 250)
     return { settled }
   },
+  prepareToolsModeNoneTurn: () => {
+    // Offered no tools (noTools:'all' + an empty bridge — pinned in
+    // tests/integration/pi/turn.test.ts "toolsMode none exposes no bakin
+    // tools"), a real model cannot call one; the scripted provider answers
+    // in text and the stream must carry no tool chunk.
+    seedProvider([{ steps: [{ text: 'no tools offered, answering in text' }], usage: { prompt: 4, completion: 3 } }])
+    return 'conformance: use the echo tool'
+  },
+  assertToolsModeNoneEnforced: () => {
+    // The evidence that matters: the request the model actually received
+    // carried NO tools (the stream path, not only send — a stream that
+    // dropped the policy would still answer in text).
+    const request = provider?.requests.at(-1) as { tools?: unknown[] } | undefined
+    if (!request) throw new Error('the scripted provider saw no request')
+    const offered = request.tools ?? []
+    if (offered.length > 0) throw new Error(`${offered.length} tool(s) were offered to the model`)
+  },
   prepareToolTurn: () => {
     // Tool round-trip: the model "calls" the echo exec tool, then replies.
     seedProvider([

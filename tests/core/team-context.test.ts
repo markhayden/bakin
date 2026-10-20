@@ -224,7 +224,7 @@ describe('resolveContextInputs', () => {
     // mcp runtime → per-agent native-MCP section
     setAppServices({
       runtime: createMockRuntimeAdapter({
-        describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' }),
+        describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>', perTurnToolsMode: false }),
       }),
     } as unknown as AppServices)
     try {

@@ -103,7 +103,7 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   restartAdvice = (_change: RuntimeConfigChangeKind): RestartAdvice => ({ needed: false })
 
   /** Pi agents call Bakin exec tools natively (in-process tool bridge, filtered per turn). */
-  describeToolAccess = (): RuntimeToolAccess => ({ style: 'in-process', perTurnExecToolFiltering: true })
+  describeToolAccess = (): RuntimeToolAccess => ({ style: 'in-process', perTurnExecToolFiltering: true, perTurnToolsMode: true })
 
   /**
    * Presence-only credential report (P2.2): provider names from Pi's

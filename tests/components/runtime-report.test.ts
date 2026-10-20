@@ -39,6 +39,15 @@ describe('capabilityRows', () => {
     expect(rows.find((r) => r.key === 'input')).toEqual({ key: 'input', label: 'Model input', mode: 'native', detail: 'image' })
   })
 
+  it('says whether per-turn tool policy is enforced on the tool-calling row (#883 honesty)', () => {
+    const enforced = capabilityRows({ ...PI_CAPS, toolCalling: { mode: 'native', access: { style: 'in-process', perTurnToolsMode: true } } })
+    expect(enforced[0]).toMatchObject({ key: 'toolCalling', detail: 'in-process', perTurnToolPolicy: true })
+    const dropped = capabilityRows({ ...PI_CAPS, toolCalling: { mode: 'native', access: { style: 'mcp', perTurnToolsMode: false } } })
+    expect(dropped[0]).toMatchObject({ key: 'toolCalling', detail: 'mcp', perTurnToolPolicy: false })
+    // A payload from an older server that never declared it carries no verdict.
+    expect(capabilityRows(PI_CAPS)[0]).not.toHaveProperty('perTurnToolPolicy')
+  })
+
   it('renders text-only input honestly and tolerates null payloads', () => {
     const rows = capabilityRows({ ...PI_CAPS, input: { imageInput: false, audioInput: false } })
     expect(rows.find((r) => r.key === 'input')).toEqual({ key: 'input', label: 'Model input', mode: 'unavailable', detail: 'text only' })

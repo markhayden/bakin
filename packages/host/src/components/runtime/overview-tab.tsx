@@ -51,11 +51,22 @@ function CredentialTiles({ report }: { report: CapabilityReport }) {
         value={report.toolAccess.ok ? 'Healthy' : 'Needs attention'}
         valueTone={report.toolAccess.ok ? 'neutral' : 'attention'}
         sub={report.toolAccess.ok
-          ? capabilityStateCopy('toolCalling', 'native', report.adapter, report.toolAccess.style)
+          ? `${capabilityStateCopy('toolCalling', 'native', report.adapter, report.toolAccess.style)}${toolPolicyCopy(report.capabilities.toolCalling?.access?.perTurnToolsMode)}`
           : report.toolAccess.issues.join('; ')}
       />
     </StatGroup>
   )
+}
+
+/**
+ * #883 honesty on the Tool access tile: whether a text-only turn
+ * (`toolsMode: 'none'`) really runs without tools on this runtime. An older
+ * server that never declared it says nothing.
+ */
+function toolPolicyCopy(perTurnToolsMode: boolean | undefined): string {
+  if (perTurnToolsMode === true) return ' Per-turn tool policy is enforced: a text-only turn runs without tools.'
+  if (perTurnToolsMode === false) return ' Per-turn tool policy is not enforced: a text-only turn keeps its tools (the request is dropped with a warning).'
+  return ''
 }
 
 interface CapabilityGridRow {

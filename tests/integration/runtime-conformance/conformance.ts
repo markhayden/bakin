@@ -6,7 +6,9 @@
  * pinned here must hold for every conforming runtime, never provider quirks.
  *
  * Scope: messaging pins (T25) + stream/tap/capability/provisioning pins
- * (T26) + mock-default honesty (T27) + ping-serveability (T29). toolsAllow
+ * (T26) + mock-default honesty (T27) + ping-serveability (T29) + tool-policy
+ * honesty (#883: `toolsMode: 'none'` is accepted by every runtime and
+ * enforced by those that declare `perTurnToolsMode: true`). toolsAllow
  * exec-scope and oversizedOutputBytes threading are unit-pinned per adapter
  * (T29) — their observable effects are adapter-mechanism-specific.
  *
@@ -64,6 +66,23 @@ export interface RuntimeConformanceTarget {
    * provider script). Drives the stream taxonomy and onActivity-tap pins.
    */
   prepareToolTurn(): string | Promise<string>
+  /**
+   * Content for a `toolsMode: 'none'` turn on a runtime that ENFORCES it
+   * (perTurnToolsMode true). Optional: defaults to `prepareToolTurn()`, i.e.
+   * the same prompt that normally makes the agent call a tool — the turn must
+   * then stream NO tool chunk. A runner driving a scripted provider seeds a
+   * tool-free reply here (offered no tools, a real model cannot call one; the
+   * empty tool list is pinned per adapter).
+   */
+  prepareToolsModeNoneTurn?(): string | Promise<string>
+  /**
+   * Runner-side evidence for the enforcement leg, called after the
+   * `toolsMode: 'none'` stream settles: a runner that can see what the model
+   * was actually offered (a scripted provider's captured request) throws
+   * here when tools were offered. The stream alone cannot distinguish "no
+   * tools were offered" from "the scripted model happened not to call one".
+   */
+  assertToolsModeNoneEnforced?(): void | Promise<void>
   /**
    * A stream that must end in TERMINAL FAILURE (typed `error` chunk, no
    * `done`, iterator never throws). The target owns the recipe AND any env
@@ -631,6 +650,55 @@ export const runtimeConformanceChecks = {
   },
 
   /**
+   * Tool-policy honesty (#883): every runtime must ACCEPT a turn carrying
+   * `toolsMode: 'none'` — a runtime that cannot enforce it drops the field
+   * (with a warning) and declares `perTurnToolsMode: false`; it never
+   * rejects the turn (OpenClaw 2026.9.5 refused the forwarded param with
+   * INVALID_REQUEST until the adapter stopped sending it). A runtime that
+   * declares `perTurnToolsMode: true` must really withhold tools: the
+   * tool-using prompt streams no tool chunk under `toolsMode: 'none'`.
+   */
+  async toolPolicyHonesty(target: RuntimeConformanceTarget): Promise<void> {
+    const access = target.runtime.describeToolAccess()
+    if (typeof access.perTurnToolsMode !== 'boolean') {
+      fail('describeToolAccess() must declare perTurnToolsMode (#883) — true when toolsMode is enforced per turn')
+    }
+    await target.prepareOkTurn?.()
+    try {
+      await target.runtime.messaging.send({
+        agentId: target.agentId,
+        content: 'conformance: text-only turn',
+        threadId: target.newThreadId(),
+        toolsMode: 'none',
+      })
+    } catch (err) {
+      fail(`a turn carrying toolsMode:'none' was rejected (${String(err)}) — drop an unenforceable field with a warning, never forward it to a transport that refuses it`)
+    }
+    if (access.perTurnToolsMode === false) return // honest: tools stay as configured
+    const content = await (target.prepareToolsModeNoneTurn?.() ?? target.prepareToolTurn())
+    const chunks: ChatChunk[] = []
+    for await (const chunk of target.runtime.messaging.stream({
+      agentId: target.agentId,
+      content,
+      threadId: target.newThreadId(),
+      toolsMode: 'none',
+    })) {
+      chunks.push(chunk)
+    }
+    const tools = chunks.filter((c) => c.type === 'tool')
+    if (tools.length > 0) {
+      fail(`declared perTurnToolsMode=true but a toolsMode:'none' turn streamed ${tools.length} tool chunk(s) — enforce it or report perTurnToolsMode=false`)
+    }
+    if (chunks.some((c) => c.type === 'error')) fail("toolsMode:'none' turn streamed an error chunk")
+    assertDoneExactlyOnceAndLast(chunks)
+    try {
+      await target.assertToolsModeNoneEnforced?.()
+    } catch (err) {
+      fail(`declared perTurnToolsMode=true but the runner's enforcement evidence says tools were offered under toolsMode:'none' (${err instanceof Error ? err.message : String(err)})`)
+    }
+  },
+
+  /**
    * Usage parity (work-class attribution): a runtime whose send() results
    * carry token usage must attach the same accounting to the stream's
    * terminal `done` chunk — otherwise streamed turns (chat) are unmeterable
@@ -1032,6 +1100,10 @@ export function runRuntimeConformanceSuite(
 
     it('declared per-turn model support is honored (#880 model honesty)', async () => {
       await runtimeConformanceChecks.perTurnModelHonesty(getTarget())
+    })
+
+    it("toolsMode:'none' is accepted everywhere and enforced where declared (#883 tool-policy honesty)", async () => {
+      await runtimeConformanceChecks.toolPolicyHonesty(getTarget())
     })
 
     it('tool turns stream classified, structured chunks', async () => {
