@@ -134,6 +134,9 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `useKeyedState` | useState that resets when a key changes — adjust state on a prop change without an effect. |
 | `useMediaQuery` | Whether a CSS media query matches, as an external-store read (false without matchMedia). |
 | `useOperation` | Follow one server operation live (rev/boot guards, reconcile, expired vs restarted vs unreachable). |
+| `useSelfUpdateVerification` | Self-update verification after a restart handoff (#1007 D7.11). |
+| `SelfUpdateHandoff` | — |
+| `SelfUpdateVerificationState` | — |
 | `startOperation` | Call a converted long-running route and get its `{ operationId, bootId }`. |
 | `OperationStartError` | Thrown by `startOperation` when the route refuses; carries its status and JSON body. |
 | `UseOperationOptions` | — |

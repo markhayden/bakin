@@ -531,18 +531,43 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="core.post.api-update-apply">
+<OpenApiReference operationId="core.get.api-updates">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
-  -X POST \
-  'http://localhost:3737/api/update/apply'
+  'http://localhost:3737/api/updates'
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="core.get.api-update-status">
+<OpenApiReference operationId="core.post.api-updates-id-apply">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
-  'http://localhost:3737/api/update/status'
+  -X POST \
+  'http://localhost:3737/api/updates/<id>/apply' \
+  -H 'Content-Type: application/json' \
+  --data '{"approvalId":"value","scopeHash":"value","consentToken":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core.get.api-updates-id-apply-preview">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/updates/<id>/apply-preview'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core.post.api-updates-id-skip">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/updates/<id>/skip'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core.post.api-updates-check">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/updates/check?source=<source>&id=<id>&wait=<wait>'
 ```
 </OpenApiReference>
 

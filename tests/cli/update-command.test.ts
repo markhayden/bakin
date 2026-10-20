@@ -34,7 +34,7 @@ const record = (outcome: 'current' | 'update-available' | 'unsupported') => ({
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
 /** A scripted server: version answers (in order, last repeats), the record, the apply start, and the operation reads. */
-function server(opts: { versions: Array<{ version: string; bootId: string; state: string } | 'down'>; outcome?: 'current' | 'update-available' | 'unsupported'; operationReads?: Array<{ bootId: string; view?: unknown; status?: number }> }) {
+function server(opts: { versions: Array<{ version: string; bootId: string; state: string } | 'down'>; outcome?: 'current' | 'update-available' | 'unsupported'; operationReads?: Array<{ bootId: string; view?: unknown; status?: number }>; applyStatus?: number; applyBody?: unknown }) {
   const calls: Array<{ url: string; method: string; headers: Record<string, string> }> = []
   let versionIndex = 0
   let readIndex = 0
@@ -49,7 +49,7 @@ function server(opts: { versions: Array<{ version: string; bootId: string; state
       return json(answer)
     }
     if (url === `${BASE}/api/updates`) return json({ bootId: 'boot-old', records: [record(opts.outcome ?? 'update-available')], generatedAt: '', running: false })
-    if (url === `${BASE}/api/updates/bakin%3Abakin/apply`) return json({ operationId: 'op-1', bootId: 'boot-old' }, 202)
+    if (url === `${BASE}/api/updates/bakin%3Abakin/apply`) return json(opts.applyBody ?? { operationId: 'op-1', bootId: 'boot-old' }, opts.applyStatus ?? 202)
     if (url.startsWith(`${BASE}/api/operations/op-1`)) {
       const read = opts.operationReads?.[Math.min(readIndex, (opts.operationReads?.length ?? 1) - 1)]
       readIndex += 1
@@ -88,7 +88,7 @@ describe('runUpdateCommand with a live server', () => {
       await start()
       return { follow: { phase: 'restarted' as const, operation: runningView('restarting') as never, children: [] }, body: null, httpStatus: null, exitCode: 130 as const }
     }
-    const result = await runUpdateCommand({ echo, liveLock: () => LOCK, fetch: s.fetch, pollMs: 1, stdout: { isTTY: false }, startAndFollow: follow })
+    const result = await runUpdateCommand({ echo, liveLock: () => LOCK, fetch: s.fetch, pollMs: 1, stdout: { isTTY: false }, startAndFollow: follow, identityHeaders: async () => ({ 'X-Bakin-Operator': 'declared' }) })
     expect(result).toEqual({ kind: 'verified', message: 'Updated to 0.1.1 and verified.' })
     const apply = s.calls.find((c) => c.url.endsWith('/apply'))!
     expect(apply.method).toBe('POST')
@@ -106,6 +106,15 @@ describe('runUpdateCommand with a live server', () => {
     const result = await runUpdateCommand({ echo, liveLock: () => LOCK, fetch: s.fetch, pollMs: 1, stdout: { isTTY: false }, startAndFollow: follow })
     expect(result).toMatchObject({ kind: 'failed', code: 'UPDATE_FAILED', message: 'Checksum mismatch for bakin-darwin-arm64.tar.gz', detail: 'update_failed' })
     expect(s.calls.filter((c) => c.url.endsWith('/api/version')).length).toBe(1) // the listen probe only — no verification
+  })
+
+  it('without an operator declaration the server refuses the apply (#898), and the CLI says how to declare', async () => {
+    const s = server({ versions: [{ version: '0.1.0', bootId: 'boot-old', state: 'serving' }], applyStatus: 403, applyBody: { error: 'approval_decision', message: 'an approval decision needs a declared operator', refusalCode: 'undeclared' } })
+    const result = await runUpdateCommand({ echo, liveLock: () => LOCK, fetch: s.fetch, pollMs: 1, stdout: { isTTY: false }, identityHeaders: async () => ({}) })
+    expect(result).toEqual({ kind: 'failed', code: 'OPERATOR_REQUIRED', message: 'Updating Bakin is an operator action.', detail: 'Run it as the operator: bakin update --as human' })
+    const apply = s.calls.find((c) => c.url.endsWith('/apply'))!
+    expect(apply.headers['x-bakin-operator']).toBeUndefined()
+    expect(s.calls.filter((c) => c.url.endsWith('/api/version')).length).toBe(1)
   })
 
   it('an unsupported runtime is refused with the record\'s reason', async () => {

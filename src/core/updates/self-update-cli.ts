@@ -12,7 +12,6 @@
  *   came alive meanwhile refuses the local path.
  */
 import { APP_VERSION } from '@bakin/core/constants'
-import { OPERATOR_DECLARATION_HEADERS } from '@bakin/core/approvals/provenance'
 import type { UpdateRecord } from '@makinbakin/sdk/types'
 import { verifySelfUpdateFromCli } from '../../cli/self-update-verify'
 import { startAndFollow, type CommandOperationResult } from '../../cli/operation-command'
@@ -34,10 +33,18 @@ export interface UpdateCommandDeps {
   runLocal?: () => Promise<UpdateCommandResult>
   /** Start + follow the server's operation (the CLI's renderer); tests inject a scripted follow. */
   startAndFollow?: (start: () => Promise<unknown>) => Promise<CommandOperationResult>
+  /** The identity headers this invocation carries (#898); the shared CLI plumbing by default. */
+  identityHeaders?: () => Promise<Record<string, string>>
 }
 
 const BAKIN_RECORD_ID = 'bakin:bakin'
-const CLI_HEADERS: Record<string, string> = { 'X-Bakin-Origin': 'cli', 'Content-Type': 'application/json', ...OPERATOR_DECLARATION_HEADERS }
+const CLI_HEADERS: Record<string, string> = { 'X-Bakin-Origin': 'cli', 'Content-Type': 'application/json' }
+
+/** This invocation's identity headers (#898): an agent context, or the operator declaration `--as human` earned. */
+async function defaultIdentityHeaders(): Promise<Record<string, string>> {
+  const [{ cliIdentity }, { identityHeaders }] = await Promise.all([import('../../cli/http'), import('../../cli/identity')])
+  return identityHeaders(await cliIdentity())
+}
 
 function baseUrlOf(lock: ServerLock): string {
   return `http://localhost:${lock.port}`
@@ -58,6 +65,24 @@ async function waitForListening(baseUrl: string, deps: Required<Pick<UpdateComma
   }
 }
 
+/** The apply route refused to start (the operator policy, a changed scope, nothing to apply): the answer IS the result. */
+export class UpdateApplyRefusedError extends Error {
+  constructor(readonly status: number, readonly body: Record<string, unknown> | null) {
+    super(typeof body?.message === 'string' ? body.message : typeof body?.error === 'string' ? body.error : `HTTP ${status}`)
+    this.name = 'UpdateApplyRefusedError'
+  }
+  result(): UpdateCommandResult {
+    const refusal = this.body?.refusalCode
+    if (this.status === 403 && refusal === 'undeclared') {
+      return { kind: 'failed', code: 'OPERATOR_REQUIRED', message: 'Updating Bakin is an operator action.', detail: 'Run it as the operator: bakin update --as human' }
+    }
+    if (this.status === 403) {
+      return { kind: 'failed', code: 'OPERATOR_REQUIRED', message: 'Agents cannot update Bakin.', detail: this.message }
+    }
+    return { kind: 'failed', code: 'UPDATE_FAILED', message: this.message, detail: typeof this.body?.error === 'string' ? this.body.error : `HTTP ${this.status}` }
+  }
+}
+
 export async function runUpdateCommand(input: UpdateCommandDeps): Promise<UpdateCommandResult> {
   const deps = {
     liveLock: input.liveLock ?? readLiveServerLock,
@@ -74,7 +99,7 @@ export async function runUpdateCommand(input: UpdateCommandDeps): Promise<Update
   if (!(await waitForListening(baseUrl, deps))) {
     return { kind: 'failed', code: 'SERVER_STARTING', message: 'Bakin is starting — retry.', detail: `server.lock names pid ${lock.pid} on port ${lock.port}, but it did not answer within ${Math.round(deps.listenWaitMs / 1000)}s. The binary is never replaced beside a live server.` }
   }
-  const headers = { ...CLI_HEADERS, ...(lock.cliSecret ? { 'X-Bakin-Cli-Secret': lock.cliSecret } : {}) }
+  const headers = { ...CLI_HEADERS, ...(await (input.identityHeaders ?? defaultIdentityHeaders)()), ...(lock.cliSecret ? { 'X-Bakin-Cli-Secret': lock.cliSecret } : {}) }
   const listed = await deps.fetch(`${baseUrl}/api/updates`, { headers })
   if (!listed.ok) return { kind: 'failed', code: 'UPDATE_FAILED', message: 'Could not read the update records.', detail: `GET /api/updates answered HTTP ${listed.status}` }
   const records = ((await listed.json()) as { records?: UpdateRecord[] }).records ?? []
@@ -91,10 +116,14 @@ export async function runUpdateCommand(input: UpdateCommandDeps): Promise<Update
   const followed = await follow(async () => {
     const res = await deps.fetch(`${baseUrl}/api/updates/${encodeURIComponent(BAKIN_RECORD_ID)}/apply`, { method: 'POST', headers, body: '{}' })
     const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
-    if (!res.ok) throw new Error(typeof body?.message === 'string' ? body.message : typeof body?.error === 'string' ? body.error : `HTTP ${res.status}`)
+    if (!res.ok) throw new UpdateApplyRefusedError(res.status, body)
     handoff = { operationId: String(body?.operationId), bootId: String(body?.bootId) }
     return body
+  }).catch((error: unknown) => {
+    if (error instanceof UpdateApplyRefusedError) return error
+    throw error
   })
+  if (followed instanceof UpdateApplyRefusedError) return followed.result()
   const restartHandoff = handoff as { operationId: string; bootId: string } | null
   const reachedRestart = followed.follow.phase === 'restarted'
     || followed.follow.operation?.stages.some((stage) => stage.id === 'restarting' && stage.status !== 'pending') === true

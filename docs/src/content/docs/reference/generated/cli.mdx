@@ -410,10 +410,16 @@ bakin version
 ```
   <p class="cli-command__meta">Aliases: <code>--version</code> <code>-v</code></p>
 </CliCommandCard>
-<CliCommandCard id="update" name="update" summary="Replace the current binary with the latest release." description="Downloads the latest release binary and verifies checksums before replacing the installed executable.">
+<CliCommandCard id="update" name="update" summary="Replace the current binary with the latest release." description="Applies the updates engine's Bakin release record: with a running server the apply is an operation (download, verify, swap, restart) followed to the restart and then verified against the new boot; without one the same operation runs in-process and the new binary starts on the next `bakin start`. Applying through a server is an operator action — pass --as human.">
 ```sh frame="terminal"
-bakin update
+bakin update [--as human]
 ```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--as human]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+    </tbody>
+  </table>
 </CliCommandCard>
 <CliCommandCard id="setup-service" name="setup service" summary="Install or remove autostart service integration." description="Installs or removes a macOS LaunchAgent or Linux user systemd service that runs `bakin serve` on login, starts it immediately, and verifies the server responds.">
 ```sh frame="terminal"
@@ -879,6 +885,46 @@ bakin runtime [use <openclaw|pi>] [--dry-run] [--no-copy-workspaces] [--adopt-cr
       <tr><td><code>[--dry-run]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--no-copy-workspaces]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--adopt-cron]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="updates" name="updates" summary="List required and available updates." description="Prints the updates engine's records for every tracked subject — Bakin, plugins, agent packages, hub skills, the search engine and its models, the runtime gateway — with each one's state, versions and last check. Pass --check to run a check pass first (optionally one --source kind); with no server running, --check runs the same engine in-process over this home. Pass --json for the raw snapshot.">
+```sh frame="terminal"
+bakin updates [--check] [--source <kind>] [--json]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--check]</code></td><td>option</td><td>no</td><td>Dry-run; report what would change.</td></tr>
+      <tr><td><code>[--source &lt;kind&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="updates-skip" name="updates skip" summary="Hide one available update until something newer appears." description="Skips the update's current available identity (version, commit or digest). The row disappears from Health → Updates and the tab count; it returns on its own when the source publishes something newer.">
+```sh frame="terminal"
+bakin updates skip <id> [--json]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="updates-apply" name="updates apply" summary="Apply one update through its own flow." description="Previews what applying does (impact, and the full scope of any pending Health approval that covers the subject), asks, then starts the subject's operation and follows it: plugin upgrades re-ask when they widen permissions or binaries, the search engine reinstall rebuilds the indexes under one lease, and the Bakin binary rides `bakin update` (restart handoff + verification). Applying is an operator action — pass --as human; --yes answers every prompt.">
+```sh frame="terminal"
+bakin updates apply <id> [--yes] [--json] --as human
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+      <tr><td><code>--as</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>human</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
