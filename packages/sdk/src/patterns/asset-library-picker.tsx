@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
-import { useKeyedState } from '@bakin/ui'
+import { useKeyedState } from '@bakin/ui/behaviors'
 import { Button, FileInput, type FileInputHandle } from '@bakin/ui'
 
 import { AssetPicker, type AssetPickerCollection } from '@bakin/ui/patterns'

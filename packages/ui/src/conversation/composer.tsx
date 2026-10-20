@@ -13,7 +13,6 @@ import {
   type Ref,
   type ReactNode,
 } from 'react'
-import { useKeyedState } from '../behaviors/use-keyed-state'
 
 import { usePersistedLeadingEdgeResize } from '../behaviors/use-persisted-leading-edge-resize'
 import { Button } from '../primitives/button'
@@ -211,8 +210,15 @@ export function Composer({
   maxHeight = DEFAULT_MAX_HEIGHT,
   className,
 }: ComposerProps) {
-  // One draft per storage key (issue 966b): switching conversations swaps the value in the same render.
-  const [value, setValue] = useKeyedState(storageKey, () => readDraft(storageKey))
+  // One draft per storage key (issue 966b): switching conversations swaps the
+  // value in the same render. Inlined rather than useKeyedState so the
+  // conversation entry's reachable graph stays what it was.
+  const [value, setValue] = useState(() => readDraft(storageKey))
+  const [draftFor, setDraftFor] = useState(storageKey)
+  if (draftFor !== storageKey) {
+    setDraftFor(storageKey)
+    setValue(readDraft(storageKey))
+  }
   const [dropActive, setDropActive] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const composingRef = useRef(false)
