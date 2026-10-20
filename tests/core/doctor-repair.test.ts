@@ -18,12 +18,13 @@ mock.module('../../src/core/settings', () => ({
 }))
 mock.module('../../src/core/onboarding/state', () => ({ isOnboarded: () => true }))
 const liveTasks = new Set<string>()
+const taskColumns = new Map<string, string>()
 // Admission reads the task store synchronously (no yield between the durable
 // check and the reservation); only that one read is faked, the rest is real.
 import * as realTaskStore from '../../src/core/task-store'
 mock.module('../../src/core/task-store', () => ({
   ...realTaskStore,
-  getTaskWithColumn: (id: string) => (liveTasks.has(id) ? { task: { id }, column: 'todo' } : null),
+  getTaskWithColumn: (id: string) => (liveTasks.has(id) ? { task: { id }, column: taskColumns.get(id) ?? 'todo' } : null),
 }))
 
 mock.module('../../src/core/logger', () => ({ createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }) }))
@@ -280,6 +281,31 @@ describe('targeted canonical doctor repair', () => {
       expect(applyAction).toHaveBeenCalledTimes(1)
     } finally {
       liveTasks.delete('task-live')
+    }
+  })
+
+  it('a delegated task handed back to the operator (resurfaced to Review) no longer blocks the operator\'s apply (#896 review r5)', async () => {
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: testDir, projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const incidentId = plan.items[0].incidentIds[0]!
+    const request = createDoctorRepairRequest(testDir, { kind: 'delegate', incidentIds: [incidentId], observationIds: plan.items[0].observationIds })
+    // Resurfacing keeps kind `delegate` + status `sent` and appends the window mark; the task moves to Review.
+    updateDoctorRepairRequest(testDir, request.id, (r) => ({ ...r, status: 'sent', taskId: 'task-handed', agentId: 'main', events: [...r.events, { ts: new Date().toISOString(), type: 'resurfaced', message: 'handed back' }] }))
+    liveTasks.add('task-handed')
+    const options = { contentDir: testDir, projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [], origin: 'web' as const }
+    try {
+      for (const column of ['inProgress', 'blocked']) {
+        taskColumns.set('task-handed', column)
+        const refusal = await startDoctorRepair(options).catch((err: unknown) => err)
+        expect(refusal).toMatchObject({ httpStatus: 409, body: { code: 'repair_in_flight', heldBy: 'task:task-handed' } })
+      }
+      taskColumns.set('task-handed', 'review')
+      const started = await startDoctorRepair(options)
+      await awaitDoctorRepair(started.operationId)
+      expect(applyAction).toHaveBeenCalledTimes(1)
+    } finally {
+      liveTasks.delete('task-handed')
+      taskColumns.delete('task-handed')
     }
   })
 

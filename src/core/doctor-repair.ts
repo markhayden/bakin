@@ -252,9 +252,11 @@ export interface DoctorRepairStartOptions extends DoctorRepairApplyOptions {
   origin: OperationOrigin
   /**
    * The agent this apply acts for (CLI agent context, #898). A repair-type
-   * incident an OPEN delegated task is working refuses every other caller
+   * incident a delegated task is still WORKING refuses every other caller
    * (`repair_in_flight`, held by that task); the task's own agent is the one
-   * explicit hand-off — it is doing the work it was asked to do.
+   * explicit hand-off — it is doing the work it was asked to do. A task that
+   * was handed back (resurfaced to Review) or closed holds nothing: the
+   * operator was asked to take over, so the operator may apply.
    */
   actingAgentId?: string
   /**
@@ -399,23 +401,35 @@ function settleReservation(fingerprint: string, incidentIds: readonly string[]):
  * Synchronous on purpose (see the caller); request and task reads are
  * memoised so a wide apply does not re-read one request per incident.
  */
+/**
+ * Columns from which no agent runs a task: Review is where escalation puts a
+ * delegated task it hands back to the operator (`resurfaceRequest`) and
+ * where an agent parks finished work for a human; closed columns are closed.
+ * A delegated task there no longer holds its incidents (#896 review r5).
+ */
+const HANDED_BACK_COLUMNS: ReadonlySet<string> = new Set(['review', 'done', 'archived'])
+
 function delegatedTaskWorking(
   contentDir: string,
   incidentIds: readonly string[],
   actingAgentId: string | undefined,
-  getTaskWithColumn: (taskId: string) => unknown,
+  getTaskWithColumn: (taskId: string) => { column: string } | null,
 ): { taskId: string; incidentId: string } | null {
   if (incidentIds.length === 0) return null
   const index = openRepairWorkByIncident(contentDir)
   const requests = new Map<string, ReturnType<typeof getDoctorRepairRequest>>()
-  const tasksExist = new Map<string, boolean>()
+  const tasksWorking = new Map<string, boolean>()
   for (const incidentId of incidentIds) {
     for (const work of index.get(incidentId) ?? []) {
       if (!requests.has(work.requestId)) requests.set(work.requestId, getDoctorRepairRequest(contentDir, work.requestId))
       const request = requests.get(work.requestId)
       if (request?.kind !== 'delegate') continue
-      if (!tasksExist.has(work.taskId)) tasksExist.set(work.taskId, Boolean(getTaskWithColumn(work.taskId)))
-      if (!tasksExist.get(work.taskId)) continue // task gone — the request covers nothing
+      if (!tasksWorking.has(work.taskId)) {
+        const column = getTaskWithColumn(work.taskId)?.column
+        // Task gone → the request covers nothing; handed back or closed → the operator's to take.
+        tasksWorking.set(work.taskId, column !== undefined && !HANDED_BACK_COLUMNS.has(column))
+      }
+      if (!tasksWorking.get(work.taskId)) continue
       if (actingAgentId && request.agentId === actingAgentId) break // the owning agent acts for its task
       return { taskId: work.taskId, incidentId }
     }
