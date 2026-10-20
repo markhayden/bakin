@@ -9,7 +9,7 @@ const testDir = join(tmpdir(), `bakin-test-doctor-repair-${Date.now()}-${randomU
 const contentDirMock = () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir, home: testDir, db: join(testDir, 'bakin.db'), media: join(testDir, 'media') }) })
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
-afterAll(() => rmSync(testDir, { recursive: true, force: true }))
+afterAll(() => { closeDb(); rmSync(testDir, { recursive: true, force: true }) })
 
 const appendAudit = mock()
 mock.module('../../src/core/audit', () => ({ appendAudit }))
@@ -22,9 +22,12 @@ const taskColumns = new Map<string, string>()
 // Admission reads the task store synchronously (no yield between the durable
 // check and the reservation); only that one read is faked, the rest is real.
 import * as realTaskStore from '../../src/core/task-store'
+// Captured BEFORE the module is mocked: the namespace import is a live binding
+// and would otherwise resolve to the mock itself (infinite recursion).
+const realGetTaskWithColumn = realTaskStore.getTaskWithColumn
 mock.module('../../src/core/task-store', () => ({
   ...realTaskStore,
-  getTaskWithColumn: (id: string) => (liveTasks.has(id) ? { task: { id }, column: taskColumns.get(id) ?? 'todo' } : null),
+  getTaskWithColumn: (id: string) => (liveTasks.has(id) ? { task: { id }, column: taskColumns.get(id) ?? 'todo' } : realGetTaskWithColumn(id)),
 }))
 
 mock.module('../../src/core/logger', () => ({ createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }) }))
@@ -37,6 +40,8 @@ import { createDoctorRepairRequest, updateDoctorRepairRequest } from '../../src/
 import { incidentHolder, resetIncidentReservationsForTests } from '../../src/core/doctor-reservations'
 import { _resetOperationRegistryForTests, getOperationRegistry } from '../../src/core/operations'
 import { OperationRejectedError } from '@bakin/core/operations'
+import { blockTask, createTask, escalateTaskToReview, moveTask } from '../../src/core/task-store'
+import { closeDb } from '../../packages/core/src/storage/db'
 import { healthRepairApplyReportSchema } from '../../plugins/health/lib/route-schemas'
 
 /** Start the repair operation and wait for its report, as every in-process caller does. */
@@ -307,6 +312,25 @@ describe('targeted canonical doctor repair', () => {
       liveTasks.delete('task-handed')
       taskColumns.delete('task-handed')
     }
+  })
+
+  it('the real sequence: a delegated task the agent BLOCKED is refused until Health hands it back to Review, then the operator applies (#896 review r6)', async () => {
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: testDir, projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    const incidentId = plan.items[0].incidentIds[0]!
+    const task = await createTask('Health: restart Search', 'todo', 'main')
+    await moveTask(task.id, 'inProgress')
+    await blockTask(task.id, 'installer hung at 40%')
+    const request = createDoctorRepairRequest(testDir, { kind: 'delegate', incidentIds: [incidentId], observationIds: plan.items[0].observationIds })
+    updateDoctorRepairRequest(testDir, request.id, (r) => ({ ...r, status: 'sent', taskId: task.id, agentId: 'main' }))
+    const options = { contentDir: testDir, projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [], origin: 'web' as const }
+    const refusal = await startDoctorRepair(options).catch((err: unknown) => err)
+    expect(refusal).toMatchObject({ httpStatus: 409, body: { code: 'repair_in_flight', heldBy: `task:${task.id}` } })
+    // Escalation's resurface: the ONE move Health makes, blocked reason on the log line.
+    expect(escalateTaskToReview(task.id, 'Health: not fixed after 12h — handed back to you.')).toBe('blocked')
+    const started = await startDoctorRepair(options)
+    await awaitDoctorRepair(started.operationId)
+    expect(applyAction).toHaveBeenCalledTimes(1)
   })
 
   it('hands the reservation back to releaseTo at settle instead of freeing it (#896 review)', async () => {

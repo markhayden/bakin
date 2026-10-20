@@ -27,7 +27,7 @@ let liveRuns = new Set<string>()
 let onTaskRead = () => {}
 const escalateTaskToReview = mock((taskId: string, _reason: string) => {
   const from = taskColumns[taskId]!
-  if (from === 'review' || from === 'blocked') return null
+  if (from === 'review') return null
   taskColumns[taskId] = 'review'
   return from
 })
@@ -264,12 +264,12 @@ describe('per-incident cover (bounded, resurfacing — spec D-G1/D-G3)', () => {
     expect(reopenIfLeavingDone).toHaveBeenCalledWith('task-1', 'review', 'health', 'system')
   })
 
-  it('a stale BLOCKED task stays blocked: log + announce, no move, no reopen', async () => {
+  it('a stale BLOCKED task is handed back like any other: moved to Review, announced, no reopen (#896 review r6)', async () => {
     requests = [coveringRequest(34 * HOUR)]
     taskColumns = { 'task-1': 'blocked' }
     const outcome = await escalate([incident()])
     expect(escalateTaskToReview).toHaveBeenCalledTimes(1)
-    expect(taskColumns['task-1']).toBe('blocked')
+    expect(taskColumns['task-1']).toBe('review')
     expect(reopenIfLeavingDone).not.toHaveBeenCalled()
     expect(attachResurfaceApproval).toHaveBeenCalledTimes(1)
     expect(outcome?.resurfacedTaskIds).toEqual(['task-1'])
