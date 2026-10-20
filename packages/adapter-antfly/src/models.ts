@@ -135,62 +135,33 @@ export async function checkInferenceModels(models: InferenceModel[]) {
       details: { root: inferenceModelsRoot(), invalid: unsafe.map((m) => m.model) },
     }
   }
+  // Three independent findings, so none hides another (a missing reranker
+  // must not mask an embedder that can't load):
+  // - missing: not downloaded (or incomplete) — the install fetches it;
+  // - stale: complete but not the pinned variant — the install re-pulls it
+  //   (an `ok` here once meant `bakin install search-models` asked nothing
+  //   and its unapproved install skipped);
+  // - unloadable: the engine itself failed to load it here (#993) — degraded
+  //   and named, and only an install-fixable one when it is also stale.
   const missing = missingModelEntries(models)
-  // Present but known not to load on this machine (#993): the engine boots
-  // without it, so this is degraded, not missing — and says which leg.
-  const unloadable = missing.length === 0
-    ? models.flatMap((m) => {
-      const verdict = modelLoadVerdict(m.model)
-      return verdict && !verdict.loadable ? [{ model: m, reason: verdict.reason ?? 'the engine could not load it' }] : []
-    })
-    : []
-  // Complete but not the pinned variant: the installer re-pulls these, so the
-  // check must say so — an `ok` here meant `bakin install search-models`
-  // asked nothing and its unapproved install skipped. Any of them makes the
-  // whole check `broken` (an install fixes it: onboarding installs, the
-  // wizard asks), even beside a model nothing can fix; `warn` is only for
-  // can't-load with nothing to install.
-  const stale = missing.length === 0
-    ? models.flatMap((m) => {
-      const why = modelVariantMismatch(m.model)
-      return why ? [{ model: m, why }] : []
-    })
-    : []
+  const present = models.filter((m) => !missing.some((e) => e.model === m))
+  const stale = present.flatMap((m) => {
+    const why = modelVariantMismatch(m.model)
+    return why ? [{ model: m, why }] : []
+  })
+  const unloadable = present.flatMap((m) => {
+    const verdict = modelLoadVerdict(m.model)
+    return verdict && !verdict.loadable ? [{ model: m, reason: verdict.reason ?? 'the engine could not load it' }] : []
+  })
   const isStale = (model: InferenceModel) => stale.some((s) => s.model === model)
+  const staleUnloadable = unloadable.filter((u) => isStale(u.model))
   const unfixable = unloadable.filter((u) => !isStale(u.model))
   const machine = `engine ${ANTFLY_PIN.version}, ${process.platform}-${process.arch}`
   const labels = (list: Array<{ model: InferenceModel }>) => list.map((x) => x.model.label).join(', ')
-  const details = {
-    root: inferenceModelsRoot(),
-    ...(stale.length > 0 ? { stale: stale.map((s) => ({ label: s.model.label, model: s.model.model, reason: s.why })) } : {}),
-    ...(unloadable.length > 0 ? { unloadable: unloadable.map((u) => ({ label: u.model.label, model: u.model.model, reason: u.reason })) } : {}),
-  }
-  if (stale.length > 0) {
-    const staleUnloadable = unloadable.filter((u) => isStale(u.model))
-    return {
-      name: 'models',
-      status: 'broken' as const,
-      message: [
-        `${labels(stale)} ${stale.length === 1 ? 'is' : 'are'} not the pinned download (${stale.map((s) => s.why).join('; ')}).`,
-        staleUnloadable.length > 0
-          ? `${labels(staleUnloadable)} can't load on this machine (${machine}) until re-downloaded.`
-          : 'Search still works here.',
-        ...(unfixable.length > 0 ? [`${labels(unfixable)} can't load on this machine either, and installing won't change that.`] : []),
-      ].join(' '),
-      remediation: 'Run `bakin install search-models`: it re-downloads the model in the pinned form and replaces the old install.',
-      details,
-    }
-  }
-  if (unloadable.length > 0) {
-    return {
-      name: 'models',
-      status: 'warn' as const,
-      message: `${labels(unloadable)} can't load on this machine (${machine}) — the search that relies on ${unloadable.length === 1 ? 'it is' : 'them is'} unavailable here. Everything else is unaffected.`,
-      remediation: 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
-      details,
-    }
-  }
-  if (missing.length === 0) {
+  const verb = (list: unknown[], one: string, many: string) => (list.length === 1 ? one : many)
+  const root = inferenceModelsRoot()
+
+  if (missing.length === 0 && stale.length === 0 && unloadable.length === 0) {
     // Structural verification only — pinned file NAMES and sizes, which is
     // what catches the wrong-distribution crash-loop class. sha256 hashing
     // lives on the INSTALL path (skip check + staged verify): checks run on
@@ -201,26 +172,50 @@ export async function checkInferenceModels(models: InferenceModel[]) {
       name: 'models',
       status: 'ok' as const,
       message: models.every((m) => isPinnedModel(m.model))
-        ? `All ${models.length} search models present at ${inferenceModelsRoot()} (files present — integrity is hash-checked at install/repair)`
-        : `All ${models.length} search models present at ${inferenceModelsRoot()} (files present — pinned models are hash-checked at install/repair; custom models are checked structurally only)`,
-      details: { root: inferenceModelsRoot(), models: models.map((m) => m.model) },
+        ? `All ${models.length} search models present at ${root} (files present — integrity is hash-checked at install/repair)`
+        : `All ${models.length} search models present at ${root} (files present — pinned models are hash-checked at install/repair; custom models are checked structurally only)`,
+      details: { root, models: models.map((m) => m.model) },
     }
   }
-  const { impact, remediation } = describeMissingModels(missing.map((e) => e.model))
+
+  const missingImpact = missing.length > 0 ? describeMissingModels(missing.map((e) => e.model)) : null
+  const message = [
+    ...(missingImpact ? [`${missing.length} of ${models.length} search model${missing.length === 1 ? '' : 's'} not downloaded - ${missingImpact.impact}.`] : []),
+    ...(stale.length > 0 ? [`${labels(stale)} ${verb(stale, 'is', 'are')} not the pinned download (${stale.map((s) => s.why).join('; ')}).`] : []),
+    ...(staleUnloadable.length > 0 ? [`${labels(staleUnloadable)} can't load on this machine (${machine}) until re-downloaded.`] : []),
+    ...(stale.length > 0 && staleUnloadable.length === 0 && missing.length === 0 ? ['Search still works here.'] : []),
+    ...(unfixable.length > 0
+      ? [missing.length > 0 || stale.length > 0
+        ? `${labels(unfixable)} can't load on this machine either (${machine}), and installing won't change that.`
+        : `${labels(unfixable)} can't load on this machine (${machine}) — the search that relies on ${verb(unfixable, 'it is', 'them is')} unavailable here. Everything else is unaffected.`]
+      : []),
+  ].join(' ')
+  const details = {
+    root,
+    ...(missing.length > 0 ? { missing: missing.map((e) => ({ label: e.model.label, model: e.model.model, path: modelPath(e.model), reason: e.reason })) } : {}),
+    ...(stale.length > 0 ? { stale: stale.map((s) => ({ label: s.model.label, model: s.model.model, reason: s.why })) } : {}),
+    ...(unloadable.length > 0 ? { unloadable: unloadable.map((u) => ({ label: u.model.label, model: u.model.model, reason: u.reason })) } : {}),
+  }
+  // `missing` / `broken` = an install fixes it (onboarding installs, the
+  // wizard asks); `warn` = only can't-load with nothing to install.
+  if (missingImpact) {
+    return { name: 'models', status: 'missing' as const, message, remediation: missingImpact.remediation, details }
+  }
+  if (stale.length > 0) {
+    return {
+      name: 'models',
+      status: 'broken' as const,
+      message,
+      remediation: 'Run `bakin install search-models`: it re-downloads the model in the pinned form and replaces the old install.',
+      details,
+    }
+  }
   return {
     name: 'models',
-    status: 'missing' as const,
-    message: `${missing.length} of ${models.length} search model${missing.length === 1 ? '' : 's'} not downloaded - ${impact}`,
-    remediation,
-    details: {
-      root: inferenceModelsRoot(),
-      missing: missing.map((e) => ({
-        label: e.model.label,
-        model: e.model.model,
-        path: modelPath(e.model),
-        reason: e.reason,
-      })),
-    },
+    status: 'warn' as const,
+    message,
+    remediation: 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
+    details,
   }
 }
 

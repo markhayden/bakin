@@ -834,11 +834,16 @@ what 0.3's default pull already fetches. A variant pull installs as
 `<name>--antfly-<hash>`; the installer moves it to `antflydb/clipclap` (old
 install renamed aside, restored on failure, swept after), and an existing
 default-layout install counts as needing a re-pull (`modelVariantMismatch`)
-— and the check says so (`broken`, "not the pinned download … Search still
-works here"; also when the old layout can't load, and even beside another
-model nothing can fix). `broken` = an install fixes it, so onboarding
-installs it and the wizard asks; `warn` is only for a model that can't load
-with nothing to install. The check and the installer
+— and the check says so. The models check collects three findings
+independently and names every one (none hides another): missing (→
+`missing`), complete but not the pinned variant (→ `broken`, "not the pinned
+download … Search still works here", or "can't load … until re-downloaded"),
+and can't-load with nothing to install (→ `warn` only when it is the sole
+finding). `missing`/`broken` = an install fixes it, so onboarding installs
+it and the wizard asks. Onboarding rechecks after a successful install and
+keeps a remaining WARNING (a model nothing can fix beside one it re-pulled);
+any other recheck result leaves the install's ok, so a service still starting
+never fails a good install. The check and the installer
 must agree on what needs work: a terminal `bakin install` only asks when the
 check is not ok, and an `ok` the installer disagreed with once skipped the
 re-pull as "not approved". The typed command is the approval whenever there
