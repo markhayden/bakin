@@ -59,8 +59,8 @@ published):
 - **Compatible upgrades** — `src/core/whiskit/compatible-version.ts`
   (`newestCompatibleVersion`) is the ONE answer to "which published version
   can THIS host run" (contract + `bakinRange`, newest first, platform then
-  neutral). The artifact upgrade lane, `bakin plugins list --check`
-  (`remoteArtifactVersion` / "upgrade available") and Health all use it — never
+  neutral). The artifact upgrade lane, the updates engine's `plugin` source (what
+  `bakin plugins list --check` and Health read, #1007) all use it — never
   the index's `latest`, which may target another host. Health's
   `plugin-artifacts` check offers the one-click `upgrade-plugin-artifact`
   repair when a stranded plugin's source has a compatible release (any — a

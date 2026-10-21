@@ -497,7 +497,7 @@ Specific to this work:
 | 2 | `feat(plugins): isCorePlugin predicate + remove guard` | New predicate; populate during init; fix the missing `remove.ts` core guard. |
 | 3 | `feat(plugins): list output rework — type, source, status columns` | Read lockfile, render new columns, mark `[core]`. No `--check` yet. |
 | 4 | `feat(plugins): upgrade command (no-op detection + git/local rebuild)` | `/api/plugins/upgrade`, `cmdPluginsUpgrade`. Lockfile updated. Restart-required exit. |
-| 5 | `feat(plugins): list --check + lastChecked staleness hint` | Opt-in remote/local check; persists `remoteHeadSha`/`sourceTreeSha` + `lastChecked`. 7-day stale hint in plain `list`. |
+| 5 | `feat(plugins): list --check + lastChecked staleness hint` | Opt-in remote/local check; persists `remoteHeadSha`/`sourceTreeSha` + `lastChecked`. 7-day stale hint in plain `list`. *(Historical — #1007 moved every check into the updates engine and deleted these markers; see `updates.md`.)* |
 | 6 | `feat(plugins): hook + exec-tool unregister-by-plugin APIs + search purgeContentType` | Pure infra. No remove-flow change yet. |
 | 7 | `feat(plugins): onUninstall hook + full teardown sweep` | `BakinPlugin.onUninstall?`. Wire remove flow: hook → registry sweep (#6) → settings JSON → runtime skills (`.userEdited` honored) → tarball snapshot → fs delete → lockfile entry. The big one. |
 | 8 | `feat(plugins): permissions Zod enum + audit log on activate` | Lock the 4-permission enum, descriptions map, log on every activation. Validate manifests at install/upgrade. (#142 layer 1) |
@@ -531,7 +531,7 @@ This spec is satisfied when:
 
 - [ ] `~/.bakin/plugins/lock.json` exists and is the canonical install ledger; install/upgrade/remove all read+write it via the same atomic IO module
 - [ ] `bakin plugins upgrade <id>` works for both github and local plugins per §4.2
-- [ ] `bakin plugins list --check` populates `lastChecked` + `remoteHeadSha`/`sourceTreeSha`
+- [x] `bakin plugins list --check` runs the updates engine's plugin pass and renders its records (the pre-#1007 `lastChecked` / `remoteHeadSha` markers are gone)
 - [ ] `bakin plugins remove <id>` runs the full teardown sweep per §4.3, snapshots to `~/.bakin/.uninstalled/`, honors `.userEdited`
 - [ ] `BakinPlugin.onUninstall` is callable and survives errors (cleanup continues)
 - [ ] Core plugins refuse `remove` and `upgrade` at API + lockfile + CLI layers
