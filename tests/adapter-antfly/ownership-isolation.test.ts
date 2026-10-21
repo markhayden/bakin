@@ -209,6 +209,7 @@ describe('#826 service ownership isolation', () => {
       const { io } = fakeSupervisor(mode)
       const { unitPath, original } = seedForeignUnit(mode, io)
       io.portsReleased = async () => false
+      io.portReleaseWaitMs = 300
 
       await expect(ensureProvisioned(DEFAULT_SETTINGS, io, { intent: 'install' })).rejects.toThrow('ports are still occupied')
 
