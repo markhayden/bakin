@@ -174,11 +174,14 @@ usage_anomaly, unattributed_usage, runaway_usage, cleanup_backlog,
 policy_denial, unsupported_surface). The ONE sensitivity policy
 (`projectEffectiveDispositions` in `src/core/health-report.ts`, applied once
 in `getHealthReport` under `settings.doctor.sensitivity`:
-`developer | standard | quiet`, default standard) computes every incident's
-`effectiveDisposition`:
+`developer | standard`, default standard — the `quiet` mode was retired in
+#1007 because it was identical to standard; a settings file still saying it
+falls back to the default) computes every incident's `effectiveDisposition`:
 
-- standard/quiet cap usage_anomaly, cleanup_backlog, policy_denial, and
-  unsupported_surface at **advisory**; caps only ever LOWER urgency.
+- standard caps usage_anomaly, cleanup_backlog, policy_denial, and
+  unsupported_surface at **advisory**; caps only ever LOWER urgency. The
+  navigation badge and the board escalation act on action_required only, in
+  either mode.
 - Unclassified incidents are treated service_failure (a missing stamp can
   never hide an outage); error-status incidents are never demoted;
   evidence_gap is deliberately uncapped — its producers split raw severity
@@ -191,8 +194,10 @@ in `getHealthReport` under `settings.doctor.sensitivity`:
   unsupported_surface failure. Repair delegation (`all_actionable`) and the
   CLI act on effective disposition too — a calmed incident never spawns a
   paid repair task.
-- **Quiet (D10)** additionally lives at the NOTIFICATION layer: escalation acts only on effective `action_required` — watch
-  stays visible on the Health page but silent.
+- **The notification rule (D10)** is mode-independent: the navigation badge
+  and the board escalation act only on effective `action_required` — watch
+  stays visible on the Health page but silent, under developer and standard
+  alike (this was the whole of the retired `quiet` mode).
 - The semantic projection key includes sensitivity + effective dispositions:
   flipping the System & Alerts dropdown republishes on the next read, no
   restart. Conflicting class stamps on one incident id are a producer bug

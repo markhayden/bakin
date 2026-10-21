@@ -126,11 +126,10 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       key: 'doctor.sensitivity',
       type: 'select',
       label: 'Health sensitivity',
-      description: 'How loudly Health findings surface. Developer shows raw severities everywhere; Standard (default) calms expected noise (housekeeping, guardrail denials, usage anomalies, unsupported surfaces) to advisory; Quiet additionally notifies only for action-required findings — watch items stay visible on the Health page but silent. Takes effect on the next doctor cycle, no restart.',
+      description: 'How loudly Health findings surface. Developer shows raw severities everywhere; Standard (default) calms expected noise (housekeeping, guardrail denials, usage anomalies, unsupported surfaces) to advisory. The navigation badge and the board escalation act on action-required findings only, in either mode. Takes effect on the next doctor cycle, no restart.',
       options: [
         { value: 'developer', label: 'Developer — show everything at raw severity' },
         { value: 'standard', label: 'Standard — calm expected noise (default)' },
-        { value: 'quiet', label: 'Quiet — notify only for action-required' },
       ],
       default: 'standard',
     },

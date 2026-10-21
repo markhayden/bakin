@@ -36,7 +36,7 @@ describe('Settings', () => {
     expect(settings.dispatch.maxBrandContextBytes).toBe(12288)
   })
 
-  it('doctor.sensitivity defaults to standard and coerces invalid values (#690)', () => {
+  it('doctor.sensitivity defaults to standard and coerces invalid values (#690) — the retired quiet included (#1007)', () => {
     expect(getSettings().doctor.sensitivity).toBe('standard')
 
     resetSettingsCache()
@@ -47,12 +47,20 @@ describe('Settings', () => {
     )
     expect(getSettings().doctor.sensitivity).toBe('standard')
 
+    // 'quiet' was identical to standard and is gone (D7.13): a file still saying it is an unknown value now.
     resetSettingsCache()
     fs.writeFileSync(
       path.join(TEST_CONTENT_DIR, 'settings.json'),
       JSON.stringify({ doctor: { sensitivity: 'quiet' } }),
     )
-    expect(getSettings().doctor.sensitivity).toBe('quiet')
+    expect(getSettings().doctor.sensitivity).toBe('standard')
+
+    resetSettingsCache()
+    fs.writeFileSync(
+      path.join(TEST_CONTENT_DIR, 'settings.json'),
+      JSON.stringify({ doctor: { sensitivity: 'developer' } }),
+    )
+    expect(getSettings().doctor.sensitivity).toBe('developer')
   })
 
   it('updates.enabled is a strict boolean and updates.intervalMs a finite number clamped to [15 min, 7 d] (#1007)', () => {

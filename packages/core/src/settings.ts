@@ -254,11 +254,11 @@ export interface BakinSettings {
     /**
      * Health sensitivity (#690): 'developer' shows raw dispositions
      * everywhere; 'standard' (default) demotes expected-noise incident
-     * classes to advisory in the central report projection; 'quiet'
-     * additionally badges/escalates only action_required. Applied at
-     * projection time — flipping it needs no restart.
+     * classes to advisory in the central report projection. Applied at
+     * projection time — flipping it needs no restart. A file still saying
+     * the retired 'quiet' (#1007) falls back to the default.
      */
-    sensitivity: 'developer' | 'standard' | 'quiet'
+    sensitivity: 'developer' | 'standard'
     /**
      * When true, `runDiagnostics()` refuses to run its normal checks and
      * returns a single `onboarded: error` result until `~/.bakin/.onboarded`
@@ -588,7 +588,7 @@ function normalizeDiagnosticsSettings(input: unknown): BakinSettings['diagnostic
 }
 
 function normalizeDoctorSettings(input: BakinSettings['doctor']): BakinSettings['doctor'] {
-  const sensitivity = input.sensitivity === 'developer' || input.sensitivity === 'standard' || input.sensitivity === 'quiet'
+  const sensitivity = input.sensitivity === 'developer' || input.sensitivity === 'standard'
     ? input.sensitivity
     : DEFAULT_SETTINGS.doctor.sensitivity
   const raw: unknown = input.escalation

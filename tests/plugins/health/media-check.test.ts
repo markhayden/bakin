@@ -112,7 +112,7 @@ describe('checkMediaSharp', () => {
     const obs = firstObservation(await checkMediaSharp(deps()))
     expect(obs.status).toBe('error')
     expect(obs.incident?.disposition).toBe('action_required')
-    // Unclassified by design: never demoted under quiet sensitivity (#889).
+    // Unclassified by design: never demoted under standard sensitivity (#889).
     expect(obs.incident?.class).toBeUndefined()
     expect(obs.incident?.resolution).toMatchObject({ type: 'repair', actionId: MEDIA_REPAIR_ACTION_ID })
   })

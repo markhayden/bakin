@@ -109,8 +109,8 @@ The download/extract/verify/commit legs ride the shared primitive
   warn/skip on unsupported platforms. `ONBOARDING_VERSION` bumped 3→4.
 - **CLI:** `bakin check media`, `bakin install media`.
 - **Doctor:** `media.sharp` (health plugin, System group). Missing store on a
-  binary = **unclassified** incident (never demoted by sensitivity — visible
-  in quiet mode), `action_required`, one-click repair `media-install-store`
+  binary = **unclassified** incident (never demoted by sensitivity — the
+  same in either mode), `action_required`, one-click repair `media-install-store`
   (runs the installer in-process as a child operation; no restart needed).
   Unsupported platform = advisory `unsupported_surface` warning.
 - **As an operation (#895):** `installMediaStore(op, options)` reports

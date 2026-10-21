@@ -139,9 +139,8 @@ export function sortHealthIncidents(incidents: readonly HealthIncident[]): Healt
  * the uncapped classes); an unclassified incident is treated as
  * service_failure (never demoted) so a missing stamp cannot hide an outage.
  * evidence_gap is deliberately uncapped — its producers split raw severity
- * (rule-affecting = watch, informational = advisory) per D12. Quiet's extra
- * behavior lives at the NOTIFICATION layer (badge/escalation act only on
- * action_required), not in these caps.
+ * (rule-affecting = watch, informational = advisory) per D12. The badge and
+ * the board escalation act on action_required only, in either mode.
  */
 const DEMOTABLE_TO_ADVISORY: ReadonlySet<HealthIncidentClass> = new Set([
   'usage_anomaly',

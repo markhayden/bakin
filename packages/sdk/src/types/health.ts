@@ -61,10 +61,11 @@ export type HealthIncidentClass = (typeof HEALTH_INCIDENT_CLASSES)[number]
 /**
  * Health sensitivity mode (#690): how loudly findings surface. `developer`
  * shows raw dispositions everywhere; `standard` (default) demotes expected
- * noise classes to advisory; `quiet` additionally notifies (badge/escalation)
- * only for action_required — watch stays visible on the page but silent.
+ * noise classes to advisory. The badge and the board escalation act on
+ * action_required only, in either mode (#1007 retired `quiet`, which was
+ * identical to `standard`).
  */
-export type HealthSensitivity = 'developer' | 'standard' | 'quiet'
+export type HealthSensitivity = 'developer' | 'standard'
 
 export type HealthOwnerKind = 'plugin' | 'adapter' | 'core'
 
@@ -531,7 +532,7 @@ export interface HealthReport {
   revision: number
   generatedAt: string
   overallStatus: HealthReportStatus
-  /** The sensitivity mode this report was projected under (#690) — lets badge/CLI apply the quiet filter. */
+  /** The sensitivity mode this report was projected under (#690). */
   sensitivity: HealthSensitivity
   lastFullSweep: HealthFullSweep | null
   checks: HealthCheckState[]

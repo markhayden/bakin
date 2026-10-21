@@ -12327,8 +12327,7 @@
                       "type": "string",
                       "enum": [
                         "developer",
-                        "standard",
-                        "quiet"
+                        "standard"
                       ]
                     },
                     "lastFullSweep": {
@@ -16874,8 +16873,7 @@
                       "type": "string",
                       "enum": [
                         "developer",
-                        "standard",
-                        "quiet"
+                        "standard"
                       ]
                     },
                     "lastFullSweep": {
