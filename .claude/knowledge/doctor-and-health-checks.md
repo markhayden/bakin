@@ -194,8 +194,10 @@ falls back to the default) computes every incident's `effectiveDisposition`:
   unsupported_surface failure. Repair delegation (`all_actionable`) and the
   CLI act on effective disposition too — a calmed incident never spawns a
   paid repair task.
-- **Quiet (D10)** additionally lives at the NOTIFICATION layer: escalation acts only on effective `action_required` — watch
-  stays visible on the Health page but silent.
+- **The notification rule (D10)** is mode-independent: the navigation badge
+  and the board escalation act only on effective `action_required` — watch
+  stays visible on the Health page but silent, under developer and standard
+  alike (this was the whole of the retired `quiet` mode).
 - The semantic projection key includes sensitivity + effective dispositions:
   flipping the System & Alerts dropdown republishes on the next read, no
   restart. Conflicting class stamps on one incident id are a producer bug

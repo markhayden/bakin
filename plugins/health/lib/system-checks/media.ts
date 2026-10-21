@@ -5,8 +5,8 @@
  * installed, which used to surface one failed enrichment at a time (>2 MB
  * images fail hard, exports throw, thumbnails degrade, the assets_visual
  * search leg loses thumbs). This check names that state ONCE, loudly
- * (unclassified incident → never demoted by sensitivity policy — visible in
- * quiet mode), with a one-click repair that runs the store installer.
+ * (unclassified incident → never demoted by sensitivity policy, in either
+ * mode), with a one-click repair that runs the store installer.
  *
  * ok on dev trees (bundled sharp importable) and on installs with a store
  * receipt at the pin; warn-shaped healthy-with-caveat on platforms that
