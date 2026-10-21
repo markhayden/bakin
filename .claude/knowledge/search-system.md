@@ -92,6 +92,13 @@ One exclusive operation lock beside the canonical service unit serializes
 boot, controls, install, and reset across homes. Re-read ownership and the
 installed binary version under that lock; stop the old service and confirm
 API/health ports are released before changing the unit/binary/target data.
+A supervised stop polls for that release for up to 25 seconds, because
+`launchctl bootout` returns before the engine exits (measured 2026-10-21:
+the call took 20 ms and the port stayed bound about 3 s longer), so a
+one-shot probe failed every restart of a live engine. launchd SIGKILLs a
+process after its 20-second exit timeout, and the wait outlasts that. A
+child stop has already reaped its process, so its probe stays instant: a
+port still bound after a child stop belongs to some other listener.
 Units use atomic writes. Supervisor failures propagate; readiness from another
 listener cannot turn a failed operation into success. Upgrades clear only the
 target home's derived data when its installed engine version changes.

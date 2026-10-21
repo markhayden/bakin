@@ -52,7 +52,7 @@ const commands: string[][] = []
 const serviceIo: ServiceIo = {
   platform: 'darwin', env: { HOME: join(testDir, 'os-home') },
   hasCommand: () => true, modelReady: () => false, tempRoots: [],
-  portsReleased: async () => !occupied,
+  portsReleased: async () => !occupied, portReleaseWaitMs: 300,
   exec: async (cmd, args) => {
     commands.push([cmd, ...args])
     if (args[0] === 'print') return { code: loaded ? 0 : 113, stdout: '', stderr: '' }

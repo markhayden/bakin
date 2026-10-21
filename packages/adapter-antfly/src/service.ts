@@ -56,6 +56,8 @@ export interface ServiceIo {
   modelReady?: (model: string) => boolean
   tempRoots?: readonly string[]
   portsReleased?: () => Promise<boolean>
+  /** How long a supervised stop waits for the engine to release its ports (default STOP_PORT_RELEASE_MS). */
+  portReleaseWaitMs?: number
 }
 
 async function realExec(cmd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -402,20 +404,46 @@ async function checkedExec(io: ServiceIo, cmd: string, args: string[]): Promise<
   if (result.code !== 0) throw new Error(`${cmd} ${args.join(' ')} failed (${result.code}): ${result.stderr || result.stdout}`)
 }
 
-/** No readiness probe can prove a port is free: an unready engine still binds it. */
-export async function assertServicePortsReleased(io: ServiceIo = defaultServiceIo()): Promise<void> {
-  if (io.portsReleased) {
-    if (!await io.portsReleased()) throw new Error('Search API/health ports are still occupied. Stop the unrelated listener manually before installing search.')
-    return
-  }
+/**
+ * `launchctl bootout` returns before the engine exits (measured 2026-10-21:
+ * 20ms, with the port held ~3s longer), so a supervised stop waits for the
+ * ports. launchd SIGKILLs after its 20s exit timeout; this outlasts it.
+ */
+const STOP_PORT_RELEASE_MS = 25_000
+const PORT_RELEASE_POLL_MS = 250
+
+async function servicePortsFree(io: ServiceIo): Promise<boolean> {
+  if (io.portsReleased) return io.portsReleased()
   for (const port of [3738, 3739]) {
-    await new Promise<void>((resolve, reject) => {
+    const free = await new Promise<boolean>((resolve, reject) => {
       const socket = createConnection({ host: '127.0.0.1', port })
       socket.setTimeout(1500)
-      socket.once('connect', () => { socket.destroy(); reject(new Error(`Search port ${port} is still occupied. Stop the unrelated listener manually before installing search.`)) })
+      socket.once('connect', () => { socket.destroy(); resolve(false) })
       socket.once('timeout', () => { socket.destroy(); reject(new Error(`Could not establish whether search port ${port} is free.`)) })
-      socket.once('error', (err: NodeJS.ErrnoException) => { socket.destroy(); if (err.code === 'ECONNREFUSED') resolve(); else reject(err) })
+      socket.once('error', (err: NodeJS.ErrnoException) => { socket.destroy(); if (err.code === 'ECONNREFUSED') resolve(true); else reject(err) })
     })
+    if (!free) return false
+  }
+  return true
+}
+
+/** No readiness probe can prove a port is free: an unready engine still binds it. */
+export async function assertServicePortsReleased(io: ServiceIo = defaultServiceIo(), waitMs = 0): Promise<void> {
+  const deadline = Date.now() + waitMs
+  for (;;) {
+    // An inconclusive probe (timeout, reset mid-shutdown) is retried like a held port — never proof either way.
+    let inconclusive: unknown = null
+    try {
+      if (await servicePortsFree(io)) return
+    } catch (err) {
+      inconclusive = err
+    }
+    if (Date.now() >= deadline) {
+      if (inconclusive) throw inconclusive
+      const after = waitMs > 0 ? ` ${Math.round(waitMs / 1000)}s after stopping the service` : ''
+      throw new Error(`Search API/health ports are still occupied (3738/3739)${after}. Stop the unrelated listener manually before installing search.`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, PORT_RELEASE_POLL_MS))
   }
 }
 
@@ -433,8 +461,12 @@ async function stopSupervised(mode: ServiceMode, io: ServiceIo): Promise<void> {
       const state = await io.exec('systemctl', ['--user', 'show', SYSTEMD_UNIT, '--property=LoadState', '--value'])
       if (state.code !== 0 || state.stdout.trim() !== 'not-found') throw new Error(`Cannot stop search service: ${stopped.stderr || state.stderr}`)
     }
-  } else await stopChildAndWait()
-  await assertServicePortsReleased(io)
+  } else {
+    // The child is already reaped: anything still bound is another listener.
+    await stopChildAndWait()
+    return assertServicePortsReleased(io)
+  }
+  await assertServicePortsReleased(io, io.portReleaseWaitMs ?? STOP_PORT_RELEASE_MS)
 }
 
 export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo = defaultServiceIo(), opts: ServiceIntent = {}): Promise<EnsureResult> {

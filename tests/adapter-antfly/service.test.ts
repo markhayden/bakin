@@ -52,6 +52,7 @@ import {
   writeEngineConfig,
   engineConfigFingerprint,
   startService,
+  stopService,
   systemdUnitPath,
   type ServiceIo,
 } from '../../packages/adapter-antfly/src/service'
@@ -462,6 +463,42 @@ describe('startService owned-service recovery (#859)', () => {
     expect(existsSync(launchdPlistPath(io))).toBe(false)
     expect(io.record).toEqual([])
   })
+})
+
+describe('stopService waits for the engine to release its ports', () => {
+  // launchctl bootout returns before the engine exits (measured: 20ms, the
+  // port held ~3s longer) — a one-shot probe failed every live restart.
+  for (const platform of ['darwin', 'linux'] as const) {
+    it(`${platform}: a port released shortly after the stop is not an unrelated listener`, async () => {
+      await ensureProvisioned(DEFAULT_SETTINGS, fakeIo({ platform }), { intent: 'install' })
+      let probes = 0
+      const io = fakeIo({ platform, portsReleased: async () => ++probes >= 3 })
+
+      await stopService(DEFAULT_SETTINGS, io)
+
+      expect(probes).toBe(3)
+      expect(io.loaded()).toBe(false)
+    })
+
+    it(`${platform}: an inconclusive probe during shutdown is retried, never fatal`, async () => {
+      await ensureProvisioned(DEFAULT_SETTINGS, fakeIo({ platform }), { intent: 'install' })
+      let probes = 0
+      const io = fakeIo({ platform, portsReleased: async () => { probes += 1; if (probes === 1) throw new Error('ECONNRESET'); return true } })
+
+      await stopService(DEFAULT_SETTINGS, io)
+
+      expect(probes).toBe(2)
+    })
+
+    it(`${platform}: a port still held after the wait fails the stop`, async () => {
+      await ensureProvisioned(DEFAULT_SETTINGS, fakeIo({ platform }), { intent: 'install' })
+      let probes = 0
+      const io = { ...fakeIo({ platform, portsReleased: async () => { probes += 1; return false } }), portReleaseWaitMs: 300 }
+
+      await expect(stopService(DEFAULT_SETTINGS, io)).rejects.toThrow('ports are still occupied')
+      expect(probes).toBeGreaterThan(1)
+    })
+  }
 })
 
 describe('restartService preserves owned configuration', () => {
