@@ -4,7 +4,9 @@
  * or is invalid, so a plugin that startup skipped isn't silently missing.
  *
  * A needs-update plugin whose source has published a release THIS host can
- * run gets the one-click `upgrade-plugin-artifact` repair: its plan previews
+ * run — as the updates engine observed it (#1007; the check reads the
+ * `plugin:<id>` record, never an index) — gets the one-click
+ * `upgrade-plugin-artifact` repair: its plan previews
  * the upgrade (version, EVERY declared permission and binary) and it is `manual`, so
  * escalation asks for approval with exactly that change set — approving it is
  * the consent. With no compatible release yet, the incident says so plainly
@@ -12,6 +14,7 @@
  */
 import { existsSync, readdirSync, type Dirent } from 'fs'
 import { join } from 'path'
+import type { UpdateRecord } from '@makinbakin/sdk/types'
 import { getContentDir } from '../../../../src/core/content-dir'
 import { verifyInstalledArtifact } from '../../../../src/core/whiskit/verify'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
@@ -19,7 +22,7 @@ import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDef
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { readPluginLockfile } from '@bakin/core/plugins/lockfile'
 import { createLogger } from '../../../../src/core/logger'
-import type { PublishedVersions } from '../../../../src/core/plugins/upgrade-artifact'
+import { getUpdatesEngine } from '../../../../src/core/updates/service'
 import { stableKeyPart } from './key'
 
 const log = createLogger('health:plugin-artifacts')
@@ -28,54 +31,51 @@ export const UPGRADE_PLUGIN_ARTIFACT_ACTION = 'upgrade-plugin-artifact'
 const CHECK_ID = 'health.plugin-artifacts'
 
 export interface PluginArtifactDeps {
-  publishedVersions: (source: string) => Promise<PublishedVersions>
+  /** The updates engine's record for `plugin:<id>` — the check never probes an index itself (#1007). */
+  record: (pluginId: string) => Promise<UpdateRecord | undefined>
 }
 
-/** One index read per source per window, bounded well inside the check budget; a failure is retried sooner. */
-const INDEX_TIMEOUT_MS = 8_000
-const INDEX_TTL_MS = 10 * 60_000
-const INDEX_FAILURE_TTL_MS = 60_000
-const indexCache = new Map<string, { at: number; ttl: number; value: Promise<PublishedVersions> }>()
-
-// The upgrade stack loads lazily: the check runs on every Health pass, the
-// network + install machinery only when a plugin is actually stranded.
 const defaultDeps: PluginArtifactDeps = {
-  publishedVersions: (source) => {
-    const hit = indexCache.get(source)
-    if (hit && Date.now() - hit.at < hit.ttl) return hit.value
-    const value = import('../../../../src/core/plugins/upgrade-artifact')
-      .then(({ publishedVersions }) => publishedVersions(source, { timeoutMs: INDEX_TIMEOUT_MS, retries: 0 }))
-    const record = { at: Date.now(), ttl: INDEX_TTL_MS, value }
-    value.catch(() => { record.ttl = INDEX_FAILURE_TTL_MS })
-    indexCache.set(source, record)
-    return value
+  record: async (pluginId) => {
+    const engine = getUpdatesEngine()
+    if (!engine) return undefined
+    const id = `plugin:${pluginId}`
+    return (await engine.snapshot()).records.find((record) => record.id === id)
   },
-}
-
-/** Tests only. */
-export function __clearIndexCacheForTests(): void {
-  indexCache.clear()
 }
 
 const PROVENANCE_PATH = join('.whiskit', 'build.json')
 
-/** What the plugin's source offers this host: a compatible newer release, none yet, or unknown (fetch failed / not an artifact install). */
-type Offer = { kind: 'upgrade'; version: string } | { kind: 'none'; newest: string | null } | { kind: 'unknown' }
+/**
+ * What the plugin's source offers this host, as the updates engine observed
+ * it: a compatible release (an `update-available` record — for a stranded
+ * plugin ANY compatible release is an offer, a rebuild under the installed
+ * version number included, D7 `compatible-rebuild`), none yet (`blocked`,
+ * with the engine's reason), or unknown (no record, no successful
+ * observation, not an artifact install). `observedAt` is the record's last
+ * successful observation; `error` its last failed attempt.
+ */
+type Offer =
+  | { kind: 'upgrade'; version: string; observedAt?: string; error?: string }
+  | { kind: 'none'; reason: string; observedAt?: string; error?: string }
+  | { kind: 'unknown'; observedAt?: string; error?: string }
 
 async function offerFor(pluginId: string, pluginDir: string, deps: PluginArtifactDeps): Promise<Offer> {
   const entry = readPluginLockfile().plugins[pluginId]
   if (!entry || entry.type !== 'github' || !existsSync(join(pluginDir, PROVENANCE_PATH))) return { kind: 'unknown' }
+  let record: UpdateRecord | undefined
   try {
-    // Only stranded (needs-update) plugins get here, so ANY compatible
-    // release is an offer — including a rebuild published under the
-    // installed version number for the new contract.
-    const published = await deps.publishedVersions(entry.source)
-    if (published.compatible) return { kind: 'upgrade', version: published.compatible }
-    return { kind: 'none', newest: published.latest }
+    record = await deps.record(pluginId)
   } catch (err) {
-    log.warn('Could not read the plugin source index', { pluginId, err: err instanceof Error ? err.message : String(err) })
+    log.warn('Could not read the plugin update record', { pluginId, err: err instanceof Error ? err.message : String(err) })
     return { kind: 'unknown' }
   }
+  if (!record) return { kind: 'unknown' }
+  // The two clocks ride along: a retained observation AND the last attempt's failure, never one hiding the other.
+  const clocks = { observedAt: record.observedAt, error: record.attempt?.error }
+  if (record.outcome === 'update-available' && record.available?.version) return { kind: 'upgrade', version: record.available.version, ...clocks }
+  if (record.outcome === 'blocked') return { kind: 'none', reason: record.blockedReason ?? 'no published release runs on this Bakin yet', ...clocks }
+  return { kind: 'unknown', ...clocks }
 }
 
 export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDeps): Promise<HealthCheckRunInput> {
@@ -116,9 +116,7 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
     const pluginDir = join(pluginsDir, name)
     const verification = verifyInstalledArtifact(pluginDir)
     if (verification.status === 'needs-update') {
-      // Index reads run concurrently (each bounded), so N stranded plugins
-      // cost one read's time, not N — the check budget is shared.
-      pending.push(offerFor(name, pluginDir, deps).then((offer) => pluginArtifactWarning(name, 'needs-update', verification.reason, offer)))
+        pending.push(offerFor(name, pluginDir, deps).then((offer) => pluginArtifactWarning(name, 'needs-update', verification.reason, offer)))
     } else if (verification.status === 'invalid') {
       pending.push(Promise.resolve(pluginArtifactWarning(name, 'invalid', verification.reason, { kind: 'unknown' })))
     }
@@ -148,7 +146,7 @@ function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid',
           type: 'instructions' as const,
           label: 'Wait for a compatible release',
           steps: [
-            `No published release of ${label} runs on this Bakin yet${offer.newest ? ` (newest is ${offer.newest})` : ''}. Its author has to publish one; Health offers the upgrade as soon as it exists.`,
+            `${offer.reason.charAt(0).toUpperCase()}${offer.reason.slice(1)}. Its author has to publish one; Health offers the upgrade as soon as the updates engine observes it.`,
           ],
         }
       : {
@@ -169,6 +167,8 @@ function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid',
       verificationStatus: status,
       reason: reason.slice(0, 4_000),
       ...(offer.kind === 'upgrade' ? { compatibleVersion: offer.version } : {}),
+      updateObservedAt: offer.observedAt ?? null,
+      ...(offer.error ? { updateCheckError: offer.error.slice(0, 1_000) } : {}),
     },
     incident: {
       key: `${status}:${id}`,

@@ -6,10 +6,11 @@
  */
 import { apiGet, apiPost, apiDelete } from '../http'
 import { exitOnFailure, operationBody, startAndFollow } from '../operation-command'
+import { currentOperationMode } from '../operation-mode'
 import { print } from '../output'
 import { exitUsage, exitUnknownSubcommand, promptYesNo } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
-import { parseAgentsFlags, printPackageActionTui, type AgentsCmdFlags } from './agents'
+import { parseAgentsFlags, printPackageActionTui, withSilentLogsIf, type AgentsCmdFlags } from './agents'
 
 export interface InstallCapabilityInfo {
   capability: string
@@ -188,7 +189,23 @@ async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Prom
   exitOnFailure(operation)
 }
 
+/** `--check` with no server: the read-only `checkPack` (the route's check) in-process — report-only, nothing persisted (review r2 #9). */
+async function checkPackageInProcess(packageId: string, flags: AgentsCmdFlags): Promise<void> {
+  const { checkPack } = await import('../../core/agent-packages/sync')
+  const result = await withSilentLogsIf(Boolean(flags.json), async (): Promise<Record<string, unknown>> => {
+    try {
+      return { ok: true, receipt: await checkPack(packageId) }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  if (!flags.json && process.stdout.isTTY) await printPackageActionTui({ action: 'checked', scope: 'package', target: packageId, result })
+  else print(result)
+  if (result.ok === false) process.exit(1)
+}
+
 async function cmdPackagesSync(packageId: string, flags: AgentsCmdFlags): Promise<void> {
+  if (flags.check && currentOperationMode().kind === 'local') { await checkPackageInProcess(packageId, flags); return }
   const body: Record<string, unknown> = {}
   if (flags.check) body.check = true
   const operation = await startAndFollow(() => apiPost(`/api/packages/${encodeURIComponent(packageId)}/sync`, body), { json: Boolean(flags.json) })

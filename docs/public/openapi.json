@@ -5357,6 +5357,26 @@
                               "null"
                             ]
                           },
+                          "updateOutcome": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "current",
+                                  "update-available",
+                                  "skipped",
+                                  "blocked",
+                                  "unsupported"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "updateReason": {
+                            "type": "string"
+                          },
                           "installedVersion": {
                             "type": [
                               "string",
@@ -5380,13 +5400,11 @@
                           "screenshots",
                           "installed",
                           "updateAvailable",
+                          "updateOutcome",
                           "installedVersion"
                         ],
                         "additionalProperties": false
                       }
-                    },
-                    "probeErrors": {
-                      "type": "number"
                     }
                   },
                   "required": [
@@ -5405,7 +5423,7 @@
         "tags": [
           "Explore"
         ],
-        "description": "Embedded catalog merged with the cached remote catalog, joined against local lockfiles. Offline by default; ?check=1 runs explicit update probes (plugin markers persist, agent results are per-response).",
+        "description": "Embedded catalog merged with the cached remote catalog, joined against local lockfiles and the updates engine's records. Offline: it never probes a source — run POST /api/updates/check to observe.",
         "x-bakin-full-path": "/api/plugins/explore/catalog"
       }
     },
@@ -5526,6 +5544,26 @@
                               "null"
                             ]
                           },
+                          "updateOutcome": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "current",
+                                  "update-available",
+                                  "skipped",
+                                  "blocked",
+                                  "unsupported"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "updateReason": {
+                            "type": "string"
+                          },
                           "installedVersion": {
                             "type": [
                               "string",
@@ -5549,13 +5587,11 @@
                           "screenshots",
                           "installed",
                           "updateAvailable",
+                          "updateOutcome",
                           "installedVersion"
                         ],
                         "additionalProperties": false
                       }
-                    },
-                    "probeErrors": {
-                      "type": "number"
                     }
                   },
                   "required": [

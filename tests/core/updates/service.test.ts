@@ -117,6 +117,13 @@ describe('review round 1 — live settings and inventory events', () => {
     ids.splice(0, 1)
     observeServerEvent({ type: 'settings.changed' })
     await waitUntil(async () => (await engine.snapshot()).records.map((r) => r.id).join() === 'plugin:second', { label: 'the removed plugin left' })
+    // An agent-package install/sync/remove (`agent_pkg:changed`, PR 8 review r2 #3) reconciles too.
+    ids.push('after-package-change')
+    observeServerEvent({ type: 'agent_pkg:changed', kind: 'installed' })
+    await waitUntil(async () => (await engine.snapshot()).records.length === 2, { label: 'the inventory refreshed on agent_pkg:changed' })
+    ids.pop()
+    observeServerEvent({ type: 'agent_pkg:changed', kind: 'removed' })
+    await waitUntil(async () => (await engine.snapshot()).records.map((r) => r.id).join() === 'plugin:second', { label: 'the removed package left on agent_pkg:changed' })
     stopUpdates()
     ids.push('third')
     observeServerEvent({ type: 'plugin:manifest-changed', pluginId: 'third', action: 'installed' })

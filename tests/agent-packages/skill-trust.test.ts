@@ -189,6 +189,25 @@ describe('confirmSkillInstall', () => {
   })
 })
 
+describe('trackingSource — a re-install keeps the tracking policy (#1007 D7.12 R8′)', () => {
+  it('the lock entry records the TRACKING source, not the fetch ref, when one is given; a tracking source for another skill is refused before anything installs', async () => {
+    const src = seedSource('bare-style', 'confirm-tracking')
+    const preview = await buildSkillPreview(src)
+    if (!preview.ok) throw new Error(preview.error)
+    // A local directory can only track itself (a clawhub/github tracking source names a different skill).
+    const other = await confirmSkillInstall(src, preview.preview.consentToken, undefined, { trackingSource: 'clawhub:commit-messages' })
+    expect(other.status).toBe('error')
+    if (other.status === 'error') expect(other.error).toMatch(/does not name the skill being installed/)
+    expect(skillStore.size).toBe(0)
+    const confirmed = await confirmSkillInstall(src, preview.preview.consentToken, undefined, { trackingSource: src })
+    expect(confirmed.status).toBe('installed')
+    const entries = Object.values(readLockfile().packages)
+    // Hub provenance is a ledger fact (PR 8 review r6 #2): ownership of the `hub-skill:` subject never hinges on the installed manifest.
+    expect(entries.map((e) => e.hub)).toEqual(entries.map(() => true))
+    expect(entries.map((e) => e.source)).toEqual([src])
+  })
+})
+
 describe('re-install IS the update path (#687 review)', () => {
   it('installing the same ref twice supersedes — no collision, no duplicate entry', async () => {
     const src = seedSource('bare-style', 'reinstall')

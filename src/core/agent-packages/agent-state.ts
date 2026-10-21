@@ -27,6 +27,7 @@
 import {
   type Lockfile,
   type PackageEntry,
+  canonicalPackageEntries,
   findAgentPackage,
   readLockfile,
 } from '../../../packages/core/src/agent-packages/lockfile'
@@ -114,8 +115,8 @@ export async function listAllAgentStates(lockfile?: Lockfile): Promise<AgentStat
     results.push(info)
   }
 
-  // Pick up lockfile-only orphans that the runtime doesn't know about.
-  for (const [packageId, entry] of Object.entries(lock.packages)) {
+  // Pick up lockfile-only orphans that the runtime doesn't know about (one row per package id — the canonical entry).
+  for (const { key: packageId, entry } of canonicalPackageEntries(lock)) {
     if (entry.kind !== 'agent') continue
     const agentId = entry.agentId ?? packageId
     if (seen.has(agentId)) continue

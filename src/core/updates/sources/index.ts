@@ -5,7 +5,6 @@
  */
 import { join } from 'node:path'
 import { APP_VERSION } from '@bakin/core/constants'
-import { gitArgs } from '@bakin/core/net/git-args'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { getContentDir } from '../../content-dir'
 import { createLogger } from '../../logger'
@@ -23,54 +22,9 @@ import { createGatewaySource, type GatewaySourceDeps } from './gateway'
 import { createPluginSource } from './plugin'
 import { createSearchEngineSource, type SearchSettingsFacts } from './search-engine'
 import { createSearchModelsSource } from './search-models'
+import { createPackageUpdateSources, lsRemoteSha } from './package-wiring'
 
-/**
- * `git ls-remote` as an async child under the observe signal — never the
- * synchronous upgrade-gate wrapper (C15). Foreground-only git config via
- * `gitArgs`; an abort kills the child and the promise settles on exit.
- */
-export async function lsRemoteSha(url: string, ref: string, signal: AbortSignal): Promise<string | null> {
-  // git filters every output row against the patterns, the peeled `^{}` row
-  // included — ask for both, or an annotated tag only ever shows its tag object.
-  const proc = Bun.spawn(['git', ...gitArgs(['ls-remote', '--', url, ref, `${ref}^{}`])], { cwd: getContentDir(), stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
-  const onAbort = (): void => { try { proc.kill() } catch { /* already gone */ } }
-  if (signal.aborted) onAbort()
-  else signal.addEventListener('abort', onAbort, { once: true })
-  try {
-    const [code, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()])
-    if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : new Error('ls-remote aborted')
-    if (code !== 0) throw new Error(`git ls-remote ${url} ${ref} failed (exit ${code}): ${stderr.trim().slice(-300)}`)
-    return pickLsRemoteSha(stdout, ref)
-  } finally {
-    signal.removeEventListener('abort', onAbort)
-  }
-}
-
-/**
- * The commit `git clone --branch <ref>` would check out, from `ls-remote`
- * output (review r5 #3, r6 #3): ONLY an exact candidate — for a bare name
- * the branch first (clone prefers it), then the tag; for a fully qualified
- * `refs/...` name that ref itself — and for an annotated tag the PEELED
- * commit (`<tag>^{}`), never the tag object, which is what the lanes compare
- * against `HEAD`. A suffix match (`feature/main` for `main`), a
- * remote-tracking row or "the first row" is never an answer: when the
- * tracked ref is gone the result is null and the subject is blocked.
- */
-export function pickLsRemoteSha(stdout: string, ref: string): string | null {
-  const rows = stdout.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
-    const [sha, name] = line.split(/\s+/)
-    return { sha: (sha ?? '').toLowerCase(), name: name ?? '' }
-  }).filter((row) => /^[0-9a-f]{40}$/.test(row.sha))
-  const exact = (name: string) => rows.find((row) => row.name === name)
-  const candidates = ref.startsWith('refs/')
-    ? [`${ref}^{}`, ref]
-    : [`refs/heads/${ref}`, `refs/tags/${ref}^{}`, `refs/tags/${ref}`]
-  for (const name of candidates) {
-    const row = exact(name)
-    if (row) return row.sha
-  }
-  return null
-}
+export { lsRemoteSha, pickLsRemoteSha } from './package-wiring'
 
 function userPluginLockEntries(): Record<string, PluginLockEntry> {
   return readPluginLockfile().plugins
@@ -106,6 +60,7 @@ export function registerCoreUpdateSources(deps: GatewaySourceDeps): void {
   registerUpdateSource(createSearchModelsSource(searchDeps))
   registerUpdateSource(createGatewaySource(deps))
   registerUpdateSource(createBakinSource({ currentVersion: () => APP_VERSION }))
+  for (const source of createPackageUpdateSources()) registerUpdateSource(source)
   registerUpdateSource(createPluginSource({
     lockEntries: userPluginLockEntries,
     host: () => ({ version: APP_VERSION, platform: hostPlatform(), contract: EXTERNALS_CONTRACT }),

@@ -8,10 +8,10 @@
  * - `computeSourceTreeSha` delegates to the canonical Whiskit hasher
  * - `compareStoredSourceTreeSha` verifies legacy rows with the legacy
  *   hasher (unchanged → migrate; genuinely changed → still detected)
- * - `runChecks` on a legacy row: unchanged reports no upgrade AND rewrites
- *   the row (sourceTreeSha + sourceTreeShaAlgo + lastSourceTreeSha);
- *   changed keeps the legacy row and reports the upgrade
- * - `upgradePlugin` local noop path performs the same one-time rewrite
+ * - `upgradePlugin` local noop path performs the one-time rewrite
+ *   (sourceTreeSha + sourceTreeShaAlgo); a changed source keeps the legacy
+ *   row until the upgrade commits (the `--check` probe that used to share
+ *   this path is the updates engine's plugin source now, #1007)
  */
 import { describe, it, expect, afterAll, beforeEach, mock } from 'bun:test'
 import { cpSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'fs'
@@ -69,7 +69,7 @@ import {
   computeSourceTreeSha,
   legacySourceTreeSha,
 } from '../../../src/core/plugins/source-tree-sha'
-import { runChecks, upgradePlugin as upgradePluginUnowned } from '../../../src/core/plugins/upgrade'
+import { upgradePlugin as upgradePluginUnowned } from '../../../src/core/plugins/upgrade'
 import { owned } from '../../helpers/owning'
 
 // The core install writers assert install-state ownership (#895): call them as an owner.
@@ -104,7 +104,6 @@ function localEntry(opts: {
   version: string
   sourceTreeSha?: string
   sourceTreeShaAlgo?: number
-  lastSourceTreeSha?: string
 }): PluginLockEntry {
   return {
     source: opts.sourcePath,
@@ -117,7 +116,6 @@ function localEntry(opts: {
     manifestSha: 'abc',
     sourceTreeSha: opts.sourceTreeSha,
     sourceTreeShaAlgo: opts.sourceTreeShaAlgo,
-    lastSourceTreeSha: opts.lastSourceTreeSha,
   }
 }
 
@@ -295,62 +293,6 @@ describe('compareStoredSourceTreeSha — legacy-aware comparison', () => {
   })
 })
 
-describe('runChecks — one-time lockfile migration on --check', () => {
-  it('legacy row + unchanged source: reports no upgrade and rewrites the row once', async () => {
-    const sourcePath = join(testDir, 'src-check-noop')
-    writeFixturePlugin(sourcePath, { id: 'check-noop', version: '1.0.0' })
-    writeFixturePlugin(join(testDir, 'plugins', 'check-noop'), { id: 'check-noop', version: '1.0.0' })
-    const legacySha = legacySourceTreeSha(sourcePath)
-    writePluginLockfile(addPlugin(readPluginLockfile(), 'check-noop', localEntry({
-      sourcePath,
-      version: '1.0.0',
-      sourceTreeSha: legacySha,
-      lastSourceTreeSha: legacySha,
-    })))
-
-    const [result] = await runChecks(['check-noop'])
-    expect(result!.upgradeAvailable).toBe(false)
-    expect(result!.error).toBeUndefined()
-
-    const entry = readPluginLockfile().plugins['check-noop']!
-    const canonical = computeSourceTreeSha(sourcePath)
-    expect(entry.sourceTreeSha).toBe(canonical)
-    expect(entry.sourceTreeShaAlgo).toBe(SOURCE_TREE_SHA_ALGO)
-    // The --check observation lands the canonical value too, so the
-    // manifest route's lastSourceTreeSha !== sourceTreeSha comparison
-    // stays consistent.
-    expect(entry.lastSourceTreeSha).toBe(canonical)
-
-    // Second check takes the canonical fast path and stays quiet.
-    const [again] = await runChecks(['check-noop'])
-    expect(again!.upgradeAvailable).toBe(false)
-  })
-
-  it('legacy row + genuinely changed source: still reports the upgrade, install-time sha untouched', async () => {
-    const sourcePath = join(testDir, 'src-check-changed')
-    writeFixturePlugin(sourcePath, { id: 'check-changed', version: '1.0.0' })
-    writeFixturePlugin(join(testDir, 'plugins', 'check-changed'), { id: 'check-changed', version: '1.0.0' })
-    const legacySha = legacySourceTreeSha(sourcePath)
-    writePluginLockfile(addPlugin(readPluginLockfile(), 'check-changed', localEntry({
-      sourcePath,
-      version: '1.0.0',
-      sourceTreeSha: legacySha,
-    })))
-
-    writeFileSync(join(sourcePath, 'extra.txt'), 'new content', 'utf-8')
-
-    const [result] = await runChecks(['check-changed'])
-    expect(result!.upgradeAvailable).toBe(true)
-
-    const entry = readPluginLockfile().plugins['check-changed']!
-    // No migration on a changed source — the install-time record still
-    // describes what was installed; the upgrade commit rewrites it.
-    expect(entry.sourceTreeSha).toBe(legacySha)
-    expect(entry.sourceTreeShaAlgo).toBeUndefined()
-    expect(entry.lastSourceTreeSha).toBe(computeSourceTreeSha(sourcePath))
-  })
-})
-
 describe('upgradePlugin (local) — one-time lockfile migration on noop', () => {
   it('legacy row + unchanged source: noop AND row rewritten under the canonical hasher', async () => {
     const sourcePath = join(testDir, 'src-upg-noop')
@@ -362,7 +304,6 @@ describe('upgradePlugin (local) — one-time lockfile migration on noop', () => 
       sourcePath,
       version: '1.0.0',
       sourceTreeSha: legacySha,
-      lastSourceTreeSha: legacySha,
     })))
 
     const result = await upgradePlugin('upg-noop')
@@ -373,7 +314,7 @@ describe('upgradePlugin (local) — one-time lockfile migration on noop', () => 
     const canonical = computeSourceTreeSha(sourcePath)
     expect(entry.sourceTreeSha).toBe(canonical)
     expect(entry.sourceTreeShaAlgo).toBe(SOURCE_TREE_SHA_ALGO)
-    expect(entry.lastSourceTreeSha).toBe(canonical)
+    // The lane writes installed provenance only: the --check marker is left exactly as the row had it (the updates engine owns "is there something newer", #1007 B).
   })
 
   it('legacy row + genuinely changed source: full upgrade runs and stamps the canonical algo', async () => {

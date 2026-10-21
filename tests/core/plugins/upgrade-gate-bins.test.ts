@@ -87,16 +87,3 @@ describe('gateUpgradeConsent — a supplied consent always binds the release', (
     expect(republished).toMatchObject({ proceed: false, result: { awaitingConsent: true, manifestChanged: true } })
   })
 })
-
-describe('computeUpgradeAvailable — artifact rebuilds', () => {
-  it('a compatible rebuild under the installed version is still an upgrade', async () => {
-    const { computeUpgradeAvailable } = await import('../../../packages/core/src/plugins/lockfile')
-    const base = {
-      source: 'github:markhayden/bakin-bits-official#plugins/terminal', type: 'github' as const, ref: '', commitSha: '',
-      installedAt: '2026-10-01T00:00:00.000Z', version: '1.5.0', permissions: [], manifestSha: 'c'.repeat(64), remoteArtifactVersion: '1.5.0',
-    }
-    expect(computeUpgradeAvailable(base)).toBe(false)
-    expect(computeUpgradeAvailable({ ...base, remoteArtifactRebuild: true })).toBe(true)
-    expect(computeUpgradeAvailable({ ...base, remoteArtifactVersion: '1.6.0' })).toBe(true)
-  })
-})

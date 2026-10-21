@@ -55,6 +55,7 @@ import { buildGraph } from '../lib/build-graph'
 import { AgentForm, type AgentFormData } from './agent-form'
 import { TeamManager } from './team-manager'
 import { PackageStateBadge, type PackageState } from './package-state-badge'
+import { packageDisplayState } from '../lib/package-display-state'
 import type { AgentWithStatus } from '../types'
 import './team-graph.css'
 
@@ -89,7 +90,8 @@ interface AgentNodeData extends Record<string, unknown> {
 export function AgentCardNode({ data }: NodeProps) {
   const { agent } = data as AgentNodeData
   const pkgState = usePackageState(agent.id)
-  const showBadge = pkgState && ATTENTION_STATES.includes(pkgState.state)
+  const displayState = pkgState ? packageDisplayState(pkgState) : undefined
+  const showBadge = displayState !== undefined && ATTENTION_STATES.includes(displayState)
 
   const statusLabel =
     agent.status === 'working' ? 'working' :
@@ -139,8 +141,8 @@ export function AgentCardNode({ data }: NodeProps) {
       <div className="flex min-h-20 flex-1 flex-col items-center gap-bakin-1 p-bakin-3 text-center">
         <div className="flex w-full items-center justify-center gap-bakin-2 leading-tight">
           <span className="truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{agent.name}</span>
-          {showBadge && pkgState && (
-            <PackageStateBadge state={pkgState.state} compact />
+          {showBadge && displayState && (
+            <PackageStateBadge state={displayState} compact />
           )}
         </div>
         {/* Clipped text: a tooltip is the affordance, not a native title —

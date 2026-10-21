@@ -27,7 +27,7 @@ mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
-import { countAvailableUpdates, isUpdateSkipped, type UpdateRecord } from '@makinbakin/sdk/types'
+import { countAvailableUpdates, isUpdateOffered, isUpdateSkipped, type UpdateRecord } from '@makinbakin/sdk/types'
 import { createUpdatesEngine, UpdateRequiredError, UpdateSubjectNotFoundError, type UpdatesEngine } from '../../../src/core/updates/engine'
 import { fingerprintOf } from '../../../src/core/updates/inventory'
 import { readUpdatesFile, writeUpdatesFile, emptyUpdatesFile } from '../../../src/core/updates/store'
@@ -248,6 +248,7 @@ describe('skips', () => {
     const skipped = await engine.skip('plugin:projects')
     expect(skipped.skipped).toEqual({ version: '1.1.0', sha: 'aaa' })
     expect(isUpdateSkipped(skipped)).toBe(true)
+    expect(isUpdateOffered(skipped)).toBe(false)
     expect(countAvailableUpdates((await engine.snapshot()).records)).toBe(0)
     expect(published.at(-1)).toEqual({ type: 'updates.changed', ids: ['plugin:projects'] })
 
@@ -255,12 +256,29 @@ describe('skips', () => {
     plugins.when('projects', async () => available('1.1.0', 'bbb'))
     const again = await engine.observe('plugin:projects')
     expect(again.skipped).toBeUndefined()
+    expect(isUpdateOffered(again)).toBe(true)
     expect(countAvailableUpdates([again])).toBe(1)
 
     // Re-observing the identical identity keeps a skip in place.
     await engine.skip('plugin:projects')
     const same = await engine.observe('plugin:projects')
     expect(isUpdateSkipped(same)).toBe(true)
+  })
+
+  it('PR 8 r7 #3: a skip survives observations that establish NO offer (current, blocked) and is discarded only by a DIFFERENT offer — a repaired manifest never resurfaces the hidden one', async () => {
+    const plugins = scripted('plugin', [{ id: 'projects' }])
+    plugins.when('projects', async () => available('1.1.0', 'aaa'))
+    const engine = boot([plugins.source])
+    await engine.observe('plugin:projects')
+    await engine.skip('plugin:projects')
+    plugins.when('projects', async () => ({ installed: { version: '1.0.0', display: '1.0.0' }, outcome: 'blocked', blockedReason: 'the installed manifest is unreadable — reinstall' }))
+    expect((await engine.observe('plugin:projects')).skipped).toEqual({ version: '1.1.0', sha: 'aaa' })
+    plugins.when('projects', async () => current)
+    expect((await engine.observe('plugin:projects')).skipped).toEqual({ version: '1.1.0', sha: 'aaa' })
+    plugins.when('projects', async () => available('1.1.0', 'aaa'))
+    expect(isUpdateOffered(await engine.observe('plugin:projects'))).toBe(false)
+    plugins.when('projects', async () => available('1.2.0', 'ccc'))
+    expect(isUpdateOffered(await engine.observe('plugin:projects'))).toBe(true)
   })
 
   it('skipping a record with nothing available is refused', async () => {

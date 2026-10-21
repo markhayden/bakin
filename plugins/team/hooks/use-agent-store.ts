@@ -23,11 +23,20 @@ interface AgentStore {
   /** Organizational teams */
   teams: OrgTeam[]
   /**
-   * Agent-package state per agent id, sourced from `/api/agent-packages`.
-   * Fetched in parallel with the roster on `load()`. Empty map when the
-   * endpoint fails — agent-packages is optional context, not load-blocking.
+   * Agent-package state per agent id, sourced from `/api/agent-packages`
+   * (lockfile state + the updates engine's record for the package — the
+   * route never probes a source, so the roster never waits on the network).
+   * Fetched in parallel with the roster on `load()`. A failed read keeps the
+   * last known rows — agent-packages is optional context, not load-blocking.
    */
   packageStates: Record<string, PackageStateRow>
+  /** ISO instant of the last SUCCESSFUL package-rows read; null before one. */
+  packageStatesAt: string | null
+  /**
+   * The last package-rows read failed (the rows above are LAST KNOWN, not
+   * current — review r6 #3); null once a read succeeds again.
+   */
+  packageStatesError: string | null
   /** Canonical main/orchestrator agent id (resolved server-side from the runtime adapter) */
   mainAgentId: string | null
   /** Whether initial load has completed */
@@ -36,33 +45,42 @@ interface AgentStore {
   /** Fetch agents + display settings + package states from the API */
   /** Reload the roster; resolves false when it could not be refreshed (the previous roster stays). */
   load: () => Promise<boolean>
-  /** Re-fetch only `/api/agent-packages` — used after Adopt to invalidate staleness */
+  /** Re-fetch only `/api/agent-packages` — after Adopt/Sync/Orphan, and on `updates.changed` for a package. */
   refreshPackageStates: () => Promise<void>
   /** Update display settings for a single agent */
   updateDisplay: (agentId: string, patch: Partial<AgentDisplaySettings>) => Promise<void>
 }
 
 /**
- * Normalize a `/api/agent-packages` response into a Record keyed by agentId.
- * Handles both the success shape and any failure (non-ok response, network
- * error, malformed payload) by returning an empty map — the agent-package
- * surface is supplementary context, not load-blocking.
+ * Normalize a `/api/agent-packages` response into a Record keyed by agentId,
+ * or null for a FAILED read (non-ok response, network error, malformed
+ * payload) — a failure keeps the last known rows, it never turns managed
+ * agents into "unmanaged" ones (review r5 #2). The agent-package surface is
+ * supplementary context, not load-blocking.
  */
-async function parsePackageStatesResponse(
-  res: Response | null,
-): Promise<Record<string, PackageStateRow>> {
-  if (!res || !res.ok) return {}
+type PackageStatesRead = { states: Record<string, PackageStateRow>; error?: undefined } | { states?: undefined; error: string }
+
+async function parsePackageStatesResponse(res: Response | null): Promise<PackageStatesRead> {
+  if (!res) return { error: 'Package state could not be reached.' }
+  if (!res.ok) return { error: `Package state read failed${typeof res.status === 'number' ? ` (HTTP ${res.status})` : ''}.` }
   try {
-    const body = await res.json() as { ok?: boolean; agents?: PackageStateRow[] }
-    if (!body.ok || !Array.isArray(body.agents)) return {}
+    const body = await res.json() as { ok?: boolean; agents?: PackageStateRow[]; error?: string }
+    if (!body.ok || !Array.isArray(body.agents)) return { error: typeof body.error === 'string' && body.error ? body.error : 'Package state returned an invalid response.' }
     const map: Record<string, PackageStateRow> = {}
     for (const row of body.agents) {
       map[row.agentId] = row
     }
-    return map
+    return { states: map }
   } catch {
-    return {}
+    return { error: 'Package state returned an invalid response.' }
   }
+}
+
+/** What a package-rows read sets: the rows + a fresh instant on success, or the error over the LAST KNOWN rows on failure. */
+function packageStatesPatch(read: PackageStatesRead): Partial<Pick<AgentStore, 'packageStates' | 'packageStatesAt' | 'packageStatesError'>> {
+  return read.states
+    ? { packageStates: read.states, packageStatesAt: new Date().toISOString(), packageStatesError: null }
+    : { packageStatesError: read.error }
 }
 
 // ─── Roster snapshot cache ─────────────────────────────────────────────
@@ -108,6 +126,14 @@ function writeRosterCache(cache: RosterCache): void {
   }
 }
 
+/**
+ * Every package-rows read (the initial load, a post-write refresh, an
+ * `updates.changed` re-read) takes a generation; a response that is no
+ * longer the newest request's is dropped, so overlapping reads can never put
+ * an obsolete update badge back (PR 8 review r3 #6).
+ */
+let packageStatesGeneration = 0
+
 const hydrated = readRosterCache()
 const hydratedMap: Record<string, AgentMeta> = {}
 for (const a of hydrated?.agents ?? []) hydratedMap[a.id] = a
@@ -123,16 +149,24 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   displaySettings: hydrated?.displaySettings ?? {},
   teams: [],
   packageStates: {},
+  packageStatesAt: null,
+  packageStatesError: null,
   mainAgentId: hydrated?.mainAgentId ?? null,
   loaded: false,
 
   load: async () => {
+    const generation = ++packageStatesGeneration
+    const [rosterRes, pkgRes] = await Promise.all([
+      fetch('/api/plugins/team/').catch(() => null),
+      fetch('/api/agent-packages').catch(() => null),
+    ])
+    // The package answer stands on its own: a failed roster never discards
+    // it (and never lets an OLDER read's answer land after it, review r4 #5).
+    const packageRead = await parsePackageStatesResponse(pkgRes)
+    const publishPackages = (): void => { if (generation === packageStatesGeneration) set(packageStatesPatch(packageRead)) }
     try {
-      const [rosterRes, pkgRes] = await Promise.all([
-        fetch('/api/plugins/team/'),
-        fetch('/api/agent-packages?check=1').catch(() => null),
-      ])
-      if (!rosterRes.ok) {
+      if (!rosterRes || !rosterRes.ok) {
+        publishPackages()
         set({ loaded: true })
         return false
       }
@@ -153,7 +187,6 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       for (const a of agents) {
         agentMap[a.id] = a
       }
-      const packageStates = await parsePackageStatesResponse(pkgRes)
       set({
         agents,
         agentIds: agents.map((a) => a.id),
@@ -161,7 +194,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         agentsWithStatus: data.agents,
         displaySettings: data.displaySettings,
         teams: data.teams ?? [],
-        packageStates,
+        // A newer package read is in flight or landed: its answer wins; a failed read keeps the last known rows (and says so).
+        ...(generation === packageStatesGeneration ? packageStatesPatch(packageRead) : {}),
         mainAgentId: data.mainAgentId ?? null,
         loaded: true,
       })
@@ -172,15 +206,18 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       })
       return true
     } catch {
+      publishPackages()
       set({ loaded: true })
       return false
     }
   },
 
   refreshPackageStates: async () => {
-    const res = await fetch('/api/agent-packages?check=1').catch(() => null)
-    const packageStates = await parsePackageStatesResponse(res)
-    set({ packageStates })
+    const generation = ++packageStatesGeneration
+    const res = await fetch('/api/agent-packages').catch(() => null)
+    const read = await parsePackageStatesResponse(res)
+    if (generation !== packageStatesGeneration) return
+    set(packageStatesPatch(read))
   },
 
   updateDisplay: async (agentId, patch) => {

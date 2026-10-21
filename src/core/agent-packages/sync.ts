@@ -58,7 +58,8 @@ import { installManifestRequirements } from './requirements-installer'
 import { assertResourceHeld } from '@bakin/core/operations'
 import { SYNC_STAGES } from './operation-plans'
 import { updatePackageById } from './updater'
-import { checkPackageUpdateAsync } from './checker'
+import { observeInstalledPackage } from '../updates/observe'
+import type { UpdateOutcome } from '@makinbakin/sdk/types'
 import {
   COMPOSABLE_FILES,
   type SyncFinding,
@@ -317,6 +318,9 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
     let versionAfter = versionBefore
     let commitAfter = commitBefore
     let changed = false
+    let checkError: string | undefined
+    let checkOutcome: UpdateOutcome | undefined
+    let checkReason: string | undefined
     const projections: ReceiptProjection[] = []
     let skipped: Array<{ target: string; reason: string; hint?: string }> = []
     let reclaimed: string[] = []
@@ -325,13 +329,19 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
       if (fetch) {
         op?.stage(SYNC_STAGES.check, owner.id)
         try {
-          const status = await checkPackageUpdateAsync(owner.id)
-          versionAfter = status.latestVersion ?? versionBefore
-          commitAfter = status.latestCommitSha ?? commitBefore
-          changed = status.upgradeAvailable === true
+          const status = await observeInstalledPackage(owner.id)
+          versionAfter = status.available?.version ?? versionBefore
+          commitAfter = status.available?.sha ?? commitBefore
+          changed = status.outcome === 'update-available'
+          // The verdict rides the receipt (review r6 #4): blocked/unsupported are not "unchanged".
+          checkOutcome = status.outcome
+          checkReason = status.blockedReason
+          if (status.outcome === 'blocked') op?.log(`Upstream check blocked: ${status.blockedReason ?? 'unknown reason'}`, 'warn')
         } catch (err) {
-          log.warn('Upstream check failed during --check', { packageId: owner.id, error: String(err) })
-          op?.log(`Upstream check failed: ${String(err)}`, 'warn')
+          // Never a silent "nothing newer": the receipt names the failure (review r5 #1).
+          checkError = err instanceof Error ? err.message : String(err)
+          log.warn('Upstream check failed during --check', { packageId: owner.id, error: checkError })
+          op?.log(`Upstream check failed: ${checkError}`, 'warn')
         }
       } else {
         op?.skip(SYNC_STAGES.check, 'local check only')
@@ -410,6 +420,9 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
         commitAfter,
         fetched: fetch,
         changed,
+        ...(checkError !== undefined ? { checkError } : {}),
+        ...(checkOutcome !== undefined ? { checkOutcome } : {}),
+        ...(checkReason !== undefined ? { checkReason } : {}),
       },
       blocks: diffBlocks(blocksBefore, await readBlockBodies(agentId)),
       projections,
@@ -540,6 +553,10 @@ export interface PackSyncReceipt {
   commitBefore: string
   commitAfter: string
   changed: boolean
+  /** `--check` only: the observer's verdict — `blocked`/`unsupported` are neither updates nor "unchanged" (review r6 #4). */
+  checkOutcome?: 'current' | 'update-available' | 'blocked' | 'unsupported' | 'unknown'
+  /** Why `checkOutcome` is `blocked` or `unsupported`. */
+  checkReason?: string
 }
 
 /** Lockfile lookup shared by the standalone-pack verbs — packs only. */
@@ -571,6 +588,21 @@ export async function repairPackLocally(packageKey: string): Promise<ProjectorRe
  * Report-only with --check. Packs have no workspace blocks or receipts
  * file — the response IS the receipt.
  */
+/**
+ * The read-only check of one agent's package (`--check` without a server,
+ * #1007 B): `syncAgent({ check })` holds no resource and writes nothing —
+ * the routes declare the same (`resources: []`) — so this entry is what a
+ * server-less CLI calls; a sync that WRITES still runs under an owner.
+ */
+export async function checkAgent(agentId: string, opts: Pick<SyncOptions, 'trigger' | 'op'> = {}): Promise<SyncReceipt> {
+  return syncAgent(agentId, { ...opts, check: true })
+}
+
+/** The read-only check of one pack — the server-less twin of the route's `syncPack({ check })`. */
+export async function checkPack(packageId: string, opts: { op?: OperationContext } = {}): Promise<PackSyncReceipt> {
+  return syncPack(packageId, { ...opts, check: true })
+}
+
 export async function syncPack(
   packageId: string,
   opts: { check?: boolean; op?: OperationContext } = {},
@@ -580,7 +612,8 @@ export async function syncPack(
 
   if (opts.check) {
     op?.stage(SYNC_STAGES.check, packageId)
-    const status = await checkPackageUpdateAsync(packageId)
+    const status = await observeInstalledPackage(packageId)
+    if (status.outcome === 'blocked') op?.log(`Upstream check blocked: ${status.blockedReason ?? 'unknown reason'}`, 'warn')
     op?.skip(SYNC_STAGES.verify, 'packs have no workspace to scan')
     return {
       packageId,
@@ -588,10 +621,12 @@ export async function syncPack(
       syncedAt: new Date().toISOString(),
       checkOnly: true,
       versionBefore: entry.version,
-      versionAfter: status.latestVersion ?? entry.version,
+      versionAfter: status.available?.version ?? entry.version,
       commitBefore: entry.commitSha,
-      commitAfter: status.latestCommitSha ?? entry.commitSha,
-      changed: status.upgradeAvailable === true,
+      commitAfter: status.available?.sha ?? entry.commitSha,
+      changed: status.outcome === 'update-available',
+      checkOutcome: status.outcome,
+      ...(status.blockedReason !== undefined ? { checkReason: status.blockedReason } : {}),
     }
   }
 

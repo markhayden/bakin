@@ -204,13 +204,15 @@ function installRuntimeMock(): void {
   ;(globalThis as TestGlobal).__bakinAppServices = { runtime }
 }
 
-import { installPackage as installPackageUnowned } from '../../src/core/agent-packages/installer'
+import { installPackage as installPackageUnowned, trackingRefOf } from '../../src/core/agent-packages/installer'
 import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
 import { isResourceHeld } from '../../packages/core/src/operations'
 
 const isInstallStateHeld = () => isResourceHeld('install-state')
 import { owned } from '../helpers/owning'
+import { onServerEvent } from '../../src/core/server-events'
+import { getPackageSourceDir } from '../../packages/core/src/agent-packages/package-paths'
 
 // The core install writers assert install-state ownership (#895): call them as an owner.
 const installPackage = owned(installPackageUnowned)
@@ -282,7 +284,7 @@ function seedAgentPackage(opts: { id?: string; emoji?: string; deps?: { skills?:
   return dir
 }
 
-function seedSkillPack(name: string): string {
+function seedSkillPack(name: string, opts: { upstream?: { source: string; ref?: string } } = {}): string {
   const dir = join(testDir, `${name}-skill-pack`)
   mkdirSync(join(dir, 'skills', name), { recursive: true })
   writeFileSync(
@@ -293,6 +295,7 @@ function seedSkillPack(name: string): string {
       name,
       version: '0.3.1',
       contributions: { skills: [`skills/${name}`] },
+      ...(opts.upstream ? { upstream: opts.upstream } : {}),
     }),
   )
   writeFileSync(join(dir, 'skills', name, 'SKILL.md'), `# ${name}`)
@@ -390,6 +393,29 @@ describe('installPackage — fresh install (kind:"agent")', () => {
 
 // ─── Adopt mode ──────────────────────────────────────────────────────────────
 
+describe('installPackage — trackingSource (#1007 D7.12 R8′)', () => {
+  it('records the tracking source as the lock entry\'s source while fetching from the given ref, and audits what it fetched from', async () => {
+    const src = seedSkillPack('tracked-pack')
+    const result = await installPackage({ source: src, trackingSource: 'github:acme/packs#tracked-pack' })
+    const entry = readLockfile().packages[`${result.packageId}@1.0.0`] ?? Object.values(readLockfile().packages).find((e) => e.kind === 'skill-pack')
+    expect(entry?.source).toBe('github:acme/packs#tracked-pack')
+    // The lock REF is the tracking ref (review r2 #7): none here, so the default branch — never the fetched identity.
+    expect(entry?.ref).toBe('')
+  })
+
+  it('review r2 #7: the lock ref follows the TRACKING source — a tracked @ref is recorded, a selected commit never becomes the pin', async () => {
+    const src = seedSkillPack('tracked-pack')
+    const result = await installPackage({ source: src, trackingSource: 'github:acme/packs@v2#tracked-pack', replace: true })
+    const entry = readLockfile().packages[`${result.packageId}@1.0.0`] ?? Object.values(readLockfile().packages).find((e) => e.kind === 'skill-pack')
+    expect(entry?.source).toBe('github:acme/packs@v2#tracked-pack')
+    expect(entry?.ref).toBe('v2')
+    expect(trackingRefOf('github:acme/skills#tools', 'c'.repeat(40))).toBe('')
+    expect(trackingRefOf('github:acme/skills@v3#tools', 'c'.repeat(40))).toBe('v3')
+    expect(trackingRefOf('clawhub:weather', '1.2.0')).toBe('1.2.0')
+    expect(trackingRefOf(undefined, 'main')).toBe('main')
+  })
+})
+
 describe('installPackage — adopt mode', () => {
   it('attaches package without overwriting existing workspace files', async () => {
     // Pre-existing pixel agent + workspace SOUL the user wrote
@@ -475,6 +501,30 @@ describe('installPackage — refuse paths', () => {
     expect(adapterCalls.removeAgent).toEqual(['pixel'])
     expect(runtimeAgents.some(agent => agent.id === 'pixel')).toBe(false)
     expect(Object.keys(readLockfile().packages)).toEqual([])
+  })
+
+  it('review r3 #4: a failed install never announced `installed`; the rollback announces `restored` after the previous lockfile is back', async () => {
+    const seen: Array<{ kind: unknown; lockHasPixel: boolean }> = []
+    const unsubscribe = onServerEvent((event) => {
+      if (event.type !== 'agent_pkg:changed') return
+      seen.push({ kind: event.kind, lockHasPixel: Object.keys(readLockfile().packages).some((key) => key.startsWith('pixel')) })
+    })
+    try {
+      const src = seedAgentPackage()
+      const agentsParent = join(testDir, 'packages', 'agents')
+      mkdirSync(dirname(agentsParent), { recursive: true })
+      writeFileSync(agentsParent, 'not a directory', 'utf-8')
+      await expect(installPackage({ source: src })).rejects.toThrow()
+      expect(seen).toEqual([{ kind: 'restored', lockHasPixel: false }])
+      rmSync(agentsParent, { force: true })
+      seen.length = 0
+      // A successful install announces once, after the install is final (the lock row AND the install dir exist).
+      const result = await installPackage({ source: src })
+      expect(seen).toEqual([{ kind: 'installed', lockHasPixel: true }])
+      expect(existsSync(getPackageSourceDir(testDir, 'agent', result.packageId, '0.1.0'))).toBe(true)
+    } finally {
+      unsubscribe()
+    }
   })
 
   it('restores the previous lockfile when failure happens after lockfile write', async () => {
@@ -663,6 +713,14 @@ describe('installPackage — single-level dependency', () => {
     expect(lock.packages[depKey].refCount).toBe(1)
     expect(lock.packages[depKey].dependents).toEqual(['pixel-with-deps'])
     expect(lock.packages['pixel-with-deps'].dependencies).toEqual([depKey])
+    expect(lock.packages[depKey].hub).toBeUndefined()
+  })
+
+  it('PR 8 r7 #2: a hub skill-pack installed as a DEPENDENCY carries the ledger flag too', async () => {
+    const skillPackSrc = seedSkillPack('hub-image-gen', { upstream: { source: 'clawhub:image-gen', ref: '0.3.1' } })
+    const agentSrc = seedAgentPackage({ id: 'pixel-with-hub-dep', deps: { skills: [skillPackSrc] } })
+    await installPackage({ source: agentSrc })
+    expect(readLockfile().packages['hub-image-gen@0.3.1']?.hub).toBe(true)
   })
 
   it('skill-pack deps land at global ~/.openclaw/skills/<name>/', async () => {

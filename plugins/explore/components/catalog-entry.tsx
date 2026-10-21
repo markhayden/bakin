@@ -12,6 +12,8 @@ export function entryStatusBadge(entry: ExploreCatalogEntry): {
 } | null {
   if (entry.builtin) return { label: 'Built in', tone: 'neutral', variant: 'solid' }
   if (entry.updateAvailable === true) return { label: 'Update available', tone: 'attention', variant: 'solid' }
+  // A blocked subject (a vanished tracked ref, a missing local source) is never "installed and fine".
+  if (entry.updateOutcome === 'blocked') return { label: 'Update blocked', tone: 'attention', variant: 'soft' }
   if (entry.installed) return { label: 'Installed', tone: 'success', variant: 'soft', icon: Check }
   return null
 }

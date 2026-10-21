@@ -15,6 +15,10 @@ mock.module('@makinbakin/sdk/hooks', () => ({
   toast: mock(),
 }))
 
+// The header's dispatch countdown ticks every second on its own interval; nothing here asserts on it, and a tick
+// landing between a slow test's last assertion and cleanup trips the act gate under load (one flake, 2026-10-20).
+mock.module('@/components/layout/dispatch-timer', () => ({ DispatchTimer: () => null }))
+
 function renderHeader() {
   render(
     <SidebarContext value={{ collapsed: false, toggle: mock() }}>

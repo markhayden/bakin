@@ -13,7 +13,8 @@ D7.1–D7.15); plan + commit strategy in the `-plan.md` beside it. This PR (A)
 ships the engine, the required sources (search engine, search models, runtime
 gateway), the Bakin + plugin sources, the apply service, the self-update
 operation, Health → Updates and the CLI. PR B adds the package/hub-skill
-sources and folds the legacy consumer probes; PR C the remaining deletions.
+sources (below) and folds the legacy consumer probes; PR C the remaining
+deletions.
 
 ## Map
 
@@ -90,6 +91,51 @@ indexes with conditional headers; git refs via async `git ls-remote` through
 `gitArgs` + `Bun.spawn` (never the synchronous upgrade-gate wrapper). The
 antfly version probe runs under the observe signal and kills + reaps its
 child on abort.
+
+**Packages and hub skills (D7.12, `sources/package.ts` + `sources/hub-skill.ts`).**
+The lockfile is partitioned ONCE by provenance: a skill-pack whose installed
+manifest carries `upstream` is a `hub-skill` subject, every other entry a
+`package` — never both; when one id is installed under several keys (a
+superseded version not yet forgotten) the newest wins
+(`canonicalPackageEntries`, the ONE selection Team, Explore and
+`findAgentPackage` share). The subject id is the package id (the lock key
+without its version); the manual action names the EXACT lock key for packs
+(`bakin packages sync notes@1.0.0`) and the agent id for agents. An install
+without `@ref` records an empty lock ref and tracks the remote's DEFAULT
+branch (`git ls-remote --symref HEAD`); a ref the remote names NO branch or
+tag for is an immutable commit pin when it is hex (`commitPinOutcome`:
+current while the installed commit is the pin, blocked otherwise) and gone
+otherwise — a branch that merely looks like a sha is still tracked. The lock `ref` is the TRACKING ref (`trackingRefOf`):
+a re-install that fetched a selected commit while tracking the default
+branch keeps the empty ref. Manifest clones ride the 5-minute GitHub
+checkout cache under the SAME spec the updater fetches with (the source as
+installed, the lock ref folded in only when recorded); a cached checkout
+older than the observed commit is refetched `fresh`, the git child dies
+with the observe signal, and a retired or expired checkout directory is
+deleted (one directory per key). A github package is compared
+by `ls-remote` against the installed commit and its manifest is fetched (a
+staged clone, removed after) ONLY when the ref moved, to name the version on
+offer — same version, newer commit is still an update, named by the commit; a
+local package compares its directory's manifest version. A hub skill's
+TRACKING POLICY comes from the lock entry's original `source` string and its
+installed identity from `upstream.ref` (every ClawHub install records the
+RESOLVED version there — never read as a pin): `clawhub:<slug>` tracks latest
+(the hub's latest published version vs the installed resolved one),
+`clawhub:<slug>@<v>` is pinned (`current` unless the pinned version is gone
+from the hub ⇒ `blocked`; latest is never asked), `github:…#<ref>` compares the
+ref's `ls-remote` sha, a local directory is `unsupported`. The
+package/frontmatter version is NEVER compared for a hub skill (synthesis
+prefers the frontmatter version, which says nothing about the hub). Applying
+is the existing path — `bakin agents sync` / `bakin packages sync` for
+packages, re-install (`bakin skills install <source>`) for hub skills — so the
+action is a manual pointer. **A re-install never changes the tracking
+policy (R8′):** `installPackage({ trackingSource })` /
+`confirmSkillInstall(ref, token, op, { trackingSource })` persist the TRACKING
+source as the lock `source` while the fetch ref targets the selected version
+(the audit records `fetchedFrom`), so an unpinned skill stays unpinned after
+an update and the second update is offered too; a tracking source must name
+the same skill (slug + owner, or the same github repo/subpath) or the confirm
+refuses before anything installs.
 
 The timer (D7.5) runs an independent tick: per-subject due times
 (`settings.updates.intervalMs`, default 6 h, clamped [15 min, 7 d]), overdue
@@ -371,11 +417,104 @@ through a server is an operator action: `bakin update --as human`; an
   subject's own flow. The tab label carries the count. The nav badge stays
   incidents-only; no toasts.
 - **System tab:** a plugin's "Update available" is the engine's verdict; its
-  "Check for updates" runs the plugin pass. (The manifest's own
-  `upgradeAvailable` projection migrates in PR B.)
+  "Check for updates" runs the plugin pass. The manifest's `upgradeAvailable`
+  / `updateObservedAt` are the same projection (`GET /api/plugins/manifest`,
+  `?check=1` runs the plugin pass and answers with the refreshed projection;
+  a record observed for another installed identity projects nothing —
+  `pluginInstalledIdentity`; `bakin plugins list` renders its stale hint
+  from `updateObservedAt`).
+- **Team / Explore:** `GET /api/agent-packages` joins each managed row with
+  its `package:` record (`row.update`); the Explore catalog join reads
+  `plugin:`/`package:`/`hub-skill:` records into `updateAvailable`
+  (true / false / null = unknown). A record observed for ANOTHER installed
+  identity (`updateRecordMatchesInstalled` — version, commit, and for a
+  local plugin its tree digest (`pluginInstalledIdentity`), so a rebuild
+  retires the offer it installed; a reinstall the engine has not reconciled
+  yet) is never attached, and `agent_pkg:changed` (announced once
+  an install is FINAL, after a failed install's rollback as `restored`, by
+  sync/migration and removal) refreshes the inventory at once so such
+  records retire. The Team store drops a package-rows response that is no
+  longer the newest request's (a generation per read), so overlapping
+  refreshes never put an obsolete badge back, and a FAILED read keeps the
+  last known rows (a managed agent never shows as unmanaged because the
+  network blinked) with a signal — `packageStatesError` /
+  `packageStatesAt`; the detail card shows "last read at …" with a Retry
+  until a read succeeds again. Explore's catalog carries the observation's
+  `updateOutcome` (`current` / `update-available` / `skipped` / `blocked` /
+  `unsupported` / null) and `updateReason`: a blocked subject gets an
+  "Update blocked" badge and the check toast names it with the reason —
+  never "Everything is up to date". Neither
+  route probes; Explore's "Check for updates" is `POST
+  /api/updates/check?wait=1` + a re-read ("couldn't be checked" = rows still
+  unknown + attempts that failed over an earlier verdict), the roster's
+  `updates.changed` re-read lives in the host `AgentThemeProvider` (grid
+  badge and detail card derive `update-available` through ONE
+  `packageDisplayState`), and Explore follows `updates.changed` too.
 - **Overview:** an incident whose resources name an offered update (plugin
   id, the search-engine service, the embedder setting, the active runtime)
   links "View update" to its row by record id — identity, never copy.
+- **In-process callers (`src/core/updates/observe.ts`):**
+  `observeInstalledPackage(keyOrId)` is what `bakin agents sync --check` /
+  `bakin packages sync --check` ask (`sync.ts`) instead of probing. In a
+  server it rides the timer's admission (`admit({ ids: ['package:<id>'] })`
+  — joins a running pass, the engine records + broadcasts) and answers with
+  the fresh record, throwing when THAT attempt failed even over an earlier
+  good observation; without an engine the package/hub-skill sources
+  (`sources/package-wiring.ts`, the same two the server registers) observe
+  directly and nothing is persisted. The receipt's `versionAfter`/`commitAfter`
+  come from `available`, `changed` = `update-available`; a `blocked` outcome
+  is logged on the operation. The answer is THIS admission's attempt result
+  (`CheckRun.results`/`errors`, the attempt's first settlement) — never a
+  snapshot read a sibling's later re-observation could have overwritten. An
+  exact versioned key that is not the install's canonical key is refused
+  (`PackageSupersededError`), never silently answered with the newer
+  install's verdict — re-checked AFTER the observation too (the install may
+  be superseded while the check waited its turn — under a new key OR the
+  same key: version, commit and install instant must match), and the
+  observation must name the validated install's identity
+  (`updateRecordMatchesInstalled` against `packageInstalledIdentity` /
+  `hubSkillInstalledIdentity` — the ONE derivation the sources use; a hub
+  skill's is the hub's resolved version, and a same-key re-install is
+  detected by key + version + commit + instant + tracking source/ref +
+  hub identity). Both receipts carry the verdict: `checkOutcome` /
+  `checkReason` (`blocked`/`unsupported` are neither updates nor
+  "unchanged" — the CLI renderer says "Upstream blocked: <reason>") and,
+  for an agent, `checkError` when the upstream question could not be
+  answered — the versions on the receipt are the installed ones, `changed`
+  is false because nothing is KNOWN; the sync ROUTE answers that as a failed
+  operation (502 `check_failed`, `{ ok: false, error, receipt }`), the CLI
+  as a failed check (exit 1), and the roster form under `--json` prints ONE
+  aggregate document. Ownership of a hub skill is a LEDGER fact (lock
+  `hub: true`, written at install; a pre-flag install by its manifest, an
+  unreadable manifest by its `clawhub:` source): an unreadable installed
+  manifest is a `blocked` verdict on the subject that owns it
+  (`manifestError`), never a silent re-partition that would drop the
+  observation and the skip — the hub-skill fingerprint is DURABLE (lock
+  fields + host, never `upstream.ref`), and the engine discards a skip only
+  when a DIFFERENT offer is established (a `blocked`/`current` observation
+  keeps it). KNOWN LIMIT: an unflagged GITHUB hub skill whose manifest is
+  unreadable is observed as a package (blocked, "manifest unreadable —
+  reinstall") until it is reinstalled. An `installAs` alias compares the
+  upstream manifest with the INSTALLED manifest's id (`manifestId`), the
+  subject and action keep the alias. The checker module is gone.
+- **CLI `--check` without a server:** `bakin agents sync [<id>] --check`,
+  `bakin packages sync <key> --check` and `bakin plugins list [--check]`
+  run in-process when `server.lock` names no live server (an explicit
+  `BAKIN_URL` is server-only): the read-only `checkAgent`/`checkPack`
+  entries (the routes' `sync…({ check })`; report-only, no resource,
+  nothing persisted — the install-state architecture rule keeps the writers
+  owner-only) over `createReadOnlyAppServices()` (the runtime CONSTRUCTED,
+  never initialized — Pi's `initialize()` warms a registry whose stores
+  create files under PI_HOME; a bare adapter answers every roster/workspace
+  read; no search initialization, no secret migration, no health
+  registration — a read-only path never provisions; `--json` runs the work
+  under `withSilentConsoleLogs`) and, for plugins,
+  the lockfile's user plugins joined with the engine's records (`--check`
+  runs the plugin pass in-process on a scratch store; a plain list reads
+  the records the server last wrote, joined only when the record's
+  installed identity is the lockfile's; activation state and core plugins
+  are a server fact and are honestly absent). A sync that WRITES still needs
+  the server's operation.
 - **CLI:** `bakin updates [--check] [--source <kind>] [--json]` (serverless
   `--check` builds the engine in-process over this home), `updates skip <id>`,
   `updates apply <id> [--yes] --as human` (preview → confirm → follow; the

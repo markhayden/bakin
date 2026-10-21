@@ -55,9 +55,7 @@ const PluginLockEntrySchema = z.object({
   version: z.string().min(1),        // from bakin-plugin.json
   permissions: z.array(PermissionSchema), // see §3.3
   manifestSha: z.string().min(1),    // sha256 of bakin-plugin.json — drives "permissions changed?"
-  lastChecked: z.string().optional(),// ISO 8601, set by `list --check`
-  remoteHeadSha: z.string().optional(),  // last seen remote HEAD sha (github only)
-  sourceTreeSha: z.string().optional(),  // last seen local source tree sha (local only)
+  sourceTreeSha: z.string().optional(),  // local source tree sha at install/upgrade (local only) — installed provenance; "is there something newer" is the updates engine's record (#1007), never a lockfile marker
   sourceTreeShaAlgo: z.number().int().optional(), // absent = legacy algo 1; 2 = whiskit hashSourceTree (migrated); 3 = the lockfile hasher (the local transfer set)
   installedSkills: z.array(z.string()).optional(), // runtime skills this plugin projected — uninstall allowlist
   installedBins: z.array(z.object({ name, sha256 })).optional(), // binaries this plugin installed into ~/.bakin/bin
@@ -303,15 +301,25 @@ stale-plugin  Stale Plugin      0.5.0      github         (last checked 12 days 
 
 - `[core]` for core plugins (no STATUS populated)
 - `github` / `local` for user plugins
-- STATUS comes from lockfile-stored `remoteHeadSha`/`sourceTreeSha` vs `commitSha`/recorded tree sha
-- 7-day staleness hint when `lastChecked` > 7 days ago
+- STATUS is the updates engine's record for `plugin:<id>` (#1007): `upgradeAvailable`
+  = an unskipped `update-available` record (`isUpdateOffered`), projected by
+  `GET /api/plugins/manifest` — never a lockfile marker
+- 7-day staleness hint from the manifest's `updateObservedAt` (the engine's last
+  SUCCESSFUL observation; `updateStaleDays` in the SDK types) — absent before the
+  first observation, kept across a later failed attempt
 
 **`bakin plugins list --check`:**
-- For each user plugin:
-  - **github**: `git ls-remote <remote> <ref>` → record `remoteHeadSha` + `lastChecked`
-  - **local**: walk source dir, compute tree sha → record `sourceTreeSha` + `lastChecked`
-- Persist via atomic write
+- `GET /api/plugins/manifest?check=1` runs the engine's plugin pass
+  (`timer.check({ kind: 'plugin' })`, waited — one admission path, never a probe
+  per caller) and answers with the refreshed projection
+- Nothing is persisted on the lockfile; the engine records what it found in
+  `~/.bakin/updates.json` and broadcasts `updates.changed`
 - Render the same table with fresh STATUS info
+- With no server (`server.lock` names no live pid; an explicit `BAKIN_URL` is
+  server-only): the lockfile's user plugins joined with the engine's records
+  — `--check` runs the plugin pass in-process on a scratch store, a plain
+  list reads the stored records; status is `unknown` and core plugins are
+  absent (both are server facts), said on stderr
 
 ### 4.5 Plugin activation logging (#142 layer 1)
 

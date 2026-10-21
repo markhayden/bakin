@@ -19,7 +19,6 @@
  * - `./upgrade-gate` — types, refusal error, consent/manifest gates
  * - `./upgrade-github` — in-place fast-forward + subpath staging-clone lanes
  * - `./upgrade-artifact` — Whiskit published-artifact lane
- * - `./upgrade-check` — the read-only `--check` probe (batched lockfile write)
  * - `./source-tree-sha` — local source-tree hashing
  */
 import { existsSync, cpSync, realpathSync, rmSync } from 'fs'
@@ -56,7 +55,6 @@ import { PLUGIN_STAGES } from './operation-plans'
 import { upgradeGithub, upgradeGithubSubpath } from './upgrade-github'
 
 export { type UpgradeConsent, type UpgradeOptions, type UpgradeResult, UpgradeRefusedError } from './upgrade-gate'
-export { runChecks, type UpgradeAvailability } from './upgrade-check'
 export { isArtifactInstall } from './upgrade-artifact'
 export { computeSourceTreeSha } from './source-tree-sha'
 
@@ -154,13 +152,12 @@ async function upgradeLocal(
   const newTreeSha = cmp.liveSha
   if (entry.sourceTreeSha && !cmp.changed) {
     if (cmp.needsAlgoMigration) {
-      // One-time reset: rewrite the row under the canonical hasher so the
-      // next check/upgrade (and the manifest route's lastSourceTreeSha
-      // comparison) takes the canonical fast path.
+      // One-time reset: rewrite the row under the lockfile hasher so the next
+      // check/upgrade takes the fast path. Installed provenance only — the
+      // updates engine owns "is there something newer" (#1007 B).
       writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
         sourceTreeSha: newTreeSha,
         sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
-        ...(entry.lastSourceTreeSha ? { lastSourceTreeSha: newTreeSha } : {}),
       }))
     }
     return {

@@ -318,8 +318,9 @@ export function createUpdatesEngine(options: UpdatesEngineOptions): UpdatesEngin
           blockedReason: observation.blockedReason,
           notesUrl: observation.notesUrl,
         }
-        // A skip survives only while the available identity it targeted is still the one offered.
-        if (previous.skipped && updateIdentityKey(previous.skipped) === updateIdentityKey(next.available)) next.skipped = previous.skipped
+        // A skip is discarded only when a DIFFERENT offer is established: an observation that establishes no offer at all
+        // (current, blocked — an evidence-read failure, say) keeps it, so a repaired manifest never resurfaces the hidden one (r7 #3).
+        if (previous.skipped && (next.available === undefined || updateIdentityKey(previous.skipped) === updateIdentityKey(next.available))) next.skipped = previous.skipped
         file.records[id] = stripUndefined(next)
         // One instant for both clocks: the due time is EXACTLY one interval after the check (never a millisecond later).
         file.schedule[id] = { lastCheckedAt: at, nextDueAt: iso(Date.parse(at) + interval()), failures: 0 }

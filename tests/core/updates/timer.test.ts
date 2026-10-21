@@ -431,3 +431,55 @@ describe('review round 7 — one attempt per subject at a time', () => {
     expect((await engine.snapshot()).records.find((r) => r.id === 'plugin:a')?.outcome).toBe('current')
   })
 })
+
+describe('PR 8 review round 1 — an admission carries ITS attempt result', () => {
+  /** A subject whose next observation can be scripted to fail, beside a held sibling that keeps the pass open. */
+  function flaky(): { source: UpdateSource; failNext: (error: string | null) => void; release: () => void } {
+    let error: string | null = null
+    let releaseHold!: () => void
+    const held = new Promise<void>((resolve) => { releaseHold = resolve })
+    const entryFor = (id: string): UpdateSubjectInventoryEntry => ({ subject: { kind: 'plugin', id, label: id }, group: 'available', fingerprint: fingerprintOf({ id }), source: { kind: 'scripted', endpoint: id } })
+    const source: UpdateSource = {
+      kind: 'plugin',
+      inventory: async () => [entryFor('a'), entryFor('held')],
+      observe: async (entry) => {
+        if (entry.subject.id === 'held') { await held; return current }
+        if (error) { const e = error; error = null; throw new Error(e) }
+        return current
+      },
+    }
+    return { source, failNext: (e) => { error = e }, release: () => releaseHold() }
+  }
+
+  it('with the pass held open by a sibling, a later explicit check re-observes the subject successfully, and the FIRST admission still reports its own failure — never the snapshot (#2)', async () => {
+    const script = flaky()
+    const { engine, timer } = harness([script.source], { firstTickMs: 60_000 })
+    script.failNext('boom')
+    const first = await timer.admit({ ids: ['plugin:a', 'plugin:held'] })
+    await waitUntil(async () => (await engine.snapshot()).records.find((r) => r.id === 'plugin:a')?.attempt?.error === 'boom', { label: 'a failed once' })
+    // A second explicit check joins the SAME pass (held keeps it open) and queues a re-observation of a;
+    // it runs when the held worker frees up, BEFORE the pass — and so the first admission's `done` — settles.
+    const second = await timer.admit({ ids: ['plugin:a'] })
+    expect(second.coalesced).toBe(true)
+    script.release()
+    const [firstRun, secondRun] = await Promise.all([first.done, second.done])
+    // The snapshot now says current — the first admission still answers with ITS attempt.
+    expect((await engine.snapshot()).records.find((r) => r.id === 'plugin:a')?.outcome).toBe('current')
+    expect(firstRun.results.get('plugin:a')?.attempt?.error).toBe('boom')
+    expect(firstRun.results.get('plugin:held')?.outcome).toBe('current')
+    expect(secondRun.results.get('plugin:a')?.outcome).toBe('current')
+    expect(secondRun.results.get('plugin:a')?.attempt?.error).toBeUndefined()
+  })
+
+  it('the deadline\'s recorded failure is the attempt\'s result; a broad request only has results for subjects it rode', async () => {
+    const script = scripted('plugin', ['a', 'b'])
+    const { timer } = harness([script.source], { firstTickMs: 60_000, subjectTimeoutMs: 40, cancelGraceMs: 10 })
+    script.hold('a')
+    const named = await timer.admit({ ids: ['plugin:a'] })
+    const run = await named.done
+    expect(run.results.get('plugin:a')?.attempt?.error).toContain('timed out')
+    expect(run.errors.size).toBe(0)
+    const broad = await (await timer.admit()).done
+    expect([...broad.results.keys()].sort()).toEqual(['plugin:a', 'plugin:b'])
+  })
+})

@@ -172,9 +172,7 @@ export async function upgradeArtifact(
         writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
           upgradedAt: new Date().toISOString(),
           version: newVersion,
-        commitSha: newCommitSha,
-        remoteArtifactVersion: latest,
-          remoteArtifactRebuild: false,
+          commitSha: newCommitSha,
           manifestSha,
           permissions: gate.newPerms,
           installedSkills: assets.installedSkills,

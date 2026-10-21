@@ -1,5 +1,6 @@
 import { formatBytes } from '../../../../cli/output'
 import { Box, Text } from 'ink'
+import { updateStaleDays } from '@makinbakin/sdk/types'
 import { DataTable, FindingRows, ScreenHeader, Section, StatusTable, SummaryStrip, type FindingRow } from '../tui'
 import type { TuiStatus } from '../style-tokens'
 import { valueText, numberValue, listText, objectField, isPlainRecord, timestampText, bytesText, plural } from './format'
@@ -11,7 +12,8 @@ export interface PluginData {
   source?: unknown
   status?: unknown
   upgradeAvailable?: unknown
-  staleHintDays?: unknown
+  /** ISO instant of the updates engine's last successful observation (`GET /api/plugins/manifest`). */
+  updateObservedAt?: unknown
   errorMessage?: unknown
 }
 
@@ -242,10 +244,10 @@ function pluginStatus(plugin: PluginData): TuiStatus {
   return 'ok'
 }
 
-function pluginState(plugin: PluginData): string {
+export function pluginState(plugin: PluginData, now = Date.now()): string {
   if (plugin.upgradeAvailable === true) return 'update available'
-  const staleDays = numberValue(plugin.staleHintDays)
-  if (staleDays > 0) return `stale ${staleDays}d`
+  const staleDays = updateStaleDays(typeof plugin.updateObservedAt === 'string' ? plugin.updateObservedAt : null, now)
+  if (staleDays !== null) return `stale ${staleDays}d`
   return valueText(plugin.status, 'active')
 }
 

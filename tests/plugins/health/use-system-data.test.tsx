@@ -91,7 +91,7 @@ describe('useSystemData mutation reconciliation', () => {
         if (manifestReads >= 3 && failReconciliation) throw new Error('manifest refresh failed')
         return jsonResponse({ plugins: [{
           id: 'notes', name: 'Notes', version: '1.0.0', source: 'github', installed: { version: '1.0.0' },
-          upgradeAvailable: true, staleHintDays: null, status: 'active',
+          upgradeAvailable: true, status: 'active',
         }] })
       }
       if (url === '/api/plugins/health/doctor') return jsonResponse(healthReport())
@@ -152,7 +152,7 @@ function systemFetch(extra: (url: string, init?: RequestInit) => Response | null
     if (url.startsWith('/api/plugins/manifest')) {
       return jsonResponse({ plugins: [{
         id: 'notes', name: 'Notes', version: '1.0.0', source: 'github', installed: { version: '1.0.0' },
-        upgradeAvailable: true, staleHintDays: null, status: 'active',
+        upgradeAvailable: true, status: 'active',
       }] })
     }
     if (url === '/api/plugins/health/doctor') return jsonResponse(healthReport())

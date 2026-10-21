@@ -126,13 +126,22 @@ function syncReceiptDetails(receipt: unknown): string[] {
   if (!isPlainRecord(receipt)) return []
   const details: string[] = []
 
-  const pkg = objectField(receipt, 'package')
+  // An agent receipt carries its package block; a pack receipt IS the block.
+  const pkg = isPlainRecord(objectField(receipt, 'package')) ? objectField(receipt, 'package') as Record<string, unknown> : (objectField(receipt, 'checkOnly') !== undefined ? receipt : undefined)
   if (isPlainRecord(pkg)) {
     const before = valueText(objectField(pkg, 'versionBefore'), '')
     const after = valueText(objectField(pkg, 'versionAfter'), '')
-    if (before && after && before !== after) {
+    const checkError = valueText(objectField(pkg, 'checkError'), '')
+    const checkOutcome = valueText(objectField(pkg, 'checkOutcome'), '')
+    const checkReason = valueText(objectField(pkg, 'checkReason'), '')
+    // The verdict first (review r6 #1/#4): a failed or blocked check is never "unchanged".
+    if (checkError) {
+      details.push(`Upstream check failed: ${checkError}`)
+    } else if (checkOutcome === 'blocked' || checkOutcome === 'unsupported') {
+      details.push(`Upstream ${checkOutcome}${checkReason ? `: ${checkReason}` : ''}.`)
+    } else if (before && after && before !== after) {
       details.push(`Version: ${before} -> ${after}`)
-    } else if (objectField(pkg, 'fetched') === true && objectField(pkg, 'changed') === false) {
+    } else if ((objectField(pkg, 'fetched') === true || objectField(pkg, 'checkOnly') === true) && objectField(pkg, 'changed') === false) {
       details.push('Upstream unchanged.')
     }
   }

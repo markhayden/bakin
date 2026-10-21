@@ -48,7 +48,7 @@ Contribution integrity rule: install/update preflights declared contributions be
 
 ## Lockfile
 
-`~/.bakin/packages/lock.json`. zod-validated, atomic IO (`tmp + rename`). Schema in `packages/core/src/agent-packages/lockfile.ts`:
+`~/.bakin/packages/lock.json`. zod-validated, atomic IO (`tmp + rename`). Schema in `packages/core/src/agent-packages/lockfile.ts`. `source` is what the entry TRACKS (the updates engine reads its policy from it — a hub skill's `clawhub:<slug>` vs `clawhub:<slug>@<v>`); when an update re-installs a different fetch ref, `installPackage({ trackingSource })` keeps `source` as the tracking source (#1007 D7.12 R8′):
 
 ```jsonc
 {
@@ -214,12 +214,21 @@ Version reporting rule: managed agent package state includes a top-level
 back to nested `entry.version` only for compatibility), not infer the version
 from an install path, source ref, package id, or stale runtime state.
 
-Update reporting rule: `GET /api/agent-packages?check=1` re-fetches the
-recorded source and returns `updateStatus` alongside the installed lockfile
-state. This check is read-only; it never mutates the installed version or
-lockfile commit. The Team detail package card uses this status to show
-`update-available` and offer Maintain-changes vs Reseed-package-templates
-upgrade modes.
+Update reporting rule: `GET /api/agent-packages` joins each managed row with
+the updates engine's record for its package (`update`, keyed
+`package:<key id>`; #1007) — only when the record was observed for the row's
+installed identity (`updateRecordMatchesInstalled`); installs and removals
+announce `agent_pkg:changed` (`change-events.ts`) so the engine retires a
+record for an identity just replaced. The lock entry's `ref` is the TRACKING
+ref (`trackingRefOf`): empty for a default-branch install, the tracked
+`@ref` otherwise — never the commit a re-install happened to fetch. A
+skill-pack synthesized from a hub bundle carries `hub: true` in its lock
+entry (the ledger owns the `hub-skill:` subject; an unreadable installed
+manifest never turns it into a package). The route never probes a source — the engine
+observes packages on its schedule and `POST /api/updates/check` runs a pass
+on demand. The Team detail package card reads `isUpdateOffered(row.update)`
+to show `update-available` and offer Maintain-changes vs
+Reseed-package-templates upgrade modes.
 
 ## Doctor integration
 
@@ -239,7 +248,7 @@ Two-file pattern (`cli/bakin.ts` is HTTP-client; `src/core/cli.ts` is binary dis
 - `bakin agents orphan <id> [--keep-blocks] [--force]`
 - `bakin agents delete <id> [--keep-blocks] [--force]`
 - `bakin agents remove <id> [--keep-blocks] [--delete-agent|--delete|--orphan] [--force]` — compatibility spelling; default is orphan
-- `bakin agents sync [<id>] [--check] [--reclaim <target>|--reclaim-all] [--yes]` — no id = sync every agent (managed: fetch + recompose + verify + receipt; unmanaged: context block only). Prompts once for the one-time block migration on legacy installs.
+- `bakin agents sync [<id>] [--check] [--reclaim <target>|--reclaim-all] [--yes]` — no id = sync every agent (managed: fetch + recompose + verify + receipt; unmanaged: context block only). Prompts once for the one-time block migration on legacy installs. `--check` asks the updates engine's observer (`src/core/updates/observe.ts`, #1007) for the upstream state — report-only, never a private probe; with no server it runs in-process (the same `syncAgent({ check })`, nothing persisted).
 - `bakin agents lessons {list,enable,disable} <id> [<lesson-id>]` — toggling = lockfile change + local sync (SOUL block recomposes)
 - `bakin packages {list,install,remove,sync}` — for non-agent kinds; refuses remove on refCount > 0 unless `--force`
 - `bakin check agent-sync` / `bakin install agent-sync` — drift report + local repair via the onboarding component
@@ -251,7 +260,7 @@ Function-name collision avoided: package-management functions are prefixed `cmdA
 Top-level (NOT under `/api/agents/*` which is the runtime surface):
 
 ```
-GET    /api/agent-packages[?check=1]
+GET    /api/agent-packages
 POST   /api/agent-packages/install
 DELETE /api/agent-packages/{agentId}
 POST   /api/agent-packages/{agentId}/update

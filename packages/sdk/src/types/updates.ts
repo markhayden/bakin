@@ -118,7 +118,35 @@ export function isUpdateSkipped(record: Pick<UpdateRecord, 'available' | 'skippe
   return skipped !== null && skipped === updateIdentityKey(record.available)
 }
 
+/** True when the record offers an update the operator has not skipped — the ONE predicate every badge, count and projection uses. */
+export function isUpdateOffered(record: Pick<UpdateRecord, 'outcome' | 'available' | 'skipped'>): boolean {
+  return record.outcome === 'update-available' && !isUpdateSkipped(record)
+}
+
+/** Days since the last successful observation when older than `thresholdDays`, else null (a staleness hint, never a verdict). */
+export function updateStaleDays(observedAt: string | null | undefined, now = Date.now(), thresholdDays = 7): number | null {
+  if (!observedAt) return null
+  const days = Math.floor((now - Date.parse(observedAt)) / (24 * 60 * 60 * 1000))
+  return Number.isFinite(days) && days > thresholdDays ? days : null
+}
+
+/**
+ * True when the record was observed for THIS installed identity: the
+ * version matches, and the sha when both sides carry one. A join over a
+ * record the engine has not yet retired after a reinstall is never trusted
+ * (it would offer the version just installed).
+ */
+export function updateRecordMatchesInstalled(record: Pick<UpdateRecord, 'installed'>, installed: { version?: string; sha?: string; digest?: string }): boolean {
+  // A record that names no installed identity (an `unknown` observation) has nothing to disagree with; the fingerprint retirement is its guard.
+  if (!record.installed) return true
+  if (record.installed.version !== undefined && installed.version !== undefined && record.installed.version !== installed.version) return false
+  if (record.installed.sha && installed.sha && record.installed.sha !== installed.sha) return false
+  // A local tree digest (a rebuild keeps the version, changes the digest).
+  if (record.installed.digest && installed.digest && record.installed.digest !== installed.digest) return false
+  return true
+}
+
 /** The count the Updates tab label carries: available, not skipped. */
 export function countAvailableUpdates(records: ReadonlyArray<UpdateRecord>): number {
-  return records.filter((record) => record.outcome === 'update-available' && !isUpdateSkipped(record)).length
+  return records.filter(isUpdateOffered).length
 }

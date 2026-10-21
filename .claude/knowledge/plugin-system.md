@@ -74,13 +74,13 @@ published):
   was approved, then activates — and `gateUpgradeConsent` validates a
   supplied consent EVERY time (manifest, permissions, binaries), not only
   when something new needed consent, so a republish between preview and
-  commit bounces. Index reads are bounded (8 s, no retries), concurrent
-  across plugins and cached per source (10 min; failures 1 min), so a slow
-  release host never costs the check its local verdict. A compatible rebuild
-  under the installed version persists as `remoteArtifactRebuild` so
-  `computeUpgradeAvailable` keeps reporting it. No compatible release yet ⇒ the incident
-  says so (`await-compatible-release`) instead of pointing at an upgrade that
-  would refuse. `artifactUpgradeTarget` is the one upgrade decision (a working
+  commit bounces. What the source offers is the updates engine's `plugin:<id>`
+  record (#1007) — the check never reads an index itself, so a slow release
+  host never costs it its local verdict; a compatible rebuild under the
+  installed version is the record's `compatible-rebuild` offer. No compatible
+  release yet ⇒ the incident says so (`await-compatible-release`, the
+  record's `blocked` reason) instead of pointing at an upgrade that would
+  refuse. `artifactUpgradeTarget` is the one upgrade decision (a working
   install only moves forward; a stranded one takes any compatible release;
   "runs" includes the installed artifact's `bakinRange`), shared by the
   upgrade lane and `--check`, so availability never names a release the
@@ -270,10 +270,10 @@ PluginLockEntry {
   version        // from bakin-plugin.json
   permissions    // string[], strict against PermissionSchema enum
   manifestSha    // sha256 of bakin-plugin.json
-  lastChecked?   // ISO 8601, set by `plugins list --check`
-  remoteHeadSha? // last seen remote sha (github only)
-  sourceTreeSha? // install/upgrade time tree sha (local only)
-  lastSourceTreeSha? // --check time tree sha (local only)
+  sourceTreeSha? // install/upgrade time tree sha (local only) — installed
+                  // provenance; "is there something newer" is the updates
+                  // engine's record (#1007), never a lockfile marker
+  sourceTreeShaAlgo? // which hasher produced sourceTreeSha (absent = legacy 1)
   installedSkills? // runtime skill names this plugin shipped — the
                   // authoritative allowlist for uninstall (defeats fake
                   // .installedBy markers per #119 hardening)
@@ -665,27 +665,33 @@ Committed upgrades return a `pluginAssets` report with installed,
 unchanged, and `.userEdited`-skipped runtime skills, plus `droppedBins`.
 No-op and awaiting-consent responses do not project assets.
 
-### Upgrade-available detection — `bakin plugins list --check`
+### Upgrade-available detection — `bakin plugins list [--check]`
 
-Plain `list` reads markers from the lockfile only — no network, no
-fs walk. `--check` runs per-plugin probes in parallel:
-
-- **github**: `git ls-remote <source> <ref>` → record `remoteHeadSha`
-  + `lastChecked`. `upgradeAvailable = remoteHeadSha !== commitSha`.
-- **local**: walk source dir, compute tree sha → record
-  `lastSourceTreeSha` + `lastChecked`.
-  `upgradeAvailable = lastSourceTreeSha !== sourceTreeSha` (split
-  fields so `--check` doesn't clobber the install/upgrade-time value).
-
-Plain `list` shows a 7-day staleness hint when `lastChecked` is older
-than the threshold.
+Plain `list` reads `GET /api/plugins/manifest`, whose `upgradeAvailable` /
+`updateObservedAt` are projected from the updates engine's `plugin:<id>`
+record (#1007; the engine's plugin source observes the artifact index,
+`git ls-remote` or the local source tree on its schedule — no network on
+the request path). `--check` asks for `?check=1`, which runs the engine's
+plugin pass (waited) and answers with the refreshed projection; nothing is
+written to the lockfile. Plain `list` shows a 7-day staleness hint when
+`updateObservedAt` (the last SUCCESSFUL observation) is older than the
+threshold. Lifecycle-checklist rows that mention `lastChecked` /
+`remoteHeadSha` describe the pre-#1007 design and are historical.
 
 Health System's Installed plugins inventory merges
 `/api/plugins/health/registry` with `/api/plugins/manifest`. Initial and
 background reads use cached manifest state; the explicit **Check for updates**
-action adds `check=1`. Core/built-in plugin versions stay sourced from bundled
-plugin exports; user plugin versions and upgrade availability come from the
-plugin lockfile manifest rows. Exceptions (activation failures and available
+action runs the updates engine's plugin pass (`POST /api/updates/check?source=plugin`),
+and the manifest's own `?check=1` runs that same pass server-side (waited)
+before answering. Core/built-in plugin versions stay sourced from bundled
+plugin exports; user plugin versions come from the lockfile rows, while
+`upgradeAvailable` / `updateObservedAt` are projected from the updates engine's
+records (an unskipped `update-available` record — `isUpdateOffered`; its last
+successful `observedAt`). The lockfile holds installed provenance only: the
+pre-#1007 check markers (`lastChecked`, `remoteHeadSha`,
+`remoteArtifactVersion`, `remoteArtifactRebuild`, `lastSourceTreeSha`) and
+`computeUpgradeAvailable` are gone — a legacy row's markers strip on read,
+never rewritten. Exceptions (activation failures and available
 updates) render before the full inventory. The in-list Update action calls the same
 `POST /api/plugins/upgrade` endpoint as CLI upgrade and handles
 `awaitingConsent` before mutating disk.

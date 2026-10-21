@@ -134,6 +134,15 @@ const PackageEntrySchema = z.object({
   commitSha: z.string(),
   installedAt: z.string().min(1),
 
+  /**
+   * True for a skill-pack synthesized from a hub bundle (ClawHub, a GitHub
+   * skill repo): the updates engine tracks it as a `hub-skill` subject. The
+   * ledger carries it so that OWNERSHIP never depends on re-reading the
+   * installed manifest (an unreadable one must not turn a hub skill into a
+   * package and drop its observation and skip — PR 8 review r6 #2).
+   */
+  hub: z.boolean().optional(),
+
   // Agent-only fields (present iff kind === 'agent')
   state: PackageStateSchema.optional(),
   agentId: z.string().optional(),
@@ -294,14 +303,44 @@ export function hasDependents(lock: Lockfile, id: string): boolean {
   return (entry.refCount ?? 0) > 0
 }
 
-/** Look up the agent-kind entry that owns the given runtime agent id, if any. */
+/** The lockfile key's package id: everything before the LAST `@` (ids may carry an owner prefix); a key without a version is the id itself. */
+export function packageIdOfLockKey(key: string): string {
+  const at = key.lastIndexOf('@')
+  return at === -1 ? key : key.slice(0, at)
+}
+
+export interface CanonicalPackageEntry {
+  /** The lockfile key (`<id>@<version>` or `<id>`). */
+  key: string
+  id: string
+  entry: PackageEntry
+}
+
+/**
+ * ONE entry per package id — the newest `installedAt` wins when a superseded
+ * version's key is still present (ties keep the later key). Every consumer
+ * that joins the lockfile to something keyed by package id (the updates
+ * engine's `package:<id>` records, Team, Explore) selects through here, so
+ * no surface shows one version beside another version's record.
+ */
+export function canonicalPackageEntries(lock: Lockfile): CanonicalPackageEntry[] {
+  const byId = new Map<string, CanonicalPackageEntry>()
+  for (const [key, entry] of Object.entries(lock.packages)) {
+    const id = packageIdOfLockKey(key)
+    const held = byId.get(id)
+    if (!held || Date.parse(entry.installedAt) >= Date.parse(held.entry.installedAt)) byId.set(id, { key, id, entry })
+  }
+  return [...byId.values()]
+}
+
+/** Look up the agent-kind entry that owns the given runtime agent id, if any (the canonical entry when its id is installed under several keys). */
 export function findAgentPackage(
   lock: Lockfile,
   agentId: string,
 ): { id: string; entry: PackageEntry } | null {
-  for (const [id, entry] of Object.entries(lock.packages)) {
+  for (const { key, entry } of canonicalPackageEntries(lock)) {
     if (entry.kind === 'agent' && entry.agentId === agentId) {
-      return { id, entry }
+      return { id: key, entry }
     }
   }
   return null

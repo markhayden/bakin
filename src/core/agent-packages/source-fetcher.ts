@@ -51,12 +51,13 @@ import { checkSubpath } from '../../../packages/core/src/install-core/source-gua
 import { synthesizeSkillPack, type SynthesisSourceInfo } from './skill-synthesis'
 import {
   type ClawhubClient,
+  ClawhubHttpError,
   type ClawhubVerdictState,
   createClawhubClient,
   evaluateVerdict,
   sha256Hex,
 } from './clawhub-client'
-import { parseClawhubRef } from './ref-normalize'
+import { parseClawhubRef, type ClawhubRef } from './ref-normalize'
 import { SkillRefusalError } from './errors'
 
 const log = createLogger('agent-pkg:fetch')
@@ -94,7 +95,7 @@ interface ParsedGithubSpec {
 const GITHUB_PREFIX = 'github:'
 
 /** True iff the input looks like a github source spec. */
-function isGithubSource(source: string): boolean {
+export function isGithubSource(source: string): boolean {
   return source.startsWith(GITHUB_PREFIX)
 }
 
@@ -180,10 +181,11 @@ export function sourceSpecWithRef(source: string, ref: string | null | undefined
  * current working directory (relative paths) and refuse anything that
  * escapes both.
  */
-function resolveLocalPath(source: string): string {
+export function resolveLocalPath(source: string): string {
   let resolved: string
   if (source.startsWith('~/')) {
-    resolved = join(homedir(), source.slice(2))
+    // libuv's order (HOME first, then the passwd entry) — `os.homedir()` is read once per process, so a test can point HOME at a fixture.
+    resolved = join(process.env.HOME || homedir(), source.slice(2))
   } else if (isAbsolute(source)) {
     resolved = source
   } else {
@@ -365,17 +367,27 @@ interface GitRunner {
 const realGit: GitRunner = (args) =>
   execFileSync('git', gitArgs(args), { stdio: ['ignore', 'pipe', 'pipe'] }).toString('utf-8')
 
-const realGitAsync: AsyncGitRunner = (args) => new Promise((resolve, reject) => {
+const abortError = (signal: AbortSignal): Error =>
+  (signal.reason instanceof Error ? signal.reason : new Error(typeof signal.reason === 'string' ? signal.reason : 'aborted'))
+
+// An aborted signal kills the child (the observe deadline, review r1 #3) — a clone never outlives the check that asked for it.
+const realGitAsync: AsyncGitRunner = (args, opts = {}) => new Promise((resolve, reject) => {
+  const { signal } = opts
+  if (signal?.aborted) { reject(abortError(signal)); return }
   const child = spawn('git', gitArgs(args), { stdio: ['ignore', 'pipe', 'pipe'] })
   let stdout = ''
   let stderr = ''
+  const onAbort = (): void => { child.kill() }
+  signal?.addEventListener('abort', onAbort, { once: true })
 
   child.stdout.setEncoding('utf-8')
   child.stderr.setEncoding('utf-8')
   child.stdout.on('data', chunk => { stdout += chunk })
   child.stderr.on('data', chunk => { stderr += chunk })
-  child.on('error', reject)
+  child.on('error', (err) => { signal?.removeEventListener('abort', onAbort); reject(err) })
   child.on('close', code => {
+    signal?.removeEventListener('abort', onAbort)
+    if (signal?.aborted) { reject(abortError(signal)); return }
     if (code === 0) {
       resolve(stdout)
       return
@@ -439,10 +451,18 @@ export function fetchGithubWithRunner(
   }
 }
 
+export interface FetchSourceOptions {
+  /** Aborting kills the git child and rejects — the clone never outlives the caller's deadline. */
+  signal?: AbortSignal
+  /** Bypass the short-lived GitHub checkout cache (the caller observed a newer commit than it may hold). */
+  fresh?: boolean
+}
+
 export async function fetchGithubWithRunnerAsync(
   source: string,
   git: AsyncGitRunner,
   staging: string,
+  options: FetchSourceOptions = {},
 ): Promise<FetchedSource> {
   const spec = parseGithubSpec(source)
   const url = `https://github.com/${spec.owner}/${spec.repo}.git`
@@ -457,6 +477,8 @@ export async function fetchGithubWithRunnerAsync(
       stagingDir: staging,
       subpath: spec.subpath || undefined,
       git,
+      signal: options.signal,
+      fresh: options.fresh,
     })
     const synthesis = ensureInstallableStaging(staging, {
       source,
@@ -481,10 +503,10 @@ function fetchGithub(source: string): FetchedSource {
   }
 }
 
-async function fetchGithubAsync(source: string): Promise<FetchedSource> {
+async function fetchGithubAsync(source: string, options: FetchSourceOptions): Promise<FetchedSource> {
   const staging = freshStagingDir('github')
   try {
-    return await fetchGithubWithRunnerAsync(source, realGitAsync, staging)
+    return await fetchGithubWithRunnerAsync(source, realGitAsync, staging, options)
   } catch (err) {
     cleanupStaging(staging)
     throw err
@@ -492,6 +514,35 @@ async function fetchGithubAsync(source: string): Promise<FetchedSource> {
 }
 
 // ─── ClawHub fetch (#687) ────────────────────────────────────────────────────
+
+/**
+ * Read-only hub questions for the updates engine (#1007 D7.12), asked through
+ * the ONE client (the arch pin keeps every hub request behind this module):
+ * the latest published version of a skill, and whether an exact version is
+ * still published. Every request aborts with the observe signal.
+ */
+export async function clawhubLatestVersion(ref: Pick<ClawhubRef, 'slug' | 'owner'>, signal: AbortSignal): Promise<string | null> {
+  try {
+    return await clawhubClientUnder(signal).resolveLatestVersion(ref.slug, ref.owner)
+  } catch (err) {
+    if (err instanceof Error && /lists no versions/.test(err.message)) return null
+    throw err
+  }
+}
+
+export async function clawhubHasVersion(ref: Pick<ClawhubRef, 'slug' | 'owner'>, version: string, signal: AbortSignal): Promise<boolean> {
+  try {
+    await clawhubClientUnder(signal).getVersionDetail(ref.slug, version, ref.owner)
+    return true
+  } catch (err) {
+    if (err instanceof ClawhubHttpError && err.status === 404) return false
+    throw err
+  }
+}
+
+function clawhubClientUnder(signal: AbortSignal): ClawhubClient {
+  return createClawhubClient({ fetcher: (url) => fetch(url, { headers: { 'user-agent': 'bakin' }, signal }) })
+}
 
 export function isClawhubSource(source: string): boolean {
   return source.startsWith('clawhub:')
@@ -626,12 +677,12 @@ export function fetchSource(source: string): FetchedSource {
   )
 }
 
-export async function fetchSourceAsync(source: string): Promise<FetchedSource> {
+export async function fetchSourceAsync(source: string, options: FetchSourceOptions = {}): Promise<FetchedSource> {
   if (typeof source !== 'string' || source.length === 0) {
     throw new Error('Source must be a non-empty string')
   }
   if (isClawhubSource(source)) return await fetchClawhub(source)
-  if (isGithubSource(source)) return await fetchGithubAsync(source)
+  if (isGithubSource(source)) return await fetchGithubAsync(source, options)
   if (isLocalPath(source)) return fetchLocal(source)
 
   throw new Error(

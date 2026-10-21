@@ -12,16 +12,17 @@
  * so they don't live in the manifest.
  */
 import { isCorePlugin, pluginRegistry } from '@/core/plugin-registry'
+import { isUpdateOffered, updateRecordMatchesInstalled, type UpdateRecord } from '@makinbakin/sdk/types'
 import { createLogger } from '@/core/logger'
-import { computeUpgradeAvailable, readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
-import { runChecks } from '@/core/plugins/upgrade'
+import { getUpdatesEngine, getUpdatesTimer } from '@/core/updates/service'
+import { pluginInstalledIdentity } from '@/core/updates/sources/plugin'
+import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { pluginAssetVersion } from './asset-version'
 import type { PluginContributions } from '@makinbakin/sdk/types'
 import { startStartupSpan } from '@/core/startup-diagnostics'
 
 const log = createLogger('plugin-manifest')
 
-const STALE_HINT_DAYS = 7
 
 interface ManifestPlugin {
   id: string
@@ -37,18 +38,10 @@ interface ManifestPlugin {
   source: 'core' | 'github' | 'local'
   /** Lockfile entry for user-installed plugins; null for core. */
   installed: PluginLockEntry | null
-  /**
-   * True iff a remote update is detected. Always false at C3 — C5 wires
-   * `bakin plugins list --check` to populate `lastChecked` + remote shas
-   * and compute this flag.
-   */
+  /** The updates engine offers an unskipped update for this plugin (`isUpdateOffered` on its `plugin:<id>` record). */
   upgradeAvailable: boolean
-  /**
-   * Days since `lastChecked` if older than the staleness threshold (7 days),
-   * otherwise null. Surfaces as a "(last checked N days ago — run with
-   * --check)" hint in the CLI.
-   */
-  staleHintDays: number | null
+  /** ISO instant of the updates engine's last successful observation of this plugin; null for core plugins and before the first one. */
+  updateObservedAt: string | null
   status: 'active' | 'failed'
   errorCode?: string
   errorMessage?: string
@@ -60,9 +53,9 @@ interface ManifestResponse {
   plugins: ManifestPlugin[]
 }
 
-function daysSince(iso: string): number {
-  const ms = Date.now() - new Date(iso).getTime()
-  return Math.floor(ms / (1000 * 60 * 60 * 24))
+/** Whether the engine's record is an upgrade the operator has not skipped. */
+export function upgradeAvailableOf(record: UpdateRecord | undefined): boolean {
+  return record !== undefined && isUpdateOffered(record)
 }
 
 export async function get(req: Request): Promise<Response> {
@@ -73,33 +66,26 @@ export async function get(req: Request): Promise<Response> {
   const url = new URL(req.url)
   const wantCheck = url.searchParams.get('check') === '1'
   try {
-    // If --check requested, batch the per-plugin probes via runChecks — that
-    // helper does parallel reads but ONE atomic lockfile write at the end,
-    // avoiding the read-modify-write race that would silently drop updates.
-    if (wantCheck) {
-      const userIds = pluginRegistry
-        .getRegistrySnapshot()
-        .map(e => e.id)
-        .filter(id => !isCorePlugin(id))
-      if (userIds.length > 0) {
-        const checkSpan = startStartupSpan(log, 'pluginManifest.updateChecks', {
-          phase: 'manifest',
-          count: userIds.length,
-          thresholdMs: 1_000,
-        })
-        let results: Awaited<ReturnType<typeof runChecks>>
-        try {
-          results = await runChecks(userIds)
-          checkSpan.end({ status: 'ok', count: results.length })
-        } catch (err) {
-          checkSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
-          throw err
-        }
-        for (const r of results) {
-          if (r.error) log.warn('plugin --check probe failed', { id: r.id, error: r.error })
-        }
+    // `?check=1` is the engine's plugin pass, waited (#1007 B): the SAME
+    // observation every other surface reads — never a private probe here.
+    // Without a running engine (a serverless CLI path) there is nothing to run.
+    const timer = getUpdatesTimer()
+    if (wantCheck && timer) {
+      const checkSpan = startStartupSpan(log, 'pluginManifest.updateChecks', { phase: 'manifest', thresholdMs: 1_000 })
+      try {
+        const run = await timer.check({ kind: 'plugin' })
+        checkSpan.end({ status: 'ok', count: run.ids.length })
+      } catch (err) {
+        checkSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+        throw err
       }
     }
+    // The engine's records, read once per request: `upgradeAvailable` is an
+    // unskipped offer, `updateObservedAt` the last successful observation.
+    // The lockfile holds installed provenance only.
+    const records = new Map<string, UpdateRecord>()
+    const engine = getUpdatesEngine()
+    if (engine) for (const record of (await engine.snapshot()).records) records.set(record.id, record)
 
     // Read the lockfile once per request; tolerate read failures so a corrupt
     // lockfile doesn't blank the entire UI manifest.
@@ -118,15 +104,10 @@ export async function get(req: Request): Promise<Response> {
         ? 'core'
         : (installed?.type ?? 'local')
 
-      let staleHintDays: number | null = null
-      if (installed?.lastChecked) {
-        const days = daysSince(installed.lastChecked)
-        if (days > STALE_HINT_DAYS) staleHintDays = days
-      }
-
-      // Compute upgrade availability from persisted markers — same source of
-      // truth whether or not --check ran this request.
-      const upgradeAvailable = installed && !isCore ? computeUpgradeAvailable(installed) : false
+      // A record observed for ANOTHER installed identity (an upgrade or rebuild the engine has not reconciled yet) is no answer (review r5 #5).
+      const stored = isCore ? undefined : records.get(`plugin:${entry.id}`)
+      const record = stored && installed && updateRecordMatchesInstalled(stored, pluginInstalledIdentity(installed)) ? stored : undefined
+      const upgradeAvailable = upgradeAvailableOf(record)
 
       const plugin: ManifestPlugin = {
         id: entry.id,
@@ -135,7 +116,7 @@ export async function get(req: Request): Promise<Response> {
         source,
         installed,
         upgradeAvailable,
-        staleHintDays,
+        updateObservedAt: record?.observedAt ?? null,
         status: entry.status,
         contributes: entry.contributes,
       }

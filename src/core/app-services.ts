@@ -142,6 +142,31 @@ export async function createAppServices(): Promise<AppServices> {
   return services
 }
 
+/**
+ * Services for a READ-ONLY in-process path (#1007 B review r3 #1 / r4 #1 —
+ * the server-less `--check` verbs): the runtime adapter CONSTRUCTED, never
+ * initialized — `initialize()` is write-free by pin, but a runtime may warm
+ * caches whose stores create files under its own home; a bare adapter
+ * still answers every roster and workspace READ (`agents.list`,
+ * `readWorkspaceFile`, `skills.get`). Nothing else: no search
+ * initialization (antfly provisioning), no secret migration, no health
+ * registration, no delivery bridge. Never for a server, never for an
+ * install, never for a turn.
+ */
+export async function createReadOnlyAppServices(): Promise<AppServices> {
+  const settings = getSettings()
+  const { getSharedBakinTaskStore } = await import('./task-store')
+  const services: AppServices = {
+    runtime: createRuntimeAdapter(settings.runtime.adapter),
+    // Constructed, never initialized: a read-only path never searches, and initializing would provision the engine.
+    search: createSearchAdapter(settings.search.adapter),
+    tasks: getSharedBakinTaskStore(),
+  }
+  setAppServices(services)
+  log.info('Read-only app services ready', { runtime: `${services.runtime.name}@${services.runtime.version}` })
+  return services
+}
+
 // Re-exported from the leaf store so `import { getAppServices } from
 // './app-services'` keeps working across the codebase.
 export { getAppServices, maybeGetAppServices, setAppServices }

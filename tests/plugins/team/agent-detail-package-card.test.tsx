@@ -12,7 +12,7 @@
  * from the Zustand store, which we prime per test.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -291,13 +291,19 @@ describe('PackageCard — update and remove actions', () => {
       commitSha: 'abc1234567',
       installedAt: '2026-04-25T00:00:00Z',
     },
-    updateStatus: {
-      currentVersion: '0.1.0',
-      latestVersion: '0.2.0',
-      currentCommitSha: 'abc1234567',
-      latestCommitSha: 'def7654321',
-      upgradeAvailable: true,
-      checkedAt: '2026-06-01T12:00:00.000Z',
+    update: {
+      id: 'package:pixel',
+      group: 'available',
+      subject: { kind: 'package', id: 'pixel', label: 'pixel' },
+      installed: { version: '0.1.0', sha: 'abc1234567', display: '0.1.0' },
+      available: { version: '0.2.0', sha: 'def7654321', display: '0.2.0' },
+      reason: 'newer-version',
+      outcome: 'update-available',
+      source: { kind: 'git-ref', endpoint: 'github:examples/pixel', ref: 'main' },
+      fingerprint: 'fp',
+      observedAt: '2026-06-01T12:00:00.000Z',
+      attempt: { at: '2026-06-01T12:00:00.000Z' },
+      action: { kind: 'manual', pointer: 'bakin agents sync pixel' },
     },
   }
 
@@ -323,7 +329,7 @@ describe('PackageCard — update and remove actions', () => {
         const body = typeof init.body === 'string' ? JSON.parse(init.body) as { deleteAgent?: boolean } : {}
         return Promise.resolve(operationStarted(body.deleteAgent ? 'op-delete' : 'op-orphan'))
       }
-      if (u === '/api/agent-packages?check=1') {
+      if (u === '/api/agent-packages') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, agents: [UPDATE_ROW] }) } as Response)
       }
       if (u === '/api/plugins/team/') {
@@ -334,6 +340,76 @@ describe('PackageCard — update and remove actions', () => {
     global.fetch = fetchMock as unknown as typeof global.fetch
     return fetchMock
   }
+
+  it('renders the engine record: the offered version, and a failed last attempt', () => {
+    setupActionFetch()
+    render(<PackageCardBody agentId="pixel" packageState={{
+      ...UPDATE_ROW,
+      update: { ...UPDATE_ROW.update!, attempt: { at: '2026-06-02T12:00:00.000Z', error: 'ls-remote: timed out' } },
+    }} />)
+
+    expect(screen.getByText('update available')).toBeDefined()
+    expect(screen.getByText('Latest version 0.2.0 is available.')).toBeDefined()
+    expect(screen.getByText('Last update check failed: ls-remote: timed out')).toBeDefined()
+  })
+
+  it('review r6 #3: when the last package read failed, the card says the state is LAST KNOWN and offers a retry that re-reads the rows', async () => {
+    const fetchMock = setupActionFetch()
+    act(() => { useAgentStore.setState({ packageStatesError: 'Package state read failed (HTTP 500).', packageStatesAt: '2026-10-20T12:00:00.000Z' }) })
+    render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
+    const notice = screen.getByTestId('package-state-stale')
+    expect(notice.textContent).toContain('Package state read failed (HTTP 500).')
+    expect(notice.textContent).toContain('Last read')
+    // The last known state still renders.
+    expect(screen.getByText('update available')).toBeDefined()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+    })
+    expect(fetchMock.mock.calls.some((call) => call[0] === '/api/agent-packages')).toBe(true)
+    // The re-read succeeded: the signal clears and the notice goes.
+    expect(useAgentStore.getState().packageStatesError).toBeNull()
+    expect(screen.queryByTestId('package-state-stale')).toBeNull()
+  })
+
+  it('review r7 #5: with NO successful read yet the card says the state is unavailable and offers Retry — never a default "unmanaged" with Adopt, for the main agent too', async () => {
+    const fetchMock = setupActionFetch()
+    // Store writes land inside act: cards rendered by earlier tests may still be mounted and subscribed.
+    act(() => { useAgentStore.setState({ packageStatesError: 'Package state could not be reached.', packageStatesAt: null, mainAgentId: 'main' }) })
+    const { unmount } = render(<PackageCardBody agentId="pixel" packageState={undefined} />)
+    expect(screen.getByTestId('package-state-unavailable').textContent).toContain('Package state could not be reached.')
+    expect(screen.queryByRole('button', { name: /Adopt/ })).toBeNull()
+    expect(screen.queryByText('unmanaged')).toBeNull()
+    // The click, the re-read and the trailing busy-state reset all land inside ONE act: a 0 ms macrotask drains the
+    // (already-resolved) fetch mocks before act flushes.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+    })
+    expect(fetchMock.mock.calls.some((call) => call[0] === '/api/agent-packages')).toBe(true)
+    expect(useAgentStore.getState().packageStatesError).toBeNull()
+    expect(screen.queryByTestId('package-state-unavailable')).toBeNull()
+    unmount()
+
+    act(() => { useAgentStore.setState({ packageStatesError: 'Package state could not be reached.', packageStatesAt: null, mainAgentId: 'main' }) })
+    const main = render(<PackageCardBody agentId="main" packageState={undefined} />)
+    expect(screen.getByTestId('package-state-unavailable')).toBeDefined()
+    expect(screen.queryByText('Self-managed')).toBeNull()
+    main.unmount()
+    act(() => { useAgentStore.setState({ packageStatesError: null, packageStatesAt: null }) })
+  })
+
+  it('a skipped offer is not an update — the card stays managed', () => {
+    setupActionFetch()
+    render(<PackageCardBody agentId="pixel" packageState={{
+      ...UPDATE_ROW,
+      update: { ...UPDATE_ROW.update!, skipped: { version: '0.2.0', sha: 'def7654321' } },
+    }} />)
+
+    expect(screen.queryByText('update available')).toBeNull()
+    expect(screen.getByText('managed')).toBeDefined()
+    expect(screen.queryByText('Latest version 0.2.0 is available.')).toBeNull()
+  })
 
   it('opens the sync modal and posts to the sync route', async () => {
     const fetchMock = setupActionFetch()
