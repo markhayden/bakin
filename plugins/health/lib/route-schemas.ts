@@ -214,7 +214,7 @@ export const healthReportSchema = z.object({
   revision: z.number().int().nonnegative(),
   generatedAt: isoDateTime,
   overallStatus: z.enum(['healthy', 'needs_attention', 'degraded', 'unknown_stale']),
-  sensitivity: z.enum(['developer', 'standard', 'quiet']),
+  sensitivity: z.enum(['developer', 'standard']),
   lastFullSweep: z.object({
     id: nonEmptyString,
     startedAt: isoDateTime,

@@ -42,7 +42,7 @@ beforeEach(() => {
 })
 
 function summaryResponse(body: unknown) {
-  const value = body as { sensitivity?: 'standard' | 'quiet' | 'developer'; incidents: Array<Record<string, unknown>> }
+  const value = body as { sensitivity?: 'standard' | 'developer'; incidents: Array<Record<string, unknown>> }
   const full = makeTeamHealthReport({ sensitivity: value.sensitivity ?? 'standard', incidents: value.incidents.map((item) => ({
     status: 'warning', disposition: 'watch', title: 'Finding', impact: 'Review this finding',
     resources: [], resolution: { key: 'rerun', type: 'rerun', label: 'Run checks' }, observationIds: [],
@@ -128,8 +128,8 @@ describe('useHealthSummary', () => {
     expect(screen.getByTestId('count').textContent).toBe('null')
   })
 
-  it('quiet mode badges only action_required — watch stays silent (D10)', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'quiet', incidents: [
+  it('the badge counts action_required only — watch stays silent in every mode (D10)', async () => {
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'standard', incidents: [
       { id: 'watch', effectiveDisposition: 'watch' },
       { id: 'another-watch', effectiveDisposition: 'watch' },
     ] }))
@@ -137,8 +137,8 @@ describe('useHealthSummary', () => {
     await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('0:error'))
   })
 
-  it('quiet mode still pages for action_required', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'quiet', incidents: [
+  it('developer mode counts action_required the same way', async () => {
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'developer', incidents: [
       { id: 'runaway', effectiveDisposition: 'action_required' },
       { id: 'watch', effectiveDisposition: 'watch' },
     ] }))

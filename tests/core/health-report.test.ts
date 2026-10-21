@@ -145,23 +145,21 @@ describe('sensitivity projection (#690)', () => {
     'evidence_gap', 'unattributed_usage', 'runaway_usage',
   ] as const
 
-  it('standard and quiet demote exactly the expected-noise classes to advisory', () => {
-    for (const sensitivity of ['standard', 'quiet'] as const) {
-      for (const cls of DEMOTABLE) {
-        const [projected] = projectEffectiveDispositions(
-          [incidentWith({ class: cls, disposition: 'watch', effectiveDisposition: 'watch' })],
-          sensitivity,
-        )
-        expect(projected!.effectiveDisposition).toBe('advisory')
-        expect(projected!.disposition).toBe('watch') // raw preserved
-      }
-      for (const cls of NEVER_DEMOTED) {
-        const [projected] = projectEffectiveDispositions(
-          [incidentWith({ class: cls, disposition: 'watch', effectiveDisposition: 'watch' })],
-          sensitivity,
-        )
-        expect(projected!.effectiveDisposition).toBe('watch')
-      }
+  it('standard demotes exactly the expected-noise classes to advisory', () => {
+    for (const cls of DEMOTABLE) {
+      const [projected] = projectEffectiveDispositions(
+        [incidentWith({ class: cls, disposition: 'watch', effectiveDisposition: 'watch' })],
+        'standard',
+      )
+      expect(projected!.effectiveDisposition).toBe('advisory')
+      expect(projected!.disposition).toBe('watch') // raw preserved
+    }
+    for (const cls of NEVER_DEMOTED) {
+      const [projected] = projectEffectiveDispositions(
+        [incidentWith({ class: cls, disposition: 'watch', effectiveDisposition: 'watch' })],
+        'standard',
+      )
+      expect(projected!.effectiveDisposition).toBe('watch')
     }
   })
 
@@ -222,7 +220,7 @@ describe('sensitivity projection (#690)', () => {
       disposition: 'watch',
       effectiveDisposition: 'watch',
     })
-    for (const sensitivity of ['developer', 'standard', 'quiet'] as const) {
+    for (const sensitivity of ['developer', 'standard'] as const) {
       const [projected] = projectEffectiveDispositions([unknownIncident], sensitivity)
       // Never demoted: the badge still counts it, the card still says Verify,
       // and the overall status keeps saying "unverified" — one story.
