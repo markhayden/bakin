@@ -1,4 +1,4 @@
-import type { HealthCheckState, HealthObservation, HealthReport } from '@makinbakin/sdk/types'
+import { isUpdateSkipped, type HealthCheckState, type HealthObservation, type HealthReport, type UpdateRecord } from '@makinbakin/sdk/types'
 import type { StatusTone } from '@makinbakin/sdk/patterns'
 import type {
   SystemPluginManifestData,
@@ -57,12 +57,19 @@ const FINDING_RANK: Record<StatusTone, number> = {
   success: 4,
 }
 
+/**
+ * Join the live registry, the installed manifest and the updates engine's
+ * plugin records (#1007 P10′): whether a plugin has an update is the ENGINE's
+ * verdict — `plugin:<id>` available and not skipped — never a manifest marker.
+ */
 export function mergeSystemPlugins(
   registry: SystemRegistryData | null,
   manifest: SystemPluginManifestData | null,
+  updates: readonly UpdateRecord[] | null = null,
 ): InventoryPlugin[] {
   const registryById = new Map((registry?.plugins ?? []).map((plugin) => [plugin.id, plugin]))
   const manifestById = new Map((manifest?.plugins ?? []).map((plugin) => [plugin.id, plugin]))
+  const updateById = new Map((updates ?? []).filter((record) => record.subject.kind === 'plugin').map((record) => [record.subject.id, record]))
   const ids = new Set([...registryById.keys(), ...manifestById.keys()])
   return [...ids].map((id) => {
     const active: SystemRegistryPlugin | undefined = registryById.get(id)
@@ -77,16 +84,18 @@ export function mergeSystemPlugins(
     const status: InventoryPlugin['status'] = activationConflict
       ? 'unknown'
       : active?.status ?? installed?.status ?? 'unknown'
+    const update = updateById.get(id)
+    const upgradeAvailable = update !== undefined && update.outcome === 'update-available' && !isUpdateSkipped(update)
     return {
       id,
       name: active?.name ?? installed?.name ?? id,
       description: active?.description ?? '',
       version: installed?.version ?? active?.version ?? 'unknown',
-      latestVersion: installed?.latestVersion,
+      latestVersion: upgradeAvailable ? update.available?.display ?? null : null,
       source: installed?.source ?? active?.source ?? 'unknown',
       routes: active?.routes ?? 0,
       status,
-      upgradeAvailable: installed?.upgradeAvailable ?? false,
+      upgradeAvailable,
       errorCode: active?.errorCode ?? installed?.errorCode,
       errorMessage: active?.errorMessage ?? installed?.errorMessage,
       missingDependencies: active?.missingDependencies ?? installed?.missingDependencies,
@@ -150,9 +159,11 @@ export function buildSystemFindings(
   {
     reportCurrent = true,
     pluginInventoryCurrent = true,
+    updates = null,
   }: {
     reportCurrent?: boolean
     pluginInventoryCurrent?: boolean
+    updates?: readonly UpdateRecord[] | null
   } = {},
 ): SystemFinding[] {
   const checkFindings = (report?.checks ?? []).flatMap((check): SystemFinding[] => {
@@ -179,7 +190,7 @@ export function buildSystemFindings(
     }]
   })
 
-  const pluginFindings = mergeSystemPlugins(registry, manifest).flatMap((plugin): SystemFinding[] => {
+  const pluginFindings = mergeSystemPlugins(registry, manifest, updates).flatMap((plugin): SystemFinding[] => {
     if (plugin.status === 'failed') {
       const detail = plugin.errorMessage ?? 'The plugin did not activate.'
       return [{

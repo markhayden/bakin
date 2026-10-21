@@ -282,7 +282,8 @@ packages/host/
 |  | tool-access.ts (the ONE tool-invocation renderer) + runtime-switch.ts (switch orchestrator) + roster-reconcile.ts (cross-runtime carry seam) |
 |  | exec-tools/ (registry.ts + self-registering built-in tools under tools/) |
 |  | server/ (request-handler.ts router factory + startup-recovery.ts) |
-|  | plugin-scaffold.ts, self-update.ts |
+|  | plugin-scaffold.ts, self-update.ts + server-restart.ts (the swap/restart primitives the self-update operation composes) |
+|  | updates/ (the updates engine: engine, timer, store, sources/, apply, self-update operation + CLI — `.claude/knowledge/updates.md`) |
 |  | onboarding/ (16 components in COMPONENT_ORDER) |
 
 **Rule of thumb:** If a module has external side effects (writes files,

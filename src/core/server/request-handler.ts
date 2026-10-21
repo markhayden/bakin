@@ -71,8 +71,7 @@ import * as pluginsAssetsRoute from '../../../packages/host/src/api/plugins/asse
 import * as versionRoute from '../../../packages/host/src/api/version'
 import * as serverShutdownRoute from '../../../packages/host/src/api/server/shutdown'
 import * as docsRoute from '../../../packages/host/src/api/docs'
-import * as updateStatusRoute from '../../../packages/host/src/api/update/status'
-import * as updateApplyRoute from '../../../packages/host/src/api/update/apply'
+import * as updatesRoute from '../../../packages/host/src/api/updates'
 import { handleDevSse } from '../../../packages/host/src/api/dev/events'
 import * as devNotifyRoute from '../../../packages/host/src/api/dev/notify'
 import { serveHostClient } from '../../../packages/host/src/api/_static'
@@ -139,12 +138,26 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
-    if (url.pathname === '/api/update/status' && req.method === 'GET') {
-      dispatchWebHandler(req, res, updateStatusRoute.get)
+    // Updates engine (#1007): read, check now, skip. The apply surface is
+    // registered beside these once it exists (operations-routes inventory).
+    if (url.pathname === '/api/updates' && req.method === 'GET') {
+      dispatchWebHandler(req, res, updatesRoute.list)
       return
     }
-    if (url.pathname === '/api/update/apply' && req.method === 'POST') {
-      dispatchWebHandler(req, res, updateApplyRoute.post)
+    if (url.pathname === '/api/updates/check' && req.method === 'POST') {
+      dispatchWebHandler(req, res, updatesRoute.check)
+      return
+    }
+    if (req.method === 'POST' && updatesRoute.skipUpdateIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, updatesRoute.skip)
+      return
+    }
+    if (req.method === 'GET' && updatesRoute.applyPreviewIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, updatesRoute.applyPreview)
+      return
+    }
+    if (req.method === 'POST' && updatesRoute.applyIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, updatesRoute.apply)
       return
     }
 

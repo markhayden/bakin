@@ -4,9 +4,11 @@
  * staging-clone flow for monorepo subpath installs. Consent gates run
  * against the remote/staged manifest BEFORE any working-tree mutation.
  */
-import { existsSync, cpSync, rmSync } from 'fs'
+import { existsSync, cpSync, rmSync, openSync, readSync, closeSync } from 'fs'
+import { execFileSync } from 'child_process'
 import { join } from 'path'
 import { createHash } from 'crypto'
+import { gitArgs } from '@bakin/core/net/git-args'
 import { getContentDir } from '@/core/content-dir'
 import {
   type PluginLockEntry,
@@ -16,7 +18,7 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
-import { replacePluginDir } from './replace-transaction'
+import { INSTALL_SENTINEL, replacePluginDir } from './replace-transaction'
 import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
   type UpgradeOptions,
@@ -25,6 +27,7 @@ import {
   auditUpgradeRejected,
   assertManifestIdStable,
   assertManifestSignaturePolicy,
+  assertUpgradeTarget,
   gateUpgradeConsent,
   installUpgradedPluginAssets,
   manifestVersion,
@@ -53,17 +56,97 @@ export function githubCloneUrl(source: string): string {
  * it and compute the manifestSha from the bytes. Identical to what
  * `readManifest` would compute after a checkout.
  */
-function readRemoteManifest(pluginDir: string, ref: string): { manifest: Record<string, unknown>; manifestSha: string } {
-  const raw = git(['show', `origin/${ref}:bakin-plugin.json`], pluginDir)
+/** How many gitlink paths a refusal names. */
+const GITLINKS_NAMED = 5
+/** The read window of the listing scan — the only listing bytes ever in memory at once. */
+const LISTING_CHUNK_BYTES = 64 * 1024
+
+/**
+ * Scan a `git ls-tree -r` listing written to `path` in fixed-size chunks,
+ * retaining only the gitlink count and up to `limit` gitlink paths (review
+ * r13 #1): a pathological tree never allocates a line array in the heap.
+ * A line is `<mode> <type> <sha>\t<path>` — plain `ls-tree` output, no
+ * `--format` (that needs git 2.36; this reads what every git prints).
+ */
+export function scanGitlinkListing(fd: number, options: { limit?: number; chunkBytes?: number } = {}): { total: number; paths: string[] } {
+  const limit = options.limit ?? GITLINKS_NAMED
+  const buffer = Buffer.alloc(options.chunkBytes ?? LISTING_CHUNK_BYTES)
+  const decoder = new TextDecoder()
+  const paths: string[] = []
+  let total = 0
+  let carry = ''
+  let position = 0
+  const take = (line: string): void => {
+    if (!line.startsWith('160000 ')) return
+    total += 1
+    if (paths.length < limit) paths.push(line.slice(line.indexOf('\t') + 1))
+  }
+  for (;;) {
+    // Positioned reads: the descriptor was just written to by git, its cursor is at the end.
+    const read = readSync(fd, buffer, 0, buffer.length, position)
+    if (read === 0) break
+    position += read
+    carry += decoder.decode(buffer.subarray(0, read), { stream: true })
+    let newline = carry.indexOf('\n')
+    while (newline !== -1) {
+      take(carry.slice(0, newline))
+      carry = carry.slice(newline + 1)
+      newline = carry.indexOf('\n')
+    }
+  }
+  carry += decoder.decode()
+  if (carry) take(carry)
+  return { total, paths }
+}
+
+/**
+ * A reviewed commit that carries gitlinks (submodules) under `subpath` (the
+ * whole tree for the in-place lane) is refused (review r10 #1, r11 #1): the
+ * in-place lane resets and cleans the superproject only, so an initialized
+ * submodule copied from the previous install could keep an old commit or a
+ * local edit the build then consumes under the reviewed sha; the subpath
+ * lane's non-recursive clone would leave one EMPTY and install an
+ * incomplete plugin under that sha. Submodules outside the subpath are
+ * someone else's. Unsupported until they are materialized and verified.
+ *
+ * SYNCHRONOUS on purpose (review r12 #1): a preview holds no resources, so
+ * nothing in a lane may await between its reads of the installed
+ * repository — another operation could replace or remove it in between.
+ * The listing goes to a private scan file and is read back in fixed chunks
+ * (`scanGitlinkListing`), so neither a buffer cap nor the heap bounds the
+ * size of a tree the lane can judge.
+ */
+function assertNoGitlinks(id: string, repoDir: string, sha: string, subpath?: string): void {
+  // The listing lives in an UNLINKED descriptor (review r14 #3): git writes
+  // to it, the scan reads it back, and a crash at any point leaves no file.
+  const scanFile = join(getContentDir(), 'plugins', `.upgrade-scan-${id}-${Date.now()}-${process.pid}`)
+  const fd = openSync(scanFile, 'w+')
+  let scan: { total: number; paths: string[] }
+  try {
+    rmSync(scanFile, { force: true })
+    execFileSync('git', gitArgs(['ls-tree', '-r', '--', sha, ...(subpath ? [subpath] : [])]), {
+      cwd: repoDir, stdio: ['ignore', fd, 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    })
+    scan = scanGitlinkListing(fd)
+  } finally {
+    closeSync(fd)
+  }
+  if (scan.total === 0) return
+  throw new UpgradeRefusedError(`${id}: ${sha.slice(0, 7)}${subpath ? ` (${subpath})` : ''} contains git submodules (${scan.paths.join(', ')}${scan.total > scan.paths.length ? ', …' : ''}), which the upgrade cannot verify. Vendor them into the tree or reinstall.`)
+}
+
+/** The manifest at an exact commit — the fetched ref's peeled sha, never a remote-tracking name a tag or a qualified ref has no counterpart for. */
+function readRemoteManifest(pluginDir: string, sha: string, ref: string): { manifest: Record<string, unknown>; manifestSha: string } {
+  const raw = git(['show', `${sha}:bakin-plugin.json`], pluginDir)
   if (!raw) {
-    throw new UpgradeRefusedError(`origin/${ref} has no bakin-plugin.json`)
+    throw new UpgradeRefusedError(`${ref} (${sha.slice(0, 7)}) has no bakin-plugin.json`)
   }
   let manifest: Record<string, unknown>
   try {
     manifest = JSON.parse(raw)
   } catch (err) {
     throw new UpgradeRefusedError(
-      `origin/${ref}/bakin-plugin.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      `${ref}/bakin-plugin.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
     )
   }
   const manifestSha = createHash('sha256').update(raw, 'utf-8').digest('hex')
@@ -97,9 +180,13 @@ export async function upgradeGithub(
   // This lets us inspect the remote manifest before deciding whether to
   // commit the upgrade (consent gate runs against the remote state, not a
   // post-mutation working tree).
+  // The EXACT ref (a branch, a tag — annotated or not — or a qualified
+  // `refs/...` name) lands on FETCH_HEAD; its PEELED commit is the one
+  // immutable identity every later step uses (review r7 #2): a tag has no
+  // `origin/<tag>` and `origin/refs/heads/x` is nothing.
   git(['fetch', 'origin', '--', entry.ref], pluginDir)
 
-  const remoteSha = git(['rev-parse', `origin/${entry.ref}`], pluginDir).toLowerCase()
+  const remoteSha = git(['rev-parse', 'FETCH_HEAD^{commit}'], pluginDir).toLowerCase()
   const localSha = git(['rev-parse', 'HEAD'], pluginDir).toLowerCase()
 
   // True noop — local HEAD already matches remote AND lockfile commitSha
@@ -116,13 +203,18 @@ export async function upgradeGithub(
     }
   }
 
+  // A genuine no-op never lists the tree; anything else is refused before it is read.
+  assertNoGitlinks(id, pluginDir, remoteSha)
+
   // Read the remote manifest WITHOUT mutating the working tree. Consent gate
   // runs against this. If the user declines, no disk change happens.
-  const { manifest, manifestSha } = readRemoteManifest(pluginDir, entry.ref)
+  const { manifest, manifestSha } = readRemoteManifest(pluginDir, remoteSha, entry.ref)
   assertManifestIdStable(manifest, id)
   assertManifestSignaturePolicy(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
-  const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: remoteSha } })
+  const identity = { version: newVersion, sha: remoteSha }
+  assertUpgradeTarget(id, opts.expected, identity)
+  const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: remoteSha }, identity })
   if (!gate.proceed) return gate.result
 
   // The merge-base check runs BEFORE the transaction (read-only on the
@@ -151,11 +243,16 @@ export async function upgradeGithub(
     id,
     op: 'upgrade',
     place: (dir, previousDir) => {
-    // In-place lane: the new tree is the OLD clone (with the fetched
-    // objects) fast-forwarded — copy the backup in and merge on top.
-    cpSync(previousDir!, dir, { recursive: true, dereference: false })
-    if (localSha !== remoteSha) git(['merge', '--ff-only', `origin/${entry.ref}`], dir)
-  },
+      // In-place lane: the new tree is the OLD clone (with the fetched objects)
+      // moved to the reviewed commit EXACTLY (review r8 #1): tracked files are
+      // reset to it and every untracked or ignored leftover — a local edit, a
+      // stale dist, node_modules, a vendored nested repository (`-ff`, review
+      // r9 #1) — is removed (the build regenerates output and dependencies).
+      // Only the transaction's own root-level sentinel survives.
+      cpSync(previousDir!, dir, { recursive: true, dereference: false })
+      git(['reset', '--hard', remoteSha], dir)
+      git(['clean', '-ffdx', '-e', `/${INSTALL_SENTINEL}`, '--', '.'], dir)
+    },
   build: buildUserPlugin,
     bins: gate.bins,
     binIdentity: { pluginId: id, version: newVersion, ref: entry.ref, commitSha: remoteSha },
@@ -180,6 +277,7 @@ export async function upgradeGithub(
     before,
     after: { version: newVersion, commitSha: remoteSha },
     noop: false,
+    identity,
     declaredPermissions: gate.newPerms,
     declaredBins: gate.declaredBins,
     awaitingConsent: false,
@@ -238,6 +336,8 @@ export async function upgradeGithubSubpath(
       }
     }
 
+    assertNoGitlinks(id, stagingDir, remoteSha, subpath)
+
     const subpathDir = join(stagingDir, subpath)
     if (!existsSync(subpathDir)) {
       throw new UpgradeRefusedError(
@@ -255,7 +355,10 @@ export async function upgradeGithubSubpath(
     assertManifestIdStable(manifest, id)
     assertManifestSignaturePolicy(manifest, id)
     const newVersion = manifestVersion(manifest, entry.version)
-    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: remoteSha } })
+    // The staging clone's HEAD is the commit this lane would copy in: the reviewed sha is held to (review r4 #1).
+    const identity = { version: newVersion, sha: remoteSha }
+    assertUpgradeTarget(id, opts.expected, identity)
+    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: remoteSha }, identity })
     if (!gate.proceed) return gate.result
 
     // Consent accepted (or unnecessary). Replace the plugin dir inside the
@@ -291,6 +394,7 @@ export async function upgradeGithubSubpath(
       before,
       after: { version: newVersion, commitSha: remoteSha },
       noop: false,
+      identity,
       declaredPermissions: gate.newPerms,
       declaredBins: gate.declaredBins,
       awaitingConsent: false,

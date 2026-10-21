@@ -93,7 +93,9 @@ composition and what's actually in the block, attributed per input.
 
 ## Invariants
 
-- Doctor/scanner never touch the network; upstream checks are user-initiated.
+- Doctor/scanner never touch the network; upstream checks are the updates
+  engine's scheduled observations (`updates.md`; the `package`/`hub-skill`
+  sources land with #1007 B) or an explicit `--check`.
 - Sync rewrites blocks unconditionally (package-owned); `.userEdited`
   sentinels apply to skills/assets only, skipped loudly with a reclaim hint,
   cleared only via the confirmed `--reclaim` path.

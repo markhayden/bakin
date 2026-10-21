@@ -22,7 +22,7 @@
  * - `./upgrade-check` — the read-only `--check` probe (batched lockfile write)
  * - `./source-tree-sha` — local source-tree hashing
  */
-import { existsSync, cpSync } from 'fs'
+import { existsSync, cpSync, realpathSync, rmSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { isCorePlugin } from '@/core/plugin-registry'
@@ -36,7 +36,7 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
-import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha } from './source-tree-sha'
+import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha, computeSourceTreeSha, copyLocalSource, symlinksIn } from './source-tree-sha'
 import { replacePluginDir } from './replace-transaction'
 import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
@@ -50,8 +50,7 @@ import {
   installUpgradedPluginAssets,
   manifestVersion,
   readManifest,
-  sweepDroppedBins,
-} from './upgrade-gate'
+  sweepDroppedBins, assertUpgradeTarget } from './upgrade-gate'
 import { isArtifactInstall, upgradeArtifact } from './upgrade-artifact'
 import { PLUGIN_STAGES } from './operation-plans'
 import { upgradeGithub, upgradeGithubSubpath } from './upgrade-github'
@@ -151,7 +150,7 @@ async function upgradeLocal(
   // Legacy-aware compare: a stored algo-1 sha is verified with the legacy
   // hasher so hasher consolidation never forces a spurious rebuild of an
   // untouched source (see source-tree-sha.ts).
-  const cmp = compareStoredSourceTreeSha(entry, sourcePath)
+  const cmp = compareStoredSourceTreeSha(entry, sourcePath, pluginDir)
   const newTreeSha = cmp.liveSha
   if (entry.sourceTreeSha && !cmp.changed) {
     if (cmp.needsAlgoMigration) {
@@ -175,54 +174,79 @@ async function upgradeLocal(
     }
   }
 
-  // Read the source manifest WITHOUT mutating the plugin dir. Consent gate
-  // runs against the source state. If the user declines, the on-disk plugin
-  // (and its lockfile entry) stays exactly where it was.
-  const { manifest, manifestSha } = readManifest(sourcePath)
-  assertManifestIdStable(manifest, id)
-  assertManifestSignaturePolicy(manifest, id)
-  const newVersion = manifestVersion(manifest, entry.version)
-  const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: '' } })
-  if (!gate.proceed) return gate.result
+  // The source is a LIVE directory someone may be editing: snapshot it into
+  // private staging first, and read, verify and install exclusively from that
+  // snapshot — the digest the identity names is the digest of the bytes that
+  // land (review r5 #1). Consent runs against the snapshot; a decline leaves
+  // the on-disk plugin (and its lockfile entry) exactly where it was.
+  const pluginsRoot = join(getContentDir(), 'plugins')
+  const stagingDir = join(pluginsRoot, `.upgrade-staging-${id}-${Date.now()}-${process.pid}`)
+  try {
+    // A symlinked source ROOT is resolved so the snapshot is a real directory.
+    // The snapshot is the install's transfer set (`copyLocalSource` — root
+    // dist/node_modules/.git never ride, everything else does) and the digest
+    // covers exactly that set; a symlink anywhere inside is refused — the
+    // hasher cannot vouch for what a link points at, so the digest would not
+    // cover the build's inputs.
+    copyLocalSource(realpathSync(sourcePath), stagingDir)
+    const links = symlinksIn(stagingDir)
+    if (links.length > 0) {
+      throw new UpgradeRefusedError(`${id}: the source carries symlinked entries (${links.slice(0, 3).join(', ')}${links.length > 3 ? ', …' : ''}) — a reviewed digest cannot cover them. Materialize them and check again.`)
+    }
+    const snapshotSha = computeSourceTreeSha(stagingDir)
+    const { manifest, manifestSha } = readManifest(stagingDir)
+    assertManifestIdStable(manifest, id)
+    assertManifestSignaturePolicy(manifest, id)
+    const newVersion = manifestVersion(manifest, entry.version)
+    // A local source has no commit; its identity is the source-tree digest the
+    // update source offered — a tree that moved since the review is refused (review r4 #1).
+    const identity = { version: newVersion, digest: snapshotSha }
+    assertUpgradeTarget(id, opts.expected, identity)
+    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: '' }, identity })
+    if (!gate.proceed) return gate.result
 
-  // Consent accepted (or unnecessary). Replace the plugin dir inside the
-  // transaction — the previous install (directory, binaries, ledger row)
-  // comes back byte for byte on any failure. Bins the new manifest dropped
-  // go only AFTER the ledger write, and only with zero remaining owners.
-  let assets!: Awaited<ReturnType<typeof installUpgradedPluginAssets>>
-  const { installedBins } = await replacePluginDir({
-    id,
-    op: 'upgrade',
-    place: (dir) => cpSync(sourcePath, dir, { recursive: true, dereference: false }),
-  build: buildUserPlugin,
-    bins: gate.bins,
-    binIdentity: { pluginId: id, version: newVersion, ref: '', commitSha: '' },
-    operation: opts.op,
-    ledger: async (bins) => {
-      assets = await installUpgradedPluginAssets(id, pluginDir)
-      writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
-        upgradedAt: new Date().toISOString(),
-        version: newVersion,
-      sourceTreeSha: newTreeSha,
-      sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
-        manifestSha,
-        permissions: gate.newPerms,
-        installedSkills: assets.installedSkills,
-        installedBins: toInstalledBins(bins),
-      }))
-    },
-  })
-  const droppedBins = sweepDroppedBins(id, entry.installedBins, installedBins.map((bin) => bin.name))
+    // Consent accepted (or unnecessary). Replace the plugin dir inside the
+    // transaction — the previous install (directory, binaries, ledger row)
+    // comes back byte for byte on any failure. Bins the new manifest dropped
+    // go only AFTER the ledger write, and only with zero remaining owners.
+    let assets!: Awaited<ReturnType<typeof installUpgradedPluginAssets>>
+    const { installedBins } = await replacePluginDir({
+      id,
+      op: 'upgrade',
+      place: (dir) => cpSync(stagingDir, dir, { recursive: true, dereference: false }),
+      build: buildUserPlugin,
+      bins: gate.bins,
+      binIdentity: { pluginId: id, version: newVersion, ref: '', commitSha: '' },
+      operation: opts.op,
+      ledger: async (bins) => {
+        assets = await installUpgradedPluginAssets(id, pluginDir)
+        writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
+          upgradedAt: new Date().toISOString(),
+          version: newVersion,
+          sourceTreeSha: snapshotSha,
+          sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
+          manifestSha,
+          permissions: gate.newPerms,
+          installedSkills: assets.installedSkills,
+          installedBins: toInstalledBins(bins),
+        }))
+      },
+    })
+    const droppedBins = sweepDroppedBins(id, entry.installedBins, installedBins.map((bin) => bin.name))
 
-  return {
-    id,
-    before,
-    after: { version: newVersion, commitSha: '' },
-    noop: false,
-    declaredPermissions: gate.newPerms,
-    declaredBins: gate.declaredBins,
-    awaitingConsent: false,
-    pluginAssets: assets.pluginAssets,
-    droppedBins,
+    return {
+      id,
+      before,
+      after: { version: newVersion, commitSha: '' },
+      noop: false,
+      identity,
+      declaredPermissions: gate.newPerms,
+      declaredBins: gate.declaredBins,
+      awaitingConsent: false,
+      pluginAssets: assets.pluginAssets,
+      droppedBins,
+    }
+  } finally {
+    rmSync(stagingDir, { recursive: true, force: true })
   }
 }

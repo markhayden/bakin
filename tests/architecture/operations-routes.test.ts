@@ -33,6 +33,10 @@ const CONVERTED: Record<string, { declaredIn: string; resource: string | null }>
   'packages/host/src/api/search/maintenance.ts': { declaredIn: 'src/core/search-operations.ts', resource: 'search-engine' },
   'packages/host/src/api/runtime/switch.ts': { declaredIn: 'src/core/runtime-switch.ts', resource: 'install-state' },
   'packages/host/src/api/runtime/onboarding.ts': { declaredIn: 'src/core/onboarding/operation.ts', resource: null },
+  // #1007 D7.4: the apply service starts the subject's own operation (plugin
+  // upgrade → install-state, engine reinstall → search-engine through the
+  // repair reindex, models install) or resolves a covering approval.
+  'packages/host/src/api/updates.ts': { declaredIn: 'src/core/updates/apply.ts', resource: 'search-engine' },
 }
 
 /** Plugin routes that start operations through `ctx.operations` / the doctor. */
@@ -48,7 +52,8 @@ const NON_BLOCKING_WRITERS: Record<string, string> = {
   'packages/host/src/api/skills.ts': 'install-state',
 }
 
-const STARTS_OPERATION = /startOperationResponse[<(]|operations\.start[<(]|startDoctorRepair\(/
+// `confirmApply(`: the Updates apply service (#1007 D7.4) starts the subject's operation on the route's behalf.
+const STARTS_OPERATION = /startOperationResponse[<(]|operations\.start[<(]|startDoctorRepair\(|confirmApply\(/
 
 function* routeFiles(dir: string): Generator<string> {
   for (const name of readdirSync(dir)) {

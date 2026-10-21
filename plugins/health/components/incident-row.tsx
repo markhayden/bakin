@@ -177,6 +177,16 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-bakin-2">
+        {item.updateId && (
+          <PluginLink
+            to={`/health?tab=updates&update=${encodeURIComponent(item.updateId)}`}
+            className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+            aria-label={`View the update for ${incident.title}`}
+          >
+            View update
+            <ChevronRight aria-hidden="true" />
+          </PluginLink>
+        )}
         {incident.repairTaskId && (
           <PluginLink
             to={`/tasks?taskId=${encodeURIComponent(incident.repairTaskId)}`}

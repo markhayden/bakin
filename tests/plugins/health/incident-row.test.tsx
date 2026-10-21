@@ -61,6 +61,17 @@ describe('IncidentRow (#690)', () => {
     expect(screen.queryByRole('link', { name: /Open the repair task/ })).toBeNull()
   })
 
+  it('links the Updates row that would resolve the incident (#1007 D7.7), and shows no link without one', () => {
+    const linked = item({ resources: [{ kind: 'plugin', id: 'terminal', label: 'Terminal' }] })
+    linked.updateId = 'plugin:terminal'
+    render(<IncidentRow item={linked} />)
+    const link = screen.getByRole('link', { name: 'View the update for Something needs review' })
+    expect(link.getAttribute('href')).toBe('/health?tab=updates&update=plugin%3Aterminal')
+    cleanup()
+    render(<IncidentRow item={item({ resources: [{ kind: 'plugin', id: 'terminal', label: 'Terminal' }] })} />)
+    expect(screen.queryByRole('link', { name: /View the update/ })).toBeNull()
+  })
+
   it('exposes commandless ownership recovery through the existing instruction disclosure', () => {
     render(<IncidentRow item={item({
       status: 'error', class: 'policy_denial', disposition: 'action_required', effectiveDisposition: 'action_required',

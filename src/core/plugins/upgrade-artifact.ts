@@ -36,8 +36,7 @@ import {
   installUpgradedPluginAssets,
   manifestVersion,
   readManifest,
-  sweepDroppedBins,
-} from './upgrade-gate'
+  sweepDroppedBins, assertUpgradeTarget } from './upgrade-gate'
 
 const log = createLogger('plugin-upgrade-artifact')
 
@@ -136,7 +135,11 @@ export async function upgradeArtifact(
     assertManifestSignaturePolicy(manifest, id)
     const newVersion = manifestVersion(manifest, latest)
     const newCommitSha = materialized.provenance.sourceCommitSha || ''
-    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: newCommitSha } })
+    // The published tarball's sha256 is the artifact's identity: a rebuild under
+    // the same version is a different artifact (review r4 #2 freezes it in approvals).
+    const identity = { version: newVersion, digest: materialized.sha256 }
+    assertUpgradeTarget(id, opts.expected, identity)
+    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: newCommitSha }, identity })
     if (!gate.proceed) return gate.result
 
     // The host must still provide the externals the new artifact was
@@ -186,6 +189,7 @@ export async function upgradeArtifact(
       before,
       after: { version: newVersion, commitSha: newCommitSha },
       noop: false,
+      identity,
       declaredPermissions: gate.newPerms,
       declaredBins: gate.declaredBins,
       awaitingConsent: false,

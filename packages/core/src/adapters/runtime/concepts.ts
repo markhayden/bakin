@@ -624,6 +624,19 @@ export interface RestartAdvice {
   action?: { label: string; kind: 'restart-runtime' }
 }
 
+/**
+ * Whether the runtime process Bakin talks to satisfies the adapter's floor
+ * (#1007, D7.10). `required` is the adapter's own floor (an OpenClaw gateway
+ * protocol number); `observed` is what the LAST recorded handshake reported
+ * — never inferred from a CLI version. `unknown` until a handshake happened.
+ */
+export interface RuntimeCompatibility {
+  required: string
+  observed?: string
+  observedAt?: string
+  state: 'ok' | 'below-floor' | 'unknown'
+}
+
 export type RuntimeImageOutputFormat = 'png' | 'jpeg' | 'jpg' | 'webp'
 export type RuntimeImageBackground = 'transparent' | 'opaque' | 'auto'
 
@@ -843,6 +856,15 @@ export interface AgentRuntimeAdapter {
    * (`runtime.restartAdvice?.(kind)`).
    */
   restartAdvice?(change: RuntimeConfigChangeKind): RestartAdvice | undefined
+  /**
+   * OPTIONAL (#1007 D7.10): the runtime's compatibility with Bakin's floor
+   * from cached handshake evidence. SYNC, never a live probe. Adapters with
+   * no external process to be compatible with (Pi, in-process) omit the
+   * member; absence is member omission, never a throwing stub
+   * (conformance-pinned). The Updates engine lists a `gateway` subject only
+   * when the member exists.
+   */
+  compatibility?(): RuntimeCompatibility
 
   /**
    * CRUD error contract (R28): `get` returns `null` for a missing agent —

@@ -53,6 +53,43 @@ export interface UpgradeOptions {
   previewOnly?: boolean
   /** The preview or commit operation: lanes report fetch → check → the replace stages. */
   op?: OperationContext
+  /**
+   * The identity the operator reviewed (#1007 review r3 #1): the lane refuses
+   * to install anything else — a ref that moved upstream, a republished
+   * artifact — even when the manifest (and so the consent token) is unchanged.
+   */
+  expected?: { version?: string; sha?: string; digest?: string }
+}
+
+/** The identity a lane verified: what it would install. Every lane reports it (review r4 #1). */
+export interface UpgradeIdentity {
+  version: string
+  /** Git lanes: the commit the ref resolves to. */
+  sha?: string
+  /** The artifact lane: the published tarball's sha256; the local lane: the source tree's digest. */
+  digest?: string
+}
+
+/**
+ * Refuse a candidate that is not the reviewed one. Every field the caller
+ * reviewed must be present on the candidate AND match — a lane that cannot
+ * report a reviewed field cannot prove it is installing the reviewed thing.
+ * Fields the caller did not review (undefined) are not compared.
+ */
+export function assertUpgradeTarget(id: string, expected: UpgradeOptions['expected'], candidate: UpgradeIdentity): void {
+  if (!expected) return
+  const drift: string[] = []
+  const compare = (field: 'version' | 'sha' | 'digest', label: string, short: (value: string) => string) => {
+    const want = expected[field]
+    if (want === undefined) return
+    const have = candidate[field]
+    if (have === undefined) drift.push(`no ${label} to hold against the reviewed ${short(want)}`)
+    else if (have !== want) drift.push(`${label} ${short(have)} (reviewed ${short(want)})`)
+  }
+  compare('version', 'version', (v) => v)
+  compare('sha', 'commit', (v) => v.slice(0, 7))
+  compare('digest', 'artifact', (v) => v.slice(0, 12))
+  if (drift.length > 0) throw new UpgradeRefusedError(`${id}: the upgrade target changed since it was reviewed — ${drift.join(', ')}. Check for updates and apply again.`)
 }
 
 export interface UpgradeResult {
@@ -61,6 +98,8 @@ export interface UpgradeResult {
   after: { version: string; commitSha: string }
   /** True when nothing changed and no rebuild ran. */
   noop: boolean
+  /** The identity this lane verified it would install (absent on a noop): what an approval or an `expected` holds it to. */
+  identity?: UpgradeIdentity
   /**
    * EVERY permission the target manifest declares — the consent disclosure.
    * Never a diff against the lockfile: the lock is inventory, and an edited
@@ -250,8 +289,10 @@ export function gateUpgradeConsent(args: {
   opts: UpgradeOptions
   before: { version: string; commitSha: string }
   after: { version: string; commitSha: string }
+  /** What the lane verified it would install — stamped on every preview result so an approval can freeze it. */
+  identity: UpgradeIdentity
 }): UpgradeConsentGate {
-  const { id, manifest, manifestSha, opts, before, after } = args
+  const { id, manifest, manifestSha, opts, before, after, identity } = args
   opts.op?.stage(PLUGIN_STAGES.check)
   const newPerms = manifestPermissions(manifest, id)
   const bins = manifestBins(manifest, id)
@@ -262,7 +303,7 @@ export function gateUpgradeConsent(args: {
   const awaiting = (manifestChanged: boolean): UpgradeConsentGate => ({
     proceed: false,
     result: {
-      id, before, after, noop: false, declaredPermissions: newPerms, declaredBins, awaitingConsent: true, consent,
+      id, before, after, noop: false, identity, declaredPermissions: newPerms, declaredBins, awaitingConsent: true, consent,
       ...(manifestChanged ? { manifestChanged: true } : {}),
     },
   })
@@ -278,7 +319,7 @@ export function gateUpgradeConsent(args: {
   if (opts.previewOnly) {
     return {
       proceed: false,
-      result: { id, before, after, noop: false, declaredPermissions: newPerms, declaredBins, awaitingConsent: false, ready: true, consent },
+      result: { id, before, after, noop: false, identity, declaredPermissions: newPerms, declaredBins, awaitingConsent: false, ready: true, consent },
     }
   }
   return { proceed: true, newPerms, declaredBins, bins }

@@ -55,6 +55,30 @@ describe('Settings', () => {
     expect(getSettings().doctor.sensitivity).toBe('quiet')
   })
 
+  it('updates.enabled is a strict boolean and updates.intervalMs a finite number clamped to [15 min, 7 d] (#1007)', () => {
+    expect(getSettings().updates).toEqual({ enabled: true, intervalMs: 6 * 60 * 60 * 1000 })
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ updates: { enabled: false, intervalMs: 60 * 60 * 1000 } }))
+    resetSettingsCache()
+    expect(getSettings().updates).toEqual({ enabled: false, intervalMs: 60 * 60 * 1000 })
+    for (const [enabled, intervalMs] of [['no', 1000], [1, 1e12], [null, 'soon'], [undefined, Number.NaN], ['true', Number.POSITIVE_INFINITY]] as const) {
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ updates: { enabled, intervalMs } }))
+      resetSettingsCache()
+      const updates = getSettings().updates
+      expect(updates.enabled).toBe(true)
+      expect(updates.intervalMs).toBe(
+        typeof intervalMs === 'number' && Number.isFinite(intervalMs)
+          ? Math.min(7 * 24 * 60 * 60 * 1000, Math.max(15 * 60 * 1000, intervalMs))
+          : 6 * 60 * 60 * 1000,
+      )
+    }
+    // Writes round-trip through the same normalization.
+    fs.writeFileSync(SETTINGS_FILE, '{}')
+    resetSettingsCache()
+    updateSettings({ updates: { enabled: false, intervalMs: 5 * 60 * 1000 } } as never)
+    expect(getSettings().updates).toEqual({ enabled: false, intervalMs: 15 * 60 * 1000 })
+  })
+
   it('doctor.escalation is a plain boolean — anything else falls back to the default (#945)', () => {
     fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ doctor: { escalation: false } }))

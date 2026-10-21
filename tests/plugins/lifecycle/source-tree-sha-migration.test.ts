@@ -14,8 +14,8 @@
  * - `upgradePlugin` local noop path performs the same one-time rewrite
  */
 import { describe, it, expect, afterAll, beforeEach, mock } from 'bun:test'
-import { mkdirSync, writeFileSync, rmSync } from 'fs'
-import { join } from 'path'
+import { cpSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'fs'
+import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 
@@ -63,6 +63,8 @@ import {
 import { hashSourceTree } from '../../../src/core/whiskit/source-hash'
 import {
   SOURCE_TREE_SHA_ALGO,
+  copyLocalSource,
+  localTransferPolicy,
   compareStoredSourceTreeSha,
   computeSourceTreeSha,
   legacySourceTreeSha,
@@ -81,6 +83,11 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
 })
+
+/** Where the fixture's "installed" copy of a source lives (the baseline a legacy-row migration measures against). */
+function installedOf(sourceDir: string): string {
+  return join(testDir, 'installed', basename(sourceDir))
+}
 
 function writeFixturePlugin(rootDir: string, opts: { id: string; version: string }): void {
   mkdirSync(rootDir, { recursive: true })
@@ -114,11 +121,119 @@ function localEntry(opts: {
   }
 }
 
-describe('computeSourceTreeSha — canonical hasher', () => {
-  it('delegates to the whiskit hashSourceTree (published-artifact formula)', () => {
-    const dir = join(testDir, 'canon')
-    writeFixturePlugin(dir, { id: 'canon', version: '1.0.0' })
-    expect(computeSourceTreeSha(dir)).toBe(hashSourceTree(dir))
+describe('computeSourceTreeSha — the lockfile hasher (algo 3)', () => {
+  it('covers exactly the transfer set: dot entries and nested dist/node_modules are in, root dist/.git, the install sentinel and a REGENERATED root node_modules are out (#1007 review r8 #2)', () => {
+    const dir = join(testDir, 'transfer-set')
+    writeFixturePlugin(dir, { id: 'transfer-set', version: '1.0.0' })
+    // Declared dependencies: the build regenerates root node_modules, so it is outside the transfer (and the digest).
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'transfer-set', version: '1.0.0', dependencies: { lodash: '^4' } }), 'utf-8')
+    const base = computeSourceTreeSha(dir)
+    // Runtime inputs install keeps are part of the identity…
+    writeFileSync(join(dir, '.runtime.json'), '{"a":1}', 'utf-8')
+    const withDot = computeSourceTreeSha(dir)
+    expect(withDot).not.toBe(base)
+    mkdirSync(join(dir, 'assets', 'dist'), { recursive: true })
+    writeFileSync(join(dir, 'assets', 'dist', 'schema.json'), '{}', 'utf-8')
+    const withNested = computeSourceTreeSha(dir)
+    expect(withNested).not.toBe(withDot)
+    // …while regenerated / non-runtime root trees and the transaction's own marker never are.
+    mkdirSync(join(dir, 'dist'), { recursive: true })
+    writeFileSync(join(dir, 'dist', 'index.js'), 'built', 'utf-8')
+    mkdirSync(join(dir, 'node_modules', 'dep'), { recursive: true })
+    writeFileSync(join(dir, 'node_modules', 'dep', 'index.js'), 'dep', 'utf-8')
+    mkdirSync(join(dir, '.git'), { recursive: true })
+    writeFileSync(join(dir, '.git', 'HEAD'), 'ref: refs/heads/main', 'utf-8')
+    writeFileSync(join(dir, '.bakin-install.json'), '{}', 'utf-8')
+    expect(computeSourceTreeSha(dir)).toBe(withNested)
+    // The Whiskit provenance formula answers a different question and differs on purpose (dot entries, nested dist).
+    expect(computeSourceTreeSha(dir)).not.toBe(hashSourceTree(dir))
+  })
+
+  it('an algo-2 (Whiskit formula) row migrates once when the source is unchanged, and still reports a real change', () => {
+    const dir = join(testDir, 'algo2')
+    writeFixturePlugin(dir, { id: 'algo2', version: '1.0.0' })
+    const stored = hashSourceTree(dir)
+    // What was installed under algo 2: a copy of the source as it was then.
+    cpSync(dir, installedOf(dir), { recursive: true })
+    const same = compareStoredSourceTreeSha({ sourceTreeSha: stored, sourceTreeShaAlgo: 2 }, dir, installedOf(dir))
+    expect(same.changed).toBe(false)
+    expect(same.needsAlgoMigration).toBe(true)
+    expect(same.liveSha).toBe(computeSourceTreeSha(dir))
+    writeFileSync(join(dir, 'extra.txt'), 'new content', 'utf-8')
+    const diff = compareStoredSourceTreeSha({ sourceTreeSha: stored, sourceTreeShaAlgo: 2 }, dir, installedOf(dir))
+    expect(diff.changed).toBe(true)
+    expect(diff.needsAlgoMigration).toBe(false)
+  })
+
+  it('review r9 #2: a legacy row whose source changed ONLY in a path the old formula never covered is reported changed — the installed tree is the baseline, never the live source', () => {
+    const dir = join(testDir, 'algo2-dotfile')
+    writeFixturePlugin(dir, { id: 'algo2-dotfile', version: '1.0.0' })
+    const stored = hashSourceTree(dir)
+    cpSync(dir, installedOf(dir), { recursive: true })
+    // The Whiskit formula ignores dot entries and nested dist: it still says "unchanged".
+    writeFileSync(join(dir, '.runtime.json'), '{"changed":true}', 'utf-8')
+    expect(hashSourceTree(dir)).toBe(stored)
+    const cmp = compareStoredSourceTreeSha({ sourceTreeSha: stored, sourceTreeShaAlgo: 2 }, dir, installedOf(dir))
+    expect(cmp.changed).toBe(true)
+    expect(cmp.needsAlgoMigration).toBe(false)
+    // …and the same through the check surface: an upgrade is offered, the install-time record is untouched.
+    const nested = join(testDir, 'algo2-nested')
+    writeFixturePlugin(nested, { id: 'algo2-nested', version: '1.0.0' })
+    const storedNested = hashSourceTree(nested)
+    cpSync(nested, installedOf(nested), { recursive: true })
+    mkdirSync(join(nested, 'assets', 'dist'), { recursive: true })
+    writeFileSync(join(nested, 'assets', 'dist', 'schema.json'), '{}', 'utf-8')
+    expect(compareStoredSourceTreeSha({ sourceTreeSha: storedNested, sourceTreeShaAlgo: 2 }, nested, installedOf(nested)).changed).toBe(true)
+    // A missing installed tree can never vouch for anything: changed.
+    expect(compareStoredSourceTreeSha({ sourceTreeSha: stored, sourceTreeShaAlgo: 2 }, dir, join(testDir, 'nowhere')).changed).toBe(true)
+  })
+
+  it('review r10 #2: an unchanged legacy source with declared dependencies migrates even though the installed copy carries the installer-generated bun.lock, dist and node_modules', () => {
+    const dir = join(testDir, 'algo2-built')
+    writeFixturePlugin(dir, { id: 'algo2-built', version: '1.0.0' })
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'algo2-built', version: '1.0.0', dependencies: { lodash: '^4' } }), 'utf-8')
+    const stored = hashSourceTree(dir)
+    const installed = installedOf(dir)
+    cpSync(dir, installed, { recursive: true })
+    // What the build left behind: the lockfile it wrote, its output, its dependencies.
+    writeFileSync(join(installed, 'bun.lock'), '{"lockfileVersion":1}', 'utf-8')
+    mkdirSync(join(installed, 'dist'), { recursive: true })
+    writeFileSync(join(installed, 'dist', 'index.js'), 'built', 'utf-8')
+    mkdirSync(join(installed, 'node_modules', 'lodash'), { recursive: true })
+    writeFileSync(join(installed, 'node_modules', 'lodash', 'index.js'), 'module.exports = {}', 'utf-8')
+    const cmp = compareStoredSourceTreeSha({ sourceTreeSha: stored, sourceTreeShaAlgo: 2 }, dir, installed)
+    expect(cmp.changed).toBe(false)
+    expect(cmp.needsAlgoMigration).toBe(true)
+    // A lockfile the SOURCE ships is compared like any other file.
+    writeFileSync(join(dir, 'bun.lock'), '{"lockfileVersion":1,"changed":true}', 'utf-8')
+    expect(compareStoredSourceTreeSha({ sourceTreeSha: hashSourceTree(dir), sourceTreeShaAlgo: 2 }, dir, installed).changed).toBe(true)
+  })
+
+  it('review r9 #3: root node_modules is vendored (transferred + hashed) when the package declares no dependencies, regenerated (skipped) when it does', () => {
+    const vendored = join(testDir, 'vendored')
+    writeFixturePlugin(vendored, { id: 'vendored', version: '1.0.0' })
+    writeFileSync(join(vendored, 'package.json'), JSON.stringify({ name: 'vendored', version: '1.0.0' }), 'utf-8')
+    const before = computeSourceTreeSha(vendored)
+    mkdirSync(join(vendored, 'node_modules', 'lib'), { recursive: true })
+    writeFileSync(join(vendored, 'node_modules', 'lib', 'index.js'), 'export const lib = 1', 'utf-8')
+    expect(localTransferPolicy(vendored).regeneratesModules).toBe(false)
+    expect(computeSourceTreeSha(vendored)).not.toBe(before)
+    const copy = join(testDir, 'vendored-copy')
+    copyLocalSource(vendored, copy)
+    expect(existsSync(join(copy, 'node_modules', 'lib', 'index.js'))).toBe(true)
+    expect(computeSourceTreeSha(copy)).toBe(computeSourceTreeSha(vendored))
+
+    const declared = join(testDir, 'declared')
+    writeFixturePlugin(declared, { id: 'declared', version: '1.0.0' })
+    writeFileSync(join(declared, 'package.json'), JSON.stringify({ name: 'declared', version: '1.0.0', dependencies: { lodash: '^4' } }), 'utf-8')
+    const baseline = computeSourceTreeSha(declared)
+    mkdirSync(join(declared, 'node_modules', 'lodash'), { recursive: true })
+    writeFileSync(join(declared, 'node_modules', 'lodash', 'index.js'), 'module.exports = {}', 'utf-8')
+    expect(localTransferPolicy(declared).regeneratesModules).toBe(true)
+    expect(computeSourceTreeSha(declared)).toBe(baseline)
+    const declaredCopy = join(testDir, 'declared-copy')
+    copyLocalSource(declared, declaredCopy)
+    expect(existsSync(join(declaredCopy, 'node_modules'))).toBe(false)
   })
 
   it('legacy hasher produces a DIFFERENT hash for the same tree (why migration exists)', () => {
@@ -133,7 +248,7 @@ describe('compareStoredSourceTreeSha — legacy-aware comparison', () => {
     const dir = join(testDir, 'legacy-noop')
     writeFixturePlugin(dir, { id: 'legacy-noop', version: '1.0.0' })
     const stored = legacySourceTreeSha(dir)
-    const cmp = compareStoredSourceTreeSha({ sourceTreeSha: stored }, dir)
+    const cmp = compareStoredSourceTreeSha({ sourceTreeSha: stored }, dir, dir)
     expect(cmp.changed).toBe(false)
     expect(cmp.needsAlgoMigration).toBe(true)
     expect(cmp.liveSha).toBe(computeSourceTreeSha(dir))
@@ -144,7 +259,7 @@ describe('compareStoredSourceTreeSha — legacy-aware comparison', () => {
     writeFixturePlugin(dir, { id: 'legacy-changed', version: '1.0.0' })
     const stored = legacySourceTreeSha(dir)
     writeFileSync(join(dir, 'extra.txt'), 'new content', 'utf-8')
-    const cmp = compareStoredSourceTreeSha({ sourceTreeSha: stored }, dir)
+    const cmp = compareStoredSourceTreeSha({ sourceTreeSha: stored }, dir, dir)
     expect(cmp.changed).toBe(true)
     expect(cmp.needsAlgoMigration).toBe(false)
   })
@@ -156,6 +271,7 @@ describe('compareStoredSourceTreeSha — legacy-aware comparison', () => {
     const same = compareStoredSourceTreeSha(
       { sourceTreeSha: stored, sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO },
       dir,
+      dir,
     )
     expect(same.changed).toBe(false)
     expect(same.needsAlgoMigration).toBe(false)
@@ -163,6 +279,7 @@ describe('compareStoredSourceTreeSha — legacy-aware comparison', () => {
     writeFileSync(join(dir, 'extra.txt'), 'new content', 'utf-8')
     const diff = compareStoredSourceTreeSha(
       { sourceTreeSha: stored, sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO },
+      dir,
       dir,
     )
     expect(diff.changed).toBe(true)
@@ -172,7 +289,7 @@ describe('compareStoredSourceTreeSha — legacy-aware comparison', () => {
   it('a missing stored sha reports changed (install-time semantics preserved)', () => {
     const dir = join(testDir, 'no-sha')
     writeFixturePlugin(dir, { id: 'no-sha', version: '1.0.0' })
-    const cmp = compareStoredSourceTreeSha({ sourceTreeSha: undefined }, dir)
+    const cmp = compareStoredSourceTreeSha({ sourceTreeSha: undefined }, dir, dir)
     expect(cmp.changed).toBe(true)
     expect(cmp.needsAlgoMigration).toBe(false)
   })
@@ -182,6 +299,7 @@ describe('runChecks — one-time lockfile migration on --check', () => {
   it('legacy row + unchanged source: reports no upgrade and rewrites the row once', async () => {
     const sourcePath = join(testDir, 'src-check-noop')
     writeFixturePlugin(sourcePath, { id: 'check-noop', version: '1.0.0' })
+    writeFixturePlugin(join(testDir, 'plugins', 'check-noop'), { id: 'check-noop', version: '1.0.0' })
     const legacySha = legacySourceTreeSha(sourcePath)
     writePluginLockfile(addPlugin(readPluginLockfile(), 'check-noop', localEntry({
       sourcePath,
@@ -211,6 +329,7 @@ describe('runChecks — one-time lockfile migration on --check', () => {
   it('legacy row + genuinely changed source: still reports the upgrade, install-time sha untouched', async () => {
     const sourcePath = join(testDir, 'src-check-changed')
     writeFixturePlugin(sourcePath, { id: 'check-changed', version: '1.0.0' })
+    writeFixturePlugin(join(testDir, 'plugins', 'check-changed'), { id: 'check-changed', version: '1.0.0' })
     const legacySha = legacySourceTreeSha(sourcePath)
     writePluginLockfile(addPlugin(readPluginLockfile(), 'check-changed', localEntry({
       sourcePath,

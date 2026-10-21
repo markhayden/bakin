@@ -23,7 +23,7 @@ const HOST_ROUTINE_GET_PATHS = new Set([
   '/api/plugins/manifest',
   '/api/settings',
   '/api/state',
-  '/api/update/status',
+  '/api/updates',
   '/api/version',
 ])
 

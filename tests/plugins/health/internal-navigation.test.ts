@@ -16,6 +16,9 @@ describe('Health internal navigation', () => {
         // The Activity pulse owns this same-document anchor so it can smooth
         // scroll and move focus after the target disclosure mounts.
         if (/href=["']#/.test(anchor)) continue
+        // An external page opened in a new tab (release notes) never goes
+        // through the client router; it must still be explicit about it.
+        if (/target=["']_blank["']/.test(anchor) && /rel=["']noreferrer["']/.test(anchor)) continue
         rawNavigationAnchors.push(`${file}: ${anchor.replace(/\s+/g, ' ')}`)
       }
     }

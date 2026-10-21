@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { execFileSync } from 'child_process'
-import { mkdirSync, rmSync, existsSync, writeFileSync, readdirSync } from 'fs'
+import { mkdirSync, rmSync, existsSync, writeFileSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -54,6 +54,7 @@ import {
   forcePushRewind,
   gitAvailable,
   pushCommit,
+  runGit,
 } from '../../fixtures/plugins/hermetic-git'
 import {
   type PluginLockEntry,
@@ -229,6 +230,151 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
 
     const result = await upgradePlugin('subrestore')
     expect(result.after.version).toBe('1.1.0')
+  })
+
+  it('subpath lane (review r4 #1): a ref that moved past the reviewed commit is refused and nothing changes; the reviewed commit itself installs', async () => {
+    const nested = (files: Record<string, string>) => Object.fromEntries(Object.entries(files).map(([k, v]) => [`plugins/sub/${k}`, v]))
+    const repo = createBareRepo(testDir, 'sub-target-fixture', nested(fixturePluginFiles({ id: 'subtarget', version: '1.0.0' })))
+    const pluginDir = join(testDir, 'plugins', 'subtarget')
+    mkdirSync(pluginDir, { recursive: true })
+    for (const [name, body] of Object.entries(fixturePluginFiles({ id: 'subtarget', version: '1.0.0' }))) writeFileSync(join(pluginDir, name), body)
+    const installedSha = headSha(repo.workingClonePath)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'subtarget', makeLockEntry({
+      cloneUrl: `${repo.cloneUrl}#plugins/sub`, ref: 'main', commitSha: installedSha, version: '1.0.0',
+    })))
+    // The operator reviewed this commit (same manifest as what lands later — the consent token alone cannot tell them apart)…
+    const reviewedSha = pushCommit(repo.workingClonePath, nested({ ...fixturePluginFiles({ id: 'subtarget', version: '1.1.0' }), 'index.ts': 'export default { id: "subtarget", activate() { /* reviewed */ } }' }), 'reviewed')
+    // …and the ref moved on to code nobody reviewed, under the SAME manifest.
+    const movedSha = pushCommit(repo.workingClonePath, nested({ ...fixturePluginFiles({ id: 'subtarget', version: '1.1.0' }), 'index.ts': 'export default { id: "subtarget", activate() { /* unreviewed */ } }' }), 'moved')
+    expect(movedSha).not.toBe(reviewedSha)
+    const treeBefore = treeDigest(pluginDir)
+    const rowBefore = readPluginLockfile().plugins['subtarget']
+
+    await expect(upgradePlugin('subtarget', { expected: { sha: reviewedSha } })).rejects.toThrow(/changed since it was reviewed — commit/)
+    expect(treeDigest(pluginDir)).toEqual(treeBefore)
+    expect(readPluginLockfile().plugins['subtarget']).toEqual(rowBefore)
+    expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
+
+    // Reviewing the tip installs it, and the result names the identity that was verified.
+    const result = await upgradePlugin('subtarget', { expected: { sha: movedSha } })
+    expect(result.noop).toBe(false)
+    expect(result.identity).toEqual({ version: '1.1.0', sha: movedSha })
+    expect(readPluginLockfile().plugins['subtarget']?.commitSha).toBe(movedSha)
+  })
+
+  it('in-place lane (review r7 #2): an annotated tag ref upgrades to the tag\'s PEELED commit; a qualified refs/heads/<branch> ref works too — neither has an origin/<ref>', async () => {
+    const env = { GIT_AUTHOR_NAME: 'Bakin Test', GIT_AUTHOR_EMAIL: 'test@bakin.local', GIT_COMMITTER_NAME: 'Bakin Test', GIT_COMMITTER_EMAIL: 'test@bakin.local' }
+    const repo = createBareRepo(testDir, 'tagref-fixture', fixturePluginFiles({ id: 'tagref', version: '1.0.0' }))
+    cloneRepoIntoPluginsDir({ pluginId: 'tagref', cloneUrl: repo.cloneUrl })
+    const installedSha = headSha(join(testDir, 'plugins', 'tagref'))
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'tagref', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'v1.1.0', commitSha: installedSha, version: '1.0.0' })))
+    const bumped = pushCommit(repo.workingClonePath, fixturePluginFiles({ id: 'tagref', version: '1.1.0' }), 'bump to 1.1.0')
+    runGit(['tag', '-a', 'v1.1.0', '-m', 'release 1.1.0'], repo.workingClonePath, env)
+    runGit(['push', 'origin', 'v1.1.0'], repo.workingClonePath, env)
+    const tagObject = runGit(['rev-parse', 'v1.1.0'], repo.workingClonePath).toLowerCase()
+    expect(tagObject).not.toBe(bumped)
+
+    const tagged = await upgradePlugin('tagref', { expected: { sha: bumped } })
+    expect(tagged.noop).toBe(false)
+    expect(tagged.after).toEqual({ version: '1.1.0', commitSha: bumped })
+    expect(readPluginLockfile().plugins['tagref']?.commitSha).toBe(bumped)
+    expect(headSha(join(testDir, 'plugins', 'tagref'))).toBe(bumped)
+    // Same tag again: current, no churn.
+    expect((await upgradePlugin('tagref')).noop).toBe(true)
+
+    // A qualified branch ref.
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'tagref', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'refs/heads/main', commitSha: bumped, version: '1.1.0' })))
+    const next = pushCommit(repo.workingClonePath, fixturePluginFiles({ id: 'tagref', version: '1.2.0' }), 'bump to 1.2.0')
+    const qualified = await upgradePlugin('tagref', { expected: { sha: next } })
+    expect(qualified.after).toEqual({ version: '1.2.0', commitSha: next })
+    expect(headSha(join(testDir, 'plugins', 'tagref'))).toBe(next)
+  })
+
+  it('in-place lane (review r8 #1): a local edit to a tracked file and an untracked leftover never survive — the installed tree is the reviewed commit exactly', async () => {
+    const repo = createBareRepo(testDir, 'pristine-fixture', { ...fixturePluginFiles({ id: 'pristine', version: '1.0.0' }), 'helper.ts': 'export const helper = "reviewed"' })
+    cloneRepoIntoPluginsDir({ pluginId: 'pristine', cloneUrl: repo.cloneUrl })
+    const pluginDir = join(testDir, 'plugins', 'pristine')
+    const installedSha = headSha(pluginDir)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'pristine', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'main', commitSha: installedSha, version: '1.0.0' })))
+    // Someone edits the installed clone by hand, leaves a stray file and a vendored nested repository (git clean needs -ff for it).
+    writeFileSync(join(pluginDir, 'helper.ts'), 'export const helper = "edited locally"')
+    writeFileSync(join(pluginDir, 'stray.txt'), 'leftover')
+    mkdirSync(join(pluginDir, 'vendored'), { recursive: true })
+    execFileSync('git', ['init', '-q'], { cwd: join(pluginDir, 'vendored') })
+    writeFileSync(join(pluginDir, 'vendored', 'lib.ts'), 'export const vendored = true')
+    // Upstream changes ONLY the manifest.
+    const manifestOnly = pushCommit(repo.workingClonePath, { 'bakin-plugin.json': JSON.stringify({ ...JSON.parse(fixturePluginFiles({ id: 'pristine', version: '1.0.0' })['bakin-plugin.json']!), version: '1.0.1' }) }, 'manifest only')
+
+    const result = await upgradePlugin('pristine', { expected: { sha: manifestOnly } })
+    expect(result.after.commitSha).toBe(manifestOnly)
+    expect(readFileSync(join(pluginDir, 'helper.ts'), 'utf-8')).toBe('export const helper = "reviewed"')
+    expect(existsSync(join(pluginDir, 'stray.txt'))).toBe(false)
+    expect(existsSync(join(pluginDir, 'vendored'))).toBe(false)
+    expect(execFileSync('git', ['status', '--porcelain', '--ignored'], { cwd: pluginDir, encoding: 'utf-8' }).trim()).toBe('')
+    expect(headSha(pluginDir)).toBe(manifestOnly)
+  })
+
+  it('in-place lane (review r10 #1): a reviewed commit that carries a submodule is refused — the lane cannot vouch for a gitlink\'s contents', async () => {
+    const env = { GIT_AUTHOR_NAME: 'Bakin Test', GIT_AUTHOR_EMAIL: 'test@bakin.local', GIT_COMMITTER_NAME: 'Bakin Test', GIT_COMMITTER_EMAIL: 'test@bakin.local' }
+    const vendor = createBareRepo(testDir, 'submodule-vendor', { 'lib.ts': 'export const vendored = true' })
+    const repo = createBareRepo(testDir, 'submodule-host', fixturePluginFiles({ id: 'subhost', version: '1.0.0' }))
+    cloneRepoIntoPluginsDir({ pluginId: 'subhost', cloneUrl: repo.cloneUrl })
+    const pluginDir = join(testDir, 'plugins', 'subhost')
+    const installedSha = headSha(pluginDir)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'subhost', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'main', commitSha: installedSha, version: '1.0.0' })))
+    // Upstream adds a submodule (and bumps the manifest).
+    runGit(['-c', 'protocol.file.allow=always', 'submodule', 'add', '--', vendor.bareRepoPath, 'vendor'], repo.workingClonePath, env)
+    const withSubmodule = pushCommit(repo.workingClonePath, fixturePluginFiles({ id: 'subhost', version: '1.1.0' }), 'add vendor submodule')
+    await expect(upgradePlugin('subhost', { expected: { sha: withSubmodule } })).rejects.toThrow(/contains git submodules \(vendor\)/)
+    // The listing lived in an unlinked descriptor: nothing to sweep, even though the scan threw.
+    expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-scan'))).toEqual([])
+    // Refused before the transaction: the working tree is untouched (the fetch only added objects under .git), HEAD and the ledger stay put.
+    expect(headSha(pluginDir)).toBe(installedSha)
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: pluginDir, encoding: 'utf-8' }).trim()).toBe('')
+    expect(existsSync(join(pluginDir, 'vendor'))).toBe(false)
+    expect(readPluginLockfile().plugins['subhost']?.commitSha).toBe(installedSha)
+  })
+
+  it('subpath lane (review r11 #1): a submodule INSIDE the subpath is refused with the tree and ledger untouched; one elsewhere in the monorepo is nobody\'s concern', async () => {
+    const env = { GIT_AUTHOR_NAME: 'Bakin Test', GIT_AUTHOR_EMAIL: 'test@bakin.local', GIT_COMMITTER_NAME: 'Bakin Test', GIT_COMMITTER_EMAIL: 'test@bakin.local' }
+    const nested = (files: Record<string, string>) => Object.fromEntries(Object.entries(files).map(([k, v]) => [`plugins/sub/${k}`, v]))
+    const vendor = createBareRepo(testDir, 'subpath-vendor', { 'lib.ts': 'export const vendored = true' })
+    const repo = createBareRepo(testDir, 'subpath-submodule-host', nested(fixturePluginFiles({ id: 'subsub', version: '1.0.0' })))
+    const pluginDir = join(testDir, 'plugins', 'subsub')
+    mkdirSync(pluginDir, { recursive: true })
+    for (const [name, body] of Object.entries(fixturePluginFiles({ id: 'subsub', version: '1.0.0' }))) writeFileSync(join(pluginDir, name), body)
+    const installedSha = headSha(repo.workingClonePath)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'subsub', makeLockEntry({ cloneUrl: `${repo.cloneUrl}#plugins/sub`, ref: 'main', commitSha: installedSha, version: '1.0.0' })))
+    // A submodule elsewhere in the monorepo: the subpath upgrade goes through.
+    runGit(['-c', 'protocol.file.allow=always', 'submodule', 'add', '--', vendor.bareRepoPath, 'other/vendor'], repo.workingClonePath, env)
+    const elsewhere = pushCommit(repo.workingClonePath, nested(fixturePluginFiles({ id: 'subsub', version: '1.1.0' })), 'submodule elsewhere + bump')
+    const upgraded = await upgradePlugin('subsub', { expected: { sha: elsewhere } })
+    expect(upgraded.after).toEqual({ version: '1.1.0', commitSha: elsewhere })
+    // A submodule INSIDE the subpath: refused, nothing placed.
+    runGit(['-c', 'protocol.file.allow=always', 'submodule', 'add', '--', vendor.bareRepoPath, 'plugins/sub/vendor'], repo.workingClonePath, env)
+    const inside = pushCommit(repo.workingClonePath, nested(fixturePluginFiles({ id: 'subsub', version: '1.2.0' })), 'submodule inside + bump')
+    const treeBefore = treeDigest(pluginDir)
+    await expect(upgradePlugin('subsub', { expected: { sha: inside } })).rejects.toThrow(/\(plugins\/sub\) contains git submodules \(plugins\/sub\/vendor\)/)
+    expect(treeDigest(pluginDir)).toEqual(treeBefore)
+    expect(readPluginLockfile().plugins['subsub']?.commitSha).toBe(elsewhere)
+    expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
+  })
+
+  it('a preview holds nothing and reads the installed repository SYNCHRONOUSLY: a replacement queued right behind the call cannot interleave with its reads (review r12 #1)', async () => {
+    const repo = createBareRepo(testDir, 'preview-race-fixture', fixturePluginFiles({ id: 'previewrace', version: '1.0.0' }))
+    cloneRepoIntoPluginsDir({ pluginId: 'previewrace', cloneUrl: repo.cloneUrl })
+    const pluginDir = join(testDir, 'plugins', 'previewrace')
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'previewrace', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'main', commitSha: headSha(pluginDir), version: '1.0.0' })))
+    const bumped = pushCommit(repo.workingClonePath, fixturePluginFiles({ id: 'previewrace', version: '1.1.0' }), 'bump')
+    // Unowned, previewOnly: every read of the installed clone happens before the call yields.
+    const preview = upgradePluginUnowned('previewrace', { previewOnly: true })
+    // A removal "queued behind" the preview: synchronous, right after the call returned its promise.
+    rmSync(pluginDir, { recursive: true, force: true })
+    const result = await preview
+    expect(result.noop).toBe(false)
+    expect(result.identity).toEqual({ version: '1.1.0', sha: bumped })
+    expect(result.ready ?? result.awaitingConsent).toBe(true)
+    expect(existsSync(pluginDir)).toBe(false) // the preview never put it back
   })
 
   it('refuses to upgrade when remote history was rewritten (force-push)', async () => {

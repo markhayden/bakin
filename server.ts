@@ -36,7 +36,8 @@ import * as watcher from './src/core/watcher'
 import { runStartupRecovery } from './src/core/server/startup-recovery'
 import { createRequestHandler } from './src/core/server/request-handler'
 import { getBootId } from './src/core/boot-id'
-import { acquireServerLock, formatBindFailureHelp } from './src/core/server-lock'
+import { formatBindFailureHelp } from './src/core/server-lock'
+import { publishServerLockUnderInstallState, ServerStartBlockedError } from './src/core/server-boot-lock'
 import { STATIC_ENV_SECRET_MAPPINGS, collectPackSecretMappings, ensureBinDirsOnPath, injectIntegrationEnv, injectPackModelEnv } from './src/core/secret-env'
 import { markServing, registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
 import { generateDocs } from './src/core/api-docs'
@@ -72,8 +73,20 @@ const CONTENT_DIR = getContentDir()
 // Singleton lock BEFORE any side effect (dirs, plugins, watcher, antfly,
 // dispatch). Two server processes against one content dir each ran their
 // own dispatch loop — half-dead overlapping generations doubled work (#459).
+// Published under a momentary install-state hold (#1007 D7.11): an
+// in-process `bakin update` owns that resource from its liveness check
+// through the binary swap, so startup can never slip in between.
 {
-  const lock = acquireServerLock(port, getBootId())
+  let lock: Awaited<ReturnType<typeof publishServerLockUnderInstallState>>
+  try {
+    lock = await publishServerLockUnderInstallState({ port, bootId: getBootId() })
+  } catch (err) {
+    if (err instanceof ServerStartBlockedError) {
+      log.error(`Refusing to start: ${err.message}`)
+      process.exit(1)
+    }
+    throw err
+  }
   if (!lock.acquired) {
     log.error(
       `Another Bakin server is already running (pid ${lock.holder.pid}, port ${lock.holder.port}). `

@@ -185,6 +185,65 @@ describe('checkAntflyDependency', () => {
   })
 })
 
+describe('checkAntflyDependency identity + cancellation (#1007 D7.9)', () => {
+  it('an applicable result carries the required pin and an installed identity that changes when the binary changes', async () => {
+    writeBinary(managedBinary, PIN_VERSION)
+    mkdirSync(join(launchdPlistPath(serviceIo), '..'), { recursive: true })
+    writeFileSync(launchdPlistPath(serviceIo), renderLaunchdPlist(buildServiceArgv(DEFAULT_SETTINGS, servicePaths(), { modelReady: () => false }), servicePaths().logFile))
+    const first = await checkAntflyDependency(makePin())
+    expect(first.applicable).toBe(true)
+    expect(first.required).toEqual({ version: PIN_VERSION })
+    expect(first.installed?.version).toBe(PIN_VERSION)
+    expect(first.installed?.identity).toMatch(/^[0-9a-f]{24}$/)
+    expect(first.models).toBeUndefined()
+    // Same bytes, same stat → same identity.
+    expect((await checkAntflyDependency(makePin())).installed?.identity).toBe(first.installed!.identity)
+    // A different binary (size changes) → a different identity, even at the same version.
+    writeFileSync(managedBinary, `${versionScript(PIN_VERSION)}# rebuilt\n`, { mode: 0o755 })
+    expect((await checkAntflyDependency(makePin())).installed?.identity).not.toBe(first.installed!.identity)
+  })
+
+  it('a missing binary is applicable with the requirement and no installed identity; a wrong version keeps both', async () => {
+    const missing = await checkAntflyDependency(makePin())
+    expect(missing.applicable).toBe(true)
+    expect(missing.required).toEqual({ version: PIN_VERSION })
+    expect(missing.installed).toBeUndefined()
+    writeBinary(managedBinary, '0.1.1')
+    const broken = await checkAntflyDependency(makePin())
+    expect(broken.status).toBe('broken')
+    expect(broken.installed?.version).toBe('0.1.1')
+    expect(broken.required).toEqual({ version: PIN_VERSION })
+  })
+
+  it('a guest endpoint is not applicable — nothing here to install or update', async () => {
+    const result = await checkDependency(makePin(), { ...DEFAULT_SETTINGS, url: 'http://10.0.0.9:3738' }, serviceIo)
+    expect(result.status).toBe('ok')
+    expect(result.applicable).toBe(false)
+    expect(result.required).toBeUndefined()
+    expect(result.installed).toBeUndefined()
+  })
+
+  it('a hung binary is killed and reaped under the signal — the check REJECTS as interrupted within the deadline (never a version verdict) and no child survives', async () => {
+    const pidFile = join(testDir, 'hung.pid')
+    mkdirSync(join(managedBinary, '..'), { recursive: true })
+    writeFileSync(managedBinary, `#!/bin/sh\necho $$ > ${JSON.stringify(pidFile)}\nexec sleep 30\n`, { mode: 0o755 })
+    // A probe that did not finish did not answer: the engine records a failed
+    // attempt and keeps its last good observation (#1007 review r1 #5). The
+    // signal fires once the child is provably running (its pid file exists), so
+    // a loaded machine cannot abort before the shell even started.
+    const controller = new AbortController()
+    const probe = checkDependency(makePin(), DEFAULT_SETTINGS, serviceIo, { signal: controller.signal })
+    await waitUntil(() => existsSync(pidFile), { label: 'the hung child wrote its pid' })
+    const startedAt = Date.now()
+    controller.abort(new Error('check timed out after 20s'))
+    await expect(probe).rejects.toMatchObject({ name: 'CommandInterruptedError', reason: 'abort' })
+    expect(Date.now() - startedAt).toBeLessThan(5_000)
+    const pid = Number(readFileSync(pidFile, 'utf8').trim())
+    expect(pid).toBeGreaterThan(0)
+    await waitUntil(() => { try { process.kill(pid, 0); return false } catch { return true } }, { label: 'the hung child is gone' })
+  })
+})
+
 describe('installAntflyDependency', () => {
   it('downloads, verifies checksum, extracts, and installs the pinned binary', async () => {
     const result = await installAntflyDependency(optsAutoYes, undefined, makePin())

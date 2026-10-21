@@ -64,6 +64,10 @@ export { useKeyedState } from '@bakin/ui/behaviors'
 export { useMediaQuery } from '@bakin/ui/behaviors'
 /** Follow one server operation live (rev/boot guards, reconcile, expired vs restarted vs unreachable). */
 export { useOperation } from '@/hooks/use-operation'
+
+/** Self-update verification after a restart handoff (#1007 D7.11). */
+export { useSelfUpdateVerification } from '@/hooks/use-self-update-verification'
+export type { SelfUpdateHandoff, SelfUpdateVerificationState } from '@/hooks/use-self-update-verification'
 /** Call a converted long-running route and get its `{ operationId, bootId }`. */
 export { startOperation } from '@/hooks/use-operation'
 /** Thrown by `startOperation` when the route refuses; carries its status and JSON body. */

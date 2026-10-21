@@ -8,7 +8,8 @@ import { OperationsTray } from '../operations/operations-tray'
 import { openGlobalSearch } from '../search/use-search-hotkey'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useActivityContext } from '@/context/activity-context'
-import { useDebug, useMediaQuery } from '@makinbakin/sdk/hooks'
+import { useDebug, useMediaQuery, useOperation, useSelfUpdateVerification, startOperation, type SelfUpdateHandoff } from '@makinbakin/sdk/hooks'
+import type { UpdateRecord } from '@makinbakin/sdk/types'
 import {
   Alert,
   AlertDescription,
@@ -27,17 +28,17 @@ import {
   Spinner,
 } from '@makinbakin/sdk/ui'
 import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
-import { cn } from '@makinbakin/sdk/utils'
+import { cn, OPERATOR_DECLARATION_HEADERS } from '@makinbakin/sdk/utils'
 
-interface BakinUpdateStatus {
-  supported: boolean
-  currentVersion: string
-  latestVersion: string | null
-  latestTag: string | null
-  updateAvailable: boolean
-  checkedAt: string
-  reason?: string
-  error?: string
+/** The engine's `bakin:bakin` record (#1007 D7.7): the banner shows only when a newer release is available and not skipped. */
+const BAKIN_RECORD_ID = 'bakin:bakin'
+const BAKIN_APPLY_ROUTE = '/api/updates/bakin%3Abakin/apply'
+const BAKIN_SKIP_ROUTE = '/api/updates/bakin%3Abakin/skip'
+function isSkipped(record: UpdateRecord): boolean {
+  const skipped = record.skipped
+  const available = record.available
+  if (!skipped || !available) return false
+  return (skipped.version ?? '') === (available.version ?? '') && (skipped.sha ?? '') === (available.sha ?? '') && (skipped.digest ?? '') === (available.digest ?? '')
 }
 
 /**
@@ -165,33 +166,96 @@ function DebugToggle() {
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [version, setVersion] = useState('')
-  const [updateStatus, setUpdateStatus] = useState<BakinUpdateStatus | null>(null)
+  const [bakinRecord, setBakinRecord] = useState<UpdateRecord | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
-  const [updateMessage, setUpdateMessage] = useState<string | null>(null)
+  /** The started update, with the release it was approved for — immutable once started (the record may move). */
+  const [updateOperation, setUpdateOperation] = useState<{ operationId: string; bootId: string; expectedVersion: string } | null>(null)
+  const [handoff, setHandoff] = useState<SelfUpdateHandoff | null>(null)
   const { collapsed, toggle } = useSidebarContext()
   const { open: activityOpen, toggle: toggleActivity } = useActivityContext()
-  const displayUpdateStatus = updateStatus
-  const showUpdateBanner = Boolean(updateStatus?.supported && updateStatus.updateAvailable)
+  const showUpdateBanner = Boolean(bakinRecord && bakinRecord.outcome === 'update-available' && !isSkipped(bakinRecord))
   const { paused: dispatchPaused, resuming, resume } = useSpendStatus()
+  // The update operation ends with the old process: `restarted` (or its
+  // `restarting` stage) is the handoff — verification is explicit (D7.11).
+  const { operation: updateView, phase: updatePhase } = useOperation(updateOperation?.operationId ?? null, {
+    bootId: updateOperation?.bootId,
+    onSettle: (operation, phase) => {
+      if (!updateOperation) return
+      if (phase === 'restarted') {
+        // The old process is gone: the only honest terminal state — verify the new one.
+        setHandoff({ expectedVersion: updateOperation.expectedVersion, oldBootId: updateOperation.bootId })
+        return
+      }
+      // Every other settle releases the active operation so Update can be tried again.
+      setUpdateOperation(null)
+      if (phase === 'expired' || phase === 'unreachable') {
+        setUpdateError('Bakin lost track of the update — check for updates and try again.')
+        return
+      }
+      if (operation?.status === 'failed') setUpdateError(operation.outcome?.message ?? 'Bakin update failed.')
+      else if (operation?.status === 'cancelled') setUpdateError('The update was cancelled before anything changed.')
+    },
+  })
+  const restarting = updateView?.stages.some((stage) => stage.id === 'restarting' && stage.status === 'active') ?? false
+  if (restarting && !handoff && updateOperation) {
+    setHandoff({ expectedVersion: updateOperation.expectedVersion, oldBootId: updateOperation.bootId })
+  }
+  const verification = useSelfUpdateVerification(handoff)
+  // A verification that did not end in the new version is a failure the
+  // operator can act on (retry, or check by hand): release the operation.
+  if (updateOperation && (verification.status === 'wrong-version' || verification.status === 'unreachable')) {
+    setUpdateOperation(null)
+    setHandoff(null)
+    setUpdateError(verification.status === 'wrong-version'
+      ? `Bakin came back as v${verification.version}, not v${verification.handoff.expectedVersion}.`
+      : `Bakin did not come back within 90 s — verify by hand${verification.lastError ? ` (${verification.lastError})` : ''}.`)
+  }
+  const updateMessage = verification.status === 'verifying'
+    ? `Restarting into v${verification.handoff.expectedVersion}…`
+    : verification.status !== 'idle'
+      ? verification.summary
+      : updateOperation && updatePhase !== 'finished'
+        ? (updateView?.stages.find((stage) => stage.status === 'active')?.label ?? 'Starting the update…')
+        : null
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/version', { signal: controller.signal }).then(r => r.json()).then(d => { if (!controller.signal.aborted) setVersion(d.version) }).catch(() => {})
+    fetch('/api/version', { signal: controller.signal }).then(r => r.json()).then(d => {
+      if (controller.signal.aborted) return
+      setVersion(d.version)
+    }).catch(() => {})
     return () => controller.abort()
   }, [])
 
+  // The engine's records: read once, then every `updates.changed` (the
+  // banner is the engine's `bakin` record, never a probe of its own, D7.7).
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/update/status', { signal: controller.signal })
-      .then(r => r.json())
-      .then(d => {
-        if (!controller.signal.aborted && d && typeof d === 'object') setUpdateStatus(d as BakinUpdateStatus)
+    fetch('/api/updates', { signal: controller.signal })
+      .then(r => (r.ok ? r.json() : null))
+      .then((d: { records?: UpdateRecord[] } | null) => {
+        if (controller.signal.aborted || !d) return
+        setBakinRecord(d.records?.find((record) => record.id === BAKIN_RECORD_ID) ?? null)
       })
       .catch(() => {})
     return () => controller.abort()
   }, [])
+  usePluginEvent('updates.changed', (payload) => {
+    const ids = (payload as { ids?: unknown })?.ids
+    if (!Array.isArray(ids) || !ids.includes(BAKIN_RECORD_ID)) return
+    fetch('/api/updates').then(r => (r.ok ? r.json() : null)).then((d: { records?: UpdateRecord[] } | null) => {
+      if (d) setBakinRecord(d.records?.find((record) => record.id === BAKIN_RECORD_ID) ?? null)
+    }).catch(() => {})
+  })
+
+  // Once the new boot is verified, reload into the new shell.
+  useEffect(() => {
+    if (verification.status !== 'verified') return
+    const timer = setTimeout(() => { window.location.reload() }, 1_500)
+    return () => clearTimeout(timer)
+  }, [verification.status])
 
   useEffect(() => {
     const root = document.documentElement
@@ -220,39 +284,30 @@ export function Header() {
   if (mobileOpen && desktopViewport) setMobileOpen(false)
 
   async function applyUpdate() {
+    const available = bakinRecord?.available
+    if (!available?.version) return
     setUpdating(true)
     setUpdateError(null)
-    setUpdateMessage(null)
     try {
-      const res = await fetch('/api/update/apply', { method: 'POST' })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok || body?.ok === false) {
-        throw new Error(typeof body?.error === 'string' ? body.error : 'Bakin update failed.')
-      }
-      const message = typeof body?.message === 'string' ? body.message : 'Bakin update completed. Restarting Bakin now...'
-      setUpdateMessage(message)
-      if (body?.restart?.ok === false) return
-      setTimeout(() => {
-        let sawRestartGap = false
-        const poll = setInterval(async () => {
-          try {
-            const versionRes = await fetch('/api/version', { cache: 'no-store' })
-            if (!versionRes.ok) {
-              sawRestartGap = true
-              return
-            }
-            if (!sawRestartGap) return
-            clearInterval(poll)
-            window.location.reload()
-          } catch {
-            sawRestartGap = true
-          }
-        }, 1000)
-      }, 2000)
+      // The identity on screen is the one the apply must install (R2 #1).
+      const target = { version: available.version, ...(available.sha ? { sha: available.sha } : {}), ...(available.digest ? { digest: available.digest } : {}) }
+      const started = await startOperation(() => fetch(BAKIN_APPLY_ROUTE, { method: 'POST', headers: { 'Content-Type': 'application/json', ...OPERATOR_DECLARATION_HEADERS }, body: JSON.stringify({ target }) }))
+      setUpdateOperation({ operationId: started.operationId, bootId: started.bootId, expectedVersion: available.version })
     } catch (err) {
       setUpdateError(err instanceof Error ? err.message : String(err))
     } finally {
       setUpdating(false)
+    }
+  }
+
+  /** Dismiss = skip this release identity (D7.7); the banner returns for the next one. */
+  async function skipUpdate() {
+    try {
+      const res = await fetch(BAKIN_SKIP_ROUTE, { method: 'POST', headers: OPERATOR_DECLARATION_HEADERS })
+      const body = (await res.json().catch(() => null)) as { record?: UpdateRecord } | null
+      if (res.ok && body?.record) setBakinRecord(body.record)
+    } catch {
+      // The next updates.changed re-reads the record; nothing to say here.
     }
   }
 
@@ -266,7 +321,7 @@ export function Header() {
         <HeaderBar tone="info">
           <Download className="size-3.5 shrink-0 text-bakin-signal-info" />
           <span className="min-w-0 truncate">
-            New Bakin version available: v{displayUpdateStatus?.currentVersion} to v{displayUpdateStatus?.latestVersion ?? displayUpdateStatus?.latestTag}
+            New Bakin version available: {bakinRecord?.installed?.display ?? `v${version}`} to {bakinRecord?.available?.display}
           </span>
           <Button
             type="button"
@@ -276,6 +331,9 @@ export function Header() {
             onClick={() => setUpdateDialogOpen(true)}
           >
             Update Bakin
+          </Button>
+          <Button type="button" size="xs" variant="ghost" onClick={skipUpdate} aria-label="Skip this version">
+            Skip
           </Button>
         </HeaderBar>
       )}
@@ -373,7 +431,7 @@ export function Header() {
           <DialogHeader>
             <DialogTitle>Update Bakin</DialogTitle>
             <DialogDescription>
-              Bakin will replace the installed binary with v{displayUpdateStatus?.latestVersion ?? displayUpdateStatus?.latestTag} and restart automatically.
+              Bakin will replace the installed binary with {bakinRecord?.available?.display ?? 'the new release'} and restart automatically. The page reloads once the new version answers.
             </DialogDescription>
           </DialogHeader>
           {updateError && (
@@ -390,7 +448,7 @@ export function Header() {
             <Button type="button" variant="outline" onClick={() => setUpdateDialogOpen(false)}>
               Close
             </Button>
-            <Button type="button" variant="info" onClick={applyUpdate} disabled={updating || Boolean(updateMessage)}>
+            <Button type="button" variant="info" onClick={applyUpdate} disabled={updating || Boolean(updateOperation)}>
               {updating && <Spinner size="sm" />}
               Update Bakin
             </Button>

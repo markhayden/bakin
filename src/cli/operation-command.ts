@@ -10,7 +10,7 @@
  *   plain progress lines go to stderr;
  * - TTY: live progress on stdout, then the command's own result card.
  */
-import type { OperationStartResponse } from '@makinbakin/sdk/types'
+import type { OperationStartResponse, OperationView } from '@makinbakin/sdk/types'
 import { jsonObject, type OperationFollowResult } from './http'
 import { createOperationRenderer, describeResult, followAndRender, operationExitCode, silentOperationRenderer } from './operation-renderer'
 
@@ -26,7 +26,16 @@ export interface CommandOperationResult {
 
 export async function startAndFollow(
   start: () => Promise<unknown>,
-  opts: { json: boolean; stdout?: { isTTY?: boolean } },
+  opts: {
+    json: boolean
+    /** The TTY decision AND where a TTY renderer writes (an injected stdout is observed, not only inspected). */
+    stdout?: { isTTY?: boolean; write?: (text: string) => unknown }
+    onUpdate?: (operation: OperationView) => boolean | void
+    /** The server the operation was started on — the follow (and a Ctrl-C cancel) go there, never the CLI's cached default. */
+    baseUrl?: string
+    /** Stop following from outside (the operation keeps running). */
+    signal?: AbortSignal
+  },
 ): Promise<CommandOperationResult> {
   const started = jsonObject(await start()) as Partial<OperationStartResponse> | null
   if (typeof started?.operationId !== 'string' || typeof started.bootId !== 'string') {
@@ -38,9 +47,16 @@ export async function startAndFollow(
     : tty
       ? undefined
       : createOperationRenderer({ mode: 'plain', write: (text) => { process.stderr.write(text) } })
+  const stdoutWrite = opts.stdout?.write
   const follow = await followAndRender(
     { operationId: started.operationId, bootId: started.bootId },
-    renderer ? { renderer } : {},
+    {
+      ...(renderer ? { renderer } : {}),
+      ...(stdoutWrite ? { write: (text: string) => { stdoutWrite.call(opts.stdout, text) } } : {}),
+      ...(opts.onUpdate ? { onUpdate: opts.onUpdate } : {}),
+      ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    },
   )
   const result = follow.operation?.result
   return {

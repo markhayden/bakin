@@ -171,6 +171,12 @@ export interface RuntimeConformanceSuiteOptions {
    */
   restartAdvice?: 'present' | 'absent'
   /**
+   * compatibility() optional-member declaration (#1007 D7.10). 'present'
+   * pins the member to exist and to answer a well-formed verdict from cached
+   * evidence (sync); 'absent' pins true omission (no external process).
+   */
+  compatibility?: 'present' | 'absent'
+  /**
    * models.resolveId() optional-member declaration (#907 review). 'present'
    * pins the member to exist AND to be honest: a listed catalog id resolves
    * to itself and an unknown reference resolves to null; 'absent' pins true
@@ -289,6 +295,27 @@ export const runtimeConformanceChecks = {
     if (options.restartAdvice === 'present' && member === undefined) {
       fail('restartAdvice declared present but the adapter omits the member')
     }
+  },
+
+  /**
+   * compatibility optional-member honesty (#1007 D7.10): presence is the
+   * contract — absence must be member omission, never a throwing stub; a
+   * present member answers synchronously with a well-formed verdict.
+   */
+  async compatibilityMemberMatchesDeclaration(target: RuntimeConformanceTarget, options?: RuntimeConformanceSuiteOptions): Promise<void> {
+    if (options?.compatibility === undefined) return
+    const member = target.runtime.compatibility
+    if (options.compatibility === 'absent') {
+      if (member !== undefined) fail('compatibility declared absent but the adapter exposes the member — absence must be member omission')
+      return
+    }
+    if (member === undefined) fail('compatibility declared present but the adapter omits the member')
+    const verdict = member.call(target.runtime)
+    if (!verdict || typeof verdict !== 'object') fail('compatibility() must return an object')
+    if (typeof verdict.required !== 'string' || verdict.required.length === 0) fail('compatibility().required must be a non-empty string')
+    if (!['ok', 'below-floor', 'unknown'].includes(verdict.state)) fail(`compatibility().state must be ok | below-floor | unknown, got ${String(verdict.state)}`)
+    if (verdict.observed !== undefined && typeof verdict.observed !== 'string') fail('compatibility().observed must be a string when present')
+    if (verdict.state !== 'unknown' && verdict.observed === undefined) fail('a judged compatibility() must carry the observed value it judged')
   },
 
   /**
@@ -1164,6 +1191,10 @@ export function runRuntimeConformanceSuite(
 
     it('restartAdvice is well-formed for every change kind (when the member exists)', async () => {
       await runtimeConformanceChecks.restartAdviceIsWellFormed(getTarget())
+    })
+
+    it('compatibility member matches its declaration and answers a well-formed verdict (#1007)', async () => {
+      await runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(getTarget(), options)
     })
 
     it('models.resolveId member matches its declaration (presence is the contract)', async () => {

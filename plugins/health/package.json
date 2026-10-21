@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./index.ts",
   "scripts": {
-    "test:ui": "bun ../../packages/sdk/src/testing/ui/conformance/cli.ts && bun ../../packages/sdk/src/testing/ui/conformance/cli.ts --config bakin.agents.ui-test.ts"
+    "test:ui": "bun ../../packages/sdk/src/testing/ui/conformance/cli.ts && bun ../../packages/sdk/src/testing/ui/conformance/cli.ts --config bakin.agents.ui-test.ts && bun ../../packages/sdk/src/testing/ui/conformance/cli.ts --config bakin.updates.ui-test.ts"
   },
   "peerDependencies": {
     "react": "^19.0.0",

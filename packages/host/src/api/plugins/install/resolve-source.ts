@@ -7,12 +7,13 @@
  * installs. Every failure tears down the staging dir and returns the exact
  * error Response the monolithic handler produced.
  */
-import { existsSync, cpSync, rmSync, realpathSync } from 'fs'
+import { existsSync, rmSync, realpathSync } from 'fs'
 import { homedir } from 'os'
 import { join, resolve, isAbsolute, sep } from 'path'
 import { execFileSync } from 'child_process'
 import { gitArgs } from '@bakin/core/net/git-args'
 import { getContentDir } from '@/core/content-dir'
+import { copyLocalSource } from '@/core/plugins/source-tree-sha'
 import { materializeCachedGithubSource } from '@/core/github-source-cache'
 import { githubArtifactSource } from '@/core/whiskit/github-resolver'
 import type { WhiskitArtifactLocation } from '@/core/whiskit/resolver'
@@ -167,7 +168,9 @@ export async function stageInstallSource(
       auditInstallRejected('path_traversal', body.source, { error: contained.error })
       return { ok: false, response: Response.json({ ok: false, error: contained.error }, { status: 400 }) }
     }
-    cpSync(contained.path, stagingDir, { recursive: true, dereference: false })
+    // The ONE local-source transfer policy (shared with the upgrade snapshot):
+    // root dist/node_modules/.git never ride, everything else does.
+    copyLocalSource(contained.path, stagingDir)
   } else {
     const parsedUrl = resolveGithubCloneUrl(body.source)
     if (!parsedUrl.ok) {

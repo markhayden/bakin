@@ -351,7 +351,9 @@ report; no raw-disposition fallback or parallel summary interpretation remains.
 The server coordinator checks due diagnostics using each registered `maxAgeMs`
 (and the doctor interval as default), independently of page visits. Failed checks
 retry after 30 seconds. Durable task/workflow, budget, search-completion, settings,
-plugin-lifecycle, and owned-file changes invalidate affected checks. Invalidation
+plugin-lifecycle, owned-file and update-observation changes (`updates.changed`
+re-runs `plugin-artifacts` for plugin subjects and `search` for the engine/model
+subjects, #1007) invalidate affected checks. Invalidation
 arriving during execution queues fresh work after the older flight. Stream chunks,
 search progress, and report publication never trigger recursive checks.
 

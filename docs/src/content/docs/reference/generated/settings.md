@@ -451,6 +451,24 @@ description: Generated reference for Bakin core settings defaults.
   </tbody>
 </table>
 
+## Updates
+
+<table class="settings-defaults-table">
+  <thead>
+    <tr><th>Key</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>updates.enabled</code></td>
+      <td><code>true</code></td>
+    </tr>
+    <tr>
+      <td><code>updates.intervalMs</code></td>
+      <td><code>21600000</code></td>
+    </tr>
+  </tbody>
+</table>
+
 ## Watchdog
 
 <table class="settings-defaults-table">
@@ -541,5 +559,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 18, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 20, 2026 · Bakin 0.0.0-dev</span>
 </aside>

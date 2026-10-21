@@ -22,11 +22,43 @@ mock.module('node:child_process', () => ({
   execFileSync: (cmd: string, args: string[]) => { execs.push([cmd, ...args]); return '' },
 }))
 
-import { scheduleServerRestart } from '../../src/core/server-restart'
+import { activateServerRestart, prepareServerRestart, scheduleServerRestart } from '../../src/core/server-restart'
 
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
 beforeEach(() => { spawns.length = 0; execs.length = 0; servicePid = null; Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true }) })
 afterAll(() => Object.defineProperty(process, 'platform', platform))
+
+describe('prepareServerRestart / activateServerRestart (#1007 D7.11 P19)', () => {
+  it('preparing proves the standalone path without spawning or arming anything; activating spawns the successor', () => {
+    servicePid = null
+    spawns.length = 0
+    const prepared = prepareServerRestart(500, { execPath: process.execPath })
+    expect(prepared).toMatchObject({ ok: true, strategy: 'standalone-child', delayMs: 500, execPath: process.execPath })
+    expect(spawns).toEqual([])
+    const armed = activateServerRestart(prepared)
+    expect(armed).toMatchObject({ ok: true, strategy: 'standalone-child', restartDelayMs: 500 })
+    expect(spawns).toHaveLength(1)
+  })
+
+  it('a successor that cannot run (no executable) fails preparation — nothing is armed, so the update refuses before the swap', () => {
+    servicePid = null
+    spawns.length = 0
+    const prepared = prepareServerRestart(500, { execPath: join(testDir, 'missing-bakin') })
+    expect(prepared.ok).toBe(false)
+    expect((prepared as { error: string }).error).toContain('not runnable')
+    const armed = activateServerRestart(prepared)
+    expect(armed.ok).toBe(false)
+    expect(spawns).toEqual([])
+  })
+
+  it('a loaded service running THIS process prepares as a service restart (no spawn either way)', () => {
+    servicePid = process.pid
+    spawns.length = 0
+    const prepared = prepareServerRestart(250)
+    expect(prepared).toMatchObject({ ok: true, strategy: process.platform === 'darwin' ? 'launchagent' : 'systemd' })
+    expect(spawns).toEqual([])
+  })
+})
 
 describe('scheduleServerRestart', () => {
   it('uses the service only when the loaded service runs THIS process', () => {
@@ -46,5 +78,27 @@ describe('scheduleServerRestart', () => {
 
   it('no loaded service → the standalone child', () => {
     expect(scheduleServerRestart(10_000).strategy).toBe('standalone-child')
+  })
+})
+
+describe('review round 3 — the deferred command reports its own outcome (#3)', () => {
+  it('a standalone restart settles ok after signalling the parent; a signal that cannot be sent settles with the error', async () => {
+    const { activateServerRestart, prepareServerRestart } = await import('../../src/core/server-restart')
+    const prepared = prepareServerRestart(10, { execPath: process.execPath })
+    if (!prepared.ok) throw new Error(prepared.error)
+    const originalKill = process.kill
+    const killed: unknown[] = []
+    process.kill = ((pid: number, signal?: string | number) => { killed.push([pid, signal]); return true }) as typeof process.kill
+    try {
+      const result = activateServerRestart(prepared)
+      expect(result.ok).toBe(true)
+      expect(await result.settled).toEqual({ ok: true })
+      expect(killed).toEqual([[process.pid, 'SIGTERM']])
+      process.kill = (() => { throw new Error('EPERM') }) as typeof process.kill
+      const failing = activateServerRestart(prepared)
+      expect(await failing.settled).toEqual({ ok: false, error: 'EPERM' })
+    } finally {
+      process.kill = originalKill
+    }
   })
 })

@@ -63,22 +63,22 @@ Spec `.claude/specs/housekeeping-batch-2026-10.md` · Plan `.claude/specs/housek
 - [x] 6.1 build contract in ONE commit: externals v2 + `/vendor/zod.js` + import map + four tests + embedded manifest + perf baseline + compiled-binary vendor test + Playwright smoke/screenshots
 - [x] 6.2 SDK zod peer; published JS externalizes; tarball check; reference-plugin consumer green
 - [x] 6.3 docs (plugin-system, author docs, binary-size, scaffold comment)
-- [ ] PR 6 merged
+- [x] PR 6 merged
 - [ ] Bits companion `chore/zod-4.6-externals` opened (CLIENT_EXTERNAL + contract v2 + ~4.6.5 + patch bumps + SDK pin + bundle assertion); #948 closed when merged
 
 ## PR 7 — #1007 A `feat/1007-updates-engine`
-- [ ] 7.1 SDK types (exported, public-api regenerated) + store + fingerprints + engine core + read barrier + tests
-- [ ] 7.2 scheduler + `settings.updates` + normalizer + System & Alerts + tests
-- [ ] 7.3 search setup contract: applicability, structural identity, per-model remediation, `signal`, child reaping + tests
-- [ ] 7.4 required sources + `runtime.compatibility()` + conformance pin + tests
-- [ ] 7.5 `bakin` + `plugin` sources (ETag/backoff/async git) + fake-transport tests
-- [ ] 7.6 read/check/skip routes + engine wiring + `updates.changed` + doctor-refresh mapping + route tests
-- [ ] 7.7 apply-preview/apply routes + operations inventory + apply service (covering-approval full scope + scopeHash, 409s, 403, engine-reinstall one-operation) + tests
-- [ ] 7.8a server.lock under install-state (bounded retry) + verification helpers (SDK hook exported, CLI twin) + tests
-- [ ] 7.8b self-update cutover in ONE commit: operation + `bakin update` routing/guards + header banner + old `/api/update/*` deleted + tests (contention, live-but-not-listening, paused-updater interleaving, arch)
-- [ ] 7.9 Updates tab + count + skip toggle + System row + explicit check → engine + Overview links + Health updates fixture/test:ui + screenshots + perf check (ask Mark if > ceiling)
-- [ ] 7.10 `bakin updates` CLI + registry + generated docs + tests
-- [ ] 7.11 docs: updates.md, CLAUDE.md Updates bullet + reversed upstream-fetch rule, release-pipeline, doctor refresh
+- [x] 7.1 SDK types (exported, public-api regenerated) + store + fingerprints + engine core + read barrier + tests
+- [x] 7.2 scheduler + `settings.updates` + normalizer + System & Alerts + tests
+- [x] 7.3 search setup contract: applicability, structural identity, per-model remediation, `signal`, child reaping + tests
+- [x] 7.4 required sources + `runtime.compatibility()` + conformance pin + tests
+- [x] 7.5 `bakin` + `plugin` sources (ETag/backoff/async git) + fake-transport tests
+- [x] 7.6 read/check/skip routes + engine wiring + `updates.changed` + doctor-refresh mapping + route tests
+- [x] 7.7 apply-preview/apply routes + operations inventory + apply service (covering-approval full scope + scopeHash, 409s, 403, engine-reinstall one-operation) + tests
+- [x] 7.8a server.lock under install-state (bounded retry) + verification helpers (SDK hook exported, CLI twin) + tests
+- [x] 7.8b self-update cutover in ONE commit: operation + `bakin update` routing/guards + header banner + old `/api/update/*` deleted + tests (contention, live-but-not-listening, paused-updater interleaving, arch)
+- [x] 7.9 Updates tab + count + skip toggle + System row + explicit check → engine + Overview links + Health updates fixture/test:ui + screenshots + perf check (ask Mark if > ceiling)
+- [x] 7.10 `bakin updates` CLI + registry + generated docs + tests
+- [x] 7.11 docs: updates.md, CLAUDE.md Updates bullet + reversed upstream-fetch rule, release-pipeline, doctor refresh
 - [ ] PR 7 merged
 
 ## PR 8 — #1007 B `feat/1007-updates-packages`

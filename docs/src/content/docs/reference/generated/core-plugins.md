@@ -135,5 +135,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 18, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 20, 2026 · Bakin 0.0.0-dev</span>
 </aside>

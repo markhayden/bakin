@@ -22,6 +22,7 @@ import type {
   RuntimeCredentialStatus,
   ProviderCredentialInventory,
   RestartAdvice,
+  RuntimeCompatibility,
   RuntimeConfigChangeKind,
   RuntimeRoutingPolicy,
   RuntimeRoutingSupport,
@@ -71,7 +72,7 @@ import {
 import { getOpenClawPath } from './home'
 import type { OpenClawRuntimeAdapterOptions } from './index'
 import { OpenClawApprovalGatewayClient } from './approval-gateway'
-import { OpenClawGatewayRpcClient, type OpenClawGatewayAcceptedAck } from './gateway-rpc'
+import { GATEWAY_REQUIRED_PROTOCOL, OpenClawGatewayRpcClient, lastGatewayHandshake, type OpenClawGatewayAcceptedAck } from './gateway-rpc'
 import {
   CANONICAL_DURABLE_FILES,
   getOpenClawMemoryEntry,
@@ -1225,6 +1226,23 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       title: 'Restart the OpenClaw gateway to apply agent changes',
       body: 'Agents reach Bakin tools through per-agent MCP servers that attach when the gateway starts. New or removed agents take effect after a restart.',
       action: { label: 'Restart gateway', kind: 'restart-runtime' },
+    }
+  }
+
+  /**
+   * The gateway's protocol vs Bakin's floor, from the last recorded
+   * handshake (#1007 D7.10) — the same evidence `protocolFloorError` judged
+   * at connect. Never a live probe, never inferred from the CLI version.
+   */
+  compatibility = (): RuntimeCompatibility => {
+    const evidence = lastGatewayHandshake()
+    const required = String(GATEWAY_REQUIRED_PROTOCOL)
+    if (!evidence) return { required, state: 'unknown' }
+    return {
+      required,
+      observed: evidence.protocol === null ? 'unreported' : String(evidence.protocol),
+      observedAt: evidence.at,
+      state: evidence.belowFloor ? 'below-floor' : 'ok',
     }
   }
 
