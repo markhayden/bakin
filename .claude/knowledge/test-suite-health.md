@@ -181,8 +181,9 @@ One canonical invocation: `package.json` → `test:ci`. `ci-pr.yml` (both jobs),
 15s timeout under a comment claiming it matched PR CI — so the flags now live in one place
 and drift is structural rather than something review must catch.
 
-Release stays **unsharded on purpose**: it is a single gate before an irreversible publish.
-Sharding is a PR-latency optimization, not a correctness one.
+Release runs the same three shards **sequentially on one runner** (`release.yml`): a single
+gate before an irreversible publish, each bun invocation carrying a third of the files in a
+fresh process. Parallel sharding is a PR-latency optimization, not a correctness one.
 
 `bun run lint` gates PR and main. It used to run only in `release.yml`, so a lint error
 could merge to main and surface weeks later while cutting a release.
@@ -241,71 +242,93 @@ repeated. Count **distinct** files, never a sum.
 
 ## 5. Toolchain
 
-**bun is pinned at 1.3.13 (`.bun-version`, read by every CI job; `@types/bun` rides the
-same minor line). Do not move it without re-running the matrix below.**
+**bun is pinned at 1.4.3 (`.bun-version`, read by every CI job; `@types/bun` rides the
+same minor line; `MANAGED_BUN_VERSION` follows it — `tests/architecture/bun-pin.test.ts`
+pins the three together). Do not move it without re-running the matrix below.**
 
-**State on 2026-09-27 (#965 — repin held):** 1.3.14's ESM module-initialization regression
-(`Cannot access 'Yoga' before initialization` ×62 from `ink/build/styles.js`, #755, and
-`'NativeResponse'` ×47 from the fake provider's top-level await, #756) is fixed upstream in
-1.4.0 — both canaries are green on 1.4.2. The matrix on 1.4.2 then surfaced three NEW 1.4
-behaviours, all absorbed in the tree so the eventual repin is a one-line change:
+**History (dated):** 1.3.14 regressed ESM module initialization (`Yoga` ×62 via Ink, #755;
+`NativeResponse` ×47 via the fake provider's top-level await, #756), fixed upstream in 1.4.0;
+1.4.0–1.4.2's `--parallel` runner segfaulted CI's shard 2 every run (`SIGSEGV at 0x10`,
+`JSModuleLoader` promise settling during a timer-driven microtask drain; delta-debugged to
+three `tests/plugins/assets/` files with ≥2 workers; oven-sh/bun#41357 class), so the pin
+held at 1.3.13 from 2026-09-27 with the readiness fixes already in the tree (#970). 1.4.3
+cleared it: the 2026-10-21 matrix (#965, `tasks/evidence-bun-1.4.3.md`) ran shard 2 four
+times on macOS and once on Linux amd64 with no crash, the suite ~3× faster (full 248 s →
+78 s), and a compiled binary passed the three compiled teeth.
 
-- **Native fetch validates `signal`.** happy-dom's registrator replaces the global
-  `AbortController`/`AbortSignal`; every client that builds its own controller (the openai
-  SDK under pi-ai, `net/download`, the bin and media installers, whiskit's managed bun)
-  handed Bun's native fetch a happy-dom signal and 1.4 refused it
-  (`TypeError: signal is not of type AbortSignal`; 1.3.x accepted the duck type) — 116 of
-  118 failures. `tests/setup.ts` captures the natives before `GlobalRegistrator.register()`
-  and puts them back; happy-dom's own fetch does not care (its `Request` takes any
-  `init.signal`, internals use `window.AbortSignal` directly).
-- **`/$bunfs/root` stats as a real directory inside a compiled binary** (1.3.x: ENOENT), so
-  the plugin-defaults resolver's `isDirectory(root)` flipped a core plugin's module-relative
-  root to `disk` and listed zero shipped defaults — the #926 failure, caught by
-  `tests/integration/plugins/compiled-plugin-defaults.test.ts`. `src/core/plugin-resources.ts`
-  now decides `embedded` by the `/$bunfs/` prefix before touching the filesystem.
-- Dynamic `import()` settles on a macrotask in 1.4, so a fake-timer test that asserts right
-  after `advanceTimersByTimeAsync` misses anything behind one (watchdog's alert path →
-  `resolveSystemRoute`). The watchdog test stubs `system-route` the way it already stubbed
-  the spend observer.
+**What the 1.4 line changed, and the standing rules each left behind:**
 
-**Why the pin did not move:** with the fixes in, 1.4.2 passes the full suite locally
-(10,448 / 0 / 10,466 dispatched, 3× faster than 1.3.13) and compiles + boots a binary, but
-CI's shard 2 segfaults EVERY run under `--parallel` (`Segmentation fault at address 0x10`,
-`JSModuleLoader` promise settling during a timer-driven microtask drain, worker reported as
-"while running tests/plugins/assets/sse-refetch.test.ts"). Reproduced in an
-`oven/bun:1.4.2` Linux container 3/3 and locally with `--shard=2/3`; delta-debugged to three
-files (`tests/plugins/assets/{save-from-source-hook.test.ts,task-assets.test.tsx,sse-refetch.test.ts}`
-with `--parallel=2` — all three needed; activation alone does not trigger it; calling the
-plugin's `onShutdown` does not help). Serial `--isolate` and `--parallel=1` are clean, 2 and 4
-workers crash, 3 sometimes. Upstream class oven-sh/bun#41357; the 1.4.3 canary
-(`1.4.2-canary.20261004.1`, reports 1.4.3) runs the shard 3/3 and the full suite clean.
-**Repin when 1.4.3 ships** — the lockfile, `@types/bun`, the perf ratchet and the
-embedded-assets manifest all regenerate under the new bundler (host initial JS 245 → 148 KB
-on 1.4.2), and the Bits repo pins the same file (companion PR).
+- **Native fetch validates `signal`** (1.4.0+). happy-dom's registrator replaces the global
+  `AbortController`/`AbortSignal`; clients that build their own controller handed Bun's
+  native fetch a happy-dom signal and 1.4 refused it. `tests/setup.ts` captures the natives
+  before `GlobalRegistrator.register()` and puts them back.
+- **`/$bunfs/root` stats as a real directory inside a compiled binary** (1.3.x: ENOENT).
+  `src/core/plugin-resources.ts` decides `embedded` by the `/$bunfs/` prefix before touching
+  the filesystem; `tests/integration/plugins/compiled-plugin-defaults.test.ts` guards it.
+- **Dynamic `import()` settles on a macrotask.** A test that asserts something a lazy import
+  stands in front of must wait for THAT state: `readiness-collect` polls the SSE broadcast it
+  asserts (the broadcast sits behind `await import('@/core/sse')`), `component-install` waits
+  for the follower's first rendered update before pressing Ctrl-C (the SIGINT listener is
+  attached after `await import('../core/operations')`), and a fake-timer test stubs the
+  lazily imported module (`watchdog.test.ts` stubs `system-route` and the spend observer).
+- **Promise scheduling lands deeper chains later.** The fake-timer shim's
+  `flushMicrotasks(4)` was a depth GUESS 1.3 happened to satisfy; the watchdog's
+  recover-under-lock chain missed it on 1.4.3. The shim now drains with ONE real
+  `setImmediate` turn (`drainMicrotasks`): every microtask runnable at that point runs to
+  completion before an immediate fires, and `setImmediate` is never faked. The contract is
+  narrow and pinned by `tests/setup-fake-timers.test.ts` — deep chains complete within an
+  advance; a 0 ms timer enqueued from a microtask fires in the same advance (timers created
+  during an advance are scheduled from the advanced time); `runAllTimersAsync` drains a
+  retry-with-backoff chain; the drain does NOT block on a dynamic `import()`, I/O or later
+  immediates (stub those, or wait for the terminal signal). **Rule: a fake-timer flush is a
+  complete drain of what is runnable, never a depth, and never a substitute for a
+  terminal-signal wait.**
+- **Under `GITHUB_ACTIONS`, file headers are `::group::` annotations.** bun 1.4 wraps each
+  per-file header in a log-grouping annotation (1.3 printed it bare). The completeness
+  checker's header regex (its only source for a file whose tests all skipped — bun emits
+  no `<testsuite>` for those) accepts both forms; `tests/scripts/check-test-completeness.test.ts`
+  pins the parsers. Rule: a log-format assumption in a gate script gets a fixture test, and a
+  "never dispatched" report is checked against the raw artifacts before it is believed.
+- **Faster scheduling exposes product races.** `downloadToFile`'s fail-fast cleanup could run
+  before the write sink's asynchronous open, leaving an empty file; the primitive now awaits
+  the sink's `close` (subscribed at creation) before cleanup — `tests/core/net/download-sink-close.test.ts`
+  is the deterministic proof through the `createSink` injection point (mocking the `fs`
+  builtin itself wedges bun's module loader at load time; prefer a seam).
 
-Still true on 1.4.2: `bunfig.toml` `[test.env]` is not read (probed); the preload stays the
+Still true on 1.4.3: `bunfig.toml` `[test.env]` is not read (probed); the preload stays the
 place for test env.
 
-Repin procedure — run this **before** changing `.bun-version`, not after:
+**Repin matrix — run it on a side-by-side binary BEFORE changing `.bun-version`, and run it
+twice: once on the unchanged tree to find what the new runtime changes (diagnostic), once on
+the commit that carries ONLY the resulting fixes (acceptance), with nothing else changing in
+the checkout.** The candidate directory goes FIRST on `PATH` for every leg — tests spawn
+`bun` too (the compiled teeth, SDK publication), and `bun run <script>` resolves `bun` from
+PATH, so a bare `$BUN run test` would let the OLD binary run the suite and report green.
+Legs, each gated on its own exit code, both runtimes on the same snapshot: (1) Ink canary
+`tests/cli/readonly-logs.test.ts`; (2) Pi fake-provider canary `tests/integration/pi/turn.test.ts`;
+CI's own pre-test step first (`build:host && build:plugins && build:assets-manifest` — the
+tracked embedded manifest must match fresh dists or every server-booting test refuses to
+boot); (3) the full suite with `--reporter=junit` + a `tee`'d log → `scripts/check-test-completeness.ts`
+on its own; (4) CI's shards `--shard=s/3` with junit + logs, the historically crashing shard
+three times → the completeness checker over the shard union; (5) `bun run build`,
+`dist/bakin-darwin-arm64 version`, the three compiled teeth (`compiled-oauth-static`,
+`compiled-sharp-store`, `compiled-plugin-defaults`), then `git checkout` the build's
+`generated-version.ts` and the manifest; (6) Linux on CI's architecture:
+`docker run --rm --platform linux/amd64 … oven/bun:<ver>` as a NON-ROOT user with git
+installed (the image ships without git and runs as root — chmod-based failure injections
+cannot fail as root), Bits cloned at CI's sibling path, CI's asset build, the crashing shard,
+with the inner script on a mounted evidence dir so the log, the JUnit report and the runner's
+own exit status survive `--rm`. Compare counts PER LEG against the same leg on the current
+pin; the evidence file records commands, counts, times, `which bun`, the zip sha256 and the
+image digest. The exact script that produced the 1.4.3 evidence is in the batch plan
+(`.claude/specs/toolchain-and-sdk-boundary-batch-2026-10-plan.md`, PR 1 checkpoint).
 
-```bash
-# Side-by-side binary, system bun untouched (GitHub release zip into a scratch dir).
-# NEVER `$BUN run test`: `bun run <script>` resolves the `bun` inside the script from PATH,
-# so the OLD binary runs the suite and reports green. Invoke the test runner directly:
-$BUN test tests/cli/readonly-logs.test.ts --isolate            # Ink canary (#755)
-$BUN test tests/integration/pi/turn.test.ts --isolate          # fake-provider canary (#756)
-$BUN test --parallel=4 --isolate --timeout 15000 --path-ignore-patterns "dev/**"   # full suite
-for s in 1 2 3; do $BUN test --parallel=4 --isolate --timeout 60000 --path-ignore-patterns "dev/**" --shard=$s/3; done  # CI's exact shards — the full-suite order can dodge a runner crash
-# Compare pass/fail AND the tests-dispatched count against the current pin; then compile
-# and run a binary (`bun run build`, `bakin version`) and the compiled teeth
-# (compiled-oauth-static, compiled-sharp-store, compiled-plugin-defaults): the compiled
-# lanes are where bun behaviour changes hide. A Linux check is one container away:
-# `docker run --rm -v "$PWD":/src:ro oven/bun:<ver>` (copy the tree, `bun install
-# --frozen-lockfile`, run the shard). In zsh, split a file list with `${=VAR}`.
-```
-
-Change the local binary (`bun upgrade` / `~/.bun/bin/bun`) and `.bun-version` **together**,
-or local and CI silently diverge.
+Change the local binary and `.bun-version` **together**, and to the EXACT validated release
+(`curl -fsSL https://bun.sh/install | bash -s "bun-v<ver>"` — an unqualified `bun upgrade`
+installs whatever is latest that day), or local and CI silently diverge. The dev rig's image
+derives its bun from `.bun-version` too (`BUN_VERSION` build arg; every compose entrypoint
+exports it); the Bits repo pins the same file (companion PR with its lock regenerated and a
+terminal manifest bump).
 
 ### happy-dom and the Web Animations API (2026-10, #760)
 
@@ -399,7 +422,8 @@ bun test <file> --isolate 2>&1 | grep -c "not wrapped in act"
 bun scripts/check-test-completeness.ts junit-*.xml shard-*.log
 ```
 
-Note `bunfig.toml` has **no `[test.env]` section**: bun 1.3.13 does not read one. A var set
+Note `bunfig.toml` has **no `[test.env]` section**: bun does not read one (probed on 1.3.13, 1.4.2
+and 1.4.3). A var set
 there arrives `undefined`; `NODE_ENV=test` appears only because `bun test` sets it itself.
 Test-run env belongs in the `tests/setup.ts` preload, which actually executes, and uses
 `??=` so a shell override always wins.

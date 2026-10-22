@@ -67,7 +67,9 @@ export interface LifecycleDeps {
 
 export function composeUpArgs(composeFile: string, services: string[], profile: string | null): string[] {
   const profileFlag = profile ? ['--profile', profile] : []
-  return ['docker', 'compose', ...profileFlag, '-f', composeFile, 'up', '-d', ...services]
+  // `--build`: a changed image pin (OPENCLAW_IMAGE_TAG, BUN_VERSION) rebuilds on
+  // the next up; an unchanged one is a cached no-op.
+  return ['docker', 'compose', ...profileFlag, '-f', composeFile, 'up', '-d', '--build', ...services]
 }
 
 export function composeDownArgs(composeFile: string): string[] {
@@ -186,13 +188,13 @@ function makeOpenClawExec(
   return (args) => deps.runner.run(openclawExecArgs(paths.composeFile, args), { env: secretsEnv })
 }
 
-async function waitForGatewayHealthy(deps: LifecycleDeps, paths: InstancePaths): Promise<void> {
+async function waitForGatewayHealthy(deps: LifecycleDeps, _paths: InstancePaths): Promise<void> {
   for (let i = 0; i < HEALTH_RETRIES; i++) {
     const result = await deps.runner.run(healthCheckArgs())
     if (result.code === 0) return
     await deps.sleep(1000)
   }
-  throw new Error(`OpenClaw gateway did not become healthy. Inspect: docker compose -f ${paths.composeFile} logs`)
+  throw new Error('OpenClaw gateway did not become healthy. Inspect: bash scripts/dev/compose.sh logs')
 }
 
 async function wipeIfFresh(plan: InstancePlan, paths: InstancePaths, deps: LifecycleDeps): Promise<void> {

@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-docker compose -f dev/docker/docker-compose.yml restart openclaw-gateway
+bash scripts/dev/compose.sh restart openclaw-gateway
 
 echo "Waiting for gateway..."
 for i in $(seq 1 30); do

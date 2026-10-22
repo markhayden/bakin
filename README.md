@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/markhayden/bakin/actions/workflows/ci-main.yml"><img src="https://img.shields.io/github/actions/workflow/status/markhayden/bakin/ci-main.yml?branch=main&style=for-the-badge&label=build" alt="Build" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge" alt="License: Apache-2.0" /></a>
-  <img src="https://img.shields.io/badge/runtime-Bun%20%E2%89%A5%201.3.13-black?style=for-the-badge" alt="Bun ≥ 1.3.13" />
+  <img src="https://img.shields.io/badge/runtime-Bun%20%E2%89%A5%201.4.3-black?style=for-the-badge" alt="Bun ≥ 1.4.3" />
 </p>
 
 ---

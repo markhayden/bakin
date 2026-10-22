@@ -104,9 +104,13 @@ describe('channel readiness collector', () => {
     expect(readiness.routing.aliases.find((a) => a.setting.endsWith('.bogus'))).toMatchObject({ resolved: 'unknown_channel' })
     expect(readiness.remediation).toBeNull()
     expect(JSON.stringify(readiness)).not.toContain('tok-1')
-    const events = broadcasts.filter((b) => b.type === 'plugin-event' && b.event === 'channels.readiness')
-    expect(events.length).toBeGreaterThan(0)
-    expect((events.at(-1)!.readiness as { connection: { state: string } }).connection.state).toBe('connected')
+    // The SSE broadcast sits behind a lazy import of the sse module (a
+    // macrotask on bun 1.4), so it lands after the in-memory snapshot the
+    // waitUntil above polled. Poll the broadcast state this assertion needs.
+    const readinessEvents = () => broadcasts.filter((b) => b.type === 'plugin-event' && b.event === 'channels.readiness')
+    const lastBroadcastState = () => (readinessEvents().at(-1)?.readiness as { connection: { state: string } } | undefined)?.connection.state
+    await waitUntil(() => lastBroadcastState() === 'connected', { label: 'the connected snapshot reaches SSE' })
+    expect(readinessEvents().length).toBeGreaterThan(0)
   })
 
   it('keeps `since` across refreshes while the state is unchanged and resets it on a transition', async () => {

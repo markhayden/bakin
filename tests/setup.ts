@@ -331,12 +331,12 @@ const vi = {
     fakeTime += ms
     setSystemTime(fakeTime)
     // Run due timers + any new timers enqueued by their callbacks (including
-    // re-enqueued interval timers) up to the new fakeTime. Microtask flushes
-    // between fires let awaited callbacks register their next setTimeout.
+    // re-enqueued interval timers) up to the new fakeTime. A full microtask
+    // drain between fires lets awaited callbacks register their next setTimeout.
     for (let guard = 0; guard < 10_000; guard++) {
       const due = pendingTimers.filter(t => t.at <= fakeTime!)
       if (due.length === 0) {
-        await flushMicrotasks(4)
+        await drainMicrotasks()
         const again = pendingTimers.filter(t => t.at <= fakeTime!)
         if (again.length === 0) return
       }
@@ -348,7 +348,7 @@ const vi = {
         if (t.interval !== undefined) {
           pendingTimers.push({ fn: t.fn, at: (fakeTime ?? 0) + t.interval, id: t.id, interval: t.interval })
         }
-        await flushMicrotasks(4)
+        await drainMicrotasks()
       }
     }
   },
@@ -360,7 +360,7 @@ const vi = {
     for (let guard = 0; guard < 10_000; guard++) {
       let oneShot = pendingTimers.filter(t => t.interval === undefined)
       if (oneShot.length === 0) {
-        await flushMicrotasks(4)
+        await drainMicrotasks()
         oneShot = pendingTimers.filter(t => t.interval === undefined)
         if (oneShot.length === 0) return
       }
@@ -371,7 +371,7 @@ const vi = {
       fakeTime = next.at
       setSystemTime(fakeTime)
       next.fn()
-      await flushMicrotasks(4)
+      await drainMicrotasks()
     }
     throw new Error('runAllTimersAsync exceeded 10000 iterations (likely infinite timer loop)')
   },
@@ -433,10 +433,20 @@ function runDueTimers(): void {
   }
 }
 
-async function flushMicrotasks(n: number): Promise<void> {
-  for (let i = 0; i < n; i++) {
-    await new Promise<void>(resolve => queueMicrotask(() => resolve()))
-  }
+/**
+ * One real event-loop turn. Every microtask runnable at this point runs to
+ * completion before a setImmediate callback fires, and setImmediate is never
+ * faked, so this is a complete drain by construction — not a depth guess
+ * (four queueMicrotask turns happened to satisfy bun 1.3's promise
+ * scheduling; 1.4's lands the watchdog's recover-under-lock chain later and
+ * the guess missed it). It drains what is runnable; it does NOT block on a
+ * dynamic import(), I/O, or immediates queued by the drained work — stub those
+ * or wait for their terminal signal in the test. Real scheduled work may run
+ * between fake fires, which is the point. Contract pinned by
+ * tests/setup-fake-timers.test.ts.
+ */
+async function drainMicrotasks(): Promise<void> {
+  await new Promise<void>(resolve => setImmediate(resolve))
 }
 
 ;(globalThis as unknown as { vi: typeof vi }).vi = vi

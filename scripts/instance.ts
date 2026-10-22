@@ -64,7 +64,7 @@ Flags:
   --preconfigure                   Sandbox+openclaw only: auto-run \`bakin onboard --yes\`
 
 OpenClaw CLI access: ./dev/docker/openclaw-shim.sh <args>   (e.g. mcp list)
-Full image cleanup:  docker compose -f dev/docker/docker-compose.yml --profile sandbox down --rmi local
+Full image cleanup:  bash scripts/dev/compose.sh --profile sandbox down --rmi local
 
 Prerequisites (openclaw): Docker running, \`op\` CLI installed, OP_SERVICE_ACCOUNT_TOKEN (in dev/docker/.env or env).
 Prerequisites (pi):       none — the pinned SDK ships the pi CLI; /login runs in your terminal.`
@@ -172,6 +172,11 @@ async function main(argv: string[]): Promise<number> {
   // Load host-side rig env (OP_SERVICE_ACCOUNT_TOKEN, OPENCLAW_IMAGE_TAG) from
   // the gitignored dev/docker/.env; real shell exports still win.
   loadEnvFile(resolve(REPO_ROOT, 'dev/docker/.env'), process.env)
+  // The compose file interpolates BUN_VERSION on every parse (the image build
+  // pins bun to the repo's .bun-version); derive it once here so every verb's
+  // compose call — up/down/dev through lifecycle, status/shell/run directly —
+  // sees it (the runner merges a call's env over process.env).
+  process.env.BUN_VERSION ??= readFileSync(resolve(REPO_ROOT, '.bun-version'), 'utf-8').trim()
   const deps = makeDeps(paths)
 
   try {

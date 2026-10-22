@@ -10,6 +10,8 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONTAINER_HOME="/home/node/.openclaw"
+# The compose file interpolates BUN_VERSION on every parse (image build pin).
+export BUN_VERSION="${BUN_VERSION:-$(tr -d '[:space:]' < "$SCRIPT_DIR/../../.bun-version")}"
 
 HOST_HOME=""
 if [ -d "$SCRIPT_DIR/../openclaw-home" ]; then

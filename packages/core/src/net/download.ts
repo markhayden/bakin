@@ -14,7 +14,7 @@
  * touched by the final rename.
  */
 import { spawn } from 'child_process'
-import { createReadStream, createWriteStream, chmodSync, existsSync, mkdirSync, renameSync, rmSync } from 'fs'
+import { createReadStream, createWriteStream, chmodSync, existsSync, mkdirSync, renameSync, rmSync, type WriteStream } from 'fs'
 import { createHash } from 'crypto'
 import { dirname, join } from 'path'
 import type { OperationContext } from '@makinbakin/sdk/types'
@@ -78,9 +78,18 @@ export interface TransferOptions {
   onEvent?: (event: DownloadEvent) => void
 }
 
+/** The sink surface `downloadToFile` drives (a subset of `fs.WriteStream`). */
+export type DownloadSink = Pick<WriteStream, 'write' | 'end' | 'destroy' | 'once'>
+
 export interface DownloadToFileOptions extends TransferOptions {
   /** Lowercase hex sha256 pin. Mismatch deletes the file and throws `DownloadChecksumError`. */
   sha256?: string
+  /**
+   * The sink the bytes are written to — `fs.createWriteStream` by default.
+   * Injection point like `fetchImpl`: a test gates the sink's open/close
+   * timing to prove cleanup never runs before the sink has released the file.
+   */
+  createSink?: (destPath: string) => DownloadSink
 }
 
 export interface DownloadResult {
@@ -276,7 +285,12 @@ export async function downloadToFile(url: string, destPath: string, options: Dow
   const label = options.label ?? 'Download'
   mkdirSync(dirname(destPath), { recursive: true })
   return withRetries(options, async () => {
-    const sink = createWriteStream(destPath)
+    const sink: DownloadSink = (options.createSink ?? createWriteStream)(destPath)
+    // `close` is the only signal that the sink has released the file: it
+    // always follows destroy(), after `error` if one fired. Subscribed at
+    // creation, never after the fact, so a close that already happened is
+    // not missed. (`sinkDone` rejects on `error`, so it is NOT this signal.)
+    const sinkClosed = new Promise<void>((resolve) => { sink.once('close', resolve) })
     const sinkDone = new Promise<void>((resolve, reject) => {
       sink.once('close', resolve)
       sink.once('error', reject)
@@ -294,12 +308,15 @@ export async function downloadToFile(url: string, destPath: string, options: Dow
       sink.end()
       await sinkDone
     } catch (err) {
-      // The sink opens asynchronously; when an attempt fails fast the caller's
-      // cleanup can remove the directory before that open runs. The abandoned
-      // stream's late error is expected — observe it so it never surfaces as
-      // an unhandled rejection.
+      // The sink opens asynchronously. A fail-fast attempt (an immediate 404)
+      // must not run the partial-file cleanup before that open has either
+      // happened or been cancelled — otherwise the late open leaves an empty
+      // file behind. destroy() then await `close`: nothing is left behind by
+      // construction. The abandoned sink's late error is expected — observe
+      // it so it never surfaces as an unhandled rejection.
       sinkDone.catch((sinkErr: unknown) => log.debug('abandoned download sink settled with an error', { destPath, error: String(sinkErr) }))
       sink.destroy()
+      await sinkClosed
       throw err
     }
     const actual = await sha256File(destPath)

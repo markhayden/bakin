@@ -10,11 +10,14 @@
 # together (override per-run via OPENCLAW_IMAGE_TAG in dev/docker/.env).
 ARG OPENCLAW_IMAGE_TAG=2026.6.11
 FROM ghcr.io/openclaw/openclaw:${OPENCLAW_IMAGE_TAG}
+# bun inside the image follows the repo pin (.bun-version); every compose
+# entrypoint derives BUN_VERSION from that file — see docker-compose.yml.
+ARG BUN_VERSION
 
 USER root
 RUN apt-get update \
   && apt-get install -y --no-install-recommends unzip \
   && rm -rf /var/lib/apt/lists/* \
-  && curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash \
+  && curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${BUN_VERSION}" \
   && bun --version
 USER node
