@@ -6,7 +6,7 @@ Spec `.claude/specs/toolchain-and-sdk-boundary-batch-2026-10.md` · Plan `.claud
 - [x] slice commits gated (`typecheck && lint` + slice tests `--isolate`, each on its exit code)
 - [x] per-PR gate (`check:cycles`, `lint:home-bypasses`, `test`, `build:host && ui:conformance --quick|--full`, `docs:check`; `ui:performance`/`ui:public-api:check` without regeneration in PRs 2–4; manifest per D0.9)
 - [x] Codex ≥2 rounds (cap ~5, stop at approve), findings fixed in-batch
-- [ ] CI green → squash-merge → issue closed with evidence
+- [x] CI green → squash-merge → issue closed with evidence (all four PRs)
 
 ## PR 1 — #965 `chore/965-bun-1.4.3`
 - [x] diagnostic matrix on the unchanged tree (2026-10-21: no SIGSEGV on shard 2 ×4 + Linux amd64; four deltas diagnosed)
@@ -44,8 +44,8 @@ Spec `.claude/specs/toolchain-and-sdk-boundary-batch-2026-10.md` · Plan `.claud
 - [x] 4.4 allowlist is EMPTY (plugin-sourced hooks are outside the predicate — spec rev-5 note); docs; `TOLERATED_CYCLES` deleted
 - [x] 4.5 payload ratchet: raw `sdk-hooks.js` +30 KB / conversation reachable −30 KB / total +517 B explained per D0.8, then taken as-is by Mark (2026-10-22) — `performance.json` regenerated
 - [x] Bits compatibility proof repeated (tsc exit 0)
-- [ ] PR 4 merged; #809 closed
+- [x] PR 4 merged (#1023 → b645929eb, 2026-10-22); #809 closed with evidence
 
 ## After the batch
-- [ ] memory file for the batch updated (outcomes, lessons)
+- [x] memory file for the batch updated (outcomes, lessons)
 - [ ] Mark's manual sweep on main; no release
