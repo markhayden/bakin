@@ -7,11 +7,10 @@
  * live state.
  */
 import { useRef } from 'react'
-import { usePluginEvent, useRouter, toast, useToastStore } from '@makinbakin/sdk/hooks'
+import { usePluginEvent, useRouter, sendBrowserNotification, toast, useToastStore } from '@makinbakin/sdk/hooks'
 import { Button, Text } from '@makinbakin/sdk/ui'
 import type { OperationView } from '@makinbakin/sdk/types'
 
-import { sendBrowserNotification } from '@/lib/browser-notify'
 import { nextOperationAttention, type OperationAttentionMemo, type OperationNotice } from './operation-attention'
 
 const TOAST_TYPE: Record<OperationNotice['kind'], 'success' | 'error' | 'info'> = {

@@ -1,11 +1,10 @@
 /**
  * Navigate bridge for OS-notification clicks (routing overhaul PR1).
  *
- * The bridge is globalThis-based on purpose: every plugin bundle inlines its
- * own copy of src/lib/browser-notify.ts (only react/SDK are externalized), so
- * a module-level variable registered by the host would never reach those
- * copies. These tests pin the contract: registered bridge wins, missing
- * bridge falls back to a hard navigation.
+ * The bridge is globalThis-based on purpose (see the module header of
+ * packages/sdk/src/internal/browser-notify.ts). These tests pin the
+ * contract: registered bridge wins, missing bridge falls back to a hard
+ * navigation.
  */
 import { describe, test, expect, afterEach, mock, spyOn } from 'bun:test'
 import { tmpdir } from 'os'
@@ -14,16 +13,16 @@ import { join } from 'path'
 // browser-notify is a pure client lib (no storage), but the content-dir
 // resolvers are mocked defensively per the repo-wide test isolation rule.
 const testDir = join(tmpdir(), `bakin-test-browser-notify-${Date.now()}`)
-mock.module('../../src/core/content-dir', () => ({
+mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }),
 }))
-mock.module('../../packages/core/src/content-dir', () => ({
+mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }),
 }))
 
-import { setNotificationNavigator, navigateToUrl } from '../../src/lib/browser-notify'
+import { setNotificationNavigator, navigateToUrl } from '../../../packages/sdk/src/internal/browser-notify'
 
 const globalBridge = globalThis as { __bakinNavigate?: (url: string) => void }
 

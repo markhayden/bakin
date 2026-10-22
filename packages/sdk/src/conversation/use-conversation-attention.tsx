@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePluginEvent, type PluginEventPayload } from '@/hooks/use-plugin-event'
 import { useNavBadge } from '@/hooks/use-nav-badge'
 import { toast, useToastStore } from '@/hooks/use-toast'
-import { sendBrowserNotification } from '@/lib/browser-notify'
+import { sendBrowserNotification } from '../internal/browser-notify'
 
 import { attentionForDone, badgeFor, playReplyChime, withUnreadPrefix, type ConversationDonePayload } from '@bakin/ui/conversation'
 

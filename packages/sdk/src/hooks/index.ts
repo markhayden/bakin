@@ -79,6 +79,8 @@ export { useHistoryBack } from '@/hooks/use-history-back'
 export { toast } from '@/hooks/use-toast'
 /** Subscribe to the toast store for custom toast UIs. */
 export { useToastStore } from '@/hooks/use-toast'
+/** Send an OS notification (no-op when disabled or the tab is focused); the click navigates client-side. */
+export { sendBrowserNotification } from '../internal/browser-notify'
 /** Resize a side-by-side split pane by dragging the divider between columns. */
 export { useHorizontalResize } from '@/hooks/use-horizontal-resize'
 

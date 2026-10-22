@@ -62,7 +62,7 @@ const BANS: Ban[] = [
       rel === 'packages/sdk/src/navigation/unsaved-changes-guard.tsx'
       // Hard-navigation fallback when the shell's navigate bridge isn't
       // registered (notification clicked before boot).
-      || rel === 'src/lib/browser-notify.ts',
+      || rel === 'packages/sdk/src/internal/browser-notify.ts',
     catches: [
       'window.location.assign(`/chat?chat=${id}`)',
       'location.replace("/tasks")',
@@ -181,7 +181,7 @@ describe('no hard navigation for internal routes', () => {
   it('allowlisted files still exist (stale entries rot the allowlist)', () => {
     const pinned = [
       'packages/sdk/src/navigation/unsaved-changes-guard.tsx',
-      'src/lib/browser-notify.ts',
+      'packages/sdk/src/internal/browser-notify.ts',
       'packages/host/src/components/layout/header.tsx',
       'packages/host/src/plugin-host/PluginHost.tsx',
       'packages/sdk/src/navigation/router.ts',

@@ -1,11 +1,18 @@
+/**
+ * Browser (OS) notifications — host-shell plumbing. The six verbs below are
+ * `@makinbakin/sdk/internal` (the host's toggle, boot-time navigator); only
+ * `sendBrowserNotification` is plugin-facing, via `@makinbakin/sdk/hooks`.
+ */
 const STORAGE_KEY = 'bakin-notifications-enabled'
 
 /**
  * Navigate bridge — the host registers its router here at boot so
  * notification clicks route client-side instead of full-reloading the shell.
- * globalThis-based (like __bakinBroadcast) because every plugin bundle
- * inlines its own copy of this module; a module-level variable would never
- * reach those copies.
+ * globalThis-based (like __bakinBroadcast): the browser runs ONE SDK instance
+ * (the vendor bundle every plugin externalizes to), but the registration must
+ * survive module identity — tests import this file from source while the
+ * host registers through the entrypoint, and a module-level variable would
+ * be two variables.
  */
 type NavigateFn = (url: string) => void
 

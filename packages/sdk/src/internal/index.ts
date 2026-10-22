@@ -80,3 +80,17 @@ export type { LazyPluginIndex, PluginLoadState } from './lazy'
 // ── Plugin UI ownership (host-injected; not an author-facing component) ────
 /** Transparent DOM/context boundary used around registered page and slot UI. */
 export { PluginOwnershipRoot, usePluginOwnership } from './plugin-ownership'
+
+// ── Browser notifications (host toggle + boot-time navigator) ──────────────
+/** Register the shell router so OS-notification clicks navigate client-side. */
+export { setNotificationNavigator } from './browser-notify'
+/** Navigate through the registered bridge; hard load only before the shell boots. */
+export { navigateToUrl } from './browser-notify'
+/** Secure-context `Notification` API present. */
+export { isNotificationsSupported } from './browser-notify'
+/** The user's opt-in AND the browser's grant. */
+export { isNotificationsEnabled } from './browser-notify'
+/** Ask the browser; persists the outcome as the opt-in. */
+export { requestNotificationPermission } from './browser-notify'
+/** Persist the opt-in without prompting. */
+export { toggleNotifications } from './browser-notify'

@@ -6,7 +6,7 @@ Internal navigation ALWAYS goes through the SPA router; a hard navigation re-boo
 
 - **Links:** `PluginLink` from `@makinbakin/sdk/navigation` (plugins + shared browser UI) or TanStack `Link` (host internals). Both keep real-anchor semantics (copy, cmd/middle-click) while routing primary clicks client-side. Raw internal `<a href="/…">` is banned; `<a href="/api/…">` (real server resources: downloads, exports) is exempt.
 - **Programmatic:** `useRouter().push/replace` from `@makinbakin/sdk/navigation` — never `window.location.assign/replace/href`.
-- **Outside React (OS notification clicks):** `navigateToUrl()` in `src/lib/browser-notify.ts` routes through the `globalThis.__bakinNavigate` bridge the host registers at boot (`packages/host/src/main.tsx`); falls back to a hard load only when the shell isn't booted. globalThis because plugin bundles inline their own copy of that module.
+- **Outside React (OS notification clicks):** `navigateToUrl()` in `packages/sdk/src/internal/browser-notify.ts` (`@makinbakin/sdk/internal`) routes through the `globalThis.__bakinNavigate` bridge the host registers at boot (`packages/host/src/main.tsx`); falls back to a hard load only when the shell isn't booted. Plugins reach only `sendBrowserNotification` (`@makinbakin/sdk/hooks`).
 - **Toast click-throughs** navigate via `useRouter().push` and dismiss themselves with the id `toast()` returns (see chat's `ReplyToast` / workflows' `GateToast`).
 
 `@makinbakin/sdk/navigation` is the focused browser boundary. It owns

@@ -25,7 +25,7 @@ const APP_ROOT = join(ROOT, 'src')
 const ALLOWED: Record<string, string> = {
   'packages/sdk/src/hooks/index.ts': 'groups 1–3 of the hooks barrel; group 1 (src/hooks) moves into the SDK in #809b, groups 2–3 stay (P2 #5)',
   'packages/sdk/src/conversation/use-conversation-thread.ts': 'usePluginEvent from src/hooks — moves with #809b',
-  'packages/sdk/src/conversation/use-conversation-attention.tsx': 'src/hooks + src/lib/browser-notify — move with #809b',
+  'packages/sdk/src/conversation/use-conversation-attention.tsx': 'src/hooks — move with #809b',
 }
 
 /** Paths #809a deleted; a facade or a re-creation fails here. */
