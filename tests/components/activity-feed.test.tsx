@@ -2,7 +2,7 @@
 import { describe, expect, it, mock } from 'bun:test'
 import { render, screen } from '@testing-library/react'
 import { ActivityContext } from '@/context/activity-context'
-import type { ActivityEvent } from '@/types'
+import type { ActivityEvent } from '@makinbakin/sdk/types'
 
 const activityEvents: ActivityEvent[] = [
   {

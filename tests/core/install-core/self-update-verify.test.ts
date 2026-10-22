@@ -1,6 +1,6 @@
 /** The shared self-update verifier (#1007 D7.11): a NEW boot serving the expected version, nothing less. */
 import { describe, expect, it } from 'bun:test'
-import { describeSelfUpdateVerification, verifySelfUpdate } from '../../src/lib/self-update-verify'
+import { describeSelfUpdateVerification, verifySelfUpdate } from '../../../packages/core/src/install-core/self-update-verify'
 
 type Answer = { version: string; bootId: string; state: 'starting' | 'serving' | 'stopping' } | 'down' | { status: number }
 

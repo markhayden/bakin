@@ -9,8 +9,8 @@ import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { readTaskboard } from '@/core/task-store'
-import { mapAuditMessage } from '@/lib/map-audit-message'
-import type { ActivityEvent } from '@/types'
+import { mapAuditMessage } from '@bakin/core/events/audit-message'
+import type { ActivityEvent } from '@makinbakin/sdk/types'
 
 const AUDIT_PATH = join(getContentDir(), 'audit.jsonl')
 

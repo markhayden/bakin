@@ -5,7 +5,7 @@
  * given a handoff; a changed handoff restarts the verification.
  */
 import { useEffect, useState } from 'react'
-import { describeSelfUpdateVerification, verifySelfUpdate, type SelfUpdateVerification } from '@/lib/self-update-verify'
+import { describeSelfUpdateVerification, verifySelfUpdate, type SelfUpdateVerification } from '@bakin/core/install-core/self-update-verify'
 
 export interface SelfUpdateHandoff {
   expectedVersion: string

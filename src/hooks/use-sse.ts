@@ -3,8 +3,8 @@
 import { useEffect, useRef } from 'react'
 import { useContentStore } from './use-content-store'
 import { emitPluginEvent } from './use-plugin-event'
-import type { Heartbeat } from '@/types'
-import { mapAuditMessage } from '@/lib/map-audit-message'
+import { mapAuditMessage } from '@bakin/core/events/audit-message'
+import type { Heartbeat } from '@makinbakin/sdk/types'
 import { sendBrowserNotification } from '@/lib/browser-notify'
 
 const BASE_DELAY = 1000

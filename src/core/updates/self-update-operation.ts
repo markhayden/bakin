@@ -4,7 +4,7 @@
  * ARMED only after it (P19). The point of no return is the binary swap; the
  * last stage is `restarting`, and the operation ends with the old process —
  * a client that follows it sees `restarted` (outcome unknown) and runs the
- * explicit version verification (`src/lib/self-update-verify.ts`).
+ * explicit version verification (`packages/core/src/install-core/self-update-verify.ts`).
  */
 import type { OperationOrigin, OperationOutcome, OperationPlan, StartOperationInput } from '@bakin/core/operations'
 import type { GithubRelease, SelfUpdateOptions, SelfUpdateReporter, SelfUpdateStage } from '../self-update'

@@ -1,7 +1,6 @@
-// Shell-only client types. The task/calendar/memory/project types that once
-// lived here were Next.js-era residue (12 dead exports) — deleted; task types
-// are single-homed in the SDK / core store. These three back the SSE content
-// store and agent-status UI.
+// Host state the SSE content store publishes (`useContentStore` on
+// `@makinbakin/sdk/hooks`): the activity feed rows, the per-agent heartbeat
+// and the connected/files/heartbeats snapshot. Public because the store is.
 
 export interface Heartbeat {
   status: 'working' | 'idle' | 'down'

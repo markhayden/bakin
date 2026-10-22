@@ -33,12 +33,12 @@ Spec `.claude/specs/toolchain-and-sdk-boundary-batch-2026-10.md` · Plan `.claud
 - [x] 3.3 reply-toast body/attention/chime → ui; attention hook → sdk; `useAgentIdentity` (avatar) + raw-name headline; SDK wrapper + parity test; use-agent-store mock inventory; dir + fold shim gone; exceptions/migrations re-pathed
 - [x] 3.4 Drawer → ui patterns; src/components/ui shims deleted; six arch suites + RTL mocks + Drawer exception rows re-pathed; census regenerated
 - [x] 3.5 sdk-app-boundary test; check-cycles stale-checks tolerated entries
-- [ ] 3.6 docs
+- [x] 3.6 docs (+ generated SDK reference committed)
 - [x] Bits compatibility proof (assembled SDK + exact Bits usages typecheck: tsc exit 0)
-- [ ] PR 3 merged
+- [x] PR 3 merged (#1022, 2026-10-22)
 
 ## PR 4 — #809b `refactor/809-sdk-hooks`
-- [ ] 4.1 map-audit-message + self-update-verify → core; host-state types → sdk/types
+- [x] 4.1 map-audit-message + self-update-verify → core; host-state types → sdk/types
 - [ ] 4.2 browser-notify → sdk/internal (+ sendBrowserNotification on hooks); spend bridge deleted; hard-nav pins re-pathed
 - [ ] 4.3 the 19 hooks → packages/sdk/src/hooks; every import + mock re-pathed; full suite
 - [ ] 4.4 allowlist shrinks to plugin hooks; docs

@@ -1,4 +1,9 @@
-import type { ActivityEvent } from '@/types'
+/**
+ * Audit event → activity-feed copy. Pure and shared by the server's activity
+ * route, the team timeline and the browser content store (the SSE hook) —
+ * single-homed in @bakin/core so neither side reaches into the other's tree.
+ */
+import type { ActivityEvent } from '@makinbakin/sdk/types'
 
 /** Map an audit event name + data into a human-readable message */
 export function mapAuditMessage(event: string, data: Record<string, unknown>): string {
