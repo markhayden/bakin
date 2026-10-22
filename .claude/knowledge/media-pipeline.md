@@ -99,8 +99,10 @@ Store layout:
 
 Key modules: `packages/core/src/media/{pin,pin-data,store,installer,sharp-import,sharp-loader}.ts`.
 The download/extract/verify/commit legs ride the shared primitive
-`packages/core/src/net/download.ts` (also under `bin-installer` and
-`requirements-installer`; the antfly installer refit is ticketed separately).
+`packages/core/src/net/download.ts` (also under `bin-installer`,
+`requirements-installer`, whiskit's managed bun and the antfly installer — the
+last refit landed in two steps: #895 moved its transfer and extraction onto the
+primitive, #890 its binary commit onto `commitFileAtomic`).
 
 ## Surfaces
 
