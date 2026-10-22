@@ -4,7 +4,7 @@ import { dirname, join } from 'path'
 import type { OperationContext, OperationPlan } from '@makinbakin/sdk/types'
 import type { SearchAdapterSetupCheckOptions, SearchAdapterSetupOptions, SearchAdapterSetupCheckResult } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
-import { DownloadChecksumError, downloadToFile, extractTarball, opTransfer } from '@bakin/core/net/download'
+import { commitFileAtomic, DownloadChecksumError, downloadToFile, extractTarball, opTransfer } from '@bakin/core/net/download'
 import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
 import { fileFact, identityOf } from './identity'
 import { antflyBinaryPath, antflyHome } from './paths'
@@ -238,13 +238,24 @@ export async function checkAntflyDependency(
   return { name: 'antfly', status: 'ok', message: `Antfly v${version} is installed at ${binary}`, details, ...base }
 }
 
+/**
+ * The two filesystem steps of the commit, injectable so a test can make one
+ * of them fail deterministically (no chmod tricks — those cannot fail as
+ * root). Defaults: fs.renameSync and the shared commitFileAtomic.
+ */
+export interface InstallerFs {
+  renameDirectory?: (from: string, to: string) => void
+  commitFile?: typeof commitFileAtomic
+}
+
 export async function installAntflyDependency(
   opts: SearchAdapterSetupOptions,
   logger: AdapterLogger = noopLogger,
   pin: AntflyPin = ANTFLY_PIN,
-  timings: { readyBudgetMs?: number; pollMs?: number; io?: ServiceIo } = {},
+  timings: { readyBudgetMs?: number; pollMs?: number; io?: ServiceIo; installerFs?: InstallerFs } = {},
   settings: AntflySettings = DEFAULT_SETTINGS,
 ) {
+  const fsOps: Required<InstallerFs> = { renameDirectory: renameSync, commitFile: commitFileAtomic, ...timings.installerFs }
   // Fresh boots wipe + preload models; 60s covers the slowest observed
   // cold start with headroom. Tests inject tiny budgets.
   const readyBudgetMs = timings.readyBudgetMs ?? 60_000
@@ -409,18 +420,53 @@ export async function installAntflyDependency(
       // Staging did not hold the lock: another home may have installed meanwhile.
       const previousVersion = existsSync(targetPath) ? await antflyBinaryVersion(targetPath, { signal: op.signal }) : null
       const hadBinary = existsSync(targetPath)
+      const shareTarget = join(antflyHome(), 'share')
+      const shareAside = `${shareTarget}.previous`
+      // A leftover aside is the only copy of the previous assets after an
+      // interrupted install — refused, never deleted, and before the service
+      // is touched. The operator decides with the version rule below.
+      if (existsSync(shareAside)) {
+        throw new Error(
+          `${shareAside} exists from an interrupted install. If \`${targetPath} --version\` reports v${pin.version} the new install is complete — delete ${shareAside}; otherwise restore it over ${shareTarget} and reinstall.`,
+        )
+      }
       // Stop even an unready engine before shared mutations.
       await stopService(settings, io, intent)
+      // Commit order, with the successful binary commit as the rollback
+      // boundary: (1) share/ swaps ASIDE (rename, never rm-then-rename — a
+      // crash between the two renames leaves share.previous beside a missing
+      // share/, and the next install refuses until the operator decides);
+      // (2) the binary commits atomically. Before (2) succeeds any failure
+      // puts the previous installation back and restarts it if there was
+      // one; after it, the new pair is the installation and what did not
+      // complete (clear, restart) is reported as such.
       const extractedShare = join(tmpDir, 'share')
-      if (existsSync(extractedShare)) {
-        const shareTarget = join(antflyHome(), 'share')
-        rmSync(shareTarget, { recursive: true, force: true })
-        mkdirSync(dirname(shareTarget), { recursive: true })
-        renameSync(extractedShare, shareTarget)
+      let shareMovedAside = false
+      let shareSwappedIn = false
+      try {
+        if (existsSync(extractedShare)) {
+          mkdirSync(dirname(shareTarget), { recursive: true })
+          if (existsSync(shareTarget)) {
+            fsOps.renameDirectory(shareTarget, shareAside)
+            shareMovedAside = true
+          }
+          fsOps.renameDirectory(extractedShare, shareTarget)
+          shareSwappedIn = true
+        }
+        mkdirSync(dirname(targetPath), { recursive: true })
+        await fsOps.commitFile(extractedBinary, targetPath, { mode: 0o755 })
+      } catch (err) {
+        if (shareSwappedIn) {
+          try { rmSync(shareTarget, { recursive: true, force: true }) } catch (cleanupErr) { logger.warn('Could not remove the half-committed share/ after a failed install', { error: String(cleanupErr) }) }
+        }
+        if (shareMovedAside) {
+          try { renameSync(shareAside, shareTarget) } catch (restoreErr) { logger.error('Could not restore share.previous after a failed install — restore it by hand', { from: shareAside, to: shareTarget, error: String(restoreErr) }) }
+        }
+        if (hadBinary) {
+          try { await finish() } catch (restartErr) { logger.warn('The previous engine did not restart after a failed install', { error: String(restartErr) }) }
+        }
+        throw err
       }
-
-      mkdirSync(dirname(targetPath), { recursive: true })
-      renameSync(extractedBinary, targetPath)
 
       // Engine version change = a deliberate REBUILD event (2026-07-21: the
       // rc.18→rc.21 in-place upgrade silently migrated table files one-way,
@@ -438,13 +484,25 @@ export async function installAntflyDependency(
             to: pin.version,
             dataDir,
           })
-          rmSync(dataDir, { recursive: true, force: true })
+          try {
+            rmSync(dataDir, { recursive: true, force: true })
+          } catch (err) {
+            throw new Error(`Installed Antfly v${installedVersion} to ${targetPath} (checksum verified), but clearing the derived engine data at ${dataDir} failed: ${err instanceof Error ? err.message : String(err)}. The new engine and its assets are in place; remove that directory and run \`bakin reindex\`.`)
+          }
           dataCleared = true
         }
       }
       if (!dataCleared) op.skip('cleanup', 'no engine data to clear')
 
-      await finish()
+      try {
+        await finish()
+      } catch (err) {
+        throw new Error(`Installed Antfly v${installedVersion} to ${targetPath} (checksum verified), but the service did not restart: ${err instanceof Error ? err.message : String(err)}. The new engine and its assets are in place; ${shareAside} is kept until a restart succeeds.`)
+      }
+      // Only a running new engine retires the previous assets.
+      if (shareMovedAside) {
+        try { rmSync(shareAside, { recursive: true, force: true }) } catch (err) { logger.warn('Could not remove share.previous after a successful install', { error: String(err) }) }
+      }
       const durationMs = Date.now() - start
       logger.info('Antfly installed', { binary: targetPath, version: installedVersion, durationMs })
       return {
