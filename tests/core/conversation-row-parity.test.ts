@@ -23,7 +23,7 @@ mock.module('../../src/core/logger', () => ({
 }))
 
 import type { ConversationTurnRow as CoreRow } from '../../packages/core/src/conversation/turns'
-import type { ConversationTurnRow as SdkRow } from '../../packages/core/src/conversation/turns'
+import type { ConversationTurnRow as SdkRow } from '../../packages/sdk/src/types/conversation-turns'
 
 // Non-distributive mutual assignability: [A] extends [B] AND [B] extends [A].
 type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false

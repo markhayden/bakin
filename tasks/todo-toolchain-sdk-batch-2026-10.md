@@ -34,7 +34,7 @@ Spec `.claude/specs/toolchain-and-sdk-boundary-batch-2026-10.md` · Plan `.claud
 - [x] 3.4 Drawer → ui patterns; src/components/ui shims deleted; six arch suites + RTL mocks + Drawer exception rows re-pathed; census regenerated
 - [x] 3.5 sdk-app-boundary test; check-cycles stale-checks tolerated entries
 - [ ] 3.6 docs
-- [ ] Bits compatibility proof (assembled SDK + unchanged Bits consumers typecheck)
+- [x] Bits compatibility proof (assembled SDK + exact Bits usages typecheck: tsc exit 0)
 - [ ] PR 3 merged
 
 ## PR 4 — #809b `refactor/809-sdk-hooks`
