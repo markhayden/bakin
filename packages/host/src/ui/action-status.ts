@@ -1,5 +1,5 @@
 /**
- * Legacy host bridge for root `src/components/ui/*` compatibility shims.
+ * Legacy host bridge for host code that predates the kit entrypoints (the root `src/components/ui/*` shims are gone, #809).
  * Product and plugin consumers should use their existing supported imports;
  * only the host package and SDK may reach the private implementation.
  */

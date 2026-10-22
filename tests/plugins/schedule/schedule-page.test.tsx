@@ -16,6 +16,8 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
+import * as realDrawerModule from '../../../packages/ui/src/patterns/drawer'
+import * as realButtonModule from '../../../packages/ui/src/primitives/button'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -171,11 +173,17 @@ mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
 }))
 
-mock.module('@/components/drawer', () => ({
+// The Drawer and Button implementations live in packages/ui now; the stubs
+// spread the real modules so every other export those files carry keeps
+// working for the rest of the render tree (a narrow mock of a kit module is
+// an ESM link error for its other importers).
+mock.module('../../../packages/ui/src/patterns/drawer', () => ({
+  ...realDrawerModule,
   Drawer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }))
 
-mock.module('@/components/ui/button', () => ({
+mock.module('../../../packages/ui/src/primitives/button', () => ({
+  ...realButtonModule,
   Button: ({ children, onClick }: { children?: React.ReactNode; onClick?: () => void }) => (
     <button onClick={onClick}>{children}</button>
   ),

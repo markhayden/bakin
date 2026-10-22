@@ -16,7 +16,7 @@
  *                    cheat-sheet IS warranted here because the invocation is
  *                    non-obvious and easy to get wrong.
  */
-import type { RuntimeToolAccess } from '@bakin/core/adapters/runtime'
+import type { RuntimeToolAccess } from './adapters/runtime'
 
 const AGENT_SLOT = '<agent>'
 const TOOL_SLOT = '<tool>'

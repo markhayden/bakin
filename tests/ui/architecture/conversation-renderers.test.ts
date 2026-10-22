@@ -95,7 +95,7 @@ describe('focused conversation renderers', () => {
   it('publishes durable thread plumbing and does not restore request-scoped streaming', () => {
     const focused = read('packages/sdk/src/conversation/index.ts')
     const thread = read('packages/sdk/src/conversation/use-conversation-thread.ts')
-    const replyToast = read('src/components/conversation/reply-toast.tsx')
+    const replyToast = read('packages/sdk/src/conversation/reply-toast.tsx')
     const avatarAdapter = read('src/components/agent-avatar.tsx')
     const navBadge = read('src/hooks/use-nav-badge.ts')
     expect(focused).toContain('useConversationThread')
@@ -108,9 +108,14 @@ describe('focused conversation renderers', () => {
     expect(thread).not.toContain("from '@makinbakin/sdk/hooks'")
     expect(thread).not.toContain("from '@bakin/core")
     expect(thread).not.toContain('ReadableStream')
-    expect(replyToast).toContain("from '@makinbakin/sdk/navigation'")
-    expect(replyToast).toContain("from '@makinbakin/sdk/hooks'")
+    // SDK-local spellings (the pattern hooks/router.ts uses): router from the
+    // navigation entry, identity from the hooks barrel, never the team plugin
+    // directly, never app code, and never a hand-built router.
+    expect(replyToast).toContain("from '../navigation'")
+    expect(replyToast).toContain("from '../hooks'")
     expect(replyToast).not.toContain("from '@bakin/team")
+    expect(replyToast).not.toMatch(/from '@\//)
+    expect(replyToast).not.toContain('window.location')
     expect(avatarAdapter).toContain("from '@makinbakin/sdk/hooks'")
     expect(avatarAdapter).not.toContain("from '@bakin/team")
     expect(navBadge).toContain("from '../../packages/sdk/src/register'")

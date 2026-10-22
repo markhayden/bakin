@@ -410,6 +410,8 @@ export type {
   InputGroupTextareaProps,
 } from './primitives/input-group'
 
+export { Drawer } from './patterns/drawer'
+export type { DrawerProps } from './patterns/drawer'
 export { DrawerSection } from './patterns/drawer-section'
 export type {
   DrawerSectionHeadingLevel,

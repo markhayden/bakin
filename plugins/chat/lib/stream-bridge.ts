@@ -1,6 +1,6 @@
 /**
  * Chat stream bridge — chat's consumer of the shared conversation turn
- * engine (src/core/conversation-turns.ts, extracted from this module in
+ * engine (packages/core/src/conversation/turns.ts, extracted from this module in
  * #703). The wire contract is unchanged and frozen: one agent turn per
  * chat, `chat.chunk`/`chat.done`/`chat.error` on the event bus (→ global
  * SSE bus → useSSE in the browser), durable rows persisted incrementally
@@ -17,7 +17,7 @@ import {
   createConversationTurnService,
   type StartTurnResult,
   type TurnContext,
-} from '../../../src/core/conversation-turns'
+} from '@bakin/core/conversation/turns'
 import { createChatMeterHook } from '../../../src/core/conversation-metering'
 
 /** The bridge needs only messaging + the event bus — accept any context that has them. */

@@ -87,6 +87,11 @@ packages/core/src/
 │                             source, notification-channel, agent-package skills,
 │                             load-defaults, validate-definition)
 ├── tasks/                  ← Bakin task store
+├── conversation/           ← the ONE turn engine (turns.ts), the turn recorder and
+│                             conversationThreadId (#809 — published via
+│                             @makinbakin/sdk/utils; ctx.conversations is the author surface)
+├── tool-access.ts          ← the ONE tool-invocation renderer (renderToolCall /
+│                             renderToolAccessInstructions) per the active runtime
 ├── plugin-types.ts         ← BakinPlugin, PluginContext, StorageAdapter, EventBus
 ├── logger.ts               ← createLogger()
 ├── format.ts               ← formatAge(), isStale()
@@ -279,7 +284,7 @@ packages/host/
 | Hook registry | cli.ts (binary CLI dispatcher) |
 | Search outbox + blue/green core (packages/core/src/search/) | search-registry-core.ts / search-plugin-api.ts / search-query.ts / search-reindex.ts (globalThis registry, ctx.search, cross-table search, health) |
 | Search adapter contract + typed errors (adapters/search/) | search-outbox.ts (drain pump), search-startup.ts (boot ensure/resume), search-orphan-sweep.ts (doctor sweep), search-file-patterns.ts |
-|  | tool-access.ts (the ONE tool-invocation renderer) + runtime-switch.ts (switch orchestrator) + roster-reconcile.ts (cross-runtime carry seam) |
+| Tool-access renderer (tool-access.ts) + conversation turn engine/recorder (conversation/) | runtime-switch.ts (switch orchestrator) + roster-reconcile.ts (cross-runtime carry seam) |
 |  | exec-tools/ (registry.ts + self-registering built-in tools under tools/) |
 |  | server/ (request-handler.ts router factory + startup-recovery.ts) |
 |  | plugin-scaffold.ts, self-update.ts + server-restart.ts (the swap/restart primitives the self-update operation composes) |

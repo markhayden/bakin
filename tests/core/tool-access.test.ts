@@ -19,7 +19,7 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { renderToolAccessInstructions } from '../../src/core/tool-access'
+import { renderToolAccessInstructions } from '../../packages/core/src/tool-access'
 import type { RuntimeToolAccess } from '../../packages/core/src/adapters/runtime'
 
 const FIXTURES = join(import.meta.dir, '../fixtures/tool-access')

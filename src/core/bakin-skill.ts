@@ -3,7 +3,7 @@ import { join } from 'path'
 
 import type { AgentRuntimeAdapter, RuntimeToolAccess } from '@bakin/core/adapters/runtime'
 import { readEmbeddedBakinSkillTemplate } from './bakin-skill-template'
-import { renderToolAccessInstructions } from './tool-access'
+import { renderToolAccessInstructions } from '@bakin/core/tool-access'
 import { maybeGetAppServices } from './app-services-store'
 import { createLogger } from './logger'
 

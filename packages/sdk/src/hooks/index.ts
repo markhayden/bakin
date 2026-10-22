@@ -88,6 +88,8 @@ export { useHorizontalResize } from '@/hooks/use-horizontal-resize'
 export { useAgentStore } from '@bakin/team/hooks/use-agent-store'
 /** Look up a single agent by ID. */
 export { useAgent } from '@bakin/team/hooks/use-agent-store'
+/** The identity the kit avatar renders for a registered agent (display-name override, headshot, colour). */
+export { useAgentIdentity } from '@bakin/team/hooks/use-agent-store'
 /** List all registered agents. */
 export { useAgentList } from '@bakin/team/hooks/use-agent-store'
 /** Get an agent's brand color (hex string). */

@@ -18,9 +18,12 @@ THE shared conversation UI **and turn engine** for every surface that talks to
 an agent. The private UI implementation lives in
 `packages/ui/src/conversation/` and is published through the focused
 `@makinbakin/sdk/conversation` entrypoint (+ two server helpers via
-`@makinbakin/sdk/utils`). Existing `/components` imports are migration-only.
-The server-side turn engine lives in `src/core/conversation-turns.ts` (see
-below). The kit replaced `IntegratedBrainstorm` and the three duplicated
+`@makinbakin/sdk/utils`, implemented in `packages/core/src/conversation/`).
+The SDK-level pieces — the attention hook, the reply-toast wrapper that binds
+agent identity and the router around the kit's pure `ReplyToastBody`, and
+`useConversationThread` — live in `packages/sdk/src/conversation/`; nothing
+under `src/components` remains (#809). The server-side turn engine lives in
+`packages/core/src/conversation/turns.ts` (see below). The kit replaced `IntegratedBrainstorm` and the three duplicated
 chunk-folding implementations (2026-07 overhaul; spec
 `.claude/specs/chat-conversation-kit.md`), then absorbed chat's turn machinery
 as the ONE engine for all conversational surfaces (#703; spec
@@ -28,7 +31,7 @@ as the ONE engine for all conversational surfaces (#703; spec
 
 ## The turn engine (#703)
 
-`createConversationTurnService(config)` in `src/core/conversation-turns.ts` — the generalization of chat's stream bridge, consumed by chat, brands, and the bits projects/messaging brainstorms. Server-owned background turns, detached from HTTP requests: send routes return **202** (busy → **409**), chunks stream as consumer-named plugin-events over the shared SSE bus, rows persist incrementally through `createTurnRecorder` (a crash or navigation keeps the partial turn). Delivered as `ctx.conversations` on the plugin context (SDK-typed contract with declarative `metering` — workClass pinned to 'chat', runIds force-namespaced `brainstorm:<pluginId>:`, event names must live in the plugin's namespace for user-source plugins); core plugins may import the module directly. Never an SDK code export — the engine needs crypto/media/logger.
+`createConversationTurnService(config)` in `packages/core/src/conversation/turns.ts` — the generalization of chat's stream bridge, consumed by chat, brands, and the bits projects/messaging brainstorms. Server-owned background turns, detached from HTTP requests: send routes return **202** (busy → **409**), chunks stream as consumer-named plugin-events over the shared SSE bus, rows persist incrementally through `createTurnRecorder` (a crash or navigation keeps the partial turn). Delivered as `ctx.conversations` on the plugin context (SDK-typed contract with declarative `metering` — workClass pinned to 'chat', runIds force-namespaced `brainstorm:<pluginId>:`, event names must live in the plugin's namespace for user-source plugins); core plugins may import the module directly. Never an SDK code export — the engine needs crypto/media/logger.
 
 Consumer config: `events` {chunk,done,error} names + `payload(key)` base, `resolveThread(key)` (null → `not_found`), `appendRow(key,row)` (failures logged, never thrown), `threadId(key, agentId)` (per-turn schemes legal), `framing?`, `ephemeral?`, `terminalMarkerRows?` (#735 — persist an invisible `{kind:'done', ts, turnId}` row at clean success settle, making EVERY settle shape end on a terminal row (`done | aborted | error`) — the boot-sweep evidence for stamping partial-output deaths; **chat-style sweepable transcripts only**: bounded stores (brands' 300-row brainstorm cap) would evict real rows and foreign zod schemas would reject the kind; the settle-shape matrix in `tests/core/conversation-turns.test.ts` MUST be extended by any new settle path), hooks `onChunk` (server-side tap — messaging proposal parsing), `meter` (success+abort, never error), `onSettled` (runs AFTER the slot releases; `waitFor()` covers it). `start(ctx, key, content, opts?)` takes per-turn `agentId` override (agent pickers), `runtimeContent` (embedded prompt assembly — the transcript keeps clean user text), `attachments` (kind split in-engine, #742: raster images ride the model-attachment lane through the downscale shim; non-raster files (PDF, CSV, …) persist on the user row for UI fidelity but reach the model as file-lane path notes appended to the runtime content — `fileLaneNote` is THE single note generator, PDFs point at `bakin_exec_pdf_read` rendered in the active runtime's calling style via a lazy `tool-access` import; the attachment-only placeholder is kind-aware: "See the attached image."/"file."). Load-bearing semantics (synchronous slot reservation/TOCTOU, drain-per-chunk persistence, typed error kinds, abort → clean done + `aborted` row, attachment placeholder) are pinned by `tests/core/conversation-turns.test.ts` AND chat's frozen suite — see the preserved-verbatim list in `tasks/plan-703-conversation-durability.md`.
 
@@ -71,7 +74,7 @@ compact single-turn composition for task and workflow embeds.
 | `useConversationAttention` | Provider building block for `nav-badge-providers` slots: green unread-only `badgeFor` nav dot, retained-state reconnect/resume recovery, optional `(N)` title prefix, toast/chime/OS fanout via the pure rules |
 | `attentionForDone` / `badgeFor` / `withUnreadPrefix` / `visibleIdFromLocation` / `playReplyChime` | Pure attention rules + the reply chime (generalized from chat's S6 matrix; chat's `attention.ts` is a facade over these) |
 
-Server helpers (`@makinbakin/sdk/utils`): `conversationThreadId(scope, entityId, agentId)` and `createTurnRecorder({turnId, agentId?})` — chunks → persistable rows (`ingest`/`drain`/`finish`; drain enables crash-safe incremental persistence; previews clipped at 2000/500 chars with `metadata.truncated`). Chat's stream bridge and the bits plugins' routes share these — ONE implementation of "what survives a turn".
+Server helpers (`@makinbakin/sdk/utils`, re-exported from `@bakin/core/conversation/{thread-id,turn-recorder}`; the recorder emits the canonical `ConversationMessage` rows of `@makinbakin/sdk/types`, of which the dependency-free ui package keeps a structural copy pinned by a private contract module): `conversationThreadId(scope, entityId, agentId)` and `createTurnRecorder({turnId, agentId?})` — chunks → persistable rows (`ingest`/`drain`/`finish`; drain enables crash-safe incremental persistence; previews clipped at 2000/500 chars with `metadata.truncated`). Chat's stream bridge and the bits plugins' routes share these — ONE implementation of "what survives a turn".
 
 ## Transports
 

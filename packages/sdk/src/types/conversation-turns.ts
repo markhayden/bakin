@@ -1,7 +1,7 @@
 /**
  * Conversation turn service — the plugin-author contract for the shared
  * background turn engine (#703). The implementation lives host-side
- * (src/core/conversation-turns.ts) and reaches plugins as
+ * (packages/core/src/conversation/turns.ts) and reaches plugins as
  * `ctx.conversations`; these types mirror it with SDK-flavored runtime
  * types (same parallel-flavor pattern as `AgentRuntimeAdapter`).
  *

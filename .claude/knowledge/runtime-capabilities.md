@@ -39,7 +39,7 @@ Rules of the model:
   invoke Bakin's `bakin_exec_*` tools: `in-process` (Pi), `mcp` (OpenClaw
   native MCP, per-agent server `bakin-<agent>`), or `cli-shim` (inert
   extension point).
-- `src/core/tool-access.ts` is the ONE renderer: `renderToolCall()` renders a
+- `packages/core/src/tool-access.ts` (`@bakin/core/tool-access`) is the ONE renderer: `renderToolCall()` renders a
   single invocation; `renderToolAccessInstructions()` renders the standing
   "Tool access" block. Dispatch prompts, workflow prompts, the bakin skill,
   and the composed AGENTS.md section all render through it — bytes cannot

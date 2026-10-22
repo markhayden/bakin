@@ -1,12 +1,11 @@
 'use client'
 
 import { useCallback, type CSSProperties, type ReactNode, useState } from 'react'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { Button } from '@/components/ui/button'
-import { ResizeHandle, usePersistedLeadingEdgeResize } from '../../packages/host/src/ui/resize'
-// The dialog shim rather than `@makinbakin/sdk`: the SDK ui entrypoint
-// re-exports this Drawer, so importing the SDK here would be a module cycle.
-import { UnsavedChangesDialog } from '@/components/ui/dialog'
+import { ResizeHandle } from '../behaviors/resize-handle'
+import { usePersistedLeadingEdgeResize } from '../behaviors/use-persisted-leading-edge-resize'
+import { Button } from '../primitives/button'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../primitives/sheet'
+import { UnsavedChangesDialog } from './unsaved-changes-dialog'
 
 /** Drawers cannot save in place, so the exit dialog never renders its save action. */
 function noopSave(): void {
@@ -65,9 +64,9 @@ export function Drawer({
     disabled: !open,
   })
   // Per opening (issue 966b): closing the drawer drops a pending dirty prompt
-  // with it — adjusted during render. Inlined rather than useKeyedState: the
-  // Drawer is exported through `@makinbakin/sdk/ui`, and an import from the
-  // hooks entry would pull the whole hooks graph into the ui bundle.
+  // with it — adjusted during render. Inlined rather than useKeyedState: this
+  // package imports nothing from the SDK, and the hooks graph must not ride
+  // into the ui bundle.
   const [showDirtyConfirm, setShowDirtyConfirm] = useState(false)
   const [promptFor, setPromptFor] = useState(open)
   if (promptFor !== open) {

@@ -13,8 +13,8 @@ export type {
   AlertVariantOptions,
   LegacyAlertVariant,
 } from '@bakin/ui'
-export { Drawer } from '@/components/drawer'
-export type { DrawerProps } from '@/components/drawer'
+export { Drawer } from '@bakin/ui'
+export type { DrawerProps } from '@bakin/ui'
 export { DrawerSection } from '@bakin/ui'
 export type { DrawerSectionHeadingLevel, DrawerSectionProps } from '@bakin/ui'
 export {

@@ -8,16 +8,16 @@
 export { foldConversation } from '@bakin/ui/conversation'
 export type {
   ConversationChunk,
-  ConversationMessage,
   ConversationTextFormat,
   ConversationToolActivity,
   ConversationToolCall,
   ConversationTurn,
-  DisplayAttachment,
   FoldOptions,
   TurnItem,
   TurnStatus,
 } from '@bakin/ui/conversation'
+/** The canonical row types live in `@makinbakin/sdk/types`; ui keeps a pinned structural copy (message-contract.ts). */
+export type { ConversationMessage, DisplayAttachment } from '../types/conversation'
 
 /** Compact single-turn output for task and workflow embeds. */
 export { TurnOutputView, TurnToolChip, foldTurnChunks } from '@bakin/ui/conversation'
@@ -57,19 +57,19 @@ export {
   badgeFor,
   visibleIdFromLocation,
   withUnreadPrefix,
-} from '@/components/conversation/attention'
+} from '@bakin/ui/conversation'
 export type {
   AttentionActions,
   ConversationAttentionContext,
   ConversationDonePayload,
-} from '@/components/conversation/attention'
-export { playReplyChime } from '@/components/conversation/notification-sound'
-export { ConversationReplyToast } from '@/components/conversation/reply-toast'
-export { useConversationAttention } from '@/components/conversation/use-conversation-attention'
+} from '@bakin/ui/conversation'
+export { playReplyChime } from '@bakin/ui/conversation'
+export { ConversationReplyToast } from './reply-toast'
+export { useConversationAttention } from './use-conversation-attention'
 export type {
   ConversationAttentionConfig,
   ConversationAttentionTotals,
-} from '@/components/conversation/use-conversation-attention'
+} from './use-conversation-attention'
 
 /** Stable compact, absolute, and calendar-day timestamp helpers. */
 export {

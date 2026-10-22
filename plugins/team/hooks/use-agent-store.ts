@@ -261,6 +261,24 @@ export function usePackageState(agentId: string): PackageStateRow | undefined {
 }
 
 /** Get an agent's display name override, if any. */
+/**
+ * The identity the kit's presentational `AgentAvatar` renders for a registered
+ * agent: display-name override first, headshot, identity colour — ONE mapping
+ * for the host avatar adapter and the SDK's reply toast.
+ */
+export function useAgentIdentity(agentId: string): { id: string; name: string; imageSrc?: string; color?: string; initials?: string } {
+  const agent = useAgent(agentId)
+  const displayName = useAgentDisplayName(agentId)
+  const color = useAgentColor(agentId)
+  return {
+    id: agentId,
+    name: displayName ?? agent?.name ?? (agentId || 'Unknown agent'),
+    imageSrc: agent?.headshot || undefined,
+    color: agent ? color : undefined,
+    initials: agent ? undefined : '?',
+  }
+}
+
 export function useAgentDisplayName(agentId: string): string | undefined {
   return useAgentStore((s) => s.displaySettings[agentId]?.displayName)
 }

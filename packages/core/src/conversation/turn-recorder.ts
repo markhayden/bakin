@@ -13,8 +13,8 @@
  * - error chunks persist as error rows (after any partial text)
  * - status/done chunks never persist
  */
-import type { ChatChunk as RuntimeChatChunk, RuntimeToolActivity } from '@bakin/core/adapters/runtime'
-import type { ConversationMessage } from './fold'
+import type { ChatChunk as RuntimeChatChunk, RuntimeToolActivity } from '../adapters/runtime'
+import type { ConversationMessage } from '@makinbakin/sdk/types'
 
 export const SUMMARY_MAX_CHARS = 500
 export const PREVIEW_MAX_CHARS = 2000

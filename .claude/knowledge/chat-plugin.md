@@ -35,7 +35,7 @@ plugins/chat/
                                  DELETE queued/:queueId, attachments upload/serve (multipart, raster images + PDF, 25 MB),
                                  GET /capabilities
   lib/stream-bridge.ts           chat's consumer config over the shared conversation turn engine
-                                 (src/core/conversation-turns.ts, extracted FROM this module in #703);
+                                 (packages/core/src/conversation/turns.ts, extracted FROM this module in #703, moved to core in #809);
                                  chat-side policy: CHAT_TURN_FRAMING, per-turn metering (work class
                                  'chat'), post-release auto-title, ambiguity-null
                                  resolveActiveTurnForAgent, queue wiring (persist→writeQueue,

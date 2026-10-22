@@ -81,7 +81,7 @@ import {
 } from '@bakin/workflows/lib/runtime'
 import { getApprovalRecord, listApprovalRecords } from '@bakin/core/approvals'
 import { runAsAgentInvocation } from '../../../src/core/agent-invocation'
-import { createConversationTurnService } from '../../../src/core/conversation-turns'
+import { createConversationTurnService } from '../../../packages/core/src/conversation/turns'
 
 const gateWorkflow = `name: Gate Hook Test
 description: Workflow used by gate hook tests

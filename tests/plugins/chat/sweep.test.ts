@@ -38,7 +38,7 @@ import {
   sweepInterruptedTurns,
 } from '../../../plugins/chat/lib/store'
 import type { ChatTranscriptRow } from '../../../plugins/chat/types'
-import type { ConversationTurnRow } from '../../../src/core/conversation-turns'
+import type { ConversationTurnRow } from '../../../packages/core/src/conversation/turns'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

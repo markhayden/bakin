@@ -733,6 +733,21 @@
       }
     },
     {
+      "path": "packages/ui/src/conversation/reply-toast-body.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 4
+      }
+    },
+    {
       "path": "packages/ui/src/conversation/tool-call-drawer.tsx",
       "owner": {
         "repository": "bakin",
@@ -1031,9 +1046,9 @@
         "area": "sdk"
       },
       "censusEntryId": "host-route:__root",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
         "raw-scale": 1
@@ -2506,21 +2521,6 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-scale": 1
-      }
-    },
-    {
-      "path": "src/components/conversation/reply-toast.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/conversation/reply-toast",
-      "migrationTask": "T34",
-      "archetype": "conversation",
-      "target": "canonical conversation patterns and focused SDK entrypoint",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 4
       }
     },
     {

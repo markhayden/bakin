@@ -94,7 +94,7 @@ import type { PluginContext, BakinPlugin } from '@bakin/core/plugin-types'
 
 import workflowsPlugin from '../../plugins/workflows'
 import assetsPlugin from '../../plugins/assets'
-import { createConversationTurnService } from '../../src/core/conversation-turns'
+import { createConversationTurnService } from '../../packages/core/src/conversation/turns'
 
 interface ChokidarHandlers {
   add: (path: string) => void

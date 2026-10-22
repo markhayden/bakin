@@ -28,14 +28,24 @@ export type ConversationChunk =
   | { type: 'done'; content?: string; data?: Record<string, unknown> }
   | { type: 'error'; content?: string; data?: Record<string, unknown> }
 
-/** Attachment as displayed in a conversation (URL-addressed, not path). */
+/**
+ * Attachment as displayed in a conversation (URL-addressed, not path).
+ * Structural copy of the SDK types entry's `DisplayAttachment`
+ * (packages/sdk/src/types/conversation.ts) — this package imports nothing;
+ * the SDK's private message-contract module fails typecheck if the two drift.
+ */
 export interface DisplayAttachment {
   name: string
   mimeType: string
   url: string
 }
 
-/** One persisted conversation row accepted by the shared folding engine. */
+/**
+ * One persisted conversation row accepted by the shared folding engine.
+ * Structural copy of the SDK types entry's `ConversationMessage` (the canonical
+ * home, packages/sdk/src/types/conversation.ts); pinned by the SDK's private
+ * message-contract module.
+ */
 export type ConversationMessage =
   | { kind: 'user'; ts: string; content: string; attachments?: DisplayAttachment[] }
   | { kind: 'assistant'; ts: string; turnId?: string; agentId?: string; content: string }

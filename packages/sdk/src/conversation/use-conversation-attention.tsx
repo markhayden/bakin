@@ -18,8 +18,7 @@ import { useNavBadge } from '@/hooks/use-nav-badge'
 import { toast, useToastStore } from '@/hooks/use-toast'
 import { sendBrowserNotification } from '@/lib/browser-notify'
 
-import { attentionForDone, badgeFor, withUnreadPrefix, type ConversationDonePayload } from './attention'
-import { playReplyChime } from './notification-sound'
+import { attentionForDone, badgeFor, playReplyChime, withUnreadPrefix, type ConversationDonePayload } from '@bakin/ui/conversation'
 
 export interface ConversationAttentionTotals {
   unreadTotal: number

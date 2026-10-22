@@ -15,7 +15,7 @@
 // Namespace import: suites mock.module() app-services with partial export
 // sets; a named import would break the whole import graph under those mocks.
 import * as appServices from './app-services-store'
-import { renderToolCall } from './tool-access'
+import { renderToolCall } from '@bakin/core/tool-access'
 import type { RuntimeToolAccess } from '@bakin/core/adapters/runtime'
 import type {
   DispatchContinuationContext,
