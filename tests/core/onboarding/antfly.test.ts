@@ -519,12 +519,18 @@ describe('commit rollback boundary (#890)', () => {
     const previous = previousInstallation()
     mockDownloadFetch()
     bootstrapFails = 'launchctl: Bootstrap failed: 5: Input/output error'
+    // Derived data exists, so the version change clears it: the guidance must
+    // end with the reindex, and must route past the aside it keeps.
+    mkdirSync(servicePaths().dataDir, { recursive: true })
     try {
       const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
       expect(result.status).toBe('failed')
       expect(result.message).toContain('did not restart')
       expect(result.message).toContain('Input/output error')
+      expect(result.message).toContain('--version')
+      expect(result.message).toContain(`delete ${shareAside}`)
       expect(result.message).toContain('bakin install search')
+      expect(result.message).toContain('bakin reindex')
       expect(readFileSync(managedBinary, 'utf-8')).not.toBe(previous)
       expect(existsSync(newAsset)).toBe(true)
       expect(existsSync(oldMarker)).toBe(false)
@@ -576,6 +582,44 @@ describe('commit rollback boundary (#890)', () => {
     expect(existsSync(join(`${shareDir}.failed`, 'antfly', 'antfarm', 'index.html'))).toBe(true)
     expect(existsSync(shareDir)).toBe(false)
     expect(renames).toBe(4) // aside, in, failed-aside, restore (refused)
+  })
+
+  it('(ii-c) the move of the half-committed assets aside fails → the message names where they really are, nothing restarts', async () => {
+    const previous = previousInstallation()
+    mockDownloadFetch()
+    const result = await installAntflyDependency(optsAutoYes, undefined, makePin(), {
+      installerFs: {
+        commitFile: async () => { throw new Error('injected: commit refused') },
+        renameDirectory: (from, to) => {
+          if (to === `${shareDir}.failed`) throw new Error('injected: move aside refused')
+          renameSync(from, to)
+        },
+      },
+    })
+    expect(result.status).toBe('failed')
+    expect(result.message).toContain('injected: commit refused')
+    expect(result.message).toContain('injected: move aside refused')
+    expect(result.message).toContain(`the half-committed assets are at ${shareDir}`)
+    expect(result.message).toContain(`the previous assets are at ${shareAside}`)
+    expect(result.message).not.toContain(`assets are at ${shareDir}.failed`)
+    expect(started()).toBe(false)
+    expect(readFileSync(managedBinary, 'utf-8')).toBe(previous)
+    expect(existsSync(newAsset)).toBe(true)
+    expect(readFileSync(join(shareAside, 'old-marker.txt'), 'utf-8')).toBe('previous assets')
+    expect(lastView?.log.some((entry) => entry.level === 'warn' && entry.text.includes('recovery failed'))).toBe(true)
+  })
+
+  it('a share.previous that cannot be removed after a successful install is reported through the operation, not just the logger', async () => {
+    previousInstallation()
+    mockDownloadFetch()
+    const result = await installAntflyDependency(optsAutoYes, undefined, makePin(), {
+      installerFs: { removeDirectory: (path) => { if (path === shareAside) throw new Error('injected: busy directory') } },
+    })
+    expect(result.status).toBe('installed')
+    expect(existsSync(join(shareAside, 'old-marker.txt'))).toBe(true)
+    const warn = lastView?.log.find((entry) => entry.level === 'warn' && entry.text.includes(shareAside))
+    expect(warn?.text).toContain('injected: busy directory')
+    expect(warn?.text).toContain('next install refuses')
   })
 
   it('(iv-b) the already-at-pin path refuses a leftover share.previous too, before touching the service', async () => {

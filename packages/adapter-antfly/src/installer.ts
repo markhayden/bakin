@@ -245,6 +245,8 @@ export async function checkAntflyDependency(
  */
 export interface InstallerFs {
   renameDirectory?: (from: string, to: string) => void
+  /** Best-effort removal of an aside directory (recursive, force). */
+  removeDirectory?: (path: string) => void
   commitFile?: typeof commitFileAtomic
 }
 
@@ -271,7 +273,7 @@ export async function installAntflyDependency(
   timings: { readyBudgetMs?: number; pollMs?: number; io?: ServiceIo; installerFs?: InstallerFs } = {},
   settings: AntflySettings = DEFAULT_SETTINGS,
 ) {
-  const fsOps: Required<InstallerFs> = { renameDirectory: renameSync, commitFile: commitFileAtomic, ...timings.installerFs }
+  const fsOps: Required<InstallerFs> = { renameDirectory: renameSync, removeDirectory: (path) => rmSync(path, { recursive: true, force: true }), commitFile: commitFileAtomic, ...timings.installerFs }
   // Fresh boots wipe + preload models; 60s covers the slowest observed
   // cold start with headroom. Tests inject tiny budgets.
   const readyBudgetMs = timings.readyBudgetMs ?? 60_000
@@ -473,10 +475,12 @@ export async function installAntflyDependency(
         // leaves its artifacts in place for the operator.
         const failedAside = `${shareTarget}.failed`
         const recovery: string[] = []
+        let movedToFailed = false
         if (shareSwappedIn) {
           try {
-            if (existsSync(failedAside)) rmSync(failedAside, { recursive: true, force: true })
+            if (existsSync(failedAside)) fsOps.removeDirectory(failedAside)
             fsOps.renameDirectory(shareTarget, failedAside)
+            movedToFailed = true
           } catch (moveErr) {
             recovery.push(`could not move the half-committed ${shareTarget} aside to ${failedAside}: ${errorText(moveErr)}`)
           }
@@ -489,13 +493,24 @@ export async function installAntflyDependency(
           }
         }
         if (recovery.length > 0) {
-          op.output(`recovery failed: ${recovery.join('; ')}`)
-          throw new Error(
-            `${errorText(err)} — and recovery failed: ${recovery.join('; ')}. The engine is stopped; the previous assets are at ${shareAside}${shareSwappedIn ? ` and the half-committed ones at ${failedAside}` : ''}. Restore ${shareTarget} by hand, then run \`bakin install search\`.`,
-          )
+          // Name only what is actually on disk: the half-committed assets sit
+          // where the failed step left them, and share.previous exists only
+          // when there was a previous installation to move aside.
+          const where = [
+            shareSwappedIn ? `the half-committed assets are at ${movedToFailed ? failedAside : shareTarget}` : null,
+            shareMovedAside ? `the previous assets are at ${shareAside}` : null,
+          ].filter((part): part is string => part !== null).join(', ')
+          const text = `${errorText(err)} — and recovery failed: ${recovery.join('; ')}. The engine is stopped; ${where}. Restore ${shareTarget} by hand, then run \`bakin install search\`.`
+          op.log(text, 'warn')
+          throw new Error(text)
         }
-        if (shareSwappedIn) {
-          try { rmSync(failedAside, { recursive: true, force: true }) } catch (cleanupErr) { logger.warn('Could not remove the aside half-committed assets after a successful restore', { dir: failedAside, error: String(cleanupErr) }) }
+        if (movedToFailed) {
+          try {
+            fsOps.removeDirectory(failedAside)
+          } catch (cleanupErr) {
+            const text = `Could not remove the aside half-committed assets at ${failedAside} after a successful restore: ${errorText(cleanupErr)}. Delete it by hand; it is not used.`
+            logger.warn(text); op.log(text, 'warn')
+          }
         }
         if (hadBinary) {
           try {
@@ -536,11 +551,18 @@ export async function installAntflyDependency(
       try {
         await finish()
       } catch (err) {
-        throw new Error(`Installed Antfly v${installedVersion} to ${targetPath} (checksum verified), but the service did not restart: ${errorText(err)}. The new engine and its assets are in place; ${shareAside} is kept until a restart succeeds — run \`bakin install search\` once the cause is fixed.`)
+        throw new Error(
+          `Installed Antfly v${installedVersion} to ${targetPath} (checksum verified), but the service did not restart: ${errorText(err)}. The new engine and its assets are in place${shareMovedAside ? ` and ${shareAside} is kept` : ''}. Recover in order: confirm \`${targetPath} --version\` reports v${pin.version}${shareMovedAside ? `; delete ${shareAside}` : ''}; run \`bakin install search\` to start the engine${dataCleared ? '; then run `bakin reindex` — the derived data was cleared for the version change' : ''}.`,
+        )
       }
       // Only a running new engine retires the previous assets.
       if (shareMovedAside) {
-        try { rmSync(shareAside, { recursive: true, force: true }) } catch (err) { logger.warn('Could not remove share.previous after a successful install', { error: String(err) }) }
+        try {
+          fsOps.removeDirectory(shareAside)
+        } catch (err) {
+          const text = `Installed and running, but ${shareAside} could not be removed: ${errorText(err)}. Delete it by hand — the next install refuses while it exists.`
+          logger.warn(text); op.log(text, 'warn')
+        }
       }
       const durationMs = Date.now() - start
       logger.info('Antfly installed', { binary: targetPath, version: installedVersion, durationMs })
