@@ -9,9 +9,9 @@
  * Run: `bun run check:cycles` (wired into CI next to typecheck).
  * Known-cycle notes: the dispatch cluster and workflows engine↔node-dispatch
  * are runtime-lazy (dynamic import at call time) — tolerated, documented in
- * their modules. The SDK↔app entries are the deliberate two-repo-layer
- * arrangement (implementations live in src/, SDK re-exports; see
- * packages/sdk/src/hooks/index.ts header).
+ * their modules. (The SDK↔app edges that once needed a tolerated set are
+ * gone — #809 moved every implementation into the SDK; the hooks barrel's
+ * plugin-sourced re-exports are a one-way edge, not a cycle.)
  */
 // madge ships no types; cast the narrow surface this script uses.
 // @ts-expect-error TS7016 — untyped module, no @types/madge exists
@@ -48,19 +48,6 @@ const KNOWN_CYCLES = new Set<string>([
 ])
 
 
-/**
- * Cycles whose PRESENCE depends on module-resolution environment: the
- * SDK ↔ app implementation-layer edges resolve through `@makinbakin/sdk`
- * and `@/` aliases — locally they resolve to workspace source (cycle
- * visible), in CI `bun install --frozen-lockfile` resolves the published
- * package (edge invisible). Tolerated either way, never required — the
- * deliberate P2 #2 arrangement (see packages/sdk/src/hooks/index.ts).
- * Stale-checked like KNOWN_CYCLES: an entry nobody observes any more is
- * removed, never kept (#809 removed the last one; #809b may empty the set
- * for good).
- */
-const TOLERATED_CYCLES = new Set<string>([])
-
 const result = await madge(ENTRIES, {
   fileExtensions: ['ts', 'tsx'],
   tsConfig: 'tsconfig.app.json',
@@ -70,8 +57,8 @@ const result = await madge(ENTRIES, {
 const cycles = result.circular()
 const found = new Map(cycles.map((c) => [key(c), c]))
 
-const newCycles = [...found.entries()].filter(([k]) => !KNOWN_CYCLES.has(k) && !TOLERATED_CYCLES.has(k))
-const staleAllowlist = [...KNOWN_CYCLES, ...TOLERATED_CYCLES].filter((k) => !found.has(k))
+const newCycles = [...found.entries()].filter(([k]) => !KNOWN_CYCLES.has(k))
+const staleAllowlist = [...KNOWN_CYCLES].filter((k) => !found.has(k))
 
 if (newCycles.length > 0) {
   console.error(`NEW import cycles (${newCycles.length}) — break the cycle, or allowlist it deliberately in scripts/check-cycles.ts:`)
@@ -83,7 +70,6 @@ if (staleAllowlist.length > 0) {
 }
 if (newCycles.length > 0 || staleAllowlist.length > 0) process.exit(1)
 
-const toleratedSeen = [...found.keys()].filter((k) => TOLERATED_CYCLES.has(k)).length
-console.log(`check-cycles: ${cycles.length - toleratedSeen} pinned + ${toleratedSeen} tolerated cycles, 0 new, allowlist current.`)
+console.log(`check-cycles: ${cycles.length} pinned cycles, 0 new, allowlist current.`)
 
 export {} // top-level await requires module context under tsc

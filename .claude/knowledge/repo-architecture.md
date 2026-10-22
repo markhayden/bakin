@@ -99,7 +99,10 @@ packages/core/src/
 ├── hooks/hook-registry.ts  ← cross-plugin hook RPC
 ├── storage/                ← MarkdownStorageAdapter + db.ts (keyed multi-db
 │                             SQLite core, openNamedDb — SOLE bun:sqlite importer)
-└── events/                 ← BakinEventBus
+├── install-core/           ← atomic-write/source-guards + the self-update verifier the
+│                             CLI twin and the browser hook share (#809b)
+└── events/                 ← BakinEventBus + audit-message.ts (audit event → activity
+                              copy, shared by the activity route, team timeline and SSE hook)
 ```
 
 ### `packages/sdk/` — `@makinbakin/sdk`
@@ -118,13 +121,18 @@ packages/sdk/src/
 ├── ui/                     ← focused exports of private UI primitives and forms
 ├── layout/                 ← focused exports of private layout primitives
 ├── patterns/               ← private kit re-exports plus schema/data-aware SDK adapters
-├── hooks/                  ← useAgent, useSSE, useSearch, useQueryState, ...
+├── hooks/                  ← the Bakin-wide hooks (use-sse, use-search, use-operation,
+│                             use-toast, …) as SDK files (#809b) + the barrel that re-exports
+│                             the team/workflows plugin hooks (P2 #5)
+├── internal/               ← host-shell plumbing (@makinbakin/sdk/internal: registry
+│                             readers, lazy plugin loader, browser-notify host verbs)
 ├── slots/                  ← Slot, registerSlot primitive
 ├── routing/                ← typed route contracts (defineRoute, re-exported
 │                             from @bakin/core/routing)
 ├── types/                  ← CANONICAL contract types, self-contained, split into
-│                             primitives/manifest/runtime/services/registration/context
-│                             behind an index.ts barrel (see the two-tier note below)
+│                             primitives/manifest/runtime/services/registration/context/
+│                             host-state (the SSE content store's shapes) behind an
+│                             index.ts barrel (see the two-tier note below)
 └── utils/                  ← cn, formatAge, formatSize, isStale
 ```
 

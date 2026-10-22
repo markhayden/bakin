@@ -142,6 +142,7 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `UseOperationOptions` | — |
 | `UseOperationResult` | — |
 | `useHistoryBack` | — |
+| `sendBrowserNotification` | Send an OS notification (no-op when disabled or the tab is focused); the click navigates client-side. |
 | `useHorizontalResize` | Resize a side-by-side split pane by dragging the divider between columns. |
 | `useAgentIdentity` | The identity the kit avatar renders for a registered agent (display-name override, headshot, colour). |
 | `useAvailableModels` | The available-models catalog (cached, read-only); empty until loaded. |

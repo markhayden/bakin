@@ -148,7 +148,7 @@ Exported from `@makinbakin/sdk/patterns` (implementation: `packages/ui/src/patte
 
 ## useSearch Hook
 
-Located at `src/hooks/use-search.ts`. Provides Antfly-powered search alongside existing client-side filtering. Pass `plugin: <pluginId>` to hit the plugin's auto-registered `/api/plugins/{plugin}/search` route, or omit `plugin` to fall back to the cross-plugin `/api/search` endpoint.
+Located at `packages/sdk/src/hooks/use-search.ts` (`useSearch` on `@makinbakin/sdk/hooks`). Provides Antfly-powered search alongside existing client-side filtering. Pass `plugin: <pluginId>` to hit the plugin's auto-registered `/api/plugins/{plugin}/search` route, or omit `plugin` to fall back to the cross-plugin `/api/search` endpoint.
 
 ```tsx
 const search = useSearch({ plugin: 'tasks', facets: ['status', 'agent'], debounce: 300 })

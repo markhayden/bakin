@@ -32,7 +32,7 @@ deletions.
 | Sources: `search-engine`, `search-models`, `gateway`, `bakin`, `plugin` (+ `registerCoreUpdateSources`) | `src/core/updates/sources/*.ts` |
 | Apply service (preview + confirm, covering approvals, engine reinstall operation) | `src/core/updates/apply.ts` |
 | Self-update as an operation; `bakin update` | `src/core/updates/self-update-operation.ts`, `src/core/updates/self-update-cli.ts`, `src/core/self-update.ts`, `src/core/server-restart.ts` |
-| Verification (browser hook + CLI twin) | `packages/core/src/install-core/self-update-verify.ts`, `src/hooks/use-self-update-verification.ts` (`@makinbakin/sdk/hooks`), `src/cli/self-update-verify.ts` |
+| Verification (browser hook + CLI twin) | `packages/core/src/install-core/self-update-verify.ts`, `packages/sdk/src/hooks/use-self-update-verification.ts` (`@makinbakin/sdk/hooks`), `src/cli/self-update-verify.ts` |
 | HTTP | `packages/host/src/api/updates.ts` (declared in `core-routes/index.ts`) |
 | Settings | `settings.updates { enabled, intervalMs }` — `packages/core/src/settings.ts` (`normalizeUpdatesSettings`), System & Alerts fields in `src/components/system-settings.ts` |
 | Doctor invalidation | `src/core/doctor-refresh.ts` (`updates.changed` → `plugin-artifacts` / `search` re-run) |
