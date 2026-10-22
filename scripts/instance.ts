@@ -172,6 +172,11 @@ async function main(argv: string[]): Promise<number> {
   // Load host-side rig env (OP_SERVICE_ACCOUNT_TOKEN, OPENCLAW_IMAGE_TAG) from
   // the gitignored dev/docker/.env; real shell exports still win.
   loadEnvFile(resolve(REPO_ROOT, 'dev/docker/.env'), process.env)
+  // The compose file interpolates BUN_VERSION on every parse (the image build
+  // pins bun to the repo's .bun-version); derive it once here so every verb's
+  // compose call — up/down/dev through lifecycle, status/shell/run directly —
+  // sees it (the runner merges a call's env over process.env).
+  process.env.BUN_VERSION ??= readFileSync(resolve(REPO_ROOT, '.bun-version'), 'utf-8').trim()
   const deps = makeDeps(paths)
 
   try {

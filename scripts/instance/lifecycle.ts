@@ -67,7 +67,9 @@ export interface LifecycleDeps {
 
 export function composeUpArgs(composeFile: string, services: string[], profile: string | null): string[] {
   const profileFlag = profile ? ['--profile', profile] : []
-  return ['docker', 'compose', ...profileFlag, '-f', composeFile, 'up', '-d', ...services]
+  // `--build`: a changed image pin (OPENCLAW_IMAGE_TAG, BUN_VERSION) rebuilds on
+  // the next up; an unchanged one is a cached no-op.
+  return ['docker', 'compose', ...profileFlag, '-f', composeFile, 'up', '-d', '--build', ...services]
 }
 
 export function composeDownArgs(composeFile: string): string[] {

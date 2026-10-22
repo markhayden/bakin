@@ -71,12 +71,12 @@ function fakeDeps(over: Partial<{
 describe('compose argv builders', () => {
   it('composeUpArgs: default gateway, no profile', () => {
     expect(composeUpArgs(COMPOSE, ['openclaw-gateway'], null)).toEqual([
-      'docker', 'compose', '-f', COMPOSE, 'up', '-d', 'openclaw-gateway',
+      'docker', 'compose', '-f', COMPOSE, 'up', '-d', '--build', 'openclaw-gateway',
     ])
   })
   it('composeUpArgs: threads --profile before the subcommand', () => {
     expect(composeUpArgs(COMPOSE, ['sandbox'], 'sandbox')).toEqual([
-      'docker', 'compose', '--profile', 'sandbox', '-f', COMPOSE, 'up', '-d', 'sandbox',
+      'docker', 'compose', '--profile', 'sandbox', '-f', COMPOSE, 'up', '-d', '--build', 'sandbox',
     ])
   })
   it('composeDownArgs', () => {
