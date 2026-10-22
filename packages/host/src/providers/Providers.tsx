@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useSSE, useContentStore, useSidebar } from '@makinbakin/sdk/hooks'
-import { TooltipProvider } from '@/components/ui/tooltip'
+import { TooltipProvider } from '@bakin/ui'
 import { Toaster } from '../components/layout/toaster'
 import { SidebarContext } from '@/context/sidebar-context'
 import { ActivityProvider } from '@/context/activity-context'

@@ -35,9 +35,10 @@ every current owner in public Storybook and `design-system/public-api.json`.
 
 ## Drawer
 
-`src/components/drawer.tsx` — Historical compatibility implementation of
-the resizable right-side detail drawer. The supported public contract is
-`Drawer` from `@makinbakin/sdk/ui`.
+`packages/ui/src/patterns/drawer.tsx` — the resizable right-side detail
+drawer, a kit pattern on the kit's own Sheet/Button/UnsavedChangesDialog and
+resize behaviours (#809 moved it out of `src/components`). The supported
+public contract is `Drawer` from `@makinbakin/sdk/ui`.
 
 ### Props
 
@@ -365,7 +366,7 @@ reference: `.claude/knowledge/conversation-kit.md`.
 ## Key Files
 
 ```
-src/components/drawer.tsx          — Resizable drawer shell
+packages/ui/src/patterns/drawer.tsx      — Resizable drawer shell (kit pattern)
 src/components/agent-filter.tsx          — Single-select agent pill strip
 src/components/agent-select.tsx          — Agent picker with avatars
 src/components/model-select.tsx          — Model picker grouped by tier
@@ -376,7 +377,7 @@ src/components/integrated-brainstorm/    — Unified streaming agent-chat surfac
 src/hooks/use-search.ts                  — Search hook (Antfly-backed) with debounce + fallback
 src/hooks/use-runtime-status.ts          — Runtime restart sync checker
 src/hooks/use-vertical-resize.ts         — Drag-to-resize hook (messaging panels + brainstorm)
-src/components/ui/dropdown-menu.tsx      — Base dropdown (focus: bg-secondary)
-src/components/ui/sheet.tsx              — Sheet primitive (used by Drawer)
+packages/ui/src/primitives/dropdown-menu.tsx — Base dropdown (focus: bg-secondary)
+packages/ui/src/primitives/sheet.tsx     — Sheet primitive (used by Drawer)
 src/core/app-services.ts                 — boot-created runtime/search/task services
 ```

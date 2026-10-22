@@ -11,7 +11,7 @@ import {
   MAX_WIDTH,
   MIN_WIDTH,
   getDrawerWidthStorageKey,
-} from '@/components/drawer'
+} from '../../packages/ui/src/patterns/drawer'
 import { DrawerSection } from '@makinbakin/sdk/ui'
 
 mock.module('@bakin/core/main-agent', () => ({

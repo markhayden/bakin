@@ -37,21 +37,21 @@ describe('anchored overlay primitive ownership', () => {
     expect(hostBridge).toContain("from '@bakin/ui'")
 
     // P-final: the legacy shims were deleted with the frozen barrel, except
-    // `tooltip`, which the host provider still reaches via `@/components/ui/tooltip`.
+    // `tooltip` too (#809): the host provider takes TooltipProvider from @bakin/ui.
     for (const primitive of ['popover', 'dropdown-menu', 'command']) {
       expect(existsSync(join(REPO_ROOT, `src/components/ui/${primitive}.tsx`))).toBe(false)
     }
-    expect(readRepoFile('src/components/ui/tooltip.tsx')).toContain("from '../../../packages/host/src/ui/anchored-overlays'")
+    expect(existsSync(join(REPO_ROOT, 'src/components/ui/tooltip.tsx'))).toBe(false) // #809
 
-    const [privateUi, publicUi, legacyTooltip] = await Promise.all([
+    const [privateUi, publicUi, hostBridgeModule] = await Promise.all([
       import('@bakin/ui'),
       import('@makinbakin/sdk/ui'),
-      import('../../../src/components/ui/tooltip'),
+      import('../../../packages/host/src/ui/anchored-overlays'),
     ])
     expect(publicUi.PopoverContent).toBe(privateUi.PopoverContent)
     expect(publicUi.DropdownMenuItem).toBe(privateUi.DropdownMenuItem)
     expect(publicUi.TooltipContent).toBe(privateUi.TooltipContent)
     expect(publicUi.CommandItem).toBe(privateUi.CommandItem)
-    expect(legacyTooltip.TooltipProvider).toBe(privateUi.TooltipProvider)
+    expect(hostBridgeModule.TooltipProvider).toBe(privateUi.TooltipProvider)
   })
 })
