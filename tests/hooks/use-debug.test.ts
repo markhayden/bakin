@@ -24,7 +24,7 @@ describe('useContentStore — debug state', () => {
       configurable: true,
     })
     // bun:test has no vi.resetModules; reset the zustand store state directly.
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
     useContentStore.setState({ debug: false }, false)
   })
 
@@ -33,13 +33,13 @@ describe('useContentStore — debug state', () => {
   })
 
   it('defaults debug to false', async () => {
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
     const state = useContentStore.getState()
     expect(state.debug).toBe(false)
   })
 
   it('setDebug(true) updates state and persists to localStorage', async () => {
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
 
     act(() => { useContentStore.getState().setDebug(true) })
 
@@ -48,7 +48,7 @@ describe('useContentStore — debug state', () => {
   })
 
   it('setDebug(false) updates state and persists "false" to localStorage', async () => {
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
 
     act(() => { useContentStore.getState().setDebug(true) })
     act(() => { useContentStore.getState().setDebug(false) })
@@ -59,7 +59,7 @@ describe('useContentStore — debug state', () => {
 
   it('initialize() hydrates debug from localStorage when "true"', async () => {
     storage.set('bakin-debug', 'true')
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
 
     await act(async () => { await useContentStore.getState().initialize() })
 
@@ -67,7 +67,7 @@ describe('useContentStore — debug state', () => {
   })
 
   it('initialize() leaves debug false when localStorage key is absent', async () => {
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
 
     await act(async () => { await useContentStore.getState().initialize() })
 
@@ -76,7 +76,7 @@ describe('useContentStore — debug state', () => {
 
   it('initialize() leaves debug false when localStorage value is not "true"', async () => {
     storage.set('bakin-debug', 'false')
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
 
     await act(async () => { await useContentStore.getState().initialize() })
 
@@ -94,7 +94,7 @@ describe('useContentStore — debug state', () => {
       configurable: true,
     })
 
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
 
     // Should not throw
     act(() => { useContentStore.getState().setDebug(true) })
@@ -118,7 +118,7 @@ describe('useDebug hook', () => {
       configurable: true,
     })
     // bun:test has no vi.resetModules; reset the zustand store state directly.
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
     useContentStore.setState({ debug: false }, false)
   })
 
@@ -127,7 +127,7 @@ describe('useDebug hook', () => {
   })
 
   it('returns [false, toggleFn] by default', async () => {
-    const { useDebug } = require('@/hooks/use-debug') as typeof import('@/hooks/use-debug')
+    const { useDebug } = require('../../packages/sdk/src/hooks/use-debug') as typeof import('../../packages/sdk/src/hooks/use-debug')
     const { result } = renderHook(() => useDebug())
 
     expect(result.current[0]).toBe(false)
@@ -135,7 +135,7 @@ describe('useDebug hook', () => {
   })
 
   it('toggleDebug flips debug from false to true', async () => {
-    const { useDebug } = require('@/hooks/use-debug') as typeof import('@/hooks/use-debug')
+    const { useDebug } = require('../../packages/sdk/src/hooks/use-debug') as typeof import('../../packages/sdk/src/hooks/use-debug')
     const { result } = renderHook(() => useDebug())
 
     act(() => { result.current[1]() })
@@ -145,8 +145,8 @@ describe('useDebug hook', () => {
   })
 
   it('toggleDebug flips debug from true to false', async () => {
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
-    const { useDebug } = require('@/hooks/use-debug') as typeof import('@/hooks/use-debug')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
+    const { useDebug } = require('../../packages/sdk/src/hooks/use-debug') as typeof import('../../packages/sdk/src/hooks/use-debug')
 
     act(() => { useContentStore.getState().setDebug(true) })
 
@@ -175,7 +175,7 @@ describe('DebugSeed', () => {
       configurable: true,
     })
     // bun:test has no vi.resetModules; reset the zustand store state directly.
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
     useContentStore.setState({ debug: false }, false)
   })
 
@@ -191,7 +191,7 @@ describe('DebugSeed', () => {
       writable: true,
     })
 
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
 
     // Import and render DebugSeed — it's a React component, so we need React
     const React = await import('react')
@@ -221,7 +221,7 @@ describe('DebugSeed', () => {
       writable: true,
     })
 
-    const { useContentStore } = require('@/hooks/use-content-store') as typeof import('@/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
     const React = await import('react')
     const { render: rtlRender } = require('@testing-library/react') as typeof import('@testing-library/react')
 

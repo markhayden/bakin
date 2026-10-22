@@ -46,7 +46,7 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
-mock.module('@/hooks/use-runtime-status', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
 }))
 mock.module('../../../plugins/team/hooks/use-agent-store', () => ({

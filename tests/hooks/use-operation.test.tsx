@@ -15,14 +15,14 @@ mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir,
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db'), media: join(testDir, 'media') }) }))
 
 import type { OperationView } from '@makinbakin/sdk/types'
-import { emitPluginEvent } from '../../src/hooks/use-plugin-event'
+import { emitPluginEvent } from '../../packages/sdk/src/hooks/use-plugin-event'
 import {
   initialFollowState,
   OperationStartError,
   reduceOperationFollow,
   startOperation,
   useOperation,
-} from '../../src/hooks/use-operation'
+} from '../../packages/sdk/src/hooks/use-operation'
 import { settleFor, waitUntil } from '../helpers/wait'
 
 const originalFetch = globalThis.fetch

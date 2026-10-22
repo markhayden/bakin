@@ -36,7 +36,7 @@ const runtimeState = {
   restart: mock(),
 }
 
-mock.module('@/hooks/use-runtime-status', () => ({
+mock.module('../../packages/sdk/src/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => runtimeState,
 }))
 

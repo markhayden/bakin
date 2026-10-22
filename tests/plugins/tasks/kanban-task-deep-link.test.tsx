@@ -95,10 +95,10 @@ mock.module('../../../plugins/tasks/hooks/use-budget-status', () => ({ useBudget
 mock.module('../../../plugins/tasks/hooks/use-model-holds', () => ({ useModelHolds: () => ({}) }))
 mock.module('../../../plugins/tasks/hooks/use-brand-status', () => ({ useBrandStatus: () => null, brandHoldReason: () => null }))
 mock.module('../../../plugins/tasks/hooks/use-live-activity', () => ({ useLiveActivity: () => ({}) }))
-mock.module('@/hooks/use-content-store', () => ({ useContentStore: () => false }))
+mock.module('../../../packages/sdk/src/hooks/use-content-store', () => ({ useContentStore: () => false }))
 
 const toastSpy = mock()
-mock.module('@/hooks/use-toast', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-toast', () => ({
   toast: toastSpy,
   useToastStore: Object.assign(mock(() => []), { getState: () => ({ add: mock(), clear: mock() }) }),
 }))

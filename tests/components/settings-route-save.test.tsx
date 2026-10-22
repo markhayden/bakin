@@ -29,7 +29,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 }))
 
 const toastAdd = mock()
-mock.module('@/hooks/use-toast', () => ({
+mock.module('../../packages/sdk/src/hooks/use-toast', () => ({
   useToastStore: (selector: (s: { add: typeof toastAdd }) => unknown) => selector({ add: toastAdd }),
 }))
 

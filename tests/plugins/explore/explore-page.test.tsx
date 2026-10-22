@@ -40,7 +40,7 @@ let cachedFor: unknown = null
 
 // Captured BEFORE the module is mocked (live namespace binding): the page's render helpers (useKeyedState) stay real.
 import * as realSdkHooks from '@makinbakin/sdk/hooks'
-import { emitPluginEvent } from '../../../src/hooks/use-plugin-event'
+import { emitPluginEvent } from '../../../packages/sdk/src/hooks/use-plugin-event'
 mock.module('@makinbakin/sdk/hooks', () => {
   return {
     ...realSdkHooks,

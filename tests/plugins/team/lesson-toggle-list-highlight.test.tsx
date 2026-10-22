@@ -24,7 +24,7 @@ mock.module('../../../packages/core/src/logger', loggerMock)
 
 // Primed URL state, following the agent-detail-lessons-tab pattern.
 const queryState: { lessonId: string } = { lessonId: '' }
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) =>
     key === 'lessonId' ? [queryState.lessonId || defaultValue, mock(), mock()] : [defaultValue, mock(), mock()],
   useQueryArrayState: () => [[], mock()],

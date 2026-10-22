@@ -32,7 +32,7 @@ mock.module('@tanstack/react-router', () => ({
 // Key-aware over `routeSearch` (bun resolves the SDK's useQueryState to this
 // mock too); writes are recorded per key so URL updates are assertable.
 const setParamSpy = mock((_key: string, _value: string) => {})
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
     const [local, setLocal] = React.useState<string | null>(null)

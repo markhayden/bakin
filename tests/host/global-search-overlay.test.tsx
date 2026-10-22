@@ -229,7 +229,7 @@ describe('GlobalSearchOverlay', () => {
 
     // require() (not a top-level import) so the store loads through the same
     // already-initialized module graph as the component under test.
-    const { useContentStore } = require('../../src/hooks/use-content-store')
+    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store')
     act(() => { useContentStore.setState({ debug: false }) })
     await act(async () => {
       render(<GlobalSearchOverlay />)

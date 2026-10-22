@@ -22,9 +22,9 @@ mock.module('../../packages/core/src/content-dir', () => ({
 
 import { render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
-import { useSSE } from '@/hooks/use-sse'
-import { useContentStore } from '@/hooks/use-content-store'
-import { usePluginEvent, type PluginEventPayload } from '@/hooks/use-plugin-event'
+import { useSSE } from '../../packages/sdk/src/hooks/use-sse'
+import { useContentStore } from '../../packages/sdk/src/hooks/use-content-store'
+import { usePluginEvent, type PluginEventPayload } from '../../packages/sdk/src/hooks/use-plugin-event'
 
 interface MockEventSource {
   onmessage: ((e: { data: string }) => void) | null

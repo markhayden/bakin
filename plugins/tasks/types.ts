@@ -11,7 +11,7 @@ export type { Task, TaskColumns, TaskBoard, ColumnId, TaskSource } from '../../s
 export type { ApprovalRecord as TaskApproval } from '@bakin/core/approvals'
 
 /** Task-level terminal outcome, derived from the completion ledger + task column.
- *  Mirrored client-side in src/hooks/use-task-run-history.ts — keep in sync. */
+ *  Mirrored client-side in packages/sdk/src/hooks/use-task-run-history.ts — keep in sync. */
 export interface TaskOutcome {
   state: 'done' | 'blocked' | 'archived' | 'in_progress'
   /** Set when state === 'done' and a completion row exists. */
@@ -21,7 +21,7 @@ export interface TaskOutcome {
 }
 
 /** One dispatch attempt for a task, from the execution ledger's `runs` table.
- *  Mirrored client-side in src/hooks/use-task-run-history.ts — keep in sync. */
+ *  Mirrored client-side in packages/sdk/src/hooks/use-task-run-history.ts — keep in sync. */
 export interface TaskRunEntry {
   runId: string
   taskId: string

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import type { AvailableModel } from '@makinbakin/sdk/types'
+import type { AvailableModel } from '../types'
 
 import { usePluginEvent } from './use-plugin-event'
 

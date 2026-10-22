@@ -12,7 +12,7 @@ import { act, cleanup, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { actRender } from '../rtl-settle'
 import { renderHook } from '@testing-library/react'
-import { useSelfUpdateVerification } from '../../src/hooks/use-self-update-verification'
+import { useSelfUpdateVerification } from '../../packages/sdk/src/hooks/use-self-update-verification'
 
 const realFetch = globalThis.fetch
 afterEach(() => { cleanup(); globalThis.fetch = realFetch })

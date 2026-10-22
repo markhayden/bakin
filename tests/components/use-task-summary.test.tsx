@@ -3,7 +3,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { act, renderHook } from '@testing-library/react'
 import { actRender } from '../rtl-settle'
-import { usePluginEvent, emitPluginEvent } from '../../src/hooks/use-plugin-event'
+import { usePluginEvent, emitPluginEvent } from '../../packages/sdk/src/hooks/use-plugin-event'
 const root = join(tmpdir(), `bakin-task-summary-${Date.now()}`)
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => root, getBakinPaths: () => ({ root }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => root, getBakinPaths: () => ({ root }) }))

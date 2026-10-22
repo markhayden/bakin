@@ -8,7 +8,7 @@ import { OperationsTray } from '../operations/operations-tray'
 import { openGlobalSearch } from '../search/use-search-hotkey'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useActivityContext } from '@/context/activity-context'
-import { useDebug, useMediaQuery, useOperation, useSelfUpdateVerification, startOperation, type SelfUpdateHandoff } from '@makinbakin/sdk/hooks'
+import { useDebug, useMediaQuery, useOperation, usePluginEvent, emitPluginEvent, useSelfUpdateVerification, startOperation, type SelfUpdateHandoff } from '@makinbakin/sdk/hooks'
 import type { UpdateRecord } from '@makinbakin/sdk/types'
 import {
   Alert,
@@ -27,7 +27,6 @@ import {
   SheetTitle,
   Spinner,
 } from '@makinbakin/sdk/ui'
-import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
 import { cn, OPERATOR_DECLARATION_HEADERS } from '@makinbakin/sdk/utils'
 
 /** The engine's `bakin:bakin` record (#1007 D7.7): the banner shows only when a newer release is available and not skipped. */

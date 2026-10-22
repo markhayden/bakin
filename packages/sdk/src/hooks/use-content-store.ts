@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { isNoisyEvent } from '@bakin/core/events/audit-message'
-import type { ActivityEvent, ContentState, Heartbeat } from '@makinbakin/sdk/types'
+import type { ActivityEvent, ContentState, Heartbeat } from '../types'
 
 interface AuditEntry {
   ts: string

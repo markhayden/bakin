@@ -5,7 +5,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { HealthReport, SearchReadiness } from '@makinbakin/sdk/types'
 import '../../rtl-settle'
 
-import { usePluginEvent } from '../../../src/hooks/use-plugin-event'
+import { usePluginEvent } from '../../../packages/sdk/src/hooks/use-plugin-event'
 // Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
 import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({

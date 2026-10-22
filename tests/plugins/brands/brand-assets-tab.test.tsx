@@ -24,7 +24,7 @@ mock.module('@tanstack/react-router', () => ({
   useRouter: () => ({ history: { block: () => () => {} }, parseLocation: (l: unknown) => l }),
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
 }))
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
     return React.useState(defaultValue)

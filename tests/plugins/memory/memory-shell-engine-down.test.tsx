@@ -76,7 +76,7 @@ afterAll(() => {
 
 const queryStateRefs: Record<string, string> = {}
 
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => {
     const { useState } = require('react') as typeof import('react')
     if (!(key in queryStateRefs)) queryStateRefs[key] = defaultValue

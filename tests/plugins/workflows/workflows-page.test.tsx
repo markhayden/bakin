@@ -85,7 +85,7 @@ mock.module('@makinbakin/sdk/navigation', () => {
 })
 
 // useQueryState — back the value with React state so the input is controlled.
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
     return React.useState(defaultValue)
@@ -105,7 +105,7 @@ const searchState: {
   clear: mock(),
 }
 
-mock.module('@/hooks/use-search', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-search', () => ({
   useSearch: () => ({
     results: searchState.results,
     aggregations: {},

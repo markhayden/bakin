@@ -71,7 +71,7 @@ afterAll(() => {
 
 const queryStateRefs: Record<string, string> = {}
 
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => {
     if (!(key in queryStateRefs)) queryStateRefs[key] = defaultValue
     const setter = (v: string) => { queryStateRefs[key] = v }
@@ -98,7 +98,7 @@ const searchHookState: SearchHookState = {
   clear: mock(),
 }
 
-mock.module('@/hooks/use-search', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-search', () => ({
   useSearch: () => ({
     results: searchHookState.results,
     aggregations: {},
@@ -149,7 +149,7 @@ const scheduleActions = {
   duplicateJob: mock(),
 }
 
-mock.module('@/hooks/use-schedule', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-schedule', () => ({
   useScheduleJobs: () => ({
     jobs: scheduleState.jobs,
     allJobs: scheduleState.allJobs ?? scheduleState.jobs,

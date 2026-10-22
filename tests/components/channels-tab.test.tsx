@@ -14,7 +14,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import '../rtl-settle'
 import { actRender } from '../rtl-settle'
 import { ChannelsTab, fieldIdFor, type ChannelReadinessPayload } from '../../src/components/channels-tab'
-import { emitPluginEvent } from '../../src/hooks/use-plugin-event'
+import { emitPluginEvent } from '../../packages/sdk/src/hooks/use-plugin-event'
 import { waitUntil } from '../helpers/wait'
 
 type State = ChannelReadinessPayload['connection']['state']

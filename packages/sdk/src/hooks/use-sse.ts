@@ -4,8 +4,8 @@ import { useEffect, useRef } from 'react'
 import { useContentStore } from './use-content-store'
 import { emitPluginEvent } from './use-plugin-event'
 import { mapAuditMessage } from '@bakin/core/events/audit-message'
-import type { Heartbeat } from '@makinbakin/sdk/types'
-import { sendBrowserNotification } from '../../packages/sdk/src/internal/browser-notify'
+import type { Heartbeat } from '../types'
+import { sendBrowserNotification } from '../internal/browser-notify'
 
 const BASE_DELAY = 1000
 const MAX_DELAY = 30000

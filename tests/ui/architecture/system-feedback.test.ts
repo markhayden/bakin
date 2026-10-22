@@ -40,7 +40,7 @@ describe('canonical system-state and feedback ownership', () => {
   })
 
   it('keeps the shell toast lifecycle separate from the public presentation contract', () => {
-    const toastStore = read('src/hooks/use-toast.ts')
+    const toastStore = read('packages/sdk/src/hooks/use-toast.ts')
     const hostToaster = read('packages/host/src/components/layout/toaster.tsx')
     const stateSource = read('packages/ui/src/states/toast.tsx')
 

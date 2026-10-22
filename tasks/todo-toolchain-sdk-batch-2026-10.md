@@ -40,7 +40,7 @@ Spec `.claude/specs/toolchain-and-sdk-boundary-batch-2026-10.md` · Plan `.claud
 ## PR 4 — #809b `refactor/809-sdk-hooks`
 - [x] 4.1 map-audit-message + self-update-verify → core; host-state types → sdk/types
 - [x] 4.2 browser-notify → sdk/internal (+ sendBrowserNotification on hooks); spend bridge deleted; hard-nav pins re-pathed
-- [ ] 4.3 the 19 hooks → packages/sdk/src/hooks; every import + mock re-pathed; full suite
+- [x] 4.3 the 19 hooks → packages/sdk/src/hooks; every import + mock re-pathed; full suite
 - [ ] 4.4 allowlist shrinks to plugin hooks; docs
 - [ ] Bits compatibility proof repeated
 - [ ] PR 4 merged; #809 closed

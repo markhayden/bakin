@@ -24,13 +24,12 @@ import { join, relative } from 'path'
 const ROOT = process.cwd()
 
 // Client-side code only: server code has no window and full-page anchors in
-// docs/emails are fine. src/{components,hooks,lib,context} are client-shared.
+// docs/emails are fine. src/{components,lib,context} are client-shared.
 const SCAN_ROOTS = [
   'packages/host/src',
   'packages/sdk/src',
   'plugins',
   'src/components',
-  'src/hooks',
   'src/lib',
   'src/context',
 ]
@@ -95,7 +94,7 @@ const BANS: Ban[] = [
       // The public router.refresh() API — a full reload is its contract.
       || rel === 'packages/sdk/src/navigation/router.ts'
       // Runtime manifest changed; non-dev tabs must re-boot to pick it up.
-      || rel === 'src/hooks/use-sse.ts',
+      || rel === 'packages/sdk/src/hooks/use-sse.ts',
     catches: ['window.location.reload()'],
     ignores: ['router.refresh()'],
   },
@@ -185,7 +184,7 @@ describe('no hard navigation for internal routes', () => {
       'packages/host/src/components/layout/header.tsx',
       'packages/host/src/plugin-host/PluginHost.tsx',
       'packages/sdk/src/navigation/router.ts',
-      'src/hooks/use-sse.ts',
+      'packages/sdk/src/hooks/use-sse.ts',
     ]
     for (const rel of pinned) {
       expect(() => readFileSync(join(ROOT, rel), 'utf8')).not.toThrow()

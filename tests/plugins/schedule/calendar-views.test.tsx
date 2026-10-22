@@ -57,7 +57,7 @@ class FakeEventSource {
 // Captured BEFORE the module is mocked (live namespace binding): the calendars' render helpers (useNow, useKeyedState) stay real.
 import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => {
-  const actual = require('../../../src/hooks/use-schedule')
+  const actual = require('../../../packages/sdk/src/hooks/use-schedule')
   return {
     ...realSdkHooks,
     useAgent: (id: string) => id ? { id, name: id } : null,
@@ -94,7 +94,7 @@ mock.module('@makinbakin/sdk/navigation', () => ({
 import { CalendarToday } from '../../../plugins/schedule/components/calendar-today'
 import { CalendarWeekly } from '../../../plugins/schedule/components/calendar-weekly'
 import { CalendarMonthly } from '../../../plugins/schedule/components/calendar-monthly'
-import type { ScheduleJob } from '../../../src/hooks/use-schedule'
+import type { ScheduleJob } from '../../../packages/sdk/src/hooks/use-schedule'
 
 function makeJob(overrides: Partial<ScheduleJob> = {}): ScheduleJob {
   return {

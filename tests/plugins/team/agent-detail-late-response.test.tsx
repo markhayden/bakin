@@ -22,10 +22,10 @@ const openClawHome = () => ({
 })
 mock.module('@bakin/adapter-openclaw/home', openClawHome)
 mock.module('../../../packages/adapter-openclaw/src/home', openClawHome)
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => [defaultValue, mock(), mock()],
 }))
-mock.module('@/hooks/use-runtime-status', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
 }))
 mock.module('../../../plugins/team/hooks/use-agent-store', () => ({

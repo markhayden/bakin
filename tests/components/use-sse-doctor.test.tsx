@@ -16,9 +16,9 @@ mock.module('../../packages/core/src/content-dir', () => ({
 
 import { act, render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
-import { useSSE } from '@/hooks/use-sse'
-import { usePluginEvent } from '@/hooks/use-plugin-event'
-import { useContentStore } from '@/hooks/use-content-store'
+import { useSSE } from '../../packages/sdk/src/hooks/use-sse'
+import { usePluginEvent } from '../../packages/sdk/src/hooks/use-plugin-event'
+import { useContentStore } from '../../packages/sdk/src/hooks/use-content-store'
 
 let doctorRuns = 0
 let reconciles = 0

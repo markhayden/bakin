@@ -39,13 +39,12 @@ describe('focused browser navigation contract', () => {
   })
 
   it('retains surviving compatibility adapters; barrel-era adapters stay deleted (P-final)', () => {
-    // The SDK-internal adapter re-exports the navigation module relatively
-    // (a package importing itself by published name is a resolution smell);
-    // adapters outside the SDK package use the published entrypoint.
+    // The SDK-internal adapters re-export the navigation module relatively
+    // (a package importing itself by published name is a resolution smell).
     const adapters: Array<[string, string]> = [
       ['packages/sdk/src/hooks/router.ts', "from '../navigation'"],
-      ['src/hooks/use-query-state.ts', "from '@makinbakin/sdk/navigation'"],
-      ['src/hooks/use-history-back.ts', "from '@makinbakin/sdk/navigation'"],
+      ['packages/sdk/src/hooks/use-query-state.ts', "from '../navigation'"],
+      ['packages/sdk/src/hooks/use-history-back.ts', "from '../navigation'"],
     ]
 
     for (const [path, specifier] of adapters) {

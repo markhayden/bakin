@@ -29,8 +29,8 @@ mock.module('../../packages/sdk/src/internal/browser-notify', () => ({
 
 import { render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
-import { useSSE } from '@/hooks/use-sse'
-import { useContentStore } from '@/hooks/use-content-store'
+import { useSSE } from '../../packages/sdk/src/hooks/use-sse'
+import { useContentStore } from '../../packages/sdk/src/hooks/use-content-store'
 
 interface MockEventSource {
   onmessage: ((e: { data: string }) => void) | null

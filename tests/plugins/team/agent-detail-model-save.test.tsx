@@ -34,10 +34,10 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: () => {},
 }))
 const queryState: Record<string, string> = { tab: '' }
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => [queryState[key] || defaultValue, (v: string) => { queryState[key] = v }, mock()],
 }))
-mock.module('@/hooks/use-runtime-status', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock(), refresh: mock(async () => {}), pending: false, advice: { needed: false }, lastError: null }),
 }))
 mock.module('../../../plugins/team/hooks/use-agent-store', () => ({

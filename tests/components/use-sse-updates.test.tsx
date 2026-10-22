@@ -8,8 +8,8 @@ mock.module('@/core/content-dir', () => ({ getContentDir: () => testDir, getBaki
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir, db: join(testDir, 'bakin.db') }) }))
 import { act, cleanup, render } from '@testing-library/react'
 import '../rtl-settle'
-import { useSSE } from '@/hooks/use-sse'
-import { usePluginEvent } from '@/hooks/use-plugin-event'
+import { useSSE } from '../../packages/sdk/src/hooks/use-sse'
+import { usePluginEvent } from '../../packages/sdk/src/hooks/use-plugin-event'
 
 interface MockEventSource { onmessage: ((e: { data: string }) => void) | null; onopen: (() => void) | null; onerror: ((e?: unknown) => void) | null; url: string; close: () => void }
 let lastES: MockEventSource | null = null
