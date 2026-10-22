@@ -385,7 +385,7 @@ what production sends — see `.claude/knowledge/startup-context.md` (#357).
 dispatch carrying the taskId-templated `assets_save` command) and
 `sharedExecutionToolDocs()` (taskId-templated invocations — intentional
 differences are parameters, so the builders can't drift). Every tool-call
-line renders through `renderToolCall` (`src/core/tool-access.ts`) per the
+line renders through `renderToolCall` (`@bakin/core/tool-access`) per the
 ACTIVE runtime's `describeToolAccess()` — bare calls on Pi (in-process),
 `bakin-<agent>.`-prefixed native MCP calls on OpenClaw — the same primitive
 the AGENTS.md tool-access section uses, so prompt and projection bytes can

@@ -18,21 +18,21 @@ Spec `.claude/specs/toolchain-and-sdk-boundary-batch-2026-10.md` · Plan `.claud
 - [ ] 1.4 `tasks/evidence-bun-1.4.3.md`
 - [ ] 1.5 pin commit (.bun-version, @types/bun ~1.4.3, lock, MANAGED_BUN_VERSION + sha256s, bun-pin arch test, bunfig comment, Dockerfile/compose/lifecycle/docker:up BUN_VERSION, ratchet + manifest regenerated)
 - [ ] 1.6 docs (CLAUDE.md, test-suite-health §5 + :184, release.yml comment, dependency-sweeps §3/§5, CONTRIBUTING, README, SPEC.md)
-- [ ] PR 1 merged; system bun → exact bun-v1.4.3; Mark restarts 3737; Bits companion merged; memory updated; #965 closed
+- [x] PR 1 merged (#1020); system bun 1.4.3; Bits #122 merged; #965 closed — Mark restarts 3737
 
 ## PR 2 — #890 `fix/890-antfly-commit`
 - [x] 2.1 op.signal into all four probes + two cancellation cases
 - [x] 2.2 refuse `share.previous`; share aside → in; `commitFileAtomic`; rollback boundary = successful binary commit
 - [x] 2.3 `installerFs` seam on the installer's options; seven failure cases (+ restore-failure, pinned-path refusal) + supervisor-start failure; module-specific arch pin
 - [x] 2.4 docs (close #890 at merge)
-- [ ] PR 2 merged
+- [x] PR 2 merged (#1021, 2026-10-22); #890 closed
 
 ## PR 3 — #809a `refactor/809-sdk-boundary`
-- [ ] 3.1 ConversationMessage home in sdk/types; ui structural copy; private contract; type-single-home scans ui
-- [ ] 3.2 turn engine + recorder + thread-id + tool-access → @bakin/core; 20+ consumers repointed; old files deleted
-- [ ] 3.3 reply-toast body/attention/chime → ui; attention hook → sdk; `useAgentIdentity` (avatar) + raw-name headline; SDK wrapper + parity test; use-agent-store mock inventory; dir + fold shim gone; exceptions/migrations re-pathed
-- [ ] 3.4 Drawer → ui patterns; src/components/ui shims deleted; six arch suites + RTL mocks + Drawer exception rows re-pathed; census regenerated
-- [ ] 3.5 sdk-app-boundary test; check-cycles stale-checks tolerated entries
+- [x] 3.1 ConversationMessage home in sdk/types; ui structural copy; private contract; type-single-home scans ui
+- [x] 3.2 turn engine + recorder + thread-id + tool-access → @bakin/core; 20+ consumers repointed; old files deleted
+- [x] 3.3 reply-toast body/attention/chime → ui; attention hook → sdk; `useAgentIdentity` (avatar) + raw-name headline; SDK wrapper + parity test; use-agent-store mock inventory; dir + fold shim gone; exceptions/migrations re-pathed
+- [x] 3.4 Drawer → ui patterns; src/components/ui shims deleted; six arch suites + RTL mocks + Drawer exception rows re-pathed; census regenerated
+- [x] 3.5 sdk-app-boundary test; check-cycles stale-checks tolerated entries
 - [ ] 3.6 docs
 - [ ] Bits compatibility proof (assembled SDK + unchanged Bits consumers typecheck)
 - [ ] PR 3 merged
