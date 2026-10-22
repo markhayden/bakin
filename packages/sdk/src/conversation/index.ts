@@ -8,16 +8,16 @@
 export { foldConversation } from '@bakin/ui/conversation'
 export type {
   ConversationChunk,
-  ConversationMessage,
   ConversationTextFormat,
   ConversationToolActivity,
   ConversationToolCall,
   ConversationTurn,
-  DisplayAttachment,
   FoldOptions,
   TurnItem,
   TurnStatus,
 } from '@bakin/ui/conversation'
+/** The canonical row types live in `@makinbakin/sdk/types`; ui keeps a pinned structural copy (message-contract.ts). */
+export type { ConversationMessage, DisplayAttachment } from '../types/conversation'
 
 /** Compact single-turn output for task and workflow embeds. */
 export { TurnOutputView, TurnToolChip, foldTurnChunks } from '@bakin/ui/conversation'

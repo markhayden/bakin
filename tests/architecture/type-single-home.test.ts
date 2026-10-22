@@ -46,10 +46,14 @@ const SANCTIONED_HOMES: Record<string, string[]> = {
   OperationContext: ['packages/sdk/src/types/operations.ts'],
   OperationPlan: ['packages/sdk/src/types/operations.ts'],
   OperationOutcome: ['packages/sdk/src/types/operations.ts'],
+  // Canonical SDK type + the dependency-free ui package's structural copy,
+  // pinned to each other by packages/sdk/src/conversation/message-contract.ts (#809)
+  ConversationMessage: ['packages/sdk/src/types/conversation.ts', 'packages/ui/src/conversation/fold.ts'],
+  DisplayAttachment: ['packages/sdk/src/types/conversation.ts', 'packages/ui/src/conversation/fold.ts'],
 }
 
 const SCAN_ROOTS = [
-  'packages/sdk/src', 'packages/core/src', 'packages/host/src',
+  'packages/sdk/src', 'packages/ui/src', 'packages/core/src', 'packages/host/src',
   'packages/adapter-openclaw/src', 'packages/adapter-antfly/src',
   'plugins', 'src', 'cli', 'scripts',
 ]
