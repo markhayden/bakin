@@ -49,6 +49,7 @@ One conventional commit per slice, scope = the package/module touched. Gate befo
 | 1.2 | `test(setup): the fake-timer shim drains with one real setImmediate turn, never a microtask depth` | chain: 1.6 → 1.5 → 1.2 (S3) |
 | 1.3 | `fix(core): downloadToFile awaits the sink's close before partial-file cleanup` | chain: 1.6 → 1.5 → 1.3 (S3) |
 | 1.3b | `test(workflows): the map_workflow drawer tests stub and await the workflow-options load, and act-wrap their interactions` — the fifth delta (spec D1.9(e)), found by the acceptance run's amd64 leg | chain: 1.6 → 1.5 → 1.3b |
+| 1.3c | `fix(ci): the completeness checker accepts bun 1.4's ::group:: file headers under GITHUB_ACTIONS` — the sixth delta (spec D1.9(f)), found by CI | chain: 1.6 → 1.5 → 1.3c |
 | 1.4 | `docs(evidence): bun 1.4.3 diagnostic + acceptance matrix` | alone |
 | 1.5 | `chore(toolchain): pin bun 1.4.3 — .bun-version, @types/bun, managed-bun pin, lockfile, ratchet, embedded manifest, dev rig pin` | chain: 1.6 → 1.5 |
 | 1.6 | `docs(toolchain): bun 1.4.3 is the pin — CLAUDE.md, test-suite-health §5, dependency-sweeps, CONTRIBUTING, README` | tip |

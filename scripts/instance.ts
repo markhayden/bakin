@@ -64,7 +64,7 @@ Flags:
   --preconfigure                   Sandbox+openclaw only: auto-run \`bakin onboard --yes\`
 
 OpenClaw CLI access: ./dev/docker/openclaw-shim.sh <args>   (e.g. mcp list)
-Full image cleanup:  docker compose -f dev/docker/docker-compose.yml --profile sandbox down --rmi local
+Full image cleanup:  bash scripts/dev/compose.sh --profile sandbox down --rmi local
 
 Prerequisites (openclaw): Docker running, \`op\` CLI installed, OP_SERVICE_ACCOUNT_TOKEN (in dev/docker/.env or env).
 Prerequisites (pi):       none — the pinned SDK ships the pi CLI; /login runs in your terminal.`

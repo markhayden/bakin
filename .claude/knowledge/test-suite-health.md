@@ -283,6 +283,12 @@ times on macOS and once on Linux amd64 with no crash, the suite ~3× faster (ful
   immediates (stub those, or wait for the terminal signal). **Rule: a fake-timer flush is a
   complete drain of what is runnable, never a depth, and never a substitute for a
   terminal-signal wait.**
+- **Under `GITHUB_ACTIONS`, file headers are `::group::` annotations.** bun 1.4 wraps each
+  per-file header in a log-grouping annotation (1.3 printed it bare). The completeness
+  checker's header regex (its only source for a file whose tests all skipped — bun emits
+  no `<testsuite>` for those) accepts both forms; `tests/scripts/check-test-completeness.test.ts`
+  pins the parsers. Rule: a log-format assumption in a gate script gets a fixture test, and a
+  "never dispatched" report is checked against the raw artifacts before it is believed.
 - **Faster scheduling exposes product races.** `downloadToFile`'s fail-fast cleanup could run
   before the write sink's asynchronous open, leaving an empty file; the primitive now awaits
   the sink's `close` (subscribed at creation) before cleanup — `tests/core/net/download-sink-close.test.ts`
@@ -416,7 +422,8 @@ bun test <file> --isolate 2>&1 | grep -c "not wrapped in act"
 bun scripts/check-test-completeness.ts junit-*.xml shard-*.log
 ```
 
-Note `bunfig.toml` has **no `[test.env]` section**: bun 1.3.13 does not read one. A var set
+Note `bunfig.toml` has **no `[test.env]` section**: bun does not read one (probed on 1.3.13, 1.4.2
+and 1.4.3). A var set
 there arrives `undefined`; `NODE_ENV=test` appears only because `bun test` sets it itself.
 Test-run env belongs in the `tests/setup.ts` preload, which actually executes, and uses
 `??=` so a shell override always wins.
