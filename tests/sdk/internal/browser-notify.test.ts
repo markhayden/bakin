@@ -41,8 +41,9 @@ describe('navigate bridge', () => {
   })
 
   test('bridge registered by another module copy is still used', () => {
-    // Simulates the host registering while a plugin bundle's inlined copy
-    // calls navigateToUrl — only globalThis is shared between them.
+    // Simulates a registration that reached globalThis without going through
+    // this module instance (a re-evaluated copy) — the bridge is read from
+    // globalThis, never from module state.
     const seen: string[] = []
     globalBridge.__bakinNavigate = (url) => seen.push(url)
 

@@ -8,11 +8,11 @@ const STORAGE_KEY = 'bakin-notifications-enabled'
 /**
  * Navigate bridge — the host registers its router here at boot so
  * notification clicks route client-side instead of full-reloading the shell.
- * globalThis-based (like __bakinBroadcast): the browser runs ONE SDK instance
- * (the vendor bundle every plugin externalizes to), but the registration must
- * survive module identity — tests import this file from source while the
- * host registers through the entrypoint, and a module-level variable would
- * be two variables.
+ * globalThis-based (like __bakinBroadcast) so the registration survives a
+ * re-evaluation of this module within the same global context (a test's
+ * module overlay, a hot-swapped module): ordinary imports — direct or
+ * through the `/internal` barrel — share one module instance and would see
+ * a module-level variable just as well.
  */
 type NavigateFn = (url: string) => void
 
