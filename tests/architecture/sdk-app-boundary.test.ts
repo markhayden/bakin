@@ -88,24 +88,25 @@ describe('sdk → app boundary', () => {
   })
 
   describe('the predicate', () => {
+    // packages/sdk/src/deep/dir/ is five levels below the repo root.
     const file = join(ROOT, 'packages/sdk/src/deep/dir/module.ts')
     it('sees every import form and resolves relative specifiers against the importing file', () => {
       const source = [
         "import { a } from '@/hooks/use-a'",
-        "import {\n  b,\n  c,\n} from '../../../../src/lib/b'",
-        "export {\n  d,\n} from '../../../../src/lib/d'",
-        "import '../../../../src/side-effect'",
-        "const lazy = await import('../../../../src/core/lazy')",
+        "import {\n  b,\n  c,\n} from '../../../../../src/lib/b'",
+        "export {\n  d,\n} from '../../../../../src/lib/d'",
+        "import '../../../../../src/side-effect'",
+        "const lazy = await import('../../../../../src/core/lazy')",
         "import { ok } from '../../types'",
         "import { peer } from '@bakin/ui'",
         "import { near } from './src/not-the-app'",
       ].join('\n')
       expect(appImportsOf(file, source)).toEqual([
         '@/hooks/use-a',
-        '../../../../src/lib/b',
-        '../../../../src/lib/d',
-        '../../../../src/side-effect',
-        '../../../../src/core/lazy',
+        '../../../../../src/lib/b',
+        '../../../../../src/lib/d',
+        '../../../../../src/side-effect',
+        '../../../../../src/core/lazy',
       ])
     })
     it('a shallower file reaches the app with fewer ../ and is caught the same', () => {
