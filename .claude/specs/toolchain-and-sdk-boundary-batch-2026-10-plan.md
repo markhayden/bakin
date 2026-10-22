@@ -8,7 +8,7 @@ Four PRs in a fixed order. Each PR is a set of vertical slices, each slice one c
 
 | # | Branch | Issue | Commits |
 |---|--------|-------|---------|
-| 1 | `chore/965-bun-1.4.3` (+ Bits `chore/bun-1.4.3`) | #965 | 6 |
+| 1 | `chore/965-bun-1.4.3` (+ Bits `chore/bun-1.4.3`) | #965 | 7 |
 | 2 | `fix/890-antfly-commit` | #890 | 4 |
 | 3 | `refactor/809-sdk-boundary` | #809a | 6 |
 | 4 | `refactor/809-sdk-hooks` | #809b | 4 |
@@ -48,6 +48,7 @@ One conventional commit per slice, scope = the package/module touched. Gate befo
 | 1.1 | `test(delivery,cli): poll the state the assertion needs — readiness waits for the SSE event, the Ctrl-C test waits for the follower` | chain: 1.6 → 1.5 → 1.1 (S3) |
 | 1.2 | `test(setup): the fake-timer shim drains with one real setImmediate turn, never a microtask depth` | chain: 1.6 → 1.5 → 1.2 (S3) |
 | 1.3 | `fix(core): downloadToFile awaits the sink's close before partial-file cleanup` | chain: 1.6 → 1.5 → 1.3 (S3) |
+| 1.3b | `test(workflows): the map_workflow drawer tests stub and await the workflow-options load, and act-wrap their interactions` — the fifth delta (spec D1.9(e)), found by the acceptance run's amd64 leg | chain: 1.6 → 1.5 → 1.3b |
 | 1.4 | `docs(evidence): bun 1.4.3 diagnostic + acceptance matrix` | alone |
 | 1.5 | `chore(toolchain): pin bun 1.4.3 — .bun-version, @types/bun, managed-bun pin, lockfile, ratchet, embedded manifest, dev rig pin` | chain: 1.6 → 1.5 |
 | 1.6 | `docs(toolchain): bun 1.4.3 is the pin — CLAUDE.md, test-suite-health §5, dependency-sweeps, CONTRIBUTING, README` | tip |
@@ -65,7 +66,7 @@ Chain (Q5): 1.1–1.3 are correct on both runtimes going forward, but 1.5 DEPEND
 - Files: `tests/setup.ts`, `tests/setup-fake-timers.test.ts`, `tests/core/watchdog.test.ts` (only if a pin wording changes). Size: S.
 
 ### Task 1.3: The sink race (D1.9 d)
-- Acceptance (P11): in `packages/core/src/net/download.ts:275-318` the `close` listener is installed WHEN THE SINK IS CREATED (a `sinkClosed` promise beside `sinkDone`, never subscribed after the fact — Q7), and the failed-attempt path calls `sink.destroy()` and awaits `sinkClosed` specifically (`close` always follows `destroy()`, after `error` if one fired — `sinkDone` at `:280` rejects on `error`, so awaiting it or its `.catch` is NOT the fix) before the per-attempt cleanup runs; the comment at `:296-301` is rewritten to describe the guarantee, not the race. `tests/core/net/download.test.ts:130-134` (real HTTP) stays as the regression pin. The DETERMINISTIC proof is a new isolated file `tests/core/net/download-sink-close.test.ts`: a `mock.module('fs')` overlay (spreading the real module) returns a `WriteStream` whose open is delayed ~20 ms, the fetch stub answers 404 immediately, and the test records the order of `close` and `rmSync` — it asserts rejection, `close` BEFORE cleanup, and no file afterwards. A second controlled case (Q7) emits `error` on the sink and HOLDS `close` behind a gate: cleanup and the `downloadToFile` rejection must still be pending while the gate is closed, and settle only after `close` is released — this distinguishes awaiting `close` from awaiting `sinkDone`'s rejection.
+- Acceptance (P11): in `packages/core/src/net/download.ts:275-318` the `close` listener is installed WHEN THE SINK IS CREATED (a `sinkClosed` promise beside `sinkDone`, never subscribed after the fact — Q7), and the failed-attempt path calls `sink.destroy()` and awaits `sinkClosed` specifically (`close` always follows `destroy()`, after `error` if one fired — `sinkDone` at `:280` rejects on `error`, so awaiting it or its `.catch` is NOT the fix) before the per-attempt cleanup runs; the comment at `:296-301` is rewritten to describe the guarantee, not the race. `tests/core/net/download.test.ts:130-134` (real HTTP) stays as the regression pin. The DETERMINISTIC proof is a new isolated file `tests/core/net/download-sink-close.test.ts` through a `createSink` injection point on `DownloadToFileOptions` (the pattern `fetchImpl` already sets; **built as such — a `mock.module('fs')` overlay, even one spreading the real module, wedges bun's module loader at load time, so the builtin is never mocked**): a sink double whose open and close the test gates, the fetch stub answers 404 immediately, and the test records the order of `close` and the cleanup — it asserts rejection, `close` BEFORE cleanup, and no file afterwards. A second controlled case (Q7) emits `error` on the sink and HOLDS `close` behind a gate: cleanup and the `downloadToFile` rejection must still be pending while the gate is closed, and settle only after `close` is released — this distinguishes awaiting `close` from awaiting `sinkDone`'s rejection.
 - Verify: `bun test tests/core/net/download.test.ts tests/core/net/download-sink-close.test.ts --isolate` ×3 on both binaries; `bun test tests/core/onboarding/antfly.test.ts tests/agent-packages/bin-installer.test.ts --isolate` (consumers of the primitive) **(P6)**.
 - Files: `packages/core/src/net/download.ts`, `tests/core/net/download.test.ts`. Size: S.
 
@@ -76,6 +77,8 @@ set -o pipefail; cd "$REPO"; git status --short   # must be clean apart from unt
 for RT in 1.3.13 1.4.3; do
   if [ "$RT" = 1.4.3 ]; then export PATH="$BUNDIR:$PATH"; fi
   O="$OUT/$RT"; mkdir -p "$O"; { which bun; bun --version; } > "$O/runtime.txt"
+  # CI's own pre-test step (ci-pr.yml): the tracked embedded manifest must match fresh dists or every server-booting test refuses to boot.
+  (bun run build:host && bun run build:plugins && bun run build:assets-manifest) > "$O/prebuild.log" 2>&1; echo "prebuild $?" >> "$O/exit.txt"
   bun test tests/cli/readonly-logs.test.ts --isolate               > "$O/leg1.log" 2>&1; echo "leg1 $?" >> "$O/exit.txt"
   bun test tests/integration/pi/turn.test.ts --isolate              > "$O/leg2.log" 2>&1; echo "leg2 $?" >> "$O/exit.txt"
   bun test --parallel=4 --isolate --timeout 15000 --path-ignore-patterns "dev/**" \
@@ -135,7 +138,7 @@ docker run --rm --platform linux/amd64 -v "$PWD":/src:ro -v "$OUT/1.4.3/leg6":/e
 ### Checkpoint PR 1
 - [ ] Per-PR gate on 1.4.3 (`check:cycles`, `lint:home-bypasses`, full suite, `build:host && ui:conformance --quick`, `bun run build`, `docs:check`); Codex ≥2 rounds; CI green on all three shards; squash-merge.
 - [ ] System bun → exact `bun-v1.4.3` via the pinned installer (D1.7), `bun --version` + zip sha256 checked, `rm -rf node_modules && bun install`; tell Mark to restart 3737.
-- [ ] Bits companion `chore/bun-1.4.3` from a fresh worktree off Bits `origin/main` (5493ba4): `.bun-version`, root/terminal/_template `@types/bun ~1.4.3`, **`bun.lock` regenerated under 1.4.3** (Bits CI installs `--frozen-lockfile`, `ci.yml:37`), and **terminal `bakin-plugin.json` version 0.3.0 → 0.3.1** (Bits' `check-version-bump.sh:19` rejects any change under a released plugin dir without a manifest bump; patch, per the version-bump rule) **(Q2)**; Bits CI green; merge; record in the sweep log.
+- [ ] Bits companion `chore/bun-1.4.3` from a fresh worktree off Bits `origin/main` (5493ba4): `.bun-version`, root/terminal/_template `@types/bun ~1.4.3`, **`bun.lock` regenerated under 1.4.3** (Bits CI installs `--frozen-lockfile`, `ci.yml:37`), and **terminal `bakin-plugin.json` version 0.3.2 → 0.3.3** (Bits `origin/main` 5493ba4 is past the local checkout the spec read; Bits' `check-version-bump.sh:19` rejects any change under a released plugin dir without a manifest bump; patch, per the version-bump rule) **(Q2)**; Bits CI green; merge; record in the sweep log.
 - [ ] Memory `bun-1314-regression.md` updated; #965 closed with the evidence link.
 
 ---

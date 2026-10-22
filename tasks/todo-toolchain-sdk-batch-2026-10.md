@@ -10,9 +10,10 @@ Spec `.claude/specs/toolchain-and-sdk-boundary-batch-2026-10.md` · Plan `.claud
 
 ## PR 1 — #965 `chore/965-bun-1.4.3`
 - [x] diagnostic matrix on the unchanged tree (2026-10-21: no SIGSEGV on shard 2 ×4 + Linux amd64; four deltas diagnosed)
-- [ ] 1.1 readiness + Ctrl-C tests poll what they assert
-- [ ] 1.2 fake-timer shim drains with setImmediate; `tests/setup-fake-timers.test.ts`
-- [ ] 1.3 downloadToFile awaits the sink's close before cleanup
+- [x] 1.1 readiness + Ctrl-C tests poll what they assert
+- [x] 1.2 fake-timer shim drains with setImmediate; `tests/setup-fake-timers.test.ts`
+- [x] 1.3 downloadToFile awaits the sink's close before cleanup
+- [x] 1.3b NodeConfigDrawer map_workflow cases stub + await the options load (fifth delta, amd64)
 - [ ] acceptance matrix on the fixes commit (legs 1–6, completeness on full + shard union, all green)
 - [ ] 1.4 `tasks/evidence-bun-1.4.3.md`
 - [ ] 1.5 pin commit (.bun-version, @types/bun ~1.4.3, lock, MANAGED_BUN_VERSION + sha256s, bun-pin arch test, bunfig comment, Dockerfile/compose/lifecycle/docker:up BUN_VERSION, ratchet + manifest regenerated)
