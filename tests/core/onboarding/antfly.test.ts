@@ -13,7 +13,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { execSync } from 'child_process'
 import { createHash } from 'crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -48,6 +48,8 @@ import { antflyPlatformKey, type AntflyPin } from '../../../packages/adapter-ant
 
 let loaded = false
 let occupied = false
+/** When set, the supervisor refuses to start the unit (a launchctl bootstrap failure). */
+let bootstrapFails: string | null = null
 const commands: string[][] = []
 const serviceIo: ServiceIo = {
   platform: 'darwin', env: { HOME: join(testDir, 'os-home') },
@@ -57,6 +59,7 @@ const serviceIo: ServiceIo = {
     commands.push([cmd, ...args])
     if (args[0] === 'print') return { code: loaded ? 0 : 113, stdout: '', stderr: '' }
     if (args[0] === 'bootout') loaded = false
+    if (args[0] === 'bootstrap' && bootstrapFails) return { code: 5, stdout: '', stderr: bootstrapFails }
     if (args[0] === 'bootstrap') loaded = true
     return { code: 0, stdout: '', stderr: '' }
   },
@@ -492,7 +495,7 @@ describe('commit rollback boundary (#890)', () => {
     expect(stopped() && started()).toBe(true)
   })
 
-  it('(iii) the restart fails AFTER the commit → new binary and assets kept, share.previous retained, failed naming the restart', async () => {
+  it('(iii-a) readiness never answers AFTER the commit → new binary and assets kept, share.previous retained, failed naming the restart', async () => {
     process.env.BAKIN_SEARCH_SERVICE_MODE = 'child'
     try {
       const previous = previousInstallation()
@@ -512,6 +515,26 @@ describe('commit rollback boundary (#890)', () => {
     }
   })
 
+  it('(iii-b) the supervisor refuses to start the new engine AFTER the commit → new pair kept, share.previous retained, failed with the supervisor error', async () => {
+    const previous = previousInstallation()
+    mockDownloadFetch()
+    bootstrapFails = 'launchctl: Bootstrap failed: 5: Input/output error'
+    try {
+      const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
+      expect(result.status).toBe('failed')
+      expect(result.message).toContain('did not restart')
+      expect(result.message).toContain('Input/output error')
+      expect(result.message).toContain('bakin install search')
+      expect(readFileSync(managedBinary, 'utf-8')).not.toBe(previous)
+      expect(existsSync(newAsset)).toBe(true)
+      expect(existsSync(oldMarker)).toBe(false)
+      expect(existsSync(join(shareAside, 'old-marker.txt'))).toBe(true)
+      expect(stopped()).toBe(true)
+    } finally {
+      bootstrapFails = null
+    }
+  })
+
   it('(iv) a pre-existing share.previous is refused before the service is touched, with the version rule', async () => {
     const previous = previousInstallation()
     mkdirSync(shareAside, { recursive: true })
@@ -525,6 +548,47 @@ describe('commit rollback boundary (#890)', () => {
     expect(stopped()).toBe(false)
     expect(readFileSync(managedBinary, 'utf-8')).toBe(previous)
     expect(readFileSync(oldMarker, 'utf-8')).toBe('previous assets')
+    expect(readFileSync(join(shareAside, 'leftover.txt'), 'utf-8')).toBe('from an interrupted install')
+  })
+
+  it('(ii-b) the restore of share.previous fails → nothing restarts, both errors reported, every artifact kept aside', async () => {
+    const previous = previousInstallation()
+    mockDownloadFetch()
+    let renames = 0
+    const result = await installAntflyDependency(optsAutoYes, undefined, makePin(), {
+      installerFs: {
+        commitFile: async () => { throw new Error('injected: commit refused') },
+        renameDirectory: (from, to) => {
+          renames += 1
+          if (from === shareAside) throw new Error('injected: restore refused')
+          renameSync(from, to)
+        },
+      },
+    })
+    expect(result.status).toBe('failed')
+    expect(result.message).toContain('injected: commit refused')
+    expect(result.message).toContain('recovery failed')
+    expect(result.message).toContain('injected: restore refused')
+    expect(result.message).toContain(shareAside)
+    expect(started()).toBe(false)
+    expect(readFileSync(managedBinary, 'utf-8')).toBe(previous)
+    expect(readFileSync(join(shareAside, 'old-marker.txt'), 'utf-8')).toBe('previous assets')
+    expect(existsSync(join(`${shareDir}.failed`, 'antfly', 'antfarm', 'index.html'))).toBe(true)
+    expect(existsSync(shareDir)).toBe(false)
+    expect(renames).toBe(4) // aside, in, failed-aside, restore (refused)
+  })
+
+  it('(iv-b) the already-at-pin path refuses a leftover share.previous too, before touching the service', async () => {
+    writeBinary(managedBinary, PIN_VERSION)
+    mkdirSync(shareAside, { recursive: true })
+    writeFileSync(join(shareAside, 'leftover.txt'), 'from an interrupted install')
+    mockDownloadFetch()
+    const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
+    expect(result.status).toBe('failed')
+    expect(result.message).toContain(shareAside)
+    expect(result.message).toContain('--version')
+    expect(stopped()).toBe(false)
+    expect(fetchCalls.some((u) => u.endsWith('.tar.gz'))).toBe(false)
     expect(readFileSync(join(shareAside, 'leftover.txt'), 'utf-8')).toBe('from an interrupted install')
   })
 
@@ -741,8 +805,13 @@ describe('the engine install as an operation (#895)', () => {
     const counter = join(testDir, 'recheck-count')
     const asked = join(testDir, 'recheck-asked')
     const release = join(testDir, 'recheck-release')
+    const ranOut = join(testDir, 'recheck-ran-out')
     mkdirSync(join(managedBinary, '..'), { recursive: true })
-    writeFileSync(managedBinary, `#!/bin/sh\nif [ -f "${counter}" ]; then touch "${asked}"; n=0; while [ ! -f "${release}" ] && [ $n -lt 100 ]; do sleep 0.05; n=$((n+1)); done; else touch "${counter}"; fi\necho "antfly ${PIN_VERSION} (zig)"\n`, { mode: 0o755 })
+    // The recheck parks for up to 10 s and leaves a marker if it runs its loop
+    // out: an interrupted probe never writes it, and the cancel settles well
+    // inside the loop. Without the signal the loop completes, the marker
+    // appears and the settle takes the full 10 s — both assertions fail.
+    writeFileSync(managedBinary, `#!/bin/sh\nif [ -f "${counter}" ]; then touch "${asked}"; n=0; while [ ! -f "${release}" ] && [ $n -lt 200 ]; do sleep 0.05; n=$((n+1)); done; touch "${ranOut}"; else touch "${counter}"; fi\necho "antfly ${PIN_VERSION} (zig)"\n`, { mode: 0o755 })
     mockDownloadFetch()
     const reg = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, acquireResources: createMemoryResourceAcquirer(1) })
     try {
@@ -752,11 +821,15 @@ describe('the engine install as an operation (#895)', () => {
         run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installDependency({ ...optsAutoYes, op }, undefined, makePin(), { readyBudgetMs: 100, pollMs: 1, io: serviceIo }) }),
       })
       await waitUntil(() => existsSync(asked), { label: 'the install is rechecking the engine under the lock' })
+      const cancelledAt = Date.now()
       expect(reg.cancel(operationId)).toBe('cancelling')
       const view = await reg.await(operationId)
+      const settledAfterMs = Date.now() - cancelledAt
       writeFileSync(release, '')
       expect(view.status).toBe('cancelled')
       expect(commands).toEqual([])
+      expect(settledAfterMs).toBeLessThan(4_000)
+      expect(existsSync(ranOut)).toBe(false)
     } finally {
       reg.dispose()
     }
