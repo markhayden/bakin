@@ -291,14 +291,14 @@ export async function installAntflyDependency(
   }
 
   const existing = findAntflyBinary()
-  const existingVersion = existing ? await antflyBinaryVersion(existing) : null
+  const existingVersion = existing ? await antflyBinaryVersion(existing, { signal: op.signal }) : null
   // Discovery overrides must not make a different launch target appear healthy.
   if (existing && existing !== targetPath) return failed(`ANTFLY_PATH points at ${existing}; managed search launches ${targetPath}. Unset ANTFLY_PATH before installing.`)
   if (existing && existingVersion === pin.version) {
     try {
       skip(STAGING, `already at v${pin.version}`)
       return await withServiceOperation(settings, io, intent, async () => {
-        if (await antflyBinaryVersion(targetPath) !== pin.version) throw new Error('The shared engine binary changed during installation. Retry bakin install search.')
+        if (await antflyBinaryVersion(targetPath, { signal: op.signal }) !== pin.version) throw new Error('The shared engine binary changed during installation. Retry bakin install search.')
         op.stage('commit', 'Restart the service')
         await stopService(settings, io, intent)
         op.skip('cleanup', 'engine version unchanged')
@@ -392,7 +392,7 @@ export async function installAntflyDependency(
     // leaves the existing install (binary + share/) untouched.
     op.stage('version')
     chmodSync(extractedBinary, 0o755)
-    const installedVersion = await antflyBinaryVersion(extractedBinary)
+    const installedVersion = await antflyBinaryVersion(extractedBinary, { signal: op.signal })
     // A cancel accepted during the probe wins over whatever it reported.
     op.throwIfCancelled()
     if (installedVersion !== pin.version) {
@@ -407,7 +407,7 @@ export async function installAntflyDependency(
     return await withServiceOperation(settings, io, intent, async () => {
       op.stage('commit')
       // Staging did not hold the lock: another home may have installed meanwhile.
-      const previousVersion = existsSync(targetPath) ? await antflyBinaryVersion(targetPath) : null
+      const previousVersion = existsSync(targetPath) ? await antflyBinaryVersion(targetPath, { signal: op.signal }) : null
       const hadBinary = existsSync(targetPath)
       // Stop even an unready engine before shared mutations.
       await stopService(settings, io, intent)

@@ -41,6 +41,14 @@ describe('antflyBinaryVersion', () => {
     await expect(probe).rejects.toMatchObject({ reason: 'abort', message: 'check timed out after 20s' })
   })
 
+  it('a signal already aborted before the probe starts interrupts it at once — no answer, no surviving child', async () => {
+    const controller = new AbortController()
+    controller.abort(new Error('operation cancelled'))
+    const started = Date.now()
+    await expect(antflyBinaryVersion(script('hang-aborted.sh', 'sleep 30'), { signal: controller.signal })).rejects.toBeInstanceOf(CommandInterruptedError)
+    expect(Date.now() - started).toBeLessThan(5_000)
+  })
+
   it('the probe\'s own deadline is the same interruption, named', async () => {
     await expect(runCommand(script('hang2.sh', 'sleep 30'), [], { timeoutMs: 40 })).rejects.toMatchObject({ name: 'CommandInterruptedError', reason: 'timeout' })
   })

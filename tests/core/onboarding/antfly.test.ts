@@ -636,6 +636,34 @@ describe('the engine install as an operation (#895)', () => {
       reg.dispose()
     }
   })
+  it('cancel during the under-lock recheck of an engine already at the pin settles cancelled with the service untouched (#890)', async () => {
+    // The first probe (discovery) answers at once; the second (the recheck
+    // inside withServiceOperation, before stopService) announces itself and
+    // waits for the test to cancel. Without op.signal on that probe the
+    // recheck would run its loop out and the install would stop the service.
+    const counter = join(testDir, 'recheck-count')
+    const asked = join(testDir, 'recheck-asked')
+    const release = join(testDir, 'recheck-release')
+    mkdirSync(join(managedBinary, '..'), { recursive: true })
+    writeFileSync(managedBinary, `#!/bin/sh\nif [ -f "${counter}" ]; then touch "${asked}"; n=0; while [ ! -f "${release}" ] && [ $n -lt 100 ]; do sleep 0.05; n=$((n+1)); done; else touch "${counter}"; fi\necho "antfly ${PIN_VERSION} (zig)"\n`, { mode: 0o755 })
+    mockDownloadFetch()
+    const reg = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, acquireResources: createMemoryResourceAcquirer(1) })
+    try {
+      const { operationId } = await reg.start({
+        kind: 'install:search', owner: 'core', origin: 'cli', title: 'Install the search engine', fingerprint: 'install:search',
+        resources: ['search-engine'], plan: ANTFLY_ENGINE_PLAN,
+        run: async (op) => ({ status: 'succeeded', code: 'ok', httpStatus: 200, body: await installDependency({ ...optsAutoYes, op }, undefined, makePin(), { readyBudgetMs: 100, pollMs: 1, io: serviceIo }) }),
+      })
+      await waitUntil(() => existsSync(asked), { label: 'the install is rechecking the engine under the lock' })
+      expect(reg.cancel(operationId)).toBe('cancelling')
+      const view = await reg.await(operationId)
+      writeFileSync(release, '')
+      expect(view.status).toBe('cancelled')
+      expect(commands).toEqual([])
+    } finally {
+      reg.dispose()
+    }
+  })
   it('cancel while the downloaded binary reports its version settles cancelled, even when the version is wrong', async () => {
     // A release whose binary announces its version probe, waits for the
     // test to cancel, then reports a version that does not match the pin.
