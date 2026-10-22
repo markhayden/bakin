@@ -223,9 +223,6 @@ jobs:
       # PR can't fail here from ordering-dependent leaks (rc.21 attempt 2: a TZ
       # env leak only surfaced under this job's previously-serial run).
       #
-      # NOTE: unsharded on purpose. This job is a single gate before an
-      # irreversible publish, so it runs the whole suite in one place; the
-      # per-shard split is a PR-latency optimization, not a correctness one.
       # Single-runner gate: run the whole suite in 3 SEQUENTIAL shards so each
       # bun invocation carries a third of the files in a fresh process. The
       # unsharded run both starves AND accumulates enough memory to crash a
