@@ -35,21 +35,27 @@ describe('antflyBinaryVersion', () => {
 
   it('a probe the caller\'s signal interrupts throws — it did not answer, and the child is reaped', async () => {
     const controller = new AbortController()
-    const probe = antflyBinaryVersion(script('hang.sh', 'sleep 30'), { signal: controller.signal })
+    const probe = antflyBinaryVersion(script('hang.sh', 'exec sleep 30'), { signal: controller.signal })
     setTimeout(() => controller.abort(new Error('check timed out after 20s')), 50)
     await expect(probe).rejects.toBeInstanceOf(CommandInterruptedError)
     await expect(probe).rejects.toMatchObject({ reason: 'abort', message: 'check timed out after 20s' })
   })
 
+  // The hang fixtures `exec` their sleep: Linux's /bin/sh forks `sleep` as a
+  // child and dies on SIGTERM, leaving the orphan holding the stdio pipes until
+  // it finishes (30 s) — runCommand waits for close, and CI measured exactly
+  // that; macOS's sh replaces itself with the last command, so the kill lands
+  // on the sleep directly. With exec both platforms kill the process the test
+  // is about. A real engine binary is a single process either way.
   it('a signal already aborted before the probe starts interrupts it at once — no answer, no surviving child', async () => {
     const controller = new AbortController()
     controller.abort(new Error('operation cancelled'))
     const started = Date.now()
-    await expect(antflyBinaryVersion(script('hang-aborted.sh', 'sleep 30'), { signal: controller.signal })).rejects.toBeInstanceOf(CommandInterruptedError)
+    await expect(antflyBinaryVersion(script('hang-aborted.sh', 'exec sleep 30'), { signal: controller.signal })).rejects.toBeInstanceOf(CommandInterruptedError)
     expect(Date.now() - started).toBeLessThan(5_000)
   })
 
   it('the probe\'s own deadline is the same interruption, named', async () => {
-    await expect(runCommand(script('hang2.sh', 'sleep 30'), [], { timeoutMs: 40 })).rejects.toMatchObject({ name: 'CommandInterruptedError', reason: 'timeout' })
+    await expect(runCommand(script('hang2.sh', 'exec sleep 30'), [], { timeoutMs: 40 })).rejects.toMatchObject({ name: 'CommandInterruptedError', reason: 'timeout' })
   })
 })

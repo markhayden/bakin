@@ -151,6 +151,7 @@ docker run --rm --platform linux/amd64 -v "$PWD":/src:ro -v "$OUT/1.4.3/leg6":/e
 | 2.1 | `fix(adapter-antfly): every version probe takes op.signal` | alone |
 | 2.2 | `refactor(adapter-antfly): binary commit rides commitFileAtomic; share/ swaps aside with the binary commit as the rollback boundary` | chain: 2.4 → 2.3 → 2.2 |
 | 2.3 | `test(adapter-antfly): installerFs seam + five failure cases; arch pin for the file commit` | chain: 2.4 → 2.3 |
+| 2.5 | `fix(adapter-antfly): review round 1 — the refusal on both lock paths, aside-based recovery that restarts only after a successful restore, full data-clear recovery, a recheck-cancel test that proves interruption, a supervisor-start failure case` + follow-up: hang fixtures exec their sleep | tip (after 2.4) |
 | 2.4 | `docs(search): the antfly commit order, rollback boundary and share.previous; #890 closed` | tip |
 
 Chain (Q5): 2.3 tests 2.2's behaviour and 2.4 documents it, so 2.2 reverts only with 2.3 and 2.4; 2.1 reverts alone.

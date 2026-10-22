@@ -21,10 +21,10 @@ Spec `.claude/specs/toolchain-and-sdk-boundary-batch-2026-10.md` · Plan `.claud
 - [ ] PR 1 merged; system bun → exact bun-v1.4.3; Mark restarts 3737; Bits companion merged; memory updated; #965 closed
 
 ## PR 2 — #890 `fix/890-antfly-commit`
-- [ ] 2.1 op.signal into all four probes + two cancellation cases
-- [ ] 2.2 refuse `share.previous`; share aside → in; `commitFileAtomic`; rollback boundary = successful binary commit
-- [ ] 2.3 `installerFs` seam on the installer's options; five failure cases; module-specific arch pin
-- [ ] 2.4 docs; #890 closed with the #895 commit evidence
+- [x] 2.1 op.signal into all four probes + two cancellation cases
+- [x] 2.2 refuse `share.previous`; share aside → in; `commitFileAtomic`; rollback boundary = successful binary commit
+- [x] 2.3 `installerFs` seam on the installer's options; seven failure cases (+ restore-failure, pinned-path refusal) + supervisor-start failure; module-specific arch pin
+- [x] 2.4 docs (close #890 at merge)
 - [ ] PR 2 merged
 
 ## PR 3 — #809a `refactor/809-sdk-boundary`
