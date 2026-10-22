@@ -149,13 +149,13 @@
       "id": "semantic-raw-controls",
       "status": "approved-temporary",
       "scope": [
-        "src/components/conversation/reply-toast.tsx",
         "packages/sdk/src/slots/index.tsx",
+        "packages/ui/src/conversation/reply-toast-body.tsx",
         "packages/host/src/components/layout/sidebar-nav-item.tsx",
         "plugins/workflows/components/workflow-canvas-editor.tsx"
       ],
       "allowances": {
-        "src/components/conversation/reply-toast.tsx": {
+        "packages/ui/src/conversation/reply-toast-body.tsx": {
           "raw-control": 1
         },
         "packages/sdk/src/slots/index.tsx": {

@@ -68,6 +68,13 @@ export type {
 } from './composer'
 
 export { QueuedMessageList } from './queued-message-list'
+
+/** Attention primitives shared by every conversational surface's badge/toast provider. */
+export { attentionForDone, badgeFor, visibleIdFromLocation, withUnreadPrefix } from './attention'
+export type { AttentionActions, ConversationAttentionContext, ConversationDonePayload } from './attention'
+export { playReplyChime } from './notification-sound'
+export { ReplyToastBody } from './reply-toast-body'
+export type { ReplyToastBodyProps } from './reply-toast-body'
 export type {
   ConversationQueuedItem,
   QueuedMessageListProps,
