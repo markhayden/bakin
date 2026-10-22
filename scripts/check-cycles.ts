@@ -55,10 +55,11 @@ const KNOWN_CYCLES = new Set<string>([
  * visible), in CI `bun install --frozen-lockfile` resolves the published
  * package (edge invisible). Tolerated either way, never required — the
  * deliberate P2 #2 arrangement (see packages/sdk/src/hooks/index.ts).
+ * Stale-checked like KNOWN_CYCLES: an entry nobody observes any more is
+ * removed, never kept (#809 removed the last one; #809b may empty the set
+ * for good).
  */
-const TOLERATED_CYCLES = new Set<string>([
-  key(['packages/sdk/src/hooks/index.ts', 'src/hooks/use-query-state.ts']),
-])
+const TOLERATED_CYCLES = new Set<string>([])
 
 const result = await madge(ENTRIES, {
   fileExtensions: ['ts', 'tsx'],
@@ -70,7 +71,7 @@ const cycles = result.circular()
 const found = new Map(cycles.map((c) => [key(c), c]))
 
 const newCycles = [...found.entries()].filter(([k]) => !KNOWN_CYCLES.has(k) && !TOLERATED_CYCLES.has(k))
-const staleAllowlist = [...KNOWN_CYCLES].filter((k) => !found.has(k))
+const staleAllowlist = [...KNOWN_CYCLES, ...TOLERATED_CYCLES].filter((k) => !found.has(k))
 
 if (newCycles.length > 0) {
   console.error(`NEW import cycles (${newCycles.length}) — break the cycle, or allowlist it deliberately in scripts/check-cycles.ts:`)
