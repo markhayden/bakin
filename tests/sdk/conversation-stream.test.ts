@@ -17,8 +17,8 @@ mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
-import { createTurnRecorder } from '../../src/components/conversation/turn-recorder'
-import { conversationThreadId } from '../../src/components/conversation/thread-id'
+import { createTurnRecorder } from '../../packages/core/src/conversation/turn-recorder'
+import { conversationThreadId } from '../../packages/core/src/conversation/thread-id'
 
 function sseResponse(frames: string[], chunkSize?: number): Response {
   const payload = frames.join('')

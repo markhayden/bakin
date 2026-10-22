@@ -28,17 +28,17 @@
  */
 import { randomUUID } from 'crypto'
 
-import type { PluginContext } from '@bakin/core/plugin-types'
-import type { ChatChunk, MessageUsage, RuntimeToolAccess } from '@bakin/core/adapters/runtime'
+import type { PluginContext } from '../plugin-types'
+import type { ChatChunk, MessageUsage, RuntimeToolAccess } from '../adapters/runtime'
 // Media downscale is imported LAZILY at attachment-prepare time: this module
 // rides into the published SDK testing bundle (harness ctx.conversations),
 // and a static import would pull the sharp loader's module graph into the
 // npm package's declaration dependency graph.
-import type { PreparedAttachment } from '@bakin/core/media/downscale'
-import { isVisionRasterMime } from '@bakin/core/media/image-format'
+import type { PreparedAttachment } from '../media/downscale'
+import { isVisionRasterMime } from '../media/image-format'
 
-import { createTurnRecorder } from '../components/conversation/turn-recorder'
-import { createLogger } from './logger'
+import { createTurnRecorder } from './turn-recorder'
+import { createLogger } from '../logger'
 
 const log = createLogger('conversation-turns')
 
@@ -593,7 +593,7 @@ async function runTurn(
     const images = attachments?.filter(isRasterAttachment) ?? []
     const files = attachments?.filter((a) => !isRasterAttachment(a)) ?? []
     if (images.length) {
-      const media = await import('@bakin/core/media/downscale')
+      const media = await import('../media/downscale')
       cleanupPrepared = media.cleanupPreparedAttachment
       for (const a of images) {
         prepared.push(await media.prepareImageAttachment(a.path, a.mimeType))
@@ -605,7 +605,7 @@ async function runTurn(
       // testing bundle's graph (same rule as the downscale import above).
       let renderCall: ((tool: string, args: string) => string) | undefined
       try {
-        const { renderToolCall } = await import('./tool-access')
+        const { renderToolCall } = await import('../tool-access')
         const access: RuntimeToolAccess = ctx.runtime.describeToolAccess()
         renderCall = (tool, args) => renderToolCall(access, { agentId, tool, args })
       } catch {

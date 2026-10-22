@@ -17,7 +17,7 @@ import {
   createConversationTurnService,
   type StartTurnResult,
   type TurnContext,
-} from '../../../src/core/conversation-turns'
+} from '@bakin/core/conversation/turns'
 import { createChatMeterHook } from '../../../src/core/conversation-metering'
 
 /** The bridge needs only messaging + the event bus — accept any context that has them. */

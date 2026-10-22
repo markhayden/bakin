@@ -75,7 +75,7 @@ mock.module('@/core/task-store', () => ({
 import workflowsPlugin from '../../../plugins/workflows'
 import { clearSourceRegistry, registerPluginDefinition } from '@bakin/core/workflows/source-registry'
 import { resetWorkflowAvailabilityCache, setWorkflowDisabled } from '../../../plugins/workflows/lib/availability'
-import { createConversationTurnService } from '../../../src/core/conversation-turns'
+import { createConversationTurnService } from '../../../packages/core/src/conversation/turns'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

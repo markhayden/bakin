@@ -96,7 +96,7 @@ import type { PluginContext, BakinPlugin, RegisteredAPIRoute, NavItem } from '@b
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import fs from 'fs'
-import { createConversationTurnService } from '../../src/core/conversation-turns'
+import { createConversationTurnService } from '../../packages/core/src/conversation/turns'
 
 // Import all plugins via require — ES imports are hoisted above the IIFE
 // that seeds BAKIN_HOME / OPENCLAW_HOME, so plugin modules that call

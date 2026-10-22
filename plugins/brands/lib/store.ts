@@ -16,7 +16,7 @@ import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import { parseFrontmatter } from '@bakin/core/format/frontmatter'
 import { getBakinPaths } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
-import type { ConversationTurnRow } from '../../../src/core/conversation-turns'
+import type { ConversationTurnRow } from '@bakin/core/conversation/turns'
 import { brandIdSchema, brandManifestSchema, type BrandManifest } from './schemas'
 
 const log = createLogger('brands-store')

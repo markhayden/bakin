@@ -30,13 +30,13 @@ import type {
   ConversationTurnServiceConfig,
   TurnContext,
   TurnOutcome,
-} from '../../src/core/conversation-turns'
+} from '../../packages/core/src/conversation/turns'
 import type { ChatChunk, MessageArgs } from '../../packages/core/src/adapters/runtime/concepts'
 import { settleFor, waitUntil } from '../helpers/wait'
 
 // Dynamic import AFTER the mock.module calls — a hoisted static import would
 // bind the engine's module-level logger to the real one before the mock lands.
-const { createConversationTurnService } = await import('../../src/core/conversation-turns')
+const { createConversationTurnService } = await import('../../packages/core/src/conversation/turns')
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
