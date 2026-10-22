@@ -1,8 +1,8 @@
 import { afterEach, expect, it, mock } from 'bun:test'
 import { act, render } from '@testing-library/react'
 import { actRender } from '../../rtl-settle'
-import { usePluginEvent, emitPluginEvent } from '../../../src/hooks/use-plugin-event'
-import { usePluginJsonFetch } from '../../../src/hooks/use-json-fetch'
+import { usePluginEvent, emitPluginEvent } from '../../../packages/sdk/src/hooks/use-plugin-event'
+import { usePluginJsonFetch } from '../../../packages/sdk/src/hooks/use-json-fetch'
 
 let badge: { count?: number; tone?: string } | null = null
 // Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers stay real under the narrow mock.

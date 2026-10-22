@@ -18,7 +18,10 @@ mock.module('@/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 const notifications: Array<{ title: string; body: string; url?: string }> = []
-mock.module('@/lib/browser-notify', () => ({
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's internal entry re-exports the host verbs from this module, so the mock spreads the real one.
+import * as realBrowserNotify from '../../packages/sdk/src/internal/browser-notify'
+mock.module('../../packages/sdk/src/internal/browser-notify', () => ({
+  ...realBrowserNotify,
   sendBrowserNotification: (title: string, body: string, url?: string) => { notifications.push({ title, body, url }) },
 }))
 

@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
-import { useAgentStore, hexToMuted } from '@makinbakin/sdk/hooks'
-import { usePluginEvent } from '@/hooks/use-plugin-event'
+import { useAgentStore, hexToMuted, usePluginEvent } from '@makinbakin/sdk/hooks'
 
 /**
  * Fetches agent data on mount and injects per-agent CSS custom properties

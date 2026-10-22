@@ -52,7 +52,10 @@ mock.module('@makinbakin/sdk/navigation', () => ({
   },
 }))
 const notifications: Array<[string, string, string | undefined]> = []
-mock.module('../../../plugins/spend/lib/browser-notify', () => ({
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's internal entry re-exports the host verbs from this module, so the mock spreads the real one.
+import * as realBrowserNotify from '../../../packages/sdk/src/internal/browser-notify'
+mock.module('../../../packages/sdk/src/internal/browser-notify', () => ({
+  ...realBrowserNotify,
   sendBrowserNotification: (title: string, body: string, url?: string) => { notifications.push([title, body, url]) },
 }))
 

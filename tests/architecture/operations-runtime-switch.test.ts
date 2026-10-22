@@ -34,7 +34,7 @@ const code = (text: string): string => text.split('\n').filter((line) => {
 }).join('\n')
 
 const EVENT_SOURCE_ALLOWED = new Set([
-  'src/hooks/use-sse.ts',
+  'packages/sdk/src/hooks/use-sse.ts',
   'packages/host/src/dev-client/client.ts',
 ])
 
@@ -68,6 +68,6 @@ describe('the runtime switch is an operation (#895 PR6)', () => {
   it('TEETH: the EventSource scanner flags a private stream and ignores a comment about one', () => {
     expect(eventSourceHits('plugins/x/hook.ts', "const es = new EventSource('/api/events')")).toEqual(['plugins/x/hook.ts'])
     expect(eventSourceHits('plugins/x/hook.ts', "// no new EventSource('/api/events') here")).toEqual([])
-    expect(eventSourceHits('src/hooks/use-sse.ts', "const es = new EventSource('/api/events')")).toEqual([])
+    expect(eventSourceHits('packages/sdk/src/hooks/use-sse.ts', "const es = new EventSource('/api/events')")).toEqual([])
   })
 })

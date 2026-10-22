@@ -14,7 +14,7 @@ mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: ()
 mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => join(testDir, 'openclaw'), getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts), resetOpenClawHome: () => {} }))
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
-import { emitPluginEvent, usePluginEvent } from '../../../src/hooks/use-plugin-event'
+import { emitPluginEvent, usePluginEvent } from '../../../packages/sdk/src/hooks/use-plugin-event'
 // Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers stay real under the narrow mock.
 import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({ ...realSdkHooks, usePluginEvent }))

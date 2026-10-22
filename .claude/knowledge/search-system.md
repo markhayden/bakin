@@ -407,7 +407,7 @@ misrouting.
 | `src/core/search-adapter-factory.ts` | The ONLY production importer of `@bakin/adapter-antfly` |
 | `src/core/api-search-handler.ts` | Cross-plugin `/api/search` request handler |
 | `packages/adapter-antfly/src/` | The default adapter implementation (see below) |
-| `src/hooks/use-search.ts` | Client-side `useSearch` hook + `reorderBySearchResults` (re-exported via the SDK hooks surface) |
+| `packages/sdk/src/hooks/use-search.ts` | Client-side `useSearch` hook + `reorderBySearchResults` (`@makinbakin/sdk/hooks`) |
 
 ### The antfly adapter package
 

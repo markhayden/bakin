@@ -71,7 +71,7 @@ mock.module('@makinbakin/sdk/ui', () => ({
   Text: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
 }))
 
-import { emitPluginEvent } from '../../../src/hooks/use-plugin-event'
+import { emitPluginEvent } from '../../../packages/sdk/src/hooks/use-plugin-event'
 import { finishedOperation, operationResponse, operationStarted } from '../../helpers/operation-fetch'
 import { InstallDialog, inferSourceType } from '../../../plugins/explore/components/install-dialog'
 import type { ExploreCatalogEntry } from '../../../plugins/explore/types'

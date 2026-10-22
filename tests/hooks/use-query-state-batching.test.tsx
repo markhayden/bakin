@@ -31,7 +31,7 @@ mock.module('@tanstack/react-router', () => ({
 import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react'
 import '../rtl-settle'
 
-import { useQueryState, useQueryArrayState } from '../../src/hooks/use-query-state'
+import { useQueryState, useQueryArrayState } from '../../packages/sdk/src/hooks/use-query-state'
 
 function setURL(url: string) {
   const happy = (window as unknown as { happyDOM?: { setURL: (u: string) => void } }).happyDOM

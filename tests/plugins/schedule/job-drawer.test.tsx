@@ -38,7 +38,7 @@ mock.module('@bakin/schedule/components/pause-controls', () => ({
 }))
 
 import { JobDrawer } from '../../../plugins/schedule/components/job-drawer'
-import type { ScheduleJob } from '../../../src/hooks/use-schedule'
+import type { ScheduleJob } from '../../../packages/sdk/src/hooks/use-schedule'
 
 function makeJob(overrides: Partial<ScheduleJob> = {}): ScheduleJob {
   return {

@@ -8,7 +8,7 @@ import {
   type OperationPhase,
   type OperationStartResponse,
   type OperationView,
-} from '@makinbakin/sdk/types'
+} from '../types'
 import { usePluginEvent } from './use-plugin-event'
 
 /**

@@ -10,7 +10,7 @@ const testDir = join(tmpdir(), 'bakin-test-use-json-fetch')
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
 
-import { useJsonFetch } from '../../src/hooks/use-json-fetch'
+import { useJsonFetch } from '../../packages/sdk/src/hooks/use-json-fetch'
 
 const originalFetch = globalThis.fetch
 

@@ -42,7 +42,7 @@ mock.module('../../../packages/core/src/content-dir', () => {
 })
 
 import { MemorySearchResults } from '../../../plugins/memory/components/memory-search-results'
-import type { SearchResult } from '../../../src/hooks/use-search'
+import type { SearchResult } from '../../../packages/sdk/src/hooks/use-search'
 
 function row(overrides: Partial<SearchResult> & { tier?: string; agent?: string; title?: string }): SearchResult {
   const { tier = 'session', agent = 'explorer', title = 'A result', ...rest } = overrides

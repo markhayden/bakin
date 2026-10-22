@@ -29,7 +29,7 @@ mock.module('@tanstack/react-router', () => ({
 
 // Parametrizable query-state mock: tab starts at default; draftTask reads a var.
 let draftTaskParam = ''
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
     const [v, setV] = React.useState(key === 'draftTask' ? draftTaskParam : defaultValue)
@@ -370,7 +370,7 @@ describe('route states', () => {
   })
 
   it('a voice body that resolves after the brand refreshed without voice.md never lands (issue 966b review r3)', async () => {
-    const { emitPluginEvent } = await import('../../../src/hooks/use-plugin-event')
+    const { emitPluginEvent } = await import('../../../packages/sdk/src/hooks/use-plugin-event')
     let detailReads = 0
     let resolveVoice!: (body: { content: string }) => void
     const voiceBody = new Promise<{ content: string }>((resolve) => { resolveVoice = resolve })

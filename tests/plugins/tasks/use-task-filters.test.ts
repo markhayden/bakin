@@ -3,7 +3,7 @@
 /**
  * Tests for the tasks plugin `useTaskFilters` hook and the pure
  * `filterBoardColumns` helper. The hook calls `useSearch` from
- * `@/hooks/use-search`, which we stub so each test can drive the
+ * `../../../packages/sdk/src/hooks/use-search`, which we stub so each test can drive the
  * `results` array deterministically.
  */
 import { describe, it, expect, afterAll, beforeEach, mock } from 'bun:test'
@@ -88,7 +88,7 @@ const mockSearchState: {
 const searchSpy = mock()
 const clearSpy = mock()
 
-mock.module('@/hooks/use-search', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-search', () => ({
   useSearch: () => ({
     results: mockSearchState.results,
     aggregations: mockSearchState.aggregations,

@@ -293,7 +293,7 @@ Options are grouped by provider (`anthropic`, `openai-codex`, `google`, etc.), n
 
 ## useRuntimeStatus
 
-`src/hooks/use-runtime-status.ts` — Pending runtime restart, in the ADAPTER's words (#878).
+`packages/sdk/src/hooks/use-runtime-status.ts` — Pending runtime restart, in the ADAPTER's words (#878).
 
 ### Return Value
 
@@ -312,7 +312,7 @@ Options are grouped by provider (`anthropic`, `openai-codex`, `google`, etc.), n
 
 ## useSearch
 
-Located at `src/hooks/use-search.ts`. Provides Antfly-powered semantic search alongside client-side filtering in all plugin UIs. Takes a `plugin: <pluginId>` option that targets the plugin's auto-registered `/api/plugins/{plugin}/search` route — omit `plugin` to fall back to the cross-plugin `/api/search` endpoint.
+Located at `packages/sdk/src/hooks/use-search.ts` (`@makinbakin/sdk/hooks`). Provides Antfly-powered semantic search alongside client-side filtering in all plugin UIs. Takes a `plugin: <pluginId>` option that targets the plugin's auto-registered `/api/plugins/{plugin}/search` route — omit `plugin` to fall back to the cross-plugin `/api/search` endpoint.
 
 **Usage:** Every plugin with a search bar fires `useSearch` when the user types. Results are used to reorder client-side filtered lists by relevance scores. Aggregation counts from `search.aggregations` feed into FacetFilter's `counts` prop.
 
@@ -374,9 +374,9 @@ src/components/plugin-header.tsx         — Page header with search + actions
 src/components/facet-filter.tsx          — Multi-select filter with optional Antfly counts
 src/components/sortable-head.tsx         — Generic sortable table header cell
 src/components/integrated-brainstorm/    — Unified streaming agent-chat surface
-src/hooks/use-search.ts                  — Search hook (Antfly-backed) with debounce + fallback
-src/hooks/use-runtime-status.ts          — Runtime restart sync checker
-src/hooks/use-vertical-resize.ts         — Drag-to-resize hook (messaging panels + brainstorm)
+packages/sdk/src/hooks/use-search.ts     — Search hook (Antfly-backed) with debounce + fallback
+packages/sdk/src/hooks/use-runtime-status.ts — Runtime restart sync checker
+packages/sdk/src/hooks/use-horizontal-resize.ts — Drag-to-resize hook (split panes)
 packages/ui/src/primitives/dropdown-menu.tsx — Base dropdown (focus: bg-secondary)
 packages/ui/src/primitives/sheet.tsx     — Sheet primitive (used by Drawer)
 src/core/app-services.ts                 — boot-created runtime/search/task services

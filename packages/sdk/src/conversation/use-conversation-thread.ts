@@ -30,7 +30,7 @@ import type {
   ConversationMessage,
   ConversationQueuedItem,
 } from '@bakin/ui/conversation'
-import { usePluginEvent } from '@/hooks/use-plugin-event'
+import { usePluginEvent } from '../hooks/use-plugin-event'
 import type { RuntimeChatChunk } from '../types/runtime'
 
 export interface ConversationThreadLoad<Meta> {

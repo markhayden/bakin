@@ -3,7 +3,7 @@
  * hands off to the restart, poll this home's server until a new boot
  * serves the expected version, and say so in one line.
  */
-import { describeSelfUpdateVerification, verifySelfUpdate, type SelfUpdateVerification } from '../lib/self-update-verify'
+import { describeSelfUpdateVerification, verifySelfUpdate, type SelfUpdateVerification } from '@bakin/core/install-core/self-update-verify'
 import { serverBaseUrl } from './http'
 
 export interface CliVerifyOptions {

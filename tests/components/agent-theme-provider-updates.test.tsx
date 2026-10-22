@@ -17,7 +17,7 @@ mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () =>
 
 import { AgentThemeProvider } from '../../packages/host/src/providers/AgentThemeProvider'
 import { useAgentStore } from '../../plugins/team/hooks/use-agent-store'
-import { emitPluginEvent } from '../../src/hooks/use-plugin-event'
+import { emitPluginEvent } from '../../packages/sdk/src/hooks/use-plugin-event'
 
 afterAll(() => { try { rmSync(testDir, { recursive: true, force: true }) } catch {} })
 afterEach(() => cleanup())

@@ -55,10 +55,10 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => ['overview', mock(), mock()],
 }))
-mock.module('@/hooks/use-runtime-status', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
 }))
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))

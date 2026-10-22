@@ -21,12 +21,13 @@ const ROOT = process.cwd()
 const SDK = 'packages/sdk/src'
 const APP_ROOT = join(ROOT, 'src')
 
-/** file → why it may still import app code (and what retires it). */
-const ALLOWED: Record<string, string> = {
-  'packages/sdk/src/hooks/index.ts': 'groups 1–3 of the hooks barrel; group 1 (src/hooks) moves into the SDK in #809b, groups 2–3 stay (P2 #5)',
-  'packages/sdk/src/conversation/use-conversation-thread.ts': 'usePluginEvent from src/hooks — moves with #809b',
-  'packages/sdk/src/conversation/use-conversation-attention.tsx': 'src/hooks + src/lib/browser-notify — move with #809b',
-}
+/**
+ * file → why it may still import app code (and what retires it). EMPTY since
+ * #809b: the SDK imports nothing from the root `src/`. (The hooks barrel's
+ * groups 2–3 reach into `plugins/` on purpose — P2 #5 — which this boundary
+ * does not cover.)
+ */
+const ALLOWED: Record<string, string> = {}
 
 /** Paths #809a deleted; a facade or a re-creation fails here. */
 const GONE = [

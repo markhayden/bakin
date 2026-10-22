@@ -33,7 +33,7 @@ the local-operation wrappers and the private progress streams are gone
 | CLI follow + renderer + targeting | `src/cli/http.ts` (`followOperation`, `resolveCliTarget`, `cliFetch`), `src/cli/operation-renderer.ts` |
 | Health repair as an operation | `src/core/doctor-repair.ts` (`startDoctorRepair`, `awaitDoctorRepair`, `REPAIR_PARENT_PLAN`) |
 | Converted-route start schema | `packages/core/src/operations/schema.ts` (`operationStartResponseSchema`) |
-| Browser follow hook + start helper | `src/hooks/use-operation.ts` → `@makinbakin/sdk/hooks` (`useOperation`, `startOperation`, `OperationStartError`) |
+| Browser follow hook + start helper | `packages/sdk/src/hooks/use-operation.ts` → `@makinbakin/sdk/hooks` (`useOperation`, `startOperation`, `OperationStartError`) |
 | Progress pattern | `packages/sdk/src/patterns/operation-progress.tsx` → `@makinbakin/sdk/patterns` (story `Components/Feedback/OperationProgress`) |
 | Header tray + live list | `packages/host/src/components/operations/{operations-tray.tsx,operations-list.ts}` |
 | Attention (toast + OS notification) | `packages/host/src/components/attention/{operation-attention.ts,operations-attention-provider.tsx}` |

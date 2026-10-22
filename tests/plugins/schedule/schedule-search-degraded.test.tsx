@@ -66,7 +66,7 @@ afterAll(() => {
 
 const queryStateRefs: Record<string, string> = {}
 
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => {
     if (!(key in queryStateRefs)) queryStateRefs[key] = defaultValue
     const setter = (v: string) => { queryStateRefs[key] = v }
@@ -94,7 +94,7 @@ interface ScheduleJobStub {
 
 const scheduleState: { jobs: ScheduleJobStub[] } = { jobs: [] }
 
-mock.module('@/hooks/use-schedule', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-schedule', () => ({
   useScheduleJobs: () => ({
     jobs: scheduleState.jobs,
     allJobs: scheduleState.jobs,

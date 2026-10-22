@@ -7,7 +7,7 @@ import {
   isNotificationsEnabled,
   requestNotificationPermission,
   toggleNotifications,
-} from '@/lib/browser-notify'
+} from '@makinbakin/sdk/internal'
 
 export function NotificationToggle() {
   // Read once at mount in the initializers (issue 966b): the browser's support and

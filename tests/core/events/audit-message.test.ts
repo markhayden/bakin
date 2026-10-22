@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
-import { mapAuditMessage, humanizeExecName, isNoisyEvent } from '../../src/lib/map-audit-message'
-import type { ActivityEvent } from '../../src/types'
+import { mapAuditMessage, humanizeExecName, isNoisyEvent } from '../../../packages/core/src/events/audit-message'
+import type { ActivityEvent } from '../../../packages/sdk/src/types'
 
 describe('mapAuditMessage', () => {
   // Existing domain events should still work

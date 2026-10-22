@@ -1198,13 +1198,13 @@ The audit consolidated copy-pasted client patterns into the SDK; reach for these
 
 Published to npm as `@makinbakin/sdk`. `scripts/publish-sdk.ts` pushes on the
 release workflow. Lint rules block direct imports from `@/components/*`,
-`@/hooks/*`, `@/lib/*`, and other plugins — the SDK is the only
-surface plugin authors should see.
+`@/lib/*`, `@bakin/ui`, and other plugins — the SDK is the only
+surface plugin authors should see (the hooks live in the SDK itself since #809b).
 
 ## Client SSE fan-out — `usePluginEvent`
 
 The shell owns exactly ONE browser `EventSource('/api/events')`
-(`src/hooks/use-sse.ts`). Plugins must NOT open their own — a per-plugin
+(`packages/sdk/src/hooks/use-sse.ts`). Plugins must NOT open their own — a per-plugin
 `EventSource` is a second connection with no shared reconnect/backoff and
 its own teardown bugs. Instead they subscribe to named server events
 through `usePluginEvent`:
@@ -1215,7 +1215,7 @@ import { usePluginEvent } from '@makinbakin/sdk/hooks'
 usePluginEvent('asset.changed', (payload) => { /* refetch, etc. */ })
 ```
 
-Mechanics (`src/hooks/use-plugin-event.ts`, SDK-re-exported like `useSSE`):
+Mechanics (`packages/sdk/src/hooks/use-plugin-event.ts`, exported like `useSSE`):
 - A dependency-free `globalThis`-backed `Map<eventName, Set<handler>>`
   (`__bakinPluginEventSubs`) holds subscribers. `emitPluginEvent(payload)`
   dispatches to the set for `payload.event`; a throwing handler is

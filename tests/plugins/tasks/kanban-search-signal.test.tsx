@@ -167,11 +167,11 @@ mock.module('../../../plugins/tasks/hooks/use-live-activity', () => ({
 
 let contentLoading = false
 
-mock.module('@/hooks/use-content-store', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-content-store', () => ({
   useContentStore: () => contentLoading,
 }))
 
-mock.module('@/hooks/use-toast', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-toast', () => ({
   toast: mock(),
   useToastStore: Object.assign(mock(() => []), { getState: () => ({ add: mock(), clear: mock() }) }),
 }))
