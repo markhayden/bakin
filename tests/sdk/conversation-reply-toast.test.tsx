@@ -9,7 +9,8 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import '../rtl-settle'
 
-const push = mock((_to: string) => {})
+const order: string[] = []
+const push = mock((_to: string) => { order.push('navigate') })
 mock.module('../../packages/sdk/src/navigation', () => ({
   useRouter: () => ({ push }),
 }))
@@ -20,11 +21,11 @@ mock.module('../../plugins/team/hooks/use-agent-store', () => ({
 
 import { ConversationReplyToast } from '../../packages/sdk/src/conversation/reply-toast'
 
-afterEach(() => { push.mockClear() })
+afterEach(() => { push.mockClear(); order.length = 0 })
 
 describe('ConversationReplyToast', () => {
   it('avatar carries the display-name override, the headline the raw name; click dismisses then navigates', async () => {
-    const onNavigate = mock(() => {})
+    const onNavigate = mock(() => { order.push('dismiss') })
     await act(async () => {
       render(<ConversationReplyToast agentId="pixel" title="replied" preview="on it" to="/chat?chat=c1" onNavigate={onNavigate} testId={{ attr: 'data-chat-toast', value: 'c1' }} />)
     })
@@ -36,5 +37,7 @@ describe('ConversationReplyToast', () => {
     await act(async () => { fireEvent.click(button) })
     expect(onNavigate).toHaveBeenCalledTimes(1)
     expect(push).toHaveBeenCalledWith('/chat?chat=c1')
+    // Dismiss first, then navigate — the order the attention hook relies on.
+    expect(order).toEqual(['dismiss', 'navigate'])
   })
 })
