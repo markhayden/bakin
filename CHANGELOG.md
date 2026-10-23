@@ -6,6 +6,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+Bakin now knows what is newer across everything it installs, every long-running step runs as an operation end to end, and the plugin toolchain is honest about what runs where.
+
+### Added
+- **Updates engine (#1007).** One record for every tracked subject — Bakin itself, plugins, agent packages, hub skills, the search engine and its models — observed on a schedule with backoff and conditional requests, persisted with two clocks (last success, last attempt — a failed check never overwrites a good observation), and read by Health → Updates, the header banner, Explore, Team and the CLI. Nothing probes a source from a consumer. Apply is one service for plugins (preview → consent → commit), the search engine and its models (reinstalls as operations) and Bakin itself (the self-update as an operation whose last stage is the restart, verified by the client once the new process answers); package and hub-skill updates are observed and reported with their sync or reinstall command. `bakin updates [--check] | skip | apply`; `bakin update` goes through the running server. Skips are identities that return when the source moves.
+- **Onboarding components and the runtime switch are operations (#895).** Every `bakin install …` component runs as an operation on the server, or in-process when no server runs, with a declared plan, resources and cancellation before the point of no return; the runtime switch reports its phases as stages. Service claims need the per-boot CLI secret the server writes into `server.lock`.
+- **Archive binaries are pinned by their extracted member (#1004).** A `requires.bins` archive download must declare `archive.extractedSha256`; Bakin checks the extracted file against it before installing or running the binary, and the bytes on disk in every readiness and Health scan. A manifest without the pin is a visible finding, never "no bins".
+- **A release guard for the plugin contract (#999).** A Bakin release that changes the plugin externals-contract family cannot ship until every official plugin has published for it, so an upgrade never strands installed plugins.
+- **Health → Updates** lists required and available updates with the whole apply flow in one dialog; the System row and Explore show the same records.
+
+### Changed
+- **zod is host-provided in the browser (#948).** One `/vendor/zod.js` behind the import map; plugin clients externalize it (artifact contract `react19-sdk-focused-v2`). The change is additive: artifacts built for `-v1` keep running.
+- **SDK boundary (#809).** The conversation turn engine, recorder, thread id and tool-access rendering live in `@bakin/core`; the conversation UI lives in the UI package behind `@makinbakin/sdk/conversation`; the Bakin-wide hooks, the host-state types and browser notifications are SDK files (`@makinbakin/sdk/hooks`, `/types`, `/internal`). No SDK entry imports app code any more; the tolerated-cycle list is gone.
+- **Health sensitivity has two modes (#1007).** `quiet` is retired; a saved `quiet` behaves as `standard`.
+- **Search engine installs commit atomically (#890).** The download rides the shared download primitive with cancellation through every probe; the binary commit is the rollback boundary: a failure before it restores what was there (binary, `share/`, service unit); a failure after it keeps the new binary and reports what is left to do.
+- **Plugin upgrade consent never trusts the lock file (#1001):** what you approve is the manifest fetched from the source. **Every shell and plugin asset URL is versioned (#997),** so an upgrade never serves a stale SDK from a browser cache.
+- **The models plan proposes only models proven to run here (#1000):** usage history or a passing probe in the last 7 days, never a model merely listed.
+- **OpenClaw adapter (#883):** `toolsMode` is gone; per-turn tool policy is declared honestly and the config mirrors OpenClaw 9.5's closed schema.
+- **Toolchain:** Bun 1.4.3 (#965); the React lint contract (`@eslint-react`, zero warnings) is enforced across every component (#966).
+- The one-shot approvals and settings upgrades that rc.41 ran at boot are removed (#945).
+
+### Fixed
+- **Tasks:** order stays unique on every write path and the repair keeps the board (#994). **Schedule:** unrunnable schedules are paused instead of firing doomed tasks, fires never clobber a concurrent edit (#998), and schedule hooks ride the shell's one event stream (#990).
+- **Health:** bounded repair coverage resurfaces the existing review task instead of opening another (#1002); incident reservations, operator-review requests and resource locks are flock-held and crash-safe (#896).
+- **Search:** a model the engine cannot load never takes search down (#993); model files are hashed before any install is skipped (#1006); `bakin install search-models` never skips a model it was asked for (#1009).
+- **Packages:** npm payloads prove their dependencies resolve before the pack is marked ready (#1005).
+- **CLI:** `bakin stop` and `bakin restart` act only on this home's proven server (#898).
+- A plugin linked with `bakin plugins link` is no longer offered an update it refuses; the engine reports it as a dev install that follows its source.
+
+### Upgrade notes
+- **Install the companions Messaging 0.12.2 and Terminal 0.3.4 after upgrading.** Both are built for the host-provided zod contract; older artifacts keep running on this release, and a source install of either needs this release or later.
+- **Reinstall anything that ships an archive binary** — Terminal (`bakin plugins upgrade terminal`), and the OCR and Transcribe packs (`bakin packages sync <id>@<version>`): manifests without the extracted pin show as invalid on this release by design.
+- Release mechanics: the release workflow builds host assets before its test shards and validates the tag against full `main` history; the runbook describes prep + dispatch and retrying without moving the tag.
+- Boxes still on a release before rc.41 should boot rc.41 once first: the one-shot approvals migration it ran is removed here.
+- `settings.doctor.sensitivity: "quiet"` now behaves as `standard`; nothing rewrites the file.
+
 ## [0.0.1-rc.41] - 2026-10-18
 
 Long-running work now shows real progress everywhere, approvals are one system that records honestly who decided, and Health stops trusting files an agent could write.

@@ -54,7 +54,7 @@ export function createPluginSource(deps: PluginSourceDeps): UpdateSource {
     subject: { kind: 'plugin', id, label: id },
     group: 'available',
     fingerprint: fingerprintOf({
-      entry: { type: entry.type, source: entry.source, ref: entry.ref, commitSha: entry.commitSha, version: entry.version, manifestSha: entry.manifestSha, sourceTreeSha: entry.sourceTreeSha ?? null, sourceTreeShaAlgo: entry.sourceTreeShaAlgo ?? null },
+      entry: { type: entry.type, source: entry.source, ref: entry.ref, commitSha: entry.commitSha, version: entry.version, manifestSha: entry.manifestSha, sourceTreeSha: entry.sourceTreeSha ?? null, sourceTreeShaAlgo: entry.sourceTreeShaAlgo ?? null, linked: entry.linked === true },
       host: deps.host(),
     }),
     source: entry.type === 'github'
@@ -110,8 +110,14 @@ export function createPluginSource(deps: PluginSourceDeps): UpdateSource {
       }
 
       if (!existsSync(entry.source)) return { installed, outcome: 'blocked', blockedReason: `source path missing: ${entry.source}` }
-      const tree = deps.localTree(id, entry)
       const source = { kind: 'local-path', endpoint: entry.source }
+      // A linked dev install (`bakin plugins link`) IS its source tree: the
+      // server loads the checkout directly and `upgradePlugin` refuses it, so
+      // a differing tree is the developer's edit, never an update to offer.
+      if (entry.linked === true) {
+        return { installed, source, outcome: 'unsupported', blockedReason: 'a linked dev install runs its source tree directly — edit the source, or unlink and install to pin a version', action: { kind: 'manual', pointer: `bakin plugins unlink ${id} && bakin plugins install ${entry.source}` } }
+      }
+      const tree = deps.localTree(id, entry)
       if (!tree.changed) return { installed, source, outcome: 'current' }
       return { installed, source, available: { digest: tree.liveSha, display: 'local changes' }, reason: 'newer-commit', outcome: 'update-available', action: upgrade }
     },
