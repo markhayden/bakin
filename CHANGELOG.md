@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.42] - 2026-10-23
+
 Bakin now knows what is newer across everything it installs, every long-running step runs as an operation end to end, and the plugin toolchain is honest about what runs where.
 
 ### Added
@@ -824,5 +826,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.40]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.40
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.41...HEAD
 [0.0.1-rc.41]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.41
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.42...HEAD
+[0.0.1-rc.42]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.42
