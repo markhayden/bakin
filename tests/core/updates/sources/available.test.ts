@@ -204,7 +204,9 @@ describe('plugin source', () => {
     const b = (await source.inventory())[0]!.fingerprint
     entry = lock({ version: '0.11.5' })
     const c = (await source.inventory())[0]!.fingerprint
-    expect(new Set([a, b, c]).size).toBe(3)
+    entry = lock({ version: '0.11.5', linked: true, linkedSource: '/dev/checkout' })
+    const d = (await source.inventory())[0]!.fingerprint // relinking flips the observation (offer → unsupported), so it must flip the fingerprint
+    expect(new Set([a, b, c, d]).size).toBe(4)
   })
 })
 

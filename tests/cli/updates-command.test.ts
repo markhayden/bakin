@@ -160,6 +160,15 @@ describe('bakin updates', () => {
     expect(printed[0]).toMatchObject({ records, running: false })
   })
 
+  it('an unsupported subject with a manual pointer is informational: it is listed with its reason but never counted as a step to take', async () => {
+    const LINKED = record({ id: 'plugin:terminal', subject: { kind: 'plugin', id: 'terminal', label: 'terminal' }, outcome: 'unsupported', available: undefined, reason: undefined, blockedReason: 'a linked dev install runs its source tree directly', action: { kind: 'manual', pointer: 'bakin plugins unlink terminal && bakin plugins install /dev/terminal' } })
+    records = [MANUAL, LINKED, CURRENT]
+    await run(['updates'])
+    expect(logs.find((line) => line.includes('manual step'))).toBe('\n1 needs a manual step (see detail).')
+    const rows = tables[0] as Array<Record<string, string>>
+    expect(rows.find((r) => r.id === 'plugin:terminal')?.detail).toBe('a linked dev install runs its source tree directly')
+  })
+
   it('--check runs a waited pass first (optionally one --source kind), then lists', async () => {
     await run(['updates', '--check'])
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(['POST /api/updates/check?wait=1', 'GET /api/updates'])

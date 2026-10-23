@@ -73,7 +73,8 @@ function printRecords(snapshot: UpdatesSnapshotBody): void {
     checked: record.observedAt ?? record.attempt?.at ?? 'never',
     detail: detailOf(record),
   })), ['id', 'status', 'versions', 'checked', 'detail'])
-  const manual = records.filter((r) => r.outcome !== 'current' && r.action?.kind === 'manual')
+  // `unsupported` records are informational (a dev checkout, a linked plugin, no binary for this platform): nothing newer is known, so they are not a step to take.
+  const manual = records.filter((r) => r.outcome !== 'current' && r.outcome !== 'unsupported' && r.action?.kind === 'manual')
   if (manual.length > 0) console.log(`\n${manual.length} ${manual.length === 1 ? 'needs' : 'need'} a manual step (see detail).`)
   if (countAvailableUpdates(records) > 0) console.log('\nApply one with: bakin updates apply <id> --as human')
 }

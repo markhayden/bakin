@@ -54,7 +54,7 @@ export function createPluginSource(deps: PluginSourceDeps): UpdateSource {
     subject: { kind: 'plugin', id, label: id },
     group: 'available',
     fingerprint: fingerprintOf({
-      entry: { type: entry.type, source: entry.source, ref: entry.ref, commitSha: entry.commitSha, version: entry.version, manifestSha: entry.manifestSha, sourceTreeSha: entry.sourceTreeSha ?? null, sourceTreeShaAlgo: entry.sourceTreeShaAlgo ?? null },
+      entry: { type: entry.type, source: entry.source, ref: entry.ref, commitSha: entry.commitSha, version: entry.version, manifestSha: entry.manifestSha, sourceTreeSha: entry.sourceTreeSha ?? null, sourceTreeShaAlgo: entry.sourceTreeShaAlgo ?? null, linked: entry.linked === true },
       host: deps.host(),
     }),
     source: entry.type === 'github'
