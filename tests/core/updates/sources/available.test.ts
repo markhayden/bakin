@@ -182,6 +182,19 @@ describe('plugin source', () => {
     expect(missing.outcome).toBe('blocked')
   })
 
+  it('a linked dev install is unsupported, never an offer: the server runs the source tree and upgradePlugin refuses it', async () => {
+    const dir = join(testDir, 'linked-plugin')
+    mkdirSync(dir, { recursive: true })
+    const entry = lock({ type: 'local', source: dir, ref: '', commitSha: '', linked: true, linkedSource: dir, sourceTreeSha: 'old', sourceTreeShaAlgo: 2 })
+    let treeReads = 0
+    const source = createPluginSource(deps({ lockEntries: () => ({ projects: entry }), artifact: () => ({ installed: false, runs: false }), localTree: (_id: string) => { treeReads += 1; return { changed: true, liveSha: 'edited' } } }))
+    const [inv] = await source.inventory()
+    const observed = await source.observe(inv!, ctx())
+    expect(observed).toMatchObject({ outcome: 'unsupported', source: { kind: 'local-path', endpoint: dir }, action: { kind: 'manual', pointer: expect.stringContaining('bakin plugins unlink projects') } })
+    expect(observed.available).toBeUndefined()
+    expect(treeReads).toBe(0) // the live tree is the developer's edit, not evidence
+  })
+
   it('the fingerprint moves with the lock entry AND with the host (version, platform, contract) — artifact eligibility depends on both', async () => {
     let host = { version: '0.0.1-rc.41', platform: 'darwin-arm64', contract: 'react19-sdk-focused-v2' }
     let entry = lock()
