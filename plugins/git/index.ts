@@ -12,10 +12,14 @@ import { z } from 'zod'
 import type {
   ExecToolResult,
   HealthCheckRunInput,
+  HealthRepairActionDefinition,
+  HealthRepairApplyResult,
+  HealthRepairPlanItem,
   PluginContext,
 } from '@bakin/core/plugin-types'
 import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import { healthResourceId } from '@bakin/core/health/observation-builders'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { gitArgs } from '@bakin/core/net/git-args'
 import type { PluginContextLite } from '@bakin/core/routing'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
@@ -580,6 +584,55 @@ async function releaseWorktreeUnlocked(
   }
 }
 
+export const GIT_RELEASE_WORKTREE_ACTION = 'git-release-worktree'
+
+/** Active TASK worktrees whose checkout is gone from disk — what the repair releases (session ones are the operator's). */
+function missingTaskWorktrees(ctx: PluginContextLite): WorktreeEntry[] {
+  return readRegistry(ctx).worktrees.filter((entry) => entry.state === 'active' && !entry.sessionId && !existsSync(entry.worktreePath))
+}
+
+/**
+ * `git-release-worktree` (self-healing PR1 slice 1.3d, row 194): release a
+ * tracked task worktree that no longer exists on disk through the same
+ * release verb agents use, forced — the checkout is already gone and the
+ * branch (any committed work) survives. One item per entry; self-heal.
+ */
+export function gitReleaseWorktreeRepair(ctx: PluginContextLite): HealthRepairActionDefinition {
+  return {
+    id: GIT_RELEASE_WORKTREE_ACTION,
+    name: 'Release stale task worktree entries',
+    operationPlan: () => ({ stages: [{ id: 'release', kind: 'installing', label: 'Release the registry entries' }], pointOfNoReturn: 'release' }),
+    async plan(target) {
+      const selected = (id: string) => target.type === 'all_actionable' || target.ids.some((targetId) => targetId.endsWith(`:missing.${id}`))
+      return missingTaskWorktrees(ctx).filter((entry) => selected(entry.id)).map((entry): HealthRepairPlanItem => ({
+        id: entry.id,
+        actionId: GIT_RELEASE_WORKTREE_ACTION,
+        title: `Release the worktree entry for task ${entry.taskId}`,
+        reason: `The checkout at ${entry.worktreePath} is gone; only the registry still thinks task ${entry.taskId} owns a worktree there.`,
+        safety: 'safe',
+        ...repairTargetSelection(target),
+        changes: [{ kind: 'file', target: entry.worktreePath, action: 'delete', description: `Mark the registry entry released (forced: the checkout is already missing). Branch ${entry.branch} is kept.` }],
+      }))
+    },
+    async apply(items, op) {
+      if (items.length === 0) return []
+      op.stage('release')
+      const results: HealthRepairApplyResult[] = []
+      for (const item of items) {
+        const entry = readRegistry(ctx).worktrees.find((row) => row.id === item.id)
+        op.item('release', { id: item.id, label: entry?.taskId ?? item.id, status: 'active' })
+        const released = entry
+          ? await releaseWorktree(ctx, { worktreePath: entry.worktreePath, force: true }, 'system')
+          : { ok: false as const, error: 'The registry entry is gone already.' }
+        const message = released.ok ? `Released the stale worktree entry for task ${entry?.taskId}.` : `Could not release ${entry?.taskId ?? item.id}: ${String((released as { error?: unknown }).error ?? 'unknown error')}`
+        op.item('release', { id: item.id, label: entry?.taskId ?? item.id, status: released.ok ? 'done' : 'failed', message })
+        results.push({ itemId: item.id, actionId: item.actionId, status: released.ok ? 'applied' : 'failed', message, affectedCheckIds: ['git.worktrees'], changes: item.changes })
+      }
+      return results
+    },
+  }
+}
+
 export async function checkWorktrees(ctx: PluginContextLite): Promise<HealthCheckRunInput> {
   try {
     const registry = readRegistry(ctx)
@@ -606,7 +659,10 @@ export async function checkWorktrees(ctx: PluginContextLite): Promise<HealthChec
             ...(entry.taskId ? [{ kind: 'task' as const, id: healthResourceId(entry.taskId), label: entry.taskId.slice(0, 120) }] : []),
             { kind: 'directory', id: healthResourceId(entry.worktreePath), label: entry.worktreePath.slice(0, 120) },
           ],
-          resolution: { key: 'release-worktree', type: 'instructions', label: 'Review worktree', steps: [entry.sessionId ? 'Review this session in Terminal. Restore or investigate the missing checkout before retrying safe cleanup.' : 'Confirm the task no longer needs this worktree, then release its stale registry entry with the Git release tool.'] },
+          // A task worktree is released by the repair (forced — the checkout is already gone, the branch survives); a terminal-session one stays the operator's decision (row 194).
+          resolution: entry.sessionId
+            ? { key: 'release-worktree', type: 'instructions', label: 'Review worktree', steps: ['Review this session in Terminal. Restore or investigate the missing checkout before retrying safe cleanup.'] }
+            : { key: GIT_RELEASE_WORKTREE_ACTION, type: 'repair', label: 'Release the stale worktree entry', actionId: GIT_RELEASE_WORKTREE_ACTION },
         },
       })) as [ReturnType<typeof healthWarning>, ...ReturnType<typeof healthWarning>[]])
     }
@@ -739,6 +795,7 @@ const gitPlugin = definePlugin({
       parameters: releaseShape,
       handler: (params, agent) => releaseWorktree(ctx, params, agent),
     })
+    ctx.registerHealthRepairAction(gitReleaseWorktreeRepair(ctx))
     ctx.registerHealthCheck({
       id: 'worktrees',
       name: 'Git worktree registry',

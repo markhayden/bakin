@@ -13,7 +13,7 @@
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
-import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from './lib/health-checks'
+import { acceptUnattributedHistoryRepair, budgetResumeRepair, checkBudget, spendEvidenceRepair } from './lib/health-checks'
 import { registerSpendHooks } from './lib/register-hooks'
 import { spendRoutes } from './lib/routes'
 import { describeSchemaIssues, SpendSettingsSchema } from './lib/settings'
@@ -53,6 +53,7 @@ const spendPlugin: BakinPlugin = definePlugin({
       run: () => checkBudget(),
     })
     ctx.registerHealthRepairAction(spendEvidenceRepair())
+    ctx.registerHealthRepairAction(budgetResumeRepair())
     ctx.registerHealthRepairAction(acceptUnattributedHistoryRepair())
   },
 })

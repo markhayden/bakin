@@ -55,7 +55,7 @@ describe('Git worktree health check', () => {
       incident: {
         disposition: 'action_required',
         resources: expect.arrayContaining([{ kind: 'task', id: 'task-1', label: 'task-1' }]),
-        resolution: { type: 'instructions' },
+        resolution: { type: 'repair', actionId: 'git-release-worktree' },
       },
     })
   })

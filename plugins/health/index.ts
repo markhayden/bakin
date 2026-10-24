@@ -65,7 +65,7 @@ import { checkSessionStore, sessionStorePruneRepair } from './lib/system-checks/
 import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkChannelAliases } from './lib/system-checks/channel-aliases'
 import { checkDeliveryDiscord, discordBridgeReconnectRepair } from './lib/system-checks/delivery-discord'
-import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
+import { checkRestartRecovery, requeueStrandedTasksRepair } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
 import { checkRunDirs, runDirsSweepRepair } from './lib/system-checks/run-dirs'
 import { checkStartupContextSize } from './lib/system-checks/context-report'
@@ -1044,6 +1044,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       checkIds: CHANNEL_HEALTH_CHECK_IDS,
       onError: (err) => log.warn('Targeted channel health rerun failed', err),
     })
+    ctx.registerHealthRepairAction(requeueStrandedTasksRepair())
     ctx.registerHealthCheck({
       id: 'restart-recovery',
       name: 'Restart recovery candidates',

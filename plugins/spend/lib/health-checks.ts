@@ -17,7 +17,7 @@ import { getContentDir } from '../../../src/core/content-dir'
 import { LedgerUnavailableError, listBudgetIncidents } from '../../../src/core/execution-ledger'
 import { assembleBudgetSpend } from '../../../src/core/budget-spend'
 import { evaluateBudget, milestoneCrossings, type BudgetPolicy, type BudgetRule, type SpendEvidenceGap, type TurnBillingContext } from '../../../src/core/budget'
-import { getSettings } from '../../../src/core/settings'
+import { getSettings, updateSettings } from '../../../src/core/settings'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type {
@@ -158,13 +158,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
         impact: 'No tasks dispatch and no billed media runs until an operator resumes dispatch.',
         disposition: 'action_required',
         resources: [{ kind: 'setting', id: 'dispatch.paused', label: 'Dispatch kill switch' }],
-        resolution: {
-          key: 'resume-dispatch',
-          type: 'instructions',
-          label: 'Resume dispatch',
-          steps: ['Confirm it is safe to resume dispatch, then use Settings or the budget command.'],
-          command: 'bakin budget resume',
-        },
+        resolution: { key: BUDGET_RESUME_ACTION, type: 'repair', label: 'Resume dispatch', actionId: BUDGET_RESUME_ACTION },
       },
     }))
   }
@@ -650,6 +644,46 @@ function budgetRuleId(rule: BudgetRule, index: number): string {
  * feedback, 2026-07-22). Attribution gaps are NOT repairable here; they
  * complete as transcripts land, and the incident copy says so.
  */
+export const BUDGET_RESUME_ACTION = 'budget-resume'
+
+/**
+ * `budget-resume` (self-healing PR1 slice 1.3d, row 160): the global kill
+ * switch off — what `bakin budget resume` and the Settings toggle write.
+ * Resuming re-runs turns and billed media, so it is `manual`.
+ */
+export function budgetResumeRepair(): HealthRepairActionDefinition {
+  return {
+    id: BUDGET_RESUME_ACTION,
+    name: 'Resume dispatch',
+    operationPlan: () => ({ stages: [{ id: 'resume', kind: 'committing', label: 'Clear the kill switch' }], pointOfNoReturn: 'resume' }),
+    async plan(target) {
+      if (!getSettings().dispatch?.paused) return []
+      return [{
+        id: BUDGET_RESUME_ACTION,
+        actionId: BUDGET_RESUME_ACTION,
+        title: 'Resume dispatch',
+        reason: 'The global kill switch is on: no task dispatches and no billed media runs until it is cleared.',
+        safety: 'manual',
+        ...repairTargetSelection(target),
+        changes: [{ kind: 'setting', target: 'dispatch.paused', action: 'update', description: 'Set dispatch.paused to false. Queued tasks dispatch on the next cycle; limits and holds still apply.' }],
+      }]
+    },
+    async apply(items, op) {
+      if (items.length === 0) return []
+      op.stage('resume')
+      try {
+        updateSettings({ dispatch: { paused: false } })
+        op.item('resume', { id: 'dispatch.paused', label: 'dispatch.paused', status: 'done' })
+        return items.map((item) => ({ itemId: item.id, actionId: item.actionId, status: 'applied' as const, message: 'Dispatch resumed; queued tasks dispatch on the next cycle.', affectedCheckIds: ['spend.budget'], changes: item.changes }))
+      } catch (err) {
+        const message = `Could not clear the kill switch: ${err instanceof Error ? err.message : String(err)}`
+        op.item('resume', { id: 'dispatch.paused', label: 'dispatch.paused', status: 'failed', message })
+        return items.map((item) => ({ itemId: item.id, actionId: item.actionId, status: 'failed' as const, message, affectedCheckIds: ['spend.budget'], changes: item.changes }))
+      }
+    },
+  }
+}
+
 export function spendEvidenceRepair(): HealthRepairActionDefinition {
   return {
     id: 'spend-evidence-refresh-pricing',

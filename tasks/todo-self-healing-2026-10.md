@@ -14,7 +14,7 @@ Spec `.claude/specs/self-healing-health-and-updates-2026-10.md` (rev 7, approved
 - [x] 1.3a search actions + repointed incidents (old contract; observation rows keep their incident; upgrade-shaped actions `manual`)
 - [x] 1.3b packages/plugins actions + repointed incidents (plugin-upgrade rename)
 - [x] 1.3c core/adapters/channels actions + repointed incidents
-- [ ] 1.3d tasks/spend/git actions + repointed incidents
+- [x] 1.3d tasks/spend/git actions + repointed incidents
 - [ ] 1.4a assets + brands recover pages
 - [ ] 1.4b workflows/spend/team/tasks controls + card buttons
 - [ ] 1.4c HandoffCard (gh, Pi install/login, OpenClaw, gateway below-floor) + Explore capability= + aliases field + Discord invite

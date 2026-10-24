@@ -1362,6 +1362,7 @@ describe('plugin registration', () => {
       'package-sync',
       'plugin-reinstall',
       'plugin-upgrade',
+      'requeue-stranded-tasks',
       'runtime-restart',
       'search-canary-restart',
       'search-consistency-rebuild',
