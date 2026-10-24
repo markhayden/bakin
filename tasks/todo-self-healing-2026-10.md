@@ -21,7 +21,7 @@ Spec `.claude/specs/self-healing-health-and-updates-2026-10.md` (rev 7, approved
 - [x] 1.5 incident catalogs (finite families + declarationId) + validation + core.diagnose + brief builder [unactivated] (public API regen — no change: the freeze covers the browser entrypoints, not sdk/types)
 - [x] 1.6 raw retirement of pending legacy health approvals (intent receipt first, resumed until done) [unactivated — `src/core/approvals/legacy-retire.ts`, wired from startup recovery + bridge reconnect in 1.7]
 - [x] 1.7 THE CUTOVER (contract, catalogs for 206 rows, consumers, old engine adapted, authorizeMutation on every Health apply, legacy retirement at boot; public API freeze unchanged — browser entrypoints only)
-- [ ] 1.8 scoped pins + knowledge
+- [x] 1.8 scoped pins (`tests/architecture/health-three-outcomes.test.ts`: retired vocabulary, shared engine actions registered before plugins, every table check declares a catalog) + knowledge (contract sections + re-homing deviations landed with 1.7)
 - [ ] PR 1 merged
 
 ## PR 2 — `fix/search-and-companion-resilience`
