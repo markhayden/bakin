@@ -1,13 +1,14 @@
 'use client'
 
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { Panel } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { ListRow, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { HandoffCard, ListRow, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Button, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
 import { TriangleAlert, BellOff, ChevronRight, CircleQuestionMark, Wrench } from 'lucide-react'
 import type { OverviewIncident } from '../lib/health-view-model'
+import { useTerminalHandoff } from './use-terminal-handoff'
 
 export interface IncidentRowProps {
   item: OverviewIncident
@@ -63,6 +64,18 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
   const [showImpact, setShowImpact] = useState(false)
   const { incident } = item
   const resolution = incident.resolution
+  const terminal = useTerminalHandoff(resolution.type === 'instructions' && Boolean(resolution.command) && showInstructions)
+  // Return verification (self-healing 1.4c): after a handoff — a terminal
+  // opened or the command copied — the incident's check reruns the next time
+  // this tab regains focus. One-shot; armed by the handoff, never by default.
+  const rerunOnFocus = useRef<(() => void) | null>(null)
+  useEffect(() => () => { if (rerunOnFocus.current) window.removeEventListener('focus', rerunOnFocus.current) }, [])
+  const armRerunOnFocus = () => {
+    if (rerunOnFocus.current || !onRerun) return
+    const listener = () => { rerunOnFocus.current = null; onRerun(item.incident) }
+    rerunOnFocus.current = listener
+    window.addEventListener('focus', listener, { once: true })
+  }
   const status = incidentStatus(incident)
   const Icon = status.icon
 
@@ -169,9 +182,16 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
             {resolution.steps.map((step) => <li key={step}>{step}</li>)}
           </ol>
           {resolution.command && (
-            <Panel as="div" variant="code" padding="compact" className="mt-bakin-3">
-              <code>{resolution.command}</code>
-            </Panel>
+            <div className="mt-bakin-3" onCopy={armRerunOnFocus}>
+              <HandoffCard
+                title="Run this yourself"
+                description="Bakin cannot do this step for you. Run the command, then come back — this check reruns when the tab regains focus."
+                command={resolution.command}
+                busy={terminal.busy}
+                error={terminal.error}
+                onOpenTerminal={terminal.available ? () => { armRerunOnFocus(); void terminal.open(resolution.command!, incident.title) } : undefined}
+              />
+            </div>
           )}
         </Panel>
       )}

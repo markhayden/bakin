@@ -781,6 +781,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=components-forms-modelselect--grouped-catalog&viewMode=story', png: 'forms-model-select.png', text: 'Keep catalog choices explicit' },
   { url: '/iframe.html?id=components-forms-colorpicker--palette-choices&viewMode=story', png: 'forms-color-picker.png', text: 'Keep palette choices explicit' },
   { url: '/iframe.html?id=components-feedback-dangerzone--consequence-first-placement&viewMode=story', png: 'feedback-danger-zone.png', text: 'Separate dangerous work from routine settings' },
+  { url: '/iframe.html?id=components-feedback-handoffcard--canonical-usage&viewMode=story', png: 'feedback-handoff-card.png', role: 'region' as const, name: 'Sign in to the model provider' },
   { url: '/iframe.html?id=components-forms-unsavedchangesdialog--canonical-usage&viewMode=story', png: 'forms-unsaved-changes-dialog.png', role: 'dialog' as const, name: 'Unsaved changes' },
   { url: '/iframe.html?id=components-forms-plugin-settings-renderer--messaging-schema-workflow&viewMode=story', png: 'forms-plugin-settings-renderer.png', text: 'Let plugin settings feel native without hiding their rules' },
   { url: '/iframe.html?id=recipes-destructive-settings-flow--settings-flow&viewMode=story', png: 'recipes-destructive-settings-flow.png', text: 'Workspace deletion confirmed' },

@@ -19,10 +19,16 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+const routerPush = mock()
+mock.module('@makinbakin/sdk/navigation', () => ({
+  PluginLink: ({ children, to, className, ...rest }: { children: React.ReactNode; to: string; className?: string; [key: string]: unknown }) => <a href={to} className={className} {...rest}>{children}</a>,
+  useRouter: () => ({ push: routerPush, replace: mock(), back: mock(), forward: mock(), prefetch: mock(), refresh: mock() }),
+}))
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { IncidentRow } from '@bakin/health/components/incident-row'
+import { resetTerminalHandoffForTests } from '@bakin/health/components/use-terminal-handoff'
 import type { OverviewIncident } from '@bakin/health/lib/health-view-model'
 
 afterEach(cleanup)
@@ -128,5 +134,60 @@ describe('IncidentRow (#690)', () => {
     })} />)
     expect(screen.getByText('Critical')).toBeTruthy()
     expect(screen.getByText('Runaway usage')).toBeTruthy()
+  })
+})
+
+describe('IncidentRow handoff (self-healing 1.4c)', () => {
+  const realFetch = globalThis.fetch
+  let requests: Array<{ url: string; method: string; body?: unknown }>
+  let terminalActive: boolean
+  const commandItem = () => item({
+    title: 'Pi has no usable model provider',
+    resolution: { key: 'configure-provider', type: 'instructions', label: 'Configure a Pi provider', steps: ['Run Pi and sign in.'], command: 'pi' },
+  })
+  function stubFetch() {
+    requests = []
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      requests.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      if (url === '/api/plugins/manifest') return Response.json({ plugins: [{ id: 'health', status: 'active' }, ...(terminalActive ? [{ id: 'terminal', status: 'active' }] : [])] })
+      if (url === '/api/plugins/terminal/options') return Response.json({ defaults: { cwd: '/Users/me/.bakin' } })
+      if (url === '/api/plugins/terminal/sessions') return Response.json({ id: 'sess-1', generation: 1, inputSequence: 0 })
+      if (url === '/api/plugins/terminal/session') return Response.json({ ok: true })
+      return Response.json({})
+    }) as unknown as typeof fetch
+  }
+  afterEach(() => { globalThis.fetch = realFetch; resetTerminalHandoffForTests(); routerPush.mockClear() })
+
+  it('a command resolution renders the HandoffCard; without the Terminal plugin it is copy-only', async () => {
+    terminalActive = false
+    resetTerminalHandoffForTests()
+    stubFetch()
+    await act(async () => { render(<IncidentRow item={commandItem()} />) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Configure a Pi provider' })) })
+    const card = screen.getByRole('region', { name: 'Run this yourself' })
+    expect(within(card).getByText('pi')).toBeTruthy()
+    await waitFor(() => expect(requests.some((r) => r.url === '/api/plugins/manifest')).toBe(true))
+    expect(within(card).queryByRole('button', { name: 'Open in Terminal' })).toBeNull()
+  })
+
+  it('with the Terminal plugin active, Open in Terminal creates a human shell session with the command PREFILLED, goes to it, and reruns the check when the tab regains focus', async () => {
+    terminalActive = true
+    resetTerminalHandoffForTests()
+    stubFetch()
+    const onRerun = mock()
+    await act(async () => { render(<IncidentRow item={commandItem()} onRerun={onRerun} />) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Configure a Pi provider' })) })
+    const button = await screen.findByRole('button', { name: 'Open in Terminal' })
+    await act(async () => { fireEvent.click(button) })
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/terminal/sess-1'))
+    expect(requests.find((r) => r.url === '/api/plugins/terminal/sessions')).toMatchObject({ method: 'POST', body: { title: 'Pi has no usable model provider', cwd: '/Users/me/.bakin', program: 'shell' } })
+    expect(requests.find((r) => r.url === '/api/plugins/terminal/session')).toMatchObject({ body: { id: 'sess-1', operation: 'write', generation: 1, sequence: 1, data: 'pi' } })
+    expect(onRerun).not.toHaveBeenCalled()
+    await act(async () => { window.dispatchEvent(new Event('focus')) })
+    expect(onRerun).toHaveBeenCalledTimes(1)
+    await act(async () => { window.dispatchEvent(new Event('focus')) })
+    expect(onRerun).toHaveBeenCalledTimes(1)
   })
 })
