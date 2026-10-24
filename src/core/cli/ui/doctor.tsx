@@ -62,13 +62,16 @@ function observationStatus(observation: HealthObservation): TuiStatus {
 }
 
 function resolutionNext(resolution: HealthResolution): string | undefined {
+  const choices = resolution.choices?.length
+    ? ` Choices on the card: ${resolution.choices.map((choice) => choice.label).join(' / ')}.`
+    : ''
   switch (resolution.type) {
     case 'repair':
-      return 'Run `bakin doctor --fix` to preview the targeted repair.'
+      return `Run \`bakin doctor --fix\` to preview the targeted repair.${choices}`
     case 'human':
-      return resolution.handoff
+      return (resolution.handoff
         ? `Needs you (${resolution.needs}): ${resolution.label} — run \`${resolution.handoff.command}\`${resolution.handoff.cwd ? ` in ${resolution.handoff.cwd}` : ''}, or open ${resolution.href}.`
-        : `Needs you (${resolution.needs}): ${resolution.label} — open ${resolution.href}.`
+        : `Needs you (${resolution.needs}): ${resolution.label} — open ${resolution.href}.`) + choices
   }
 }
 

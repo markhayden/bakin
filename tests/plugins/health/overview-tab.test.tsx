@@ -626,15 +626,14 @@ describe('OverviewTabView', () => {
   it('preserves focus on a stable incident action across a report refresh', () => {
     const retry = incident({ id: 'retry-runtime', status: 'unknown', title: 'Runtime probe failed' })
     const first = buildHealthOverviewViewModel({ report: report([retry], 'unknown_stale'), now: NOW })
-    const onRerun = mock()
-    const view = render(<OverviewTabView model={first} onRerun={onRerun} />)
+    const view = render(<OverviewTabView model={first} />)
     const button = screen.getByRole('button', { name: 'Investigate' })
     button.focus()
     expect(document.activeElement).toBe(button)
 
     const refreshedIncident = { ...retry, impact: 'The latest probe still did not complete.' }
     const refreshed = buildHealthOverviewViewModel({ report: { ...report([refreshedIncident], 'unknown_stale'), id: 'report-2', revision: 2 }, now: NOW })
-    view.rerender(<OverviewTabView model={refreshed} onRerun={onRerun} />)
+    view.rerender(<OverviewTabView model={refreshed} />)
 
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Investigate' }))
   })

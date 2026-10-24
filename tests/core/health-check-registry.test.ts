@@ -45,6 +45,7 @@ function action(id = 'restart') {
     id,
     name: 'Restart runtime',
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none' as const,
     operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
     plan: async () => [],
     apply: async () => [],

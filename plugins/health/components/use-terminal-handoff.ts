@@ -4,7 +4,7 @@
  * action that creates a human session with the command PREFILLED (typed, not
  * executed — the operator presses Enter), then navigates to it. Without the
  * plugin the card stays copy-only. Whichever way the operator went, the
- * incident's check reruns when this tab regains focus.
+ * Health page reruns the check when they come back (`handoff-return.ts`).
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from '@makinbakin/sdk/navigation'
@@ -37,8 +37,8 @@ export interface TerminalHandoff {
   available: boolean | null
   busy: boolean
   error: string | null
-  /** Create a session with the command prefilled and go to it. Resolves to the session id, or null when it could not be opened. */
-  open: (command: string, title: string) => Promise<string | null>
+  /** Create a session with the command prefilled (in `cwd` when the handoff declares one) and go to it. Resolves to the session id, or null when it could not be opened. */
+  open: (command: string, title: string, cwd?: string) => Promise<string | null>
 }
 
 async function readError(res: Response): Promise<string> {
@@ -63,7 +63,7 @@ export function useTerminalHandoff(enabled: boolean): TerminalHandoff {
     return () => { active = false }
   }, [enabled])
 
-  const open = useCallback(async (command: string, title: string): Promise<string | null> => {
+  const open = useCallback(async (command: string, title: string, cwd?: string): Promise<string | null> => {
     setBusy(true)
     setError(null)
     try {
@@ -72,7 +72,7 @@ export function useTerminalHandoff(enabled: boolean): TerminalHandoff {
       const created = await fetch('/api/plugins/terminal/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.slice(0, 100), cwd: options.defaults?.cwd ?? '/', program: 'shell' }),
+        body: JSON.stringify({ title: title.slice(0, 100), cwd: cwd ?? options.defaults?.cwd ?? '/', program: 'shell' }),
       })
       if (!created.ok) { setError(`The Terminal plugin refused to start a session: ${await readError(created)}. Copy the command instead.`); return null }
       const session = await created.json() as TerminalSession

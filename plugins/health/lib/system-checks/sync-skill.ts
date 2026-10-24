@@ -75,6 +75,7 @@ export function syncSkillRepair(
     id: SYNC_SKILL_ACTION,
     name: 'Sync Bakin runtime skill',
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({
       stages: [
         { id: 'render', kind: 'preparing', label: 'Render the Bakin skill' },

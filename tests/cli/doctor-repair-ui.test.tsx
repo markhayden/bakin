@@ -27,6 +27,7 @@ const repairPlan: HealthRepairPlan = {
   items: [
     {
       id: 'tasks.repair-taskboard:restore-columns',
+      localId: 'tasks.repair-taskboard:restore-columns',
       actionId: 'tasks.repair-taskboard',
       title: 'Restore task board columns',
       reason: 'The canonical task board check found missing columns.',
@@ -49,6 +50,7 @@ const repairPlan: HealthRepairPlan = {
     },
     {
       id: 'channels.configure:approval-channel',
+      localId: 'channels.configure:approval-channel',
       actionId: 'channels.configure',
       title: 'Configure an approval channel',
       reason: 'Credentials require an operator decision.',

@@ -8,7 +8,7 @@
  */
 import { z } from 'zod'
 
-import { HEALTH_HUMAN_NEEDS, HEALTH_INCIDENT_CLASSES, HEALTH_INCIDENT_REQUIREMENTS, HEALTH_MUTATION_KINDS, HEALTH_SUBJECT_KINDS } from '@makinbakin/sdk/types'
+import { HEALTH_HUMAN_NEEDS, HEALTH_INCIDENT_CLASSES, HEALTH_INCIDENT_REQUIREMENTS, HEALTH_REPAIR_MUTATIONS, HEALTH_SUBJECT_KINDS } from '@makinbakin/sdk/types'
 import type {
   HealthCheckRegistrationInput,
   HealthCheckRunInput,
@@ -157,7 +157,7 @@ export const healthRepairActionDefinitionSchema = z.object({
   id: stableKeySchema,
   name: nonBlankString(120, 'Repair action name'),
   effects: healthRepairEffectsSchema,
-  mutation: z.enum(HEALTH_MUTATION_KINDS).optional(),
+  mutation: z.enum(HEALTH_REPAIR_MUTATIONS),
   plan: repairPlanCallableSchema,
   operationPlan: repairOperationPlanCallableSchema,
   resources: z.array(nonBlankString(200, 'Repair resource')).max(16).optional(),
@@ -379,9 +379,44 @@ function isSameOriginApplicationPath(value: string): boolean {
   }
 }
 
+const sameOriginPath = (what: string) => nonBlankString(4_000, what).refine(
+  isSameOriginApplicationPath,
+  `${what} must be a same-origin application path.`,
+)
+
+const decisionChoiceBaseShape = {
+  key: stableKeySchema,
+  label: nonBlankString(80, 'Choice label'),
+}
+
+/** The card buttons of a human decision (SDK `HealthDecisionChoice`). */
+export const healthDecisionChoiceSchema = z.discriminatedUnion('kind', [
+  z.object({
+    ...decisionChoiceBaseShape,
+    kind: z.literal('link'),
+    href: sameOriginPath('A choice href'),
+    field: nonBlankString(200, 'Field id').optional(),
+  }).strict(),
+  z.object({
+    ...decisionChoiceBaseShape,
+    kind: z.literal('request'),
+    method: z.enum(['POST', 'PUT', 'DELETE']),
+    url: sameOriginPath('A choice url'),
+    body: z.record(z.string(), z.unknown()).optional(),
+    tone: z.enum(['default', 'danger']).optional(),
+    confirm: z.object({
+      title: nonBlankString(200, 'Choice confirm title'),
+      description: nonBlankString(2_000, 'Choice confirm description').optional(),
+    }).strict().optional(),
+  }).strict(),
+])
+
 const resolutionBaseShape = {
   key: stableKeySchema,
   label: nonBlankString(120, 'Resolution label'),
+  choices: z.array(healthDecisionChoiceSchema).min(1).max(4)
+    .refine((choices) => new Set(choices.map((choice) => choice.key)).size === choices.length, 'Choice keys must be unique within a resolution.')
+    .optional(),
 }
 
 export const healthRepairResolutionSchema = z.object({

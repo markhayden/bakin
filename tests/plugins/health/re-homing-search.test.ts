@@ -59,7 +59,7 @@ mock.module('../../../src/core/search-adapter-factory', () => ({
   getSearchAdapterServiceStatus: () => { if (serviceStatusError) throw serviceStatusError; return serviceStatus },
 }))
 
-import type { HealthIncidentDeclaration, HealthMutationKind, HealthObservationInput, HealthRepairActionDefinition, HealthRepairEffects } from '@makinbakin/sdk'
+import type { HealthIncidentDeclaration, HealthRepairMutation, HealthObservationInput, HealthRepairActionDefinition, HealthRepairEffects } from '@makinbakin/sdk'
 import { repairMode } from '@bakin/core/health/repair-mode'
 import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
 import { SEARCH_INCIDENTS, checkSearchAdapter, searchScarRepair } from '../../../plugins/health/lib/system-checks/search'
@@ -145,7 +145,7 @@ const OBSERVATION_ROWS: Array<{ row: number; catalog: HealthIncidentDeclaration[
 
 const NONE = { deletesUserContent: false, spendsMoney: false, widensAuthorization: false }
 /** Every search repair action: the table's effects column → the ONE mode policy's verdict. */
-const ACTIONS: Array<{ rows: string; action: HealthRepairActionDefinition; effects: HealthRepairEffects; mode: 'self-heal' | 'one-click'; mutation?: HealthMutationKind }> = [
+const ACTIONS: Array<{ rows: string; action: HealthRepairActionDefinition; effects: HealthRepairEffects; mode: 'self-heal' | 'one-click'; mutation: HealthRepairMutation }> = [
   { rows: '57/68', action: searchEngineRestartRepair(), effects: { ...NONE, restartsService: 'search-engine', resolves: ['stale-backlog'] }, mode: 'self-heal', mutation: 'restart' },
   { rows: '81', action: searchCanaryRepair(), effects: { ...NONE, restartsService: 'search-engine' }, mode: 'self-heal', mutation: 'restart' },
   { rows: '86', action: searchEngineBurnRepair(), effects: { ...NONE, restartsService: 'search-engine' }, mode: 'self-heal', mutation: 'restart' },
@@ -153,11 +153,11 @@ const ACTIONS: Array<{ rows: string; action: HealthRepairActionDefinition; effec
   { rows: '55/56', action: searchEngineInstallRepair(), effects: { ...NONE, restartsService: 'search-engine' }, mode: 'self-heal', mutation: 'reinstall' },
   { rows: '54', action: searchEngineClaimRepair(), effects: { ...NONE, widensAuthorization: true, restartsService: 'search-engine' }, mode: 'one-click', mutation: 'policy' },
   { rows: '64', action: searchScarRepair(), effects: NONE, mode: 'self-heal', mutation: 'rebuild' },
-  { rows: '67', action: searchOutboxRepair(), effects: NONE, mode: 'self-heal' },
+  { rows: '67', action: searchOutboxRepair(), effects: NONE, mode: 'self-heal', mutation: 'none' },
   { rows: '70/74', action: searchConsistencyRepair(), effects: NONE, mode: 'self-heal', mutation: 'rebuild' },
   { rows: '76', action: searchDropUnclaimedTablesRepair(), effects: { ...NONE, deletesUserContent: true }, mode: 'one-click', mutation: 'delete' },
   { rows: '79', action: searchSpinRepair(), effects: NONE, mode: 'self-heal', mutation: 'rebuild' },
-  { rows: '85', action: searchEngineWatchResetRepair(), effects: NONE, mode: 'self-heal' },
+  { rows: '85', action: searchEngineWatchResetRepair(), effects: NONE, mode: 'self-heal', mutation: 'none' },
 ]
 
 function observed(run: Awaited<ReturnType<typeof checkSearchAdapter>>): HealthObservationInput[] {

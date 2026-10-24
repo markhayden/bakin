@@ -239,16 +239,44 @@ describe('checkAssets — trash purge', () => {
     const repair = assetRepair(testDir)
     const plan = stampPlanItems(repair, await repair.plan(repairTarget))
     // Row 185: the purge item deletes — one-click, stamped per item (the action itself is self-heal).
+    expect(plan.map((item) => item.localId)).toEqual(['purge'])
     expect(plan[0]!.mode).toBe('one-click')
     expect(plan[0]!.effects.deletesUserContent).toBe(true)
     const run = await runRepairContract(repair, plan)
     expectRepairContract(repair, run)
-    expect(run.view.stages.map((s) => s.status)).toEqual(['done', 'done'])
-    expect(run.view.stages[1]!.items?.map((i) => i.id)).toEqual(['ancient.bin'])
+    expect(run.view.stages.map((s) => s.status)).toEqual(['skipped', 'done'])
+    expect(run.view.stages[1]!.items?.map((i) => i.id)).toEqual([oldFile])
     const applied = run.results
     expect(existsSync(oldFile)).toBe(false)
     expect(existsSync(freshFile)).toBe(true)
     expect(applied[0].changes.some(change => change.description.includes('Purge expired trash item'))).toBe(true)
+  })
+
+  it('directory creation and the purge are two items (spec §3.2): dirs self-heal on their own, the purge deletes only the targets frozen into its item', async () => {
+    seedFullAssetsTree()
+    rmSync(join(assetsRoot, 'inbox'), { recursive: true, force: true })
+    const trashDir = join(assetsRoot, '.trash')
+    const age = (file: string) => { const t = (Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000; utimesSync(file, t, t) }
+    const frozen = join(trashDir, 'frozen.bin')
+    writeFileSync(frozen, 'old'); age(frozen)
+
+    const repair = assetRepair(testDir)
+    const plan = stampPlanItems(repair, await repair.plan(repairTarget))
+    expect(plan.map((item) => [item.localId, item.mode])).toEqual([['dirs', 'self-heal'], ['purge', 'one-click']])
+
+    // Only the self-heal item selected: the directory appears, the trash is untouched.
+    const dirsOnly = await repair.apply(plan.filter((item) => item.localId === 'dirs'), noopOp())
+    expect(dirsOnly.map((r) => r.status)).toEqual(['applied'])
+    expect(existsSync(join(assetsRoot, 'inbox'))).toBe(true)
+    expect(existsSync(frozen)).toBe(true)
+
+    // Trash that expired AFTER planning is not in the frozen item — it waits for the next plan.
+    const late = join(trashDir, 'late.bin')
+    writeFileSync(late, 'old'); age(late)
+    const purgeOnly = await repair.apply(plan.filter((item) => item.localId === 'purge'), noopOp())
+    expect(purgeOnly[0]).toMatchObject({ status: 'applied', changes: [{ target: frozen, action: 'delete' }] })
+    expect(existsSync(frozen)).toBe(false)
+    expect(existsSync(late)).toBe(true)
   })
 
   it('does not purge trash items during diagnostics', () => {

@@ -6,27 +6,37 @@
  * they are retired RAW — read without the schema, cancelled, their Discord
  * cards edited — exactly once, and never silently:
  *
- *   intent receipt (`retiring`) → cancel the record → edit the card → `done`
- *                                                      └─ failed → `edit-failed` (+ lastError, attempts)
+ *   intent receipt (`retiring`) → cancel the record → edit every card → `done`
+ *                                                     └─ any failed → `edit-failed` (+ lastError, attempts)
  *
  * The receipt is written BEFORE anything changes, so a crash anywhere
  * between intent and done is recovered on the next boot or bridge reconnect
  * (`resumeRetirementReceipts`), regardless of what the record says by then.
- * Receipts live in `~/.bakin/health/retirement-receipts.jsonl` (append-only,
- * last line per approval wins); the repair engine's notification outbox
- * (PR5) imports the open ones. Records the adapted engine writes carry
- * `schemaVersion: 2` and are never selected. Nothing calls this module until
- * the cutover wires it into startup recovery.
+ * Every delivered card is tracked on its own inside the receipt: a receipt
+ * is `done` only when every card is, and a later pass retries only the cards
+ * that are not. Receipts live in `~/.bakin/health/retirement-receipts.jsonl`
+ * (append-only, last line per approval wins); the repair engine's
+ * notification outbox (PR5) imports the open ones.
+ *
+ * The reader is BOUNDED: records are read one file at a time (never the whole
+ * directory into memory), a file above `MAX_APPROVAL_FILE_BYTES` is counted
+ * unreadable and left alone, a pass retires at most `MAX_RETIREMENTS_PER_PASS`
+ * records (the rest wait for the next pass — nothing is lost, the selection
+ * is re-derived from disk every time), and an oversized receipt journal is
+ * read from its tail (the last line per approval is the one that counts).
+ * Records the adapted engine writes carry `schemaVersion: 2` and are never
+ * selected.
  */
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'fs'
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'fs'
 import { dirname, join } from 'path'
 import type { RuntimeChannelSurface } from '@bakin/core/adapters/runtime/channels'
-import { approvalsDir, cancelApprovalRecord, type ApprovalRecord } from '@bakin/core/approvals'
+import { approvalPath, approvalsDir, type ApprovalRecord } from '@bakin/core/approvals'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import { appendAudit } from '../audit'
 import { getContentDir } from '../content-dir'
 import { maybeGetAppServices } from '../app-services-store'
 import { createLogger } from '../logger'
+import { cancelApproval } from './service'
 
 const log = createLogger('approvals-legacy-retire')
 
@@ -34,38 +44,57 @@ const log = createLogger('approvals-legacy-retire')
 export const APPROVAL_SCHEMA_VERSION = 2
 export const LEGACY_RETIRE_REASON = 'Retired by the Health upgrade: decisions now live on the subject card in Health.'
 export const LEGACY_RETIRE_AUDIT_EVENT = 'approvals.legacy_retired'
+/** An approval record is a few KB; anything past this is not one Bakin wrote and is left alone. */
+export const MAX_APPROVAL_FILE_BYTES = 256 * 1024
+/** Records retired per pass; the remainder is selected again by the next boot/reconnect pass. */
+export const MAX_RETIREMENTS_PER_PASS = 200
+/** Past this the journal is read from its tail — the last line per approval is the one that counts. */
+export const MAX_RECEIPT_JOURNAL_BYTES = 4 * 1024 * 1024
 const LEGACY_KINDS = new Set(['health-repair', 'health-navigate'])
 
 export type RetirementReceiptState = 'retiring' | 'done' | 'edit-failed'
+export type RetirementDeliveryState = 'pending' | 'done' | 'edit-failed'
 
-export interface RetirementReceipt {
-  approvalId: string
-  /** The card to edit; null when the approval never reached a channel (then `done` follows the cancel). */
-  channelId: string | null
-  messageId: string | null
-  state: RetirementReceiptState
-  reason: string
-  startedAt: string
-  updatedAt: string
-  /** Channel-edit attempts so far. */
+/** One delivered card and where its edit stands. */
+export interface RetirementDelivery {
+  channelId: string
+  messageId: string
+  state: RetirementDeliveryState
+  /** Edit attempts on THIS card so far. */
   attempts: number
   lastError?: string
 }
 
+export interface RetirementReceipt {
+  approvalId: string
+  /** The cards to edit; empty when the approval never reached a channel (then `done` follows the cancel). */
+  deliveries: RetirementDelivery[]
+  state: RetirementReceiptState
+  reason: string
+  startedAt: string
+  updatedAt: string
+  /** Edit rounds so far (one round edits every card that is not done yet). */
+  attempts: number
+  /** The last card error of the latest round. */
+  lastError?: string
+}
+
 export interface LegacyRetireSummary {
-  /** Legacy pending records found by this pass. */
+  /** Legacy pending records retired by this pass. */
   selected: number
-  /** Cancelled through the record store (the record parsed under the current schema). */
+  /** Legacy pending records left for the next pass (`MAX_RETIREMENTS_PER_PASS`). */
+  deferred: number
+  /** Cancelled through the approvals service (the record parsed under the current schema). */
   cancelledViaStore: number
   /** Cancelled by a raw write (the record did not parse). */
   cancelledRaw: number
-  /** Receipts carried to `done` (card edited, or no card to edit). */
+  /** Receipts carried to `done` (every card edited, or no card to edit). */
   done: number
-  /** Receipts left `edit-failed` (the bridge was down or refused the edit). */
+  /** Receipts left `edit-failed` (the bridge was down or refused an edit). */
   editFailed: number
   /** Open receipts from an earlier pass that this pass resumed. */
   resumed: number
-  /** Files that could not be read as JSON (left untouched). */
+  /** Files that could not be read as JSON or were oversized (left untouched). */
   unreadable: number
 }
 
@@ -78,16 +107,39 @@ export function retirementReceiptsPath(contentDir = getContentDir()): string {
   return join(contentDir, 'health', 'retirement-receipts.jsonl')
 }
 
+/** The journal text, whole when it fits the bound, otherwise its tail with the first partial line dropped. */
+function readJournalBounded(path: string): string {
+  const size = statSync(path).size
+  if (size <= MAX_RECEIPT_JOURNAL_BYTES) return readFileSync(path, 'utf-8')
+  log.warn('Retirement receipt journal is oversized — reading its tail only', { path, size, bound: MAX_RECEIPT_JOURNAL_BYTES })
+  const fd = openSync(path, 'r')
+  try {
+    const buffer = Buffer.alloc(MAX_RECEIPT_JOURNAL_BYTES)
+    const read = readSync(fd, buffer, 0, MAX_RECEIPT_JOURNAL_BYTES, size - MAX_RECEIPT_JOURNAL_BYTES)
+    const tail = buffer.subarray(0, read).toString('utf-8')
+    const firstBreak = tail.indexOf('\n')
+    return firstBreak === -1 ? '' : tail.slice(firstBreak + 1)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+function isDelivery(value: unknown): value is RetirementDelivery {
+  if (!value || typeof value !== 'object') return false
+  const { channelId, messageId, state } = value as Record<string, unknown>
+  return typeof channelId === 'string' && typeof messageId === 'string' && (state === 'pending' || state === 'done' || state === 'edit-failed')
+}
+
 /** Every receipt, last line per approval winning. */
 export function readRetirementReceipts(contentDir = getContentDir()): Map<string, RetirementReceipt> {
   const path = retirementReceiptsPath(contentDir)
   const receipts = new Map<string, RetirementReceipt>()
   if (!existsSync(path)) return receipts
-  for (const line of readFileSync(path, 'utf-8').split('\n')) {
+  for (const line of readJournalBounded(path).split('\n')) {
     if (line.trim() === '') continue
     try {
       const parsed = JSON.parse(line) as Partial<RetirementReceipt>
-      if (typeof parsed.approvalId !== 'string' || typeof parsed.state !== 'string') continue
+      if (typeof parsed.approvalId !== 'string' || typeof parsed.state !== 'string' || !Array.isArray(parsed.deliveries) || !parsed.deliveries.every(isDelivery)) continue
       receipts.set(parsed.approvalId, parsed as RetirementReceipt)
     } catch (err) {
       log.warn('Retirement receipt line is not JSON — skipped', { err: err instanceof Error ? err.message : String(err) })
@@ -113,24 +165,30 @@ interface RawApproval {
   raw: Record<string, unknown>
 }
 
-function readRawApprovals(contentDir: string): { records: RawApproval[]; unreadable: number } {
-  const dir = approvalsDir(contentDir)
-  if (!existsSync(dir)) return { records: [], unreadable: 0 }
-  const records: RawApproval[] = []
-  let unreadable = 0
-  for (const name of readdirSync(dir)) {
-    if (!name.endsWith('.json')) continue
-    const path = join(dir, name)
-    try {
-      const raw = JSON.parse(readFileSync(path, 'utf-8')) as unknown
-      if (raw && typeof raw === 'object' && !Array.isArray(raw)) records.push({ path, raw: raw as Record<string, unknown> })
-      else unreadable += 1
-    } catch (err) {
-      unreadable += 1
-      log.warn('Approval file is not readable JSON — left untouched', { path, err: err instanceof Error ? err.message : String(err) })
+/** One record file, read raw. `null` = unreadable (not JSON, not an object, or oversized) — counted and left alone. */
+function readRawApproval(path: string): RawApproval | null {
+  try {
+    const size = statSync(path).size
+    if (size > MAX_APPROVAL_FILE_BYTES) {
+      log.warn('Approval file is oversized — left untouched', { path, size, bound: MAX_APPROVAL_FILE_BYTES })
+      return null
     }
+    const raw = JSON.parse(readFileSync(path, 'utf-8')) as unknown
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) return { path, raw: raw as Record<string, unknown> }
+    return null
+  } catch (err) {
+    log.warn('Approval file is not readable JSON — left untouched', { path, err: err instanceof Error ? err.message : String(err) })
+    return null
   }
-  return { records, unreadable }
+}
+
+/** Record files, one at a time, in directory order — never the whole directory in memory. */
+function* approvalFiles(contentDir: string): Generator<string> {
+  const dir = approvalsDir(contentDir)
+  if (!existsSync(dir)) return
+  for (const name of readdirSync(dir)) {
+    if (name.endsWith('.json')) yield join(dir, name)
+  }
 }
 
 function isLegacyPending(raw: Record<string, unknown>): boolean {
@@ -139,26 +197,29 @@ function isLegacyPending(raw: Record<string, unknown>): boolean {
   return typeof kind === 'string' && LEGACY_KINDS.has(kind) && raw.status === 'pending' && raw.schemaVersion !== APPROVAL_SCHEMA_VERSION
 }
 
-function firstDelivery(raw: Record<string, unknown>): { channelId: string; messageId: string } | null {
+/** Every delivered card the raw record names, each tracked on its own. */
+function pendingDeliveries(raw: Record<string, unknown>): RetirementDelivery[] {
   const deliveries = raw.deliveries
-  if (!Array.isArray(deliveries)) return null
+  if (!Array.isArray(deliveries)) return []
+  const out: RetirementDelivery[] = []
   for (const entry of deliveries) {
     if (entry && typeof entry === 'object') {
       const { channelId, ref } = entry as { channelId?: unknown; ref?: unknown }
-      if (typeof channelId === 'string' && typeof ref === 'string') return { channelId, messageId: ref }
+      if (typeof channelId === 'string' && typeof ref === 'string') out.push({ channelId, messageId: ref, state: 'pending', attempts: 0 })
     }
   }
-  return null
+  return out
 }
 
 /**
- * Cancel the record: through the store when it parses under the current
- * schema (compare-and-set on pending, the same write every resolver uses),
- * otherwise a raw write that keeps every field it had and marks who retired
- * it. Returns how it was cancelled, or null when nothing was pending.
+ * Cancel the record: through the approvals service when it parses under the
+ * current schema (compare-and-set on pending, the resolved event every board
+ * listener expects; the card edit stays with the receipt), otherwise a raw
+ * write that keeps every field it had and marks who retired it. Returns how
+ * it was cancelled, or null when nothing was pending.
  */
-function cancelRaw(contentDir: string, approvalId: string, entry: RawApproval, now: string): 'store' | 'raw' | null {
-  const viaStore = cancelApprovalRecord(approvalId, LEGACY_RETIRE_REASON, contentDir)
+async function cancelRecord(contentDir: string, approvalId: string, entry: RawApproval, now: string): Promise<'store' | 'raw' | null> {
+  const viaStore = await cancelApproval(approvalId, LEGACY_RETIRE_REASON, { notifyChannel: false, contentDir })
   if (viaStore) return viaStore.status === 'cancelled' ? 'store' : null
   if (entry.raw.status !== 'pending') return null
   atomicWriteJson(entry.path, {
@@ -172,31 +233,51 @@ function cancelRaw(contentDir: string, approvalId: string, entry: RawApproval, n
   return 'raw'
 }
 
-async function editCard(
+/** One edit round: every card that is not done yet, each on its own; the receipt is done only when all of them are. */
+async function editCards(
   contentDir: string,
   receipt: RetirementReceipt,
   channels: Pick<RuntimeChannelSurface, 'cancelApproval'> | undefined,
   now: string,
 ): Promise<RetirementReceipt> {
-  if (receipt.channelId === null || receipt.messageId === null) {
+  const open = receipt.deliveries.filter((delivery) => delivery.state !== 'done')
+  if (open.length === 0) {
     return appendReceipt(contentDir, { ...receipt, state: 'done', updatedAt: now })
   }
   const attempts = receipt.attempts + 1
-  if (!channels) {
-    return appendReceipt(contentDir, { ...receipt, state: 'edit-failed', attempts, lastError: 'Delivery channels are unavailable (bridge down or runtime without channels).', updatedAt: now })
+  let lastError: string | undefined
+  const deliveries: RetirementDelivery[] = []
+  for (const delivery of receipt.deliveries) {
+    if (delivery.state === 'done') { deliveries.push(delivery); continue }
+    if (!channels) {
+      lastError = 'Delivery channels are unavailable (bridge down or runtime without channels).'
+      deliveries.push({ ...delivery, state: 'edit-failed', attempts: delivery.attempts + 1, lastError })
+      continue
+    }
+    try {
+      await channels.cancelApproval({
+        approvalId: receipt.approvalId,
+        deliveries: [{ channelId: delivery.channelId, ref: delivery.messageId, renderedAt: receipt.startedAt }],
+        reason: receipt.reason,
+      })
+      const { lastError: _cleared, ...rest } = delivery
+      deliveries.push({ ...rest, state: 'done', attempts: delivery.attempts + 1 })
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err)
+      log.warn('Legacy approval card edit failed — receipt stays open for the next reconnect', { approvalId: receipt.approvalId, channelId: delivery.channelId, attempts: delivery.attempts + 1, err: lastError })
+      deliveries.push({ ...delivery, state: 'edit-failed', attempts: delivery.attempts + 1, lastError })
+    }
   }
-  try {
-    await channels.cancelApproval({
-      approvalId: receipt.approvalId,
-      deliveries: [{ channelId: receipt.channelId, ref: receipt.messageId, renderedAt: receipt.startedAt }],
-      reason: receipt.reason,
-    })
-    return appendReceipt(contentDir, { ...receipt, state: 'done', attempts, updatedAt: now })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    log.warn('Legacy approval card edit failed — receipt stays open for the next reconnect', { approvalId: receipt.approvalId, attempts, err: message })
-    return appendReceipt(contentDir, { ...receipt, state: 'edit-failed', attempts, lastError: message, updatedAt: now })
-  }
+  const allDone = deliveries.every((delivery) => delivery.state === 'done')
+  const { lastError: _previous, ...base } = receipt
+  return appendReceipt(contentDir, {
+    ...base,
+    deliveries,
+    state: allDone ? 'done' : 'edit-failed',
+    attempts,
+    updatedAt: now,
+    ...(allDone || lastError === undefined ? {} : { lastError }),
+  })
 }
 
 function defaultChannels(): Pick<RuntimeChannelSurface, 'cancelApproval'> | undefined {
@@ -205,9 +286,9 @@ function defaultChannels(): Pick<RuntimeChannelSurface, 'cancelApproval'> | unde
 
 /**
  * Resume every receipt that is not `done`: make sure the record is cancelled
- * (a crash between intent and cancel left it pending), then edit the card.
- * Runs on every boot and bridge reconnect; a receipt's record status is
- * never a reason to skip it.
+ * (a crash between intent and cancel left it pending), then edit the cards
+ * that are still open. Runs on every boot and bridge reconnect; a receipt's
+ * record status is never a reason to skip it.
  */
 export async function resumeRetirementReceipts(
   options: { contentDir?: string; deps?: LegacyRetireDeps } = {},
@@ -218,12 +299,11 @@ export async function resumeRetirementReceipts(
   const open = openRetirementReceipts(contentDir)
   let done = 0
   let editFailed = 0
-  if (open.length === 0) return { resumed: 0, done, editFailed }
-  const { records } = readRawApprovals(contentDir)
   for (const receipt of open) {
-    const entry = records.find((candidate) => candidate.raw.approvalId === receipt.approvalId)
-    if (entry && entry.raw.status === 'pending') cancelRaw(contentDir, receipt.approvalId, entry, now())
-    const settled = await editCard(contentDir, receipt, channels, now())
+    const path = approvalPath(receipt.approvalId, contentDir)
+    const entry = existsSync(path) ? readRawApproval(path) : null
+    if (entry && entry.raw.status === 'pending') await cancelRecord(contentDir, receipt.approvalId, entry, now())
+    const settled = await editCards(contentDir, receipt, channels, now())
     if (settled.state === 'done') done += 1
     else editFailed += 1
   }
@@ -232,8 +312,9 @@ export async function resumeRetirementReceipts(
 
 /**
  * One idempotent pass: resume open receipts, then retire every legacy
- * pending Health approval that has no receipt yet. One audit row carries the
- * counts whenever the pass did anything; a quiet pass writes nothing.
+ * pending Health approval that has no receipt yet (up to the per-pass
+ * bound). One audit row carries the counts whenever the pass did anything;
+ * a quiet pass writes nothing.
  */
 export async function retireLegacyHealthApprovals(
   options: { contentDir?: string; deps?: LegacyRetireDeps } = {},
@@ -242,38 +323,38 @@ export async function retireLegacyHealthApprovals(
   const now = options.deps?.now ?? (() => new Date().toISOString())
   const channels = (options.deps?.channels ?? defaultChannels)()
   const resumed = await resumeRetirementReceipts({ contentDir, deps: { channels: () => channels, now } })
-  const summary: LegacyRetireSummary = { selected: 0, cancelledViaStore: 0, cancelledRaw: 0, done: resumed.done, editFailed: resumed.editFailed, resumed: resumed.resumed, unreadable: 0 }
+  const summary: LegacyRetireSummary = { selected: 0, deferred: 0, cancelledViaStore: 0, cancelledRaw: 0, done: resumed.done, editFailed: resumed.editFailed, resumed: resumed.resumed, unreadable: 0 }
 
-  const { records, unreadable } = readRawApprovals(contentDir)
-  summary.unreadable = unreadable
   const receipts = readRetirementReceipts(contentDir)
-  for (const entry of records) {
+  for (const path of approvalFiles(contentDir)) {
+    const entry = readRawApproval(path)
+    if (!entry) { summary.unreadable += 1; continue }
     if (!isLegacyPending(entry.raw)) continue
     const approvalId = entry.raw.approvalId
     if (typeof approvalId !== 'string' || approvalId === '') continue
     if (receipts.has(approvalId)) continue // already retired (or being resumed above)
+    if (summary.selected >= MAX_RETIREMENTS_PER_PASS) { summary.deferred += 1; continue }
     summary.selected += 1
-    const delivery = firstDelivery(entry.raw)
     const startedAt = now()
     // Intent FIRST (R4.1): a crash after this line is recovered by resume.
     const intent = appendReceipt(contentDir, {
       approvalId,
-      channelId: delivery?.channelId ?? null,
-      messageId: delivery?.messageId ?? null,
+      deliveries: pendingDeliveries(entry.raw),
       state: 'retiring',
       reason: LEGACY_RETIRE_REASON,
       startedAt,
       updatedAt: startedAt,
       attempts: 0,
     })
-    const how = cancelRaw(contentDir, approvalId, entry, now())
+    const how = await cancelRecord(contentDir, approvalId, entry, now())
     if (how === 'store') summary.cancelledViaStore += 1
     else if (how === 'raw') summary.cancelledRaw += 1
-    const settled = await editCard(contentDir, intent, channels, now())
+    const settled = await editCards(contentDir, intent, channels, now())
     if (settled.state === 'done') summary.done += 1
     else summary.editFailed += 1
   }
 
+  if (summary.deferred > 0) log.info('Legacy Health approvals left for the next pass', { deferred: summary.deferred, bound: MAX_RETIREMENTS_PER_PASS })
   if (summary.selected > 0 || summary.resumed > 0) {
     appendAudit(contentDir, LEGACY_RETIRE_AUDIT_EVENT, 'system', { ...summary, reason: LEGACY_RETIRE_REASON })
     log.info('Legacy Health approvals retired', { ...summary })

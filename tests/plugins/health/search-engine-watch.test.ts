@@ -38,7 +38,7 @@ import { noopOp } from '../../helpers/operation-harness'
 
 /** Core stamps `effects` + `mode` on planned items before apply (the ONE mode policy); tests mirror that. */
 const canonical = (action: HealthRepairActionDefinition, items: HealthRepairPlanItemInput[]): HealthRepairPlanItem[] =>
-  items.map((item) => ({ ...item, effects: item.effects ?? action.effects, mode: repairMode(item.effects ?? action.effects) }))
+  items.map((item) => ({ ...item, localId: item.id, effects: item.effects ?? action.effects, mode: repairMode(item.effects ?? action.effects) }))
 
 // Mutable fixtures the mocked services read on every call.
 let searchAvailable = true

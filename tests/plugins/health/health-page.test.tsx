@@ -66,14 +66,11 @@ function MountedPanel({ name, children }: { name: string; children?: ReactNode }
 mock.module('../../../plugins/health/components/overview-tab', () => ({
   OverviewTab: ({
     onRepair,
-    onRerun,
   }: {
     onRepair?: (incident: HealthIncident) => void
-    onRerun?: (incident: HealthIncident) => void
   }) => (
     <MountedPanel name="overview">
       <button type="button" onClick={() => onRepair?.(repairIncident)}>Review repair</button>
-      <button type="button" onClick={() => onRerun?.(repairIncident)}>Check again</button>
     </MountedPanel>
   ),
 }))
@@ -117,6 +114,7 @@ mock.module('../../../plugins/health/components/repair-dialog', () => ({
 }))
 
 import { HealthPage } from '../../../plugins/health/components/health-page'
+import { armHandoffReturn, resetHandoffReturnForTests } from '../../../plugins/health/components/handoff-return'
 import { HEALTH_REPORT_SWEEP_TIMEOUT_MS } from '../../../plugins/health/hooks/use-health-report'
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -139,6 +137,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  resetHandoffReturnForTests()
   vi.useRealTimers()
   cleanup()
   vi.unstubAllGlobals()
@@ -266,9 +265,16 @@ describe('HealthPage tab shell', () => {
     await waitFor(() => expect(status.textContent).toBe('Health checks completed.'))
     expect(screen.getByTestId('health-action-visible-status').textContent).toBe('Health checks completed.')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    // Return verification (self-healing 1.4c): a taken handoff reruns the checks when the operator
+    // comes back to this tab — and only then; an unarmed focus reruns nothing.
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(overviewRunChecks).toHaveBeenCalledTimes(1)
+    armHandoffReturn('health:runtime:credentials')
+    act(() => { window.dispatchEvent(new Event('focus')) })
     expect(status.textContent).toBe('Running health checks.')
     expect(overviewRunChecks).toHaveBeenCalledTimes(2)
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(overviewRunChecks).toHaveBeenCalledTimes(2) // one-shot
   })
 
   it('keeps Overview unmounted while another tab runs checks on demand', async () => {

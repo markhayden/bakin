@@ -610,6 +610,7 @@ export function gitReleaseWorktreeRepair(ctx: PluginContextLite): HealthRepairAc
     name: 'Release stale task worktree entries',
     // The registry entry is marked released; the branch and any committed work survive.
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({ stages: [{ id: 'release', kind: 'installing', label: 'Release the registry entries' }], pointOfNoReturn: 'release' }),
     async plan(target) {
       const selected = (id: string) => target.type === 'all_actionable' || target.ids.some((targetId) => targetId.endsWith(`:missing.${id}`))

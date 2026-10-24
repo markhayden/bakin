@@ -86,6 +86,7 @@ export function runDirsSweepRepair(): HealthRepairActionDefinition {
     name: 'Sweep run workspaces',
     // Expired scratch dirs are Bakin's own, never user content: self-heal.
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({
       stages: [{ id: 'sweep', kind: 'cleanup', label: 'Remove expired run workspaces' }],
       pointOfNoReturn: 'sweep',

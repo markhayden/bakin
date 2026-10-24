@@ -241,6 +241,7 @@ export function workflowSkillDriftRepair(contentDir: string): HealthRepairAction
     // Row 131: an untouched managed file is replaced in place (self-heal);
     // the planner stamps `deletesUserContent` on a user-edited one (one-click).
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({
       stages: [{ id: 'replace', kind: 'committing', label: 'Replace drifted skills from their source' }],
       pointOfNoReturn: 'replace',

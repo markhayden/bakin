@@ -109,6 +109,16 @@ export type HealthIncidentDeclarationResolution =
 export const HEALTH_MUTATION_KINDS = ['upgrade', 'sync', 'reinstall', 'restart', 'rebuild', 'delete', 'policy'] as const
 export type HealthMutationKind = (typeof HEALTH_MUTATION_KINDS)[number]
 
+/**
+ * What a repair action declares to the gate: one of the mutation kinds, or
+ * `none` — the action changes no installed identity, writes no policy and
+ * deletes nothing the user owns (it creates directories, re-projects
+ * Bakin-owned files, sweeps Bakin's own scratch). The declaration is
+ * REQUIRED so that no action opts out of the gate silently.
+ */
+export const HEALTH_REPAIR_MUTATIONS = [...HEALTH_MUTATION_KINDS, 'none'] as const
+export type HealthRepairMutation = (typeof HEALTH_REPAIR_MUTATIONS)[number]
+
 /** Why the authorization gate refused an unattended mutation; every surface renders the SAME copy for each (spec §3.2). */
 export const HEALTH_MUTATION_REFUSAL_REASONS = [
   'consent-delta',
@@ -195,10 +205,35 @@ export interface HealthResource {
 // Producer inputs
 // ---------------------------------------------------------------------------
 
+/**
+ * One named, executable choice on an incident card beside its resolution
+ * (the re-homing table's "card buttons": Claim / Use as guest, Drop / Keep,
+ * Keep my edit / Restore shipped, Disable plugin, raise / ack / resume).
+ * A `link` lands on a control; a `request` performs the decision through
+ * the owner's existing route and the check reruns — with `confirm` the card
+ * asks first. Choices never add a third outcome (spec D1): they are the
+ * controls of the human decision, named on the card instead of behind it.
+ */
+export type HealthDecisionChoice =
+  | { key: string; label: string; kind: 'link'; href: string; field?: string }
+  | {
+      key: string
+      label: string
+      kind: 'request'
+      method: 'POST' | 'PUT' | 'DELETE'
+      /** Same-origin application path (an owner route). */
+      url: string
+      body?: Record<string, unknown>
+      tone?: 'default' | 'danger'
+      confirm?: { title: string; description?: string }
+    }
+
 interface HealthResolutionBase {
   /** Stable within the incident; repair preconditions use this key. */
   key: string
   label: string
+  /** Up to four named choices rendered beside the resolution (table "card buttons"). */
+  choices?: HealthDecisionChoice[]
 }
 
 export interface HealthRepairResolution extends HealthResolutionBase {
@@ -385,7 +420,7 @@ export interface HealthRepairEffects {
   widensAuthorization: boolean
   /** The action restarts a supervised service or Bakin; the engine serializes these behind the restart gate. */
   restartsService?: 'search-engine' | 'bakin' | 'runtime'
-  /** Incident keys on dependent subjects this repair resolves (drives folding, spec §3.1). */
+  /** Declaration ids (families) of dependent incidents this repair resolves — what `dependsOn.resolvedBy` folds under (spec §3.1). */
   resolves?: string[]
 }
 
@@ -423,7 +458,10 @@ export interface HealthRepairPrecondition {
 }
 
 export interface HealthRepairPlanItem {
+  /** Canonical: `<canonical action id>:<localId>`, unique across the plan. Opaque to actions. */
   id: string
+  /** The id the planner gave this item — the DOMAIN handle an action's `apply` reads (a package, an agent, a task), never `id`. */
+  localId: string
   actionId: string
   title: string
   reason: string
@@ -438,7 +476,7 @@ export interface HealthRepairPlanItem {
 }
 
 /** What a planner returns: core stamps `effects` (defaulting to the action's) and `mode`. */
-export type HealthRepairPlanItemInput = Omit<HealthRepairPlanItem, 'effects' | 'mode'> & { effects?: HealthRepairEffects }
+export type HealthRepairPlanItemInput = Omit<HealthRepairPlanItem, 'effects' | 'mode' | 'localId'> & { effects?: HealthRepairEffects }
 
 export interface HealthRepairPlan {
   planId: string
@@ -487,12 +525,13 @@ export interface HealthRepairActionDefinition {
   /** REQUIRED: what applying this action does; the ONE mode policy decides self-heal vs one-click from it. */
   effects: HealthRepairEffects
   /**
-   * The installation mutation this action performs, when it performs one
-   * (upgrade/sync/reinstall of a tracked subject, a restart, a rebuild, a
-   * deletion, a policy write). The ONE authorization gate judges every
-   * apply by it; absent = no mutation to authorize beyond the mode.
+   * REQUIRED: the installation mutation this action performs (upgrade /
+   * sync / reinstall of a tracked subject, a restart, a rebuild, a
+   * deletion, a policy write), or `none`. The ONE authorization gate judges
+   * every apply by it; `none` is an explicit, reviewable declaration that
+   * there is nothing to authorize beyond the mode — never a silent opt-out.
    */
-  mutation?: HealthMutationKind
+  mutation: HealthRepairMutation
   /** Bounded and local: no network, no engine calls. */
   plan(target: HealthRepairTarget): Promise<HealthRepairPlanItemInput[]>
   /** The stages applying these items will report. */

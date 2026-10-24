@@ -94,6 +94,7 @@ export function healthAcksResetRepair(): HealthRepairActionDefinition {
     id: HEALTH_ACKS_RESET_ACTION,
     name: 'Move the unreadable acknowledgement file aside',
     effects: NO_EFFECTS,
+    mutation: 'none', // moves Bakin's own ack file aside / drops its own broken records — nothing the user owns
     operationPlan: () => ({ stages: [{ id: 'reset', kind: 'installing', label: 'Move the file aside' }], pointOfNoReturn: 'reset' }),
     async plan(target) {
       const problem = storeUnreadable()
@@ -130,6 +131,7 @@ export function healthAcksPruneRepair(): HealthRepairActionDefinition {
     id: HEALTH_ACKS_PRUNE_ACTION,
     name: 'Remove acknowledgement records that break the rules',
     effects: NO_EFFECTS,
+    mutation: 'none', // moves Bakin's own ack file aside / drops its own broken records — nothing the user owns
     operationPlan: () => ({ stages: [{ id: 'prune', kind: 'installing', label: 'Remove the records' }], pointOfNoReturn: 'prune' }),
     async plan(target) {
       if (storeUnreadable()) return []

@@ -135,6 +135,7 @@ describe('health repair-action validation', () => {
       id: 'rebuild-index',
       name: 'Rebuild Search index',
       effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+      mutation: 'none' as const,
       operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
@@ -176,6 +177,7 @@ describe('health repair-action validation', () => {
       id: rejected,
       name: 'Repair',
       effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+      mutation: 'none',
       operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
@@ -185,6 +187,7 @@ describe('health repair-action validation', () => {
       id: rejected,
       name: 'Repair',
       effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+      mutation: 'none',
       operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
@@ -272,6 +275,10 @@ describe('health run-output validation', () => {
             href: '/runtime?tab=overview&field=credentials',
             field: 'credentials',
             handoff: { command: 'gh auth login', cwd: '~/.bakin' },
+            choices: [
+              { key: 'guest', kind: 'link', label: 'Use as guest', href: '/settings?tab=system&field=search.settings.url', field: 'search.settings.url' },
+              { key: 'keep', kind: 'request', label: 'Keep', method: 'POST', url: '/api/plugins/health/search/keep', body: { tables: ['t1'] }, tone: 'danger', confirm: { title: 'Keep these tables?', description: 'They stay.' } },
+            ],
           },
         },
       }),
@@ -401,6 +408,20 @@ describe('health run-output validation', () => {
       'observations.0.incident.impact',
       'observations.0.incident.resources',
     ]))
+  })
+
+  it('decision choices: same-origin only, unique keys, at most four, nothing else on the object', () => {
+    const base = warningObservation().incident as Record<string, unknown>
+    const withChoices = (choices: unknown) => safeParseHealthCheckRunInput({ outcome: 'observed', observations: [warningObservation({ incident: { ...base, resolution: { key: 'review', type: 'human', needs: 'decision', label: 'Review', href: '/health', choices } } })] })
+    expect(withChoices([{ key: 'a', kind: 'link', label: 'A', href: '/spend' }]).success).toBe(true)
+    expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '/api/plugins/spend/resume' }]).success).toBe(true)
+    expect(withChoices([{ key: 'a', kind: 'link', label: 'A', href: 'https://evil.example/x' }]).success).toBe(false)
+    expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '//evil.example/x' }]).success).toBe(false)
+    expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'GET', url: '/api/x' }]).success).toBe(false)
+    expect(withChoices([{ key: 'a', kind: 'link', label: 'A', href: '/a' }, { key: 'a', kind: 'link', label: 'B', href: '/b' }]).success).toBe(false)
+    expect(withChoices([]).success).toBe(false)
+    expect(withChoices(['a', 'b', 'c', 'd', 'e'].map((key) => ({ key, kind: 'link', label: key, href: `/${key}` }))).success).toBe(false)
+    expect(withChoices([{ key: 'a', kind: 'link', label: 'A', href: '/a', steps: ['x'] }]).success).toBe(false)
   })
 
   it('allows only same-origin application navigation paths', () => {

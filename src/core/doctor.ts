@@ -83,6 +83,8 @@ function realDiagnoseDeps(): DiagnoseRepairDeps {
         handback: getExecTool('bakin_exec_health_handback') !== undefined,
         repair: getExecTool('bakin_exec_health_repair') !== undefined,
       },
+      // The repair engine (PR5) counts turns and settles the task; until it lands the brief states the convention only.
+      enforced: false,
     }),
   }
 }

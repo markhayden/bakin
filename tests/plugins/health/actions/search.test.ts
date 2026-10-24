@@ -80,7 +80,7 @@ const target: HealthRepairTarget = { type: 'observations', reportId: 'report-tes
 
 /** Core stamps `effects` + `mode` on planned items before apply (the ONE mode policy); tests mirror that. */
 const canonical = (action: HealthRepairActionDefinition, items: HealthRepairPlanItemInput[]): HealthRepairPlanItem[] =>
-  items.map((item) => ({ ...item, effects: item.effects ?? action.effects, mode: repairMode(item.effects ?? action.effects) }))
+  items.map((item) => ({ ...item, localId: item.id, effects: item.effects ?? action.effects, mode: repairMode(item.effects ?? action.effects) }))
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 beforeEach(async () => {

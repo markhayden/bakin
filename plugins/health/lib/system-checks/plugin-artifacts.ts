@@ -258,7 +258,8 @@ async function pluginsNamedBy(target: HealthRepairTarget, actionId: string): Pro
   }
   if (target.type === 'all_actionable') {
     for (const incident of incidents) {
-      if (incident.effectiveDisposition === 'action_required' && incident.resolution.type === 'repair' && incident.resolution.actionId === actionId) addPlugins(incident)
+      // The report carries the CANONICAL action id (`health.<action>`); the planner asks with its local id.
+      if (incident.effectiveDisposition === 'action_required' && incident.resolution.type === 'repair' && (incident.resolution.actionId === actionId || incident.resolution.actionId === `health.${actionId}`)) addPlugins(incident)
     }
     return [...named]
   }
@@ -420,7 +421,8 @@ export function pluginUpgradeRepair(deps: PluginArtifactDeps = defaultDeps): Hea
     // Rows 93/97/99/101: none — a non-empty consent delta is the ONE
     // authorization gate's business (an unattended upgrade is refused
     // `consent-unreviewed` until PR6's consent records exist, R3 N2).
-    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    // Row 191: images' assets-unavailable folds under the assets plugin's activation repair.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false, resolves: ['assets-unavailable'] },
     mutation: 'upgrade',
     resources: ['install-state'],
     operationPlan: () => PLUGIN_OPERATION_PLAN('Upgrade'),
@@ -511,14 +513,15 @@ export function pluginReinstallRepair(): HealthRepairActionDefinition {
       const approved = items.flatMap((item) => item.changes.map((c) => parseIdentityTarget(c.target)).filter((t): t is ApprovedIdentity => t !== null))
       const { done, problems } = await commitApproved(approved, items, op, true)
       return items.map((item): HealthRepairApplyResult => {
-        const problem = problems.get(item.id)
+        const pluginId = item.localId
+        const problem = problems.get(pluginId)
         return {
           itemId: item.id,
           actionId: item.actionId,
-          status: problem ? 'failed' : done.includes(item.id) ? 'applied' : 'skipped',
-          message: problem ?? (done.includes(item.id) ? `Reinstalled ${item.id}.` : `${item.id} was already current.`),
+          status: problem ? 'failed' : done.includes(pluginId) ? 'applied' : 'skipped',
+          message: problem ?? (done.includes(pluginId) ? `Reinstalled ${pluginId}.` : `${pluginId} was already current.`),
           affectedCheckIds: PLUGIN_CHECK_IDS,
-          changes: done.includes(item.id) ? item.changes : [],
+          changes: done.includes(pluginId) ? item.changes : [],
         }
       })
     },

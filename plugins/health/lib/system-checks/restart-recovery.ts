@@ -93,6 +93,7 @@ export function requeueStrandedTasksRepair(): HealthRepairActionDefinition {
     id: REQUEUE_STRANDED_TASKS_ACTION,
     name: 'Requeue stranded tasks',
     effects: { deletesUserContent: false, spendsMoney: true, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({ stages: [{ id: 'requeue', kind: 'installing', label: 'Return the tasks to Todo' }], pointOfNoReturn: 'requeue' }),
     async plan(target) {
       const candidates = await findRestartRecoveryCandidates(getContentDir())
@@ -110,15 +111,16 @@ export function requeueStrandedTasksRepair(): HealthRepairActionDefinition {
     async apply(items, op) {
       if (items.length === 0) return []
       op.stage('requeue')
-      const ids = items.map((item) => item.id)
+      const ids = items.map((item) => item.localId)
       const outcomes = await recoverStrandedTasks(getContentDir(), ids)
       return items.map((item) => {
-        const outcome = outcomes.find((row) => row.id === item.id)
+        const taskId = item.localId
+        const outcome = outcomes.find((row) => row.id === taskId)
         const status = outcome?.outcome === 'recovered' ? 'applied' as const : outcome?.outcome === 'blocked' ? 'failed' as const : 'skipped' as const
         const message = outcome?.outcome === 'recovered'
-          ? `${item.id} returned to Todo for re-dispatch.`
-          : `${item.id} was not requeued: ${outcome?.reason ?? 'no outcome reported'}.`
-        op.item('requeue', { id: item.id, label: item.id, status: status === 'applied' ? 'done' : status, message })
+          ? `${taskId} returned to Todo for re-dispatch.`
+          : `${taskId} was not requeued: ${outcome?.reason ?? 'no outcome reported'}.`
+        op.item('requeue', { id: taskId, label: taskId, status: status === 'applied' ? 'done' : status, message })
         return { itemId: item.id, actionId: item.actionId, status, message, affectedCheckIds: [CHECK_ID], changes: item.changes }
       })
     },

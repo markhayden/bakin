@@ -135,7 +135,7 @@ describe('searchSpinRepair — concrete targets (frozen proposals must name real
     reportTables = ['bakin_assets']
     rebuilt.length = 0
     const item = {
-      id: 'search-spin-rebuild:rebuild-spinning-indexes', actionId: 'search-spin-rebuild', title: 'Rebuild', reason: 'spin', effects: NO_EFFECTS, mode: 'self-heal' as const,
+      id: 'search-spin-rebuild:rebuild-spinning-indexes', localId: 'search-spin-rebuild:rebuild-spinning-indexes', actionId: 'search-spin-rebuild', title: 'Rebuild', reason: 'spin', effects: NO_EFFECTS, mode: 'self-heal' as const,
       incidentIds: [], observationIds: [], preconditions: [],
       changes: [{ kind: 'other' as const, target: 'bakin_tasks', action: 'update' as const, description: 'rebuild' }],
     }
@@ -152,14 +152,14 @@ describe('searchScarRepair — concrete targets', () => {
     const [item] = await searchScarRepair().plan({ type: 'all_actionable', reportId: 'r1' })
     expect(item!.changes.map((change) => change.target)).toEqual(['bakin_assets', 'bakin_chats'])
     rebuilt.length = 0
-    await searchScarRepair().apply([{ ...item!, effects: NO_EFFECTS, mode: 'self-heal', changes: [item!.changes[1]!] }], noopOp())
+    await searchScarRepair().apply([{ ...item!, localId: item!.id, effects: NO_EFFECTS, mode: 'self-heal', changes: [item!.changes[1]!] }], noopOp())
     expect(rebuilt).toEqual(['bakin_chats'])
   })
 })
 
 describe('rebuild repairs — runtime contract (#895 D10)', () => {
   const item = (actionId: string, tables: string[]) => ({
-    id: `${actionId}:x`, actionId, title: 'Rebuild', reason: 'r', effects: NO_EFFECTS, mode: 'self-heal' as const,
+    id: `${actionId}:x`, localId: 'x', actionId, title: 'Rebuild', reason: 'r', effects: NO_EFFECTS, mode: 'self-heal' as const,
     incidentIds: [], observationIds: [], preconditions: [],
     changes: tables.map((target) => ({ kind: 'other' as const, target, action: 'update' as const, description: 'rebuild' })),
   })

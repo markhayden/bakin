@@ -3,7 +3,7 @@
  * "Open in Terminal" only when the host provides it; busy and error states.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import '../rtl-settle'
 
 import { HandoffCard } from '@makinbakin/sdk/patterns'
@@ -30,5 +30,24 @@ describe('HandoffCard', () => {
     rerender(<HandoffCard command="gh auth login" onOpenTerminal={onOpenTerminal} error="The Terminal plugin refused to start a session." />)
     expect(screen.getByRole('alert').textContent).toContain('refused to start a session')
     expect(screen.getByText('gh auth login')).toBeTruthy()
+  })
+  it('onCopied runs only after the clipboard write succeeds — a refused write reports nothing', async () => {
+    const onCopied = mock()
+    const clipboardBefore = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    const execBefore = (document as { execCommand?: unknown }).execCommand
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('denied') } }, configurable: true })
+    ;(document as { execCommand?: unknown }).execCommand = () => false
+    try {
+      render(<HandoffCard command="pi /login" onCopied={onCopied} />)
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy Command' })) })
+      expect(onCopied).not.toHaveBeenCalled()
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => {} }, configurable: true })
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy Command' })) })
+      expect(onCopied).toHaveBeenCalledTimes(1)
+    } finally {
+      if (clipboardBefore) Object.defineProperty(navigator, 'clipboard', clipboardBefore)
+      else delete (navigator as { clipboard?: unknown }).clipboard
+      ;(document as { execCommand?: unknown }).execCommand = execBefore
+    }
   })
 })

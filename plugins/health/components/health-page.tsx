@@ -24,6 +24,7 @@ import { withDeadline } from '../lib/request-deadline'
 import { ActivityTab } from './activity-tab'
 import { AgentsTab } from './agents-tab'
 import { OverviewTab } from './overview-tab'
+import { useHandoffReturn } from './handoff-return'
 import { RepairDialog } from './repair-dialog'
 import { SystemTab } from './system-tab'
 import { UpdatesTab } from './updates-tab'
@@ -46,7 +47,6 @@ function isHealthTab(value: string): value is HealthTab {
 interface OverviewPanelProps {
   updates: UseHealthResourceResult<UpdatesData>
   onRunChecksReady: (runChecks: RunChecks | null) => void
-  onRunChecks: () => Promise<void>
 }
 
 interface SelectedRepair {
@@ -59,7 +59,7 @@ interface SelectedRepair {
  * receives only an imperative Run checks callback, so selecting another tab
  * fully unmounts Overview and stops its background endpoint traffic.
  */
-function OverviewPanel({ updates, onRunChecksReady, onRunChecks }: OverviewPanelProps) {
+function OverviewPanel({ updates, onRunChecksReady }: OverviewPanelProps) {
   const overview = useOverviewData({ updates: updates.data })
   const [selectedRepair, setSelectedRepair] = useState<SelectedRepair | null>(null)
 
@@ -119,7 +119,7 @@ function OverviewPanel({ updates, onRunChecksReady, onRunChecks }: OverviewPanel
       <OverviewTab
         data={overview}
         onRepair={reviewRepair}
-        onRerun={() => { void onRunChecks() }}
+        onDecided={() => { void overview.runChecks() }}
         onAck={(incident, action, window) => { void ackIncident(incident, action, window) }}
       />
 
@@ -194,6 +194,8 @@ export function HealthPage() {
     checksInFlightRef.current = request
     return request
   }, [])
+  // A taken handoff (terminal opened / command copied) reruns the checks when the operator is back here.
+  useHandoffReturn(runChecks)
 
   return (
     <Page
@@ -277,7 +279,6 @@ export function HealthPage() {
             <OverviewPanel
               updates={updates}
               onRunChecksReady={registerOverviewRunChecks}
-              onRunChecks={runChecks}
             />
           )}
           {activeTab === 'agents' && <AgentsTab />}

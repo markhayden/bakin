@@ -179,6 +179,8 @@ export interface HealthStatusInput {
   registeredChecks: number
   checks: readonly HealthCheckState[]
   incidents: readonly HealthIncident[]
+  /** Canonical observations — a plain `unknown` row (no incident) is still "we cannot see" and keeps the report `unknown_stale`. */
+  observations?: readonly HealthObservation[]
 }
 
 /**
@@ -199,9 +201,11 @@ export function deriveHealthReportStatus(input: HealthStatusInput): HealthReport
       state.latestExecution.outcome === 'failed'
         || state.latestExecution.outcome === 'invalid',
     )
-  const unknownOrStale = incomplete || input.incidents.some((incident) =>
-    incident.status === 'unknown' || incident.stale,
-  )
+  const unknownOrStale = incomplete
+    || input.incidents.some((incident) => incident.status === 'unknown' || incident.stale)
+    // Spec §3.1: an inspection that could not see is an observation, not a
+    // card — but never an all-clear (the unknown-is-never-healthy contract).
+    || (input.observations ?? []).some((observation) => observation.status === 'unknown')
   if (unknownOrStale) return 'unknown_stale'
   if (input.incidents.some((incident) => incident.effectiveDisposition === 'watch')) return 'degraded'
   return 'healthy'

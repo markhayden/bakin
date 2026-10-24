@@ -58,11 +58,11 @@ function deps(outcome: DoctorDelegateReport, calls: DoctorDelegateOptions[] = []
     delegate: async (options) => { calls.push(options); return outcome },
     roots: () => ({ contentDir: testDir, projectRoot: '/repo' }),
     report: () => report,
-    fallback: () => ({ attempts: [], turnBudget: { total: FALLBACK_TURN_BUDGET, remaining: FALLBACK_TURN_BUDGET }, proposableActions: ['health.x'], terminalAvailable: false, tools: { handback: false, repair: false } }),
+    fallback: () => ({ attempts: [], turnBudget: { total: FALLBACK_TURN_BUDGET, remaining: FALLBACK_TURN_BUDGET }, proposableActions: ['health.x'], terminalAvailable: false, tools: { handback: false, repair: false }, enforced: false }),
   }
 }
 
-const item = { id: 'core.diagnose:investigate', actionId: 'diagnose', title: 'Investigate', reason: 'r', effects: { deletesUserContent: false, spendsMoney: true, widensAuthorization: false }, mode: 'one-click' as const, incidentIds: [incident.id], observationIds: [], preconditions: [], changes: [] }
+const item = { id: 'core.diagnose:investigate', localId: 'core.diagnose:investigate', actionId: 'diagnose', title: 'Investigate', reason: 'r', effects: { deletesUserContent: false, spendsMoney: true, widensAuthorization: false }, mode: 'one-click' as const, incidentIds: [incident.id], observationIds: [], preconditions: [], changes: [] }
 
 describe('core.diagnose', () => {
   it('is the shared engine action and plans one one-click investigation item for the target (A17: investigations ask)', async () => {

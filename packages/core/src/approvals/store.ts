@@ -23,7 +23,7 @@ export function approvalsDir(contentDir = getContentDir()): string {
   return join(contentDir, 'approvals')
 }
 
-function approvalPath(approvalId: string, contentDir: string): string {
+export function approvalPath(approvalId: string, contentDir: string = getContentDir()): string {
   return join(approvalsDir(contentDir), `${encodeURIComponent(approvalId)}.json`)
 }
 

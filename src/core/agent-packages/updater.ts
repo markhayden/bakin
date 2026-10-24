@@ -29,6 +29,7 @@ import {
   type ProjectionEntry,
 } from '../../../packages/core/src/agent-packages/lockfile'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
+import { computeDirSha } from '../../../packages/core/src/agent-packages/markers'
 import { fetchSourceAsync, sourceSpecPinnedTo, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
 import { projectPackage, unprojectPackage } from './projector'
 import { installManifestRequirements, modelDest, npmPayloadDir } from './requirements-installer'
@@ -100,7 +101,11 @@ async function updatePackageByIdLocked(options: UpdateOptions): Promise<UpdateRe
     // Re-fetch using the same source + ref the lockfile recorded.
     // Async path — clawhub: sources are network-fetched (#687).
     op?.stage(SYNC_STAGES.fetch, entry.source)
-    const pinned = options.expected?.sha
+    // A reinstall re-stages the RECORDED immutable identity (plan task 1.2):
+    // the caller's explicit `expected.sha` wins; otherwise the lockfile's own
+    // commit pins the fetch, so a moved branch head is never installed as a
+    // "reinstall". Local sources carry no commit — they re-project in place.
+    const pinned = options.expected?.sha ?? (options.reinstall && entry.commitSha ? entry.commitSha : undefined)
     if (pinned) {
       try {
         fetched = await fetchSourceAsync(sourceSpecPinnedTo(entry.source, pinned), { fresh: true })
@@ -109,8 +114,10 @@ async function updatePackageByIdLocked(options: UpdateOptions): Promise<UpdateRe
           `Commit ${pinned} of "${options.packageId}" is not available upstream (${err instanceof Error ? err.message : String(err)}) — nothing was changed.`,
         )
       }
-      if (fetched.commitSha !== pinned) {
-        throw new Error(`Refusing to update "${options.packageId}": fetched ${fetched.commitSha} but ${pinned} was requested — nothing was changed.`)
+      // A local source has no commit: its immutable identity is the tree digest.
+      const fetchedIdentity = fetched.kind === 'local' ? computeDirSha(fetched.stagingDir) : fetched.commitSha
+      if (fetchedIdentity !== pinned) {
+        throw new Error(`Refusing to update "${options.packageId}": fetched ${fetchedIdentity} but ${pinned} was requested — nothing was changed.`)
       }
     } else {
       fetched = await fetchSourceAsync(sourceSpecWithRef(entry.source, entry.ref))

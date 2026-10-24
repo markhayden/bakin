@@ -7,7 +7,10 @@ import type {
   HealthIncidentDeclaration,
   HealthObservationInput,
   HealthRepairActionDefinition,
+  HealthRepairApplyResult,
   HealthRepairChange,
+  HealthRepairPlanItem,
+  HealthRepairPlanItemInput,
   HealthSubject,
 } from '../../../packages/core/src/plugin-types'
 import {
@@ -537,6 +540,7 @@ export function assetRepair(contentDir: string): HealthRepairActionDefinition {
     // Creating missing directories is harmless; the purge ITEM stamps its own
     // deletesUserContent so only that item waits for the click (rows 172/185).
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({
       stages: [
         { id: 'dirs', kind: 'committing', label: 'Create missing store directories' },
@@ -544,57 +548,90 @@ export function assetRepair(contentDir: string): HealthRepairActionDefinition {
       ],
       pointOfNoReturn: 'dirs',
     }),
+    // Two items (spec §3.2's own example): `dirs` creates what is missing and
+    // self-heals; `purge` deletes expired trash and waits for the click. The
+    // purge applies ONLY the entries frozen into its plan item — trash that
+    // expires between planning and apply waits for the next plan.
     async plan() {
       const changes = pendingAssetRepairChanges(contentDir)
       if (changes.length === 0) return []
-      const deletesFiles = changes.some(change => change.action === 'delete')
-      return [{
-        id: 'repair-store',
-        actionId: 'repair-store',
-        title: 'Repair asset store structure and retention',
-        reason: deletesFiles
-          ? 'Required asset directories are missing or expired trash is consuming disk space.'
-          : 'Required asset-store directories are missing.',
-        ...(deletesFiles ? { effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false } } : {}),
-        incidentIds: [],
-        observationIds: [],
-        preconditions: [],
-        changes,
-      }]
+      const dirChanges = changes.filter(change => change.action !== 'delete')
+      const purgeChanges = changes.filter(change => change.action === 'delete')
+      const items: HealthRepairPlanItemInput[] = []
+      if (dirChanges.length > 0) {
+        items.push({
+          id: 'dirs',
+          actionId: 'repair-store',
+          title: 'Create the missing asset-store directories',
+          reason: 'Required asset-store directories are missing.',
+          incidentIds: [],
+          observationIds: [],
+          preconditions: [],
+          changes: dirChanges,
+        })
+      }
+      if (purgeChanges.length > 0) {
+        items.push({
+          id: 'purge',
+          actionId: 'repair-store',
+          title: `Purge ${purgeChanges.length} expired trash item${purgeChanges.length === 1 ? '' : 's'}`,
+          reason: 'Expired trash is consuming disk space past the retention window.',
+          effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
+          incidentIds: [],
+          observationIds: [],
+          preconditions: [],
+          changes: purgeChanges,
+        })
+      }
+      return items
     },
     async apply(items, op) {
       if (items.length === 0) return []
-      try {
-        const assetsRoot = join(contentDir, 'assets')
-        op.stage('dirs')
-        mkdirSync(assetsRoot, { recursive: true })
-        for (const dirName of REQUIRED_ASSET_DIRS) mkdirSync(join(assetsRoot, dirName), { recursive: true })
-        const purged = expiredTrashEntries(join(assetsRoot, '.trash'))
-        if (purged.length > 0) op.stage('purge')
-        else op.skip('purge', 'no expired trash')
-        for (const file of purged) {
-          rmSync(join(assetsRoot, '.trash', file), { recursive: true, force: true })
-          op.item('purge', { id: file, label: file, status: 'done' })
+      const assetsRoot = join(contentDir, 'assets')
+      const dirs = items.find(item => item.localId === 'dirs')
+      const purge = items.find(item => item.localId === 'purge')
+      const results: HealthRepairApplyResult[] = []
+      const fail = (item: HealthRepairPlanItem, error: unknown): HealthRepairApplyResult => ({
+        itemId: item.id, actionId: item.actionId, status: 'failed', message: error instanceof Error ? error.message : String(error), affectedCheckIds: ['assets.assets'], changes: [],
+      })
+      if (dirs) {
+        try {
+          op.stage('dirs')
+          mkdirSync(assetsRoot, { recursive: true })
+          for (const dirName of REQUIRED_ASSET_DIRS) mkdirSync(join(assetsRoot, dirName), { recursive: true })
+          results.push({ itemId: dirs.id, actionId: dirs.actionId, status: 'applied', message: 'Created the missing asset-store directories.', affectedCheckIds: ['assets.assets'], changes: dirs.changes })
+        } catch (error) {
+          results.push(fail(dirs, error))
         }
-        const changes = items.flatMap(item => item.changes)
-        return items.map(item => ({
-          itemId: item.id,
-          actionId: item.actionId,
-          status: 'applied' as const,
-          message: `Repaired the asset store${purged.length > 0 ? ` and purged ${purged.length} expired trash item(s)` : ''}.`,
-          affectedCheckIds: ['assets.assets'],
-          changes,
-        }))
-      } catch (error) {
-        return items.map(item => ({
-          itemId: item.id,
-          actionId: item.actionId,
-          status: 'failed' as const,
-          message: error instanceof Error ? error.message : String(error),
-          affectedCheckIds: ['assets.assets'],
-          changes: [],
-        }))
+      } else {
+        op.skip('dirs', 'directories were not selected')
       }
+      if (purge) {
+        try {
+          op.stage('purge')
+          const trashRoot = join(assetsRoot, '.trash')
+          // Only the frozen targets, and only those still expired now.
+          const stillExpired = new Set(expiredTrashEntries(trashRoot).map(file => join(trashRoot, file)))
+          const purged: string[] = []
+          const skipped: string[] = []
+          for (const change of purge.changes) {
+            if (!stillExpired.has(change.target)) { skipped.push(change.target); continue }
+            rmSync(change.target, { recursive: true, force: true })
+            purged.push(change.target)
+            op.item('purge', { id: change.target, label: change.target, status: 'done' })
+          }
+          results.push({
+            itemId: purge.id, actionId: purge.actionId, status: purged.length > 0 ? 'applied' : 'skipped',
+            message: `Purged ${purged.length} expired trash item${purged.length === 1 ? '' : 's'}${skipped.length > 0 ? `; ${skipped.length} no longer qualified and ${skipped.length === 1 ? 'was' : 'were'} left alone` : ''}.`,
+            affectedCheckIds: ['assets.assets'], changes: purge.changes.filter(change => purged.includes(change.target)),
+          })
+        } catch (error) {
+          results.push(fail(purge, error))
+        }
+      } else {
+        op.skip('purge', 'no expired trash selected')
+      }
+      return results
     },
   }
 }

@@ -669,6 +669,7 @@ export function spendEvidenceRepair(): HealthRepairActionDefinition {
     name: 'Refresh model pricing',
     // Row 168: a local cache refresh — self-heal.
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     // Read-only toward providers; the local cache swap is the only write.
     operationPlan: () => ({
       stages: [{ id: 'refresh', kind: 'downloading', label: 'Refresh the model catalog with pricing' }],

@@ -139,6 +139,10 @@ function assertDeclaredInstance(def: HealthCheckDef, incident: HealthIncidentInp
   } else {
     required = declaration.required === 'always'
   }
+  // A family covers ONE subject kind (Codex r1 #16): an instance on another kind is not that family.
+  if (incident.subject.kind !== declaration.subjectKind) {
+    throw new HealthDeclarationError(`Incident "${incident.key}" is declared on a ${declaration.subjectKind} subject but was emitted on ${incident.subject.kind}:${incident.subject.id}.`)
+  }
   return { ...incident, required }
 }
 

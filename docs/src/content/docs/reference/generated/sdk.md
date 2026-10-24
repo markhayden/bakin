@@ -617,6 +617,8 @@ import type { BakinPlugin, PluginContext, ExecToolDefinition } from '@makinbakin
 | `HealthIncidentDeclarationResolution` | — |
 | `HEALTH_MUTATION_KINDS` | What a repair action DOES to the installation — the input of the ONE authorization gate (spec §3.2). |
 | `HealthMutationKind` | — |
+| `HEALTH_REPAIR_MUTATIONS` | What a repair action declares to the gate: one of the mutation kinds, or |
+| `HealthRepairMutation` | — |
 | `HEALTH_MUTATION_REFUSAL_REASONS` | Why the authorization gate refused an unattended mutation; every surface renders the SAME copy for each (spec §3.2). |
 | `HealthMutationRefusalReason` | — |
 | `HealthIncidentDeclaration` | One FINITE incident family a check may emit (plan R3 N5): `not-ready` |
@@ -626,6 +628,7 @@ import type { BakinPlugin, PluginContext, ExecToolDefinition } from '@makinbakin
 | `HealthGroup` | Stable subsystem grouping supplied by a registration. |
 | `HealthResourceKind` | — |
 | `HealthResource` | Stable reference to a resource affected by an incident. |
+| `HealthDecisionChoice` | One named, executable choice on an incident card beside its resolution |
 | `HealthRepairResolution` | — |
 | `HealthHumanHandoff` | A credential or an install the operator performs in a shell: the exact |
 | `HealthHumanResolution` | Something only a human can supply (spec §3.1): a credential, a payment, |

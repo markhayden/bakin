@@ -32,6 +32,8 @@ export interface HandoffCardProps {
   command: string
   /** Where it should run, when it matters (a home, a repo). Shown, not enforced. */
   cwd?: string
+  /** The command reached the clipboard — the operator took the handoff by hand. */
+  onCopied?: () => void
   /**
    * Opens a terminal with the command prefilled (the host decides how, e.g.
    * the Terminal plugin's session). Omitted = copy only, which is the honest
@@ -52,6 +54,7 @@ export function HandoffCard({
   description,
   command,
   cwd,
+  onCopied,
   onOpenTerminal,
   terminalLabel = 'Open in Terminal',
   busy = false,
@@ -81,7 +84,7 @@ export function HandoffCard({
         ) : null}
       </CardHeader>
       <CardContent className="flex min-w-0 flex-col gap-bakin-3">
-        <CodeBlock code={command} label="Command" copyable wrap />
+        <CodeBlock code={command} label="Command" copyable wrap onCopied={onCopied} />
         {cwd ? (
           <p className="m-0 text-bakin-typography-size-meta text-bakin-text-muted">
             Run it in <code className="font-bakin-typography-family-mono">{cwd}</code>.

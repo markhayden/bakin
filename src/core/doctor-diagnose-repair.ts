@@ -46,6 +46,7 @@ export function diagnoseRepair(deps: DiagnoseRepairDeps): HealthRepairActionDefi
     // Spec §3.1: effects all false. The item itself is one-click until the
     // repair engine owns investigations (A17: ask) — see `plan` below.
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({ stages: [{ id: 'delegate', kind: 'installing', label: 'Open the investigation task' }], pointOfNoReturn: 'delegate' }),
     async plan(target) {
       return [{
@@ -56,7 +57,7 @@ export function diagnoseRepair(deps: DiagnoseRepairDeps): HealthRepairActionDefi
         // A17: investigations ASK — agent turns spend money, so the item is one-click.
         effects: { deletesUserContent: false, spendsMoney: true, widensAuthorization: false },
         ...repairTargetSelection(target),
-        changes: [{ kind: 'task', target: 'health-investigation', action: 'create', description: `Open one investigation task for main (${FALLBACK_TURN_BUDGET} agent turns).` }],
+        changes: [{ kind: 'task', target: 'health-investigation', action: 'create', description: `Open one investigation task for main (the convention is ${FALLBACK_TURN_BUDGET} agent turns; this release does not enforce it).` }],
       }]
     },
     async apply(items) {

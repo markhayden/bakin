@@ -12,13 +12,13 @@ import { IncidentRow } from './incident-row'
 interface OverviewAlertsProps {
   model: HealthOverviewViewModel
   onRepair?: (incident: HealthIncident) => void
-  onRerun?: (incident: HealthIncident) => void
+  onDecided?: (incident: HealthIncident) => void
   onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
 }
 
 /** Suppressed is never hidden: acked/snoozed incidents stay visible here,
  *  collapsed and calm, with un-ack one click away. */
-function AcknowledgedSection({ model, onRepair, onRerun, onAck }: OverviewAlertsProps) {
+function AcknowledgedSection({ model, onRepair, onDecided, onAck }: OverviewAlertsProps) {
   if (model.acknowledged.length === 0) return null
   return (
     <DisclosurePanel
@@ -26,7 +26,7 @@ function AcknowledgedSection({ model, onRepair, onRerun, onAck }: OverviewAlerts
       summary="Acknowledged"
       summaryMeta={String(model.acknowledged.length)}
     >
-      <AlertGrid incidents={model.acknowledged} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
+      <AlertGrid incidents={model.acknowledged} onRepair={onRepair} onDecided={onDecided} onAck={onAck} />
     </DisclosurePanel>
   )
 }
@@ -57,13 +57,13 @@ function AlertGrid({
   incidents,
   testId,
   onRepair,
-  onRerun,
+  onDecided,
   onAck,
 }: {
   incidents: OverviewIncident[]
   testId?: string
   onRepair?: (incident: HealthIncident) => void
-  onRerun?: (incident: HealthIncident) => void
+  onDecided?: (incident: HealthIncident) => void
   onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
 }) {
   return (
@@ -71,7 +71,7 @@ function AlertGrid({
       data-testid={testId}
     >
       {incidents.map((item) => (
-          <IncidentRow key={item.incident.id} item={item} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
+          <IncidentRow key={item.incident.id} item={item} onRepair={onRepair} onDecided={onDecided} onAck={onAck} />
       ))}
     </ListRows>
   )
@@ -116,7 +116,7 @@ function Notices({ incidents }: { incidents: OverviewIncident[] }) {
   )
 }
 
-export function OverviewAlerts({ model, onRepair, onRerun, onAck }: OverviewAlertsProps) {
+export function OverviewAlerts({ model, onRepair, onDecided, onAck }: OverviewAlertsProps) {
   const primary = [...model.needsAction, ...model.unableToVerify]
   const { visible, hidden } = splitDistinctIncidents(primary)
   const actionLabel = model.unableToVerify.length === 0
@@ -131,7 +131,7 @@ export function OverviewAlerts({ model, onRepair, onRerun, onAck }: OverviewAler
           title="No problems need attention"
           action={<Notices incidents={[...model.watching, ...model.advisories]} />}
         />
-        <AcknowledgedSection model={model} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
+        <AcknowledgedSection model={model} onRepair={onRepair} onDecided={onDecided} onAck={onAck} />
       </>
     )
   }
@@ -157,16 +157,16 @@ export function OverviewAlerts({ model, onRepair, onRerun, onAck }: OverviewAler
         incidents={visible}
         testId="overview-primary-alerts"
         onRepair={onRepair}
-        onRerun={onRerun}
+        onDecided={onDecided}
         onAck={onAck}
       />
 
       {hidden.length > 0 && (
         <DisclosurePanel summary={`View ${hidden.length} more ${hidden.length === 1 ? 'problem' : 'problems'}`}>
-          <AlertGrid incidents={hidden} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
+          <AlertGrid incidents={hidden} onRepair={onRepair} onDecided={onDecided} onAck={onAck} />
         </DisclosurePanel>
       )}
-      <AcknowledgedSection model={model} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
+      <AcknowledgedSection model={model} onRepair={onRepair} onDecided={onDecided} onAck={onAck} />
     </Section>
   )
 }

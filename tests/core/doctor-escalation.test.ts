@@ -127,7 +127,7 @@ const DEL = { deletesUserContent: true, spendsMoney: false, widensAuthorization:
 /** A self-heal plan item (what `...selfHeal` used to mean). */
 const selfHeal = { effects: NONE, mode: 'self-heal' as const }
 const item = (overrides: Partial<HealthRepairPlanItem>): HealthRepairPlanItem => ({
-  id: 'search.rebuild:rebuild', actionId: 'search.rebuild', title: 'Rebuild', reason: 'Corrupt.', effects: DEL, mode: 'one-click',
+  id: 'search.rebuild:rebuild', localId: 'search.rebuild:rebuild', actionId: 'search.rebuild', title: 'Rebuild', reason: 'Corrupt.', effects: DEL, mode: 'one-click',
   incidentIds: ['health:search:index-corrupt'], observationIds: ['health.search:index'], preconditions: [],
   changes: [{ kind: 'file', target: 'index', action: 'delete', description: 'Drop the index.' }],
   ...overrides,

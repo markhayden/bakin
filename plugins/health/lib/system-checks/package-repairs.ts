@@ -18,10 +18,10 @@
  */
 import type { HealthRepairActionDefinition, HealthRepairApplyResult, HealthRepairPlanItemInput, HealthRepairTarget, OperationContext } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
-import { listCapabilities, type CapabilityReadiness } from '../../../../src/core/agent-packages/capability-readiness'
+import { listCapabilities } from '../../../../src/core/agent-packages/capability-readiness'
 import { capabilityRemedy } from '../../../../src/core/agent-packages/capability-remedy'
 import { createLogger } from '../../../../src/core/logger'
-import { stableKeyPart } from './key'
+import { subjectIdsNamedBy } from '../../../../src/core/doctor-repair-targets'
 
 const log = createLogger('health:package-repairs')
 
@@ -29,12 +29,10 @@ export const PACKAGE_SYNC_ACTION = 'package-sync'
 export const PACKAGE_REINSTALL_ACTION = 'package-reinstall'
 const CHECK_ID = 'health.capabilities'
 
-/** Whether a repair target names this capability's incident or observation (`not-ready:<cap>` / `<cap>`). */
-function targetSelects(target: HealthRepairTarget, cap: CapabilityReadiness): boolean {
-  if (target.type === 'all_actionable') return true
-  const key = stableKeyPart(cap.capability)
-  const wanted = target.type === 'incidents' ? `${CHECK_ID}:not-ready:${key}` : `${CHECK_ID}:${key}`
-  return target.ids.some((id) => id === wanted)
+/** The packs a target names, resolved through the current report (incident subjects are `package:<packageId>`). */
+function packsSelectedBy(target: HealthRepairTarget, kind: string): Set<string> | null {
+  if (target.type === 'all_actionable') return null // every pack whose remedy is this action
+  return new Set(subjectIdsNamedBy(target, { actionId: `health.${kind}`, subjectKind: 'package' }))
 }
 
 function packRepair(kind: typeof PACKAGE_SYNC_ACTION | typeof PACKAGE_REINSTALL_ACTION): HealthRepairActionDefinition {
@@ -44,7 +42,8 @@ function packRepair(kind: typeof PACKAGE_SYNC_ACTION | typeof PACKAGE_REINSTALL_
     id: kind,
     name: reinstall ? 'Reinstall capability packs from their recorded source' : 'Sync capability pack content',
     // Row 6: none; a non-empty consent delta is the gate's business, not a static effect.
-    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    // Row 112: a pack's invalid bin manifest surfaces on the agent too — the reinstall resolves that folded family.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false, ...(reinstall ? { resolves: ['structural-package'] } : {}) },
     mutation: reinstall ? 'reinstall' : 'sync',
     resources: ['install-state'],
     // Several packs run under one operation, so the engine's own stages are
@@ -57,8 +56,9 @@ function packRepair(kind: typeof PACKAGE_SYNC_ACTION | typeof PACKAGE_REINSTALL_
       const capabilities = await listCapabilities()
       const items: HealthRepairPlanItemInput[] = []
       const seen = new Set<string>()
+      const selected = packsSelectedBy(target, kind)
       for (const cap of capabilities) {
-        if (capabilityRemedy(cap) !== kind || !targetSelects(target, cap) || seen.has(cap.packageId)) continue
+        if (capabilityRemedy(cap) !== kind || (selected !== null && !selected.has(cap.packageId)) || seen.has(cap.packageId)) continue
         seen.add(cap.packageId)
         items.push({
           id: cap.packageId,
@@ -88,7 +88,7 @@ function packRepair(kind: typeof PACKAGE_SYNC_ACTION | typeof PACKAGE_REINSTALL_
       let changed = false
       op.stage('sync')
       for (const item of items) {
-        const packageId = item.id
+        const packageId = item.localId
         op.item('sync', { id: packageId, label: packageId, status: 'active' })
         try {
           const receipt = await syncPack(packageId, reinstall ? { reinstall: true } : {})

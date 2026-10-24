@@ -33,7 +33,7 @@ function SystemFixture() {
     inventory.current?.revealChecks()
   }, [])
   return <Page><PageHeader title="Health" description="System inventories" /><PageBody>
-    <OverviewAlerts model={buildHealthOverviewViewModel({ report: collectionReport })} onRerun={() => {}} />
+    <OverviewAlerts model={buildHealthOverviewViewModel({ report: collectionReport })} />
     <SystemSearchSection readiness={null} status={search} telemetry={null} mutation={idle} onReindex={() => {}} technicalDetailsOpen />
     <SystemInventory ref={inventory} report={collectionReport} live={null} registry={registry} manifest={manifest}
       pluginInventoryCurrent pluginMutation={idle} pluginSearch={query} onPluginSearchChange={setQuery}

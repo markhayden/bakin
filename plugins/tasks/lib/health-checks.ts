@@ -201,6 +201,7 @@ export function taskConsistencyRepair(): HealthRepairActionDefinition {
     name: 'Clear completed-task dependencies',
     // Row 121: a bookkeeping write on done tasks — self-heal.
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({
       stages: [{ id: 'clear', kind: 'committing', label: 'Clear dependencies from completed tasks' }],
       pointOfNoReturn: 'clear',
@@ -332,6 +333,7 @@ export function taskOrderRepair(): HealthRepairActionDefinition {
     name: 'Rebuild task order values',
     // Row 123: renumbers within each column, keeping the order — self-heal.
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({
       stages: [{ id: 'reorder', kind: 'committing', label: 'Rebuild order values per column' }],
       pointOfNoReturn: 'reorder',

@@ -47,6 +47,7 @@ const fallback = (over: Partial<FallbackBriefInput> = {}): FallbackBriefInput =>
   proposableActions: ['health.search-engine-install', 'health.search-engine-claim'],
   terminalAvailable: true,
   tools: { handback: true, repair: true },
+  enforced: true,
   ...over,
 })
 
@@ -101,6 +102,16 @@ describe('fallback investigation brief', () => {
     expect(brief).toContain('PROPOSABLE ACTIONS: none registered for this subject')
     expect(brief).toContain('use your own shell')
     expect(brief).toContain('report it as a proposal and END your turn')
+  })
+
+  it('an unenforced budget is stated as the convention, never as something the system does (Codex r1 #17)', () => {
+    const brief = buildRepairBrief({ requestId: 'req-5', incidents: [incident()], fallback: fallback({ enforced: false }) })
+    expect(brief).toContain('TURN BUDGET: finish within 3 agent turns. This release does not count turns or settle this task for you')
+    expect(brief).not.toContain('agent turns remain')
+    expect(brief).not.toContain('Bakin completes this task itself')
+    expect(brief).not.toContain('`tasks_create` is refused')
+    expect(brief).not.toContain('`bakin_exec_tasks_complete` refuses this task')
+    expect(brief).not.toContain('submit it through `bakin_exec_health_repair`')
   })
 
   it('a long log excerpt is bounded to its first twelve lines', () => {

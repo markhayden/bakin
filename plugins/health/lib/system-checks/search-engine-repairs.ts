@@ -118,6 +118,7 @@ export function searchEngineWatchResetRepair(): HealthRepairActionDefinition {
     name: 'Restore Search watch history',
     // Row 85: the unreadable file is moved aside, never deleted — self-heal.
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({ stages: [{ id: 'reset', kind: 'installing', label: 'Move the unreadable history aside' }], pointOfNoReturn: 'reset' }),
     async plan(target) {
       return [{

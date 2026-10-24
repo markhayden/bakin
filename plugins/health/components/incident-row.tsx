@@ -1,19 +1,22 @@
 'use client'
 
-import { useEffect, useId, useRef, useState } from 'react'
-import type { HealthIncident } from '@makinbakin/sdk/types'
+import { useId, useState } from 'react'
+import type { HealthDecisionChoice, HealthIncident } from '@makinbakin/sdk/types'
 import { Panel } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { HandoffCard, ListRow, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
+import { ConfirmDialog, HandoffCard, ListRow, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Button, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
 import { TriangleAlert, BellOff, ChevronRight, CircleQuestionMark, Wrench } from 'lucide-react'
 import type { OverviewIncident } from '../lib/health-view-model'
+import { performDecisionChoice, type RequestDecisionChoice } from '../lib/decision-choice'
+import { armHandoffReturn, disarmHandoffReturn } from './handoff-return'
 import { useTerminalHandoff } from './use-terminal-handoff'
 
 export interface IncidentRowProps {
   item: OverviewIncident
   onRepair?: (incident: HealthIncident) => void
-  onRerun?: (incident: HealthIncident) => void
+  /** A `request` choice on the card completed — the owner reruns the check. */
+  onDecided?: (incident: HealthIncident, choice: HealthDecisionChoice) => void
   onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
 }
 
@@ -57,7 +60,7 @@ const DISPOSITION_LABEL: Record<HealthIncident['disposition'], string> = {
   action_required: 'action',
 }
 
-export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps) {
+export function IncidentRow({ item, onRepair, onDecided, onAck }: IncidentRowProps) {
   const instructionsId = useId()
   const impactId = useId()
   const [showInstructions, setShowInstructions] = useState(false)
@@ -66,17 +69,53 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
   const resolution = incident.resolution
   const handoff = resolution.type === 'human' ? resolution.handoff : undefined
   const terminal = useTerminalHandoff(Boolean(handoff) && showInstructions)
-  // Return verification (self-healing 1.4c): after a handoff — a terminal
-  // opened or the command copied — the incident's check reruns the next time
-  // this tab regains focus. One-shot; armed by the handoff, never by default.
-  const rerunOnFocus = useRef<(() => void) | null>(null)
-  useEffect(() => () => { if (rerunOnFocus.current) window.removeEventListener('focus', rerunOnFocus.current) }, [])
-  const armRerunOnFocus = () => {
-    if (rerunOnFocus.current || !onRerun) return
-    const listener = () => { rerunOnFocus.current = null; onRerun(item.incident) }
-    rerunOnFocus.current = listener
-    window.addEventListener('focus', listener, { once: true })
+  // Return verification (self-healing 1.4c) is armed here and run by the
+  // Health page (`useHandoffReturn`): this row unmounts when the Terminal
+  // route opens, so it can never own the listener itself.
+  const openInTerminal = async () => {
+    if (!handoff) return
+    armHandoffReturn(incident.id)
+    const sessionId = await terminal.open(handoff.command, incident.title, handoff.cwd)
+    if (!sessionId) disarmHandoffReturn(incident.id)
   }
+  // Named choices (table "card buttons"): links land on a control; requests
+  // perform the decision through the owner's route — behind ConfirmDialog
+  // when the choice asks for it — and the check reruns.
+  const [pendingChoice, setPendingChoice] = useState<RequestDecisionChoice | null>(null)
+  const [busyChoice, setBusyChoice] = useState<string | null>(null)
+  const [choiceError, setChoiceError] = useState<string | null>(null)
+  const performChoice = async (choice: RequestDecisionChoice) => {
+    setBusyChoice(choice.key)
+    setChoiceError(null)
+    try {
+      await performDecisionChoice(choice)
+      setPendingChoice(null)
+      onDecided?.(incident, choice)
+    } catch (err) {
+      setChoiceError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusyChoice(null)
+    }
+  }
+  const choices = (resolution.choices ?? []).map((choice) => choice.kind === 'link'
+    ? (
+      <PluginLink key={choice.key} to={choice.href} className={buttonVariants({ size: 'sm', variant: 'outline' })}>
+        {choice.label}
+        <ChevronRight aria-hidden="true" />
+      </PluginLink>
+    )
+    : (
+      <Button
+        key={choice.key}
+        size="sm"
+        variant={choice.tone === 'danger' ? 'destructive' : 'outline'}
+        busy={busyChoice === choice.key}
+        disabled={busyChoice !== null}
+        onClick={() => { if (choice.confirm) setPendingChoice(choice); else void performChoice(choice) }}
+      >
+        {choice.label}
+      </Button>
+    ))
   const status = incidentStatus(incident)
   const Icon = status.icon
 
@@ -110,6 +149,19 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
         </PluginLink>
       </>
     )
+  const decisionDialog = pendingChoice && (
+    <ConfirmDialog
+      open
+      title={pendingChoice.confirm?.title ?? pendingChoice.label}
+      description={pendingChoice.confirm?.description}
+      confirmLabel={pendingChoice.label}
+      confirmTone={pendingChoice.tone === 'danger' ? 'danger' : 'primary'}
+      busy={busyChoice === pendingChoice.key}
+      error={choiceError}
+      onConfirm={() => { void performChoice(pendingChoice) }}
+      onCancel={() => { setPendingChoice(null); setChoiceError(null) }}
+    />
+  )
 
   return (
     <ListRow
@@ -169,20 +221,23 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
 
       {handoff && showInstructions && (
         <Panel id={instructionsId} padding="compact" className="mt-bakin-3 text-bakin-typography-size-meta">
-          <div onCopy={armRerunOnFocus}>
-            <HandoffCard
-              title="Run this yourself"
-              description="Bakin cannot do this step for you. Run the command, then come back — this check reruns when the tab regains focus."
-              command={handoff.command}
-              cwd={handoff.cwd}
-              busy={terminal.busy}
-              error={terminal.error}
-              onOpenTerminal={terminal.available ? () => { armRerunOnFocus(); void terminal.open(handoff.command, incident.title) } : undefined}
-            />
-          </div>
+          <HandoffCard
+            title="Run this yourself"
+            description="Bakin cannot do this step for you. Run the command, then come back — this check reruns when you return to Health."
+            command={handoff.command}
+            cwd={handoff.cwd}
+            busy={terminal.busy}
+            error={terminal.error}
+            onCopied={() => armHandoffReturn(incident.id)}
+            onOpenTerminal={terminal.available ? () => { void openInTerminal() } : undefined}
+          />
         </Panel>
       )}
 
+      {choiceError && !pendingChoice && (
+        <p role="alert" className="m-0 text-bakin-typography-size-meta text-bakin-signal-danger">{choiceError}</p>
+      )}
+      {decisionDialog}
       <div className="flex flex-wrap items-center justify-end gap-bakin-2">
         {item.updateId && (
           <PluginLink
@@ -235,6 +290,7 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
             </Popover>
           </>
         ))}
+        {choices}
         {action}
       </div>
     </ListRow>

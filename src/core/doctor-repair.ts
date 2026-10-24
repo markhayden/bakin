@@ -1,6 +1,7 @@
 /** Targeted canonical Health repair planning, application, and verification. */
 import type {
   HealthObservation,
+  HealthSubject,
   HealthRepairActionDef,
   HealthRepairApplyResult,
   HealthRepairPlan,
@@ -108,8 +109,8 @@ function repairObservations(report: HealthReport, target: HealthRepairTarget): I
     .filter((observation) => ids.has(observation.id) && observation.incident.resolution.type === 'repair')
 }
 
-/** Producer plan items carry optional per-item effects; core stamps the effects and the mode. */
-type ProducerPlanItem = Omit<HealthRepairPlanItem, 'effects' | 'mode'> & { effects?: HealthRepairPlanItem['effects'] }
+/** Producer plan items carry optional per-item effects; core stamps the effects, the mode and the local id. */
+type ProducerPlanItem = Omit<HealthRepairPlanItem, 'effects' | 'mode' | 'localId'> & { effects?: HealthRepairPlanItem['effects'] }
 
 function canonicalizeItem(
   item: ProducerPlanItem,
@@ -128,7 +129,10 @@ function canonicalizeItem(
   const effects = structuredClone(item.effects ?? action.effects)
   return {
     ...structuredClone(item),
+    // The canonical id is opaque to actions; the planner's own id survives
+    // as `localId` — the domain handle `apply` reads (plan review r1 #1).
     id: `${actionId}:${item.id}`,
+    localId: item.id,
     actionId,
     effects,
     mode: repairMode(effects),
@@ -248,19 +252,44 @@ function mutationActor(options: Pick<DoctorRepairStartOptions, 'origin' | 'actin
  * failed attempt. Items the gate passes (or actions with no mutation) are
  * returned to run; refused ones become `skipped` results with the reason.
  */
+/**
+ * The identity the gate judges, from the incident's Health subject: the
+ * tracked update subjects keep their kind (plugin / package / hub-skill);
+ * the search engine, its models and Bakin itself are the kinds pinned in
+ * the binary (trusted by construction); every other Health subject is
+ * Bakin-owned content the gate treats as Bakin's own (`bakin`).
+ */
+export function authorizationSubject(subject: HealthSubject | undefined): { kind: string; id: string } {
+  if (!subject) return { kind: 'bakin', id: 'bakin' }
+  switch (subject.kind) {
+    case 'plugin':
+    case 'package':
+    case 'hub-skill':
+      return { kind: subject.kind, id: subject.id }
+    case 'service':
+      return subject.id === 'search-engine' ? { kind: 'search-engine', id: subject.id } : { kind: 'bakin', id: subject.id }
+    case 'setting':
+      return subject.id === 'search.settings.embedders' ? { kind: 'search-models', id: subject.id } : { kind: 'bakin', id: subject.id }
+    default:
+      return { kind: 'bakin', id: subject.id }
+  }
+}
+
 function authorizeItems(
   action: HealthRepairActionDef,
   items: readonly HealthRepairPlanItem[],
   actor: MutationActor,
   report: HealthReport,
 ): { allowed: HealthRepairPlanItem[]; refused: HealthRepairApplyResult[] } {
-  if (!action.mutation) return { allowed: [...items], refused: [] }
+  // `none` is the action's explicit, reviewable statement that it changes no
+  // installed identity, writes no policy and deletes nothing the user owns.
+  if (action.mutation === 'none') return { allowed: [...items], refused: [] }
   const allowed: HealthRepairPlanItem[] = []
   const refused: HealthRepairApplyResult[] = []
   for (const item of items) {
     const incident = report.incidents.find((row) => item.incidentIds.includes(row.id))
     const verdict = authorizeMutation({
-      subject: incident?.subject ?? { kind: 'system', id: item.actionId },
+      subject: authorizationSubject(incident?.subject),
       mutation: action.mutation,
       actor,
       consentReviewed: false,

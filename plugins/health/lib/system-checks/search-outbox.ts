@@ -74,7 +74,7 @@ export async function checkSearchOutboxObservations({ accessRefused = false } = 
         // subject, resolved by its restart (the journal drains on recovery).
         subject: { kind: 'service', id: 'search-engine', label: 'Search engine' },
         declarationId: 'stale-backlog',
-        dependsOn: { subject: { kind: 'service', id: 'search-engine', label: 'Search engine' }, resolvedBy: 'search-engine-restart' },
+        dependsOn: { subject: { kind: 'service', id: 'search-engine', label: 'Search engine' }, resolvedBy: 'health.search-engine-restart' },
         resources: [{ kind: 'system', id: 'search-journal', label: 'Search write journal' }],
         resolution: { key: 'inspect-engine', type: 'repair', label: 'Restore the Search engine', actionId: 'search-engine-restart' },
       },
@@ -99,6 +99,7 @@ export function searchOutboxRepair(): HealthRepairActionDefinition {
     name: 'Retry quarantined Search writes',
     // Row 67: reviving rows deletes nothing and spends nothing — self-heal (was manual).
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({
       stages: [{ id: 'revive', kind: 'committing', label: 'Revive quarantined writes' }],
       pointOfNoReturn: 'revive',

@@ -35,6 +35,13 @@ export interface FallbackBriefInput {
   terminalAvailable: boolean
   /** Which fallback exec tools this release registers; the brief never names a tool that does not exist. */
   tools: { handback: boolean; repair: boolean }
+  /**
+   * Whether the repair engine ENFORCES the budget (counts turns, settles the
+   * task itself, refuses sub-delegation). Until it does, the brief states
+   * the budget as the convention the operator expects — never as a promise
+   * the system keeps.
+   */
+  enforced: boolean
 }
 
 export interface RepairBriefInput {
@@ -115,7 +122,7 @@ function handbackLines(fallback: FallbackBriefInput): string[] {
     return [
       'HAND-BACK (how this task ends): submit EXACTLY ONE of these through `bakin_exec_health_handback`:',
       ...shapes,
-      '  `bakin_exec_tasks_complete` refuses this task without an accepted hand-back and returns this schema.',
+      ...(fallback.enforced ? ['  `bakin_exec_tasks_complete` refuses this task without an accepted hand-back and returns this schema.'] : []),
     ]
   }
   return [
@@ -143,6 +150,12 @@ function terminalLines(fallback: FallbackBriefInput): string[] {
 
 function budgetLines(fallback: FallbackBriefInput): string[] {
   const { total, remaining } = fallback.turnBudget
+  if (!fallback.enforced) {
+    return [
+      `TURN BUDGET: finish within ${total} agent turn${total === 1 ? '' : 's'}. This release does not count turns or settle this task for you — end your last turn with the hand-back shape above, and never spawn tasks from this one.`,
+      '- Never wait on a restart-class or long repair: report it as a proposal and END your turn.',
+    ]
+  }
   return [
     `TURN BUDGET: ${remaining} of ${total} agent turn${total === 1 ? '' : 's'} remain. Every turn counts — the first dispatch, a requeue, the turn that reads an asynchronous repair's result.`,
     fallback.tools.repair

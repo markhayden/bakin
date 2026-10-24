@@ -42,7 +42,7 @@ const NONE = { deletesUserContent: false, spendsMoney: false, widensAuthorizatio
 const SUBJECT: HealthSubject = { kind: 'service', id: 'svc' }
 
 function registerAction(pluginId: string, id: string): void {
-  registerPluginHealthRepairAction(pluginId, { id, name: `Action ${id}`, effects: NONE, operationPlan: () => stage, plan: async () => [], apply: async () => [] })
+  registerPluginHealthRepairAction(pluginId, { id, name: `Action ${id}`, effects: NONE, mutation: 'none', operationPlan: () => stage, plan: async () => [], apply: async () => [] })
 }
 
 function check(incidents: HealthIncidentDeclaration[] | unknown, run: HealthCheckRegistrationInput['run'] = async () => healthNotApplicable('unused')): HealthCheckRegistrationInput {
@@ -242,8 +242,16 @@ describe('instance validation in the runner', () => {
     expect(safeParseHealthCheckRunInput({ outcome: 'observed', observations: [{ key: 'broken', status: 'error', summary: 'Broken.' }] }).success).toBe(false)
   })
 
-  it('the shared engine action is referenced verbatim by an instance of its family', async () => {
+  it('an instance emitted on a different subject kind than its family is invalid, naming both (Codex r1 #16)', async () => {
+    // `opaque` is a system family; the fixture's default subject is a service.
     registerWith(emit({ key: 'opaque', declarationId: 'opaque', title: 'Ledger unreadable', impact: 'Nothing is exactly-once.', disposition: 'action_required', resolution: { key: 'diagnose', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' } }))
+    const [run] = await runDetailedPluginHealthChecks()
+    expect(run.execution).toMatchObject({ outcome: 'invalid', error: { code: 'INVALID_HEALTH_DECLARATION' } })
+    expect(run.execution.error?.message).toMatch(/"opaque" is declared on a system subject but was emitted on service:svc/)
+  })
+
+  it('the shared engine action is referenced verbatim by an instance of its family', async () => {
+    registerWith(emit({ key: 'opaque', declarationId: 'opaque', subject: { kind: 'system', id: 'ledger' }, title: 'Ledger unreadable', impact: 'Nothing is exactly-once.', disposition: 'action_required', resolution: { key: 'diagnose', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' } }))
     const [run] = await runDetailedPluginHealthChecks()
     expect(run.execution.outcome).toBe('observed')
     expect(run.observations[0].incident?.resolution).toMatchObject({ actionId: 'core.diagnose' })

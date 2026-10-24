@@ -281,6 +281,7 @@ export function personaRepair(contentDir: string, runtime: RuntimeAgentReader): 
     name: 'Create missing persona files',
     // Creates stub files only — nothing deleted, spent or widened.
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({
       stages: [{ id: 'create', kind: 'committing', label: 'Create persona stubs' }],
       pointOfNoReturn: 'create',

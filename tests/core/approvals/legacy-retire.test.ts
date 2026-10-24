@@ -28,6 +28,8 @@ import { getApprovalRecord } from '../../../packages/core/src/approvals'
 import {
   LEGACY_RETIRE_AUDIT_EVENT,
   LEGACY_RETIRE_REASON,
+  MAX_APPROVAL_FILE_BYTES,
+  MAX_RETIREMENTS_PER_PASS,
   openRetirementReceipts,
   readRetirementReceipts,
   resumeRetirementReceipts,
@@ -126,7 +128,7 @@ describe('retireLegacyHealthApprovals', () => {
     expect(calls.find((c) => c.approvalId === 'rep-1')).toMatchObject({ deliveries: [{ channelId: 'discord:1', ref: 'msg-2' }], reason: LEGACY_RETIRE_REASON })
     // Receipts carried to done; one audit row with the counts.
     const receipts = readRetirementReceipts(testDir)
-    expect(receipts.get('nav-1')).toMatchObject({ state: 'done', channelId: 'discord:1', messageId: 'msg-1', attempts: 1 })
+    expect(receipts.get('nav-1')).toMatchObject({ state: 'done', deliveries: [{ channelId: 'discord:1', messageId: 'msg-1', state: 'done', attempts: 1 }], attempts: 1 })
     expect(openRetirementReceipts(testDir)).toEqual([])
     const rows = auditRows().filter((row) => row.event === LEGACY_RETIRE_AUDIT_EVENT)
     expect(rows).toHaveLength(1)
@@ -156,7 +158,7 @@ describe('retireLegacyHealthApprovals', () => {
     const summary = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
     expect(summary).toMatchObject({ selected: 1, done: 1, editFailed: 0 })
     expect(calls).toHaveLength(0)
-    expect(readRetirementReceipts(testDir).get('nav-board-only')).toMatchObject({ state: 'done', channelId: null, messageId: null, attempts: 0 })
+    expect(readRetirementReceipts(testDir).get('nav-board-only')).toMatchObject({ state: 'done', deliveries: [], attempts: 0 })
   })
 
   it('a failing Discord edit leaves the receipt edit-failed with the error; the next reconnect retries it to done', async () => {
@@ -164,7 +166,7 @@ describe('retireLegacyHealthApprovals', () => {
     const first = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(failingChannels('Discord 503: gateway unavailable')) })
     expect(first).toMatchObject({ selected: 1, cancelledViaStore: 1, done: 0, editFailed: 1 })
     expect(getApprovalRecord('nav-2', testDir)?.status).toBe('cancelled') // cancelled regardless of the card
-    expect(readRetirementReceipts(testDir).get('nav-2')).toMatchObject({ state: 'edit-failed', attempts: 1, lastError: 'Discord 503: gateway unavailable' })
+    expect(readRetirementReceipts(testDir).get('nav-2')).toMatchObject({ state: 'edit-failed', attempts: 1, lastError: 'Discord 503: gateway unavailable', deliveries: [{ messageId: 'msg-1', state: 'edit-failed', attempts: 1, lastError: 'Discord 503: gateway unavailable' }] })
     expect(openRetirementReceipts(testDir).map((r) => r.approvalId)).toEqual(['nav-2'])
 
     // Bridge still down: another honest failure, attempts climb.
@@ -185,7 +187,7 @@ describe('retireLegacyHealthApprovals', () => {
     writeApproval(legacyNavigate('nav-crash'))
     // The intent line is on disk; the process died before the cancel.
     mkdirSync(join(testDir, 'health'), { recursive: true })
-    writeFileSync(retirementReceiptsPath(testDir), `${JSON.stringify({ approvalId: 'nav-crash', channelId: 'discord:1', messageId: 'msg-1', state: 'retiring', reason: LEGACY_RETIRE_REASON, startedAt: '2026-10-23T23:59:59.000Z', updatedAt: '2026-10-23T23:59:59.000Z', attempts: 0 })}\n`)
+    writeFileSync(retirementReceiptsPath(testDir), `${JSON.stringify({ approvalId: 'nav-crash', deliveries: [{ channelId: 'discord:1', messageId: 'msg-1', state: 'pending', attempts: 0 }], state: 'retiring', reason: LEGACY_RETIRE_REASON, startedAt: '2026-10-23T23:59:59.000Z', updatedAt: '2026-10-23T23:59:59.000Z', attempts: 0 })}\n`)
     const { calls, channels } = workingChannels()
 
     const summary = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
@@ -199,7 +201,7 @@ describe('retireLegacyHealthApprovals', () => {
   it('a crash after the cancel but before the edit resumes from the retiring receipt without touching the record again', async () => {
     writeApproval(legacyNavigate('nav-crash-2', { status: 'cancelled', resolvedAt: '2026-10-23T23:59:59.000Z', response: { selectedOption: 'cancel', respondedAt: '2026-10-23T23:59:59.000Z', comment: LEGACY_RETIRE_REASON } }))
     mkdirSync(join(testDir, 'health'), { recursive: true })
-    writeFileSync(retirementReceiptsPath(testDir), `${JSON.stringify({ approvalId: 'nav-crash-2', channelId: 'discord:1', messageId: 'msg-1', state: 'retiring', reason: LEGACY_RETIRE_REASON, startedAt: '2026-10-23T23:59:59.000Z', updatedAt: '2026-10-23T23:59:59.000Z', attempts: 0 })}\n`)
+    writeFileSync(retirementReceiptsPath(testDir), `${JSON.stringify({ approvalId: 'nav-crash-2', deliveries: [{ channelId: 'discord:1', messageId: 'msg-1', state: 'pending', attempts: 0 }], state: 'retiring', reason: LEGACY_RETIRE_REASON, startedAt: '2026-10-23T23:59:59.000Z', updatedAt: '2026-10-23T23:59:59.000Z', attempts: 0 })}\n`)
     const { calls, channels } = workingChannels()
     const before = readRaw('nav-crash-2')
     const result = await resumeRetirementReceipts({ contentDir: testDir, deps: deps(channels) })
@@ -218,6 +220,42 @@ describe('retireLegacyHealthApprovals', () => {
     const summary = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
     expect(summary).toMatchObject({ selected: 1, unreadable: 1, done: 1 })
     expect(readFileSync(join(approvalsDir, 'broken.json'), 'utf-8')).toBe('{ not json')
+  })
+
+  it('two delivered cards are tracked on their own: one failed edit keeps the receipt open, and the reconnect retries ONLY that card', async () => {
+    writeApproval(legacyNavigate('nav-two', { deliveries: [delivery, { ...delivery, channelId: 'discord:2', ref: 'msg-9' }] }))
+    const flaky = () => ({ cancelApproval: async (args: { deliveries: Array<{ channelId: string }> }) => { if (args.deliveries[0]!.channelId === 'discord:2') throw new Error('Discord 403: missing access') } })
+    const first = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(flaky) })
+    expect(first).toMatchObject({ selected: 1, done: 0, editFailed: 1 })
+    expect(readRetirementReceipts(testDir).get('nav-two')).toMatchObject({
+      state: 'edit-failed', attempts: 1, lastError: 'Discord 403: missing access',
+      deliveries: [{ channelId: 'discord:1', state: 'done', attempts: 1 }, { channelId: 'discord:2', state: 'edit-failed', attempts: 1, lastError: 'Discord 403: missing access' }],
+    })
+
+    const { calls, channels } = workingChannels()
+    expect(await resumeRetirementReceipts({ contentDir: testDir, deps: deps(channels) })).toEqual({ resumed: 1, done: 1, editFailed: 0 })
+    expect(calls).toEqual([{ approvalId: 'nav-two', deliveries: [{ channelId: 'discord:2', ref: 'msg-9', renderedAt: expect.any(String) }], reason: LEGACY_RETIRE_REASON }])
+    const settled = readRetirementReceipts(testDir).get('nav-two')!
+    expect(settled).toMatchObject({ state: 'done', attempts: 2, deliveries: [{ channelId: 'discord:1', attempts: 1 }, { channelId: 'discord:2', state: 'done', attempts: 2 }] })
+    expect(settled.lastError).toBeUndefined()
+    expect(settled.deliveries[1]!.lastError).toBeUndefined()
+  })
+
+  it('the reader is bounded: an oversized record is unreadable and untouched, and a pass retires at most MAX_RETIREMENTS_PER_PASS — the rest wait for the next pass', async () => {
+    mkdirSync(approvalsDir, { recursive: true })
+    const huge = JSON.stringify(legacyNavigate('nav-huge', { request: { title: 'x'.repeat(MAX_APPROVAL_FILE_BYTES), body: 'b', options: [] } }))
+    writeFileSync(join(approvalsDir, 'nav-huge.json'), huge)
+    for (let i = 0; i < MAX_RETIREMENTS_PER_PASS + 1; i += 1) writeApproval(legacyNavigate(`nav-${i}`, { deliveries: [] }))
+    const { channels } = workingChannels()
+
+    const first = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
+    expect(first).toMatchObject({ selected: MAX_RETIREMENTS_PER_PASS, deferred: 1, unreadable: 1, done: MAX_RETIREMENTS_PER_PASS })
+    expect(readFileSync(join(approvalsDir, 'nav-huge.json'), 'utf-8')).toBe(huge)
+
+    const second = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
+    expect(second).toMatchObject({ selected: 1, deferred: 0, resumed: 0 })
+    expect(openRetirementReceipts(testDir)).toEqual([])
+    expect(readRetirementReceipts(testDir).size).toBe(MAX_RETIREMENTS_PER_PASS + 1)
   })
 
   it('a quiet pass (nothing legacy, nothing open) writes no receipt file and no audit row', async () => {

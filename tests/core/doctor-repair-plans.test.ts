@@ -16,6 +16,7 @@ const now = new Date('2026-07-13T12:00:00.000Z')
 function item(overrides: Partial<HealthRepairPlanItem> = {}): HealthRepairPlanItem {
   return {
     id: 'restart-search',
+    localId: 'restart-search',
     actionId: 'health.restart-search',
     title: 'Restart Search',
     reason: 'The engine is unavailable.',

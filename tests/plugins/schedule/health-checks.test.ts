@@ -62,7 +62,7 @@ import type { HealthRepairActionDefinition, HealthRepairPlanItem, HealthRepairPl
 function canonical(action: HealthRepairActionDefinition, items: HealthRepairPlanItemInput[]): HealthRepairPlanItem[] {
   return items.map((item) => {
     const effects = item.effects ?? action.effects
-    return { ...item, effects, mode: repairMode(effects) }
+    return { ...item, localId: item.id, effects, mode: repairMode(effects) }
   })
 }
 import { getJob, upsertJob } from '../../../plugins/schedule/lib/sidecar'

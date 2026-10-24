@@ -85,6 +85,7 @@ async function seedHealth() {
     id: 'reinstall-plugins',
     name: 'Reinstall plugins',
     effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
     plan: async () => [{
       id: 'reinstall', actionId: 'reinstall-plugins', title: 'Reinstall plugins', reason: 'Artifacts are stranded.',

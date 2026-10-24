@@ -525,6 +525,7 @@ export function getHealthReport(generatedAt = new Date().toISOString()): HealthR
     registeredChecks: definitions.length,
     checks,
     incidents: liveIncidents,
+    observations,
   })
   const summary: HealthReport['summary'] = {
     checks: {

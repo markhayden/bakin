@@ -29,6 +29,7 @@ import '../../rtl-settle'
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { IncidentRow } from '@bakin/health/components/incident-row'
 import { resetTerminalHandoffForTests } from '@bakin/health/components/use-terminal-handoff'
+import { isHandoffReturnArmed, resetHandoffReturnForTests } from '@bakin/health/components/handoff-return'
 import type { OverviewIncident } from '@bakin/health/lib/health-view-model'
 
 afterEach(cleanup)
@@ -146,13 +147,51 @@ describe('IncidentRow (#690)', () => {
   })
 })
 
+describe('IncidentRow decision choices (card buttons)', () => {
+  const realFetch = globalThis.fetch
+  afterEach(() => { globalThis.fetch = realFetch })
+  const decision = (choices: HealthIncident['resolution']['choices']) => item({
+    title: 'Unclaimed Search tables',
+    resolution: { key: 'tables', type: 'human', needs: 'decision', label: 'Review tables', href: '/health?tab=system', choices },
+  })
+
+  it('a link choice is a link to its control; a request choice without confirm posts at once and reports the decision', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => { calls.push({ url: String(input), init }); return Response.json({ ok: true }) }) as unknown as typeof fetch
+    const onDecided = mock()
+    const row = decision([
+      { key: 'guest', kind: 'link', label: 'Use as guest', href: '/settings?tab=system&field=search.settings.url' },
+      { key: 'resume', kind: 'request', label: 'Resume', method: 'POST', url: '/api/plugins/spend/resume', body: { id: 'i-1' } },
+    ])
+    await act(async () => { render(<IncidentRow item={row} onDecided={onDecided} />) })
+    expect((screen.getByRole('link', { name: 'Use as guest' }) as HTMLAnchorElement).getAttribute('href')).toContain('field=search.settings.url')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Resume' })) })
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1))
+    expect(calls).toEqual([{ url: '/api/plugins/spend/resume', init: expect.objectContaining({ method: 'POST', body: JSON.stringify({ id: 'i-1' }) }) }])
+    expect(onDecided.mock.calls[0]![1]).toMatchObject({ key: 'resume' })
+  })
+
+  it('a request choice with confirm asks in a dialog first; a refused request shows the error and reports nothing', async () => {
+    globalThis.fetch = mock(async () => Response.json({ error: 'still over the limit' }, { status: 409 })) as unknown as typeof fetch
+    const onDecided = mock()
+    const row = decision([{ key: 'keep', kind: 'request', label: 'Keep', method: 'POST', url: '/api/plugins/health/search/keep', tone: 'danger', confirm: { title: 'Keep these tables?', description: 'They stay out of the index.' } }])
+    await act(async () => { render(<IncidentRow item={row} onDecided={onDecided} />) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Keep' })) })
+    const dialog = await screen.findByRole('dialog', { name: 'Keep these tables?' })
+    expect(within(dialog).getByText('Keep these tables?')).toBeTruthy()
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Keep' })) })
+    await waitFor(() => expect(within(dialog).getByText(/still over the limit/)).toBeTruthy())
+    expect(onDecided).not.toHaveBeenCalled()
+  })
+})
+
 describe('IncidentRow handoff (self-healing 1.4c)', () => {
   const realFetch = globalThis.fetch
   let requests: Array<{ url: string; method: string; body?: unknown }>
   let terminalActive: boolean
-  const commandItem = () => item({
+  const commandItem = (handoff: { command: string; cwd?: string } = { command: 'pi' }) => item({
     title: 'Pi has no usable model provider',
-    resolution: { key: 'configure-provider', type: 'human', needs: 'credential', label: 'Configure a Pi provider', href: '/runtime?tab=overview&field=credentials', handoff: { command: 'pi' } },
+    resolution: { key: 'configure-provider', type: 'human', needs: 'credential', label: 'Configure a Pi provider', href: '/runtime?tab=overview&field=credentials', handoff },
   })
   function stubFetch() {
     requests = []
@@ -167,7 +206,7 @@ describe('IncidentRow handoff (self-healing 1.4c)', () => {
       return Response.json({})
     }) as unknown as typeof fetch
   }
-  afterEach(() => { globalThis.fetch = realFetch; resetTerminalHandoffForTests(); routerPush.mockClear() })
+  afterEach(() => { globalThis.fetch = realFetch; resetTerminalHandoffForTests(); resetHandoffReturnForTests(); routerPush.mockClear() })
 
   it('a command resolution renders the HandoffCard; without the Terminal plugin it is copy-only', async () => {
     terminalActive = false
@@ -181,22 +220,63 @@ describe('IncidentRow handoff (self-healing 1.4c)', () => {
     expect(within(card).queryByRole('button', { name: 'Open in Terminal' })).toBeNull()
   })
 
-  it('with the Terminal plugin active, Open in Terminal creates a human shell session with the command PREFILLED, goes to it, and reruns the check when the tab regains focus', async () => {
+  it('with the Terminal plugin active, Open in Terminal creates a human shell session in the declared cwd with the command PREFILLED, goes to it, and arms the return check', async () => {
     terminalActive = true
     resetTerminalHandoffForTests()
     stubFetch()
-    const onRerun = mock()
-    await act(async () => { render(<IncidentRow item={commandItem()} onRerun={onRerun} />) })
+    const row = commandItem({ command: 'pi', cwd: '/Users/me/repo' })
+    await act(async () => { render(<IncidentRow item={row} />) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Run it yourself' })) })
+    const button = await screen.findByRole('button', { name: 'Open in Terminal' })
+    expect(isHandoffReturnArmed(row.incident.id)).toBe(false)
+    await act(async () => { fireEvent.click(button) })
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/terminal/sess-1'))
+    expect(requests.find((r) => r.url === '/api/plugins/terminal/sessions')).toMatchObject({ method: 'POST', body: { title: 'Pi has no usable model provider', cwd: '/Users/me/repo', program: 'shell' } })
+    expect(requests.find((r) => r.url === '/api/plugins/terminal/session')).toMatchObject({ body: { id: 'sess-1', operation: 'write', generation: 1, sequence: 1, data: 'pi' } })
+    // The row cannot own the rerun (it unmounts with the navigation): the page's useHandoffReturn reads this.
+    expect(isHandoffReturnArmed(row.incident.id)).toBe(true)
+  })
+
+  it('without a declared cwd the session uses the Terminal plugin default; a refused session disarms the return check and keeps the copy block', async () => {
+    terminalActive = true
+    resetTerminalHandoffForTests()
+    stubFetch()
+    const inner = globalThis.fetch
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/plugins/terminal/sessions') {
+        requests.push({ url: String(input), method: init?.method ?? 'GET', body: init?.body ? JSON.parse(String(init.body)) : undefined })
+        return Response.json({ error: 'pty limit reached' }, { status: 503 })
+      }
+      return inner(input, init)
+    }) as unknown as typeof fetch
+    const row = commandItem()
+    await act(async () => { render(<IncidentRow item={row} />) })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Run it yourself' })) })
     const button = await screen.findByRole('button', { name: 'Open in Terminal' })
     await act(async () => { fireEvent.click(button) })
-    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/terminal/sess-1'))
-    expect(requests.find((r) => r.url === '/api/plugins/terminal/sessions')).toMatchObject({ method: 'POST', body: { title: 'Pi has no usable model provider', cwd: '/Users/me/.bakin', program: 'shell' } })
-    expect(requests.find((r) => r.url === '/api/plugins/terminal/session')).toMatchObject({ body: { id: 'sess-1', operation: 'write', generation: 1, sequence: 1, data: 'pi' } })
-    expect(onRerun).not.toHaveBeenCalled()
-    await act(async () => { window.dispatchEvent(new Event('focus')) })
-    expect(onRerun).toHaveBeenCalledTimes(1)
-    await act(async () => { window.dispatchEvent(new Event('focus')) })
-    expect(onRerun).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('pty limit reached'))
+    expect(requests.find((r) => r.url === '/api/plugins/terminal/sessions')).toMatchObject({ body: { cwd: '/Users/me/.bakin' } })
+    expect(isHandoffReturnArmed(row.incident.id)).toBe(false)
+    expect(screen.getByText('pi')).toBeTruthy()
+  })
+
+  it('copying the command (the clipboard write succeeding) arms the return check; without a terminal that is the only handoff', async () => {
+    terminalActive = false
+    resetTerminalHandoffForTests()
+    stubFetch()
+    const writeText = mock(async () => {})
+    const clipboardBefore = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    try {
+      const row = commandItem()
+      await act(async () => { render(<IncidentRow item={row} />) })
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Run it yourself' })) })
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy Command' })) })
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith('pi'))
+      await waitFor(() => expect(isHandoffReturnArmed(row.incident.id)).toBe(true))
+    } finally {
+      if (clipboardBefore) Object.defineProperty(navigator, 'clipboard', clipboardBefore)
+      else delete (navigator as { clipboard?: unknown }).clipboard
+    }
   })
 })

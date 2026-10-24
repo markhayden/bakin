@@ -137,7 +137,7 @@ export function registerHealthRepairAction(def: HealthRepairActionDef): void {
     id: def.localId,
     name: def.name,
     effects: def.effects,
-    ...(def.mutation ? { mutation: def.mutation } : {}),
+    mutation: def.mutation,
     plan: def.plan,
     operationPlan: def.operationPlan,
     ...(def.resources ? { resources: def.resources } : {}),

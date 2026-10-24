@@ -134,6 +134,7 @@ export function mediaStoreRepair(): HealthRepairActionDefinition {
     // Pinned, sha256-verified tarballs from a fixed source: no user content,
     // no spend, nothing the operator did not already authorize (self-heal).
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'rebuild', // pinned sharp tarballs (trusted by construction) — a rebuild of the store, never a new identity
     resources: ['media-store'],
     operationPlan: () => MEDIA_PLAN,
     async plan(target) {

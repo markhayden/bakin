@@ -33,6 +33,7 @@ const mockPlan: HealthRepairPlan = {
   items: [
     {
       id: 'tasks.repair-taskboard:restore-columns',
+      localId: 'tasks.repair-taskboard:restore-columns',
       actionId: 'tasks.repair-taskboard',
       title: 'Restore task board columns',
       reason: 'The task board is missing required columns.',
@@ -50,6 +51,7 @@ const mockPlan: HealthRepairPlan = {
     },
     {
       id: 'channels.configure:approval',
+      localId: 'channels.configure:approval',
       actionId: 'channels.configure',
       title: 'Configure an approval channel',
       reason: 'Credentials require an operator decision.',

@@ -176,7 +176,7 @@ const result = await ctx.hooks.invoke(
 
 Label: Prepared git worktree
 Kind: rpc
-Source: plugins/git/index.ts:774
+Source: plugins/git/index.ts:775
 
 Example:
 
@@ -191,7 +191,7 @@ const result = await ctx.hooks.invoke(
 
 Label: Prepared git worktree
 Kind: rpc
-Source: plugins/git/index.ts:778
+Source: plugins/git/index.ts:779
 
 Example:
 

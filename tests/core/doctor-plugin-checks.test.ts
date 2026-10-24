@@ -141,7 +141,7 @@ describe('validating Health runner', () => {
   const unavailableFamily: HealthIncidentDeclaration[] = [{ id: 'unavailable', subjectKind: 'runtime', resolution: { type: 'repair', actionId: 'restart' }, required: 'always' }]
 
   it('namespaces valid owner-local repair references', async () => {
-    registerPluginHealthRepairAction('test-a', { id: 'restart', name: 'Restart runtime', effects: NONE, operationPlan: () => stage, plan: async () => [], apply: async () => [] })
+    registerPluginHealthRepairAction('test-a', { id: 'restart', name: 'Restart runtime', effects: NONE, mutation: 'none', operationPlan: () => stage, plan: async () => [], apply: async () => [] })
     registerPluginHealthCheck('test-a', registration(async () => healthObserved([
       healthError({
         key: 'down',
@@ -165,8 +165,8 @@ describe('validating Health runner', () => {
 
   it('rejects cross-owner or missing repair references as invalid', async () => {
     // The catalog names test-a's own `restart`; the EMISSION points at test-b's — refused at the runner.
-    registerPluginHealthRepairAction('test-a', { id: 'restart', name: 'Restart', effects: NONE, operationPlan: () => stage, plan: async () => [], apply: async () => [] })
-    registerPluginHealthRepairAction('test-b', { id: 'restart', name: 'Restart', effects: NONE, operationPlan: () => stage, plan: async () => [], apply: async () => [] })
+    registerPluginHealthRepairAction('test-a', { id: 'restart', name: 'Restart', effects: NONE, mutation: 'none', operationPlan: () => stage, plan: async () => [], apply: async () => [] })
+    registerPluginHealthRepairAction('test-b', { id: 'restart', name: 'Restart', effects: NONE, mutation: 'none', operationPlan: () => stage, plan: async () => [], apply: async () => [] })
     registerPluginHealthCheck('test-a', registration(async () => healthObserved([
       healthError({
         key: 'down',

@@ -13,6 +13,7 @@ import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput, HealthRepairActionDefinition, HealthRepairPlanItemInput, HealthRepairTarget } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
+import { subjectIdsNamedBy } from '../../../../src/core/doctor-repair-targets'
 import { stableKeyPart } from './key'
 
 export const SESSION_STORE_PRUNE_ACTION = 'session-store-prune'
@@ -122,11 +123,10 @@ export async function checkSessionStore(
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
-/** The agents a repair target names (`oversized:<agent>` incidents, `agent:<agent>` observations); every oversized agent for all_actionable. */
+/** The agents a repair target names, resolved through the current report (incident subjects are `agent:<stable key>`); every oversized agent for all_actionable. */
 function agentsSelectedBy(target: HealthRepairTarget, oversized: string[]): string[] {
   if (target.type === 'all_actionable') return oversized
-  const prefix = target.type === 'incidents' ? `${CHECK_ID}:oversized:` : `${CHECK_ID}:agent:`
-  const named = new Set(target.ids.filter((id) => id.startsWith(prefix)).map((id) => id.slice(prefix.length)))
+  const named = new Set(subjectIdsNamedBy(target, { actionId: `health.${SESSION_STORE_PRUNE_ACTION}`, subjectKind: 'agent' }))
   return oversized.filter((agentId) => named.has(stableKeyPart(agentId)))
 }
 
@@ -163,7 +163,7 @@ export function sessionStorePruneRepair(runtime: Pick<AgentRuntimeAdapter, 'sess
       op.stage('prune')
       const results = []
       for (const item of items) {
-        const agentId = item.id
+        const agentId = item.localId
         op.item('prune', { id: agentId, label: agentId, status: 'active' })
         try {
           const pruned = await runtime.sessions.pruneStore(agentId)

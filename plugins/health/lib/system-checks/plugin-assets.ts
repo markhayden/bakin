@@ -162,6 +162,7 @@ export function installPluginAssetsRepair(): HealthRepairActionDefinition {
     // binaries, their own skills): self-heal. The per-skill restore item
     // below replaces a user's edit, so it stamps D and waits for the click.
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'rebuild', // re-materializes sha256-pinned content the plugin already declared — nothing new to authorize
     resources: ['install-state'],
     operationPlan: () => PLUGIN_ASSETS_PLAN,
     async plan(target) {
@@ -203,16 +204,16 @@ export function installPluginAssetsRepair(): HealthRepairActionDefinition {
     async apply(items, op) {
       if (items.length === 0) return []
       try {
-        const restoreUserEdited = items.filter((item) => item.id.startsWith('restore:')).map((item) => item.id.slice('restore:'.length))
+        const restoreUserEdited = items.filter((item) => item.localId.startsWith('restore:')).map((item) => item.localId.slice('restore:'.length))
         const result = await applyPluginAssets(op, restoreUserEdited.length > 0 ? { restoreUserEdited } : {})
         const failed = result.status === 'failed'
         const restored = new Set(result.restored ?? [])
-        const restoreName = (item: { id: string }) => item.id.slice('restore:'.length)
+        const restoreName = (item: { localId: string }) => item.localId.slice('restore:'.length)
         return items.map((item) => ({
           itemId: item.id,
           actionId: item.actionId,
-          status: failed ? 'failed' as const : item.id.startsWith('restore:') ? (restored.has(restoreName(item)) ? 'applied' as const : 'skipped' as const) : 'applied' as const,
-          message: item.id.startsWith('restore:')
+          status: failed ? 'failed' as const : item.localId.startsWith('restore:') ? (restored.has(restoreName(item)) ? 'applied' as const : 'skipped' as const) : 'applied' as const,
+          message: item.localId.startsWith('restore:')
             ? (restored.has(restoreName(item)) ? `${restoreName(item)} restored to the plugin's copy.` : `${restoreName(item)} was not locked any more; nothing to restore.`)
             : result.message,
           affectedCheckIds: [CHECK_ID],

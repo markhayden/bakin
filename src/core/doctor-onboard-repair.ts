@@ -35,6 +35,7 @@ export function onboardRepair(deps: OnboardRepairDeps): HealthRepairActionDefini
     name: 'Complete first-run setup',
     // Row 205: first-run choices widen what the operator authorized → one-click.
     effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true },
+    mutation: 'none',
     // Each component is its own operation and owns its own resources.
     operationPlan: () => ({ stages: [{ id: 'components', kind: 'installing', label: 'Run the setup components' }], pointOfNoReturn: 'components' }),
     async plan(target) {

@@ -20,6 +20,7 @@ import {
   type OperationContext,
   type OperationView,
 } from '@bakin/core/operations'
+import { repairMode } from '@bakin/core/health/repair-mode'
 import type { HealthRepairActionDefinition, HealthRepairApplyResult, HealthRepairPlanItem, HealthRepairPlanItemInput } from '@makinbakin/sdk/types'
 
 export interface RepairContractRun {
@@ -107,10 +108,17 @@ export function expectRepairContract(action: HealthRepairActionDefinition, run: 
  * comes from the ONE policy (one-click iff the effects delete content, spend
  * money or widen authorization).
  */
-export function stampPlanItems(action: HealthRepairActionDefinition, items: HealthRepairPlanItemInput[]): HealthRepairPlanItem[] {
+/**
+ * Canonical items from planner output, exactly as core stamps them
+ * (`doctor-repair.ts#canonicalizeItem`): the opaque id is prefixed with the
+ * action id, the planner's id survives as `localId`, effects default to the
+ * action's and the mode comes from the ONE policy. An action that reads a
+ * domain handle off `item.id` instead of `item.localId` fails here as it
+ * would in production.
+ */
+export function stampPlanItems(action: HealthRepairActionDefinition, items: HealthRepairPlanItemInput[], canonicalActionId = action.id): HealthRepairPlanItem[] {
   return items.map((item) => {
     const effects = item.effects ?? action.effects
-    const oneClick = effects.deletesUserContent || effects.spendsMoney || effects.widensAuthorization
-    return { ...item, effects, mode: oneClick ? 'one-click' : 'self-heal' }
+    return { ...item, id: `${canonicalActionId}:${item.id}`, localId: item.id, effects, mode: repairMode(effects) }
   })
 }

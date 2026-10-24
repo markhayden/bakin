@@ -49,6 +49,7 @@ import { updatePackageById as updatePackageByIdUnowned } from '../../src/core/ag
 import { syncPack as syncPackUnowned } from '../../src/core/agent-packages/sync'
 import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { getPackageSourceDir } from '../../packages/core/src/agent-packages/package-paths'
+import { computeDirSha } from '../../packages/core/src/agent-packages/markers'
 import { owned } from '../helpers/owning'
 
 const installPackage = owned(installPackageUnowned)
@@ -133,12 +134,36 @@ describe('updatePackageById — expected sha + reinstall', () => {
     expect(readLockfile().packages[PKG]!.commitSha).toBe(RECORDED)
   })
 
-  it('without reinstall, the same commit is still a no-op; without expected, reinstall re-stages the branch head (an ordinary update)', async () => {
+  it('without reinstall, the same commit is still a no-op; a reinstall WITHOUT expected pins to the RECORDED commit, never the moved branch head', async () => {
     upstream.set('main', { dir: upstream.get(RECORDED)!.dir, sha: RECORDED })
     expect((await updatePackageById({ packageId: PKG })).changed).toBe(false)
     upstream.set('main', { dir: join(testDir, 'upstream-head'), sha: HEAD })
+    fetchCalls.length = 0
+    // The production repair (`package-reinstall` → syncPack({ reinstall: true })) names no sha: the lockfile's commit IS the pin.
     const result = await updatePackageById({ packageId: PKG, reinstall: true })
-    expect(result).toMatchObject({ changed: true, toCommitSha: HEAD, toVersion: '0.1.1' })
+    expect(fetchCalls.map((call) => call.source)).toEqual([`github:acme/bits@${RECORDED}#packs/ocr`])
+    expect(result).toMatchObject({ changed: true, toCommitSha: RECORDED, toVersion: '0.1.0' })
+    expect(readLockfile().packages[PKG]!.commitSha).toBe(RECORDED)
+    // An ordinary update (no reinstall) still follows the branch.
+    expect(await updatePackageById({ packageId: PKG })).toMatchObject({ changed: true, toCommitSha: HEAD, toVersion: '0.1.1' })
+  })
+
+  it('a local source pins by tree digest: a matching digest reinstalls, a different one is refused, and no digest re-projects in place', async () => {
+    const local = join(testDir, 'local-ocr')
+    const lock = readLockfile()
+    writeLockfile({ ...lock, packages: { ...lock.packages, [PKG]: { ...lock.packages[PKG]!, source: local, ref: '', commitSha: '' } } })
+    writeFileSync(installedManifestPath(), '{ "id": "ocr", "kind": "skill-pack", "version": ')
+
+    await expect(updatePackageById({ packageId: PKG, expected: { sha: 'f'.repeat(64) }, reinstall: true }))
+      .rejects.toThrow(/fetched [0-9a-f]{64} but f{64} was requested/i)
+    expect(() => JSON.parse(readFileSync(installedManifestPath(), 'utf-8'))).toThrow() // refused before any write
+
+    const repaired = await updatePackageById({ packageId: PKG, expected: { sha: computeDirSha(local) }, reinstall: true })
+    expect(repaired).toMatchObject({ changed: true, toVersion: '0.1.0' })
+    expect(JSON.parse(readFileSync(installedManifestPath(), 'utf-8')).version).toBe('0.1.0')
+
+    // No recorded commit and no expected digest: a local reinstall re-projects what the directory holds now.
+    expect(await updatePackageById({ packageId: PKG, reinstall: true })).toMatchObject({ changed: true, toCommitSha: '' })
   })
 })
 

@@ -119,6 +119,7 @@ async function seed() {
     id: 'rebuild-index',
     name: 'Rebuild search index',
     effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
     plan: async () => {
       if (planRefreshesHealth) await refresh()

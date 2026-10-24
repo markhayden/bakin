@@ -85,7 +85,7 @@ async function seed() {
   registerPluginHealthRepairAction('repair-test', {
     id: 'restart-search',
     name: 'Restart Search',
-    effects: NONE,
+    effects: NONE, mutation: 'none',
     operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
     plan: async () => planResultOverride !== undefined
       ? planResultOverride as any
@@ -139,6 +139,7 @@ describe('targeted canonical doctor repair', () => {
     })
     expect(plan.items[0]).toMatchObject({
       id: 'repair-test.restart-search:restart',
+      localId: 'restart', // the planner's own handle; `id` is core's opaque canonical id
       actionId: 'repair-test.restart-search',
       observationIds: ['repair-test.search:engine'],
       preconditions: [{ observationId: 'repair-test.search:engine', executionId: 'execution-1', status: 'error', resolutionKey: 'restart' }],
@@ -148,7 +149,7 @@ describe('targeted canonical doctor repair', () => {
   it('rejects malformed plan output without retaining its payload', async () => {
     const secret = 'plan-output-must-not-leak'
     planResultOverride = [{
-      id: 'restart', actionId: 'restart-search', title: 'Restart Search', reason: 'Search is unavailable.',
+      id: 'restart', localId: 'restart', actionId: 'restart-search', title: 'Restart Search', reason: 'Search is unavailable.',
       incidentIds: [], observationIds: [], preconditions: [], changes: [], secret,
     }]
     const report = getHealthReport()
@@ -448,7 +449,7 @@ describe('targeted canonical doctor repair', () => {
 
   it('an action unregistered between validation and execution fails the parent, never a silent success', async () => {
     registerPluginHealthRepairAction('repair-test', {
-      id: 'zz-later', name: 'Later repair', effects: NONE,
+      id: 'zz-later', name: 'Later repair', effects: NONE, mutation: 'none',
       operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [{ id: 'later', actionId: 'zz-later', title: 'Later', reason: 'r', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
       apply: async () => { throw new Error('never runs') },
@@ -484,7 +485,7 @@ describe('targeted canonical doctor repair', () => {
     let entered!: () => void
     const inPrepare = new Promise<void>((resolve) => { entered = resolve })
     registerPluginHealthRepairAction('repair-test', {
-      id: 'slow', name: 'Slow repair', effects: NONE,
+      id: 'slow', name: 'Slow repair', effects: NONE, mutation: 'none',
       operationPlan: () => ({ stages: [{ id: 'prepare', kind: 'preparing' as const, label: 'Prepare' }, { id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [{ id: 'slow', actionId: 'slow', title: 'Slow', reason: 'r', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
       apply: async (items, op) => {
@@ -520,7 +521,7 @@ describe('targeted canonical doctor repair', () => {
     resetHealthReportCache()
     clearStoredRepairPlans()
     registerPluginHealthRepairAction('repair-test', {
-      id: 'manual', name: 'Manual repair', effects: DEL,
+      id: 'manual', name: 'Manual repair', effects: DEL, mutation: 'delete',
       operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [{ id: 'manual', actionId: 'manual', title: 'Manual repair', reason: 'Needs review.', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
       apply: applyAction,
