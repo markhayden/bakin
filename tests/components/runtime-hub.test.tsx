@@ -29,7 +29,8 @@ import { settleReact } from '../rtl-settle'
 import { useToastStore } from '@makinbakin/sdk/hooks'
 
 import { finishedOperation, operationResponse, operationStarted } from '../helpers/operation-fetch'
-import { OverviewTab } from '../../packages/host/src/components/runtime/overview-tab'
+import { OverviewTab, credentialHandoffFor } from '../../packages/host/src/components/runtime/overview-tab'
+import { resetCredentialReturnForTests } from '../../packages/host/src/components/runtime/credential-return'
 import { CapabilitiesTab } from '../../packages/host/src/components/runtime/capabilities-tab'
 import { RuntimesTab } from '../../packages/host/src/components/runtime/runtimes-tab'
 import type { CapabilityReport } from '../../packages/host/src/components/runtime/types'
@@ -56,6 +57,7 @@ const realFetch = globalThis.fetch
 
 afterEach(() => {
   globalThis.fetch = realFetch
+  resetCredentialReturnForTests()
 })
 
 describe('OverviewTab', () => {
@@ -132,19 +134,44 @@ describe('OverviewTab', () => {
     const piSignIn = {
       id: 'pi:runtime:provider-configuration', status: 'error', disposition: 'action_required', effectiveDisposition: 'action_required',
       title: 'Pi has no usable model provider', impact: 'Run pi and sign in with /login.',
-      subject: { kind: 'runtime', id: 'pi', label: 'Pi' }, declarationId: 'provider-configuration', required: true, resources: [], observationIds: [],
+      subject: { kind: 'runtime', id: 'pi', label: 'Pi' }, declarationId: 'provider-configuration', required: true, resources: [], observationIds: ['pi.auth:provider-configuration'],
       resolution: { key: 'configure-provider', type: 'human', needs: 'credential', label: 'Sign in to a model provider', href: '/runtime?tab=overview&field=credentials', handoff: { command: 'pi', cwd: '/Users/me/.pi' } },
       observedAt: '2026-10-24T00:00:00.000Z', staleAt: '2026-10-24T01:00:00.000Z', stale: false,
     }
     const stubHealth = (incidents: unknown[]) => {
       const urls: string[] = []
-      globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const runs: unknown[] = []
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         urls.push(String(input))
-        if (String(input).startsWith('/api/plugins/health/doctor')) return new Response(JSON.stringify({ incidents }), { status: 200 })
+        if (String(input) === '/api/plugins/health/doctor/run') { runs.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify({ ok: true }), { status: 200 }) }
+        if (String(input).startsWith('/api/plugins/health/doctor')) return new Response(JSON.stringify({ incidents, observations: [{ id: 'pi.auth:provider-configuration', checkId: 'pi.auth' }] }), { status: 200 })
         return new Response(JSON.stringify({}), { status: 200 })
       }) as unknown as typeof fetch
-      return urls
+      return Object.assign(urls, { runs })
     }
+    const openclawGrant = {
+      ...piSignIn, id: 'openclaw:runtime:override-authorization', declarationId: 'override-authorization', title: 'OpenClaw connection lacks model-override authorization',
+      subject: { kind: 'runtime', id: 'openclaw', label: 'OpenClaw' }, observationIds: ['openclaw.override-authorization:override-authorization'],
+      resolution: { key: 'authorize-overrides', type: 'human', needs: 'credential', label: 'Approve the operator.admin upgrade', href: '/runtime?tab=runtimes', handoff: { command: 'openclaw devices list' } },
+    }
+    const openclawSignIn = {
+      ...piSignIn, id: 'openclaw:runtime:provider-configuration', title: 'OpenClaw has no usable model provider',
+      subject: { kind: 'runtime', id: 'openclaw', label: 'OpenClaw' }, observationIds: ['openclaw.provider-configuration:provider-configuration'],
+      resolution: { key: 'configure-provider', type: 'human', needs: 'credential', label: 'Sign in to a model provider', href: '/runtime?tab=overview&field=credentials', handoff: { command: 'openclaw models auth login' } },
+    }
+
+    it('selects the PROVIDER sign-in by family identity, never the first credential need: with the device-scope grant present in either order, OpenClaw still gets `openclaw models auth login` (R3-4)', () => {
+      const report = (incidents: unknown[]) => ({ incidents, observations: [{ id: 'openclaw.provider-configuration:provider-configuration', checkId: 'openclaw.provider-configuration' }] }) as never
+      for (const incidents of [[openclawGrant, openclawSignIn], [openclawSignIn, openclawGrant]]) {
+        const selected = credentialHandoffFor(report(incidents), 'openclaw')
+        expect(selected?.resolution.handoff.command).toBe('openclaw models auth login')
+        expect(selected?.checkIds).toEqual(['openclaw.provider-configuration'])
+      }
+      // The grant alone is not a provider sign-in: the gap is named, no command is invented.
+      expect(credentialHandoffFor(report([openclawGrant]), 'openclaw')).toBeNull()
+      // Without the report's observations the check id is still derived from the observation id prefix.
+      expect(credentialHandoffFor({ incidents: [piSignIn] } as never, 'pi')?.checkIds).toEqual(['pi.auth'])
+    })
 
     it('renders the runtime\'s own sign-in handoff from the Health report (Pi: `pi` + /login, copy-only, with its home)', async () => {
       stubHealth([piSignIn])
@@ -170,7 +197,7 @@ describe('OverviewTab', () => {
       expect(screen.queryByRole('region', { name: 'Sign in to a model provider' })).toBeNull()
     })
 
-    it('return verification: a copied command arms ONE re-read of the Health and runtime reports on the next focus/visibility; an unarmed focus re-reads nothing', async () => {
+    it('return verification: a copied command arms ONE targeted rerun of the ORIGINATING check on the next focus/visibility (POST doctor/run, then both reports re-read); an unarmed focus does nothing (R3-5)', async () => {
       const urls = stubHealth([piSignIn])
       const onRefreshReport = mock()
       const clipboardBefore = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
@@ -180,7 +207,7 @@ describe('OverviewTab', () => {
           render(<OverviewTab report={noProviders} onRefreshOnboarding={() => {}} onRefreshReport={onRefreshReport} onboarding={[]} highlightField="credentials" />)
         })
         const card = await screen.findByRole('region', { name: 'Sign in to a model provider' })
-        const reads = () => urls.filter((url) => url.startsWith('/api/plugins/health/doctor')).length
+        const reads = () => urls.filter((url) => url.startsWith('/api/plugins/health/doctor') && url !== '/api/plugins/health/doctor/run').length
         expect(reads()).toBe(1)
         await act(async () => { window.dispatchEvent(new Event('focus')) })
         expect(reads()).toBe(1) // nothing taken yet
@@ -188,11 +215,13 @@ describe('OverviewTab', () => {
         await act(async () => { fireEvent.click(within(card).getByRole('button', { name: 'Copy Command' })) })
         await waitFor(() => expect(within(card).getByRole('button', { name: 'Copy Command complete' })).toBeTruthy())
         await act(async () => { window.dispatchEvent(new Event('focus')) })
-        await waitFor(() => expect(reads()).toBe(2))
+        await waitFor(() => expect(urls.runs).toEqual([{ checkIds: ['pi.auth'] }]))
+        await waitFor(() => expect(reads()).toBe(2)) // the re-read follows the targeted run, never replaces it
         expect(onRefreshReport).toHaveBeenCalledTimes(1)
         await act(async () => { window.dispatchEvent(new Event('focus')) })
         await settleReact()
-        expect(reads()).toBe(2) // one-shot per copy
+        expect(urls.runs).toHaveLength(1) // one-shot per copy
+        expect(reads()).toBe(2)
         expect(onRefreshReport).toHaveBeenCalledTimes(1)
       } finally {
         if (clipboardBefore) Object.defineProperty(navigator, 'clipboard', clipboardBefore)

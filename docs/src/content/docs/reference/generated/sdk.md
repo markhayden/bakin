@@ -771,6 +771,7 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `useQueryState` | URL-backed string state with clean defaults and same-tick batching. |
 | `useHistoryBack` | History-aware back navigation with a cold-deep-link fallback. |
 | `useUnsavedChangesGuard` | Complete browser-unload, in-app route, anchor, and explicit-exit protection. |
+| `UnsavedChangesGuardLocation` | Inputs and result contract for complete unsaved-change protection. |
 | `UnsavedChangesGuardOptions` | Inputs and result contract for complete unsaved-change protection. |
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 

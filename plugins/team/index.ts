@@ -740,6 +740,8 @@ const teamPlugin: BakinPlugin = definePlugin({
         const member = ctx.runtime.agents.registryLocation
         return member ? member.call(ctx.runtime.agents) : null
       },
+      // Row 107: the team routes refuse to remove the main agent — its duplicate gets the registry edit instead.
+      mainAgentId: () => getRuntimeMainAgentId(ctx.runtime),
     }
 
     ctx.registerHealthRepairAction(personaRepair(getContentDir(), runtimeAgentReader))

@@ -129,26 +129,47 @@ describe('delivery.discord doctor check (readiness projection)', () => {
       resolution: { type: 'human', needs: 'decision', field: 'channels-field-guilds', href: '/settings?tab=channels&field=integrations.discord.guildIds', label: 'Invite the bot or remove the server' },
     })
     expect(result.observations?.[0]?.summary).toContain('g1')
-    expect((result.observations?.[0] as { evidence?: Record<string, unknown> }).evidence).toMatchObject({ usageKnown: true, configuredTargets: [], unplacedTargets: [] })
+    expect((result.observations?.[0] as { evidence?: Record<string, unknown> }).evidence).toMatchObject({ usageKnown: true, configuredTargets: [], placedTargets: [], unresolvedTargets: [] })
   })
 
-  it('degraded with a configured channel no reachable server holds → required and action_required, naming the setting (row 26 usage fact)', async () => {
+  it('degraded with a configured target no reachable server holds → usage UNKNOWN, advisory — a channel ref carries no guild and the bot cannot read an unjoined server (R3-3)', async () => {
     current = snapshot('degraded', {
-      channels: { items: [{ id: 'discord:ch-1', platform: 'discord', label: '#alerts', capabilities: ['message'] }], source: 'bridge', collectedAt: 'x' },
+      channels: { items: [{ id: 'discord:channel:ch-1', platform: 'discord', label: '#alerts', capabilities: ['message'] }], source: 'bridge', collectedAt: 'x' },
       routing: {
-        alertChannel: { setting: 'notifications.channel', value: 'alerts', resolved: 'ok', channelId: 'discord:ch-1' },
-        approvalsChannel: { setting: 'approvals.channel', value: 'discord:ch-9', resolved: 'unknown_channel', channelId: 'discord:ch-9' },
+        alertChannel: { setting: 'notifications.channel', value: 'alerts', resolved: 'ok', channelId: 'discord:channel:ch-1' },
+        approvalsChannel: { setting: 'approvals.channel', value: 'discord:channel:ch-9', resolved: 'unknown_channel', channelId: 'discord:channel:ch-9' },
         approvalsEnabled: true,
-        aliases: [{ setting: 'notifications.channelAliases.ops', value: 'ops', resolved: 'unknown_channel', channelId: 'discord:ch-7' }],
+        aliases: [{ setting: 'notifications.channelAliases.ops', value: 'ops', resolved: 'unknown_channel', channelId: 'discord:channel:ch-7' }],
       },
     })
     const result = await checkDeliveryDiscord() as ObservedLike
-    expect(result.observations?.[0]?.incident).toMatchObject({ key: 'guild-unjoined', disposition: 'action_required', required: true })
-    expect((result.observations?.[0] as { evidence?: Record<string, unknown> }).evidence).toMatchObject({ usageKnown: true, unplacedTargets: ['approvals.channel', 'notifications.channelAliases.ops'] })
+    expect(result.observations?.[0]?.incident).toMatchObject({ key: 'guild-unjoined', disposition: 'advisory', required: false })
+    expect((result.observations?.[0] as { evidence?: Record<string, unknown> }).evidence).toMatchObject({ usageKnown: false, placedTargets: ['notifications.channel'], unresolvedTargets: ['approvals.channel', 'notifications.channelAliases.ops'] })
     expect(result.observations?.[0]?.incident?.impact).toContain('approvals.channel')
-    // Approvals disabled: that target no longer counts.
+    expect(result.observations?.[0]?.incident?.impact).toContain('unknown')
+    // Approvals disabled and no aliases: every remaining target is placed → usage known, nothing blocked.
     current = snapshot('degraded', { routing: { ...current.routing, approvalsEnabled: false, aliases: [] } })
-    expect(((await checkDeliveryDiscord()) as ObservedLike).observations?.[0]?.incident).toMatchObject({ disposition: 'advisory', required: false })
+    const placed = await checkDeliveryDiscord() as ObservedLike
+    expect(placed.observations?.[0]?.incident).toMatchObject({ disposition: 'advisory', required: false })
+    expect((placed.observations?.[0] as { evidence?: Record<string, unknown> }).evidence).toMatchObject({ usageKnown: true, unresolvedTargets: [] })
+  })
+
+  it('a typo target beside an unrelated unreachable server is never presumed to live there: advisory, usage unknown, the routing check keeps the control (R3-3)', async () => {
+    current = snapshot('degraded', {
+      guilds: [{ id: 'g1', joined: true, channelCount: 1 }, { id: 'g-unjoined', joined: false, channelCount: null }],
+      channels: { items: [{ id: 'discord:channel:ch-1', platform: 'discord', label: '#alerts', capabilities: ['message'] }], source: 'bridge', collectedAt: 'x' },
+      routing: {
+        alertChannel: { setting: 'notifications.channel', value: 'discord:channel:typo', resolved: 'unknown_channel', channelId: 'discord:channel:typo' },
+        approvalsChannel: { setting: 'approvals.channel', value: null, resolved: 'unset' },
+        approvalsEnabled: false,
+        aliases: [],
+      },
+    })
+    const result = await checkDeliveryDiscord() as ObservedLike
+    expect(result.observations?.[0]?.incident).toMatchObject({ key: 'guild-unjoined', disposition: 'advisory', required: false })
+    expect((result.observations?.[0] as { evidence?: Record<string, unknown> }).evidence).toMatchObject({ usageKnown: false, unresolvedTargets: ['notifications.channel'] })
+    // The invalid target itself is the Channels tab's routing probe finding (`routing:notifications.channel` fails there), never this card's claim.
+    expect(result.observations?.[0]?.incident?.impact).toContain('notifications.channel')
   })
 
   it('degraded with an UNVERIFIABLE routing target (no channel list) is advisory with usageKnown:false — never presumed', async () => {

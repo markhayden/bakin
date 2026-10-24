@@ -89,7 +89,7 @@ const ROWS: Row[] = [
   { row: 24, catalog: DELIVERY_DISCORD_INCIDENTS, id: 'bridge-failed', subjectKind: 'channel', resolution: { type: 'repair', actionId: 'discord-bridge-reconnect' }, required: 'always' },
   { row: 24, catalog: DELIVERY_DISCORD_INCIDENTS, id: 'bridge-failed-credential', subjectKind: 'channel', resolution: { type: 'human', needs: 'credential' }, required: 'always' },
   { row: 25, catalog: DELIVERY_DISCORD_INCIDENTS, id: 'bridge-disconnected', subjectKind: 'channel', resolution: { type: 'repair', actionId: 'discord-bridge-reconnect' }, required: 'always' },
-  { row: 26, catalog: DELIVERY_DISCORD_INCIDENTS, id: 'guild-unjoined', subjectKind: 'channel', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+  { row: 26, catalog: DELIVERY_DISCORD_INCIDENTS, id: 'guild-unjoined', subjectKind: 'channel', resolution: { type: 'human', needs: 'decision' }, required: 'never' },
   { row: 29, catalog: RESTART_RECOVERY_INCIDENTS, id: 'stale-tasks', subjectKind: 'system', resolution: { type: 'repair', actionId: 'requeue-stranded-tasks' }, required: 'always' },
   { row: 31, catalog: EXECUTION_SAFETY_INCIDENTS, id: 'ledger-unavailable', subjectKind: 'system', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
   { row: 34, catalog: RUN_DIRS_INCIDENTS, id: 'no-sweep-yet', subjectKind: 'system', resolution: { type: 'repair', actionId: 'sweep-run-dirs' }, required: 'never' },

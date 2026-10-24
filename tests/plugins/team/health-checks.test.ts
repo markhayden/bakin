@@ -281,7 +281,7 @@ describe('checkAgentRoster', () => {
     const duplicates = results.filter(r => r.status === 'warning' && r.key.startsWith('duplicate-'))
     expect(duplicates).toHaveLength(1)
     expect(duplicates[0]!.summary).toBe('Runtime agent id main appears 3 times (roster positions 1, 2, 3).')
-    expect(duplicates[0]!.evidence).toEqual({ kind: 'duplicate', agentId: 'main', positions: [0, 1, 2], names: ['main', 'Main (old)'] })
+    expect(duplicates[0]!.evidence).toEqual({ kind: 'duplicate', agentId: 'main', positions: [0, 1, 2], names: ['main', 'Main (old)'], removable: true })
     expect(duplicates[0]!.incident).toMatchObject({
       resources: [{ kind: 'agent', id: 'main' }, { kind: 'runtime', id: 'roster-entry-0' }, { kind: 'runtime', id: 'roster-entry-1' }, { kind: 'runtime', id: 'roster-entry-2' }],
       resolution: { href: '/team?recover=1&agent=main' },
@@ -312,6 +312,29 @@ describe('checkAgentRoster', () => {
     const fallback = observations(await checkAgentRoster(throwing)).find(r => r.key === 'missing-id-1')!
     expect(fallback.evidence).toEqual({ kind: 'missing-id', rosterIndex: 1, name: 'Broken' })
     expect(fallback.incident?.resolution).not.toHaveProperty('handoff')
+  })
+
+  it('a duplicate gets the registry edit handoff too, naming EVERY entry key; the main agent is never removable (row 107, Codex r3 #6)', async () => {
+    runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('main'), makeRuntimeAgent('relay'), makeRuntimeAgent('relay')]
+    const located = {
+      ...runtimeAgentReader,
+      registryLocation: async () => ({ path: '/Users/me/.pi/agent/bakin-agents.json', entryKey: (index: number) => `agents[${index}]` }),
+      mainAgentId: async () => 'main',
+    }
+    const results = observations(await checkAgentRoster(located))
+    const main = results.find(r => r.key === 'duplicate-main')!
+    expect(main.evidence).toEqual({ kind: 'duplicate', agentId: 'main', positions: [0, 1], names: ['main'], removable: false, registry: { path: '/Users/me/.pi/agent/bakin-agents.json', entryKeys: ['agents[0]', 'agents[1]'] } })
+    expect(main.incident).toMatchObject({
+      impact: expect.stringContaining('main is the main agent and cannot be removed. Edit agents[0] and agents[1] in /Users/me/.pi/agent/bakin-agents.json'),
+      resolution: { href: '/team?recover=1&agent=main', handoff: { command: '"${EDITOR:-nano}" "/Users/me/.pi/agent/bakin-agents.json"' } },
+    })
+    const relay = results.find(r => r.key === 'duplicate-relay')!
+    expect(relay.evidence).toMatchObject({ removable: true, registry: { entryKeys: ['agents[2]', 'agents[3]'] } })
+    expect(relay.incident?.resolution).toHaveProperty('handoff')
+    // No registry location and no main fact: removable, no command to invent.
+    const bare = observations(await checkAgentRoster(runtimeAgentReader)).find(r => r.key === 'duplicate-main')!
+    expect(bare.evidence).toEqual({ kind: 'duplicate', agentId: 'main', positions: [0, 1], names: ['main'], removable: true })
+    expect(bare.incident?.resolution).not.toHaveProperty('handoff')
   })
 })
 

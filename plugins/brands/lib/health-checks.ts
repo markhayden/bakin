@@ -63,6 +63,8 @@ export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCh
   // unreadable; done/archived history never counts.
   const usage = await collectBrandUsage(ctx)
   const tasksKnown = usage.known
+  // Codex r3 #8: an incomplete enumeration establishes neither absence nor impact — the copy says so, `required` stays false.
+  const usageGap = tasksKnown ? '' : (usage.error ?? 'the task board or the projects hook could not be read')
   const usedBy = (brandId: string): string[] => (usage.byBrand.get(brandId) ?? []).map((entry) => entry.taskId)
   const ghostsByBrand = new Map<string, string[]>()
   for (const [brandId, uses] of usage.byBrand) {
@@ -90,7 +92,9 @@ export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCh
       summary: `Brand ${finding.brandId}: ${finding.dangling.length} dangling asset ref(s) (${finding.dangling.map((ref) => ref.where).join(', ')}).`,
       impact: tasks.length > 0
         ? `${tasks.length} open task(s) carry this brand; their dispatch cards will name assets that do not exist.`
-        : 'No open task uses this brand right now; branded work would render with missing brand assets.',
+        : tasksKnown
+          ? 'No open task uses this brand right now; branded work would render with missing brand assets.'
+          : `Whether an open task uses this brand could not be determined (${usageGap}); branded work would render with missing brand assets.`,
       required: tasks.length > 0,
       href: `/brands/${encodeURIComponent(finding.brandId)}?recover=1`,
       tasks,
@@ -109,7 +113,9 @@ export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCh
       summary: `Brand ${entry.id}: brand.json is unreadable (${entry.error.slice(0, 200)}).`,
       impact: tasks.length > 0
         ? `${tasks.length} open task(s) use this brand and wait at the brand gate until it reads again.`
-        : 'No open task uses this brand right now; it cannot be edited or injected until the manifest reads again.',
+        : tasksKnown
+          ? 'No open task uses this brand right now; it cannot be edited or injected until the manifest reads again.'
+          : `Whether an open task uses this brand could not be determined (${usageGap}); it cannot be edited or injected until the manifest reads again.`,
       required: tasks.length > 0,
       href: `/brands/${encodeURIComponent(entry.id)}?recover=1`,
       tasks,

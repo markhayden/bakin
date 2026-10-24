@@ -25,7 +25,8 @@ export const DELIVERY_DISCORD_INCIDENTS: HealthIncidentDeclaration[] = [
   { id: 'bridge-failed-credential', subjectKind: 'channel', resolution: { type: 'human', needs: 'credential' }, required: 'always' },
   { id: 'bridge-failed', subjectKind: 'channel', resolution: { type: 'repair', actionId: DISCORD_BRIDGE_RECONNECT_ACTION }, required: 'always' },
   { id: 'bridge-disconnected', subjectKind: 'channel', resolution: { type: 'repair', actionId: DISCORD_BRIDGE_RECONNECT_ACTION }, required: 'always' },
-  { id: 'guild-unjoined', subjectKind: 'channel', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+  // Row 26: membership in a server the bot has not joined is never provable (a channel ref carries no guild id), so the family never reads required.
+  { id: 'guild-unjoined', subjectKind: 'channel', resolution: { type: 'human', needs: 'decision' }, required: 'never' },
 ]
 const tokenCredential: HealthResolution = { key: 'open-channels', type: 'human', needs: 'credential', label: 'Set the bot token in Settings → Channels', href: `${CHANNELS_SETTINGS_HREF}&field=integrations.discord.botToken`, field: 'secret-slot-discord-botToken' }
 const guildsDecision = (label: string): HealthResolution => ({ key: 'open-channels', type: 'human', needs: 'decision', label, href: `${CHANNELS_SETTINGS_HREF}&field=integrations.discord.guildIds`, field: 'channels-field-guilds' })
@@ -39,23 +40,29 @@ function credentialFailure(readiness: ChannelReadiness): boolean {
 }
 
 /**
- * Row 26's usage fact: does a CONFIGURED channel (alert channel, approvals
- * channel while enabled, an alias) live in a server the bridge cannot
- * reach? The snapshot lists every channel of every REACHABLE server, so a
- * configured target that resolves to no known channel is one the
- * unreachable server(s) must hold → required. Every target placed in a
- * reachable server (or none configured) → nothing blocked → advisory.
- * `unverifiable` (no channel list at all) is unknown — never presumed.
+ * Row 26's usage fact, from EVIDENCE only (Codex r3 R3-3): is a CONFIGURED
+ * channel (alert channel, approvals channel while enabled, an alias) known
+ * to live in a server the bridge cannot reach? The snapshot can prove only
+ * one thing — a target that resolves `ok` is placed in a REACHABLE server.
+ * A target that resolves to no known channel (`unknown_channel`) proves
+ * nothing: a Discord channel ref carries no guild id and the bot cannot
+ * enumerate a server it has not joined, so the target may live there OR
+ * be a deleted channel / a typo (`readiness.ts` yields the same verdict for
+ * all three). That target keeps its OWN control (the routing checks name
+ * it); for this incident the usage is UNKNOWN — advisory, never red on a
+ * guess. `required` is therefore never true: with every target placed (or
+ * none configured) nothing is blocked; otherwise the fact is missing.
  */
-export function guildUsage(readiness: ChannelReadiness): { required: boolean; usageKnown: boolean; configured: string[]; unplaced: string[] } {
+export function guildUsage(readiness: ChannelReadiness): { required: false; usageKnown: boolean; configured: string[]; placed: string[]; unresolved: string[] } {
   const targets = [
     readiness.routing.alertChannel,
     ...(readiness.routing.approvalsEnabled ? [readiness.routing.approvalsChannel] : []),
     ...readiness.routing.aliases,
   ].filter((target) => target.resolved !== 'unset')
   const unverifiable = targets.some((target) => target.resolved === 'unverifiable')
-  const unplaced = targets.filter((target) => target.resolved === 'unknown_channel').map((target) => target.setting)
-  return { required: unplaced.length > 0, usageKnown: !unverifiable, configured: targets.map((target) => target.setting), unplaced }
+  const placed = targets.filter((target) => target.resolved === 'ok').map((target) => target.setting)
+  const unresolved = targets.filter((target) => target.resolved === 'unknown_channel').map((target) => target.setting)
+  return { required: false, usageKnown: !unverifiable && unresolved.length === 0, configured: targets.map((target) => target.setting), placed, unresolved }
 }
 
 function incident(
@@ -146,20 +153,21 @@ export async function checkDeliveryDiscord(): Promise<HealthCheckRunInput> {
         'Discord bridge lost its gateway connection.', reconnect)])
     case 'degraded': {
       const missing = readiness.guilds.filter((guild) => guild.joined !== true || guild.channelCount === null || guild.error)
-      // Row 26: required while a configured channel lives in that server — a
-      // FACT from the routing targets (a target no reachable server holds),
-      // never a presumption about configured servers (Codex r2 r1 #11).
+      // Row 26: whether a configured channel lives in that server is read
+      // from evidence only — placed targets prove nothing is blocked; an
+      // unresolved target is UNKNOWN (it keeps its own routing control) and
+      // never makes this card red (Codex r3 R3-3).
       const usage = guildUsage(readiness)
       return healthObserved([incident(readiness, 'guild-unjoined', 'Discord bridge cannot reach every configured server',
-        usage.required
-          ? `Configured channel${usage.unplaced.length === 1 ? '' : 's'} (${usage.unplaced.join(', ')}) resolve to no reachable server, so those posts fail; the other servers still deliver.`
-          : usage.usageKnown
-            ? 'No configured channel lives in the unreachable server, so nothing is blocked; invite the bot or remove the server when convenient.'
+        usage.usageKnown
+          ? 'No configured channel lives in the unreachable server (every routing target is placed in a reachable one), so nothing is blocked; invite the bot or remove the server when convenient.'
+          : usage.unresolved.length > 0
+            ? `Configured target${usage.unresolved.length === 1 ? '' : 's'} (${usage.unresolved.join(', ')}) resolve to no reachable channel — ${usage.unresolved.length === 1 ? 'it' : 'they'} may live in the unreachable server or be invalid (the routing checks name each one). Whether that server is in use is unknown.`
             : 'Whether a configured channel lives in the unreachable server is unknown (no channel list); posts there would fail.',
         `Discord bridge is connected but ${missing.length} configured server${missing.length === 1 ? ' is' : 's are'} not reachable: ${missing.map((guild) => guild.id).join(', ')}.`,
         // Invite the bot to the server (the Channels tab offers the invite link beside the field) or remove the id (row 26).
         guildsDecision('Invite the bot or remove the server'), 'guild-unjoined', usage.required,
-        { usageKnown: usage.usageKnown, configuredTargets: usage.configured, unplacedTargets: usage.unplaced })])
+        { usageKnown: usage.usageKnown, configuredTargets: usage.configured, placedTargets: usage.placed, unresolvedTargets: usage.unresolved })])
     }
     case 'connected':
       break

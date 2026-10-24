@@ -424,6 +424,11 @@ describe('health run-output validation', () => {
     expect(withChoices([{ key: 'a', kind: 'link', label: 'A', href: 'https://evil.example/x' }]).success).toBe(false)
     expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '//evil.example/x' }]).success).toBe(false)
     expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'GET', url: '/api/x' }]).success).toBe(false)
+    // Canonical paths only (Codex r3 R3-1): traversal or an encoded path byte is refused for hrefs and urls alike.
+    expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '/api/plugins/demo/../spend/x', effects: NONE_FX }]).success).toBe(false)
+    expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '/api/plugins/demo/%2e%2e/x', effects: NONE_FX }]).success).toBe(false)
+    expect(withChoices([{ key: 'a', kind: 'link', label: 'A', href: '/spend/../health' }]).success).toBe(false)
+    expect(withChoices([{ key: 'a', kind: 'link', label: 'A', href: '/tasks?taskId=a%20b' }]).success).toBe(true)
     expect(withChoices([{ key: 'a', kind: 'link', label: 'A', href: '/a' }, { key: 'a', kind: 'link', label: 'B', href: '/b' }]).success).toBe(false)
     expect(withChoices([]).success).toBe(false)
     expect(withChoices(['a', 'b', 'c', 'd', 'e'].map((key) => ({ key, kind: 'link', label: key, href: `/${key}` }))).success).toBe(false)

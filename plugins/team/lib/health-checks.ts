@@ -55,7 +55,10 @@ export const TEAM_AGENT_SYNC_INCIDENTS: HealthIncidentDeclaration[] = [
   { id: 'migration', subjectKind: 'agent', resolution: { type: 'repair', actionId: 'migrate-agent-blocks' }, required: 'always' },
 ]
 
-type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list' | 'registryLocation'>
+type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list' | 'registryLocation'> & {
+  /** The orchestrator's id (the team routes refuse to remove it); absent = unknown = every duplicate is removable. */
+  mainAgentId?: () => Promise<string | null>
+}
 const ACTIVE_COLUMNS = ['backlog', 'todo', 'inProgress', 'review', 'blocked'] as const
 
 function stablePart(value: string): string {
@@ -186,7 +189,15 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
   // honest control is the registry file itself — `agents.registryLocation()`
   // (optional) names the file and the entry key; without it the row names
   // the position and nothing else.
-  const location = agents.some((agent) => !agent.id) ? await registryLocationOf(runtime) : null
+  const idCounts = new Map<string, number>()
+  for (const agent of agents) if (agent.id) idCounts.set(agent.id, (idCounts.get(agent.id) ?? 0) + 1)
+  const hasDuplicates = [...idCounts.values()].some((count) => count > 1)
+  const location = agents.some((agent) => !agent.id) || hasDuplicates ? await registryLocationOf(runtime) : null
+  // Row 107 (Codex r3 #6): the main agent cannot be removed, so its duplicate's only control is the registry edit.
+  let mainAgentId: string | null = null
+  if (hasDuplicates && typeof runtime.mainAgentId === 'function') {
+    try { mainAgentId = await runtime.mainAgentId() } catch { mainAgentId = null }
+  }
   agents.forEach((agent, index) => {
     if (!agent.id) {
       const workspace = workspaceOf(agent)
@@ -225,14 +236,21 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
     if (positions.length < 2) continue
     const names = [...new Set(positions.map((index) => agents[index]!.name || agentId))].map((name) => bounded(name, 120))
     const label = bounded(agents[positions[0]!]!.name || agentId, 120)
+    const removable = mainAgentId === null || agentId !== mainAgentId
+    const registry = location ? { path: location.path, entryKeys: positions.map((index) => location.entryKey(index)) } : null
+    const editHint = registry
+      ? ` Edit ${registry.entryKeys.join(' and ')} in ${registry.path} so one entry keeps the id, save, then recheck.`
+      : ''
     observations.push(healthWarning({
       key: `duplicate-${stablePart(agentId)}`,
       summary: `Runtime agent id ${agentId} appears ${positions.length} times (roster positions ${positions.map((index) => index + 1).join(', ')}).`,
-      evidence: { kind: 'duplicate', agentId: bounded(agentId, 120), positions, names },
+      evidence: { kind: 'duplicate', agentId: bounded(agentId, 120), positions, names, removable, ...(registry ? { registry } : {}) },
       incident: {
         key: `duplicate-${stablePart(agentId)}`,
         title: `Agent id ${agentId} is duplicated`,
-        impact: `Dispatch and activity attribution cannot tell the ${positions.length} roster entries named ${agentId} apart; removing the agent removes every entry with this id.`,
+        impact: removable
+          ? `Dispatch and activity attribution cannot tell the ${positions.length} roster entries named ${agentId} apart; removing the agent removes every entry with this id.${editHint}`
+          : `Dispatch and activity attribution cannot tell the ${positions.length} roster entries named ${agentId} apart. ${agentId} is the main agent and cannot be removed.${editHint || ' The runtime names no registry location, so the entries must be fixed where the runtime keeps its roster.'}`,
         disposition: 'action_required',
         subject: { kind: 'agent', id: stablePart(agentId), label },
         declarationId: 'duplicate',
@@ -240,7 +258,10 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
           { kind: 'agent', id: stablePart(agentId), label },
           ...positions.map((index) => ({ kind: 'runtime' as const, id: `roster-entry-${index}`, label: `Roster entry ${index + 1}` })),
         ],
-        resolution: { key: 'recover-roster', type: 'human', needs: 'decision', label: 'Resolve the duplicate', href: `/team?recover=1&agent=${encodeURIComponent(agentId)}` },
+        resolution: {
+          key: 'recover-roster', type: 'human', needs: 'decision', label: 'Resolve the duplicate', href: `/team?recover=1&agent=${encodeURIComponent(agentId)}`,
+          ...(registry ? { handoff: { command: registryEditCommand(registry.path) } } : {}),
+        },
       },
     }))
   }

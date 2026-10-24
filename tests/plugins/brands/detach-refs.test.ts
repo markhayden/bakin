@@ -64,6 +64,7 @@ describe('brand recover: detach dangling references', () => {
   it('the integrity incident is ONE per affected brand, on its recover page; required only while an open task uses the brand (row 189)', async () => {
     // Unused: advisory, nothing presumed.
     const unused = (await rows()).find((r) => r.key === 'integrity-acme')!
+    expect(unused.incident?.impact).toContain('No open task uses this brand') // known AND empty — the claim is earned
     expect(unused.incident).toMatchObject({ declarationId: 'integrity', required: false, disposition: 'advisory', subject: { kind: 'record', id: 'brands/acme', label: 'acme' }, resolution: { type: 'human', needs: 'decision', href: '/brands/acme?recover=1' } })
     expect(unused.evidence).toMatchObject({ openTasks: [], usageKnown: true })
     // Used by an open task: required. Done history does not count.
@@ -93,6 +94,10 @@ describe('brand recover: detach dangling references', () => {
       const unknown = (await rows()).find((r) => r.key === 'integrity-acme')!
       expect(unknown.incident).toMatchObject({ required: false, disposition: 'advisory' })
       expect(unknown.evidence).toMatchObject({ openTasks: [], usageKnown: false })
+      // Codex r3 #8: an incomplete enumeration is SAID, never turned into "no open task uses this brand".
+      expect(unknown.incident?.impact).toContain('could not be determined')
+      expect(unknown.incident?.impact).toContain('t-proj')
+      expect(unknown.incident?.impact).not.toContain('No open task uses this brand')
       expect((await callRoute(route('GET', '/:brandId/recover'), activated.ctx, { searchParams: { brandId: 'acme' } })).body).toMatchObject({ tasks: [], tasksKnown: false })
     } finally {
       failing()

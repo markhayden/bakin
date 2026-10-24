@@ -17,7 +17,7 @@ import { WorkflowRecoverEditor, type RecoverEditorFocus, type RecoverEditorTarge
 
 interface ReportLike {
   checks?: Array<{ checkId: string; latestExecution?: { outcome?: string } }>
-  observations: Array<{ id: string; summary: string; evidence?: Record<string, unknown> }>
+  observations: Array<{ id: string; checkId?: string; status?: string; snapshot?: string; summary: string; evidence?: Record<string, unknown> }>
   incidents: Array<{ id: string; title: string; impact: string; declarationId?: string; observationIds: string[]; resources: Array<{ kind: string; id: string }> }>
 }
 
@@ -66,9 +66,21 @@ export function recordFindingsFrom(report: ReportLike, resource: { kind: string;
         focus: { path: asString(evidence.path), line: asLine(evidence.line), section: asSection(evidence.section) },
       }
     })
-  const checkId = checkIdForResource(resource.kind)
-  const verified = checkId !== null && (report.checks ?? []).some((check) => check.checkId === checkId && check.latestExecution?.outcome === 'observed')
-  return { findings, verified }
+  return { findings, verified: checkVerified(report, checkIdForResource(resource.kind)) }
+}
+
+/**
+ * Verified = the originating check OBSERVED in this report AND that run
+ * inspected its data: a failed scan is an observed `unknown` row (row 138 —
+ * "could not be inspected"), and a last-known row is stale evidence; neither
+ * makes an empty finding list "resolved" (Codex r3 #2).
+ */
+export function checkVerified(report: ReportLike, checkId: string | null): boolean {
+  if (checkId === null) return false
+  const observed = (report.checks ?? []).some((check) => check.checkId === checkId && check.latestExecution?.outcome === 'observed')
+  if (!observed) return false
+  const rows = report.observations.filter((o) => (o.checkId ?? o.id.split(':')[0]) === checkId)
+  return rows.length > 0 && !rows.some((o) => o.status === 'unknown' || o.snapshot === 'last_known')
 }
 
 /** Health's findings whose resources name this record (kind + stable id), with honest evidence states. */
@@ -131,7 +143,7 @@ export function RecoverFindingsBanner({ findings, evidence, editHref, editLabel,
         <Banner
           tone="attention"
           title="Health has not verified this record yet"
-          description="The check that covers it has not reported in the current Health report, so nothing here is confirmed resolved. Run checks from Health, then come back."
+          description="The check that covers it has not reported in the current Health report, or could not inspect the files on its last run, so nothing here is confirmed resolved. Run checks from Health, then come back."
           action={actions()}
           data-testid="workflow-recover-banner"
           data-evidence="unverified"

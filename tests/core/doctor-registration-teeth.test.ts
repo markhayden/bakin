@@ -260,6 +260,11 @@ describe('instance validation in the runner', () => {
     const [foreign] = await runDetailedPluginHealthChecks()
     expect(foreign.execution).toMatchObject({ outcome: 'invalid', error: { code: 'INVALID_HEALTH_DECLARATION' } })
     expect(foreign.execution.error?.message).toMatch(/choice "foreign" requests \/api\/plugins\/spend\/incidents\/1\/resolve, which plugin test-a does not own/)
+    // A normalized foreign route (`..` walks out of the owner prefix) is refused the same way — by the contract itself.
+    unregisterPluginHealthChecks('test-a')
+    registerWith(human([{ key: 'walk', kind: 'request', label: 'Walk', method: 'POST', url: '/api/plugins/test-a/../spend/incidents/1/resolve', effects: fx }]))
+    const [walked] = await runDetailedPluginHealthChecks()
+    expect(walked.execution.outcome).toBe('invalid')
   })
 
   it('the shared engine action is referenced verbatim by an instance of its family', async () => {

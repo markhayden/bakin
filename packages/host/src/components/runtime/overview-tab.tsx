@@ -13,6 +13,7 @@ import { type HealthIncident, type HealthReport, type OperationStartResponse } f
 import { RuntimeTable } from './runtime-table'
 import { Badge, Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { capabilityRows } from '../../lib/runtime-report'
+import { armCredentialReturn, useCredentialReturn } from './credential-return'
 import { ModeBadge, MODE_LEGEND, CheckStatusBadge, capabilityStateCopy, deliveryReadinessCopy, type CapabilityMode } from './shared'
 import type { CapabilityReport, OnboardingComponentStatus } from './types'
 
@@ -26,58 +27,65 @@ import type { CapabilityReport, OnboardingComponentStatus } from './types'
  * mounts again after the operator comes back.
  */
 const HEALTH_REPORT_FETCH_OPTIONS = { timeoutMs: 10_000 }
+const HEALTH_RUN_URL = '/api/plugins/health/doctor/run'
+/** The ONE family that means "sign in to a model provider" — Pi and OpenClaw both declare it under this id. */
+export const PROVIDER_CREDENTIAL_FAMILY = 'provider-configuration'
 
 type HumanCredentialHandoff = Extract<HealthIncident['resolution'], { type: 'human' }> & { handoff: NonNullable<Extract<HealthIncident['resolution'], { type: 'human' }>['handoff']> }
 
-/** The runtime's credential handoff from the report, if its adapter published one. */
-export function credentialHandoffFor(report: Pick<HealthReport, 'incidents'> | null | undefined, adapter: string): HumanCredentialHandoff | null {
+export interface CredentialHandoffSelection {
+  resolution: HumanCredentialHandoff
+  /** The check(s) that raised the incident — what return verification reruns. */
+  checkIds: string[]
+}
+
+/** `<checkId>:<key>` — a check id never contains a colon, so the first one splits them. */
+function checkIdOfObservation(observationId: string): string {
+  const colon = observationId.indexOf(':')
+  return colon === -1 ? observationId : observationId.slice(0, colon)
+}
+
+/**
+ * The runtime's PROVIDER sign-in handoff from the report (Codex r3 R3-4):
+ * selected by the family's identity, never "the first credential need" —
+ * OpenClaw also raises `override-authorization` (a device-scope grant),
+ * which authenticates no provider. The originating check ids ride along
+ * so return verification reruns exactly those.
+ */
+export function credentialHandoffFor(report: Pick<HealthReport, 'incidents'> & Partial<Pick<HealthReport, 'observations'>> | null | undefined, adapter: string): CredentialHandoffSelection | null {
   for (const incident of report?.incidents ?? []) {
     const { resolution, subject } = incident
     if (subject.kind !== 'runtime' || subject.id !== adapter) continue
+    if (incident.declarationId !== PROVIDER_CREDENTIAL_FAMILY) continue
     if (resolution.type !== 'human' || resolution.needs !== 'credential' || !resolution.handoff) continue
-    return resolution as HumanCredentialHandoff
+    const observations = report?.observations ?? []
+    const checkIds = [...new Set(incident.observationIds.map((id) => observations.find((row) => row.id === id)?.checkId ?? checkIdOfObservation(id)))]
+    return { resolution: resolution as HumanCredentialHandoff, checkIds }
   }
   return null
 }
 
-/**
- * Return verification for the credential handoff (Codex r2, r1 #9): the
- * card ARMS when the command actually reached the clipboard; the next time
- * the window regains focus or the tab becomes visible the runtime report
- * and the Health report are re-read once, so the group reflects the
- * sign-in the operator just did in their own shell. One-shot per copy;
- * nothing re-reads without a handoff having been taken.
- */
-function useHandoffReturn(onReturn: () => void): () => void {
-  const armed = useRef(false)
-  useEffect(() => {
-    const fire = () => {
-      if (!armed.current) return
-      armed.current = false
-      onReturn()
-    }
-    const onVisible = () => { if (document.visibilityState === 'visible') fire() }
-    window.addEventListener('focus', fire)
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.removeEventListener('focus', fire)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [onReturn])
-  return () => { armed.current = true }
-}
-
 function CredentialHandoff({ adapter, onRefreshReport }: { adapter: string; onRefreshReport?: () => void }) {
-  const health = useJsonFetch<Pick<HealthReport, 'incidents'>>('/api/plugins/health/doctor', HEALTH_REPORT_FETCH_OPTIONS)
+  const health = useJsonFetch<Pick<HealthReport, 'incidents' | 'observations'>>('/api/plugins/health/doctor', HEALTH_REPORT_FETCH_OPTIONS)
   const refreshHealth = health.refresh
-  const onReturn = useCallback(() => {
-    void refreshHealth()
-    onRefreshReport?.()
+  // Return verification (Codex r3 R3-5): rerun the ORIGINATING checks (a
+  // cached report read proves nothing), then re-read both reports.
+  const onReturn = useCallback((checkIds: string[]) => {
+    void (async () => {
+      try {
+        await fetch(HEALTH_RUN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ checkIds }) })
+      } catch {
+        // The re-read below still shows the honest last-known state.
+      }
+      void refreshHealth()
+      onRefreshReport?.()
+    })()
   }, [onRefreshReport, refreshHealth])
-  const arm = useHandoffReturn(onReturn)
+  useCredentialReturn(onReturn)
   if (health.loading) return null
-  const handoff = credentialHandoffFor(health.data, adapter)
-  if (!handoff) {
+  const selected = credentialHandoffFor(health.data, adapter)
+  const handoff = selected?.resolution
+  if (!selected || !handoff) {
     return (
       <Text as="p" tone="muted" size="meta" data-testid="runtime-credential-gap">
         No model provider is signed in for {adapter}, and this runtime published no sign-in command. Sign in with the runtime's own tooling, then reload this page.
@@ -90,7 +98,7 @@ function CredentialHandoff({ adapter, onRefreshReport }: { adapter: string; onRe
       description="Bakin cannot sign you in to a provider. Copy the command, run it in your terminal, then come back — this page re-reads credentials when you return."
       command={handoff.handoff.command}
       cwd={handoff.handoff.cwd}
-      onCopied={arm}
+      onCopied={() => armCredentialReturn(selected.checkIds)}
     />
   )
 }

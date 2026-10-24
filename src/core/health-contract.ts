@@ -373,7 +373,11 @@ function isSameOriginApplicationPath(value: string): boolean {
   if (/\p{Cc}/u.test(value)) return false
   try {
     const base = new URL('http://bakin.local')
-    return new URL(value, base).origin === base.origin
+    const parsed = new URL(value, base)
+    // Canonical path only: a `..`/`.` segment or an encoded path byte would make the
+    // requested path differ from the declared one (Codex r3 R3-1).
+    const rawPath = value.split(/[?#]/)[0]!
+    return parsed.origin === base.origin && parsed.pathname === rawPath && !rawPath.includes('%')
   } catch {
     return false
   }

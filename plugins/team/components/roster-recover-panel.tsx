@@ -18,10 +18,16 @@
  *   an id. The honest gap (a registry-location member) is reported, not
  *   papered over with a "fix it in the registry" sentence.
  *
- * Evidence states stay apart (Codex r2 #10): findings; verified-empty (the
- * roster check OBSERVED and found nothing); UNVERIFIED (the check has not
- * reported in the current report); UNAVAILABLE (the report could not be
- * read — the last known rows stay, never "consistent").
+ * Evidence states stay apart (Codex r2 #10 / r3 #2): findings; verified-empty
+ * (the roster check OBSERVED, its inspection SUCCEEDED — no unknown row, no
+ * last-known row — and found nothing); UNVERIFIED (the check has not
+ * reported, or could not inspect the roster); UNAVAILABLE (the report could
+ * not be read — the last known rows stay, never "consistent"); STALE (a later
+ * refresh failed — the last known state is shown as such, even "empty").
+ *
+ * Return verification (Codex r3 #5): a copied registry command ARMS one
+ * targeted rerun of the roster check (`POST /doctor/run`) that fires when
+ * the window regains focus or the tab becomes visible, then re-reads.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PluginLink, useQueryState } from '@makinbakin/sdk/navigation'
@@ -32,16 +38,35 @@ const ROSTER_CHECK_ID = 'team.agent-roster'
 
 interface ReportLike {
   checks?: Array<{ checkId: string; latestExecution?: { outcome?: string } }>
-  observations: Array<{ id: string; checkId?: string; summary: string; evidence?: Record<string, unknown> }>
+  observations: Array<{ id: string; checkId?: string; status?: string; snapshot?: string; summary: string; evidence?: Record<string, unknown> }>
 }
 
-/** The roster check has OBSERVED in this report — only then is an empty finding list "consistent". */
+export type RosterVerification =
+  | { verified: true }
+  | { verified: false; gap: 'not-observed' | 'could-not-inspect' | 'stale' }
+
+/**
+ * Verified = the roster check OBSERVED in this report AND that inspection
+ * succeeded: no `unknown` row (an unreadable roster is an observed unknown
+ * observation, row 105) and no last-known row (stale evidence). Only then is
+ * an empty finding list "consistent".
+ */
+export function rosterVerification(report: ReportLike): RosterVerification {
+  const observed = (report.checks ?? []).some((check) => check.checkId === ROSTER_CHECK_ID && check.latestExecution?.outcome === 'observed')
+  if (!observed) return { verified: false, gap: 'not-observed' }
+  const rows = report.observations.filter((o) => (o.checkId ?? o.id.split(':')[0]) === ROSTER_CHECK_ID)
+  if (rows.some((o) => o.status === 'unknown' || o.status === 'error')) return { verified: false, gap: 'could-not-inspect' }
+  if (rows.length === 0 || rows.some((o) => o.snapshot === 'last_known')) return { verified: false, gap: 'stale' }
+  return { verified: true }
+}
+
+/** Kept for callers that only need the boolean. */
 export function rosterVerified(report: ReportLike): boolean {
-  return (report.checks ?? []).some((check) => check.checkId === ROSTER_CHECK_ID && check.latestExecution?.outcome === 'observed')
+  return rosterVerification(report).verified
 }
 
 export type RosterProblem =
-  | { kind: 'duplicate'; agentId: string; positions: number[]; names: string[]; summary: string }
+  | { kind: 'duplicate'; agentId: string; positions: number[]; names: string[]; removable: boolean; registry?: { path: string; entryKeys: string[] }; summary: string }
   | { kind: 'missing-id'; rosterIndex: number; name?: string; workspace?: string; registry?: { path: string; entryKey: string }; summary: string }
 
 function asNumbers(value: unknown): number[] {
@@ -56,6 +81,13 @@ function registryOf(value: unknown): { path: string; entryKey: string } | null {
   const { path, entryKey } = value as { path?: unknown; entryKey?: unknown }
   return typeof path === 'string' && path !== '' && typeof entryKey === 'string' && entryKey !== '' ? { path, entryKey } : null
 }
+/** The registry location of a duplicate (every entry key). */
+function duplicateRegistryOf(value: unknown): { path: string; entryKeys: string[] } | null {
+  if (!value || typeof value !== 'object') return null
+  const { path, entryKeys } = value as { path?: unknown; entryKeys?: unknown }
+  const keys = asStrings(entryKeys)
+  return typeof path === 'string' && path !== '' && keys.length > 0 ? { path, entryKeys: keys } : null
+}
 /** The handoff command for the registry file — the operator's editor, never a Bakin write (mirrors the check's). */
 function registryEditCommand(path: string): string {
   return `"\${EDITOR:-nano}" ${JSON.stringify(path)}`
@@ -68,7 +100,13 @@ export function rosterProblemsFrom(report: ReportLike): RosterProblem[] {
     if (!observation.id.startsWith(`${ROSTER_CHECK_ID}:`)) continue
     const evidence = observation.evidence ?? {}
     if (evidence.kind === 'duplicate' && typeof evidence.agentId === 'string') {
-      problems.push({ kind: 'duplicate', agentId: evidence.agentId, positions: asNumbers(evidence.positions), names: asStrings(evidence.names), summary: observation.summary })
+      const registry = duplicateRegistryOf(evidence.registry)
+      problems.push({
+        kind: 'duplicate', agentId: evidence.agentId, positions: asNumbers(evidence.positions), names: asStrings(evidence.names),
+        removable: evidence.removable !== false,
+        ...(registry ? { registry } : {}),
+        summary: observation.summary,
+      })
     } else if (evidence.kind === 'missing-id' && typeof evidence.rosterIndex === 'number') {
       problems.push({
         kind: 'missing-id',
@@ -84,14 +122,14 @@ export function rosterProblemsFrom(report: ReportLike): RosterProblem[] {
 }
 
 type ProblemsRead =
-  | { status: 'ok'; problems: RosterProblem[]; verified: boolean }
+  | { status: 'ok'; problems: RosterProblem[]; verification: RosterVerification }
   | { status: 'error'; message: string }
 
 async function readProblems(signal: AbortSignal): Promise<ProblemsRead> {
   const res = await fetch('/api/plugins/health/doctor', { signal })
   if (!res.ok) return { status: 'error', message: `Health could not be read (${res.status}).` }
   const report = await res.json() as ReportLike
-  return { status: 'ok', problems: rosterProblemsFrom(report), verified: rosterVerified(report) }
+  return { status: 'ok', problems: rosterProblemsFrom(report), verification: rosterVerification(report) }
 }
 
 /** Targeted rerun of the roster check — the return verification for every control on this panel. False = Health could not be asked. */
@@ -111,15 +149,15 @@ async function recheckRoster(): Promise<boolean> {
 export interface RosterProblemsState {
   /** Null until the first successful read; a failed refresh keeps the last known rows. */
   problems: RosterProblem[] | null
-  /** The roster check has observed in the current report. */
-  verified: boolean
+  /** Whether the roster check inspected the roster successfully in the current report (and why not). */
+  verification: RosterVerification
   /** The latest read failed (the rows, if any, are the last known ones). */
   error: string | null
   refresh: () => Promise<void>
 }
 
 export function useRosterProblems(): RosterProblemsState {
-  const [state, setState] = useState<{ problems: RosterProblem[] | null; verified: boolean; error: string | null }>({ problems: null, verified: false, error: null })
+  const [state, setState] = useState<{ problems: RosterProblem[] | null; verification: RosterVerification; error: string | null }>({ problems: null, verification: { verified: false, gap: 'not-observed' }, error: null })
   const generation = useRef(0)
   const refresh = useCallback(async () => {
     const mine = ++generation.current
@@ -127,7 +165,7 @@ export function useRosterProblems(): RosterProblemsState {
     try {
       const next = await readProblems(controller.signal)
       if (mine !== generation.current) return
-      if (next.status === 'ok') setState({ problems: next.problems, verified: next.verified, error: null })
+      if (next.status === 'ok') setState({ problems: next.problems, verification: next.verification, error: null })
       else setState((previous) => ({ ...previous, error: next.message }))
     } catch (err) {
       if (mine === generation.current) setState((previous) => ({ ...previous, error: `Health could not be read: ${err instanceof Error ? err.message : String(err)}` }))
@@ -139,8 +177,14 @@ export function useRosterProblems(): RosterProblemsState {
 
 const positionList = (positions: number[]) => positions.map((index) => index + 1).join(', ')
 
+const GAP_COPY: Record<Exclude<RosterVerification, { verified: true }>['gap'], { title: string; description: string }> = {
+  'not-observed': { title: 'Health has not verified the roster yet', description: 'The roster check has not reported in the current Health report, so nothing here is confirmed. Recheck the roster to find out.' },
+  'could-not-inspect': { title: 'Health could not inspect the roster', description: 'The roster check ran but could not read the runtime roster, so nothing here is confirmed consistent. Recheck once the runtime answers.' },
+  'stale': { title: 'Health has only stale roster evidence', description: 'The roster check\'s latest rows are last-known, not current, so nothing here is confirmed. Recheck the roster to find out.' },
+}
+
 export function RosterRecoverPanel({ onDismiss, onChanged }: { onDismiss: () => void; onChanged?: () => void }) {
-  const { problems, verified, error: readError, refresh } = useRosterProblems()
+  const { problems, verification, error: readError, refresh } = useRosterProblems()
   const [agentParam] = useQueryState('agent', '')
   const [entryParam] = useQueryState('entry', '')
   const [pending, setPending] = useState<Extract<RosterProblem, { kind: 'duplicate' }> | null>(null)
@@ -162,6 +206,25 @@ export function RosterRecoverPanel({ onDismiss, onChanged }: { onDismiss: () => 
       setBusy(null)
     }
   }, [refresh])
+
+  // Return verification (Codex r3 #5): a copied registry command arms ONE
+  // targeted recheck that fires when the operator comes back to this window.
+  const handoffArmed = useRef(false)
+  const armHandoffReturn = useCallback(() => { handoffArmed.current = true }, [])
+  useEffect(() => {
+    const fire = () => {
+      if (!handoffArmed.current) return
+      handoffArmed.current = false
+      void recheck()
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') fire() }
+    window.addEventListener('focus', fire)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', fire)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [recheck])
 
   const removeAgent = useCallback(async (problem: Extract<RosterProblem, { kind: 'duplicate' }>) => {
     setBusy(`remove:${problem.agentId}`)
@@ -194,19 +257,43 @@ export function RosterRecoverPanel({ onDismiss, onChanged }: { onDismiss: () => 
     return null
   }
   if (problems.length === 0) {
-    if (!verified) {
+    if (readError) {
+      // A later refresh failed: the last known state was "nothing found" — shown as last known, never as verified now.
       return (
         <Banner
-          tone="attention"
-          title="Health has not verified the roster yet"
-          description="The roster check has not reported in the current Health report, so nothing here is confirmed. Recheck the roster to find out."
-          action={<span className="flex gap-bakin-2"><Button variant="outline" size="sm" busy={busy === 'recheck'} disabled={busy !== null} onClick={() => { void recheck() }}>Recheck roster</Button>{dismiss}</span>}
+          tone="danger"
+          title="The latest refresh failed"
+          description={`${readError} The last roster findings Health reported were none${verification.verified ? '' : ' (unverified)'}; nothing is confirmed until it reads again.`}
+          action={<span className="flex gap-bakin-2">{retry}{dismiss}</span>}
           data-testid="roster-recover-panel"
-          data-evidence="unverified"
+          data-evidence="stale"
         />
       )
     }
-    return <Banner tone="success" title="The roster is consistent" description="Every runtime agent has one stable id." action={dismiss} data-testid="roster-recover-panel" data-evidence="verified-empty" />
+    if (!verification.verified) {
+      const copy = GAP_COPY[verification.gap]
+      return (
+        <Banner
+          tone="attention"
+          title={copy.title}
+          description={copy.description}
+          action={<span className="flex gap-bakin-2"><Button variant="outline" size="sm" busy={busy === 'recheck'} disabled={busy !== null} onClick={() => { void recheck() }}>Recheck roster</Button>{dismiss}</span>}
+          data-testid="roster-recover-panel"
+          data-evidence="unverified"
+          data-gap={verification.gap}
+        />
+      )
+    }
+    return (
+      <Banner
+        tone="success"
+        title="The roster is consistent"
+        description="Every runtime agent has one stable id."
+        action={<span className="flex gap-bakin-2"><Button variant="ghost" size="sm" busy={busy === 'recheck'} disabled={busy !== null} onClick={() => { void recheck() }}>Recheck roster</Button>{dismiss}</span>}
+        data-testid="roster-recover-panel"
+        data-evidence="verified-empty"
+      />
+    )
   }
 
   const isHighlighted = (problem: RosterProblem) => problem.kind === 'duplicate'
@@ -237,8 +324,20 @@ export function RosterRecoverPanel({ onDismiss, onChanged }: { onDismiss: () => 
                       <Text as="span" weight="medium">Agent id {problem.agentId} at roster positions {positionList(problem.positions)}</Text>
                       <Text as="span" tone="muted" className="block">
                         {problem.names.length > 1 ? `Named ${problem.names.join(' / ')}. ` : ''}
-                        The runtime addresses agents by id, so Bakin cannot remove ONE of these entries: removing the agent removes every entry named {problem.agentId} and moves its workspace to the trash.
+                        {problem.removable
+                          ? <>The runtime addresses agents by id, so Bakin cannot remove ONE of these entries: removing the agent removes every entry named {problem.agentId} and moves its workspace to the trash.</>
+                          : <>{problem.agentId} is the main agent, so it cannot be removed. {problem.registry ? <>Edit the entries <code className="font-bakin-typography-family-mono">{problem.registry.entryKeys.join(' / ')}</code> so one keeps the id, save, then recheck.</> : <>The runtime names no registry location, so the entries must be fixed where the runtime keeps its roster, then rechecked.</>}</>}
                       </Text>
+                      {problem.registry ? (
+                        <HandoffCard
+                          className="mt-bakin-2"
+                          headingLevel={4}
+                          title={`Edit the roster entries for ${problem.agentId}`}
+                          description={<>Opens the runtime's registry in your editor; the entries are <code className="font-bakin-typography-family-mono">{problem.registry.entryKeys.join(' / ')}</code>. Copy the command and come back — the roster check reruns when this window regains focus.</>}
+                          command={registryEditCommand(problem.registry.path)}
+                          onCopied={armHandoffReturn}
+                        />
+                      ) : null}
                     </>
                   ) : (
                     <>
@@ -254,8 +353,9 @@ export function RosterRecoverPanel({ onDismiss, onChanged }: { onDismiss: () => 
                           className="mt-bakin-2"
                           headingLevel={4}
                           title={`Give roster entry ${problem.rosterIndex + 1} an id`}
-                          description={<>Opens the runtime's registry in your editor; the entry is <code className="font-bakin-typography-family-mono">{problem.registry.entryKey}</code>. Recheck when you have saved.</>}
+                          description={<>Opens the runtime's registry in your editor; the entry is <code className="font-bakin-typography-family-mono">{problem.registry.entryKey}</code>. Copy the command and come back — the roster check reruns when this window regains focus.</>}
                           command={registryEditCommand(problem.registry.path)}
+                          onCopied={armHandoffReturn}
                         />
                       ) : null}
                     </>
@@ -265,9 +365,13 @@ export function RosterRecoverPanel({ onDismiss, onChanged }: { onDismiss: () => 
                   {problem.kind === 'duplicate' ? (
                     <>
                       <PluginLink to={`/team/${encodeURIComponent(problem.agentId)}`} className={buttonVariants({ size: 'sm', variant: 'outline' })}>Open {problem.agentId}</PluginLink>
-                      <Button size="sm" variant="destructive" disabled={busy !== null} onClick={() => { setError(null); setPending(problem) }}>
-                        Remove {problem.agentId} entirely
-                      </Button>
+                      {problem.removable ? (
+                        <Button size="sm" variant="destructive" disabled={busy !== null} onClick={() => { setError(null); setPending(problem) }}>
+                          Remove {problem.agentId} entirely
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="outline" busy={busy === 'recheck'} disabled={busy !== null} onClick={() => { void recheck() }}>Recheck roster</Button>
+                      )}
                     </>
                   ) : (
                     <Button size="sm" variant="outline" busy={busy === 'recheck'} disabled={busy !== null} onClick={() => { void recheck() }}>Recheck roster</Button>

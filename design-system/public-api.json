@@ -11,7 +11,7 @@
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
     "valueExports": 319,
-    "typeExports": 430
+    "typeExports": 431
   },
   "entrypoints": [
     {
@@ -843,6 +843,7 @@
         "Router",
         "RouterNavigationOptions",
         "StringNavigationOptions",
+        "UnsavedChangesGuardLocation",
         "UnsavedChangesGuardOptions",
         "UnsavedChangesGuardResult"
       ]

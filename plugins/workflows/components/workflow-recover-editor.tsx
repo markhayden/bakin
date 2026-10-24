@@ -62,6 +62,14 @@ const rawUrl = (target: RecoverEditorTarget): string => target.kind === 'definit
 
 const checkIdFor = (target: RecoverEditorTarget): string => target.kind === 'definition' ? 'workflows.definitions' : 'workflows.skills'
 
+/** The query keys that identify a recover editor: a change to any of them unmounts the draft. */
+const RECOVER_QUERY_KEYS = ['recover', 'skill', 'step'] as const
+const recoverIdentity = (search: Record<string, unknown>): string => RECOVER_QUERY_KEYS.map((key) => `${key}=${String(search[key] ?? '')}`).join('&')
+/** Exported for the guard test: same page AND same recover target = staying. */
+export function sameRecoverLocation(current: { pathname: string; search: Record<string, unknown> }, next: { pathname: string; search: Record<string, unknown> }): boolean {
+  return current.pathname === next.pathname && recoverIdentity(current.search) === recoverIdentity(next.search)
+}
+
 async function readError(res: Response, fallback: string): Promise<string> {
   const body = await res.json().catch(() => null) as { error?: unknown } | null
   return typeof body?.error === 'string' ? body.error : fallback
@@ -177,12 +185,15 @@ export function WorkflowRecoverEditor({ target, focus, onSaved, onExit, ref }: W
     }
   }, [draft, onSaved, target, targetKey])
 
-  // Dirty-exit protection (Codex r2 #12): the same guard every SaveBar editor
-  // uses. A query-only change (the recover view's Dismiss) is not a route
-  // change, so the view asks through `requestExit` instead.
+  // Dirty-exit protection (Codex r2 #12 / r3 #7): the same guard every
+  // SaveBar editor uses. This editor's identity lives in the QUERY
+  // (`?recover=1&skill=…`), so a history move that changes the recover
+  // target — Back to `/workflows` included — is a departure and asks first;
+  // the view's own Dismiss asks through `requestExit`.
   const dirty = loaded !== null && draft !== loaded
   const guard = useUnsavedChangesGuard({
     hasUnsavedChanges: dirty,
+    isSameLocation: sameRecoverLocation,
     saving,
     title: 'Unsaved repair',
     description: `${target.kind === 'definition' ? `${target.id}.yaml` : target.file} has unsaved edits. Save and recheck before leaving, discard them, or stay here.`,

@@ -62,7 +62,7 @@ let rawSkill: Record<string, unknown>
 let putStatus: number
 let putBody: Record<string, unknown>
 /** What the doctor read answers: the fixture report, an HTTP failure, a rejection, or a report with no checks observed. */
-let doctorMode: 'ok' | 'http-error' | 'reject' | 'unverified'
+let doctorMode: 'ok' | 'http-error' | 'reject' | 'unverified' | 'scan-failed' | 'stale'
 /** A PUT that never settles (a save in flight). */
 let putHangs: boolean
 const realFetch = globalThis.fetch
@@ -84,6 +84,8 @@ beforeEach(() => {
       if (doctorMode === 'http-error') return Response.json({ error: 'doctor unavailable' }, { status: 503 })
       if (doctorMode === 'reject') throw new TypeError('Failed to fetch')
       if (doctorMode === 'unverified') return Response.json({ checks: [], observations: [], incidents: [] })
+      if (doctorMode === 'scan-failed') return Response.json({ checks: observedChecks, observations: [{ id: 'workflows.definitions:definitions-scan', status: 'unknown', summary: 'Workflow definitions could not be inspected.' }], incidents: [] })
+      if (doctorMode === 'stale') return Response.json({ checks: observedChecks, observations: [{ id: 'workflows.definitions:definitions', status: 'healthy', snapshot: 'last_known', summary: 'All workflow references and schemas resolve.' }], incidents: [] })
       return Response.json(report)
     }
     if (url === '/api/plugins/health/doctor/run') return Response.json({ id: 'r2' })
@@ -122,6 +124,18 @@ describe('WorkflowRecoverBanner', () => {
     await act(async () => { render(<WorkflowRecoverBanner resource={{ kind: 'workflow', id: 'other' }} onDismiss={() => {}} />) })
     await waitFor(() => expect(screen.getByText('Health has not verified this record yet')).toBeTruthy())
     expect(screen.getByTestId('workflow-recover-banner').getAttribute('data-evidence')).toBe('unverified')
+    expect(screen.queryByText('Health has nothing open on this record')).toBeNull()
+  })
+  it('an observed check whose scan FAILED (an unknown "could not be inspected" row) or whose rows are last-known is UNVERIFIED, never "nothing open" (Codex r3 #2)', async () => {
+    doctorMode = 'scan-failed'
+    await act(async () => { render(<WorkflowRecoverBanner resource={{ kind: 'workflow', id: 'other' }} onDismiss={() => {}} />) })
+    await waitFor(() => expect(screen.getByText('Health has not verified this record yet')).toBeTruthy())
+    expect(screen.getByTestId('workflow-recover-banner').getAttribute('data-evidence')).toBe('unverified')
+    expect(screen.queryByText('Health has nothing open on this record')).toBeNull()
+    cleanup()
+    doctorMode = 'stale'
+    await act(async () => { render(<WorkflowRecoverBanner resource={{ kind: 'workflow', id: 'other' }} onDismiss={() => {}} />) })
+    await waitFor(() => expect(screen.getByText('Health has not verified this record yet')).toBeTruthy())
     expect(screen.queryByText('Health has nothing open on this record')).toBeNull()
   })
   it('a failed report read (HTTP error or rejection) is an honest unavailable state with Try again — never success (Codex r2 #10)', async () => {

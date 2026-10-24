@@ -9,6 +9,7 @@ import {
   authorizeMutation,
   SHARED_ENGINE_ACTIONS,
   type MutationAuthorizationInput,
+  canonicalDecisionPath,
   decisionControlOwnedBy,
   SHARED_DECISION_CONTROLS,
 } from '../../../packages/core/src/health/authorize-mutation'
@@ -58,6 +59,17 @@ describe('authorizeMutation — the item and `none` rules (Codex r1 #4 / r2)', (
     expect(decisionControlOwnedBy('/api/runtime/switch', { kind: 'adapter', id: 'openclaw' })).toBe(true)
     expect(decisionControlOwnedBy('/runtime', { kind: 'adapter', id: 'openclaw' })).toBe(false)
     expect(SHARED_DECISION_CONTROLS).toEqual(['/api/plugins/disable', '/api/plugins/enable'])
+  })
+  it('ownership is judged on the canonical pathname: traversal, encoded bytes and scheme tricks never walk out of the owner prefix (Codex r3 R3-1)', () => {
+    const demo = { kind: 'plugin' as const, id: 'demo' }
+    expect(decisionControlOwnedBy('/api/plugins/demo/../spend/incidents/1/resolve', demo)).toBe(false)
+    expect(decisionControlOwnedBy('/api/plugins/demo/./x', demo)).toBe(false)
+    expect(decisionControlOwnedBy('/api/plugins/demo/%2e%2e/spend/x', demo)).toBe(false)
+    expect(decisionControlOwnedBy('/api/plugins/demo%2f../spend/x', demo)).toBe(false)
+    expect(decisionControlOwnedBy('//evil.example/api/plugins/demo/x', demo)).toBe(false)
+    expect(decisionControlOwnedBy('/api/plugins/demo/x?next=/api/plugins/spend', demo)).toBe(true)
+    expect(canonicalDecisionPath('/api/plugins/demo/../spend/x')).toBeNull()
+    expect(canonicalDecisionPath('/api/plugins/demo/keys/accept?x=%20')).toBe('/api/plugins/demo/keys/accept')
   })
 })
 

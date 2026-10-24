@@ -25,6 +25,8 @@ export interface BrandTaskUse {
 export interface BrandUsage {
   /** False when the task store or a resolution failed — the maps are then partial or empty and prove nothing. */
   known: boolean
+  /** Why the fact is unknown (the first failure), for the copy that must not claim "unused". */
+  error?: string
   /** Open tasks per effective brand id. */
   byBrand: Map<string, BrandTaskUse[]>
   /** Open tasks whose project brand could not be resolved (the hook errored — `known` is false then), per project id. */
@@ -45,12 +47,13 @@ export async function collectBrandUsage(ctx: Pick<PluginContext, 'tasks'>): Prom
   let tasks: PluginTask[]
   try {
     tasks = (await ctx.tasks.list()).filter((task) => OPEN_TASK_COLUMNS.has(task.column))
-  } catch {
-    return { known: false, byBrand, unresolvedByProject }
+  } catch (err) {
+    return { known: false, error: `the task board could not be read: ${err instanceof Error ? err.message : String(err)}`, byBrand, unresolvedByProject }
   }
   // Dynamic import keeps this module's load graph free of the task store (the core resolver does the same).
   const { resolveEffectiveBrand } = await import('../../../src/core/dispatch-context-blocks')
   let known = true
+  let error: string | undefined
   for (const task of tasks) {
     try {
       const effective = await resolveEffectiveBrand(task)
@@ -58,13 +61,15 @@ export async function collectBrandUsage(ctx: Pick<PluginContext, 'tasks'>): Prom
       if ('unresolved' in effective) {
         // The project hook errored: the task may well use a brand we cannot name — the fact is unknown.
         known = false
+        error ??= `the project brand of task ${task.id} could not be resolved`
         push(unresolvedByProject, effective.projectId, taskUse(task, 'project'))
       } else {
         push(byBrand, effective.brandId, taskUse(task, effective.source))
       }
-    } catch {
+    } catch (err) {
       known = false
+      error ??= `the brand of task ${task.id} could not be resolved: ${err instanceof Error ? err.message : String(err)}`
     }
   }
-  return { known, byBrand, unresolvedByProject }
+  return { known, ...(error ? { error } : {}), byBrand, unresolvedByProject }
 }

@@ -42,9 +42,31 @@ export const SHARED_DECISION_CONTROLS: readonly string[] = Object.freeze(['/api/
  * `/api/plugins/<id>/…`; core and adapters are the host and own `/api/…`.
  */
 export function decisionControlOwnedBy(url: string, owner: { kind: 'plugin' | 'adapter' | 'core'; id: string }): boolean {
-  if (SHARED_DECISION_CONTROLS.includes(url.split('?')[0]!)) return true
-  if (owner.kind === 'plugin') return url.startsWith(`/api/plugins/${owner.id}/`)
-  return url.startsWith('/api/')
+  const path = canonicalDecisionPath(url)
+  if (path === null) return false
+  if (SHARED_DECISION_CONTROLS.includes(path)) return true
+  if (owner.kind === 'plugin') return path.startsWith(`/api/plugins/${owner.id}/`)
+  return path.startsWith('/api/')
+}
+
+/**
+ * The pathname the browser would actually request, or null when the url is
+ * not a canonical application path: `..`/`.` segments are resolved by the
+ * URL parser (so a prefix check on the RAW string could be walked out of —
+ * Codex r3 R3-1), and any percent-encoding in the path is refused outright
+ * (routes are plain; ids travel in the body or the query).
+ */
+export function canonicalDecisionPath(url: string): string | null {
+  if (!url.startsWith('/') || url.startsWith('//') || url.includes('\\')) return null
+  const rawPath = url.split(/[?#]/)[0]!
+  if (rawPath.includes('%')) return null
+  try {
+    const parsed = new URL(url, 'http://bakin.local')
+    if (parsed.origin !== 'http://bakin.local' || parsed.pathname !== rawPath) return null
+    return parsed.pathname
+  } catch {
+    return null
+  }
 }
 
 /** Kinds whose identities are pinned in the binary and verified by checksum — trusted without a consent record (spec §3.6). */
