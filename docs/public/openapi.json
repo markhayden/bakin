@@ -10077,9 +10077,7 @@
                               "observedAt",
                               "staleAt",
                               "snapshot",
-                              "status",
-                              "incidentId",
-                              "incident"
+                              "status"
                             ],
                             "additionalProperties": false
                           },
@@ -11208,9 +11206,7 @@
                               "observedAt",
                               "staleAt",
                               "snapshot",
-                              "status",
-                              "incidentId",
-                              "incident"
+                              "status"
                             ],
                             "additionalProperties": false
                           }
@@ -14491,9 +14487,7 @@
                                         "observedAt",
                                         "staleAt",
                                         "snapshot",
-                                        "status",
-                                        "incidentId",
-                                        "incident"
+                                        "status"
                                       ],
                                       "additionalProperties": false
                                     },
@@ -15622,9 +15616,7 @@
                                         "observedAt",
                                         "staleAt",
                                         "snapshot",
-                                        "status",
-                                        "incidentId",
-                                        "incident"
+                                        "status"
                                       ],
                                       "additionalProperties": false
                                     }
@@ -16779,9 +16771,7 @@
                               "observedAt",
                               "staleAt",
                               "snapshot",
-                              "status",
-                              "incidentId",
-                              "incident"
+                              "status"
                             ],
                             "additionalProperties": false
                           },
@@ -17910,9 +17900,7 @@
                               "observedAt",
                               "staleAt",
                               "snapshot",
-                              "status",
-                              "incidentId",
-                              "incident"
+                              "status"
                             ],
                             "additionalProperties": false
                           }
@@ -19922,9 +19910,7 @@
                                         "observedAt",
                                         "staleAt",
                                         "snapshot",
-                                        "status",
-                                        "incidentId",
-                                        "incident"
+                                        "status"
                                       ],
                                       "additionalProperties": false
                                     },
@@ -21053,9 +21039,7 @@
                                         "observedAt",
                                         "staleAt",
                                         "snapshot",
-                                        "status",
-                                        "incidentId",
-                                        "incident"
+                                        "status"
                                       ],
                                       "additionalProperties": false
                                     }
@@ -22210,9 +22194,7 @@
                               "observedAt",
                               "staleAt",
                               "snapshot",
-                              "status",
-                              "incidentId",
-                              "incident"
+                              "status"
                             ],
                             "additionalProperties": false
                           },
@@ -23341,9 +23323,7 @@
                               "observedAt",
                               "staleAt",
                               "snapshot",
-                              "status",
-                              "incidentId",
-                              "incident"
+                              "status"
                             ],
                             "additionalProperties": false
                           }
