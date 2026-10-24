@@ -103,6 +103,10 @@ export interface SyncOptions {
    * sync, migration, repairs) report items themselves and pass no op.
    */
   op?: OperationContext
+  /** Fetch exactly this commit (see `UpdateOptions.expected`). */
+  expected?: { sha: string }
+  /** Re-stage from upstream even at the same commit (see `UpdateOptions.reinstall`). */
+  reinstall?: boolean
 }
 
 // ─── Internals ───────────────────────────────────────────────────────────────
@@ -348,7 +352,7 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
       }
     } else {
       if (fetch) {
-        const update = await updatePackageById({ packageId: owner.id, op })
+        const update = await updatePackageById({ packageId: owner.id, op, ...(opts.expected ? { expected: opts.expected } : {}), ...(opts.reinstall ? { reinstall: true } : {}) })
         versionAfter = update.toVersion
         commitAfter = update.toCommitSha
         changed = update.changed
@@ -605,7 +609,7 @@ export async function checkPack(packageId: string, opts: { op?: OperationContext
 
 export async function syncPack(
   packageId: string,
-  opts: { check?: boolean; op?: OperationContext } = {},
+  opts: { check?: boolean; op?: OperationContext; expected?: { sha: string }; reinstall?: boolean } = {},
 ): Promise<PackSyncReceipt> {
   const entry = requirePackEntry(packageId)
   const op = opts.op
@@ -631,7 +635,7 @@ export async function syncPack(
   }
 
   assertResourceHeld('install-state', 'syncPack')
-  const update = await updatePackageById({ packageId, op })
+  const update = await updatePackageById({ packageId, op, ...(opts.expected ? { expected: opts.expected } : {}), ...(opts.reinstall ? { reinstall: true } : {}) })
   if (!update.changed) {
     op?.throwIfCancelled()
     op?.stage(SYNC_STAGES.install)

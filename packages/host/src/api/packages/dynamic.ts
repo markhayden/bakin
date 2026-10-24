@@ -19,6 +19,8 @@ import {
   OperationRejectedError,
   operationOriginFromRequest,
   responseOutcome,
+  type OperationOrigin,
+  type StartOperationInput,
 } from '@bakin/core/operations'
 import { readLockfile } from '@bakin/core/agent-packages/lockfile'
 import { PackageNotInstalledError, PackageStillRequiredError } from '@/core/agent-packages/errors'
@@ -43,12 +45,58 @@ const RemoveBodySchema = z
   .optional()
   .default({})
 
+const ShaSchema = z.string().regex(/^[0-9a-f]{40}$/i)
 const SyncBodySchema = z
   .object({
     check: z.boolean().optional(),
+    /** Fetch exactly this commit (self-healing 1.2; the updates apply lane binds the reviewed identity). */
+    expected: z.object({ sha: ShaSchema }).optional(),
+    /** Re-stage from upstream even at the same commit (the repair for an unreadable installed manifest). */
+    reinstall: z.boolean().optional(),
   })
   .optional()
   .default({})
+
+export interface PackageSyncOptions {
+  check?: boolean
+  expected?: { sha: string }
+  reinstall?: boolean
+}
+
+/**
+ * The pack sync as an operation — the SAME input the route starts, exported
+ * for the updates apply service and the Health repair actions (plan 1.2;
+ * model: `pluginUpgradeOperation`). A pinned or reinstalling sync is its own
+ * identity: it never attaches to an ordinary sync already running.
+ */
+export function packageSyncOperation(packageId: string, options: PackageSyncOptions, origin: OperationOrigin): StartOperationInput<RouteBody> {
+  const check = options.check === true
+  const pin = options.expected?.sha ?? ''
+  return {
+    kind: 'sync',
+    owner: 'core',
+    origin,
+    title: `${check ? 'Check' : options.reinstall ? 'Reinstall' : 'Sync'} ${packageId}`,
+    href: '/explore',
+    fingerprint: `packages:sync:${packageId}|${check ? 'check' : ''}|${pin}|${options.reinstall ? 'reinstall' : ''}`,
+    // A check is read-only: it holds nothing and never waits on an install.
+    resources: check ? [] : ['install-state'],
+    plan: check ? PACKAGE_SYNC_CHECK_PLAN : PACKAGE_SYNC_PLAN,
+    validate: () => requireInstalled(packageId),
+    run: async (op) => {
+      try {
+        const receipt = await syncPack(packageId, { check, op, ...(options.expected ? { expected: options.expected } : {}), ...(options.reinstall ? { reinstall: true } : {}) })
+        if (!check && receipt.changed) await reloadAgentPackageRegistries({ kind: 'synced' })
+        return responseOutcome(200, { ok: true, receipt })
+      } catch (err) {
+        if (err instanceof OperationCancelledError) throw err
+        log.error('packages/sync failed', err as Error, { packageId })
+        const status = err instanceof PackageNotInstalledError ? 404 : 500
+        return responseOutcome(status, { ok: false, error: err instanceof Error ? err.message : String(err) })
+      }
+    },
+  }
+}
 
 export async function handler(req: Request, url: URL): Promise<Response> {
   const segments = url.pathname.split('/').filter(Boolean)
@@ -119,30 +167,5 @@ async function handleSync(req: Request, packageId: string): Promise<Response> {
   const raw = await parseJsonBodyWeb(req) ?? {}
   const parsed = SyncBodySchema.safeParse(raw)
   if (!parsed.success) return invalid(parsed.error.issues)
-  const check = parsed.data?.check === true
-
-  return startOperationResponse<RouteBody>({
-    kind: 'sync',
-    owner: 'core',
-    origin: operationOriginFromRequest(req),
-    title: `${check ? 'Check' : 'Sync'} ${packageId}`,
-    href: '/explore',
-    fingerprint: `packages:sync:${packageId}|${check ? 'check' : ''}`,
-    // A check is read-only: it holds nothing and never waits on an install.
-    resources: check ? [] : ['install-state'],
-    plan: check ? PACKAGE_SYNC_CHECK_PLAN : PACKAGE_SYNC_PLAN,
-    validate: () => requireInstalled(packageId),
-    run: async (op) => {
-      try {
-        const receipt = await syncPack(packageId, { check, op })
-        if (!check && receipt.changed) await reloadAgentPackageRegistries({ kind: 'synced' })
-        return responseOutcome(200, { ok: true, receipt })
-      } catch (err) {
-        if (err instanceof OperationCancelledError) throw err
-        log.error('packages/sync failed', err as Error, { packageId })
-        const status = err instanceof PackageNotInstalledError ? 404 : 500
-        return responseOutcome(status, { ok: false, error: err instanceof Error ? err.message : String(err) })
-      }
-    },
-  })
+  return startOperationResponse<RouteBody>(packageSyncOperation(packageId, parsed.data ?? {}, operationOriginFromRequest(req)))
 }

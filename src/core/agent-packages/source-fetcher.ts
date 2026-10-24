@@ -164,6 +164,22 @@ export function parseGithubSpec(source: string): ParsedGithubSpec {
   }
 }
 
+/**
+ * The same source pinned to ONE immutable commit — the `@ref` the source may
+ * already carry is replaced, not kept (a branch name must never win over the
+ * commit a repair or rollback was asked for). Non-GitHub sources are returned
+ * unchanged; the caller compares the fetched sha and refuses a mismatch.
+ */
+export function sourceSpecPinnedTo(source: string, sha: string): string {
+  if (!isGithubSource(source)) return source
+  const hashIndex = source.indexOf('#')
+  const sourceHead = hashIndex === -1 ? source : source.slice(0, hashIndex)
+  const sourceTail = hashIndex === -1 ? '' : source.slice(hashIndex)
+  const atIndex = sourceHead.indexOf('@')
+  const bare = atIndex === -1 ? sourceHead : sourceHead.slice(0, atIndex)
+  return `${bare}@${sha}${sourceTail}`
+}
+
 export function sourceSpecWithRef(source: string, ref: string | null | undefined): string {
   if (!isGithubSource(source) || !ref) return source
 
