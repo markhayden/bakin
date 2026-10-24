@@ -1353,12 +1353,16 @@ describe('plugin registration', () => {
       'skill', 'plugin-assets', 'plugin-artifacts', 'plugin-registry',
     ]))
     expect(actionIds.sort()).toEqual([
+      'discord-bridge-reconnect',
+      'health-acks-prune',
+      'health-acks-reset',
       'install-plugin-assets',
       'media-install-store',
       'package-reinstall',
       'package-sync',
       'plugin-reinstall',
       'plugin-upgrade',
+      'runtime-restart',
       'search-canary-restart',
       'search-consistency-rebuild',
       'search-consistency-restart',
@@ -1371,6 +1375,8 @@ describe('plugin registration', () => {
       'search-outbox-revive',
       'search-scar-rebuild',
       'search-spin-rebuild',
+      'service-setup',
+      'session-store-prune',
       'sweep-run-dirs',
       'sync-skill',
     ])

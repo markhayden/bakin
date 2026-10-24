@@ -20,6 +20,7 @@ import {
   remediationForState,
   summarizeDeliveryError,
   DeliveryError,
+  type ChannelBridge,
   type ChannelReadiness,
   type ChannelReadinessState,
   type DeliveryErrorSummary,
@@ -277,6 +278,29 @@ export function refreshChannelReadiness(reason: string): Promise<ChannelReadines
     refreshInFlight = run
   }
   return run
+}
+
+export type ReconnectOutcome =
+  | { outcome: 'owner_is_runtime'; readiness: ChannelReadiness }
+  | { outcome: 'settled' | 'timeout'; readiness: ChannelReadiness }
+
+/**
+ * The ONE operator reconnect (`POST /api/channels/reconnect`, Health's
+ * `discord-bridge-reconnect`): bump the bridge to the latest config and wait
+ * up to `waitMs` for it to settle, then hand back the refreshed snapshot. A
+ * native runtime owns delivery — the bridge is idle by design and is never
+ * bumped.
+ */
+export async function reconnectDeliveryBridge(opts: { waitMs: number; bridge?: Pick<ChannelBridge, 'reconcile'> }): Promise<ReconnectOutcome> {
+  const current = getChannelReadiness()
+  if (current.owner === 'runtime') return { outcome: 'owner_is_runtime', readiness: current }
+  const settled = (opts.bridge ?? getDeliveryBridge()).reconcile('operator')
+  settled.catch((err) => { log.warn('Operator reconcile failed', err) })
+  const outcome = await Promise.race([
+    settled.then(() => 'settled' as const, () => 'settled' as const),
+    new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), opts.waitMs)),
+  ])
+  return { outcome, readiness: await refreshChannelReadiness('reconnect') }
 }
 
 export function subscribeChannelReadiness(listener: Listener): () => void {

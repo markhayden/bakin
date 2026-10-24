@@ -6,14 +6,26 @@
  * key and a navigate resolution into Settings → Channels; the Channels tab
  * and this check can never disagree because they read the same snapshot.
  */
-import { CHANNELS_SETTINGS_HREF, type ChannelReadiness } from '@bakin/core/delivery'
+import { CHANNELS_SETTINGS_HREF, DELIVERABLE_STATES, type ChannelReadiness } from '@bakin/core/delivery'
 import { healthHealthy, healthNotApplicable, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthRepairActionDefinition, HealthResolution } from '@makinbakin/sdk'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { readDiscordConfig } from '../../../../src/core/delivery/config'
-import { getChannelReadiness } from '../../../../src/core/delivery/readiness'
+import { CHANNEL_HEALTH_CHECK_IDS, getChannelReadiness, reconnectDeliveryBridge } from '../../../../src/core/delivery/readiness'
 
-const openChannels = { key: 'open-channels', type: 'navigate' as const, label: 'Open Settings → Channels', href: CHANNELS_SETTINGS_HREF }
+export const DISCORD_BRIDGE_RECONNECT_ACTION = 'discord-bridge-reconnect'
+/** How long the repair waits for the bridge to settle before judging (the route's long-poll uses the same figure). */
+export const RECONNECT_WAIT_MS = 45_000
+
+const openChannels: HealthResolution = { key: 'open-channels', type: 'navigate', label: 'Open Settings → Channels', href: CHANNELS_SETTINGS_HREF }
+const reconnect: HealthResolution = { key: DISCORD_BRIDGE_RECONNECT_ACTION, type: 'repair', label: 'Reconnect the Discord bridge', actionId: DISCORD_BRIDGE_RECONNECT_ACTION }
 const discordSetting = [{ kind: 'setting' as const, id: 'integrations.discord', label: 'Discord integration' }]
+
+/** A rejected token or refused intents need the operator; anything else is the bridge's own reconnect (rows 24–25). */
+function credentialFailure(readiness: ChannelReadiness): boolean {
+  const kind = readiness.connection.lastError?.kind
+  return kind === 'auth_failed' || kind === 'intents'
+}
 
 function incident(
   readiness: ChannelReadiness,
@@ -21,6 +33,7 @@ function incident(
   title: string,
   impact: string,
   summary: string,
+  resolution: HealthResolution = openChannels,
 ) {
   const remediation = readiness.remediation
   return healthWarning({
@@ -41,7 +54,7 @@ function incident(
       impact,
       disposition: 'action_required',
       resources: discordSetting,
-      resolution: openChannels,
+      resolution,
     },
   })
 }
@@ -94,11 +107,12 @@ export async function checkDeliveryDiscord(): Promise<HealthCheckRunInput> {
     case 'failed':
       return healthObserved([incident(readiness, 'bridge-failed', 'Discord delivery bridge failed to connect',
         'Channel alerts, gate approval cards, and inbound Discord chat are not being delivered.',
-        `Discord bridge failed to connect${readiness.connection.lastError ? ` (${readiness.connection.lastError.kind}: ${readiness.connection.lastError.message})` : ''}.`)])
+        `Discord bridge failed to connect${readiness.connection.lastError ? ` (${readiness.connection.lastError.kind}: ${readiness.connection.lastError.message})` : ''}.`,
+        credentialFailure(readiness) ? openChannels : reconnect)])
     case 'disconnected':
       return healthObserved([incident(readiness, 'bridge-disconnected', 'Discord delivery bridge is disconnected',
         'Channel alerts, gate approval cards, and inbound Discord chat are not being delivered until the gateway resumes.',
-        'Discord bridge lost its gateway connection.')])
+        'Discord bridge lost its gateway connection.', reconnect)])
     case 'degraded': {
       const missing = readiness.guilds.filter((guild) => guild.joined !== true || guild.channelCount === null || guild.error)
       return healthObserved([incident(readiness, 'guild-unjoined', 'Discord bridge cannot reach every configured server',
@@ -155,4 +169,46 @@ export async function checkDeliveryDiscord(): Promise<HealthCheckRunInput> {
       since: readiness.connection.since,
     },
   })])
+}
+
+/**
+ * `discord-bridge-reconnect` (self-healing PR1 slice 1.3c): the bridge's own
+ * operator reconcile as a repair — the same helper `POST /api/channels/reconnect`
+ * runs — judged by the refreshed readiness snapshot.
+ */
+export function discordBridgeReconnectRepair(): HealthRepairActionDefinition {
+  return {
+    id: DISCORD_BRIDGE_RECONNECT_ACTION,
+    name: 'Reconnect the Discord bridge',
+    operationPlan: () => ({
+      stages: [
+        { id: 'reconnect', kind: 'installing', label: 'Reconnect the bridge' },
+        { id: 'verify', kind: 'verifying', label: 'Wait for the gateway' },
+      ],
+      pointOfNoReturn: 'reconnect',
+    }),
+    async plan(target) {
+      return [{
+        id: DISCORD_BRIDGE_RECONNECT_ACTION,
+        actionId: DISCORD_BRIDGE_RECONNECT_ACTION,
+        title: 'Reconnect the Discord bridge',
+        reason: 'The bridge lost its gateway connection or failed to connect for a reason that is not a credential.',
+        safety: 'safe',
+        ...repairTargetSelection(target),
+        changes: [{ kind: 'service', target: 'discord bridge', action: 'update', description: 'Reconcile the bridge to the current configuration (a fresh gateway connection) and wait for READY. No message is sent.' }],
+      }]
+    },
+    async apply(items, op) {
+      if (items.length === 0) return []
+      const result = (status: 'applied' | 'failed' | 'skipped', message: string) => items.map((item) => ({ itemId: item.id, actionId: item.actionId, status, message, affectedCheckIds: [...CHANNEL_HEALTH_CHECK_IDS], changes: item.changes }))
+      op.stage('reconnect')
+      const outcome = await reconnectDeliveryBridge({ waitMs: RECONNECT_WAIT_MS })
+      if (outcome.outcome === 'owner_is_runtime') return result('skipped', 'The active runtime delivers natively; the Bakin bridge is idle by design and was not touched.')
+      op.stage('verify')
+      const { connection } = outcome.readiness
+      if (DELIVERABLE_STATES.includes(connection.state)) return result('applied', `The Discord bridge is ${connection.state} again.`)
+      const why = connection.lastError ? ` (${connection.lastError.kind}: ${connection.lastError.message})` : ''
+      return result('failed', `The Discord bridge is still ${connection.state} after ${Math.round(RECONNECT_WAIT_MS / 1000)}s${why}.`)
+    },
+  }
 }

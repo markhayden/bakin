@@ -5,7 +5,7 @@
  * setup. Relocated verbatim from cli/bakin.ts (B5.3 command-module split);
  * the src/core/cli dependency stays a dynamic import (mutual-lazy contract).
  */
-import { liveServerBaseUrl } from '../../core/server-lock'
+import { resolveServerLaunchSpec } from '../../core/service-setup'
 import { jsonObject } from '../http'
 import {
   printCommandFailureTui,
@@ -14,162 +14,6 @@ import {
   exitUnknownSubcommand,
 } from '../help'
 import { printRuntimeActionTui } from './runtime'
-
-const SERVICE_LABEL = 'com.makinbakin.bakin'
-const LEGACY_SERVICE_LABELS = ['com.bakin.mc']
-
-function xmlEscape(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;')
-}
-
-function systemdEscape(value: string): string {
-  return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
-}
-
-interface ServerLaunchSpec {
-  programArgs: string[]
-  workingDir: string
-}
-
-function isBunVirtualPath(value: string | undefined): boolean {
-  return typeof value === 'string' && value.startsWith('/$bunfs/')
-}
-
-function currentExecutable(): string {
-  for (const candidate of [process.execPath, process.argv[0]]) {
-    if (candidate && !isBunVirtualPath(candidate)) return candidate
-  }
-  return 'bakin'
-}
-
-async function resolveServerLaunchSpec(): Promise<ServerLaunchSpec> {
-  const { existsSync } = await import('fs')
-  const { join, resolve, dirname } = await import('path')
-  const argvScript = process.argv[1]
-  if (argvScript && !isBunVirtualPath(argvScript) && /\.(ts|js|mjs|cjs)$/.test(argvScript)) {
-    // This file lives at src/cli/commands/; the project root is three levels up
-    // (cli/bakin.ts, where this logic originated, needed only one).
-    const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..', '..', '..')
-    const serverPath = join(projectDir, 'server.ts')
-    if (existsSync(serverPath)) {
-      return { programArgs: [currentExecutable(), serverPath, 'serve'], workingDir: projectDir }
-    }
-    return { programArgs: [currentExecutable(), argvScript, 'serve'], workingDir: projectDir }
-  }
-  const { getBakinPaths } = await import('../../../packages/core/src/content-dir')
-  return { programArgs: [currentExecutable(), 'serve'], workingDir: getBakinPaths().home }
-}
-
-/**
- * The environment a service (or a restart's replacement) runs with. It
- * ALWAYS names this home as an absolute, canonical `BAKIN_HOME` — the
- * default home too — so the service's next launch is unambiguously this
- * home's and a relative path can never be resolved against another cwd
- * (#898 K).
- */
-async function serviceEnvironment(): Promise<Record<string, string>> {
-  const { canonicalHome } = await import('../lifecycle-io')
-  const env: Record<string, string> = {
-    PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
-    BAKIN_HOME: canonicalHome(),
-  }
-  if (process.env.PORT) env.PORT = process.env.PORT
-  return env
-}
-
-async function waitForServerVersion(timeoutSeconds = 15): Promise<{ ok: true; version: string } | { ok: false }> {
-  for (let i = 0; i < timeoutSeconds; i++) {
-    await new Promise(r => setTimeout(r, 1000))
-    // Re-resolve each poll from THIS home's live lock only (the server just
-    // started writes its own): never a guessed default port another home may
-    // own, and never BAKIN_URL — a remote target can't verify a local start.
-    const baseUrl = liveServerBaseUrl({})
-    if (!baseUrl) continue
-    try {
-      const res = await fetch(`${baseUrl}/api/version`, { signal: AbortSignal.timeout(2000) })
-      if (res.ok) {
-        const data = await res.json() as { version?: unknown }
-        return { ok: true, version: typeof data.version === 'string' ? data.version : 'unknown' }
-      }
-    } catch { /* not ready yet */ }
-  }
-  return { ok: false }
-}
-
-function generateLaunchAgentPlist(opts: {
-  programArgs: string[]
-  environment: Record<string, string>
-  workingDir: string
-  stdoutPath: string
-  stderrPath: string
-}): string {
-  const args = opts.programArgs.map(arg => `    <string>${xmlEscape(arg)}</string>`).join('\n')
-  const env = Object.entries(opts.environment)
-    .map(([key, value]) => `    <key>${xmlEscape(key)}</key>\n    <string>${xmlEscape(value)}</string>`)
-    .join('\n')
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${SERVICE_LABEL}</string>
-  <key>ProgramArguments</key>
-  <array>
-${args}
-  </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-${env}
-  </dict>
-  <key>WorkingDirectory</key>
-  <string>${xmlEscape(opts.workingDir)}</string>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>${xmlEscape(opts.stdoutPath)}</string>
-  <key>StandardErrorPath</key>
-  <string>${xmlEscape(opts.stderrPath)}</string>
-</dict>
-</plist>
-`
-}
-
-function generateSystemdUnit(opts: {
-  programArgs: string[]
-  environment: Record<string, string>
-  workingDir: string
-  stdoutPath: string
-  stderrPath: string
-}): string {
-  const env = Object.entries(opts.environment)
-    .map(([key, value]) => `Environment=${systemdEscape(`${key}=${value}`)}`)
-    .join('\n')
-  return `[Unit]
-Description=Bakin server
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=${systemdEscape(opts.workingDir)}
-ExecStart=${opts.programArgs.map(systemdEscape).join(' ')}
-Restart=on-failure
-RestartSec=3
-${env}
-StandardOutput=append:${opts.stdoutPath}
-StandardError=append:${opts.stderrPath}
-
-[Install]
-WantedBy=default.target
-`
-}
 
 async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): Promise<void> {
   if (command === 'start') {
@@ -209,171 +53,49 @@ async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): 
 }
 
 async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<void> {
-  const { execFileSync } = await import('child_process')
-  const { existsSync, mkdirSync, unlinkSync, writeFileSync } = await import('fs')
-  const { join } = await import('path')
-  const { homedir } = await import('os')
-  const { getBakinPaths } = await import('../../../packages/core/src/content-dir')
+  const { realServiceSetupIo, setupBakinService } = await import('../../core/service-setup')
   const isTTY = process.stdout.isTTY
-
-  const printServiceResult = async (
-    result: Record<string, unknown>,
-    detail?: string,
-  ): Promise<void> => {
-    const action = options.uninstall ? 'disable autostart' : 'enable autostart'
-    const message = typeof result.message === 'string' ? result.message : 'Bakin service configuration updated.'
+  const uninstall = options.uninstall === true
+  if (!isTTY && uninstall) console.log(process.platform === 'linux' ? '[..] Removing Bakin user service...' : '[..] Removing Bakin LaunchAgent...')
+  const result = await setupBakinService({ uninstall, restart: true }, await realServiceSetupIo())
+  const action = uninstall ? 'disable autostart' : 'enable autostart'
+  if (!result.ok) {
+    if (isTTY) await printRuntimeActionTui({ action, target: 'Bakin service', result: { ok: false, status: 'fail', error: result.message }, message: result.message })
+    else console.error(result.message)
+    process.exit(1)
+  }
+  if (uninstall) {
+    if (isTTY) {
+      await printRuntimeActionTui({ action, target: 'Bakin service', result: { ok: true, status: 'ok', message: result.message, service: result.service, platform: result.platform }, message: result.message, detail: `Service: ${result.service}` })
+    } else {
+      console.log('[OK] Bakin autostart disabled')
+    }
+    return
+  }
+  const started = result.started ?? { ok: false as const }
+  if (!started.ok) process.exitCode = 1
+  if (isTTY) {
     await printRuntimeActionTui({
       action,
       target: 'Bakin service',
-      result,
-      message,
-      detail,
+      result: { ok: true, status: started.ok ? 'ok' : 'warn', message: result.message, service: result.service, platform: result.platform },
+      message: result.message,
+      detail: [
+        `Service: ${result.service}`,
+        started.ok ? `Version: ${started.version}` : 'Status: not responding after startup',
+        `Logs: ${result.logs.stdout}`,
+        `Errors: ${result.logs.stderr}`,
+        'Disable: bakin setup service --uninstall',
+      ].join('\n'),
     })
-  }
-
-  const launch = await resolveServerLaunchSpec()
-  const environment = await serviceEnvironment()
-  const paths = getBakinPaths()
-  const stdoutPath = join(paths.logs, 'server.out.log')
-  const stderrPath = join(paths.logs, 'server.err.log')
-  mkdirSync(paths.logs, { recursive: true })
-
-  if (process.platform === 'darwin') {
-    const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')
-    const plistPath = join(launchAgentsDir, `${SERVICE_LABEL}.plist`)
-    const uid = execFileSync('id', ['-u'], { encoding: 'utf-8' }).trim()
-    const removePlist = (path: string) => {
-      try { execFileSync('launchctl', ['bootout', `gui/${uid}`, path], { stdio: 'pipe' }) } catch { /* not loaded */ }
-      if (existsSync(path)) unlinkSync(path)
-    }
-
-    if (options.uninstall) {
-      if (!isTTY) console.log('[..] Removing Bakin LaunchAgent...')
-      removePlist(plistPath)
-      for (const label of LEGACY_SERVICE_LABELS) {
-        removePlist(join(launchAgentsDir, `${label}.plist`))
-      }
-      if (isTTY) {
-        await printServiceResult({
-          ok: true,
-          status: 'ok',
-          message: 'Bakin autostart disabled.',
-          service: SERVICE_LABEL,
-          platform: 'darwin',
-        }, `Service: ${SERVICE_LABEL}`)
-      } else {
-        console.log('[OK] Bakin autostart disabled')
-      }
-      return
-    }
-
-    mkdirSync(launchAgentsDir, { recursive: true })
-    removePlist(plistPath)
-    for (const label of LEGACY_SERVICE_LABELS) {
-      removePlist(join(launchAgentsDir, `${label}.plist`))
-    }
-    writeFileSync(plistPath, generateLaunchAgentPlist({
-      programArgs: launch.programArgs,
-      environment,
-      workingDir: launch.workingDir,
-      stdoutPath,
-      stderrPath,
-    }), 'utf-8')
-    execFileSync('launchctl', ['bootstrap', `gui/${uid}`, plistPath], { stdio: 'pipe' })
-    execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe' })
-    const started = await waitForServerVersion()
-    if (!started.ok) process.exitCode = 1
-    if (isTTY) {
-      await printServiceResult({
-        ok: true,
-        status: started.ok ? 'ok' : 'warn',
-        message: started.ok ? 'Bakin autostart enabled.' : 'Bakin autostart enabled, but the service did not respond.',
-        service: SERVICE_LABEL,
-        platform: 'darwin',
-      }, [
-        `Service: ${SERVICE_LABEL}`,
-        started.ok ? `Version: ${started.version}` : 'Status: not responding after startup',
-        `Logs: ${stdoutPath}`,
-        `Errors: ${stderrPath}`,
-        'Disable: bakin setup service --uninstall',
-      ].join('\n'))
-    } else {
-      console.log(started.ok ? '[OK] Bakin autostart enabled' : '[WARN] Bakin autostart enabled, but the service did not respond')
-      console.log(`  Service: ${SERVICE_LABEL}`)
-      if (started.ok) console.log(`  Version: ${started.version}`)
-      console.log(`  Logs:    ${stdoutPath}`)
-      console.log(`  Errors:  ${stderrPath}`)
-      console.log('  Disable: bakin setup service --uninstall')
-    }
-    return
-  }
-
-  if (process.platform === 'linux') {
-    const systemdDir = join(homedir(), '.config', 'systemd', 'user')
-    const unitPath = join(systemdDir, `${SERVICE_LABEL}.service`)
-    if (options.uninstall) {
-      if (!isTTY) console.log('[..] Removing Bakin user service...')
-      try { execFileSync('systemctl', ['--user', 'disable', '--now', `${SERVICE_LABEL}.service`], { stdio: 'pipe' }) } catch { /* not enabled */ }
-      if (existsSync(unitPath)) unlinkSync(unitPath)
-      try { execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' }) } catch { /* systemd unavailable */ }
-      if (isTTY) {
-        await printServiceResult({
-          ok: true,
-          status: 'ok',
-          message: 'Bakin autostart disabled.',
-          service: `${SERVICE_LABEL}.service`,
-          platform: 'linux',
-        }, `Service: ${SERVICE_LABEL}.service`)
-      } else {
-        console.log('[OK] Bakin autostart disabled')
-      }
-      return
-    }
-
-    mkdirSync(systemdDir, { recursive: true })
-    writeFileSync(unitPath, generateSystemdUnit({
-      programArgs: launch.programArgs,
-      environment,
-      workingDir: launch.workingDir,
-      stdoutPath,
-      stderrPath,
-    }), 'utf-8')
-    execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' })
-    execFileSync('systemctl', ['--user', 'enable', '--now', `${SERVICE_LABEL}.service`], { stdio: 'pipe' })
-    const started = await waitForServerVersion()
-    if (!started.ok) process.exitCode = 1
-    if (isTTY) {
-      await printServiceResult({
-        ok: true,
-        status: started.ok ? 'ok' : 'warn',
-        message: started.ok ? 'Bakin autostart enabled.' : 'Bakin autostart enabled, but the service did not respond.',
-        service: `${SERVICE_LABEL}.service`,
-        platform: 'linux',
-      }, [
-        `Service: ${SERVICE_LABEL}.service`,
-        started.ok ? `Version: ${started.version}` : 'Status: not responding after startup',
-        `Logs: ${stdoutPath}`,
-        `Errors: ${stderrPath}`,
-        'Disable: bakin setup service --uninstall',
-      ].join('\n'))
-    } else {
-      console.log(started.ok ? '[OK] Bakin autostart enabled' : '[WARN] Bakin autostart enabled, but the service did not respond')
-      console.log(`  Service: ${SERVICE_LABEL}.service`)
-      if (started.ok) console.log(`  Version: ${started.version}`)
-      console.log(`  Logs:    ${stdoutPath}`)
-      console.log(`  Errors:  ${stderrPath}`)
-      console.log('  Disable: bakin setup service --uninstall')
-    }
-    return
-  }
-
-  const error = `Service management is not supported on ${process.platform}.`
-  if (isTTY) {
-    await printServiceResult({ ok: false, status: 'fail', error })
   } else {
-    console.error(error)
+    console.log(started.ok ? '[OK] Bakin autostart enabled' : '[WARN] Bakin autostart enabled, but the service did not respond')
+    console.log(`  Service: ${result.service}`)
+    if (started.ok) console.log(`  Version: ${started.version}`)
+    console.log(`  Logs:    ${result.logs.stdout}`)
+    console.log(`  Errors:  ${result.logs.stderr}`)
+    console.log('  Disable: bakin setup service --uninstall')
   }
-  process.exit(1)
 }
 
 async function cmdReboot(args: string[] = []): Promise<void> {

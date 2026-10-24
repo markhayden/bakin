@@ -18,6 +18,7 @@ import {
   listHealthChecks,
   registerCoreHealthCheck,
 } from './health-check-registry'
+import { ONBOARD_ACTION } from './doctor-onboard-repair'
 import { isOnboarded } from './onboarding/state'
 import { getSettings } from './settings'
 
@@ -74,13 +75,7 @@ function ensureOnboardingCheck(): void {
           impact: 'Runtime and plugin checks may fail until Bakin is configured.',
           disposition: 'action_required',
           resources: [{ kind: 'system', id: 'onboarding', label: 'Bakin onboarding' }],
-          resolution: {
-            key: 'run-onboarding',
-            type: 'instructions',
-            label: 'Complete setup',
-            steps: ['Run the onboarding command and follow its prompts.'],
-            command: 'bakin onboard',
-          },
+          resolution: { key: ONBOARD_ACTION, type: 'repair', label: 'Complete setup with the default choices', actionId: ONBOARD_ACTION },
         },
       })])
     },

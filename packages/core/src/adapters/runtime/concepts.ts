@@ -318,6 +318,16 @@ export interface RuntimeSessionContextStats {
   model?: string
 }
 
+/** What a session-store prune removed, kept and skipped (`sessions.pruneStore`). */
+export interface RuntimeSessionPruneResult {
+  agentId: string
+  removedFiles: number
+  freedBytes: number
+  /** Files kept because a turn on their thread was in flight. */
+  skippedInFlight: number
+  remainingFiles: number
+}
+
 export interface RuntimeSessionStoreStats {
   agentId: string
   /** Live entries in the runtime's session store for this agent. */
@@ -955,6 +965,16 @@ export interface AgentRuntimeAdapter {
      * as "stats unavailable" — skip, never error.
      */
     storeStats?(): Promise<RuntimeSessionStoreStats[]>
+    /**
+     * Shrink one agent's session store the way the runtime itself documents
+     * (self-healing row 14): delete session artifacts older than
+     * `olderThanMs` (default 30 days) that no in-flight turn uses. Optional:
+     * a runtime without a file-backed store, or without a safe cleanup,
+     * omits it and Health keeps rendering `remediation` text instead.
+     * `dryRun` counts without deleting. Deletes USER content — every caller
+     * routes it through an operator decision.
+     */
+    pruneStore?(agentId: string, opts?: { olderThanMs?: number; dryRun?: boolean }): Promise<RuntimeSessionPruneResult>
     /**
      * Context stats for one Bakin thread's session (#737), read AT REST —
      * no gateway calls, no turn, no session mutation, no thread locks.

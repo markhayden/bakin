@@ -1,12 +1,17 @@
 /**
- * System check — runtime adapter reachability.
- *
- * Migrated out of src/core/doctor.ts (#139 C7). NOT auto-fixable —
- * starting the runtime requires human intervention.
+ * System check — runtime adapter reachability — and its first repair
+ * (self-healing PR1 slice 1.3c, re-homing row 12): `runtime-restart` asks the
+ * adapter to restart what it owns (`restart()` — the OpenClaw gateway, Pi's
+ * cached registries) and verifies with a ping. A runtime that stays dark is
+ * reported as such; the diagnostician lane takes it from there (PR5).
  */
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { healthError, healthHealthy, healthObserved } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
+
+export const RUNTIME_RESTART_ACTION = 'runtime-restart'
+const CHECK_ID = 'health.runtime'
 
 export async function checkRuntime(runtime: Pick<AgentRuntimeAdapter, 'ping'>): Promise<HealthCheckRunInput> {
   try {
@@ -38,16 +43,66 @@ function runtimeUnavailable(detail: string) {
       impact: 'Agents cannot start or continue turns while the runtime is unavailable.',
       disposition: 'action_required',
       resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
-      resolution: {
-        key: 'restore-runtime',
-        type: 'instructions',
-        label: 'Restore the runtime',
-        steps: [
-          'Start the configured runtime gateway.',
-          'Verify the runtime connection settings and required authentication.',
-          'Rerun Health after the runtime is reachable.',
-        ],
-      },
+      resolution: { key: RUNTIME_RESTART_ACTION, type: 'repair', label: 'Restart the runtime', actionId: RUNTIME_RESTART_ACTION },
     },
   })
+}
+
+export interface RuntimeRestartOptions {
+  /** How often to ping after the restart (default 1 s). */
+  pollMs?: number
+  /** How long to wait for the first successful ping (default 30 s). */
+  timeoutMs?: number
+}
+
+export function runtimeRestartRepair(runtime: Pick<AgentRuntimeAdapter, 'restart' | 'ping'>, opts: RuntimeRestartOptions = {}): HealthRepairActionDefinition {
+  const pollMs = opts.pollMs ?? 1_000
+  const timeoutMs = opts.timeoutMs ?? 30_000
+  return {
+    id: RUNTIME_RESTART_ACTION,
+    name: 'Restart the runtime',
+    operationPlan: () => ({
+      stages: [
+        { id: 'restart', kind: 'installing', label: 'Restart the runtime' },
+        { id: 'verify', kind: 'verifying', label: 'Wait for it to answer' },
+      ],
+      pointOfNoReturn: 'restart',
+    }),
+    async plan(target) {
+      return [{
+        id: RUNTIME_RESTART_ACTION,
+        actionId: RUNTIME_RESTART_ACTION,
+        title: 'Restart the runtime',
+        reason: 'The runtime did not answer its health probe, so no agent can take a turn.',
+        safety: 'safe',
+        ...repairTargetSelection(target),
+        changes: [{ kind: 'runtime', target: 'active runtime', action: 'update', description: 'Ask the runtime adapter to restart what it owns (the gateway, cached registries), then probe it until it answers.' }],
+      }]
+    },
+    async apply(items, op) {
+      if (items.length === 0) return []
+      const result = (status: 'applied' | 'failed', message: string) => items.map((item) => ({ itemId: item.id, actionId: item.actionId, status, message, affectedCheckIds: [CHECK_ID], changes: item.changes }))
+      op.stage('restart')
+      try {
+        await runtime.restart()
+      } catch (err) {
+        return result('failed', `The runtime refused to restart: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      op.stage('verify')
+      const deadline = Date.now() + timeoutMs
+      let lastError: string | null = null
+      for (;;) {
+        op.throwIfCancelled()
+        try {
+          if (await runtime.ping()) return result('applied', 'The runtime restarted and answers its health probe again.')
+          lastError = null
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : String(err)
+        }
+        if (Date.now() >= deadline) break
+        await new Promise((resolve) => setTimeout(resolve, pollMs))
+      }
+      return result('failed', `The runtime restarted but still cannot serve turns after ${Math.round(timeoutMs / 1000)}s${lastError ? ` (${lastError})` : ''}. It needs diagnosis.`)
+    },
+  }
 }

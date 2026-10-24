@@ -59,12 +59,12 @@ import { checkContentDir } from './lib/system-checks/content-dir'
 import { checkMediaSharp, mediaStoreRepair } from './lib/system-checks/media'
 import { checkCapabilities } from './lib/system-checks/capabilities'
 import { checkGithubReadiness } from './lib/system-checks/github-readiness'
-import { checkService } from './lib/system-checks/service'
-import { checkRuntime } from './lib/system-checks/runtime'
-import { checkSessionStore } from './lib/system-checks/session-store'
+import { checkService, serviceSetupRepair } from './lib/system-checks/service'
+import { checkRuntime, runtimeRestartRepair } from './lib/system-checks/runtime'
+import { checkSessionStore, sessionStorePruneRepair } from './lib/system-checks/session-store'
 import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkChannelAliases } from './lib/system-checks/channel-aliases'
-import { checkDeliveryDiscord } from './lib/system-checks/delivery-discord'
+import { checkDeliveryDiscord, discordBridgeReconnectRepair } from './lib/system-checks/delivery-discord'
 import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
 import { checkRunDirs, runDirsSweepRepair } from './lib/system-checks/run-dirs'
@@ -82,7 +82,7 @@ import { checkPluginArtifacts, pluginReinstallRepair, pluginUpgradeRepair } from
 import { packageReinstallRepair, packageSyncRepair } from './lib/system-checks/package-repairs'
 import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
 import { checkSpendPolicyAvailable } from './lib/system-checks/spend-policy'
-import { checkHealthAcks } from './lib/system-checks/health-acks'
+import { checkHealthAcks, healthAcksPruneRepair, healthAcksResetRepair } from './lib/system-checks/health-acks'
 import {
   agentEffortResponseSchema,
   agentUsageSnapshotResponseSchema,
@@ -1152,6 +1152,12 @@ const healthPlugin: BakinPlugin = definePlugin({
       run: () => checkPluginAssets(),
     })
     ctx.registerHealthRepairAction(pluginUpgradeRepair())
+    ctx.registerHealthRepairAction(healthAcksResetRepair())
+    ctx.registerHealthRepairAction(healthAcksPruneRepair())
+    ctx.registerHealthRepairAction(serviceSetupRepair())
+    ctx.registerHealthRepairAction(runtimeRestartRepair(ctx.runtime))
+    ctx.registerHealthRepairAction(sessionStorePruneRepair(ctx.runtime))
+    ctx.registerHealthRepairAction(discordBridgeReconnectRepair())
     ctx.registerHealthRepairAction(pluginReinstallRepair())
     ctx.registerHealthCheck({
       id: 'plugin-artifacts',

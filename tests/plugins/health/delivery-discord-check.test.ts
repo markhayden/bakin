@@ -93,24 +93,30 @@ describe('delivery.discord doctor check (readiness projection)', () => {
     expect(JSON.stringify(result)).toContain('not enabled')
   })
 
-  const expectIncident = async (state: ChannelReadinessState, key: string) => {
+  const expectIncident = async (state: ChannelReadinessState, key: string, resolution: Record<string, unknown> = { type: 'navigate', href: '/settings?tab=channels' }) => {
     current = snapshot(state)
     const result = await checkDeliveryDiscord() as ObservedLike
     const incident = result.observations?.[0]?.incident
     expect(incident?.key).toBe(key)
     expect(incident?.disposition).toBe('action_required')
     expect(incident?.class).toBe('service_failure')
-    expect(incident?.resolution).toMatchObject({ type: 'navigate', href: '/settings?tab=channels' })
+    expect(incident?.resolution).toMatchObject(resolution)
     expect(result.observations).toHaveLength(1)
   }
+  const reconnect = { type: 'repair', actionId: 'discord-bridge-reconnect' }
 
   it('missing token → missing-token', () => expectIncident('missing_token', 'missing-token'))
   it('missing guild → missing-guild', () => expectIncident('missing_guild', 'missing-guild'))
-  it('failed → bridge-failed with the classified cause', async () => {
+  it('failed → bridge-failed with the classified cause; a rejected token keeps the credential handoff (row 24)', async () => {
     await expectIncident('failed', 'bridge-failed')
     expect(((await checkDeliveryDiscord()) as ObservedLike).observations?.[0]?.summary).toContain('auth_failed')
   })
-  it('disconnected → bridge-disconnected', () => expectIncident('disconnected', 'bridge-disconnected'))
+  it('failed for a non-credential reason → bridge-failed pointing at the reconnect repair', async () => {
+    current = snapshot('failed', { connection: { state: 'failed', since: 'x', lastError: { kind: 'transport', message: 'ECONNRESET', at: 'x' } } })
+    const incident = ((await checkDeliveryDiscord()) as ObservedLike).observations?.[0]?.incident
+    expect(incident).toMatchObject({ key: 'bridge-failed', resolution: reconnect })
+  })
+  it('disconnected → bridge-disconnected pointing at the reconnect repair (row 25)', () => expectIncident('disconnected', 'bridge-disconnected', reconnect))
   it('degraded → guild-unjoined naming the guild', async () => {
     await expectIncident('degraded', 'guild-unjoined')
     expect(((await checkDeliveryDiscord()) as ObservedLike).observations?.[0]?.summary).toContain('g1')

@@ -9,7 +9,8 @@ import {
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { getCachedHealthCheckState, getHealthReport } from './doctor-report-cache'
-import { listHealthChecks } from './health-check-registry'
+import { getHealthRepairAction, listHealthChecks, registerCoreHealthRepairAction } from './health-check-registry'
+import { onboardRepair, ONBOARD_ACTION, type OnboardRepairDeps } from './doctor-onboard-repair'
 import { createDoctorRefreshCoordinator, healthChecksAffectedByEvent } from './doctor-refresh'
 import { onServerEvent } from './server-events'
 
@@ -36,11 +37,36 @@ function doctorIntervalMs(): number {
   return getSettings().doctor.intervalMs
 }
 
+/** The onboarding engine behind `core.onboard`: `bakin onboard --yes`'s runner, each component as its own operation. */
+function realOnboardRepairDeps(): OnboardRepairDeps {
+  return {
+    runOnboard: async (opts, installComponent) => (await import('./onboarding')).runOnboard(opts, installComponent),
+    runComponent: async (name, options) => {
+      const [{ runLocal }, { componentInstallOperation }, { installableComponent }] = await Promise.all([
+        import('./operations'),
+        import('./onboarding/operation'),
+        import('./onboarding'),
+      ])
+      const view = await runLocal(componentInstallOperation(installableComponent(name), options, 'system'))
+      const body = view.result?.body
+      if (body && typeof body === 'object' && 'result' in body) return (body as { result: Awaited<ReturnType<OnboardRepairDeps['runComponent']>> }).result
+      return { name, status: 'failed', message: view.outcome?.message ?? `${name} did not finish (${view.status})`, durationMs: 0 }
+    },
+  }
+}
+
+/** Core-owned repair actions register once, beside the core checks (`core.onboard`, self-healing 1.3c). */
+export function ensureCoreRepairActions(): void {
+  if (!getHealthRepairAction(`core.${ONBOARD_ACTION}`)) registerCoreHealthRepairAction(onboardRepair(realOnboardRepairDeps()))
+}
+
 export async function runDiagnostics(contentDir: string, projectRoot: string): Promise<HealthReport> {
+  ensureCoreRepairActions()
   return executeDiagnostics(contentDir, projectRoot)
 }
 
 export function start(contentDir: string, projectRoot: string): void {
+  ensureCoreRepairActions()
   stop()
   const refresh = createDoctorRefreshCoordinator({
     checks: () => listHealthChecks().map((check) => {

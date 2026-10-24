@@ -4,18 +4,23 @@
  * Migrated out of src/core/doctor.ts (#139 C6). Verifies the bakin
  * service plist exists, does not reference Bun's virtual compiled
  * filesystem, and is loaded into launchd. macOS-only; gated on
- * settings.service.enabled. NOT auto-fixable — stale paths require
- * human judgment.
+ * settings.service.enabled. Its repair is `service-setup` (self-healing PR1
+ * slice 1.3c, rows 8, 9, 11): the ONE service-setup engine WITHOUT a restart
+ * — it rewrites the unit, loads it only when nothing would be killed or
+ * doubled, and says so otherwise (the maintenance coordinator owns restarts).
  */
 import { execSync } from 'child_process'
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 import { getSettings } from '../../../../src/core/settings'
 
 const SERVICE_LABEL = 'com.makinbakin.bakin'
+export const SERVICE_SETUP_ACTION = 'service-setup'
+const CHECK_ID = 'health.service'
 
 export async function checkService(projectRoot: string): Promise<HealthCheckRunInput> {
   const settings = getSettings()
@@ -170,12 +175,42 @@ function serviceIncident(key: string, title: string, impact: string) {
       { kind: 'service' as const, id: SERVICE_LABEL, label: 'Bakin background service' },
       { kind: 'file' as const, id: 'launch-agent-plist', label: 'Bakin LaunchAgent plist' },
     ],
-    resolution: {
-      key: 'reinstall-service',
-      type: 'instructions' as const,
-      label: 'Reinstall the background service',
-      steps: ['Run the service setup command, then rerun Health.'] as [string],
-      command: 'bakin setup service',
+    resolution: { key: SERVICE_SETUP_ACTION, type: 'repair' as const, label: 'Reinstall the background service', actionId: SERVICE_SETUP_ACTION },
+  }
+}
+
+export function serviceSetupRepair(): HealthRepairActionDefinition {
+  return {
+    id: SERVICE_SETUP_ACTION,
+    name: 'Reinstall the Bakin background service',
+    operationPlan: () => ({ stages: [{ id: 'setup', kind: 'installing', label: 'Write and load the service definition' }], pointOfNoReturn: 'setup' }),
+    async plan(target) {
+      return [{
+        id: SERVICE_SETUP_ACTION,
+        actionId: SERVICE_SETUP_ACTION,
+        title: 'Reinstall the Bakin background service',
+        reason: 'The managed service definition is missing, stale or not loaded, so Bakin may not come back on its own.',
+        // Loading or rewriting the service touches how Bakin itself runs: an operator decision until the maintenance coordinator (PR3) owns it.
+        safety: 'manual',
+        ...repairTargetSelection(target),
+        changes: [{ kind: 'service', target: SERVICE_LABEL, action: 'update', description: 'Rewrite the service definition for this Bakin and home, and load it when no server would be killed or doubled. A running service keeps its current definition until its next restart.' }],
+      }]
+    },
+    async apply(items, op) {
+      if (items.length === 0) return []
+      const result = (status: 'applied' | 'failed' | 'skipped', message: string) => items.map((item) => ({ itemId: item.id, actionId: item.actionId, status, message, affectedCheckIds: [CHECK_ID], changes: item.changes }))
+      op.stage('setup')
+      try {
+        const { realServiceSetupIo, setupBakinService } = await import('../../../../src/core/service-setup')
+        const outcome = await setupBakinService({ restart: false }, await realServiceSetupIo())
+        op.item('setup', { id: 'service', label: SERVICE_LABEL, status: outcome.ok ? 'done' : 'failed', message: outcome.message })
+        if (!outcome.ok) return result('failed', outcome.message)
+        return result(outcome.loaded === 'deferred' ? 'skipped' : 'applied', outcome.message)
+      } catch (err) {
+        const message = `Service setup failed: ${err instanceof Error ? err.message : String(err)}`
+        op.item('setup', { id: 'service', label: SERVICE_LABEL, status: 'failed', message })
+        return result('failed', message)
+      }
     },
   }
 }

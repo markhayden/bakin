@@ -172,6 +172,15 @@ export function registerCoreHealthCheck(
   return registerOwnedHealthCheck(owner('core', coreId, label), input)
 }
 
+/** A repair action owned by core itself (`core.<id>`), beside the core checks. */
+export function registerCoreHealthRepairAction(
+  input: HealthRepairActionDefinition,
+  coreId = 'core',
+  label = 'Bakin',
+): string {
+  return registerOwnedHealthRepairAction(owner('core', coreId, label), input)
+}
+
 export function unregisterOwnerHealth(ownerKind: HealthOwner['kind'], ownerId: string): void {
   const removed: string[] = []
   for (const [id, def] of checks) {

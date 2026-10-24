@@ -109,6 +109,7 @@ export type {
   RuntimeMetadata,
   RawCronSnapshot,
   RuntimeSession,
+  RuntimeSessionPruneResult,
   RuntimeSessionStoreStats,
   RuntimeSessionContextStats,
   RuntimeSkill,
