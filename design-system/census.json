@@ -2620,7 +2620,6 @@
       "symbols": [
         "CHANNELS_TAB_ID",
         "ChannelsTab",
-        "botInviteUrl",
         "fieldIdFor"
       ],
       "exportStatus": "private",

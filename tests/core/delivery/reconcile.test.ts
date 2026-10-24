@@ -344,6 +344,17 @@ describe('delivery bridge reconciliation', () => {
     const status = await p1
     expect(status.state).toBe('degraded')
     expect(status.guildResults[1]).toMatchObject({ id: 'g2', joined: false })
+    // The bridge — the ONE Discord client — supplies the authorize link for
+    // the server the bot has not joined (self-healing 1.4c, row 26); a joined
+    // server carries none.
+    expect(status.guildResults[0]!.inviteUrl).toBeUndefined()
+    const invite = new URL(status.guildResults[1]!.inviteUrl!)
+    expect(invite.origin + invite.pathname).toBe('https://discord.com/oauth2/authorize')
+    expect(invite.searchParams.get('client_id')).toBe('bot')
+    expect(invite.searchParams.get('guild_id')).toBe('g2')
+    expect(invite.searchParams.get('scope')).toBe('bot')
+    expect(invite.searchParams.get('permissions')).toBe(String((1 << 10) | (1 << 11)))
+    expect(invite.searchParams.get('disable_guild_select')).toBe('true')
   })
 
   it('post-apply gateway events fold: non-fatal close → disconnected, resumed → connected, fatal error → failed + destroyed', async () => {

@@ -68,7 +68,7 @@ export interface ChannelReadinessPayload {
   owner: 'runtime' | 'bridge' | 'none'
   enabled: boolean
   token: { present: boolean; source: 'env' | 'store' | null }
-  guilds: Array<{ id: string; name?: string; joined: boolean | null; channelCount: number | null; error?: ErrorSummary }>
+  guilds: Array<{ id: string; name?: string; joined: boolean | null; channelCount: number | null; error?: ErrorSummary; inviteUrl?: string }>
   connection: { state: ReadinessState; since: string; lastError: ErrorSummary | null; botUser?: { id: string; name: string }; attempt?: { generation: number; startedAt: string } }
   channels: { items: ChannelItem[]; source: 'bridge' | 'runtime' | 'none'; collectedAt: string | null; error?: ErrorSummary }
   routing: { alertChannel: RoutingTarget; approvalsChannel: RoutingTarget; approvalsEnabled: boolean; aliases: RoutingTarget[] }
@@ -135,20 +135,6 @@ export function fieldIdFor(setting: string | undefined): string | null {
   return FIELD_IDS[setting] ?? null
 }
 
-/** View Channels + Send Messages — what Verify probes for (`VERIFY_GUILD_PERMISSION_BITS`). */
-const BOT_INVITE_PERMISSIONS = String((1 << 10) | (1 << 11))
-
-/**
- * Discord's authorize URL for ONE server. A bot's user id is its application
- * id, so the READY payload's `botUser.id` is the client id — the only
- * identity the bridge ever learns (no token, no secret). Offered beside a
- * "Not joined" server so the guild-unjoined incident is one click to fix
- * (self-healing 1.4c, row 26).
- */
-export function botInviteUrl(botUserId: string, guildId: string): string {
-  const params = new URLSearchParams({ client_id: botUserId, scope: 'bot', permissions: BOT_INVITE_PERMISSIONS, guild_id: guildId, disable_guild_select: 'true' })
-  return `https://discord.com/oauth2/authorize?${params.toString()}`
-}
 
 async function postJson(url: string, method: string, body?: unknown): Promise<Response> {
   return fetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
@@ -553,13 +539,14 @@ function ServersAndChannels({ readiness }: { readiness: ChannelReadinessPayload 
                   <Inline gap="dense" align="center">
                     {guild.channelCount !== null && <Text size="meta" tone="muted">{guild.channelCount} channel{guild.channelCount === 1 ? '' : 's'}</Text>}
                     <StatusBadge size="xs" tone={joined.tone} variant="solid">{joined.label}</StatusBadge>
-                    {guild.joined === false && readiness.connection.botUser && (
+                    {/* The bridge supplies the authorize link for a server the bot has not joined (self-healing 1.4c, row 26). */}
+                    {guild.inviteUrl && (
                       <a
-                        href={botInviteUrl(readiness.connection.botUser.id, guild.id)}
+                        href={guild.inviteUrl}
                         target="_blank"
                         rel="noreferrer"
                         className={buttonVariants({ size: 'xs', variant: 'link' })}
-                        aria-label={`Invite ${readiness.connection.botUser.name} to ${guild.name ?? guild.id}`}
+                        aria-label={`Invite ${readiness.connection.botUser?.name ?? 'the bot'} to ${guild.name ?? guild.id}`}
                       >
                         Invite the bot
                       </a>
