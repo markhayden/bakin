@@ -321,6 +321,23 @@ describe('plugin-assets onboarding component', () => {
       expect(result.installed.length).toBe(1)
     })
 
+    it('restoreUserEdited (self-healing 1.4b, row 94): the named locked skill is released and the shipped copy written; an unnamed one stays locked', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      await installPluginAssets([{ id: 'sdr', path: pluginDir }])
+      writeFileSync(join(runtimeSkillHome, 'skills', 'cold-email', '.userEdited'), '')
+      writeFileSync(join(pluginDir, 'defaults', 'runtime-skills', 'cold-email', 'SKILL.md'), SKILL_BODY_V2)
+
+      const kept = await installPluginAssets([{ id: 'sdr', path: pluginDir }], undefined, { restoreUserEdited: ['something-else'] })
+      expect(kept.restored).toEqual([])
+      expect(kept.skipped).toEqual([{ pluginId: 'sdr', name: 'cold-email', reason: 'userEdited' }])
+
+      const restored = await installPluginAssets([{ id: 'sdr', path: pluginDir }], undefined, { restoreUserEdited: ['cold-email'] })
+      expect(restored.restored).toEqual(['cold-email'])
+      expect(restored.installed).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
+      expect(readFileSync(join(runtimeSkillHome, 'skills', 'cold-email', 'SKILL.md'), 'utf-8')).toBe(SKILL_BODY_V2)
+      expect(existsSync(join(runtimeSkillHome, 'skills', 'cold-email', '.userEdited'))).toBe(false)
+    })
+
     it('skips skills with .userEdited sentinel and records them in skipped', async () => {
       const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
       await installPluginAssets([{ id: 'sdr', path: pluginDir }])

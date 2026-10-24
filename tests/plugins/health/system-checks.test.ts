@@ -108,6 +108,7 @@ mock.module('../../../src/core/search-outbox', () => ({
   stopOutboxPump: () => {},
 }))
 let mockTableStates: Array<Record<string, unknown>> = []
+let mockUnclaimed: string[] = []
 mock.module('@bakin/core/search/tables', () => ({
   // Full surface: the plugin-activation test pulls the real registry, which
   // imports more than the checks do.
@@ -116,7 +117,7 @@ mock.module('@bakin/core/search/tables', () => ({
   queryTarget: () => null,
   resolveDrainTargets: (logical: string) => [logical],
   sweepTombstones: async () => 0,
-  sweepOrphanEngineTables: async () => ({ dropped: [], pending: 0, unclaimed: [] }),
+  sweepOrphanEngineTables: async () => ({ dropped: [], pending: 0, unclaimed: mockUnclaimed }),
   ensureTable: async () => 'unchanged',
   rebuildTable: async () => 'migrated',
   resumeMigrations: async () => {},
@@ -922,6 +923,19 @@ describe('checkSearchConsistency', () => {
     mockTableStates = []
   })
 
+  it('unclaimed engine tables point at the drop repair — the operator decides per table; Keep is acknowledging (self-healing 1.4b, row 76)', async () => {
+    mockSearchEnabled = true
+    mockSearchAvailable = true
+    mockUnclaimed = ['bakin_tasks_v1_dead']
+    try {
+      const results = observed(await checkSearchConsistency())
+      const row = results.find((observation) => observation.key === 'indexes.sweep.unclaimed')!
+      expect(row.incident).toMatchObject({ key: 'unclaimed-tables', disposition: 'advisory', resolution: { type: 'repair', actionId: 'search-drop-unclaimed-tables' } })
+    } finally {
+      mockUnclaimed = []
+    }
+  })
+
   it('warns on an in-flight migration without flagging repair', async () => {
     mockSearchEnabled = true
     mockSearchAvailable = true
@@ -1225,12 +1239,12 @@ describe('checkPluginAssets — user-edited skills (#898)', () => {
     }
   }
 
-  it('locked-and-drifted alone is a watch warning with instructions — never the install repair that would skip it', async () => {
+  it('locked-and-drifted alone is a watch warning pointing at the install repair, whose Restore item is the operator\'s decision (self-healing 1.4b, row 94)', async () => {
     warnWith({})
     const results = observed(await checkPluginAssets())
     expect(results[0].status).toBe('warning')
     expect(results[0].incident).toMatchObject({ key: 'user-edited-drifted', disposition: 'watch' })
-    expect(results[0].incident?.resolution.type).toBe('instructions')
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'repair', actionId: 'install-plugin-assets' })
     expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:cold-email', label: 'cold-email (sdr)' }])
   })
 
@@ -1416,6 +1430,17 @@ for (const installed of [false, true]) {
     expect(searchProbeCalls).toBe(0)
   })
 }
+it('an installable ownership refusal is the Claim repair (the guest alternative is named in its confirmation — row 54); other refusals keep their steps', async () => {
+  mockSearchEnabled = true
+  mockSearchInstalled = true
+  mockSearchAvailable = false
+  mockServiceStatus = { mode: 'launchd', provisioned: false, refusal: { reason: 'unowned', detail: 'Another home owns the service.', remediation: 'install' } }
+  const rows = observed(await checkSearchAdapter())
+  expect(rows.find((r) => r.key === 'engine.supervision')?.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'search-engine-claim' })
+  mockServiceStatus = { mode: 'launchd', provisioned: false, refusal: { reason: 'temporary-home', detail: 'Temporary home.', remediation: 'configure-endpoint' } }
+  expect(observed(await checkSearchAdapter()).find((r) => r.key === 'engine.supervision')?.incident?.resolution.type).toBe('instructions')
+})
+
 it('guest Health skips local binary requirements and probes the configured adapter', async () => {
   mockSearchEnabled = true
   mockSearchInstalled = false

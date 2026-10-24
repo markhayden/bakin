@@ -118,6 +118,8 @@ export interface InstallReport {
   installed: SkillRef[]
   unchanged: SkillRef[]
   skipped: SkillRefSkipped[]
+  /** User-edited skills the caller explicitly asked to restore: their edit was released, the shipped copy written. */
+  restored: string[]
   /** Skills that could not be laid down verified (non-text source, or still differing after a full rewrite). */
   failed: Array<SkillRef & { error: string }>
   bins: BinInstallReport
@@ -368,11 +370,29 @@ export const PLUGIN_ASSETS_PLAN: OperationPlan = {
   pointOfNoReturn: 'skills',
 }
 
-export async function installPluginAssets(plugins: PluginEntry[], op?: OperationContext): Promise<InstallReport> {
-  const report: InstallReport = { installed: [], unchanged: [], skipped: [], failed: [], bins: { installed: [], unchanged: [], failed: [], invalid: [] } }
+export interface InstallPluginAssetsOptions {
+  /**
+   * User-edited skills to RESTORE to the shipped copy (self-healing 1.4b,
+   * row 94's "Restore shipped"): the lock is released by removing the skill
+   * (the sentinel goes with it) so the install below writes it fresh. Only
+   * an explicit decision names a skill here — the default never overwrites
+   * an edit.
+   */
+  restoreUserEdited?: readonly string[]
+}
+
+export async function installPluginAssets(plugins: PluginEntry[], op?: OperationContext, opts: InstallPluginAssetsOptions = {}): Promise<InstallReport> {
+  const report: InstallReport = { installed: [], unchanged: [], skipped: [], failed: [], restored: [], bins: { installed: [], unchanged: [], failed: [], invalid: [] } }
   const runtime = getAppServices().runtime
 
   op?.stage('skills')
+  for (const name of opts.restoreUserEdited ?? []) {
+    const existing = await runtime.skills.get(name)
+    if (!existing || !isUserEditedSkill(existing)) continue
+    await runtime.skills.remove(name)
+    report.restored.push(name)
+    op?.log(`Released the edited copy of ${name}; the plugin's copy is installed below.`)
+  }
   for (const plugin of plugins) {
     const skills = findSkillsForPlugin(plugin)
     if (skills.length === 0) continue
@@ -692,7 +712,7 @@ async function install(_opts: ComponentInstallOptions, op: OperationContext): Pr
 }
 
 /** The component's install, reporting through `op` when run as an operation (the Health repair). */
-export async function applyPluginAssets(op?: OperationContext): Promise<InstallResult> {
+export async function applyPluginAssets(op?: OperationContext, opts: InstallPluginAssetsOptions = {}): Promise<InstallResult & { restored: string[] }> {
   await ensureAppServices()
   const start = Date.now()
   let plugins: PluginEntry[]
@@ -700,9 +720,9 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
     plugins = discoverPlugins()
   } catch (err) {
     if (!(err instanceof PluginDiscoveryError)) throw err
-    return { name: 'plugin-assets', status: 'failed', message: `Plugin assets could not be inspected — ${err.message}`, error: err, durationMs: Date.now() - start }
+    return { name: 'plugin-assets', status: 'failed', message: `Plugin assets could not be inspected — ${err.message}`, error: err, durationMs: Date.now() - start, restored: [] }
   }
-  const report = await installPluginAssets(plugins, op)
+  const report = await installPluginAssets(plugins, op, opts)
   const durationMs = Date.now() - start
   const { bins } = report
 
@@ -719,6 +739,7 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
     ].filter(Boolean).join(' and ')
     return {
       name: 'plugin-assets',
+      restored: report.restored,
       status: 'failed',
       message: `${counts} could not be installed — ${failures.join('; ')}`,
       error: failures,
@@ -731,6 +752,7 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
     const unchanged = report.unchanged.length + bins.unchanged.length
     return {
       name: 'plugin-assets',
+      restored: report.restored,
       status: 'noop',
       message: unchanged === 0
         ? '0 plugin assets to install'
@@ -747,6 +769,7 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
     : ''
   return {
     name: 'plugin-assets',
+      restored: report.restored,
     status: 'installed',
     message: `Installed ${parts.join(' and ') || '0 plugin asset(s)'}${skippedNote}`,
     durationMs,

@@ -70,12 +70,13 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
         class: 'policy_denial', disposition: 'action_required',
         impact: 'Queries are unavailable; queued writes remain in this home’s durable journal.',
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        resolution: {
+        // Claiming is the operator's decision — the repair's confirmation names the guest alternative (row 54).
+        resolution: remediation === 'install'
+          ? { key: 'search-engine-claim', type: 'repair', label: 'Claim Search for this home', actionId: 'search-engine-claim' }
+          : {
           key: 'search-service-access', type: 'instructions', label,
-          steps: [detail, ...(remediation === 'install'
-            ? ['An explicit claim moves the shared service to this permanent home. Stop the previous Bakin process first, run `bakin install search` with this home’s BAKIN_HOME, then restart Bakin.']
-            : remediation === 'configure-endpoint' ? ['Set search.settings.url to an independently managed isolated endpoint, then restart Bakin.'] : ['Retry after the service change finishes.'])],
-        },
+          steps: [detail, ...(remediation === 'configure-endpoint' ? ['Set search.settings.url to an independently managed isolated endpoint, then restart Bakin.'] : ['Retry after the service change finishes.'])],
+          },
       },
     }), ...await safeOutboxObservations(true)])
   }

@@ -391,12 +391,8 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
             impact: 'Stale unclaimed tables consume engine storage, but deleting tables owned by another instance would lose its index data.',
             disposition: 'advisory',
             resources: orphanTables.unclaimed.slice(0, 50).map((table) => ({ kind: 'search_table' as const, id: stableKeyPart(table), label: table.slice(0, 120) })),
-            resolution: {
-              key: 'review-tables',
-              type: 'instructions',
-              label: 'Review unclaimed tables',
-              steps: ['Confirm table ownership, then manually drop only tables that are known to be stale.'],
-            },
+            // Drop is the manual repair (each table its own item); Keep = acknowledge the incident (row 76).
+            resolution: { key: 'search-drop-unclaimed-tables', type: 'repair', label: 'Drop the unclaimed tables', actionId: 'search-drop-unclaimed-tables' },
           },
         }))
       }

@@ -6,7 +6,7 @@
  */
 import { applyPluginAssets, PLUGIN_ASSETS_PLAN, pluginAssetsComponent } from '../../../../src/core/onboarding/plugin-assets'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthRepairActionDefinition, HealthRepairPlanItem } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { pluginRepairResolution, pluginUpgradeOffer, type PluginArtifactDeps } from './plugin-artifacts'
 
@@ -81,16 +81,9 @@ export async function checkPluginAssets(deps?: PluginArtifactDeps): Promise<Heal
       // A skill that is not text is the plugin's to fix: reinstall (or the
       // offered upgrade). A user-edited skill is the operator's decision —
       // its Keep/Restore control lands in 1.4, so the text stays until then.
+      // Keep = acknowledge the incident; Restore = the install repair's per-skill manual item (row 94).
       const resolution = locked.length > 0
-        ? {
-            key: 'unlock-user-edited-skills',
-            type: 'instructions' as const,
-            label: 'Keep or restore',
-            steps: [
-              'Keep your edit and acknowledge this, or delete the skill\'s .userEdited file and run `bakin install plugin-assets` to restore the plugin\'s version.',
-              ...(invalid.length > 0 ? ['Update or remove the plugin that ships a skill with non-text files.'] : []),
-            ] as [string, ...string[]],
-          }
+        ? { key: INSTALL_PLUGIN_ASSETS_ACTION, type: 'repair' as const, label: 'Restore the shipped copies', actionId: INSTALL_PLUGIN_ASSETS_ACTION }
         : await pluginRepair(invalid.map((ref) => ref.pluginId), deps)
       return healthObserved([healthWarning({
         key: 'runtime-assets',
@@ -158,6 +151,29 @@ export function installPluginAssetsRepair(): HealthRepairActionDefinition {
     resources: ['install-state'],
     operationPlan: () => PLUGIN_ASSETS_PLAN,
     async plan(target) {
+      // One manual item per user-edited skill whose content drifted from the plugin's — ONLY
+      // when the operator targeted that row; "all actionable" never offers to replace an edit.
+      const restoreItems: HealthRepairPlanItem[] = []
+      if (target.type !== 'all_actionable') {
+        let drifted: Array<{ pluginId: string; name: string }> = []
+        try {
+          const scan = (await pluginAssetsComponent.check()).details as { userEditedDrifted?: Array<{ pluginId: string; name: string }> } | undefined
+          drifted = scan?.userEditedDrifted ?? []
+        } catch {
+          drifted = []
+        }
+        for (const ref of drifted) {
+          restoreItems.push({
+            id: `restore:${ref.name}`,
+            actionId: INSTALL_PLUGIN_ASSETS_ACTION,
+            title: `Restore the shipped copy of ${ref.name}`,
+            reason: `Your edited copy of ${ref.name} differs from what ${ref.pluginId} ships. Keeping it is fine (acknowledge the incident); restoring replaces your edit.`,
+            safety: 'manual',
+            ...repairTargetSelection(target),
+            changes: [{ kind: 'runtime', target: `skill:${ref.name}`, action: 'update', description: `Replace your edited ${ref.name} with the copy ${ref.pluginId} ships (the .userEdited lock is released).` }],
+          })
+        }
+      }
       return [{
         id: INSTALL_PLUGIN_ASSETS_ACTION,
         actionId: INSTALL_PLUGIN_ASSETS_ACTION,
@@ -169,18 +185,23 @@ export function installPluginAssetsRepair(): HealthRepairActionDefinition {
           { kind: 'runtime', target: 'runtime skill store', action: 'update', description: 'Write plugin-shipped SKILL.md files that are missing or drifted.' },
           { kind: 'file', target: '~/.bakin/bin', action: 'create', description: 'Download and verify plugin-declared binaries that are missing or drifted; record them in ~/.bakin/plugins/lock.json.' },
         ],
-      }]
+      }, ...restoreItems]
     },
     async apply(items, op) {
       if (items.length === 0) return []
       try {
-        const result = await applyPluginAssets(op)
+        const restoreUserEdited = items.filter((item) => item.id.startsWith('restore:')).map((item) => item.id.slice('restore:'.length))
+        const result = await applyPluginAssets(op, restoreUserEdited.length > 0 ? { restoreUserEdited } : {})
         const failed = result.status === 'failed'
+        const restored = new Set(result.restored ?? [])
+        const restoreName = (item: { id: string }) => item.id.slice('restore:'.length)
         return items.map((item) => ({
           itemId: item.id,
           actionId: item.actionId,
-          status: failed ? 'failed' as const : 'applied' as const,
-          message: result.message,
+          status: failed ? 'failed' as const : item.id.startsWith('restore:') ? (restored.has(restoreName(item)) ? 'applied' as const : 'skipped' as const) : 'applied' as const,
+          message: item.id.startsWith('restore:')
+            ? (restored.has(restoreName(item)) ? `${restoreName(item)} restored to the plugin's copy.` : `${restoreName(item)} was not locked any more; nothing to restore.`)
+            : result.message,
           affectedCheckIds: [CHECK_ID],
           changes: failed || result.status === 'noop' ? [] : item.changes,
         }))

@@ -30,16 +30,18 @@ mock.module('../../../../packages/core/src/logger', loggerMock)
 
 type Scan = { missing?: unknown[]; drifted?: unknown[]; userEditedDrifted?: Array<{ name: string; pluginId: string }>; invalidSource?: Array<{ name: string; pluginId: string }>; bins?: { missing?: unknown[]; drifted?: unknown[]; unsupported?: unknown[]; invalid?: Array<{ pluginId: string; reason: string }> } }
 let scan: Scan = {}
+const applies: Array<Record<string, unknown> | undefined> = []
 mock.module('../../../../src/core/onboarding/plugin-assets', () => ({
-  PLUGIN_ASSETS_PLAN: { stages: [{ id: 'install', kind: 'installing', label: 'Install' }], pointOfNoReturn: 'install' },
-  applyPluginAssets: async () => ({ status: 'noop', message: 'nothing' }),
+  PLUGIN_ASSETS_PLAN: { stages: [{ id: 'skills', kind: 'installing', label: 'Install' }, { id: 'bins', kind: 'installing', label: 'Bins' }], pointOfNoReturn: 'skills' },
+  applyPluginAssets: async (_op: unknown, opts?: { restoreUserEdited?: string[] }) => { applies.push(opts); return { name: 'plugin-assets', status: 'installed', message: 'installed', durationMs: 1, restored: opts?.restoreUserEdited ?? [] } },
   pluginAssetsComponent: { check: async () => ({ status: 'warn', message: 'plugin assets differ', remediation: 'see details', details: scan }) },
 }))
 let registry: Array<Record<string, unknown>> = []
 mock.module('../../../../plugins/health/lib/host-providers', () => ({ getRegistrySnapshot: () => registry }))
 
 import type { UpdateRecord } from '@makinbakin/sdk/types'
-import { checkPluginAssets } from '../../../../plugins/health/lib/system-checks/plugin-assets'
+import { noopOp } from '../../../helpers/operation-harness'
+import { checkPluginAssets, installPluginAssetsRepair } from '../../../../plugins/health/lib/system-checks/plugin-assets'
 import { checkPluginRegistry } from '../../../../plugins/health/lib/system-checks/plugin-registry'
 import type { PluginArtifactDeps } from '../../../../plugins/health/lib/system-checks/plugin-artifacts'
 import { parseHealthCheckRunInput } from '../../../../src/core/health-contract'
@@ -71,7 +73,7 @@ async function observed(run: Promise<unknown>) {
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true }); mkdirSync(testDir, { recursive: true })
-  scan = {}; registry = []
+  scan = {}; registry = []; applies.length = 0
 })
 
 describe('plugin-assets incidents (rows 93–94)', () => {
@@ -90,12 +92,25 @@ describe('plugin-assets incidents (rows 93–94)', () => {
     lock(['terminal'], { linkedSource: '/dev/terminal' })
     expect((await observed(checkPluginAssets(offers({ terminal: '0.4.0' }))))[0]!.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-reinstall' })
   })
-  it('a skill that is not text points at plugin-reinstall; a user-edited skill stays the human decision (its control lands in 1.4)', async () => {
+  it('a skill that is not text points at plugin-reinstall; a user-edited skill points at the install repair whose Restore item is the decision (Keep = acknowledge)', async () => {
     lock(['sdr'])
     scan = { userEditedDrifted: [], invalidSource: [{ pluginId: 'sdr', name: 'blobby' }] }
     expect((await observed(checkPluginAssets(none)))[0]!.incident).toMatchObject({ key: 'skill-source-invalid', resolution: { type: 'repair', actionId: 'plugin-reinstall' } })
     scan = { userEditedDrifted: [{ pluginId: 'sdr', name: 'mine' }], invalidSource: [] }
-    expect((await observed(checkPluginAssets(none)))[0]!.incident).toMatchObject({ key: 'user-edited-drifted', resolution: { type: 'instructions' } })
+    expect((await observed(checkPluginAssets(none)))[0]!.incident).toMatchObject({ key: 'user-edited-drifted', resolution: { type: 'repair', actionId: 'install-plugin-assets', label: 'Restore the shipped copies' } })
+  })
+
+  it('the install repair offers a MANUAL Restore item per drifted user-edited skill only for a targeted row — never under all-actionable; apply releases exactly those', async () => {
+    scan = { userEditedDrifted: [{ pluginId: 'sdr', name: 'mine' }, { pluginId: 'sdr', name: 'other' }], invalidSource: [] }
+    const action = installPluginAssetsRepair()
+    const all = await action.plan({ type: 'all_actionable', reportId: 'r' })
+    expect(all.map((item) => item.id)).toEqual(['install-plugin-assets'])
+    const targeted = await action.plan({ type: 'incidents', reportId: 'r', ids: ['health.plugin-assets:user-edited-drifted'] })
+    expect(targeted.map((item) => [item.id, item.safety])).toEqual([['install-plugin-assets', 'safe'], ['restore:mine', 'manual'], ['restore:other', 'manual']])
+    const results = await action.apply(targeted.filter((item) => item.id === 'restore:mine'), noopOp())
+    expect(applies).toEqual([{ restoreUserEdited: ['mine'] }])
+    expect(results[0]).toMatchObject({ itemId: 'restore:mine', status: 'applied' })
+    expect(results[0]!.message).toContain('restored')
   })
 })
 
