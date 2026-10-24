@@ -152,6 +152,8 @@ describe('budget health check', () => {
       const [r] = observed(await checkBudget())
       expect(r.status).toBe('error')
       expect(r.incident).toMatchObject({ key: 'policy-invalid', disposition: 'action_required' })
+      // The recover editor is the control (self-healing 1.4b, rows 40/161).
+      expect(r.incident?.resolution).toMatchObject({ type: 'navigate', href: '/spend?recover=1' })
     } finally {
       budgetPolicyError = null
     }

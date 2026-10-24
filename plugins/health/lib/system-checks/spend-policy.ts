@@ -65,15 +65,7 @@ export async function checkSpendPolicyAvailable(): Promise<HealthCheckRunInput> 
           impact: 'Task dispatch and billed media calls defer until spend.json is a valid policy again. Your limits are still in the file — nothing has overwritten it.',
           disposition: 'action_required',
           resources: [{ kind: 'plugin', id: 'spend', label: 'Spend plugin' }],
-          resolution: {
-            key: 'fix-spend-settings',
-            type: 'instructions',
-            label: 'Fix spend.json',
-            steps: [
-              `Open ${invalid.file ?? '~/.bakin/plugin-settings/spend.json'} and fix the listed issues (or remove the file to start with no limits), then rerun Health.`,
-              ...(invalid.issues ?? []).map((issue) => `Issue: ${issue}`),
-            ],
-          },
+          resolution: { key: 'recover-spend-policy', type: 'navigate', label: 'Fix spend.json', href: '/spend?recover=1' },
         },
       })])
     }

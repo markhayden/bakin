@@ -135,6 +135,8 @@ describe('checkWorkflowSkills', () => {
     writeFileSync(join(skillsDir, 'bad.md'), 'just some content, no frontmatter')
     const results = observations(checkWorkflowSkills(testDir))
     expect(results.some(r => r.status === 'warning' && r.summary.includes('no YAML frontmatter'))).toBe(true)
+    // The skill's recover view is the control (self-healing 1.4b, row 127).
+    expect(results.find(r => r.summary.includes('no YAML frontmatter'))?.incident?.resolution).toMatchObject({ type: 'navigate', href: '/workflows?recover=1&skill=bad.md' })
   })
 
   it('flags a skill missing output_schema', () => {

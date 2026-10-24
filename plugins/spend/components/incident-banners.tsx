@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Banner, Button, Field, FieldError, Input } from '@makinbakin/sdk/ui'
 
 import { budgetRuleLabel, budgetRuleSpend, formatRuleUnit, parseCapInput } from './spend-utils'
@@ -199,12 +199,28 @@ export function incidentStillOver(incident: BudgetIncidentWire, rules: BudgetRul
   return budgetRuleSpend(rule, window) >= capInUnit
 }
 
+/** The deep-linked incident: focused once on mount and scrolled into view, so a Health card lands on the row it meant. */
+function HighlightTarget({ active, incidentId, children }: { active: boolean; incidentId: number; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!active) return
+    ref.current?.focus({ preventScroll: true })
+    ref.current?.scrollIntoView?.({ block: 'center' })
+  }, [active])
+  return (
+    <div ref={ref} tabIndex={active ? -1 : undefined} data-incident-id={incidentId} data-highlighted={active ? 'true' : undefined} className={active ? 'rounded-bakin-surface outline outline-2 outline-offset-2 outline-bakin-signal-highlight' : undefined}>
+      {children}
+    </div>
+  )
+}
+
 export function IncidentBanners({
   incidents,
   resolveIncident,
   rules,
   facets,
   paused = false,
+  highlightId,
 }: {
   incidents: BudgetIncidentWire[]
   resolveIncident: SpendData['resolveIncident']
@@ -212,6 +228,8 @@ export function IncidentBanners({
   facets: SpendResponse['facets'] | undefined
   /** The kill switch — a resolved incident releases nothing while it is on. */
   paused?: boolean
+  /** `?incident=<id>` from a Health deep link: that banner is focused and scrolled into view (self-healing 1.4b). */
+  highlightId?: string
 }) {
   // The last resolution's verdict stays until dismissed: the incident it
   // answers is gone from the list, so nothing else would explain why work
@@ -235,16 +253,17 @@ export function IncidentBanners({
       {live.map((incident) => {
         const holds = otherHolds(incident, rules, facets, incidents)
         return (
-          <IncidentBanner
-            key={incident.id}
-            incident={incident}
-            resolveIncident={resolveIncident}
-            stillOver={incidentStillOver(incident, rules, facets)}
-            holds={holds}
-            paused={paused}
-            // Judged on the state the click saw: resolving THIS incident changes none of the others.
-            onResolved={(action) => setNotice(resolvedNotice(action, holds, paused))}
-          />
+          <HighlightTarget key={incident.id} active={highlightId !== undefined && String(incident.id) === highlightId} incidentId={incident.id}>
+            <IncidentBanner
+              incident={incident}
+              resolveIncident={resolveIncident}
+              stillOver={incidentStillOver(incident, rules, facets)}
+              holds={holds}
+              paused={paused}
+              // Judged on the state the click saw: resolving THIS incident changes none of the others.
+              onResolved={(action) => setNotice(resolvedNotice(action, holds, paused))}
+            />
+          </HighlightTarget>
         )
       })}
     </div>

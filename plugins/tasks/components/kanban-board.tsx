@@ -239,6 +239,8 @@ export function KanbanBoard() {
   // `?taskId=` is the drawer's open state: opening PUSHES it (Back closes the
   // drawer), closing REPLACES it away, refresh reopens it.
   const [taskIdParam, setTaskIdParam, pushTaskId] = useQueryState('taskId', '')
+  // `?field=assignee` (a Health deep link, self-healing 1.4b): open the drawer editing, with that field focused.
+  const [fieldParam, setFieldParam] = useQueryState('field', '')
   const hasBoardFilters = Boolean(search) || agentFilter !== 'all' || brandFilter.length > 0
 
   const { filteredColumns, allTasksFlat, aggregations, searchResults, searchStatus, searchMeta } = useTaskFilters(displayColumns, {
@@ -469,6 +471,8 @@ export function KanbanBoard() {
   // A stale link (task deleted since it was created) is page feedback — never a
   // toast that also rewrites the URL out from under the user.
   const taskNotFound = Boolean(taskIdParam) && boardLoaded && !boardFailed && !taskExists
+  // A deep link with a field opens the drawer editing; cancelling or closing clears the field (derived, never set in an effect).
+  const deepLinkEditing = Boolean(fieldParam) && Boolean(taskIdParam) && taskExists
 
   const openTask = useCallback((task: Task, columnId: ColumnId) => {
     setDetailTask({ task, columnId })
@@ -477,9 +481,10 @@ export function KanbanBoard() {
   }, [pushTaskId])
   const closeTask = useCallback(() => {
     setTaskIdParam('')
+    setFieldParam('')
     setDetailTask(null)
     setEditing(false)
-  }, [setTaskIdParam])
+  }, [setTaskIdParam, setFieldParam])
   const editTask = useCallback((task: Task, columnId: ColumnId) => {
     setDetailTask({ task, columnId })
     setEditing(true)
@@ -782,10 +787,11 @@ export function KanbanBoard() {
         task={drawerTask?.task ?? null}
         columnId={drawerTask?.columnId ?? null}
         open={editing || drawerTask !== null}
-        editing={editing}
+        editing={editing || deepLinkEditing}
         onClose={closeTask}
         onEdit={() => setEditing(true)}
-        onCancelEdit={() => setEditing(false)}
+        focusField={fieldParam || undefined}
+        onCancelEdit={() => { setEditing(false); setFieldParam('') }}
         onDelete={(task) => {
           closeTask()
           setDeleteTarget({ id: task.id, title: task.title })

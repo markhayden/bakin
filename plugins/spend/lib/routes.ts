@@ -368,6 +368,43 @@ export const spendRoutes = [
     },
   }),
 
+  // ─── spend.json recover editor (self-healing 1.4b) ───
+  defineRoute({
+    path: '/recover',
+    method: 'GET',
+    summary: 'The spend limits file as it is on disk, with its validation issues',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async () => {
+      const { inspectSpendPolicyFile } = await import('./recover')
+      return Response.json(inspectSpendPolicyFile())
+    },
+  }),
+  defineRoute({
+    path: '/recover',
+    method: 'PUT',
+    summary: 'Write an edited spend limits file — validated as a policy first',
+    body: z.object({ text: z.string().max(200_000) }),
+    responses: { 200: passthrough, 400: errorResponse },
+    handler: async (_req, _ctx, parsed) => {
+      const { writeSpendPolicyText } = await import('./recover')
+      const result = writeSpendPolicyText(parsed.body.text)
+      if (!result.ok) return Response.json({ error: 'not a valid spend policy', issues: result.issues }, { status: 400 })
+      return Response.json({ ok: true })
+    },
+  }),
+  defineRoute({
+    path: '/recover/reset',
+    method: 'POST',
+    summary: 'Start without limits: move the invalid spend limits file aside (never deleted)',
+    body: { contentType: 'none' },
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async () => {
+      const { resetSpendPolicyFile } = await import('./recover')
+      const result = resetSpendPolicyFile()
+      return Response.json({ ok: true, movedTo: result.movedTo })
+    },
+  }),
+
   defineRoute({
     path: '/limits',
     method: 'GET',

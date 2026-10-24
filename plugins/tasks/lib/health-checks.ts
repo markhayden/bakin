@@ -96,7 +96,7 @@ export async function checkTaskConsistency(
             impact: 'The task may not have a runtime that can continue its work.',
             disposition: 'action_required',
             resources: [taskResource, { kind: 'agent', id: task.agent, label: task.agent }],
-            resolution: { key: 'review-task', type: 'navigate', label: 'Review task assignment', href: '/tasks' },
+            resolution: { key: 'reassign-task', type: 'navigate', label: 'Reassign the task', href: `/tasks?taskId=${encodeURIComponent(task.id)}&field=assignee` },
           },
         }))
       }

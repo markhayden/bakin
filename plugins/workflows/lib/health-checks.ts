@@ -45,6 +45,8 @@ function workflowWarning(input: {
   disposition?: 'advisory' | 'watch' | 'action_required'
   repairActionId?: string
   evidence?: Record<string, string | number | boolean | null>
+  /** The operator's control for this record (self-healing 1.4b): its recover view, with the failing step when there is one. */
+  href?: string
 }): HealthObservationInput {
   const disposition = input.disposition ?? (input.repairActionId ? 'action_required' : 'advisory')
   const resourceId = input.workflowId
@@ -62,7 +64,9 @@ function workflowWarning(input: {
         : [{ kind: 'plugin', id: 'workflows', label: 'Workflows' }],
       resolution: input.repairActionId
         ? { key: input.repairActionId, type: 'repair', label: 'Review repair', actionId: input.repairActionId }
-        : { key: 'review-workflows', type: 'navigate', label: 'Review Workflows', href: '/workflows' },
+        : input.href
+          ? { key: 'recover-workflow', type: 'navigate', label: 'Open the recover view', href: input.href }
+          : { key: 'review-workflows', type: 'navigate', label: 'Review Workflows', href: '/workflows' },
     },
   })
 }
@@ -86,6 +90,7 @@ export function checkWorkflowSkills(contentDir: string): HealthCheckRunInput {
               workflowId: file,
               resourceKind: 'file',
               disposition: 'action_required',
+              href: `/workflows?recover=1&skill=${encodeURIComponent(file)}`,
             }))
             continue
           }
@@ -97,6 +102,7 @@ export function checkWorkflowSkills(contentDir: string): HealthCheckRunInput {
               workflowId: file,
               resourceKind: 'file',
               disposition: 'action_required',
+              href: `/workflows?recover=1&skill=${encodeURIComponent(file)}`,
             }))
           }
         } catch {
@@ -281,6 +287,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
             impact: 'Unknown fields are ignored, so the workflow may not behave as its author intended.',
             workflowId: name,
             disposition: 'action_required',
+            href: `/workflows/${encodeURIComponent(name)}?recover=1`,
           }))
         })
       }
@@ -294,6 +301,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
             impact: 'The workflow cannot execute this step.',
             workflowId: name,
             disposition: 'action_required',
+            href: `/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`,
           }))
         }
         if (typedStep.type === 'workflow' || typedStep.type === 'map_workflow') {
@@ -305,6 +313,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
               impact: 'The nested workflow step cannot start.',
               workflowId: name,
               disposition: 'action_required',
+              href: `/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`,
             }))
           }
           if (typedStep.type === 'map_workflow' && childId) {
@@ -330,6 +339,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
               impact: 'The parallel workflow branch cannot execute this step.',
               workflowId: name,
               disposition: 'action_required',
+              href: `/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`,
             }))
           }
         }

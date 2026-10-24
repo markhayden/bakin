@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter, useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
+import { WorkflowRecoverBanner, stableKey } from './workflow-recover-banner'
 import { Stack } from "@makinbakin/sdk/layout"
 import {
   FacetFilter,
@@ -65,6 +66,9 @@ export function WorkflowsPage() {
   const source = sourceParam === 'custom' || sourceParam === 'managed' ? sourceParam : 'all'
   const [sortField, setSortField] = useQueryState('sort', '')
   const [sortDir, setSortDir] = useQueryState('dir', 'asc')
+  // `?recover=1&skill=<file>`: Health's findings on a workflow skill file (self-healing 1.4b; no in-app editor — the fix is on disk).
+  const [recoverParam, setRecoverParam] = useQueryState('recover', '')
+  const [recoverSkill] = useQueryState('skill', '')
   const sort = useMemo(() => parseWorkflowSort(sortField, sortDir), [sortField, sortDir])
   const agents = useAgentList()
   const displaySettings = useAgentStore(state => state.displaySettings)
@@ -315,6 +319,14 @@ export function WorkflowsPage() {
         actionsLabel="Workflow actions"
         actions={<Button onClick={openCreateWorkflowDialog}><Plus /> New workflow</Button>}
       />
+
+      {recoverParam === '1' && recoverSkill ? (
+        <WorkflowRecoverBanner
+          resource={{ kind: 'file', id: stableKey(recoverSkill) }}
+          where={`~/.bakin/workflows/skills/${recoverSkill}`}
+          onDismiss={() => setRecoverParam('')}
+        />
+      ) : null}
 
       <PageControls variant="filters" label="Workflow filters">
         <Select items={SOURCE_OPTIONS} value={source} onValueChange={value => {

@@ -189,7 +189,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
           impact: 'Task dispatch and billed media calls defer until spend.json is a valid policy again; your limits are still in the file.',
           disposition: 'action_required',
           resources: [{ kind: 'plugin', id: 'spend', label: 'Spend plugin' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+          resolution: { key: 'recover-spend-policy', type: 'navigate', label: 'Fix spend.json', href: '/spend?recover=1' },
         },
       }))
     } else {
@@ -259,7 +259,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
           key: 'open-spend-settings',
           type: 'navigate' as const,
           label: 'Resolve budget incidents',
-          href: '/spend',
+          href: `/spend?incident=${encodeURIComponent(String(open[0]!.id))}`,
         },
       }
       observations.push(pausing.length > 0
@@ -489,7 +489,7 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
           key: 'open-spend-settings',
           type: 'navigate',
           label: 'Review spending caps',
-          href: '/spend',
+          href: '/spend?tab=limits',
         },
       },
     }))

@@ -156,7 +156,7 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
           impact: 'The agent cannot be addressed reliably by tasks, sessions, or health views.',
           disposition: 'action_required',
           resources: [{ kind: 'runtime', id: `agent-index-${index}`, label: `Roster entry ${index + 1}` }],
-          resolution: { key: 'review-team', type: 'navigate', label: 'Review Team', href: '/team' },
+          resolution: { key: 'recover-roster', type: 'navigate', label: 'Review the roster problems', href: '/team?recover=1' },
         },
       }))
       return
@@ -171,7 +171,7 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
           impact: 'Dispatch and activity attribution cannot distinguish the duplicate agents reliably.',
           disposition: 'action_required',
           resources: [{ kind: 'agent', id: stablePart(agent.id), label: bounded(agent.name || agent.id, 120) }],
-          resolution: { key: 'review-team', type: 'navigate', label: 'Review Team', href: '/team' },
+          resolution: { key: 'recover-roster', type: 'navigate', label: 'Review the roster problems', href: '/team?recover=1' },
         },
       }))
     }

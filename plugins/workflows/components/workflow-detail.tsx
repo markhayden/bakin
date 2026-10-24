@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
 import { useQueryState } from '@makinbakin/sdk/navigation'
+import { WorkflowRecoverBanner, stableKey } from './workflow-recover-banner'
 import {
   PageHeader,
   WorkspacePage,
@@ -114,6 +115,8 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
   // Derived, not snapshotted, so a refetched definition (skill repair) shows
   // the repaired step. A stale id leaves the drawer closed without rewriting.
   const [stepParam, setStepParam, pushStep] = useQueryState('step', '')
+  // `?recover=1` is the record's recover view: what Health found, and where to fix it (self-healing 1.4b).
+  const [recoverParam, setRecoverParam] = useQueryState('recover', '')
   const [copyOpen, setCopyOpen] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
   const [copyFieldErrors, setCopyFieldErrors] = useState<WorkflowDialogFieldErrors>({})
@@ -364,7 +367,8 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
     )
   }
 
-  const hasFeedback = Boolean(
+  const recovering = recoverParam === '1'
+  const hasFeedback = recovering || Boolean(
     availabilityError
       || isManagedSource
       || (source === 'user' && shadowedSource)
@@ -372,6 +376,14 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
   )
   const feedback = hasFeedback ? (
     <>
+      {recovering ? (
+        <WorkflowRecoverBanner
+          resource={{ kind: 'workflow', id: stableKey(workflowId) }}
+          editHref={`/workflows/${encodeURIComponent(workflowId)}/edit`}
+          editLabel="Open editor"
+          onDismiss={() => setRecoverParam('')}
+        />
+      ) : null}
       {availabilityError ? (
         <Banner
           tone="danger"
