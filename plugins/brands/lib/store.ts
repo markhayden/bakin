@@ -96,6 +96,11 @@ export function createBrand(input: CreateBrandInput): BrandManifest {
   return manifest
 }
 
+/** The brand's directory exists on disk — true for a record whose `brand.json` is missing as well (row 189's "no manifest" case). */
+export function brandDirectoryExists(id: string): boolean {
+  return brandIdSchema.safeParse(id).success && existsSync(brandDir(id))
+}
+
 export function getBrand(id: string): BrandReadResult {
   const path = manifestPath(id)
   if (!brandIdSchema.safeParse(id).success || !existsSync(path)) return { status: 'missing' }

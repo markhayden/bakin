@@ -105,6 +105,7 @@ export async function checkPluginAssets(deps?: PluginArtifactDeps): Promise<Heal
               key: 'keep-edit', kind: 'request' as const, label: keepable.length === 1 ? 'Keep my edit' : `Keep my ${keepable.length} edits`, method: 'POST' as const,
               url: '/api/plugins/health/plugin-assets/keep-edit',
               body: { skills: keepable.map((ref) => ({ name: ref.name, pluginId: ref.pluginId, shippedSha: ref.shippedSha })) },
+              effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
             }] } : {}),
           }
         : await pluginRepair(invalid.map((ref) => ref.pluginId), deps)

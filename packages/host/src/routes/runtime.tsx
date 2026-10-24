@@ -130,7 +130,7 @@ function RuntimePage() {
                 </Stack>
               )}
 
-              {report && activeTab === 'overview' && <OverviewTab report={report} onboarding={onboarding} onRefreshOnboarding={refreshOnboarding} highlightField={field} />}
+              {report && activeTab === 'overview' && <OverviewTab report={report} onboarding={onboarding} onRefreshOnboarding={refreshOnboarding} onRefreshReport={refreshReport} highlightField={field} />}
               {activeTab === 'capabilities' && <CapabilitiesTab />}
               {report && activeTab === 'runtimes' && <RuntimesTab report={report} onSwitched={refresh} />}
             </Stack>

@@ -377,6 +377,7 @@ async function checkAssetStore(contentDir: string, usage: AssetUsageLookup): Pro
               method: 'POST',
               url: '/api/plugins/assets/recover/store-location',
               body: { location: dirName },
+              effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
               confirm: { title: `Move assets/${dirName} aside?`, description: `The file is renamed to assets/${dirName}.invalid-<timestamp> beside its old place — nothing is deleted — and the directory is recreated by the next repair pass.` },
             }],
           }))

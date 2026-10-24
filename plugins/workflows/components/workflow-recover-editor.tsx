@@ -12,9 +12,13 @@
  *
  * Patterns: SaveBar (Components/Forms/SaveBar — CanonicalUsage) over a
  * Field + Textarea (Components/Forms/Field and form composition;
- * Components/Primitives/Textarea — CanonicalUsage).
+ * Components/Primitives/Textarea — CanonicalUsage). Unsaved repairs are
+ * protected by the shared dirty-exit guard (`useUnsavedChangesGuard`,
+ * Codex r2 #12): route changes, same-origin links and the recover view's own
+ * Dismiss (through `requestExit`) all stop at the decision dialog.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
 import { SaveBar } from '@makinbakin/sdk/patterns'
 import { Banner, Field, FieldControl, FieldDescription, FieldLabel, Skeleton, Textarea } from '@makinbakin/sdk/ui'
 import { locateSkillSectionLine, locateYamlLine } from '../lib/yaml-locate'
@@ -32,11 +36,19 @@ export interface RecoverEditorFocus {
   section?: 'frontmatter' | 'output_schema' | null
 }
 
+/** What the recover view holds: the guarded exit (Dismiss asks before dropping a dirty draft). */
+export interface WorkflowRecoverEditorHandle {
+  requestExit: () => void
+}
+
 export interface WorkflowRecoverEditorProps {
   target: RecoverEditorTarget
   focus?: RecoverEditorFocus | null
   /** The save landed and the originating check was asked to rerun. */
   onSaved?: () => void
+  /** The controlled exit the guard completes once nothing is unsaved (the recover view's Dismiss). */
+  onExit?: () => void
+  ref?: Ref<WorkflowRecoverEditorHandle>
 }
 
 interface RawDefinition { id: string; source: string; path: string | null; yaml: string; parseError?: { message: string; line: number | null }; shadowsOnSave?: boolean }
@@ -69,7 +81,7 @@ async function recheck(target: RecoverEditorTarget): Promise<boolean> {
   }
 }
 
-export function WorkflowRecoverEditor({ target, focus, onSaved }: WorkflowRecoverEditorProps) {
+export function WorkflowRecoverEditor({ target, focus, onSaved, onExit, ref }: WorkflowRecoverEditorProps) {
   // The loaded file is keyed by its target: a new target simply has no file
   // yet (loading), so the effect never resets state synchronously.
   const targetKey = target.kind === 'definition' ? `definition:${target.id}` : `skill:${target.file}`
@@ -140,7 +152,7 @@ export function WorkflowRecoverEditor({ target, focus, onSaved }: WorkflowRecove
     }
   }, [loaded, cursorLine])
 
-  const save = useCallback(async () => {
+  const save = useCallback(async (): Promise<boolean> => {
     setSaving(true)
     setSaveError(null)
     setRecheckState('idle')
@@ -150,18 +162,38 @@ export function WorkflowRecoverEditor({ target, focus, onSaved }: WorkflowRecove
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(target.kind === 'definition' ? { yaml: draft } : { content: draft }),
       })
-      if (!res.ok) { setSaveError(await readError(res, `Save failed (${res.status}).`)); return }
+      if (!res.ok) { setSaveError(await readError(res, `Save failed (${res.status}).`)); return false }
       setFile((previous) => (previous && previous.key === targetKey ? { ...previous, loaded: draft, note: null } : previous))
       setRecheckState('requested')
       const ok = await recheck(target)
       setRecheckState(ok ? 'done' : 'failed')
       onSaved?.()
+      return true
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
+      return false
     } finally {
       setSaving(false)
     }
   }, [draft, onSaved, target, targetKey])
+
+  // Dirty-exit protection (Codex r2 #12): the same guard every SaveBar editor
+  // uses. A query-only change (the recover view's Dismiss) is not a route
+  // change, so the view asks through `requestExit` instead.
+  const dirty = loaded !== null && draft !== loaded
+  const guard = useUnsavedChangesGuard({
+    hasUnsavedChanges: dirty,
+    saving,
+    title: 'Unsaved repair',
+    description: `${target.kind === 'definition' ? `${target.id}.yaml` : target.file} has unsaved edits. Save and recheck before leaving, discard them, or stay here.`,
+    saveLabel: 'Save and recheck',
+    error: saveError,
+    onCancel: onExit,
+    onSaveAndExit: save,
+    onDiscardAndExit: () => { setDraft(loaded ?? ''); setSaveError(null) },
+  })
+  const { requestExit } = guard
+  useImperativeHandle(ref, () => ({ requestExit }), [requestExit])
 
   if (loadError) {
     return <Banner tone="danger" title="The file could not be opened" description={loadError} data-testid="workflow-recover-editor-error" />
@@ -221,6 +253,7 @@ export function WorkflowRecoverEditor({ target, focus, onSaved }: WorkflowRecove
       >
         <span>{target.kind === 'definition' ? 'Raw YAML edit' : 'Raw skill edit'}</span>
       </SaveBar>
+      {guard.dialog}
     </div>
   )
 }

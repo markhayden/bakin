@@ -49,14 +49,21 @@ mock.module('../../../../src/core/agent-packages/sync', () => ({
   },
 }))
 let reloads = 0
+// Every target — `all_actionable` included (Codex r2 N3) — resolves its packs THROUGH the report.
+const packIncident = (capability: string, packageId: string, action: 'package-sync' | 'package-reinstall', disposition: 'action_required' | 'advisory' = 'action_required') => ({
+  id: `health.capabilities:not-ready:${capability}`, effectiveDisposition: disposition, subject: { kind: 'package', id: packageId },
+  observationIds: [`health.capabilities:${capability}`], resolution: { type: 'repair', actionId: `health.${action}` },
+})
+let reportIncidents: Array<ReturnType<typeof packIncident>> = []
+const defaultReportIncidents = () => [
+  packIncident('ocr', 'ocr-pack', 'package-reinstall'),
+  packIncident('web-search', 'web-pack', 'package-sync'),
+  packIncident('pdf', 'pdf-pack', 'package-sync'),
+  packIncident('a', 'a-pack', 'package-sync'),
+  packIncident('b', 'b-pack', 'package-sync'),
+]
 mock.module('../../../../src/core/doctor-report-cache', () => ({
-  getHealthReport: () => ({
-    observations: [],
-    incidents: [
-      { id: 'health.capabilities:not-ready:pdf', effectiveDisposition: 'action_required', subject: { kind: 'package', id: 'pdf-pack' }, observationIds: ['health.capabilities:pdf'], resolution: { type: 'repair', actionId: 'health.package-sync' } },
-      { id: 'health.capabilities:not-ready:web-search', effectiveDisposition: 'action_required', subject: { kind: 'package', id: 'web-pack' }, observationIds: ['health.capabilities:web-search'], resolution: { type: 'repair', actionId: 'health.package-sync' } },
-    ],
-  }),
+  getHealthReport: () => ({ observations: [], incidents: reportIncidents }),
 }))
 mock.module('../../../../src/core/agent-packages/post-sync-reload', () => ({
   reloadAgentPackageRegistries: async () => { reloads++ },
@@ -82,6 +89,7 @@ afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true }); mkdirSync(testDir, { recursive: true })
   capabilities = []; syncs.length = 0; syncChanged = true; syncFails = false; reloads = 0
+  reportIncidents = defaultReportIncidents()
 })
 
 describe('capabilityRemedy (the ONE classification the check and the actions share)', () => {
@@ -207,6 +215,24 @@ describe('package-sync / package-reinstall', () => {
     expect(results.map((r) => r.status)).toEqual(['failed', 'failed'])
     expect(results[0]!.message).toContain('upstream unreachable')
     expect(syncs.map((s) => s.packageId)).toEqual(['a-pack', 'b-pack'])
+  })
+
+  it('all_actionable resolves through the report: an advisory pack (nothing declares it) is never swept in, and every item is bound to ITS OWN incident (Codex r2 N3)', async () => {
+    capabilities = [
+      cap({ capability: 'a', packageId: 'a-pack', skills: [{ name: 'a', status: 'missing' }] }),
+      cap({ capability: 'b', packageId: 'b-pack', skills: [{ name: 'b', status: 'missing' }] }),
+    ]
+    reportIncidents = [packIncident('a', 'a-pack', 'package-sync'), packIncident('b', 'b-pack', 'package-sync', 'advisory')]
+    const plan = await packageSyncRepair().plan(all)
+    expect(plan.map((item) => item.id)).toEqual(['a-pack'])
+    expect(plan[0]).toMatchObject({ incidentIds: ['health.capabilities:not-ready:a'], observationIds: ['health.capabilities:a'] })
+    // A targeted plan carries the same per-pack binding — never the whole target's id list.
+    reportIncidents = defaultReportIncidents()
+    const two = await packageSyncRepair().plan({ type: 'incidents', reportId: 'report-test', ids: ['health.capabilities:not-ready:a', 'health.capabilities:not-ready:b'] })
+    expect(two.map((item) => [item.id, item.incidentIds, item.observationIds])).toEqual([
+      ['a-pack', ['health.capabilities:not-ready:a'], ['health.capabilities:a']],
+      ['b-pack', ['health.capabilities:not-ready:b'], ['health.capabilities:b']],
+    ])
   })
 
   it('plans nothing when no pack needs it', async () => {

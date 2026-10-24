@@ -9,9 +9,9 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render } from '@testing-library/react'
 import '../../rtl-settle'
 
-import { armHandoffReturn, disarmHandoffReturn, isHandoffReturnArmed, resetHandoffReturnForTests, useHandoffReturn } from '@bakin/health/components/handoff-return'
+import { armHandoffReturn, armedHandoffChecks, disarmHandoffReturn, isHandoffReturnArmed, resetHandoffReturnForTests, useHandoffReturn } from '@bakin/health/components/handoff-return'
 
-function Page({ onReturn }: { onReturn: () => void }) {
+function Page({ onReturn }: { onReturn: (checkIds: string[]) => void }) {
   useHandoffReturn(onReturn)
   return <div>health</div>
 }
@@ -28,10 +28,11 @@ describe('useHandoffReturn', () => {
   })
 
   it('mounting with an armed handoff IS the return (back from /terminal): one rerun, then disarmed', () => {
-    armHandoffReturn('health:runtime:credentials')
+    armHandoffReturn('health:runtime:credentials', ['team.runtime-credentials'])
     const onReturn = mock()
     render(<Page onReturn={onReturn} />)
     expect(onReturn).toHaveBeenCalledTimes(1)
+    expect(onReturn).toHaveBeenCalledWith(['team.runtime-credentials']) // targeted: the originating check, never a sweep
     expect(isHandoffReturnArmed('health:runtime:credentials')).toBe(false)
     act(() => { window.dispatchEvent(new Event('focus')) })
     expect(onReturn).toHaveBeenCalledTimes(1)
@@ -40,13 +41,15 @@ describe('useHandoffReturn', () => {
   it('a handoff armed while mounted reruns on the next focus or visible tab, once per arming', () => {
     const onReturn = mock()
     render(<Page onReturn={onReturn} />)
-    armHandoffReturn('a')
-    armHandoffReturn('b')
+    armHandoffReturn('a', ['health.search', 'health.search-consistency'])
+    armHandoffReturn('b', ['health.search'])
+    expect(armedHandoffChecks()).toEqual(['health.search', 'health.search-consistency'])
     act(() => { window.dispatchEvent(new Event('focus')) })
-    expect(onReturn).toHaveBeenCalledTimes(1) // two armed incidents, ONE rerun of the checks
+    expect(onReturn).toHaveBeenCalledTimes(1) // two armed incidents, ONE targeted rerun covering both
+    expect(onReturn).toHaveBeenCalledWith(['health.search', 'health.search-consistency'])
     act(() => { window.dispatchEvent(new Event('focus')) })
     expect(onReturn).toHaveBeenCalledTimes(1)
-    armHandoffReturn('c')
+    armHandoffReturn('c', ['pi.auth'])
     act(() => { document.dispatchEvent(new Event('visibilitychange')) })
     expect(onReturn).toHaveBeenCalledTimes(2)
   })
@@ -54,12 +57,12 @@ describe('useHandoffReturn', () => {
   it('a disarmed handoff (the terminal failed to open) reruns nothing; listeners go with the page', () => {
     const onReturn = mock()
     const view = render(<Page onReturn={onReturn} />)
-    armHandoffReturn('x')
+    armHandoffReturn('x', ['pi.home'])
     disarmHandoffReturn('x')
     act(() => { window.dispatchEvent(new Event('focus')) })
     expect(onReturn).not.toHaveBeenCalled()
     view.unmount()
-    armHandoffReturn('y')
+    armHandoffReturn('y', ['pi.home'])
     act(() => { window.dispatchEvent(new Event('focus')) })
     expect(onReturn).not.toHaveBeenCalled()
     expect(isHandoffReturnArmed('y')).toBe(true) // waits for the page to mount again

@@ -183,6 +183,14 @@ export interface RuntimeConformanceSuiteOptions {
    * omission (the runtime runs exactly what its catalog lists).
    */
   resolveId?: 'present' | 'absent'
+  /**
+   * agents.registryLocation() optional-member declaration (self-healing PR1,
+   * Health row 106). 'present' pins the member to exist and to answer either
+   * null or a location whose `path` is non-empty and whose `entryKey(n)` is
+   * a non-empty string naming the entry at position n; 'absent' pins true
+   * omission (a roster that is not a file this process can name).
+   */
+  registryLocation?: 'present' | 'absent'
 }
 
 /** Field names a status-only credential inventory may carry — anything else is a leak vector. */
@@ -331,6 +339,28 @@ export const runtimeConformanceChecks = {
     if (options.resolveId === 'present' && member === undefined) {
       fail('models.resolveId declared present but the adapter omits the member')
     }
+  },
+
+  /**
+   * agents.registryLocation optional-member honesty (self-healing PR1):
+   * presence is the contract — absence must be member omission, never a
+   * throwing stub; a present member answers null or a well-formed location.
+   */
+  async registryLocationMemberMatchesDeclaration(target: RuntimeConformanceTarget, options?: RuntimeConformanceSuiteOptions): Promise<void> {
+    if (options?.registryLocation === undefined) return
+    const member = target.runtime.agents.registryLocation
+    if (options.registryLocation === 'absent') {
+      if (member !== undefined) fail('agents.registryLocation declared absent but the adapter exposes the member — absence must be member omission')
+      return
+    }
+    if (member === undefined) fail('agents.registryLocation declared present but the adapter omits the member')
+    const location = await member.call(target.runtime.agents)
+    if (location === null) return
+    if (!location || typeof location !== 'object') fail('agents.registryLocation() must return null or an object')
+    if (typeof location.path !== 'string' || location.path.length === 0) fail('agents.registryLocation().path must be a non-empty string')
+    if (typeof location.entryKey !== 'function') fail('agents.registryLocation().entryKey must be a function')
+    const key = location.entryKey(0)
+    if (typeof key !== 'string' || key.length === 0) fail('agents.registryLocation().entryKey(0) must name the entry (non-empty string)')
   },
 
   /**
@@ -1199,6 +1229,10 @@ export function runRuntimeConformanceSuite(
 
     it('models.resolveId member matches its declaration (presence is the contract)', async () => {
       await runtimeConformanceChecks.resolveIdMemberMatchesDeclaration(getTarget(), options)
+    })
+
+    it('agents.registryLocation member matches its declaration and answers null or a well-formed location (Health row 106)', async () => {
+      await runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(getTarget(), options)
     })
 
     it('models.resolveId is honest: a listed id resolves verbatim, an unknown reference to null (when the member exists)', async () => {

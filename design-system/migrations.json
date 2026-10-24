@@ -20,11 +20,11 @@
     "private-import"
   ],
   "summary": {
-    "paths": 161,
+    "paths": 160,
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 77,
-      "raw-scale": 422,
+      "raw-scale": 421,
       "raw-control": 17,
       "inline-style": 33,
       "generic-token": 72,
@@ -1877,22 +1877,6 @@
       "allowances": {
         "arbitrary-size": 1,
         "raw-scale": 4
-      }
-    },
-    {
-      "path": "plugins/health/components/overview-alerts.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
       }
     },
     {

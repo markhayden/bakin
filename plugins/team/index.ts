@@ -733,6 +733,13 @@ const teamPlugin: BakinPlugin = definePlugin({
     // ─── Health checks (migrated out of core/doctor.ts per #139) ────────
     const runtimeAgentReader = {
       list: () => ctx.runtime.agents.list(),
+      // Optional neutral member (row 106): the roster file + entry key for the
+      // id-less-entry handoff. Resolved lazily — the runtime binds at activation
+      // and a runtime without the member answers null (no location), never a throw.
+      registryLocation: async () => {
+        const member = ctx.runtime.agents.registryLocation
+        return member ? member.call(ctx.runtime.agents) : null
+      },
     }
 
     ctx.registerHealthRepairAction(personaRepair(getContentDir(), runtimeAgentReader))

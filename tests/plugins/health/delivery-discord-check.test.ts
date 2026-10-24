@@ -39,7 +39,7 @@ interface ObservedLike {
     key: string
     summary: string
     detail?: string
-    incident?: { key: string; declarationId?: string; disposition: string; class?: string; resolution?: { type: string; href?: string } }
+    incident?: { key: string; declarationId?: string; disposition: string; class?: string; impact?: string; required?: boolean; resolution?: { type: string; href?: string } }
   }>
   reason?: string
 }
@@ -120,9 +120,43 @@ describe('delivery.discord doctor check (readiness projection)', () => {
     expect(incident).toMatchObject({ key: 'bridge-failed', resolution: reconnect })
   })
   it('disconnected → bridge-disconnected pointing at the reconnect repair (row 25)', () => expectIncident('disconnected', 'bridge-disconnected', reconnect))
-  it('degraded → guild-unjoined naming the guild, landing on the servers field (row 26)', async () => {
-    await expectIncident('degraded', 'guild-unjoined', { type: 'human', needs: 'decision', field: 'channels-field-guilds', href: '/settings?tab=channels&field=integrations.discord.guildIds', label: 'Invite the bot or remove the server' })
-    expect(((await checkDeliveryDiscord()) as ObservedLike).observations?.[0]?.summary).toContain('g1')
+  it('degraded with nothing routed into the unreachable server → guild-unjoined is ADVISORY (required:false), landing on the servers field (row 26)', async () => {
+    current = snapshot('degraded')
+    const result = await checkDeliveryDiscord() as ObservedLike
+    const incident = result.observations?.[0]?.incident as (NonNullable<NonNullable<ObservedLike['observations']>[number]['incident']> & { required?: boolean }) | undefined
+    expect(incident).toMatchObject({
+      key: 'guild-unjoined', declarationId: 'guild-unjoined', disposition: 'advisory', required: false,
+      resolution: { type: 'human', needs: 'decision', field: 'channels-field-guilds', href: '/settings?tab=channels&field=integrations.discord.guildIds', label: 'Invite the bot or remove the server' },
+    })
+    expect(result.observations?.[0]?.summary).toContain('g1')
+    expect((result.observations?.[0] as { evidence?: Record<string, unknown> }).evidence).toMatchObject({ usageKnown: true, configuredTargets: [], unplacedTargets: [] })
+  })
+
+  it('degraded with a configured channel no reachable server holds → required and action_required, naming the setting (row 26 usage fact)', async () => {
+    current = snapshot('degraded', {
+      channels: { items: [{ id: 'discord:ch-1', platform: 'discord', label: '#alerts', capabilities: ['message'] }], source: 'bridge', collectedAt: 'x' },
+      routing: {
+        alertChannel: { setting: 'notifications.channel', value: 'alerts', resolved: 'ok', channelId: 'discord:ch-1' },
+        approvalsChannel: { setting: 'approvals.channel', value: 'discord:ch-9', resolved: 'unknown_channel', channelId: 'discord:ch-9' },
+        approvalsEnabled: true,
+        aliases: [{ setting: 'notifications.channelAliases.ops', value: 'ops', resolved: 'unknown_channel', channelId: 'discord:ch-7' }],
+      },
+    })
+    const result = await checkDeliveryDiscord() as ObservedLike
+    expect(result.observations?.[0]?.incident).toMatchObject({ key: 'guild-unjoined', disposition: 'action_required', required: true })
+    expect((result.observations?.[0] as { evidence?: Record<string, unknown> }).evidence).toMatchObject({ usageKnown: true, unplacedTargets: ['approvals.channel', 'notifications.channelAliases.ops'] })
+    expect(result.observations?.[0]?.incident?.impact).toContain('approvals.channel')
+    // Approvals disabled: that target no longer counts.
+    current = snapshot('degraded', { routing: { ...current.routing, approvalsEnabled: false, aliases: [] } })
+    expect(((await checkDeliveryDiscord()) as ObservedLike).observations?.[0]?.incident).toMatchObject({ disposition: 'advisory', required: false })
+  })
+
+  it('degraded with an UNVERIFIABLE routing target (no channel list) is advisory with usageKnown:false — never presumed', async () => {
+    current = snapshot('degraded', { routing: { alertChannel: { setting: 'notifications.channel', value: 'alerts', resolved: 'unverifiable' }, approvalsChannel: { setting: 'approvals.channel', value: null, resolved: 'unset' }, approvalsEnabled: false, aliases: [] } })
+    const result = await checkDeliveryDiscord() as ObservedLike
+    expect(result.observations?.[0]?.incident).toMatchObject({ disposition: 'advisory', required: false })
+    expect((result.observations?.[0] as { evidence?: Record<string, unknown> }).evidence).toMatchObject({ usageKnown: false })
+    expect(result.observations?.[0]?.incident?.impact).toContain('unknown')
   })
 
   it('connecting is a plain observation (row 23) — never a card', async () => {

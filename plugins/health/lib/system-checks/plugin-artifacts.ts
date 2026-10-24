@@ -61,6 +61,47 @@ const PLUGIN_CHECK_IDS = [CHECK_ID, 'health.plugin-assets', 'health.plugin-regis
 export interface PluginArtifactDeps {
   /** The updates engine's record for `plugin:<id>` — the check never probes an index itself (#1007). */
   record: (pluginId: string) => Promise<UpdateRecord | undefined>
+  /**
+   * Row 98's usage FACT: what is consuming the plugin right now — open tasks
+   * it created and workflow instances in progress on definitions it owns.
+   * `null` = the fact could not be read (the plugin reads advisory, with the
+   * gap named), never "in use".
+   */
+  consumers?: (pluginId: string) => Promise<PluginConsumers | null>
+}
+
+export interface PluginConsumers {
+  /** Open task ids whose `source.pluginId` is this plugin. */
+  openTasks: string[]
+  /** In-progress workflow instance task ids running a definition this plugin owns. */
+  runningWorkflows: string[]
+}
+
+const CLOSED_TASK_COLUMNS: ReadonlySet<string> = new Set(['done', 'archived'])
+
+/** The default consumer facts: the task store (open columns) and the workflows plugin's hooks. */
+export async function defaultPluginConsumers(pluginId: string): Promise<PluginConsumers | null> {
+  try {
+    const { getAppServices } = await import('../../../../src/core/app-services')
+    const { getHookRegistry } = await import('@bakin/core/hooks/hook-registry-singleton')
+    const tasks = await getAppServices().tasks.list()
+    const openTasks = tasks
+      .filter((task) => !CLOSED_TASK_COLUMNS.has(task.column) && task.source?.pluginId === pluginId)
+      .map((task) => task.id)
+    const hooks = getHookRegistry()
+    const definitions = hooks.has('workflows.definitions.list')
+      ? await hooks.invoke<Array<{ name: string; definition?: { pluginId?: string } }>>('workflows.definitions.list', {})
+      : []
+    const owned = new Set((definitions ?? []).filter((entry) => entry.definition?.pluginId === pluginId).map((entry) => entry.name))
+    const instances = owned.size > 0 && hooks.has('workflows.instances.list')
+      ? await hooks.invoke<Array<{ taskId: string; workflowId: string }>>('workflows.instances.list', { statusFilter: 'in_progress' })
+      : []
+    const runningWorkflows = (instances ?? []).filter((instance) => owned.has(instance.workflowId)).map((instance) => instance.taskId)
+    return { openTasks, runningWorkflows }
+  } catch (err) {
+    log.warn('Could not read the plugin consumer facts — the plugin reads advisory', { pluginId, err: err instanceof Error ? err.message : String(err) })
+    return null
+  }
 }
 
 const defaultDeps: PluginArtifactDeps = {
@@ -70,6 +111,7 @@ const defaultDeps: PluginArtifactDeps = {
     const id = `plugin:${pluginId}`
     return (await engine.snapshot()).records.find((record) => record.id === id)
   },
+  consumers: defaultPluginConsumers,
 }
 
 /**
@@ -158,7 +200,7 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
     const verification = verifyInstalledArtifact(pluginDir)
     if (verification.status === 'needs-update' || verification.status === 'invalid') {
       const status = verification.status
-      pending.push(pluginUpgradeOffer(name, deps).then((offer) => pluginArtifactWarning(name, status, verification.reason, offer, pluginUsage(name, pluginDir))))
+      pending.push(Promise.all([pluginUpgradeOffer(name, deps), pluginUsage(name, pluginDir, deps.consumers ?? defaultPluginConsumers)]).then(([offer, usage]) => pluginArtifactWarning(name, status, verification.reason, offer, usage)))
     }
   }
   const observations: HealthObservationInput[] = await Promise.all(pending)
@@ -177,44 +219,55 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
 
 /**
  * Row 98's two facts about an installed plugin: the lock ledger's `disabled`
- * mark, and whether anything references it. The strongest usage fact Bakin
- * can read without the plugin running is DECLARED: the on-disk manifest's
- * contributions (nav, routes, exec tools, CLI commands, client routes) and
- * the ledger's installed skills/bins (agents hold those). No live usage fact
- * (an open task or workflow calling its tools) exists today — a plugin that
- * declares nothing and installed nothing is advisory, never presumed required.
+ * mark, and whether anything is CONSUMING it (Codex r2 / r1 #11): open tasks
+ * the plugin created and workflow instances in progress on definitions it
+ * owns. What the manifest declares and what the ledger installed (skills,
+ * bins) describe the installed capability, not a consumer — they ride along
+ * in the copy so the operator knows what disabling takes away, but never
+ * make the plugin required. No consumer fact ⇒ advisory, never presumed.
  */
 export interface PluginUsage {
   disabled: boolean
+  /** A live consumer exists (open task / running workflow) — the row-98 `required` fact. */
   referenced: boolean
-  /** Why `referenced` is what it is, for the impact copy. */
+  /** The consumers, for the impact copy. */
   referencedBy: string[]
+  /** What disabling takes away (declared contributions, installed skills/bins) — context, not a usage fact. */
+  declares: string[]
+  /** False when the consumer fact could not be read (named in the copy). */
+  usageKnown: boolean
 }
 
-export function pluginUsage(name: string, pluginDir: string): PluginUsage {
+export async function pluginUsage(name: string, pluginDir: string, consumers: (pluginId: string) => Promise<PluginConsumers | null> = defaultPluginConsumers): Promise<PluginUsage> {
   let entry: PluginLockEntry | undefined
   try {
     entry = readPluginLockfile().plugins[name]
   } catch (err) {
     log.warn('Could not read the plugin lockfile for the plugin usage facts', { pluginId: name, err: err instanceof Error ? err.message : String(err) })
   }
-  const referencedBy: string[] = []
+  const declares: string[] = []
   try {
     const manifest = JSON.parse(readFileSync(join(pluginDir, 'bakin-plugin.json'), 'utf-8')) as { contributes?: Record<string, unknown> }
     const contributes = manifest.contributes ?? {}
     for (const key of ['navItems', 'routes', 'clientRoutes', 'apiRoutes', 'execTools', 'cliCommands', 'slots']) {
       const value = contributes[key]
-      if (Array.isArray(value) && value.length > 0) referencedBy.push(`${value.length} declared ${key}`)
+      if (Array.isArray(value) && value.length > 0) declares.push(`${value.length} declared ${key}`)
     }
   } catch (err) {
     log.warn('Could not read the plugin manifest for the plugin usage facts', { pluginId: name, err: err instanceof Error ? err.message : String(err) })
   }
-  if ((entry?.installedSkills?.length ?? 0) > 0) referencedBy.push(`${entry!.installedSkills!.length} installed runtime skill(s)`)
-  if ((entry?.installedBins?.length ?? 0) > 0) referencedBy.push(`${entry!.installedBins!.length} installed binary(ies)`)
-  return { disabled: isPluginDisabled(entry), referenced: referencedBy.length > 0, referencedBy }
+  if ((entry?.installedSkills?.length ?? 0) > 0) declares.push(`${entry!.installedSkills!.length} installed runtime skill(s)`)
+  if ((entry?.installedBins?.length ?? 0) > 0) declares.push(`${entry!.installedBins!.length} installed binary(ies)`)
+  const live = await consumers(name)
+  const referencedBy: string[] = []
+  if (live) {
+    if (live.openTasks.length > 0) referencedBy.push(`${live.openTasks.length} open task(s) it created (${live.openTasks.slice(0, 3).join(', ')}${live.openTasks.length > 3 ? ', …' : ''})`)
+    if (live.runningWorkflows.length > 0) referencedBy.push(`${live.runningWorkflows.length} workflow run(s) in progress on its definitions`)
+  }
+  return { disabled: isPluginDisabled(entry), referenced: referencedBy.length > 0, referencedBy, declares, usageKnown: live !== null }
 }
 
-function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid', reason: string, offer: PluginUpgradeOffer, usage: PluginUsage = { disabled: false, referenced: true, referencedBy: [] }) {
+function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid', reason: string, offer: PluginUpgradeOffer, usage: PluginUsage = { disabled: false, referenced: false, referencedBy: [], declares: [], usageKnown: false }) {
   const id = stableKeyPart(name)
   const label = name.slice(0, 120)
   // A stranded plugin with no compatible release yet is upstream-blocked: the
@@ -247,10 +300,12 @@ function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid',
               method: 'POST',
               url: '/api/plugins/disable',
               body: { pluginId: name },
+              // Containment deletes nothing: the plugin, its data, tables and queued writes stay; it just stops loading.
+              effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
               tone: 'danger',
               confirm: {
                 title: `Disable ${label}?`,
-                description: `${label} stays installed but stops loading: ${usage.referencedBy.length > 0 ? `${usage.referencedBy.join(', ')} go away` : 'nothing it contributes is available'} until you enable it again in Explore. Its data is kept.`,
+                description: `${label} stays installed but stops loading: ${usage.declares.length > 0 ? `${usage.declares.join(', ')} go away` : 'nothing it contributes is available'}${usage.referencedBy.length > 0 ? ` — ${usage.referencedBy.join('; ')} will lose it` : ''} until you enable it again in Explore. Its data is kept.`,
               },
             },
             { key: 'updates', kind: 'link', label: 'See the update row', href: '/health?tab=updates' },
@@ -278,7 +333,7 @@ function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid',
       key: `${status}:${id}`,
       title: status === 'needs-update' ? 'Plugin artifact needs an update' : 'Plugin artifact failed verification',
       impact: blocked
-        ? `The plugin remains inactive until a compatible, verified artifact is installed. ${offer.kind === 'none' ? `${offer.reason.charAt(0).toUpperCase()}${offer.reason.slice(1)}. ` : ''}Its author has to publish one; Health offers the upgrade as soon as the updates engine observes it.`
+        ? `The plugin remains inactive until a compatible, verified artifact is installed. ${offer.kind === 'none' ? `${offer.reason.charAt(0).toUpperCase()}${offer.reason.slice(1)}. ` : ''}Its author has to publish one; Health offers the upgrade as soon as the updates engine observes it. ${usage.referenced ? `In use now: ${usage.referencedBy.join('; ')}.` : usage.usageKnown ? 'Nothing is using it right now (no open task it created, no workflow run on its definitions).' : 'Whether anything is using it could not be read, so it is listed as advisory.'}`.slice(0, 2_000)
         : 'The plugin remains inactive until a compatible, verified artifact is installed.',
       // Row 98: required while the plugin is enabled AND referenced — an enabled plugin that declares and installed nothing is advisory.
       disposition: blocked && !usage.referenced ? 'advisory' : 'action_required',
@@ -470,8 +525,11 @@ async function commitApproved(
   op.stage('activate')
   for (const id of done) {
     try {
-      await activateUserPluginDir(join(getContentDir(), 'plugins', id))
-      op.item('activate', { id, label: id, status: 'done' })
+      const activation = await activateUserPluginDir(join(getContentDir(), 'plugins', id))
+      // Row 98 / Codex r2 N7: a disabled plugin is upgraded on disk but stays disabled until the operator enables it.
+      op.item('activate', activation.skipped === 'disabled'
+        ? { id, label: id, status: 'skipped', message: `${id} stays disabled — enable it in Explore when you want it back.` }
+        : { id, label: id, status: 'done' })
     } catch (err) {
       const message = `${verb}ed ${id} but could not activate it: ${err instanceof Error ? err.message : String(err)}`
       problems.set(id, message)

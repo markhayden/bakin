@@ -559,6 +559,19 @@ describe('three outcomes: effects, mode and the ONE authorization gate (self-hea
     expect(stricter.items[0]).toMatchObject({ effects: DEL, mode: 'one-click' })
   })
 
+  it('a one-click item of a `none` action still passes the ONE gate: the system actor is refused operator-only, never the caller\'s shortcut (Codex r1 #4)', async () => {
+    planResultOverride = [{
+      id: 'purge', actionId: 'restart-search', title: 'Purge', reason: 'Deletes user content.', effects: DEL,
+      incidentIds: [], observationIds: [], preconditions: [], changes: [],
+    }]
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    expect(plan.items[0]).toMatchObject({ mode: 'one-click' })
+    const started = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId, itemIds: plan.items.map((item) => item.id), confirmedItemIds: plan.items.map((item) => item.id), origin: 'system' })
+    const { report: outcome } = await awaitDoctorRepair(started.operationId)
+    expect(outcome!.results[0]).toMatchObject({ status: 'skipped', authorization: { refused: true, reason: 'operator-only' } })
+  })
+
   it('an unattended upgrade is refused consent-unreviewed and skipped — never a failed attempt; the operator may apply; an action without a mutation is untouched', async () => {
     const upgradeApply = mock(async (items: any[]) => items.map((item) => ({ itemId: item.id, actionId: item.actionId, status: 'applied' as const, message: 'Upgraded.', affectedCheckIds: ['repair-test.upgrade-check'], changes: item.changes })))
     registerPluginHealthRepairAction('repair-test', {

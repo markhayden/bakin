@@ -13,6 +13,9 @@
  * kill switch surfaces as its own warn row.
  */
 import { queryAuditEvents } from '../../../src/core/audit'
+
+/** An acknowledgement records a decision and changes nothing the gate cares about. */
+const NO_CHOICE_EFFECTS = { deletesUserContent: false, spendsMoney: false, widensAuthorization: false } as const
 import { getContentDir } from '../../../src/core/content-dir'
 import { LedgerUnavailableError, listBudgetIncidents, type BudgetIncidentRow } from '../../../src/core/execution-ledger'
 import { assembleBudgetSpend } from '../../../src/core/budget-spend'
@@ -637,7 +640,7 @@ export function incidentDecisionChoices(incident: Pick<BudgetIncidentRow, 'id' |
     // A raise needs an amount: the banner (deep-linked) holds that input.
     { key: 'raise', kind: 'link', label: 'Raise the limit', href: `/spend?incident=${encodeURIComponent(String(incident.id))}` },
     ...(incident.status === 'open'
-      ? [{ key: 'ack', kind: 'request' as const, label: 'Acknowledge', method: 'POST' as const, url, body: { action: 'ack' } }]
+      ? [{ key: 'ack', kind: 'request' as const, label: 'Acknowledge', method: 'POST' as const, url, body: { action: 'ack' }, effects: NO_CHOICE_EFFECTS }]
       : []),
     {
       key: 'resume',
@@ -646,6 +649,8 @@ export function incidentDecisionChoices(incident: Pick<BudgetIncidentRow, 'id' |
       method: 'POST',
       url,
       body: { action: 'resume' },
+      // Resuming dispatch resumes spending — the confirm is required, not optional.
+      effects: { deletesUserContent: false, spendsMoney: true, widensAuthorization: false },
       confirm: {
         title: `Resume dispatch for ${who}?`,
         description: `Work covered by this ${incident.window} ${incident.lane} limit dispatches again. Bakin refuses this while spend is still at or over the limit — raise the limit instead.`,
@@ -669,7 +674,7 @@ export function capReachedResolution(rule: BudgetRule, openIncidents: readonly B
     choices: [
       { key: 'raise', kind: 'link', label: 'Raise the limit', href: `/spend?tab=limits&field=${encodeURIComponent(ruleId)}`, field },
       ...(incident && incident.status === 'open'
-        ? [{ key: 'ack', kind: 'request' as const, label: 'Acknowledge', method: 'POST' as const, url: `/api/plugins/spend/incidents/${incident.id}/resolve`, body: { action: 'ack' } }]
+        ? [{ key: 'ack', kind: 'request' as const, label: 'Acknowledge', method: 'POST' as const, url: `/api/plugins/spend/incidents/${incident.id}/resolve`, body: { action: 'ack' }, effects: NO_CHOICE_EFFECTS }]
         : []),
     ],
   }

@@ -5,8 +5,10 @@
  * Synchronous and bounded (#895 D23): takes install-state WITHOUT waiting —
  * busy answers 409 `install_busy` naming the holder. The ledger flag is the
  * durable change; the running server follows it live when it can: disable
- * deactivates the plugin in-process (routes, hooks, tools gone; the browser
- * reloads its manifest), enable activates the directory again. When the live
+ * SUSPENDS the plugin in-process (routes, hooks, tools gone; its search
+ * tables, registrations and queued writes stay — this is containment, not
+ * uninstall; the browser reloads its manifest), enable activates the
+ * directory again over the data it kept. When the live
  * step cannot run (registry not initialized, the activation throws) the
  * response says `live: false` with the reason — the flag is set and the next
  * server restart applies it; never a silent no-op.
@@ -54,7 +56,7 @@ export async function toggleEnabled(req: Request, enabled: boolean): Promise<Res
         if (!enabled) {
           await unwatchPluginIfEnabled(pluginId)
           const state = pluginRegistry.getPluginState(pluginId)
-          if (state) await pluginRegistry.deactivatePlugin(pluginId, { callShutdown: true, removeState: true })
+          if (state) await pluginRegistry.suspendPlugin(pluginId, { callShutdown: true })
           pluginRegistry.markPluginDisabled({
             id: pluginId,
             name: state?.plugin.name ?? pluginId,

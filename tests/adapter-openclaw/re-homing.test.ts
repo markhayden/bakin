@@ -36,8 +36,8 @@ mock.module('../../packages/core/src/hooks/hook-registry-singleton', () => ({
   }),
 }))
 
-import { OPENCLAW_GATEWAY_PROTOCOL_INCIDENTS, OPENCLAW_OVERRIDE_AUTHORIZATION_INCIDENTS, createOpenClawHealthChecks } from '../../packages/adapter-openclaw/src/health-checks'
-import type { RuntimeCompatibility } from '../../packages/core/src/adapters/runtime'
+import { OPENCLAW_GATEWAY_PROTOCOL_INCIDENTS, OPENCLAW_OVERRIDE_AUTHORIZATION_INCIDENTS, OPENCLAW_PROVIDER_CONFIGURATION_INCIDENTS, createOpenClawHealthChecks } from '../../packages/adapter-openclaw/src/health-checks'
+import type { ProviderCredentialInventory, RuntimeCompatibility } from '../../packages/core/src/adapters/runtime'
 import { parseHealthCheckRegistration, parseHealthCheckRunInput } from '../../src/core/health-contract'
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
@@ -147,6 +147,78 @@ describe('OpenClaw gateway protocol floor (the Updates `gateway` row, Codex r1 #
     const check = createOpenClawHealthChecks({ routingSupport: () => routing(true), scopesVerified: () => true }).find((c) => c.id === 'gateway-protocol')
     const parsed = parseHealthCheckRunInput(await check!.run())
     if (parsed.outcome !== 'observed') throw new Error('expected observed')
-    expect(parsed.observations[0]).toMatchObject({ status: 'unknown', evidence: { state: 'unknown', required: '4' } })
+    expect(parsed.observations[0]).toMatchObject({ status: 'unknown', evidence: { state: 'unknown', required: '4', probe: 'cached' } })
+  })
+
+  describe('return verification re-probes instead of trusting the handshake from before (Codex r2, r1 #9)', () => {
+    const ok: RuntimeCompatibility = { required: '4', observed: '4', observedAt: '2026-10-24T01:00:00.000Z', state: 'ok' }
+    const below: RuntimeCompatibility = { required: '4', observed: '3', observedAt: '2026-10-24T00:00:00.000Z', state: 'below-floor' }
+    async function runWithProbe(cached: RuntimeCompatibility, probe: () => Promise<RuntimeCompatibility>) {
+      const calls = { probes: 0 }
+      const check = createOpenClawHealthChecks({ routingSupport: () => routing(true), scopesVerified: () => true, compatibility: () => cached, probeCompatibility: async () => { calls.probes += 1; return probe() } })
+        .find((candidate) => candidate.id === 'gateway-protocol')
+      const parsed = parseHealthCheckRunInput(await check!.run())
+      if (parsed.outcome !== 'observed') throw new Error('expected observed')
+      return { observation: parsed.observations[0]!, calls }
+    }
+    it('a cached ok from the live connection is current evidence — no probe', async () => {
+      const { observation, calls } = await runWithProbe(ok, async () => below)
+      expect(calls.probes).toBe(0)
+      expect(observation).toMatchObject({ status: 'healthy', evidence: { probe: 'cached', state: 'ok' } })
+    })
+    it('a cached below-floor verdict is re-probed: the operator who ran `openclaw update` is seen (fresh ok → healthy)', async () => {
+      const { observation, calls } = await runWithProbe(below, async () => ok)
+      expect(calls.probes).toBe(1)
+      expect(observation).toMatchObject({ status: 'healthy', evidence: { probe: 'fresh', state: 'ok', observed: '4' } })
+    })
+    it('a fresh probe that still finds the old gateway keeps the incident', async () => {
+      const { observation } = await runWithProbe(below, async () => below)
+      expect(observation).toMatchObject({ status: 'error', incident: { declarationId: 'gateway-below-floor' }, evidence: { probe: 'fresh' } })
+    })
+    it('a probe that cannot reach the gateway falls back to the cached verdict and says the probe failed (unknown stays unknown, never healthy)', async () => {
+      const { observation } = await runWithProbe({ required: '4', state: 'unknown' }, async () => { throw new Error('connect timed out') })
+      expect(observation).toMatchObject({ status: 'unknown', evidence: { probe: 'failed', probeError: 'connect timed out', state: 'unknown' } })
+      expect(observation.summary).toContain('could not be reached')
+      const stillBelow = await runWithProbe(below, async () => { throw new Error('ECONNREFUSED') })
+      expect(stillBelow.observation).toMatchObject({ status: 'error', evidence: { probe: 'failed', state: 'below-floor' } })
+    })
+  })
+})
+
+describe('OpenClaw provider configuration (parity with Pi row 198, Codex r2 r1 #9)', () => {
+  async function runProviders(credentials?: () => Promise<ProviderCredentialInventory>) {
+    const check = createOpenClawHealthChecks({ routingSupport: () => routing(true), scopesVerified: () => true, ...(credentials ? { credentials } : {}) })
+      .find((candidate) => candidate.id === 'provider-configuration')
+    const parsed = parseHealthCheckRunInput(await check!.run())
+    if (parsed.outcome !== 'observed') throw new Error('expected observed')
+    return parsed.observations[0]!
+  }
+  it('declares exactly the provider-configuration family: human credential, always required', () => {
+    const check = createOpenClawHealthChecks({ routingSupport: () => routing(true), scopesVerified: () => true }).find((c) => c.id === 'provider-configuration')
+    expect(parseHealthCheckRegistration(check!).id).toBe('provider-configuration')
+    expect(check!.incidents).toEqual(OPENCLAW_PROVIDER_CONFIGURATION_INCIDENTS)
+    expect(check!.incidents).toEqual([{ id: 'provider-configuration', subjectKind: 'runtime', resolution: { type: 'human', needs: 'credential' }, required: 'always' }])
+  })
+  it('no provider in a COMPLETE inventory → the declared credential with the `openclaw models auth login` handoff on the credentials group', async () => {
+    const observation = await runProviders(async () => ({ providers: [], evidence: 'complete' }))
+    expect(observation.status).toBe('error')
+    expect(observation.incident).toMatchObject({
+      declarationId: 'provider-configuration',
+      subject: { kind: 'runtime', id: 'openclaw' },
+      disposition: 'action_required',
+      resolution: { type: 'human', needs: 'credential', href: '/runtime?tab=overview&field=credentials', handoff: { command: 'openclaw models auth login' } },
+    })
+  })
+  it('a configured provider → healthy, naming it; a PARTIAL empty inventory → unknown, never credential-less (#615)', async () => {
+    const healthy = await runProviders(async () => ({ providers: [{ providerId: 'openai', configured: true, source: 'runtime' }], evidence: 'complete' }))
+    expect(healthy).toMatchObject({ status: 'healthy', evidence: { providers: ['openai'] } })
+    expect(healthy.summary).toContain('openai')
+    const partial = await runProviders(async () => ({ providers: [], evidence: 'partial', detail: 'CLI probe failed' }))
+    expect(partial).toMatchObject({ status: 'unknown', evidence: { evidence: 'partial' } })
+    expect(partial.incident).toBeUndefined()
+  })
+  it('no inventory member, or a throwing one → an unknown observation, never a card', async () => {
+    expect(await runProviders()).toMatchObject({ status: 'unknown' })
+    expect(await runProviders(async () => { throw new Error('cli exploded') })).toMatchObject({ status: 'unknown', detail: 'cli exploded' })
   })
 })

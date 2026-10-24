@@ -628,7 +628,8 @@ import type { BakinPlugin, PluginContext, ExecToolDefinition } from '@makinbakin
 | `HealthGroup` | Stable subsystem grouping supplied by a registration. |
 | `HealthResourceKind` | — |
 | `HealthResource` | Stable reference to a resource affected by an incident. |
-| `HealthDecisionChoice` | One named, executable choice on an incident card beside its resolution |
+| `HealthDecisionChoiceEffects` | One named, executable choice on an incident card beside its resolution |
+| `HealthDecisionChoice` | — |
 | `HealthRepairResolution` | — |
 | `HealthHumanHandoff` | A credential or an install the operator performs in a shell: the exact |
 | `HealthHumanResolution` | Something only a human can supply (spec §3.1): a credential, a payment, |

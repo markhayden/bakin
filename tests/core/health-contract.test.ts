@@ -277,7 +277,7 @@ describe('health run-output validation', () => {
             handoff: { command: 'gh auth login', cwd: '~/.bakin' },
             choices: [
               { key: 'guest', kind: 'link', label: 'Use as guest', href: '/settings?tab=system&field=search.settings.url', field: 'search.settings.url' },
-              { key: 'keep', kind: 'request', label: 'Keep', method: 'POST', url: '/api/plugins/health/search/keep', body: { tables: ['t1'] }, tone: 'danger', confirm: { title: 'Keep these tables?', description: 'They stay.' } },
+              { key: 'keep', kind: 'request', label: 'Keep', method: 'POST', url: '/api/plugins/health/search/keep', body: { tables: ['t1'] }, tone: 'danger', effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false }, confirm: { title: 'Keep these tables?', description: 'They stay.' } },
             ],
           },
         },
@@ -414,7 +414,13 @@ describe('health run-output validation', () => {
     const base = warningObservation().incident as Record<string, unknown>
     const withChoices = (choices: unknown) => safeParseHealthCheckRunInput({ outcome: 'observed', observations: [warningObservation({ incident: { ...base, resolution: { key: 'review', type: 'human', needs: 'decision', label: 'Review', href: '/health', choices } } })] })
     expect(withChoices([{ key: 'a', kind: 'link', label: 'A', href: '/spend' }]).success).toBe(true)
-    expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '/api/plugins/spend/resume' }]).success).toBe(true)
+    const NONE_FX = { deletesUserContent: false, spendsMoney: false, widensAuthorization: false }
+    expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '/api/plugins/spend/resume', effects: NONE_FX }]).success).toBe(true)
+    // Codex r2 N2: a request choice declares its effects, and a destructive or dangerous one must confirm.
+    expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '/api/plugins/spend/resume' }]).success).toBe(false)
+    expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '/api/plugins/spend/resume', effects: { ...NONE_FX, spendsMoney: true } }]).success).toBe(false)
+    expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '/api/plugins/spend/resume', effects: NONE_FX, tone: 'danger' }]).success).toBe(false)
+    expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '/api/plugins/spend/resume', effects: { ...NONE_FX, deletesUserContent: true }, confirm: { title: 'Sure?' } }]).success).toBe(true)
     expect(withChoices([{ key: 'a', kind: 'link', label: 'A', href: 'https://evil.example/x' }]).success).toBe(false)
     expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'POST', url: '//evil.example/x' }]).success).toBe(false)
     expect(withChoices([{ key: 'a', kind: 'request', label: 'A', method: 'GET', url: '/api/x' }]).success).toBe(false)

@@ -281,9 +281,7 @@ function authorizeItems(
   actor: MutationActor,
   report: HealthReport,
 ): { allowed: HealthRepairPlanItem[]; refused: HealthRepairApplyResult[] } {
-  // `none` is the action's explicit, reviewable statement that it changes no
-  // installed identity, writes no policy and deletes nothing the user owns.
-  if (action.mutation === 'none') return { allowed: [...items], refused: [] }
+  // Every item passes the ONE gate — `none` and one-click items included; the policy decides, never this caller.
   const allowed: HealthRepairPlanItem[] = []
   const refused: HealthRepairApplyResult[] = []
   for (const item of items) {
@@ -291,6 +289,7 @@ function authorizeItems(
     const verdict = authorizeMutation({
       subject: authorizationSubject(incident?.subject),
       mutation: action.mutation,
+      item: { mode: item.mode },
       actor,
       consentReviewed: false,
     })

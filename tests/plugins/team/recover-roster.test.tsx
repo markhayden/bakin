@@ -21,14 +21,19 @@ const realFetch = globalThis.fetch
 let report: unknown
 let requests: Array<{ url: string; method: string; body?: unknown }>
 let removeStatus = 200
+/** What the doctor read answers: the report, an HTTP failure, or a rejection. */
+let doctorMode: 'ok' | 'http-error' | 'reject'
+const rosterObserved = [{ checkId: 'team.agent-roster', latestExecution: { outcome: 'observed' } }]
 beforeEach(() => {
   for (const key of Object.keys(query)) delete query[key]
   requests = []
   removeStatus = 200
+  doctorMode = 'ok'
   report = {
+    checks: rosterObserved,
     observations: [
       { id: 'team.agent-roster:duplicate-relay', summary: 'Runtime agent id relay appears 2 times (roster positions 2, 3).', evidence: { kind: 'duplicate', agentId: 'relay', positions: [1, 2], names: ['Relay', 'Relay (old)'] } },
-      { id: 'team.agent-roster:missing-id-3', summary: 'Runtime agent at roster position 4 has no id.', evidence: { kind: 'missing-id', rosterIndex: 3, name: 'Broken', workspace: '/home/x/.pi/agent/broken' } },
+      { id: 'team.agent-roster:missing-id-3', summary: 'Runtime agent at roster position 4 has no id.', evidence: { kind: 'missing-id', rosterIndex: 3, name: 'Broken', workspace: '/home/x/.pi/agent/broken', registry: { path: '/home/x/.pi/agent/bakin-agents.json', entryKey: 'agents[3]' } } },
       { id: 'tasks.task-consistency:unknown-agent:t1', summary: 'Task t1 is assigned to an unknown agent.', evidence: { taskId: 't1' } },
     ],
   }
@@ -36,12 +41,16 @@ beforeEach(() => {
     const url = String(input)
     const method = init?.method ?? 'GET'
     requests.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
-    if (url === '/api/plugins/health/doctor') return Response.json(report)
+    if (url === '/api/plugins/health/doctor') {
+      if (doctorMode === 'http-error') return Response.json({ error: 'doctor unavailable' }, { status: 503 })
+      if (doctorMode === 'reject') throw new TypeError('Failed to fetch')
+      return Response.json(report)
+    }
     if (url === '/api/plugins/health/doctor/run') return Response.json({ ok: true })
     if (url.startsWith('/api/plugins/team/') && method === 'DELETE') {
       if (removeStatus !== 200) return Response.json({ error: 'Cannot delete the main orchestrator agent' }, { status: removeStatus })
       // The agent is gone: the next report read has no duplicate left.
-      report = { observations: (report as { observations: Array<{ id: string }> }).observations.filter((o) => !o.id.includes('duplicate-relay')) }
+      report = { checks: rosterObserved, observations: (report as { observations: Array<{ id: string }> }).observations.filter((o) => !o.id.includes('duplicate-relay')) }
       return Response.json({ ok: true })
     }
     return Response.json({})
@@ -57,7 +66,7 @@ describe('rosterProblemsFrom', () => {
     ] })
     expect(problems).toEqual([
       { kind: 'duplicate', agentId: 'relay', positions: [1, 2], names: ['Relay', 'Relay (old)'], summary: expect.stringContaining('relay') },
-      { kind: 'missing-id', rosterIndex: 3, name: 'Broken', workspace: '/home/x/.pi/agent/broken', summary: expect.stringContaining('position 4') },
+      { kind: 'missing-id', rosterIndex: 3, name: 'Broken', workspace: '/home/x/.pi/agent/broken', registry: { path: '/home/x/.pi/agent/bakin-agents.json', entryKey: 'agents[3]' }, summary: expect.stringContaining('position 4') },
     ])
   })
 })
@@ -78,7 +87,20 @@ describe('RosterRecoverPanel', () => {
     expect(missing.textContent).toContain('Roster entry 4 has no id (named Broken)')
     expect(missing.textContent).toContain('/home/x/.pi/agent/broken')
     expect(within(missing).getByRole('button', { name: 'Recheck roster' })).toBeTruthy()
+    // Row 106 (Codex r2 #7): the id-less entry's control is the registry file + entry key as a HandoffCard, never a sentence.
+    const handoff = within(missing).getByRole('region', { name: 'Give roster entry 4 an id' })
+    expect(handoff.textContent).toContain('agents[3]')
+    expect(within(handoff).getByText('"${EDITOR:-nano}" "/home/x/.pi/agent/bakin-agents.json"')).toBeTruthy()
+    expect(within(handoff).getByRole('button', { name: /copy/i })).toBeTruthy()
     expect(screen.queryByText(/unknown agent/)).toBeNull()
+  })
+
+  it('an id-less entry whose runtime names no registry location keeps the honest sentence and no command', async () => {
+    report = { observations: [{ id: 'team.agent-roster:missing-id-0', summary: 'Runtime agent at roster position 1 has no id.', evidence: { kind: 'missing-id', rosterIndex: 0 } }] }
+    await act(async () => { render(<RosterRecoverPanel onDismiss={() => {}} />) })
+    await waitFor(() => expect(screen.getByTestId('roster-recover-panel')).toBeTruthy())
+    expect(screen.queryByRole('region', { name: /an id/ })).toBeNull()
+    expect(screen.getByText(/No runtime surface names an entry by position/)).toBeTruthy()
   })
 
   it('removing a duplicate goes through the typed ConfirmDialog, the team DELETE route, a targeted roster recheck, and the row disappears', async () => {
@@ -115,7 +137,7 @@ describe('RosterRecoverPanel', () => {
   it('Recheck roster on an id-less entry reruns the roster check and re-reads the report', async () => {
     await act(async () => { render(<RosterRecoverPanel onDismiss={() => {}} />) })
     await screen.findByText('2 roster problems')
-    report = { observations: [] }
+    report = { checks: rosterObserved, observations: [] }
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Recheck roster' })) })
     await waitFor(() => expect(screen.getByText('The roster is consistent')).toBeTruthy())
     expect(requests.find((r) => r.url === '/api/plugins/health/doctor/run')).toMatchObject({ body: { checkIds: ['team.agent-roster'] } })
@@ -137,9 +159,51 @@ describe('RosterRecoverPanel', () => {
     expect(duplicate.getAttribute('data-highlighted')).toBe('true')
   })
 
-  it('a clean roster is a quiet success', async () => {
-    report = { observations: [] }
+  it('a clean roster is a quiet success — ONLY when the roster check has observed in this report', async () => {
+    report = { checks: rosterObserved, observations: [] }
     await act(async () => { render(<RosterRecoverPanel onDismiss={() => {}} />) })
     await waitFor(() => expect(screen.getByText('The roster is consistent')).toBeTruthy())
+    expect(screen.getByTestId('roster-recover-panel').getAttribute('data-evidence')).toBe('verified-empty')
+  })
+
+  it('no roster check evidence in the report is UNVERIFIED, never "consistent"; Recheck roster runs the check and re-reads (Codex r2 #10)', async () => {
+    report = { checks: [], observations: [] }
+    await act(async () => { render(<RosterRecoverPanel onDismiss={() => {}} />) })
+    await waitFor(() => expect(screen.getByText('Health has not verified the roster yet')).toBeTruthy())
+    expect(screen.getByTestId('roster-recover-panel').getAttribute('data-evidence')).toBe('unverified')
+    expect(screen.queryByText('The roster is consistent')).toBeNull()
+    report = { checks: rosterObserved, observations: [] }
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Recheck roster' })) })
+    await waitFor(() => expect(screen.getByText('The roster is consistent')).toBeTruthy())
+    expect(requests.find((r) => r.url === '/api/plugins/health/doctor/run')).toMatchObject({ method: 'POST', body: { checkIds: ['team.agent-roster'] } })
+  })
+
+  it('a failed report read (HTTP error, then a rejection) is an honest unavailable state with Try again — never an empty, consistent roster (Codex r2 #10)', async () => {
+    doctorMode = 'http-error'
+    await act(async () => { render(<RosterRecoverPanel onDismiss={() => {}} />) })
+    await waitFor(() => expect(screen.getByText('Health could not be read')).toBeTruthy())
+    expect(screen.getByTestId('roster-recover-panel').getAttribute('data-evidence')).toBe('unavailable')
+    expect(screen.getByTestId('roster-recover-panel').textContent).toContain('(503)')
+    expect(screen.queryByText('The roster is consistent')).toBeNull()
+    doctorMode = 'ok'
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Try again' })) })
+    await waitFor(() => expect(screen.getByText('2 roster problems')).toBeTruthy())
+    cleanup()
+    doctorMode = 'reject'
+    await act(async () => { render(<RosterRecoverPanel onDismiss={() => {}} />) })
+    await waitFor(() => expect(screen.getByText('Health could not be read')).toBeTruthy())
+    expect(screen.getByTestId('roster-recover-panel').textContent).toContain('Failed to fetch')
+  })
+
+  it('a failed REFRESH keeps the last known rows and says the read failed (Codex r2 #10)', async () => {
+    await act(async () => { render(<RosterRecoverPanel onDismiss={() => {}} />) })
+    await waitFor(() => expect(screen.getByText('2 roster problems')).toBeTruthy())
+    doctorMode = 'http-error'
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Recheck roster' })) })
+    await waitFor(() => expect(screen.getByText('The latest refresh failed')).toBeTruthy())
+    expect(screen.getByTestId('roster-recover-panel').getAttribute('data-evidence')).toBe('stale')
+    expect(screen.getByText('2 roster problems')).toBeTruthy()
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.queryByText('The roster is consistent')).toBeNull()
   })
 })

@@ -98,6 +98,28 @@ describe('GET/PUT /skills/:name/raw', () => {
     expect(readFileSync(join(skillsDir, 'review.md'), 'utf-8')).toBe(`${fixed}\n`)
   })
 
+  it('the save route shares the health check\'s verdict (Codex r2 #11): malformed frontmatter YAML and a prose-only or list output_schema are refused, and the GET names the same problems', async () => {
+    writeFileSync(join(skillsDir, 'torn.md'), '---\nname: Torn\n---\nbody\n')
+    const malformed = '---\nname: [\n---\nRemember the output_schema.\n'
+    const refused = await call('PUT', '/skills/:name/raw', '/skills/torn.md/raw', { body: { content: malformed } })
+    expect(refused.status).toBe(400)
+    expect(refused.body).toMatchObject({ problems: [{ section: 'frontmatter', code: 'frontmatter-invalid-yaml' }, { section: 'output_schema', code: 'output-schema-missing' }] })
+    expect(String((refused.body as { error: string }).error)).toMatch(/not valid YAML/)
+    expect(readFileSync(join(skillsDir, 'torn.md'), 'utf-8')).toBe('---\nname: Torn\n---\nbody\n')
+
+    const prose = await call('PUT', '/skills/:name/raw', '/skills/torn.md/raw', { body: { content: '---\nname: Torn\n---\nThe output_schema is described in prose.\n' } })
+    expect(prose.status).toBe(400)
+    expect(prose.body).toMatchObject({ problems: [{ section: 'output_schema', code: 'output-schema-missing' }] })
+
+    const listy = await call('PUT', '/skills/:name/raw', '/skills/torn.md/raw', { body: { content: '---\nname: Torn\noutput_schema: [a, b]\n---\nbody\n' } })
+    expect(listy.status).toBe(400)
+    expect(listy.body).toMatchObject({ problems: [{ section: 'output_schema', code: 'output-schema-not-mapping' }] })
+
+    writeFileSync(join(skillsDir, 'torn.md'), malformed)
+    const read = await call('GET', '/skills/:name/raw', '/skills/torn.md/raw')
+    expect(read.body).toMatchObject({ problems: [{ section: 'frontmatter', code: 'frontmatter-invalid-yaml' }, { section: 'output_schema' }] })
+  })
+
   it('refuses names that are not a skill file (no traversal) and a file that does not exist', async () => {
     expect((await call('GET', '/skills/:name/raw', '/skills/..%2F..%2Fsettings.json/raw')).status).toBe(400)
     expect((await call('GET', '/skills/:name/raw', '/skills/nope.md/raw')).status).toBe(404)

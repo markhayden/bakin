@@ -214,6 +214,12 @@ export interface HealthResource {
  * asks first. Choices never add a third outcome (spec D1): they are the
  * controls of the human decision, named on the card instead of behind it.
  */
+export interface HealthDecisionChoiceEffects {
+  deletesUserContent: boolean
+  spendsMoney: boolean
+  widensAuthorization: boolean
+}
+
 export type HealthDecisionChoice =
   | { key: string; label: string; kind: 'link'; href: string; field?: string }
   | {
@@ -221,10 +227,16 @@ export type HealthDecisionChoice =
       label: string
       kind: 'request'
       method: 'POST' | 'PUT' | 'DELETE'
-      /** Same-origin application path (an owner route). */
+      /**
+       * The OWNER's own route (`/api/plugins/<ownerId>/…` for a plugin; a
+       * host route for core/adapters) or one of core's shared decision
+       * controls — the runner refuses anything else.
+       */
       url: string
       body?: Record<string, unknown>
       tone?: 'default' | 'danger'
+      /** What the request does; any true effect (or `tone: 'danger'`) REQUIRES `confirm`. */
+      effects: HealthDecisionChoiceEffects
       confirm?: { title: string; description?: string }
     }
 

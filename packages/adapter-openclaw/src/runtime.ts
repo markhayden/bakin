@@ -459,6 +459,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       walk(root, '')
       return out.sort()
     },
+    // Row 106: the roster lives in openclaw.json — the legacy `agents.list`
+    // ARRAY is the only shape where an entry can lack an id (the keyed
+    // `agents.entries` map carries the id in the key), so the key names the
+    // list position when a list exists and the entries map otherwise.
+    registryLocation: async () => {
+      const config = readOpenClawConfig()
+      const legacyList = Array.isArray(config?.agents?.list) && config!.agents!.list!.length > 0
+      return {
+        path: getOpenClawPath('openclaw.json'),
+        entryKey: (index: number) => (legacyList ? `agents.list[${index}]` : `agents.entries[<id>] (entry ${index + 1})`),
+      }
+    },
     workspaces: async (): Promise<Array<{ agentId: string; path: string }>> => {
       // ONE strict snapshot for the roster, the main identity and every path:
       // an unreadable openclaw.json throws here, where the lenient reads
@@ -1235,6 +1247,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * at connect. Never a live probe, never inferred from the CLI version.
    */
   compatibility = (): RuntimeCompatibility => gatewayCompatibility()
+
+  /**
+   * Adapter-private (duck-typed by the health composition, like
+   * `gatewayScopesVerified`): a FRESH floor verdict for a targeted rerun —
+   * dials the gateway when the connection is down (bounded by the connect
+   * timeout) so an `openclaw update` the operator just ran is seen, then
+   * answers from the handshake that connection recorded.
+   */
+  probeGatewayCompatibility = async (): Promise<RuntimeCompatibility> => {
+    await this.openClawChatGateway().probeHandshake()
+    return gatewayCompatibility()
+  }
 
   private async runtimeAgentIds(): Promise<string[]> {
     return (await this.agents.list()).map((agent) => agent.id).filter(Boolean)

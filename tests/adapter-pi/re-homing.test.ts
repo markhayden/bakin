@@ -176,6 +176,7 @@ describe('emitted instances match their families', () => {
       declarationId: 'extension-approval',
       subject: { kind: 'runtime', id: 'pi' },
       required: false,
+      disposition: 'advisory', // required:false and the disposition agree — never red on a guess
       resolution: { type: 'human', needs: 'decision', href: '/runtime?tab=runtimes' },
     })
     rmSync(extensionsDir, { recursive: true, force: true })

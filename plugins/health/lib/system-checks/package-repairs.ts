@@ -17,11 +17,10 @@
  * `consent-unreviewed` until PR6's consent records exist (R3 N2).
  */
 import type { HealthRepairActionDefinition, HealthRepairApplyResult, HealthRepairPlanItemInput, HealthRepairTarget, OperationContext } from '@makinbakin/sdk'
-import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { listCapabilities } from '../../../../src/core/agent-packages/capability-readiness'
 import { capabilityRemedy } from '../../../../src/core/agent-packages/capability-remedy'
 import { createLogger } from '../../../../src/core/logger'
-import { subjectIdsNamedBy } from '../../../../src/core/doctor-repair-targets'
+import { incidentsNamedBy } from '../../../../src/core/doctor-repair-targets'
 
 const log = createLogger('health:package-repairs')
 
@@ -29,10 +28,23 @@ export const PACKAGE_SYNC_ACTION = 'package-sync'
 export const PACKAGE_REINSTALL_ACTION = 'package-reinstall'
 const CHECK_ID = 'health.capabilities'
 
-/** The packs a target names, resolved through the current report (incident subjects are `package:<packageId>`). */
-function packsSelectedBy(target: HealthRepairTarget, kind: string): Set<string> | null {
-  if (target.type === 'all_actionable') return null // every pack whose remedy is this action
-  return new Set(subjectIdsNamedBy(target, { actionId: `health.${kind}`, subjectKind: 'package' }))
+/**
+ * The packs a target names, resolved through the current report for EVERY
+ * target kind (Codex r2 N3): `all_actionable` is the report's action-required
+ * incidents whose resolution is this action — an advisory pack (nothing
+ * declares it) is never swept in — and each pack carries ITS OWN incident and
+ * observation ids, so core binds the item to that incident alone.
+ */
+function packsSelectedBy(target: HealthRepairTarget, kind: string): Map<string, { incidentIds: string[]; observationIds: string[] }> {
+  const selected = new Map<string, { incidentIds: string[]; observationIds: string[] }>()
+  for (const incident of incidentsNamedBy(target, `health.${kind}`)) {
+    if (incident.subject.kind !== 'package') continue
+    const entry = selected.get(incident.subject.id) ?? { incidentIds: [], observationIds: [] }
+    entry.incidentIds.push(incident.id)
+    entry.observationIds.push(...incident.observationIds)
+    selected.set(incident.subject.id, entry)
+  }
+  return selected
 }
 
 function packRepair(kind: typeof PACKAGE_SYNC_ACTION | typeof PACKAGE_REINSTALL_ACTION): HealthRepairActionDefinition {
@@ -58,7 +70,8 @@ function packRepair(kind: typeof PACKAGE_SYNC_ACTION | typeof PACKAGE_REINSTALL_
       const seen = new Set<string>()
       const selected = packsSelectedBy(target, kind)
       for (const cap of capabilities) {
-        if (capabilityRemedy(cap) !== kind || (selected !== null && !selected.has(cap.packageId)) || seen.has(cap.packageId)) continue
+        const binding = selected.get(cap.packageId)
+        if (capabilityRemedy(cap) !== kind || !binding || seen.has(cap.packageId)) continue
         seen.add(cap.packageId)
         items.push({
           id: cap.packageId,
@@ -67,7 +80,9 @@ function packRepair(kind: typeof PACKAGE_SYNC_ACTION | typeof PACKAGE_REINSTALL_
           reason: reinstall
             ? `${cap.name} has a binary or manifest Bakin cannot trust as installed; re-staging the recorded pack reinstalls every piece from its source.`
             : `${cap.name} is missing projected content a sync re-installs from its source.`,
-          ...repairTargetSelection(target),
+          incidentIds: [...new Set(binding.incidentIds)].sort(),
+          observationIds: [...new Set(binding.observationIds)].sort(),
+          preconditions: [],
           changes: [{
             kind: 'file',
             target: `package:${cap.packageId}@${cap.version}`,

@@ -295,6 +295,23 @@ describe('checkAgentRoster', () => {
     expect(missing.status).toBe('warning')
     expect(missing.evidence).toEqual({ kind: 'missing-id', rosterIndex: 1, name: 'Broken', workspace: '/home/x/.pi/agent/broken' })
     expect(missing.incident).toMatchObject({ subject: { kind: 'agent', id: 'roster-1' }, resources: [{ kind: 'runtime', id: 'roster-entry-1' }], resolution: { href: '/team?recover=1&entry=1' } })
+    expect(missing.incident?.resolution).not.toHaveProperty('handoff') // no registry location → no command to invent
+  })
+
+  it('with agents.registryLocation the id-less entry gets the registry file + entry key as its handoff (row 106, Codex r2 #7)', async () => {
+    runtimeAgents = [makeRuntimeAgent('main'), { id: '', name: 'Broken' }]
+    const located = { ...runtimeAgentReader, registryLocation: async () => ({ path: '/Users/me/.pi/agent/bakin-agents.json', entryKey: (index: number) => `agents[${index}]` }) }
+    const missing = observations(await checkAgentRoster(located)).find(r => r.key === 'missing-id-1')!
+    expect(missing.evidence).toEqual({ kind: 'missing-id', rosterIndex: 1, name: 'Broken', registry: { path: '/Users/me/.pi/agent/bakin-agents.json', entryKey: 'agents[1]' } })
+    expect(missing.incident).toMatchObject({
+      impact: expect.stringContaining('agents[1] in /Users/me/.pi/agent/bakin-agents.json'),
+      resolution: { type: 'human', needs: 'decision', href: '/team?recover=1&entry=1', handoff: { command: '"${EDITOR:-nano}" "/Users/me/.pi/agent/bakin-agents.json"' } },
+    })
+    // A throwing member is "no location", never a failed check.
+    const throwing = { ...runtimeAgentReader, registryLocation: async () => { throw new Error('roster moved') } }
+    const fallback = observations(await checkAgentRoster(throwing)).find(r => r.key === 'missing-id-1')!
+    expect(fallback.evidence).toEqual({ kind: 'missing-id', rosterIndex: 1, name: 'Broken' })
+    expect(fallback.incident?.resolution).not.toHaveProperty('handoff')
   })
 })
 

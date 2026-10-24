@@ -240,6 +240,29 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
     await runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(quietTarget(honest), { compatibility: 'present' })
   })
 
+  it('fails the agents.registryLocation declaration check on a throwing stub, on omission, and on a malformed location (row 106)', async () => {
+    const base = createMockRuntimeAdapter()
+    const stubbed = { ...base, agents: { ...base.agents, registryLocation: async () => { throw new Error('unsupported') } } }
+    await expect(
+      runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(stubbed), { registryLocation: 'absent' }),
+    ).rejects.toThrow(/member omission/)
+    await expect(
+      runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(base), { registryLocation: 'present' }),
+    ).rejects.toThrow(/omits the member/)
+    const malformed = { ...base, agents: { ...base.agents, registryLocation: async () => ({ path: '', entryKey: () => 'agents[0]' }) } }
+    await expect(
+      runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(malformed), { registryLocation: 'present' }),
+    ).rejects.toThrow(/path must be a non-empty string/)
+    const nameless = { ...base, agents: { ...base.agents, registryLocation: async () => ({ path: '/tmp/roster.json', entryKey: () => '' }) } }
+    await expect(
+      runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(nameless), { registryLocation: 'present' }),
+    ).rejects.toThrow(/must name the entry/)
+    const honest = { ...base, agents: { ...base.agents, registryLocation: async () => ({ path: '/tmp/roster.json', entryKey: (index: number) => `agents[${index}]` }) } }
+    await runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(honest), { registryLocation: 'present' })
+    const fileless = { ...base, agents: { ...base.agents, registryLocation: async () => null } }
+    await runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(fileless), { registryLocation: 'present' })
+  })
+
   it('fails the threaded-sessionId check', async () => {
     await expect(runtimeConformanceChecks.threadedSendReturnsSessionId(brokenTarget()))
       .rejects.toThrow(/conformance violation: threaded send returned no metadata.sessionId/)

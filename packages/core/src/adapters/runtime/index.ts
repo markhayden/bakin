@@ -84,6 +84,7 @@ export type {
   RuntimeConfigChangeKind,
   RestartAdvice,
   RuntimeCompatibility,
+  RuntimeRegistryLocation,
   RuntimeRoutingPolicy,
   RuntimeRoutingSupport,
   CapabilitySet,

@@ -82,6 +82,17 @@ describe('BrandRecoverPage', () => {
     await waitFor(() => expect(requests.some((r) => r.url === '/api/plugins/brands/acme' && r.method === 'DELETE')).toBe(true))
     await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1))
   })
+  it('a directory without brand.json (status no-manifest) is recoverable: Recreate and the typed-confirm delete, no raw file block (Codex r2 #8)', async () => {
+    report = { ...report, status: 'no-manifest', error: 'brand.json is missing from the brand directory', raw: null, dangling: [], tasks: [] }
+    await act(async () => { render(<BrandRecoverPage brandId="acme" onExit={() => {}} />) })
+    await waitFor(() => expect(screen.getByRole('list', { name: 'Repairs' })).toBeTruthy())
+    expect(screen.getByText(/brand\.json is missing: the brand directory exists/)).toBeTruthy()
+    expect(screen.queryByText('The file as it is')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Recreate manifest' })).toBeTruthy()
+    expect(screen.getByText(/A fresh brand\.json named acme is written into the directory/)).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Delete brand' })).toBeTruthy()
+    expect(screen.queryByText('Nothing to recover')).toBeNull()
+  })
   it('Detach confirms, posts exactly those ids, reloads the facts and reruns the integrity check; an empty result is a success banner', async () => {
     await act(async () => { render(<BrandRecoverPage brandId="acme" brandName="Acme" onExit={() => {}} />) })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Detach all' })).toBeTruthy())

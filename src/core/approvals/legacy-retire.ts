@@ -18,12 +18,15 @@
  * (append-only, last line per approval wins); the repair engine's
  * notification outbox (PR5) imports the open ones.
  *
- * The reader is BOUNDED: records are read one file at a time (never the whole
- * directory into memory), a file above `MAX_APPROVAL_FILE_BYTES` is counted
- * unreadable and left alone, a pass retires at most `MAX_RETIREMENTS_PER_PASS`
- * records (the rest wait for the next pass — nothing is lost, the selection
- * is re-derived from disk every time), and an oversized receipt journal is
- * read from its tail (the last line per approval is the one that counts).
+ * The reader is BOUNDED without ever forgetting work: records are read one
+ * file at a time (never the whole directory into memory), a file above
+ * `MAX_APPROVAL_FILE_BYTES` is counted unreadable and left alone, a pass
+ * retires in batches of `MAX_RETIREMENTS_PER_BATCH` and yields to the event
+ * loop between batches until the selection is empty (bounded burst, complete
+ * drain — no record waits for another restart), and the receipt journal is
+ * STREAMED line by line (memory bounded by the number of distinct approvals,
+ * not the file size — an unfinished receipt is never dropped behind a long
+ * tail of finished ones).
  * Records the adapted engine writes carry `schemaVersion: 2` and are never
  * selected.
  */
@@ -46,10 +49,10 @@ export const LEGACY_RETIRE_REASON = 'Retired by the Health upgrade: decisions no
 export const LEGACY_RETIRE_AUDIT_EVENT = 'approvals.legacy_retired'
 /** An approval record is a few KB; anything past this is not one Bakin wrote and is left alone. */
 export const MAX_APPROVAL_FILE_BYTES = 256 * 1024
-/** Records retired per pass; the remainder is selected again by the next boot/reconnect pass. */
-export const MAX_RETIREMENTS_PER_PASS = 200
-/** Past this the journal is read from its tail — the last line per approval is the one that counts. */
-export const MAX_RECEIPT_JOURNAL_BYTES = 4 * 1024 * 1024
+/** Records retired per batch; a pass drains batch after batch (yielding between them) until none is left. */
+export const MAX_RETIREMENTS_PER_BATCH = 200
+/** Journal read chunk; a single receipt line longer than this is malformed and skipped with a warning. */
+export const RECEIPT_JOURNAL_CHUNK_BYTES = 256 * 1024
 const LEGACY_KINDS = new Set(['health-repair', 'health-navigate'])
 
 export type RetirementReceiptState = 'retiring' | 'done' | 'edit-failed'
@@ -80,10 +83,10 @@ export interface RetirementReceipt {
 }
 
 export interface LegacyRetireSummary {
-  /** Legacy pending records retired by this pass. */
+  /** Legacy pending records retired by this pass (every batch summed). */
   selected: number
-  /** Legacy pending records left for the next pass (`MAX_RETIREMENTS_PER_PASS`). */
-  deferred: number
+  /** Batches the pass needed (`MAX_RETIREMENTS_PER_BATCH` each). */
+  batches: number
   /** Cancelled through the approvals service (the record parsed under the current schema). */
   cancelledViaStore: number
   /** Cancelled by a raw write (the record did not parse). */
@@ -107,18 +110,34 @@ export function retirementReceiptsPath(contentDir = getContentDir()): string {
   return join(contentDir, 'health', 'retirement-receipts.jsonl')
 }
 
-/** The journal text, whole when it fits the bound, otherwise its tail with the first partial line dropped. */
-function readJournalBounded(path: string): string {
-  const size = statSync(path).size
-  if (size <= MAX_RECEIPT_JOURNAL_BYTES) return readFileSync(path, 'utf-8')
-  log.warn('Retirement receipt journal is oversized — reading its tail only', { path, size, bound: MAX_RECEIPT_JOURNAL_BYTES })
+/** Stream the journal's lines with bounded memory (one chunk at a time); an over-long line is skipped, never buffered. */
+function* journalLines(path: string): Generator<string> {
   const fd = openSync(path, 'r')
   try {
-    const buffer = Buffer.alloc(MAX_RECEIPT_JOURNAL_BYTES)
-    const read = readSync(fd, buffer, 0, MAX_RECEIPT_JOURNAL_BYTES, size - MAX_RECEIPT_JOURNAL_BYTES)
-    const tail = buffer.subarray(0, read).toString('utf-8')
-    const firstBreak = tail.indexOf('\n')
-    return firstBreak === -1 ? '' : tail.slice(firstBreak + 1)
+    const chunk = Buffer.alloc(RECEIPT_JOURNAL_CHUNK_BYTES)
+    let carry = ''
+    let overlong = false
+    for (;;) {
+      const read = readSync(fd, chunk, 0, chunk.length, null)
+      if (read === 0) break
+      const text = carry + chunk.subarray(0, read).toString('utf-8')
+      const lines = text.split('\n')
+      carry = lines.pop() ?? ''
+      for (const line of lines) {
+        if (overlong) { overlong = false; continue } // the tail of a skipped over-long line
+        if (line.length > RECEIPT_JOURNAL_CHUNK_BYTES) {
+          log.warn('Retirement receipt line exceeds the chunk bound — skipped', { path, bound: RECEIPT_JOURNAL_CHUNK_BYTES })
+          continue
+        }
+        yield line
+      }
+      if (carry.length > RECEIPT_JOURNAL_CHUNK_BYTES) {
+        log.warn('Retirement receipt line exceeds the chunk bound — skipped', { path, bound: RECEIPT_JOURNAL_CHUNK_BYTES })
+        carry = ''
+        overlong = true
+      }
+    }
+    if (carry !== '' && !overlong) yield carry
   } finally {
     closeSync(fd)
   }
@@ -135,7 +154,7 @@ export function readRetirementReceipts(contentDir = getContentDir()): Map<string
   const path = retirementReceiptsPath(contentDir)
   const receipts = new Map<string, RetirementReceipt>()
   if (!existsSync(path)) return receipts
-  for (const line of readJournalBounded(path).split('\n')) {
+  for (const line of journalLines(path)) {
     if (line.trim() === '') continue
     try {
       const parsed = JSON.parse(line) as Partial<RetirementReceipt>
@@ -323,38 +342,52 @@ export async function retireLegacyHealthApprovals(
   const now = options.deps?.now ?? (() => new Date().toISOString())
   const channels = (options.deps?.channels ?? defaultChannels)()
   const resumed = await resumeRetirementReceipts({ contentDir, deps: { channels: () => channels, now } })
-  const summary: LegacyRetireSummary = { selected: 0, deferred: 0, cancelledViaStore: 0, cancelledRaw: 0, done: resumed.done, editFailed: resumed.editFailed, resumed: resumed.resumed, unreadable: 0 }
+  const summary: LegacyRetireSummary = { selected: 0, batches: 0, cancelledViaStore: 0, cancelledRaw: 0, done: resumed.done, editFailed: resumed.editFailed, resumed: resumed.resumed, unreadable: 0 }
 
-  const receipts = readRetirementReceipts(contentDir)
-  for (const path of approvalFiles(contentDir)) {
-    const entry = readRawApproval(path)
-    if (!entry) { summary.unreadable += 1; continue }
-    if (!isLegacyPending(entry.raw)) continue
-    const approvalId = entry.raw.approvalId
-    if (typeof approvalId !== 'string' || approvalId === '') continue
-    if (receipts.has(approvalId)) continue // already retired (or being resumed above)
-    if (summary.selected >= MAX_RETIREMENTS_PER_PASS) { summary.deferred += 1; continue }
-    summary.selected += 1
-    const startedAt = now()
-    // Intent FIRST (R4.1): a crash after this line is recovered by resume.
-    const intent = appendReceipt(contentDir, {
-      approvalId,
-      deliveries: pendingDeliveries(entry.raw),
-      state: 'retiring',
-      reason: LEGACY_RETIRE_REASON,
-      startedAt,
-      updatedAt: startedAt,
-      attempts: 0,
-    })
-    const how = await cancelRecord(contentDir, approvalId, entry, now())
-    if (how === 'store') summary.cancelledViaStore += 1
-    else if (how === 'raw') summary.cancelledRaw += 1
-    const settled = await editCards(contentDir, intent, channels, now())
-    if (settled.state === 'done') summary.done += 1
-    else summary.editFailed += 1
+  // Drain in bounded batches: each batch re-derives the selection from disk
+  // (records retired so far carry a receipt and drop out), yields to the
+  // event loop, and the loop ends only when a batch selects nothing.
+  const retired = new Set<string>()
+  for (;;) {
+    const receipts = readRetirementReceipts(contentDir)
+    let selectedThisBatch = 0
+    let unreadable = 0
+    for (const path of approvalFiles(contentDir)) {
+      if (selectedThisBatch >= MAX_RETIREMENTS_PER_BATCH) break
+      const entry = readRawApproval(path)
+      if (!entry) { unreadable += 1; continue }
+      if (!isLegacyPending(entry.raw)) continue
+      const approvalId = entry.raw.approvalId
+      if (typeof approvalId !== 'string' || approvalId === '') continue
+      if (receipts.has(approvalId) || retired.has(approvalId)) continue // already retired (or resumed above)
+      selectedThisBatch += 1
+      retired.add(approvalId)
+      const startedAt = now()
+      // Intent FIRST (R4.1): a crash after this line is recovered by resume.
+      const intent = appendReceipt(contentDir, {
+        approvalId,
+        deliveries: pendingDeliveries(entry.raw),
+        state: 'retiring',
+        reason: LEGACY_RETIRE_REASON,
+        startedAt,
+        updatedAt: startedAt,
+        attempts: 0,
+      })
+      const how = await cancelRecord(contentDir, approvalId, entry, now())
+      if (how === 'store') summary.cancelledViaStore += 1
+      else if (how === 'raw') summary.cancelledRaw += 1
+      const settled = await editCards(contentDir, intent, channels, now())
+      if (settled.state === 'done') summary.done += 1
+      else summary.editFailed += 1
+    }
+    summary.unreadable = unreadable // the directory is re-read every batch; the last sweep's count is the honest one
+    if (selectedThisBatch === 0) break
+    summary.selected += selectedThisBatch
+    summary.batches += 1
+    if (selectedThisBatch < MAX_RETIREMENTS_PER_BATCH) break
+    await new Promise<void>((resolve) => setImmediate(resolve))
   }
 
-  if (summary.deferred > 0) log.info('Legacy Health approvals left for the next pass', { deferred: summary.deferred, bound: MAX_RETIREMENTS_PER_PASS })
   if (summary.selected > 0 || summary.resumed > 0) {
     appendAudit(contentDir, LEGACY_RETIRE_AUDIT_EVENT, 'system', { ...summary, reason: LEGACY_RETIRE_REASON })
     log.info('Legacy Health approvals retired', { ...summary })

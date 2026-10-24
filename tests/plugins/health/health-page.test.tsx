@@ -265,16 +265,24 @@ describe('HealthPage tab shell', () => {
     await waitFor(() => expect(status.textContent).toBe('Health checks completed.'))
     expect(screen.getByTestId('health-action-visible-status').textContent).toBe('Health checks completed.')
 
-    // Return verification (self-healing 1.4c): a taken handoff reruns the checks when the operator
-    // comes back to this tab — and only then; an unarmed focus reruns nothing.
+    // Return verification (self-healing 1.4c): a taken handoff reruns the ORIGINATING checks (a
+    // targeted run, never the sweep) when the operator comes back to this tab — and only then.
+    const runCalls: Array<{ url: string; body: unknown }> = []
+    vi.stubGlobal('fetch', mock(async (input: string | URL | Request, init?: RequestInit) => {
+      runCalls.push({ url: String(input), body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      return jsonResponse({ id: 'report-3' })
+    }))
     act(() => { window.dispatchEvent(new Event('focus')) })
-    expect(overviewRunChecks).toHaveBeenCalledTimes(1)
-    armHandoffReturn('health:runtime:credentials')
+    expect(runCalls).toEqual([])
+    armHandoffReturn('health:runtime:credentials', ['team.runtime-credentials'])
     act(() => { window.dispatchEvent(new Event('focus')) })
-    expect(status.textContent).toBe('Running health checks.')
-    expect(overviewRunChecks).toHaveBeenCalledTimes(2)
+    expect(status.textContent).toBe('Rechecking 1 health check after the handoff.')
+    expect(runCalls).toEqual([{ url: '/api/plugins/health/doctor/run', body: { checkIds: ['team.runtime-credentials'] } }])
+    await waitFor(() => expect(status.textContent).toBe('Health recheck completed.'))
+    expect(overviewRefresh).toHaveBeenCalledTimes(1) // Overview republishes what the targeted run found
+    expect(overviewRunChecks).toHaveBeenCalledTimes(1) // never the sweep
     act(() => { window.dispatchEvent(new Event('focus')) })
-    expect(overviewRunChecks).toHaveBeenCalledTimes(2) // one-shot
+    expect(runCalls).toHaveLength(1) // one-shot
   })
 
   it('keeps Overview unmounted while another tab runs checks on demand', async () => {

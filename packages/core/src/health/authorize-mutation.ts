@@ -15,7 +15,10 @@
  *   records) knows nothing about the release yet — "review first" is the
  *   truthful reason, not a source list it never consulted.
  * An `operator` click is always allowed: the gate is about automation; the
- * operator's own provenance is checked elsewhere (#898).
+ * operator's own provenance is checked elsewhere (#898). A one-click ITEM
+ * (deletes / spends / widens, per `repairMode`) is refused to every
+ * unattended actor whatever the kind; `mutation: 'none'` is then allowed —
+ * the policy, not the caller, states both.
  *
  * Inputs the updates engine supplies later (consent records, deltas,
  * declined/quarantined flags) are plain parameters here, so the policy is
@@ -30,6 +33,19 @@ export const MUTATION_KINDS = HEALTH_MUTATION_KINDS
 
 /** Engine-owned repair actions any check owner may reference — an explicit list, never a prefix. */
 export const SHARED_ENGINE_ACTIONS: readonly string[] = Object.freeze(['core.diagnose'])
+
+/** Host decision controls any owner's `request` choice may name (explicit delegation; everything else must be the owner's own route). */
+export const SHARED_DECISION_CONTROLS: readonly string[] = Object.freeze(['/api/plugins/disable', '/api/plugins/enable'])
+
+/**
+ * Is `url` a route this owner may put a request choice on? A plugin owns
+ * `/api/plugins/<id>/…`; core and adapters are the host and own `/api/…`.
+ */
+export function decisionControlOwnedBy(url: string, owner: { kind: 'plugin' | 'adapter' | 'core'; id: string }): boolean {
+  if (SHARED_DECISION_CONTROLS.includes(url.split('?')[0]!)) return true
+  if (owner.kind === 'plugin') return url.startsWith(`/api/plugins/${owner.id}/`)
+  return url.startsWith('/api/')
+}
 
 /** Kinds whose identities are pinned in the binary and verified by checksum — trusted without a consent record (spec §3.6). */
 export const TRUSTED_BY_CONSTRUCTION_KINDS: readonly string[] = Object.freeze(['search-engine', 'search-models', 'bakin'])
@@ -47,7 +63,10 @@ export interface ConsentDelta {
 
 export interface MutationAuthorizationInput {
   subject: { kind: string; id: string }
-  mutation: MutationKind
+  /** `'none'`: the action changes no installed identity, writes no policy, deletes nothing the user owns. */
+  mutation: MutationKind | 'none'
+  /** The item being applied: a one-click item (deletes / spends / widens) is never applied unattended, whatever the kind. */
+  item?: { mode: 'self-heal' | 'one-click' }
   /** The install source (`github:owner/repo#path`, a local path, …); absent for kinds trusted by construction. */
   source?: string
   trustedSources?: readonly string[]
@@ -88,6 +107,9 @@ function changesVersion(input: MutationAuthorizationInput): boolean {
 
 export function authorizeMutation(input: MutationAuthorizationInput): MutationAuthorization {
   if (input.actor === 'operator') return { allowed: true }
+  // An item whose effects earned it the click (ONE policy: repairMode) waits for the operator in every kind.
+  if (input.item?.mode === 'one-click') return refuse('operator-only')
+  if (input.mutation === 'none') return { allowed: true }
   switch (input.mutation) {
     case 'delete':
     case 'policy':

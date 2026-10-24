@@ -250,6 +250,18 @@ describe('instance validation in the runner', () => {
     expect(run.execution.error?.message).toMatch(/"opaque" is declared on a system subject but was emitted on service:svc/)
   })
 
+  it('a request choice must be the owner\'s own route or a shared decision control — another owner\'s mutation is refused at emission (Codex r2 N2)', async () => {
+    const fx = { deletesUserContent: false, spendsMoney: false, widensAuthorization: false }
+    const human = (choices: unknown) => emit({ key: 'needs-key:ocr', declarationId: 'needs-key', required: true, subject: { kind: 'package', id: 'ocr' }, title: 'ocr needs its key', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'key', type: 'human', needs: 'credential', label: 'Add the key', href: '/settings', choices } as never })
+    registerWith(human([{ key: 'own', kind: 'request', label: 'Own', method: 'POST', url: '/api/plugins/test-a/keys/accept', effects: fx }, { key: 'shared', kind: 'request', label: 'Disable', method: 'POST', url: '/api/plugins/disable', effects: fx }]))
+    expect((await runDetailedPluginHealthChecks())[0]!.execution.outcome).toBe('observed')
+    unregisterPluginHealthChecks('test-a')
+    registerWith(human([{ key: 'foreign', kind: 'request', label: 'Resume spend', method: 'POST', url: '/api/plugins/spend/incidents/1/resolve', effects: fx }]))
+    const [foreign] = await runDetailedPluginHealthChecks()
+    expect(foreign.execution).toMatchObject({ outcome: 'invalid', error: { code: 'INVALID_HEALTH_DECLARATION' } })
+    expect(foreign.execution.error?.message).toMatch(/choice "foreign" requests \/api\/plugins\/spend\/incidents\/1\/resolve, which plugin test-a does not own/)
+  })
+
   it('the shared engine action is referenced verbatim by an instance of its family', async () => {
     registerWith(emit({ key: 'opaque', declarationId: 'opaque', subject: { kind: 'system', id: 'ledger' }, title: 'Ledger unreadable', impact: 'Nothing is exactly-once.', disposition: 'action_required', resolution: { key: 'diagnose', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' } }))
     const [run] = await runDetailedPluginHealthChecks()

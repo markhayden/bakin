@@ -18,6 +18,7 @@ import type { WorkflowDefinition } from '../../types'
 import { getContentDir } from '../content-dir'
 import { collectTeamTokenIds } from '@bakin/core/workflows/team-token'
 import { loadDefinition, listDefinitions, listDefinitionsTolerant, validateDefinition, validateWorkflowId, yamlParseError } from '../parser'
+import { validateWorkflowSkillSource } from '../skill-validate'
 import {
   buildTemplateList,
   resolveSubWorkflows,
@@ -34,7 +35,6 @@ import { indexDefinition } from '../search-sync'
 import { repairWorkflowSkillDrift } from '../workflow-skill-drift'
 import { workflowDefinitionSchema, listNodeTypes } from '@bakin/core/workflows/node-type-registry'
 import { listNotificationChannels } from '@bakin/core/workflows/notification-channel-registry'
-import { splitFrontmatter } from '@bakin/core/format/frontmatter'
 import { passthroughWf, errorResponseWf, repairSkillBodyWf, rawDefinitionBodyWf, rawSkillBodyWf } from '../route-schemas'
 
 const log = createLogger('workflows')
@@ -396,12 +396,9 @@ const putRawDefinitionHandler = async (req: Request, ctx: PluginContextLite, par
 const SKILL_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/
 const skillFilePath = (file: string): string => join(getContentDir(), 'workflows', 'skills', file)
 
-/** What the skills health check would flag on this text — the editor shows the same words a save is refused with. */
-export function workflowSkillProblems(content: string): Array<{ section: 'frontmatter' | 'output_schema'; message: string }> {
-  const problems: Array<{ section: 'frontmatter' | 'output_schema'; message: string }> = []
-  if (splitFrontmatter(content).raw === null) problems.push({ section: 'frontmatter', message: 'The file has no YAML frontmatter (a `---` block at the top).' })
-  if (!content.includes('output_schema')) problems.push({ section: 'output_schema', message: 'The frontmatter declares no `output_schema`.' })
-  return problems
+/** What the skills health check flags on this text — the ONE verdict (`skill-validate.ts`), so the editor shows the words a save is refused with. */
+export function workflowSkillProblems(content: string): Array<{ section: 'frontmatter' | 'output_schema'; code: string; message: string }> {
+  return validateWorkflowSkillSource(content).problems
 }
 
 // GET /skills/:name/raw

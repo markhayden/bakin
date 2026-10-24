@@ -369,6 +369,23 @@ fresh process asks again. The `/runtime?field=credentials` group reads the runti
 credential incident from the Health report and renders its handoff (Pi's `pi` + `/login`)
 under the tiles; the host never hardcodes an adapter command.
 
+Codex round 2 additions: (1) `agents.registryLocation?()` is an OPTIONAL neutral member
+(`RuntimeRegistryLocation { path, entryKey(index) }`) — the roster file and the entry key at a
+position, in the runtime's own notation — for the ONE case the id-keyed contract cannot
+address: a roster entry WITHOUT an id (Health row 106). Pi and OpenClaw implement it,
+the mock omits it; the conformance suite pins presence per adapter (`registryLocation:
+'present' | 'absent'`) with teeth. (2) `gateway-protocol` re-probes: when the cached verdict
+is not `ok` the check calls the adapter-private `probeGatewayCompatibility()` (a bounded
+`probeHandshake()` on the chat gateway client — dials only when the connection is down, so a
+gateway upgraded since the last handshake is SEEN), falling back to the cached verdict with
+`probe: 'failed'` in evidence; a live `ok` connection is current evidence and is not re-dialed.
+(3) OpenClaw declares a `provider-configuration` family (parity with Pi row 198) from the
+status-only `credentials.providers()` inventory: no provider in a COMPLETE inventory → human
+credential with handoff `openclaw models auth login`; a PARTIAL inventory (the CLI probe
+failed) is an unknown observation, never "no provider" (#615). (4) The runtime page's
+credentials group has return verification: a copied command arms one re-read of the Health
+and capability reports on the next focus/visibility.
+
 ## concurrency.sameAgentTurns (same-agent concurrency)
 
 REQUIRED `CapabilitySet` member: `'isolated'` (adapter honors `MessageArgs.runWorkspace` per-turn

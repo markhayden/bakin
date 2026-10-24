@@ -19,6 +19,7 @@ import type {
   HealthCheckRegistrationInput,
   HealthCheckRunInput,
   HealthIncidentDeclaration,
+  HealthIncidentInput,
   HealthSubject,
   JsonObject,
 } from '@bakin/core/plugin-types'
@@ -77,7 +78,7 @@ function observedError(
 function observedWarning(
   key: string,
   summary: string,
-  incident: ActionIncidentInput,
+  incident: HealthIncidentInput,
   evidence?: JsonObject,
 ): HealthCheckRunInput {
   return healthObserved([healthWarning({ key, summary, evidence, incident })])
@@ -319,15 +320,16 @@ export function createPiHealthChecks(
           }
           // Row 200: required only while something needs the extension. The
           // probe cannot see who depends on a pending extension, so it never
-          // claims the subject is required — the decision stays visible,
-          // never red on a guess.
+          // claims the subject is required — the decision stays visible as
+          // an ADVISORY card (`required` and disposition agree: never red on
+          // a guess, Codex r2 r1 #11).
           return observedWarning(
             'extensions',
             `${pending.length} Pi extension${pending.length === 1 ? ' is' : 's are'} installed but will not load until approved.`,
             {
               key: 'extension-approval',
               declarationId: PI_EXTENSION_APPROVAL_FAMILY.id,
-              disposition: 'action_required',
+              disposition: 'advisory',
               subject: PI_SUBJECT,
               required: false,
               title: 'Pi extensions are awaiting approval',

@@ -158,11 +158,14 @@ async function runUpgrade(pluginId: string, body: UpgradeBody, op: OperationCont
       }
     }
     let runtimeVersion: number | undefined
+    let stillDisabled = false
     if (!result.noop && !result.awaitingConsent) {
       op.stage(PLUGIN_STAGES.activate)
       try {
         const activation = await activateUserPluginDir(join(getContentDir(), 'plugins', pluginId))
         runtimeVersion = activation.runtimeVersion
+        // Row 98 / Codex r2 N7: a disabled plugin is upgraded on disk but stays disabled — only Enable activates it.
+        stillDisabled = activation.skipped === 'disabled'
       } catch (activationErr) {
         const message = activationErr instanceof Error ? activationErr.message : String(activationErr)
         log.error('Plugin upgrade activation failed', activationErr as Error, { pluginId })
@@ -172,7 +175,7 @@ async function runUpgrade(pluginId: string, body: UpgradeBody, op: OperationCont
         }, { status: 500 }))
       }
     }
-    return outcomeFromResponse(Response.json({ ok: true, ...result, ...(runtimeVersion !== undefined ? { runtimeVersion } : {}) }))
+    return outcomeFromResponse(Response.json({ ok: true, ...result, ...(runtimeVersion !== undefined ? { runtimeVersion } : {}), ...(stillDisabled ? { stillDisabled: true } : {}) }))
   } catch (err) {
     if (err instanceof OperationCancelledError) throw err
     if (err instanceof UpgradeRefusedError) {

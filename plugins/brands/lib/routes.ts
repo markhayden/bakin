@@ -622,28 +622,26 @@ export const brandRoutes = [
     handler: async (_req, ctx, parsed) => {
       const { brandId } = parsed.params
       const read = getBrand(brandId)
-      const { readRawBrandManifest } = await import('./store')
+      const { readRawBrandManifest, brandDirectoryExists } = await import('./store')
+      // A directory WITHOUT brand.json is still a record (Codex r2 #8): the scanner lists it as
+      // invalid, and Recreate/Delete apply to it. Only an absent directory is "not found".
+      if (read.status === 'missing' && !brandDirectoryExists(brandId)) return Response.json({ error: 'brand not found' }, { status: 404 })
       const raw = readRawBrandManifest(brandId)
-      if (read.status === 'missing' && raw === null) return Response.json({ error: 'brand not found' }, { status: 404 })
       const { scanBrandIntegrity } = await import('./integrity')
       const integrity = await scanBrandIntegrity(async (assetId) => (await ctx.assets.getAsset(assetId)) !== null, brandId)
-      let tasks: Array<{ taskId: string; title: string; column: string }> = []
-      let tasksKnown = true
-      try {
-        tasks = (await ctx.tasks.list({ brandId }))
-          .filter((task) => task.column !== 'done' && task.column !== 'archived')
-          .map((task) => ({ taskId: task.id, title: task.title, column: task.column }))
-      } catch {
-        tasksKnown = false
-      }
+      // The ONE usage fact (lib/usage.ts): every open task whose EFFECTIVE brand is this one.
+      const { collectBrandUsage } = await import('./usage')
+      const usage = await collectBrandUsage(ctx)
+      const tasks = (usage.byBrand.get(brandId) ?? []).map((entry) => ({ taskId: entry.taskId, title: entry.title, column: entry.column, source: entry.source }))
       return Response.json({
         brandId,
-        status: read.status,
+        status: read.status === 'missing' ? 'no-manifest' : read.status,
         name: read.status === 'ok' ? read.manifest.name : brandId,
         ...(read.status === 'invalid' ? { error: read.error, raw } : {}),
+        ...(read.status === 'missing' ? { error: 'brand.json is missing from the brand directory', raw: null } : {}),
         dangling: integrity.findings.find((f) => f.brandId === brandId)?.dangling ?? [],
         tasks,
-        tasksKnown,
+        tasksKnown: usage.known,
       })
     },
   }),

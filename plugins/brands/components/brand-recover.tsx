@@ -30,12 +30,13 @@ export interface DanglingReference {
 /** `GET /:brandId/recover` — mirrors the server's recovery facts. */
 export interface BrandRecoveryReport {
   brandId: string
-  status: 'ok' | 'invalid' | 'missing'
+  /** `no-manifest`: the directory exists but `brand.json` does not (Recreate / Delete apply). */
+  status: 'ok' | 'invalid' | 'no-manifest'
   name: string
   error?: string
   raw?: string | null
   dangling: DanglingReference[]
-  tasks: Array<{ taskId: string; title: string; column: string }>
+  tasks: Array<{ taskId: string; title: string; column: string; source?: 'own' | 'parent' | 'project' }>
   tasksKnown: boolean
 }
 
@@ -53,7 +54,7 @@ export interface BrandRecoverPanelProps {
 export function BrandRecoverPanel({ report, busy, error, onDetach, onRecreate, onDelete }: BrandRecoverPanelProps) {
   const [pending, setPending] = useState<null | { kind: 'detach'; assetIds: string[] } | { kind: 'recreate' }>(null)
   const { dangling, tasks } = report
-  const unreadable = report.status === 'invalid'
+  const unreadable = report.status === 'invalid' || report.status === 'no-manifest'
   return (
     <Stack gap="section">
       {error && <Banner tone="danger" title="The repair did not go through" description={error} />}
@@ -63,7 +64,9 @@ export function BrandRecoverPanel({ report, busy, error, onDetach, onRecreate, o
           <ListRow className="flex min-w-0 flex-wrap items-center gap-bakin-2">
             <Badge tone={unreadable ? 'danger' : 'success'}>Manifest</Badge>
             <span className="min-w-0 break-words">
-              {unreadable ? `brand.json is unreadable: ${report.error ?? 'unknown error'}` : 'brand.json is valid.'}
+              {report.status === 'no-manifest'
+                ? 'brand.json is missing: the brand directory exists (guidelines, lessons) but has no manifest.'
+                : unreadable ? `brand.json is unreadable: ${report.error ?? 'unknown error'}` : 'brand.json is valid.'}
             </span>
           </ListRow>
           <ListRow className="flex min-w-0 flex-wrap items-center gap-bakin-2">
@@ -80,6 +83,7 @@ export function BrandRecoverPanel({ report, busy, error, onDetach, onRecreate, o
                         <span key={task.taskId}>
                           {index > 0 ? ', ' : ''}
                           <PluginLink to={`/tasks?taskId=${encodeURIComponent(task.taskId)}`} className={buttonVariants({ size: 'xs', variant: 'link' })}>{task.title || task.taskId}</PluginLink>
+                          {task.source === 'parent' ? ' (through its parent task)' : task.source === 'project' ? ' (through its project)' : ''}
                         </span>
                       ))}
                     </>
@@ -89,9 +93,9 @@ export function BrandRecoverPanel({ report, busy, error, onDetach, onRecreate, o
         </ListRows>
       </ListRowGroup>
 
-      {unreadable && (
+      {unreadable && typeof report.raw === 'string' && (
         <ListRowGroup label="The file as it is" headerVariant="section">
-          <CodeBlock code={report.raw ?? ''} label="brand.json" language="json" copyable />
+          <CodeBlock code={report.raw} label="brand.json" language="json" copyable />
         </ListRowGroup>
       )}
 
@@ -102,7 +106,9 @@ export function BrandRecoverPanel({ report, busy, error, onDetach, onRecreate, o
               <span className="min-w-0 flex-1">
                 <Text as="span" weight="medium">Recreate manifest</Text>
                 <Text as="span" tone="muted" className="block">
-                  A fresh brand.json keeps the id, name, description and draft flag the old file still says; palette, logos, groups and references start empty. Guidelines and lessons are untouched.
+                  {report.status === 'no-manifest'
+                    ? `A fresh brand.json named ${report.brandId} is written into the directory; palette, logos, groups and references start empty. Guidelines and lessons are untouched.`
+                    : 'A fresh brand.json keeps the id, name, description and draft flag the old file still says; palette, logos, groups and references start empty. Guidelines and lessons are untouched.'}
                 </Text>
               </span>
               <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => setPending({ kind: 'recreate' })}>

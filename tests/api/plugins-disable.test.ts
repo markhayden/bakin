@@ -26,14 +26,14 @@ mock.module('@/core/logger', () => ({ createLogger: () => ({ info: () => {}, war
 
 // A minimal registry: `stale` is active (so disable has something to deactivate), `tasks` is core.
 const states = new Map<string, { plugin: { name: string; version: string }; manifest?: { version: string }; description: string }>()
-const deactivatePlugin = mock(async (id: string) => { states.delete(id) })
+const suspendPlugin = mock(async (id: string) => { states.delete(id); return true })
 const markPluginDisabled = mock(() => {})
 const clearPluginDisabled = mock(() => true)
 mock.module('@/core/plugin-registry', () => ({
   isCorePlugin: (id: string) => id === 'tasks',
   pluginRegistry: {
     getPluginState: (id: string) => states.get(id),
-    deactivatePlugin,
+    suspendPlugin,
     markPluginDisabled,
     clearPluginDisabled,
   },
@@ -69,7 +69,7 @@ beforeEach(() => {
   writePluginLockfile({ version: 1, plugins: { stale: entry } })
   states.clear()
   states.set('stale', { plugin: { name: 'Stale', version: '1.0.0' }, manifest: { version: '1.0.0' }, description: 'd' })
-  deactivatePlugin.mockClear(); markPluginDisabled.mockClear(); clearPluginDisabled.mockClear(); activateUserPluginDir.mockClear(); notifyPluginRemoved.mockClear()
+  suspendPlugin.mockClear(); markPluginDisabled.mockClear(); clearPluginDisabled.mockClear(); activateUserPluginDir.mockClear(); notifyPluginRemoved.mockClear()
   activationFails = null
 })
 
@@ -92,12 +92,12 @@ describe('POST /api/plugins/disable', () => {
     expect(await res.json()).toMatchObject({ ok: false, error: 'not_installed' })
   })
 
-  it('marks the ledger disabled, deactivates the running plugin live, and is idempotent', async () => {
+  it('marks the ledger disabled, SUSPENDS the running plugin live (never the destructive uninstall teardown), and is idempotent', async () => {
     const res = await disablePOST(req({ pluginId: 'stale' }))
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ ok: true, id: 'stale', disabled: true, changed: true, live: true, message: 'Disabled "stale".' })
     expect(readPluginLockfile().plugins.stale!.disabled).toBe(true)
-    expect(deactivatePlugin).toHaveBeenCalledWith('stale', { callShutdown: true, removeState: true })
+    expect(suspendPlugin).toHaveBeenCalledWith('stale', { callShutdown: true })
     expect(markPluginDisabled).toHaveBeenCalledWith({ id: 'stale', name: 'Stale', version: '1.0.0', description: 'd' })
     expect(notifyPluginRemoved).toHaveBeenCalledWith('stale')
 

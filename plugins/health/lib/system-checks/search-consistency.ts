@@ -434,6 +434,7 @@ export function unclaimedTablesObservation(unclaimed: readonly string[], keptSoF
           method: 'POST',
           url: '/api/plugins/health/search/unclaimed-tables/keep',
           body: { tables: pending },
+          effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
           confirm: {
             title: `Keep ${pending.length === 1 ? 'this table' : `these ${pending.length} tables`}?`,
             description: 'Bakin stops raising them; they stay in the engine. Forget the decision later with `POST /api/plugins/health/search/unclaimed-tables/forget`.',

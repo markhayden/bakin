@@ -3,7 +3,7 @@
  * plain language), and whether setup is healthy. Every non-native state
  * says what happens instead — the reader never has to decode an enum.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Wrench } from 'lucide-react'
 import { startOperation, toast, useJsonFetch, useOperation, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Section, Stack } from '@makinbakin/sdk/layout'
@@ -40,23 +40,57 @@ export function credentialHandoffFor(report: Pick<HealthReport, 'incidents'> | n
   return null
 }
 
-function CredentialHandoff({ adapter }: { adapter: string }) {
+/**
+ * Return verification for the credential handoff (Codex r2, r1 #9): the
+ * card ARMS when the command actually reached the clipboard; the next time
+ * the window regains focus or the tab becomes visible the runtime report
+ * and the Health report are re-read once, so the group reflects the
+ * sign-in the operator just did in their own shell. One-shot per copy;
+ * nothing re-reads without a handoff having been taken.
+ */
+function useHandoffReturn(onReturn: () => void): () => void {
+  const armed = useRef(false)
+  useEffect(() => {
+    const fire = () => {
+      if (!armed.current) return
+      armed.current = false
+      onReturn()
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') fire() }
+    window.addEventListener('focus', fire)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', fire)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [onReturn])
+  return () => { armed.current = true }
+}
+
+function CredentialHandoff({ adapter, onRefreshReport }: { adapter: string; onRefreshReport?: () => void }) {
   const health = useJsonFetch<Pick<HealthReport, 'incidents'>>('/api/plugins/health/doctor', HEALTH_REPORT_FETCH_OPTIONS)
+  const refreshHealth = health.refresh
+  const onReturn = useCallback(() => {
+    void refreshHealth()
+    onRefreshReport?.()
+  }, [onRefreshReport, refreshHealth])
+  const arm = useHandoffReturn(onReturn)
   if (health.loading) return null
   const handoff = credentialHandoffFor(health.data, adapter)
   if (!handoff) {
     return (
       <Text as="p" tone="muted" size="meta" data-testid="runtime-credential-gap">
-        No model provider is signed in for {adapter}. Sign in with the runtime's own tooling, then come back — this page re-reads credentials when it loads.
+        No model provider is signed in for {adapter}, and this runtime published no sign-in command. Sign in with the runtime's own tooling, then reload this page.
       </Text>
     )
   }
   return (
     <HandoffCard
       title={handoff.label}
-      description="Bakin cannot sign you in to a provider. Run this in your terminal, then come back — this page re-reads credentials when it loads."
+      description="Bakin cannot sign you in to a provider. Copy the command, run it in your terminal, then come back — this page re-reads credentials when you return."
       command={handoff.handoff.command}
       cwd={handoff.handoff.cwd}
+      onCopied={arm}
     />
   )
 }
@@ -68,7 +102,7 @@ function CredentialHandoff({ adapter }: { adapter: string }) {
  * in, the group IS the control: the runtime's sign-in handoff sits under the
  * tiles (Codex r1 #9 — a highlighted statistic is not a control).
  */
-function CredentialTiles({ report, highlighted }: { report: CapabilityReport; highlighted: boolean }) {
+function CredentialTiles({ report, highlighted, onRefreshReport }: { report: CapabilityReport; highlighted: boolean; onRefreshReport?: () => void }) {
   const creds = report.credentialStatus
   const providers = creds?.llmProviders ?? []
   const kinds = new Map((creds?.llmCredentials ?? []).map((c) => [c.provider, c.kind]))
@@ -122,7 +156,7 @@ function CredentialTiles({ report, highlighted }: { report: CapabilityReport; hi
           : report.toolAccess.issues.join('; ')}
       />
     </StatGroup>
-    {providers.length === 0 ? <CredentialHandoff adapter={report.adapter} /> : null}
+    {providers.length === 0 ? <CredentialHandoff adapter={report.adapter} onRefreshReport={onRefreshReport} /> : null}
     </Stack>
     </div>
   )
@@ -444,17 +478,20 @@ export function OverviewTab({
   report,
   onboarding,
   onRefreshOnboarding,
+  onRefreshReport,
   highlightField = '',
 }: {
   report: CapabilityReport
   onboarding: OnboardingComponentStatus[] | null | undefined
   onRefreshOnboarding: () => void
+  /** Re-reads the capability report — the credential handoff's return verification calls it once per taken handoff. */
+  onRefreshReport?: () => void
   /** `?field=` from the route — only `credentials` has an owner on this tab. */
   highlightField?: string
 }) {
   return (
     <Stack gap="section" data-testid="runtime-summary">
-      <CredentialTiles report={report} highlighted={highlightField === 'credentials'} />
+      <CredentialTiles report={report} highlighted={highlightField === 'credentials'} onRefreshReport={onRefreshReport} />
       <CapabilityGrid report={report} />
       <SetupSection onboarding={onboarding} onRescan={onRefreshOnboarding} />
     </Stack>

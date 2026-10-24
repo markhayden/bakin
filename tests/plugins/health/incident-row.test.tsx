@@ -29,7 +29,7 @@ import '../../rtl-settle'
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { IncidentRow } from '@bakin/health/components/incident-row'
 import { resetTerminalHandoffForTests } from '@bakin/health/components/use-terminal-handoff'
-import { isHandoffReturnArmed, resetHandoffReturnForTests } from '@bakin/health/components/handoff-return'
+import { armedHandoffChecks, isHandoffReturnArmed, resetHandoffReturnForTests } from '@bakin/health/components/handoff-return'
 import type { OverviewIncident } from '@bakin/health/lib/health-view-model'
 
 afterEach(cleanup)
@@ -161,7 +161,7 @@ describe('IncidentRow decision choices (card buttons)', () => {
     const onDecided = mock()
     const row = decision([
       { key: 'guest', kind: 'link', label: 'Use as guest', href: '/settings?tab=system&field=search.settings.url' },
-      { key: 'resume', kind: 'request', label: 'Resume', method: 'POST', url: '/api/plugins/spend/resume', body: { id: 'i-1' } },
+      { key: 'resume', kind: 'request', label: 'Resume', method: 'POST', url: '/api/plugins/spend/resume', body: { id: 'i-1' }, effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false } },
     ])
     await act(async () => { render(<IncidentRow item={row} onDecided={onDecided} />) })
     expect((screen.getByRole('link', { name: 'Use as guest' }) as HTMLAnchorElement).getAttribute('href')).toContain('field=search.settings.url')
@@ -174,7 +174,7 @@ describe('IncidentRow decision choices (card buttons)', () => {
   it('a request choice with confirm asks in a dialog first; a refused request shows the error and reports nothing', async () => {
     globalThis.fetch = mock(async () => Response.json({ error: 'still over the limit' }, { status: 409 })) as unknown as typeof fetch
     const onDecided = mock()
-    const row = decision([{ key: 'keep', kind: 'request', label: 'Keep', method: 'POST', url: '/api/plugins/health/search/keep', tone: 'danger', confirm: { title: 'Keep these tables?', description: 'They stay out of the index.' } }])
+    const row = decision([{ key: 'keep', kind: 'request', label: 'Keep', method: 'POST', url: '/api/plugins/health/search/keep', tone: 'danger', effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false }, confirm: { title: 'Keep these tables?', description: 'They stay out of the index.' } }])
     await act(async () => { render(<IncidentRow item={row} onDecided={onDecided} />) })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Keep' })) })
     const dialog = await screen.findByRole('dialog', { name: 'Keep these tables?' })
@@ -233,8 +233,10 @@ describe('IncidentRow handoff (self-healing 1.4c)', () => {
     await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/terminal/sess-1'))
     expect(requests.find((r) => r.url === '/api/plugins/terminal/sessions')).toMatchObject({ method: 'POST', body: { title: 'Pi has no usable model provider', cwd: '/Users/me/repo', program: 'shell' } })
     expect(requests.find((r) => r.url === '/api/plugins/terminal/session')).toMatchObject({ body: { id: 'sess-1', operation: 'write', generation: 1, sequence: 1, data: 'pi' } })
-    // The row cannot own the rerun (it unmounts with the navigation): the page's useHandoffReturn reads this.
+    // The row cannot own the rerun (it unmounts with the navigation): the page's useHandoffReturn reads this,
+    // armed with the ORIGINATING check (the fixture's observation id has no key part, so it IS the check id).
     expect(isHandoffReturnArmed(row.incident.id)).toBe(true)
+    expect(armedHandoffChecks()).toEqual(['obs-1'])
   })
 
   it('without a declared cwd the session uses the Terminal plugin default; a refused session disarms the return check and keeps the copy block', async () => {

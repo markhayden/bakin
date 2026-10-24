@@ -404,11 +404,15 @@ export const healthDecisionChoiceSchema = z.discriminatedUnion('kind', [
     url: sameOriginPath('A choice url'),
     body: z.record(z.string(), z.unknown()).optional(),
     tone: z.enum(['default', 'danger']).optional(),
+    effects: z.object({ deletesUserContent: z.boolean(), spendsMoney: z.boolean(), widensAuthorization: z.boolean() }).strict(),
     confirm: z.object({
       title: nonBlankString(200, 'Choice confirm title'),
       description: nonBlankString(2_000, 'Choice confirm description').optional(),
     }).strict().optional(),
-  }).strict(),
+  }).strict().refine(
+    (choice) => choice.confirm !== undefined || (choice.tone !== 'danger' && !choice.effects.deletesUserContent && !choice.effects.spendsMoney && !choice.effects.widensAuthorization),
+    'A destructive or dangerous request choice must carry `confirm`.',
+  ),
 ])
 
 const resolutionBaseShape = {

@@ -5,7 +5,7 @@
  * brand is affected.
  */
 import { describe, it, expect, mock, beforeEach, afterAll } from 'bun:test'
-import { rmSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -25,6 +25,7 @@ mock.module('../../../src/core/agent-cost', () => ({ meterAgentTurn: async () =>
 import brandsPlugin from '../../../plugins/brands'
 import { checkBrandsIntegrity } from '../../../plugins/brands/lib/health-checks'
 import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
+import { getHookRegistry } from '../../../packages/core/src/hooks/hook-registry-singleton'
 
 let activated: ActivatedPlugin
 const route = (method: string, path: string) => {
@@ -70,6 +71,54 @@ describe('brand recover: detach dangling references', () => {
     const used = (await rows()).find((r) => r.key === 'integrity-acme')!
     expect(used.incident).toMatchObject({ required: true, disposition: 'action_required', resources: [{ kind: 'task', id: 't-open' }] })
     expect(used.evidence).toMatchObject({ openTasks: ['t-open'] })
+  })
+  it('usage is the EFFECTIVE brand of every open task (Codex r2 #9): a task that inherits the brand through its project counts, the check and the recover route agree, and an erroring project hook makes the fact unknown — never urgency', async () => {
+    const registry = getHookRegistry()
+    const unregister = registry.register('projects.getBrand', (data: { projectId: string }) => (data.projectId === 'p1' ? 'acme' : undefined), 'projects-test')
+    try {
+      // No own brandId anywhere: only the project inheritance reaches acme.
+      tasks = [{ id: 't-proj', title: 'Campaign', column: 'inProgress', projectId: 'p1' } as never, { id: 't-other', title: 'Other', column: 'todo', projectId: 'p2' } as never, { id: 't-done', title: 'Old', column: 'done', projectId: 'p1' } as never]
+      const used = (await rows()).find((r) => r.key === 'integrity-acme')!
+      expect(used.incident).toMatchObject({ required: true, disposition: 'action_required', resources: [{ kind: 'task', id: 't-proj' }] })
+      expect(used.evidence).toMatchObject({ openTasks: ['t-proj'], usageKnown: true })
+      const facts = await callRoute(route('GET', '/:brandId/recover'), activated.ctx, { searchParams: { brandId: 'acme' } })
+      expect(facts.body).toMatchObject({ tasks: [{ taskId: 't-proj', title: 'Campaign', column: 'inProgress', source: 'project' }], tasksKnown: true })
+    } finally {
+      unregister()
+    }
+    // The hook errors: dispatch would defer that task; here the usage fact is UNKNOWN, so nothing presumes required.
+    const failing = registry.register('projects.getBrand', () => { throw new Error('projects plugin down') }, 'projects-test')
+    try {
+      tasks = [{ id: 't-proj', title: 'Campaign', column: 'inProgress', projectId: 'p1' } as never]
+      const unknown = (await rows()).find((r) => r.key === 'integrity-acme')!
+      expect(unknown.incident).toMatchObject({ required: false, disposition: 'advisory' })
+      expect(unknown.evidence).toMatchObject({ openTasks: [], usageKnown: false })
+      expect((await callRoute(route('GET', '/:brandId/recover'), activated.ctx, { searchParams: { brandId: 'acme' } })).body).toMatchObject({ tasks: [], tasksKnown: false })
+    } finally {
+      failing()
+    }
+  })
+  it('a brand directory WITHOUT brand.json is a record, not "nothing to recover" (Codex r2 #8): the check names it, the recover facts say no-manifest, recreate writes a fresh manifest, delete removes the directory', async () => {
+    mkdirSync(join(testDir, 'brands', 'stray', 'guidelines'), { recursive: true })
+    writeFileSync(join(testDir, 'brands', 'stray', 'guidelines', 'voice.md'), '# Voice\n')
+    const invalid = (await rows()).find((r) => r.key === 'invalid-stray')!
+    expect(invalid.incident).toMatchObject({ subject: { kind: 'record', id: 'brands/stray' }, resolution: { href: '/brands/stray?recover=1' } })
+
+    const facts = await callRoute(route('GET', '/:brandId/recover'), activated.ctx, { searchParams: { brandId: 'stray' } })
+    expect(facts.status).toBe(200)
+    expect(facts.body).toMatchObject({ brandId: 'stray', status: 'no-manifest', raw: null, error: expect.stringContaining('missing'), dangling: [], tasks: [] })
+
+    const recreated = await callRoute(route('POST', '/:brandId/recover/recreate'), activated.ctx, { searchParams: { brandId: 'stray' } })
+    expect(recreated.status).toBe(200)
+    expect(recreated.body).toMatchObject({ ok: true, salvaged: [], manifest: { id: 'stray', name: 'stray' } })
+    expect((await rows()).some((r) => r.key === 'invalid-stray')).toBe(false)
+    expect((await callRoute(route('GET', '/:brandId/recover'), activated.ctx, { searchParams: { brandId: 'stray' } })).body).toMatchObject({ status: 'ok', name: 'stray' })
+
+    // The other way out: delete removes the manifest-less directory too.
+    mkdirSync(join(testDir, 'brands', 'orphan'), { recursive: true })
+    expect((await callRoute(route('GET', '/:brandId/recover'), activated.ctx, { searchParams: { brandId: 'orphan' } })).body).toMatchObject({ status: 'no-manifest' })
+    expect((await callRoute(route('DELETE', '/:brandId'), activated.ctx, { searchParams: { brandId: 'orphan' } })).status).toBe(200)
+    expect((await callRoute(route('GET', '/:brandId/recover'), activated.ctx, { searchParams: { brandId: 'orphan' } })).status).toBe(404)
   })
   it('two affected brands are two incidents, each on its own recover page', async () => {
     await callRoute(route('POST', '/'), activated.ctx, { body: { id: 'globex', name: 'Globex' } })

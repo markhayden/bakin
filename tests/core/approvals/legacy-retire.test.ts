@@ -29,7 +29,8 @@ import {
   LEGACY_RETIRE_AUDIT_EVENT,
   LEGACY_RETIRE_REASON,
   MAX_APPROVAL_FILE_BYTES,
-  MAX_RETIREMENTS_PER_PASS,
+  MAX_RETIREMENTS_PER_BATCH,
+  RECEIPT_JOURNAL_CHUNK_BYTES,
   openRetirementReceipts,
   readRetirementReceipts,
   resumeRetirementReceipts,
@@ -241,21 +242,42 @@ describe('retireLegacyHealthApprovals', () => {
     expect(settled.deliveries[1]!.lastError).toBeUndefined()
   })
 
-  it('the reader is bounded: an oversized record is unreadable and untouched, and a pass retires at most MAX_RETIREMENTS_PER_PASS — the rest wait for the next pass', async () => {
+  it('the reader is bounded but complete: an oversized record is unreadable and untouched, and ONE pass drains more than a batch of legacy records in bounded batches (Codex r2 N5)', async () => {
     mkdirSync(approvalsDir, { recursive: true })
     const huge = JSON.stringify(legacyNavigate('nav-huge', { request: { title: 'x'.repeat(MAX_APPROVAL_FILE_BYTES), body: 'b', options: [] } }))
     writeFileSync(join(approvalsDir, 'nav-huge.json'), huge)
-    for (let i = 0; i < MAX_RETIREMENTS_PER_PASS + 1; i += 1) writeApproval(legacyNavigate(`nav-${i}`, { deliveries: [] }))
+    for (let i = 0; i < MAX_RETIREMENTS_PER_BATCH + 1; i += 1) writeApproval(legacyNavigate(`nav-${i}`, { deliveries: [] }))
     const { channels } = workingChannels()
 
-    const first = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
-    expect(first).toMatchObject({ selected: MAX_RETIREMENTS_PER_PASS, deferred: 1, unreadable: 1, done: MAX_RETIREMENTS_PER_PASS })
+    // The production caller (startup recovery) makes ONE call; nothing waits for another restart.
+    const summary = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
+    expect(summary).toMatchObject({ selected: MAX_RETIREMENTS_PER_BATCH + 1, batches: 2, unreadable: 1, done: MAX_RETIREMENTS_PER_BATCH + 1 })
     expect(readFileSync(join(approvalsDir, 'nav-huge.json'), 'utf-8')).toBe(huge)
-
-    const second = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
-    expect(second).toMatchObject({ selected: 1, deferred: 0, resumed: 0 })
     expect(openRetirementReceipts(testDir)).toEqual([])
-    expect(readRetirementReceipts(testDir).size).toBe(MAX_RETIREMENTS_PER_PASS + 1)
+    expect(readRetirementReceipts(testDir).size).toBe(MAX_RETIREMENTS_PER_BATCH + 1)
+    expect(auditRows().filter((row) => row.event === LEGACY_RETIRE_AUDIT_EVENT)).toHaveLength(1)
+
+    const again = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
+    expect(again).toMatchObject({ selected: 0, batches: 0, resumed: 0 })
+  })
+
+  it('the journal is streamed, never truncated: an unfinished receipt ahead of a long tail of finished ones is still resumed (Codex r2 N4)', async () => {
+    writeApproval(legacyNavigate('nav-early', { status: 'cancelled' }))
+    mkdirSync(join(testDir, 'health'), { recursive: true })
+    const early = JSON.stringify({ approvalId: 'nav-early', deliveries: [{ channelId: 'discord:1', messageId: 'msg-1', state: 'pending', attempts: 0 }], state: 'retiring', reason: LEGACY_RETIRE_REASON, startedAt: '2026-10-23T00:00:00.000Z', updatedAt: '2026-10-23T00:00:00.000Z', attempts: 0 })
+    const finished = (i: number) => JSON.stringify({ approvalId: `done-${i}`, deliveries: [], state: 'done', reason: LEGACY_RETIRE_REASON, startedAt: '2026-10-23T00:00:00.000Z', updatedAt: '2026-10-23T00:00:00.000Z', attempts: 0, pad: 'p'.repeat(2_000) })
+    const tailLines = Math.ceil((3 * RECEIPT_JOURNAL_CHUNK_BYTES) / 2_050) // well past several read chunks
+    const overlong = `{"approvalId":"too-long","state":"retiring","deliveries":[],"pad":"${'z'.repeat(RECEIPT_JOURNAL_CHUNK_BYTES + 10)}"}`
+    writeFileSync(retirementReceiptsPath(testDir), [early, overlong, ...Array.from({ length: tailLines }, (_, i) => finished(i))].join('\n') + '\n')
+
+    const receipts = readRetirementReceipts(testDir)
+    expect(receipts.size).toBe(tailLines + 1) // the over-long line is skipped, nothing else is lost
+    expect(receipts.get('nav-early')).toMatchObject({ state: 'retiring' })
+    expect(openRetirementReceipts(testDir).map((r) => r.approvalId)).toEqual(['nav-early'])
+
+    const { calls, channels } = workingChannels()
+    expect(await resumeRetirementReceipts({ contentDir: testDir, deps: deps(channels) })).toEqual({ resumed: 1, done: 1, editFailed: 0 })
+    expect(calls.map((c) => c.approvalId)).toEqual(['nav-early'])
   })
 
   it('a quiet pass (nothing legacy, nothing open) writes no receipt file and no audit row', async () => {

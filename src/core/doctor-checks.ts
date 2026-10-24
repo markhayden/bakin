@@ -9,7 +9,7 @@ import type {
   HealthOwner,
   HealthSubject,
 } from '../../packages/core/src/plugin-types'
-import { SHARED_ENGINE_ACTIONS } from '@bakin/core/health/authorize-mutation'
+import { SHARED_ENGINE_ACTIONS, decisionControlOwnedBy } from '@bakin/core/health/authorize-mutation'
 import { safeParseHealthCheckRunInput } from './health-contract'
 import { getHealthRepairAction, listHealthChecks, resolveDeclaredRepairAction } from './health-check-registry'
 import { createLogger } from './logger'
@@ -142,6 +142,12 @@ function assertDeclaredInstance(def: HealthCheckDef, incident: HealthIncidentInp
   // A family covers ONE subject kind (Codex r1 #16): an instance on another kind is not that family.
   if (incident.subject.kind !== declaration.subjectKind) {
     throw new HealthDeclarationError(`Incident "${incident.key}" is declared on a ${declaration.subjectKind} subject but was emitted on ${incident.subject.kind}:${incident.subject.id}.`)
+  }
+  // A request choice performs the decision through the OWNER's own route (or a shared host control) — never another owner's mutation (Codex r2 N2).
+  for (const choice of resolution.choices ?? []) {
+    if (choice.kind === 'request' && !decisionControlOwnedBy(choice.url, def.owner)) {
+      throw new HealthDeclarationError(`Incident "${incident.key}" choice "${choice.key}" requests ${choice.url}, which ${def.owner.kind} ${def.owner.id} does not own (a plugin may name only /api/plugins/${def.owner.id}/… or a shared decision control).`)
+    }
   }
   return { ...incident, required }
 }

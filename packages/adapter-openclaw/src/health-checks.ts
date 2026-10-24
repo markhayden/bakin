@@ -5,7 +5,7 @@
  * methods on the runtime contract.
  */
 import type { HealthCheckRegistrationInput, HealthCheckRunInput, HealthIncidentDeclaration, HealthSubject, JsonObject } from '@bakin/core/plugin-types'
-import type { RuntimeCompatibility, RuntimeRoutingSupport } from '@bakin/core/adapters/runtime'
+import type { ProviderCredentialInventory, RuntimeCompatibility, RuntimeRoutingSupport } from '@bakin/core/adapters/runtime'
 import { healthError, healthHealthy, healthObserved, healthUnknown } from '@bakin/core/health/observation-builders'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { createLogger } from '@bakin/core/logger'
@@ -72,6 +72,24 @@ export const OPENCLAW_UPDATE_COMMAND = 'openclaw update'
 /** The OpenClaw release where Bakin's protocol floor (4) went live. */
 export const OPENCLAW_FLOOR_RELEASE = '2026.6.11'
 
+/**
+ * Provider credentials (parity with Pi row 198): OpenClaw serves no agent
+ * turn without an authenticated model provider. The sign-in is OpenClaw's
+ * own (`openclaw models auth login`, the CLI's provider auth flow); the
+ * runtime page's credentials group renders it. Required always: the
+ * incident exists only while no provider is configured. A PARTIAL
+ * inventory (the CLI probe failed) is unknown — never "no provider".
+ */
+export const OPENCLAW_PROVIDER_CONFIGURATION_FAMILY: HealthIncidentDeclaration = {
+  id: 'provider-configuration',
+  subjectKind: 'runtime',
+  resolution: { type: 'human', needs: 'credential' },
+  required: 'always',
+}
+export const OPENCLAW_PROVIDER_CONFIGURATION_INCIDENTS: HealthIncidentDeclaration[] = [OPENCLAW_PROVIDER_CONFIGURATION_FAMILY]
+/** OpenClaw's provider sign-in (its `models auth` CLI family, 2026.9.5). */
+export const OPENCLAW_MODELS_AUTH_LOGIN_COMMAND = 'openclaw models auth login'
+
 interface RoutingConfigLite {
   routes?: Array<{ workClass?: string; model?: string }>
   tagOverrides?: Array<{ tag?: string; model?: string }>
@@ -88,8 +106,16 @@ export interface OpenClawHealthDeps {
    *  landed). False = perTurnModel is the optimistic pre-connect assumption
    *  — the check reports UNKNOWN, never healthy, on unverified evidence. */
   scopesVerified: () => boolean
-  /** The gateway's protocol floor verdict; defaults to the adapter's cached handshake evidence (never a live probe). */
+  /** The gateway's protocol floor verdict; defaults to the adapter's cached handshake evidence. */
   compatibility?: () => RuntimeCompatibility
+  /**
+   * A FRESH floor verdict (bounded dial + handshake) for a rerun whose cached
+   * verdict is not `ok` — the operator who just upgraded OpenClaw must be
+   * seen, not the handshake from before. Absent = cached evidence only.
+   */
+  probeCompatibility?: () => Promise<RuntimeCompatibility>
+  /** The status-only provider inventory (`credentials.providers()`); absent = the check cannot see credentials and says so. */
+  credentials?: () => Promise<ProviderCredentialInventory>
 }
 
 /**
@@ -199,14 +225,33 @@ export function createOpenClawHealthChecks(deps: OpenClawHealthDeps): HealthChec
       group: RUNTIME_GROUP,
       incidents: OPENCLAW_GATEWAY_PROTOCOL_INCIDENTS,
       run: async () => {
-        const verdict = (deps.compatibility ?? gatewayCompatibility)()
-        const evidence: JsonObject = { required: verdict.required, observed: verdict.observed ?? null, observedAt: verdict.observedAt ?? null, state: verdict.state }
+        const cached = (deps.compatibility ?? gatewayCompatibility)()
+        // Return verification (Codex r2, r1 #9): a cached `ok` from a live
+        // connection is current evidence; anything else is re-probed with a
+        // bounded dial so an upgrade made since the last handshake is seen.
+        let verdict = cached
+        let probe: 'cached' | 'fresh' | 'failed' = 'cached'
+        let probeError: string | null = null
+        if (deps.probeCompatibility && cached.state !== 'ok') {
+          try {
+            verdict = await deps.probeCompatibility()
+            probe = 'fresh'
+          } catch (err) {
+            probe = 'failed'
+            probeError = err instanceof Error ? err.message : String(err)
+          }
+        }
+        const evidence: JsonObject = { required: verdict.required, observed: verdict.observed ?? null, observedAt: verdict.observedAt ?? null, state: verdict.state, probe, probeError }
         if (verdict.state === 'unknown') {
-          // No handshake this process yet — missing evidence is unknown, never healthy; an observation, not a card.
+          // No handshake yet — missing evidence is unknown, never healthy; an observation, not a card.
           return healthObserved([healthUnknown({
             key: 'gateway-protocol',
-            summary: 'Gateway protocol is unverified — no connection handshake has been recorded yet.',
-            detail: `Bakin requires gateway protocol ${verdict.required} (OpenClaw ${OPENCLAW_FLOOR_RELEASE} or newer). Any agent turn (or a Bakin restart) records the handshake.`,
+            summary: probe === 'failed'
+              ? 'Gateway protocol is unverified — the gateway could not be reached for a handshake.'
+              : 'Gateway protocol is unverified — no connection handshake has been recorded yet.',
+            detail: probe === 'failed'
+              ? `The probe failed: ${probeError}. Bakin requires gateway protocol ${verdict.required} (OpenClaw ${OPENCLAW_FLOOR_RELEASE} or newer); the check re-probes on its next run.`
+              : `Bakin requires gateway protocol ${verdict.required} (OpenClaw ${OPENCLAW_FLOOR_RELEASE} or newer). Any agent turn (or a Bakin restart) records the handshake.`,
             evidence,
           })])
         }
@@ -232,6 +277,69 @@ export function createOpenClawHealthChecks(deps: OpenClawHealthDeps): HealthChec
               label: 'Upgrade OpenClaw',
               href: '/runtime?tab=runtimes',
               handoff: { command: OPENCLAW_UPDATE_COMMAND },
+            },
+          },
+        })])
+      },
+    },
+    {
+      id: 'provider-configuration',
+      name: 'OpenClaw model providers',
+      description: 'Verifies at least one model provider is authenticated for OpenClaw; without one no agent turn can run, and the sign-in is OpenClaw\'s own CLI.',
+      group: RUNTIME_GROUP,
+      incidents: OPENCLAW_PROVIDER_CONFIGURATION_INCIDENTS,
+      run: async () => {
+        if (!deps.credentials) {
+          return healthObserved([healthUnknown({
+            key: 'provider-configuration',
+            summary: 'Provider credentials could not be inventoried — the live adapter is not available to this check.',
+            evidence: { evidence: 'unavailable' },
+          })])
+        }
+        let inventory: ProviderCredentialInventory
+        try {
+          inventory = await deps.credentials()
+        } catch (err) {
+          return healthObserved([healthUnknown({
+            key: 'provider-configuration',
+            summary: 'Provider credentials could not be inventoried.',
+            detail: err instanceof Error ? err.message : String(err),
+            evidence: { evidence: 'failed' },
+          })])
+        }
+        const configured = inventory.providers.filter((provider) => provider.configured).map((provider) => provider.providerId)
+        const evidence: JsonObject = { evidence: inventory.evidence, providers: configured, ...(inventory.detail ? { detail: inventory.detail } : {}) }
+        if (configured.length > 0) {
+          return observedHealthy('provider-configuration', `${configured.length} model provider${configured.length === 1 ? ' is' : 's are'} authenticated (${configured.join(', ')}).`, evidence)
+        }
+        if (inventory.evidence === 'partial') {
+          // The CLI probe failed: a provider absent from a partial inventory is unknown, never credential-less (#615).
+          return healthObserved([healthUnknown({
+            key: 'provider-configuration',
+            summary: 'No provider is visible, but the inventory is partial — whether OpenClaw has an authenticated provider is unknown.',
+            detail: inventory.detail ?? 'The OpenClaw CLI auth probe failed; only the local store was read.',
+            evidence,
+          })])
+        }
+        return healthObserved([healthError({
+          key: 'provider-configuration',
+          summary: 'OpenClaw has no authenticated model provider — no agent turn can run.',
+          evidence,
+          incident: {
+            key: 'provider-configuration',
+            declarationId: OPENCLAW_PROVIDER_CONFIGURATION_FAMILY.id,
+            title: 'OpenClaw has no usable model provider',
+            impact: `OpenClaw cannot serve agent turns until a model provider is authenticated. Run \`${OPENCLAW_MODELS_AUTH_LOGIN_COMMAND}\` in your terminal and follow the provider's sign-in; Health rechecks when you return.`,
+            disposition: 'action_required',
+            subject: OPENCLAW_SUBJECT,
+            resources: [{ kind: 'capability', id: 'runtime.models', label: 'Runtime models' }],
+            resolution: {
+              key: 'configure-provider',
+              type: 'human',
+              needs: 'credential',
+              label: 'Sign in to a model provider',
+              href: '/runtime?tab=overview&field=credentials',
+              handoff: { command: OPENCLAW_MODELS_AUTH_LOGIN_COMMAND },
             },
           },
         })])

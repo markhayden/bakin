@@ -159,6 +159,22 @@ describe('checkWorkflowSkills', () => {
     expect(results.some(r => r.status === 'warning' && r.summary.includes('no output_schema'))).toBe(true)
   })
 
+  it('malformed frontmatter YAML is the frontmatter family even when the body mentions output_schema; a prose-only or list output_schema is the schema family (Codex r2 #11)', async () => {
+    writeFileSync(join(skillsDir, 'torn.md'), '---\nname: [\n---\nRemember the output_schema.\n')
+    writeFileSync(join(skillsDir, 'prose.md'), '---\nname: prose\n---\nThe output_schema is described here in words.\n')
+    writeFileSync(join(skillsDir, 'listy.md'), '---\nname: listy\noutput_schema: [a, b]\n---\nbody\n')
+    const results = observations(await checkWorkflowSkills(testDir))
+    const byKey = new Map(results.map((r) => [r.key, r]))
+    expect(byKey.get('frontmatter-torn.md')).toMatchObject({ status: 'warning', evidence: { section: 'frontmatter', problem: 'frontmatter-invalid-yaml' } })
+    expect(byKey.get('frontmatter-torn.md')!.summary).toMatch(/frontmatter the engine cannot read: The frontmatter is not valid YAML/)
+    expect(byKey.get('frontmatter-torn.md')!.incident).toMatchObject({ declarationId: 'frontmatter' })
+    expect(byKey.has('output-schema-torn.md')).toBe(false) // one finding per file: the frontmatter comes first
+    expect(byKey.get('output-schema-prose.md')).toMatchObject({ evidence: { section: 'output_schema', problem: 'output-schema-missing' } })
+    expect(byKey.get('output-schema-prose.md')!.incident).toMatchObject({ declarationId: 'output-schema' })
+    expect(byKey.get('output-schema-listy.md')).toMatchObject({ evidence: { problem: 'output-schema-not-mapping' } })
+    expect(byKey.get('output-schema-listy.md')!.summary).toMatch(/output_schema the engine cannot use/)
+  })
+
   it('returns ok when all skills have output_schema', async () => {
     writeFileSync(
       join(skillsDir, 'good.md'),

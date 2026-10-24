@@ -18,7 +18,7 @@ import {
   healthUnknown,
   healthWarning,
 } from '@makinbakin/sdk/utils'
-import { splitFrontmatter } from '@bakin/core/format/frontmatter'
+import { validateWorkflowSkillSource } from './skill-validate'
 
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { listDefinitionsTolerant } from './parser'
@@ -176,34 +176,43 @@ export async function checkWorkflowSkills(contentDir: string): Promise<HealthChe
         const inUse = referenced.has(file.replace(/\.md$/, ''))
         try {
           const content = readFileSync(join(skillsDir, file), 'utf-8')
-          if (splitFrontmatter(content).raw === null) {
+          // The ONE verdict the raw save route also enforces (Codex r2 #11): the
+          // frontmatter must parse to a mapping with an `output_schema` mapping.
+          const { problems } = validateWorkflowSkillSource(content)
+          const frontmatterProblem = problems.find((problem) => problem.section === 'frontmatter')
+          if (frontmatterProblem) {
             observations.push(workflowWarning({
               key: `frontmatter-${stablePart(file)}`,
               declarationId: 'frontmatter',
-              summary: `Workflow skill ${file} has no YAML frontmatter.`,
-              impact: 'The skill output cannot be validated reliably.',
+              summary: frontmatterProblem.code === 'frontmatter-missing'
+                ? `Workflow skill ${file} has no YAML frontmatter.`
+                : `Workflow skill ${file} has frontmatter the engine cannot read: ${frontmatterProblem.message}`,
+              impact: 'The engine loads the skill without its metadata, so its output cannot be validated reliably.',
               subject: skillRecordSubject(file),
               resourceKind: 'file',
               resourceId: file,
               disposition: inUse ? 'action_required' : 'advisory',
               required: inUse,
-              evidence: { section: 'frontmatter', inUse },
+              evidence: { section: 'frontmatter', inUse, problem: frontmatterProblem.code },
               resolution: recoverDecision(`/workflows?recover=1&skill=${encodeURIComponent(file)}`),
             }))
             continue
           }
-          if (!content.includes('output_schema')) {
+          const schemaProblem = problems.find((problem) => problem.section === 'output_schema')
+          if (schemaProblem) {
             observations.push(workflowWarning({
               key: `output-schema-${stablePart(file)}`,
               declarationId: 'output-schema',
-              summary: `Workflow skill ${file} has no output_schema.`,
+              summary: schemaProblem.code === 'output-schema-missing'
+                ? `Workflow skill ${file} has no output_schema.`
+                : `Workflow skill ${file} has an output_schema the engine cannot use: ${schemaProblem.message}`,
               impact: 'Step output will not be validated server-side.',
               subject: skillRecordSubject(file),
               resourceKind: 'file',
               resourceId: file,
               disposition: inUse ? 'action_required' : 'advisory',
               required: inUse,
-              evidence: { section: 'output_schema', inUse },
+              evidence: { section: 'output_schema', inUse, problem: schemaProblem.code },
               resolution: recoverDecision(`/workflows?recover=1&skill=${encodeURIComponent(file)}`),
             }))
           }

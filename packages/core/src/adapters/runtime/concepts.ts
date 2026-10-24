@@ -618,6 +618,14 @@ export interface ProviderCredentialInventory {
   detail?: string
 }
 
+/** The runtime's roster file and how it names the entry at a position (`agents.registryLocation`). */
+export interface RuntimeRegistryLocation {
+  /** Absolute path of the registry file. */
+  path: string
+  /** The key of the entry at `index` in the file's own notation, e.g. `agents.list[2]`. */
+  entryKey: (index: number) => string
+}
+
 /** Kinds of Bakin-initiated config change an adapter may need a restart to apply. */
 export type RuntimeConfigChangeKind = 'model-config' | 'roster' | 'routing-policy'
 
@@ -916,6 +924,17 @@ export interface AgentRuntimeAdapter {
      * workspace omit it.
      */
     workspaces?(): Promise<Array<{ agentId: string; path: string }>>
+    /**
+     * Where the runtime keeps its agent roster, for the ONE case the id-keyed
+     * contract cannot address: a roster entry WITHOUT an id (Health row 106).
+     * Read-only — the file and the key of the entry at a roster position, in
+     * the runtime's own notation (`agents[3]`, `agents.list[3]`), so a human
+     * handoff can name exactly what to edit. `null` when the roster is not a
+     * file this process can name. Optional: runtimes without a file-backed
+     * roster omit it; consumers feature-detect and fall back to naming the
+     * position.
+     */
+    registryLocation?(): Promise<RuntimeRegistryLocation | null>
     /**
      * The SUBAGENT-DISPATCH allowlist: the patch strings are AGENT IDS this
      * agent may dispatch subtasks to (P5.3 live incident: these were once fed

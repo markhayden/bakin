@@ -54,6 +54,19 @@ describe('OpenClaw agents.workspaces', () => {
     expect(workspaces.map((w) => w.agentId)).toContain('main')
   })
 
+  it('registryLocation names openclaw.json and the entry key: the legacy list by position, the keyed map by id (Health row 106)', async () => {
+    writeFileSync(configPath, JSON.stringify({ agents: { list: [{ id: 'main' }, { name: 'nameless' }] } }))
+    resetOpenClawConfigCache()
+    const legacy = await runtime.agents.registryLocation!()
+    expect(legacy).toEqual({ path: configPath, entryKey: expect.any(Function) })
+    expect(legacy!.entryKey(1)).toBe('agents.list[1]')
+    writeFileSync(configPath, JSON.stringify({ agents: { entries: { main: {} } } }))
+    resetOpenClawConfigCache()
+    const keyed = await runtime.agents.registryLocation!()
+    expect(keyed!.path).toBe(configPath)
+    expect(keyed!.entryKey(0)).toBe('agents.entries[<id>] (entry 1)')
+  })
+
   it('an unreadable config throws — never an empty list', async () => {
     writeFileSync(configPath, '{ not json')
     resetOpenClawConfigCache()

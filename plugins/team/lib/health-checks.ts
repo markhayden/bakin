@@ -55,11 +55,26 @@ export const TEAM_AGENT_SYNC_INCIDENTS: HealthIncidentDeclaration[] = [
   { id: 'migration', subjectKind: 'agent', resolution: { type: 'repair', actionId: 'migrate-agent-blocks' }, required: 'always' },
 ]
 
-type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
+type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list' | 'registryLocation'>
 const ACTIVE_COLUMNS = ['backlog', 'todo', 'inProgress', 'review', 'blocked'] as const
 
 function stablePart(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 72) || 'unknown'
+}
+
+/** The handoff command for the registry file: the operator's editor, never a Bakin write. */
+export function registryEditCommand(path: string): string {
+  return `"\${EDITOR:-nano}" ${JSON.stringify(path)}`
+}
+
+/** `agents.registryLocation()` when the runtime has it; a throwing or absent member is "no location", never an error. */
+async function registryLocationOf(runtime: RuntimeAgentReader): Promise<{ path: string; entryKey: (index: number) => string } | null> {
+  if (typeof runtime.registryLocation !== 'function') return null
+  try {
+    return await runtime.registryLocation()
+  } catch {
+    return null
+  }
 }
 
 function bounded(value: string, max: number): string {
@@ -167,22 +182,39 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
     return typeof candidate === 'string' && candidate !== '' ? bounded(candidate, 500) : undefined
   }
   const positionsById = new Map<string, number[]>()
+  // Row 106: the contract addresses agents BY id, so an id-less entry's only
+  // honest control is the registry file itself — `agents.registryLocation()`
+  // (optional) names the file and the entry key; without it the row names
+  // the position and nothing else.
+  const location = agents.some((agent) => !agent.id) ? await registryLocationOf(runtime) : null
   agents.forEach((agent, index) => {
     if (!agent.id) {
       const workspace = workspaceOf(agent)
+      const entryKey = location?.entryKey(index)
+      const registry = location && entryKey ? { path: location.path, entryKey } : null
       observations.push(healthWarning({
         key: `missing-id-${index}`,
         summary: `Runtime agent at roster position ${index + 1} has no id.`,
-        evidence: { kind: 'missing-id', rosterIndex: index, ...(agent.name ? { name: bounded(agent.name, 120) } : {}), ...(workspace ? { workspace } : {}) },
+        evidence: {
+          kind: 'missing-id', rosterIndex: index,
+          ...(agent.name ? { name: bounded(agent.name, 120) } : {}),
+          ...(workspace ? { workspace } : {}),
+          ...(registry ? { registry } : {}),
+        },
         incident: {
           key: `missing-id-${index}`,
           title: 'A runtime agent has no stable id',
-          impact: `Roster entry ${index + 1} cannot be addressed by tasks, sessions, or health views — nothing in Bakin can name it until the runtime's registry gives it an id.`,
+          impact: registry
+            ? `Roster entry ${index + 1} cannot be addressed by tasks, sessions, or health views. Give it an id at ${registry.entryKey} in ${registry.path}, save, then recheck — the runtime addresses agents by id, so nothing in Bakin can name the entry until then.`
+            : `Roster entry ${index + 1} cannot be addressed by tasks, sessions, or health views — nothing in Bakin can name it until the runtime's registry gives it an id.`,
           disposition: 'action_required',
           subject: { kind: 'agent', id: `roster-${index}`, label: `Roster entry ${index + 1}` },
           declarationId: 'missing-id',
           resources: [{ kind: 'runtime', id: `roster-entry-${index}`, label: `Roster entry ${index + 1}` }],
-          resolution: { key: 'recover-roster', type: 'human', needs: 'decision', label: 'Fix roster entry', href: `/team?recover=1&entry=${index}` },
+          resolution: {
+            key: 'recover-roster', type: 'human', needs: 'decision', label: 'Fix roster entry', href: `/team?recover=1&entry=${index}`,
+            ...(registry ? { handoff: { command: registryEditCommand(registry.path) } } : {}),
+          },
         },
       }))
       return

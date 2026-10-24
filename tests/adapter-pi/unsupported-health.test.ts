@@ -139,6 +139,7 @@ describe('canonical health registrations', () => {
       declarationId: 'extension-approval',
       subject: { kind: 'runtime', id: 'pi' },
       required: false,
+      disposition: 'advisory',
       resolution: { type: 'human', needs: 'decision', href: '/runtime?tab=runtimes' },
     })
 

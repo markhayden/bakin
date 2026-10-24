@@ -72,9 +72,13 @@ export function IncidentRow({ item, onRepair, onDecided, onAck }: IncidentRowPro
   // Return verification (self-healing 1.4c) is armed here and run by the
   // Health page (`useHandoffReturn`): this row unmounts when the Terminal
   // route opens, so it can never own the listener itself.
+  // The checks that raised this incident — what the return verification reruns (targeted, never a sweep).
+  const originatingCheckIds = item.observations.length > 0
+    ? item.observations.map((observation) => observation.checkId)
+    : incident.observationIds.map((id) => (id.includes(':') ? id.slice(0, id.indexOf(':')) : id))
   const openInTerminal = async () => {
     if (!handoff) return
-    armHandoffReturn(incident.id)
+    armHandoffReturn(incident.id, originatingCheckIds)
     const sessionId = await terminal.open(handoff.command, incident.title, handoff.cwd)
     if (!sessionId) disarmHandoffReturn(incident.id)
   }
@@ -228,7 +232,7 @@ export function IncidentRow({ item, onRepair, onDecided, onAck }: IncidentRowPro
             cwd={handoff.cwd}
             busy={terminal.busy}
             error={terminal.error}
-            onCopied={() => armHandoffReturn(incident.id)}
+            onCopied={() => armHandoffReturn(incident.id, originatingCheckIds)}
             onOpenTerminal={terminal.available ? () => { void openInTerminal() } : undefined}
           />
         </Panel>

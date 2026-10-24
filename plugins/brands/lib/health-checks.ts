@@ -13,35 +13,19 @@
  * same effective-brand resolution the gate uses, so inherited usage counts.
  * Stale drafts alone stay an observation.
  */
-import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthIncidentInput, HealthObservationInput, JsonObject, PluginContext, PluginTask, PluginTaskColumn } from '@bakin/core/plugin-types'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthIncidentInput, HealthObservationInput, JsonObject, PluginContext } from '@bakin/core/plugin-types'
 import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import { scanBrandIntegrity } from './integrity'
 import { getBrand, listBrands } from './store'
+import { collectBrandUsage } from './usage'
 
 /** brands.integrity families (re-homing rows 189–190): broken references are the operator's decision on the recover page; stale drafts are an observation. */
 export const BRANDS_INTEGRITY_INCIDENTS: HealthIncidentDeclaration[] = [
   { id: 'integrity', subjectKind: 'record', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
 ]
 
-/** Columns whose tasks still use their brand (done/archived history is not usage). */
-const OPEN_TASK_COLUMNS: ReadonlySet<PluginTaskColumn> = new Set(['backlog', 'todo', 'inProgress', 'review', 'blocked'])
-
 function stablePart(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'unknown'
-}
-
-interface GhostTask { taskId: string; brandId: string }
-
-/** Open tasks per brand id (own `brandId` only — the cheap, exact usage fact). */
-function openTasksByBrand(tasks: readonly PluginTask[]): Map<string, string[]> {
-  const byBrand = new Map<string, string[]>()
-  for (const task of tasks) {
-    if (!task.brandId || !OPEN_TASK_COLUMNS.has(task.column)) continue
-    const bucket = byBrand.get(task.brandId) ?? []
-    bucket.push(task.id)
-    byBrand.set(task.brandId, bucket)
-  }
-  return byBrand
 }
 
 function brandIncident(input: {
@@ -72,39 +56,25 @@ function brandIncident(input: {
 export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCheckRunInput> {
   const report = await scanBrandIntegrity(async (assetId) => (await ctx.assets.getAsset(assetId)) !== null)
 
-  // Usage facts. Tasks pointing at ghost/draft brands = tasks currently
-  // deferring at the brand gate (todo only — done/archived history is not a
-  // problem). Uses the SAME effective-brand resolution as the gate + badge
-  // (own → ancestry → project), so inherited-brand deferrals aren't invisible.
-  let tasksKnown = true
-  let openByBrand = new Map<string, string[]>()
-  const ghostTasks: GhostTask[] = []
-  try {
-    const all = await ctx.tasks.list()
-    openByBrand = openTasksByBrand(all)
-    const { resolveEffectiveBrand } = await import('../../../src/core/dispatch-context-blocks')
-    for (const task of all.filter((candidate) => candidate.column === 'todo')) {
-      const effective = await resolveEffectiveBrand(task)
-      if (!effective) continue
-      if ('unresolved' in effective) {
-        ghostTasks.push({ taskId: task.id, brandId: `project:${effective.projectId}` })
-        continue
-      }
-      const read = getBrand(effective.brandId)
-      if (read.status !== 'ok' || read.manifest.draft) {
-        ghostTasks.push({ taskId: task.id, brandId: effective.brandId })
-        // An inherited brand is usage too.
-        const bucket = openByBrand.get(effective.brandId) ?? []
-        if (!bucket.includes(task.id)) openByBrand.set(effective.brandId, [...bucket, task.id])
-      }
-    }
-  } catch {
-    // Task store unavailable — report what the brand scan alone found, and say the usage fact is missing.
-    tasksKnown = false
-  }
-  const usedBy = (brandId: string): string[] => openByBrand.get(brandId) ?? []
+  // The ONE usage fact (lib/usage.ts, shared with the recover route): every
+  // OPEN task's EFFECTIVE brand (own → ancestry → project), independent of
+  // whether the brand reads. Ghost tasks = the todo ones currently deferring
+  // at the brand gate because that effective brand is missing, draft or
+  // unreadable; done/archived history never counts.
+  const usage = await collectBrandUsage(ctx)
+  const tasksKnown = usage.known
+  const usedBy = (brandId: string): string[] => (usage.byBrand.get(brandId) ?? []).map((entry) => entry.taskId)
   const ghostsByBrand = new Map<string, string[]>()
-  for (const ghost of ghostTasks) ghostsByBrand.set(ghost.brandId, [...(ghostsByBrand.get(ghost.brandId) ?? []), ghost.taskId])
+  for (const [brandId, uses] of usage.byBrand) {
+    const read = getBrand(brandId)
+    if (read.status === 'ok' && !read.manifest.draft) continue
+    const waiting = uses.filter((entry) => entry.column === 'todo').map((entry) => entry.taskId)
+    if (waiting.length > 0) ghostsByBrand.set(brandId, waiting)
+  }
+  for (const [projectId, uses] of usage.unresolvedByProject) {
+    const waiting = uses.filter((entry) => entry.column === 'todo').map((entry) => entry.taskId)
+    if (waiting.length > 0) ghostsByBrand.set(`project:${projectId}`, waiting)
+  }
 
   const observations: HealthObservationInput[] = []
   const covered = new Set<string>()

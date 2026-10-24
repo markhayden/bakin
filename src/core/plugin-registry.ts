@@ -389,6 +389,31 @@ class PluginRegistryImpl {
     if (state) this.clearStateArrays(state)
   }
 
+  /**
+   * Suspend a plugin WITHOUT destroying its data (the disable route, row 98
+   * containment): `onShutdown`, the non-destructive sweep (hooks, exec tools,
+   * node types, channels, health checks, skills, workflow ids, search RUNTIME
+   * wiring, route docs) and the state entry go — the plugin's search tables,
+   * their registrations and any undelivered outbox rows STAY, so enabling it
+   * again re-registers its content types over the data it had. Uninstall
+   * (`deactivatePlugin`) owns the destructive teardown.
+   */
+  async suspendPlugin(pluginId: string, opts: { callShutdown?: boolean } = {}): Promise<boolean> {
+    const state = this.plugins.get(pluginId)
+    if (!state) return false
+    if (opts.callShutdown !== false) {
+      try {
+        await state.plugin.onShutdown?.()
+      } catch (err) {
+        log.warn('onShutdown failed during plugin suspend', { pluginId, err: String(err) })
+      }
+    }
+    this.sweepPluginRegistrations(pluginId)
+    this.plugins.delete(pluginId)
+    corePluginIds.delete(pluginId)
+    return true
+  }
+
   async deactivatePlugin(pluginId: string, opts: { callShutdown?: boolean; removeState?: boolean } = {}): Promise<{
     hooks: number
     execTools: number

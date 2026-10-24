@@ -269,6 +269,16 @@ export class OpenClawGatewayRpcClient {
     }
   }
 
+  /**
+   * A bounded fresh handshake (CONNECT_TIMEOUT_MS): (re)dials when the
+   * connection is down so a gateway upgraded since the last handshake is
+   * SEEN (the ACK records new evidence); a live connection resolves at once
+   * — its handshake is current evidence for that very gateway process.
+   */
+  async probeHandshake(): Promise<void> {
+    await this.ensureConnected()
+  }
+
   private ensureConnected(): Promise<void> {
     if (this.connected && this.ws?.readyState === WS_OPEN) return Promise.resolve()
     if (this.connectState) return this.connectState.promise

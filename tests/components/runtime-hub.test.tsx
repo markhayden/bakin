@@ -170,6 +170,36 @@ describe('OverviewTab', () => {
       expect(screen.queryByRole('region', { name: 'Sign in to a model provider' })).toBeNull()
     })
 
+    it('return verification: a copied command arms ONE re-read of the Health and runtime reports on the next focus/visibility; an unarmed focus re-reads nothing', async () => {
+      const urls = stubHealth([piSignIn])
+      const onRefreshReport = mock()
+      const clipboardBefore = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => {} }, configurable: true })
+      try {
+        await act(async () => {
+          render(<OverviewTab report={noProviders} onRefreshOnboarding={() => {}} onRefreshReport={onRefreshReport} onboarding={[]} highlightField="credentials" />)
+        })
+        const card = await screen.findByRole('region', { name: 'Sign in to a model provider' })
+        const reads = () => urls.filter((url) => url.startsWith('/api/plugins/health/doctor')).length
+        expect(reads()).toBe(1)
+        await act(async () => { window.dispatchEvent(new Event('focus')) })
+        expect(reads()).toBe(1) // nothing taken yet
+        expect(onRefreshReport).not.toHaveBeenCalled()
+        await act(async () => { fireEvent.click(within(card).getByRole('button', { name: 'Copy Command' })) })
+        await waitFor(() => expect(within(card).getByRole('button', { name: 'Copy Command complete' })).toBeTruthy())
+        await act(async () => { window.dispatchEvent(new Event('focus')) })
+        await waitFor(() => expect(reads()).toBe(2))
+        expect(onRefreshReport).toHaveBeenCalledTimes(1)
+        await act(async () => { window.dispatchEvent(new Event('focus')) })
+        await settleReact()
+        expect(reads()).toBe(2) // one-shot per copy
+        expect(onRefreshReport).toHaveBeenCalledTimes(1)
+      } finally {
+        if (clipboardBefore) Object.defineProperty(navigator, 'clipboard', clipboardBefore)
+        else delete (navigator as { clipboard?: unknown }).clipboard
+      }
+    })
+
     it('with a provider signed in the Health report is not read and no handoff renders', async () => {
       const urls = stubHealth([piSignIn])
       await act(async () => {

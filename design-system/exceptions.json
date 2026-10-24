@@ -43,8 +43,7 @@
       "scope": [
         "packages/host/src/components/search/global-search-overlay.tsx",
         "src/components/tasks/activity-feed.tsx",
-        "plugins/health/components/repair-dialog.tsx",
-        "plugins/health/components/overview-alerts.tsx"
+        "plugins/health/components/repair-dialog.tsx"
       ],
       "allowances": {
         "packages/host/src/components/search/global-search-overlay.tsx": {
@@ -55,9 +54,6 @@
         },
         "plugins/health/components/repair-dialog.tsx": {
           "arbitrary-size": 3
-        },
-        "plugins/health/components/overview-alerts.tsx": {
-          "arbitrary-size": 1
         }
       },
       "closestPattern": {

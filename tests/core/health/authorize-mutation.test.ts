@@ -9,6 +9,8 @@ import {
   authorizeMutation,
   SHARED_ENGINE_ACTIONS,
   type MutationAuthorizationInput,
+  decisionControlOwnedBy,
+  SHARED_DECISION_CONTROLS,
 } from '../../../packages/core/src/health/authorize-mutation'
 
 const TRUSTED = ['github:markhayden/bakin-bits-official']
@@ -28,6 +30,34 @@ describe('authorizeMutation — operator', () => {
       expect(authorizeMutation({ ...base, actor: 'operator', mutation, quarantined: true, declined: true, consentReviewed: false }))
         .toEqual({ allowed: true })
     }
+  })
+})
+
+describe('authorizeMutation — the item and `none` rules (Codex r1 #4 / r2)', () => {
+  const base = { subject: { kind: 'plugin', id: 'x' }, consentReviewed: false } as const
+  it('a one-click item is refused to every unattended actor whatever the kind; the operator may run it', () => {
+    for (const mutation of ['none', 'restart', 'rebuild', 'upgrade', 'delete'] as const) {
+      expect(authorizeMutation({ ...base, mutation, item: { mode: 'one-click' }, actor: 'system' })).toEqual({ allowed: false, reason: 'operator-only' })
+      expect(authorizeMutation({ ...base, mutation, item: { mode: 'one-click' }, actor: 'agent' })).toEqual({ allowed: false, reason: 'operator-only' })
+      expect(authorizeMutation({ ...base, mutation, item: { mode: 'one-click' }, actor: 'operator' })).toEqual({ allowed: true })
+    }
+  })
+  it('`none` with a self-heal item is allowed unattended — the policy states it, not the caller', () => {
+    expect(authorizeMutation({ ...base, mutation: 'none', item: { mode: 'self-heal' }, actor: 'system' })).toEqual({ allowed: true })
+    expect(authorizeMutation({ ...base, mutation: 'none', actor: 'agent' })).toEqual({ allowed: true })
+    // and a self-heal item of an upgrade still goes through the consent rules
+    expect(authorizeMutation({ ...base, mutation: 'upgrade', item: { mode: 'self-heal' }, actor: 'system' })).toEqual({ allowed: false, reason: 'consent-unreviewed' })
+  })
+  it('decision controls: a plugin owns only its own prefix plus the shared host controls; core and adapters own /api', () => {
+    expect(decisionControlOwnedBy('/api/plugins/spend/incidents/1/resolve', { kind: 'plugin', id: 'spend' })).toBe(true)
+    expect(decisionControlOwnedBy('/api/plugins/spend/incidents/1/resolve', { kind: 'plugin', id: 'health' })).toBe(false)
+    expect(decisionControlOwnedBy('/api/plugins/disable?x=1', { kind: 'plugin', id: 'health' })).toBe(true)
+    expect(decisionControlOwnedBy('/api/plugins/disable', { kind: 'plugin', id: 'health' })).toBe(true)
+    expect(decisionControlOwnedBy('/api/settings', { kind: 'plugin', id: 'health' })).toBe(false)
+    expect(decisionControlOwnedBy('/api/settings', { kind: 'core', id: 'core' })).toBe(true)
+    expect(decisionControlOwnedBy('/api/runtime/switch', { kind: 'adapter', id: 'openclaw' })).toBe(true)
+    expect(decisionControlOwnedBy('/runtime', { kind: 'adapter', id: 'openclaw' })).toBe(false)
+    expect(SHARED_DECISION_CONTROLS).toEqual(['/api/plugins/disable', '/api/plugins/enable'])
   })
 })
 
