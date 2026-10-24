@@ -12,7 +12,7 @@ Spec `.claude/specs/self-healing-health-and-updates-2026-10.md` (rev 7, approved
 - [x] 1.1 repairMode + authorizeMutation + SHARED_ENGINE_ACTIONS + health copy table [unactivated]
 - [x] 1.2 updater fetch-at-sha + reinstall + packageSyncOperation/agentSyncOperation
 - [x] 1.3a search actions + repointed incidents (old contract; observation rows keep their incident; upgrade-shaped actions `manual`)
-- [ ] 1.3b packages/plugins actions + repointed incidents (plugin-upgrade rename)
+- [x] 1.3b packages/plugins actions + repointed incidents (plugin-upgrade rename)
 - [ ] 1.3c core/adapters/channels actions + repointed incidents
 - [ ] 1.3d tasks/spend/git actions + repointed incidents
 - [ ] 1.4a assets + brands recover pages

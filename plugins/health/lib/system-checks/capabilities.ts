@@ -7,9 +7,27 @@
  * src/core/agent-packages/capability-readiness.
  */
 import { listCapabilities } from '../../../../src/core/agent-packages/capability-readiness'
+import { capabilityRemedy } from '../../../../src/core/agent-packages/capability-remedy'
 import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthObservationInput, HealthResolution } from '@makinbakin/sdk'
+import { PACKAGE_REINSTALL_ACTION, PACKAGE_SYNC_ACTION } from './package-repairs'
 import { stableKeyPart } from './key'
+
+/**
+ * Machine-fixable legs point at the matching pack repair (row 6); a human
+ * need, and a platform-only gap, keep the Explore handoff until the 1.7
+ * cutover gives them their own shapes.
+ */
+function capabilityResolution(remedy: ReturnType<typeof capabilityRemedy>, capabilityId: string, name: string): HealthResolution {
+  if (remedy === 'package-reinstall') return { key: PACKAGE_REINSTALL_ACTION, type: 'repair', label: `Reinstall ${name}`.slice(0, 120), actionId: PACKAGE_REINSTALL_ACTION }
+  if (remedy === 'package-sync') return { key: PACKAGE_SYNC_ACTION, type: 'repair', label: `Sync ${name}`.slice(0, 120), actionId: PACKAGE_SYNC_ACTION }
+  return {
+    key: 'open-capability',
+    type: 'navigate',
+    label: 'Review capability setup',
+    href: `/explore?tab=capabilities&capability=${encodeURIComponent(capabilityId)}`,
+  }
+}
 
 export async function checkCapabilities(): Promise<HealthCheckRunInput> {
   const capabilities = await listCapabilities()
@@ -26,10 +44,12 @@ export async function checkCapabilities(): Promise<HealthCheckRunInput> {
     const capabilityId = stableKeyPart(cap.capability)
     const capabilityName = cap.name.slice(0, 180)
     const missing = cap.missing.slice(0, 20).map((entry) => entry.slice(0, 500))
+    const remedy = capabilityRemedy(cap)
     const evidence = {
       capability: cap.capability.slice(0, 500),
       packageId: cap.packageId.slice(0, 500),
       ready: cap.ready,
+      remedy,
       missing,
     }
     if (cap.ready) {
@@ -50,12 +70,7 @@ export async function checkCapabilities(): Promise<HealthCheckRunInput> {
         impact: 'Agents cannot use this capability until its required content and tools are available.',
         disposition: 'action_required',
         resources: [{ kind: 'capability', id: capabilityId, label: capabilityName.slice(0, 120) }],
-        resolution: {
-          key: 'open-capability',
-          type: 'navigate',
-          label: 'Review capability setup',
-          href: `/explore?tab=capabilities&capability=${encodeURIComponent(capabilityId)}`,
-        },
+        resolution: capabilityResolution(remedy, capabilityId, capabilityName),
       },
     })
   })

@@ -78,7 +78,8 @@ import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchCon
 import { searchDropUnclaimedTablesRepair, searchEngineClaimRepair, searchEngineInstallRepair, searchEngineWatchResetRepair } from './lib/system-checks/search-engine-repairs'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets, installPluginAssetsRepair } from './lib/system-checks/plugin-assets'
-import { checkPluginArtifacts, upgradePluginArtifactRepair } from './lib/system-checks/plugin-artifacts'
+import { checkPluginArtifacts, pluginReinstallRepair, pluginUpgradeRepair } from './lib/system-checks/plugin-artifacts'
+import { packageReinstallRepair, packageSyncRepair } from './lib/system-checks/package-repairs'
 import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
 import { checkSpendPolicyAvailable } from './lib/system-checks/spend-policy'
 import { checkHealthAcks } from './lib/system-checks/health-acks'
@@ -969,6 +970,8 @@ const healthPlugin: BakinPlugin = definePlugin({
       maxAgeMs: 900_000,
       run: () => checkMediaSharp(),
     })
+    ctx.registerHealthRepairAction(packageSyncRepair())
+    ctx.registerHealthRepairAction(packageReinstallRepair())
     ctx.registerHealthCheck({
       id: 'capabilities',
       name: 'Capability-pack readiness',
@@ -1148,7 +1151,8 @@ const healthPlugin: BakinPlugin = definePlugin({
       maxAgeMs: 900_000,
       run: () => checkPluginAssets(),
     })
-    ctx.registerHealthRepairAction(upgradePluginArtifactRepair())
+    ctx.registerHealthRepairAction(pluginUpgradeRepair())
+    ctx.registerHealthRepairAction(pluginReinstallRepair())
     ctx.registerHealthCheck({
       id: 'plugin-artifacts',
       name: 'Installed plugin artifact compatibility',

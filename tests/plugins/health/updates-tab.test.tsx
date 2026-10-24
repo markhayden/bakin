@@ -341,7 +341,7 @@ describe('UpdatesTabView — apply, the whole flow inside the dialog', () => {
 })
 
 describe('UpdatesTabView — review round 2 (#8, #9 of round 1 pinned)', () => {
-  const REPAIR_OK = { httpStatus: 200, body: { ok: true, applied: 1, items: [{ id: 'upgrade-plugin-artifact', status: 'applied' }] } }
+  const REPAIR_OK = { httpStatus: 200, body: { ok: true, applied: 1, items: [{ id: 'plugin-upgrade', status: 'applied' }] } }
 
   it('a plugin apply that resolved a covering approval settles on the REPAIR: a repair-shaped success is done, a failed repair is the failure — never decoded as the upgrader\'s consent/noop fields', async () => {
     const operations = new Map([
@@ -354,7 +354,7 @@ describe('UpdatesTabView — review round 2 (#8, #9 of round 1 pinned)', () => {
       const op = operationResponse(url, operations)
       if (op) return op
       if (url === '/api/updates/plugin%3Anotes/apply-preview') {
-        return json({ bootId: 'b', preview: { id: PLUGIN.id, record: PLUGIN, action: PLUGIN.action, approval: { approvalId: 'apr-2', taskId: 'task-2', title: 'Upgrade notes to a release this Bakin can run', incidentIds: ['inc-2'], observationIds: ['obs-2'], subjectIds: [PLUGIN.id], scopeHash: 'hash-2', items: [{ actionId: 'upgrade-plugin-artifact', itemId: 'upgrade-plugin-artifact', safety: 'manual', changes: [{ kind: 'file', target: 'notes', action: 'update', description: 'Upgrade notes 1.0.0 → 1.1.0.' }] }] } } })
+        return json({ bootId: 'b', preview: { id: PLUGIN.id, record: PLUGIN, action: PLUGIN.action, approval: { approvalId: 'apr-2', taskId: 'task-2', title: 'Upgrade notes to a release this Bakin can run', incidentIds: ['inc-2'], observationIds: ['obs-2'], subjectIds: [PLUGIN.id], scopeHash: 'hash-2', items: [{ actionId: 'plugin-upgrade', itemId: 'plugin-upgrade', safety: 'manual', changes: [{ kind: 'file', target: 'notes', action: 'update', description: 'Upgrade notes 1.0.0 → 1.1.0.' }] }] } } })
       }
       if (url === '/api/updates/plugin%3Anotes/apply' && init?.method === 'POST') return operationStarted(next)
       throw new Error(`Unexpected URL: ${url}`)

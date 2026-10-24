@@ -8,11 +8,18 @@ import { applyPluginAssets, PLUGIN_ASSETS_PLAN, pluginAssetsComponent } from '..
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
+import { pluginRepairResolution, pluginUpgradeOffer, type PluginArtifactDeps } from './plugin-artifacts'
 
 export const INSTALL_PLUGIN_ASSETS_ACTION = 'install-plugin-assets'
 const CHECK_ID = 'health.plugin-assets'
 
-export async function checkPluginAssets(): Promise<HealthCheckRunInput> {
+/** The repair for the plugins an incident names: the offered upgrade, else the reinstall (rows 93–94). */
+async function pluginRepair(pluginIds: string[], deps?: PluginArtifactDeps) {
+  const unique = [...new Set(pluginIds)]
+  return pluginRepairResolution(await Promise.all(unique.map(async (pluginId) => ({ pluginId, offer: await pluginUpgradeOffer(pluginId, deps) }))))
+}
+
+export async function checkPluginAssets(deps?: PluginArtifactDeps): Promise<HealthCheckRunInput> {
   try {
     const result = await pluginAssetsComponent.check()
     if (result.status === 'error') {
@@ -48,7 +55,9 @@ export async function checkPluginAssets(): Promise<HealthCheckRunInput> {
     const invalidBins = scan?.bins?.invalid ?? []
     if (repairable === 0 && invalidBins.length > 0) {
       // The plugin's declaration is the problem — the install repair has
-      // nothing it could verify against, so it is not offered (#898 D).
+      // nothing it could verify against, so it is not offered (#898 D); the
+      // plugin itself is upgraded when a release is offered, else reinstalled.
+      const resolution = await pluginRepair(invalidBins.map((row) => row.pluginId), deps)
       return healthObserved([healthWarning({
         key: 'runtime-assets',
         summary: result.message,
@@ -59,13 +68,8 @@ export async function checkPluginAssets(): Promise<HealthCheckRunInput> {
           title: 'A plugin declares binaries Bakin cannot verify',
           impact: 'Bakin will not install or trust these plugin binaries until the plugin ships a declaration that pins each binary it runs.',
           disposition: 'action_required',
-          resources: invalidBins.map((row) => ({ kind: 'plugin' as const, id: row.pluginId, label: row.pluginId })),
-          resolution: {
-            key: 'upgrade-plugin',
-            type: 'instructions',
-            label: 'Upgrade the plugin',
-            steps: invalidBins.map((row) => `Run \`bakin plugins upgrade ${row.pluginId}\` (or reinstall it).`) as [string, ...string[]],
-          },
+          resources: [...new Set(invalidBins.map((row) => row.pluginId))].map((id) => ({ kind: 'plugin' as const, id, label: id })),
+          resolution,
         },
       })])
     }
@@ -74,6 +78,20 @@ export async function checkPluginAssets(): Promise<HealthCheckRunInput> {
       // plugin ships one that is not text — so offering it would be a
       // button that does nothing (#898).
       const skillResource = (ref: SkillRef) => ({ kind: 'asset' as const, id: `skill:${ref.name}`, label: `${ref.name} (${ref.pluginId})` })
+      // A skill that is not text is the plugin's to fix: reinstall (or the
+      // offered upgrade). A user-edited skill is the operator's decision —
+      // its Keep/Restore control lands in 1.4, so the text stays until then.
+      const resolution = locked.length > 0
+        ? {
+            key: 'unlock-user-edited-skills',
+            type: 'instructions' as const,
+            label: 'Keep or restore',
+            steps: [
+              'Keep your edit and acknowledge this, or delete the skill\'s .userEdited file and run `bakin install plugin-assets` to restore the plugin\'s version.',
+              ...(invalid.length > 0 ? ['Update or remove the plugin that ships a skill with non-text files.'] : []),
+            ] as [string, ...string[]],
+          }
+        : await pluginRepair(invalid.map((ref) => ref.pluginId), deps)
       return healthObserved([healthWarning({
         key: 'runtime-assets',
         summary: result.message,
@@ -87,18 +105,11 @@ export async function checkPluginAssets(): Promise<HealthCheckRunInput> {
             invalid.length > 0 ? 'Skills whose files are not text are never installed, so agents cannot use them.' : null,
           ].filter(Boolean).join(' '),
           disposition: 'watch',
-          resources: [...locked, ...invalid].map(skillResource),
-          resolution: {
-            key: locked.length > 0 ? 'unlock-user-edited-skills' : 'replace-plugin',
-            type: 'instructions',
-            label: locked.length > 0 ? 'Keep or restore' : 'Update the plugin',
-            steps: [
-              locked.length > 0
-                ? 'Keep your edit and acknowledge this, or delete the skill\'s .userEdited file and run `bakin install plugin-assets` to restore the plugin\'s version.'
-                : 'Update or remove the plugin that ships a skill with non-text files.',
-              ...(locked.length > 0 && invalid.length > 0 ? ['Update or remove the plugin that ships a skill with non-text files.'] : []),
-            ],
-          },
+          resources: [
+            ...[...locked, ...invalid].map(skillResource),
+            ...(locked.length === 0 ? [...new Set(invalid.map((ref) => ref.pluginId))].map((id) => ({ kind: 'plugin' as const, id, label: id })) : []),
+          ],
+          resolution,
         },
       })])
     }

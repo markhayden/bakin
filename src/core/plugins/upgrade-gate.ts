@@ -59,6 +59,24 @@ export interface UpgradeOptions {
    * artifact — even when the manifest (and so the consent token) is unchanged.
    */
   expected?: { version?: string; sha?: string; digest?: string }
+  /**
+   * Reinstall (self-healing 1.3b): re-stage the RECORDED install — the
+   * lockfile's version for the artifact lane, its commit for the git lanes,
+   * the live source for the local lane — and replace the plugin dir through
+   * the transaction even when nothing newer exists. A repair never upgrades:
+   * a ref that moved on is ignored, and a recorded identity that is no longer
+   * available (or no longer runs on this host) is refused without mutation.
+   */
+  reinstall?: boolean
+}
+
+/** The commit a git-lane reinstall re-stages; a lockfile without one cannot be repaired in place. */
+export function recordedCommit(id: string, entry: { commitSha: string }): string {
+  const sha = entry.commitSha.toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(sha)) {
+    throw new UpgradeRefusedError(`${id}: the lockfile has no recorded commit to reinstall — remove the plugin and install it again.`)
+  }
+  return sha
 }
 
 /** The identity a lane verified: what it would install. Every lane reports it (review r4 #1). */

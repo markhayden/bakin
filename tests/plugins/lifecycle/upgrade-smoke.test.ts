@@ -199,6 +199,25 @@ describe('upgradePlugin (local)', () => {
     expect(result.before).toEqual(result.after)
   })
 
+  it('reinstall (self-healing 1.3b): an unchanged source is re-staged and rebuilt anyway — the short-circuit is for upgrades, not repairs', async () => {
+    const sourcePath = join(testDir, 'src-reinstall')
+    const pluginDir = join(testDir, 'plugins', 'reinstall-plugin')
+    writeFixturePlugin(sourcePath, { id: 'reinstall-plugin', version: '1.0.0' })
+    writeFixturePlugin(pluginDir, { id: 'reinstall-plugin', version: '1.0.0' })
+    writeFileSync(join(pluginDir, 'index.ts'), 'export default { broken: true }')
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'reinstall-plugin', localEntry({
+      id: 'reinstall-plugin',
+      sourcePath,
+      version: '1.0.0',
+      sourceTreeSha: computeSourceTreeSha(sourcePath),
+    })))
+
+    const result = await upgradePlugin('reinstall-plugin', { reinstall: true })
+    expect(result.noop).toBe(false)
+    expect(result.after.version).toBe('1.0.0')
+    expect(readFileSync(join(pluginDir, 'index.ts'), 'utf-8')).not.toContain('broken')
+  })
+
   it('re-syncs source dir, rebuilds, and updates lockfile when content changed', async () => {
     const sourcePath = join(testDir, 'src-change')
     const pluginDir = join(testDir, 'plugins', 'change-plugin')

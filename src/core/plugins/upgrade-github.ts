@@ -22,6 +22,7 @@ import { INSTALL_SENTINEL, replacePluginDir } from './replace-transaction'
 import { toInstalledBins } from '@/core/agent-packages/bin-installer'
 import {
   type UpgradeOptions,
+  recordedCommit,
   type UpgradeResult,
   UpgradeRefusedError,
   auditUpgradeRejected,
@@ -153,6 +154,26 @@ function readRemoteManifest(pluginDir: string, sha: string, ref: string): { mani
   return { manifest, manifestSha }
 }
 
+/** The recorded commit as an object in the clone: present already, or fetched by id; refused when the remote no longer has it. */
+function ensureCommitPresent(id: string, pluginDir: string, sha: string): string {
+  const present = () => {
+    try {
+      git(['cat-file', '-e', `${sha}^{commit}`], pluginDir)
+      return true
+    } catch {
+      return false
+    }
+  }
+  if (present()) return sha
+  try {
+    git(['fetch', 'origin', '--', sha], pluginDir)
+  } catch {
+    // fall through to the honest refusal below
+  }
+  if (present()) return sha
+  throw new UpgradeRefusedError(`${id}: the recorded commit ${sha.slice(0, 7)} is no longer available from its source — nothing was changed. Remove the plugin and install it again.`)
+}
+
 export async function upgradeGithub(
   id: string,
   entry: PluginLockEntry,
@@ -186,12 +207,15 @@ export async function upgradeGithub(
   // `origin/<tag>` and `origin/refs/heads/x` is nothing.
   git(['fetch', 'origin', '--', entry.ref], pluginDir)
 
-  const remoteSha = git(['rev-parse', 'FETCH_HEAD^{commit}'], pluginDir).toLowerCase()
+  const fetchedSha = git(['rev-parse', 'FETCH_HEAD^{commit}'], pluginDir).toLowerCase()
   const localSha = git(['rev-parse', 'HEAD'], pluginDir).toLowerCase()
+  // A reinstall re-stages the RECORDED commit whatever the ref points at now;
+  // the clone normally still holds it (HEAD), otherwise it is fetched by id.
+  const remoteSha = opts.reinstall ? ensureCommitPresent(id, pluginDir, recordedCommit(id, entry)) : fetchedSha
 
   // True noop — local HEAD already matches remote AND lockfile commitSha
   // is in sync. Nothing on disk or in the lockfile needs to change.
-  if (localSha === remoteSha && entry.commitSha === remoteSha) {
+  if (!opts.reinstall && localSha === remoteSha && entry.commitSha === remoteSha) {
     return {
       id,
       before,
@@ -219,7 +243,8 @@ export async function upgradeGithub(
 
   // The merge-base check runs BEFORE the transaction (read-only on the
   // fetched objects) so a force-push refusal never touches the working tree.
-  if (localSha !== remoteSha) {
+  // A reinstall resets to the recorded commit on purpose — no ancestry to prove.
+  if (!opts.reinstall && localSha !== remoteSha) {
     try {
       git(['merge-base', '--is-ancestor', localSha, remoteSha], pluginDir)
     } catch {
@@ -319,12 +344,27 @@ export async function upgradeGithubSubpath(
   try {
     // `--` ends git option parsing; cloneUrl was Zod-validated upstream
     // and re-validated by parseGithubSource, but defense-in-depth.
-    git(['clone', '--depth', '1', '--branch', entry.ref, '--', cloneUrl, stagingDir], pluginsRoot)
+    // A reinstall needs the RECORDED commit, which may sit behind the ref's
+    // tip: clone the ref's history and check that commit out; an upgrade
+    // only ever needs the tip.
+    if (opts.reinstall) git(['clone', '--branch', entry.ref, '--', cloneUrl, stagingDir], pluginsRoot)
+    else git(['clone', '--depth', '1', '--branch', entry.ref, '--', cloneUrl, stagingDir], pluginsRoot)
 
-    const remoteSha = git(['rev-parse', 'HEAD'], stagingDir).toLowerCase()
+    let remoteSha = git(['rev-parse', 'HEAD'], stagingDir).toLowerCase()
+    if (opts.reinstall) {
+      const recorded = recordedCommit(id, entry)
+      if (remoteSha !== recorded) {
+        try {
+          git(['checkout', '--detach', recorded], stagingDir)
+        } catch {
+          throw new UpgradeRefusedError(`${id}: the recorded commit ${recorded.slice(0, 7)} is no longer available from ${cloneUrl} (${entry.ref}) — nothing was changed. Remove the plugin and install it again.`)
+        }
+        remoteSha = recorded
+      }
+    }
 
     // Noop fast-path — remote hasn't moved since last install/upgrade.
-    if (remoteSha === entry.commitSha) {
+    if (!opts.reinstall && remoteSha === entry.commitSha) {
       return {
         id,
         before,

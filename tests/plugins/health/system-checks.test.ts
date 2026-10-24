@@ -1234,19 +1234,21 @@ describe('checkPluginAssets — user-edited skills (#898)', () => {
     expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:cold-email', label: 'cold-email (sdr)' }])
   })
 
-  it('a plugin skill that is not text is a watch incident naming the plugin, never the install repair', async () => {
+  it('a plugin skill that is not text is a watch incident naming the plugin that points at the reinstall repair, never the install repair', async () => {
     warnWith({ userEditedDrifted: [], invalidSource: [{ pluginId: 'sdr', name: 'blobby', error: 'x' }] })
     const results = observed(await checkPluginAssets())
     expect(results[0].incident).toMatchObject({ key: 'skill-source-invalid', disposition: 'watch' })
-    expect(results[0].incident?.resolution.type).toBe('instructions')
-    expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:blobby', label: 'blobby (sdr)' }])
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-reinstall' })
+    // The plugin is the subject the reinstall resolves from the report (row 94); the skill stays named beside it.
+    expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:blobby', label: 'blobby (sdr)' }, { kind: 'plugin', id: 'sdr', label: 'sdr' }])
   })
 
   it('an invalid plugin bin declaration is an action-required incident naming the plugin and the upgrade — never the install repair (#898 D)', async () => {
     warnWith({ userEditedDrifted: [], bins: { missing: [], drifted: [], unsupported: [], invalid: [{ pluginId: 'terminal', reason: 'requires.bins.0.install.darwin-arm64.archive.extractedSha256: Required' }] } })
     const results = observed(await checkPluginAssets())
     expect(results[0].incident).toMatchObject({ key: 'plugin-bins-invalid', disposition: 'action_required' })
-    expect(results[0].incident?.resolution).toMatchObject({ type: 'instructions', steps: [expect.stringContaining('bakin plugins upgrade terminal')] })
+    // No updates engine runs here, so no upgrade is offered: the reinstall repair is the fallback (re-homing row 93).
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-reinstall' })
     expect(results[0].incident?.resources).toEqual([{ kind: 'plugin', id: 'terminal', label: 'terminal' }])
   })
 
@@ -1353,6 +1355,10 @@ describe('plugin registration', () => {
     expect(actionIds.sort()).toEqual([
       'install-plugin-assets',
       'media-install-store',
+      'package-reinstall',
+      'package-sync',
+      'plugin-reinstall',
+      'plugin-upgrade',
       'search-canary-restart',
       'search-consistency-rebuild',
       'search-consistency-restart',
@@ -1367,7 +1373,6 @@ describe('plugin registration', () => {
       'search-spin-rebuild',
       'sweep-run-dirs',
       'sync-skill',
-      'upgrade-plugin-artifact',
     ])
     for (const registration of registrations) {
       expect(registration.description.length).toBeGreaterThan(0)

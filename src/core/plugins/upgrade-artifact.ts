@@ -81,6 +81,30 @@ export async function publishedVersions(source: string, transfer: TransferOption
 }
 
 /**
+ * The version an UPGRADE installs: the newest release THIS host can run, not
+ * the index's `latest` (which may target a newer or different host contract);
+ * null when the installed artifact already is it. A reinstall never asks —
+ * it re-fetches the recorded version and lets the materialized provenance
+ * say whether it still runs here.
+ */
+async function artifactUpgradeVersion(id: string, entry: PluginLockEntry, pluginDir: string, baseUrl: string): Promise<string | null> {
+  const { latest: newest, compatible } = await publishedVersions(entry.source)
+  if (!newest) {
+    throw new UpgradeRefusedError(
+      `${id}: no published artifact found at ${baseUrl}. Remove and reinstall.`,
+    )
+  }
+  if (!compatible) {
+    auditUpgradeRejected('externals_contract_incompatible', id, { artifactVersion: newest })
+    throw new UpgradeRefusedError(
+      `${id}: no published release runs on this Bakin yet (newest is ${newest}). ` +
+      'The plugin author has to publish one for this version of Bakin; until then the installed version stays.',
+    )
+  }
+  return artifactUpgradeTarget(entry.version, installedArtifactRuns(pluginDir), compatible)
+}
+
+/**
  * Upgrade an artifact-installed plugin by refetching the latest published
  * artifact: resolve the immutable index → compare versions → consent-gate
  * the new manifest's permissions → checksum-verify + safe-extract → check
@@ -95,22 +119,7 @@ export async function upgradeArtifact(
   before: { version: string; commitSha: string },
 ): Promise<UpgradeResult> {
   const gh = githubArtifactSource(entry.source)
-  const { latest: newest, compatible } = await publishedVersions(entry.source)
-  if (!newest) {
-    throw new UpgradeRefusedError(
-      `${id}: no published artifact found at ${gh.baseUrl}. Remove and reinstall.`,
-    )
-  }
-  if (!compatible) {
-    auditUpgradeRejected('externals_contract_incompatible', id, { artifactVersion: newest })
-    throw new UpgradeRefusedError(
-      `${id}: no published release runs on this Bakin yet (newest is ${newest}). ` +
-      'The plugin author has to publish one for this version of Bakin; until then the installed version stays.',
-    )
-  }
-  // The target is the newest release THIS host can run, not the index's
-  // `latest` (which may target a newer or different host contract).
-  const target = artifactUpgradeTarget(entry.version, installedArtifactRuns(pluginDir), compatible)
+  const target = opts.reinstall ? entry.version : await artifactUpgradeVersion(id, entry, pluginDir, gh.baseUrl)
   if (!target) {
     return {
       id,

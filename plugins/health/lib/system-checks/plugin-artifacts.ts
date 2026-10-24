@@ -1,16 +1,25 @@
 /**
- * System check — installed Whiskit plugin artifacts. Surfaces plugins whose
- * provenance no longer matches this host (needs-update after a Bakin upgrade)
- * or is invalid, so a plugin that startup skipped isn't silently missing.
+ * System check — installed Whiskit plugin artifacts — and the two
+ * plugin-family repair actions every plugin incident points at
+ * (self-healing PR1 slice 1.3b; re-homing rows 93–101).
  *
- * A needs-update plugin whose source has published a release THIS host can
- * run — as the updates engine observed it (#1007; the check reads the
- * `plugin:<id>` record, never an index) — gets the one-click
- * `upgrade-plugin-artifact` repair: its plan previews
- * the upgrade (version, EVERY declared permission and binary) and it is `manual`, so
- * escalation asks for approval with exactly that change set — approving it is
- * the consent. With no compatible release yet, the incident says so plainly
- * instead of pointing at an upgrade that would refuse.
+ * The check surfaces plugins whose provenance no longer matches this host
+ * (needs-update after a Bakin upgrade) or is invalid, so a plugin that
+ * startup skipped isn't silently missing.
+ *
+ * - `plugin-upgrade` (renamed from `upgrade-plugin-artifact`) installs the
+ *   release the updates engine OBSERVED for the plugin (#1007; the `plugin:<id>`
+ *   record, never an index). Its plan previews the upgrade (version, EVERY
+ *   declared permission and binary) and it is `manual` until PR6, so
+ *   escalation asks for approval with exactly that change set — approving it
+ *   is the consent.
+ * - `plugin-reinstall` re-stages the RECORDED install (`upgradePlugin(reinstall)`):
+ *   the fallback when nothing newer is offered and the install itself is the
+ *   problem — invalid provenance, a binary declaration Bakin cannot verify,
+ *   a skill that is not text.
+ *
+ * `pluginUpgradeOffer` is the ONE answer plugin-assets and plugin-registry
+ * use to choose between the two.
  */
 import { existsSync, readdirSync, type Dirent } from 'fs'
 import { join } from 'path'
@@ -18,17 +27,20 @@ import type { UpdateRecord } from '@makinbakin/sdk/types'
 import { getContentDir } from '../../../../src/core/content-dir'
 import { verifyInstalledArtifact } from '../../../../src/core/whiskit/verify'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition, HealthResolution } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition, HealthRepairApplyResult, HealthRepairChange, HealthRepairPlanItem, HealthRepairTarget, HealthResolution, OperationContext } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
-import { readPluginLockfile } from '@bakin/core/plugins/lockfile'
+import { isLinked, readPluginLockfile } from '@bakin/core/plugins/lockfile'
 import { createLogger } from '../../../../src/core/logger'
 import { getUpdatesEngine } from '../../../../src/core/updates/service'
 import { stableKeyPart } from './key'
 
 const log = createLogger('health:plugin-artifacts')
 
-export const UPGRADE_PLUGIN_ARTIFACT_ACTION = 'upgrade-plugin-artifact'
+export const PLUGIN_UPGRADE_ACTION = 'plugin-upgrade'
+export const PLUGIN_REINSTALL_ACTION = 'plugin-reinstall'
 const CHECK_ID = 'health.plugin-artifacts'
+/** Every check whose incidents point at the plugin repairs — a reinstall can resolve any of them. */
+const PLUGIN_CHECK_IDS = [CHECK_ID, 'health.plugin-assets', 'health.plugin-registry']
 
 export interface PluginArtifactDeps {
   /** The updates engine's record for `plugin:<id>` — the check never probes an index itself (#1007). */
@@ -44,25 +56,30 @@ const defaultDeps: PluginArtifactDeps = {
   },
 }
 
-const PROVENANCE_PATH = join('.whiskit', 'build.json')
-
 /**
  * What the plugin's source offers this host, as the updates engine observed
  * it: a compatible release (an `update-available` record — for a stranded
  * plugin ANY compatible release is an offer, a rebuild under the installed
  * version number included, D7 `compatible-rebuild`), none yet (`blocked`,
  * with the engine's reason), or unknown (no record, no successful
- * observation, not an artifact install). `observedAt` is the record's last
- * successful observation; `error` its last failed attempt.
+ * observation, not an installed plugin, a linked dev plugin). `observedAt`
+ * is the record's last successful observation; `error` its last failed attempt.
  */
-type Offer =
+export type PluginUpgradeOffer =
   | { kind: 'upgrade'; version: string; observedAt?: string; error?: string }
   | { kind: 'none'; reason: string; observedAt?: string; error?: string }
   | { kind: 'unknown'; observedAt?: string; error?: string }
 
-async function offerFor(pluginId: string, pluginDir: string, deps: PluginArtifactDeps): Promise<Offer> {
-  const entry = readPluginLockfile().plugins[pluginId]
-  if (!entry || entry.type !== 'github' || !existsSync(join(pluginDir, PROVENANCE_PATH))) return { kind: 'unknown' }
+export async function pluginUpgradeOffer(pluginId: string, deps: PluginArtifactDeps = defaultDeps): Promise<PluginUpgradeOffer> {
+  let entry
+  try {
+    entry = readPluginLockfile().plugins[pluginId]
+  } catch (err) {
+    log.warn('Could not read the plugin lockfile for the upgrade offer', { pluginId, err: err instanceof Error ? err.message : String(err) })
+    return { kind: 'unknown' }
+  }
+  // A linked plugin is edited in place, never upgraded or reinstalled by Bakin.
+  if (!entry || isLinked(entry)) return { kind: 'unknown' }
   let record: UpdateRecord | undefined
   try {
     record = await deps.record(pluginId)
@@ -76,6 +93,22 @@ async function offerFor(pluginId: string, pluginDir: string, deps: PluginArtifac
   if (record.outcome === 'update-available' && record.available?.version) return { kind: 'upgrade', version: record.available.version, ...clocks }
   if (record.outcome === 'blocked') return { kind: 'none', reason: record.blockedReason ?? 'no published release runs on this Bakin yet', ...clocks }
   return { kind: 'unknown', ...clocks }
+}
+
+/**
+ * The repair a plugin incident points at: the offered upgrade when the
+ * engine has one for EVERY named plugin, the reinstall of the recorded
+ * install otherwise (rows 93, 99, 101).
+ */
+export function pluginRepairResolution(offers: ReadonlyArray<{ pluginId: string; offer: PluginUpgradeOffer }>): HealthResolution {
+  const names = offers.map((row) => row.pluginId)
+  const subject = names.length === 1 ? names[0]! : `${names.length} plugins`
+  const upgrades = offers.flatMap((row) => (row.offer.kind === 'upgrade' ? [row.offer.version] : []))
+  if (offers.length > 0 && upgrades.length === offers.length) {
+    const label = names.length === 1 ? `Upgrade ${subject} to ${upgrades[0]}` : `Upgrade ${subject}`
+    return { key: PLUGIN_UPGRADE_ACTION, type: 'repair', label: label.slice(0, 120), actionId: PLUGIN_UPGRADE_ACTION }
+  }
+  return { key: PLUGIN_REINSTALL_ACTION, type: 'repair', label: `Reinstall ${subject}`.slice(0, 120), actionId: PLUGIN_REINSTALL_ACTION }
 }
 
 export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDeps): Promise<HealthCheckRunInput> {
@@ -115,10 +148,9 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
     installed += 1
     const pluginDir = join(pluginsDir, name)
     const verification = verifyInstalledArtifact(pluginDir)
-    if (verification.status === 'needs-update') {
-        pending.push(offerFor(name, pluginDir, deps).then((offer) => pluginArtifactWarning(name, 'needs-update', verification.reason, offer)))
-    } else if (verification.status === 'invalid') {
-      pending.push(Promise.resolve(pluginArtifactWarning(name, 'invalid', verification.reason, { kind: 'unknown' })))
+    if (verification.status === 'needs-update' || verification.status === 'invalid') {
+      const status = verification.status
+      pending.push(pluginUpgradeOffer(name, deps).then((offer) => pluginArtifactWarning(name, status, verification.reason, offer)))
     }
   }
   const observations: HealthObservationInput[] = await Promise.all(pending)
@@ -135,27 +167,23 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
-function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid', reason: string, offer: Offer) {
+function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid', reason: string, offer: PluginUpgradeOffer) {
   const id = stableKeyPart(name)
   const label = name.slice(0, 120)
+  // A stranded plugin with no compatible release yet is upstream-blocked: say
+  // so instead of a reinstall that would refuse (row 98 — a human row).
   const resolution: HealthResolution = status === 'needs-update' && offer.kind === 'upgrade'
-    ? { key: UPGRADE_PLUGIN_ARTIFACT_ACTION, type: 'repair' as const, label: `Install ${offer.version} for this Bakin`.slice(0, 120), actionId: UPGRADE_PLUGIN_ARTIFACT_ACTION }
+    ? { key: PLUGIN_UPGRADE_ACTION, type: 'repair', label: `Install ${offer.version} for this Bakin`.slice(0, 120), actionId: PLUGIN_UPGRADE_ACTION }
     : status === 'needs-update' && offer.kind === 'none'
       ? {
           key: 'await-compatible-release',
-          type: 'instructions' as const,
+          type: 'instructions',
           label: 'Wait for a compatible release',
           steps: [
             `${offer.reason.charAt(0).toUpperCase()}${offer.reason.slice(1)}. Its author has to publish one; Health offers the upgrade as soon as the updates engine observes it.`,
           ],
         }
-      : {
-          key: 'upgrade-plugin',
-          type: 'instructions' as const,
-          label: 'Install a compatible artifact',
-          steps: [`Upgrade or reinstall ${label} from its trusted source, then rerun Health.`],
-          command: `bakin plugins upgrade ${id}`,
-        }
+      : pluginRepairResolution([{ pluginId: id, offer }])
   return healthWarning({
     key: `plugin:${id}`,
     summary: status === 'needs-update'
@@ -182,40 +210,83 @@ function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid',
 }
 
 /** Installed plugins that need an update AND have a release this host can run. */
-async function upgradablePlugins(deps: PluginArtifactDeps): Promise<Array<{ id: string; version: string }>> {
+async function strandedWithOffer(deps: PluginArtifactDeps): Promise<string[]> {
   const pluginsDir = join(getContentDir(), 'plugins')
   if (!existsSync(pluginsDir)) return []
   const stranded = (readdirSync(pluginsDir, { withFileTypes: true }) as Dirent[])
     .map((entry) => String(entry.name))
     .filter((name) => !name.startsWith('.') && verifyInstalledArtifact(join(pluginsDir, name)).status === 'needs-update')
-  const offers = await Promise.all(stranded.map(async (name) => ({ id: name, offer: await offerFor(name, join(pluginsDir, name), deps) })))
-  return offers.flatMap(({ id, offer }) => (offer.kind === 'upgrade' ? [{ id, version: offer.version }] : []))
+  const offers = await Promise.all(stranded.map(async (name) => ({ id: name, offer: await pluginUpgradeOffer(name, deps) })))
+  return offers.flatMap(({ id, offer }) => (offer.kind === 'upgrade' ? [id] : []))
 }
 
-/** Whether a repair target names this plugin's incident or observation (ids end in their keys). */
-function targetSelects(target: { type: string; ids?: readonly string[] }, pluginId: string): boolean {
-  if (target.type === 'all_actionable') return true
-  const id = stableKeyPart(pluginId)
-  const suffix = target.type === 'incidents' ? `:needs-update:${id}` : `:plugin:${id}`
-  return (target.ids ?? []).some((selected) => selected.endsWith(suffix))
+/** The plugin a check's incident or observation key names, when the key carries it. */
+function pluginIdFromKey(id: string): string | null {
+  const match = /:(?:needs-update|invalid|activation-failed|plugin):([a-z0-9][a-z0-9-]*)$/.exec(id)
+  return match ? match[1]! : null
 }
 
-interface UpgradeIdentity {
+/**
+ * The plugins a repair target names. Incident and observation ids resolve
+ * through the cached Health report to the incidents' `plugin` resources
+ * (the plugin-assets incidents carry the plugin only there); an id the
+ * report does not know falls back to the key's own suffix. `all_actionable`
+ * is every action-required incident pointing at this action.
+ */
+async function pluginsNamedBy(target: HealthRepairTarget, actionId: string): Promise<string[]> {
+  const named = new Set<string>()
+  type Incident = { id: string; effectiveDisposition: string; resources: ReadonlyArray<{ kind: string; id: string }>; resolution: { type: string; actionId?: string }; observationIds: readonly string[] }
+  let incidents: readonly Incident[] = []
+  try {
+    const { getHealthReport } = await import('../../../../src/core/doctor-report-cache')
+    incidents = getHealthReport().incidents
+  } catch (err) {
+    log.warn('Health report unavailable while resolving the repair target; using the target ids alone', { err: err instanceof Error ? err.message : String(err) })
+  }
+  const addPlugins = (incident: Incident) => {
+    for (const resource of incident.resources) if (resource.kind === 'plugin') named.add(resource.id)
+  }
+  if (target.type === 'all_actionable') {
+    for (const incident of incidents) {
+      if (incident.effectiveDisposition === 'action_required' && incident.resolution.type === 'repair' && incident.resolution.actionId === actionId) addPlugins(incident)
+    }
+    return [...named]
+  }
+  for (const id of target.ids) {
+    const matches = target.type === 'incidents'
+      ? incidents.filter((incident) => incident.id === id)
+      : incidents.filter((incident) => incident.observationIds.includes(id))
+    if (matches.length > 0) {
+      matches.forEach(addPlugins)
+      continue
+    }
+    const parsed = pluginIdFromKey(id)
+    if (parsed) named.add(parsed)
+  }
+  return [...named]
+}
+
+/** What an approval freezes: the plugin, its version, the full manifest sha and the bytes (artifact digest or git commit). */
+interface ApprovedIdentity {
   id: string
   version: string
   manifestSha: string
-  /** The published artifact's sha256 — the bytes the approval covers. */
-  digest: string
+  /** The published artifact's sha256 (64 hex) or the git commit (40 hex). */
+  bytes: string
 }
 
-function upgradeTarget(id: string, version: string, manifestSha: string, digest: string): string {
-  return `plugin:${id}@${version}#${manifestSha}!${digest}`
+function identityTarget(id: string, version: string, manifestSha: string, bytes: string): string {
+  return `plugin:${id}@${version}#${manifestSha}!${bytes}`
 }
 
-/** The plugin/version/manifest/artifact an approved change names, or null for a permission/bin row. */
-function parseUpgradeTarget(target: string): UpgradeIdentity | null {
-  const match = /^plugin:([a-z0-9][a-z0-9-]*)@([^#]+)#([0-9a-f]{64})!([0-9a-f]{64})$/.exec(target)
-  return match ? { id: match[1]!, version: match[2]!, manifestSha: match[3]!, digest: match[4]! } : null
+/** The identity an approved change names, or null for a permission/bin row. */
+function parseIdentityTarget(target: string): ApprovedIdentity | null {
+  const match = /^plugin:([a-z0-9][a-z0-9-]*)@([^#]+)#([0-9a-f]{64})!([0-9a-f]{64}|[0-9a-f]{40})$/.exec(target)
+  return match ? { id: match[1]!, version: match[2]!, manifestSha: match[3]!, bytes: match[4]! } : null
+}
+
+function expectedFor(identity: ApprovedIdentity): { version: string; digest?: string; sha?: string } {
+  return identity.bytes.length === 64 ? { version: identity.version, digest: identity.bytes } : { version: identity.version, sha: identity.bytes }
 }
 
 function approvedBins(items: ReadonlyArray<{ changes: ReadonlyArray<{ target: string }> }>, id: string): string[] {
@@ -228,70 +299,137 @@ function sameBins(bins: ReadonlyArray<{ name: string; version: string; sha256: s
   return now.length === approved.length && now.every((b, i) => b === approved[i])
 }
 
+type UpgradeModule = typeof import('../../../../src/core/plugins/upgrade')
+type Preview = Awaited<ReturnType<UpgradeModule['upgradePlugin']>>
+
 /**
- * One-click upgrade of stranded plugins to the newest release this host can
- * run. `plan()` PREVIEWS each upgrade so the change set names the target
- * version, its manifest and every new permission or binary; `manual` safety
- * routes it through an approval showing exactly that, and `apply()` previews
- * again and commits with that consent (a changed manifest re-plans).
+ * The change set a preview names. Identity lives in the TARGETS: an approval
+ * freezes the change set and Apply refuses when a re-plan's targets differ,
+ * so the version, full manifest sha, the bytes (artifact sha256 or commit)
+ * and every binary's sha are what gets approved — a republish under the same
+ * version and manifest is a different artifact and never rides an old approval.
  */
-export function upgradePluginArtifactRepair(deps: PluginArtifactDeps = defaultDeps): HealthRepairActionDefinition {
+function previewChanges(id: string, preview: Preview, reinstall: boolean): HealthRepairChange[] | null {
+  if (preview.noop || !preview.consent) return null
+  const bytes = preview.identity?.digest ?? preview.identity?.sha
+  if (!bytes) {
+    log.warn('Preview carried no artifact digest or commit; not proposing it', { pluginId: id })
+    return null
+  }
+  const what = preview.identity?.digest ? 'artifact' : 'commit'
+  const changes: HealthRepairChange[] = [{
+    kind: 'file',
+    target: identityTarget(id, preview.after.version, preview.consent.manifestSha, bytes),
+    action: 'update',
+    description: reinstall
+      ? `Reinstall ${id} ${preview.after.version} from its recorded source (manifest ${preview.consent.manifestSha.slice(0, 12)}, ${what} ${bytes.slice(0, 12)}).`
+      : `Upgrade ${id} ${preview.before.version} → ${preview.after.version} (manifest ${preview.consent.manifestSha.slice(0, 12)}, ${what} ${bytes.slice(0, 12)}).`,
+  }]
+  for (const permission of preview.declaredPermissions) {
+    changes.push({ kind: 'setting', target: `plugin:${id}:permission:${permission}`, action: 'create', description: `${id} is granted the "${permission}" permission.` })
+  }
+  for (const bin of preview.declaredBins) {
+    changes.push({ kind: 'file', target: `plugin:${id}:bin:${bin.name}@${bin.version}#${bin.sha256}`, action: 'create', description: `${id} installs ${bin.name} ${bin.version} (sha256 ${bin.sha256.slice(0, 12)}) into ~/.bakin/bin.` })
+  }
+  return changes
+}
+
+const PLUGIN_OPERATION_PLAN = (verb: string) => ({
+  stages: [
+    { id: 'upgrade', kind: 'committing' as const, label: `${verb} the plugins` },
+    { id: 'activate', kind: 'verifying' as const, label: 'Activate them' },
+  ],
+  pointOfNoReturn: 'upgrade',
+})
+
+/**
+ * Commit exactly what was approved, plugin by plugin: preview again, hold the
+ * lane to the approved identity (version, manifest, bytes, binaries), commit
+ * with that consent, activate. Returns the plugins that went through and the
+ * per-plugin problems.
+ */
+async function commitApproved(
+  approved: ApprovedIdentity[],
+  items: ReadonlyArray<HealthRepairPlanItem>,
+  op: OperationContext,
+  reinstall: boolean,
+): Promise<{ done: string[]; problems: Map<string, string> }> {
+  const { upgradePlugin, UpgradeRefusedError } = await import('../../../../src/core/plugins/upgrade')
+  const { activateUserPluginDir } = await import('../../../../src/core/plugins/live-lifecycle')
+  const verb = reinstall ? 'Reinstall' : 'Upgrade'
+  const done: string[] = []
+  const problems = new Map<string, string>()
+  op.stage('upgrade')
+  for (const want of approved) {
+    const id = want.id
+    op.item('upgrade', { id, label: id, status: 'active' })
+    try {
+      const preview = await upgradePlugin(id, { previewOnly: true, ...(reinstall ? { reinstall: true } : {}) })
+      if (preview.noop) {
+        op.item('upgrade', { id, label: id, status: 'skipped', message: 'already current' })
+        continue
+      }
+      const bytes = preview.identity?.digest ?? preview.identity?.sha
+      if (!preview.consent || preview.after.version !== want.version || preview.consent.manifestSha !== want.manifestSha
+        || bytes !== want.bytes || !sameBins(preview.declaredBins, approvedBins(items, id))) {
+        throw new UpgradeRefusedError(`${id}: the ${reinstall ? 'source' : 'published release'} changed since it was approved (approved ${want.version}) — rerun Health to review the new change set.`)
+      }
+      const result = await upgradePlugin(id, { accepted: preview.consent, expected: expectedFor(want), ...(reinstall ? { reinstall: true } : {}) })
+      if (result.awaitingConsent) throw new UpgradeRefusedError(`${id}: its manifest changed since the preview — rerun Health to review the new change set.`)
+      done.push(id)
+      op.item('upgrade', { id, label: `${id} → ${result.after.version}`, status: 'done' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      problems.set(id, message)
+      op.item('upgrade', { id, label: id, status: 'failed', message })
+    }
+  }
+  op.stage('activate')
+  for (const id of done) {
+    try {
+      await activateUserPluginDir(join(getContentDir(), 'plugins', id))
+      op.item('activate', { id, label: id, status: 'done' })
+    } catch (err) {
+      const message = `${verb}ed ${id} but could not activate it: ${err instanceof Error ? err.message : String(err)}`
+      problems.set(id, message)
+      op.item('activate', { id, label: id, status: 'failed', message })
+    }
+  }
+  return { done, problems }
+}
+
+/**
+ * One-click upgrade to the release the updates engine offers. One incident's
+ * repair upgrades THAT plugin; "all actionable" bundles every stranded plugin
+ * with an offer plus every incident pointing here.
+ */
+export function pluginUpgradeRepair(deps: PluginArtifactDeps = defaultDeps): HealthRepairActionDefinition {
   return {
-    id: UPGRADE_PLUGIN_ARTIFACT_ACTION,
-    name: 'Upgrade plugins to a compatible release',
+    id: PLUGIN_UPGRADE_ACTION,
+    name: 'Upgrade plugins to the offered release',
     resources: ['install-state'],
-    operationPlan: () => ({
-      stages: [
-        { id: 'upgrade', kind: 'committing', label: 'Upgrade the plugins' },
-        { id: 'activate', kind: 'verifying', label: 'Activate them' },
-      ],
-      pointOfNoReturn: 'upgrade',
-    }),
+    operationPlan: () => PLUGIN_OPERATION_PLAN('Upgrade'),
     async plan(target) {
-      // One incident's repair upgrades THAT plugin; only "all actionable"
-      // bundles every stranded plugin.
-      const upgradable = (await upgradablePlugins(deps)).filter((plugin) => targetSelects(target, plugin.id))
-      if (upgradable.length === 0) return []
+      const named = await pluginsNamedBy(target, PLUGIN_UPGRADE_ACTION)
+      const candidates = [...new Set(target.type === 'all_actionable' ? [...await strandedWithOffer(deps), ...named] : named)]
+      if (candidates.length === 0) return []
       const { upgradePlugin } = await import('../../../../src/core/plugins/upgrade')
-      const changes = []
-      for (const plugin of upgradable) {
+      const changes: HealthRepairChange[] = []
+      for (const id of candidates) {
         try {
-          const preview = await upgradePlugin(plugin.id, { previewOnly: true })
-          if (preview.noop) continue
-          if (!preview.consent) continue
-          // Identity lives in the TARGETS: an approval freezes the change set
-          // and Apply refuses when a re-plan's targets differ, so the version,
-          // full manifest sha, the artifact's sha256 and every binary's sha
-          // are what gets approved — a republish under the same version and
-          // manifest is a different artifact and never rides an old approval.
-          const digest = preview.identity?.digest
-          if (!digest) {
-            log.warn('Upgrade preview carried no artifact digest; not proposing it', { pluginId: plugin.id })
-            continue
-          }
-          changes.push({
-            kind: 'file' as const,
-            target: upgradeTarget(plugin.id, preview.after.version, preview.consent.manifestSha, digest),
-            action: 'update' as const,
-            description: `Upgrade ${plugin.id} ${preview.before.version} → ${preview.after.version} (manifest ${preview.consent.manifestSha.slice(0, 12)}, artifact ${digest.slice(0, 12)}).`,
-          })
-          for (const permission of preview.declaredPermissions) {
-            changes.push({ kind: 'setting' as const, target: `plugin:${plugin.id}:permission:${permission}`, action: 'create' as const, description: `${plugin.id} is granted the "${permission}" permission.` })
-          }
-          for (const bin of preview.declaredBins) {
-            changes.push({ kind: 'file' as const, target: `plugin:${plugin.id}:bin:${bin.name}@${bin.version}#${bin.sha256}`, action: 'create' as const, description: `${plugin.id} installs ${bin.name} ${bin.version} (sha256 ${bin.sha256.slice(0, 12)}) into ~/.bakin/bin.` })
-          }
+          if ((await pluginUpgradeOffer(id, deps)).kind !== 'upgrade') continue
+          changes.push(...(previewChanges(id, await upgradePlugin(id, { previewOnly: true }), false) ?? []))
         } catch (err) {
-          log.warn('Upgrade preview failed; not proposing it', { pluginId: plugin.id, err: err instanceof Error ? err.message : String(err) })
+          log.warn('Upgrade preview failed; not proposing it', { pluginId: id, err: err instanceof Error ? err.message : String(err) })
         }
       }
       if (changes.length === 0) return []
       const ids = [...new Set(changes.map((c) => c.target.split(/[:@]/)[1]))]
       return [{
-        id: UPGRADE_PLUGIN_ARTIFACT_ACTION,
-        actionId: UPGRADE_PLUGIN_ARTIFACT_ACTION,
-        title: `Upgrade ${ids.join(', ')} to a release this Bakin can run`,
-        reason: 'A Bakin upgrade left these plugins on an artifact built for a different host contract; their sources have published compatible releases.',
+        id: PLUGIN_UPGRADE_ACTION,
+        actionId: PLUGIN_UPGRADE_ACTION,
+        title: `Upgrade ${ids.join(', ')} to the release its source published for this Bakin`,
+        reason: 'These plugins have a newer release — or one built for this Bakin after an upgrade stranded them — observed by the updates engine.',
         safety: 'manual',
         ...repairTargetSelection(target),
         changes,
@@ -299,62 +437,75 @@ export function upgradePluginArtifactRepair(deps: PluginArtifactDeps = defaultDe
     },
     async apply(items, op) {
       if (items.length === 0) return []
-      const approved = items.flatMap((item) => item.changes.map((c) => parseUpgradeTarget(c.target)).filter((t): t is UpgradeIdentity => t !== null))
-      const ids = approved.map((a) => a.id)
-      const { upgradePlugin, UpgradeRefusedError } = await import('../../../../src/core/plugins/upgrade')
-      const { activateUserPluginDir } = await import('../../../../src/core/plugins/live-lifecycle')
-      const upgraded: string[] = []
-      const problems: string[] = []
-      op.stage('upgrade')
-      for (const id of ids) {
-        op.item('upgrade', { id, label: id, status: 'active' })
-        try {
-          const want = approved.find((a) => a.id === id)!
-          const preview = await upgradePlugin(id, { previewOnly: true })
-          if (preview.noop) {
-            op.item('upgrade', { id, label: id, status: 'skipped', message: 'already current' })
-            continue
-          }
-          // Commit ONLY what was approved: same version, same manifest, same
-          // artifact bytes, and (through the consent) the same permissions and
-          // binaries. The lane holds the commit to the approved identity too.
-          if (!preview.consent || preview.after.version !== want.version || preview.consent.manifestSha !== want.manifestSha
-            || preview.identity?.digest !== want.digest || !sameBins(preview.declaredBins, approvedBins(items, id))) {
-            throw new UpgradeRefusedError(`${id}: the published release changed since it was approved (approved ${want.version}) — rerun Health to review the new change set.`)
-          }
-          const result = await upgradePlugin(id, { accepted: preview.consent, expected: { version: want.version, digest: want.digest } })
-          if (result.awaitingConsent) throw new UpgradeRefusedError(`${id}: its manifest changed since the preview — rerun Health to review the new change set.`)
-          upgraded.push(id)
-          op.item('upgrade', { id, label: `${id} → ${result.after.version}`, status: 'done' })
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          problems.push(message)
-          op.item('upgrade', { id, label: id, status: 'failed', message })
-        }
-      }
-      op.stage('activate')
-      for (const id of upgraded) {
-        try {
-          await activateUserPluginDir(join(getContentDir(), 'plugins', id))
-          op.item('activate', { id, label: id, status: 'done' })
-        } catch (err) {
-          const message = `Upgraded ${id} but could not activate it: ${err instanceof Error ? err.message : String(err)}`
-          problems.push(message)
-          op.item('activate', { id, label: id, status: 'failed', message })
-        }
-      }
+      const approved = items.flatMap((item) => item.changes.map((c) => parseIdentityTarget(c.target)).filter((t): t is ApprovedIdentity => t !== null))
+      const { done, problems } = await commitApproved(approved, items, op, false)
       const message = [
-        upgraded.length > 0 ? `Upgraded ${upgraded.join(', ')}.` : 'Nothing upgraded.',
-        ...problems,
+        done.length > 0 ? `Upgraded ${done.join(', ')}.` : 'Nothing upgraded.',
+        ...problems.values(),
       ].join(' ')
       return items.map((item) => ({
         itemId: item.id,
         actionId: item.actionId,
-        status: problems.length > 0 ? 'failed' as const : upgraded.length > 0 ? 'applied' as const : 'skipped' as const,
+        status: problems.size > 0 ? 'failed' as const : done.length > 0 ? 'applied' as const : 'skipped' as const,
         message,
-        affectedCheckIds: [CHECK_ID],
-        changes: item.changes.filter((change) => upgraded.includes(change.target.split(/[:@]/)[1]!)),
+        affectedCheckIds: PLUGIN_CHECK_IDS,
+        changes: item.changes.filter((change) => done.includes(change.target.split(/[:@]/)[1]!)),
       }))
+    },
+  }
+}
+
+/**
+ * Reinstall of the RECORDED install, one item per plugin the target names.
+ * The fallback behind `plugin-upgrade` when the install itself is broken and
+ * nothing newer is offered; a reinstall never changes the version.
+ */
+export function pluginReinstallRepair(): HealthRepairActionDefinition {
+  return {
+    id: PLUGIN_REINSTALL_ACTION,
+    name: 'Reinstall plugins from their recorded source',
+    resources: ['install-state'],
+    operationPlan: () => PLUGIN_OPERATION_PLAN('Reinstall'),
+    async plan(target) {
+      const named = await pluginsNamedBy(target, PLUGIN_REINSTALL_ACTION)
+      if (named.length === 0) return []
+      const { upgradePlugin } = await import('../../../../src/core/plugins/upgrade')
+      const items: HealthRepairPlanItem[] = []
+      for (const id of named) {
+        try {
+          const preview = await upgradePlugin(id, { previewOnly: true, reinstall: true })
+          const changes = previewChanges(id, preview, true)
+          if (!changes) continue
+          items.push({
+            id,
+            actionId: PLUGIN_REINSTALL_ACTION,
+            title: `Reinstall ${id} ${preview.after.version}`.slice(0, 120),
+            reason: 'The installed copy cannot be trusted as it stands; re-staging the recorded release from its source replaces it byte for byte.',
+            safety: 'manual',
+            ...repairTargetSelection(target),
+            changes,
+          })
+        } catch (err) {
+          log.warn('Reinstall preview failed; not proposing it', { pluginId: id, err: err instanceof Error ? err.message : String(err) })
+        }
+      }
+      return items
+    },
+    async apply(items, op) {
+      if (items.length === 0) return []
+      const approved = items.flatMap((item) => item.changes.map((c) => parseIdentityTarget(c.target)).filter((t): t is ApprovedIdentity => t !== null))
+      const { done, problems } = await commitApproved(approved, items, op, true)
+      return items.map((item): HealthRepairApplyResult => {
+        const problem = problems.get(item.id)
+        return {
+          itemId: item.id,
+          actionId: item.actionId,
+          status: problem ? 'failed' : done.includes(item.id) ? 'applied' : 'skipped',
+          message: problem ?? (done.includes(item.id) ? `Reinstalled ${item.id}.` : `${item.id} was already current.`),
+          affectedCheckIds: PLUGIN_CHECK_IDS,
+          changes: done.includes(item.id) ? item.changes : [],
+        }
+      })
     },
   }
 }

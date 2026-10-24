@@ -1,9 +1,10 @@
 import { healthError, healthHealthy, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
 import { getRegistrySnapshot } from '../host-providers'
+import { pluginRepairResolution, pluginUpgradeOffer, type PluginArtifactDeps } from './plugin-artifacts'
 import { stableKeyPart } from './key'
 
-export async function checkPluginRegistry(): Promise<HealthCheckRunInput> {
+export async function checkPluginRegistry(deps?: PluginArtifactDeps): Promise<HealthCheckRunInput> {
   let plugins: Array<Record<string, unknown>>
   try {
     plugins = getRegistrySnapshot()
@@ -31,8 +32,24 @@ export async function checkPluginRegistry(): Promise<HealthCheckRunInput> {
     })])
   }
 
-  const observations = failed.map<HealthObservationInput>((plugin) => {
+  const observations = await Promise.all(failed.map(async (plugin): Promise<HealthObservationInput> => {
     const rawId = String(plugin.id ?? 'unknown')
+    // A release the updates engine offers is the repair (row 101); without
+    // one the activation error is the operator's to read until core.diagnose
+    // takes it over in the cutover.
+    const offer = await pluginUpgradeOffer(rawId, deps)
+    const resolution = offer.kind === 'upgrade'
+      ? pluginRepairResolution([{ pluginId: rawId, offer }])
+      : {
+          key: 'inspect-plugin',
+          type: 'instructions' as const,
+          label: 'Inspect plugin activation',
+          steps: [
+            `Inspect the activation error for ${rawId.slice(0, 120)}.`,
+            'Update, reconfigure, or remove the plugin, then restart Bakin and rerun Health.',
+          ] as [string, ...string[]],
+          command: 'bakin plugins list --check',
+        }
     const id = stableKeyPart(rawId)
     const code = typeof plugin.errorCode === 'string' ? plugin.errorCode : 'activation_failed'
     const message = typeof plugin.errorMessage === 'string' && plugin.errorMessage.length > 0
@@ -50,18 +67,9 @@ export async function checkPluginRegistry(): Promise<HealthCheckRunInput> {
         impact: 'The plugin and the features it contributes are unavailable.',
         disposition: 'action_required',
         resources: [{ kind: 'plugin', id, label }],
-        resolution: {
-          key: 'inspect-plugin',
-          type: 'instructions',
-          label: 'Inspect plugin activation',
-          steps: [
-            `Inspect the activation error for ${label}.`,
-            'Update, reconfigure, or remove the plugin, then restart Bakin and rerun Health.',
-          ],
-          command: 'bakin plugins list --check',
-        },
+        resolution,
       },
     })
-  })
+  }))
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }

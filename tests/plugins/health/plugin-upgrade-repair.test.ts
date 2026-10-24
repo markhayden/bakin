@@ -26,20 +26,23 @@ mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info: ()
 
 type Consent = { manifestSha: string; permissions: string[]; bins: Array<{ name: string; version: string; sha256: string }> }
 type Expected = { version?: string; sha?: string; digest?: string }
-const calls: Array<{ id: string; previewOnly?: boolean; accepted?: Consent; expected?: Expected }> = []
+const calls: Array<{ id: string; previewOnly?: boolean; reinstall?: boolean; accepted?: Consent; expected?: Expected }> = []
 let previewManifest = 'd'.repeat(64)
 let previewVersion = '1.5.0'
 /** The published tarball's sha256 the artifact lane verifies — part of the frozen target (review r4 #2). */
 let previewDigest = '7'.repeat(64)
 let commitAwaitsConsent = false
+/** When set, the fake lane is a git lane: its identity is this commit, not an artifact digest. */
+let previewSha: string | null = null
 class UpgradeRefusedError extends Error {}
 mock.module('../../../src/core/plugins/upgrade', () => ({
   UpgradeRefusedError,
-  upgradePlugin: async (id: string, opts: { previewOnly?: boolean; accepted?: Consent; expected?: Expected }) => {
-    calls.push({ id, previewOnly: opts.previewOnly, accepted: opts.accepted, expected: opts.expected })
+  upgradePlugin: async (id: string, opts: { previewOnly?: boolean; reinstall?: boolean; accepted?: Consent; expected?: Expected }) => {
+    calls.push({ id, previewOnly: opts.previewOnly, reinstall: opts.reinstall, accepted: opts.accepted, expected: opts.expected })
+    if (opts.expected?.sha !== undefined && opts.expected.sha !== previewSha) throw new UpgradeRefusedError(`${id}: the upgrade target changed since it was reviewed — commit`)
     if (opts.expected?.digest !== undefined && opts.expected.digest !== previewDigest) throw new UpgradeRefusedError(`${id}: the upgrade target changed since it was reviewed — artifact ${previewDigest.slice(0, 12)} (reviewed ${opts.expected.digest.slice(0, 12)}).`)
     const consent = { manifestSha: previewManifest, permissions: ['network'], bins: [{ name: 'ttyd', version: '1.7.7', sha256: 'e'.repeat(64) }] }
-    const base = { id, before: { version: '1.0.0', commitSha: '' }, after: { version: previewVersion, commitSha: '' }, noop: false, identity: { version: previewVersion, digest: previewDigest } }
+    const base = { id, before: { version: '1.0.0', commitSha: '' }, after: { version: previewVersion, commitSha: '' }, noop: false, identity: previewSha ? { version: previewVersion, sha: previewSha } : { version: previewVersion, digest: previewDigest } }
     if (opts.previewOnly) return { ...base, declaredPermissions: ['network'], declaredBins: consent.bins, awaitingConsent: true, consent }
     if (commitAwaitsConsent) return { ...base, declaredPermissions: [], declaredBins: [], awaitingConsent: true, consent }
     return { ...base, declaredPermissions: ['network'], declaredBins: consent.bins, awaitingConsent: false }
@@ -49,8 +52,14 @@ const activated: string[] = []
 mock.module('../../../src/core/plugins/live-lifecycle', () => ({
   activateUserPluginDir: async (dir: string) => { activated.push(dir); return { runtimeVersion: 1 } },
 }))
+// The cached Health report: how a target's incident ids resolve to the plugins they name.
+type ReportIncident = { id: string; effectiveDisposition: string; resources: Array<{ kind: string; id: string; label: string }>; resolution: { type: string; actionId?: string }; observationIds: string[] }
+let reportIncidents: ReportIncident[] = []
+mock.module('../../../src/core/doctor-report-cache', () => ({
+  getHealthReport: () => ({ id: 'report-1', incidents: reportIncidents, observations: [], checks: [] }),
+}))
 
-import { upgradePluginArtifactRepair } from '../../../plugins/health/lib/system-checks/plugin-artifacts'
+import { pluginReinstallRepair, pluginUpgradeRepair } from '../../../plugins/health/lib/system-checks/plugin-artifacts'
 import { writeProvenance, WHISKIT_PROVENANCE_VERSION } from '../../../src/core/whiskit/provenance'
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 
@@ -91,16 +100,18 @@ beforeEach(() => {
   previewVersion = '1.5.0'
   previewDigest = '7'.repeat(64)
   commitAwaitsConsent = false
+  previewSha = null
+  reportIncidents = []
 })
 
-describe('upgrade-plugin-artifact repair', () => {
+describe('plugin-upgrade repair', () => {
   it('plans nothing when no plugin is stranded', async () => {
-    expect(await upgradePluginArtifactRepair(deps).plan(target)).toEqual([])
+    expect(await pluginUpgradeRepair(deps).plan(target)).toEqual([])
   })
 
   it('plans a manual change set naming the version, the manifest, and every new permission and binary', async () => {
     installStranded('terminal')
-    const [item] = await upgradePluginArtifactRepair(deps).plan(target)
+    const [item] = await pluginUpgradeRepair(deps).plan(target)
     expect(item!.safety).toBe('manual')
     expect(item!.changes.map((c) => c.target)).toEqual([
       `plugin:terminal@1.5.0#${'d'.repeat(64)}!${'7'.repeat(64)}`,
@@ -119,7 +130,7 @@ describe('upgrade-plugin-artifact repair', () => {
       version: 1,
       plugins: Object.fromEntries(['terminal', 'projects'].map((id) => [id, { source: `github:markhayden/bakin-bits-official#plugins/${id}`, type: 'github', ref: '', commitSha: '', installedAt: '2026-10-01T00:00:00.000Z', version: '1.0.0', permissions: [], manifestSha: 'c'.repeat(64) }])),
     }))
-    const repair = upgradePluginArtifactRepair(deps)
+    const repair = pluginUpgradeRepair(deps)
     const one = await repair.plan({ type: 'incidents', reportId: 'report-1', ids: ['health:plugins:needs-update:terminal'] })
     expect(one[0]!.changes.filter((c) => /^plugin:[^:]+@/.test(c.target)).map((c) => c.target.split('@')[0])).toEqual(['plugin:terminal'])
     const all = await repair.plan(target)
@@ -129,7 +140,7 @@ describe('upgrade-plugin-artifact repair', () => {
 
   it('apply commits with the previewed consent and activates the plugin', async () => {
     installStranded('terminal')
-    const repair = upgradePluginArtifactRepair(deps)
+    const repair = pluginUpgradeRepair(deps)
     const run = await runRepairContract(repair, await repair.plan(target))
     expectRepairContract(repair, run)
     const commit = calls.find((c) => !c.previewOnly)
@@ -137,12 +148,13 @@ describe('upgrade-plugin-artifact repair', () => {
     // The lane is held to the approved identity too, not only the consent.
     expect(commit?.expected).toEqual({ version: '1.5.0', digest: '7'.repeat(64) })
     expect(activated).toEqual([join(testDir, 'plugins', 'terminal')])
-    expect(run.results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['health.plugin-artifacts'] })
+    // An upgrade can resolve an artifact, a bin-declaration or an activation incident — all three checks rerun.
+    expect(run.results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['health.plugin-artifacts', 'health.plugin-assets', 'health.plugin-registry'] })
   })
 
   it('a release that changed after approval (new version + manifest) is refused, never installed on the old approval', async () => {
     installStranded('terminal')
-    const repair = upgradePluginArtifactRepair(deps)
+    const repair = pluginUpgradeRepair(deps)
     const approved = await repair.plan(target)
     previewVersion = '2.0.0'
     previewManifest = 'f'.repeat(64)
@@ -159,13 +171,13 @@ describe('upgrade-plugin-artifact repair', () => {
     installStranded('terminal')
     previewVersion = '1.0.0'
     const sameVersion = offering('1.0.0')
-    const [item] = await upgradePluginArtifactRepair(sameVersion).plan(target)
+    const [item] = await pluginUpgradeRepair(sameVersion).plan(target)
     expect(item!.changes[0]!.target).toBe(`plugin:terminal@1.0.0#${'d'.repeat(64)}!${'7'.repeat(64)}`)
   })
 
   it('review r4 #2: a republish under the SAME version and manifest is a different artifact — the approval does not cover it, nothing installs', async () => {
     installStranded('terminal')
-    const repair = upgradePluginArtifactRepair(deps)
+    const repair = pluginUpgradeRepair(deps)
     const approved = await repair.plan(target)
     previewDigest = '8'.repeat(64)
     const run = await runRepairContract(repair, approved)
@@ -177,16 +189,80 @@ describe('upgrade-plugin-artifact repair', () => {
   it('a preview that cannot name the artifact digest is not proposed', async () => {
     installStranded('terminal')
     previewDigest = ''
-    expect(await upgradePluginArtifactRepair(deps).plan(target)).toEqual([])
+    expect(await pluginUpgradeRepair(deps).plan(target)).toEqual([])
   })
 
   it('a manifest that changed between preview and commit fails the item instead of upgrading unconsented', async () => {
     installStranded('terminal')
-    const repair = upgradePluginArtifactRepair(deps)
+    const repair = pluginUpgradeRepair(deps)
     const items = await repair.plan(target)
     commitAwaitsConsent = true
     const run = await runRepairContract(repair, items)
     expect(run.results[0]).toMatchObject({ status: 'failed', message: expect.stringContaining('manifest changed') })
+    expect(activated).toEqual([])
+  })
+})
+
+describe('plugin-reinstall repair (self-healing 1.3b)', () => {
+  const incident = (id: string, pluginId: string, actionId = 'plugin-reinstall', disposition = 'action_required'): ReportIncident => ({
+    id, effectiveDisposition: disposition, resources: [{ kind: 'plugin', id: pluginId, label: pluginId }], resolution: { type: 'repair', actionId }, observationIds: [`${id.split(':')[0]}:obs:${pluginId}`],
+  })
+
+  it('plans one manual item per plugin the targeted incidents name, with the RECORDED identity in the change target — never the newer release', async () => {
+    installStranded('terminal')
+    previewVersion = '1.0.0'
+    previewSha = 'f'.repeat(40)
+    reportIncidents = [incident('health.plugin-assets:plugin-bins-invalid', 'terminal')]
+    const repair = pluginReinstallRepair()
+    expect(repair.resources).toEqual(['install-state'])
+    const plan = await repair.plan({ type: 'incidents', reportId: 'report-1', ids: ['health.plugin-assets:plugin-bins-invalid'] })
+    expect(plan).toHaveLength(1)
+    expect(plan[0]).toMatchObject({ id: 'terminal', actionId: 'plugin-reinstall', safety: 'manual' })
+    expect(plan[0]!.changes[0]!.target).toBe(`plugin:terminal@1.0.0#${'d'.repeat(64)}!${'f'.repeat(40)}`)
+    expect(plan[0]!.changes[0]!.description).toContain('Reinstall terminal 1.0.0')
+    expect(calls).toEqual([{ id: 'terminal', previewOnly: true, reinstall: true, accepted: undefined, expected: undefined }])
+  })
+
+  it('all-actionable plans every action-required incident pointing at it; an observation id resolves through its incident; an unknown id falls back to the key suffix', async () => {
+    installStranded('terminal')
+    reportIncidents = [
+      incident('health.plugin-artifacts:invalid:terminal', 'terminal'),
+      incident('health.plugin-registry:activation-failed:notes', 'notes'),
+      incident('health.plugin-assets:skill-source-invalid', 'sdr', 'plugin-reinstall', 'watch'),
+      incident('health.plugin-artifacts:needs-update:other', 'other', 'plugin-upgrade'),
+    ]
+    const repair = pluginReinstallRepair()
+    expect((await repair.plan(target)).map((item) => item.id).sort()).toEqual(['notes', 'terminal'])
+    expect((await repair.plan({ type: 'observations', reportId: 'report-1', ids: ['health.plugin-assets:obs:sdr'] })).map((item) => item.id)).toEqual(['sdr'])
+    expect((await repair.plan({ type: 'incidents', reportId: 'report-1', ids: ['health.plugin-artifacts:invalid:ghost'] })).map((item) => item.id)).toEqual(['ghost'])
+  })
+
+  it('apply previews again, commits ONLY the approved identity with reinstall + consent + expected, activates, and names every plugin check', async () => {
+    installStranded('terminal')
+    previewVersion = '1.0.0'
+    reportIncidents = [incident('health.plugin-artifacts:invalid:terminal', 'terminal')]
+    const repair = pluginReinstallRepair()
+    const plan = await repair.plan(target)
+    const run = await runRepairContract(repair, plan)
+    expectRepairContract(repair, run)
+    const commit = calls.find((c) => !c.previewOnly)
+    expect(commit).toMatchObject({ id: 'terminal', reinstall: true, expected: { version: '1.0.0', digest: '7'.repeat(64) } })
+    expect(commit?.accepted?.manifestSha).toBe('d'.repeat(64))
+    expect(activated).toEqual([join(testDir, 'plugins', 'terminal')])
+    expect(run.results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['health.plugin-artifacts', 'health.plugin-assets', 'health.plugin-registry'] })
+  })
+
+  it('a source that changed between plan and apply is refused per plugin — nothing is committed for it', async () => {
+    installStranded('terminal')
+    previewVersion = '1.0.0'
+    reportIncidents = [incident('health.plugin-artifacts:invalid:terminal', 'terminal')]
+    const repair = pluginReinstallRepair()
+    const plan = await repair.plan(target)
+    previewDigest = '8'.repeat(64)
+    const run = await runRepairContract(repair, plan)
+    expect(run.results[0]).toMatchObject({ status: 'failed' })
+    expect(run.results[0]!.message).toContain('changed since it was approved')
+    expect(calls.filter((c) => !c.previewOnly)).toEqual([])
     expect(activated).toEqual([])
   })
 })

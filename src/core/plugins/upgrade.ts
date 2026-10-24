@@ -23,6 +23,7 @@
  */
 import { existsSync, cpSync, realpathSync, rmSync } from 'fs'
 import { join } from 'path'
+import { createLogger } from '@/core/logger'
 import { getContentDir } from '@/core/content-dir'
 import { isCorePlugin } from '@/core/plugin-registry'
 import { assertResourceHeld } from '@bakin/core/operations'
@@ -55,6 +56,8 @@ import { PLUGIN_STAGES } from './operation-plans'
 import { upgradeGithub, upgradeGithubSubpath } from './upgrade-github'
 
 export { type UpgradeConsent, type UpgradeOptions, type UpgradeResult, UpgradeRefusedError } from './upgrade-gate'
+
+const log = createLogger('plugin-upgrade')
 export { isArtifactInstall } from './upgrade-artifact'
 export { computeSourceTreeSha } from './source-tree-sha'
 
@@ -108,9 +111,16 @@ async function upgradePluginResolved(
   }
 
   const before = { version: entry.version, commitSha: entry.commitSha }
-  const { manifest: currentManifest } = readManifest(pluginDir)
-  assertManifestIdStable(currentManifest, id)
-  assertManifestSignaturePolicy(currentManifest, id)
+  try {
+    const { manifest: currentManifest } = readManifest(pluginDir)
+    assertManifestIdStable(currentManifest, id)
+    assertManifestSignaturePolicy(currentManifest, id)
+  } catch (err) {
+    // The installed manifest may be the very thing a reinstall repairs; the
+    // lane verifies the re-staged manifest against the same rules.
+    if (!opts.reinstall) throw err
+    log.warn('Installed manifest unusable; reinstalling from the recorded source', { id, error: err instanceof Error ? err.message : String(err) })
+  }
 
   if (entry.type === 'github') {
     // Whiskit artifact installs upgrade through the artifact lane:
@@ -150,7 +160,7 @@ async function upgradeLocal(
   // untouched source (see source-tree-sha.ts).
   const cmp = compareStoredSourceTreeSha(entry, sourcePath, pluginDir)
   const newTreeSha = cmp.liveSha
-  if (entry.sourceTreeSha && !cmp.changed) {
+  if (entry.sourceTreeSha && !cmp.changed && !opts.reinstall) {
     if (cmp.needsAlgoMigration) {
       // One-time reset: rewrite the row under the lockfile hasher so the next
       // check/upgrade takes the fast path. Installed provenance only — the
