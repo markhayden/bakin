@@ -41,6 +41,8 @@ function assetWarning(input: {
   impact: string
   resourceId?: string
   repair?: boolean
+  /** The operator's control for this record — the recover page (self-healing 1.4a, rows 180–182). */
+  recover?: boolean
   disposition?: 'advisory' | 'watch' | 'action_required'
   evidence?: Record<string, string | number | boolean | null>
 }): HealthObservationInput {
@@ -60,7 +62,9 @@ function assetWarning(input: {
         : [{ kind: 'directory', id: 'assets', label: 'Assets store' }],
       resolution: input.repair
         ? { key: 'repair-store', type: 'repair', label: 'Repair asset store', actionId: 'repair-store' }
-        : { key: 'review-assets', type: 'navigate', label: 'Review Assets', href: '/assets' },
+        : input.recover && input.resourceId
+          ? { key: 'recover-asset', type: 'navigate', label: 'Recover this asset', href: `/assets/${encodeURIComponent(input.resourceId)}?recover=1` }
+          : { key: 'review-assets', type: 'navigate', label: 'Review Assets', href: '/assets' },
     },
   })
 }
@@ -347,6 +351,7 @@ function checkAssetStore(contentDir: string): HealthObservationInput[] {
             summary: `Asset ${entry} has a missing or invalid manifest.json.`,
             impact: 'The asset cannot be read or versioned reliably.',
             resourceId: entry,
+            recover: true,
             disposition: 'action_required',
           }))
           brokenCount++
@@ -358,6 +363,7 @@ function checkAssetStore(contentDir: string): HealthObservationInput[] {
             summary: `Asset ${entry} currentVersion ${manifest.currentVersion} is absent from versions[].`,
             impact: 'The asset points at a version that cannot be resolved.',
             resourceId: entry,
+            recover: true,
             disposition: 'action_required',
           }))
           brokenCount++
@@ -369,6 +375,7 @@ function checkAssetStore(contentDir: string): HealthObservationInput[] {
               summary: `Asset ${entry} is missing version file ${version.file}.`,
               impact: 'That asset version cannot be opened or exported.',
               resourceId: entry,
+            recover: true,
               disposition: 'action_required',
             }))
             brokenCount++

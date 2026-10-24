@@ -39,6 +39,31 @@ function collectRefs(manifest: BrandManifest): Map<string, string> {
   return refs
 }
 
+/**
+ * The operator's "Detach" (self-healing 1.4a, row 189): drop the named asset
+ * ids from every place the brand references them. Refuses an id that still
+ * resolves to an asset — detaching a live reference is an edit, not a repair.
+ */
+export async function detachDanglingRefs(
+  brandId: string,
+  assetIds: readonly string[],
+  assetExists: (assetId: string) => Promise<boolean>,
+): Promise<{ brand: BrandManifest; detached: string[] }> {
+  const { updateBrand } = await import('./store')
+  const wanted = [...new Set(assetIds)]
+  for (const assetId of wanted) {
+    if (await assetExists(assetId)) throw new Error(`${assetId} still resolves to an asset — it is a live reference, not a dangling one.`)
+  }
+  const gone = new Set(wanted)
+  const brand = await updateBrand(brandId, (manifest) => ({
+    ...manifest,
+    logos: manifest.logos.filter((logo) => !gone.has(logo.assetId)),
+    assetGroups: manifest.assetGroups.map((group) => ({ ...group, assetIds: group.assetIds.filter((id) => !gone.has(id)) })),
+    ...(manifest.defaultImageReferences ? { defaultImageReferences: manifest.defaultImageReferences.filter((id) => !gone.has(id)) } : {}),
+  }))
+  return { brand, detached: wanted }
+}
+
 export async function scanBrandIntegrity(
   assetExists: (assetId: string) => Promise<boolean>,
   brandId?: string,

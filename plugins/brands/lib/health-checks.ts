@@ -70,7 +70,10 @@ export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCh
           ...dangling.map((finding) => ({ kind: 'other' as const, id: finding.brandId, label: finding.brandId })),
           ...ghostTasks.map((task) => ({ kind: 'task' as const, id: task.taskId, label: task.taskId })),
         ],
-        resolution: { key: 'review-brands', type: 'navigate', label: 'Review Brands', href: '/brands' },
+        // ONE affected brand: its recover page is the control (row 189); several, or ghost tasks only, go to the list until the cutover splits the incident per record.
+        resolution: dangling.length === 1 && report.invalid.length === 0 && ghostTasks.length === 0
+          ? { key: 'recover-brand', type: 'navigate', label: 'Recover this brand', href: `/brands/${encodeURIComponent(dangling[0]!.brandId)}?recover=1` }
+          : { key: 'review-brands', type: 'navigate', label: 'Review Brands', href: '/brands' },
       },
     })])
   }

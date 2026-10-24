@@ -77,6 +77,7 @@ import {
   File, Music, Play, Table2, Type,
 } from 'lucide-react'
 import type { BrandManifest, PaletteEntry, BrandDocInfo, BrandDetailResponse } from '../types'
+import { BrandRecoverPage } from './brand-recover'
 
 type DocInfo = BrandDocInfo
 type DetailResponse = BrandDetailResponse
@@ -195,6 +196,8 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   const [saving, setSaving] = useState(false)
   const [tabParam, setTab] = useQueryState('tab', 'overview')
   const tab = TABS.some((t) => t.id === tabParam) ? tabParam : 'overview'
+  // `?recover=1` is the operator's recover page for dangling asset references (self-healing 1.4a).
+  const [recoverParam, setRecoverParam] = useQueryState('recover', '')
 
   // ONE staged draft spans every manifest-backed field across tabs (spec §7a):
   // edits mutate `staged`; the SaveBar commits the whole manifest in one PUT.
@@ -449,6 +452,10 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
   // Staged edits paint the page live (hero included) — what you see is what Save commits.
   const b = staged ?? detail.brand
+
+  if (recoverParam === '1') {
+    return <BrandRecoverPage brandId={brandId} brandName={b.name} onExit={() => setRecoverParam('')} />
+  }
 
   return (
     <Page data-brand-detail>

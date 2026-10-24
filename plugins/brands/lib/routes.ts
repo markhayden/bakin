@@ -613,6 +613,27 @@ export const brandRoutes = [
   }),
 
   defineRoute({
+    path: '/:brandId/recover/detach',
+    method: 'POST',
+    summary: 'Detach dangling asset references from a brand',
+    description: "The recover page's one control (self-healing 1.4a): drop asset ids that no longer resolve from logos, groups and default references. A live reference is refused.",
+    params: brandIdParams,
+    body: z.object({ assetIds: z.array(z.string().min(1)).min(1).max(100) }),
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const read = getBrand(parsed.params.brandId)
+      if (read.status === 'missing') return Response.json({ error: 'brand not found' }, { status: 404 })
+      try {
+        const { detachDanglingRefs } = await import('./integrity')
+        const result = await detachDanglingRefs(parsed.params.brandId, parsed.body.assetIds, async (assetId) => (await ctx.assets.getAsset(assetId)) !== null)
+        return Response.json(result)
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+      }
+    },
+  }),
+
+  defineRoute({
     path: '/:brandId/card-preview',
     method: 'GET',
     summary: 'Render the exact dispatch card this brand would inject right now',

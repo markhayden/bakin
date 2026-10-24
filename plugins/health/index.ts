@@ -242,7 +242,10 @@ const USAGE_HISTORY_WINDOW_MS: Record<'24h' | '7d' | '30d', number> = {
 
 const doctorReadQuery = z.object({}).strict()
 
-const doctorRunBody = z.object({}).strict()
+const doctorRunBody = z.object({
+  /** Rerun only these checks (a recover page's return verification); omitted = the full sweep. */
+  checkIds: z.array(z.string().min(1)).min(1).max(20).optional(),
+}).strict()
 
 const acceptedBody = z.object({
   accepted: z.boolean(),
@@ -627,9 +630,10 @@ const routes = [
     description: 'Explicitly starts or joins a fresh diagnostic sweep. Escalation (auto-repair, approval tasks, delegation) only ever runs from the doctor cycle, never from this route.',
     body: doctorRunBody,
     responses: { 200: healthReportSchema, 500: healthErrorResponseSchema },
-    handler: async () => {
+    handler: async (_req, _ctx, parsed) => {
       try {
-        const report = await runDiagnostics(getContentDir(), process.cwd())
+        const checkIds = parsed.body?.checkIds
+        const report = checkIds ? await runTargetedDiagnostics(checkIds) : await runDiagnostics(getContentDir(), process.cwd())
         return Response.json(report)
       } catch (err) {
         log.error('Health diagnostics run failed', err)

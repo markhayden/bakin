@@ -108,11 +108,12 @@ const cachedReport: HealthReport = {
 
 const freshReport: HealthReport = { ...cachedReport, id: 'health-report-2', revision: 5 }
 const runDiagnosticsMock = mock(async () => freshReport)
+const runTargetedDiagnosticsMock = mock(async () => freshReport)
 
 mock.module('../../../src/core/doctor', () => ({
   getLastReport: mock(() => cachedReport),
   runDiagnostics: runDiagnosticsMock,
-  runTargetedDiagnostics: mock(async () => freshReport),
+  runTargetedDiagnostics: runTargetedDiagnosticsMock,
 }))
 
 const mockRepairPlan = {
@@ -1057,6 +1058,19 @@ describe('Health Plugin Routes', () => {
       expect(status).toBe(200)
       expect(body.id).toBe(freshReport.id)
       expect(runDiagnosticsMock).toHaveBeenCalledWith(testDir, process.cwd())
+    })
+
+    it('`checkIds` reruns only those checks (a recover page\'s return verification, self-healing 1.4a) — never a full sweep', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/run')!
+      runDiagnosticsMock.mockClear()
+      runTargetedDiagnosticsMock.mockClear()
+      const { status, body } = await callRoute(route, activated.ctx, { body: { checkIds: ['assets.assets'] } })
+      expect(status).toBe(200)
+      expect(body.id).toBe(freshReport.id)
+      expect(runTargetedDiagnosticsMock).toHaveBeenCalledWith(['assets.assets'])
+      expect(runDiagnosticsMock).not.toHaveBeenCalled()
+      const empty = await callRoute(route, activated.ctx, { body: { checkIds: [] } })
+      expect(empty.status).toBe(400)
     })
   })
 

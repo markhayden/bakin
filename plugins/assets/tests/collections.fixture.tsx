@@ -4,9 +4,11 @@ import { PluginUiFixtureHost, DEFAULT_PLUGIN_UI_FIXTURE } from '@makinbakin/sdk/
 import { Page, PageHeader, PageBody, ListRows } from '@makinbakin/sdk/patterns'
 import { TaskAssets } from '../components/task-assets'
 import { VersionRow } from '../components/versioned/VersionRow'
+import { AssetRecoverPanel } from '../components/versioned/AssetRecover'
 function Fixture() { return <Page data-collection-ready><PageHeader title="Asset supporting lists" /><PageBody>
   <section><h2>Task attachments</h2><TaskAssets taskId="review" /></section>
   <ListRows variant="separated" size="sm" aria-label="Version history"><VersionRow assetId="cover" assetType="documents" isCurrent={false} isSelected canDelete onSelect={() => {}} onPromote={() => {}} onDelete={() => {}} version={{ version: 2, file: 'cover.pdf', thumb: null, mimeType: 'application/pdf', size: 2048, width: 1200, height: 1600, created: '2026-01-15T11:00:00Z', description: 'Final cover', tags: [], op: 'edit', parentVersion: 1, tool: null, prompt: 'Prepare the launch cover for review.', promptHash: null, generation: null }} /></ListRows>
+  <section><h2>Recover an asset</h2><AssetRecoverPanel busy={null} error={null} onRebuild={() => {}} onDetachMissing={() => {}} onRestoreExport={() => {}} onTrash={() => {}} report={{ assetId: '20260704-cover-a1b2c3d4', dirExists: true, manifest: { status: 'ok', type: 'images', currentVersion: 2, currentVersionPresent: false, taskId: null }, filesOnDisk: [{ name: 'v1.png', size: 2048 }, { name: 'exports/web.png', size: 1024 }], versionFiles: [{ version: 1, file: 'v1.png', size: 2048 }], versions: [{ version: 1, file: 'v1.png', present: true }, { version: 2, file: 'v2.png', present: false }], exports: [{ name: 'web', file: 'exports/web.png', fromVersion: 2, present: true }] }} /></section>
 </PageBody></Page> }
 createRoot(document.getElementById('root')!).render(<PluginUiFixtureHost fixture={{ ...DEFAULT_PLUGIN_UI_FIXTURE, route: '/assets', network: [
   { path: '/api/plugins/assets/versioned?taskId=review&includeChildren=true', status: 200, json: { assets: [{ assetId: 'cover', description: 'Seasonal publication cover and supporting attribution reference', type: 'documents', currentVersion: 2, versionCount: 2, hasThumb: false }] } },

@@ -19,7 +19,7 @@ import {
   PageBody,
   PageHeader,
 } from '@makinbakin/sdk/patterns'
-import { Section, Stack } from '@makinbakin/sdk/layout'
+import { Inline, Section, Stack } from '@makinbakin/sdk/layout'
 import {
   Badge,
   Banner,
@@ -37,6 +37,7 @@ import {
 import { ArrowLeft, Download, Pencil, Trash, Upload, X } from 'lucide-react'
 import { AssetMetaSummary, AssetThumb } from './atoms'
 import { AssetEditDrawer } from './AssetEditDrawer'
+import { AssetRecoverPage } from './AssetRecover'
 import { EnrichmentCard } from './EnrichmentCard'
 import { AssetPreview } from './AssetPreview'
 import { VersionRow } from './VersionRow'
@@ -74,6 +75,8 @@ export function VersionedAssetDetail() {
   // default and omitted from the URL. Anything the manifest does not carry
   // previews the current version WITHOUT rewriting the URL (rule 4).
   const [versionParam, setVersionParam] = useQueryState('version', '')
+  // `?recover=1` is the operator's recover page for a broken asset (self-healing 1.4a).
+  const [recoverParam, setRecoverParam] = useQueryState('recover', '')
   const parsedVersion = Number.parseInt(versionParam, 10)
   const selectedVersion: number | null = Number.isFinite(parsedVersion) ? parsedVersion : null
   const versionInputRef = useRef<FileInputHandle | null>(null)
@@ -161,6 +164,10 @@ export function VersionedAssetDetail() {
     }
   }
 
+  if (recoverParam === '1') {
+    return <AssetRecoverPage assetId={assetId} onExit={() => setRecoverParam('')} />
+  }
+
   if (loading) {
     return (
       <Page data-testid="asset-detail">
@@ -219,8 +226,13 @@ export function VersionedAssetDetail() {
             <SystemState
               kind="error"
               title="Asset not found"
-              description="This asset may have been removed or is no longer available."
-              action={<Button variant="outline" onClick={() => router.push('/assets')}>Open assets</Button>}
+              description="This asset may have been removed, or its directory may be damaged — the recover page shows what is still on disk."
+              action={(
+                <Inline gap="item">
+                  <Button variant="outline" onClick={() => setRecoverParam('1')}>Recover this asset</Button>
+                  <Button variant="ghost" onClick={() => router.push('/assets')}>Open assets</Button>
+                </Inline>
+              )}
             />
           )}
         />
