@@ -243,6 +243,30 @@ is a false positive in the safe direction.
   boot: fresh targeted checks → verified or failed+blocked; the pending record
   is withdrawn (`interrupted`).
 
+### Legacy retirement (self-healing 1.6 — unactivated until the 1.7 cutover)
+
+`src/core/approvals/legacy-retire.ts` retires the pending `health-repair` /
+`health-navigate` approvals the OLD escalation raised, which the three-outcomes
+engine cannot resolve: it reads `~/.bakin/approvals/*.json` RAW (no schema —
+a record rc.42 wrote that today's schema refuses is still retired, never
+skipped), selects `status: 'pending'` records of those kinds WITHOUT the
+`schemaVersion: 2` marker the adapted engine stamps, and for each one writes
+the intent receipt `{ approvalId, channelId, messageId, state: 'retiring' }`
+to `~/.bakin/health/retirement-receipts.jsonl` BEFORE anything changes, then
+cancels (through `cancelApprovalRecord` when the record parses, else a raw
+write adding `retiredBy: 'legacy-retire'` and the reason), then edits the
+Discord card through `channels.cancelApproval`, then appends `done` — or
+`edit-failed` with `lastError` + `attempts` when the bridge is down or
+refuses. `resumeRetirementReceipts` (every boot and bridge reconnect, once
+1.7 wires it) carries every receipt that is not `done` forward REGARDLESS of
+the record's status (re-cancels a still-pending record, retries the edit);
+`openRetirementReceipts` is what the PR5 notification outbox imports. One
+`approvals.legacy_retired` audit row carries the counts whenever a pass did
+anything; a quiet pass writes nothing — idempotent. Pinned by
+`tests/core/approvals/legacy-retire.test.ts` (rc.42-shaped fixtures, the
+edit-failed → reconnect → done path, crashes after the intent and after the
+cancel).
+
 ## Tests
 
 `tests/core/approvals/{store,service,rehydration,channel-wiring}.test.ts`,
