@@ -708,13 +708,14 @@ describe('checkChannelAliases', () => {
     expect(results[0].summary).toContain('1 channel alias')
   })
 
-  it('warns when the configured alert channel is a missing alias and links to the Channels tab', async () => {
+  it('warns when the configured alert channel is a missing alias and lands on the aliases editor (row 20)', async () => {
     mockNotificationChannel = 'general'
     mockReadiness = readinessWith(discordOnly)
     const results = observed(await checkChannelAliases())
     expect(results[0].status).toBe('warning')
     expect(results[0].detail).toContain('notifications.channelAliases.general')
-    expect(results[0].incident?.resolution).toMatchObject({ type: 'navigate', href: '/settings?tab=channels' })
+    // `field=` is a setting key; the Channels tab maps the alias prefix to its editor.
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'navigate', href: '/settings?tab=channels&field=notifications.channelAliases.aliases' })
   })
 
   it('is not-applicable while bridge delivery is unavailable — no second incident for one outage', async () => {

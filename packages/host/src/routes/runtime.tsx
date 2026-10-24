@@ -48,6 +48,9 @@ const ONBOARDING_TIMEOUT_MS = 45_000
 
 function RuntimePage() {
   const [tab, setTab] = useQueryState('tab', 'overview')
+  // `?field=credentials` lands here from the health runtime-credentials
+  // incident (self-healing 1.4c): the Overview highlights that group.
+  const [field] = useQueryState('field', '')
   // Unknown ?tab= values (typos, the retired ?tab=switch id) must never
   // strand the page on an empty pane — fall back to Overview.
   const activeTab = TABS.some((t) => t.id === tab) ? tab : 'overview'
@@ -127,7 +130,7 @@ function RuntimePage() {
                 </Stack>
               )}
 
-              {report && activeTab === 'overview' && <OverviewTab report={report} onboarding={onboarding} onRefreshOnboarding={refreshOnboarding} />}
+              {report && activeTab === 'overview' && <OverviewTab report={report} onboarding={onboarding} onRefreshOnboarding={refreshOnboarding} highlightField={field} />}
               {activeTab === 'capabilities' && <CapabilitiesTab />}
               {report && activeTab === 'runtimes' && <RuntimesTab report={report} onSwitched={refresh} />}
             </Stack>

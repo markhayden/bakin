@@ -13,7 +13,7 @@ import { act } from 'react'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import '../rtl-settle'
 import { actRender } from '../rtl-settle'
-import { ChannelsTab, fieldIdFor, type ChannelReadinessPayload } from '../../src/components/channels-tab'
+import { ChannelsTab, botInviteUrl, fieldIdFor, type ChannelReadinessPayload } from '../../src/components/channels-tab'
 import { emitPluginEvent } from '../../packages/sdk/src/hooks/use-plugin-event'
 import { waitUntil } from '../helpers/wait'
 
@@ -198,6 +198,27 @@ describe('ChannelsTab', () => {
     })
     expect(fieldIdFor('notifications.channelAliases.alerts')).toBe('channels-field-aliases')
     expect(fieldIdFor('nope')).toBeNull()
+  })
+
+  it('a server the bot has not joined offers the one-click invite link (row 26)', async () => {
+    mockFetch(snapshot('degraded'))
+    await actRender(() => render(<ChannelsTab />))
+    const link = await screen.findByRole('link', { name: 'Invite Margo to Made In Wyo' })
+    expect(link.getAttribute('href')).toBe(botInviteUrl('bot', '1483917789918920714'))
+    expect(link.getAttribute('target')).toBe('_blank')
+    const url = new URL(botInviteUrl('bot', '1483917789918920714'))
+    expect(url.origin + url.pathname).toBe('https://discord.com/oauth2/authorize')
+    expect(url.searchParams.get('client_id')).toBe('bot')
+    expect(url.searchParams.get('guild_id')).toBe('1483917789918920714')
+    expect(url.searchParams.get('scope')).toBe('bot')
+    expect(url.searchParams.get('permissions')).toBe(String((1 << 10) | (1 << 11)))
+  })
+
+  it('a joined server offers no invite link', async () => {
+    mockFetch(snapshot('connected'))
+    await actRender(() => render(<ChannelsTab />))
+    await screen.findByTestId('channels-tab')
+    expect(screen.queryByRole('link', { name: /Invite Margo/ })).toBeNull()
   })
 
   it('long identifiers keep their full value and never leak a token', async () => {

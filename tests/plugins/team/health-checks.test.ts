@@ -211,6 +211,8 @@ describe('checkTeamRouting', () => {
     }))
     expect(results[0].status).toBe('error')
     expect(results[0].summary).toContain('no usable LLM credentials')
+    // The incident lands on the credential tiles themselves (self-healing 1.4c-3).
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'navigate', href: '/runtime?tab=overview&field=credentials' })
   })
 
   it('passes when team tasks exist and the runtime has credentials; surfaces the route model', async () => {

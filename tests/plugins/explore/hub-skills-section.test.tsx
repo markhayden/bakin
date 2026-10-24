@@ -40,13 +40,20 @@ mock.module('@makinbakin/sdk/hooks', () => ({
     toasts.push(message)
   },
   useJsonFetch: (url: string) => ({
-    data: listData,
+    data: url === '/api/packages/capabilities' ? capabilitiesData : listData,
     loading: false,
     error: null,
     refresh: () => {
       refreshCalls.push(url)
     },
   }),
+}))
+
+// `?capability=` is URL state; the section reads it through the navigation kit.
+const queryValues: Record<string, string> = {}
+mock.module('@makinbakin/sdk/navigation', () => ({
+  PluginLink: ({ children, to, ...props }: { children: ReactNode; to: string }) => <a href={to} {...props}>{children}</a>,
+  useQueryState: (key: string, initial = '') => [queryValues[key] ?? initial, () => {}, () => {}],
 }))
 
 mock.module('@makinbakin/sdk/patterns', () => ({
@@ -60,6 +67,7 @@ mock.module('@makinbakin/sdk/patterns', () => ({
 }))
 
 let listData: { managed: unknown[]; unmanaged: unknown[] } = { managed: [], unmanaged: [] }
+let capabilitiesData: { capabilities: unknown[] } | null = { capabilities: [] }
 const refreshCalls: string[] = []
 const fetchCalls: Array<{ url: string; body?: unknown }> = []
 let fetchResponses: Record<string, unknown> = {}
@@ -99,6 +107,8 @@ beforeEach(() => {
   fetchCalls.length = 0
   refreshCalls.length = 0
   listData = { managed: [], unmanaged: [] }
+  capabilitiesData = { capabilities: [] }
+  for (const key of Object.keys(queryValues)) delete queryValues[key]
   fetchResponses = {}
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -194,6 +204,54 @@ describe('ecosystem lane — Installed grouping', () => {
     expect(del?.url).toBe(`/api/packages/${encodeURIComponent('hub-weather@2.0.1')}`)
     await waitFor(() => expect(toasts.join(' ')).toContain('removed'))
     await settleReact()
+  })
+
+  it('readiness legs ride each installed row; ?capability= highlights, focuses and offers the key link (1.4c-2)', async () => {
+    listData = {
+      managed: [
+        { skillName: 'weather', packageId: 'hub-weather@2.0.1', version: '2.0.1', source: 'clawhub:@steipete/weather', hub: true },
+        { skillName: 'brave-search', packageId: 'web-search-brave@1.0.0', version: '1.0.0', source: 'github:markhayden/bakin-bits-official#packs/web-search-brave', hub: false, capability: 'web-search' },
+      ],
+      unmanaged: [],
+    }
+    capabilitiesData = {
+      capabilities: [
+        { capability: 'weather', packageId: 'hub-weather', version: '2.0.1', name: 'Weather', ready: true, missing: [], secrets: [], prereqs: [] },
+        {
+          capability: 'web-search', packageId: 'web-search-brave', version: '1.0.0', name: 'Brave web search', ready: false,
+          missing: ['Secret BRAVE_API_KEY is not set (skills.web-search-brave.BRAVE_API_KEY)', 'jq is not installed: brew install jq'],
+          secrets: [{ name: 'BRAVE_API_KEY', required: true, secretSlot: 'skills.web-search-brave.BRAVE_API_KEY', status: 'missing' }],
+          prereqs: [{ name: 'jq', kind: 'binary', help: 'brew install jq', optional: false, status: 'missing' }],
+        },
+      ],
+    }
+    queryValues.capability = 'web-search'
+
+    render(<HubSkillsSection />)
+    await settleReact()
+    // Every installed row says whether it can run — the engine's verdict, never a guess.
+    expect(screen.getByText('Ready')).toBeTruthy()
+    const legs = screen.getByTestId('capability-legs-web-search')
+    expect(legs.textContent).toContain('Not ready')
+    expect(legs.textContent).toContain('Secret BRAVE_API_KEY is not set')
+    expect(legs.textContent).toContain('brew install jq')
+    const keyLink = screen.getByRole('link', { name: /Add the key in Settings/ })
+    expect(keyLink.getAttribute('href')).toBe('/settings?tab=integrations')
+    // The deep-linked row is the highlighted, focused one; the ready row is not.
+    const rows = document.querySelectorAll<HTMLElement>('[data-capability-row]')
+    const highlighted = Array.from(rows).filter((row) => row.getAttribute('data-highlighted') === 'true')
+    expect(highlighted.map((row) => row.getAttribute('data-capability-row'))).toEqual(['web-search-brave@1.0.0'])
+    expect(document.activeElement).toBe(highlighted[0]!)
+  })
+
+  it('a ready-only install shows no Not-ready legs and no key link', async () => {
+    listData = { managed: [{ skillName: 'weather', packageId: 'hub-weather@2.0.1', version: '2.0.1', source: 'clawhub:@steipete/weather', hub: true }], unmanaged: [] }
+    capabilitiesData = { capabilities: [{ capability: 'weather', packageId: 'hub-weather', version: '2.0.1', name: 'Weather', ready: true, missing: [], secrets: [], prereqs: [] }] }
+    render(<HubSkillsSection />)
+    await settleReact()
+    expect(screen.queryByText('Not ready')).toBeNull()
+    expect(screen.queryByRole('link', { name: /Add the key/ })).toBeNull()
+    expect(document.querySelector('[data-highlighted="true"]')).toBeNull()
   })
 
   it('empty install state shows only the get-more section', async () => {

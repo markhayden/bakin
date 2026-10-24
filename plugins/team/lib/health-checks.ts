@@ -109,7 +109,7 @@ export async function checkTeamRouting(opts: {
         impact: 'Unresolved team-assigned tasks will fail resolution when dispatch tries to choose an agent.',
         disposition: 'action_required',
         resources: [{ kind: 'runtime', id: 'credentials', label: 'Runtime credentials' }],
-        resolution: { key: 'review-runtime', type: 'navigate', label: 'Review runtime', href: '/runtime' },
+        resolution: { key: 'review-runtime-credentials', type: 'navigate', label: 'Review runtime credentials', href: '/runtime?tab=overview&field=credentials' },
       },
     })])
   }

@@ -106,6 +106,26 @@ describe('OverviewTab', () => {
     expect(screen.queryByTestId('setup-fix-budget')).toBeNull()
   })
 
+  it('?field=credentials highlights and focuses the credential tiles (self-healing 1.4c)', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({}), { status: 200 })) as unknown as typeof fetch
+    await act(async () => {
+      render(<OverviewTab report={report} onRefreshOnboarding={() => {}} onboarding={[]} highlightField="credentials" />)
+    })
+    const group = screen.getByTestId('runtime-field-credentials')
+    expect(group.getAttribute('data-highlighted')).toBe('true')
+    expect(document.activeElement).toBe(group)
+  })
+
+  it('without ?field= the credential tiles carry no highlight', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({}), { status: 200 })) as unknown as typeof fetch
+    await act(async () => {
+      render(<OverviewTab report={report} onRefreshOnboarding={() => {}} onboarding={[]} />)
+    })
+    const group = screen.getByTestId('runtime-field-credentials')
+    expect(group.getAttribute('data-highlighted')).toBeNull()
+    expect(group.getAttribute('tabindex')).toBeNull()
+  })
+
   it('media is repairable from the hub (#895)', async () => {
     await act(async () => {
       render(

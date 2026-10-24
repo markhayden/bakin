@@ -117,8 +117,8 @@ describe('delivery.discord doctor check (readiness projection)', () => {
     expect(incident).toMatchObject({ key: 'bridge-failed', resolution: reconnect })
   })
   it('disconnected → bridge-disconnected pointing at the reconnect repair (row 25)', () => expectIncident('disconnected', 'bridge-disconnected', reconnect))
-  it('degraded → guild-unjoined naming the guild', async () => {
-    await expectIncident('degraded', 'guild-unjoined')
+  it('degraded → guild-unjoined naming the guild, landing on the servers field (row 26)', async () => {
+    await expectIncident('degraded', 'guild-unjoined', { type: 'navigate', href: '/settings?tab=channels&field=integrations.discord.guildIds', label: 'Invite the bot or remove the server' })
     expect(((await checkDeliveryDiscord()) as ObservedLike).observations?.[0]?.summary).toContain('g1')
   })
 

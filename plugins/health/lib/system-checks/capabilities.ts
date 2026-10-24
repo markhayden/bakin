@@ -18,14 +18,15 @@ import { stableKeyPart } from './key'
  * need, and a platform-only gap, keep the Explore handoff until the 1.7
  * cutover gives them their own shapes.
  */
-function capabilityResolution(remedy: ReturnType<typeof capabilityRemedy>, capabilityId: string, name: string): HealthResolution {
+function capabilityResolution(remedy: ReturnType<typeof capabilityRemedy>, capability: string, name: string): HealthResolution {
   if (remedy === 'package-reinstall') return { key: PACKAGE_REINSTALL_ACTION, type: 'repair', label: `Reinstall ${name}`.slice(0, 120), actionId: PACKAGE_REINSTALL_ACTION }
   if (remedy === 'package-sync') return { key: PACKAGE_SYNC_ACTION, type: 'repair', label: `Sync ${name}`.slice(0, 120), actionId: PACKAGE_SYNC_ACTION }
   return {
     key: 'open-capability',
     type: 'navigate',
     label: 'Review capability setup',
-    href: `/explore?tab=capabilities&capability=${encodeURIComponent(capabilityId)}`,
+    // The RAW slug (never the sanitized key): Explore matches it against the readiness rows (1.4c-2).
+    href: `/explore?tab=capabilities&capability=${encodeURIComponent(capability)}`,
   }
 }
 
@@ -70,7 +71,7 @@ export async function checkCapabilities(): Promise<HealthCheckRunInput> {
         impact: 'Agents cannot use this capability until its required content and tools are available.',
         disposition: 'action_required',
         resources: [{ kind: 'capability', id: capabilityId, label: capabilityName.slice(0, 120) }],
-        resolution: capabilityResolution(remedy, capabilityId, capabilityName),
+        resolution: capabilityResolution(remedy, cap.capability, capabilityName),
       },
     })
   })

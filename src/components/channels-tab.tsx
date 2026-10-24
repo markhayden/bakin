@@ -43,6 +43,7 @@ import {
   Switch,
   SystemState,
   Text,
+  buttonVariants,
 } from '@makinbakin/sdk/ui'
 import { IdListEditor } from './channels/id-list-editor'
 import { SecretSlotField, type SecretSlotRow } from './secret-slot-field'
@@ -132,6 +133,21 @@ export function fieldIdFor(setting: string | undefined): string | null {
   if (!setting) return null
   if (setting.startsWith('notifications.channelAliases.')) return 'channels-field-aliases'
   return FIELD_IDS[setting] ?? null
+}
+
+/** View Channels + Send Messages — what Verify probes for (`VERIFY_GUILD_PERMISSION_BITS`). */
+const BOT_INVITE_PERMISSIONS = String((1 << 10) | (1 << 11))
+
+/**
+ * Discord's authorize URL for ONE server. A bot's user id is its application
+ * id, so the READY payload's `botUser.id` is the client id — the only
+ * identity the bridge ever learns (no token, no secret). Offered beside a
+ * "Not joined" server so the guild-unjoined incident is one click to fix
+ * (self-healing 1.4c, row 26).
+ */
+export function botInviteUrl(botUserId: string, guildId: string): string {
+  const params = new URLSearchParams({ client_id: botUserId, scope: 'bot', permissions: BOT_INVITE_PERMISSIONS, guild_id: guildId, disable_guild_select: 'true' })
+  return `https://discord.com/oauth2/authorize?${params.toString()}`
 }
 
 async function postJson(url: string, method: string, body?: unknown): Promise<Response> {
@@ -537,6 +553,17 @@ function ServersAndChannels({ readiness }: { readiness: ChannelReadinessPayload 
                   <Inline gap="dense" align="center">
                     {guild.channelCount !== null && <Text size="meta" tone="muted">{guild.channelCount} channel{guild.channelCount === 1 ? '' : 's'}</Text>}
                     <StatusBadge size="xs" tone={joined.tone} variant="solid">{joined.label}</StatusBadge>
+                    {guild.joined === false && readiness.connection.botUser && (
+                      <a
+                        href={botInviteUrl(readiness.connection.botUser.id, guild.id)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={buttonVariants({ size: 'xs', variant: 'link' })}
+                        aria-label={`Invite ${readiness.connection.botUser.name} to ${guild.name ?? guild.id}`}
+                      >
+                        Invite the bot
+                      </a>
+                    )}
                   </Inline>
                 </Inline>
                 {guild.error && <Text size="meta" tone="muted" as="p">{guild.error.kind}: {guild.error.message}</Text>}

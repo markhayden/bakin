@@ -117,7 +117,9 @@ export async function checkDeliveryDiscord(): Promise<HealthCheckRunInput> {
       const missing = readiness.guilds.filter((guild) => guild.joined !== true || guild.channelCount === null || guild.error)
       return healthObserved([incident(readiness, 'guild-unjoined', 'Discord bridge cannot reach every configured server',
         'Posts to channels in an unreachable server fail; the other servers still deliver.',
-        `Discord bridge is connected but ${missing.length} configured server${missing.length === 1 ? ' is' : 's are'} not reachable: ${missing.map((guild) => guild.id).join(', ')}.`)])
+        `Discord bridge is connected but ${missing.length} configured server${missing.length === 1 ? ' is' : 's are'} not reachable: ${missing.map((guild) => guild.id).join(', ')}.`,
+        // Invite the bot to the server (the Channels tab offers the invite link beside the field) or remove the id (row 26).
+        { key: 'open-channels', type: 'navigate', label: 'Invite the bot or remove the server', href: `${CHANNELS_SETTINGS_HREF}&field=integrations.discord.guildIds` })])
     }
     case 'connected':
       break

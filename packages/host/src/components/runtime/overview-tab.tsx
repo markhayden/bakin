@@ -3,7 +3,7 @@
  * plain language), and whether setup is healthy. Every non-native state
  * says what happens instead — the reader never has to decode an enum.
  */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Wrench } from 'lucide-react'
 import { startOperation, toast, useJsonFetch, useOperation, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Section, Stack } from '@makinbakin/sdk/layout'
@@ -16,11 +16,30 @@ import { capabilityRows } from '../../lib/runtime-report'
 import { ModeBadge, MODE_LEGEND, CheckStatusBadge, capabilityStateCopy, deliveryReadinessCopy, type CapabilityMode } from './shared'
 import type { CapabilityReport, OnboardingComponentStatus } from './types'
 
-function CredentialTiles({ report }: { report: CapabilityReport }) {
+/**
+ * `?field=credentials` (the health runtime-credentials incident's deep link)
+ * lands on this group: it takes focus and the kit highlight outline, the
+ * same treatment a deep-linked spend incident gets.
+ */
+function CredentialTiles({ report, highlighted }: { report: CapabilityReport; highlighted: boolean }) {
   const creds = report.credentialStatus
   const providers = creds?.llmProviders ?? []
   const kinds = new Map((creds?.llmCredentials ?? []).map((c) => [c.provider, c.kind]))
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!highlighted) return
+    ref.current?.focus({ preventScroll: true })
+    ref.current?.scrollIntoView?.({ block: 'center' })
+  }, [highlighted])
   return (
+    <div
+      ref={ref}
+      id="runtime-field-credentials"
+      data-testid="runtime-field-credentials"
+      tabIndex={highlighted ? -1 : undefined}
+      data-highlighted={highlighted ? 'true' : undefined}
+      className={highlighted ? 'rounded-bakin-surface outline outline-2 outline-offset-2 outline-bakin-signal-highlight' : undefined}
+    >
     <StatGroup label="Runtime and credentials">
       <StatTile
         variant="surface"
@@ -55,6 +74,7 @@ function CredentialTiles({ report }: { report: CapabilityReport }) {
           : report.toolAccess.issues.join('; ')}
       />
     </StatGroup>
+    </div>
   )
 }
 
@@ -374,14 +394,17 @@ export function OverviewTab({
   report,
   onboarding,
   onRefreshOnboarding,
+  highlightField = '',
 }: {
   report: CapabilityReport
   onboarding: OnboardingComponentStatus[] | null | undefined
   onRefreshOnboarding: () => void
+  /** `?field=` from the route — only `credentials` has an owner on this tab. */
+  highlightField?: string
 }) {
   return (
     <Stack gap="section" data-testid="runtime-summary">
-      <CredentialTiles report={report} />
+      <CredentialTiles report={report} highlighted={highlightField === 'credentials'} />
       <CapabilityGrid report={report} />
       <SetupSection onboarding={onboarding} onRescan={onRefreshOnboarding} />
     </Stack>

@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Download, ShieldAlert, ShieldCheck, Trash } from 'lucide-react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
+import { PluginLink, useQueryState } from '@makinbakin/sdk/navigation'
 import {
   ConfirmDialog,
   KeyValue,
@@ -63,9 +64,60 @@ interface SkillPreviewWire {
   consentToken: string
 }
 
+type InstalledSkillRow = { skillName: string; packageId: string; version: string; source: string; hub: boolean; capability?: string }
+
 interface SkillsListResponse {
-  managed: Array<{ skillName: string; packageId: string; version: string; source: string; hub: boolean; capability?: string }>
+  managed: InstalledSkillRow[]
   unmanaged: Array<{ name: string; scope: string }>
+}
+
+/** `GET /api/packages/capabilities` — the ONE readiness engine's verdict per installed pack (legs + remediation lines). */
+interface CapabilityReadinessWire {
+  capability: string
+  packageId: string
+  version: string
+  name: string
+  ready: boolean
+  missing: string[]
+  secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string; status: 'env' | 'store' | 'missing' }>
+  prereqs: Array<{ name: string; kind: 'binary' | 'app'; help: string; optional: boolean; status: 'ok' | 'missing' }>
+}
+
+/** The readiness row for an installed skill: same pack id (bare or `id@version`) or the same capability slug. */
+function readinessFor(row: InstalledSkillRow, capabilities: CapabilityReadinessWire[] | undefined): CapabilityReadinessWire | undefined {
+  return capabilities?.find((cap) =>
+    cap.packageId === row.packageId
+    || `${cap.packageId}@${cap.version}` === row.packageId
+    || (row.capability !== undefined && cap.capability === row.capability))
+}
+
+/** `?capability=` names the slug (the health incident's href) — a pack id also lands, for hand-typed links. */
+function rowHighlighted(row: InstalledSkillRow, readiness: CapabilityReadinessWire | undefined, highlight: string): boolean {
+  if (highlight === '') return false
+  return readiness?.capability === highlight || row.capability === highlight || row.packageId === highlight || row.packageId.startsWith(`${highlight}@`)
+}
+
+/**
+ * The not-ready legs under an installed row: the engine's remediation
+ * lines verbatim, plus the one link a human can act on from here (keys live
+ * in Settings → Integrations & Keys). Prereq help rides the lines already.
+ */
+function CapabilityLegs({ readiness }: { readiness: CapabilityReadinessWire }) {
+  if (readiness.ready) return <StatusBadge size="xs" tone="success" variant="soft">Ready</StatusBadge>
+  const needsKey = readiness.secrets.some((secret) => secret.required && secret.status === 'missing')
+  return (
+    <div className="grid gap-bakin-1" data-testid={`capability-legs-${readiness.capability}`}>
+      <div><StatusBadge size="xs" tone="attention" variant="soft">Not ready</StatusBadge></div>
+      <ul className="m-0 list-disc pl-bakin-4 text-bakin-typography-size-meta text-bakin-text-muted">
+        {readiness.missing.map((line) => <li key={line}>{line}</li>)}
+      </ul>
+      {needsKey && (
+        <PluginLink to="/settings?tab=integrations" className="text-bakin-typography-size-meta">
+          Add the key in Settings → Integrations & Keys
+        </PluginLink>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -283,6 +335,18 @@ function PreviewDrawerBody({
 
 export function HubSkillsSection() {
   const { data, error, refresh } = useJsonFetch<SkillsListResponse>('/api/skills', { timeoutMs: LIST_TIMEOUT_MS })
+  // Readiness legs come from the ONE readiness engine; `?capability=` (the
+  // health capability incident's deep link) highlights that pack's row and
+  // scrolls it into view (self-healing 1.4c-2).
+  const readinessFetch = useJsonFetch<{ capabilities: CapabilityReadinessWire[] }>('/api/packages/capabilities', { timeoutMs: LIST_TIMEOUT_MS })
+  const [highlightCapability] = useQueryState('capability', '')
+  const readinessRows = readinessFetch.data?.capabilities
+  useEffect(() => {
+    if (highlightCapability === '') return
+    const row = document.querySelector<HTMLElement>('[data-capability-row][data-highlighted="true"]')
+    row?.focus({ preventScroll: true })
+    row?.scrollIntoView?.({ block: 'center' })
+  }, [highlightCapability, data, readinessRows])
   const [ref, setRef] = useState('')
   const [preview, setPreview] = useState<SkillPreviewWire | null>(null)
   const [drift, setDrift] = useState(false)
@@ -399,9 +463,18 @@ export function HubSkillsSection() {
         <div className="grid gap-bakin-2">
           <h3>Installed</h3>
           <ListRows variant="separated" size="sm" aria-label="Installed capabilities">
-            {installed.map((row) => (
-              <ListRow key={row.packageId + row.skillName} className="flex items-center gap-bakin-2">
-                <div className="min-w-0 flex-1">
+            {installed.map((row) => {
+              const readiness = readinessFor(row, readinessRows)
+              const highlighted = rowHighlighted(row, readiness, highlightCapability)
+              return (
+              <ListRow
+                key={row.packageId + row.skillName}
+                className={highlighted ? 'flex items-center gap-bakin-2 rounded-bakin-surface outline outline-2 outline-offset-2 outline-bakin-signal-highlight' : 'flex items-center gap-bakin-2'}
+                data-capability-row={row.packageId}
+                data-highlighted={highlighted ? 'true' : undefined}
+                tabIndex={highlighted ? -1 : undefined}
+              >
+                <div className="min-w-0 flex-1 grid gap-bakin-1">
                   <div className="flex flex-wrap items-center gap-bakin-2 break-words text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
                     {row.skillName} <Text size="meta" tone="muted">v{row.version}</Text>
                     <Badge tone="neutral" variant="soft" size="xs">{sourceChip(row.source, row.hub)}</Badge>
@@ -417,6 +490,7 @@ export function HubSkillsSection() {
                     </TooltipTrigger>
                     <TooltipContent>{row.source}</TooltipContent>
                   </Tooltip>
+                  {readiness && <CapabilityLegs readiness={readiness} />}
                 </div>
                 <ListRowActions>
                   <Button
@@ -429,7 +503,8 @@ export function HubSkillsSection() {
                   </Button>
                 </ListRowActions>
               </ListRow>
-            ))}
+              )
+            })}
           </ListRows>
         </div>
       )}

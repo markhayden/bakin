@@ -98,7 +98,8 @@ export async function checkChannelAliases(): Promise<HealthCheckRunInput> {
           key: 'open-channels',
           type: 'navigate',
           label: 'Review channel routing',
-          href: CHANNELS_SETTINGS_HREF,
+          // `field=` is a SETTING key; the Channels tab maps the alias prefix to its editor (self-healing 1.4c, row 20).
+          href: `${CHANNELS_SETTINGS_HREF}&field=notifications.channelAliases.aliases`,
         },
       },
     })])
