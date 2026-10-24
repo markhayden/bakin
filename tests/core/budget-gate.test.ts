@@ -109,11 +109,12 @@ mock.module('../../packages/core/src/usage-history/store', () => ({
 
 // Settings: real defaults except the kill switch, which tests toggle.
 let dispatchPausedSetting = false
+let pausedAgentsSetting: string[] = []
 let settingsThrows = false
 mock.module('../../src/core/settings', () => ({
   getSettings: () => {
     if (settingsThrows) throw new Error('settings unavailable')
-    return { dispatch: { paused: dispatchPausedSetting, maxConcurrentTurns: 3, maxTurnsPerAgent: 1, oversizedOutputBytes: 131072 } }
+    return { dispatch: { paused: dispatchPausedSetting, pausedAgents: pausedAgentsSetting, maxConcurrentTurns: 3, maxTurnsPerAgent: 1, oversizedOutputBytes: 131072 } }
   },
 }))
 
@@ -447,6 +448,23 @@ describe('budgetGate', () => {
     dispatchPausedSetting = true
     expect(await preDispatchGate('pixel', dir)).toEqual({ reason: 'kill_switch' })
     expect(auditCalls.filter((c) => c[1] === 'dispatch.paused')).toHaveLength(2)
+  })
+
+  it('AGENT PAUSE (self-healing 1.4b, row 50): dispatch.pausedAgents holds ONE agent with a typed reason, audited once per activation; the others run', async () => {
+    pausedAgentsSetting = ['pixel']
+    try {
+      expect(await preDispatchGate('pixel', dir)).toEqual({ reason: 'agent_paused', agentId: 'pixel' })
+      expect(await preDispatchGate('pixel', dir)).toEqual({ reason: 'agent_paused', agentId: 'pixel' })
+      expect(await preDispatchGate('rolo', dir)).toBeNull()
+      expect(auditCalls.filter((c) => c[1] === 'dispatch.agent_paused')).toHaveLength(1)
+      pausedAgentsSetting = []
+      expect(await preDispatchGate('pixel', dir)).toBeNull()
+      pausedAgentsSetting = ['pixel']
+      expect(await preDispatchGate('pixel', dir)).toEqual({ reason: 'agent_paused', agentId: 'pixel' })
+      expect(auditCalls.filter((c) => c[1] === 'dispatch.agent_paused')).toHaveLength(2)
+    } finally {
+      pausedAgentsSetting = []
+    }
   })
 
   it('MEDIA GATE: refuses a billed call on the exhausted provider with a typed refusal', async () => {

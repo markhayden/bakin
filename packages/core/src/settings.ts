@@ -113,6 +113,13 @@ export interface BakinSettings {
      * In-flight turns finish; nothing new fires until unpaused.
      */
     paused: boolean
+    /**
+     * Per-agent containment (self-healing 1.4b, row 50): agents whose
+     * Bakin-initiated dispatch is held (typed reason `agent_paused`). The
+     * runaway-usage card's "Pause dispatch for this agent" writes it; the
+     * agent's Diagnostics tab shows and clears it. Other agents run on.
+     */
+    pausedAgents: string[]
     intervalMs: number
     /** Cooldown after a structural failure (4xx/5xx from the runtime). */
     failureCooldownMs: number
@@ -422,6 +429,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
   },
   dispatch: {
     paused: false,
+    pausedAgents: [],
     intervalMs: 5 * 60 * 1000,
     failureCooldownMs: 30 * 60 * 1000,
     transientCooldownMs: 60 * 1000,

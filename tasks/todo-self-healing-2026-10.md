@@ -16,7 +16,7 @@ Spec `.claude/specs/self-healing-health-and-updates-2026-10.md` (rev 7, approved
 - [x] 1.3c core/adapters/channels actions + repointed incidents
 - [x] 1.3d tasks/spend/git actions + repointed incidents
 - [x] 1.4a assets + brands recover pages
-- [ ] 1.4b workflows/spend/team/tasks controls + card buttons
+- [x] 1.4b workflows/spend/team/tasks controls + card buttons (three commits; "Disable plugin" for an upstream-blocked artifact deferred to PR6)
 - [ ] 1.4c HandoffCard (gh, Pi install/login, OpenClaw, gateway below-floor) + Explore capability= + aliases field + Discord invite
 - [ ] 1.5 incident catalogs (finite families + declarationId) + validation + core.diagnose + brief builder [unactivated] (public API regen)
 - [ ] 1.6 raw retirement of pending legacy health approvals (intent receipt first, resumed until done) [unactivated]

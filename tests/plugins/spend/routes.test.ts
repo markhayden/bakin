@@ -147,8 +147,8 @@ describe('activation', () => {
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map((c: unknown[]) => c[0])
     expect(hookNames.sort()).toEqual(['spend.getBudgetPolicy', 'spend.listBillingOverrides', 'spend.priceImage', 'spend.priceTurn', 'spend.resolveBilling', 'spend.updateBudgetPolicy'])
     expect(activated.routes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([
-      'GET /coverage', 'GET /incidents', 'GET /limits', 'GET /spend', 'GET /status',
-      'POST /incidents/:id/resolve', 'POST /milestones/:id/ack', 'PUT /billing/overrides', 'PUT /limits',
+      'GET /coverage', 'GET /incidents', 'GET /limits', 'GET /recover', 'GET /spend', 'GET /status',
+      'POST /incidents/:id/resolve', 'POST /milestones/:id/ack', 'POST /recover/reset', 'PUT /billing/overrides', 'PUT /limits', 'PUT /recover',
     ])
     expect(activated.routes.find((route) => route.path === '/status')?.activityClass).toBe('routine')
   })
