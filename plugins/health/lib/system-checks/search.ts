@@ -91,13 +91,7 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
           impact: 'Search cannot start or answer queries without its configured engine binary.',
           disposition: 'action_required',
           resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-          resolution: {
-            key: 'install-search',
-            type: 'instructions',
-            label: 'Install Search',
-            steps: ['Install the configured Search engine and its managed service, then rerun Health.'],
-            command: 'bakin install search',
-          },
+          resolution: { key: 'install-search', type: 'repair', label: 'Install Search', actionId: 'search-engine-install' },
         },
       }))
       observations.push(...await safeOutboxObservations())
@@ -126,13 +120,7 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
           impact: 'Search may stay offline after a crash or host restart.',
           disposition: 'action_required',
           resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-          resolution: {
-            key: 'install-search-service',
-            type: 'instructions',
-            label: 'Provision the Search service',
-            steps: ['Install the managed Search service, then rerun Health.'],
-            command: 'bakin install search',
-          },
+          resolution: { key: 'install-search-service', type: 'repair', label: 'Provision the Search service', actionId: 'search-engine-install' },
         },
       }))
     } else {
@@ -184,17 +172,10 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
           impact: 'Queries degrade or fail while writes wait in the durable journal.',
           disposition: 'action_required',
           resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-          resolution: {
-            key: 'inspect-engine',
-            type: 'instructions',
-            label: 'Restore the Search engine',
-            steps: service.mode === 'guest' ? ['Check the configured external search endpoint where it runs, then rerun Health.'] : [
-              'If Search was installed after Bakin started, restart Bakin to retry initialization.',
-              'Run `bakin install search` — it re-provisions the service unit and starts the engine if it is dark (safe to run repeatedly).',
-              'Still unreachable? Check `~/.bakin/logs/antfly.log` for crash loops — a broken model or corrupt data dir shows up there.',
-              'Last resort: `bakin search:reset` stops the engine, wipes its derived index data (content and models untouched), starts clean, and rebuilds.',
-            ],
-          },
+          // A guest endpoint is not ours to restart — that row becomes a human need in the three-outcomes cutover.
+          resolution: service.mode === 'guest'
+            ? { key: 'inspect-engine', type: 'instructions', label: 'Check the external search endpoint', steps: ['Check the configured external search endpoint where it runs, then rerun Health.'] }
+            : { key: 'inspect-engine', type: 'repair', label: 'Restore the Search engine', actionId: 'search-engine-restart' },
         },
       }))
     }

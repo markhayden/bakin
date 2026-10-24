@@ -144,8 +144,10 @@ describe('checkSearchCanary', () => {
 
     expect(result.status).toBe('unknown')
     expect(result.summary).toContain('watch history could not be verified')
+    // Self-healing 1.3a: the recipe became a repair — the check still never overwrites the evidence itself.
     expect(result.incident?.resolution).toMatchObject({
-      type: 'instructions',
+      type: 'repair',
+      actionId: 'search-engine-watch-reset',
       label: 'Restore watch history',
     })
     expect(readFileSync(path, 'utf-8')).toBe('{not-json')

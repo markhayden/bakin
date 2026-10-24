@@ -155,6 +155,11 @@ export async function resetEngineWatchStateForTests(): Promise<void> {
   lastEngineRestartAt = 0
 }
 
+/** Production reset used by the `search-engine-watch-reset` repair after the unreadable file was moved aside. */
+export async function resetEngineWatchStreaks(): Promise<void> {
+  await resetStreaks()
+}
+
 // ── Checks ─────────────────────────────────────────────────────────────────
 
 export async function checkSearchCanary(): Promise<HealthCheckRunInput> {
@@ -418,8 +423,8 @@ async function checkSearchEngineBurnWithState(): Promise<HealthCheckRunInput> {
  * honestly during the bounce (D11).
  */
 function engineRestartRepair(
-  actionId: 'search-canary-restart' | 'search-engine-burn-restart' | 'search-consistency-restart',
-  checkId: 'search-canary' | 'search-engine-burn' | 'search-consistency',
+  actionId: 'search-engine-restart' | 'search-canary-restart' | 'search-engine-burn-restart' | 'search-consistency-restart',
+  checkId: 'search' | 'search-canary' | 'search-engine-burn' | 'search-consistency',
   title: string,
 ): HealthRepairActionDefinition {
   return {
@@ -496,6 +501,16 @@ function engineRestartRepair(
   }
 }
 
+/**
+ * The engine restart as the Search check's own repair (self-healing 1.3a,
+ * row 57): the first attempt for an unreachable engine; the canary, burn
+ * and consistency variants below share this implementation (their ids stay
+ * registered — each incident names the repair its check owns).
+ */
+export function searchEngineRestartRepair(): HealthRepairActionDefinition {
+  return engineRestartRepair('search-engine-restart', 'search', 'Restart the Search engine')
+}
+
 export function searchCanaryRepair(): HealthRepairActionDefinition {
   return engineRestartRepair('search-canary-restart', 'search-canary', 'Restart the Search engine (queries are dark)')
 }
@@ -527,15 +542,7 @@ function engineWatchStateUnknown(error: EngineWatchStateError) {
       impact: 'Health cannot safely decide whether Search symptoms repeated across consecutive checks.',
       disposition: 'watch',
       resources: [{ kind: 'file', id: 'engine-watch-state', label: 'Search engine watch history' }],
-      resolution: {
-        key: 'restore-watch-history',
-        type: 'instructions',
-        label: 'Restore watch history',
-        steps: [
-          'Check plugin-data/health/engine-watch.json for invalid JSON or unreadable file permissions.',
-          'Move an invalid file aside, then rerun Health to start a fresh observation streak.',
-        ],
-      },
+      resolution: { key: 'restore-watch-history', type: 'repair', label: 'Restore watch history', actionId: 'search-engine-watch-reset' },
     },
   })
 }
