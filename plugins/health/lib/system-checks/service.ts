@@ -11,7 +11,7 @@
  */
 import { execSync } from 'child_process'
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput, HealthRepairActionDefinition, HealthSubject } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
@@ -21,6 +21,13 @@ import { getSettings } from '../../../../src/core/settings'
 const SERVICE_LABEL = 'com.makinbakin.bakin'
 export const SERVICE_SETUP_ACTION = 'service-setup'
 const CHECK_ID = 'health.service'
+const SUBJECT: HealthSubject = { kind: 'service', id: 'bakin-launchagent', label: 'Bakin background service' }
+/** Rows 8, 9 (the five plist keys) and 11 self-heal through `service-setup`; row 10 (unreadable plist) is an observation. */
+export const SERVICE_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'plist-missing', subjectKind: 'service', resolution: { type: 'repair', actionId: SERVICE_SETUP_ACTION }, required: 'always' },
+  { id: 'plist-stale', subjectKind: 'service', resolution: { type: 'repair', actionId: SERVICE_SETUP_ACTION }, required: 'always' },
+  { id: 'service-unloaded', subjectKind: 'service', resolution: { type: 'repair', actionId: SERVICE_SETUP_ACTION }, required: 'always' },
+]
 
 export async function checkService(projectRoot: string): Promise<HealthCheckRunInput> {
   const settings = getSettings()
@@ -103,18 +110,12 @@ export async function checkService(projectRoot: string): Promise<HealthCheckRunI
       ))
     }
   } catch (err) {
+    // Row 10: "could not see" is an observation; the engine's bound hands it to core.diagnose later.
     return healthObserved([healthUnknown({
       key: 'plist.read',
       summary: 'Background service configuration could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'plist-unreadable',
-        title: 'Background service configuration is unreadable',
-        impact: 'Health cannot verify whether the managed service will start correctly.',
-        disposition: 'watch',
-        resources: [{ kind: 'file', id: 'launch-agent-plist', label: 'Bakin LaunchAgent plist' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
+      detail: `${err instanceof Error ? err.message : String(err)} (${plistPath})`,
+      evidence: { plistPath },
     })])
   }
 
@@ -161,16 +162,19 @@ function serviceError(
       key,
       'Background service configuration is stale',
       'The managed service may fail to start or may run the wrong project.',
+      'plist-stale',
     ),
   })
 }
 
-function serviceIncident(key: string, title: string, impact: string) {
+function serviceIncident(key: string, title: string, impact: string, declarationId = key) {
   return {
     key,
     title,
     impact,
     disposition: 'action_required' as const,
+    subject: SUBJECT,
+    declarationId,
     resources: [
       { kind: 'service' as const, id: SERVICE_LABEL, label: 'Bakin background service' },
       { kind: 'file' as const, id: 'launch-agent-plist', label: 'Bakin LaunchAgent plist' },
@@ -183,6 +187,10 @@ export function serviceSetupRepair(): HealthRepairActionDefinition {
   return {
     id: SERVICE_SETUP_ACTION,
     name: 'Reinstall the Bakin background service',
+    // R=bakin (rows 8–11): the engine never kickstarts here, but loading the
+    // unit is restart-class work the maintenance coordinator schedules.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false, restartsService: 'bakin' },
+    mutation: 'restart',
     operationPlan: () => ({ stages: [{ id: 'setup', kind: 'installing', label: 'Write and load the service definition' }], pointOfNoReturn: 'setup' }),
     async plan(target) {
       return [{
@@ -190,8 +198,6 @@ export function serviceSetupRepair(): HealthRepairActionDefinition {
         actionId: SERVICE_SETUP_ACTION,
         title: 'Reinstall the Bakin background service',
         reason: 'The managed service definition is missing, stale or not loaded, so Bakin may not come back on its own.',
-        // Loading or rewriting the service touches how Bakin itself runs: an operator decision until the maintenance coordinator (PR3) owns it.
-        safety: 'manual',
         ...repairTargetSelection(target),
         changes: [{ kind: 'service', target: SERVICE_LABEL, action: 'update', description: 'Rewrite the service definition for this Bakin and home, and load it when no server would be killed or doubled. A running service keeps its current definition until its next restart.' }],
       }]

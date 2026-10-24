@@ -2,7 +2,7 @@
  * Images plugin — provider-routed image generation primitives.
  */
 import { z } from 'zod'
-import type { ExecToolResult, HealthCheckRunInput, PluginContext } from '@bakin/core/plugin-types'
+import type { ExecToolResult, HealthCheckRunInput, HealthIncidentDeclaration, PluginContext } from '@bakin/core/plugin-types'
 import { healthError, healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
@@ -128,6 +128,17 @@ const routes = [
   }),
 ]
 
+/**
+ * images.readiness families (re-homing rows 191–193): an unavailable Assets
+ * API is a symptom of the assets plugin (folds under it); missing built-in
+ * profiles have no deterministic repair; unconfigured providers are an
+ * observation.
+ */
+export const IMAGES_READINESS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'assets-unavailable', subjectKind: 'plugin', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+  { id: 'profiles-missing', subjectKind: 'plugin', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+]
+
 export async function checkImages(ctx: PluginContext): Promise<HealthCheckRunInput> {
   // Readiness derives from the runtime's capability descriptor (P4.1);
   // per-provider readiness refines the message, never overrides the mode.
@@ -145,7 +156,11 @@ export async function checkImages(ctx: PluginContext): Promise<HealthCheckRunInp
             key: 'assets-unavailable', title: 'Images cannot save generated files',
             impact: 'Image generation may succeed but its output cannot be stored as a managed asset.',
             disposition: 'action_required', resources: [{ kind: 'plugin', id: 'assets', label: 'Assets' }],
-            resolution: { key: 'review-assets', type: 'navigate', label: 'Review Assets', href: '/assets' },
+            // Row 191: a symptom of the assets plugin — folds under it (its activation repair resolves it).
+            subject: { kind: 'plugin', id: 'images', label: 'Images' },
+            declarationId: 'assets-unavailable',
+            dependsOn: { subject: { kind: 'plugin', id: 'assets', label: 'Assets' }, resolvedBy: 'health.plugin-upgrade' },
+            resolution: { key: 'diagnose', type: 'repair', label: 'Investigate the Assets plugin', actionId: 'core.diagnose' },
           },
         }),
     profiles.length > 0
@@ -156,7 +171,10 @@ export async function checkImages(ctx: PluginContext): Promise<HealthCheckRunInp
             key: 'profiles-missing', title: 'Image surface profiles are missing',
             impact: 'Images cannot choose reliable dimensions for supported output surfaces.',
             disposition: 'action_required',
-            resolution: { key: 'restart', type: 'instructions', label: 'Restore profiles', steps: ['Restore the built-in Images plugin files, then restart Bakin.'] },
+            // Row 192: the built-in profiles ship with the binary — the fallback lane investigates.
+            subject: { kind: 'plugin', id: 'images', label: 'Images' },
+            declarationId: 'profiles-missing',
+            resolution: { key: 'diagnose', type: 'repair', label: 'Investigate the missing profiles', actionId: 'core.diagnose' },
           },
         }),
     imageGen.mode !== 'unavailable' && readyProviders.length > 0
@@ -165,18 +183,14 @@ export async function checkImages(ctx: PluginContext): Promise<HealthCheckRunInp
           summary: `Image generation is ${imageGen.mode}: ${readyProviders.map((provider) => provider.label).join(', ')} configured.`,
           evidence: { mode: imageGen.mode, providers: readyProviders.map((provider) => provider.id) },
         })
+      // Row 193: an observation — configure a provider in Settings → Integrations & Keys.
       : healthWarning({
           key: 'providers',
           summary: imageGen.mode === 'unavailable'
             ? 'No authenticated image generation path is available.'
             : 'The runtime reports image generation, but no provider route resolved.',
+          detail: 'Image generation and editing requests are unavailable; other Bakin work can continue. Configure a provider at /settings?tab=integrations.',
           evidence: { mode: imageGen.mode, providers: readyProviders.map((provider) => provider.id) },
-          incident: {
-            key: 'providers-unavailable', title: 'Image generation is not configured',
-            impact: 'Image generation and editing requests are unavailable; other Bakin work can continue.',
-            disposition: 'advisory', resources: [{ kind: 'capability', id: 'image-generation', label: 'Image generation' }],
-            resolution: { key: 'configure-images', type: 'navigate', label: 'Open Integrations & Keys', href: '/settings?tab=integrations' },
-          },
         }),
   ])
 }
@@ -296,6 +310,7 @@ const imagesPlugin = definePlugin({
       name: 'Image generation readiness',
       description: 'Checks managed-asset saving, surface profiles, and configured image provider routes.',
       group: { key: 'images', label: 'Images' },
+      incidents: IMAGES_READINESS_INCIDENTS,
       run: async () => checkImages(ctx),
     })
   },

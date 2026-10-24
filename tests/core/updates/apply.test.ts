@@ -84,9 +84,10 @@ async function seedHealth() {
   registerPluginHealthRepairAction('apply-test', {
     id: 'reinstall-plugins',
     name: 'Reinstall plugins',
+    effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
     operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
     plan: async () => [{
-      id: 'reinstall', actionId: 'reinstall-plugins', title: 'Reinstall plugins', reason: 'Artifacts are stranded.', safety: 'destructive',
+      id: 'reinstall', actionId: 'reinstall-plugins', title: 'Reinstall plugins', reason: 'Artifacts are stranded.',
       incidentIds: [], observationIds: [], preconditions: [],
       changes: [{ kind: 'file', target: planTarget, action: 'install', description: 'Replace the plugin dirs.' }],
     }],
@@ -94,10 +95,12 @@ async function seedHealth() {
   })
   registerPluginHealthCheck('apply-test', {
     id: 'plugins', name: 'Plugin artifacts', description: 'Checks installed plugin artifacts.', group: { key: 'plugins', label: 'Plugins' },
+    incidents: [{ id: 'stranded', subjectKind: 'plugin', resolution: { type: 'repair', actionId: 'reinstall-plugins' }, required: 'always' },
+    ],
     run: async () => {
       // One incident KEY per plugin — a shared key across observations is a verification conflict.
       const row = (id: string) => (brokenPlugins.includes(id)
-        ? healthError({ key: id, summary: `${id} is stranded.`, incident: { key: `stranded-${id}`, title: `${id} is stranded`, impact: 'It cannot load.', disposition: 'action_required', resources: [{ kind: 'plugin', id, label: id }], resolution: { key: 'reinstall', type: 'repair', label: 'Reinstall', actionId: 'reinstall-plugins' } } })
+        ? healthError({ key: id, summary: `${id} is stranded.`, incident: { key: `stranded-${id}`, title: `${id} is stranded`, impact: 'It cannot load.', disposition: 'action_required', subject: { kind: 'plugin', id, label: id }, declarationId: 'stranded', resources: [{ kind: 'plugin', id, label: id }], resolution: { key: 'reinstall', type: 'repair', label: 'Reinstall', actionId: 'reinstall-plugins' } } })
         : healthHealthy({ key: id, summary: `${id} is fine.` }))
       return healthObserved([row('projects'), row('terminal')])
     },

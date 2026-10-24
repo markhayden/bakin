@@ -10,8 +10,15 @@
 import { checkBakinRuntimeSkill, renderBakinRuntimeSkill } from '../../../../src/core/bakin-skill'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { AgentRuntimeAdapter } from '../../../../packages/core/src/adapters/runtime'
-import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
+
+export const SYNC_SKILL_ACTION = 'sync-skill'
+/** Row 91 (split by state): both families self-heal through `sync-skill`; row 90 is an observation. */
+export const SKILL_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'outdated', subjectKind: 'runtime', resolution: { type: 'repair', actionId: SYNC_SKILL_ACTION }, required: 'always' },
+  { id: 'missing', subjectKind: 'runtime', resolution: { type: 'repair', actionId: SYNC_SKILL_ACTION }, required: 'always' },
+]
 
 export async function checkAndSyncSkill(
   projectRoot: string,
@@ -25,14 +32,6 @@ export async function checkAndSyncSkill(
       key: 'runtime-skill',
       summary: 'Bakin runtime skill could not be verified.',
       detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'inspection-failed',
-        title: 'Runtime skill status is unknown',
-        impact: 'Health cannot confirm whether agents have current Bakin instructions.',
-        disposition: 'watch',
-        resources: [{ kind: 'runtime', id: 'skill-bakin', label: 'Bakin runtime skill' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
     })])
   }
 
@@ -52,15 +51,17 @@ export async function checkAndSyncSkill(
     evidence: { installed: skillStatus.installed, upToDate: false },
     incident: {
       key: skillStatus.installed ? 'outdated' : 'missing',
+      declarationId: skillStatus.installed ? 'outdated' : 'missing',
       title: skillStatus.installed ? 'Bakin runtime skill is outdated' : 'Bakin runtime skill is missing',
       impact: 'Agents may use stale or incomplete instructions for Bakin tools and workflows.',
       disposition: 'action_required',
+      subject: { kind: 'runtime', id: 'active', label: 'Active runtime' },
       resources: [{ kind: 'runtime', id: 'skill-bakin', label: 'Bakin runtime skill' }],
       resolution: {
         key: 'sync-runtime-skill',
         type: 'repair',
         label: skillStatus.installed ? 'Update runtime skill' : 'Install runtime skill',
-        actionId: 'sync-skill',
+        actionId: SYNC_SKILL_ACTION,
       },
     },
   })])
@@ -71,8 +72,9 @@ export function syncSkillRepair(
   runtime: AgentRuntimeAdapter,
 ): HealthRepairActionDefinition {
   return {
-    id: 'sync-skill',
+    id: SYNC_SKILL_ACTION,
     name: 'Sync Bakin runtime skill',
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
     operationPlan: () => ({
       stages: [
         { id: 'render', kind: 'preparing', label: 'Render the Bakin skill' },
@@ -83,10 +85,9 @@ export function syncSkillRepair(
     async plan(target) {
       return [{
         id: 'sync-runtime-skill',
-        actionId: 'sync-skill',
+        actionId: SYNC_SKILL_ACTION,
         title: 'Sync Bakin runtime skill',
         reason: 'The runtime skill is missing or differs from Bakin\'s current generated instructions.',
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: [{
           kind: 'runtime',

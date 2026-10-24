@@ -65,14 +65,10 @@ function resolutionNext(resolution: HealthResolution): string | undefined {
   switch (resolution.type) {
     case 'repair':
       return 'Run `bakin doctor --fix` to preview the targeted repair.'
-    case 'navigate':
-      return `Open ${resolution.href}.`
-    case 'instructions':
-      return resolution.command
-        ? `${resolution.steps.join(' ')} Command: ${resolution.command}`
-        : resolution.steps.join(' ')
-    case 'rerun':
-      return 'Run `bakin doctor --full` to collect fresh evidence.'
+    case 'human':
+      return resolution.handoff
+        ? `Needs you (${resolution.needs}): ${resolution.label} — run \`${resolution.handoff.command}\`${resolution.handoff.cwd ? ` in ${resolution.handoff.cwd}` : ''}, or open ${resolution.href}.`
+        : `Needs you (${resolution.needs}): ${resolution.label} — open ${resolution.href}.`
   }
 }
 
@@ -84,7 +80,7 @@ function observationRows(observations: readonly HealthObservation[]): FindingRow
       ? `Last known: ${observation.summary}`
       : observation.summary,
     ...(observation.detail ? { detail: observation.detail } : {}),
-    ...(observation.status === 'healthy'
+    ...(observation.status === 'healthy' || !observation.incident
       ? {}
       : { next: resolutionNext(observation.incident.resolution) }),
   }))
@@ -170,8 +166,8 @@ function nextActions(report: HealthReport, mode?: DoctorMode): string[] {
   if (actionable.some((incident) => incident.resolution.type === 'repair')) {
     actions.push('Run `bakin doctor --fix` to preview safe targeted repairs.')
   }
-  if (actionable.some((incident) => incident.resolution.type !== 'repair')) {
-    actions.push('Run `bakin doctor --delegate` to preview a repair task for action-required incidents.')
+  if (actionable.some((incident) => incident.resolution.type === 'human')) {
+    actions.push('Some incidents need you: open the Health page (or the path each one names) to supply what Bakin cannot.')
   }
   return actions
 }

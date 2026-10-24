@@ -6,10 +6,15 @@
  * Severity: dangling refs / ghost-brand tasks / currently-deferring tasks /
  * invalid manifests → warn; stale drafts alone → ok with a nudge in data.
  */
-import type { HealthCheckRunInput, JsonObject, PluginContext } from '@bakin/core/plugin-types'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, JsonObject, PluginContext } from '@bakin/core/plugin-types'
 import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import { scanBrandIntegrity } from './integrity'
 import { getBrand, listBrands } from './store'
+
+/** brands.integrity families (re-homing rows 189–190): broken references are the operator's decision on the recover page; stale drafts are an observation. */
+export const BRANDS_INTEGRITY_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'integrity', subjectKind: 'record', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+]
 
 export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCheckRunInput> {
   const report = await scanBrandIntegrity(async (assetId) => (await ctx.assets.getAsset(assetId)) !== null)
@@ -66,30 +71,31 @@ export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCh
         title: 'Brand references need attention',
         impact: 'Tasks may wait at the brand gate or render with missing brand assets.',
         disposition: 'action_required',
+        // ONE affected brand is the subject; several (or ghost tasks only) roll up under the brands record set.
+        subject: dangling.length === 1 && report.invalid.length === 0
+          ? { kind: 'record', id: `brands/${dangling[0]!.brandId}`, label: dangling[0]!.brandId }
+          : { kind: 'record', id: 'brands', label: 'Brands' },
+        declarationId: 'integrity',
+        // Row 189: required while something uses the brand — tasks waiting at the gate, or an unreadable manifest.
+        required: ghostTasks.length > 0 || report.invalid.length > 0,
         resources: [
           ...dangling.map((finding) => ({ kind: 'other' as const, id: finding.brandId, label: finding.brandId })),
           ...ghostTasks.map((task) => ({ kind: 'task' as const, id: task.taskId, label: task.taskId })),
         ],
-        // ONE affected brand: its recover page is the control (row 189); several, or ghost tasks only, go to the list until the cutover splits the incident per record.
+        // ONE affected brand: its recover page is the control (row 189); several, or ghost tasks only, go to the list.
         resolution: dangling.length === 1 && report.invalid.length === 0 && ghostTasks.length === 0
-          ? { key: 'recover-brand', type: 'navigate', label: 'Recover this brand', href: `/brands/${encodeURIComponent(dangling[0]!.brandId)}?recover=1` }
-          : { key: 'review-brands', type: 'navigate', label: 'Review Brands', href: '/brands' },
+          ? { key: 'recover-brand', type: 'human', needs: 'decision', label: 'Recover this brand', href: `/brands/${encodeURIComponent(dangling[0]!.brandId)}?recover=1` }
+          : { key: 'review-brands', type: 'human', needs: 'decision', label: 'Review Brands', href: '/brands' },
       },
     })])
   }
   if (staleDrafts.length) {
+    // Row 190: an observation — drafts block nothing.
     return healthObserved([healthWarning({
       key: 'stale-drafts',
       summary: `${staleDrafts.length} brand draft(s) older than 7 days await review.`,
+      detail: 'Drafts do not block work, but may represent unfinished brand updates (review on /brands).',
       evidence: data,
-      incident: {
-        key: 'stale-drafts',
-        title: 'Older brand drafts await review',
-        impact: 'Drafts do not block work, but may represent unfinished brand updates.',
-        disposition: 'advisory',
-        resources: staleDrafts.map((id) => ({ kind: 'other', id, label: id })),
-        resolution: { key: 'review-brands', type: 'navigate', label: 'Review Brands', href: '/brands' },
-      },
     })])
   }
   return healthObserved([healthHealthy({

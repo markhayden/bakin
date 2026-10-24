@@ -93,11 +93,16 @@ export function buildHealthIncidents(
         // Raw until projectEffectiveDispositions runs over the merged set.
         effectiveDisposition: raw.incident.disposition,
         ...(raw.incident.class ? { class: raw.incident.class } : {}),
-        ...(raw.incident.declarationId ? { declarationId: raw.incident.declarationId } : {}),
         title: raw.incident.title,
         impact: raw.incident.impact,
+        subject: { ...raw.incident.subject },
         resources: dedupeResources(raw.incident.resources ?? []),
         resolution: raw.incident.resolution,
+        declarationId: raw.incident.declarationId,
+        // The runner resolved `required` on every canonical incident; a raw
+        // row without it (offline CLI projections) counts as not required.
+        required: raw.incident.required === true,
+        ...(raw.incident.dependsOn ? { dependsOn: raw.incident.dependsOn } : {}),
         observationIds: [raw.id],
         observedAt: raw.observedAt,
         staleAt: raw.staleAt,
@@ -112,6 +117,8 @@ export function buildHealthIncidents(
       ? raw.incident.disposition
       : existing.disposition
     existing.effectiveDisposition = existing.disposition
+    // Required if ANY observation of the incident says so.
+    existing.required = existing.required || raw.incident.required === true
     existing.resources = dedupeResources([...existing.resources, ...(raw.incident.resources ?? [])])
     existing.observationIds = [...new Set([...existing.observationIds, raw.id])].sort()
     existing.observedAt = earlier(existing.observedAt, raw.observedAt)

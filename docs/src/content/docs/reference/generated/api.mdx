@@ -738,6 +738,37 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="assets.get.versioned-asset-id-recover">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/recover'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-recover-detach-missing">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/recover/detach-missing'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-recover-rebuild">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/recover/rebuild'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-recover-restore-export">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/recover/restore-export'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="assets.post.versioned-asset-id-relink">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -906,6 +937,16 @@ curl -sS \
 curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/brands/<brandId>/publish'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.post.brand-id-recover-detach">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/<brandId>/recover/detach' \
+  -H 'Content-Type: application/json' \
+  --data '{"assetIds":["value"]}'
 ```
 </OpenApiReference>
 
@@ -1227,7 +1268,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/health/doctor/run' \
   -H 'Content-Type: application/json' \
-  --data '{}'
+  --data '{"checkIds":["value"]}'
 ```
 </OpenApiReference>
 
@@ -1766,6 +1807,31 @@ curl -sS \
 curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/spend/milestones/<id>/ack'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="spend.get.recover">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/spend/recover'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="spend.put.recover">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/spend/recover' \
+  -H 'Content-Type: application/json' \
+  --data '{"text":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="spend.post.recover-reset">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/spend/recover/reset'
 ```
 </OpenApiReference>
 
@@ -2367,5 +2433,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 20, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 24, 2026 · Bakin 0.0.0-dev</span>
 </aside>

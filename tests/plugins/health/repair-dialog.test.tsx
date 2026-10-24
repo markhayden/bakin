@@ -23,13 +23,13 @@ const plan = {
   items: [
     {
       id: 'team.sync-agents:local', actionId: 'team.sync-agents', title: 'Sync agents locally',
-      reason: 'Two agent projections are stale.', safety: 'safe',
+      reason: 'Two agent projections are stale.', effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false }, mode: 'self-heal',
       incidentIds: target.ids, observationIds: ['team.sync:drift'], preconditions: [],
       changes: [{ kind: 'runtime', target: 'pixel', action: 'update', description: 'Recompose agent projection.' }],
     },
     {
       id: 'team.migrate-agent-blocks:legacy', actionId: 'team.migrate-agent-blocks', title: 'Migrate legacy agent blocks',
-      reason: 'Legacy blocks would be overwritten.', safety: 'destructive',
+      reason: 'Legacy blocks would be overwritten.', effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false }, mode: 'one-click',
       incidentIds: target.ids, observationIds: ['team.sync:legacy'], preconditions: [],
       changes: [{ kind: 'file', target: 'AGENTS.md', action: 'update', description: 'Replace legacy blocks.' }],
     },

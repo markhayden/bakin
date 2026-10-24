@@ -7,10 +7,36 @@
  */
 import { getSettings } from '../../../../src/core/settings'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition, SearchHealthSnapshot } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput, HealthRepairActionDefinition, HealthSubject } from '@makinbakin/sdk'
+import type { SearchHealthSnapshot } from '@makinbakin/sdk'
 import { checkSearchOutboxObservations } from './search-outbox'
 import { REBUILD_PLAN } from './search-spin'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
+
+/** The one subject every engine-level search incident is about. */
+export const SEARCH_ENGINE_SUBJECT: HealthSubject = { kind: 'service', id: 'search-engine', label: 'Search engine' }
+
+/**
+ * The `health.search` check's finite incident families (re-homing rows
+ * 52–68). Observation rows (disabled, unknowns, embedder settings, table
+ * health, no indexes) carry no family: they are plain observations now.
+ */
+export const SEARCH_INCIDENTS: HealthIncidentDeclaration[] = [
+  // Row 54: the shared service belongs to another home — the operator claims it (a one-click repair) or configures a guest endpoint.
+  { id: 'service-ownership-claim', subjectKind: 'service', resolution: { type: 'repair', actionId: 'search-engine-claim' }, required: 'always' },
+  { id: 'service-ownership', subjectKind: 'service', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+  // Rows 55–56.
+  { id: 'binary-missing', subjectKind: 'service', resolution: { type: 'repair', actionId: 'search-engine-install' }, required: 'always' },
+  { id: 'service-unprovisioned', subjectKind: 'service', resolution: { type: 'repair', actionId: 'search-engine-install' }, required: 'always' },
+  // Row 57; a guest endpoint is not ours to restart — a human decision on that split.
+  { id: 'engine-unavailable', subjectKind: 'service', resolution: { type: 'repair', actionId: 'search-engine-restart' }, required: 'always' },
+  { id: 'engine-unavailable-guest', subjectKind: 'service', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+  // Row 64: historical scars — a blue/green rebuild self-heals; advisory.
+  { id: 'table-scars', subjectKind: 'service', resolution: { type: 'repair', actionId: 'search-scar-rebuild' }, required: 'never' },
+  // Rows 67–68 are emitted by the outbox observations this check runs.
+  { id: 'quarantined-writes', subjectKind: 'service', resolution: { type: 'repair', actionId: 'search-outbox-revive' }, required: 'always' },
+  { id: 'stale-backlog', subjectKind: 'service', resolution: { type: 'repair', actionId: 'search-engine-restart' }, required: 'never' },
+]
 
 export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
   const settings = getSettings()
@@ -21,30 +47,13 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
   const { isSearchAdapterInstalled, getSearchAdapterServiceStatus } = await import('../../../../src/core/search-adapter-factory')
 
   if (!searchSettings.enabled) {
-    return healthObserved([healthError({
+    // Row 52: disabling Search is an explicit operator setting, not a
+    // failure — an observation, never a card (three-outcomes cutover).
+    return healthObserved([healthWarning({
       key: 'engine.enabled',
       summary: 'Search is disabled.',
-      detail: 'Search-dependent features cannot query indexes until Search is enabled.',
+      detail: 'Search-dependent features cannot query indexes until Search is enabled (`bakin settings set search.settings.enabled true`).',
       evidence: { enabled: false, adapter },
-      incident: {
-        key: 'search-disabled',
-        title: 'Search is disabled',
-        // policy_denial: disabling Search is an explicit operator setting,
-        // not a failure — under standard sensitivity this calms to
-        // advisory instead of permanently lighting the dashboard on boxes
-        // that turned it off on purpose (aggressiveness audit, 2026-07-22).
-        class: 'policy_denial',
-        impact: 'Agents and user interfaces cannot use indexed search.',
-        disposition: 'action_required',
-        resources: [{ kind: 'setting', id: 'search.settings.enabled', label: 'Search enabled setting' }],
-        resolution: {
-          key: 'enable-search',
-          type: 'instructions',
-          label: 'Enable Search',
-          steps: ['Enable Search, then rerun Health.'],
-          command: 'bakin settings set search.settings.enabled true',
-        },
-      },
     })])
   }
 
@@ -56,27 +65,31 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
     return healthObserved([healthUnknown({
       key: 'engine.supervision', summary: 'Search service ownership could not be verified.',
       detail: err instanceof Error ? err.message : String(err),
-      incident: { key: 'supervision-unknown', title: 'Search service ownership is unknown', impact: 'Health cannot verify safe engine access.', disposition: 'watch', resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }], resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' } },
     }), ...await safeOutboxObservations(true)])
   }
   if (service.refusal) {
     const { reason, detail, remediation } = service.refusal
-    const label = remediation === 'install' ? 'Install Search for this home' : remediation === 'retry' ? 'Wait for the service change' : 'Configure isolated search'
+    const label = remediation === 'retry' ? 'Wait for the service change' : 'Configure isolated search'
+    const guidance = remediation === 'configure-endpoint'
+      ? 'Set search.settings.url to an independently managed isolated endpoint, then restart Bakin.'
+      : 'Retry after the service change finishes.'
     return healthObserved([healthError({
       key: 'engine.supervision', summary: 'Search is unavailable for this home.', detail,
       evidence: { mode: service.mode, provisioned: false, reason },
       incident: {
         key: 'service-ownership', title: 'Search service access needs attention',
         class: 'policy_denial', disposition: 'action_required',
-        impact: 'Queries are unavailable; queued writes remain in this home’s durable journal.',
+        impact: remediation === 'install'
+          ? 'Queries are unavailable; queued writes remain in this home’s durable journal.'
+          : `Queries are unavailable; queued writes remain in this home’s durable journal. ${detail} ${guidance}`,
+        subject: SEARCH_ENGINE_SUBJECT,
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        // Claiming is the operator's decision — the repair's confirmation names the guest alternative (row 54).
-        resolution: remediation === 'install'
-          ? { key: 'search-engine-claim', type: 'repair', label: 'Claim Search for this home', actionId: 'search-engine-claim' }
-          : {
-          key: 'search-service-access', type: 'instructions', label,
-          steps: [detail, ...(remediation === 'configure-endpoint' ? ['Set search.settings.url to an independently managed isolated endpoint, then restart Bakin.'] : ['Retry after the service change finishes.'])],
-          },
+        // Row 54: claiming is the operator's decision — a one-click repair whose
+        // confirmation names the guest alternative; a home that cannot claim
+        // decides on its endpoint in Settings.
+        ...(remediation === 'install'
+          ? { declarationId: 'service-ownership-claim', resolution: { key: 'search-engine-claim', type: 'repair' as const, label: 'Claim Search for this home', actionId: 'search-engine-claim' } }
+          : { declarationId: 'service-ownership', resolution: { key: 'search-service-access', type: 'human' as const, needs: 'decision' as const, label, href: '/settings?tab=system' } }),
       },
     }), ...await safeOutboxObservations(true)])
   }
@@ -91,6 +104,8 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
           title: 'Search engine is not installed',
           impact: 'Search cannot start or answer queries without its configured engine binary.',
           disposition: 'action_required',
+          subject: SEARCH_ENGINE_SUBJECT,
+          declarationId: 'binary-missing',
           resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
           resolution: { key: 'install-search', type: 'repair', label: 'Install Search', actionId: 'search-engine-install' },
         },
@@ -120,6 +135,8 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
           title: 'Search engine is not supervised',
           impact: 'Search may stay offline after a crash or host restart.',
           disposition: 'action_required',
+          subject: SEARCH_ENGINE_SUBJECT,
+          declarationId: 'service-unprovisioned',
           resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
           resolution: { key: 'install-search-service', type: 'repair', label: 'Provision the Search service', actionId: 'search-engine-install' },
         },
@@ -136,15 +153,7 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
     observations.push(healthUnknown({
       key: 'engine.supervision',
       summary: 'Search engine supervision could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'supervision-unknown',
-        title: 'Search engine supervision is unknown',
-        impact: 'Health cannot confirm whether the engine will recover from a crash or host restart.',
-        disposition: 'watch',
-        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
+      detail: `${err instanceof Error ? err.message : String(err)} Health cannot confirm whether the engine will recover from a crash or host restart.`,
     }))
   }
 
@@ -170,13 +179,17 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
         incident: {
           key: 'engine-unavailable',
           title: 'Search engine is unavailable',
-          impact: 'Queries degrade or fail while writes wait in the durable journal.',
+          impact: service.mode === 'guest'
+            ? 'Queries degrade or fail while writes wait in the durable journal. The configured external search endpoint is not answering — check it where it runs.'
+            : 'Queries degrade or fail while writes wait in the durable journal.',
           disposition: 'action_required',
+          subject: SEARCH_ENGINE_SUBJECT,
           resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-          // A guest endpoint is not ours to restart — that row becomes a human need in the three-outcomes cutover.
-          resolution: service.mode === 'guest'
-            ? { key: 'inspect-engine', type: 'instructions', label: 'Check the external search endpoint', steps: ['Check the configured external search endpoint where it runs, then rerun Health.'] }
-            : { key: 'inspect-engine', type: 'repair', label: 'Restore the Search engine', actionId: 'search-engine-restart' },
+          // Row 57: Bakin restarts its own engine; a guest endpoint is not
+          // ours to restart — the operator decides at the endpoint setting.
+          ...(service.mode === 'guest'
+            ? { declarationId: 'engine-unavailable-guest', resolution: { key: 'inspect-engine', type: 'human' as const, needs: 'decision' as const, label: 'Check the external search endpoint', href: '/settings?tab=system' } }
+            : { declarationId: 'engine-unavailable', resolution: { key: 'inspect-engine', type: 'repair' as const, label: 'Restore the Search engine', actionId: 'search-engine-restart' } }),
         },
       }))
     }
@@ -184,15 +197,7 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
     observations.push(healthUnknown({
       key: 'engine.connection',
       summary: 'Search engine connection could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'connection-unknown',
-        title: 'Search engine connection is unknown',
-        impact: 'Health cannot confirm whether indexed queries are available.',
-        disposition: 'watch',
-        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
+      detail: `${err instanceof Error ? err.message : String(err)} Health cannot confirm whether indexed queries are available.`,
     }))
   }
   observations.push(...await embedderCapabilityObservations())
@@ -224,44 +229,16 @@ async function embedderCapabilityObservations(): Promise<HealthObservationInput[
       observations.push(healthWarning({
         key: 'embedders.text',
         summary: 'Semantic text search is disabled by embedder settings.',
-        detail: 'The default text embedder is disabled or misconfigured; all tables serve keyword-only results.',
+        detail: 'The default text embedder is disabled or misconfigured; all tables serve keyword-only results. Re-enable the default embedder in Search settings (provider, model, dimension), then reindex.',
         evidence: { capabilityLegs: caps.legs },
-        incident: {
-          key: 'text-embedder-disabled',
-          title: 'Semantic search is disabled',
-          class: 'unsupported_surface',
-          impact: 'Search falls back to keyword matching everywhere; meaning-based queries lose recall.',
-          disposition: 'advisory',
-          resources: [{ kind: 'setting', id: 'search.settings.embedders', label: 'Search embedder settings' }],
-          resolution: {
-            key: 'review-embedders',
-            type: 'instructions',
-            label: 'Review embedder settings',
-            steps: ['Re-enable the default embedder in Search settings (provider, model, dimension), then reindex.'],
-          },
-        },
       }))
     }
     if (wantsMedia.length > 0 && !caps.legs.includes('media-embedding')) {
       observations.push(healthWarning({
         key: 'embedders.media',
         summary: `Media search is disabled for ${wantsMedia.length} content type${wantsMedia.length === 1 ? '' : 's'} that declare it.`,
-        detail: `The visual embedder is disabled or misconfigured; ${wantsMedia.join(', ')} serve keyword/text-only results.`,
+        detail: `The visual embedder is disabled or misconfigured; ${wantsMedia.join(', ')} serve keyword/text-only results. Re-enable the visual embedder in Search settings, then reindex the affected content types.`,
         evidence: { capabilityLegs: caps.legs, contentTypes: wantsMedia.slice(0, 50) },
-        incident: {
-          key: 'media-embedder-disabled',
-          title: 'Media search is degraded to keyword-only',
-          class: 'unsupported_surface',
-          impact: 'Content types with media legs cannot serve visual-similarity results.',
-          disposition: 'advisory',
-          resources: [{ kind: 'setting', id: 'search.settings.embedders', label: 'Search embedder settings' }],
-          resolution: {
-            key: 'review-embedders',
-            type: 'instructions',
-            label: 'Review embedder settings',
-            steps: ['Re-enable the visual embedder in Search settings, then reindex the affected content types.'],
-          },
-        },
       }))
     }
     return observations
@@ -269,16 +246,7 @@ async function embedderCapabilityObservations(): Promise<HealthObservationInput[
     return [healthUnknown({
       key: 'embedders.capabilities',
       summary: 'Embedder capability coverage could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'embedder-caps-unknown',
-        title: 'Embedder capability coverage is unknown',
-        class: 'evidence_gap',
-        impact: 'Health cannot confirm whether declared search legs are actually served.',
-        disposition: 'watch',
-        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
+      detail: `${err instanceof Error ? err.message : String(err)} Health cannot confirm whether declared search legs are actually served.`,
     })]
   }
 }
@@ -306,14 +274,6 @@ export async function checkSearchIndexObservations(
         detail: !health.enabled
           ? 'Search is disabled in settings.'
           : 'Search is enabled, but the engine is unreachable — index health cannot be read until it answers.',
-        incident: {
-          key: 'indexes-unavailable',
-          title: 'Search index health is unknown',
-          impact: 'Health cannot confirm that registered content types have readable indexes.',
-          disposition: 'watch',
-          resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check Search indexes again' },
-        },
       })]
     }
 
@@ -321,15 +281,8 @@ export async function checkSearchIndexObservations(
       return [healthWarning({
         key: 'indexes.tables',
         summary: 'No Search content types are registered.',
+        detail: 'Plugins may not have activated their Search indexes, so indexed content cannot be discovered.',
         evidence: { tableCount: 0, totalDocuments: 0, emptyTables: [], unreadableTables: [], unhealthyTables: [] },
-        incident: {
-          key: 'no-indexes',
-          title: 'Search has no registered content types',
-          impact: 'Plugins may not have activated their Search indexes, so indexed content cannot be discovered.',
-          disposition: 'watch',
-          resources: [{ kind: 'service', id: 'search-registry', label: 'Search registry' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check Search indexes again' },
-        },
       })]
     }
 
@@ -365,6 +318,9 @@ export async function checkSearchIndexObservations(
             class: 'cleanup_backlog',
             impact: 'Purely historical — the legs are converged and serving. A blue/green rebuild clears the engine-cumulative counters.',
             disposition: 'advisory',
+            // One incident covers every scarred table: the engine is the subject, the tables are its resources.
+            subject: SEARCH_ENGINE_SUBJECT,
+            declarationId: 'table-scars',
             resources: scarredTables.slice(0, 50).map((table) => ({
               kind: 'search_table' as const,
               id: tableResourceId(table.logical),
@@ -389,18 +345,6 @@ export async function checkSearchIndexObservations(
           ? `${unreadableTables.length} table${unreadableTables.length === 1 ? ' has' : 's have'} unreadable document counts.`
           : 'One or more Search index legs reported an unhealthy state.',
         evidence,
-        incident: {
-          key: 'table-health',
-          title: 'Search table health needs attention',
-          impact: 'Some registered content may be missing from Search or served with incomplete index coverage.',
-          disposition: 'watch',
-          resources: concerning.slice(0, 50).map((name) => ({
-            kind: 'search_table' as const,
-            id: tableResourceId(name),
-            label: name.slice(0, 120),
-          })),
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check Search indexes again' },
-        },
       })]
     }
 
@@ -414,14 +358,6 @@ export async function checkSearchIndexObservations(
       key: 'indexes.availability',
       summary: 'Search index health could not be verified.',
       detail: (error instanceof Error ? error.message : String(error)).slice(0, 4_000),
-      incident: {
-        key: 'indexes-unavailable',
-        title: 'Search index health is unknown',
-        impact: 'Health cannot confirm that registered content types have readable indexes.',
-        disposition: 'watch',
-        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Check Search indexes again' },
-      },
     })]
   }
 }
@@ -433,15 +369,7 @@ async function safeOutboxObservations(accessRefused = false): Promise<HealthObse
     return [healthUnknown({
       key: 'journal.status',
       summary: 'Search write journal could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'journal-unknown',
-        title: 'Search write journal status is unknown',
-        impact: 'Health cannot confirm whether queued index writes are draining.',
-        disposition: 'watch',
-        resources: [{ kind: 'system', id: 'search-journal', label: 'Search write journal' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
+      detail: `${err instanceof Error ? err.message : String(err)} Health cannot confirm whether queued index writes are draining.`,
     })]
   }
 }
@@ -464,6 +392,9 @@ export function searchScarRepair(): HealthRepairActionDefinition {
   return {
     id: 'search-scar-rebuild',
     name: 'Rebuild scarred Search indexes',
+    // Row 64: blue/green keeps content — no effects, self-heal (was destructive).
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'rebuild',
     resources: ['search-engine'],
     operationPlan: () => REBUILD_PLAN,
     async plan(target) {
@@ -473,7 +404,6 @@ export function searchScarRepair(): HealthRepairActionDefinition {
         actionId: 'search-scar-rebuild',
         title: 'Rebuild scarred search tables (blue/green)',
         reason: 'Converged legs carry historical enrichment failure counters; a fresh generation clears them.',
-        safety: 'destructive',
         ...repairTargetSelection(target),
         changes: tables.map((table) => ({
           kind: 'other' as const,

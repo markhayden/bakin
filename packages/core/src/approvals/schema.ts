@@ -68,7 +68,14 @@ export const repairProposalSchema = z.object({
   items: z.array(z.object({
     actionId: z.string(),
     itemId: z.string(),
-    safety: z.enum(['safe', 'manual', 'destructive']),
+    effects: z.object({
+      deletesUserContent: z.boolean(),
+      spendsMoney: z.boolean(),
+      widensAuthorization: z.boolean(),
+      restartsService: z.enum(['search-engine', 'bakin', 'runtime']).optional(),
+      resolves: z.array(z.string()).optional(),
+    }),
+    mode: z.enum(['self-heal', 'one-click']),
     changes: z.array(proposedChangeSchema),
   })),
 })
@@ -81,6 +88,7 @@ const ownerSchema = z.discriminatedUnion('kind', [
 
 export const approvalRecordSchema = z.object({
   approvalId: z.string().min(1),
+  schemaVersion: z.number().int().optional(),
   owner: ownerSchema,
   status: z.enum(['pending', 'approved', 'rejected', 'cancelled', 'expired']),
   request: z.object({

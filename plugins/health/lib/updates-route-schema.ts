@@ -76,7 +76,7 @@ export const applyApprovalScopeClientSchema = z.object({
   incidentIds: z.array(z.string()),
   observationIds: z.array(z.string()),
   subjectIds: z.array(z.string()),
-  items: z.array(z.object({ actionId: z.string(), itemId: z.string(), safety: z.string(), changes: z.array(proposedChangeSchema) })),
+  items: z.array(z.object({ actionId: z.string(), itemId: z.string(), effects: z.record(z.string(), z.unknown()), mode: z.string(), changes: z.array(proposedChangeSchema) })),
   scopeHash: nonEmptyString,
 })
 

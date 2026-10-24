@@ -9,9 +9,14 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration } from '@makinbakin/sdk'
 
 const execFileAsync = promisify(execFile)
+
+/** Row 7: a sign-in only the operator can do — a Terminal handoff of `gh auth login`. */
+export const GITHUB_READINESS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'authentication-required', subjectKind: 'system', resolution: { type: 'human', needs: 'credential' }, required: 'owner-decides' },
+]
 
 export interface GhProbe {
   /** Resolve the gh binary; null when not installed. */
@@ -70,15 +75,20 @@ export async function checkGithubReadiness(probe: GhProbe = defaultGhProbe): Pro
     incident: {
       key: 'authentication-required',
       title: 'GitHub CLI needs authentication',
-      impact: 'Agents cannot create or update GitHub issues, pull requests, or releases.',
+      impact: 'Agents cannot create or update GitHub issues, pull requests, or releases. Run `gh auth login` and follow the prompts to sign in to GitHub.',
       disposition: 'action_required',
+      subject: { kind: 'system', id: 'github-cli', label: 'GitHub CLI' },
+      declarationId: 'authentication-required',
+      // gh is installed on this box, so something here uses it (row 7: "AR while gh is used").
+      required: true,
       resources: [{ kind: 'system', id: 'github-cli', label: 'GitHub CLI' }],
       resolution: {
         key: 'authenticate',
-        type: 'instructions',
-        label: 'Authenticate GitHub CLI',
-        steps: ['Run `gh auth login` and follow the prompts to sign in to GitHub.'],
-        command: 'gh auth login',
+        type: 'human',
+        needs: 'credential',
+        label: 'Sign in to GitHub',
+        href: '/health',
+        handoff: { command: 'gh auth login' },
       },
     },
   })])

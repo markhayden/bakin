@@ -60,6 +60,7 @@ function register(run: () => Promise<any>) {
     name: 'Doctor probe',
     description: 'Exercises canonical doctor orchestration.',
     group: { key: 'runtime', label: 'Runtime' },
+    incidents: [],
     run,
   }, 'Doctor Test')
 }

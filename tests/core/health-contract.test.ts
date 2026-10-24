@@ -24,6 +24,7 @@ function validRegistration(): HealthCheckRegistrationInput {
     group: { key: 'runtime', label: 'Runtime' },
     maxAgeMs: 60_000,
     timeoutMs: 15_000,
+    incidents: [],
     run: async () => ({
       outcome: 'observed' as const,
       observations: [{ key: 'ping', status: 'healthy' as const, summary: 'Runtime answered the probe.' }],
@@ -44,10 +45,13 @@ function warningObservation(overrides: Record<string, unknown> = {}) {
       title: 'Search journal is behind',
       impact: 'New content may take longer to appear in Search.',
       disposition: 'watch',
+      subject: { kind: 'service', id: 'search-engine', label: 'Search engine' },
+      declarationId: 'journal-backlog',
       resources: [{ kind: 'service', id: 'search', label: 'Search' }],
       resolution: {
         key: 'review-search',
-        type: 'navigate',
+        type: 'human',
+        needs: 'decision',
         label: 'Review Search',
         href: '/health?tab=system&section=search',
       },
@@ -130,6 +134,7 @@ describe('health repair-action validation', () => {
     const input = {
       id: 'rebuild-index',
       name: 'Rebuild Search index',
+      effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
       operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
@@ -157,6 +162,7 @@ describe('health repair-action validation', () => {
     expect(result.error.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining([
       'id',
       'name',
+      'effects',
       'plan',
       'apply',
     ]))
@@ -169,6 +175,7 @@ describe('health repair-action validation', () => {
     expect(() => parseHealthRepairActionDefinition({
       id: rejected,
       name: 'Repair',
+      effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
       operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
@@ -177,6 +184,7 @@ describe('health repair-action validation', () => {
     const result = safeParseHealthRepairActionDefinition({
       id: rejected,
       name: 'Repair',
+      effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
       operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
@@ -191,7 +199,8 @@ describe('health repair-action validation', () => {
       actionId: 'restart-search',
       title: 'Restart Search',
       reason: 'Search is unavailable.',
-      safety: 'safe' as const,
+      // Per-item effects are optional on producer output (core stamps the action's); `mode` is never producer-authored.
+      effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
       incidentIds: [], observationIds: [], preconditions: [],
       changes: [{ kind: 'service' as const, target: 'search', action: 'invoke' as const, description: 'Restart Search.' }],
     }
@@ -204,12 +213,16 @@ describe('health repair-action validation', () => {
       changes: item.changes,
     }
 
-    expect(safeParseHealthRepairPlanOutput([item])).toEqual({ success: true, data: [item] })
+    expect(safeParseHealthRepairPlanOutput([item])).toEqual({ success: true, data: [item] } as never) // producer output: no `mode`
     expect(safeParseHealthRepairApplyOutput([applyResult])).toEqual({ success: true, data: [applyResult] })
 
     const secret = 'repair-output-secret'
     const invalidPlan = safeParseHealthRepairPlanOutput([{ ...item, secret }])
     const invalidApply = safeParseHealthRepairApplyOutput([{ ...applyResult, secret }])
+    // `mode` is core-stamped: a producer that writes it is refused.
+    expect(safeParseHealthRepairPlanOutput([{ ...item, mode: 'self-heal' }]).success).toBe(false)
+    const { effects: _omitted, ...withoutEffects } = item
+    expect(safeParseHealthRepairPlanOutput([withoutEffects as never]).success).toBe(true)
     expect(invalidPlan.success).toBe(false)
     expect(invalidApply.success).toBe(false)
     if (invalidPlan.success || invalidApply.success) throw new Error('expected callback outputs to fail')
@@ -243,20 +256,22 @@ describe('health run-output validation', () => {
     }
   })
 
-  it('accepts every resolution variant and JSON-safe evidence', () => {
+  it('accepts both resolution outcomes, a plain observation, and JSON-safe evidence', () => {
     const observations = [
       warningObservation(),
       warningObservation({
-        key: 'manual-resolution',
+        key: 'handoff-resolution',
         incident: {
           ...(warningObservation().incident as Record<string, unknown>),
-          key: 'manual-resolution',
+          key: 'handoff-resolution',
           resolution: {
-            key: 'follow-steps',
-            type: 'instructions',
-            label: 'Follow recovery steps',
-            steps: ['Inspect the service log.', 'Restart the service if the process is wedged.'],
-            command: 'bakin doctor --full',
+            key: 'sign-in',
+            type: 'human',
+            needs: 'credential',
+            label: 'Sign in',
+            href: '/runtime?tab=overview&field=credentials',
+            field: 'credentials',
+            handoff: { command: 'gh auth login', cwd: '~/.bakin' },
           },
         },
       }),
@@ -275,12 +290,9 @@ describe('health run-output validation', () => {
         },
       }),
       warningObservation({
-        key: 'rerun-resolution',
-        incident: {
-          ...(warningObservation().incident as Record<string, unknown>),
-          key: 'rerun-resolution',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Run checks again' },
-        },
+        key: 'plain-observation',
+        // No incident: a plain observation listed under the check (spec §3.1).
+        incident: undefined,
         evidence: {
           nullable: null,
           boolean: true,
@@ -298,10 +310,10 @@ describe('health run-output validation', () => {
     expect(parsed.outcome).toBe('observed')
     if (parsed.outcome !== 'observed') throw new Error('expected observed run')
     expect(parsed.observations.map((observation) => observation.incident?.resolution.type)).toEqual([
-      'navigate',
-      'instructions',
+      'human',
+      'human',
       'repair',
-      'rerun',
+      undefined,
     ])
     expect(safeParseHealthCheckRunInput(input).success).toBe(true)
   })
@@ -343,7 +355,9 @@ describe('health run-output validation', () => {
     })))
 
     expect(healthyWithIncident.success).toBe(false)
-    expect(warningWithoutIncident.success).toBe(false)
+    // A warning without an incident is a plain observation (three-outcomes cutover) — an error never is.
+    expect(warningWithoutIncident.success).toBe(true)
+    expect(safeParseHealthCheckRunInput(observed({ key: 'broken', status: 'error', summary: 'It broke.' })).success).toBe(false)
     expect(errorWithWatch.success).toBe(false)
     expect(unknownWithAction.success).toBe(false)
 
@@ -400,7 +414,7 @@ describe('health run-output validation', () => {
       const observation = warningObservation({
         incident: {
           ...(warningObservation().incident as Record<string, unknown>),
-          resolution: { key: 'review', type: 'navigate', label: 'Review', href },
+          resolution: { key: 'review', type: 'human', needs: 'decision', label: 'Review', href },
         },
       })
 
@@ -410,9 +424,18 @@ describe('health run-output validation', () => {
     expect(safeParseHealthCheckRunInput(observed(warningObservation({
       incident: {
         ...(warningObservation().incident as Record<string, unknown>),
-        resolution: { key: 'review', type: 'navigate', label: 'Review', href: '/health?tab=system#search' },
+        resolution: { key: 'review', type: 'human', needs: 'decision', label: 'Review', href: '/health?tab=system#search' },
       },
     }))).success).toBe(true)
+    // A human resolution needs its `needs`; the retired kinds are gone.
+    expect(safeParseHealthCheckRunInput(observed(warningObservation({
+      incident: { ...(warningObservation().incident as Record<string, unknown>), resolution: { key: 'review', type: 'human', label: 'Review', href: '/health' } },
+    }))).success).toBe(false)
+    for (const type of ['navigate', 'instructions', 'rerun']) {
+      expect(safeParseHealthCheckRunInput(observed(warningObservation({
+        incident: { ...(warningObservation().incident as Record<string, unknown>), resolution: { key: 'review', type, label: 'Review', href: '/health', steps: ['x'] } },
+      }))).success).toBe(false)
+    }
   })
 
   it('rejects sensitive evidence keys at any depth across case and separator variants', () => {
@@ -544,8 +567,10 @@ describe('SDK observation builders clamp copy to contract bounds (2026-07-22)', 
         title: 'Schedule synchronization could not be verified',
         impact: 'Bakin cannot determine whether runtime cron jobs are tracked.',
         disposition: 'watch',
+        subject: { kind: 'system', id: 'schedule', label: 'Schedule' },
+        declarationId: 'runtime-cron',
         resources: [{ kind: 'system', id: 'schedule', label: 'Schedule' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+        resolution: { key: 'diagnose', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' },
       },
     })
     expect(observation.summary.length).toBe(500)
@@ -577,8 +602,10 @@ describe('unknown incidents may be advisory — never action_required (2026-07-2
         title: 'Usage coverage is incomplete',
         impact: 'Resolves when the first scan completes.',
         disposition,
+        subject: { kind: 'system', id: 'usage-history', label: 'Usage history' },
+        declarationId: 'warming',
         resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+        resolution: { key: 'diagnose', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' },
       },
     }],
   })
@@ -611,14 +638,16 @@ describe('builders normalize incident resources (2026-07-23)', () => {
         title: 'A tracked Git worktree is missing',
         impact: 'Task t1 may no longer have its working directory.',
         disposition: 'action_required',
+        subject: { kind: 'task', id: 't1' },
+        declarationId: 'missing',
         resources: [
           { kind: 'task', id: 'task-1', label: 'T'.repeat(200) },
           { kind: 'directory', id: '/Users/margo/.bakin/run-workspaces/Agent X/repo' },
         ],
-        resolution: { key: 'release', type: 'rerun', label: 'Check again' },
+        resolution: { key: 'release', type: 'repair', label: 'Release the worktree', actionId: 'git-release-worktree' },
       },
     })
-    const resources = observation.incident.resources!
+    const resources = observation.incident!.resources!
     expect(resources[0]!.id).toBe('task-1') // valid id untouched
     expect(resources[0]!.label!.length).toBe(120)
     expect(resources[1]!.id).toBe('users-margo-.bakin-run-workspaces-agent-x-repo')

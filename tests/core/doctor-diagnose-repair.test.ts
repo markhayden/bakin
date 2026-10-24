@@ -23,6 +23,7 @@ import { DIAGNOSE_ACTION_ID, FALLBACK_TURN_BUDGET, diagnoseRepair, type Diagnose
 import type { DoctorDelegateOptions, DoctorDelegateReport } from '../../src/core/doctor-delegate'
 import { reserveIncidents, resetIncidentReservationsForTests } from '../../src/core/doctor-reservations'
 import { noopOp } from '../helpers/operation-harness'
+import { stampPlanItems } from '../helpers/repair-contract'
 
 afterEach(() => resetIncidentReservationsForTests())
 
@@ -33,6 +34,9 @@ const incident: HealthIncident = {
   effectiveDisposition: 'action_required',
   title: 'Execution ledger is unavailable',
   impact: 'Nothing fires exactly once.',
+  subject: { kind: 'system', id: 'execution-ledger' },
+  declarationId: 'ledger-unavailable',
+  required: true,
   resources: [],
   resolution: { key: 'diagnose', type: 'repair', label: 'Investigate', actionId: DIAGNOSE_ACTION_ID },
   observationIds: ['health.execution-safety:ledger'],
@@ -58,15 +62,17 @@ function deps(outcome: DoctorDelegateReport, calls: DoctorDelegateOptions[] = []
   }
 }
 
-const item = { id: 'core.diagnose:investigate', actionId: 'diagnose', title: 'Investigate', reason: 'r', safety: 'manual' as const, incidentIds: [incident.id], observationIds: [], preconditions: [], changes: [] }
+const item = { id: 'core.diagnose:investigate', actionId: 'diagnose', title: 'Investigate', reason: 'r', effects: { deletesUserContent: false, spendsMoney: true, widensAuthorization: false }, mode: 'one-click' as const, incidentIds: [incident.id], observationIds: [], preconditions: [], changes: [] }
 
 describe('core.diagnose', () => {
-  it('is the shared engine action and plans one manual investigation item for the target', async () => {
+  it('is the shared engine action and plans one one-click investigation item for the target (A17: investigations ask)', async () => {
     expect(SHARED_ENGINE_ACTIONS).toContain(DIAGNOSE_ACTION_ID)
     const action = diagnoseRepair(deps({ status: 'sent', request: request(), incidents: [incident] }))
-    const items = await action.plan({ type: 'incidents', reportId: 'report-1', ids: [incident.id] })
+    // Spec §3.1: the action's own effects are all false; the ITEM spends agent turns, so it is one-click.
+    expect(action.effects).toEqual({ deletesUserContent: false, spendsMoney: false, widensAuthorization: false })
+    const items = stampPlanItems(action, await action.plan({ type: 'incidents', reportId: 'report-1', ids: [incident.id] }))
     expect(items).toHaveLength(1)
-    expect(items[0]).toMatchObject({ actionId: 'diagnose', safety: 'manual', incidentIds: [incident.id], changes: [{ kind: 'task', action: 'create' }] })
+    expect(items[0]).toMatchObject({ actionId: 'diagnose', mode: 'one-click', effects: { spendsMoney: true }, incidentIds: [incident.id], changes: [{ kind: 'task', action: 'create' }] })
     expect(action.operationPlan(items).pointOfNoReturn).toBe('delegate')
   })
 

@@ -1,15 +1,18 @@
 /**
  * Cron escalation over fresh canonical action-required incidents (spec D2–D5).
  *
- * Policy, per cycle, for every incident no open request covers:
- *   1. plan; safe repair items are applied right away and the incidents they
- *      fix never become tasks;
- *   2. incidents with a NON-SAFE repair proposal → ONE review task holding a
- *      `health-repair` approval (the proposal frozen for R1);
- *   3. operator-only incidents (resolution `navigate`) → one review task +
+ * Policy, per cycle, for every incident no open request covers (adapted to
+ * the three-outcomes contract — the repair engine replaces this module in
+ * PR5):
+ *   1. plan; SELF-HEAL items are applied right away and the incidents they
+ *      fix never become tasks; an item the ONE authorization gate refused
+ *      for the system actor is not a failure — it joins the one-click set;
+ *   2. incidents with a ONE-CLICK proposal (or a refused self-heal) → ONE
+ *      review task holding a `health-repair` approval (the proposal frozen
+ *      for R1);
+ *   3. human incidents (resolution `human`) → one review task +
  *      `health-navigate` approval each;
- *   4. everything else (instructions / rerun / repair without a plan item) →
- *      ONE delegated repair task for the main agent.
+ *   4. repair incidents nothing could plan → ONE operator-review task.
  *
  * Cover is per incident and BOUNDED (spec D-G1/D-G3): a request younger than
  * `escalationCooldownMs` covers (no one-task-per-cycle churn); an open task
@@ -24,7 +27,7 @@
  * Manual diagnostics never create tasks through this module.
  */
 import { randomUUID } from 'crypto'
-import type { HealthIncident, HealthRepairPlan, HealthReport } from '../../packages/core/src/plugin-types'
+import type { HealthIncident, HealthRepairPlan, HealthRepairPlanItem, HealthReport } from '../../packages/core/src/plugin-types'
 import type { DoctorRepairRequest } from './doctor-repair-store'
 import { createLogger } from './logger'
 import { heldIncidentIds, incidentHolder, releaseIncidents, reserveIncidents, transferIncidents } from './doctor-reservations'
@@ -224,6 +227,7 @@ export interface EscalationOutcome {
   /** The ONE review task for repair incidents nothing could fix automatically (#896 D3.4). */
   operatorReviewTaskId: string | null
   navigateApprovalTaskIds: string[]
+  /** Always empty since the three-outcomes cutover: every repair without a plan item is the operator's review, never an agent's. Kept for the outcome's readers until PR5 deletes this module. */
   delegatedIncidentIds: string[]
 }
 
@@ -301,7 +305,9 @@ async function escalateOnce(
         plannerError = err instanceof Error ? err.message : String(err)
         log.warn('Health repair planning failed; escalating without auto-repair', err, { incidentIds: remaining.map((incident) => incident.id) })
       }
-      const safeItems = plan?.items.filter((item) => item.safety === 'safe') ?? []
+      const safeItems = plan?.items.filter((item) => item.mode === 'self-heal') ?? []
+      /** Self-heal items the authorization gate handed to the operator (never a failed attempt, R3 N2). */
+      const refusedItems: HealthRepairPlanItem[] = []
       /** incidentId → the failed safe attempt that led to the operator (#896 D3.4). */
       const failures = new Map<string, RepairFailure>()
       /** Incidents whose auto-repair settled WITHOUT a report: operator-review, whatever was proposed (D3.4b). */
@@ -351,6 +357,10 @@ async function escalateOnce(
         } else {
           working = applied.report
           for (const result of applied.results) {
+            if (result.authorization?.refused) {
+              refusedItems.push(...safeItems.filter((row) => row.id === result.itemId))
+              continue
+            }
             if (result.status !== 'failed') continue
             for (const item of safeItems.filter((row) => row.id === result.itemId)) {
               for (const id of item.incidentIds) failures.set(id, { operationId: started.operationId, stage: result.actionId, error: result.message, at })
@@ -360,9 +370,11 @@ async function escalateOnce(
           outcome.autoApplied = remaining.filter((incident) => !stillOpen.has(incident.id)).map((incident) => incident.id)
           // What still burns after the apply is judged next — hold it again.
           remaining = claimForCycle(working.incidents.filter((incident) => stillOpen.has(incident.id) && remaining.some((row) => row.id === incident.id)), cycleToken)
-          // Applied cleanly, yet still reproducing: that is a failure too.
+          // Applied cleanly, yet still reproducing: that is a failure too —
+          // unless the gate never let it run (the operator decides).
+          const refusedIncidentIds = new Set(refusedItems.flatMap((item) => item.incidentIds))
           for (const incident of remaining) {
-            if (safeIncidentIds.includes(incident.id) && !failures.has(incident.id)) {
+            if (safeIncidentIds.includes(incident.id) && !failures.has(incident.id) && !refusedIncidentIds.has(incident.id)) {
               failures.set(incident.id, { operationId: started.operationId, stage: 'verify', error: 'applied, but the incident still reproduces', at })
             }
           }
@@ -375,19 +387,19 @@ async function escalateOnce(
         if (remaining.length === 0) return outcome
       }
 
-      // 2.–4. Partition what is left.
-      const nonSafeItems = plan?.items.filter((item) => item.safety !== 'safe') ?? []
+      // 2.–4. Partition what is left. One-click items and self-heal items the
+      // gate refused for the system actor are the operator's proposal.
+      const nonSafeItems = [...(plan?.items.filter((item) => item.mode === 'one-click') ?? []), ...refusedItems]
       const proposedIncidentIds = new Set(nonSafeItems.flatMap((item) => item.incidentIds))
       // No-report incidents take precedence over any proposal: an attempt
       // that died says nothing about what the next one would do (D3.4b).
       const repairIncidents = remaining.filter((incident) => incident.resolution.type === 'repair' && proposedIncidentIds.has(incident.id) && !noReport.has(incident.id))
-      const navigateIncidents = remaining.filter((incident) => incident.resolution.type === 'navigate')
-      // A repair-type incident with no executable proposal — its safe repair
+      const navigateIncidents = remaining.filter((incident) => incident.resolution.type === 'human')
+      // A repair-type incident with no executable proposal — its self-heal
       // failed, planning threw, nothing was proposed, or the attempt settled
       // without a report — goes to the OPERATOR, never to an agent that would
       // re-run the same installer (#896 D3.4).
       const operatorIncidents = remaining.filter((incident) => incident.resolution.type === 'repair' && (!proposedIncidentIds.has(incident.id) || noReport.has(incident.id)))
-      const delegateIncidents = remaining.filter((incident) => !repairIncidents.includes(incident) && !navigateIncidents.includes(incident) && !operatorIncidents.includes(incident))
 
       if (plan && repairIncidents.length > 0) {
         const { openRepairApproval } = await import('./doctor-approvals')
@@ -421,14 +433,6 @@ async function escalateOnce(
         const opened = await openOperatorReview({ contentDir, report: working, incidents: operatorIncidents, reason })
         outcome.operatorReviewTaskId = opened.taskId
         releaseIncidents(cycleToken, operatorIncidents.map((incident) => incident.id))
-      }
-      if (delegateIncidents.length > 0) {
-        const { delegateDoctorRepair } = await import('./doctor-delegate')
-        const ids = delegateIncidents.map((incident) => incident.id).sort() as [string, ...string[]]
-        // The delegation takes the hand-off (transfer, not a fresh reservation)
-        // and releases once its request is written.
-        await delegateDoctorRepair({ contentDir, projectRoot, accepted: true, target: { type: 'incidents', reportId: working.id, ids }, reservation: cycleToken })
-        outcome.delegatedIncidentIds = ids
       }
       log.info('Health escalation cycle complete', { ...outcome })
       return outcome

@@ -16,7 +16,7 @@ import { sweepInterruptedDocBrainstorms } from './lib/brainstorm-bridge'
 import { registerBrandsHooks } from './lib/register-hooks'
 import { registerBrandExecTools } from './lib/exec-tools'
 import { registerBrandsSearch } from './lib/search-sync'
-import { checkBrandsIntegrity } from './lib/health-checks'
+import { BRANDS_INTEGRITY_INCIDENTS, checkBrandsIntegrity } from './lib/health-checks'
 
 const log = createLogger('brands')
 
@@ -51,6 +51,7 @@ const brandsPlugin: BakinPlugin = definePlugin({
       name: 'Brand integrity (dangling refs, ghost-brand tasks, drafts)',
       description: 'Checks brand manifests, asset references, drafts, and tasks blocked by missing brands.',
       group: { key: 'brands', label: 'Brands' },
+      incidents: BRANDS_INTEGRITY_INCIDENTS,
       run: () => checkBrandsIntegrity(ctx),
     })
 

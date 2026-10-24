@@ -62,9 +62,13 @@ describe('github readiness check', () => {
     expect(observation.incident).toEqual(expect.objectContaining({
       key: 'authentication-required',
       disposition: 'action_required',
+      subject: { kind: 'system', id: 'github-cli', label: 'GitHub CLI' },
+      declarationId: 'authentication-required',
+      required: true,
       resolution: expect.objectContaining({
-        type: 'instructions',
-        command: 'gh auth login',
+        type: 'human',
+        needs: 'credential',
+        handoff: { command: 'gh auth login' },
       }),
     }))
   })

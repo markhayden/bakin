@@ -7,11 +7,21 @@
  */
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { healthError, healthHealthy, healthObserved } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 
 export const RUNTIME_RESTART_ACTION = 'runtime-restart'
 const CHECK_ID = 'health.runtime'
+/**
+ * Row 12: the restart is the repair. The credential variant the table splits
+ * off cannot be told apart here — `ping()` yields a boolean or a throw, and
+ * failures are never classified by message text — so it lives on the
+ * credentials check (team.routing, row 104), which reads the adapter's
+ * credential status instead.
+ */
+export const RUNTIME_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'unreachable', subjectKind: 'runtime', resolution: { type: 'repair', actionId: RUNTIME_RESTART_ACTION }, required: 'always' },
+]
 
 export async function checkRuntime(runtime: Pick<AgentRuntimeAdapter, 'ping'>): Promise<HealthCheckRunInput> {
   try {
@@ -42,6 +52,8 @@ function runtimeUnavailable(detail: string) {
       title: 'Runtime is unreachable',
       impact: 'Agents cannot start or continue turns while the runtime is unavailable.',
       disposition: 'action_required',
+      subject: { kind: 'runtime', id: 'active', label: 'Active runtime' },
+      declarationId: 'unreachable',
       resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
       resolution: { key: RUNTIME_RESTART_ACTION, type: 'repair', label: 'Restart the runtime', actionId: RUNTIME_RESTART_ACTION },
     },
@@ -61,6 +73,8 @@ export function runtimeRestartRepair(runtime: Pick<AgentRuntimeAdapter, 'restart
   return {
     id: RUNTIME_RESTART_ACTION,
     name: 'Restart the runtime',
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false, restartsService: 'runtime' },
+    mutation: 'restart',
     operationPlan: () => ({
       stages: [
         { id: 'restart', kind: 'installing', label: 'Restart the runtime' },
@@ -74,7 +88,6 @@ export function runtimeRestartRepair(runtime: Pick<AgentRuntimeAdapter, 'restart
         actionId: RUNTIME_RESTART_ACTION,
         title: 'Restart the runtime',
         reason: 'The runtime did not answer its health probe, so no agent can take a turn.',
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: [{ kind: 'runtime', target: 'active runtime', action: 'update', description: 'Ask the runtime adapter to restart what it owns (the gateway, cached registries), then probe it until it answers.' }],
       }]

@@ -11,22 +11,27 @@ import {
   unregisterPluginHealthChecks,
 } from '../../src/core/health-check-registry'
 import { runDetailedPluginHealthChecks, runHealthCheck } from '../../src/core/doctor-checks'
+import type { HealthIncidentDeclaration } from '@makinbakin/sdk'
 
 afterEach(() => {
   unregisterPluginHealthChecks('test-a')
   unregisterPluginHealthChecks('test-b')
 })
 
-function registration(run: () => Promise<any>) {
+function registration(run: () => Promise<any>, incidents: HealthIncidentDeclaration[] = []) {
   return {
     id: 'probe',
     name: 'Test probe',
     description: 'Exercises the validating Health runner.',
     group: { key: 'runtime', label: 'Runtime' },
     maxAgeMs: 10 * 60_000,
+    incidents,
     run,
   }
 }
+
+const stage = { stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }
+const NONE = { deletesUserContent: false, spendsMoney: false, widensAuthorization: false }
 
 function fixedClock() {
   const values = [
@@ -48,10 +53,12 @@ describe('validating Health runner', () => {
           title: 'Runtime latency is elevated',
           impact: 'Agent turns may take longer.',
           disposition: 'watch',
-          resolution: { key: 'review', type: 'navigate', label: 'Review runtime', href: '/health?tab=system' },
+          subject: { kind: 'runtime', id: 'pi' },
+          declarationId: 'latency',
+          resolution: { key: 'review', type: 'human', needs: 'decision', label: 'Review runtime', href: '/health?tab=system' },
         },
       }),
-    ])), 'Test A')
+    ]), [{ id: 'latency', subjectKind: 'runtime', resolution: { type: 'human', needs: 'decision' }, required: 'never' }]), 'Test A')
     const def = (await import('../../src/core/health-check-registry')).getHealthCheck(id)!
 
     const run = await runHealthCheck(def, { now: fixedClock(), executionId: () => 'execution-test' })
@@ -131,14 +138,10 @@ describe('validating Health runner', () => {
     expect(run.observations[0].status).toBe('unknown')
   })
 
+  const unavailableFamily: HealthIncidentDeclaration[] = [{ id: 'unavailable', subjectKind: 'runtime', resolution: { type: 'repair', actionId: 'restart' }, required: 'always' }]
+
   it('namespaces valid owner-local repair references', async () => {
-    registerPluginHealthRepairAction('test-a', {
-      id: 'restart',
-      name: 'Restart runtime',
-      operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
-      plan: async () => [],
-      apply: async () => [],
-    })
+    registerPluginHealthRepairAction('test-a', { id: 'restart', name: 'Restart runtime', effects: NONE, operationPlan: () => stage, plan: async () => [], apply: async () => [] })
     registerPluginHealthCheck('test-a', registration(async () => healthObserved([
       healthError({
         key: 'down',
@@ -148,10 +151,12 @@ describe('validating Health runner', () => {
           title: 'Runtime is unavailable',
           impact: 'Agents cannot run.',
           disposition: 'action_required',
+          subject: { kind: 'runtime', id: 'pi' },
+          declarationId: 'unavailable',
           resolution: { key: 'restart', type: 'repair', label: 'Review restart', actionId: 'restart' },
         },
       }),
-    ])))
+    ]), unavailableFamily))
 
     const [run] = await runDetailedPluginHealthChecks()
     expect(run.execution.outcome).toBe('observed')
@@ -159,9 +164,9 @@ describe('validating Health runner', () => {
   })
 
   it('rejects cross-owner or missing repair references as invalid', async () => {
-    registerPluginHealthRepairAction('test-b', {
-      id: 'restart', name: 'Restart', operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }), plan: async () => [], apply: async () => [],
-    })
+    // The catalog names test-a's own `restart`; the EMISSION points at test-b's — refused at the runner.
+    registerPluginHealthRepairAction('test-a', { id: 'restart', name: 'Restart', effects: NONE, operationPlan: () => stage, plan: async () => [], apply: async () => [] })
+    registerPluginHealthRepairAction('test-b', { id: 'restart', name: 'Restart', effects: NONE, operationPlan: () => stage, plan: async () => [], apply: async () => [] })
     registerPluginHealthCheck('test-a', registration(async () => healthObserved([
       healthError({
         key: 'down',
@@ -171,10 +176,12 @@ describe('validating Health runner', () => {
           title: 'Runtime is unavailable',
           impact: 'Agents cannot run.',
           disposition: 'action_required',
+          subject: { kind: 'runtime', id: 'pi' },
+          declarationId: 'unavailable',
           resolution: { key: 'restart', type: 'repair', label: 'Review restart', actionId: 'test-b.restart' },
         },
       }),
-    ])))
+    ]), unavailableFamily))
 
     const [run] = await runDetailedPluginHealthChecks()
     expect(run.execution).toMatchObject({ outcome: 'invalid', error: { code: 'INVALID_HEALTH_REFERENCE' } })

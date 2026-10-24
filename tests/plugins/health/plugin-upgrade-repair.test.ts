@@ -61,7 +61,7 @@ mock.module('../../../src/core/doctor-report-cache', () => ({
 
 import { pluginReinstallRepair, pluginUpgradeRepair } from '../../../plugins/health/lib/system-checks/plugin-artifacts'
 import { writeProvenance, WHISKIT_PROVENANCE_VERSION } from '../../../src/core/whiskit/provenance'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
 
 const target = { type: 'all_actionable' as const, reportId: 'report-1' }
 const offering = (version: string) => ({
@@ -109,10 +109,12 @@ describe('plugin-upgrade repair', () => {
     expect(await pluginUpgradeRepair(deps).plan(target)).toEqual([])
   })
 
-  it('plans a manual change set naming the version, the manifest, and every new permission and binary', async () => {
+  it('plans a change set naming the version, the manifest, and every new permission and binary; the action is an upgrade mutation for the ONE gate', async () => {
     installStranded('terminal')
-    const [item] = await pluginUpgradeRepair(deps).plan(target)
-    expect(item!.safety).toBe('manual')
+    const action = pluginUpgradeRepair(deps)
+    expect(action.mutation).toBe('upgrade')
+    expect(action.effects).toEqual({ deletesUserContent: false, spendsMoney: false, widensAuthorization: false })
+    const [item] = await action.plan(target)
     expect(item!.changes.map((c) => c.target)).toEqual([
       `plugin:terminal@1.5.0#${'d'.repeat(64)}!${'7'.repeat(64)}`,
       'plugin:terminal:permission:network',
@@ -141,7 +143,7 @@ describe('plugin-upgrade repair', () => {
   it('apply commits with the previewed consent and activates the plugin', async () => {
     installStranded('terminal')
     const repair = pluginUpgradeRepair(deps)
-    const run = await runRepairContract(repair, await repair.plan(target))
+    const run = await runRepairContract(repair, stampPlanItems(repair, await repair.plan(target)))
     expectRepairContract(repair, run)
     const commit = calls.find((c) => !c.previewOnly)
     expect(commit?.accepted?.manifestSha).toBe('d'.repeat(64))
@@ -158,7 +160,7 @@ describe('plugin-upgrade repair', () => {
     const approved = await repair.plan(target)
     previewVersion = '2.0.0'
     previewManifest = 'f'.repeat(64)
-    const run = await runRepairContract(repair, approved)
+    const run = await runRepairContract(repair, stampPlanItems(repair, approved))
     expect(run.results[0]).toMatchObject({ status: 'failed', message: expect.stringContaining('changed since it was approved') })
     expect(calls.some((c) => !c.previewOnly)).toBe(false)
     expect(activated).toEqual([])
@@ -180,7 +182,7 @@ describe('plugin-upgrade repair', () => {
     const repair = pluginUpgradeRepair(deps)
     const approved = await repair.plan(target)
     previewDigest = '8'.repeat(64)
-    const run = await runRepairContract(repair, approved)
+    const run = await runRepairContract(repair, stampPlanItems(repair, approved))
     expect(run.results[0]).toMatchObject({ status: 'failed', message: expect.stringContaining('changed since it was approved') })
     expect(calls.some((c) => !c.previewOnly)).toBe(false)
     expect(activated).toEqual([])
@@ -197,7 +199,7 @@ describe('plugin-upgrade repair', () => {
     const repair = pluginUpgradeRepair(deps)
     const items = await repair.plan(target)
     commitAwaitsConsent = true
-    const run = await runRepairContract(repair, items)
+    const run = await runRepairContract(repair, stampPlanItems(repair, items))
     expect(run.results[0]).toMatchObject({ status: 'failed', message: expect.stringContaining('manifest changed') })
     expect(activated).toEqual([])
   })
@@ -217,7 +219,8 @@ describe('plugin-reinstall repair (self-healing 1.3b)', () => {
     expect(repair.resources).toEqual(['install-state'])
     const plan = await repair.plan({ type: 'incidents', reportId: 'report-1', ids: ['health.plugin-assets:plugin-bins-invalid'] })
     expect(plan).toHaveLength(1)
-    expect(plan[0]).toMatchObject({ id: 'terminal', actionId: 'plugin-reinstall', safety: 'manual' })
+    expect(repair.mutation).toBe('reinstall')
+    expect(plan[0]).toMatchObject({ id: 'terminal', actionId: 'plugin-reinstall' })
     expect(plan[0]!.changes[0]!.target).toBe(`plugin:terminal@1.0.0#${'d'.repeat(64)}!${'f'.repeat(40)}`)
     expect(plan[0]!.changes[0]!.description).toContain('Reinstall terminal 1.0.0')
     expect(calls).toEqual([{ id: 'terminal', previewOnly: true, reinstall: true, accepted: undefined, expected: undefined }])
@@ -243,7 +246,7 @@ describe('plugin-reinstall repair (self-healing 1.3b)', () => {
     reportIncidents = [incident('health.plugin-artifacts:invalid:terminal', 'terminal')]
     const repair = pluginReinstallRepair()
     const plan = await repair.plan(target)
-    const run = await runRepairContract(repair, plan)
+    const run = await runRepairContract(repair, stampPlanItems(repair, plan))
     expectRepairContract(repair, run)
     const commit = calls.find((c) => !c.previewOnly)
     expect(commit).toMatchObject({ id: 'terminal', reinstall: true, expected: { version: '1.0.0', digest: '7'.repeat(64) } })
@@ -259,7 +262,7 @@ describe('plugin-reinstall repair (self-healing 1.3b)', () => {
     const repair = pluginReinstallRepair()
     const plan = await repair.plan(target)
     previewDigest = '8'.repeat(64)
-    const run = await runRepairContract(repair, plan)
+    const run = await runRepairContract(repair, stampPlanItems(repair, plan))
     expect(run.results[0]).toMatchObject({ status: 'failed' })
     expect(run.results[0]!.message).toContain('changed since it was approved')
     expect(calls.filter((c) => !c.previewOnly)).toEqual([])

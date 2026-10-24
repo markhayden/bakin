@@ -17,9 +17,43 @@ import { migrateToManagedBlocks } from '../../../src/core/agent-packages/migrati
 import { refreshRoleContextBlocks } from '../../../src/core/team-context'
 import type {
   HealthCheckRunInput,
+  HealthIncidentDeclaration,
   HealthObservationInput,
   HealthRepairActionDefinition,
 } from '../../../packages/core/src/plugin-types'
+
+// ─── Incident catalogs (three-outcomes contract, re-homing rows 102–116) ───
+// Every family the four checks may emit; the registry refuses a dangling
+// action, so the actions register BEFORE the checks in index.ts.
+
+/** team.routing — rows 102–104: inspection failures are observations; no credentials is a human need. */
+export const TEAM_ROUTING_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'runtime-credentials', subjectKind: 'runtime', resolution: { type: 'human', needs: 'credential' }, required: 'always' },
+]
+
+/** team.agent-roster — rows 105–107: an unreadable roster is an observation; broken entries are the operator's call on the roster editor. */
+export const TEAM_AGENT_ROSTER_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'missing-id', subjectKind: 'agent', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+  { id: 'duplicate', subjectKind: 'agent', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+]
+
+/** team.personas — rows 108–110. */
+export const TEAM_PERSONAS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'directory-missing', subjectKind: 'system', resolution: { type: 'repair', actionId: 'create-personas' }, required: 'always' },
+  { id: 'missing', subjectKind: 'agent', resolution: { type: 'repair', actionId: 'create-personas' }, required: 'always' },
+]
+
+/** team.agent-sync — rows 111–116; `structural` is split by finding (row 112). */
+export const TEAM_AGENT_SYNC_INCIDENTS: HealthIncidentDeclaration[] = [
+  /** skill-missing / asset-missing / owned file-missing — auto-fixable structural findings. */
+  { id: 'structural', subjectKind: 'agent', resolution: { type: 'repair', actionId: 'sync-agents' }, required: 'always' },
+  /** bin-manifest-invalid — a symptom of the pack; folds under package:<pack> (resolvedBy the health plugin's reinstall). */
+  { id: 'structural-package', subjectKind: 'package', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+  /** block-broken / source-missing — nothing deterministic; the fallback lane investigates. */
+  { id: 'structural-opaque', subjectKind: 'agent', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+  { id: 'local-drift', subjectKind: 'agent', resolution: { type: 'repair', actionId: 'sync-agents' }, required: 'always' },
+  { id: 'migration', subjectKind: 'agent', resolution: { type: 'repair', actionId: 'migrate-agent-blocks' }, required: 'always' },
+]
 
 type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
 const ACTIVE_COLUMNS = ['backlog', 'todo', 'inProgress', 'review', 'blocked'] as const
@@ -59,18 +93,11 @@ export async function checkTeamRouting(opts: {
       }
     }
   } catch (error) {
+    // Row 102: an inspection failure is an observation — the check's maxAgeMs re-runs it.
     return healthObserved([healthUnknown({
       key: 'task-board',
       summary: 'Team routing demand could not be inspected.',
       detail: (error instanceof Error ? error.message : String(error)) || undefined,
-      incident: {
-        key: 'task-board',
-        title: 'Team routing readiness could not be verified',
-        impact: 'Bakin cannot determine whether unresolved team tasks have a usable routing path.',
-        disposition: 'watch',
-        resources: [{ kind: 'plugin', id: 'tasks', label: 'Tasks' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
-      },
     })])
   }
 
@@ -82,19 +109,12 @@ export async function checkTeamRouting(opts: {
   try {
     providers = (await opts.credentialStatus()).llmProviders
   } catch (error) {
+    // Row 103: could not see — an observation, never a card.
     return healthObserved([healthUnknown({
       key: 'runtime-credentials',
       summary: 'Runtime credential status could not be read.',
       detail: (error instanceof Error ? error.message : String(error)) || undefined,
       evidence: { unresolvedTasks: unresolvedCount },
-      incident: {
-        key: 'runtime-credentials',
-        title: 'Team routing readiness could not be verified',
-        impact: 'Bakin cannot confirm the runtime can serve the routing turn for unresolved team tasks.',
-        disposition: 'watch',
-        resources: [{ kind: 'runtime', id: 'credentials', label: 'Runtime credentials' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
-      },
     })])
   }
 
@@ -108,8 +128,11 @@ export async function checkTeamRouting(opts: {
         title: 'Team task routing is blocked',
         impact: 'Unresolved team-assigned tasks will fail resolution when dispatch tries to choose an agent.',
         disposition: 'action_required',
+        subject: { kind: 'runtime', id: 'active', label: 'Active runtime' },
+        declarationId: 'runtime-credentials',
         resources: [{ kind: 'runtime', id: 'credentials', label: 'Runtime credentials' }],
-        resolution: { key: 'review-runtime-credentials', type: 'navigate', label: 'Review runtime credentials', href: '/runtime?tab=overview&field=credentials' },
+        // Row 104: a credential only the operator can supply — the /runtime credential tiles are the control.
+        resolution: { key: 'review-runtime-credentials', type: 'human', needs: 'credential', label: 'Review runtime credentials', href: '/runtime?tab=overview&field=credentials', field: 'runtime-field-credentials' },
       },
     })])
   }
@@ -127,18 +150,11 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
   try {
     agents = await runtime.list()
   } catch (error) {
+    // Row 105: observation only.
     return healthObserved([healthUnknown({
       key: 'roster-read',
       summary: 'The runtime agent roster could not be read.',
       detail: (error instanceof Error ? error.message : String(error)) || undefined,
-      incident: {
-        key: 'roster-read',
-        title: 'Agent roster verification is unavailable',
-        impact: 'Bakin cannot verify which agents are available for dispatch.',
-        disposition: 'watch',
-        resources: [{ kind: 'runtime', id: 'agents', label: 'Runtime agents' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
-      },
     })])
   }
 
@@ -155,8 +171,10 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
           title: 'A runtime agent has no stable id',
           impact: 'The agent cannot be addressed reliably by tasks, sessions, or health views.',
           disposition: 'action_required',
+          subject: { kind: 'agent', id: `roster-${index}`, label: `Roster entry ${index + 1}` },
+          declarationId: 'missing-id',
           resources: [{ kind: 'runtime', id: `agent-index-${index}`, label: `Roster entry ${index + 1}` }],
-          resolution: { key: 'recover-roster', type: 'navigate', label: 'Review the roster problems', href: '/team?recover=1' },
+          resolution: { key: 'recover-roster', type: 'human', needs: 'decision', label: 'Review the roster problems', href: '/team?recover=1' },
         },
       }))
       return
@@ -170,8 +188,10 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
           title: `Agent id ${agent.id} is duplicated`,
           impact: 'Dispatch and activity attribution cannot distinguish the duplicate agents reliably.',
           disposition: 'action_required',
+          subject: { kind: 'agent', id: stablePart(agent.id), label: bounded(agent.name || agent.id, 120) },
+          declarationId: 'duplicate',
           resources: [{ kind: 'agent', id: stablePart(agent.id), label: bounded(agent.name || agent.id, 120) }],
-          resolution: { key: 'recover-roster', type: 'navigate', label: 'Review the roster problems', href: '/team?recover=1' },
+          resolution: { key: 'recover-roster', type: 'human', needs: 'decision', label: 'Review the roster problems', href: '/team?recover=1' },
         },
       }))
     }
@@ -197,18 +217,11 @@ export async function checkPersonas(
   try {
     agentIds = (await runtime.list()).map(agent => agent.id).filter(Boolean)
   } catch (error) {
+    // Row 108: observation only.
     return healthObserved([healthUnknown({
       key: 'roster-read',
       summary: 'Runtime agents could not be read while checking personas.',
       detail: (error instanceof Error ? error.message : String(error)) || undefined,
-      incident: {
-        key: 'roster-read',
-        title: 'Persona coverage could not be verified',
-        impact: 'Bakin cannot determine which agent persona files should exist.',
-        disposition: 'watch',
-        resources: [{ kind: 'runtime', id: 'agents', label: 'Runtime agents' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
-      },
     })])
   }
 
@@ -223,6 +236,8 @@ export async function checkPersonas(
         title: 'Agent personas are missing',
         impact: 'Agents may lack their intended personality and communication guidance.',
         disposition: 'action_required',
+        subject: { kind: 'system', id: 'personas', label: 'Agent personas' },
+        declarationId: 'directory-missing',
         resources: [{ kind: 'directory', id: 'team.personas', label: 'Agent personas' }, ...agentResources(agentIds).slice(0, 49)],
         resolution: { key: 'create-personas', type: 'repair', label: 'Create persona stubs', actionId: 'create-personas' },
       },
@@ -247,6 +262,8 @@ export async function checkPersonas(
       title: `Persona missing for ${agent}`,
       impact: 'The agent may lack its intended personality and communication guidance.',
       disposition: 'action_required' as const,
+      subject: { kind: 'agent' as const, id: stablePart(agent), label: bounded(agent, 120) },
+      declarationId: 'missing',
       resources: [{ kind: 'agent' as const, id: stablePart(agent), label: bounded(agent, 120) }, { kind: 'file' as const, id: `team.personas.${stablePart(agent)}.md`, label: bounded(`${agent}.md`, 120) }],
       resolution: { key: 'create-personas', type: 'repair' as const, label: 'Create persona stub', actionId: 'create-personas' },
     },
@@ -262,6 +279,8 @@ export function personaRepair(contentDir: string, runtime: RuntimeAgentReader): 
   return {
     id: 'create-personas',
     name: 'Create missing persona files',
+    // Creates stub files only — nothing deleted, spent or widened.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
     operationPlan: () => ({
       stages: [{ id: 'create', kind: 'committing', label: 'Create persona stubs' }],
       pointOfNoReturn: 'create',
@@ -280,7 +299,6 @@ export function personaRepair(contentDir: string, runtime: RuntimeAgentReader): 
         actionId: 'create-personas',
         title: 'Create missing persona files',
         reason: `${missing.length} runtime agent(s) lack persona files.`,
-        safety: 'safe',
         incidentIds: [],
         observationIds: [],
         preconditions: [],
@@ -334,24 +352,23 @@ function agentsOf(findings: SyncScanReport['findings']): string[] {
   return [...new Set(findings.map(finding => finding.agentId).filter((agent): agent is string => Boolean(agent)))]
 }
 
+/** ONE agent names itself; several (or none known) roll up under the roster subject. */
+function agentSubject(agents: string[]): { kind: 'agent'; id: string; label: string } {
+  if (agents.length === 1) return { kind: 'agent', id: stablePart(agents[0]!), label: bounded(agents[0]!, 120) }
+  return { kind: 'agent', id: 'roster', label: agents.length === 0 ? 'Runtime agents' : `${agents.length} agents` }
+}
+
 /** Verify managed blocks, projections, role context, edit locks, and migration state. */
 export async function checkAgentSync(): Promise<HealthCheckRunInput> {
   let report: SyncScanReport
   try {
     report = await scanAgentSync()
   } catch (error) {
+    // Row 111: observation only.
     return healthObserved([healthUnknown({
       key: 'scan',
       summary: 'Agent sync state could not be scanned.',
       detail: (error instanceof Error ? error.message : String(error)) || undefined,
-      incident: {
-        key: 'scan',
-        title: 'Agent sync verification is unavailable',
-        impact: 'Managed blocks and projected files could not be compared with their expected state.',
-        disposition: 'watch',
-        resources: [{ kind: 'runtime', id: 'agents', label: 'Runtime agents' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
-      },
     })])
   }
 
@@ -371,20 +388,69 @@ export async function checkAgentSync(): Promise<HealthCheckRunInput> {
   const advisory = report.findings.filter(finding =>
     finding.severity === 'warn' && !finding.autoFixable && finding.type !== 'user-edited' && finding.type !== 'migration-needed')
 
-  if (errors.length > 0) {
-    const agents = agentsOf(errors)
+  // Row 112 — structural, split by finding: auto-fixable misses (skill /
+  // asset / owned file) are the sync repair; a bin-manifest problem belongs
+  // to the PACK (folds under it, the health plugin's reinstall resolves it);
+  // broken blocks and missing sources have no deterministic repair.
+  const structuralFixable = errors.filter(finding => finding.autoFixable && finding.type !== 'bin-manifest-invalid')
+  const structuralPackage = errors.filter(finding => finding.type === 'bin-manifest-invalid')
+  const structuralOpaque = errors.filter(finding => !finding.autoFixable && finding.type !== 'bin-manifest-invalid')
+  if (structuralFixable.length > 0) {
+    const agents = agentsOf(structuralFixable)
     observations.push(healthError({
       key: 'structural',
-      summary: `${errors.length} structural agent-sync issue(s) require review.`,
-      detail: errors.slice(0, 5).map(finding => finding.message).join('\n'),
-      evidence: { agents, count: errors.length },
+      summary: `${structuralFixable.length} structural agent-sync issue(s) can be re-projected.`,
+      detail: structuralFixable.slice(0, 5).map(finding => finding.message).join('\n'),
+      evidence: { agents, count: structuralFixable.length, types: [...new Set(structuralFixable.map(finding => finding.type))] },
       incident: {
         key: 'structural',
         title: 'Agent package structure is incomplete',
-        impact: 'Affected agents may start with missing or invalid managed context.',
+        impact: 'Affected agents may start with missing managed context until their skills, assets and owned files are re-projected.',
         disposition: 'action_required',
+        subject: agentSubject(agents),
+        declarationId: 'structural',
         resources: agentResources(agents),
-        resolution: { key: 'review-agents', type: 'navigate', label: 'Review agents', href: '/team' },
+        resolution: { key: 'sync-agents', type: 'repair', label: 'Re-project the missing content', actionId: 'sync-agents' },
+      },
+    }))
+  }
+  for (const finding of structuralPackage) {
+    const packageId = finding.packageId ?? 'unknown'
+    const agents = finding.agentId ? [finding.agentId] : []
+    observations.push(healthError({
+      key: `structural-package-${stablePart(packageId)}`,
+      summary: `Package ${packageId} declares a binary manifest that cannot be verified.`,
+      detail: finding.message,
+      evidence: { packageId, agents },
+      incident: {
+        key: `structural-package-${stablePart(packageId)}`,
+        title: `Package ${packageId} needs a reinstall`,
+        impact: 'Agents using this package may lack its managed binaries until the pack is reinstalled.',
+        disposition: 'action_required',
+        subject: { kind: 'package', id: packageId, label: bounded(packageId, 120) },
+        declarationId: 'structural-package',
+        resources: agentResources(agents),
+        resolution: { key: 'diagnose', type: 'repair', label: 'Investigate the package', actionId: 'core.diagnose' },
+        dependsOn: { subject: { kind: 'package', id: packageId, label: bounded(packageId, 120) }, resolvedBy: 'health.package-reinstall' },
+      },
+    }))
+  }
+  if (structuralOpaque.length > 0) {
+    const agents = agentsOf(structuralOpaque)
+    observations.push(healthError({
+      key: 'structural-opaque',
+      summary: `${structuralOpaque.length} structural agent-sync issue(s) have no deterministic repair.`,
+      detail: structuralOpaque.slice(0, 5).map(finding => finding.message).join('\n'),
+      evidence: { agents, count: structuralOpaque.length, types: [...new Set(structuralOpaque.map(finding => finding.type))] },
+      incident: {
+        key: 'structural-opaque',
+        title: 'Agent package structure is broken',
+        impact: 'Affected agents may start with invalid managed context; a managed block is broken or its source is gone.',
+        disposition: 'action_required',
+        subject: agentSubject(agents),
+        declarationId: 'structural-opaque',
+        resources: agentResources(agents),
+        resolution: { key: 'diagnose', type: 'repair', label: 'Investigate the broken package content', actionId: 'core.diagnose' },
       },
     }))
   }
@@ -401,6 +467,8 @@ export async function checkAgentSync(): Promise<HealthCheckRunInput> {
         title: 'Managed agent content is stale',
         impact: 'Affected agents may use context or projected files that no longer match the installed sources.',
         disposition: 'action_required',
+        subject: agentSubject(agents),
+        declarationId: 'local-drift',
         resources: agentResources(agents),
         resolution: { key: 'sync-agents', type: 'repair', label: 'Sync agents locally', actionId: 'sync-agents' },
       },
@@ -417,6 +485,8 @@ export async function checkAgentSync(): Promise<HealthCheckRunInput> {
         title: 'Agent packages need managed-block migration',
         impact: 'Legacy package workspace files cannot participate in safe block-level synchronization until migrated.',
         disposition: 'action_required',
+        subject: agentSubject(agents),
+        declarationId: 'migration',
         resources: agentResources(agents),
         resolution: { key: 'migrate-agent-blocks', type: 'repair', label: 'Review migration', actionId: 'migrate-agent-blocks' },
       },
@@ -424,36 +494,22 @@ export async function checkAgentSync(): Promise<HealthCheckRunInput> {
   }
   if (locked.length > 0) {
     const agents = agentsOf(locked)
+    // Row 115: observation only — the operator chose the lock; nothing to decide.
     observations.push(healthWarning({
       key: 'user-edited',
       summary: `${locked.length} user-edited agent file(s) are intentionally locked from sync.`,
-      detail: locked.map(finding => finding.target ?? finding.file ?? finding.message).join('\n'),
+      detail: `Bakin preserves these edits; managed source updates do not reach them (review on /team):\n${locked.map(finding => finding.target ?? finding.file ?? finding.message).join('\n')}`,
       evidence: { agents, count: locked.length },
-      incident: {
-        key: 'user-edited',
-        title: 'User-edited agent files are outside managed sync',
-        impact: 'Bakin will preserve these edits, but managed source updates will not reach the locked files.',
-        disposition: 'advisory',
-        resources: agentResources(agents),
-        resolution: { key: 'review-agents', type: 'navigate', label: 'Review agents', href: '/team' },
-      },
     }))
   }
   if (advisory.length > 0) {
     const agents = agentsOf(advisory)
+    // Row 116: observation only.
     observations.push(healthWarning({
       key: 'advisory',
       summary: `${advisory.length} agent-sync finding(s) need manual review.`,
-      detail: advisory.slice(0, 5).map(finding => finding.message).join('\n'),
+      detail: `Affected agent files may not match their expected package state (review on /team):\n${advisory.slice(0, 5).map(finding => finding.message).join('\n')}`,
       evidence: { agents, count: advisory.length },
-      incident: {
-        key: 'advisory',
-        title: 'Agent synchronization needs manual review',
-        impact: 'Affected agent files may not match their expected package state.',
-        disposition: 'advisory',
-        resources: agentResources(agents),
-        resolution: { key: 'review-agents', type: 'navigate', label: 'Review agents', href: '/team' },
-      },
     }))
   }
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
@@ -464,6 +520,8 @@ export function agentSyncRepair(): HealthRepairActionDefinition {
   return {
     id: 'sync-agents',
     name: 'Sync agents locally',
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'sync',
     resources: ['install-state'],
     operationPlan: () => ({
       stages: [
@@ -474,15 +532,15 @@ export function agentSyncRepair(): HealthRepairActionDefinition {
     }),
     async plan() {
       const report = await scanAgentSync()
-      const fixable = report.findings.filter(finding => finding.severity === 'warn' && finding.autoFixable && finding.type !== 'migration-needed')
+      // Row 112: auto-fixable STRUCTURAL misses (severity error) ride the same re-projection as local drift.
+      const fixable = report.findings.filter(finding => finding.autoFixable && finding.type !== 'migration-needed' && finding.type !== 'bin-manifest-invalid')
       if (fixable.length === 0) return []
       const agents = agentsOf(fixable)
       return [{
         id: 'sync-agents',
         actionId: 'sync-agents',
         title: 'Sync agents locally',
-        reason: `${fixable.length} managed block or projection item(s) are stale.`,
-        safety: 'safe',
+        reason: `${fixable.length} managed block or projection item(s) are stale or missing.`,
         incidentIds: [],
         observationIds: [],
         preconditions: [],
@@ -537,6 +595,9 @@ export function agentSyncMigrationRepair(): HealthRepairActionDefinition {
   return {
     id: 'migrate-agent-blocks',
     name: 'Migrate agent packages to managed blocks',
+    // Row 114: a full overwrite of the workspace files (tarball backup first) — the operator confirms.
+    effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
+    mutation: 'delete',
     resources: ['install-state'],
     operationPlan: () => ({
       stages: [{ id: 'migrate', kind: 'committing', label: 'Back up and migrate to managed blocks' }],
@@ -551,7 +612,6 @@ export function agentSyncMigrationRepair(): HealthRepairActionDefinition {
         actionId: 'migrate-agent-blocks',
         title: 'Migrate agent packages to managed blocks',
         reason: `Legacy packages require migration: ${packages.join(', ') || 'unknown package'}. A backup is created first.`,
-        safety: 'destructive',
         incidentIds: [],
         observationIds: [],
         preconditions: [],

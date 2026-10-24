@@ -12,14 +12,21 @@
  */
 import { renameSync } from 'fs'
 import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthRepairActionDefinition, HealthResource } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition, HealthResource, HealthSubject } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { HealthAckStoreError, acksPath, inspectAckStore, removeAckRecord } from '../../../../src/core/health-acks'
 
 const RESOURCE: HealthResource = { kind: 'system', id: 'health-acks', label: '~/.bakin/health/acks.json' }
+const SUBJECT: HealthSubject = { kind: 'record', id: 'health/acks.json', label: '~/.bakin/health/acks.json' }
 const CHECK_ID = 'health.acks'
 export const HEALTH_ACKS_RESET_ACTION = 'health-acks-reset'
 export const HEALTH_ACKS_PRUNE_ACTION = 'health-acks-prune'
+/** Rows 1–2: both self-heal; neither is a required capability. */
+export const HEALTH_ACKS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'store-unreadable', subjectKind: 'record', resolution: { type: 'repair', actionId: HEALTH_ACKS_RESET_ACTION }, required: 'never' },
+  { id: 'invalid-records', subjectKind: 'record', resolution: { type: 'repair', actionId: HEALTH_ACKS_PRUNE_ACTION }, required: 'never' },
+]
+const NO_EFFECTS = { deletesUserContent: false, spendsMoney: false, widensAuthorization: false }
 
 export async function checkHealthAcks(nowMs = Date.now()): Promise<HealthCheckRunInput> {
   let store: ReturnType<typeof inspectAckStore>
@@ -35,8 +42,10 @@ export async function checkHealthAcks(nowMs = Date.now()): Promise<HealthCheckRu
         key: 'store-unreadable',
         title: 'Health acknowledgements are unreadable',
         impact: 'Acknowledged and snoozed incidents are all showing again until the file is valid JSON.',
-        disposition: 'watch',
+        disposition: 'advisory',
         class: 'evidence_gap',
+        subject: SUBJECT,
+        declarationId: 'store-unreadable',
         resources: [RESOURCE],
         resolution: { key: HEALTH_ACKS_RESET_ACTION, type: 'repair', label: 'Move the file aside and start fresh', actionId: HEALTH_ACKS_RESET_ACTION },
       },
@@ -57,9 +66,11 @@ export async function checkHealthAcks(nowMs = Date.now()): Promise<HealthCheckRu
     evidence: { invalid: store.invalid.map(({ key, reason }) => ({ key, reason })) },
     incident: {
       key: 'invalid-records',
+      declarationId: 'invalid-records',
+      subject: SUBJECT,
       title: 'Ignored acknowledgement records',
       impact: 'These records break the acknowledge rules (for example a permanent acknowledgement of an action-required incident, a snooze longer than 7 days, or a date in the future), so they quiet nothing and the incidents they name are showing.',
-      disposition: 'watch',
+      disposition: 'advisory',
       class: 'evidence_gap',
       resources: [RESOURCE],
       resolution: { key: HEALTH_ACKS_PRUNE_ACTION, type: 'repair', label: 'Remove the ignored records', actionId: HEALTH_ACKS_PRUNE_ACTION },
@@ -82,6 +93,7 @@ export function healthAcksResetRepair(): HealthRepairActionDefinition {
   return {
     id: HEALTH_ACKS_RESET_ACTION,
     name: 'Move the unreadable acknowledgement file aside',
+    effects: NO_EFFECTS,
     operationPlan: () => ({ stages: [{ id: 'reset', kind: 'installing', label: 'Move the file aside' }], pointOfNoReturn: 'reset' }),
     async plan(target) {
       const problem = storeUnreadable()
@@ -91,7 +103,6 @@ export function healthAcksResetRepair(): HealthRepairActionDefinition {
         actionId: HEALTH_ACKS_RESET_ACTION,
         title: 'Move the unreadable acknowledgement file aside',
         reason: problem,
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: [{ kind: 'file', target: 'health/acks.json', action: 'update', description: 'Rename the file to a dated .rejected copy (nothing is deleted) and start with no acknowledgements.' }],
       }]
@@ -118,6 +129,7 @@ export function healthAcksPruneRepair(): HealthRepairActionDefinition {
   return {
     id: HEALTH_ACKS_PRUNE_ACTION,
     name: 'Remove acknowledgement records that break the rules',
+    effects: NO_EFFECTS,
     operationPlan: () => ({ stages: [{ id: 'prune', kind: 'installing', label: 'Remove the records' }], pointOfNoReturn: 'prune' }),
     async plan(target) {
       if (storeUnreadable()) return []
@@ -128,7 +140,6 @@ export function healthAcksPruneRepair(): HealthRepairActionDefinition {
         actionId: HEALTH_ACKS_PRUNE_ACTION,
         title: `Remove ${invalid.length} ignored acknowledgement record${invalid.length === 1 ? '' : 's'}`,
         reason: 'These records quiet nothing; removing them makes the file match what Health applies.',
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: invalid.map((entry) => ({ kind: 'file' as const, target: `acks:${entry.key}`, action: 'delete' as const, description: `${entry.key}: ${entry.reason}.` })),
       }]

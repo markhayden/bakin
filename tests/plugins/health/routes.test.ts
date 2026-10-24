@@ -83,6 +83,7 @@ const cachedReport: HealthReport = {
     incident: {
       key: 'taskboard.missing-columns', disposition: 'action_required', title: 'Task board columns are missing',
       impact: 'Tasks cannot move through the full workflow.',
+      subject: { kind: 'system', id: 'task-board', label: 'Task board' }, declarationId: 'missing-columns', required: true,
       resources: [{ kind: 'plugin', id: 'tasks', label: 'Tasks' }],
       resolution: { key: 'repair-board', type: 'repair', label: 'Repair board', actionId: 'tasks.repair-store' },
     },
@@ -90,8 +91,10 @@ const cachedReport: HealthReport = {
   incidents: [{
     id: 'tasks:taskboard:missing-columns', status: 'error', disposition: 'action_required', effectiveDisposition: 'action_required',
     title: 'Task board columns are missing', impact: 'Tasks cannot move through the full workflow.',
+    subject: { kind: 'system', id: 'task-board', label: 'Task board' },
     resources: [{ kind: 'plugin', id: 'tasks', label: 'Tasks' }],
     resolution: { key: 'repair-board', type: 'repair', label: 'Repair board', actionId: 'tasks.repair-store' },
+    declarationId: 'missing-columns', required: true,
     observationIds: ['tasks.taskboard:columns'], observedAt: generatedAt, staleAt: '2026-04-01T10:02:00.000Z', stale: false,
   }],
   subsystems: {
@@ -127,7 +130,8 @@ const mockRepairPlan = {
     actionId: 'tasks.repair-store',
     title: 'Repair taskboard',
     reason: 'Missing columns',
-    safety: 'safe' as const,
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mode: 'self-heal' as const,
     incidentIds: ['tasks:taskboard:missing-columns'],
     observationIds: ['tasks.taskboard:columns'],
     preconditions: [{ observationId: 'tasks.taskboard:columns', executionId: 'execution-1', status: 'error' as const, resolutionKey: 'repair-board' }],

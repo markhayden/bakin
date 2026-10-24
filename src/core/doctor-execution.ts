@@ -15,6 +15,7 @@ import {
 } from './doctor-report-cache'
 import {
   getHealthCheck,
+  getHealthRepairAction,
   listHealthChecks,
   registerCoreHealthCheck,
 } from './health-check-registry'
@@ -52,12 +53,18 @@ function doctorCheckTimeoutMs(): number {
 
 function ensureOnboardingCheck(): void {
   if (getHealthCheck('core.onboarded')) return
+  // The catalog names `core.onboard`; the doctor's entry points register the
+  // core actions first (`ensureCoreRepairActions`). A cached read before any
+  // entry point ran simply has no onboarding check yet — never a dangling catalog.
+  if (!getHealthRepairAction(`core.${ONBOARD_ACTION}`)) return
   registerCoreHealthCheck({
     id: 'onboarded',
     name: 'First-run onboarding',
     description: 'Verifies that required first-run setup has completed on this machine.',
     group: { key: 'system', label: 'System' },
     maxAgeMs: doctorIntervalMs(),
+    // Row 205: first-run choices widen authorization → one-click `core.onboard`.
+    incidents: [{ id: 'onboarding-required', subjectKind: 'system', resolution: { type: 'repair', actionId: ONBOARD_ACTION }, required: 'always' }],
     run: async () => {
       const settings = getSettings()
       if (!settings.doctor.requireOnboard) {
@@ -74,6 +81,8 @@ function ensureOnboardingCheck(): void {
           title: 'First-run setup is incomplete',
           impact: 'Runtime and plugin checks may fail until Bakin is configured.',
           disposition: 'action_required',
+          subject: { kind: 'system', id: 'onboarding', label: 'Bakin onboarding' },
+          declarationId: 'onboarding-required',
           resources: [{ kind: 'system', id: 'onboarding', label: 'Bakin onboarding' }],
           resolution: { key: ONBOARD_ACTION, type: 'repair', label: 'Complete setup with the default choices', actionId: ONBOARD_ACTION },
         },

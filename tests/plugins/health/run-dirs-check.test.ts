@@ -34,7 +34,7 @@ mock.module('../../../src/core/dispatch-registry', () => ({ getInFlightTurn: () 
 mock.module('../../../src/core/task-store', () => ({ getTask: () => null }))
 
 import { checkRunDirs, runDirsSweepRepair } from '../../../plugins/health/lib/system-checks/run-dirs'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
@@ -70,7 +70,7 @@ describe('sweep-run-dirs repair runtime contract (#895 D10)', () => {
   it('reports its sweep stage and the result', async () => {
     statsValue = { count: 2, sizeBytes: 100, sweptLastTick: 4, updatedAt: Date.now() }
     const repair = runDirsSweepRepair()
-    const run = await runRepairContract(repair, await repair.plan({ type: 'all_actionable', reportId: 'r' }))
+    const run = await runRepairContract(repair, stampPlanItems(repair, await repair.plan({ type: 'all_actionable', reportId: 'r' })))
     expectRepairContract(repair, run)
     expect(run.calls).toEqual(['stage:sweep', 'log'])
     expect(run.results[0]!.message).toContain('Swept 4 dir(s)')

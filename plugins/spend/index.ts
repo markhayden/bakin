@@ -13,7 +13,7 @@
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
-import { acceptUnattributedHistoryRepair, budgetResumeRepair, checkBudget, spendEvidenceRepair } from './lib/health-checks'
+import { SPEND_BUDGET_INCIDENTS, acceptUnattributedHistoryRepair, budgetResumeRepair, checkBudget, spendEvidenceRepair } from './lib/health-checks'
 import { registerSpendHooks } from './lib/register-hooks'
 import { spendRoutes } from './lib/routes'
 import { describeSchemaIssues, SpendSettingsSchema } from './lib/settings'
@@ -44,17 +44,19 @@ const spendPlugin: BakinPlugin = definePlugin({
 
     registerSpendHooks(ctx)
 
+    // Actions first: the check's catalog names them and the registry refuses a dangling one.
+    ctx.registerHealthRepairAction(spendEvidenceRepair())
+    ctx.registerHealthRepairAction(budgetResumeRepair())
+    ctx.registerHealthRepairAction(acceptUnattributedHistoryRepair())
     ctx.registerHealthCheck({
       id: 'budget',
       name: 'Spend vs budget caps',
       description: 'Evaluates spending policy, open holds, and current usage against every budget rule.',
       group: { key: 'work-cost', label: 'Work & Cost' },
       maxAgeMs: 120_000,
+      incidents: SPEND_BUDGET_INCIDENTS,
       run: () => checkBudget(),
     })
-    ctx.registerHealthRepairAction(spendEvidenceRepair())
-    ctx.registerHealthRepairAction(budgetResumeRepair())
-    ctx.registerHealthRepairAction(acceptUnattributedHistoryRepair())
   },
 })
 

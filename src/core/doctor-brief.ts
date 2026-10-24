@@ -80,13 +80,10 @@ function describeSanctionedFix(incident: HealthIncident): string[] {
   switch (resolution.type) {
     case 'repair':
       return [`  Sanctioned fix: one-click repair "${resolution.label}" — run the matching documented \`bakin\` command if the incident names one; otherwise report that this repair must be applied from Health.`]
-    case 'instructions':
+    case 'human':
       return [
-        `  Sanctioned fix: ${resolution.label}${resolution.command ? ` — run \`${resolution.command}\`` : ''}`,
-        ...resolution.steps.slice(0, 4).map((step) => `    • ${step}`),
+        `  Sanctioned fix: needs a human (${resolution.needs}) — ${resolution.label} at ${resolution.href}${resolution.handoff ? `; the operator runs \`${resolution.handoff.command}\`` : ''}. Report what you found; do NOT supply the credential, payment or decision yourself.`,
       ]
-    case 'rerun':
-      return [`  Sanctioned fix: re-run the check ("${resolution.label}") after addressing the cause.`]
     default:
       return ['  Sanctioned fix: see the incident in Health.']
   }

@@ -55,7 +55,7 @@ mock.module('../../../../src/core/agent-packages/post-sync-reload', () => ({
 
 import type { HealthRepairTarget } from '@makinbakin/sdk'
 import { noopOp } from '../../../helpers/operation-harness'
-import { expectRepairContract, runRepairContract } from '../../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../../helpers/repair-contract'
 import { capabilityRemedy as realRemedy } from '../../../../src/core/agent-packages/capability-remedy'
 import { packageReinstallRepair, packageSyncRepair } from '../../../../plugins/health/lib/system-checks/package-repairs'
 import { checkCapabilities } from '../../../../plugins/health/lib/system-checks/capabilities'
@@ -114,14 +114,25 @@ describe('checkCapabilities — repointed under the old contract', () => {
     expect(rows[0]!.incident?.resources).toEqual([{ kind: 'capability', id: 'ocr', label: 'ocr' }])
     expect(rows[0]!.evidence).toMatchObject({ packageId: 'ocr-pack', remedy: 'package-reinstall' })
   })
-  it('a human need keeps the Explore navigate; a platform-only gap keeps its incident too (observation rows move in 1.7)', async () => {
+  it('a missing secret is the operator\'s credential on the Explore capability row; a platform-only gap is an observation (row 6)', async () => {
     capabilities = [
-      cap({ capability: 'notion', packageId: 'notion-pack', secrets: [{ name: 'NOTION_KEY', required: true, status: 'missing' }] }),
+      cap({ capability: 'notion', packageId: 'notion-pack', secrets: [{ name: 'NOTION_KEY', required: true, secretSlot: 'skills.notion-pack.NOTION_KEY', status: 'missing' }] }),
       cap({ capability: 'arm-only', packageId: 'arm-pack', platformSupported: false }),
+      cap({ capability: 'ocr', packageId: 'ocr-pack', prereqs: [{ name: 'tesseract', kind: 'binary', help: 'brew install tesseract', optional: false, status: 'missing' }] }),
     ]
     const rows = await observed()
-    expect(rows[0]!.incident?.resolution).toMatchObject({ type: 'navigate', href: expect.stringContaining('capability=notion') })
-    expect(rows[1]!.incident?.resolution).toMatchObject({ type: 'navigate' })
+    expect(rows[0]!.incident).toMatchObject({
+      declarationId: 'not-ready-credential',
+      subject: { kind: 'package', id: 'notion-pack' },
+      required: true,
+      resolution: { type: 'human', needs: 'credential', href: expect.stringContaining('capability=notion'), field: 'secret-slot-skills.notion-pack.NOTION_KEY' },
+    })
+    expect(rows[1]!.incident).toBeUndefined()
+    expect(rows[1]!.status).toBe('warning')
+    expect(rows[2]!.incident).toMatchObject({
+      declarationId: 'not-ready-install',
+      resolution: { type: 'human', needs: 'external-install', handoff: { command: 'brew install tesseract' } },
+    })
   })
 })
 
@@ -134,12 +145,15 @@ describe('package-sync / package-reinstall', () => {
     ]
     const action = packageReinstallRepair()
     expect(action.resources).toEqual(['install-state'])
+    // Row 6: no static effects; the reinstall mutation is what the ONE gate judges.
+    expect(action.mutation).toBe('reinstall')
+    expect(packageSyncRepair().mutation).toBe('sync')
     const plan = await action.plan(all)
     expect(plan).toHaveLength(1)
-    expect(plan[0]).toMatchObject({ id: 'ocr-pack', actionId: 'package-reinstall', safety: 'manual' })
+    expect(plan[0]).toMatchObject({ id: 'ocr-pack', actionId: 'package-reinstall' })
     expect(plan[0]!.changes[0]).toMatchObject({ kind: 'file', target: 'package:ocr-pack@1.0.0', action: 'update' })
 
-    const run = await runRepairContract(action, plan)
+    const run = await runRepairContract(action, stampPlanItems(action, plan))
     expectRepairContract(action, run)
     expect(syncs).toEqual([{ packageId: 'ocr-pack', reinstall: true, check: undefined, hasOp: false }])
     expect(reloads).toBe(1)
@@ -159,7 +173,7 @@ describe('package-sync / package-reinstall', () => {
     expect(byObservation.map((item) => item.id)).toEqual(['web-pack'])
 
     syncChanged = false
-    const [result] = await action.apply(one, noopOp())
+    const [result] = await action.apply(stampPlanItems(action, one), noopOp())
     expect(syncs).toEqual([{ packageId: 'pdf-pack', reinstall: undefined, check: undefined, hasOp: false }])
     expect(reloads).toBe(0)
     expect(result).toMatchObject({ status: 'applied' })
@@ -173,7 +187,7 @@ describe('package-sync / package-reinstall', () => {
     const action = packageSyncRepair()
     const plan = await action.plan(all)
     syncFails = true
-    const results = await action.apply(plan, noopOp())
+    const results = await action.apply(stampPlanItems(action, plan), noopOp())
     expect(results.map((r) => r.status)).toEqual(['failed', 'failed'])
     expect(results[0]!.message).toContain('upstream unreachable')
     expect(syncs.map((s) => s.packageId)).toEqual(['a-pack', 'b-pack'])

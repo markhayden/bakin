@@ -18,8 +18,8 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { healthError, healthNotApplicable, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRegistrationInput, HealthIncidentDeclaration, HealthIncidentInput } from '@makinbakin/sdk'
+import { healthError, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
+import type { HealthCheckRegistrationInput, HealthIncidentDeclaration, HealthIncidentInput, HealthSubject } from '@makinbakin/sdk'
 import {
   getHealthCheck,
   registerPluginHealthCheck,
@@ -29,6 +29,7 @@ import {
 } from '../../src/core/health-check-registry'
 import { runDetailedPluginHealthChecks } from '../../src/core/doctor-checks'
 import { buildHealthIncidents } from '../../src/core/health-report'
+import { safeParseHealthCheckRunInput } from '../../src/core/health-contract'
 
 afterEach(() => {
   unregisterPluginHealthChecks('test-a')
@@ -37,8 +38,11 @@ afterEach(() => {
 
 const stage = { stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }
 
+const NONE = { deletesUserContent: false, spendsMoney: false, widensAuthorization: false }
+const SUBJECT: HealthSubject = { kind: 'service', id: 'svc' }
+
 function registerAction(pluginId: string, id: string): void {
-  registerPluginHealthRepairAction(pluginId, { id, name: `Action ${id}`, operationPlan: () => stage, plan: async () => [], apply: async () => [] })
+  registerPluginHealthRepairAction(pluginId, { id, name: `Action ${id}`, effects: NONE, operationPlan: () => stage, plan: async () => [], apply: async () => [] })
 }
 
 function check(incidents: HealthIncidentDeclaration[] | unknown, run: HealthCheckRegistrationInput['run'] = async () => healthNotApplicable('unused')): HealthCheckRegistrationInput {
@@ -53,11 +57,13 @@ function check(incidents: HealthIncidentDeclaration[] | unknown, run: HealthChec
   }
 }
 
-function emit(incident: HealthIncidentInput, status: 'error' | 'warning' = 'error') {
+/** An emission; the subject defaults to the fixture's (every incident needs one). */
+function emit(incident: Omit<HealthIncidentInput, 'subject'> & { subject?: HealthSubject }, status: 'error' | 'warning' = 'error') {
+  const full = { subject: SUBJECT, ...incident } as HealthIncidentInput
   return async () => healthObserved([
     status === 'error'
-      ? healthError({ key: incident.key, summary: `${incident.key} observed.`, incident: incident as never })
-      : healthWarning({ key: incident.key, summary: `${incident.key} observed.`, incident }),
+      ? healthError({ key: full.key, summary: `${full.key} observed.`, incident: full as never })
+      : healthWarning({ key: full.key, summary: `${full.key} observed.`, incident: full }),
   ])
 }
 
@@ -110,10 +116,12 @@ describe('catalog validation at registration (the activation path)', () => {
     expect(resolveDeclaredRepairAction(owner, 'nope')).toBeNull()
   })
 
-  it('a check without a catalog still registers (optional until the cutover)', () => {
+  it('a check without a catalog is refused, naming the check (every check declares its families — an empty list when it raises none)', () => {
     const def = check(undefined)
     delete (def as { incidents?: unknown }).incidents
-    expect(registerPluginHealthCheck('test-a', def)).toBe('test-a.probe')
+    expect(() => registerPluginHealthCheck('test-a', def)).toThrow(/Health check "test-a.probe" declares no incident families/)
+    expect(getHealthCheck('test-a.probe')).toBeUndefined()
+    expect(registerPluginHealthCheck('test-a', check([]))).toBe('test-a.probe')
   })
 })
 
@@ -141,11 +149,13 @@ describe('instance validation in the runner', () => {
   })
 
   it('an emission whose resolution differs from its declaration is invalid and becomes a verification incident', async () => {
-    registerWith(emit({ key: 'down', declarationId: 'down', title: 'Service is down', impact: 'Nothing runs.', disposition: 'action_required', resolution: { key: 'open', type: 'navigate', label: 'Open', href: '/runtime' } }))
+    registerWith(emit({ key: 'down', declarationId: 'down', title: 'Service is down', impact: 'Nothing runs.', disposition: 'action_required', resolution: { key: 'open', type: 'human', needs: 'credential', label: 'Open', href: '/runtime' } }))
     const [run] = await runDetailedPluginHealthChecks()
     expect(run.execution).toMatchObject({ outcome: 'invalid', error: { code: 'INVALID_HEALTH_DECLARATION' } })
-    expect(run.execution.error?.message).toMatch(/declared as repair "test-a.restart" but was emitted as navigate/)
+    expect(run.execution.error?.message).toMatch(/declared as repair "test-a.restart" but was emitted as human \(credential\)/)
     expect(run.observations[0]).toMatchObject({ key: 'verification', status: 'unknown' })
+    // The verification row itself is the fallback lane's (row 206): the check owner's subject, core.diagnose, never required.
+    expect(run.observations[0]!.incident).toMatchObject({ subject: { kind: 'plugin', id: 'test-a' }, declarationId: 'verification', required: false, resolution: { type: 'repair', actionId: 'core.diagnose' } })
   })
 
   it('a repair instance naming a different action than its family is invalid', async () => {
@@ -163,27 +173,73 @@ describe('instance validation in the runner', () => {
 
   it('a record created AFTER activation emits a valid instance of its family (finite families, R3 N5)', async () => {
     registerWith(async () => healthObserved([
-      healthWarning({ key: 'not-ready:web-search', summary: 'web-search is not ready.', incident: { key: 'not-ready:web-search', declarationId: 'not-ready', title: 'web-search is not ready', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'sync', type: 'repair', label: 'Sync', actionId: 'sync' } } }),
-      healthWarning({ key: 'not-ready:ocr', summary: 'ocr is not ready.', incident: { key: 'not-ready:ocr', declarationId: 'not-ready', title: 'ocr is not ready', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'sync', type: 'repair', label: 'Sync', actionId: 'sync' } } }),
+      healthWarning({ key: 'not-ready:web-search', summary: 'web-search is not ready.', incident: { key: 'not-ready:web-search', declarationId: 'not-ready', subject: { kind: 'package', id: 'web-search' }, required: true, title: 'web-search is not ready', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'sync', type: 'repair', label: 'Sync', actionId: 'sync' } } }),
+      healthWarning({ key: 'not-ready:ocr', summary: 'ocr is not ready.', incident: { key: 'not-ready:ocr', declarationId: 'not-ready', subject: { kind: 'package', id: 'ocr' }, required: false, title: 'ocr is not ready', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'sync', type: 'repair', label: 'Sync', actionId: 'sync' } } }),
     ]))
     const [run] = await runDetailedPluginHealthChecks()
     expect(run.execution.outcome).toBe('observed')
     expect(run.observations.map((o) => o.incident?.declarationId)).toEqual(['not-ready', 'not-ready'])
+    // owner-decides: the instance's own verdict rides through to the report.
+    expect(run.observations.map((o) => o.incident?.required)).toEqual([true, false])
+    expect(buildHealthIncidents(run.observations, new Date().toISOString()).map((i) => [i.id, i.required])).toEqual([
+      ['test-a:runtime:not-ready:ocr', false],
+      ['test-a:runtime:not-ready:web-search', true],
+    ])
   })
 
-  it('split repair/human variants are two families; a human family accepts the pre-cutover navigate shape but never a repair', async () => {
+  it('split repair/human variants are two families; a human family needs a human instance with the SAME needs — never a repair, never another need', async () => {
     registerWith(async () => healthObserved([
-      healthWarning({ key: 'not-ready:web-search', summary: 'content missing.', incident: { key: 'not-ready:web-search', declarationId: 'not-ready', title: 'web-search content missing', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'sync', type: 'repair', label: 'Sync', actionId: 'sync' } } }),
-      healthWarning({ key: 'needs-key:web-search', summary: 'key missing.', incident: { key: 'needs-key:web-search', declarationId: 'needs-key', title: 'web-search needs its key', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'key', type: 'navigate', label: 'Add the key', href: '/settings?tab=integrations' } } }),
+      healthWarning({ key: 'not-ready:web-search', summary: 'content missing.', incident: { key: 'not-ready:web-search', declarationId: 'not-ready', subject: { kind: 'package', id: 'web-search' }, required: true, title: 'web-search content missing', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'sync', type: 'repair', label: 'Sync', actionId: 'sync' } } }),
+      healthWarning({ key: 'needs-key:web-search', summary: 'key missing.', incident: { key: 'needs-key:web-search', declarationId: 'needs-key', subject: { kind: 'package', id: 'web-search' }, required: true, title: 'web-search needs its key', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'key', type: 'human', needs: 'credential', label: 'Add the key', href: '/settings?tab=integrations', field: 'skills.web-search.BRAVE_API_KEY' } } }),
     ]))
     const [run] = await runDetailedPluginHealthChecks()
     expect(run.execution.outcome).toBe('observed')
+    expect(run.observations[1]!.incident).toMatchObject({ required: true, resolution: { type: 'human', needs: 'credential', field: 'skills.web-search.BRAVE_API_KEY' } })
     unregisterPluginHealthChecks('test-a')
 
-    registerWith(emit({ key: 'needs-key:ocr', declarationId: 'needs-key', title: 'ocr needs its key', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'sync', type: 'repair', label: 'Sync', actionId: 'sync' } }))
+    registerWith(emit({ key: 'needs-key:ocr', declarationId: 'needs-key', required: true, title: 'ocr needs its key', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'sync', type: 'repair', label: 'Sync', actionId: 'sync' } }))
     const [again] = await runDetailedPluginHealthChecks()
     expect(again.execution).toMatchObject({ outcome: 'invalid', error: { code: 'INVALID_HEALTH_DECLARATION' } })
     expect(again.execution.error?.message).toMatch(/declared as a human need \(credential\) but was emitted as repair/)
+    unregisterPluginHealthChecks('test-a')
+
+    registerWith(emit({ key: 'needs-key:ocr', declarationId: 'needs-key', required: true, title: 'ocr needs its key', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'pay', type: 'human', needs: 'payment', label: 'Pay', href: '/spend' } }))
+    const [other] = await runDetailedPluginHealthChecks()
+    expect(other.execution).toMatchObject({ outcome: 'invalid', error: { code: 'INVALID_HEALTH_DECLARATION' } })
+    expect(other.execution.error?.message).toMatch(/declared as a human need \(credential\) but was emitted as human \(payment\)/)
+  })
+
+  it('an owner-decides instance without a `required` verdict is invalid; always/never families derive it', async () => {
+    registerWith(emit({ key: 'needs-key:ocr', declarationId: 'needs-key', title: 'ocr needs its key', impact: 'Agents lack it.', disposition: 'action_required', resolution: { key: 'key', type: 'human', needs: 'credential', label: 'Add the key', href: '/settings' } }))
+    const [missing] = await runDetailedPluginHealthChecks()
+    expect(missing.execution).toMatchObject({ outcome: 'invalid', error: { code: 'INVALID_HEALTH_DECLARATION' } })
+    expect(missing.execution.error?.message).toMatch(/owner-decides family "needs-key" but carries no `required` verdict/)
+    unregisterPluginHealthChecks('test-a')
+
+    // `down` is always required; the instance's own value (false) is overridden by the family.
+    registerWith(emit({ key: 'down', declarationId: 'down', required: false, title: 'Service is down', impact: 'Nothing runs.', disposition: 'action_required', resolution: { key: 'restart', type: 'repair', label: 'Restart', actionId: 'restart' } }))
+    const [always] = await runDetailedPluginHealthChecks()
+    expect(always.execution.outcome).toBe('observed')
+    expect(always.observations[0]!.incident?.required).toBe(true)
+    expect(buildHealthIncidents(always.observations, new Date().toISOString())[0]).toMatchObject({ required: true, subject: SUBJECT })
+  })
+
+  it('a warning or unknown without an incident is a plain observation: no incident id, never in the report\'s incidents', async () => {
+    registerWith(async () => healthObserved([
+      healthWarning({ key: 'slow', summary: 'A bit slow — listed under the check, never a card.', evidence: { p95Ms: 1200 } }),
+      healthUnknown({ key: 'unseen', summary: 'Could not read the probe this sweep.' }),
+      healthError({ key: 'down', summary: 'Down.', incident: { key: 'down', declarationId: 'down', subject: SUBJECT, title: 'Service is down', impact: 'Nothing runs.', disposition: 'action_required', resolution: { key: 'restart', type: 'repair', label: 'Restart', actionId: 'restart' } } }),
+    ]))
+    const [run] = await runDetailedPluginHealthChecks()
+    expect(run.execution.outcome).toBe('observed')
+    expect(run.observations.map((o) => [o.key, o.status, o.incidentId])).toEqual([
+      ['slow', 'warning', undefined],
+      ['unseen', 'unknown', undefined],
+      ['down', 'error', 'test-a:runtime:down'],
+    ])
+    expect(buildHealthIncidents(run.observations, new Date().toISOString()).map((i) => i.id)).toEqual(['test-a:runtime:down'])
+    // An error can never be a plain observation.
+    expect(safeParseHealthCheckRunInput({ outcome: 'observed', observations: [{ key: 'broken', status: 'error', summary: 'Broken.' }] }).success).toBe(false)
   })
 
   it('the shared engine action is referenced verbatim by an instance of its family', async () => {
@@ -193,10 +249,10 @@ describe('instance validation in the runner', () => {
     expect(run.observations[0].incident?.resolution).toMatchObject({ actionId: 'core.diagnose' })
   })
 
-  it('an instance without a declarationId is still accepted (optional until the cutover)', async () => {
-    registerWith(emit({ key: 'down', title: 'Service is down', impact: 'Nothing runs.', disposition: 'action_required', resolution: { key: 'restart', type: 'repair', label: 'Restart', actionId: 'restart' } }))
+  it('an instance without a declarationId (or a subject) is refused by the contract itself', async () => {
+    registerWith(emit({ key: 'down', title: 'Service is down', impact: 'Nothing runs.', disposition: 'action_required', resolution: { key: 'restart', type: 'repair', label: 'Restart', actionId: 'restart' } } as never))
     const [run] = await runDetailedPluginHealthChecks()
-    expect(run.execution.outcome).toBe('observed')
-    expect(run.observations[0].incident?.declarationId).toBeUndefined()
+    expect(run.execution).toMatchObject({ outcome: 'invalid', error: { code: 'INVALID_HEALTH_RUN_OUTPUT' } })
+    expect(run.execution.error?.message).toContain('declarationId')
   })
 })

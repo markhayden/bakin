@@ -13,9 +13,14 @@ import { queryAuditEvents } from '../../../../src/core/audit'
 import { getContentDir } from '../../../../src/core/content-dir'
 import { getLiveRun, LedgerUnavailableError } from '../../../../src/core/execution-ledger'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration } from '@makinbakin/sdk'
 
 const WINDOW_MS = 24 * 60 * 60 * 1000
+
+/** Row 31: an unreachable ledger is the fallback lane's (nothing deterministic restores it); rows 32–33 are observations. */
+export const EXECUTION_SAFETY_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'ledger-unavailable', subjectKind: 'system', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+]
 
 /** Every duplicate-suppression / conflict event the safety layers emit. */
 export const SUPPRESSION_EVENT_KINDS = [
@@ -42,15 +47,12 @@ export async function checkExecutionSafety(): Promise<HealthCheckRunInput> {
       incident: {
         key: 'ledger-unavailable',
         title: 'Execution safety ledger is unavailable',
-        impact: 'Task dispatch, scheduled fires, and completions fail closed without the ledger.',
+        impact: 'Task dispatch, scheduled fires, and completions fail closed without the ledger (its storage path or permissions are the usual cause).',
         disposition: 'action_required',
+        subject: { kind: 'system', id: 'execution-ledger', label: 'Execution ledger' },
+        declarationId: 'ledger-unavailable',
         resources: [{ kind: 'system', id: 'execution-ledger', label: 'Execution ledger' }],
-        resolution: {
-          key: 'restore-ledger',
-          type: 'instructions',
-          label: 'Restore the execution ledger',
-          steps: ['Check the execution-ledger storage path and permissions, then rerun Health.'],
-        },
+        resolution: { key: 'restore-ledger', type: 'repair', label: 'Investigate the execution ledger', actionId: 'core.diagnose' },
       },
     })])
   }
@@ -65,15 +67,7 @@ export async function checkExecutionSafety(): Promise<HealthCheckRunInput> {
     return healthObserved([healthUnknown({
       key: 'duplicates',
       summary: 'Duplicate suppression history could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'audit-unreadable',
-        title: 'Execution audit history is unreadable',
-        impact: 'Health cannot determine whether upstream systems attempted duplicate executions.',
-        disposition: 'watch',
-        resources: [{ kind: 'file', id: 'audit-log', label: 'audit.jsonl' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
+      detail: `${err instanceof Error ? err.message : String(err)} (audit.jsonl)`,
     })])
   }
 
@@ -104,19 +98,6 @@ export async function checkExecutionSafety(): Promise<HealthCheckRunInput> {
       suppressedInWindow: events.length,
       windowMs: WINDOW_MS,
       counts: Object.fromEntries(counts),
-    },
-    incident: {
-      key: 'duplicates-suppressed',
-      title: 'Upstream duplicate executions were suppressed',
-      impact: 'Safety guards prevented duplicate side effects, but continued attempts may indicate a scheduling or dispatch defect.',
-      disposition: 'watch',
-      resources: [{ kind: 'file', id: 'audit-log', label: 'audit.jsonl' }],
-      resolution: {
-        key: 'inspect-audit',
-        type: 'instructions',
-        label: 'Inspect suppression events',
-        steps: ['Inspect audit.jsonl for the event kinds listed in this observation and trace their upstream source.'],
-      },
     },
   })])
 }

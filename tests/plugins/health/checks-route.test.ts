@@ -132,6 +132,7 @@ describe('GET /checks', () => {
       description: 'Checks the test fixture.',
       group: { key: 'tests', label: 'Tests' },
       maxAgeMs: 30_000,
+      incidents: [],
       run: async () => ({ outcome: 'not_applicable', reason: 'Fixture only.' }),
     })
 
@@ -147,6 +148,7 @@ describe('GET /checks', () => {
       owner: { kind: 'plugin', id: 'test-plugin', label: 'test-plugin' },
       group: { key: 'tests', label: 'Tests' },
       maxAgeMs: 30_000,
+      incidents: [],
     })
     // Make sure `run` wasn't serialized
     expect('run' in checks[0]).toBe(false)
@@ -155,10 +157,12 @@ describe('GET /checks', () => {
   it('returns multiple checks across plugins', async () => {
     registerPluginHealthCheck('test-plugin', {
       id: 'one', name: 'One', description: 'One.', group: { key: 'tests', label: 'Tests' },
+      incidents: [],
       run: async () => ({ outcome: 'not_applicable', reason: 'Fixture only.' }),
     })
     registerPluginHealthCheck('other-plugin', {
       id: 'one', name: 'Other One', description: 'Other one.', group: { key: 'tests', label: 'Tests' },
+      incidents: [],
       run: async () => ({ outcome: 'not_applicable', reason: 'Fixture only.' }),
     })
 
@@ -173,6 +177,7 @@ describe('GET /checks', () => {
   it('does not expose producer functions or legacy repair flags', async () => {
     registerPluginHealthCheck('test-plugin', {
       id: 'readonly', name: 'Readonly', description: 'Read only.', group: { key: 'tests', label: 'Tests' },
+      incidents: [],
       run: async () => ({ outcome: 'not_applicable', reason: 'Fixture only.' }),
     })
 

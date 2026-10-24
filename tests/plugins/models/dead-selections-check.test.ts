@@ -16,7 +16,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 import { checkDeadSelections, deadSelectionRepair, type DeadSelectionDeps, type SelectionsDescription } from '../../../plugins/models/lib/dead-selections'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
 import type { Proposal } from '../../../src/core/model-selections'
 import { parseHealthCheckRunInput, parseHealthRepairPlanOutput } from '../../../src/core/health-contract'
 import { noopOp } from '../../helpers/operation-harness'
@@ -75,9 +75,12 @@ describe('checkDeadSelections', () => {
     })
     expect(enrich.evidence).toMatchObject({ ref: 'agent:enrich:model', from: DEAD, to: FIX, revision: 'rev-1' })
 
-    // No proposal ⇒ navigate to the page with the ref highlighted.
+    // No proposal ⇒ the operator chooses, on the page with the ref highlighted (row 159).
     const relay = result.observations.find((o) => o.key === 'dead-selection:route:relay')!
-    expect(relay.incident?.resolution).toMatchObject({ type: 'navigate', href: '/models?ref=route%3Arelay' })
+    expect(relay.incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', href: '/models?ref=route%3Arelay' })
+    expect(relay.incident?.declarationId).toBe('dead-selection-manual')
+    expect(enrich.incident?.declarationId).toBe('dead-selection')
+    expect(enrich.incident?.subject).toEqual({ kind: 'setting', id: 'models.selection.agent:enrich:model', label: "H'enrich" })
   })
 
   it('its output passes the canonical health contract (the resource kind is a real enum member)', async () => {
@@ -122,12 +125,14 @@ describe('deadSelectionRepair', () => {
     const items = await repair.plan({ type: 'incidents', reportId: 'r1', ids: ['models:models:dead-selection:agent:enrich:model', 'models:models:dead-selection:route:relay'] })
     // relay has no proposal (to: null) ⇒ nothing to apply for it.
     expect(items).toHaveLength(1)
-    expect(items[0]).toMatchObject({ actionId: 'apply-model-proposal', safety: 'safe', incidentIds: ['models:models:dead-selection:agent:enrich:model'] })
+    expect(items[0]).toMatchObject({ actionId: 'apply-model-proposal', incidentIds: ['models:models:dead-selection:agent:enrich:model'] })
+    // Row 158: a routing change widens what the operator authorized — one-click.
+    expect(stampPlanItems(repair, items)[0]!.mode).toBe('one-click')
     expect(items[0]!.changes[0]!.description).toContain(FIX)
 
     // The registry NAMESPACES item ids with the action id before apply() —
     // the isolated boot caught a lookup keyed on the raw id ("plan expired").
-    const namespaced = items.map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` }))
+    const namespaced = stampPlanItems(repair, items).map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` }))
     const run = await runRepairContract(repair, namespaced)
     expectRepairContract(repair, run)
     expect(run.view.stages[0]!.items).toEqual([{ id: 'agent:enrich:model', label: `agent:enrich:model → ${FIX}`, status: 'done' }])
@@ -152,7 +157,7 @@ describe('deadSelectionRepair', () => {
     const repair = deadSelectionRepair(deps(desc, applied, calls))
     const items = await repair.plan({ type: 'incidents', reportId: 'r1', ids: ['models:models:dead-selection:agent:enrich:model', 'models:models:dead-selection:agent:pixel:model'] })
     expect(items).toHaveLength(2)
-    const results = await repair.apply(items.map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` })), noopOp())
+    const results = await repair.apply(stampPlanItems(repair, items).map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` })), noopOp())
     expect(results.map((r) => r.status)).toEqual(['applied', 'applied'])
     expect(calls).toHaveLength(1)
     expect(calls[0]!.map((p) => p.ref).sort()).toEqual(['agent:enrich:model', 'agent:pixel:model'])
@@ -176,7 +181,7 @@ describe('deadSelectionRepair', () => {
     const second = await repair.plan({ type: 'incidents', reportId: 'r2', ids: ['models:models:dead-selection:agent:enrich:model'] })
     expect(second[0]!.id).not.toBe(first[0]!.id)
 
-    const results = await repair.apply(first.map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` })), noopOp())
+    const results = await repair.apply(stampPlanItems(repair, first).map((i) => ({ ...i, id: `models.apply-model-proposal:${i.id}` })), noopOp())
     expect(results[0]).toMatchObject({ status: 'applied' })
     // Exactly what the first preview displayed — FIX under rev-1, not OTHER under rev-2.
     expect(applied).toEqual([{ ref: 'agent:enrich:model', from: DEAD, to: FIX, reason: 'no credentials for openai', source: 'same-id-credentialed-provider', revision: 'rev-1' }])
@@ -186,7 +191,7 @@ describe('deadSelectionRepair', () => {
     const d: DeadSelectionDeps = { describe: async () => description(), apply: async () => { throw Object.assign(new Error('the configuration changed'), { code: 'stale_revision', status: 409 }) } }
     const repair = deadSelectionRepair(d)
     const items = await repair.plan({ type: 'incidents', reportId: 'r1', ids: ['models:models:dead-selection:agent:enrich:model'] })
-    const results = await repair.apply(items, noopOp())
+    const results = await repair.apply(stampPlanItems(repair, items), noopOp())
     expect(results[0]).toMatchObject({ status: 'failed' })
     expect(results[0]!.message).toContain('configuration changed')
   })

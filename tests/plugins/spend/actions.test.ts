@@ -32,7 +32,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
 mock.module('../../../src/core/plugin-registry', hookRegistryMock)
 
 import { budgetResumeRepair, checkBudget } from '@bakin/spend/lib/health-checks'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
 import { getSettings, resetSettingsCache } from '../../../src/core/settings'
 import { closeAllDbs } from '../../../packages/core/src/storage/db'
 import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
@@ -53,18 +53,18 @@ beforeEach(() => {
 })
 
 describe('budget-resume', () => {
-  it('the paused incident points at the repair; plan is one manual item', async () => {
+  it('the paused incident points at the repair; plan is one one-click item (resuming spends money)', async () => {
     const paused = (await rows()).find((r) => r.key === 'dispatch-paused')
-    expect(paused?.incident).toMatchObject({ key: 'dispatch-paused', resolution: { type: 'repair', actionId: 'budget-resume' } })
+    expect(paused?.incident).toMatchObject({ key: 'dispatch-paused', declarationId: 'dispatch-paused', subject: { kind: 'system', id: 'dispatch' }, resolution: { type: 'repair', actionId: 'budget-resume' } })
     const action = budgetResumeRepair()
-    const plan = await action.plan(all)
+    const plan = stampPlanItems(action, await action.plan(all))
     expect(plan).toHaveLength(1)
-    expect(plan[0]).toMatchObject({ actionId: 'budget-resume', safety: 'manual' })
+    expect(plan[0]).toMatchObject({ actionId: 'budget-resume', mode: 'one-click', effects: { spendsMoney: true } })
     expect(plan[0]!.changes[0]).toMatchObject({ kind: 'setting', target: 'dispatch.paused' })
   })
   it('apply clears the kill switch in settings.json and the row goes quiet', async () => {
     const action = budgetResumeRepair()
-    const run = await runRepairContract(action, await action.plan(all))
+    const run = await runRepairContract(action, stampPlanItems(action, await action.plan(all)))
     expectRepairContract(action, run)
     expect(run.results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['spend.budget'] })
     expect(getSettings().dispatch.paused).toBe(false)

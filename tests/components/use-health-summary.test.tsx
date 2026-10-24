@@ -45,7 +45,7 @@ function summaryResponse(body: unknown) {
   const value = body as { sensitivity?: 'standard' | 'developer'; incidents: Array<Record<string, unknown>> }
   const full = makeTeamHealthReport({ sensitivity: value.sensitivity ?? 'standard', incidents: value.incidents.map((item) => ({
     status: 'warning', disposition: 'watch', title: 'Finding', impact: 'Review this finding',
-    resources: [], resolution: { key: 'rerun', type: 'rerun', label: 'Run checks' }, observationIds: [],
+    subject: { kind: 'system', id: 'fixture' }, declarationId: 'fixture', required: false, resources: [], resolution: { key: 'diagnose-check-failure', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' }, observationIds: [],
     observedAt: '2026-07-13T12:00:00.000Z', staleAt: '2099-07-13T12:00:00.000Z', stale: false, ...item,
   })) as unknown as ReturnType<typeof makeTeamHealthReport>['incidents'] })
   full.observations = full.incidents.map((incident) => ({

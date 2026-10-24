@@ -9,7 +9,7 @@ import type {
   HealthObservation,
   HealthReport,
 } from '../../packages/core/src/plugin-types'
-import type { DetailedHealthCheckRun } from './doctor-checks'
+import { ownerSubject, type DetailedHealthCheckRun } from './doctor-checks'
 import {
   HealthAckNotFoundError,
   SNOOZE_MAX_MS,
@@ -56,7 +56,7 @@ function cloneObservation(observation: HealthObservation, snapshot = observation
     owner: { ...observation.owner },
     group: { ...observation.group },
     ...(observation.evidence ? { evidence: structuredClone(observation.evidence) } : {}),
-    ...(observation.status === 'healthy'
+    ...(observation.status === 'healthy' || !observation.incident
       ? {}
       : {
           incident: structuredClone(observation.incident),
@@ -183,8 +183,14 @@ function verificationObservation(
         ? 'Bakin cannot currently confirm whether this part of the system is healthy.'
         : 'Bakin cannot currently confirm whether this part of the system is healthy. No evidence has been produced yet — run checks to gather it.',
       disposition: 'watch',
+      // Missing or stale evidence is the check owner's subject (row 206):
+      // the fallback lane investigates past the engine's bound; until then
+      // the doctor's own refresh re-runs the check.
+      subject: ownerSubject(def.owner),
+      declarationId: 'verification',
+      required: false,
       resources: [{ kind: def.owner.kind === 'plugin' ? 'plugin' : 'other', id: def.owner.id, label: def.owner.label }],
-      resolution: { key: 'rerun-check', type: 'rerun', label: 'Check again' },
+      resolution: { key: 'diagnose-check-failure', type: 'repair', label: 'Investigate the unverified check', actionId: 'core.diagnose' },
     },
   }
 }
@@ -262,16 +268,18 @@ function safeIncidentProjection(
   generatedAt: string,
   definitions: ReadonlyMap<string, HealthCheckDef>,
 ): { observations: HealthObservation[]; incidents: ReturnType<typeof buildHealthIncidents> } {
-  const healthy = observations.filter((observation) => observation.status === 'healthy')
+  // Healthy rows and incident-less warning/unknown rows (plain observations,
+  // spec §3.1) publish as they are; only incident-bearing rows are merged.
+  const plain = observations.filter((observation) => observation.status === 'healthy' || !observation.incidentId)
   const groups = new Map<string, HealthObservation[]>()
   for (const observation of observations) {
-    if (observation.status === 'healthy') continue
+    if (observation.status === 'healthy' || !observation.incidentId) continue
     const current = groups.get(observation.incidentId) ?? []
     current.push(observation)
     groups.set(observation.incidentId, current)
   }
 
-  const published: HealthObservation[] = [...healthy]
+  const published: HealthObservation[] = [...plain]
   const incidents: ReturnType<typeof buildHealthIncidents> = []
   const conflictDetailsByCheckId = new Map<string, Set<string>>()
   for (const rows of groups.values()) {

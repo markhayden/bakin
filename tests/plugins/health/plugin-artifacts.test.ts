@@ -144,8 +144,10 @@ describe('checkPluginArtifacts — what the source offers this host', () => {
     installPlugin('stale', 'react18-old-vX')
     lockEntry('stale')
     const [row] = observed(await checkPluginArtifacts(offering(null, '2.0.0')))
-    expect(row.incident?.resolution).toMatchObject({ type: 'instructions', key: 'await-compatible-release' })
-    expect(JSON.stringify(row.incident?.resolution)).toContain('newest is 2.0.0')
+    // Row 98: upstream-blocked is the operator's decision (wait, or disable); the reason rides the impact copy.
+    expect(row.incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', key: 'await-compatible-release', href: '/health?tab=updates' })
+    expect(row.incident).toMatchObject({ declarationId: 'needs-update-blocked', required: true })
+    expect(row.incident?.impact).toContain('newest is 2.0.0')
   })
 
   it('no record, no successful observation, or a record read that throws offers the reinstall of the recorded install (never a fake upgrade)', async () => {
@@ -171,7 +173,7 @@ describe('checkPluginArtifacts — what the source offers this host', () => {
     expect(offerThenFail.evidence).toMatchObject({ compatibleVersion: '1.5.0', updateObservedAt: '2026-10-19T12:00:00.000Z', updateCheckError: 'index: 503' })
 
     const blockedThenFail = observed(await checkPluginArtifacts({ record: async () => record({ outcome: 'blocked', blockedReason: 'no published release of stale runs on this Bakin yet (newest is 2.0.0)', attempt: { at: '2026-10-20T00:00:00.000Z', error: 'index: 503' } }) }))[0]
-    expect(blockedThenFail.incident?.resolution).toMatchObject({ type: 'instructions', key: 'await-compatible-release' })
+    expect(blockedThenFail.incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', key: 'await-compatible-release' })
     expect(blockedThenFail.evidence).toMatchObject({ updateObservedAt: '2026-10-19T12:00:00.000Z', updateCheckError: 'index: 503' })
   })
 

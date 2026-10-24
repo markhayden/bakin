@@ -8,13 +8,17 @@
  */
 import { findRestartRecoveryCandidates, recoverStrandedTasks } from '../../../../src/core/restart-recovery'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthRepairActionDefinition, HealthRepairPlanItem } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition, HealthRepairPlanItemInput } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { getContentDir } from '../../../../src/core/content-dir'
 import { stableKeyPart } from './key'
 
 export const REQUEUE_STRANDED_TASKS_ACTION = 'requeue-stranded-tasks'
 const CHECK_ID = 'health.restart-recovery'
+/** Row 29: ONE incident names every stranded task (the subject is the recovery system; the tasks are its resources); row 30 is an observation. */
+export const RESTART_RECOVERY_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'stale-tasks', subjectKind: 'system', resolution: { type: 'repair', actionId: REQUEUE_STRANDED_TASKS_ACTION }, required: 'always' },
+]
 
 export async function checkRestartRecovery(): Promise<HealthCheckRunInput> {
   try {
@@ -58,6 +62,8 @@ export async function checkRestartRecovery(): Promise<HealthCheckRunInput> {
         title: 'In-progress tasks have no live run',
         impact: 'Nothing is executing these tasks; they stay stalled until recovery re-queues them or an operator chooses the next state.',
         disposition: 'action_required',
+        subject: { kind: 'system', id: 'restart-recovery', label: 'Task restart recovery' },
+        declarationId: 'stale-tasks',
         resources: candidates.slice(0, 50).map((candidate) => ({
           kind: 'task' as const,
           id: stableKeyPart(candidate.id),
@@ -71,14 +77,6 @@ export async function checkRestartRecovery(): Promise<HealthCheckRunInput> {
       key: 'candidates',
       summary: 'Restart recovery status could not be verified.',
       detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'inspection-failed',
-        title: 'Restart recovery status is unknown',
-        impact: 'Health cannot identify stale in-progress tasks that may need recovery.',
-        disposition: 'watch',
-        resources: [{ kind: 'system', id: 'task-recovery', label: 'Task restart recovery' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
     })])
   }
 }
@@ -86,7 +84,7 @@ export async function checkRestartRecovery(): Promise<HealthCheckRunInput> {
 /**
  * `requeue-stranded-tasks` (self-healing PR1 slice 1.3d, row 29): the
  * restart-recovery engine for the recoverable candidates, one item per task.
- * Re-running turns is an operator decision (S), so it is `manual`. Exhausted
+ * Re-running turns spends money (S), so the ONE mode policy makes it one-click. Exhausted
  * and manual-hold candidates are never requeued blind: they stay named in
  * the incident for the operator's choice on the board.
  */
@@ -94,17 +92,17 @@ export function requeueStrandedTasksRepair(): HealthRepairActionDefinition {
   return {
     id: REQUEUE_STRANDED_TASKS_ACTION,
     name: 'Requeue stranded tasks',
+    effects: { deletesUserContent: false, spendsMoney: true, widensAuthorization: false },
     operationPlan: () => ({ stages: [{ id: 'requeue', kind: 'installing', label: 'Return the tasks to Todo' }], pointOfNoReturn: 'requeue' }),
     async plan(target) {
       const candidates = await findRestartRecoveryCandidates(getContentDir())
       const recoverable = candidates.filter((candidate) => candidate.action === 'recover')
       const held = candidates.length - recoverable.length
-      return recoverable.map((candidate): HealthRepairPlanItem => ({
+      return recoverable.map((candidate): HealthRepairPlanItemInput => ({
         id: candidate.id,
         actionId: REQUEUE_STRANDED_TASKS_ACTION,
         title: `Requeue "${candidate.title.slice(0, 100)}"`,
         reason: `No live run is executing it (${candidate.reason}); returning it to Todo re-dispatches it (attempt ${candidate.recoveryCount + 1}).${held > 0 ? ` ${held} other stranded task${held === 1 ? ' needs' : 's need'} an operator's choice on the board.` : ''}`,
-        safety: 'manual',
         ...repairTargetSelection(target),
         changes: [{ kind: 'task', target: candidate.id, action: 'update', description: `Return "${candidate.title.slice(0, 100)}" to Todo so dispatch runs it again; its recovery count goes up by one.` }],
       }))

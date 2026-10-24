@@ -193,7 +193,7 @@ filter locally in the plugin UI.
 | Show schedule jobs | `boolean` | `false` | Display recurring schedule jobs on the content calendar |
 | Channels | `string` | `DEFAULT_CHANNEL` | Comma-separated runtime channel IDs available for distribution (e.g., general,announcements,email) |
 | Agent plan activation | `select` | `blocked` | Controls whether MCP agents can activate Plans and create kickoff tasks. |
-| Agent deliverable approval | `select` | `blocked` | Controls whether MCP agents can approve or reject Deliverables. |
+| Agent deliverable approval | `select` | `blocked` | Controls whether MCP agents can approve or reject bare-task Deliverables. Workflow-backed Deliverables wait at a workflow gate, which only you can decide. |
 | Content types | `list` | `true` | Categories used across the content calendar and brainstorm proposals. |
 
 </div>

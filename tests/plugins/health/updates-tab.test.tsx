@@ -224,7 +224,7 @@ describe('UpdatesTabView — apply, the whole flow inside the dialog', () => {
       if (url === '/api/updates/search-engine%3Aantfly/apply-preview') {
         return json({ bootId: 'b', preview: { id: ENGINE.id, record: ENGINE, action: ENGINE.action, approval: {
           approvalId: 'apr-1', taskId: 'task-1', title: 'Repair the search engine', incidentIds: ['inc-1'], observationIds: ['obs-1'], subjectIds: [ENGINE.id], scopeHash: 'hash-1',
-          items: [{ actionId: 'install-search', itemId: 'install-search', safety: 'manual', changes: [{ kind: 'file', target: 'antfly', action: 'install', description: 'Install antfly v0.2.5 into ~/.bakin/antfly.' }] }],
+          items: [{ actionId: 'install-search', itemId: 'install-search', effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true }, mode: 'one-click', changes: [{ kind: 'file', target: 'antfly', action: 'install', description: 'Install antfly v0.2.5 into ~/.bakin/antfly.' }] }],
         } } })
       }
       if (url === '/api/updates/search-engine%3Aantfly/apply' && init?.method === 'POST') {
@@ -354,7 +354,7 @@ describe('UpdatesTabView — review round 2 (#8, #9 of round 1 pinned)', () => {
       const op = operationResponse(url, operations)
       if (op) return op
       if (url === '/api/updates/plugin%3Anotes/apply-preview') {
-        return json({ bootId: 'b', preview: { id: PLUGIN.id, record: PLUGIN, action: PLUGIN.action, approval: { approvalId: 'apr-2', taskId: 'task-2', title: 'Upgrade notes to a release this Bakin can run', incidentIds: ['inc-2'], observationIds: ['obs-2'], subjectIds: [PLUGIN.id], scopeHash: 'hash-2', items: [{ actionId: 'plugin-upgrade', itemId: 'plugin-upgrade', safety: 'manual', changes: [{ kind: 'file', target: 'notes', action: 'update', description: 'Upgrade notes 1.0.0 → 1.1.0.' }] }] } } })
+        return json({ bootId: 'b', preview: { id: PLUGIN.id, record: PLUGIN, action: PLUGIN.action, approval: { approvalId: 'apr-2', taskId: 'task-2', title: 'Upgrade notes to a release this Bakin can run', incidentIds: ['inc-2'], observationIds: ['obs-2'], subjectIds: [PLUGIN.id], scopeHash: 'hash-2', items: [{ actionId: 'plugin-upgrade', itemId: 'plugin-upgrade', effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true }, mode: 'one-click', changes: [{ kind: 'file', target: 'notes', action: 'update', description: 'Upgrade notes 1.0.0 → 1.1.0.' }] }] } } })
       }
       if (url === '/api/updates/plugin%3Anotes/apply' && init?.method === 'POST') return operationStarted(next)
       throw new Error(`Unexpected URL: ${url}`)

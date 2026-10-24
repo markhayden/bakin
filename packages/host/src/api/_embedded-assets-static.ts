@@ -22,55 +22,54 @@ import asset_bakin_logo_svg from '../../public/bakin-logo.svg' with { type: 'fil
 import asset_bakin_hop_svg from '../../public/bakin-hop.svg' with { type: 'file' }
 import asset_vendor_sdk_ui_js from '../../public/vendor/sdk-ui.js' with { type: 'file' }
 import asset_vendor_sdk_routing_js from '../../public/vendor/sdk-routing.js' with { type: 'file' }
-import asset_vendor_sdk_shared_kk89qmtq_js from '../../public/vendor/sdk-shared-kk89qmtq.js' with { type: 'file' }
+import asset_vendor_sdk_shared_x9ykjhyw_js from '../../public/vendor/sdk-shared-x9ykjhyw.js' with { type: 'file' }
+import asset_vendor_sdk_shared_5ksmahwb_js from '../../public/vendor/sdk-shared-5ksmahwb.js' with { type: 'file' }
 import asset_vendor_sdk_conversation_js from '../../public/vendor/sdk-conversation.js' with { type: 'file' }
-import asset_vendor_sdk_shared_g01nbazc_js from '../../public/vendor/sdk-shared-g01nbazc.js' with { type: 'file' }
-import asset_vendor_sdk_shared_mm1qn9t2_js from '../../public/vendor/sdk-shared-mm1qn9t2.js' with { type: 'file' }
-import asset_vendor_sdk_shared_cjhybaag_js from '../../public/vendor/sdk-shared-cjhybaag.js' with { type: 'file' }
-import asset_vendor_sdk_shared_wbna9y9n_js from '../../public/vendor/sdk-shared-wbna9y9n.js' with { type: 'file' }
-import asset_vendor_sdk_shared_93d34d0n_js from '../../public/vendor/sdk-shared-93d34d0n.js' with { type: 'file' }
+import asset_vendor_sdk_shared_ccj5999n_js from '../../public/vendor/sdk-shared-ccj5999n.js' with { type: 'file' }
+import asset_vendor_sdk_shared_2by9tea0_js from '../../public/vendor/sdk-shared-2by9tea0.js' with { type: 'file' }
+import asset_vendor_sdk_shared_r6mtyymv_js from '../../public/vendor/sdk-shared-r6mtyymv.js' with { type: 'file' }
 import asset_vendor_sdk_content_js from '../../public/vendor/sdk-content.js' with { type: 'file' }
-import asset_vendor_sdk_shared_7ew9baw5_js from '../../public/vendor/sdk-shared-7ew9baw5.js' with { type: 'file' }
-import asset_vendor_sdk_shared_9nbwx6zb_js from '../../public/vendor/sdk-shared-9nbwx6zb.js' with { type: 'file' }
+import asset_vendor_sdk_shared_4rwy4z7g_js from '../../public/vendor/sdk-shared-4rwy4z7g.js' with { type: 'file' }
 import asset_vendor_react_js from '../../public/vendor/react.js' with { type: 'file' }
-import asset_vendor_sdk_shared_y1hxwg5g_js from '../../public/vendor/sdk-shared-y1hxwg5g.js' with { type: 'file' }
 import asset_vendor_sdk_shared_n78zz4b7_js from '../../public/vendor/sdk-shared-n78zz4b7.js' with { type: 'file' }
 import asset_vendor_sdk_shared_s9hdzc7k_js from '../../public/vendor/sdk-shared-s9hdzc7k.js' with { type: 'file' }
-import asset_vendor_sdk_shared_85bw1rcy_js from '../../public/vendor/sdk-shared-85bw1rcy.js' with { type: 'file' }
-import asset_vendor_sdk_shared_q5cgbq7s_js from '../../public/vendor/sdk-shared-q5cgbq7s.js' with { type: 'file' }
 import asset_vendor_jsx_runtime_js from '../../public/vendor/jsx-runtime.js' with { type: 'file' }
-import asset_vendor_sdk_shared_ng1ndgz5_js from '../../public/vendor/sdk-shared-ng1ndgz5.js' with { type: 'file' }
-import asset_vendor_sdk_shared_mn42h0xh_js from '../../public/vendor/sdk-shared-mn42h0xh.js' with { type: 'file' }
+import asset_vendor_sdk_shared_my8kxvv5_js from '../../public/vendor/sdk-shared-my8kxvv5.js' with { type: 'file' }
+import asset_vendor_sdk_shared_ky9pzgdz_js from '../../public/vendor/sdk-shared-ky9pzgdz.js' with { type: 'file' }
+import asset_vendor_sdk_shared_pfqtc0vt_js from '../../public/vendor/sdk-shared-pfqtc0vt.js' with { type: 'file' }
+import asset_vendor_sdk_shared_5mzpj772_js from '../../public/vendor/sdk-shared-5mzpj772.js' with { type: 'file' }
+import asset_vendor_sdk_shared_xg420yt4_js from '../../public/vendor/sdk-shared-xg420yt4.js' with { type: 'file' }
+import asset_vendor_sdk_shared_dn3rsgsx_js from '../../public/vendor/sdk-shared-dn3rsgsx.js' with { type: 'file' }
 import asset_vendor_sdk_utils_js from '../../public/vendor/sdk-utils.js' with { type: 'file' }
-import asset_vendor_sdk_shared_4ksgj243_js from '../../public/vendor/sdk-shared-4ksgj243.js' with { type: 'file' }
+import asset_vendor_sdk_shared_haxr9fm3_js from '../../public/vendor/sdk-shared-haxr9fm3.js' with { type: 'file' }
 import asset_vendor_zod_js from '../../public/vendor/zod.js' with { type: 'file' }
-import asset_vendor_sdk_shared_8njamad0_js from '../../public/vendor/sdk-shared-8njamad0.js' with { type: 'file' }
-import asset_vendor_sdk_shared_2wrpvvtd_js from '../../public/vendor/sdk-shared-2wrpvvtd.js' with { type: 'file' }
+import asset_vendor_sdk_shared_wkh1qj7t_js from '../../public/vendor/sdk-shared-wkh1qj7t.js' with { type: 'file' }
 import asset_vendor_sdk_types_js from '../../public/vendor/sdk-types.js' with { type: 'file' }
+import asset_vendor_sdk_shared_wn874wv5_js from '../../public/vendor/sdk-shared-wn874wv5.js' with { type: 'file' }
+import asset_vendor_sdk_shared_3pat975s_js from '../../public/vendor/sdk-shared-3pat975s.js' with { type: 'file' }
 import asset_vendor_sdk_shared_259qqj2h_js from '../../public/vendor/sdk-shared-259qqj2h.js' with { type: 'file' }
-import asset_vendor_sdk_shared_1t4nyhpr_js from '../../public/vendor/sdk-shared-1t4nyhpr.js' with { type: 'file' }
+import asset_vendor_sdk_shared_0mcs4bz7_js from '../../public/vendor/sdk-shared-0mcs4bz7.js' with { type: 'file' }
 import asset_vendor_react_dom_js from '../../public/vendor/react-dom.js' with { type: 'file' }
-import asset_vendor_sdk_shared_3qf25qh8_js from '../../public/vendor/sdk-shared-3qf25qh8.js' with { type: 'file' }
-import asset_vendor_sdk_shared_pd0pd2gz_js from '../../public/vendor/sdk-shared-pd0pd2gz.js' with { type: 'file' }
-import asset_vendor_sdk_shared_gb0kq2s8_js from '../../public/vendor/sdk-shared-gb0kq2s8.js' with { type: 'file' }
-import asset_vendor_sdk_shared_v7g4405w_js from '../../public/vendor/sdk-shared-v7g4405w.js' with { type: 'file' }
-import asset_vendor_sdk_shared_xjfazdkx_js from '../../public/vendor/sdk-shared-xjfazdkx.js' with { type: 'file' }
+import asset_vendor_sdk_shared_swjwfe35_js from '../../public/vendor/sdk-shared-swjwfe35.js' with { type: 'file' }
+import asset_vendor_sdk_shared_gpnd19p9_js from '../../public/vendor/sdk-shared-gpnd19p9.js' with { type: 'file' }
 import asset_vendor_sdk_charts_js from '../../public/vendor/sdk-charts.js' with { type: 'file' }
 import asset_vendor_sdk_index_js from '../../public/vendor/sdk-index.js' with { type: 'file' }
 import asset_vendor_sdk_layout_js from '../../public/vendor/sdk-layout.js' with { type: 'file' }
-import asset_vendor_sdk_shared_xtspe7r4_js from '../../public/vendor/sdk-shared-xtspe7r4.js' with { type: 'file' }
+import asset_vendor_sdk_shared_ntz2n8w3_js from '../../public/vendor/sdk-shared-ntz2n8w3.js' with { type: 'file' }
+import asset_vendor_sdk_shared_6b1c9tzc_js from '../../public/vendor/sdk-shared-6b1c9tzc.js' with { type: 'file' }
 import asset_vendor_sdk_slots_js from '../../public/vendor/sdk-slots.js' with { type: 'file' }
-import asset_vendor_sdk_shared_h9j45y2e_js from '../../public/vendor/sdk-shared-h9j45y2e.js' with { type: 'file' }
-import asset_vendor_sdk_shared_cg6sac27_js from '../../public/vendor/sdk-shared-cg6sac27.js' with { type: 'file' }
 import asset_vendor_sdk_patterns_js from '../../public/vendor/sdk-patterns.js' with { type: 'file' }
+import asset_vendor_sdk_shared_7ad7sb2w_js from '../../public/vendor/sdk-shared-7ad7sb2w.js' with { type: 'file' }
 import asset_vendor_sdk_shared_45f47xth_js from '../../public/vendor/sdk-shared-45f47xth.js' with { type: 'file' }
+import asset_vendor_sdk_shared_xwdabn0r_js from '../../public/vendor/sdk-shared-xwdabn0r.js' with { type: 'file' }
+import asset_vendor_sdk_shared_pbdak51x_js from '../../public/vendor/sdk-shared-pbdak51x.js' with { type: 'file' }
 import asset_vendor_sdk_hooks_js from '../../public/vendor/sdk-hooks.js' with { type: 'file' }
 import asset_vendor_tanstack_router_js from '../../public/vendor/tanstack-router.js' with { type: 'file' }
 import asset_vendor_sdk_navigation_js from '../../public/vendor/sdk-navigation.js' with { type: 'file' }
 import asset_vendor_sdk_internal_js from '../../public/vendor/sdk-internal.js' with { type: 'file' }
-import asset_vendor_sdk_shared_jkrx0jmp_js from '../../public/vendor/sdk-shared-jkrx0jmp.js' with { type: 'file' }
+import asset_vendor_sdk_shared_1cnwkez6_js from '../../public/vendor/sdk-shared-1cnwkez6.js' with { type: 'file' }
+import asset_vendor_sdk_shared_tpzwve30_js from '../../public/vendor/sdk-shared-tpzwve30.js' with { type: 'file' }
 import asset_vendor_jsx_dev_runtime_js from '../../public/vendor/jsx-dev-runtime.js' with { type: 'file' }
-import asset_vendor_sdk_shared_qxgg0cjv_js from '../../public/vendor/sdk-shared-qxgg0cjv.js' with { type: 'file' }
 import asset_api_plugins_schedule_assets_client_js from '../../../../plugins/schedule/dist/client.js' with { type: 'file' }
 import asset_api_plugins_tasks_assets_client_js from '../../../../plugins/tasks/dist/client.js' with { type: 'file' }
 import asset_api_plugins_memory_assets_client_js from '../../../../plugins/memory/dist/client.js' with { type: 'file' }
@@ -117,55 +116,54 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/bakin-hop.svg', asset_bakin_hop_svg],
   ['/vendor/sdk-ui.js', asset_vendor_sdk_ui_js],
   ['/vendor/sdk-routing.js', asset_vendor_sdk_routing_js],
-  ['/vendor/sdk-shared-kk89qmtq.js', asset_vendor_sdk_shared_kk89qmtq_js],
+  ['/vendor/sdk-shared-x9ykjhyw.js', asset_vendor_sdk_shared_x9ykjhyw_js],
+  ['/vendor/sdk-shared-5ksmahwb.js', asset_vendor_sdk_shared_5ksmahwb_js],
   ['/vendor/sdk-conversation.js', asset_vendor_sdk_conversation_js],
-  ['/vendor/sdk-shared-g01nbazc.js', asset_vendor_sdk_shared_g01nbazc_js],
-  ['/vendor/sdk-shared-mm1qn9t2.js', asset_vendor_sdk_shared_mm1qn9t2_js],
-  ['/vendor/sdk-shared-cjhybaag.js', asset_vendor_sdk_shared_cjhybaag_js],
-  ['/vendor/sdk-shared-wbna9y9n.js', asset_vendor_sdk_shared_wbna9y9n_js],
-  ['/vendor/sdk-shared-93d34d0n.js', asset_vendor_sdk_shared_93d34d0n_js],
+  ['/vendor/sdk-shared-ccj5999n.js', asset_vendor_sdk_shared_ccj5999n_js],
+  ['/vendor/sdk-shared-2by9tea0.js', asset_vendor_sdk_shared_2by9tea0_js],
+  ['/vendor/sdk-shared-r6mtyymv.js', asset_vendor_sdk_shared_r6mtyymv_js],
   ['/vendor/sdk-content.js', asset_vendor_sdk_content_js],
-  ['/vendor/sdk-shared-7ew9baw5.js', asset_vendor_sdk_shared_7ew9baw5_js],
-  ['/vendor/sdk-shared-9nbwx6zb.js', asset_vendor_sdk_shared_9nbwx6zb_js],
+  ['/vendor/sdk-shared-4rwy4z7g.js', asset_vendor_sdk_shared_4rwy4z7g_js],
   ['/vendor/react.js', asset_vendor_react_js],
-  ['/vendor/sdk-shared-y1hxwg5g.js', asset_vendor_sdk_shared_y1hxwg5g_js],
   ['/vendor/sdk-shared-n78zz4b7.js', asset_vendor_sdk_shared_n78zz4b7_js],
   ['/vendor/sdk-shared-s9hdzc7k.js', asset_vendor_sdk_shared_s9hdzc7k_js],
-  ['/vendor/sdk-shared-85bw1rcy.js', asset_vendor_sdk_shared_85bw1rcy_js],
-  ['/vendor/sdk-shared-q5cgbq7s.js', asset_vendor_sdk_shared_q5cgbq7s_js],
   ['/vendor/jsx-runtime.js', asset_vendor_jsx_runtime_js],
-  ['/vendor/sdk-shared-ng1ndgz5.js', asset_vendor_sdk_shared_ng1ndgz5_js],
-  ['/vendor/sdk-shared-mn42h0xh.js', asset_vendor_sdk_shared_mn42h0xh_js],
+  ['/vendor/sdk-shared-my8kxvv5.js', asset_vendor_sdk_shared_my8kxvv5_js],
+  ['/vendor/sdk-shared-ky9pzgdz.js', asset_vendor_sdk_shared_ky9pzgdz_js],
+  ['/vendor/sdk-shared-pfqtc0vt.js', asset_vendor_sdk_shared_pfqtc0vt_js],
+  ['/vendor/sdk-shared-5mzpj772.js', asset_vendor_sdk_shared_5mzpj772_js],
+  ['/vendor/sdk-shared-xg420yt4.js', asset_vendor_sdk_shared_xg420yt4_js],
+  ['/vendor/sdk-shared-dn3rsgsx.js', asset_vendor_sdk_shared_dn3rsgsx_js],
   ['/vendor/sdk-utils.js', asset_vendor_sdk_utils_js],
-  ['/vendor/sdk-shared-4ksgj243.js', asset_vendor_sdk_shared_4ksgj243_js],
+  ['/vendor/sdk-shared-haxr9fm3.js', asset_vendor_sdk_shared_haxr9fm3_js],
   ['/vendor/zod.js', asset_vendor_zod_js],
-  ['/vendor/sdk-shared-8njamad0.js', asset_vendor_sdk_shared_8njamad0_js],
-  ['/vendor/sdk-shared-2wrpvvtd.js', asset_vendor_sdk_shared_2wrpvvtd_js],
+  ['/vendor/sdk-shared-wkh1qj7t.js', asset_vendor_sdk_shared_wkh1qj7t_js],
   ['/vendor/sdk-types.js', asset_vendor_sdk_types_js],
+  ['/vendor/sdk-shared-wn874wv5.js', asset_vendor_sdk_shared_wn874wv5_js],
+  ['/vendor/sdk-shared-3pat975s.js', asset_vendor_sdk_shared_3pat975s_js],
   ['/vendor/sdk-shared-259qqj2h.js', asset_vendor_sdk_shared_259qqj2h_js],
-  ['/vendor/sdk-shared-1t4nyhpr.js', asset_vendor_sdk_shared_1t4nyhpr_js],
+  ['/vendor/sdk-shared-0mcs4bz7.js', asset_vendor_sdk_shared_0mcs4bz7_js],
   ['/vendor/react-dom.js', asset_vendor_react_dom_js],
-  ['/vendor/sdk-shared-3qf25qh8.js', asset_vendor_sdk_shared_3qf25qh8_js],
-  ['/vendor/sdk-shared-pd0pd2gz.js', asset_vendor_sdk_shared_pd0pd2gz_js],
-  ['/vendor/sdk-shared-gb0kq2s8.js', asset_vendor_sdk_shared_gb0kq2s8_js],
-  ['/vendor/sdk-shared-v7g4405w.js', asset_vendor_sdk_shared_v7g4405w_js],
-  ['/vendor/sdk-shared-xjfazdkx.js', asset_vendor_sdk_shared_xjfazdkx_js],
+  ['/vendor/sdk-shared-swjwfe35.js', asset_vendor_sdk_shared_swjwfe35_js],
+  ['/vendor/sdk-shared-gpnd19p9.js', asset_vendor_sdk_shared_gpnd19p9_js],
   ['/vendor/sdk-charts.js', asset_vendor_sdk_charts_js],
   ['/vendor/sdk-index.js', asset_vendor_sdk_index_js],
   ['/vendor/sdk-layout.js', asset_vendor_sdk_layout_js],
-  ['/vendor/sdk-shared-xtspe7r4.js', asset_vendor_sdk_shared_xtspe7r4_js],
+  ['/vendor/sdk-shared-ntz2n8w3.js', asset_vendor_sdk_shared_ntz2n8w3_js],
+  ['/vendor/sdk-shared-6b1c9tzc.js', asset_vendor_sdk_shared_6b1c9tzc_js],
   ['/vendor/sdk-slots.js', asset_vendor_sdk_slots_js],
-  ['/vendor/sdk-shared-h9j45y2e.js', asset_vendor_sdk_shared_h9j45y2e_js],
-  ['/vendor/sdk-shared-cg6sac27.js', asset_vendor_sdk_shared_cg6sac27_js],
   ['/vendor/sdk-patterns.js', asset_vendor_sdk_patterns_js],
+  ['/vendor/sdk-shared-7ad7sb2w.js', asset_vendor_sdk_shared_7ad7sb2w_js],
   ['/vendor/sdk-shared-45f47xth.js', asset_vendor_sdk_shared_45f47xth_js],
+  ['/vendor/sdk-shared-xwdabn0r.js', asset_vendor_sdk_shared_xwdabn0r_js],
+  ['/vendor/sdk-shared-pbdak51x.js', asset_vendor_sdk_shared_pbdak51x_js],
   ['/vendor/sdk-hooks.js', asset_vendor_sdk_hooks_js],
   ['/vendor/tanstack-router.js', asset_vendor_tanstack_router_js],
   ['/vendor/sdk-navigation.js', asset_vendor_sdk_navigation_js],
   ['/vendor/sdk-internal.js', asset_vendor_sdk_internal_js],
-  ['/vendor/sdk-shared-jkrx0jmp.js', asset_vendor_sdk_shared_jkrx0jmp_js],
+  ['/vendor/sdk-shared-1cnwkez6.js', asset_vendor_sdk_shared_1cnwkez6_js],
+  ['/vendor/sdk-shared-tpzwve30.js', asset_vendor_sdk_shared_tpzwve30_js],
   ['/vendor/jsx-dev-runtime.js', asset_vendor_jsx_dev_runtime_js],
-  ['/vendor/sdk-shared-qxgg0cjv.js', asset_vendor_sdk_shared_qxgg0cjv_js],
   ['/api/plugins/schedule/assets/client.js', asset_api_plugins_schedule_assets_client_js],
   ['/api/plugins/tasks/assets/client.js', asset_api_plugins_tasks_assets_client_js],
   ['/api/plugins/memory/assets/client.js', asset_api_plugins_memory_assets_client_js],
@@ -202,4 +200,4 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/data/curated-catalog.json', asset_data_curated_catalog_json],
 ])
 
-export const EMBEDDED_ASSET_COUNT = 90
+export const EMBEDDED_ASSET_COUNT = 89

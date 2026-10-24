@@ -16,8 +16,8 @@ import { modelsRoutes } from './lib/routes'
 import { registerModelsHooks } from './lib/register-hooks'
 import { registerModelsExecTools } from './lib/exec-tools'
 import { isLegacyRouting, migrateLegacyRouting } from '../../src/core/routing-migration'
-import { buildRoutingHealthDeps, checkModelRouting, recommendedRoutesRepair } from './lib/health-checks'
-import { checkDeadSelections, deadSelectionRepair } from './lib/dead-selections'
+import { MODELS_ROUTING_INCIDENTS, buildRoutingHealthDeps, checkModelRouting, recommendedRoutesRepair } from './lib/health-checks'
+import { MODELS_DEAD_SELECTIONS_INCIDENTS, checkDeadSelections, deadSelectionRepair } from './lib/dead-selections'
 import { applySelections, describeSelections, getSelectionMutator, readRoutingSettings } from './lib/selections'
 import { currentPlan } from './lib/plan'
 import { listRunCostsSince } from '../../src/core/execution-ledger'
@@ -77,6 +77,7 @@ const modelsPlugin: BakinPlugin = definePlugin({
       description: 'Every persisted model selection (agent pins, work-class routes, tag overrides, runtime defaults) whose model has no credentials, was rejected by the account, or is gone from the catalog — each with a proposed repair.',
       group: { key: 'models', label: 'Models' },
       maxAgeMs: 60_000,
+      incidents: MODELS_DEAD_SELECTIONS_INCIDENTS,
       run: () => checkDeadSelections(deadDeps),
     })
 
@@ -86,6 +87,7 @@ const modelsPlugin: BakinPlugin = definePlugin({
       description: 'Flags unrouted system classes, clamping thinking levels, and premium models on cheap work. (Routes to models that cannot run are the dead-selections check.)',
       group: { key: 'models', label: 'Models' },
       maxAgeMs: 60_000,
+      incidents: MODELS_ROUTING_INCIDENTS,
       run: () => checkModelRouting(routingDeps),
     })
   },

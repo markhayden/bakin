@@ -36,7 +36,8 @@ const mockPlan: HealthRepairPlan = {
       actionId: 'tasks.repair-taskboard',
       title: 'Restore task board columns',
       reason: 'The task board is missing required columns.',
-      safety: 'safe',
+      effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+      mode: 'self-heal',
       incidentIds: [actionableIncident.id],
       observationIds: [actionableObservation.id],
       preconditions: [{
@@ -52,7 +53,8 @@ const mockPlan: HealthRepairPlan = {
       actionId: 'channels.configure',
       title: 'Configure an approval channel',
       reason: 'Credentials require an operator decision.',
-      safety: 'manual',
+      effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true },
+      mode: 'one-click',
       incidentIds: ['core:channels:approval'],
       observationIds: ['core.channels:approval'],
       preconditions: [],
@@ -258,7 +260,7 @@ describe('canonical CLI doctor repair', () => {
     await main()
 
     const output = loggedOutput()
-    expect(prompts[0]).toStartWith('\nApply 1 safe repair item? [y/N]')
+    expect(prompts[0]).toStartWith('\nApply 1 safe repair item? [y/N]') // the fix prompt still says "safe": it applies self-heal items only
     expect(output).toContain('Doctor repair plan')
     expect(output).toContain('Doctor repair results')
     expect(headerCount(output)).toBe(1)

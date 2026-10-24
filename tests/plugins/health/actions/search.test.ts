@@ -61,7 +61,8 @@ mock.module('../../../../src/core/doctor-report-cache', () => ({
   }),
 }))
 
-import type { HealthRepairTarget } from '@makinbakin/sdk'
+import type { HealthRepairActionDefinition, HealthRepairPlanItem, HealthRepairPlanItemInput, HealthRepairTarget } from '@makinbakin/sdk'
+import { repairMode } from '@bakin/core/health/repair-mode'
 import { noopOp } from '../../../helpers/operation-harness'
 // Narrow overlays must spread the real module (a missing export breaks every later importer).
 import * as realSettings from '../../../../src/core/settings'
@@ -77,6 +78,10 @@ import { checkSearchAdapter } from '../../../../plugins/health/lib/system-checks
 
 const target: HealthRepairTarget = { type: 'observations', reportId: 'report-test', ids: ['health.search:engine.connection'] }
 
+/** Core stamps `effects` + `mode` on planned items before apply (the ONE mode policy); tests mirror that. */
+const canonical = (action: HealthRepairActionDefinition, items: HealthRepairPlanItemInput[]): HealthRepairPlanItem[] =>
+  items.map((item) => ({ ...item, effects: item.effects ?? action.effects, mode: repairMode(item.effects ?? action.effects) }))
+
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 beforeEach(async () => {
   rmSync(testDir, { recursive: true, force: true }); mkdirSync(testDir, { recursive: true })
@@ -89,8 +94,11 @@ describe('search-engine-restart', () => {
     const action = searchEngineRestartRepair()
     expect(action.id).toBe('search-engine-restart')
     const plan = await action.plan(target)
-    expect(plan[0]).toMatchObject({ actionId: 'search-engine-restart', safety: 'safe' })
-    const [result] = await action.apply(plan, noopOp())
+    expect(plan[0]).toMatchObject({ actionId: 'search-engine-restart' })
+    // Row 57: a supervised restart self-heals; row 68's journal backlog is resolved by it.
+    expect(action.effects).toMatchObject({ restartsService: 'search-engine', deletesUserContent: false, resolves: ['stale-backlog'] })
+    expect(repairMode(action.effects)).toBe('self-heal')
+    const [result] = await action.apply(canonical(action, plan), noopOp())
     expect(restarts).toBe(1)
     expect(result).toMatchObject({ status: 'applied', affectedCheckIds: ['health.search'] })
   })
@@ -100,9 +108,11 @@ describe('search-engine-install / search-engine-claim', () => {
   it('install runs the ONE onboarding search component without a service claim and reports applied', async () => {
     const action = searchEngineInstallRepair()
     const plan = await action.plan(target)
-    expect(plan[0]).toMatchObject({ actionId: 'search-engine-install', safety: 'safe' })
+    expect(plan[0]).toMatchObject({ actionId: 'search-engine-install' })
+    expect(repairMode(action.effects)).toBe('self-heal')
+    expect(action.mutation).toBe('reinstall')
     expect(action.resources).toEqual(['search-engine'])
-    const [result] = await action.apply(plan, noopOp())
+    const [result] = await action.apply(canonical(action, plan), noopOp())
     expect(installs).toEqual([{ autoApprove: true, allowServiceClaim: false }])
     expect(result.status).toBe('applied')
   })
@@ -110,16 +120,18 @@ describe('search-engine-install / search-engine-claim', () => {
   it('install reports failed with the component message when the install fails', async () => {
     installStatus = 'failed'
     const action = searchEngineInstallRepair()
-    const [result] = await action.apply(await action.plan(target), noopOp())
+    const [result] = await action.apply(canonical(action, await action.plan(target)), noopOp())
     expect(result.status).toBe('failed')
     expect(result.message).toContain('download failed')
   })
 
-  it('claim is the operator decision: planned manual, applied WITH the service claim', async () => {
+  it('claim is the operator decision: one-click (it widens what this home may own), applied WITH the service claim', async () => {
     const action = searchEngineClaimRepair()
     const plan = await action.plan(target)
-    expect(plan[0]).toMatchObject({ actionId: 'search-engine-claim', safety: 'manual' })
-    await action.apply(plan, noopOp())
+    expect(plan[0]).toMatchObject({ actionId: 'search-engine-claim' })
+    expect(action.effects.widensAuthorization).toBe(true)
+    expect(repairMode(action.effects)).toBe('one-click')
+    await action.apply(canonical(action, plan), noopOp())
     expect(installs).toEqual([{ autoApprove: true, allowServiceClaim: true }])
   })
 })
@@ -130,8 +142,9 @@ describe('search-engine-watch-reset', () => {
     mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, '{ not json')
     const action = searchEngineWatchResetRepair()
     const plan = await action.plan({ type: 'observations', reportId: 'r', ids: ['health.search-canary:state.persistence'] })
-    expect(plan[0]).toMatchObject({ actionId: 'search-engine-watch-reset', safety: 'safe' })
-    const [result] = await action.apply(plan, noopOp())
+    expect(plan[0]).toMatchObject({ actionId: 'search-engine-watch-reset' })
+    expect(repairMode(action.effects)).toBe('self-heal')
+    const [result] = await action.apply(canonical(action, plan), noopOp())
     expect(result.status).toBe('applied')
     // The unreadable file is kept aside; a fresh, valid zero-streak history takes its place.
     expect(readdirSync(dirname(path)).some((f) => f.startsWith('engine-watch.json.rejected-'))).toBe(true)
@@ -141,20 +154,23 @@ describe('search-engine-watch-reset', () => {
 })
 
 describe('search-drop-unclaimed-tables', () => {
-  it('plans one manual item per unclaimed table from the report and drops exactly those', async () => {
+  it('plans one one-click item per unclaimed table from the report and drops exactly those', async () => {
     unclaimed = ['bakin_tasks_v1_dead', 'bakin_team_v1_dead']
     const action = searchDropUnclaimedTablesRepair()
     const plan = await action.plan({ type: 'observations', reportId: 'r', ids: ['health.search-consistency:indexes.sweep.unclaimed'] })
     expect(plan).toHaveLength(2)
-    expect(plan.every((item) => item.safety === 'manual' && item.actionId === 'search-drop-unclaimed-tables')).toBe(true)
-    const results = await action.apply(plan, noopOp())
+    expect(plan.every((item) => item.actionId === 'search-drop-unclaimed-tables')).toBe(true)
+    // Row 76: another instance's index data dies with the table — the operator decides.
+    expect(repairMode(action.effects)).toBe('one-click')
+    expect(action.mutation).toBe('delete')
+    const results = await action.apply(canonical(action, plan), noopOp())
     expect(dropped.sort()).toEqual(['bakin_tasks_v1_dead', 'bakin_team_v1_dead'])
     expect(results.every((r) => r.status === 'applied')).toBe(true)
   })
 })
 
-describe('incidents repointed under the old contract', () => {
-  it('engine-unavailable, binary-missing and service-unprovisioned are repairs now (guest mode keeps its instructions)', async () => {
+describe('incidents under the three-outcomes contract', () => {
+  it('engine-unavailable is the restart repair on the engine subject', async () => {
     mock.module('../../../../src/core/settings', () => ({ ...realSettings, getSettings: () => ({ search: { adapter: 'antfly', settings: { enabled: true } } }) }))
     mock.module('../../../../src/core/search-adapter-factory', () => ({
       ...realSearchFactory,
@@ -166,7 +182,7 @@ describe('incidents repointed under the old contract', () => {
     const run = await check()
     const rows = (run as { observations: Array<{ key: string; incident?: { key: string; resolution: { type: string; actionId?: string } } }> }).observations
     const connection = rows.find((row) => row.key === 'engine.connection')
-    expect(connection?.incident).toMatchObject({ key: 'engine-unavailable', resolution: { type: 'repair', actionId: 'search-engine-restart' } })
+    expect(connection?.incident).toMatchObject({ key: 'engine-unavailable', declarationId: 'engine-unavailable', subject: { kind: 'service', id: 'search-engine' }, resolution: { type: 'repair', actionId: 'search-engine-restart' } })
     void checkSearchAdapter
   })
 })

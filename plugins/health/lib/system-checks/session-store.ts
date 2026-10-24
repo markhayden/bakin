@@ -11,12 +11,16 @@
  */
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition, HealthRepairPlanItem, HealthRepairTarget } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput, HealthRepairActionDefinition, HealthRepairPlanItemInput, HealthRepairTarget } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { stableKeyPart } from './key'
 
 export const SESSION_STORE_PRUNE_ACTION = 'session-store-prune'
 const CHECK_ID = 'health.session-store'
+/** Row 14: the oversized store is the one incident (one-click, D); rows 13/15/16 are observations. */
+export const SESSION_STORE_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'oversized', subjectKind: 'agent', resolution: { type: 'repair', actionId: SESSION_STORE_PRUNE_ACTION }, required: 'always' },
+]
 
 // First-guess thresholds, sized against observed reality on 2026-06-11
 // (main at 321MB / 1,812 files / 74 entries — a 24x orphan ratio).
@@ -41,18 +45,11 @@ export async function checkSessionStore(
   try {
     stats = await runtime.sessions.storeStats()
   } catch (err) {
+    // Row 13: an inspection that failed is an observation; the check's maxAgeMs re-runs it.
     return healthObserved([healthUnknown({
       key: 'usage',
       summary: 'Session-store usage could not be verified.',
       detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'inspection-failed',
-        title: 'Session-store usage is unknown',
-        impact: 'Health cannot tell whether runtime session artifacts are consuming excessive disk space.',
-        disposition: 'watch',
-        resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
     })])
   }
 
@@ -84,59 +81,31 @@ export async function checkSessionStore(
         incident: {
           key: `oversized:${stableKeyPart(agent.agentId)}`,
           title: 'Session store exceeds 1 GB',
-          impact: 'Continued growth can exhaust local disk space and slow runtime session operations.',
+          // Row 14: the adapter's own cleanup is the repair; a runtime without
+          // one plans nothing, and its guidance rides the impact copy.
+          impact: `Continued growth can exhaust local disk space and slow runtime session operations.${runtime.sessions.pruneStore ? '' : ` ${remediation}`}`,
           disposition: 'action_required',
+          subject: { kind: 'agent', id: stableKeyPart(agent.agentId), label: agentLabel },
+          declarationId: 'oversized',
           resources,
-          // The adapter's own cleanup when it has one (row 14); its text otherwise.
-          resolution: runtime.sessions.pruneStore
-            ? { key: SESSION_STORE_PRUNE_ACTION, type: 'repair', label: 'Delete old session transcripts', actionId: SESSION_STORE_PRUNE_ACTION }
-            : {
-                key: 'clean-session-store',
-                type: 'instructions',
-                label: 'Clean up the session store',
-                steps: [remediation],
-              },
+          resolution: { key: SESSION_STORE_PRUNE_ACTION, type: 'repair', label: 'Delete old session transcripts', actionId: SESSION_STORE_PRUNE_ACTION },
         },
       }))
     } else if (agent.diskBytes > SESSION_STORE_WARN_BYTES) {
+      // Row 15: growth is an observation; the cleanup guidance rides the detail.
       observations.push(healthWarning({
         key,
         summary: `${agentLabel}'s session store is growing.`,
-        detail,
+        detail: `${detail}. ${remediation}`.slice(0, 4_000),
         evidence,
-        incident: {
-          key: `growing:${stableKeyPart(agent.agentId)}`,
-          title: 'Session-store growth needs watching',
-          impact: 'The session store may become oversized if growth continues.',
-          disposition: 'watch',
-          resources,
-          resolution: {
-            key: 'clean-session-store',
-            type: 'instructions',
-            label: 'Review cleanup guidance',
-            steps: [remediation],
-          },
-        },
       }))
     } else if (agent.fileCount >= SESSION_STORE_ORPHAN_MIN_FILES && orphanRatio > SESSION_STORE_ORPHAN_RATIO) {
+      // Row 16: orphaned artifacts are an observation; the cleanup guidance rides the detail.
       observations.push(healthWarning({
         key,
         summary: `${agentLabel} has accumulating session artifacts.`,
-        detail: `${detail} (${orphanRatio.toFixed(0)}x files per live entry).`,
+        detail: `${detail} (${orphanRatio.toFixed(0)}x files per live entry). ${remediation}`.slice(0, 4_000),
         evidence,
-        incident: {
-          key: `orphaned:${stableKeyPart(agent.agentId)}`,
-          title: 'Orphaned session artifacts are accumulating',
-          impact: 'Unreferenced artifacts consume disk space without supporting live sessions.',
-          disposition: 'watch',
-          resources,
-          resolution: {
-            key: 'clean-session-store',
-            type: 'instructions',
-            label: 'Review cleanup guidance',
-            steps: [remediation],
-          },
-        },
       }))
     }
   }
@@ -162,27 +131,28 @@ function agentsSelectedBy(target: HealthRepairTarget, oversized: string[]): stri
 }
 
 /**
- * `session-store-prune` (self-healing PR1 slice 1.3c): the runtime's own
- * session cleanup, one item per oversized agent. It deletes transcripts, so
- * it is `manual` — an operator decision, never unattended.
+ * `session-store-prune` (self-healing PR1 slice 1.3c, row 14): the runtime's
+ * own session cleanup, one item per oversized agent. It deletes transcripts
+ * (user content), so the ONE mode policy makes it one-click.
  */
 export function sessionStorePruneRepair(runtime: Pick<AgentRuntimeAdapter, 'sessions'>): HealthRepairActionDefinition {
   return {
     id: SESSION_STORE_PRUNE_ACTION,
     name: 'Delete old session transcripts',
+    effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
+    mutation: 'delete',
     operationPlan: () => ({ stages: [{ id: 'prune', kind: 'installing', label: 'Delete old session transcripts' }], pointOfNoReturn: 'prune' }),
     async plan(target) {
       if (!runtime.sessions.pruneStore || !runtime.sessions.storeStats) return []
       const stats = await runtime.sessions.storeStats()
       const oversized = stats.filter((agent) => agent.diskBytes > SESSION_STORE_ERROR_BYTES).map((agent) => agent.agentId)
-      return agentsSelectedBy(target, oversized).map((agentId): HealthRepairPlanItem => {
+      return agentsSelectedBy(target, oversized).map((agentId): HealthRepairPlanItemInput => {
         const agent = stats.find((row) => row.agentId === agentId)!
         return {
           id: agentId,
           actionId: SESSION_STORE_PRUNE_ACTION,
           title: `Delete ${agentId.slice(0, 120)}'s session transcripts older than 30 days`,
           reason: `${agentId}'s session store holds ${formatMb(agent.diskBytes)} across ${agent.fileCount} files; transcripts older than 30 days are no longer resumed by any task.`,
-          safety: 'manual',
           ...repairTargetSelection(target),
           changes: [{ kind: 'file', target: `sessions:${agentId}`, action: 'delete', description: `Delete ${agentId}'s session transcripts older than 30 days (a thread with a turn in flight is kept). Recent sessions and everything else in the store stay.` }],
         }

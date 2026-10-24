@@ -27,7 +27,7 @@ import type { UpdateRecord } from '@makinbakin/sdk/types'
 import { getContentDir } from '../../../../src/core/content-dir'
 import { verifyInstalledArtifact } from '../../../../src/core/whiskit/verify'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition, HealthRepairApplyResult, HealthRepairChange, HealthRepairPlanItem, HealthRepairTarget, HealthResolution, OperationContext } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput, HealthRepairActionDefinition, HealthRepairApplyResult, HealthRepairChange, HealthRepairPlanItem, HealthRepairPlanItemInput, HealthRepairTarget, HealthResolution, OperationContext } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { isLinked, readPluginLockfile } from '@bakin/core/plugins/lockfile'
 import { createLogger } from '../../../../src/core/logger'
@@ -39,6 +39,20 @@ const log = createLogger('health:plugin-artifacts')
 export const PLUGIN_UPGRADE_ACTION = 'plugin-upgrade'
 export const PLUGIN_REINSTALL_ACTION = 'plugin-reinstall'
 const CHECK_ID = 'health.plugin-artifacts'
+/**
+ * Rows 96–99: a stranded plugin with an offered release upgrades (97); one
+ * with no compatible release yet is upstream-blocked — the operator decides
+ * (98; the containment control lands in PR6, so the decision lives on the
+ * Updates tab); an unknown offer or invalid provenance reinstalls (99); an
+ * unreadable directory is an observation (96).
+ */
+export const PLUGIN_ARTIFACTS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'needs-update', subjectKind: 'plugin', resolution: { type: 'repair', actionId: PLUGIN_UPGRADE_ACTION }, required: 'always' },
+  { id: 'needs-update-blocked', subjectKind: 'plugin', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+  { id: 'needs-update-reinstall', subjectKind: 'plugin', resolution: { type: 'repair', actionId: PLUGIN_REINSTALL_ACTION }, required: 'always' },
+  { id: 'invalid', subjectKind: 'plugin', resolution: { type: 'repair', actionId: PLUGIN_REINSTALL_ACTION }, required: 'always' },
+  { id: 'invalid-upgrade', subjectKind: 'plugin', resolution: { type: 'repair', actionId: PLUGIN_UPGRADE_ACTION }, required: 'always' },
+]
 /** Every check whose incidents point at the plugin repairs — a reinstall can resolve any of them. */
 const PLUGIN_CHECK_IDS = [CHECK_ID, 'health.plugin-assets', 'health.plugin-registry']
 
@@ -128,15 +142,7 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
     return healthObserved([healthUnknown({
       key: 'installed',
       summary: 'Installed plugin artifacts could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'directory-unreadable',
-        title: 'Installed plugin directory is unreadable',
-        impact: 'Health cannot confirm whether installed plugin artifacts are compatible with this host.',
-        disposition: 'watch',
-        resources: [{ kind: 'directory', id: 'installed-plugins', label: pluginsDir }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
+      detail: `${err instanceof Error ? err.message : String(err)} (${pluginsDir})`,
     })])
   }
 
@@ -170,20 +176,18 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
 function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid', reason: string, offer: PluginUpgradeOffer) {
   const id = stableKeyPart(name)
   const label = name.slice(0, 120)
-  // A stranded plugin with no compatible release yet is upstream-blocked: say
-  // so instead of a reinstall that would refuse (row 98 — a human row).
+  // A stranded plugin with no compatible release yet is upstream-blocked: the
+  // operator decides (wait, or disable it) instead of a reinstall that would
+  // refuse (row 98 — a human row).
+  const blocked = status === 'needs-update' && offer.kind === 'none'
   const resolution: HealthResolution = status === 'needs-update' && offer.kind === 'upgrade'
     ? { key: PLUGIN_UPGRADE_ACTION, type: 'repair', label: `Install ${offer.version} for this Bakin`.slice(0, 120), actionId: PLUGIN_UPGRADE_ACTION }
-    : status === 'needs-update' && offer.kind === 'none'
-      ? {
-          key: 'await-compatible-release',
-          type: 'instructions',
-          label: 'Wait for a compatible release',
-          steps: [
-            `${offer.reason.charAt(0).toUpperCase()}${offer.reason.slice(1)}. Its author has to publish one; Health offers the upgrade as soon as the updates engine observes it.`,
-          ],
-        }
+    : blocked
+      ? { key: 'await-compatible-release', type: 'human', needs: 'decision', label: 'Wait for a compatible release, or disable the plugin', href: '/health?tab=updates' }
       : pluginRepairResolution([{ pluginId: id, offer }])
+  const declarationId = status === 'needs-update'
+    ? (offer.kind === 'upgrade' ? 'needs-update' : blocked ? 'needs-update-blocked' : 'needs-update-reinstall')
+    : (resolution.type === 'repair' && resolution.actionId === PLUGIN_UPGRADE_ACTION ? 'invalid-upgrade' : 'invalid')
   return healthWarning({
     key: `plugin:${id}`,
     summary: status === 'needs-update'
@@ -201,8 +205,14 @@ function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid',
     incident: {
       key: `${status}:${id}`,
       title: status === 'needs-update' ? 'Plugin artifact needs an update' : 'Plugin artifact failed verification',
-      impact: 'The plugin remains inactive until a compatible, verified artifact is installed.',
+      impact: blocked
+        ? `The plugin remains inactive until a compatible, verified artifact is installed. ${offer.kind === 'none' ? `${offer.reason.charAt(0).toUpperCase()}${offer.reason.slice(1)}. ` : ''}Its author has to publish one; Health offers the upgrade as soon as the updates engine observes it.`
+        : 'The plugin remains inactive until a compatible, verified artifact is installed.',
       disposition: 'action_required',
+      subject: { kind: 'plugin', id, label },
+      declarationId,
+      // An installed artifact is presumed enabled and referenced (row 98 "AR while enabled and referenced").
+      ...(blocked ? { required: true } : {}),
       resources: [{ kind: 'plugin', id, label }],
       resolution,
     },
@@ -407,6 +417,11 @@ export function pluginUpgradeRepair(deps: PluginArtifactDeps = defaultDeps): Hea
   return {
     id: PLUGIN_UPGRADE_ACTION,
     name: 'Upgrade plugins to the offered release',
+    // Rows 93/97/99/101: none — a non-empty consent delta is the ONE
+    // authorization gate's business (an unattended upgrade is refused
+    // `consent-unreviewed` until PR6's consent records exist, R3 N2).
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'upgrade',
     resources: ['install-state'],
     operationPlan: () => PLUGIN_OPERATION_PLAN('Upgrade'),
     async plan(target) {
@@ -430,7 +445,6 @@ export function pluginUpgradeRepair(deps: PluginArtifactDeps = defaultDeps): Hea
         actionId: PLUGIN_UPGRADE_ACTION,
         title: `Upgrade ${ids.join(', ')} to the release its source published for this Bakin`,
         reason: 'These plugins have a newer release — or one built for this Bakin after an upgrade stranded them — observed by the updates engine.',
-        safety: 'manual',
         ...repairTargetSelection(target),
         changes,
       }]
@@ -464,13 +478,15 @@ export function pluginReinstallRepair(): HealthRepairActionDefinition {
   return {
     id: PLUGIN_REINSTALL_ACTION,
     name: 'Reinstall plugins from their recorded source',
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'reinstall',
     resources: ['install-state'],
     operationPlan: () => PLUGIN_OPERATION_PLAN('Reinstall'),
     async plan(target) {
       const named = await pluginsNamedBy(target, PLUGIN_REINSTALL_ACTION)
       if (named.length === 0) return []
       const { upgradePlugin } = await import('../../../../src/core/plugins/upgrade')
-      const items: HealthRepairPlanItem[] = []
+      const items: HealthRepairPlanItemInput[] = []
       for (const id of named) {
         try {
           const preview = await upgradePlugin(id, { previewOnly: true, reinstall: true })
@@ -481,7 +497,6 @@ export function pluginReinstallRepair(): HealthRepairActionDefinition {
             actionId: PLUGIN_REINSTALL_ACTION,
             title: `Reinstall ${id} ${preview.after.version}`.slice(0, 120),
             reason: 'The installed copy cannot be trusted as it stands; re-staging the recorded release from its source replaces it byte for byte.',
-            safety: 'manual',
             ...repairTargetSelection(target),
             changes,
           })

@@ -3,6 +3,7 @@ import { selectRuntimeMainAgent, type AgentRuntimeAdapter } from '@bakin/core/ad
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import type {
   HealthCheckRunInput,
+  HealthIncidentDeclaration,
   HealthObservationInput,
   HealthRepairActionDefinition,
   HealthRepairChange,
@@ -20,6 +21,28 @@ import { clearDependency, readTaskboard, renumberColumn } from '../../../src/cor
 import type { ColumnId, Task } from '../types'
 
 type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
+
+const TASK_STORE_SUBJECT = { kind: 'record', id: 'tasks-store', label: 'Task store' } as const
+const TASK_BOARD_SUBJECT = { kind: 'system', id: 'task-board', label: 'Task board' } as const
+
+/** Row 117: the board cannot load — the fallback lane investigates. */
+export const TASKBOARD_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'store-unreadable', subjectKind: 'record', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+]
+
+/** Rows 118–122: reassign is the human's decision while the task is open; the stale dependency self-heals; the rest are observations. */
+export const TASK_CONSISTENCY_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'unknown-agent', subjectKind: 'task', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+  { id: 'orphaned-dependency', subjectKind: 'task', resolution: { type: 'repair', actionId: 'clear-done-depends-on' }, required: 'always' },
+]
+
+/** Rows 123–124. */
+export const ORDER_INTEGRITY_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'order-invalid', subjectKind: 'system', resolution: { type: 'repair', actionId: 'reorder-columns' }, required: 'always' },
+]
+
+/** Rows 125–126: both observations — nothing to repair, nothing a human must decide. */
+export const SESSION_DEATH_INCIDENTS: HealthIncidentDeclaration[] = []
 
 
 function errorMessage(error: unknown): string {
@@ -59,8 +82,10 @@ export function checkTaskboard(): HealthCheckRunInput {
         title: 'Task data is unavailable',
         impact: 'Task views, dispatch, and task-based automation may fail until the store is readable.',
         disposition: 'action_required',
+        subject: TASK_STORE_SUBJECT,
+        declarationId: 'store-unreadable',
         resources: [{ kind: 'system', id: 'task-store', label: 'Task store' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Retry the task-store check' },
+        resolution: { key: 'diagnose', type: 'repair', label: 'Investigate the task store', actionId: 'core.diagnose' },
       },
     })])
   }
@@ -95,43 +120,35 @@ export async function checkTaskConsistency(
             title: 'A running task is assigned to an unknown agent',
             impact: 'The task may not have a runtime that can continue its work.',
             disposition: 'action_required',
+            subject: { kind: 'task', id: task.id, label: task.title },
+            declarationId: 'unknown-agent',
+            // Row 118: required while the task is open — it is in progress here.
+            required: true,
             resources: [taskResource, { kind: 'agent', id: task.agent, label: task.agent }],
-            resolution: { key: 'reassign-task', type: 'navigate', label: 'Reassign the task', href: `/tasks?taskId=${encodeURIComponent(task.id)}&field=assignee` },
+            resolution: { key: 'reassign-task', type: 'human', needs: 'decision', label: 'Reassign the task', href: `/tasks?taskId=${encodeURIComponent(task.id)}&field=assignee`, field: 'task-assignee' },
           },
         }))
       }
 
       if (!task.log || task.log.length === 0) {
+        // Row 119: an observation — listed under the check, never a card.
         observations.push(healthWarning({
           key: `progress-missing:${task.id}`,
           summary: `In-progress task “${task.title}” has no progress entries.`,
+          detail: 'Operators cannot tell whether the task is actively advancing. Review it at /tasks.',
           evidence: { taskId: task.id, progressEntries: 0 },
-          incident: {
-            key: `progress-missing:${task.id}`,
-            title: 'A running task has no recorded progress',
-            impact: 'Operators cannot tell whether the task is actively advancing.',
-            disposition: 'advisory',
-            resources: [taskResource],
-            resolution: { key: 'review-task', type: 'navigate', label: 'Review task progress', href: '/tasks' },
-          },
         }))
       }
     }
 
     for (const [agentId, count] of Object.entries(agentTaskCount)) {
       if (count <= 3) continue
+      // Row 120: an observation.
       observations.push(healthWarning({
         key: `overloaded:${agentId}`,
         summary: `Agent “${agentId}” has ${count} concurrent in-progress tasks.`,
+        detail: 'Too much concurrent work can slow progress and make failures harder to diagnose. Review the workload at /tasks.',
         evidence: { agentId, inProgressTasks: count },
-        incident: {
-          key: `overloaded:${agentId}`,
-          title: 'An agent may be overloaded',
-          impact: 'Too much concurrent work can slow progress and make failures harder to diagnose.',
-          disposition: 'advisory',
-          resources: [{ kind: 'agent', id: agentId, label: agentId }],
-          resolution: { key: 'review-workload', type: 'navigate', label: 'Review agent workload', href: '/tasks' },
-        },
       }))
     }
 
@@ -146,6 +163,8 @@ export async function checkTaskConsistency(
           title: 'A completed task retains a dependency',
           impact: 'The stale dependency can make unrelated task relationships misleading.',
           disposition: 'action_required',
+          subject: { kind: 'task', id: task.id, label: task.title },
+          declarationId: 'orphaned-dependency',
           resources: [{ kind: 'task', id: task.id, label: task.title }],
           resolution: {
             key: 'clear-dependency',
@@ -165,18 +184,11 @@ export async function checkTaskConsistency(
       }))
     }
   } catch (error) {
+    // Row 122: a "could not see" observation; the check's maxAgeMs re-runs it.
     observations.push(healthUnknown({
       key: 'verification',
       summary: 'Task consistency could not be verified.',
-      detail: errorMessage(error),
-      incident: {
-        key: 'verification-failed',
-        title: 'Task consistency is unknown',
-        impact: 'Health cannot confirm whether running and completed tasks are internally consistent.',
-        disposition: 'watch',
-        resources: [{ kind: 'system', id: 'task-store', label: 'Task store' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun task consistency' },
-      },
+      detail: `Health cannot confirm whether running and completed tasks are internally consistent. ${errorMessage(error)}`,
     }))
   }
 
@@ -187,6 +199,8 @@ export function taskConsistencyRepair(): HealthRepairActionDefinition {
   return {
     id: 'clear-done-depends-on',
     name: 'Clear completed-task dependencies',
+    // Row 121: a bookkeeping write on done tasks — self-heal.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
     operationPlan: () => ({
       stages: [{ id: 'clear', kind: 'committing', label: 'Clear dependencies from completed tasks' }],
       pointOfNoReturn: 'clear',
@@ -202,7 +216,6 @@ export function taskConsistencyRepair(): HealthRepairActionDefinition {
         actionId: 'clear-done-depends-on',
         title: 'Clear dependencies from completed tasks',
         reason: `${affected.length} completed task${affected.length === 1 ? '' : 's'} still carry dependency links.`,
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: affected.map((task) => ({
           kind: 'task' as const,
@@ -292,6 +305,8 @@ export async function checkTaskPositionIntegrity(): Promise<HealthCheckRunInput>
         title: 'Task order values need rebuilding',
         impact: 'Tasks may render in an unstable or misleading order within their columns.',
         disposition: 'action_required',
+        subject: TASK_BOARD_SUBJECT,
+        declarationId: 'order-invalid',
         resources: [{ kind: 'system', id: 'taskboard-order', label: 'Taskboard order' }],
         resolution: {
           key: 'reorder-columns',
@@ -302,18 +317,11 @@ export async function checkTaskPositionIntegrity(): Promise<HealthCheckRunInput>
       },
     })])
   } catch (error) {
+    // Row 124: a "could not see" observation.
     return healthObserved([healthUnknown({
       key: 'verification',
       summary: 'Task order could not be verified.',
-      detail: errorMessage(error),
-      incident: {
-        key: 'verification-failed',
-        title: 'Task order integrity is unknown',
-        impact: 'Health cannot confirm that task columns have stable order values.',
-        disposition: 'watch',
-        resources: [{ kind: 'system', id: 'taskboard-order', label: 'Taskboard order' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun task order validation' },
-      },
+      detail: `Health cannot confirm that task columns have stable order values. ${errorMessage(error)}`,
     })])
   }
 }
@@ -322,6 +330,8 @@ export function taskOrderRepair(): HealthRepairActionDefinition {
   return {
     id: 'reorder-columns',
     name: 'Rebuild task order values',
+    // Row 123: renumbers within each column, keeping the order — self-heal.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
     operationPlan: () => ({
       stages: [{ id: 'reorder', kind: 'committing', label: 'Rebuild order values per column' }],
       pointOfNoReturn: 'reorder',
@@ -332,7 +342,6 @@ export function taskOrderRepair(): HealthRepairActionDefinition {
         actionId: 'reorder-columns',
         title: 'Rebuild task order values',
         reason: 'One or more task columns contain missing or duplicate order values.',
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: [{
           kind: 'task',
@@ -398,18 +407,11 @@ export function checkSessionDeathIncidents(
       sinceMs: dayMs,
     })
   } catch (error) {
+    // Row 125: a "could not see" observation.
     return healthObserved([healthUnknown({
       key: 'verification',
       summary: 'Recent runtime session deaths could not be read.',
-      detail: errorMessage(error),
-      incident: {
-        key: 'audit-unavailable',
-        title: 'Session-death history is unknown',
-        impact: 'Health cannot confirm whether agent sessions have recently died during execution.',
-        disposition: 'watch',
-        resources: [{ kind: 'system', id: 'audit-trail', label: 'Audit trail' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun session history' },
-      },
+      detail: `Health cannot confirm whether agent sessions have recently died during execution. ${errorMessage(error)}`,
     })])
   }
 
@@ -427,22 +429,11 @@ export function checkSessionDeathIncidents(
     completionBytes: typeof incident.data.completionBytes === 'number' ? incident.data.completionBytes : null,
     oversizedOutput: incident.data.oversizedOutput === true,
   }))
+  // Row 126: an observation — the recovery ladder already handled each death.
   return healthObserved([healthWarning({
     key: 'recent',
     summary: `${incidents.length} runtime session death${incidents.length === 1 ? '' : 's'} occurred in the last 24 hours.`,
-    detail: 'Review the affected work and salvaged assets; repeated deaths often indicate oversized agent output.',
+    detail: 'Interrupted turns can delay tasks or leave partial work. Review the affected work and salvaged assets at /health?tab=activity; repeated deaths often indicate oversized agent output.',
     evidence: { count: incidents.length, windowHours: 24, recent },
-    incident: {
-      key: 'recent-session-deaths',
-      title: 'Agent sessions have died recently',
-      impact: 'Interrupted turns can delay tasks or leave partial work that needs operator review.',
-      disposition: 'watch',
-      resources: recent.flatMap((incident) => [
-        { kind: 'session' as const, id: `${incident.agentId}:${incident.taskId}`, label: incident.taskId },
-        { kind: 'agent' as const, id: incident.agentId, label: incident.agentId },
-        { kind: 'task' as const, id: incident.taskId, label: incident.taskId },
-      ]),
-      resolution: { key: 'review-activity', type: 'navigate', label: 'Review agent activity', href: '/health?tab=activity' },
-    },
   })])
 }

@@ -50,7 +50,8 @@ describe('brand recover: detach dangling references', () => {
   it('the integrity incident points at the single affected brand\'s recover page', async () => {
     const run = await checkBrandsIntegrity(activated.ctx)
     if (run.outcome !== 'observed') throw new Error('expected observed')
-    expect(run.observations[0]!.incident?.resolution).toMatchObject({ type: 'navigate', href: '/brands/acme?recover=1' })
+    expect(run.observations[0]!.incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', href: '/brands/acme?recover=1' })
+    expect(run.observations[0]!.incident?.subject).toEqual({ kind: 'record', id: 'brands/acme', label: 'acme' })
   })
   it('POST /:brandId/recover/detach removes the named dangling ids everywhere they are referenced and keeps the live ones', async () => {
     const res = await callRoute(route('POST', '/:brandId/recover/detach'), activated.ctx, { searchParams: { brandId: 'acme' }, body: { assetIds: ['gone', 'also-gone'] } })

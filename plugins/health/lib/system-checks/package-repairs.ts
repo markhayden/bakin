@@ -12,9 +12,11 @@
  *
  * Which packs each one plans is decided by `capabilityRemedy` — the same
  * classification the capabilities check names its repair from. Both are
- * upgrade-shaped, so they stay `manual` until PR6's consent engine (R3 N2).
+ * upgrade-shaped mutations (`sync` / `reinstall`): the ONE authorization
+ * gate judges every apply, so an unattended run is refused
+ * `consent-unreviewed` until PR6's consent records exist (R3 N2).
  */
-import type { HealthRepairActionDefinition, HealthRepairApplyResult, HealthRepairPlanItem, HealthRepairTarget, OperationContext } from '@makinbakin/sdk'
+import type { HealthRepairActionDefinition, HealthRepairApplyResult, HealthRepairPlanItemInput, HealthRepairTarget, OperationContext } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { listCapabilities, type CapabilityReadiness } from '../../../../src/core/agent-packages/capability-readiness'
 import { capabilityRemedy } from '../../../../src/core/agent-packages/capability-remedy'
@@ -41,6 +43,9 @@ function packRepair(kind: typeof PACKAGE_SYNC_ACTION | typeof PACKAGE_REINSTALL_
   return {
     id: kind,
     name: reinstall ? 'Reinstall capability packs from their recorded source' : 'Sync capability pack content',
+    // Row 6: none; a non-empty consent delta is the gate's business, not a static effect.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: reinstall ? 'reinstall' : 'sync',
     resources: ['install-state'],
     // Several packs run under one operation, so the engine's own stages are
     // not entered (sync.ts: many syncs under one op report items themselves).
@@ -50,7 +55,7 @@ function packRepair(kind: typeof PACKAGE_SYNC_ACTION | typeof PACKAGE_REINSTALL_
     }),
     async plan(target) {
       const capabilities = await listCapabilities()
-      const items: HealthRepairPlanItem[] = []
+      const items: HealthRepairPlanItemInput[] = []
       const seen = new Set<string>()
       for (const cap of capabilities) {
         if (capabilityRemedy(cap) !== kind || !targetSelects(target, cap) || seen.has(cap.packageId)) continue
@@ -62,7 +67,6 @@ function packRepair(kind: typeof PACKAGE_SYNC_ACTION | typeof PACKAGE_REINSTALL_
           reason: reinstall
             ? `${cap.name} has a binary or manifest Bakin cannot trust as installed; re-staging the recorded pack reinstalls every piece from its source.`
             : `${cap.name} is missing projected content a sync re-installs from its source.`,
-          safety: 'manual',
           ...repairTargetSelection(target),
           changes: [{
             kind: 'file',

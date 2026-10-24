@@ -40,7 +40,7 @@ mock.module('../../../src/core/delivery/readiness', () => ({
 
 import { discordBridgeReconnectRepair } from '../../../plugins/health/lib/system-checks/delivery-discord'
 import { noopOp } from '../../helpers/operation-harness'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
 
 const target = { type: 'all_actionable' as const, reportId: 'r' }
 
@@ -50,8 +50,10 @@ beforeEach(() => { rmSync(testDir, { recursive: true, force: true }); mkdirSync(
 describe('discord-bridge-reconnect', () => {
   it('plans a safe reconnect and applies through the ONE reconnect helper, reporting applied once the bridge delivers again', async () => {
     const action = discordBridgeReconnectRepair()
-    const plan = await action.plan(target)
-    expect(plan[0]).toMatchObject({ actionId: 'discord-bridge-reconnect', safety: 'safe' })
+    const plan = stampPlanItems(action, await action.plan(target))
+    // Row 25: no side effects → self-heal; a reconnect is a restart-class mutation for the gate.
+    expect(action.effects).toEqual({ deletesUserContent: false, spendsMoney: false, widensAuthorization: false })
+    expect(plan[0]).toMatchObject({ actionId: 'discord-bridge-reconnect', mode: 'self-heal' })
     const run = await runRepairContract(action, plan)
     expectRepairContract(action, run)
     expect(reconnects).toHaveLength(1)
@@ -60,11 +62,11 @@ describe('discord-bridge-reconnect', () => {
   it('a bridge that still is not delivering after the wait is a failure naming the last error; a native runtime is refused plainly', async () => {
     reconnectOutcome = { outcome: 'timeout', readiness: readiness('failed', { kind: 'transport', message: 'ECONNRESET', at: 'x' }) }
     const action = discordBridgeReconnectRepair()
-    const [result] = await action.apply(await action.plan(target), noopOp())
+    const [result] = await action.apply(stampPlanItems(action, await action.plan(target)), noopOp())
     expect(result).toMatchObject({ status: 'failed' })
     expect(result!.message).toContain('ECONNRESET')
     reconnectOutcome = { outcome: 'owner_is_runtime', readiness: readiness('native') }
-    const [native] = await action.apply(await action.plan(target), noopOp())
+    const [native] = await action.apply(stampPlanItems(action, await action.plan(target)), noopOp())
     expect(native).toMatchObject({ status: 'skipped' })
     expect(native!.message).toMatch(/natively/)
   })

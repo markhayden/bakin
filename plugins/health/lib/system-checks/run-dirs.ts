@@ -13,7 +13,15 @@ import { getRunWorkspaceStats, sweepRunWorkspaces } from '../../../../src/core/r
 import { getInFlightTurn } from '../../../../src/core/dispatch-registry'
 import { getTask } from '../../../../src/core/task-store'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition, HealthSubject } from '@makinbakin/sdk'
+
+export const SWEEP_RUN_DIRS_ACTION = 'sweep-run-dirs'
+const SUBJECT: HealthSubject = { kind: 'system', id: 'run-dirs', label: '~/.bakin/run-workspaces' }
+/** Rows 34–35: both self-heal through the sweep; only the over-budget state is required. */
+export const RUN_DIRS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'no-sweep-yet', subjectKind: 'system', resolution: { type: 'repair', actionId: SWEEP_RUN_DIRS_ACTION }, required: 'never' },
+  { id: 'over-budget', subjectKind: 'system', resolution: { type: 'repair', actionId: SWEEP_RUN_DIRS_ACTION }, required: 'always' },
+]
 
 function fmtBytes(n: number): string {
   if (n >= 1024 * 1024 * 1024) return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`
@@ -40,8 +48,10 @@ export async function checkRunDirs(): Promise<HealthCheckRunInput> {
         // 2026-07-23; same treatment as the transcript-scan warm-up).
         disposition: 'advisory',
         class: 'cleanup_backlog',
+        subject: SUBJECT,
+        declarationId: 'no-sweep-yet',
         resources: [{ kind: 'system', id: 'run-workspaces', label: '~/.bakin/run-workspaces' }],
-        resolution: { key: 'sweep', type: 'repair', actionId: 'sweep-run-dirs', label: 'Sweep now' },
+        resolution: { key: 'sweep', type: 'repair', actionId: SWEEP_RUN_DIRS_ACTION, label: 'Sweep now' },
       },
     })])
   }
@@ -59,8 +69,10 @@ export async function checkRunDirs(): Promise<HealthCheckRunInput> {
         impact: 'Evictable dirs are already drained — live turns or salvage-window dirs hold the remainder, so another sweep will not free it. Raise the disk budget in Settings → System & Alerts, or wait for live turns to settle and salvage windows to expire. Disk pressure can cascade into the ledger and search databases on the same volume.',
         disposition: 'action_required',
         class: 'cleanup_backlog',
+        subject: SUBJECT,
+        declarationId: 'over-budget',
         resources: [{ kind: 'system', id: 'run-workspaces', label: '~/.bakin/run-workspaces' }],
-        resolution: { key: 'sweep', type: 'repair', actionId: 'sweep-run-dirs', label: 'Sweep now' },
+        resolution: { key: 'sweep', type: 'repair', actionId: SWEEP_RUN_DIRS_ACTION, label: 'Sweep now' },
       },
     })])
   }
@@ -70,19 +82,20 @@ export async function checkRunDirs(): Promise<HealthCheckRunInput> {
 /** Deterministic mutation: one bounded sweep pass, same engine as the tick. */
 export function runDirsSweepRepair(): HealthRepairActionDefinition {
   return {
-    id: 'sweep-run-dirs',
+    id: SWEEP_RUN_DIRS_ACTION,
     name: 'Sweep run workspaces',
+    // Expired scratch dirs are Bakin's own, never user content: self-heal.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
     operationPlan: () => ({
       stages: [{ id: 'sweep', kind: 'cleanup', label: 'Remove expired run workspaces' }],
       pointOfNoReturn: 'sweep',
     }),
     async plan() {
       return [{
-        id: 'sweep-run-dirs',
-        actionId: 'sweep-run-dirs',
+        id: SWEEP_RUN_DIRS_ACTION,
+        actionId: SWEEP_RUN_DIRS_ACTION,
         title: 'Sweep expired run workspaces now',
         reason: 'Remove expired per-run scratch dirs and enforce the disk budget without waiting for the next watchdog tick.',
-        safety: 'safe',
         incidentIds: [],
         observationIds: [],
         preconditions: [],

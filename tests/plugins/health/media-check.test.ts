@@ -48,11 +48,13 @@ mock.module('../../../packages/core/src/media/sharp-loader', () => ({
 import { MEDIA_REPAIR_ACTION_ID, checkMediaSharp, mediaStoreRepair } from '../../../plugins/health/lib/system-checks/media'
 import type { MediaStoreStatus } from '../../../packages/core/src/media/installer'
 import { noopOp } from '../../helpers/operation-harness'
+import { stampPlanItems } from '../../helpers/repair-contract'
 
 type Observation = {
   status: string
   key: string
   summary: string
+  detail?: string
   incident?: { key: string; disposition: string; class?: string; resolution?: { type: string; actionId?: string } }
 }
 
@@ -101,11 +103,11 @@ describe('checkMediaSharp', () => {
     expect(obs.incident?.resolution).toMatchObject({ type: 'repair', actionId: MEDIA_REPAIR_ACTION_ID })
   })
 
-  it('advisory unsupported_surface warning on platforms without prebuilds', async () => {
+  it('a platform without prebuilds is a plain observation (row 5) — never a card', async () => {
     const obs = firstObservation(await checkMediaSharp(deps({ store: { status: 'unsupported', platform: 'linux-riscv64' } })))
     expect(obs.status).toBe('warning')
-    expect(obs.incident?.class).toBe('unsupported_surface')
-    expect(obs.incident?.disposition).toBe('advisory')
+    expect(obs.incident).toBeUndefined()
+    expect(obs.detail).toContain('prebuilds')
   })
 
   it('missing store → UNCLASSIFIED action_required incident with the one-click repair', async () => {
@@ -121,16 +123,18 @@ describe('checkMediaSharp', () => {
 describe('mediaStoreRepair', () => {
   const target = { kind: 'all' as const }
 
-  it('plans a safe single-item install', async () => {
-    const plan = await mediaStoreRepair().plan(target as never)
+  it('plans a single-item install with no side effects (self-heal)', async () => {
+    const repair = mediaStoreRepair()
+    expect(repair.effects).toEqual({ deletesUserContent: false, spendsMoney: false, widensAuthorization: false })
+    const plan = await repair.plan(target as never)
     expect(plan).toHaveLength(1)
-    expect(plan[0]).toMatchObject({ actionId: MEDIA_REPAIR_ACTION_ID, safety: 'safe' })
+    expect(plan[0]).toMatchObject({ actionId: MEDIA_REPAIR_ACTION_ID })
   })
 
   it('apply runs the installer and reports applied', async () => {
     const repair = mediaStoreRepair()
     const plan = await repair.plan(target as never)
-    const results = await repair.apply(plan, noopOp())
+    const results = await repair.apply(stampPlanItems(repair, plan), noopOp())
     expect(installCalls).toBe(1)
     expect(lastInstallForce).toBe(false)
     expect(results[0]).toMatchObject({ status: 'applied' })
@@ -142,7 +146,7 @@ describe('mediaStoreRepair', () => {
     loaderLoads = false
     const repair = mediaStoreRepair()
     const plan = await repair.plan(target as never)
-    await repair.apply(plan, noopOp())
+    await repair.apply(stampPlanItems(repair, plan), noopOp())
     expect(lastInstallForce).toBe(true)
   })
 
@@ -151,7 +155,7 @@ describe('mediaStoreRepair', () => {
     expect(repair.resources).toEqual(['media-store'])
     expect(repair.operationPlan!([]).stages.map((s) => s.id)).toEqual(['prepare', 'download', 'extract', 'bundle', 'verify', 'commit'])
     const op = { id: 'op-1' } as never
-    await repair.apply(await repair.plan(target as never), op)
+    await repair.apply(stampPlanItems(repair, await repair.plan(target as never)), op)
     expect(lastInstallOp).toBe(op)
   })
 
@@ -159,7 +163,7 @@ describe('mediaStoreRepair', () => {
     installShouldFail = true
     const repair = mediaStoreRepair()
     const plan = await repair.plan(target as never)
-    const results = await repair.apply(plan, noopOp())
+    const results = await repair.apply(stampPlanItems(repair, plan), noopOp())
     expect(results[0]).toMatchObject({ status: 'failed' })
     expect(results[0]!.message).toContain('registry unreachable')
   })

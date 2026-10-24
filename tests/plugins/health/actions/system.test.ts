@@ -40,7 +40,7 @@ mock.module('../../../../src/core/settings', () => ({ getSettings: () => ({ serv
 import type { HealthRepairTarget } from '@makinbakin/sdk'
 import type { RuntimeSessionStoreStats } from '@bakin/core/adapters/runtime'
 import { noopOp } from '../../../helpers/operation-harness'
-import { expectRepairContract, runRepairContract } from '../../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../../helpers/repair-contract'
 import { parseHealthCheckRunInput } from '../../../../src/core/health-contract'
 import { checkHealthAcks, healthAcksPruneRepair, healthAcksResetRepair } from '../../../../plugins/health/lib/system-checks/health-acks'
 import { checkRuntime, runtimeRestartRepair } from '../../../../plugins/health/lib/system-checks/runtime'
@@ -72,8 +72,9 @@ describe('health acks (rows 1–2)', () => {
     expect(row!.incident).toMatchObject({ key: 'store-unreadable', resolution: { type: 'repair', actionId: 'health-acks-reset' } })
     const action = healthAcksResetRepair()
     const plan = await action.plan(all)
-    expect(plan[0]).toMatchObject({ actionId: 'health-acks-reset', safety: 'safe' })
-    const run = await runRepairContract(action, plan)
+    expect(action.effects).toEqual({ deletesUserContent: false, spendsMoney: false, widensAuthorization: false })
+    expect(plan[0]).toMatchObject({ actionId: 'health-acks-reset' })
+    const run = await runRepairContract(action, stampPlanItems(action, plan))
     expectRepairContract(action, run)
     expect(run.results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['health.acks'] })
     expect(existsSync(acksPath)).toBe(false)
@@ -89,9 +90,9 @@ describe('health acks (rows 1–2)', () => {
     expect(row!.incident).toMatchObject({ key: 'invalid-records', resolution: { type: 'repair', actionId: 'health-acks-prune' } })
     const action = healthAcksPruneRepair()
     const plan = await action.plan(all)
-    expect(plan[0]).toMatchObject({ actionId: 'health-acks-prune', safety: 'safe' })
+    expect(plan[0]).toMatchObject({ actionId: 'health-acks-prune' })
     expect(plan[0]!.changes.map((c) => c.target).sort()).toEqual(['acks:forged', 'acks:future'])
-    const [result] = await action.apply(plan, noopOp())
+    const [result] = await action.apply(stampPlanItems(action, plan), noopOp())
     expect(result).toMatchObject({ status: 'applied' })
     expect(Object.keys(JSON.parse(readFileSync(acksPath, 'utf-8')) as object)).toEqual(['good'])
     expect((await observed(checkHealthAcks(NOW)))[0]!.status).toBe('healthy')
@@ -119,8 +120,10 @@ describe('runtime-restart (row 12)', () => {
     expect(row!.incident).toMatchObject({ key: 'unreachable', resolution: { type: 'repair', actionId: 'runtime-restart' } })
     const action = runtimeRestartRepair(rt, { pollMs: 1, timeoutMs: 50 })
     const plan = await action.plan(all)
-    expect(plan[0]).toMatchObject({ actionId: 'runtime-restart', safety: 'safe' })
-    const run = await runRepairContract(action, plan)
+    expect(action.effects).toMatchObject({ restartsService: 'runtime' })
+    expect(action.mutation).toBe('restart')
+    expect(plan[0]).toMatchObject({ actionId: 'runtime-restart' })
+    const run = await runRepairContract(action, stampPlanItems(action, plan))
     expectRepairContract(action, run)
     expect(rt.restarts()).toBe(1)
     expect(run.results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['health.runtime'] })
@@ -128,7 +131,7 @@ describe('runtime-restart (row 12)', () => {
   it('a runtime that stays dark after the restart is a failure that says so (core.diagnose takes it from here in PR5)', async () => {
     const rt = runtime([false])
     const action = runtimeRestartRepair(rt, { pollMs: 1, timeoutMs: 20 })
-    const [result] = await action.apply(await action.plan(all), noopOp())
+    const [result] = await action.apply(stampPlanItems(action, await action.plan(all)), noopOp())
     expect(result).toMatchObject({ status: 'failed' })
     expect(result!.message).toMatch(/still cannot serve turns/)
   })
@@ -146,22 +149,24 @@ describe('session-store-prune (row 14)', () => {
   })
   beforeEach(() => { pruned.length = 0 })
 
-  it('an oversized store points at session-store-prune when the runtime can prune; the adapter text stays when it cannot', async () => {
+  it('an oversized store points at session-store-prune (row 14); a runtime that cannot prune keeps the adapter text in the impact copy', async () => {
     const [row] = await observed(checkSessionStore(runtimeWith([stats('main', SESSION_STORE_ERROR_BYTES + 1)])))
-    expect(row!.incident).toMatchObject({ key: 'oversized:main', resolution: { type: 'repair', actionId: 'session-store-prune' } })
+    expect(row!.incident).toMatchObject({ key: 'oversized:main', declarationId: 'oversized', subject: { kind: 'agent', id: 'main' }, resolution: { type: 'repair', actionId: 'session-store-prune' } })
     const [text] = await observed(checkSessionStore(runtimeWith([stats('main', SESSION_STORE_ERROR_BYTES + 1)], false)))
-    expect(text!.incident?.resolution).toMatchObject({ type: 'instructions', steps: ['adapter says'] })
+    expect(text!.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'session-store-prune' })
+    expect(text!.incident?.impact).toContain('adapter says')
   })
-  it('plans one MANUAL item per oversized agent (it deletes transcripts), applies through the adapter and names what it freed', async () => {
+  it('plans one one-click item per oversized agent (it deletes transcripts), applies through the adapter and names what it freed', async () => {
     const rt = runtimeWith([stats('main', SESSION_STORE_ERROR_BYTES + 1), stats('relay', SESSION_STORE_ERROR_BYTES + 1), stats('fine', 10)])
     const action = sessionStorePruneRepair(rt)
+    expect(action.effects).toMatchObject({ deletesUserContent: true })
+    expect(action.mutation).toBe('delete')
     const plan = await action.plan(all)
     expect(plan.map((item) => item.id)).toEqual(['main', 'relay'])
-    expect(plan[0]).toMatchObject({ safety: 'manual' })
     expect(plan[0]!.changes[0]).toMatchObject({ kind: 'file', action: 'delete' })
     const one = await action.plan({ type: 'incidents', reportId: 'r', ids: ['health.session-store:oversized:relay'] })
     expect(one.map((item) => item.id)).toEqual(['relay'])
-    const run = await runRepairContract(action, one)
+    const run = await runRepairContract(action, stampPlanItems(action, one))
     expectRepairContract(action, run)
     expect(pruned.map((p) => p.agentId)).toEqual(['relay'])
     expect(run.results[0]).toMatchObject({ itemId: 'relay', status: 'applied', affectedCheckIds: ['health.session-store'] })
@@ -178,12 +183,14 @@ describe('service-setup (rows 8, 9, 11)', () => {
     const rows = await observed(checkService('/some/project'))
     expect(rows[0]!.incident).toMatchObject({ key: 'plist-missing', resolution: { type: 'repair', actionId: 'service-setup' } })
   })
-  it('plans a manual item (it loads or rewrites the Bakin service) and applies through the ONE engine WITHOUT a restart', async () => {
+  it('plans a self-heal item (R=bakin — the coordinator schedules it) and applies through the ONE engine WITHOUT a restart', async () => {
     const action = serviceSetupRepair()
+    expect(action.effects).toEqual({ deletesUserContent: false, spendsMoney: false, widensAuthorization: false, restartsService: 'bakin' })
+    expect(action.mutation).toBe('restart')
     const plan = await action.plan(all)
-    expect(plan[0]).toMatchObject({ actionId: 'service-setup', safety: 'manual' })
+    expect(plan[0]).toMatchObject({ actionId: 'service-setup' })
     expect(plan[0]!.changes[0]).toMatchObject({ kind: 'service', target: 'com.makinbakin.bakin' })
-    const run = await runRepairContract(action, plan)
+    const run = await runRepairContract(action, stampPlanItems(action, plan))
     expectRepairContract(action, run)
     expect(setups).toEqual([{ restart: false }])
     expect(run.results[0]).toMatchObject({ status: 'applied', affectedCheckIds: ['health.service'] })
@@ -191,11 +198,11 @@ describe('service-setup (rows 8, 9, 11)', () => {
   it('a deferred load (a server runs outside the service) is reported as skipped with the engine message; a refused platform fails', async () => {
     setupResult = { ...setupResult, loaded: 'deferred', message: 'Bakin is running outside the managed service (pid 777).' }
     const action = serviceSetupRepair()
-    const [deferred] = await action.apply(await action.plan(all), noopOp())
+    const [deferred] = await action.apply(stampPlanItems(action, await action.plan(all)), noopOp())
     expect(deferred).toMatchObject({ status: 'skipped' })
     expect(deferred!.message).toContain('pid 777')
     setupResult = { ...setupResult, ok: false, loaded: 'not-loaded', message: 'Service management is not supported on win32.' }
-    const [failed] = await action.apply(await action.plan(all), noopOp())
+    const [failed] = await action.apply(stampPlanItems(action, await action.plan(all)), noopOp())
     expect(failed).toMatchObject({ status: 'failed' })
   })
 })

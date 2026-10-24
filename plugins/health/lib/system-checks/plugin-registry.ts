@@ -1,8 +1,14 @@
 import { healthError, healthHealthy, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput } from '@makinbakin/sdk'
 import { getRegistrySnapshot } from '../host-providers'
-import { pluginRepairResolution, pluginUpgradeOffer, type PluginArtifactDeps } from './plugin-artifacts'
+import { PLUGIN_UPGRADE_ACTION, pluginRepairResolution, pluginUpgradeOffer, type PluginArtifactDeps } from './plugin-artifacts'
 import { stableKeyPart } from './key'
+
+/** Row 101: the offered release repairs an activation failure; without one the fallback lane reads the activation error. Row 100 is an observation. */
+export const PLUGIN_REGISTRY_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'activation-failed-upgrade', subjectKind: 'plugin', resolution: { type: 'repair', actionId: PLUGIN_UPGRADE_ACTION }, required: 'always' },
+  { id: 'activation-failed', subjectKind: 'plugin', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+]
 
 export async function checkPluginRegistry(deps?: PluginArtifactDeps): Promise<HealthCheckRunInput> {
   let plugins: Array<Record<string, unknown>>
@@ -13,14 +19,6 @@ export async function checkPluginRegistry(deps?: PluginArtifactDeps): Promise<He
       key: 'availability',
       summary: 'Plugin activation could not be verified.',
       detail: error instanceof Error ? error.message : String(error),
-      incident: {
-        key: 'registry-unavailable',
-        title: 'Plugin registry evidence is unavailable',
-        impact: 'Health cannot confirm which plugins loaded or whether any activation failed.',
-        disposition: 'watch',
-        resources: [{ kind: 'system', id: 'plugin-registry', label: 'Plugin registry' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
     })])
   }
   const failed = plugins.filter((plugin) => plugin.status === 'failed')
@@ -35,21 +33,11 @@ export async function checkPluginRegistry(deps?: PluginArtifactDeps): Promise<He
   const observations = await Promise.all(failed.map(async (plugin): Promise<HealthObservationInput> => {
     const rawId = String(plugin.id ?? 'unknown')
     // A release the updates engine offers is the repair (row 101); without
-    // one the activation error is the operator's to read until core.diagnose
-    // takes it over in the cutover.
+    // one the fallback lane investigates with the activation error in its brief.
     const offer = await pluginUpgradeOffer(rawId, deps)
     const resolution = offer.kind === 'upgrade'
       ? pluginRepairResolution([{ pluginId: rawId, offer }])
-      : {
-          key: 'inspect-plugin',
-          type: 'instructions' as const,
-          label: 'Inspect plugin activation',
-          steps: [
-            `Inspect the activation error for ${rawId.slice(0, 120)}.`,
-            'Update, reconfigure, or remove the plugin, then restart Bakin and rerun Health.',
-          ] as [string, ...string[]],
-          command: 'bakin plugins list --check',
-        }
+      : { key: 'inspect-plugin', type: 'repair' as const, label: 'Investigate the activation failure', actionId: 'core.diagnose' }
     const id = stableKeyPart(rawId)
     const code = typeof plugin.errorCode === 'string' ? plugin.errorCode : 'activation_failed'
     const message = typeof plugin.errorMessage === 'string' && plugin.errorMessage.length > 0
@@ -66,6 +54,8 @@ export async function checkPluginRegistry(deps?: PluginArtifactDeps): Promise<He
         title: 'Plugin activation failed',
         impact: 'The plugin and the features it contributes are unavailable.',
         disposition: 'action_required',
+        subject: { kind: 'plugin', id, label },
+        declarationId: offer.kind === 'upgrade' ? 'activation-failed-upgrade' : 'activation-failed',
         resources: [{ kind: 'plugin', id, label }],
         resolution,
       },

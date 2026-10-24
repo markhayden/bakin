@@ -196,6 +196,13 @@ function publish(next: ChannelReadiness): ChannelReadiness {
       log.error('Channel readiness listener failed', err)
     }
   }
+  // Delivery is back: legacy-approval retirement receipts whose card edit
+  // failed while the bridge was down are carried to `done` now (1.6/1.7).
+  if (change.stateChanged && (next.connection.state === 'connected' || next.connection.state === 'degraded')) {
+    void import('@/core/approvals/legacy-retire')
+      .then(({ resumeRetirementReceipts }) => resumeRetirementReceipts())
+      .catch((err) => log.warn('Retirement receipts could not be resumed on reconnect', { err: err instanceof Error ? err.message : String(err) }))
+  }
   void broadcastReadiness(next)
   return next
 }

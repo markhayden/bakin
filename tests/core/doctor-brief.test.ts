@@ -25,6 +25,9 @@ const incident = (over: Partial<HealthIncident> = {}): HealthIncident => ({
   effectiveDisposition: 'action_required',
   title: 'Search engine is unavailable',
   impact: 'Nothing is indexed.',
+  subject: { kind: 'service', id: 'search-engine', label: 'Search engine' },
+  declarationId: 'engine-unavailable',
+  required: true,
   resources: [],
   resolution: { key: 'restart', type: 'repair', label: 'Restart', actionId: 'health.search-engine-restart' },
   observationIds: ['health.search:engine'],
@@ -49,11 +52,12 @@ const fallback = (over: Partial<FallbackBriefInput> = {}): FallbackBriefInput =>
 
 describe('delegated-repair brief (today)', () => {
   it('names every incident, its sanctioned fix and the integrity rules', () => {
-    const brief = buildRepairBrief({ requestId: 'req-1', incidents: [incident(), incident({ id: 'health:gh:auth', title: 'gh needs sign-in', resolution: { key: 'login', type: 'instructions', label: 'Sign in', steps: ['Run gh auth login'], command: 'gh auth login' } })] })
+    const brief = buildRepairBrief({ requestId: 'req-1', incidents: [incident(), incident({ id: 'health:gh:auth', title: 'gh needs sign-in', resolution: { key: 'login', type: 'human', needs: 'credential', label: 'Sign in', href: '/runtime?tab=overview&field=credentials', handoff: { command: 'gh auth login' } } })] })
     expect(brief).toContain('Health repair request: req-1')
     expect(brief).toContain('health:search:unavailable')
     expect(brief).toContain('Sanctioned fix: one-click repair "Restart"')
-    expect(brief).toContain('Sanctioned fix: Sign in — run `gh auth login`')
+    expect(brief).toContain('Sanctioned fix: needs a human (credential) — Sign in at /runtime?tab=overview&field=credentials; the operator runs `gh auth login`')
+    expect(brief).toContain('do NOT supply the credential, payment or decision yourself')
     expect(brief).toContain('INTEGRITY RULES')
     expect(brief).toContain('complete this task with a short summary')
     expect(brief).not.toContain('HAND-BACK')

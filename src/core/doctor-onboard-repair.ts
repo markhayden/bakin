@@ -33,6 +33,8 @@ export function onboardRepair(deps: OnboardRepairDeps): HealthRepairActionDefini
   return {
     id: ONBOARD_ACTION,
     name: 'Complete first-run setup',
+    // Row 205: first-run choices widen what the operator authorized → one-click.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true },
     // Each component is its own operation and owns its own resources.
     operationPlan: () => ({ stages: [{ id: 'components', kind: 'installing', label: 'Run the setup components' }], pointOfNoReturn: 'components' }),
     async plan(target) {
@@ -41,7 +43,7 @@ export function onboardRepair(deps: OnboardRepairDeps): HealthRepairActionDefini
         actionId: ONBOARD_ACTION,
         title: 'Complete first-run setup with the default choices',
         reason: 'Bakin has not completed first-run setup on this machine, so runtime and plugin checks cannot be trusted yet.',
-        safety: 'manual',
+        effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true },
         ...repairTargetSelection(target),
         changes: [{ kind: 'setting', target: 'onboarding', action: 'update', description: 'Run every setup component with its default choices — what `bakin onboard --yes` does — and mark this machine onboarded when they all succeed.' }],
       }]

@@ -105,6 +105,8 @@ describe('canonical health registrations', () => {
     if (run?.outcome !== 'observed') throw new Error('expected observed auth health output')
     expect(run.observations[0]?.status).toBe('error')
     expect(run.observations[0]?.incident?.disposition).toBe('action_required')
+    // Row 198: a credential the operator supplies in Pi's own TUI — the handoff names the command.
+    expect(run.observations[0]?.incident?.resolution).toMatchObject({ type: 'human', needs: 'credential', handoff: { command: 'pi' } })
   })
 
   test('the agent-root probe does not create a missing directory', async () => {
@@ -132,9 +134,12 @@ describe('canonical health registrations', () => {
     expect(pendingRun?.outcome).toBe('observed')
     if (pendingRun?.outcome !== 'observed') throw new Error('expected observed extension health output')
     expect(pendingRun.observations[0]?.status).toBe('warning')
-    expect(pendingRun.observations[0]?.incident?.resolution).toMatchObject({
-      type: 'navigate',
-      href: '/runtime?tab=runtimes',
+    // Row 200: a human decision on the Runtimes tab, never red on a guess about who needs the extension.
+    expect(pendingRun.observations[0]?.incident).toMatchObject({
+      declarationId: 'extension-approval',
+      subject: { kind: 'runtime', id: 'pi' },
+      required: false,
+      resolution: { type: 'human', needs: 'decision', href: '/runtime?tab=runtimes' },
     })
 
     const blockedCheck = createPiHealthChecks(() => ({

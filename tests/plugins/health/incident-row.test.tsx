@@ -42,8 +42,11 @@ function item(overrides: Partial<HealthIncident> = {}): OverviewIncident {
       effectiveDisposition: 'watch',
       title: 'Something needs review',
       impact: 'Operator impact statement.',
+      subject: { kind: 'system', id: 'fixture' },
       resources: [],
-      resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+      resolution: { key: 'diagnose-check-failure', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' },
+      declarationId: 'fixture',
+      required: false,
       observationIds: ['obs-1'],
       observedAt: '2026-07-13T12:00:00.000Z',
       staleAt: '2026-07-13T12:30:00.000Z',
@@ -78,15 +81,21 @@ describe('IncidentRow (#690)', () => {
     expect(screen.queryByRole('link', { name: /View the update/ })).toBeNull()
   })
 
-  it('exposes commandless ownership recovery through the existing instruction disclosure', () => {
+  it('a human decision without a handoff is one link to its control — no disclosure, no command', () => {
     render(<IncidentRow item={item({
       status: 'error', class: 'policy_denial', disposition: 'action_required', effectiveDisposition: 'action_required',
-      resolution: { key: 'search-service-access', type: 'instructions', label: 'Configure isolated search',
-        steps: ['This temporary home cannot claim the shared service.', 'Configure an isolated endpoint, then restart Bakin.'] },
+      resolution: { key: 'search-service-access', type: 'human', needs: 'decision', label: 'Configure isolated search', href: '/settings?tab=search' },
     })} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Configure isolated search' }))
-    expect(screen.getByText('Configure an isolated endpoint, then restart Bakin.')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Configure isolated search' }).getAttribute('href')).toBe('/settings?tab=search')
+    expect(screen.queryByRole('button', { name: 'Run it yourself' })).toBeNull()
     expect(document.querySelector('code')).toBeNull()
+  })
+
+  it('a repair resolution is the repair button', () => {
+    const onRepair = mock()
+    render(<IncidentRow item={item({ resolution: { key: 'fix', type: 'repair', label: 'Restart search', actionId: 'health.search-engine-restart' } })} onRepair={onRepair} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Restart search' }))
+    expect(onRepair).toHaveBeenCalledTimes(1)
   })
 
   it.each(['acked', 'snoozed'] as const)('keeps %s incident metadata soft beside the solid primary status', (ackState) => {
@@ -143,7 +152,7 @@ describe('IncidentRow handoff (self-healing 1.4c)', () => {
   let terminalActive: boolean
   const commandItem = () => item({
     title: 'Pi has no usable model provider',
-    resolution: { key: 'configure-provider', type: 'instructions', label: 'Configure a Pi provider', steps: ['Run Pi and sign in.'], command: 'pi' },
+    resolution: { key: 'configure-provider', type: 'human', needs: 'credential', label: 'Configure a Pi provider', href: '/runtime?tab=overview&field=credentials', handoff: { command: 'pi' } },
   })
   function stubFetch() {
     requests = []
@@ -165,7 +174,7 @@ describe('IncidentRow handoff (self-healing 1.4c)', () => {
     resetTerminalHandoffForTests()
     stubFetch()
     await act(async () => { render(<IncidentRow item={commandItem()} />) })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Configure a Pi provider' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Run it yourself' })) })
     const card = screen.getByRole('region', { name: 'Run this yourself' })
     expect(within(card).getByText('pi')).toBeTruthy()
     await waitFor(() => expect(requests.some((r) => r.url === '/api/plugins/manifest')).toBe(true))
@@ -178,7 +187,7 @@ describe('IncidentRow handoff (self-healing 1.4c)', () => {
     stubFetch()
     const onRerun = mock()
     await act(async () => { render(<IncidentRow item={commandItem()} onRerun={onRerun} />) })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Configure a Pi provider' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Run it yourself' })) })
     const button = await screen.findByRole('button', { name: 'Open in Terminal' })
     await act(async () => { fireEvent.click(button) })
     await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/terminal/sess-1'))

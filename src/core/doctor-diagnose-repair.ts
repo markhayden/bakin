@@ -43,6 +43,9 @@ export function diagnoseRepair(deps: DiagnoseRepairDeps): HealthRepairActionDefi
   return {
     id: DIAGNOSE_ACTION,
     name: 'Investigate with the fallback agent',
+    // Spec §3.1: effects all false. The item itself is one-click until the
+    // repair engine owns investigations (A17: ask) — see `plan` below.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
     operationPlan: () => ({ stages: [{ id: 'delegate', kind: 'installing', label: 'Open the investigation task' }], pointOfNoReturn: 'delegate' }),
     async plan(target) {
       return [{
@@ -50,7 +53,8 @@ export function diagnoseRepair(deps: DiagnoseRepairDeps): HealthRepairActionDefi
         actionId: DIAGNOSE_ACTION,
         title: 'Investigate with the fallback agent',
         reason: 'Bakin has no deterministic repair for this incident. Main investigates in a Terminal session and hands back a proposal, a human need, or an upstream block.',
-        safety: 'manual',
+        // A17: investigations ASK — agent turns spend money, so the item is one-click.
+        effects: { deletesUserContent: false, spendsMoney: true, widensAuthorization: false },
         ...repairTargetSelection(target),
         changes: [{ kind: 'task', target: 'health-investigation', action: 'create', description: `Open one investigation task for main (${FALLBACK_TURN_BUDGET} agent turns).` }],
       }]

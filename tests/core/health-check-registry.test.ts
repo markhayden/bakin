@@ -32,6 +32,8 @@ function check(id = 'reachability') {
     description: 'Checks whether the configured runtime can serve a turn.',
     group: { key: 'runtime', label: 'Runtime' },
     maxAgeMs: 60_000,
+    // Every check declares its finite incident families (three-outcomes cutover); none here.
+    incidents: [],
     run: async () => healthObserved([
       healthHealthy({ key: 'ping', summary: 'Runtime answered.' }),
     ]),
@@ -42,6 +44,7 @@ function action(id = 'restart') {
   return {
     id,
     name: 'Restart runtime',
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
     operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
     plan: async () => [],
     apply: async () => [],
@@ -88,9 +91,16 @@ describe('owner-aware Health registry', () => {
     expect(() => registerPluginHealthCheck('test-plugin', {
       id: 'legacy',
       name: 'Legacy check',
+      incidents: [],
       run: async () => [],
       autoFix: true,
     } as never)).toThrow(HealthContractError)
+  })
+
+  it('refuses a check that declares no incident catalog, naming the check (three-outcomes cutover)', () => {
+    const { incidents: _none, ...withoutCatalog } = check()
+    expect(() => registerPluginHealthCheck('test-plugin', withoutCatalog as never)).toThrow(/"test-plugin.reachability" declares no incident families/)
+    expect(getHealthCheck('test-plugin.reachability')).toBeUndefined()
   })
 })
 

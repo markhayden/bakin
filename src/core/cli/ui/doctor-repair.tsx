@@ -101,7 +101,8 @@ function repairPlanItems(value: unknown): HealthRepairPlanItem[] {
       && typeof row.actionId === 'string'
       && typeof row.title === 'string'
       && typeof row.reason === 'string'
-      && (row.safety === 'safe' || row.safety === 'manual' || row.safety === 'destructive')
+      && objectValue(row.effects) !== null
+      && (row.mode === 'self-heal' || row.mode === 'one-click')
       && Array.isArray(row.changes),
     )
   })
@@ -137,10 +138,19 @@ function statusForEvent(type: unknown): TuiStatus {
   }
 }
 
-function statusForSafety(safety: HealthRepairPlanItem['safety']): TuiStatus {
-  if (safety === 'safe') return 'ready'
-  if (safety === 'manual') return 'warn'
-  return 'blocked'
+/** Self-heal items are ready to run; one-click items wait for the operator (a deletion or a spend reads as blocked). */
+function statusForMode(item: HealthRepairPlanItem): TuiStatus {
+  if (item.mode === 'self-heal') return 'ready'
+  return item.effects.deletesUserContent || item.effects.spendsMoney ? 'blocked' : 'warn'
+}
+
+function effectsWords(item: HealthRepairPlanItem): string {
+  const parts: string[] = []
+  if (item.effects.deletesUserContent) parts.push('deletes content')
+  if (item.effects.spendsMoney) parts.push('spends money')
+  if (item.effects.widensAuthorization) parts.push('widens access')
+  if (item.effects.restartsService) parts.push(`restarts ${item.effects.restartsService}`)
+  return parts.length > 0 ? parts.join(', ') : 'no side effects'
 }
 
 function statusForApply(status: HealthRepairApplyResult['status']): TuiStatus {
@@ -168,9 +178,9 @@ function itemRows(items: readonly HealthRepairPlanItem[]): FindingRow[] {
     const reason = item.reason.replace(/[.!?]+$/, '')
     const changes = changesDetail(item.changes)
     return {
-      status: statusForSafety(item.safety),
+      status: statusForMode(item),
       label: item.actionId,
-      message: item.title,
+      message: `${item.title} (${effectsWords(item)})`,
       detail: changes ? `Reason: ${reason}. Change: ${changes}` : `Reason: ${item.reason}`,
     }
   })
@@ -194,13 +204,11 @@ function incidentIdRows(ids: readonly string[]): FindingRow[] {
 }
 
 function repairPlanSummary(plan: HealthRepairPlan): SummaryItem[] {
-  const safe = plan.items.filter(item => item.safety === 'safe').length
-  const manual = plan.items.filter(item => item.safety === 'manual').length
-  const destructive = plan.items.filter(item => item.safety === 'destructive').length
+  const automatic = plan.items.filter(item => item.mode === 'self-heal').length
+  const confirm = plan.items.filter(item => item.mode === 'one-click').length
   return [
-    { label: 'safe', value: safe, status: safe > 0 ? 'ready' : 'ok' },
-    { label: 'manual', value: manual, status: manual > 0 ? 'warn' : 'ok' },
-    { label: 'destructive', value: destructive, status: destructive > 0 ? 'blocked' : 'ok' },
+    { label: 'automatic', value: automatic, status: automatic > 0 ? 'ready' : 'ok' },
+    { label: 'needs confirmation', value: confirm, status: confirm > 0 ? 'warn' : 'ok' },
   ]
 }
 
@@ -338,14 +346,14 @@ export function DoctorRepairPlan({ plan, color = true }: {
   plan: DoctorRepairPlanData
   color?: boolean
 }) {
-  const safeItems = plan.items.filter(item => item.safety === 'safe')
-  const manualItems = plan.items.filter(item => item.safety !== 'safe')
+  const safeItems = plan.items.filter(item => item.mode === 'self-heal')
+  const manualItems = plan.items.filter(item => item.mode === 'one-click')
 
   return (
     <Box flexDirection="column">
       <ScreenHeader title="Doctor repair plan" subtitle="Preview only; no changes have been applied" color={color} />
       <SummaryStrip items={repairPlanSummary(plan)} color={color} />
-      <Section title="Safe deterministic repairs" color={color}>
+      <Section title="Automatic repairs" color={color}>
         <FindingRows
           rows={safeItems.length > 0
             ? itemRows(safeItems)
@@ -354,7 +362,7 @@ export function DoctorRepairPlan({ plan, color = true }: {
         />
       </Section>
       {manualItems.length > 0 ? (
-        <Section title="Manual follow-up" color={color}>
+        <Section title="Need your confirmation" color={color}>
           <FindingRows rows={itemRows(manualItems)} color={color} />
         </Section>
       ) : null}

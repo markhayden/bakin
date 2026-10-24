@@ -11,6 +11,7 @@ import type {
   HealthObservationStatus,
   HealthRepairApplyResult,
   HealthRepairPlan,
+  HealthRepairPlanItem,
   HealthRepairTarget,
   HealthReport,
   HealthReportStatus,
@@ -73,16 +74,23 @@ function offlineIncident(
   remediation?: string,
 ): HealthIncidentInput {
   const id = stablePart(name)
+  // Offline reports have no server, no catalog and no repair engine: the
+  // remediation rides the impact copy and the resolution is the human's
+  // decision on the Health page once Bakin runs.
   const base = {
     key: 'attention',
     title: `${name} needs attention`,
-    impact: 'Local setup may be incomplete or inconsistent.',
+    impact: `Local setup may be incomplete or inconsistent. ${remediation ?? `Run the ${name} onboarding step again.`}`,
+    subject: { kind: 'system' as const, id, label: name },
+    declarationId: 'attention',
+    required: status === 'error',
     resources: [{ kind: 'system' as const, id, label: name }],
     resolution: {
       key: 'review-setup',
-      type: 'instructions' as const,
+      type: 'human' as const,
+      needs: 'decision' as const,
       label: 'Review local setup',
-      steps: [remediation ?? `Run the ${name} onboarding step again.`] as [string],
+      href: '/health',
     },
   }
   return status === 'error'
@@ -146,10 +154,13 @@ function unknownObservation(
     incident: {
       key: `${id}-unverified`,
       title: `${name} could not be verified`,
-      impact: 'Offline diagnostics could not establish current evidence for this source.',
+      impact: 'Offline diagnostics could not establish current evidence for this source. Run `bakin doctor --full` against a running server.',
       disposition: 'watch',
+      subject: { kind: 'system', id, label: name },
+      declarationId: 'unverified',
+      required: false,
       resources,
-      resolution: { key: 'rerun-full', type: 'rerun', label: 'Run full diagnostics' },
+      resolution: { key: 'diagnose-check-failure', type: 'repair', label: 'Investigate the unverified check', actionId: 'core.diagnose' },
     },
   }
 }
@@ -193,7 +204,7 @@ function failedCheckState(observation: HealthObservation, generatedAt: string, c
 
 function canonicalIncidents(observations: readonly HealthObservation[], generatedAt: string): HealthIncident[] {
   return observations.flatMap((observation): HealthIncident[] => {
-    if (observation.status === 'healthy') return []
+    if (observation.status === 'healthy' || !observation.incident || !observation.incidentId) return []
     return [{
       id: observation.incidentId,
       status: observation.status,
@@ -202,8 +213,11 @@ function canonicalIncidents(observations: readonly HealthObservation[], generate
       effectiveDisposition: observation.incident.disposition,
       title: observation.incident.title,
       impact: observation.incident.impact,
+      subject: observation.incident.subject,
       resources: observation.incident.resources ?? [],
       resolution: observation.incident.resolution,
+      declarationId: observation.incident.declarationId,
+      required: observation.incident.required === true,
       observationIds: [observation.id],
       observedAt: observation.observedAt,
       staleAt: observation.staleAt,
@@ -457,18 +471,27 @@ function printDoctorCommandJson(
   }, null, 2))
 }
 
+/** The effects in words — why an item waits for a click (`doctor --fix` applies self-heal items only). */
+function describeItemEffects(item: HealthRepairPlanItem): string {
+  const parts: string[] = []
+  if (item.effects.deletesUserContent) parts.push('deletes content')
+  if (item.effects.spendsMoney) parts.push('spends money')
+  if (item.effects.widensAuthorization) parts.push('widens access')
+  if (item.effects.restartsService) parts.push(`restarts ${item.effects.restartsService}`)
+  return parts.length > 0 ? parts.join(', ') : 'no side effects'
+}
+
 function printDoctorRepairPlan(plan: HealthRepairPlan): void {
-  const safe = plan.items.filter(item => item.safety === 'safe').length
-  const manual = plan.items.filter(item => item.safety === 'manual').length
-  const destructive = plan.items.filter(item => item.safety === 'destructive').length
+  const selfHeal = plan.items.filter(item => item.mode === 'self-heal').length
+  const oneClick = plan.items.filter(item => item.mode === 'one-click').length
   console.log('Doctor repair plan')
-  console.log(`${safe} safe, ${manual} manual, ${destructive} destructive`)
+  console.log(`${selfHeal} automatic, ${oneClick} need your confirmation`)
   if (plan.items.length === 0) {
     console.log('No deterministic repairs available.')
     return
   }
   for (const item of plan.items) {
-    console.log(`\n[${item.safety.toUpperCase()}] ${item.title}`)
+    console.log(`\n[${item.mode === 'self-heal' ? 'AUTOMATIC' : 'CONFIRM'}] ${item.title} (${describeItemEffects(item)})`)
     console.log(`  id: ${item.id}`)
     console.log(`  action: ${item.actionId}`)
     console.log(`  reason: ${item.reason}`)
@@ -572,7 +595,7 @@ async function confirmDoctorDelegate(count: number): Promise<boolean> {
 async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
   const current = await runFullDoctor()
   const plan = await runDoctorRepairPlan(current)
-  const safeItemIds = plan.items.filter(item => item.safety === 'safe').map(item => item.id)
+  const safeItemIds = plan.items.filter(item => item.mode === 'self-heal').map(item => item.id)
   if (safeItemIds.length === 0) {
     if (options.json) {
       printDoctorCommandJson('doctor --fix', { status: 'no_safe_repairs', plan }, 0)

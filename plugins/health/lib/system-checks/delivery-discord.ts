@@ -8,7 +8,7 @@
  */
 import { CHANNELS_SETTINGS_HREF, DELIVERABLE_STATES, type ChannelReadiness } from '@bakin/core/delivery'
 import { healthHealthy, healthNotApplicable, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthRepairActionDefinition, HealthResolution } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition, HealthResolution, HealthSubject } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { readDiscordConfig } from '../../../../src/core/delivery/config'
 import { CHANNEL_HEALTH_CHECK_IDS, getChannelReadiness, reconnectDeliveryBridge } from '../../../../src/core/delivery/readiness'
@@ -17,7 +17,18 @@ export const DISCORD_BRIDGE_RECONNECT_ACTION = 'discord-bridge-reconnect'
 /** How long the repair waits for the bridge to settle before judging (the route's long-poll uses the same figure). */
 export const RECONNECT_WAIT_MS = 45_000
 
-const openChannels: HealthResolution = { key: 'open-channels', type: 'navigate', label: 'Open Settings → Channels', href: CHANNELS_SETTINGS_HREF }
+const SUBJECT: HealthSubject = { kind: 'channel', id: 'discord', label: 'Discord delivery bridge' }
+/** Rows 21–22 and 24 (credential variant) are the operator's; 24 (other causes) and 25 reconnect; 26 is a decision on the servers field; 23, 27, 28 are observations. */
+export const DELIVERY_DISCORD_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'missing-token', subjectKind: 'channel', resolution: { type: 'human', needs: 'credential' }, required: 'always' },
+  { id: 'missing-guild', subjectKind: 'channel', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+  { id: 'bridge-failed-credential', subjectKind: 'channel', resolution: { type: 'human', needs: 'credential' }, required: 'always' },
+  { id: 'bridge-failed', subjectKind: 'channel', resolution: { type: 'repair', actionId: DISCORD_BRIDGE_RECONNECT_ACTION }, required: 'always' },
+  { id: 'bridge-disconnected', subjectKind: 'channel', resolution: { type: 'repair', actionId: DISCORD_BRIDGE_RECONNECT_ACTION }, required: 'always' },
+  { id: 'guild-unjoined', subjectKind: 'channel', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+]
+const tokenCredential: HealthResolution = { key: 'open-channels', type: 'human', needs: 'credential', label: 'Set the bot token in Settings → Channels', href: `${CHANNELS_SETTINGS_HREF}&field=integrations.discord.botToken`, field: 'secret-slot-discord-botToken' }
+const guildsDecision = (label: string): HealthResolution => ({ key: 'open-channels', type: 'human', needs: 'decision', label, href: `${CHANNELS_SETTINGS_HREF}&field=integrations.discord.guildIds`, field: 'channels-field-guilds' })
 const reconnect: HealthResolution = { key: DISCORD_BRIDGE_RECONNECT_ACTION, type: 'repair', label: 'Reconnect the Discord bridge', actionId: DISCORD_BRIDGE_RECONNECT_ACTION }
 const discordSetting = [{ kind: 'setting' as const, id: 'integrations.discord', label: 'Discord integration' }]
 
@@ -33,7 +44,9 @@ function incident(
   title: string,
   impact: string,
   summary: string,
-  resolution: HealthResolution = openChannels,
+  resolution: HealthResolution,
+  declarationId = key,
+  required?: boolean,
 ) {
   const remediation = readiness.remediation
   return healthWarning({
@@ -53,6 +66,9 @@ function incident(
       class: 'service_failure',
       impact,
       disposition: 'action_required',
+      subject: SUBJECT,
+      declarationId,
+      ...(required === undefined ? {} : { required }),
       resources: discordSetting,
       resolution,
     },
@@ -77,11 +93,11 @@ export async function checkDeliveryDiscord(): Promise<HealthCheckRunInput> {
     case 'missing_token':
       return healthObserved([incident(readiness, 'missing-token', 'Discord bridge has no bot token',
         'Channel delivery, gate approval cards, and inbound Discord chat cannot start.',
-        'Discord bridge is enabled but no bot token is stored.')])
+        'Discord bridge is enabled but no bot token is stored.', tokenCredential)])
     case 'missing_guild':
       return healthObserved([incident(readiness, 'missing-guild', 'Discord bridge has no guilds to serve',
         'The bridge has no channels to enumerate or deliver to.',
-        'Discord bridge is enabled but no guild IDs are configured.')])
+        'Discord bridge is enabled but no guild IDs are configured.', guildsDecision('Add a server in Settings → Channels'))])
     case 'connecting':
       // Watch, not action: an attempt is in flight and the READY deadline
       // bounds it. The targeted rerun's debounce means a healthy connect
@@ -89,26 +105,18 @@ export async function checkDeliveryDiscord(): Promise<HealthCheckRunInput> {
       return healthObserved([healthWarning({
         key: 'connecting',
         summary: 'Discord bridge is connecting.',
-        detail: 'An attempt is in flight; the READY deadline bounds it. No action yet.',
+        detail: 'An attempt is in flight; the READY deadline bounds it. No action yet — channel delivery resumes once the gateway reports READY.',
         evidence: {
           since: readiness.connection.since,
           attempt: readiness.connection.attempt ? { generation: readiness.connection.attempt.generation, startedAt: readiness.connection.attempt.startedAt } : null,
-        },
-        incident: {
-          key: 'connecting',
-          title: 'Discord delivery bridge is connecting',
-          class: 'service_failure',
-          impact: 'Channel delivery resumes once the gateway reports READY.',
-          disposition: 'watch',
-          resources: discordSetting,
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
         },
       })])
     case 'failed':
       return healthObserved([incident(readiness, 'bridge-failed', 'Discord delivery bridge failed to connect',
         'Channel alerts, gate approval cards, and inbound Discord chat are not being delivered.',
         `Discord bridge failed to connect${readiness.connection.lastError ? ` (${readiness.connection.lastError.kind}: ${readiness.connection.lastError.message})` : ''}.`,
-        credentialFailure(readiness) ? openChannels : reconnect)])
+        credentialFailure(readiness) ? tokenCredential : reconnect,
+        credentialFailure(readiness) ? 'bridge-failed-credential' : 'bridge-failed')])
     case 'disconnected':
       return healthObserved([incident(readiness, 'bridge-disconnected', 'Discord delivery bridge is disconnected',
         'Channel alerts, gate approval cards, and inbound Discord chat are not being delivered until the gateway resumes.',
@@ -119,7 +127,8 @@ export async function checkDeliveryDiscord(): Promise<HealthCheckRunInput> {
         'Posts to channels in an unreachable server fail; the other servers still deliver.',
         `Discord bridge is connected but ${missing.length} configured server${missing.length === 1 ? ' is' : 's are'} not reachable: ${missing.map((guild) => guild.id).join(', ')}.`,
         // Invite the bot to the server (the Channels tab offers the invite link beside the field) or remove the id (row 26).
-        { key: 'open-channels', type: 'navigate', label: 'Invite the bot or remove the server', href: `${CHANNELS_SETTINGS_HREF}&field=integrations.discord.guildIds` })])
+        // Required while a configured channel lives in that server — every configured server is presumed used until the bridge knows otherwise.
+        guildsDecision('Invite the bot or remove the server'), 'guild-unjoined', true)])
     }
     case 'connected':
       break
@@ -127,35 +136,21 @@ export async function checkDeliveryDiscord(): Promise<HealthCheckRunInput> {
 
   const notices = []
   if (settings.approvers.length === 0) {
+    // Row 27: an observation; the field is named in the detail.
     notices.push(healthWarning({
       key: 'approvers',
       summary: 'No Discord approvers are configured — approval buttons deny everyone (fail closed).',
-      detail: 'Set the approvers list to the Discord user IDs allowed to decide gates.',
-      incident: {
-        key: 'empty-approvers',
-        title: 'Discord approval buttons are locked',
-        class: 'policy_denial',
-        impact: 'Gate cards render in Discord but every click is denied until an approver is allowlisted.',
-        disposition: 'watch',
-        resources: discordSetting,
-        resolution: { key: 'open-channels', type: 'navigate', label: 'Open Settings → Channels', href: `${CHANNELS_SETTINGS_HREF}&field=integrations.discord.approvers` },
-      },
+      detail: `Gate cards render in Discord but every click is denied until an approver is allowlisted. Set the approvers list to the Discord user IDs allowed to decide gates: ${CHANNELS_SETTINGS_HREF}&field=integrations.discord.approvers`,
+      evidence: { setting: 'integrations.discord.approvers', approvers: 0 },
     }))
   }
   if (settings.inbound.enabled && settings.inbound.allowFrom.length === 0) {
+    // Row 28: an observation; the field is named in the detail.
     notices.push(healthWarning({
       key: 'inbound-allowlist',
       summary: 'Discord inbound chat is on but the allowlist is empty — every sender is ignored (fail closed).',
-      detail: 'Set the inbound allowlist to the Discord user IDs allowed to chat.',
-      incident: {
-        key: 'empty-inbound-allowlist',
-        title: 'Discord inbound chat is locked',
-        class: 'policy_denial',
-        impact: 'Messages at the bot are silently denied (audited) until a sender is allowlisted.',
-        disposition: 'watch',
-        resources: discordSetting,
-        resolution: { key: 'open-channels', type: 'navigate', label: 'Open Settings → Channels', href: `${CHANNELS_SETTINGS_HREF}&field=integrations.discord.inbound.allowFrom` },
-      },
+      detail: `Messages at the bot are silently denied (audited) until a sender is allowlisted. Set the inbound allowlist to the Discord user IDs allowed to chat: ${CHANNELS_SETTINGS_HREF}&field=integrations.discord.inbound.allowFrom`,
+      evidence: { setting: 'integrations.discord.inbound.allowFrom', allowFrom: 0 },
     }))
   }
   if (notices.length > 0) return healthObserved([notices[0], ...notices.slice(1)])
@@ -182,6 +177,8 @@ export function discordBridgeReconnectRepair(): HealthRepairActionDefinition {
   return {
     id: DISCORD_BRIDGE_RECONNECT_ACTION,
     name: 'Reconnect the Discord bridge',
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'restart',
     operationPlan: () => ({
       stages: [
         { id: 'reconnect', kind: 'installing', label: 'Reconnect the bridge' },
@@ -195,7 +192,6 @@ export function discordBridgeReconnectRepair(): HealthRepairActionDefinition {
         actionId: DISCORD_BRIDGE_RECONNECT_ACTION,
         title: 'Reconnect the Discord bridge',
         reason: 'The bridge lost its gateway connection or failed to connect for a reason that is not a credential.',
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: [{ kind: 'service', target: 'discord bridge', action: 'update', description: 'Reconcile the bridge to the current configuration (a fresh gateway connection) and wait for READY. No message is sent.' }],
       }]

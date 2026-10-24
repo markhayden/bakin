@@ -41,6 +41,7 @@ mock.module('../../../../plugins/health/lib/host-providers', () => ({ getRegistr
 
 import type { UpdateRecord } from '@makinbakin/sdk/types'
 import { noopOp } from '../../../helpers/operation-harness'
+import { stampPlanItems } from '../../../helpers/repair-contract'
 import { checkPluginAssets, installPluginAssetsRepair } from '../../../../plugins/health/lib/system-checks/plugin-assets'
 import { checkPluginRegistry } from '../../../../plugins/health/lib/system-checks/plugin-registry'
 import type { PluginArtifactDeps } from '../../../../plugins/health/lib/system-checks/plugin-artifacts'
@@ -100,14 +101,14 @@ describe('plugin-assets incidents (rows 93–94)', () => {
     expect((await observed(checkPluginAssets(none)))[0]!.incident).toMatchObject({ key: 'user-edited-drifted', resolution: { type: 'repair', actionId: 'install-plugin-assets', label: 'Restore the shipped copies' } })
   })
 
-  it('the install repair offers a MANUAL Restore item per drifted user-edited skill only for a targeted row — never under all-actionable; apply releases exactly those', async () => {
+  it('the install repair offers a one-click Restore item (it replaces your edit) per drifted user-edited skill only for a targeted row — never under all-actionable; apply releases exactly those', async () => {
     scan = { userEditedDrifted: [{ pluginId: 'sdr', name: 'mine' }, { pluginId: 'sdr', name: 'other' }], invalidSource: [] }
     const action = installPluginAssetsRepair()
     const all = await action.plan({ type: 'all_actionable', reportId: 'r' })
     expect(all.map((item) => item.id)).toEqual(['install-plugin-assets'])
     const targeted = await action.plan({ type: 'incidents', reportId: 'r', ids: ['health.plugin-assets:user-edited-drifted'] })
-    expect(targeted.map((item) => [item.id, item.safety])).toEqual([['install-plugin-assets', 'safe'], ['restore:mine', 'manual'], ['restore:other', 'manual']])
-    const results = await action.apply(targeted.filter((item) => item.id === 'restore:mine'), noopOp())
+    expect(targeted.map((item) => [item.id, item.effects?.deletesUserContent ?? false])).toEqual([['install-plugin-assets', false], ['restore:mine', true], ['restore:other', true]])
+    const results = await action.apply(stampPlanItems(action, targeted.filter((item) => item.id === 'restore:mine')), noopOp())
     expect(applies).toEqual([{ restoreUserEdited: ['mine'] }])
     expect(results[0]).toMatchObject({ itemId: 'restore:mine', status: 'applied' })
     expect(results[0]!.message).toContain('restored')
@@ -121,10 +122,10 @@ describe('plugin-registry activation-failed (row 101)', () => {
     const [row] = await observed(checkPluginRegistry(offers({ notes: '2.0.0' })))
     expect(row!.incident).toMatchObject({ key: 'activation-failed:notes', resolution: { type: 'repair', actionId: 'plugin-upgrade', label: 'Upgrade notes to 2.0.0' } })
   })
-  it('keeps the inspect instructions without an offer (core.diagnose takes over in the cutover)', async () => {
+  it('hands the activation failure to the fallback lane without an offer (core.diagnose, row 101)', async () => {
     lock(['notes'])
     registry = [{ id: 'notes', status: 'failed', errorCode: 'activation_failed', errorMessage: 'boom' }]
     const [row] = await observed(checkPluginRegistry(none))
-    expect(row!.incident).toMatchObject({ key: 'activation-failed:notes', resolution: { type: 'instructions', key: 'inspect-plugin' } })
+    expect(row!.incident).toMatchObject({ key: 'activation-failed:notes', declarationId: 'activation-failed', subject: { kind: 'plugin', id: 'notes' }, resolution: { type: 'repair', actionId: 'core.diagnose' } })
   })
 })

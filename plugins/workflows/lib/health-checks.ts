@@ -6,8 +6,11 @@ import type { z } from 'zod'
 import { readTaskboard } from '../../../src/core/task-store'
 import type {
   HealthCheckRunInput,
+  HealthIncidentDeclaration,
   HealthObservationInput,
   HealthRepairActionDefinition,
+  HealthResolution,
+  HealthSubject,
 } from '../../../packages/core/src/plugin-types'
 import {
   healthHealthy,
@@ -32,24 +35,57 @@ function stablePart(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'unknown'
 }
 
+/** Rows 127–132: broken skill files are the human's decision while something in use references them; drift self-heals. */
+export const WORKFLOW_SKILLS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'frontmatter', subjectKind: 'record', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+  { id: 'output-schema', subjectKind: 'record', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+  { id: 'drift', subjectKind: 'record', resolution: { type: 'repair', actionId: 'repair-skill-drift' }, required: 'always' },
+]
+
+/** Rows 133–138: definition errors are the human's decision while the workflow is in use; nested maps and the scan are observations. */
+export const WORKFLOW_DEFINITIONS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'schema', subjectKind: 'record', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+  { id: 'skill', subjectKind: 'record', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+  { id: 'nested', subjectKind: 'record', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+  { id: 'parallel-skill', subjectKind: 'record', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+]
+
+/** Rows 139–141: an orphan is a one-click deletion (it blocks nothing); the scan and stale runs are observations. */
+export const WORKFLOW_INSTANCES_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'orphan', subjectKind: 'task', resolution: { type: 'repair', actionId: 'remove-orphan-instances' }, required: 'never' },
+]
+
+function skillRecordSubject(file: string): HealthSubject {
+  return { kind: 'record', id: `workflows/skills/${file}`, label: file }
+}
+
+function workflowRecordSubject(name: string): HealthSubject {
+  return { kind: 'record', id: `workflows/${name}`, label: name }
+}
+
 function bounded(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max - 1)}…`
 }
 
+/**
+ * One incident-bearing warning under the two-outcomes contract: a repair
+ * the owner registered, or the human's decision on the record's recover
+ * view. Observation rows (no incident) use `healthWarning` directly.
+ */
 function workflowWarning(input: {
   key: string
+  declarationId: string
   summary: string
   impact: string
-  workflowId?: string
+  subject: HealthSubject
   resourceKind?: 'workflow' | 'file' | 'task'
-  disposition?: 'advisory' | 'watch' | 'action_required'
-  repairActionId?: string
+  resourceId: string
+  disposition: 'advisory' | 'watch' | 'action_required'
+  /** Mandatory for an owner-decides family: is something that runs referencing this record? */
+  required?: boolean
   evidence?: Record<string, string | number | boolean | null>
-  /** The operator's control for this record (self-healing 1.4b): its recover view, with the failing step when there is one. */
-  href?: string
+  resolution: HealthResolution
 }): HealthObservationInput {
-  const disposition = input.disposition ?? (input.repairActionId ? 'action_required' : 'advisory')
-  const resourceId = input.workflowId
   return healthWarning({
     key: input.key,
     summary: bounded(input.summary, 500),
@@ -58,17 +94,49 @@ function workflowWarning(input: {
       key: input.key,
       title: bounded(input.summary, 120),
       impact: input.impact,
-      disposition,
-      resources: resourceId
-        ? [{ kind: input.resourceKind ?? 'workflow', id: stablePart(resourceId), label: bounded(resourceId, 120) }]
-        : [{ kind: 'plugin', id: 'workflows', label: 'Workflows' }],
-      resolution: input.repairActionId
-        ? { key: input.repairActionId, type: 'repair', label: 'Review repair', actionId: input.repairActionId }
-        : input.href
-          ? { key: 'recover-workflow', type: 'navigate', label: 'Open the recover view', href: input.href }
-          : { key: 'review-workflows', type: 'navigate', label: 'Review Workflows', href: '/workflows' },
+      disposition: input.disposition,
+      subject: input.subject,
+      declarationId: input.declarationId,
+      ...(input.required === undefined ? {} : { required: input.required }),
+      resources: [{ kind: input.resourceKind ?? 'workflow', id: stablePart(input.resourceId), label: bounded(input.resourceId, 120) }],
+      resolution: input.resolution,
     },
   })
+}
+
+/** The human's control for a workflow record: its recover view (self-healing 1.4b). */
+function recoverDecision(href: string): HealthResolution {
+  return { key: 'recover-workflow', type: 'human', needs: 'decision', label: 'Open the recover view', href }
+}
+
+/**
+ * Skill names every definition on disk references (steps and parallel
+ * branches) — the "in use" fact behind rows 127/128/134/137. Best effort:
+ * an unreadable definitions dir simply references nothing.
+ */
+function referencedSkillNames(contentDir: string): Set<string> {
+  const names = new Set<string>()
+  try {
+    for (const { definition } of listDefinitions(contentDir)) {
+      for (const step of definition.steps) {
+        const typed = step as { skill?: string; steps?: Array<{ skill?: string }> }
+        if (typed.skill) names.add(typed.skill)
+        for (const child of typed.steps ?? []) if (child.skill) names.add(child.skill)
+      }
+    }
+  } catch {
+    // The definitions check reports an unreadable definitions dir itself.
+  }
+  return names
+}
+
+/** Workflow ids with an in-progress instance — the "running" half of "scheduled or running" (rows 133–137). */
+function runningWorkflowIds(contentDir: string): Set<string> {
+  try {
+    return new Set(listInstances(undefined, contentDir).filter((instance) => instance.status === 'in_progress').map((instance) => instance.workflowId))
+  } catch {
+    return new Set()
+  }
 }
 
 /** Validate workflow skill metadata and detect managed-source drift. */
@@ -79,69 +147,83 @@ export function checkWorkflowSkills(contentDir: string): HealthCheckRunInput {
   if (existsSync(skillsDir)) {
     try {
       const files = readdirSync(skillsDir).filter(file => file.endsWith('.md'))
+      const referenced = files.length > 0 ? referencedSkillNames(contentDir) : new Set<string>()
       for (const file of files) {
+        // Rows 127/128: action_required only while an in-use definition references the skill, else advisory.
+        const inUse = referenced.has(file.replace(/\.md$/, ''))
         try {
           const content = readFileSync(join(skillsDir, file), 'utf-8')
           if (splitFrontmatter(content).raw === null) {
             observations.push(workflowWarning({
               key: `frontmatter-${stablePart(file)}`,
+              declarationId: 'frontmatter',
               summary: `Workflow skill ${file} has no YAML frontmatter.`,
               impact: 'The skill output cannot be validated reliably.',
-              workflowId: file,
+              subject: skillRecordSubject(file),
               resourceKind: 'file',
-              disposition: 'action_required',
-              href: `/workflows?recover=1&skill=${encodeURIComponent(file)}`,
+              resourceId: file,
+              disposition: inUse ? 'action_required' : 'advisory',
+              required: inUse,
+              resolution: recoverDecision(`/workflows?recover=1&skill=${encodeURIComponent(file)}`),
             }))
             continue
           }
           if (!content.includes('output_schema')) {
             observations.push(workflowWarning({
               key: `output-schema-${stablePart(file)}`,
+              declarationId: 'output-schema',
               summary: `Workflow skill ${file} has no output_schema.`,
               impact: 'Step output will not be validated server-side.',
-              workflowId: file,
+              subject: skillRecordSubject(file),
               resourceKind: 'file',
-              disposition: 'action_required',
-              href: `/workflows?recover=1&skill=${encodeURIComponent(file)}`,
+              resourceId: file,
+              disposition: inUse ? 'action_required' : 'advisory',
+              required: inUse,
+              resolution: recoverDecision(`/workflows?recover=1&skill=${encodeURIComponent(file)}`),
             }))
           }
         } catch {
-          observations.push(workflowWarning({
+          // Row 129: an observation.
+          observations.push(healthWarning({
             key: `unreadable-${stablePart(file)}`,
             summary: `Workflow skill ${file} could not be read.`,
-            impact: 'Bakin cannot verify or execute the skill definition reliably.',
-            workflowId: file,
-            resourceKind: 'file',
-            disposition: 'watch',
+            detail: 'Bakin cannot verify or execute the skill definition reliably.',
           }))
         }
       }
     } catch {
+      // Row 130: a "could not see" observation.
       observations.push(healthUnknown({
         key: 'skills-directory',
         summary: 'The workflow skills directory could not be inspected.',
-        incident: {
-          key: 'skills-directory',
-          title: 'Workflow skill verification is unavailable',
-          impact: 'Skill metadata and drift could not be verified during this run.',
-          disposition: 'watch',
-          resources: [{ kind: 'directory', id: 'workflows.skills', label: 'Workflow skills' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
-        },
+        detail: 'Skill metadata and drift could not be verified during this run.',
       }))
     }
   }
 
   for (const report of scanWorkflowSkillDrift(contentDir)) {
+    if (!report.repairable) {
+      // Row 132: an observation — nothing deterministic to do.
+      observations.push(healthWarning({
+        key: `drift-${stablePart(report.skillName)}`,
+        summary: bounded(workflowSkillDriftMessage(report), 500),
+        detail: 'Workflow execution may use a stale local skill instead of its current managed source.',
+        evidence: { skill: report.skillName, repairability: report.repairability },
+      }))
+      continue
+    }
+    // Row 131: the per-item repair (untouched self-heals; a user-edited file is one-click).
     observations.push(workflowWarning({
       key: `drift-${stablePart(report.skillName)}`,
+      declarationId: 'drift',
       summary: workflowSkillDriftMessage(report),
       impact: 'Workflow execution may use a stale local skill instead of its current managed source.',
-      workflowId: report.filePath,
+      subject: skillRecordSubject(`${report.skillName}.md`),
       resourceKind: 'file',
-      disposition: report.repairable ? 'action_required' : 'advisory',
-      repairActionId: report.repairable ? 'repair-skill-drift' : undefined,
+      resourceId: report.filePath,
+      disposition: 'action_required',
       evidence: { skill: report.skillName, repairability: report.repairability },
+      resolution: { key: 'repair-skill-drift', type: 'repair', label: 'Repair the drifted skill', actionId: 'repair-skill-drift' },
     }))
   }
 
@@ -156,6 +238,9 @@ export function workflowSkillDriftRepair(contentDir: string): HealthRepairAction
   return {
     id: 'repair-skill-drift',
     name: 'Repair workflow skill drift',
+    // Row 131: an untouched managed file is replaced in place (self-heal);
+    // the planner stamps `deletesUserContent` on a user-edited one (one-click).
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
     operationPlan: () => ({
       stages: [{ id: 'replace', kind: 'committing', label: 'Replace drifted skills from their source' }],
       pointOfNoReturn: 'replace',
@@ -168,7 +253,7 @@ export function workflowSkillDriftRepair(contentDir: string): HealthRepairAction
           actionId: 'repair-skill-drift',
           title: `Repair workflow skill ${report.skillName}`,
           reason: workflowSkillDriftMessage(report),
-          safety: report.repairability === 'safe-managed' ? 'safe' as const : 'manual' as const,
+          ...(report.repairability === 'safe-managed' ? {} : { effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false } }),
           incidentIds: [],
           observationIds: [],
           preconditions: [],
@@ -274,8 +359,19 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
   try {
     const definitions = listDefinitions(contentDir)
     const knownWorkflowIds = new Set(definitions.map(entry => entry.name))
+    const running = runningWorkflowIds(contentDir)
     for (const { name, definition } of definitions) {
       const workflowKey = stablePart(name)
+      // Rows 133–137: required while the workflow is running (a schedule that
+      // targets it is the schedule plugin's fact; it is not read here).
+      const inUse = running.has(name)
+      const decision = (href: string) => ({
+        subject: workflowRecordSubject(name),
+        resourceId: name,
+        disposition: (inUse ? 'action_required' : 'advisory') as 'action_required' | 'advisory',
+        required: inUse,
+        resolution: recoverDecision(href),
+      })
       const { source: _source, pluginId: _pluginId, packageId: _packageId, ...bare } = definition
       const parsed = workflowDefinitionSchema.safeParse(bare)
       if (!parsed.success) {
@@ -283,11 +379,10 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
           const at = issue.path.length ? ` at ${issue.path.join('.')}` : ''
           observations.push(workflowWarning({
             key: `schema-${workflowKey}-${index}`,
+            declarationId: 'schema',
             summary: `Workflow ${name} has unknown YAML keys${at}: ${issue.message}`,
             impact: 'Unknown fields are ignored, so the workflow may not behave as its author intended.',
-            workflowId: name,
-            disposition: 'action_required',
-            href: `/workflows/${encodeURIComponent(name)}?recover=1`,
+            ...decision(`/workflows/${encodeURIComponent(name)}?recover=1`),
           }))
         })
       }
@@ -297,11 +392,10 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
         if (typedStep.skill && !skillExists(typedStep.skill)) {
           observations.push(workflowWarning({
             key: `skill-${workflowKey}-${stablePart(typedStep.id)}-${stablePart(typedStep.skill)}`,
+            declarationId: 'skill',
             summary: `Workflow ${name} step ${typedStep.id} references missing skill ${typedStep.skill}.`,
             impact: 'The workflow cannot execute this step.',
-            workflowId: name,
-            disposition: 'action_required',
-            href: `/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`,
+            ...decision(`/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`),
           }))
         }
         if (typedStep.type === 'workflow' || typedStep.type === 'map_workflow') {
@@ -309,23 +403,21 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
           if (childId && !knownWorkflowIds.has(childId)) {
             observations.push(workflowWarning({
               key: `nested-${workflowKey}-${stablePart(typedStep.id)}-${stablePart(childId)}`,
+              declarationId: 'nested',
               summary: `Workflow ${name} step ${typedStep.id} references missing workflow ${childId}.`,
               impact: 'The nested workflow step cannot start.',
-              workflowId: name,
-              disposition: 'action_required',
-              href: `/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`,
+              ...decision(`/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`),
             }))
           }
           if (typedStep.type === 'map_workflow' && childId) {
             const child = definitions.find(entry => entry.name === childId)
             const childHasMap = child?.definition.steps.some(childStep => (childStep as { type?: string }).type === 'map_workflow')
             if (childHasMap) {
-              observations.push(workflowWarning({
+              // Row 136: an observation.
+              observations.push(healthWarning({
                 key: `nested-map-${workflowKey}-${stablePart(typedStep.id)}`,
-                summary: `Workflow ${name} maps to ${childId}, which also contains a map_workflow step.`,
-                impact: 'Nested maps are unsupported in v1 and may not execute reliably.',
-                workflowId: name,
-                disposition: 'advisory',
+                summary: bounded(`Workflow ${name} maps to ${childId}, which also contains a map_workflow step.`, 500),
+                detail: 'Nested maps are unsupported in v1 and may not execute reliably.',
               }))
             }
           }
@@ -335,28 +427,21 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
             if (!child.skill || skillExists(child.skill)) continue
             observations.push(workflowWarning({
               key: `parallel-skill-${workflowKey}-${stablePart(child.id)}-${stablePart(child.skill)}`,
+              declarationId: 'parallel-skill',
               summary: `Workflow ${name} parallel step ${child.id} references missing skill ${child.skill}.`,
               impact: 'The parallel workflow branch cannot execute this step.',
-              workflowId: name,
-              disposition: 'action_required',
-              href: `/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`,
+              ...decision(`/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`),
             }))
           }
         }
       }
     }
   } catch {
+    // Row 138: a "could not see" observation.
     return healthObserved([healthUnknown({
       key: 'definitions-scan',
       summary: 'Workflow definitions could not be inspected.',
-      incident: {
-        key: 'definitions-scan',
-        title: 'Workflow definition verification is unavailable',
-        impact: 'Bakin could not verify workflow references during this run.',
-        disposition: 'watch',
-        resources: [{ kind: 'directory', id: 'workflows.definitions', label: 'Workflow definitions' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
-      },
+      detail: 'Bakin could not verify workflow references during this run.',
     })])
   }
 
@@ -402,36 +487,32 @@ export async function checkStaleWorkflowInstances(contentDir: string): Promise<H
   try {
     scan = scanWorkflowInstances(contentDir)
   } catch {
+    // Row 139: a "could not see" observation.
     return healthObserved([healthUnknown({
       key: 'instances-scan',
       summary: 'Workflow instances could not be inspected.',
-      incident: {
-        key: 'instances-scan',
-        title: 'Workflow instance verification is unavailable',
-        impact: 'Bakin cannot determine whether workflow runs are stale or orphaned.',
-        disposition: 'watch',
-        resources: [{ kind: 'directory', id: 'workflows.instances', label: 'Workflow instances' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
-      },
+      detail: 'Bakin cannot determine whether workflow runs are stale or orphaned.',
     })])
   }
 
+  // Row 140: a one-click deletion, advisory — an orphan blocks nothing.
   const observations: HealthObservationInput[] = scan.orphans.map(orphan => workflowWarning({
     key: `orphan-${stablePart(orphan.taskId)}`,
+    declarationId: 'orphan',
     summary: `Workflow instance for deleted task ${orphan.taskId} is orphaned.`,
     impact: 'The stale instance file consumes state and can confuse workflow history.',
-    workflowId: orphan.taskId,
+    subject: { kind: 'task', id: orphan.taskId, label: orphan.taskId },
     resourceKind: 'task',
-    repairActionId: 'remove-orphan-instances',
+    resourceId: orphan.taskId,
+    disposition: 'advisory',
+    resolution: { key: 'remove-orphan-instances', type: 'repair', label: 'Remove the orphaned instance', actionId: 'remove-orphan-instances' },
   }))
   for (const stale of scan.stale) {
-    observations.push(workflowWarning({
+    // Row 141: an observation.
+    observations.push(healthWarning({
       key: `stale-${stablePart(stale.taskId)}`,
-      summary: `Workflow for task ${stale.taskId} has remained on ${stale.currentStepId ?? 'an unknown step'} for ${stale.ageHours}h.`,
-      impact: 'Work assigned to this workflow may be stalled.',
-      workflowId: stale.taskId,
-      resourceKind: 'task',
-      disposition: 'watch',
+      summary: bounded(`Workflow for task ${stale.taskId} has remained on ${stale.currentStepId ?? 'an unknown step'} for ${stale.ageHours}h.`, 500),
+      detail: 'Work assigned to this workflow may be stalled.',
       evidence: { ageHours: stale.ageHours ?? 0 },
     }))
   }
@@ -446,6 +527,9 @@ export function staleWorkflowInstancesRepair(contentDir: string): HealthRepairAc
   return {
     id: 'remove-orphan-instances',
     name: 'Remove orphaned workflow instances',
+    // Row 140: deletes instance files → one-click.
+    effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
+    mutation: 'delete',
     operationPlan: () => ({
       stages: [
         { id: 'scan', kind: 'preparing', label: 'Find orphaned instances' },
@@ -462,7 +546,6 @@ export function staleWorkflowInstancesRepair(contentDir: string): HealthRepairAc
         actionId: 'remove-orphan-instances',
         title: 'Remove orphaned workflow instances',
         reason: `${orphans.length} workflow instance file(s) refer to tasks that no longer exist.`,
-        safety: 'destructive',
         incidentIds: [],
         observationIds: [],
         preconditions: [],

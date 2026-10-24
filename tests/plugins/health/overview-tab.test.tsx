@@ -34,7 +34,8 @@ function incident(overrides: Partial<HealthIncident> & Pick<HealthIncident, 'id'
   return {
     id,
     status: 'warning', disposition: 'watch', effectiveDisposition: rest.disposition ?? 'watch', title: id, impact: 'Operator impact.', resources: [],
-    resolution: { key: 'again', type: 'rerun', label: 'Check again' },
+    subject: { kind: 'system', id: 'fixture' }, declarationId: 'fixture', required: false,
+    resolution: { key: 'diagnose-check-failure', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' },
     observationIds: [`observation:${id}`], observedAt: OBSERVED_AT, staleAt: STALE_AT, stale: false,
     ...rest,
   }
@@ -50,6 +51,7 @@ function observation(source: HealthIncident): HealthObservation {
     snapshot: source.stale ? 'last_known' : 'current', incidentId: source.id,
     incident: {
       key: source.id, title: source.title, impact: source.impact, disposition: source.disposition,
+      subject: source.subject, declarationId: source.declarationId, required: source.required,
       resources: source.resources, resolution: source.resolution,
     },
   } as HealthObservation
@@ -626,7 +628,7 @@ describe('OverviewTabView', () => {
     const first = buildHealthOverviewViewModel({ report: report([retry], 'unknown_stale'), now: NOW })
     const onRerun = mock()
     const view = render(<OverviewTabView model={first} onRerun={onRerun} />)
-    const button = screen.getByRole('button', { name: 'Check again' })
+    const button = screen.getByRole('button', { name: 'Investigate' })
     button.focus()
     expect(document.activeElement).toBe(button)
 
@@ -634,7 +636,7 @@ describe('OverviewTabView', () => {
     const refreshed = buildHealthOverviewViewModel({ report: { ...report([refreshedIncident], 'unknown_stale'), id: 'report-2', revision: 2 }, now: NOW })
     view.rerender(<OverviewTabView model={refreshed} onRerun={onRerun} />)
 
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Check again' }))
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Investigate' }))
   })
 
   it('keeps Search visible when the initial report fails', () => {

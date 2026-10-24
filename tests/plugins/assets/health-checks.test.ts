@@ -54,7 +54,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 import { assetRepair, checkAssets, incompleteEnrichmentAssetIds } from '../../../plugins/assets/lib/health-checks'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
 import { noopOp } from '../../helpers/operation-harness'
 
 const assetsRoot = join(testDir, 'assets')
@@ -111,14 +111,15 @@ describe('checkAssets — store shape', () => {
     expect(results.some(r =>
       r.status === 'warning' &&
       r.summary.includes('assets directory is missing') &&
-      r.incident.resolution.type === 'repair'
+      r.incident?.resolution.type === 'repair'
     )).toBe(true)
   })
 
   it('repairs the assets/ tree explicitly', async () => {
     const repair = assetRepair(testDir)
-    const plan = await repair.plan(repairTarget)
+    const plan = stampPlanItems(repair, await repair.plan(repairTarget))
     expect(plan).toHaveLength(1)
+    expect(plan[0]!.mode).toBe('self-heal') // creating directories deletes nothing
     const applied = await repair.apply(plan, noopOp())
     expect(existsSync(assetsRoot)).toBe(true)
     expect(existsSync(join(assetsRoot, 'store'))).toBe(true)
@@ -152,7 +153,9 @@ describe('checkAssets — store shape', () => {
     const unimported = results.find(r => r.key === 'unimported')!
     expect(unimported.status).toBe('warning')
     expect(unimported.summary).toContain('1 unmanaged file')
-    expect(unimported.incident?.resolution.type).toBe('navigate')
+    // Row 186: an observation — import is an explicit decision on the Import tab, never a card.
+    expect(unimported.incident).toBeUndefined()
+    expect(unimported.detail).toContain('/assets?tab=import')
   })
 
   it('warns about legacy top-level type directories instead of scanning them', () => {
@@ -234,7 +237,11 @@ describe('checkAssets — trash purge', () => {
     utimesSync(oldFile, thirtyDaysAgo / 1000, thirtyDaysAgo / 1000)
 
     const repair = assetRepair(testDir)
-    const run = await runRepairContract(repair, await repair.plan(repairTarget))
+    const plan = stampPlanItems(repair, await repair.plan(repairTarget))
+    // Row 185: the purge item deletes — one-click, stamped per item (the action itself is self-heal).
+    expect(plan[0]!.mode).toBe('one-click')
+    expect(plan[0]!.effects.deletesUserContent).toBe(true)
+    const run = await runRepairContract(repair, plan)
     expectRepairContract(repair, run)
     expect(run.view.stages.map((s) => s.status)).toEqual(['done', 'done'])
     expect(run.view.stages[1]!.items?.map((i) => i.id)).toEqual(['ancient.bin'])
@@ -349,7 +356,9 @@ describe('enrichment coverage — one stat, never a per-asset nag', () => {
     expect(coverage).toHaveLength(1)
     expect(coverage[0].status).toBe('warning')
     if (coverage[0].status !== 'warning') throw new Error('unreachable')
-    expect(coverage[0].incident.disposition).toBe('advisory')
+    // Row 187: an observation — enrichment self-heals in the background.
+    expect(coverage[0].incident).toBeUndefined()
+    expect(coverage[0].detail).toContain('retry pass')
     expect(coverage[0].evidence).toMatchObject({ enriched: 2, missing: 8 })
   })
 

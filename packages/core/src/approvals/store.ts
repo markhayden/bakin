@@ -15,7 +15,7 @@ import { createLogger } from '../logger'
 import { atomicWriteJson } from '../storage/atomic-write'
 import { ApprovalNotFoundError, ApprovalNotPendingError } from './errors'
 import { parseApprovalRecord } from './schema'
-import type { ApprovalListFilter, ApprovalOwner, ApprovalRecord, ApprovalRequest, ApprovalStatus } from './types'
+import { APPROVAL_SCHEMA_VERSION, type ApprovalListFilter, type ApprovalOwner, type ApprovalRecord, type ApprovalRequest, type ApprovalStatus } from './types'
 
 const log = createLogger('approvals-store')
 
@@ -69,10 +69,11 @@ export function createApprovalRecord(input: CreateApprovalRecordInput, contentDi
   const existing = readRecord(approvalPath(input.approvalId, contentDir))
   if (existing) {
     if (existing.status !== 'pending') return existing
-    return writeRecord({ ...existing, owner: input.owner, request: input.request, updatedAt: now }, contentDir)
+    return writeRecord({ ...existing, schemaVersion: APPROVAL_SCHEMA_VERSION, owner: input.owner, request: input.request, updatedAt: now }, contentDir)
   }
   return writeRecord({
     approvalId: input.approvalId,
+    schemaVersion: APPROVAL_SCHEMA_VERSION,
     owner: input.owner,
     status: 'pending',
     request: input.request,

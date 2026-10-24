@@ -20,7 +20,7 @@ import {
   type OperationContext,
   type OperationView,
 } from '@bakin/core/operations'
-import type { HealthRepairActionDefinition, HealthRepairApplyResult, HealthRepairPlanItem } from '@makinbakin/sdk/types'
+import type { HealthRepairActionDefinition, HealthRepairApplyResult, HealthRepairPlanItem, HealthRepairPlanItemInput } from '@makinbakin/sdk/types'
 
 export interface RepairContractRun {
   results: HealthRepairApplyResult[]
@@ -99,4 +99,18 @@ export function expectRepairContract(action: HealthRepairActionDefinition, run: 
   expect(order).toEqual([...order].sort((a, b) => a - b))
   expect(run.view.status).toBe('succeeded')
   expect(run.results.every((r) => r.actionId === action.id)).toBe(true)
+}
+
+/**
+ * Canonical items from a planner's output, exactly as core stamps them
+ * (three-outcomes cutover): `effects` default to the action's own, `mode`
+ * comes from the ONE policy (one-click iff the effects delete content, spend
+ * money or widen authorization).
+ */
+export function stampPlanItems(action: HealthRepairActionDefinition, items: HealthRepairPlanItemInput[]): HealthRepairPlanItem[] {
+  return items.map((item) => {
+    const effects = item.effects ?? action.effects
+    const oneClick = effects.deletesUserContent || effects.spendsMoney || effects.widensAuthorization
+    return { ...item, effects, mode: oneClick ? 'one-click' : 'self-heal' }
+  })
 }

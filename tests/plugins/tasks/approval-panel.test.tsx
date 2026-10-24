@@ -33,7 +33,7 @@ const repair: TaskApproval = {
   approvalId: 'repair-1',
   owner: {
     kind: 'health-repair', taskId: 't-1', requestId: 'req-1', incidentIds: ['health:search:index-corrupt'],
-    proposal: { reportId: 'rep-1', observationIds: ['health.search:index'], items: [{ actionId: 'search.rebuild', itemId: 'search.rebuild:rebuild', safety: 'destructive', changes: [{ kind: 'file', target: 'bakin_tasks_v3', action: 'delete', description: 'Drop and rebuild the search table.' }] }] },
+    proposal: { reportId: 'rep-1', observationIds: ['health.search:index'], items: [{ actionId: 'search.rebuild', itemId: 'search.rebuild:rebuild', effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false }, mode: 'one-click', changes: [{ kind: 'file', target: 'bakin_tasks_v3', action: 'delete', description: 'Drop and rebuild the search table.' }] }] },
   },
   request: { title: 'Repair: Search index is corrupt', body: 'Bakin Health proposes a repair.', options: [{ id: 'apply', label: 'Apply repair', variant: 'primary' }, { id: 'dismiss', label: 'Dismiss', variant: 'neutral' }] },
 }
@@ -97,7 +97,7 @@ describe('ApprovalPanel', () => {
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Apply repair' })) })
     const dialog = await screen.findByRole('dialog', { name: 'Apply this repair?' })
-    expect(within(dialog).getByRole('list', { name: 'Proposed changes' }).textContent).toContain('[destructive] delete file bakin_tasks_v3 — Drop and rebuild the search table.')
+    expect(within(dialog).getByRole('list', { name: 'Proposed changes' }).textContent).toContain('[deletes content] delete file bakin_tasks_v3 — Drop and rebuild the search table.')
     await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Apply repair' })) })
     expect(props.onResolve).toHaveBeenCalledWith(repair, 'apply')
   })

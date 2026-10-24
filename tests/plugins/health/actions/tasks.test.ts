@@ -32,7 +32,7 @@ mock.module('../../../../src/core/restart-recovery', () => ({
 }))
 
 import { noopOp } from '../../../helpers/operation-harness'
-import { expectRepairContract, runRepairContract } from '../../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../../helpers/repair-contract'
 import { parseHealthCheckRunInput } from '../../../../src/core/health-contract'
 import { checkRestartRecovery, requeueStrandedTasksRepair } from '../../../../plugins/health/lib/system-checks/restart-recovery'
 
@@ -56,7 +56,9 @@ describe('requeue-stranded-tasks', () => {
     const action = requeueStrandedTasksRepair()
     const plan = await action.plan(all)
     expect(plan.map((item) => item.id)).toEqual(['t1', 't4'])
-    expect(plan[0]).toMatchObject({ actionId: 'requeue-stranded-tasks', safety: 'manual' })
+    // Row 29: re-running turns spends money → one-click.
+    expect(action.effects).toMatchObject({ spendsMoney: true })
+    expect(plan[0]).toMatchObject({ actionId: 'requeue-stranded-tasks' })
     expect(plan[0]!.changes[0]).toMatchObject({ kind: 'task', target: 't1', action: 'update' })
     const one = await action.plan({ type: 'incidents', reportId: 'r', ids: ['health.restart-recovery:stale-tasks'] })
     expect(one.map((item) => item.id)).toEqual(['t1', 't4'])
@@ -66,7 +68,7 @@ describe('requeue-stranded-tasks', () => {
     candidates = [cand('t1', 'recover'), cand('t4', 'recover')]
     outcomes = [{ id: 't1', outcome: 'recovered' }, { id: 't4', outcome: 'skipped', reason: 'gained a live run meanwhile' }]
     const action = requeueStrandedTasksRepair()
-    const run = await runRepairContract(action, await action.plan(all))
+    const run = await runRepairContract(action, stampPlanItems(action, await action.plan(all)))
     expectRepairContract(action, run)
     expect(recovered).toEqual([['t1', 't4']])
     expect(run.results.map((r) => [r.itemId, r.status])).toEqual([['t1', 'applied'], ['t4', 'skipped']])

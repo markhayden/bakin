@@ -28,6 +28,10 @@ import {
   checkAgentSync,
   checkTeamRouting,
   personaRepair,
+  TEAM_AGENT_ROSTER_INCIDENTS,
+  TEAM_AGENT_SYNC_INCIDENTS,
+  TEAM_PERSONAS_INCIDENTS,
+  TEAM_ROUTING_INCIDENTS,
 } from './lib/health-checks'
 import {
   agentToMeta,
@@ -740,6 +744,7 @@ const teamPlugin: BakinPlugin = definePlugin({
       description: 'Checks that the runtime agent roster is readable and every agent has a unique stable id.',
       group: { key: 'agents', label: 'Agents' },
       maxAgeMs: 2 * 60_000,
+      incidents: TEAM_AGENT_ROSTER_INCIDENTS,
       run: () => checkAgentRoster(runtimeAgentReader),
     })
     ctx.registerHealthCheck({
@@ -748,6 +753,7 @@ const teamPlugin: BakinPlugin = definePlugin({
       description: 'Checks that every runtime agent has a persona file.',
       group: { key: 'agents', label: 'Agents' },
       maxAgeMs: 5 * 60_000,
+      incidents: TEAM_PERSONAS_INCIDENTS,
       run: () => checkPersonas(getContentDir(), runtimeAgentReader),
     })
     ctx.registerHealthCheck({
@@ -756,6 +762,7 @@ const teamPlugin: BakinPlugin = definePlugin({
       description: 'Checks managed blocks, projections, role context, edit locks, and migration state.',
       group: { key: 'agents', label: 'Agents' },
       maxAgeMs: 2 * 60_000,
+      incidents: TEAM_AGENT_SYNC_INCIDENTS,
       run: () => checkAgentSync(),
     })
     ctx.registerHealthCheck({
@@ -764,6 +771,7 @@ const teamPlugin: BakinPlugin = definePlugin({
       description: 'Checks that the runtime can serve the routing turn for unresolved team-assigned tasks.',
       group: { key: 'agents', label: 'Agents' },
       maxAgeMs: 60_000,
+      incidents: TEAM_ROUTING_INCIDENTS,
       run: async () => {
         const { resolveSystemRoute } = await import('../../src/core/system-route')
         const route = await resolveSystemRoute('team-routing')

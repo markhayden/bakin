@@ -141,7 +141,7 @@ import {
   checkTeamRouting,
   personaRepair,
 } from '../../../plugins/team/lib/health-checks'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
 import { installInOperation } from '../../helpers/operation-harness'
 
 const repairTarget = { type: 'all_actionable' as const, reportId: 'test-report' }
@@ -211,8 +211,8 @@ describe('checkTeamRouting', () => {
     }))
     expect(results[0].status).toBe('error')
     expect(results[0].summary).toContain('no usable LLM credentials')
-    // The incident lands on the credential tiles themselves (self-healing 1.4c-3).
-    expect(results[0].incident?.resolution).toMatchObject({ type: 'navigate', href: '/runtime?tab=overview&field=credentials' })
+    // Row 104: a credential only the operator can supply — the incident lands on the credential tiles themselves.
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'human', needs: 'credential', href: '/runtime?tab=overview&field=credentials' })
   })
 
   it('passes when team tasks exist and the runtime has credentials; surfaces the route model', async () => {
@@ -241,6 +241,8 @@ describe('checkTeamRouting', () => {
     }))
     expect(results[0].status).toBe('unknown')
     expect(results[0].key).toBe('runtime-credentials')
+    // Row 103: could not see — an observation, never a card.
+    expect(results[0].incident).toBeUndefined()
   })
 
   it('ignores done/archived team tasks', async () => {
@@ -262,6 +264,7 @@ describe('checkAgentRoster', () => {
     expect(results[0].key).toBe('roster-read')
     expect(results[0].status).toBe('unknown')
     expect(results[0].summary).toMatch(/runtime agent roster/i)
+    expect(results[0].incident).toBeUndefined() // row 105: an observation
   })
 
   it('reports ok when runtime returns a coherent roster', async () => {
@@ -342,7 +345,7 @@ describe('checkPersonas', () => {
     const repair = personaRepair(testDir, runtimeAgentReader)
     const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
-    const run = await runRepairContract(repair, plan)
+    const run = await runRepairContract(repair, stampPlanItems(repair, plan))
     expectRepairContract(repair, run)
     expect(run.view.stages[0]!.items?.map((i) => i.id).sort()).toEqual(['main', 'patch', 'pixel'])
     const applied = run.results
@@ -375,10 +378,10 @@ describe('checkAgentSync — wrapper', () => {
 
   it('plans and applies a safe repair for locally managed drift', async () => {
     const repair = agentSyncRepair()
-    const plan = await repair.plan(repairTarget)
+    const plan = stampPlanItems(repair, await repair.plan(repairTarget))
     expect(plan.length).toBeGreaterThanOrEqual(1)
     const local = plan.find((p) => p.id === 'sync-agents')
-    expect(local?.safety).toBe('safe')
+    expect(local?.mode).toBe('self-heal')
 
     const run = await runRepairContract(repair, [local!])
     expectRepairContract(repair, run)
@@ -391,7 +394,7 @@ describe('checkAgentSync — wrapper', () => {
     expect(after[0].status).toBe('healthy')
   })
 
-  it('plans the migration as a destructive, confirmation-required item', async () => {
+  it('plans the migration as a one-click item (it overwrites workspace files, with a backup)', async () => {
     const { writeLockfile } = await import('../../../packages/core/src/agent-packages/lockfile')
     writeLockfile({
       version: 1,
@@ -409,9 +412,10 @@ describe('checkAgentSync — wrapper', () => {
     expect(results.some((r) => r.summary.includes('migration'))).toBe(true)
 
     const repair = agentSyncMigrationRepair()
-    const plan = await repair.plan(repairTarget)
+    const plan = stampPlanItems(repair, await repair.plan(repairTarget))
     const migrate = plan.find((p) => p.id === 'migrate-agent-blocks')
-    expect(migrate?.safety).toBe('destructive')
+    expect(migrate?.mode).toBe('one-click')
+    expect(migrate?.effects.deletesUserContent).toBe(true)
 
     const run = await runRepairContract(repair, [migrate!])
     expectRepairContract(repair, run)

@@ -60,6 +60,9 @@ import {
   unregisterPluginHealthChecks,
 } from '../../src/core/health-check-registry'
 
+const NONE = { deletesUserContent: false, spendsMoney: false, widensAuthorization: false }
+const DEL = { deletesUserContent: true, spendsMoney: false, widensAuthorization: false }
+
 let unhealthy = true
 let applyBarrier: Promise<void> | null = null
 let planResultOverride: unknown
@@ -82,11 +85,12 @@ async function seed() {
   registerPluginHealthRepairAction('repair-test', {
     id: 'restart-search',
     name: 'Restart Search',
+    effects: NONE,
     operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
     plan: async () => planResultOverride !== undefined
       ? planResultOverride as any
       : [{
-          id: 'restart', actionId: 'restart-search', title: 'Restart Search', reason: 'Search is unavailable.', safety: 'safe',
+          id: 'restart', actionId: 'restart-search', title: 'Restart Search', reason: 'Search is unavailable.',
           incidentIds: [], observationIds: [], preconditions: [],
           changes: [{ kind: 'service', target: 'search', action: 'invoke', description: 'Restart Search.' }],
         }],
@@ -94,10 +98,12 @@ async function seed() {
   })
   const id = registerPluginHealthCheck('repair-test', {
     id: 'search', name: 'Search readiness', description: 'Checks Search availability.', group: { key: 'search', label: 'Search' },
+    incidents: [{ id: 'unavailable', subjectKind: 'service', resolution: { type: 'repair', actionId: 'restart-search' }, required: 'always' }],
     run: async () => healthObserved(unhealthy ? [healthError({
       key: 'engine', summary: 'Search is unavailable.',
       incident: {
         key: 'unavailable', title: 'Search is unavailable', impact: 'Search requests fail.', disposition: 'action_required',
+        subject: { kind: 'service', id: 'search-engine' }, declarationId: 'unavailable',
         resolution: { key: 'restart', type: 'repair', label: 'Review restart', actionId: 'restart-search' },
       },
     })] : [healthHealthy({ key: 'engine', summary: 'Search is ready.' })]),
@@ -142,7 +148,7 @@ describe('targeted canonical doctor repair', () => {
   it('rejects malformed plan output without retaining its payload', async () => {
     const secret = 'plan-output-must-not-leak'
     planResultOverride = [{
-      id: 'restart', actionId: 'restart-search', title: 'Restart Search', reason: 'Search is unavailable.', safety: 'safe',
+      id: 'restart', actionId: 'restart-search', title: 'Restart Search', reason: 'Search is unavailable.',
       incidentIds: [], observationIds: [], preconditions: [], changes: [], secret,
     }]
     const report = getHealthReport()
@@ -423,7 +429,7 @@ describe('targeted canonical doctor repair', () => {
 
   it('one action applying an item and failing another is partially applied, child and parent alike', async () => {
     planResultOverride = ['a', 'b'].map((id) => ({
-      id, actionId: 'restart-search', title: `Step ${id}`, reason: 'Search is unavailable.', safety: 'safe',
+      id, actionId: 'restart-search', title: `Step ${id}`, reason: 'Search is unavailable.',
       incidentIds: [], observationIds: [], preconditions: [],
       changes: [{ kind: 'service', target: 'search', action: 'invoke', description: `Step ${id}.` }],
     }))
@@ -442,15 +448,17 @@ describe('targeted canonical doctor repair', () => {
 
   it('an action unregistered between validation and execution fails the parent, never a silent success', async () => {
     registerPluginHealthRepairAction('repair-test', {
-      id: 'zz-later', name: 'Later repair',
+      id: 'zz-later', name: 'Later repair', effects: NONE,
       operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
-      plan: async () => [{ id: 'later', actionId: 'zz-later', title: 'Later', reason: 'r', safety: 'safe', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
+      plan: async () => [{ id: 'later', actionId: 'zz-later', title: 'Later', reason: 'r', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
       apply: async () => { throw new Error('never runs') },
     })
     const id = registerPluginHealthCheck('repair-test', {
       id: 'later-check', name: 'Later check', description: 'd', group: { key: 'system', label: 'System' },
+      incidents: [{ id: 'broken', subjectKind: 'system', resolution: { type: 'repair', actionId: 'repair-test.zz-later' }, required: 'always' }],
       run: async () => healthObserved([healthError({ key: 'broken', summary: 'Broken.', incident: {
         key: 'broken', title: 'Broken', impact: 'i', disposition: 'action_required',
+        subject: { kind: 'system', id: 'later' }, declarationId: 'broken',
         resolution: { key: 'later', type: 'repair', label: 'Fix', actionId: 'repair-test.zz-later' },
       } })]),
     })
@@ -476,9 +484,9 @@ describe('targeted canonical doctor repair', () => {
     let entered!: () => void
     const inPrepare = new Promise<void>((resolve) => { entered = resolve })
     registerPluginHealthRepairAction('repair-test', {
-      id: 'slow', name: 'Slow repair',
+      id: 'slow', name: 'Slow repair', effects: NONE,
       operationPlan: () => ({ stages: [{ id: 'prepare', kind: 'preparing' as const, label: 'Prepare' }, { id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
-      plan: async () => [{ id: 'slow', actionId: 'slow', title: 'Slow', reason: 'r', safety: 'safe', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
+      plan: async () => [{ id: 'slow', actionId: 'slow', title: 'Slow', reason: 'r', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
       apply: async (items, op) => {
         op.stage('prepare')
         entered()
@@ -489,8 +497,10 @@ describe('targeted canonical doctor repair', () => {
     })
     const id = registerPluginHealthCheck('repair-test', {
       id: 'slow-check', name: 'Slow check', description: 'd', group: { key: 'system', label: 'System' },
+      incidents: [{ id: 'broken', subjectKind: 'system', resolution: { type: 'repair', actionId: 'slow' }, required: 'always' }],
       run: async () => healthObserved([healthError({ key: 'broken', summary: 'Broken.', incident: {
         key: 'broken', title: 'Broken', impact: 'i', disposition: 'action_required',
+        subject: { kind: 'system', id: 'slow' }, declarationId: 'broken',
         resolution: { key: 'slow', type: 'repair', label: 'Fix', actionId: 'slow' },
       } })]),
     })
@@ -505,20 +515,22 @@ describe('targeted canonical doctor repair', () => {
     expect(body).toBeNull()
   })
 
-  it('requires individual confirmation for non-safe items', async () => {
+  it('requires individual confirmation for one-click items (effects that delete content)', async () => {
     unregisterPluginHealthChecks('repair-test')
     resetHealthReportCache()
     clearStoredRepairPlans()
     registerPluginHealthRepairAction('repair-test', {
-      id: 'manual', name: 'Manual repair',
+      id: 'manual', name: 'Manual repair', effects: DEL,
       operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
-      plan: async () => [{ id: 'manual', actionId: 'manual', title: 'Manual repair', reason: 'Needs review.', safety: 'manual', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
+      plan: async () => [{ id: 'manual', actionId: 'manual', title: 'Manual repair', reason: 'Needs review.', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
       apply: applyAction,
     })
     const id = registerPluginHealthCheck('repair-test', {
       id: 'manual-check', name: 'Manual check', description: 'Manual repair test.', group: { key: 'system', label: 'System' },
+      incidents: [{ id: 'broken', subjectKind: 'system', resolution: { type: 'repair', actionId: 'manual' }, required: 'always' }],
       run: async () => healthObserved([healthError({ key: 'broken', summary: 'Broken.', incident: {
         key: 'broken', title: 'Broken', impact: 'Needs repair.', disposition: 'action_required',
+        subject: { kind: 'system', id: 'manual' }, declarationId: 'broken',
         resolution: { key: 'manual', type: 'repair', label: 'Review', actionId: 'manual' },
       } })]),
     })
@@ -527,5 +539,76 @@ describe('targeted canonical doctor repair', () => {
     const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
     await expect(applyDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId, itemIds: [plan.items[0].id], confirmedItemIds: [] }))
       .rejects.toMatchObject({ httpStatus: 409, body: { code: 'CONFIRMATION_REQUIRED', itemIds: [plan.items[0].id] } })
+  })
+})
+
+describe('three outcomes: effects, mode and the ONE authorization gate (self-healing 1.7)', () => {
+  it('stamps the action\'s effects and the policy\'s mode on every canonical item; a stricter per-item effect wins', async () => {
+    const report = getHealthReport()
+    const plan = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    expect(plan.items[0]).toMatchObject({ effects: NONE, mode: 'self-heal' })
+    expect(appendAudit).toHaveBeenCalledWith('/tmp/content', 'doctor.fix.planned', 'system', expect.objectContaining({ selfHeal: 1, oneClick: 0 }))
+
+    clearStoredRepairPlans()
+    planResultOverride = [{
+      id: 'restart', actionId: 'restart-search', title: 'Restart Search', reason: 'Search is unavailable.', effects: DEL,
+      incidentIds: [], observationIds: [], preconditions: [], changes: [],
+    }]
+    const stricter = await planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    expect(stricter.items[0]).toMatchObject({ effects: DEL, mode: 'one-click' })
+  })
+
+  it('an unattended upgrade is refused consent-unreviewed and skipped — never a failed attempt; the operator may apply; an action without a mutation is untouched', async () => {
+    const upgradeApply = mock(async (items: any[]) => items.map((item) => ({ itemId: item.id, actionId: item.actionId, status: 'applied' as const, message: 'Upgraded.', affectedCheckIds: ['repair-test.upgrade-check'], changes: item.changes })))
+    registerPluginHealthRepairAction('repair-test', {
+      id: 'upgrade-x', name: 'Upgrade x', effects: NONE, mutation: 'upgrade',
+      operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
+      plan: async () => [{ id: 'upgrade', actionId: 'upgrade-x', title: 'Upgrade x', reason: 'A newer release is required.', incidentIds: [], observationIds: [], preconditions: [], changes: [] }],
+      apply: upgradeApply,
+    })
+    let stranded = true
+    const id = registerPluginHealthCheck('repair-test', {
+      id: 'upgrade-check', name: 'Upgrade check', description: 'd', group: { key: 'plugins', label: 'Plugins' },
+      incidents: [{ id: 'stranded', subjectKind: 'plugin', resolution: { type: 'repair', actionId: 'upgrade-x' }, required: 'always' }],
+      run: async () => healthObserved(stranded ? [healthError({ key: 'x', summary: 'x is stranded.', incident: {
+        key: 'stranded', title: 'x is stranded', impact: 'It cannot load.', disposition: 'action_required',
+        subject: { kind: 'plugin', id: 'x' }, declarationId: 'stranded',
+        resolution: { key: 'upgrade', type: 'repair', label: 'Upgrade', actionId: 'upgrade-x' },
+      } })] : [healthHealthy({ key: 'x', summary: 'x is fine.' })]),
+    })
+    applyHealthCheckRun(await runHealthCheck(getHealthCheck(id)!, { executionId: () => 'execution-upgrade' }))
+
+    const planFor = async () => {
+      const report = getHealthReport()
+      return planDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', target: { type: 'all_actionable', reportId: report.id } })
+    }
+    const run = async (plan: Awaited<ReturnType<typeof planFor>>, origin: 'system' | 'web', actingAgentId?: string) => {
+      const started = await startDoctorRepair({ contentDir: '/tmp/content', projectRoot: '/tmp/project', planId: plan.planId, itemIds: plan.items.map((item) => item.id), confirmedItemIds: [], origin, ...(actingAgentId ? { actingAgentId } : {}) })
+      const { view, report } = await awaitDoctorRepair(started.operationId)
+      return { view, rows: report!.results }
+    }
+
+    // System actor (the old escalation's auto-apply): the plain restart runs, the upgrade is handed to the operator.
+    const system = await run(await planFor(), 'system')
+    expect(system.rows.map((row) => [row.actionId, row.status])).toEqual([['repair-test.restart-search', 'applied'], ['repair-test.upgrade-x', 'skipped']])
+    expect(system.rows[1]).toMatchObject({ authorization: { refused: true, reason: 'consent-unreviewed' } })
+    expect(system.rows[1]!.message).toContain('Your approval is needed before automatic updates')
+    expect(upgradeApply).not.toHaveBeenCalled()
+    expect(system.view.status).not.toBe('failed')
+
+    // An agent acting for its task is unattended too.
+    unhealthy = true
+    applyHealthCheckRun(await runHealthCheck(getHealthCheck('repair-test.search')!, { executionId: () => 'execution-2' }))
+    const agent = await run(await planFor(), 'web', 'main')
+    expect(agent.rows.find((row) => row.actionId === 'repair-test.upgrade-x')).toMatchObject({ status: 'skipped', authorization: { reason: 'consent-unreviewed' } })
+    expect(upgradeApply).not.toHaveBeenCalled()
+
+    // The operator's click passes the gate.
+    unhealthy = true
+    applyHealthCheckRun(await runHealthCheck(getHealthCheck('repair-test.search')!, { executionId: () => 'execution-3' }))
+    stranded = false
+    const operator = await run(await planFor(), 'web')
+    expect(operator.rows.find((row) => row.actionId === 'repair-test.upgrade-x')).toMatchObject({ status: 'applied' })
+    expect(upgradeApply).toHaveBeenCalledTimes(1)
   })
 })

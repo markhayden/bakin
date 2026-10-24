@@ -23,7 +23,7 @@ mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 
 import { checkWorktrees, gitReleaseWorktreeRepair } from '../../../plugins/git'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
 
 const entry = (id: string, over: Record<string, unknown> = {}) => ({
   id, repoPath: '/tmp/repo', worktreePath: `/tmp/definitely-not-a-bakin-worktree-${id}`, branch: `feat/${id}`, baseRef: 'main',
@@ -48,20 +48,20 @@ afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 beforeEach(() => { rmSync(testDir, { recursive: true, force: true }); mkdirSync(testDir, { recursive: true }) })
 
 describe('git-release-worktree', () => {
-  it('a missing TASK worktree points at the repair; a missing terminal-session worktree keeps the operator text', async () => {
+  it('a missing TASK worktree points at the repair; a missing terminal-session worktree is the operator\'s decision in Terminal', async () => {
     const { ctx } = gitContext({ version: 1, worktrees: [entry('wt-1'), entry('wt-2', { taskId: undefined, sessionId: 'sess-9' })] })
     const rows = observed(await checkWorktrees(ctx))
     expect(rows.find((r) => r.key === 'missing.wt-1')?.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'git-release-worktree' })
-    expect(rows.find((r) => r.key === 'missing.wt-2')?.incident?.resolution).toMatchObject({ type: 'instructions' })
+    expect(rows.find((r) => r.key === 'missing.wt-2')?.incident).toMatchObject({ declarationId: 'missing-session', resolution: { type: 'human', needs: 'decision', href: '/terminal/sess-9' } })
   })
   it('plans one safe item per missing task worktree (never a session one) and releases exactly those, forced', async () => {
     const { ctx, registry, activity } = gitContext({ version: 1, worktrees: [entry('wt-1'), entry('wt-2', { taskId: undefined, sessionId: 'sess-9' }), entry('wt-3')] })
     const action = gitReleaseWorktreeRepair(ctx)
-    const plan = await action.plan(all)
+    const plan = stampPlanItems(action, await action.plan(all))
     expect(plan.map((item) => item.id)).toEqual(['wt-1', 'wt-3'])
-    expect(plan[0]).toMatchObject({ actionId: 'git-release-worktree', safety: 'safe' })
+    expect(plan[0]).toMatchObject({ actionId: 'git-release-worktree', mode: 'self-heal' })
     expect(plan[0]!.changes[0]).toMatchObject({ kind: 'file', action: 'delete' })
-    const one = await action.plan({ type: 'incidents', reportId: 'r', ids: ['git.worktrees:missing.wt-3'] })
+    const one = stampPlanItems(action, await action.plan({ type: 'incidents', reportId: 'r', ids: ['git.worktrees:missing.wt-3'] }))
     expect(one.map((item) => item.id)).toEqual(['wt-3'])
     const run = await runRepairContract(action, one)
     expectRepairContract(action, run)

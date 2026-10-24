@@ -33,7 +33,7 @@ const repair: TaskApproval = {
   approvalId: 'health-repair:repair-1',
   owner: {
     kind: 'health-repair', taskId: 'review', requestId: 'repair-1', incidentIds: ['health:search:retired-generations'],
-    proposal: { reportId: 'report-1', observationIds: ['health.search:generations'], items: [{ actionId: 'search.drop-retired', itemId: 'search.drop-retired:all', safety: 'destructive', changes: longChanges }] },
+    proposal: { reportId: 'report-1', observationIds: ['health.search:generations'], items: [{ actionId: 'search.drop-retired', itemId: 'search.drop-retired:all', effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false }, mode: 'one-click', changes: longChanges }] },
   },
   request: {
     title: 'Repair: Retired search generations still consume the engine',

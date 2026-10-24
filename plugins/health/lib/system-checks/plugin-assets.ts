@@ -6,12 +6,32 @@
  */
 import { applyPluginAssets, PLUGIN_ASSETS_PLAN, pluginAssetsComponent } from '../../../../src/core/onboarding/plugin-assets'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthRepairActionDefinition, HealthRepairPlanItem } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition, HealthRepairPlanItemInput, HealthResolution, HealthSubject } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
-import { pluginRepairResolution, pluginUpgradeOffer, type PluginArtifactDeps } from './plugin-artifacts'
+import { PLUGIN_REINSTALL_ACTION, PLUGIN_UPGRADE_ACTION, pluginRepairResolution, pluginUpgradeOffer, type PluginArtifactDeps } from './plugin-artifacts'
 
 export const INSTALL_PLUGIN_ASSETS_ACTION = 'install-plugin-assets'
 const CHECK_ID = 'health.plugin-assets'
+const ASSETS_SUBJECT: HealthSubject = { kind: 'system', id: 'plugin-assets', label: 'Plugin assets' }
+/**
+ * Rows 93–95. A plugin incident lands in the upgrade family when the updates
+ * engine offers a release, in the reinstall family otherwise (one family per
+ * action). The user-edited row keeps the install repair: its one-click
+ * restore item (D) IS the operator's decision, Keep = acknowledge the card.
+ */
+export const PLUGIN_ASSETS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'plugin-bins-invalid-upgrade', subjectKind: 'plugin', resolution: { type: 'repair', actionId: PLUGIN_UPGRADE_ACTION }, required: 'always' },
+  { id: 'plugin-bins-invalid', subjectKind: 'plugin', resolution: { type: 'repair', actionId: PLUGIN_REINSTALL_ACTION }, required: 'always' },
+  { id: 'skill-source-invalid-upgrade', subjectKind: 'plugin', resolution: { type: 'repair', actionId: PLUGIN_UPGRADE_ACTION }, required: 'never' },
+  { id: 'skill-source-invalid', subjectKind: 'plugin', resolution: { type: 'repair', actionId: PLUGIN_REINSTALL_ACTION }, required: 'never' },
+  { id: 'user-edited-drifted', subjectKind: 'plugin', resolution: { type: 'repair', actionId: INSTALL_PLUGIN_ASSETS_ACTION }, required: 'never' },
+  { id: 'assets-out-of-sync', subjectKind: 'system', resolution: { type: 'repair', actionId: INSTALL_PLUGIN_ASSETS_ACTION }, required: 'always' },
+]
+
+/** The family a plugin repair resolution belongs to: `<base>-upgrade` when the offered release is the fix. */
+function pluginFamily(base: string, resolution: HealthResolution): string {
+  return resolution.type === 'repair' && resolution.actionId === PLUGIN_UPGRADE_ACTION ? `${base}-upgrade` : base
+}
 
 /** The repair for the plugins an incident names: the offered upgrade, else the reinstall (rows 93–94). */
 async function pluginRepair(pluginIds: string[], deps?: PluginArtifactDeps) {
@@ -29,14 +49,6 @@ export async function checkPluginAssets(deps?: PluginArtifactDeps): Promise<Heal
         key: 'runtime-assets',
         summary: result.message,
         detail: result.remediation,
-        incident: {
-          key: 'inspection-failed',
-          title: 'Plugin asset status is unknown',
-          impact: 'Health cannot confirm whether plugin-provided runtime skills and binaries are current.',
-          disposition: 'watch',
-          resources: [{ kind: 'asset', id: 'plugin-runtime-assets', label: 'Plugin assets' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-        },
       })])
     }
     if (result.status === 'ok') {
@@ -68,6 +80,8 @@ export async function checkPluginAssets(deps?: PluginArtifactDeps): Promise<Heal
           title: 'A plugin declares binaries Bakin cannot verify',
           impact: 'Bakin will not install or trust these plugin binaries until the plugin ships a declaration that pins each binary it runs.',
           disposition: 'action_required',
+          subject: { kind: 'plugin', id: invalidBins[0]!.pluginId, label: invalidBins[0]!.pluginId },
+          declarationId: pluginFamily('plugin-bins-invalid', resolution),
           resources: [...new Set(invalidBins.map((row) => row.pluginId))].map((id) => ({ kind: 'plugin' as const, id, label: id })),
           resolution,
         },
@@ -92,6 +106,8 @@ export async function checkPluginAssets(deps?: PluginArtifactDeps): Promise<Heal
         evidence: { inSync: false, ...(result.details ?? {}) },
         incident: {
           key: locked.length > 0 ? 'user-edited-drifted' : 'skill-source-invalid',
+          declarationId: locked.length > 0 ? 'user-edited-drifted' : pluginFamily('skill-source-invalid', resolution),
+          subject: { kind: 'plugin', id: (locked[0] ?? invalid[0])!.pluginId, label: (locked[0] ?? invalid[0])!.pluginId },
           title: locked.length > 0 ? 'User-edited plugin skills differ from the plugin' : 'A plugin ships a skill Bakin cannot install',
           impact: [
             locked.length > 0 ? 'Agents run your edited copy, not the version the plugin ships. Bakin will not overwrite a skill you locked.' : null,
@@ -117,6 +133,8 @@ export async function checkPluginAssets(deps?: PluginArtifactDeps): Promise<Heal
         title: 'Plugin assets need installation',
         impact: 'Runtime skills or binaries shipped by plugins are missing or differ from what the plugins declare; those plugins may not work until they are reinstalled.',
         disposition: 'action_required',
+        subject: ASSETS_SUBJECT,
+        declarationId: 'assets-out-of-sync',
         resources: [{ kind: 'asset', id: 'plugin-runtime-assets', label: 'Plugin assets' }],
         resolution: {
           key: INSTALL_PLUGIN_ASSETS_ACTION,
@@ -131,14 +149,6 @@ export async function checkPluginAssets(deps?: PluginArtifactDeps): Promise<Heal
       key: 'runtime-assets',
       summary: 'Plugin assets could not be verified.',
       detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'inspection-failed',
-        title: 'Plugin asset status is unknown',
-        impact: 'Health cannot confirm whether plugin-provided runtime skills and binaries are current.',
-        disposition: 'watch',
-        resources: [{ kind: 'asset', id: 'plugin-runtime-assets', label: 'Plugin assets' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
     })])
   }
 }
@@ -148,12 +158,16 @@ export function installPluginAssetsRepair(): HealthRepairActionDefinition {
   return {
     id: INSTALL_PLUGIN_ASSETS_ACTION,
     name: 'Install plugin assets',
+    // Re-projects what installed plugins already declare (sha256-pinned
+    // binaries, their own skills): self-heal. The per-skill restore item
+    // below replaces a user's edit, so it stamps D and waits for the click.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
     resources: ['install-state'],
     operationPlan: () => PLUGIN_ASSETS_PLAN,
     async plan(target) {
       // One manual item per user-edited skill whose content drifted from the plugin's — ONLY
       // when the operator targeted that row; "all actionable" never offers to replace an edit.
-      const restoreItems: HealthRepairPlanItem[] = []
+      const restoreItems: HealthRepairPlanItemInput[] = []
       if (target.type !== 'all_actionable') {
         let drifted: Array<{ pluginId: string; name: string }> = []
         try {
@@ -168,7 +182,7 @@ export function installPluginAssetsRepair(): HealthRepairActionDefinition {
             actionId: INSTALL_PLUGIN_ASSETS_ACTION,
             title: `Restore the shipped copy of ${ref.name}`,
             reason: `Your edited copy of ${ref.name} differs from what ${ref.pluginId} ships. Keeping it is fine (acknowledge the incident); restoring replaces your edit.`,
-            safety: 'manual',
+            effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
             ...repairTargetSelection(target),
             changes: [{ kind: 'runtime', target: `skill:${ref.name}`, action: 'update', description: `Replace your edited ${ref.name} with the copy ${ref.pluginId} ships (the .userEdited lock is released).` }],
           })
@@ -179,7 +193,6 @@ export function installPluginAssetsRepair(): HealthRepairActionDefinition {
         actionId: INSTALL_PLUGIN_ASSETS_ACTION,
         title: 'Install missing or drifted plugin assets',
         reason: 'Reinstall the runtime skills and sha256-pinned binaries plugins declare, exactly as `bakin install plugin-assets` does. User-edited skills are never overwritten.',
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: [
           { kind: 'runtime', target: 'runtime skill store', action: 'update', description: 'Write plugin-shipped SKILL.md files that are missing or drifted.' },

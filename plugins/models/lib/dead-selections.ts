@@ -12,9 +12,9 @@
  */
 import { createHash } from 'crypto'
 
-import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@bakin/core/plugin-types'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition } from '@bakin/core/plugin-types'
 import { healthError, healthHealthy, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
-import type { HealthObservationInput, HealthRepairPlanItem, HealthRepairTarget, ModelEligibilitySummary } from '@makinbakin/sdk/types'
+import type { HealthObservationInput, HealthRepairPlanItem, HealthRepairPlanItemInput, HealthRepairTarget, ModelEligibilitySummary } from '@makinbakin/sdk/types'
 import type { EvidenceStatus } from '../../../src/core/model-eligibility'
 import type { MutateResult } from '../../../src/core/model-mutations'
 import type { Proposal, SelectionState } from '../../../src/core/model-selections'
@@ -22,6 +22,18 @@ import type { Proposal, SelectionState } from '../../../src/core/model-selection
 export const DEAD_SELECTION_REPAIR_ID = 'apply-model-proposal'
 export const DEAD_SELECTIONS_CHECK_ID = 'models.dead-selections'
 const INCIDENT_KEY_PREFIX = 'dead-selection:'
+
+/**
+ * models.dead-selections incident families (re-homing rows 157–159): a
+ * failed evidence source is an observation; a dead selection with a
+ * proposal is the one-click repoint, without one the operator chooses.
+ * A dead persisted selection is in use by definition (every turn that
+ * resolves to it fails), so both families are required.
+ */
+export const MODELS_DEAD_SELECTIONS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'dead-selection', subjectKind: 'setting', resolution: { type: 'repair', actionId: DEAD_SELECTION_REPAIR_ID }, required: 'always' },
+  { id: 'dead-selection-manual', subjectKind: 'setting', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+]
 
 export interface SelectionsDescription {
   revision: string
@@ -56,21 +68,14 @@ export async function checkDeadSelections(deps: DeadSelectionDeps): Promise<Heal
 
   for (const [source, status] of Object.entries(desc.evidence) as Array<[keyof SelectionsDescription['evidence'], EvidenceStatus]>) {
     if (status === 'ok') continue
+    // Row 157: an observation — nothing is refused or repaired on missing evidence.
     observations.push(healthUnknown({
       key: `evidence:${source}`,
       summary: status === 'partial'
         ? `Could only partly read ${EVIDENCE_LABEL[source]} — some models cannot be verified.`
         : `Could not read ${EVIDENCE_LABEL[source]} — models that depend on it cannot be verified.`,
+      detail: 'Selections that depend on this evidence show as unverified rather than dead; nothing is refused or repaired on missing evidence.',
       evidence: { source, status },
-      incident: {
-        key: `evidence:${source}`,
-        title: `Model verification incomplete (${EVIDENCE_LABEL[source]})`,
-        impact: 'Selections that depend on this evidence show as unverified rather than dead; nothing is refused or repaired on missing evidence.',
-        disposition: 'watch',
-        class: 'evidence_gap',
-        resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
-        resolution: { key: 'view-models', type: 'navigate', label: 'Open Models', href: '/models' },
-      },
     }))
   }
 
@@ -97,10 +102,12 @@ export async function checkDeadSelections(deps: DeadSelectionDeps): Promise<Heal
         impact: 'Every turn that resolves to this selection fails at the provider until it is repointed.',
         disposition: 'action_required',
         class: 'service_failure',
+        subject: { kind: 'setting', id: `models.selection.${state.ref}`, label: state.label },
+        declarationId: proposal?.to ? 'dead-selection' : 'dead-selection-manual',
         resources: [{ kind: 'model_selection', id: state.ref, label: state.label }],
         resolution: proposal?.to
           ? { key: 'apply-proposal', type: 'repair', actionId: DEAD_SELECTION_REPAIR_ID, label: `Use ${proposal.to}` }
-          : { key: 'choose-model', type: 'navigate', label: 'Choose another model', href },
+          : { key: 'choose-model', type: 'human', needs: 'decision', label: 'Choose another model', href },
       },
     }))
   }
@@ -140,15 +147,18 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
   return {
     id: DEAD_SELECTION_REPAIR_ID,
     name: 'Repoint a dead model selection to the proposed model',
+    // Row 158: a routing change widens what the operator authorized (spec D2) — one-click, a policy write.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true },
+    mutation: 'policy',
     operationPlan: () => ({
       stages: [{ id: 'repoint', kind: 'committing', label: 'Repoint the selections' }],
       pointOfNoReturn: 'repoint',
     }),
-    async plan(target: HealthRepairTarget): Promise<HealthRepairPlanItem[]> {
+    async plan(target: HealthRepairTarget): Promise<HealthRepairPlanItemInput[]> {
       if (target.type !== 'incidents') return []
       const desc = await deps.describe()
       const proposalByRef = new Map(desc.proposals.map((p) => [p.ref, p]))
-      const items: HealthRepairPlanItem[] = []
+      const items: HealthRepairPlanItemInput[] = []
       for (const incidentId of target.ids) {
         const ref = refFromIncidentId(incidentId)
         const proposal = ref ? proposalByRef.get(ref) : undefined
@@ -162,7 +172,6 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
           actionId: DEAD_SELECTION_REPAIR_ID,
           title: `Repoint ${ref} to ${proposal.to}`,
           reason: proposal.reason,
-          safety: 'safe',
           incidentIds: [incidentId],
           observationIds: [],
           preconditions: [],

@@ -1,9 +1,12 @@
 /**
- * Health escalation policy (plan PR 2 T8): per-incident cover rules, safe
- * repairs auto-applied, non-safe repairs → ONE review task with a
- * health-repair approval, navigate incidents → one health-navigate approval
- * each, everything else delegated. Planning/apply/approval/delegate are
- * mocked — the policy's decisions are what this file pins.
+ * Health escalation policy (plan PR 2 T8, adapted to the three-outcomes
+ * contract): per-incident cover rules, self-heal repairs auto-applied,
+ * one-click repairs (and self-heal items the authorization gate refused for
+ * the system actor) → ONE review task with a health-repair approval, human
+ * incidents → one health-navigate approval each, repairs nothing could plan
+ * → the operator's review. Nothing is delegated to an agent any more.
+ * Planning/apply/approval are mocked — the policy's decisions are what this
+ * file pins.
  */
 import { afterEach, beforeEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
 import { join } from 'path'
@@ -103,8 +106,12 @@ function incident(overrides: Partial<HealthIncident> = {}): HealthIncident {
     effectiveDisposition: overrides.disposition ?? 'action_required',
     title: 'Search is unavailable',
     impact: 'Search requests fail.',
+    subject: { kind: 'service', id: 'search-engine' },
+    declarationId: 'unavailable',
+    required: true,
     resources: [],
-    resolution: { key: 'restart', type: 'instructions', label: 'Restart search', steps: ['bakin install search'] },
+    // The default fixture is a HUMAN incident (an install only the operator can do) — the old instructions shape.
+    resolution: { key: 'restart', type: 'human', needs: 'external-install', label: 'Restart search', href: '/health', handoff: { command: 'bakin install search' } },
     observationIds: ['health.search:engine'],
     observedAt: '2026-07-13T12:00:00.000Z',
     staleAt: '2026-07-13T12:10:00.000Z',
@@ -114,9 +121,13 @@ function incident(overrides: Partial<HealthIncident> = {}): HealthIncident {
 }
 
 const repairIncident = (id = 'health:search:index-corrupt') => incident({ id, title: 'Search index is corrupt', resolution: { key: 'rebuild', type: 'repair', label: 'Rebuild', actionId: 'search.rebuild' }, observationIds: ['health.search:index'] })
-const navigateIncident = (id = 'health:runtime:auth-expired') => incident({ id, title: 'Auth expired', resolution: { key: 'login', type: 'navigate', label: 'Renew', href: '/settings?tab=integrations' } })
+const navigateIncident = (id = 'health:runtime:auth-expired') => incident({ id, title: 'Auth expired', resolution: { key: 'login', type: 'human', needs: 'credential', label: 'Renew', href: '/settings?tab=integrations' } })
+const NONE = { deletesUserContent: false, spendsMoney: false, widensAuthorization: false }
+const DEL = { deletesUserContent: true, spendsMoney: false, widensAuthorization: false }
+/** A self-heal plan item (what `...selfHeal` used to mean). */
+const selfHeal = { effects: NONE, mode: 'self-heal' as const }
 const item = (overrides: Partial<HealthRepairPlanItem>): HealthRepairPlanItem => ({
-  id: 'search.rebuild:rebuild', actionId: 'search.rebuild', title: 'Rebuild', reason: 'Corrupt.', safety: 'destructive',
+  id: 'search.rebuild:rebuild', actionId: 'search.rebuild', title: 'Rebuild', reason: 'Corrupt.', effects: DEL, mode: 'one-click',
   incidentIds: ['health:search:index-corrupt'], observationIds: ['health.search:index'], preconditions: [],
   changes: [{ kind: 'file', target: 'index', action: 'delete', description: 'Drop the index.' }],
   ...overrides,
@@ -197,6 +208,7 @@ describe('per-incident cover (bounded, resurfacing — spec D-G1/D-G3)', () => {
     requests = [coveringRequest(7 * HOUR)]
     taskColumns = { 'task-1': 'inProgress' }
     const outcome = await escalate([incident()])
+    expect(openNavigateApproval).not.toHaveBeenCalled()
     expect(delegate).not.toHaveBeenCalled()
     expect(escalateTaskToReview).not.toHaveBeenCalled()
     expect(outcome?.resurfacedTaskIds).toEqual([])
@@ -348,7 +360,7 @@ describe('per-incident cover (bounded, resurfacing — spec D-G1/D-G3)', () => {
     requests = [coveringRequest(7 * HOUR, { status: 'verified' })]
     taskColumns = { 'task-1': 'done' }
     await escalate([incident()])
-    expect(delegate).toHaveBeenCalledTimes(1)
+    expect(openNavigateApproval).toHaveBeenCalledTimes(1)
     expect(escalateTaskToReview).not.toHaveBeenCalled()
   })
 
@@ -365,7 +377,7 @@ describe('per-incident cover (bounded, resurfacing — spec D-G1/D-G3)', () => {
   it('a missing task covers nothing after the cooldown (a new request may open)', async () => {
     requests = [coveringRequest(7 * HOUR, { taskId: 'gone' })]
     await escalate([incident()])
-    expect(delegate).toHaveBeenCalledTimes(1)
+    expect(openNavigateApproval).toHaveBeenCalledTimes(1)
   })
 
   it('still honors the cooldown when a custom stale threshold is shorter', async () => {
@@ -389,10 +401,8 @@ describe('per-incident cover (bounded, resurfacing — spec D-G1/D-G3)', () => {
     requests = [coveringRequest(60_000)]
     taskColumns = { 'task-1': 'inProgress' }
     await escalate([incident(), incident({ id: 'health:runtime:unavailable' })])
-    expect(delegate).toHaveBeenCalledTimes(1)
-    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({
-      target: { type: 'incidents', reportId: 'health-report-1', ids: ['health:runtime:unavailable'] },
-    }))
+    expect(openNavigateApproval).toHaveBeenCalledTimes(1)
+    expect(openNavigateApproval).toHaveBeenCalledWith(expect.objectContaining({ incident: expect.objectContaining({ id: 'health:runtime:unavailable' }) }))
     expect(await covered(['health:search:unavailable', 'health:runtime:unavailable'])).toEqual(new Set(['health:search:unavailable']))
   })
 
@@ -404,23 +414,46 @@ describe('per-incident cover (bounded, resurfacing — spec D-G1/D-G3)', () => {
     taskColumns = { 't-blocked': 'blocked', 't-review': 'review' }
     expect(await covered(['health:search:unavailable', 'health:runtime:auth-expired'])).toEqual(new Set())
     await escalate([incident()])
-    expect(delegate).toHaveBeenCalledTimes(1)
+    expect(openNavigateApproval).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('policy', () => {
-  it('delegates exact fresh instruction/rerun incidents', async () => {
-    const outcome = await escalate([incident(), incident({ id: 'health:x:rerun', resolution: { key: 'again', type: 'rerun', label: 'Re-run' } })])
-    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({
-      accepted: true,
-      target: { type: 'incidents', reportId: 'health-report-1', ids: ['health:search:unavailable', 'health:x:rerun'] },
-    }))
-    expect(outcome?.delegatedIncidentIds).toEqual(['health:search:unavailable', 'health:x:rerun'])
+  it('human incidents get ONE health-navigate approval each; nothing is ever delegated to an agent', async () => {
+    const outcome = await escalate([incident(), incident({ id: 'health:x:key', resolution: { key: 'key', type: 'human', needs: 'credential', label: 'Add the key', href: '/settings?tab=integrations', field: 'skills.x.KEY' } })])
+    expect(openNavigateApproval).toHaveBeenCalledTimes(2)
+    expect(openNavigateApproval.mock.calls.map((call) => call[0].incident.id)).toEqual(['health:search:unavailable', 'health:x:key'])
+    expect(outcome?.navigateApprovalTaskIds).toHaveLength(2)
+    expect(outcome?.delegatedIncidentIds).toEqual([])
+    expect(delegate).not.toHaveBeenCalled()
     expect(openRepairApproval).not.toHaveBeenCalled()
+    expect(openOperatorReview).not.toHaveBeenCalled()
   })
 
-  it('auto-applies safe repair items and never opens a task for the incidents they fix', async () => {
-    planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe', incidentIds: ['health:search:index-corrupt'] })]
+  it('a self-heal item the authorization gate refused for the system actor is NOT a failure: it joins the one-click proposal (R3 N2)', async () => {
+    planItems = [item({ id: 'plugins.upgrade:x', actionId: 'plugins.upgrade', ...selfHeal, incidentIds: ['health:search:index-corrupt'] })]
+    afterApplyIncidents = [repairIncident()]
+    awaitDoctorRepair.mockImplementationOnce(async () => ({
+      view: { id: 'op-repair', status: 'succeeded' },
+      report: {
+        report: report([repairIncident()]),
+        results: [{ itemId: 'plugins.upgrade:x', actionId: 'plugins.upgrade', status: 'skipped', message: 'Your approval is needed before automatic updates', affectedCheckIds: [], changes: [], authorization: { refused: true, reason: 'consent-unreviewed' } }],
+        affectedCheckIds: [], remainingIncidentIds: ['health:search:index-corrupt'], verifiedReportId: 'health-report-2', planId: 'plan-1', basedOnReportId: 'health-report-1',
+      },
+    }) as never)
+    const outcome = await escalate([repairIncident()])
+    expect(startDoctorRepair).toHaveBeenCalledTimes(1)
+    expect(openRepairApproval).toHaveBeenCalledTimes(1)
+    const call = openRepairApproval.mock.calls[0]![0]
+    expect(call.items.map((row) => row.id)).toEqual(['plugins.upgrade:x'])
+    expect(call).not.toHaveProperty('failure')
+    expect(openOperatorReview).not.toHaveBeenCalled()
+    expect(delegate).not.toHaveBeenCalled()
+    expect(outcome?.repairApprovalTaskId).toBe('task-repair-approval')
+  })
+
+  it('auto-applies self-heal repair items and never opens a task for the incidents they fix', async () => {
+    planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', ...selfHeal, incidentIds: ['health:search:index-corrupt'] })]
     afterApplyIncidents = []
     const outcome = await escalate([repairIncident()])
     expect(startDoctorRepair).toHaveBeenCalledWith(expect.objectContaining({ planId: 'plan-1', itemIds: ['search.restart:restart'], confirmedItemIds: [], origin: 'system' }))
@@ -430,8 +463,8 @@ describe('policy', () => {
     expect(delegate).not.toHaveBeenCalled()
   })
 
-  it('a safe repair that leaves the incident burning goes to the OPERATOR with a receipt, never to an agent (#896 D3.4)', async () => {
-    planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe' })]
+  it('a self-heal repair that leaves the incident burning goes to the OPERATOR with a receipt, never to an agent (#896 D3.4)', async () => {
+    planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', ...selfHeal })]
     afterApplyIncidents = [repairIncident()]
     const outcome = await escalate([repairIncident()])
     expect(startDoctorRepair).toHaveBeenCalledTimes(1)
@@ -444,9 +477,9 @@ describe('policy', () => {
     expect(outcome?.operatorReviewTaskId).toBe('task-operator-review')
   })
 
-  it('a failed safe apply row becomes the receipt on the health-repair approval when a non-safe proposal exists (#896 D3.4a)', async () => {
+  it('a failed self-heal apply row becomes the receipt on the health-repair approval when a one-click proposal exists (#896 D3.4a)', async () => {
     planItems = [
-      item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe' }),
+      item({ id: 'search.restart:restart', actionId: 'search.restart', ...selfHeal }),
       item({}),
     ]
     afterApplyIncidents = [repairIncident()]
@@ -462,10 +495,10 @@ describe('policy', () => {
     expect(delegate).not.toHaveBeenCalled()
   })
 
-  it('no report beats any proposal: a safe + non-safe plan for one incident still goes to the operator when the attempt died (#896 review)', async () => {
+  it('no report beats any proposal: a self-heal + one-click plan for one incident still goes to the operator when the attempt died (#896 review)', async () => {
     planItems = [
-      item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe' }),
-      item({}), // a non-safe proposal for the same incident
+      item({ id: 'search.restart:restart', actionId: 'search.restart', ...selfHeal }),
+      item({}), // a one-click proposal for the same incident
     ]
     awaitDoctorRepair.mockImplementationOnce(async () => ({ view: { id: 'op-repair', status: 'failed', outcome: { code: 'unexpected', message: 'worker died' } }, report: null }) as never)
     let holderDuringReview: string | undefined
@@ -481,19 +514,20 @@ describe('policy', () => {
   })
 
   it('an auto-repair that settles WITHOUT a report hands its incidents to the operator instead of ending the cycle (#896 D3.4b)', async () => {
-    planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe' })]
+    planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', ...selfHeal })]
     awaitDoctorRepair.mockImplementationOnce(async () => ({ view: { id: 'op-repair', status: 'cancelled', outcome: { code: 'cancelled', message: 'cancelled before apply' } }, report: null }) as never)
     const outcome = await escalate([repairIncident(), incident()])
     expect(openOperatorReview).toHaveBeenCalledWith(expect.objectContaining({
       reason: { failure: expect.objectContaining({ operationId: 'op-repair', stage: 'cancelled', error: 'cancelled before apply' }) },
     }))
-    // The instruction-type incident is still delegated in the same cycle.
-    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:unavailable'] }) }))
+    // The human incident still gets its navigate approval in the same cycle.
+    expect(openNavigateApproval).toHaveBeenCalledWith(expect.objectContaining({ incident: expect.objectContaining({ id: 'health:search:unavailable' }) }))
+    expect(delegate).not.toHaveBeenCalled()
     expect(outcome?.operatorReviewTaskId).toBe('task-operator-review')
   })
 
-  it('non-safe repair proposals become ONE review task with a health-repair approval holding only those items', async () => {
-    planItems = [item({}), item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe', incidentIds: ['health:search:other'], observationIds: ['health.search:other'] })]
+  it('one-click repair proposals become ONE review task with a health-repair approval holding only those items', async () => {
+    planItems = [item({}), item({ id: 'search.restart:restart', actionId: 'search.restart', ...selfHeal, incidentIds: ['health:search:other'], observationIds: ['health.search:other'] })]
     afterApplyIncidents = [repairIncident()]
     const outcome = await escalate([repairIncident()])
     expect(openRepairApproval).toHaveBeenCalledTimes(1)
@@ -504,13 +538,13 @@ describe('policy', () => {
     expect(delegate).not.toHaveBeenCalled()
   })
 
-  it('navigate incidents get one health-navigate approval each; the rest is delegated in the same cycle', async () => {
+  it('every human incident gets one health-navigate approval, beside the one-click proposal, in the same cycle', async () => {
     planItems = [item({})]
     const outcome = await escalate([repairIncident(), navigateIncident(), navigateIncident('health:runtime:auth-expired-2'), incident()])
     expect(openRepairApproval).toHaveBeenCalledTimes(1)
-    expect(openNavigateApproval).toHaveBeenCalledTimes(2)
-    expect(outcome?.navigateApprovalTaskIds).toHaveLength(2)
-    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:unavailable'] }) }))
+    expect(openNavigateApproval).toHaveBeenCalledTimes(3)
+    expect(outcome?.navigateApprovalTaskIds).toHaveLength(3)
+    expect(delegate).not.toHaveBeenCalled()
   })
 
   it('a repair incident with no plan item goes to the operator, not silently dropped and not to an agent (#896 D3.4)', async () => {
@@ -521,7 +555,7 @@ describe('policy', () => {
     expect(openOperatorReview).toHaveBeenCalledWith(expect.objectContaining({ reason: { plannerError: 'no repair action was proposed for this incident' } }))
   })
 
-  it('planning failure: repair incidents go to the operator with the planner error; everything else is still delegated', async () => {
+  it('planning failure: repair incidents go to the operator with the planner error; human incidents still get their approval', async () => {
     planThrows = true
     await escalate([repairIncident(), incident()])
     expect(startDoctorRepair).not.toHaveBeenCalled()
@@ -529,7 +563,8 @@ describe('policy', () => {
       incidents: [expect.objectContaining({ id: 'health:search:index-corrupt' })],
       reason: { plannerError: 'action unregistered' },
     }))
-    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:unavailable'] }) }))
+    expect(openNavigateApproval).toHaveBeenCalledWith(expect.objectContaining({ incident: expect.objectContaining({ id: 'health:search:unavailable' }) }))
+    expect(delegate).not.toHaveBeenCalled()
   })
 
   describe('incident reservations (#896 D3.2)', () => {
@@ -537,7 +572,7 @@ describe('policy', () => {
       reserveIncidents(['health:search:index-corrupt'], 'repair:plan-9:x')
       await escalate([repairIncident(), incident()])
       expect(planDoctorRepair).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:unavailable'] }) }))
-      expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ ids: ['health:search:unavailable'] }) }))
+      expect(openNavigateApproval).toHaveBeenCalledWith(expect.objectContaining({ incident: expect.objectContaining({ id: 'health:search:unavailable' }) }))
       // The foreign hold survives the cycle untouched; the cycle's own hold is gone.
       expect([...heldIncidentIds()]).toEqual(['health:search:index-corrupt'])
       expect(incidentHolder('health:search:index-corrupt')).toBe('repair:plan-9:x')
@@ -559,37 +594,36 @@ describe('policy', () => {
       expect(heldIncidentIds().size).toBe(0)
     })
 
-    it('hands the safe subset to the repair operation and the rest to the delegation, then holds nothing', async () => {
-      planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', safety: 'safe', incidentIds: ['health:search:index-corrupt'] })]
-      afterApplyIncidents = [incident()] // the safe apply fixes index-corrupt; 'unavailable' still burns → delegated
+    it('hands the self-heal subset to the repair operation and holds the human incident until its approval is written, then holds nothing', async () => {
+      planItems = [item({ id: 'search.restart:restart', actionId: 'search.restart', ...selfHeal, incidentIds: ['health:search:index-corrupt'] })]
+      afterApplyIncidents = [incident()] // the self-heal apply fixes index-corrupt; 'unavailable' (human) still burns → navigate approval
       let holderDuringApply: string | undefined
       startDoctorRepair.mockImplementationOnce(async () => {
         holderDuringApply = incidentHolder('health:search:index-corrupt')
         return { operationId: 'op-repair', bootId: 'boot-1' }
       })
-      let holderDuringDelegate: string | undefined
-      delegate.mockImplementationOnce(async () => {
-        holderDuringDelegate = incidentHolder('health:search:unavailable')
-        return { status: 'sent' }
+      let holderDuringApproval: string | undefined
+      openNavigateApproval.mockImplementationOnce(async () => {
+        holderDuringApproval = incidentHolder('health:search:unavailable')
+        return { taskId: 'task-nav-held' }
       })
       await escalate([repairIncident(), incident()])
       // The auto-repair ran under the SAME token startDoctorRepair reserves with — it attached, never raced.
       expect(holderDuringApply).toBe('repair:plan-1:search.restart:restart')
-      expect(holderDuringDelegate).toMatch(/^escalation:/)
-      expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ reservation: expect.stringMatching(/^escalation:/) }))
+      expect(holderDuringApproval).toMatch(/^escalation:/)
       expect(heldIncidentIds().size).toBe(0)
     })
 
-    it('releases everything it held when planning and delegation both fail', async () => {
+    it('releases everything it held when planning and the approval both fail', async () => {
       planThrows = true
-      delegate.mockImplementationOnce(async () => { throw new Error('delegate unavailable') })
+      openNavigateApproval.mockImplementationOnce(async () => { throw new Error('approvals unavailable') })
       await escalate([repairIncident(), incident()])
       expect(heldIncidentIds().size).toBe(0)
     })
   })
 
-  it('contains delegation failures so cron diagnostics still complete', async () => {
-    delegate.mockImplementationOnce(async () => { throw new Error('delegate unavailable') })
+  it('contains approval failures so cron diagnostics still complete', async () => {
+    openNavigateApproval.mockImplementationOnce(async () => { throw new Error('approvals unavailable') })
     await expect(escalate([incident()])).resolves.toBeDefined()
   })
 

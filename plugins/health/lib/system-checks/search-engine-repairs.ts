@@ -48,10 +48,16 @@ function results(items: HealthRepairPlanItem[], status: 'applied' | 'failed', me
   return items.map((item) => ({ itemId: item.id, actionId: item.actionId, status, message, affectedCheckIds: [checkId], changes: item.changes }))
 }
 
-function engineInstallRepair(input: { id: 'search-engine-install' | 'search-engine-claim'; name: string; claim: boolean; safety: 'safe' | 'manual'; reason: string }): HealthRepairActionDefinition {
+function engineInstallRepair(input: { id: 'search-engine-install' | 'search-engine-claim'; name: string; claim: boolean; reason: string }): HealthRepairActionDefinition {
   return {
     id: input.id,
     name: input.name,
+    // Rows 55–57: a pinned, checksum-verified engine install restarts the
+    // service and nothing else — self-heal. Row 54: claiming moves the shared
+    // service to THIS home permanently, which widens what the operator
+    // authorized — one-click, never unattended.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: input.claim, restartsService: 'search-engine' },
+    mutation: input.claim ? 'policy' : 'reinstall',
     resources: ['search-engine'],
     // The adapter declares its own stages; the component reports through them.
     operationPlan: () => engineInstallPlan(),
@@ -61,7 +67,6 @@ function engineInstallRepair(input: { id: 'search-engine-install' | 'search-engi
         actionId: input.id,
         title: input.name,
         reason: input.reason,
-        safety: input.safety,
         ...repairTargetSelection(target),
         changes: [{
           kind: 'service',
@@ -92,7 +97,6 @@ export function searchEngineInstallRepair(): HealthRepairActionDefinition {
     id: 'search-engine-install',
     name: 'Install the Search engine and its service',
     claim: false,
-    safety: 'safe',
     reason: 'The engine binary or its managed service is missing, or the engine stayed dark after a restart.',
   })
 }
@@ -102,7 +106,6 @@ export function searchEngineClaimRepair(): HealthRepairActionDefinition {
     id: 'search-engine-claim',
     name: 'Claim Search for this home',
     claim: true,
-    safety: 'manual',
     reason: 'Another Bakin home owns the shared search service; claiming it moves the service to this home permanently.',
   })
 }
@@ -113,6 +116,8 @@ export function searchEngineWatchResetRepair(): HealthRepairActionDefinition {
   return {
     id: 'search-engine-watch-reset',
     name: 'Restore Search watch history',
+    // Row 85: the unreadable file is moved aside, never deleted — self-heal.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
     operationPlan: () => ({ stages: [{ id: 'reset', kind: 'installing', label: 'Move the unreadable history aside' }], pointOfNoReturn: 'reset' }),
     async plan(target) {
       return [{
@@ -120,7 +125,6 @@ export function searchEngineWatchResetRepair(): HealthRepairActionDefinition {
         actionId: 'search-engine-watch-reset',
         title: 'Restore Search watch history',
         reason: 'The persisted watch history cannot be read, so Health cannot tell whether symptoms repeated.',
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: [{ kind: 'file', target: join(...WATCH_STATE), action: 'update', description: 'Rename the unreadable file to a dated .rejected copy and start a fresh observation streak.' }],
       }]
@@ -152,6 +156,11 @@ export function searchDropUnclaimedTablesRepair(): HealthRepairActionDefinition 
   return {
     id: 'search-drop-unclaimed-tables',
     name: 'Drop unclaimed Search tables',
+    // Row 76 (spec §3.9): the tables are not Bakin's content, but another
+    // instance's index data dies with them — the operator decides. Stamped as
+    // deleting content so the ONE mode policy makes it one-click.
+    effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
+    mutation: 'delete',
     resources: ['search-engine'],
     operationPlan: () => ({ stages: [{ id: 'drop', kind: 'installing', label: 'Drop the selected tables' }], pointOfNoReturn: 'drop' }),
     async plan(target) {
@@ -161,7 +170,6 @@ export function searchDropUnclaimedTablesRepair(): HealthRepairActionDefinition 
         actionId: 'search-drop-unclaimed-tables',
         title: `Drop ${table}`,
         reason: 'The table is not referenced by this installation; dropping it frees engine storage. Another Bakin instance would lose its index data if it owned this table.',
-        safety: 'manual' as const,
         ...selection,
         changes: [{ kind: 'other' as const, target: table, action: 'delete' as const, description: 'Drop the engine table. Content is not affected; an owning instance would need to rebuild it.' }],
       }))

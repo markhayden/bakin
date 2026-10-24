@@ -31,9 +31,6 @@ function SystemFixture() {
   useEffect(() => {
     inventory.current?.revealPlugins()
     inventory.current?.revealChecks()
-    // Capture the existing disclosures with a long ownership path and no command.
-    document.querySelectorAll<HTMLButtonElement>('[data-incident-id="search-ownership"] button[aria-expanded="false"]')
-      .forEach(button => button.click())
   }, [])
   return <Page><PageHeader title="Health" description="System inventories" /><PageBody>
     <OverviewAlerts model={buildHealthOverviewViewModel({ report: collectionReport })} onRerun={() => {}} />

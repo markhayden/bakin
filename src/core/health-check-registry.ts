@@ -66,7 +66,7 @@ export function resolveDeclaredRepairAction(owner: HealthOwner, actionId: string
  * repair actions are both refused here, before anything is registered.
  */
 function validateIncidentCatalog(checkId: string, owner: HealthOwner, incidents: unknown): void {
-  if (incidents === undefined) return
+  if (incidents === undefined) throw new Error(`Health check "${checkId}" declares no incident families — every check registers its finite \`incidents\` catalog (an empty list when it never raises one).`)
   if (!Array.isArray(incidents)) throw new Error(`Health check "${checkId}" declares incidents that are not a list.`)
   const seen = new Set<string>()
   incidents.forEach((entry, index) => {
@@ -99,7 +99,7 @@ export function registerHealthCheck(def: HealthCheckDef): void {
     group: def.group,
     maxAgeMs: def.maxAgeMs,
     timeoutMs: def.timeoutMs,
-    ...(def.incidents ? { incidents: def.incidents } : {}),
+    incidents: def.incidents,
     run: def.run,
   })
   checks.set(def.id, { ...parsed, id: def.id, localId: def.localId, owner: { ...def.owner } })
@@ -136,6 +136,8 @@ export function registerHealthRepairAction(def: HealthRepairActionDef): void {
   const parsed = parseHealthRepairActionDefinition({
     id: def.localId,
     name: def.name,
+    effects: def.effects,
+    ...(def.mutation ? { mutation: def.mutation } : {}),
     plan: def.plan,
     operationPlan: def.operationPlan,
     ...(def.resources ? { resources: def.resources } : {}),

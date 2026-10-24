@@ -12,19 +12,9 @@
  * engine, the planner, the CLI, the cards) calls `repairMode`.
  */
 
-/** The declared effects of a repair action (the canonical SDK type lands with the three-outcomes cutover). */
-export interface HealthRepairEffects {
-  deletesUserContent: boolean
-  spendsMoney: boolean
-  /** Consents to new permissions/bins/secrets/npm payloads, or changes spend, routing or policy. */
-  widensAuthorization: boolean
-  /** The action restarts a supervised service or Bakin; the maintenance coordinator gates it. */
-  restartsService?: 'search-engine' | 'bakin' | 'runtime'
-  /** Incident keys on dependent subjects this repair resolves (drives folding). */
-  resolves?: readonly string[]
-}
+import type { HealthRepairEffects, HealthRepairMode } from '@makinbakin/sdk/types'
 
-export type HealthRepairMode = 'self-heal' | 'one-click'
+export type { HealthRepairEffects, HealthRepairMode }
 
 export function repairMode(effects: HealthRepairEffects): HealthRepairMode {
   return effects.deletesUserContent || effects.spendsMoney || effects.widensAuthorization ? 'one-click' : 'self-heal'

@@ -55,34 +55,34 @@ import {
   getHealthCheck,
   type HealthCheckDef,
 } from '../../src/core/health-check-registry'
-import { checkContentDir } from './lib/system-checks/content-dir'
-import { checkMediaSharp, mediaStoreRepair } from './lib/system-checks/media'
-import { checkCapabilities } from './lib/system-checks/capabilities'
-import { checkGithubReadiness } from './lib/system-checks/github-readiness'
-import { checkService, serviceSetupRepair } from './lib/system-checks/service'
-import { checkRuntime, runtimeRestartRepair } from './lib/system-checks/runtime'
-import { checkSessionStore, sessionStorePruneRepair } from './lib/system-checks/session-store'
-import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
-import { checkChannelAliases } from './lib/system-checks/channel-aliases'
-import { checkDeliveryDiscord, discordBridgeReconnectRepair } from './lib/system-checks/delivery-discord'
-import { checkRestartRecovery, requeueStrandedTasksRepair } from './lib/system-checks/restart-recovery'
-import { checkExecutionSafety } from './lib/system-checks/execution-safety'
-import { checkRunDirs, runDirsSweepRepair } from './lib/system-checks/run-dirs'
-import { checkStartupContextSize } from './lib/system-checks/context-report'
-import { checkAgentBurn } from './lib/system-checks/agent-burn'
-import { checkSearchAdapter, searchScarRepair } from './lib/system-checks/search'
+import { checkContentDir, CONTENT_DIR_INCIDENTS } from './lib/system-checks/content-dir'
+import { checkMediaSharp, mediaStoreRepair, MEDIA_INCIDENTS } from './lib/system-checks/media'
+import { checkCapabilities, CAPABILITIES_INCIDENTS } from './lib/system-checks/capabilities'
+import { checkGithubReadiness, GITHUB_READINESS_INCIDENTS } from './lib/system-checks/github-readiness'
+import { checkService, serviceSetupRepair, SERVICE_INCIDENTS } from './lib/system-checks/service'
+import { checkRuntime, runtimeRestartRepair, RUNTIME_INCIDENTS } from './lib/system-checks/runtime'
+import { checkSessionStore, sessionStorePruneRepair, SESSION_STORE_INCIDENTS } from './lib/system-checks/session-store'
+import { checkChannelApprovals, CHANNEL_APPROVALS_INCIDENTS } from './lib/system-checks/channel-approvals'
+import { checkChannelAliases, CHANNEL_ALIASES_INCIDENTS } from './lib/system-checks/channel-aliases'
+import { checkDeliveryDiscord, discordBridgeReconnectRepair, DELIVERY_DISCORD_INCIDENTS } from './lib/system-checks/delivery-discord'
+import { checkRestartRecovery, requeueStrandedTasksRepair, RESTART_RECOVERY_INCIDENTS } from './lib/system-checks/restart-recovery'
+import { checkExecutionSafety, EXECUTION_SAFETY_INCIDENTS } from './lib/system-checks/execution-safety'
+import { checkRunDirs, runDirsSweepRepair, RUN_DIRS_INCIDENTS } from './lib/system-checks/run-dirs'
+import { checkStartupContextSize, CONTEXT_REPORT_INCIDENTS } from './lib/system-checks/context-report'
+import { checkAgentBurn, AGENT_BURN_INCIDENTS } from './lib/system-checks/agent-burn'
+import { checkSearchAdapter, searchScarRepair, SEARCH_INCIDENTS } from './lib/system-checks/search'
 import { searchOutboxRepair } from './lib/system-checks/search-outbox'
-import { checkSearchConsistency, searchConsistencyRepair } from './lib/system-checks/search-consistency'
-import { checkSearchSpin, searchSpinRepair } from './lib/system-checks/search-spin'
-import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchConsistencyRestartRepair, searchEngineBurnRepair, searchEngineRestartRepair } from './lib/system-checks/search-engine-watch'
+import { checkSearchConsistency, searchConsistencyRepair, SEARCH_CONSISTENCY_INCIDENTS } from './lib/system-checks/search-consistency'
+import { checkSearchSpin, searchSpinRepair, SEARCH_SPIN_INCIDENTS } from './lib/system-checks/search-spin'
+import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchConsistencyRestartRepair, searchEngineBurnRepair, searchEngineRestartRepair, SEARCH_CANARY_INCIDENTS, SEARCH_ENGINE_BURN_INCIDENTS } from './lib/system-checks/search-engine-watch'
 import { searchDropUnclaimedTablesRepair, searchEngineClaimRepair, searchEngineInstallRepair, searchEngineWatchResetRepair } from './lib/system-checks/search-engine-repairs'
-import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
-import { checkPluginAssets, installPluginAssetsRepair } from './lib/system-checks/plugin-assets'
-import { checkPluginArtifacts, pluginReinstallRepair, pluginUpgradeRepair } from './lib/system-checks/plugin-artifacts'
+import { checkAndSyncSkill, syncSkillRepair, SKILL_INCIDENTS } from './lib/system-checks/sync-skill'
+import { checkPluginAssets, installPluginAssetsRepair, PLUGIN_ASSETS_INCIDENTS } from './lib/system-checks/plugin-assets'
+import { checkPluginArtifacts, pluginReinstallRepair, pluginUpgradeRepair, PLUGIN_ARTIFACTS_INCIDENTS } from './lib/system-checks/plugin-artifacts'
 import { packageReinstallRepair, packageSyncRepair } from './lib/system-checks/package-repairs'
-import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
-import { checkSpendPolicyAvailable } from './lib/system-checks/spend-policy'
-import { checkHealthAcks, healthAcksPruneRepair, healthAcksResetRepair } from './lib/system-checks/health-acks'
+import { checkPluginRegistry, PLUGIN_REGISTRY_INCIDENTS } from './lib/system-checks/plugin-registry'
+import { checkSpendPolicyAvailable, SPEND_POLICY_INCIDENTS } from './lib/system-checks/spend-policy'
+import { checkHealthAcks, healthAcksPruneRepair, healthAcksResetRepair, HEALTH_ACKS_INCIDENTS } from './lib/system-checks/health-acks'
 import {
   agentEffortResponseSchema,
   agentUsageSnapshotResponseSchema,
@@ -190,6 +190,8 @@ const stripRun = (def: HealthCheckDef) => ({
   owner: def.owner,
   group: def.group,
   ...(def.maxAgeMs === undefined ? {} : { maxAgeMs: def.maxAgeMs }),
+  // The declared incident families (self-healing 1.7): what this check may raise, never what it did.
+  incidents: def.incidents,
 })
 
 // ─── Schemas ─────────────────────────────────────────────────────────────
@@ -949,213 +951,14 @@ const healthPlugin: BakinPlugin = definePlugin({
     const workGroup = { key: 'work-cost', label: 'Work & Cost' }
     const searchGroup = { key: 'search', label: 'Search' }
     const pluginsGroup = { key: 'plugins', label: 'Plugins' }
-
-    ctx.registerHealthCheck({
-      id: 'content-dir',
-      name: 'Content directory location',
-      description: 'Confirms where Bakin stores its local state.',
-      group: systemGroup,
-      maxAgeMs: 3_600_000,
-      run: () => checkContentDir(),
-    })
-    ctx.registerHealthCheck({
-      id: 'acks',
-      name: 'Health acknowledgements',
-      description: 'Names acknowledge/snooze records that break the acknowledge rules — those records suppress nothing.',
-      group: systemGroup,
-      maxAgeMs: 300_000,
-      run: () => checkHealthAcks(),
-    })
-    ctx.registerHealthCheck({
-      id: 'media.sharp',
-      name: 'Image processing (sharp)',
-      description: 'Confirms sharp is usable — bundled on dev trees, via the media store on compiled binaries (#889).',
-      group: systemGroup,
-      maxAgeMs: 900_000,
-      run: () => checkMediaSharp(),
-    })
+    // Repair actions register BEFORE the checks that declare them: every
+    // check's incident catalog is validated at registration against the
+    // actions this owner already registered (self-healing 1.7).
     ctx.registerHealthRepairAction(packageSyncRepair())
     ctx.registerHealthRepairAction(packageReinstallRepair())
-    ctx.registerHealthCheck({
-      id: 'capabilities',
-      name: 'Capability-pack readiness',
-      description: 'Checks that installed capability packs have their required content and tools.',
-      group: pluginsGroup,
-      maxAgeMs: 900_000,
-      run: () => checkCapabilities(),
-    })
-    ctx.registerHealthCheck({
-      id: 'github-readiness',
-      name: 'GitHub CLI readiness',
-      description: 'Confirms GitHub CLI authentication for issue, pull request, and release operations.',
-      group: systemGroup,
-      maxAgeMs: 300_000,
-      run: () => checkGithubReadiness(),
-    })
-    ctx.registerHealthCheck({
-      id: 'service',
-      name: 'macOS LaunchAgent plist',
-      description: 'Verifies the managed macOS background service is installed, current, and loaded.',
-      group: systemGroup,
-      maxAgeMs: 300_000,
-      run: () => checkService(process.cwd()),
-    })
-    ctx.registerHealthCheck({
-      id: 'runtime',
-      name: 'Runtime reachability',
-      description: 'Confirms the active agent runtime can serve turns.',
-      group: runtimeGroup,
-      maxAgeMs: 60_000,
-      run: () => checkRuntime(ctx.runtime),
-    })
-    ctx.registerHealthCheck({
-      id: 'session-store',
-      name: 'Runtime session-store growth',
-      description: 'Watches runtime session artifacts for excessive disk use and orphan growth.',
-      group: runtimeGroup,
-      maxAgeMs: 600_000,
-      run: () => checkSessionStore(ctx.runtime),
-    })
-    ctx.registerHealthCheck({
-      id: 'channel-approvals',
-      name: 'Runtime channel approval responses',
-      description: 'Checks whether runtime channels can return workflow approval decisions.',
-      group: runtimeGroup,
-      maxAgeMs: 300_000,
-      run: () => checkChannelApprovals(),
-    })
-    ctx.registerHealthCheck({
-      id: 'channel-aliases',
-      name: 'Runtime channel aliases',
-      description: 'Validates configured channel aliases and the alert channel against the active runtime.',
-      group: runtimeGroup,
-      maxAgeMs: 300_000,
-      run: () => checkChannelAliases(),
-    })
-    ctx.registerHealthCheck({
-      id: 'delivery-discord',
-      name: 'Discord delivery bridge',
-      description: 'Projects the channel-readiness snapshot: bridge config (token, guilds, allowlists), gateway connection, and reachable servers.',
-      group: runtimeGroup,
-      maxAgeMs: 300_000,
-      run: () => checkDeliveryDiscord(),
-    })
-    // Readiness transitions rerun the three channel checks (debounced), so
-    // the Discord incident appears/clears within seconds (#908 D8).
-    stopChannelHealthReruns = wireChannelHealthReruns({
-      subscribe: subscribeChannelReadiness,
-      run: () => runTargetedDiagnostics(CHANNEL_HEALTH_CHECK_IDS),
-      checkIds: CHANNEL_HEALTH_CHECK_IDS,
-      onError: (err) => log.warn('Targeted channel health rerun failed', err),
-    })
     ctx.registerHealthRepairAction(requeueStrandedTasksRepair())
-    ctx.registerHealthCheck({
-      id: 'restart-recovery',
-      name: 'Restart recovery candidates',
-      description: 'Finds stale in-progress tasks that need automatic or manual restart recovery.',
-      group: systemGroup,
-      maxAgeMs: 120_000,
-      run: () => checkRestartRecovery(),
-    })
-    ctx.registerHealthCheck({
-      id: 'execution-safety',
-      name: 'Duplicate-execution suppression + ledger health',
-      description: 'Confirms the execution ledger is reachable and surfaces recently suppressed duplicate work.',
-      group: systemGroup,
-      maxAgeMs: 300_000,
-      run: () => checkExecutionSafety(),
-    })
     ctx.registerHealthRepairAction(runDirsSweepRepair())
-    ctx.registerHealthCheck({
-      id: 'dispatch.run-dirs',
-      name: 'Per-run workspace disk usage',
-      description: 'Watches run-workspace scratch dirs against retention windows and the disk budget (sweep aggregate — never a live walk).',
-      group: workGroup,
-      maxAgeMs: 600_000,
-      run: () => checkRunDirs(),
-    })
-    ctx.registerHealthCheck({
-      id: 'context.startup-size',
-      name: 'Per-dispatch startup context budget',
-      description: 'Estimates each agent\'s injected startup context against the configured cost guardrail.',
-      group: workGroup,
-      maxAgeMs: 600_000,
-      run: () => checkStartupContextSize(ctx.runtime),
-    })
-    ctx.registerHealthCheck({
-      id: 'spend.policy-available',
-      name: 'Spend limits policy reachable',
-      description: 'Confirms the spend plugin answers the limits-policy hook the dispatch gate consults; while it does not, dispatch fails closed.',
-      group: workGroup,
-      maxAgeMs: 120_000,
-      run: () => checkSpendPolicyAvailable(),
-    })
-    ctx.registerHealthCheck({
-      id: 'usage.agent-burn',
-      name: 'Agent token burn (effort, spikes, usage buckets)',
-      description: 'Flags unusually high or spiking token use, interactive-session usage, unexplained usage, and possible runaway autonomous activity.',
-      group: workGroup,
-      maxAgeMs: 600_000,
-      run: () => checkAgentBurn(() => fetchScheduledJobsEvidence(ctx.runtime)),
-    })
-    ctx.registerHealthCheck({
-      id: 'search',
-      name: 'Search engine and write journal',
-      description: 'Checks Search enablement, engine installation and connectivity, supervision, and journal drain state.',
-      group: searchGroup,
-      maxAgeMs: 60_000,
-      run: () => checkSearchAdapter(),
-    })
-    ctx.registerHealthCheck({
-      id: 'search-consistency',
-      name: 'Search table consistency + deep sweep',
-      description: 'Verifies logical-to-physical index mappings and performs throttled orphan maintenance.',
-      group: searchGroup,
-      maxAgeMs: 300_000,
-      timeoutMs: 120_000,
-      run: () => checkSearchConsistency(),
-    })
-    ctx.registerHealthCheck({
-      id: 'search-spin',
-      name: 'Search backfill-spin watchdog (zero-progress building legs)',
-      description: 'Detects index legs that remain building without queued work or measurable progress.',
-      group: searchGroup,
-      maxAgeMs: 300_000,
-      run: () => checkSearchSpin(),
-    })
-    ctx.registerHealthCheck({
-      id: 'search-canary',
-      name: 'Search canary (a real query through the production path)',
-      description: 'Runs a real cross-table query to verify Search serves production traffic, not only probes.',
-      group: searchGroup,
-      maxAgeMs: 120_000,
-      run: () => checkSearchCanary(),
-    })
-    ctx.registerHealthCheck({
-      id: 'search-engine-burn',
-      name: 'Search engine burn watchdog (CPU + wedge signatures)',
-      description: 'Watches Search process CPU and engine logs for a persistent zero-progress wedge.',
-      group: searchGroup,
-      maxAgeMs: 120_000,
-      run: () => checkSearchEngineBurn(),
-    })
-    ctx.registerHealthCheck({
-      id: 'skill',
-      name: 'Bakin SKILL.md sync to runtime',
-      description: 'Confirms the runtime has Bakin\'s current generated skill instructions.',
-      group: runtimeGroup,
-      maxAgeMs: 900_000,
-      run: () => checkAndSyncSkill(process.cwd(), ctx.runtime),
-    })
     ctx.registerHealthRepairAction(installPluginAssetsRepair())
-    ctx.registerHealthCheck({
-      id: 'plugin-assets',
-      name: 'Plugin assets install state',
-      description: 'Checks installation and drift for runtime skills and sha256-pinned binaries shipped by plugins.',
-      group: pluginsGroup,
-      maxAgeMs: 900_000,
-      run: () => checkPluginAssets(),
-    })
     ctx.registerHealthRepairAction(pluginUpgradeRepair())
     ctx.registerHealthRepairAction(healthAcksResetRepair())
     ctx.registerHealthRepairAction(healthAcksPruneRepair())
@@ -1164,23 +967,6 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthRepairAction(sessionStorePruneRepair(ctx.runtime))
     ctx.registerHealthRepairAction(discordBridgeReconnectRepair())
     ctx.registerHealthRepairAction(pluginReinstallRepair())
-    ctx.registerHealthCheck({
-      id: 'plugin-artifacts',
-      name: 'Installed plugin artifact compatibility',
-      description: 'Verifies user-installed plugin artifacts are compatible with and trusted by this host, and offers the upgrade when a compatible release exists.',
-      group: pluginsGroup,
-      maxAgeMs: 900_000,
-      run: () => checkPluginArtifacts(),
-    })
-    ctx.registerHealthCheck({
-      id: 'plugin-registry',
-      name: 'Plugin activation state',
-      description: 'Surfaces plugins that failed during activation and are unavailable.',
-      group: pluginsGroup,
-      maxAgeMs: 300_000,
-      run: () => checkPluginRegistry(),
-    })
-
     ctx.registerHealthRepairAction(mediaStoreRepair())
     ctx.registerHealthRepairAction(searchOutboxRepair())
     ctx.registerHealthRepairAction(searchConsistencyRepair())
@@ -1195,6 +981,251 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthRepairAction(searchEngineWatchResetRepair())
     ctx.registerHealthRepairAction(searchDropUnclaimedTablesRepair())
     ctx.registerHealthRepairAction(syncSkillRepair(process.cwd(), ctx.runtime))
+
+    ctx.registerHealthCheck({
+      id: 'content-dir',
+      name: 'Content directory location',
+      description: 'Confirms where Bakin stores its local state.',
+      group: systemGroup,
+      maxAgeMs: 3_600_000,
+      incidents: CONTENT_DIR_INCIDENTS,
+      run: () => checkContentDir(),
+    })
+    ctx.registerHealthCheck({
+      id: 'acks',
+      name: 'Health acknowledgements',
+      description: 'Names acknowledge/snooze records that break the acknowledge rules — those records suppress nothing.',
+      group: systemGroup,
+      maxAgeMs: 300_000,
+      incidents: HEALTH_ACKS_INCIDENTS,
+      run: () => checkHealthAcks(),
+    })
+    ctx.registerHealthCheck({
+      id: 'media.sharp',
+      name: 'Image processing (sharp)',
+      description: 'Confirms sharp is usable — bundled on dev trees, via the media store on compiled binaries (#889).',
+      group: systemGroup,
+      maxAgeMs: 900_000,
+      incidents: MEDIA_INCIDENTS,
+      run: () => checkMediaSharp(),
+    })
+    ctx.registerHealthCheck({
+      id: 'capabilities',
+      name: 'Capability-pack readiness',
+      description: 'Checks that installed capability packs have their required content and tools.',
+      group: pluginsGroup,
+      maxAgeMs: 900_000,
+      incidents: CAPABILITIES_INCIDENTS,
+      run: () => checkCapabilities(),
+    })
+    ctx.registerHealthCheck({
+      id: 'github-readiness',
+      name: 'GitHub CLI readiness',
+      description: 'Confirms GitHub CLI authentication for issue, pull request, and release operations.',
+      group: systemGroup,
+      maxAgeMs: 300_000,
+      incidents: GITHUB_READINESS_INCIDENTS,
+      run: () => checkGithubReadiness(),
+    })
+    ctx.registerHealthCheck({
+      id: 'service',
+      name: 'macOS LaunchAgent plist',
+      description: 'Verifies the managed macOS background service is installed, current, and loaded.',
+      group: systemGroup,
+      maxAgeMs: 300_000,
+      incidents: SERVICE_INCIDENTS,
+      run: () => checkService(process.cwd()),
+    })
+    ctx.registerHealthCheck({
+      id: 'runtime',
+      name: 'Runtime reachability',
+      description: 'Confirms the active agent runtime can serve turns.',
+      group: runtimeGroup,
+      maxAgeMs: 60_000,
+      incidents: RUNTIME_INCIDENTS,
+      run: () => checkRuntime(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'session-store',
+      name: 'Runtime session-store growth',
+      description: 'Watches runtime session artifacts for excessive disk use and orphan growth.',
+      group: runtimeGroup,
+      maxAgeMs: 600_000,
+      incidents: SESSION_STORE_INCIDENTS,
+      run: () => checkSessionStore(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'channel-approvals',
+      name: 'Runtime channel approval responses',
+      description: 'Checks whether runtime channels can return workflow approval decisions.',
+      group: runtimeGroup,
+      maxAgeMs: 300_000,
+      incidents: CHANNEL_APPROVALS_INCIDENTS,
+      run: () => checkChannelApprovals(),
+    })
+    ctx.registerHealthCheck({
+      id: 'channel-aliases',
+      name: 'Runtime channel aliases',
+      description: 'Validates configured channel aliases and the alert channel against the active runtime.',
+      group: runtimeGroup,
+      maxAgeMs: 300_000,
+      incidents: CHANNEL_ALIASES_INCIDENTS,
+      run: () => checkChannelAliases(),
+    })
+    ctx.registerHealthCheck({
+      id: 'delivery-discord',
+      name: 'Discord delivery bridge',
+      description: 'Projects the channel-readiness snapshot: bridge config (token, guilds, allowlists), gateway connection, and reachable servers.',
+      group: runtimeGroup,
+      maxAgeMs: 300_000,
+      incidents: DELIVERY_DISCORD_INCIDENTS,
+      run: () => checkDeliveryDiscord(),
+    })
+    // Readiness transitions rerun the three channel checks (debounced), so
+    // the Discord incident appears/clears within seconds (#908 D8).
+    stopChannelHealthReruns = wireChannelHealthReruns({
+      subscribe: subscribeChannelReadiness,
+      run: () => runTargetedDiagnostics(CHANNEL_HEALTH_CHECK_IDS),
+      checkIds: CHANNEL_HEALTH_CHECK_IDS,
+      onError: (err) => log.warn('Targeted channel health rerun failed', err),
+    })
+    ctx.registerHealthCheck({
+      id: 'restart-recovery',
+      name: 'Restart recovery candidates',
+      description: 'Finds stale in-progress tasks that need automatic or manual restart recovery.',
+      group: systemGroup,
+      maxAgeMs: 120_000,
+      incidents: RESTART_RECOVERY_INCIDENTS,
+      run: () => checkRestartRecovery(),
+    })
+    ctx.registerHealthCheck({
+      id: 'execution-safety',
+      name: 'Duplicate-execution suppression + ledger health',
+      description: 'Confirms the execution ledger is reachable and surfaces recently suppressed duplicate work.',
+      group: systemGroup,
+      maxAgeMs: 300_000,
+      incidents: EXECUTION_SAFETY_INCIDENTS,
+      run: () => checkExecutionSafety(),
+    })
+    ctx.registerHealthCheck({
+      id: 'dispatch.run-dirs',
+      name: 'Per-run workspace disk usage',
+      description: 'Watches run-workspace scratch dirs against retention windows and the disk budget (sweep aggregate — never a live walk).',
+      group: workGroup,
+      maxAgeMs: 600_000,
+      incidents: RUN_DIRS_INCIDENTS,
+      run: () => checkRunDirs(),
+    })
+    ctx.registerHealthCheck({
+      id: 'context.startup-size',
+      name: 'Per-dispatch startup context budget',
+      description: 'Estimates each agent\'s injected startup context against the configured cost guardrail.',
+      group: workGroup,
+      maxAgeMs: 600_000,
+      incidents: CONTEXT_REPORT_INCIDENTS,
+      run: () => checkStartupContextSize(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'spend.policy-available',
+      name: 'Spend limits policy reachable',
+      description: 'Confirms the spend plugin answers the limits-policy hook the dispatch gate consults; while it does not, dispatch fails closed.',
+      group: workGroup,
+      maxAgeMs: 120_000,
+      incidents: SPEND_POLICY_INCIDENTS,
+      run: () => checkSpendPolicyAvailable(),
+    })
+    ctx.registerHealthCheck({
+      id: 'usage.agent-burn',
+      name: 'Agent token burn (effort, spikes, usage buckets)',
+      description: 'Flags unusually high or spiking token use, interactive-session usage, unexplained usage, and possible runaway autonomous activity.',
+      group: workGroup,
+      maxAgeMs: 600_000,
+      incidents: AGENT_BURN_INCIDENTS,
+      run: () => checkAgentBurn(() => fetchScheduledJobsEvidence(ctx.runtime)),
+    })
+    ctx.registerHealthCheck({
+      id: 'search',
+      name: 'Search engine and write journal',
+      description: 'Checks Search enablement, engine installation and connectivity, supervision, and journal drain state.',
+      group: searchGroup,
+      maxAgeMs: 60_000,
+      incidents: SEARCH_INCIDENTS,
+      run: () => checkSearchAdapter(),
+    })
+    ctx.registerHealthCheck({
+      id: 'search-consistency',
+      name: 'Search table consistency + deep sweep',
+      description: 'Verifies logical-to-physical index mappings and performs throttled orphan maintenance.',
+      group: searchGroup,
+      maxAgeMs: 300_000,
+      timeoutMs: 120_000,
+      incidents: SEARCH_CONSISTENCY_INCIDENTS,
+      run: () => checkSearchConsistency(),
+    })
+    ctx.registerHealthCheck({
+      id: 'search-spin',
+      name: 'Search backfill-spin watchdog (zero-progress building legs)',
+      description: 'Detects index legs that remain building without queued work or measurable progress.',
+      group: searchGroup,
+      maxAgeMs: 300_000,
+      incidents: SEARCH_SPIN_INCIDENTS,
+      run: () => checkSearchSpin(),
+    })
+    ctx.registerHealthCheck({
+      id: 'search-canary',
+      name: 'Search canary (a real query through the production path)',
+      description: 'Runs a real cross-table query to verify Search serves production traffic, not only probes.',
+      group: searchGroup,
+      maxAgeMs: 120_000,
+      incidents: SEARCH_CANARY_INCIDENTS,
+      run: () => checkSearchCanary(),
+    })
+    ctx.registerHealthCheck({
+      id: 'search-engine-burn',
+      name: 'Search engine burn watchdog (CPU + wedge signatures)',
+      description: 'Watches Search process CPU and engine logs for a persistent zero-progress wedge.',
+      group: searchGroup,
+      maxAgeMs: 120_000,
+      incidents: SEARCH_ENGINE_BURN_INCIDENTS,
+      run: () => checkSearchEngineBurn(),
+    })
+    ctx.registerHealthCheck({
+      id: 'skill',
+      name: 'Bakin SKILL.md sync to runtime',
+      description: 'Confirms the runtime has Bakin\'s current generated skill instructions.',
+      group: runtimeGroup,
+      maxAgeMs: 900_000,
+      incidents: SKILL_INCIDENTS,
+      run: () => checkAndSyncSkill(process.cwd(), ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'plugin-assets',
+      name: 'Plugin assets install state',
+      description: 'Checks installation and drift for runtime skills and sha256-pinned binaries shipped by plugins.',
+      group: pluginsGroup,
+      maxAgeMs: 900_000,
+      incidents: PLUGIN_ASSETS_INCIDENTS,
+      run: () => checkPluginAssets(),
+    })
+    ctx.registerHealthCheck({
+      id: 'plugin-artifacts',
+      name: 'Installed plugin artifact compatibility',
+      description: 'Verifies user-installed plugin artifacts are compatible with and trusted by this host, and offers the upgrade when a compatible release exists.',
+      group: pluginsGroup,
+      maxAgeMs: 900_000,
+      incidents: PLUGIN_ARTIFACTS_INCIDENTS,
+      run: () => checkPluginArtifacts(),
+    })
+    ctx.registerHealthCheck({
+      id: 'plugin-registry',
+      name: 'Plugin activation state',
+      description: 'Surfaces plugins that failed during activation and are unavailable.',
+      group: pluginsGroup,
+      maxAgeMs: 300_000,
+      incidents: PLUGIN_REGISTRY_INCIDENTS,
+      run: () => checkPluginRegistry(),
+    })
+
   },
 
   onSettingsChange(settings) {

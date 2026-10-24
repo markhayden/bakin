@@ -90,6 +90,16 @@ import {
   workflowSkillDriftRepair,
 } from '../../../plugins/workflows/lib/health-checks'
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { repairMode } from '@bakin/core/health/repair-mode'
+import type { HealthRepairActionDefinition, HealthRepairPlanItem, HealthRepairPlanItemInput } from '@makinbakin/sdk'
+
+/** Core stamps `effects` (defaulting to the action's) and `mode` on plan items before apply sees them. */
+function canonical(action: HealthRepairActionDefinition, items: HealthRepairPlanItemInput[]): HealthRepairPlanItem[] {
+  return items.map((item) => {
+    const effects = item.effects ?? action.effects
+    return { ...item, effects, mode: repairMode(effects) }
+  })
+}
 import {
   hashWorkflowSkillContent,
   writeWorkflowSkillInstallMarker,
@@ -102,7 +112,7 @@ const repairTarget = { type: 'all_actionable' as const, reportId: 'test-report' 
 
 function observations<T extends { outcome: string }>(result: T) {
   if (result.outcome !== 'observed') throw new Error(`Expected observed workflow health, got ${result.outcome}`)
-  return (result as T & { observations: Array<{ key: string; status: string; summary: string; incident?: { resolution: { type: string } } }> }).observations
+  return (result as T & { observations: Array<{ key: string; status: string; summary: string; incident?: { declarationId?: string; required?: boolean; disposition?: string; resolution: { type: string; href?: string } } }> }).observations
 }
 
 beforeAll(() => {
@@ -136,7 +146,8 @@ describe('checkWorkflowSkills', () => {
     const results = observations(checkWorkflowSkills(testDir))
     expect(results.some(r => r.status === 'warning' && r.summary.includes('no YAML frontmatter'))).toBe(true)
     // The skill's recover view is the control (self-healing 1.4b, row 127).
-    expect(results.find(r => r.summary.includes('no YAML frontmatter'))?.incident?.resolution).toMatchObject({ type: 'navigate', href: '/workflows?recover=1&skill=bad.md' })
+    // Not referenced by any definition → advisory, not required (row 127).
+    expect(results.find(r => r.summary.includes('no YAML frontmatter'))?.incident).toMatchObject({ declarationId: 'frontmatter', required: false, disposition: 'advisory', resolution: { type: 'human', needs: 'decision', href: '/workflows?recover=1&skill=bad.md' } })
   })
 
   it('flags a skill missing output_schema', () => {
@@ -195,7 +206,8 @@ Return image_filename and promptAssetFilename after savePromptPacket.
 
     const stale = results.find(result => result.summary.includes('appears stale'))
     expect(stale?.status).toBe('warning')
-    expect(stale?.incident?.resolution.type).toBe('navigate')
+    // Row 132: an unmarked local file is not repairable — an observation, no card.
+    expect(stale?.incident).toBeUndefined()
   })
 
   it('plans and applies safe repair for managed stale skills', async () => {
@@ -237,7 +249,7 @@ Return image_filename and promptAssetFilename after savePromptPacket.
 
     const repair = workflowSkillDriftRepair(testDir)
     const plan = await repair.plan(repairTarget)
-    const run = await runRepairContract(repair, plan)
+    const run = await runRepairContract(repair, canonical(repair, plan))
     expectRepairContract(repair, run)
     const applied = run.results
     expect(run.view.stages[0]!.items).toEqual([expect.objectContaining({ label: 'generate-image', status: 'done' })])
@@ -533,7 +545,7 @@ describe('checkStaleWorkflowInstances', () => {
     const repair = staleWorkflowInstancesRepair(testDir)
     const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
-    const run = await runRepairContract(repair, plan)
+    const run = await runRepairContract(repair, canonical(repair, plan))
     expectRepairContract(repair, run)
     expect(run.calls).toEqual(['stage:scan', 'stage:remove', `item:remove:${orphanedId}`])
     const applied = run.results

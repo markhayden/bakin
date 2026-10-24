@@ -64,7 +64,8 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
   const [showImpact, setShowImpact] = useState(false)
   const { incident } = item
   const resolution = incident.resolution
-  const terminal = useTerminalHandoff(resolution.type === 'instructions' && Boolean(resolution.command) && showInstructions)
+  const handoff = resolution.type === 'human' ? resolution.handoff : undefined
+  const terminal = useTerminalHandoff(Boolean(handoff) && showInstructions)
   // Return verification (self-healing 1.4c): after a handoff — a terminal
   // opened or the command copied — the incident's check reruns the next time
   // this tab regains focus. One-shot; armed by the handoff, never by default.
@@ -79,46 +80,36 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
   const status = incidentStatus(incident)
   const Icon = status.icon
 
-  let action
-  switch (resolution.type) {
-    case 'repair':
-      action = (
-        <Button size="sm" variant="outline" onClick={() => onRepair?.(incident)}>
-          <Wrench aria-hidden="true" />
-          {resolution.label}
-        </Button>
-      )
-      break
-    case 'navigate':
-      action = (
+  // Two outcomes (spec D1): a repair Bakin runs, or a human need with the
+  // control it lands on — and, for a shell-side credential or install, the
+  // command the HandoffCard hands to a Terminal session.
+  const action = resolution.type === 'repair'
+    ? (
+      <Button size="sm" variant="outline" onClick={() => onRepair?.(incident)}>
+        <Wrench aria-hidden="true" />
+        {resolution.label}
+      </Button>
+    )
+    : (
+      <>
+        {handoff && (
+          <Button
+            size="sm"
+            variant="outline"
+            aria-expanded={showInstructions}
+            aria-controls={instructionsId}
+            onClick={() => setShowInstructions((shown) => !shown)}
+          >
+            <ChevronRight className={showInstructions ? 'rotate-90' : ''} aria-hidden="true" />
+            Run it yourself
+          </Button>
+        )}
         <PluginLink to={resolution.href} className={buttonVariants({ size: 'sm', variant: 'outline' })}>
           {resolution.label}
           <ChevronRight aria-hidden="true" />
         </PluginLink>
-      )
-      break
-    case 'instructions':
-      action = (
-        <Button
-          size="sm"
-          variant="outline"
-          aria-expanded={showInstructions}
-          aria-controls={instructionsId}
-          onClick={() => setShowInstructions((shown) => !shown)}
-        >
-          <ChevronRight className={showInstructions ? 'rotate-90' : ''} aria-hidden="true" />
-          {resolution.label}
-        </Button>
-      )
-      break
-    case 'rerun':
-      action = (
-        <Button size="sm" variant="outline" onClick={() => onRerun?.(incident)}>
-          Check again
-        </Button>
-      )
-      break
-  }
+      </>
+    )
 
   return (
     <ListRow
@@ -176,23 +167,19 @@ export function IncidentRow({ item, onRepair, onRerun, onAck }: IncidentRowProps
         </div>
       </div>
 
-      {resolution.type === 'instructions' && showInstructions && (
+      {handoff && showInstructions && (
         <Panel id={instructionsId} padding="compact" className="mt-bakin-3 text-bakin-typography-size-meta">
-          <ol className="list-decimal space-y-bakin-1 pl-bakin-6">
-            {resolution.steps.map((step) => <li key={step}>{step}</li>)}
-          </ol>
-          {resolution.command && (
-            <div className="mt-bakin-3" onCopy={armRerunOnFocus}>
-              <HandoffCard
-                title="Run this yourself"
-                description="Bakin cannot do this step for you. Run the command, then come back — this check reruns when the tab regains focus."
-                command={resolution.command}
-                busy={terminal.busy}
-                error={terminal.error}
-                onOpenTerminal={terminal.available ? () => { armRerunOnFocus(); void terminal.open(resolution.command!, incident.title) } : undefined}
-              />
-            </div>
-          )}
+          <div onCopy={armRerunOnFocus}>
+            <HandoffCard
+              title="Run this yourself"
+              description="Bakin cannot do this step for you. Run the command, then come back — this check reruns when the tab regains focus."
+              command={handoff.command}
+              cwd={handoff.cwd}
+              busy={terminal.busy}
+              error={terminal.error}
+              onOpenTerminal={terminal.available ? () => { armRerunOnFocus(); void terminal.open(handoff.command, incident.title) } : undefined}
+            />
+          </div>
         </Panel>
       )}
 

@@ -110,11 +110,13 @@ describe('retireLegacyHealthApprovals', () => {
     const { calls, channels } = workingChannels()
 
     const summary = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
-    expect(summary).toMatchObject({ selected: 2, cancelledViaStore: 2, cancelledRaw: 0, done: 2, editFailed: 0, resumed: 0, unreadable: 0 })
+    // The navigate record still parses → store cancel; the rc.42 repair record (proposal items carry `safety`,
+    // not the cutover's effects/mode) no longer parses → raw cancel. Both end cancelled.
+    expect(summary).toMatchObject({ selected: 2, cancelledViaStore: 1, cancelledRaw: 1, done: 2, editFailed: 0, resumed: 0, unreadable: 0 })
 
     // Cancelled through the store: the current schema's cancel write, with the retirement reason as the comment.
     expect(getApprovalRecord('nav-1', testDir)).toMatchObject({ status: 'cancelled', response: { selectedOption: 'cancel', comment: LEGACY_RETIRE_REASON } })
-    expect(getApprovalRecord('rep-1', testDir)?.status).toBe('cancelled')
+    expect(readRaw('rep-1')).toMatchObject({ status: 'cancelled', retiredBy: 'legacy-retire' })
     // Untouched: resolved, schemaVersion 2, and a workflow gate.
     expect(readRaw('nav-done').status).toBe('approved')
     expect(readRaw('rep-v2').status).toBe('pending')
