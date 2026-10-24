@@ -7,8 +7,9 @@ import type {
   HealthObservationInput,
   HealthOwner,
 } from '../../packages/core/src/plugin-types'
+import { SHARED_ENGINE_ACTIONS } from '@bakin/core/health/authorize-mutation'
 import { safeParseHealthCheckRunInput } from './health-contract'
-import { getHealthRepairAction, listHealthChecks } from './health-check-registry'
+import { getHealthRepairAction, listHealthChecks, resolveDeclaredRepairAction } from './health-check-registry'
 import { createLogger } from './logger'
 
 const log = createLogger('doctor-checks')
@@ -85,9 +86,49 @@ function staleAt(observedAt: string, ttlMs: number): string {
   return new Date(Date.parse(observedAt) + ttlMs + graceMs(ttlMs)).toISOString()
 }
 
+/** An emitted instance that contradicts its declared family (self-healing 1.5). */
+class HealthDeclarationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'HealthDeclarationError'
+  }
+}
+
+function describeResolution(resolution: HealthIncidentInput['resolution']): string {
+  return resolution.type === 'repair' ? `repair "${resolution.actionId}"` : resolution.type
+}
+
+/**
+ * An instance that names a declaration must match it: a repair family's
+ * action (canonical), or a human family's shape. Until the three-outcomes
+ * cutover a human family is emitted as `navigate` (or an `instructions`
+ * handoff); the cutover tightens this to `human` with the declared `needs`.
+ */
+function assertDeclaredInstance(def: HealthCheckDef, incident: HealthIncidentInput): void {
+  const declarationId = incident.declarationId
+  if (declarationId === undefined) return
+  const declaration = def.incidents?.find((entry) => entry.id === declarationId)
+  if (!declaration) {
+    throw new HealthDeclarationError(`Incident "${incident.key}" names declaration "${declarationId}", which check ${def.id} does not declare.`)
+  }
+  const resolution = incident.resolution
+  if (declaration.resolution.type === 'repair') {
+    const declared = resolveDeclaredRepairAction(def.owner, declaration.resolution.actionId) ?? declaration.resolution.actionId
+    if (resolution.type !== 'repair' || resolution.actionId !== declared) {
+      throw new HealthDeclarationError(`Incident "${incident.key}" is declared as repair "${declared}" but was emitted as ${describeResolution(resolution)}.`)
+    }
+    return
+  }
+  if (resolution.type === 'repair' || resolution.type === 'rerun') {
+    throw new HealthDeclarationError(`Incident "${incident.key}" is declared as a human need (${declaration.resolution.needs}) but was emitted as ${describeResolution(resolution)}.`)
+  }
+}
+
 function namespaceRepairAction(owner: HealthOwner, incident: HealthIncidentInput): HealthIncidentInput {
   if (incident.resolution.type !== 'repair') return incident
   const localOrCanonical = incident.resolution.actionId
+  // A shared engine action (`core.diagnose`) is referenced verbatim by every owner.
+  if (SHARED_ENGINE_ACTIONS.includes(localOrCanonical)) return incident
   const actionId = localOrCanonical.startsWith(`${owner.id}.`)
     ? localOrCanonical
     : `${owner.id}.${localOrCanonical}`
@@ -122,6 +163,7 @@ function stampObservation(
   }
   if (input.status === 'healthy') return base as HealthObservation
   const incident = namespaceRepairAction(def.owner, input.incident)
+  assertDeclaredInstance(def, incident)
   return {
     ...base,
     incident,
@@ -263,7 +305,7 @@ export async function runHealthCheck(
           startedAt,
           completedAt,
           outcome: 'invalid',
-          error: { code: 'INVALID_HEALTH_REFERENCE', message },
+          error: { code: error instanceof HealthDeclarationError ? 'INVALID_HEALTH_DECLARATION' : 'INVALID_HEALTH_REFERENCE', message },
         },
         observations: [verificationObservation(def, completedAt, ttlMs, message)],
       }

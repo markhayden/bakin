@@ -9,8 +9,12 @@ import {
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { getCachedHealthCheckState, getHealthReport } from './doctor-report-cache'
-import { getHealthRepairAction, listHealthChecks, registerCoreHealthRepairAction } from './health-check-registry'
+import { SHARED_ENGINE_ACTIONS } from '@bakin/core/health/authorize-mutation'
+import { getContentDir } from './content-dir'
+import { getHealthRepairAction, listHealthChecks, listHealthRepairActions, registerCoreHealthRepairAction } from './health-check-registry'
 import { onboardRepair, ONBOARD_ACTION, type OnboardRepairDeps } from './doctor-onboard-repair'
+import { DIAGNOSE_ACTION, FALLBACK_TURN_BUDGET, diagnoseRepair, type DiagnoseRepairDeps } from './doctor-diagnose-repair'
+import { getExecTool } from './exec-tools/registry'
 import { createDoctorRefreshCoordinator, healthChecksAffectedByEvent } from './doctor-refresh'
 import { onServerEvent } from './server-events'
 
@@ -55,17 +59,53 @@ function realOnboardRepairDeps(): OnboardRepairDeps {
   }
 }
 
-/** Core-owned repair actions register once, beside the core checks (`core.onboard`, self-healing 1.3c). */
+/** The roots the doctor was started with; core actions that open tasks need them outside a cycle. */
+let doctorRoots: { contentDir: string; projectRoot: string } | null = null
+
+/**
+ * The fallback lane behind `core.diagnose` (self-healing 1.5): delegation
+ * through the ONE delegate, the brief's fallback sections feature-detected
+ * from the exec-tool registry (Terminal is a Bits plugin; the hand-back and
+ * repair tools land with the repair engine — the brief never names a tool
+ * this release lacks).
+ */
+function realDiagnoseDeps(): DiagnoseRepairDeps {
+  return {
+    delegate: async (options) => (await import('./doctor-delegate')).delegateDoctorRepair(options),
+    roots: () => doctorRoots ?? { contentDir: getContentDir(), projectRoot: process.cwd() },
+    report: () => getHealthReport(),
+    fallback: () => ({
+      attempts: [],
+      turnBudget: { total: FALLBACK_TURN_BUDGET, remaining: FALLBACK_TURN_BUDGET },
+      proposableActions: listHealthRepairActions().map((action) => action.id).filter((id) => !SHARED_ENGINE_ACTIONS.includes(id)),
+      terminalAvailable: getExecTool('bakin_exec_terminal_session') !== undefined,
+      tools: {
+        handback: getExecTool('bakin_exec_health_handback') !== undefined,
+        repair: getExecTool('bakin_exec_health_repair') !== undefined,
+      },
+    }),
+  }
+}
+
+/**
+ * Core-owned repair actions register once, beside the core checks:
+ * `core.onboard` (1.3c) and the shared engine action `core.diagnose` (1.5).
+ * Called before plugins activate so every owner's catalog can reference the
+ * engine action, and again by every entry point (idempotent).
+ */
 export function ensureCoreRepairActions(): void {
   if (!getHealthRepairAction(`core.${ONBOARD_ACTION}`)) registerCoreHealthRepairAction(onboardRepair(realOnboardRepairDeps()))
+  if (!getHealthRepairAction(`core.${DIAGNOSE_ACTION}`)) registerCoreHealthRepairAction(diagnoseRepair(realDiagnoseDeps()))
 }
 
 export async function runDiagnostics(contentDir: string, projectRoot: string): Promise<HealthReport> {
+  doctorRoots = { contentDir, projectRoot }
   ensureCoreRepairActions()
   return executeDiagnostics(contentDir, projectRoot)
 }
 
 export function start(contentDir: string, projectRoot: string): void {
+  doctorRoots = { contentDir, projectRoot }
   ensureCoreRepairActions()
   stop()
   const refresh = createDoctorRefreshCoordinator({

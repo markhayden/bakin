@@ -34,6 +34,7 @@ import { startChannelReadiness } from './src/core/delivery/readiness'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import * as watcher from './src/core/watcher'
 import { runStartupRecovery } from './src/core/server/startup-recovery'
+import { ensureCoreRepairActions } from './src/core/doctor'
 import { createRequestHandler } from './src/core/server/request-handler'
 import { getBootId } from './src/core/boot-id'
 import { formatBindFailureHelp } from './src/core/server-lock'
@@ -171,7 +172,10 @@ const eventBus = new BakinEventBus(broadcast)
   const userPluginsDir = join(CONTENT_DIR, 'plugins')
   await buildAllUserPlugins(userPluginsDir, log)
 
-  // Initialize plugin registry
+  // Initialize plugin registry. The engine-owned repair actions
+  // (`core.diagnose`, `core.onboard`) exist first so every owner's incident
+  // catalog can reference them at registration (self-healing 1.5).
+  ensureCoreRepairActions()
   log.info('Loading plugins...')
   await pluginRegistry.initialize(config, storage, eventBus, appServices)
 

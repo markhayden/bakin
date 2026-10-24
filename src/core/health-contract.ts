@@ -8,7 +8,7 @@
  */
 import { z } from 'zod'
 
-import { HEALTH_INCIDENT_CLASSES } from '@makinbakin/sdk/types'
+import { HEALTH_HUMAN_NEEDS, HEALTH_INCIDENT_CLASSES, HEALTH_INCIDENT_REQUIREMENTS, HEALTH_SUBJECT_KINDS } from '@makinbakin/sdk/types'
 import type {
   HealthCheckRegistrationInput,
   HealthCheckRunInput,
@@ -95,6 +95,27 @@ const callableSchema = z.custom<HealthCheckRegistrationInput['run']>(
   { message: 'Run must be a function.' },
 )
 
+/** One declared incident family (self-healing 1.5); the registry checks that a repair family's action resolves. */
+export const healthIncidentDeclarationSchema = z.object({
+  id: stableKeySchema,
+  subjectKind: z.enum(HEALTH_SUBJECT_KINDS),
+  resolution: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('repair'), actionId: stableKeySchema }).strict(),
+    z.object({ type: z.literal('human'), needs: z.enum(HEALTH_HUMAN_NEEDS) }).strict(),
+  ]),
+  required: z.enum(HEALTH_INCIDENT_REQUIREMENTS),
+}).strict()
+
+export const healthIncidentCatalogSchema = z.array(healthIncidentDeclarationSchema)
+  .max(200, 'A check may declare at most 200 incident families.')
+  .superRefine((declarations, ctx) => {
+    const seen = new Set<string>()
+    declarations.forEach((declaration, index) => {
+      if (seen.has(declaration.id)) ctx.addIssue({ code: 'custom', path: [index, 'id'], message: `Incident family "${declaration.id}" is declared twice.` })
+      seen.add(declaration.id)
+    })
+  })
+
 /** Exact producer registration schema. Core adds owner metadata separately. */
 export const healthCheckRegistrationInputSchema = z.object({
   id: stableKeySchema,
@@ -103,6 +124,7 @@ export const healthCheckRegistrationInputSchema = z.object({
   group: healthGroupSchema,
   maxAgeMs: z.number().int().positive().finite().optional(),
   timeoutMs: z.number().int().positive().finite().optional(),
+  incidents: healthIncidentCatalogSchema.optional(),
   run: callableSchema,
 }).strict()
 
@@ -391,6 +413,8 @@ const incidentBaseShape = {
   class: z.enum(HEALTH_INCIDENT_CLASSES).optional(),
   resources: z.array(healthResourceSchema).max(50, 'An incident may reference at most 50 resources.').optional(),
   resolution: healthResolutionSchema,
+  /** The declared family (self-healing 1.5); the runner validates the instance against it. */
+  declarationId: stableKeySchema.optional(),
 }
 
 export const advisoryIncidentInputSchema = z.object({

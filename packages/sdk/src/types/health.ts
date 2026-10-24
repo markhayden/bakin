@@ -58,6 +58,60 @@ export const HEALTH_INCIDENT_CLASSES = [
 ] as const
 export type HealthIncidentClass = (typeof HEALTH_INCIDENT_CLASSES)[number]
 
+// ---------------------------------------------------------------------------
+// Declared incident catalogs (self-healing 1.5 — optional until the
+// three-outcomes cutover makes `incidents` and `declarationId` required)
+// ---------------------------------------------------------------------------
+
+/** What an incident is ABOUT — one card per subject once the cutover lands (spec §3.1). */
+export const HEALTH_SUBJECT_KINDS = [
+  'plugin',
+  'package',
+  'hub-skill',
+  'service',
+  'agent',
+  'table',
+  'runtime',
+  'channel',
+  'setting',
+  /** An owned record: an asset, brand, workflow, spend policy, … */
+  'record',
+  'task',
+  'system',
+] as const
+export type HealthSubjectKind = (typeof HEALTH_SUBJECT_KINDS)[number]
+
+/** Why a human has to act: the engine cannot supply a credential, pay, decide, or install outside Bakin. */
+export const HEALTH_HUMAN_NEEDS = ['credential', 'payment', 'decision', 'external-install'] as const
+export type HealthHumanNeed = (typeof HEALTH_HUMAN_NEEDS)[number]
+
+/**
+ * Whether the family's subject is REQUIRED: the attention rule goes red only
+ * for an operator action on a required capability. `owner-decides` = the
+ * check supplies the fact per instance.
+ */
+export const HEALTH_INCIDENT_REQUIREMENTS = ['always', 'never', 'owner-decides'] as const
+export type HealthIncidentRequirement = (typeof HEALTH_INCIDENT_REQUIREMENTS)[number]
+
+export type HealthIncidentDeclarationResolution =
+  /** Owner-local action id, or a shared engine action such as `core.diagnose`. */
+  | { type: 'repair'; actionId: string }
+  | { type: 'human'; needs: HealthHumanNeed }
+
+/**
+ * One FINITE incident family a check may emit (plan R3 N5): `not-ready`
+ * covers every `not-ready:<capability>` instance, `schema-error` every
+ * `schema-<workflow>-<n>`. Validated when the owner registers — a dangling
+ * action or a human family without `needs` fails the owner's activation —
+ * and again per emitted instance in the runner.
+ */
+export interface HealthIncidentDeclaration {
+  id: string
+  subjectKind: HealthSubjectKind
+  resolution: HealthIncidentDeclarationResolution
+  required: HealthIncidentRequirement
+}
+
 /**
  * Health sensitivity mode (#690): how loudly findings surface. `developer`
  * shows raw dispositions everywhere; `standard` (default) demotes expected
@@ -161,6 +215,12 @@ export interface HealthIncidentBaseInput {
   class?: HealthIncidentClass
   resources?: HealthResource[]
   resolution: HealthResolution
+  /**
+   * The declared family this instance belongs to (`incidents[].id` on the
+   * registration). The runner refuses an instance whose resolution differs
+   * from its declaration. Optional until the three-outcomes cutover.
+   */
+  declarationId?: string
 }
 
 export interface AdvisoryIncidentInput extends HealthIncidentBaseInput {
@@ -249,6 +309,8 @@ export interface HealthCheckRegistrationInput {
   maxAgeMs?: number
   /** Optional override for checks whose expected runtime differs from the global doctor deadline. */
   timeoutMs?: number
+  /** The finite incident families this check may emit; validated at registration. Optional until the cutover. */
+  incidents?: HealthIncidentDeclaration[]
   run(context?: HealthCheckRunContext): Promise<HealthCheckRunInput>
 }
 
@@ -425,6 +487,8 @@ export interface HealthIncident {
   impact: string
   resources: HealthResource[]
   resolution: HealthResolution
+  /** The declared family this incident belongs to, when its producer named one. */
+  declarationId?: string
   observationIds: string[]
   observedAt: string
   staleAt: string

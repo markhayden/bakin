@@ -93,6 +93,7 @@ export function buildHealthIncidents(
         // Raw until projectEffectiveDispositions runs over the merged set.
         effectiveDisposition: raw.incident.disposition,
         ...(raw.incident.class ? { class: raw.incident.class } : {}),
+        ...(raw.incident.declarationId ? { declarationId: raw.incident.declarationId } : {}),
         title: raw.incident.title,
         impact: raw.incident.impact,
         resources: dedupeResources(raw.incident.resources ?? []),

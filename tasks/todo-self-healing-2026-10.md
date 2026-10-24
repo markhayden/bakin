@@ -18,7 +18,7 @@ Spec `.claude/specs/self-healing-health-and-updates-2026-10.md` (rev 7, approved
 - [x] 1.4a assets + brands recover pages
 - [x] 1.4b workflows/spend/team/tasks controls + card buttons (three commits; "Disable plugin" for an upstream-blocked artifact deferred to PR6)
 - [x] 1.4c HandoffCard (gh, Pi install/login, OpenClaw, gateway below-floor) + Explore capability= + readiness legs + aliases field + Discord invite + runtime credentials highlight (OpenClaw grant row keeps its steps — no verified command)
-- [ ] 1.5 incident catalogs (finite families + declarationId) + validation + core.diagnose + brief builder [unactivated] (public API regen)
+- [x] 1.5 incident catalogs (finite families + declarationId) + validation + core.diagnose + brief builder [unactivated] (public API regen — no change: the freeze covers the browser entrypoints, not sdk/types)
 - [ ] 1.6 raw retirement of pending legacy health approvals (intent receipt first, resumed until done) [unactivated]
 - [ ] 1.7 THE CUTOVER (contract, catalogs for 206 rows, consumers, old engine adapted, authorizeMutation on every Health apply, legacy retirement at boot, public API regen)
 - [ ] 1.8 scoped pins + knowledge

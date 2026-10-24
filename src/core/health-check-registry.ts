@@ -2,12 +2,15 @@
 import type {
   HealthCheckDef,
   HealthCheckRegistrationInput,
+  HealthIncidentDeclaration,
   HealthOwner,
   HealthRepairActionDef,
   HealthRepairActionDefinition,
 } from '../../packages/core/src/plugin-types'
+import { SHARED_ENGINE_ACTIONS } from '@bakin/core/health/authorize-mutation'
 import { CORE_RESOURCES } from '@bakin/core/operations'
 import {
+  healthIncidentDeclarationSchema,
   parseHealthCheckRegistration,
   parseHealthRepairActionDefinition,
 } from './health-contract'
@@ -39,8 +42,55 @@ export function onHealthRegistryChanged(
   return () => changeListeners.delete(listener)
 }
 
+/** The canonical id an owner-local (or already canonical) repair reference names. */
+export function canonicalRepairActionId(owner: HealthOwner, actionId: string): string {
+  return actionId.startsWith(`${owner.id}.`) ? actionId : `${owner.id}.${actionId}`
+}
+
+/**
+ * The canonical action a declared repair family (or an emitted repair
+ * resolution) resolves to: a shared engine action verbatim, or an action
+ * this owner registered. Null = dangling.
+ */
+export function resolveDeclaredRepairAction(owner: HealthOwner, actionId: string): string | null {
+  if (SHARED_ENGINE_ACTIONS.includes(actionId)) return actionId
+  const canonical = canonicalRepairActionId(owner, actionId)
+  const action = repairActions.get(canonical)
+  return action && action.owner.kind === owner.kind && action.owner.id === owner.id ? canonical : null
+}
+
+/**
+ * Catalog validation names the DECLARATION that is wrong (self-healing 1.5):
+ * the owner's activation fails with "incident <id>", never a zod path.
+ * Shape issues (a human family without `needs`, a duplicate id) and dangling
+ * repair actions are both refused here, before anything is registered.
+ */
+function validateIncidentCatalog(checkId: string, owner: HealthOwner, incidents: unknown): void {
+  if (incidents === undefined) return
+  if (!Array.isArray(incidents)) throw new Error(`Health check "${checkId}" declares incidents that are not a list.`)
+  const seen = new Set<string>()
+  incidents.forEach((entry, index) => {
+    const id = entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string' ? `"${(entry as { id: string }).id}"` : `#${index}`
+    const parsed = healthIncidentDeclarationSchema.safeParse(entry)
+    if (!parsed.success) {
+      const issues = parsed.error.issues.slice(0, 3).map((issue) => `${issue.path.join('.') || 'declaration'}: ${issue.message}`).join('; ')
+      throw new Error(`Health check "${checkId}" declares an invalid incident ${id}: ${issues}`)
+    }
+    const declaration: HealthIncidentDeclaration = parsed.data
+    if (seen.has(declaration.id)) throw new Error(`Health check "${checkId}" declares incident "${declaration.id}" twice.`)
+    seen.add(declaration.id)
+    if (declaration.resolution.type === 'repair' && resolveDeclaredRepairAction(owner, declaration.resolution.actionId) === null) {
+      throw new Error(
+        `Health check "${checkId}" declares incident "${declaration.id}" with repair action "${declaration.resolution.actionId}", `
+        + `which is neither registered for ${owner.id} nor a shared engine action (${SHARED_ENGINE_ACTIONS.join(', ')}). Register the action first.`,
+      )
+    }
+  })
+}
+
 export function registerHealthCheck(def: HealthCheckDef): void {
   if (checks.has(def.id)) throw new Error(`Health check "${def.id}" is already registered`)
+  validateIncidentCatalog(def.id, def.owner, def.incidents)
   // Validate only the producer-authored fields. Owner/id stamping is core data.
   const parsed = parseHealthCheckRegistration({
     id: def.localId,
@@ -49,6 +99,7 @@ export function registerHealthCheck(def: HealthCheckDef): void {
     group: def.group,
     maxAgeMs: def.maxAgeMs,
     timeoutMs: def.timeoutMs,
+    ...(def.incidents ? { incidents: def.incidents } : {}),
     run: def.run,
   })
   checks.set(def.id, { ...parsed, id: def.id, localId: def.localId, owner: { ...def.owner } })
@@ -59,6 +110,8 @@ export function registerOwnedHealthCheck(
   checkOwner: HealthOwner,
   input: HealthCheckRegistrationInput,
 ): string {
+  const localId = typeof (input as { id?: unknown }).id === 'string' ? (input as { id: string }).id : '?'
+  validateIncidentCatalog(`${checkOwner.id}.${localId}`, checkOwner, (input as { incidents?: unknown }).incidents)
   const parsed = parseHealthCheckRegistration(input)
   const id = `${checkOwner.id}.${parsed.id}`
   registerHealthCheck({ ...parsed, id, localId: parsed.id, owner: { ...checkOwner } })
