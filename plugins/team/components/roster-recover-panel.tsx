@@ -33,6 +33,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { PluginLink, useQueryState } from '@makinbakin/sdk/navigation'
 import { ConfirmDialog, HandoffCard, ListRow, ListRowGroup, ListRows } from '@makinbakin/sdk/patterns'
 import { Banner, Button, Text, buttonVariants } from '@makinbakin/sdk/ui'
+import { armRosterReturn, useRosterReturn } from './roster-return'
 
 const ROSTER_CHECK_ID = 'team.agent-roster'
 
@@ -207,24 +208,11 @@ export function RosterRecoverPanel({ onDismiss, onChanged }: { onDismiss: () => 
     }
   }, [refresh])
 
-  // Return verification (Codex r3 #5): a copied registry command arms ONE
-  // targeted recheck that fires when the operator comes back to this window.
-  const handoffArmed = useRef(false)
-  const armHandoffReturn = useCallback(() => { handoffArmed.current = true }, [])
-  useEffect(() => {
-    const fire = () => {
-      if (!handoffArmed.current) return
-      handoffArmed.current = false
-      void recheck()
-    }
-    const onVisible = () => { if (document.visibilityState === 'visible') fire() }
-    window.addEventListener('focus', fire)
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.removeEventListener('focus', fire)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [recheck])
+  // Return verification (Codex r3 #5 / r4 R4-2): a copied registry command
+  // arms ONE targeted recheck OUTSIDE this panel (`roster-return.ts`), so it
+  // survives the Terminal round trip and fires on mount / focus / visibility.
+  const onReturn = useCallback(() => { void recheck() }, [recheck])
+  useRosterReturn(onReturn)
 
   const removeAgent = useCallback(async (problem: Extract<RosterProblem, { kind: 'duplicate' }>) => {
     setBusy(`remove:${problem.agentId}`)
@@ -257,6 +245,20 @@ export function RosterRecoverPanel({ onDismiss, onChanged }: { onDismiss: () => 
     return null
   }
   if (problems.length === 0) {
+    if (error) {
+      // A requested recheck could not be asked for (Codex r4 R4-3): the cached read that followed proves
+      // nothing new — say so in this branch too, never "consistent".
+      return (
+        <Banner
+          tone="danger"
+          title="Health could not be asked to recheck the roster"
+          description={`${error} The last roster findings Health reported were none; nothing new is confirmed until a recheck runs.`}
+          action={<span className="flex gap-bakin-2"><Button variant="outline" size="sm" busy={busy === 'recheck'} disabled={busy !== null} onClick={() => { void recheck() }}>Recheck roster</Button>{dismiss}</span>}
+          data-testid="roster-recover-panel"
+          data-evidence="recheck-failed"
+        />
+      )
+    }
     if (readError) {
       // A later refresh failed: the last known state was "nothing found" — shown as last known, never as verified now.
       return (
@@ -335,7 +337,7 @@ export function RosterRecoverPanel({ onDismiss, onChanged }: { onDismiss: () => 
                           title={`Edit the roster entries for ${problem.agentId}`}
                           description={<>Opens the runtime's registry in your editor; the entries are <code className="font-bakin-typography-family-mono">{problem.registry.entryKeys.join(' / ')}</code>. Copy the command and come back — the roster check reruns when this window regains focus.</>}
                           command={registryEditCommand(problem.registry.path)}
-                          onCopied={armHandoffReturn}
+                          onCopied={armRosterReturn}
                         />
                       ) : null}
                     </>
@@ -355,7 +357,7 @@ export function RosterRecoverPanel({ onDismiss, onChanged }: { onDismiss: () => 
                           title={`Give roster entry ${problem.rosterIndex + 1} an id`}
                           description={<>Opens the runtime's registry in your editor; the entry is <code className="font-bakin-typography-family-mono">{problem.registry.entryKey}</code>. Copy the command and come back — the roster check reruns when this window regains focus.</>}
                           command={registryEditCommand(problem.registry.path)}
-                          onCopied={armHandoffReturn}
+                          onCopied={armRosterReturn}
                         />
                       ) : null}
                     </>

@@ -16,10 +16,12 @@ mock.module('@makinbakin/sdk/navigation', () => ({
 }))
 
 import { RosterRecoverPanel, rosterProblemsFrom } from '../../../plugins/team/components/roster-recover-panel'
+import { resetRosterReturnForTests } from '@bakin/team/components/roster-return'
 
 const realFetch = globalThis.fetch
 let report: unknown
 let requests: Array<{ url: string; method: string; body?: unknown }>
+let runStatus = 200
 let removeStatus = 200
 /** What the doctor read answers: the report, an HTTP failure, or a rejection. */
 let doctorMode: 'ok' | 'http-error' | 'reject'
@@ -47,7 +49,7 @@ beforeEach(() => {
       if (doctorMode === 'reject') throw new TypeError('Failed to fetch')
       return Response.json(report)
     }
-    if (url === '/api/plugins/health/doctor/run') return Response.json({ ok: true })
+    if (url === '/api/plugins/health/doctor/run') return runStatus === 200 ? Response.json({ ok: true }) : Response.json({ error: 'doctor busy' }, { status: runStatus })
     if (url.startsWith('/api/plugins/team/') && method === 'DELETE') {
       if (removeStatus !== 200) return Response.json({ error: 'Cannot delete the main orchestrator agent' }, { status: removeStatus })
       // The agent is gone: the next report read has no duplicate left.
@@ -57,7 +59,7 @@ beforeEach(() => {
     return Response.json({})
   }) as unknown as typeof fetch
 })
-afterEach(() => { cleanup(); globalThis.fetch = realFetch })
+afterEach(() => { cleanup(); globalThis.fetch = realFetch; runStatus = 200; resetRosterReturnForTests() })
 
 describe('rosterProblemsFrom', () => {
   it('reads the roster findings from evidence only — other checks and evidence-less rows are ignored', () => {
@@ -273,10 +275,37 @@ describe('RosterRecoverPanel', () => {
       await act(async () => { fireEvent.click(within(idless).getByRole('button', { name: /copy/i })) })
       await act(async () => { document.dispatchEvent(new Event('visibilitychange')) })
       await waitFor(() => expect(requests.filter((r) => r.url === '/api/plugins/health/doctor/run')).toHaveLength(1))
+
+      // Codex r4 R4-2: the arming survives the Terminal round trip — copy, unmount, remount ⇒ exactly one targeted run on mount.
+      cleanup()
+      requests = []
+      await act(async () => { render(<RosterRecoverPanel onDismiss={() => {}} />) })
+      const again = await screen.findByRole('region', { name: 'Give roster entry 4 an id' })
+      await act(async () => { fireEvent.click(within(again).getByRole('button', { name: /copy/i })) })
+      cleanup()
+      expect(requests.filter((r) => r.url === '/api/plugins/health/doctor/run')).toHaveLength(0)
+      await act(async () => { render(<RosterRecoverPanel onDismiss={() => {}} />) })
+      await waitFor(() => expect(requests.filter((r) => r.url === '/api/plugins/health/doctor/run')).toHaveLength(1))
+      await act(async () => { window.dispatchEvent(new Event('focus')) })
+      expect(requests.filter((r) => r.url === '/api/plugins/health/doctor/run')).toHaveLength(1)
     } finally {
       if (clipboardBefore) Object.defineProperty(navigator, 'clipboard', clipboardBefore)
       else delete (navigator as { clipboard?: unknown }).clipboard
     }
+  })
+
+  it('a recheck that Health refuses is shown even when the cached read that follows is clean — never "consistent" (Codex r4 R4-3)', async () => {
+    report = { checks: rosterObserved, observations: rosterHealthy }
+    runStatus = 503
+    await act(async () => { render(<RosterRecoverPanel onDismiss={() => {}} />) })
+    await screen.findByText('The roster is consistent')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Recheck roster' })) })
+    await waitFor(() => expect(screen.getByTestId('roster-recover-panel').getAttribute('data-evidence')).toBe('recheck-failed'))
+    expect(screen.getByText('Health could not be asked to recheck the roster')).toBeTruthy()
+    expect(screen.queryByText('The roster is consistent')).toBeNull()
+    runStatus = 200
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Recheck roster' })) })
+    await waitFor(() => expect(screen.getByText('The roster is consistent')).toBeTruthy())
   })
 
   it('a failed REFRESH keeps the last known rows and says the read failed (Codex r2 #10)', async () => {

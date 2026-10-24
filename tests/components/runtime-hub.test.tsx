@@ -229,6 +229,33 @@ describe('OverviewTab', () => {
       }
     })
 
+    it('a sign-in that SUCCEEDS still verifies: copy → leave (unmount) → come back with a provider present ⇒ exactly one targeted run, no sign-in card (Codex r4 R4-1)', async () => {
+      const urls = stubHealth([piSignIn])
+      const onRefreshReport = mock()
+      const clipboardBefore = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => {} }, configurable: true })
+      try {
+        const first = render(<OverviewTab report={noProviders} onRefreshOnboarding={() => {}} onRefreshReport={onRefreshReport} onboarding={[]} highlightField="credentials" />)
+        const card = await screen.findByRole('region', { name: 'Sign in to a model provider' })
+        await act(async () => { fireEvent.click(within(card).getByRole('button', { name: 'Copy Command' })) })
+        await waitFor(() => expect(within(card).getByRole('button', { name: 'Copy Command complete' })).toBeTruthy())
+        first.unmount()
+        expect(urls.runs).toHaveLength(0)
+        await act(async () => {
+          render(<OverviewTab report={report} onRefreshOnboarding={() => {}} onRefreshReport={onRefreshReport} onboarding={[]} />)
+        })
+        await waitFor(() => expect(urls.runs).toEqual([{ checkIds: ['pi.auth'] }]))
+        await waitFor(() => expect(onRefreshReport).toHaveBeenCalledTimes(1))
+        expect(screen.queryByRole('region', { name: 'Sign in to a model provider' })).toBeNull()
+        await act(async () => { window.dispatchEvent(new Event('focus')) })
+        await settleReact()
+        expect(urls.runs).toHaveLength(1)
+      } finally {
+        if (clipboardBefore) Object.defineProperty(navigator, 'clipboard', clipboardBefore)
+        else delete (navigator as { clipboard?: unknown }).clipboard
+      }
+    })
+
     it('with a provider signed in the Health report is not read and no handoff renders', async () => {
       const urls = stubHealth([piSignIn])
       await act(async () => {

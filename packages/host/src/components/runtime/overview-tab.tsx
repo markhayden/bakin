@@ -65,23 +65,13 @@ export function credentialHandoffFor(report: Pick<HealthReport, 'incidents'> & P
   return null
 }
 
-function CredentialHandoff({ adapter, onRefreshReport }: { adapter: string; onRefreshReport?: () => void }) {
+function CredentialHandoff({ adapter, refreshToken }: { adapter: string; refreshToken: number }) {
   const health = useJsonFetch<Pick<HealthReport, 'incidents' | 'observations'>>('/api/plugins/health/doctor', HEALTH_REPORT_FETCH_OPTIONS)
   const refreshHealth = health.refresh
-  // Return verification (Codex r3 R3-5): rerun the ORIGINATING checks (a
-  // cached report read proves nothing), then re-read both reports.
-  const onReturn = useCallback((checkIds: string[]) => {
-    void (async () => {
-      try {
-        await fetch(HEALTH_RUN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ checkIds }) })
-      } catch {
-        // The re-read below still shows the honest last-known state.
-      }
-      void refreshHealth()
-      onRefreshReport?.()
-    })()
-  }, [onRefreshReport, refreshHealth])
-  useCredentialReturn(onReturn)
+  // The group re-reads the Health report after a return verification (the token bumps).
+  useEffect(() => {
+    if (refreshToken > 0) void refreshHealth()
+  }, [refreshHealth, refreshToken])
   if (health.loading) return null
   const selected = credentialHandoffFor(health.data, adapter)
   const handoff = selected?.resolution
@@ -111,6 +101,22 @@ function CredentialHandoff({ adapter, onRefreshReport }: { adapter: string; onRe
  * tiles (Codex r1 #9 — a highlighted statistic is not a control).
  */
 function CredentialTiles({ report, highlighted, onRefreshReport }: { report: CapabilityReport; highlighted: boolean; onRefreshReport?: () => void }) {
+  // Return verification (Codex r3 R3-5 / r4 R4-1) lives on the ALWAYS-mounted
+  // group, not on the sign-in card: a sign-in that succeeded removes the card
+  // from the next render, and the armed targeted recheck must still fire.
+  const [healthRefreshToken, setHealthRefreshToken] = useState(0)
+  const onReturn = useCallback((checkIds: string[]) => {
+    void (async () => {
+      try {
+        await fetch(HEALTH_RUN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ checkIds }) })
+      } catch {
+        // The re-reads below still show the honest last-known state.
+      }
+      setHealthRefreshToken((token) => token + 1)
+      onRefreshReport?.()
+    })()
+  }, [onRefreshReport])
+  useCredentialReturn(onReturn)
   const creds = report.credentialStatus
   const providers = creds?.llmProviders ?? []
   const kinds = new Map((creds?.llmCredentials ?? []).map((c) => [c.provider, c.kind]))
@@ -164,7 +170,7 @@ function CredentialTiles({ report, highlighted, onRefreshReport }: { report: Cap
           : report.toolAccess.issues.join('; ')}
       />
     </StatGroup>
-    {providers.length === 0 ? <CredentialHandoff adapter={report.adapter} onRefreshReport={onRefreshReport} /> : null}
+    {providers.length === 0 ? <CredentialHandoff adapter={report.adapter} refreshToken={healthRefreshToken} /> : null}
     </Stack>
     </div>
   )

@@ -108,6 +108,9 @@ describe('checkDeadSelections', () => {
     if (unreadable.outcome !== 'observed') throw new Error('expected observed')
     expect(unreadable.observations.find((o) => o.key === 'evidence:open-tasks')).toMatchObject({ status: 'unknown', detail: expect.stringContaining('taskboard locked') })
     expect(unreadable.observations.find((o) => o.key === 'dead-selection:tag:legal')).toMatchObject({ status: 'warning', incident: { required: false, disposition: 'advisory' }, evidence: { usageFact: 'unavailable' } })
+    // Codex r4 R4-4: unknown usage is said to be unknown — never "nothing resolves to this selection".
+    expect(unreadable.observations.find((o) => o.key === 'dead-selection:tag:legal')!.incident!.impact).toContain('could not be read')
+    expect(idle.observations.find((o) => o.key === 'dead-selection:tag:legal')!.incident!.impact).toContain('Nothing resolves to this selection today')
     // The alias is unused when nothing names it.
     const orphanAlias = await checkDeadSelections({ ...deps(description({ states: desc.states.filter((s) => s.ref !== 'route:relay'), proposals: desc.proposals })), openTaskTags: async () => new Set(['legal']) })
     if (orphanAlias.outcome !== 'observed') throw new Error('expected observed')

@@ -122,12 +122,16 @@ export async function checkDeadSelections(deps: DeadSelectionDeps): Promise<Heal
     const key = `${INCIDENT_KEY_PREFIX}${state.ref}`
     const href = `/models?ref=${encodeURIComponent(state.ref)}`
     const inUse = selectionInUse(state, desc.states, openTags)
+    // A tag override's usage is the task board's fact; when the board could not be read, absence is NOT established (Codex r4 R4-4).
+    const usageKnown = !(state.ref.startsWith('tag:') && openTags === null)
     const incident = {
       key,
       title: `${state.label} points at a model that cannot run (${state.eligibility.reason.replace(/_/g, ' ')})`,
       impact: inUse
         ? 'Every turn that resolves to this selection fails at the provider until it is repointed.'
-        : 'Nothing resolves to this selection today; the first turn that does will fail at the provider until it is repointed.',
+        : usageKnown
+          ? 'Nothing resolves to this selection today; the first turn that does will fail at the provider until it is repointed.'
+          : 'Whether an open task carries this tag could not be read (see the open-tasks evidence row), so who resolves to this selection is unknown; any turn that does will fail at the provider until it is repointed.',
       class: 'service_failure' as const,
       subject: { kind: 'setting' as const, id: `models.selection.${state.ref}`, label: state.label },
       declarationId: proposal?.to ? 'dead-selection' : 'dead-selection-manual',
