@@ -33,7 +33,7 @@ const hookRegistryMock = () => ({
 mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
 mock.module('../../../src/core/plugin-registry', hookRegistryMock)
 
-import { SPEND_BUDGET_INCIDENTS, acceptUnattributedHistoryRepair, budgetResumeRepair, checkBudget, spendEvidenceRepair } from '@bakin/spend/lib/health-checks'
+import { SPEND_BUDGET_INCIDENTS, acceptUnattributedHistoryRepair, budgetResumeRepair, capReachedResolution, checkBudget, incidentDecisionChoices, spendEvidenceRepair } from '@bakin/spend/lib/health-checks'
 import { resetSettingsCache } from '../../../src/core/settings'
 import { closeAllDbs } from '../../../packages/core/src/storage/db'
 import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
@@ -58,6 +58,17 @@ describe('spend re-homing — catalog', () => {
     expect(family('spend-evidence-pricing')).toMatchObject({ subjectKind: 'system', resolution: { type: 'repair', actionId: 'spend-evidence-refresh-pricing' }, required: 'never' })
     expect(family('spend-evidence-unattributed')).toMatchObject({ subjectKind: 'setting', resolution: { type: 'repair', actionId: 'accept-unattributed-history' }, required: 'never' })
     expect(SPEND_BUDGET_INCIDENTS).toHaveLength(7)
+  })
+  it('rows 163/167 card buttons: raise is a link to the control, ack/resume are requests through the resolve route (resume confirmed; no ack once acknowledged)', () => {
+    const open = incidentDecisionChoices({ id: 7, scope: 'agent', scopeId: 'pixel', lane: 'metered', window: 'daily', status: 'open' })
+    expect(open.map((c) => [c.key, c.kind])).toEqual([['raise', 'link'], ['ack', 'request'], ['resume', 'request']])
+    expect(open[0]).toMatchObject({ href: '/spend?incident=7' })
+    expect(open[2]).toMatchObject({ method: 'POST', url: '/api/plugins/spend/incidents/7/resolve', body: { action: 'resume' }, confirm: { title: 'Resume dispatch for agent pixel?' } })
+    expect(incidentDecisionChoices({ id: 7, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', status: 'acknowledged' }).map((c) => c.key)).toEqual(['raise', 'resume'])
+    const cap = capReachedResolution({ id: 'r9', scope: 'global', lane: 'metered', dailyCap: 10 }, [])
+    expect(cap).toMatchObject({ type: 'human', needs: 'decision', href: '/spend?tab=limits&field=r9', field: 'budget-rule-r9', choices: [{ key: 'raise', kind: 'link', href: '/spend?tab=limits&field=r9', field: 'budget-rule-r9' }] })
+    const capWithIncident = capReachedResolution({ id: 'r9', scope: 'global', lane: 'metered', dailyCap: 10 }, [{ id: 3, scope: 'global', scopeId: '', lane: 'metered', status: 'open' } as never])
+    expect(capWithIncident.choices?.[1]).toMatchObject({ key: 'ack', kind: 'request', url: '/api/plugins/spend/incidents/3/resolve', body: { action: 'ack' } })
   })
   it('action effects: resume spends money (one-click, policy); pricing refresh self-heals; the write-off widens authorization (one-click, policy)', () => {
     expect(budgetResumeRepair().effects).toEqual({ deletesUserContent: false, spendsMoney: true, widensAuthorization: false })

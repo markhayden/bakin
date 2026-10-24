@@ -178,6 +178,12 @@ mock.module('@makinbakin/sdk/ui', () => ({
       {title}{description}{action}{preview}
     </div>
   ),
+  // Row 98 containment switch (the drawer's Enabled toggle).
+  Switch: ({ checked, onCheckedChange, disabled, ...props }: { checked?: boolean; onCheckedChange?: (checked: boolean) => void; disabled?: boolean; 'aria-label'?: string }) => (
+    <button type="button" role="switch" aria-checked={checked} disabled={disabled} aria-label={props['aria-label']} onClick={() => onCheckedChange?.(!checked)} />
+  ),
+  Field: ({ children, ...props }: { children: ReactNode; orientation?: string; 'data-testid'?: string }) => <div data-testid={props['data-testid']}>{children}</div>,
+  FieldLabel: ({ children }: { children: ReactNode; className?: string }) => <label>{children}</label>,
 }))
 
 mock.module('@makinbakin/sdk/patterns', () => ({
@@ -439,6 +445,41 @@ describe('ExplorePage', () => {
     expect(installed.disabled).toBe(true)
     expect(installed.getAttribute('data-size')).toBe('xs')
     expect(installed.getAttribute('data-variant')).toBe('primary')
+  })
+})
+
+describe('ExplorePage plugin enable switch (row 98 containment)', () => {
+  const originalFetch = globalThis.fetch
+  afterEach(() => { globalThis.fetch = originalFetch })
+
+  it('an installed user plugin gets an Enabled switch that posts the containment flag; builtins and other kinds get none', async () => {
+    const calls: Array<{ url: string; body: unknown }> = []
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      return Response.json({ ok: true, id: 'messaging', disabled: true, changed: true, live: true, message: 'Disabled "messaging".' })
+    }) as unknown as typeof fetch
+    fixtureEntries = [{ ...PLUGINS[0], installed: true, installedVersion: '1.0.0' }, PLUGINS[1]]
+    render(<ExplorePage />)
+    fireEvent.click(screen.getByTestId('tab-plugins'))
+    fireEvent.click(within(screen.getByTestId('catalog-card-plugin-messaging')).getByRole('button', { name: /View .* details/ }))
+    const toggle = screen.getByRole('switch', { name: 'Messaging enabled' })
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByTestId('drawer-plugin-enabled').textContent).toContain('Enabled')
+    await act(async () => { fireEvent.click(toggle) })
+    await waitFor(() => expect(calls.some((call) => call.url === '/api/plugins/disable')).toBe(true))
+    expect(calls.find((call) => call.url === '/api/plugins/disable')?.body).toEqual({ pluginId: 'messaging' })
+
+    fireEvent.click(within(screen.getByTestId('catalog-card-plugin-team')).getByRole('button', { name: /View .* details/ }))
+    expect(screen.queryByTestId('drawer-plugin-enabled')).toBeNull()
+  })
+
+  it('a disabled plugin renders the switch off with the Disabled label', () => {
+    fixtureEntries = [{ ...PLUGINS[0], installed: true, installedVersion: '1.0.0', disabled: true }]
+    render(<ExplorePage />)
+    fireEvent.click(screen.getByTestId('tab-plugins'))
+    fireEvent.click(within(screen.getByTestId('catalog-card-plugin-messaging')).getByRole('button', { name: /View .* details/ }))
+    expect(screen.getByRole('switch', { name: 'Messaging enabled' }).getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByTestId('drawer-plugin-enabled').textContent).toContain('Disabled')
   })
 })
 

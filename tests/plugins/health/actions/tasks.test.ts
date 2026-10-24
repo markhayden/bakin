@@ -71,7 +71,7 @@ describe('requeue-stranded-tasks', () => {
     const run = await runRepairContract(action, stampPlanItems(action, await action.plan(all)))
     expectRepairContract(action, run)
     expect(recovered).toEqual([['t1', 't4']])
-    expect(run.results.map((r) => [r.itemId, r.status])).toEqual([['t1', 'applied'], ['t4', 'skipped']])
+    expect(run.results.map((r) => [r.itemId, r.status])).toEqual([['requeue-stranded-tasks:t1', 'applied'], ['requeue-stranded-tasks:t4', 'skipped']])
     expect(run.results[1]!.message).toContain('gained a live run')
     expect(run.results[0]).toMatchObject({ affectedCheckIds: ['health.restart-recovery'] })
   })

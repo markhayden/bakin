@@ -54,7 +54,7 @@ import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkills
 import { getContentTypes, purgeContentType, unregisterContentTypesByPlugin } from './search-registry'
 import { loadPluginSkillFiles } from '../lib/plugin-skill-loader'
 import { listPluginDefaultFilesWithExtension } from './plugin-resources'
-import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
+import { setCorePluginCheck, readPluginLockfile, isPluginDisabled } from '../../packages/core/src/plugins/lockfile'
 import {
   PluginManifestError,
   readPluginManifestJson,
@@ -67,6 +67,7 @@ import { startStartupSpan } from './startup-diagnostics'
 import type {
   CorePluginRegistration,
   PluginState,
+  PluginDisabledState,
   PluginFailureState,
   PluginLoadEntry,
 } from './plugin-registry-types'
@@ -183,6 +184,8 @@ let userPluginImportCounter = 0
 class PluginRegistryImpl {
   private plugins = new Map<string, PluginState>()
   private failedPlugins = new Map<string, PluginFailureState>()
+  /** User plugins the lock ledger marks `disabled` — present on disk, never activated (row 98 containment). */
+  private disabledPlugins = new Map<string, PluginDisabledState>()
   private initialized = false
   private runtime: { storage: StorageAdapter; events: EventBus; services: AppServices } | null = null
 
@@ -302,6 +305,22 @@ class PluginRegistryImpl {
         isFailed: (id) => this.failedPlugins.has(id),
       },
     )
+  }
+
+  /** Record a user plugin as disabled (skipped at boot, or deactivated live by the disable route). */
+  markPluginDisabled(state: PluginDisabledState): void {
+    this.plugins.delete(state.id)
+    this.failedPlugins.delete(state.id)
+    this.disabledPlugins.set(state.id, state)
+  }
+
+  /** Forget a disabled mark (the enable route, before it activates the directory again). */
+  clearPluginDisabled(pluginId: string): boolean {
+    return this.disabledPlugins.delete(pluginId)
+  }
+
+  isPluginDisabled(pluginId: string): boolean {
+    return this.disabledPlugins.has(pluginId)
   }
 
   private markPluginFailed(failure: PluginFailureState): void {
@@ -1041,6 +1060,17 @@ class PluginRegistryImpl {
       log.warn('Recovered interrupted plugin operations at boot', { plugins: recovery.recovered })
     }
 
+    // The ledger's `disabled` marks: a disabled plugin is discovered (so the
+    // manifest can show it) but never activated. An unreadable ledger
+    // disables nothing — the loader keeps loading what is on disk.
+    let disabledIds = new Set<string>()
+    try {
+      const lock = readPluginLockfile()
+      disabledIds = new Set(Object.entries(lock.plugins).filter(([, entry]) => isPluginDisabled(entry)).map(([id]) => id))
+    } catch (err) {
+      log.warn('Plugin lockfile unreadable while discovering user plugins — no plugin is treated as disabled', { err: err instanceof Error ? err.message : String(err) })
+    }
+
     try {
       const dirEntries = readdirSync(userPluginsDir, { withFileTypes: true })
       const entries: PluginLoadEntry[] = []
@@ -1052,6 +1082,11 @@ class PluginRegistryImpl {
 
         try {
           const manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'))
+          if (disabledIds.has(manifest.id) || disabledIds.has(entry.name)) {
+            this.markPluginDisabled({ id: manifest.id, name: manifest.name ?? manifest.id, version: manifest.version ?? '0.0.0', description: manifest.description ?? '' })
+            log.info(`Plugin "${manifest.id}" is disabled — not activated`)
+            continue
+          }
           entries.push({
             path: join(userPluginsDir, entry.name),
             id: manifest.id,
@@ -1207,7 +1242,7 @@ class PluginRegistryImpl {
     description: string
     contributes?: PublicPluginManifest['contributes']
     source: 'built-in' | 'user'
-    status: 'active' | 'failed'
+    status: 'active' | 'failed' | 'disabled'
     errorCode?: PluginFailureState['errorCode']
     errorMessage?: string
     missingDependencies?: string[]
@@ -1248,7 +1283,16 @@ class PluginRegistryImpl {
       missingDependencies: failure.missingDependencies,
       routes: 0,
     }))
-    return [...active, ...failed]
+    const disabled = [...this.disabledPlugins.values()].map(state => ({
+      id: state.id,
+      name: state.name,
+      version: installedUserPluginVersions[state.id] ?? state.version,
+      description: state.description,
+      source: 'user' as const,
+      status: 'disabled' as const,
+      routes: 0,
+    }))
+    return [...active, ...failed, ...disabled]
   }
 
   // ---------------------------------------------------------------------------
@@ -1331,6 +1375,7 @@ class PluginRegistryImpl {
   _resetForTests(): void {
     this.plugins.clear()
     this.failedPlugins.clear()
+    this.disabledPlugins.clear()
     corePluginTable = {}
     corePluginIds.clear()
     clearPluginSkills()

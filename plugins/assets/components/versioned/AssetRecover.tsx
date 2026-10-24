@@ -21,7 +21,7 @@ import type { AssetRecoveryReport } from './types'
 /** The checks a recovery control may have resolved — rerun right after it runs (return verification). */
 const AFFECTED_CHECKS = ['assets.assets']
 
-export type AssetRecoverAction = 'rebuild' | 'detach' | `restore:${string}` | 'trash'
+export type AssetRecoverAction = 'rebuild' | 'detach' | 'detach-references' | `restore:${string}` | 'trash'
 
 export interface AssetRecoverPanelProps {
   report: AssetRecoveryReport
@@ -29,6 +29,8 @@ export interface AssetRecoverPanelProps {
   error: string | null
   onRebuild: () => void
   onDetachMissing: () => void
+  /** Spec §3.9: the asset's task and every brand stop pointing at it. */
+  onDetachReferences: () => void
   onRestoreExport: (name: string) => void
   onTrash: () => void
 }
@@ -40,7 +42,7 @@ function formatBytes(size: number): string {
 }
 
 /** Presentational: the facts and the controls. The page owns the requests. */
-export function AssetRecoverPanel({ report, busy, error, onRebuild, onDetachMissing, onRestoreExport, onTrash }: AssetRecoverPanelProps) {
+export function AssetRecoverPanel({ report, busy, error, onRebuild, onDetachMissing, onDetachReferences, onRestoreExport, onTrash }: AssetRecoverPanelProps) {
   const [pending, setPending] = useState<null | { action: Exclude<AssetRecoverAction, 'trash'>; title: string; description: string; tone: 'primary' | 'danger'; run: () => void }>(null)
   const manifestOk = report.manifest.status === 'ok'
   const presentVersions = report.versions.filter((v) => v.present)
@@ -49,6 +51,12 @@ export function AssetRecoverPanel({ report, busy, error, onRebuild, onDetachMiss
   const canRebuild = !manifestOk && report.versionFiles.length > 0
   const canDetach = manifestOk && presentVersions.length > 0 && (missingVersions.length > 0 || missingExports.length > 0 || (report.manifest.status === 'ok' && !report.manifest.currentVersionPresent))
   const restorable = manifestOk ? report.exports.filter((e) => e.present) : []
+  const references = report.references
+  const referenceLabels = [
+    ...(references?.task ? [`task ${references.task.title ?? references.task.taskId}${references.task.open === false ? ' (closed)' : ''}`] : []),
+    ...(references?.brands ?? []).map((ref) => `brand ${ref.brandId} (${ref.where})`),
+  ]
+  const canDetachReferences = referenceLabels.length > 0
 
   const manifestSummary = report.manifest.status === 'missing'
     ? 'manifest.json is missing.'
@@ -129,6 +137,26 @@ export function AssetRecoverPanel({ report, busy, error, onRebuild, onDetachMiss
               onClick={() => confirm({ action: 'detach', tone: 'danger', title: 'Detach the missing versions?', description: 'The manifest stops listing versions and exports whose files are gone. The files themselves were already lost; this makes the asset consistent again.', run: onDetachMissing })}
             >
               {busy === 'detach' ? 'Detaching…' : 'Detach missing'}
+            </Button>
+          </ListRow>
+          <ListRow className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-3">
+            <span className="min-w-0 flex-1">
+              <Text as="span" weight="medium">Detach references</Text>
+              <Text as="span" tone="muted" className="block">
+                {canDetachReferences
+                  ? `Still referenced by ${referenceLabels.join(', ')}. The task and every brand stop pointing at this asset; nothing on disk is deleted.`
+                  : references && !references.known
+                    ? 'Whether a task or brand still references this asset could not be fully read.'
+                    : 'Nothing references this asset.'}
+              </Text>
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!canDetachReferences || busy !== null}
+              onClick={() => confirm({ action: 'detach-references', tone: 'danger', title: 'Detach every reference?', description: `${referenceLabels.join(', ')} will no longer point at ${report.assetId}. Branded work and the task lose this asset; the files stay where they are.`, run: onDetachReferences })}
+            >
+              {busy === 'detach-references' ? 'Detaching…' : 'Detach references'}
             </Button>
           </ListRow>
           {restorable.map((exp) => (
@@ -265,6 +293,7 @@ export function AssetRecoverPage({ assetId, onExit }: { assetId: string; onExit:
           error={error}
           onRebuild={() => void run('rebuild', () => post('/recover/rebuild')).then((ok) => { if (ok) void load() })}
           onDetachMissing={() => void run('detach', () => post('/recover/detach-missing')).then((ok) => { if (ok) void load() })}
+          onDetachReferences={() => void run('detach-references', () => post('/recover/detach-references')).then((ok) => { if (ok) void load() })}
           onRestoreExport={(name) => void run(`restore:${name}`, () => post('/recover/restore-export', { name })).then((ok) => { if (ok) void load() })}
           onTrash={() => void run('trash', () => fetch(base, { method: 'DELETE' })).then((ok) => { if (ok) router.push('/assets') })}
         />

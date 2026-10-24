@@ -389,6 +389,12 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
     }
   }, [brandId, detail, refresh])
 
+  // `?recover=1` must work when the detail CANNOT load (an unreadable manifest answers 422;
+  // a vanished record 404s): the recover page reads its own facts (self-healing PR1, row 189).
+  if (recoverParam === '1' && (notFound || (error && !detail))) {
+    return <BrandRecoverPage brandId={brandId} onExit={() => setRecoverParam('')} onDeleted={() => router.push('/brands')} />
+  }
+
   if (notFound) {
     return (
       <Page data-brand-detail-not-found>
@@ -454,7 +460,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   const b = staged ?? detail.brand
 
   if (recoverParam === '1') {
-    return <BrandRecoverPage brandId={brandId} brandName={b.name} onExit={() => setRecoverParam('')} />
+    return <BrandRecoverPage brandId={brandId} brandName={b.name} onExit={() => setRecoverParam('')} onDeleted={() => router.push('/brands')} />
   }
 
   return (

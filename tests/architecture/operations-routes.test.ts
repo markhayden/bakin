@@ -49,6 +49,7 @@ const CONVERTED_PLUGIN_ROUTES: Record<string, string | null> = {
 const NON_BLOCKING_WRITERS: Record<string, string> = {
   'src/core/agent-packages/lesson-toggle.ts': 'install-state',
   'packages/host/src/api/plugins/unlink.ts': 'install-state',
+  'packages/host/src/api/plugins/enable-toggle.ts': 'install-state',
   'packages/host/src/api/skills.ts': 'install-state',
 }
 

@@ -14,7 +14,7 @@
  */
 import { queryAuditEvents } from '../../../src/core/audit'
 import { getContentDir } from '../../../src/core/content-dir'
-import { LedgerUnavailableError, listBudgetIncidents } from '../../../src/core/execution-ledger'
+import { LedgerUnavailableError, listBudgetIncidents, type BudgetIncidentRow } from '../../../src/core/execution-ledger'
 import { assembleBudgetSpend } from '../../../src/core/budget-spend'
 import { evaluateBudget, milestoneCrossings, type BudgetPolicy, type BudgetRule, type SpendEvidenceGap, type TurnBillingContext } from '../../../src/core/budget'
 import { getSettings, updateSettings } from '../../../src/core/settings'
@@ -22,6 +22,8 @@ import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type {
   HealthCheckRunInput,
+  HealthDecisionChoice,
+  HealthHumanResolution,
   HealthIncidentDeclaration,
   HealthObservationInput,
   HealthRepairActionDefinition,
@@ -29,6 +31,7 @@ import type {
   JsonObject,
 } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
+import { ruleMatchesIncident } from './incident-rule'
 import { toLocalDayKey } from '@bakin/core/usage-history/store'
 import {
   getUsageHistoryScanState,
@@ -241,73 +244,6 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
   }
 
-  // Open incidents block/alert independently of CURRENT spend — a pause-mode
-  // hold survives window rollover, so "spend is under cap" must never read
-  // as "healthy" while dispatch is frozen (the frozen-but-green trap).
-  try {
-    const open = listBudgetIncidents({ openOnly: true })
-    if (open.length > 0) {
-      const pausing = open.filter((i) => i.kind === 'cap' && i.atCap === 'pause')
-      const evidence: JsonObject = {
-        incidents: open.map((incident) => ({
-          id: incident.id,
-          scope: incident.scope,
-          ...(incident.scopeId ? { scopeId: incident.scopeId } : {}),
-          lane: incident.lane,
-          window: incident.window,
-          kind: incident.kind,
-          atCap: incident.atCap,
-          status: incident.status,
-        })),
-        pausing: pausing.length,
-      }
-      const incident = {
-        key: 'open-incidents',
-        title: 'Budget incidents need resolution',
-        class: 'budget_block' as const,
-        impact: pausing.length > 0
-          ? 'Pause-mode holds are blocking task dispatch until an operator resolves them.'
-          : 'Unresolved budget alerts can hide continued spend pressure.',
-        disposition: 'action_required' as const,
-        subject: { kind: 'system' as const, id: `spend-incident:${open[0]!.id}`, label: `Budget incident ${open[0]!.id}` },
-        declarationId: 'open-incidents',
-        // Row 163: required while a pause-mode hold blocks dispatch.
-        required: pausing.length > 0,
-        resources: open.slice(0, 50).map((entry) => ({
-          kind: 'budget_rule' as const,
-          id: String(entry.id),
-          label: (entry.scopeId ? `${entry.scope} ${entry.scopeId}` : entry.scope).slice(0, 120),
-        })),
-        resolution: {
-          key: 'open-spend-settings',
-          type: 'human' as const,
-          needs: 'decision' as const,
-          label: 'Resolve budget incidents',
-          href: `/spend?incident=${encodeURIComponent(String(open[0]!.id))}`,
-        },
-      }
-      observations.push(pausing.length > 0
-        ? healthError({
-          key: 'incidents',
-          summary: `${open.length} budget incident${open.length === 1 ? '' : 's'} remain open; ${pausing.length} ${pausing.length === 1 ? 'is' : 'are'} blocking dispatch.`,
-          evidence,
-          incident,
-        })
-        : healthWarning({
-          key: 'incidents',
-          summary: `${open.length} budget incident${open.length === 1 ? ' remains' : 's remain'} open.`,
-          evidence,
-          incident,
-        }))
-    }
-  } catch (err) {
-    // Row 164: observation only.
-    observations.push(healthUnknown({
-      key: 'incidents',
-      summary: 'Open budget incidents could not be verified.',
-      detail: `${err instanceof Error ? err.message : String(err)} Health cannot confirm whether an unresolved budget hold is blocking dispatch.`,
-    }))
-  }
 
   const now = Date.now()
   const usageScanBefore = getUsageHistoryScanState()
@@ -404,6 +340,90 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     breaches.push({ rule, action: decision.action, window: decision.window, unit: decision.unit, spentValue: decision.spentValue, capValue: decision.capValue })
   }
 
+  // Open incidents block/alert independently of CURRENT spend — a pause-mode
+  // hold survives window rollover, so "spend is under cap" must never read
+  // as "healthy" while dispatch is frozen (the frozen-but-green trap).
+  // Row 163: REQUIRED only while a hold blocks dispatch NOW — a pause-mode
+  // hold, or an incident whose rule is still at/over its cap on current
+  // spend: the same two facts the gate (and GET /status) derive "deferred"
+  // from. An open defer incident whose rule is back under cap is advisory.
+  let openIncidents: BudgetIncidentRow[] = []
+  let openIncidentsError: string | null = null
+  try {
+    openIncidents = listBudgetIncidents({ openOnly: true })
+  } catch (err) {
+    openIncidentsError = err instanceof Error ? err.message : String(err)
+  }
+  if (openIncidentsError !== null) {
+    // Row 164: observation only.
+    observations.push(healthUnknown({
+      key: 'incidents',
+      summary: 'Open budget incidents could not be verified.',
+      detail: `${openIncidentsError} Health cannot confirm whether an unresolved budget hold is blocking dispatch.`,
+    }))
+  } else if (openIncidents.length > 0) {
+    const open = openIncidents
+    const pausing = open.filter((i) => i.kind === 'cap' && i.atCap === 'pause')
+    const stillOver = open.filter((i) => breaches.some((b) => ruleMatchesIncident(b.rule, i)))
+    const blocking = pausing.length > 0 || stillOver.length > 0
+    const first = open[0]!
+    const evidence: JsonObject = {
+      incidents: open.map((incident) => ({
+        id: incident.id,
+        scope: incident.scope,
+        ...(incident.scopeId ? { scopeId: incident.scopeId } : {}),
+        lane: incident.lane,
+        window: incident.window,
+        kind: incident.kind,
+        atCap: incident.atCap,
+        status: incident.status,
+      })),
+      pausing: pausing.length,
+      stillOver: stillOver.length,
+      blocking,
+    }
+    const incident = {
+      key: 'open-incidents',
+      title: 'Budget incidents need resolution',
+      class: 'budget_block' as const,
+      impact: pausing.length > 0
+        ? 'Pause-mode holds are blocking task dispatch until an operator resolves them.'
+        : stillOver.length > 0
+          ? 'Spend is still at or over a capped limit — work under it is deferring until the cap is raised or the window rolls.'
+          : 'Spend is back under the cap; the open alert only hides continued spend pressure until it is acknowledged.',
+      subject: { kind: 'system' as const, id: `spend-incident:${first.id}`, label: `Budget incident ${first.id}` },
+      declarationId: 'open-incidents',
+      required: blocking,
+      resources: open.slice(0, 50).map((entry) => ({
+        kind: 'budget_rule' as const,
+        id: String(entry.id),
+        label: (entry.scopeId ? `${entry.scope} ${entry.scopeId}` : entry.scope).slice(0, 120),
+      })),
+      // The card's buttons ARE the decisions (raise / ack / resume) through the resolve route the Spend page uses.
+      resolution: {
+        key: 'open-spend-settings',
+        type: 'human' as const,
+        needs: 'decision' as const,
+        label: 'Resolve budget incidents',
+        href: `/spend?incident=${encodeURIComponent(String(first.id))}`,
+        choices: incidentDecisionChoices(first),
+      },
+    }
+    observations.push(blocking
+      ? healthError({
+        key: 'incidents',
+        summary: `${open.length} budget incident${open.length === 1 ? '' : 's'} remain open; ${pausing.length > 0 ? `${pausing.length} ${pausing.length === 1 ? 'is' : 'are'} blocking dispatch` : `${stillOver.length} still at or over the cap`}.`,
+        evidence,
+        incident: { ...incident, disposition: 'action_required' as const },
+      })
+      : healthWarning({
+        key: 'incidents',
+        summary: `${open.length} budget incident${open.length === 1 ? ' remains' : 's remain'} open.`,
+        evidence,
+        incident: { ...incident, disposition: 'advisory' as const },
+      }))
+  }
+
   // Agent-scoped breaches attribute directly; global/provider breaches get a
   // synthetic 'global' entry so the Attention section shows SOMETHING for the
   // most common breach (the onboarding-created global rule).
@@ -493,14 +513,9 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
           id: budgetRuleId(entry.rule, index),
           label: ruleLabel(entry.rule),
         })),
-        // Row 167: raise the cap or acknowledge — the Limits tab is the control.
-        resolution: {
-          key: 'open-spend-settings',
-          type: 'human',
-          needs: 'decision',
-          label: 'Review spending caps',
-          href: '/spend?tab=limits',
-        },
+        // Row 167: raise the cap (the rule's row on the Limits tab, focused by
+        // `?field=`) or acknowledge the open incident it raised — both on the card.
+        resolution: capReachedResolution(capped[0]!.rule, openIncidents),
       },
     }))
   } else if (incompleteSpendRules.length > 0
@@ -612,6 +627,52 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     }))
   }
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
+}
+
+/** Rows 163/167: the resolve route the Spend page's banner uses, as card buttons. */
+export function incidentDecisionChoices(incident: Pick<BudgetIncidentRow, 'id' | 'scope' | 'scopeId' | 'lane' | 'window' | 'status'>): HealthDecisionChoice[] {
+  const url = `/api/plugins/spend/incidents/${incident.id}/resolve`
+  const who = incident.scopeId ? `${incident.scope} ${incident.scopeId}` : 'the global rule'
+  return [
+    // A raise needs an amount: the banner (deep-linked) holds that input.
+    { key: 'raise', kind: 'link', label: 'Raise the limit', href: `/spend?incident=${encodeURIComponent(String(incident.id))}` },
+    ...(incident.status === 'open'
+      ? [{ key: 'ack', kind: 'request' as const, label: 'Acknowledge', method: 'POST' as const, url, body: { action: 'ack' } }]
+      : []),
+    {
+      key: 'resume',
+      kind: 'request',
+      label: 'Resume',
+      method: 'POST',
+      url,
+      body: { action: 'resume' },
+      confirm: {
+        title: `Resume dispatch for ${who}?`,
+        description: `Work covered by this ${incident.window} ${incident.lane} limit dispatches again. Bakin refuses this while spend is still at or over the limit — raise the limit instead.`,
+      },
+    },
+  ]
+}
+
+/** Row 167: the capped rule's row on the Limits tab is the control; an open incident on that rule can be acknowledged from the card. */
+export function capReachedResolution(rule: BudgetRule, openIncidents: readonly BudgetIncidentRow[]): HealthHumanResolution {
+  const ruleId = budgetRuleId(rule, 0)
+  const field = `budget-rule-${ruleId}`
+  const incident = openIncidents.find((candidate) => ruleMatchesIncident(rule, candidate))
+  return {
+    key: 'open-spend-settings',
+    type: 'human',
+    needs: 'decision',
+    label: 'Review spending caps',
+    href: `/spend?tab=limits&field=${encodeURIComponent(ruleId)}`,
+    field,
+    choices: [
+      { key: 'raise', kind: 'link', label: 'Raise the limit', href: `/spend?tab=limits&field=${encodeURIComponent(ruleId)}`, field },
+      ...(incident && incident.status === 'open'
+        ? [{ key: 'ack', kind: 'request' as const, label: 'Acknowledge', method: 'POST' as const, url: `/api/plugins/spend/incidents/${incident.id}/resolve`, body: { action: 'ack' } }]
+        : []),
+    ],
+  }
 }
 
 function budgetRuleId(rule: BudgetRule, index: number): string {

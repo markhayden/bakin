@@ -14,9 +14,17 @@
  *   remaining. Refused when nothing would remain.
  * - `restoreVersionFromExport` — a derived export becomes a new current
  *   version (the export is the best copy left of what was lost).
+ * - `inspectAssetReferences` / `detachAssetReferences` — what still points
+ *   at the asset (its own task through `manifest.taskId`; brands through the
+ *   `brands.assetReferences` hook) and the operator's detach of both (spec
+ *   §3.9). Tasks carry no asset field: the task link IS the manifest's.
+ * - `moveStoreLocationAside` — a required store location (`store`, `inbox`,
+ *   `.trash`) that exists as a FILE is renamed aside so the self-heal
+ *   repair can create the directory (row 174's card choice).
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, renameSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { getContentDir } from '../../../src/core/content-dir'
 import { assetDirAbs } from './asset-id'
 import { withAssetLock } from './asset-lock'
 import { emitAssetWritten } from './asset-events'
@@ -191,6 +199,116 @@ export async function detachMissingVersions(assetId: string): Promise<{ manifest
     emitAssetWritten({ assetId, version: manifest.currentVersion, op: 'upsert' })
     return { manifest, detachedVersions, detachedExports }
   })
+}
+
+/** The slice of a plugin/route context the usage facts need — tasks for the manifest's task, hooks for the brands. */
+export interface AssetUsageContext {
+  tasks?: { get(id: string): Promise<{ id: string; title?: string; column: string } | null> }
+  hooks: { has(name: string): boolean; invoke<R>(name: string, data: unknown): Promise<R | undefined> }
+}
+
+/** Task columns whose task still uses its assets (done/archived history is not usage). */
+export const OPEN_TASK_COLUMNS: ReadonlySet<string> = new Set(['backlog', 'todo', 'inProgress', 'review', 'blocked'])
+
+export interface AssetReferences {
+  /** False when a leg could not be read (task store or brands hook threw) — then nothing is claimed about that leg. */
+  known: boolean
+  /** The manifest's own task, and whether it is still open (null = could not be read). */
+  task: { taskId: string; title: string | null; open: boolean | null } | null
+  brands: Array<{ brandId: string; where: string }>
+}
+
+/** A reference is "in use" when its task is open or any brand still names it. */
+export function referencesInUse(references: AssetReferences): boolean {
+  return references.task?.open === true || references.brands.length > 0
+}
+
+/**
+ * What still points at an asset. The task leg reads `manifest.taskId`
+ * (tasks themselves carry no asset field); the brands leg asks the brands
+ * plugin through its hook — absent plugin = no brands can reference it,
+ * a throwing hook = unknown. Nothing is guessed: an unreadable leg leaves
+ * `known: false` and claims nothing.
+ */
+export async function inspectAssetReferences(
+  assetId: string,
+  ctx: AssetUsageContext,
+  manifestTaskId: string | null | undefined = undefined,
+): Promise<AssetReferences> {
+  let known = true
+  let taskId = manifestTaskId
+  if (taskId === undefined) {
+    const dirAbs = assetDirAbs(assetId)
+    const manifest = dirAbs ? readManifest(dirAbs) : null
+    taskId = manifest ? manifest.taskId : null
+    // A missing/invalid manifest has no readable task link: that leg is unknown, not "none".
+    if (!manifest) known = false
+  }
+  let task: AssetReferences['task'] = null
+  if (taskId) {
+    try {
+      const record = ctx.tasks ? await ctx.tasks.get(taskId) : null
+      task = { taskId, title: record?.title ?? null, open: record ? OPEN_TASK_COLUMNS.has(record.column) : false }
+    } catch {
+      known = false
+      task = { taskId, title: null, open: null }
+    }
+  }
+  let brands: AssetReferences['brands'] = []
+  if (ctx.hooks.has('brands.assetReferences')) {
+    try {
+      const answer = await ctx.hooks.invoke<{ byAsset?: Record<string, Array<{ brandId: string; where: string }>> }>('brands.assetReferences', { assetIds: [assetId] })
+      brands = answer?.byAsset?.[assetId] ?? []
+    } catch {
+      known = false
+    }
+  }
+  return { known, task, brands }
+}
+
+/**
+ * The operator's "Detach references" (spec §3.9): the manifest forgets its
+ * task (when it reads) and every brand drops the asset through
+ * `brands.detachAsset`. Nothing on disk is deleted.
+ */
+export async function detachAssetReferences(assetId: string, ctx: AssetUsageContext): Promise<{ task: string | null; brands: string[] }> {
+  return withAssetLock(assetId, async () => {
+    const dirAbs = assetDirAbs(assetId)
+    if (!dirAbs) throw new Error(`Invalid assetId: ${assetId}`)
+    let task: string | null = null
+    const manifest = readManifest(dirAbs)
+    if (manifest?.taskId) {
+      task = manifest.taskId
+      manifest.taskId = null
+      manifest.updated = new Date().toISOString()
+      writeManifestAtomic(dirAbs, manifest)
+      emitAssetWritten({ assetId, version: manifest.currentVersion, op: 'upsert' })
+    }
+    let brands: string[] = []
+    if (ctx.hooks.has('brands.detachAsset')) {
+      const answer = await ctx.hooks.invoke<{ detached?: string[] }>('brands.detachAsset', { assetId })
+      brands = answer?.detached ?? []
+    }
+    return { task, brands }
+  })
+}
+
+export const STORE_LOCATIONS = ['store', 'inbox', '.trash'] as const
+export type StoreLocation = typeof STORE_LOCATIONS[number]
+
+/**
+ * Row 174: a required store location that exists as a FILE is renamed aside
+ * (`<name>.invalid-<timestamp>`, same parent) so `repair-store` can create
+ * the directory on its next self-heal pass. Nothing is deleted; a directory
+ * is never touched.
+ */
+export function moveStoreLocationAside(location: StoreLocation, contentDir = getContentDir()): { movedTo: string } {
+  const target = join(contentDir, 'assets', location)
+  if (!existsSync(target)) throw new Error(`assets/${location} does not exist — nothing to move aside.`)
+  if (statSync(target).isDirectory()) throw new Error(`assets/${location} is a directory — nothing to move aside.`)
+  const movedTo = `${target}.invalid-${Date.now()}`
+  renameSync(target, movedTo)
+  return { movedTo }
 }
 
 export async function restoreVersionFromExport(assetId: string, exportName: string): Promise<{ assetId: string; version: number; manifest: AssetManifest }> {

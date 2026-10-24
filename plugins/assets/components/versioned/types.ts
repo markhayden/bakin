@@ -118,4 +118,10 @@ export interface AssetRecoveryReport {
   versionFiles: Array<{ version: number; file: string; size: number }>
   versions: Array<{ version: number; file: string; present: boolean }>
   exports: Array<{ name: string; file: string; fromVersion: number; present: boolean }>
+  /** What still points at the asset (its task through the manifest, brands through their hook). */
+  references?: {
+    known: boolean
+    task: { taskId: string; title: string | null; open: boolean | null } | null
+    brands: Array<{ brandId: string; where: string }>
+  }
 }

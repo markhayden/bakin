@@ -16,6 +16,11 @@ import { repairTargetSelection } from '@bakin/core/health/repair-support'
 /** The one subject every engine-level search incident is about. */
 export const SEARCH_ENGINE_SUBJECT: HealthSubject = { kind: 'service', id: 'search-engine', label: 'Search engine' }
 
+/** Row 54's guest alternative: the System settings field that points this home at an engine it does not own. */
+export const SEARCH_GUEST_URL_FIELD = 'search.settings.url'
+export const SEARCH_GUEST_URL_HREF = `/settings?tab=system&field=${SEARCH_GUEST_URL_FIELD}`
+const GUEST_CHOICE = { key: 'guest', kind: 'link' as const, label: 'Use that engine as a guest', href: SEARCH_GUEST_URL_HREF, field: SEARCH_GUEST_URL_FIELD }
+
 /**
  * The `health.search` check's finite incident families (re-homing rows
  * 52–68). Observation rows (disabled, unknowns, embedder settings, table
@@ -84,12 +89,12 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
           : `Queries are unavailable; queued writes remain in this home’s durable journal. ${detail} ${guidance}`,
         subject: SEARCH_ENGINE_SUBJECT,
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        // Row 54: claiming is the operator's decision — a one-click repair whose
-        // confirmation names the guest alternative; a home that cannot claim
-        // decides on its endpoint in Settings.
+        // Row 54: Claim / Use as guest — BOTH on the card. A home that can claim
+        // gets the one-click claim with the guest endpoint as its named
+        // alternative; a home that cannot claim decides at that field.
         ...(remediation === 'install'
-          ? { declarationId: 'service-ownership-claim', resolution: { key: 'search-engine-claim', type: 'repair' as const, label: 'Claim Search for this home', actionId: 'search-engine-claim' } }
-          : { declarationId: 'service-ownership', resolution: { key: 'search-service-access', type: 'human' as const, needs: 'decision' as const, label, href: '/settings?tab=system' } }),
+          ? { declarationId: 'service-ownership-claim', resolution: { key: 'search-engine-claim', type: 'repair' as const, label: 'Claim Search for this home', actionId: 'search-engine-claim', choices: [GUEST_CHOICE] } }
+          : { declarationId: 'service-ownership', resolution: { key: 'search-service-access', type: 'human' as const, needs: 'decision' as const, label, href: SEARCH_GUEST_URL_HREF, field: SEARCH_GUEST_URL_FIELD } }),
       },
     }), ...await safeOutboxObservations(true)])
   }
@@ -188,7 +193,7 @@ export async function checkSearchAdapter(): Promise<HealthCheckRunInput> {
           // Row 57: Bakin restarts its own engine; a guest endpoint is not
           // ours to restart — the operator decides at the endpoint setting.
           ...(service.mode === 'guest'
-            ? { declarationId: 'engine-unavailable-guest', resolution: { key: 'inspect-engine', type: 'human' as const, needs: 'decision' as const, label: 'Check the external search endpoint', href: '/settings?tab=system' } }
+            ? { declarationId: 'engine-unavailable-guest', resolution: { key: 'inspect-engine', type: 'human' as const, needs: 'decision' as const, label: 'Check the external search endpoint', href: SEARCH_GUEST_URL_HREF, field: SEARCH_GUEST_URL_FIELD } }
             : { declarationId: 'engine-unavailable', resolution: { key: 'inspect-engine', type: 'repair' as const, label: 'Restore the Search engine', actionId: 'search-engine-restart' } }),
         },
       }))

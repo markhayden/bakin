@@ -69,6 +69,13 @@ const modelsPlugin: BakinPlugin = definePlugin({
       // ONE mutation under the batch's shared revision (every proposal of a plan carries the same one), through applySelections so the post-write side effects run.
       apply: (proposals: Array<{ ref: string; to: string | null; revision: string }>) =>
         applySelections(ctx, { revision: proposals[0]!.revision, ops: proposals.map((p) => ({ ref: p.ref, set: { model: p.to } })) }),
+      // The usage fact for tag overrides (rows 158/159 "AR while in use"): the tags open tasks carry.
+      // A dynamic import keeps the task-store graph out of the plugin's static imports.
+      openTaskTags: async () => {
+        const { getSharedBakinTaskStore } = await import('../../src/core/task-store')
+        const open = getSharedBakinTaskStore().listSync().filter((task) => task.column !== 'done' && task.column !== 'archived')
+        return new Set(open.flatMap((task) => task.tags ?? []))
+      },
     }
     ctx.registerHealthRepairAction(deadSelectionRepair(deadDeps))
     ctx.registerHealthCheck({

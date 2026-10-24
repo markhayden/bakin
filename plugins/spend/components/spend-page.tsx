@@ -44,6 +44,8 @@ export function SpendPage() {
   // `?recover=1` is the spend.json recover editor; `?incident=<id>` lands on that incident's banner (self-healing 1.4b).
   const [recoverParam, setRecoverParam] = useQueryState('recover', '')
   const [incidentParam] = useQueryState('incident', '')
+  // `?field=<rule id>` (a Health cap-reached card) lands on that rule's row on the Limits tab.
+  const [fieldParam] = useQueryState('field', '')
   const paused = m.budgetStatus?.paused === true
 
   // Opening Spend is "seen" for the 50/75 heads-ups: their badge entries
@@ -172,7 +174,7 @@ export function SpendPage() {
               onShowAllChange={setSpendShowAll}
             />
           ) : (
-            <LimitsTab m={m} />
+            <LimitsTab m={m} highlightRuleId={fieldParam || undefined} />
           )}
         </Suspense>
       </PageBody>

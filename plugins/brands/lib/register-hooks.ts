@@ -21,6 +21,27 @@ const lessonsUnavailableAudited = new Map<string, number>()
 const LESSONS_UNAVAILABLE_AUDIT_TTL_MS = 10 * 60_000
 
 export function registerBrandsHooks(ctx: PluginContext): void {
+  // Usage facts for other owners (self-healing PR1, Codex r1 #8/#11): which
+  // brands reference an asset, and the operator's detach of one asset from
+  // every brand. Brands with an unreadable manifest are not scanned.
+  ctx.hooks.register(
+    'brands.assetReferences',
+    async (data: { assetIds?: unknown }) => {
+      const { brandsReferencingAssets } = await import('./integrity')
+      const assetIds = Array.isArray(data?.assetIds) ? data.assetIds.filter((id): id is string => typeof id === 'string') : []
+      return { byAsset: brandsReferencingAssets(assetIds) }
+    },
+    { hookKind: 'rpc', label: 'Brands referencing assets', summary: '{ assetIds } → { byAsset: { [assetId]: [{ brandId, where }] } } over readable brand manifests' },
+  )
+  ctx.hooks.register(
+    'brands.detachAsset',
+    async (data: { assetId?: unknown }) => {
+      if (typeof data?.assetId !== 'string' || data.assetId.length === 0) throw new Error('brands.detachAsset requires assetId')
+      const { detachAssetFromAllBrands } = await import('./integrity')
+      return detachAssetFromAllBrands(data.assetId)
+    },
+    { hookKind: 'rpc', label: 'Detach an asset from every brand', summary: "{ assetId } → { detached: brandId[] } — the operator's explicit detach from the asset's recover page" },
+  )
   ctx.hooks.register(
     'brands.get',
     async (data: { brandId?: string }) => {

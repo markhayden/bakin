@@ -98,7 +98,7 @@ describe('plugin-assets incidents (rows 93–94)', () => {
     scan = { userEditedDrifted: [], invalidSource: [{ pluginId: 'sdr', name: 'blobby' }] }
     expect((await observed(checkPluginAssets(none)))[0]!.incident).toMatchObject({ key: 'skill-source-invalid', resolution: { type: 'repair', actionId: 'plugin-reinstall' } })
     scan = { userEditedDrifted: [{ pluginId: 'sdr', name: 'mine' }], invalidSource: [] }
-    expect((await observed(checkPluginAssets(none)))[0]!.incident).toMatchObject({ key: 'user-edited-drifted', resolution: { type: 'repair', actionId: 'install-plugin-assets', label: 'Restore the shipped copies' } })
+    expect((await observed(checkPluginAssets(none)))[0]!.incident).toMatchObject({ key: 'user-edited-drifted', resolution: { type: 'repair', actionId: 'install-plugin-assets', label: 'Restore the shipped copy' } })
   })
 
   it('the install repair offers a one-click Restore item (it replaces your edit) per drifted user-edited skill only for a targeted row — never under all-actionable; apply releases exactly those', async () => {
@@ -110,7 +110,7 @@ describe('plugin-assets incidents (rows 93–94)', () => {
     expect(targeted.map((item) => [item.id, item.effects?.deletesUserContent ?? false])).toEqual([['install-plugin-assets', false], ['restore:mine', true], ['restore:other', true]])
     const results = await action.apply(stampPlanItems(action, targeted.filter((item) => item.id === 'restore:mine')), noopOp())
     expect(applies).toEqual([{ restoreUserEdited: ['mine'] }])
-    expect(results[0]).toMatchObject({ itemId: 'restore:mine', status: 'applied' })
+    expect(results[0]).toMatchObject({ itemId: 'install-plugin-assets:restore:mine', status: 'applied' })
     expect(results[0]!.message).toContain('restored')
   })
 })

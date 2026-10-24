@@ -26,6 +26,7 @@ import type {
   HealthSubject,
 } from '@makinbakin/sdk'
 import { stableKeyPart } from './key'
+import { partitionUnclaimedTables, readKeptSearchTables } from './kept-search-tables'
 
 const SEARCH_ENGINE_SUBJECT: HealthSubject = { kind: 'service', id: 'search-engine', label: 'Search engine' }
 const tableSubject = (logical: string): HealthSubject => ({ kind: 'table', id: logical, label: logical.slice(0, 120) })
@@ -40,7 +41,7 @@ export const SEARCH_CONSISTENCY_INCIDENTS: HealthIncidentDeclaration[] = [
   { id: 'migration-parked', subjectKind: 'table', resolution: { type: 'repair', actionId: 'search-consistency-rebuild' }, required: 'always' },
   { id: 'table-unreadable', subjectKind: 'table', resolution: { type: 'repair', actionId: 'search-consistency-restart' }, required: 'always' },
   { id: 'table-missing', subjectKind: 'table', resolution: { type: 'repair', actionId: 'search-consistency-rebuild' }, required: 'always' },
-  // Row 76: dropping tables another instance may own is the operator's decision — the drop is a one-click repair (deletes engine data), Keep = acknowledge.
+  // Row 76: dropping tables another instance may own is the operator's decision — Drop is the one-click repair (deletes engine data), Keep is the recorded decision (`kept-search-tables.ts`).
   { id: 'unclaimed-tables', subjectKind: 'service', resolution: { type: 'repair', actionId: 'search-drop-unclaimed-tables' }, required: 'never' },
 ]
 
@@ -360,24 +361,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
         }))
       }
       if (orphanTables && orphanTables.unclaimed.length > 0) {
-        observations.push(healthWarning({
-          key: 'indexes.sweep.unclaimed',
-          summary: `${orphanTables.unclaimed.length} unreferenced engine table${orphanTables.unclaimed.length === 1 ? ' was' : 's were'} left untouched.`,
-          detail: `${orphanTables.unclaimed.join(', ')}. Another Bakin instance may own them.`,
-          evidence: { unclaimed: orphanTables.unclaimed },
-          incident: {
-            key: 'unclaimed-tables',
-            title: 'Unclaimed Search tables need review',
-            class: 'cleanup_backlog',
-            impact: 'Stale unclaimed tables consume engine storage, but deleting tables owned by another instance would lose its index data.',
-            disposition: 'advisory',
-            subject: SEARCH_ENGINE_SUBJECT,
-            declarationId: 'unclaimed-tables',
-            resources: orphanTables.unclaimed.slice(0, 50).map((table) => ({ kind: 'search_table' as const, id: stableKeyPart(table), label: table.slice(0, 120) })),
-            // Drop is the manual repair (each table its own item); Keep = acknowledge the incident (row 76).
-            resolution: { key: 'search-drop-unclaimed-tables', type: 'repair', label: 'Drop the unclaimed tables', actionId: 'search-drop-unclaimed-tables' },
-          },
-        }))
+        observations.push(unclaimedTablesObservation(orphanTables.unclaimed, readKeptSearchTables()))
       }
       if (tombstonesLeft > 0) {
         observations.push(healthWarning({
@@ -405,6 +389,59 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
     }))
   }
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
+}
+
+/**
+ * Row 76. The tables the operator already decided to keep are reported, never
+ * raised; the rest carry the incident with Drop (the one-click repair, each
+ * table its own item) and Keep (a request choice recording the decision for
+ * exactly the tables on the card — a table that appears later is raised anew).
+ */
+export function unclaimedTablesObservation(unclaimed: readonly string[], keptSoFar: readonly string[]): HealthObservationInput {
+  const { pending, kept } = partitionUnclaimedTables(unclaimed, keptSoFar)
+  const keptNote = kept.length > 0 ? ` Kept by your decision: ${kept.join(', ')}.` : ''
+  if (pending.length === 0) {
+    return healthHealthy({
+      key: 'indexes.sweep.unclaimed',
+      summary: `${kept.length} unreferenced engine table${kept.length === 1 ? ' is' : 's are'} kept by your decision.`,
+      detail: `${kept.join(', ')}. Another Bakin instance may own them; they are not raised again unless you forget the decision.`,
+      evidence: { unclaimed: [], kept },
+    })
+  }
+  return healthWarning({
+    key: 'indexes.sweep.unclaimed',
+    summary: `${pending.length} unreferenced engine table${pending.length === 1 ? ' was' : 's were'} left untouched.`,
+    detail: `${pending.join(', ')}. Another Bakin instance may own them.${keptNote}`,
+    evidence: { unclaimed: pending, kept },
+    incident: {
+      key: 'unclaimed-tables',
+      title: 'Unclaimed Search tables need review',
+      class: 'cleanup_backlog',
+      impact: 'Stale unclaimed tables consume engine storage, but deleting tables owned by another instance would lose its index data.',
+      disposition: 'advisory',
+      subject: SEARCH_ENGINE_SUBJECT,
+      declarationId: 'unclaimed-tables',
+      resources: pending.slice(0, 50).map((table) => ({ kind: 'search_table' as const, id: stableKeyPart(table), label: table.slice(0, 120) })),
+      resolution: {
+        key: 'search-drop-unclaimed-tables',
+        type: 'repair',
+        label: 'Drop the unclaimed tables',
+        actionId: 'search-drop-unclaimed-tables',
+        choices: [{
+          key: 'keep',
+          kind: 'request',
+          label: 'Keep',
+          method: 'POST',
+          url: '/api/plugins/health/search/unclaimed-tables/keep',
+          body: { tables: pending },
+          confirm: {
+            title: `Keep ${pending.length === 1 ? 'this table' : `these ${pending.length} tables`}?`,
+            description: 'Bakin stops raising them; they stay in the engine. Forget the decision later with `POST /api/plugins/health/search/unclaimed-tables/forget`.',
+          },
+        }],
+      },
+    },
+  })
 }
 
 export function searchConsistencyRepair(): HealthRepairActionDefinition {

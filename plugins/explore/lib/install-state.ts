@@ -15,7 +15,7 @@
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { isUpdateOffered, updateRecordMatchesInstalled, type UpdateRecord } from '@makinbakin/sdk/types'
-import { readPluginLockfile, type PluginLockEntry, type PluginLockfile } from '@bakin/core/plugins/lockfile'
+import { isPluginDisabled, readPluginLockfile, type PluginLockEntry, type PluginLockfile } from '@bakin/core/plugins/lockfile'
 import { getContentDir } from '../../../src/core/content-dir'
 import { pluginInstalledIdentity } from '../../../src/core/updates/sources/plugin'
 import { packageInstalledIdentity, type InstalledPackage } from '../../../src/core/updates/sources/package'
@@ -175,6 +175,7 @@ export function joinInstallState(
         installed: installed !== null || sources.installedPluginDirs.has(entry.id),
         ...(installed ? updateStateOf(pluginRecord(records, entry.id, installed)) : UNKNOWN_UPDATE),
         installedVersion: installed?.version ?? null,
+        ...(isPluginDisabled(installed) ? { disabled: true } : {}),
       }
     }
 

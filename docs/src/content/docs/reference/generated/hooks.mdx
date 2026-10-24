@@ -108,7 +108,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Hooks discovered from source registration audit.</p>
 
 <div class="hook-card-list">
-<HookCard id="git-preparesessionworktree" name="git.prepareSessionWorktree" label="Prepared git worktree" source="plugins/git/index.ts:775">
+<HookCard id="git-preparesessionworktree" name="git.prepareSessionWorktree" label="Prepared git worktree" source="plugins/git/index.ts:777">
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'git.prepareSessionWorktree',
@@ -116,7 +116,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="git-releasesessionworktree" name="git.releaseSessionWorktree" label="Prepared git worktree" source="plugins/git/index.ts:779">
+<HookCard id="git-releasesessionworktree" name="git.releaseSessionWorktree" label="Prepared git worktree" source="plugins/git/index.ts:781">
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'git.releaseSessionWorktree',
@@ -131,7 +131,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Health hooks expose registered readiness and diagnostic checks so other surfaces can list or inspect them.</p>
 
 <div class="hook-card-list">
-<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns canonical metadata for one registered Health check by stable id without executing it." source="plugins/health/index.ts:889" badges={["rpc"]}>
+<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns canonical metadata for one registered Health check by stable id without executing it." source="plugins/health/index.ts:958" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.getCheck',
@@ -141,7 +141,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns canonical metadata for registered Health checks without executing them." source="plugins/health/index.ts:888" badges={["rpc"]}>
+<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns canonical metadata for registered Health checks without executing them." source="plugins/health/index.ts:957" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.list',
@@ -213,7 +213,7 @@ await ctx.hooks.callAll(
 <p class="hook-section-description">Hooks discovered from source registration audit.</p>
 
 <div class="hook-card-list">
-<HookCard id="schedule-adoptcronjobs" name="schedule.adoptCronJobs" label="Adopt runtime cron jobs" summary="Adopt snapshotted runtime cron jobs into Bakin schedules during a runtime switch (opt-in, idempotent per job id)." source="plugins/schedule/index.ts:76" badges={["rpc"]}>
+<HookCard id="schedule-adoptcronjobs" name="schedule.adoptCronJobs" label="Adopt runtime cron jobs" summary="Adopt snapshotted runtime cron jobs into Bakin schedules during a runtime switch (opt-in, idempotent per job id)." source="plugins/schedule/index.ts:83" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'schedule.adoptCronJobs',
@@ -221,10 +221,18 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="schedule-ensurebakinjob" name="schedule.ensureBakinJob" label="Ensure Bakin schedule" summary="Create or update a Bakin-owned schedule keyed by the caller's logical id and return its job id. The effective prompt (taskPrompt, else command) must be a task prompt — a sentence an agent can act on, never a bare marker token (spec D5)." source="plugins/schedule/index.ts:70" badges={["rpc"]}>
+<HookCard id="schedule-ensurebakinjob" name="schedule.ensureBakinJob" label="Ensure Bakin schedule" summary="Create or update a Bakin-owned schedule keyed by the caller's logical id and return its job id. The effective prompt (taskPrompt, else command) must be a task prompt — a sentence an agent can act on, never a bare marker token (spec D5)." source="plugins/schedule/index.ts:71" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'schedule.ensureBakinJob',
+  {},
+)
+```
+</HookCard>
+<HookCard id="schedule-workflowsscheduled" name="schedule.workflowsScheduled" label="Scheduled workflows" summary="Workflow ids an enabled Bakin schedule targets — the &quot;scheduled&quot; half of the workflows health checks' in-use fact (re-homing rows 133–137). A paused job still counts; a disabled or completed one does not." source="plugins/schedule/index.ts:77" badges={["rpc"]}>
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'schedule.workflowsScheduled',
   {},
 )
 ```

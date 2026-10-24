@@ -158,45 +158,60 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
     })])
   }
 
+  // Rows 106/107: every finding is ENTRY-ADDRESSED — the roster position(s)
+  // ride the evidence and the control's href, so `/team?recover=1` can put
+  // its editor row on the failing entry instead of a list of sentences.
   const observations: HealthObservationInput[] = []
-  const seen = new Set<string>()
+  const workspaceOf = (agent: { metadata?: Record<string, unknown> }): string | undefined => {
+    const candidate = agent.metadata?.workspace ?? agent.metadata?.workspacePath
+    return typeof candidate === 'string' && candidate !== '' ? bounded(candidate, 500) : undefined
+  }
+  const positionsById = new Map<string, number[]>()
   agents.forEach((agent, index) => {
     if (!agent.id) {
+      const workspace = workspaceOf(agent)
       observations.push(healthWarning({
         key: `missing-id-${index}`,
         summary: `Runtime agent at roster position ${index + 1} has no id.`,
-        evidence: { rosterIndex: index },
+        evidence: { kind: 'missing-id', rosterIndex: index, ...(agent.name ? { name: bounded(agent.name, 120) } : {}), ...(workspace ? { workspace } : {}) },
         incident: {
           key: `missing-id-${index}`,
           title: 'A runtime agent has no stable id',
-          impact: 'The agent cannot be addressed reliably by tasks, sessions, or health views.',
+          impact: `Roster entry ${index + 1} cannot be addressed by tasks, sessions, or health views — nothing in Bakin can name it until the runtime's registry gives it an id.`,
           disposition: 'action_required',
           subject: { kind: 'agent', id: `roster-${index}`, label: `Roster entry ${index + 1}` },
           declarationId: 'missing-id',
-          resources: [{ kind: 'runtime', id: `agent-index-${index}`, label: `Roster entry ${index + 1}` }],
-          resolution: { key: 'recover-roster', type: 'human', needs: 'decision', label: 'Review the roster problems', href: '/team?recover=1' },
+          resources: [{ kind: 'runtime', id: `roster-entry-${index}`, label: `Roster entry ${index + 1}` }],
+          resolution: { key: 'recover-roster', type: 'human', needs: 'decision', label: 'Fix roster entry', href: `/team?recover=1&entry=${index}` },
         },
       }))
       return
     }
-    if (seen.has(agent.id)) {
-      observations.push(healthWarning({
-        key: `duplicate-${stablePart(agent.id)}`,
-        summary: `Runtime agent id ${agent.id} appears more than once.`,
-        incident: {
-          key: `duplicate-${stablePart(agent.id)}`,
-          title: `Agent id ${agent.id} is duplicated`,
-          impact: 'Dispatch and activity attribution cannot distinguish the duplicate agents reliably.',
-          disposition: 'action_required',
-          subject: { kind: 'agent', id: stablePart(agent.id), label: bounded(agent.name || agent.id, 120) },
-          declarationId: 'duplicate',
-          resources: [{ kind: 'agent', id: stablePart(agent.id), label: bounded(agent.name || agent.id, 120) }],
-          resolution: { key: 'recover-roster', type: 'human', needs: 'decision', label: 'Review the roster problems', href: '/team?recover=1' },
-        },
-      }))
-    }
-    seen.add(agent.id)
+    positionsById.set(agent.id, [...(positionsById.get(agent.id) ?? []), index])
   })
+  for (const [agentId, positions] of positionsById) {
+    if (positions.length < 2) continue
+    const names = [...new Set(positions.map((index) => agents[index]!.name || agentId))].map((name) => bounded(name, 120))
+    const label = bounded(agents[positions[0]!]!.name || agentId, 120)
+    observations.push(healthWarning({
+      key: `duplicate-${stablePart(agentId)}`,
+      summary: `Runtime agent id ${agentId} appears ${positions.length} times (roster positions ${positions.map((index) => index + 1).join(', ')}).`,
+      evidence: { kind: 'duplicate', agentId: bounded(agentId, 120), positions, names },
+      incident: {
+        key: `duplicate-${stablePart(agentId)}`,
+        title: `Agent id ${agentId} is duplicated`,
+        impact: `Dispatch and activity attribution cannot tell the ${positions.length} roster entries named ${agentId} apart; removing the agent removes every entry with this id.`,
+        disposition: 'action_required',
+        subject: { kind: 'agent', id: stablePart(agentId), label },
+        declarationId: 'duplicate',
+        resources: [
+          { kind: 'agent', id: stablePart(agentId), label },
+          ...positions.map((index) => ({ kind: 'runtime' as const, id: `roster-entry-${index}`, label: `Roster entry ${index + 1}` })),
+        ],
+        resolution: { key: 'recover-roster', type: 'human', needs: 'decision', label: 'Resolve the duplicate', href: `/team?recover=1&agent=${encodeURIComponent(agentId)}` },
+      },
+    }))
+  }
 
   if (observations.length === 0) {
     observations.push(healthHealthy({

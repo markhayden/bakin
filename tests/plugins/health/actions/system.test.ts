@@ -36,6 +36,16 @@ mock.module('../../../../src/core/service-setup', () => ({
 }))
 // The service check reads settings + the plist; keep it on a fake darwin home.
 mock.module('../../../../src/core/settings', () => ({ getSettings: () => ({ service: { enabled: true } }) }))
+// Targeted repair planners resolve their subjects through the report (doctor-repair-targets): seed the incidents the targets name.
+mock.module('../../../../src/core/doctor-report-cache', () => ({
+  getHealthReport: () => ({
+    observations: [],
+    incidents: ['main', 'relay'].map((agentId) => ({
+      id: `health.session-store:oversized:${agentId}`, effectiveDisposition: 'action_required', subject: { kind: 'agent', id: agentId },
+      observationIds: [`health.session-store:${agentId}`], resolution: { type: 'repair', actionId: 'health.session-store-prune' },
+    })),
+  }),
+}))
 
 import type { HealthRepairTarget } from '@makinbakin/sdk'
 import type { RuntimeSessionStoreStats } from '@bakin/core/adapters/runtime'
@@ -169,7 +179,7 @@ describe('session-store-prune (row 14)', () => {
     const run = await runRepairContract(action, stampPlanItems(action, one))
     expectRepairContract(action, run)
     expect(pruned.map((p) => p.agentId)).toEqual(['relay'])
-    expect(run.results[0]).toMatchObject({ itemId: 'relay', status: 'applied', affectedCheckIds: ['health.session-store'] })
+    expect(run.results[0]).toMatchObject({ itemId: 'session-store-prune:relay', status: 'applied', affectedCheckIds: ['health.session-store'] })
     expect(run.results[0]!.message).toMatch(/3 .*files/)
   })
   it('plans nothing without a prune-capable runtime', async () => {

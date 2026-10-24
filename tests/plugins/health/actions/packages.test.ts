@@ -49,6 +49,15 @@ mock.module('../../../../src/core/agent-packages/sync', () => ({
   },
 }))
 let reloads = 0
+mock.module('../../../../src/core/doctor-report-cache', () => ({
+  getHealthReport: () => ({
+    observations: [],
+    incidents: [
+      { id: 'health.capabilities:not-ready:pdf', effectiveDisposition: 'action_required', subject: { kind: 'package', id: 'pdf-pack' }, observationIds: ['health.capabilities:pdf'], resolution: { type: 'repair', actionId: 'health.package-sync' } },
+      { id: 'health.capabilities:not-ready:web-search', effectiveDisposition: 'action_required', subject: { kind: 'package', id: 'web-pack' }, observationIds: ['health.capabilities:web-search'], resolution: { type: 'repair', actionId: 'health.package-sync' } },
+    ],
+  }),
+}))
 mock.module('../../../../src/core/agent-packages/post-sync-reload', () => ({
   reloadAgentPackageRegistries: async () => { reloads++ },
 }))
@@ -98,8 +107,15 @@ describe('capabilityRemedy (the ONE classification the check and the actions sha
 })
 
 describe('checkCapabilities — repointed under the old contract', () => {
+  // Row 6: `required` is a lockfile FACT — every pack these fixtures name is declared by an installed agent.
+  const declaredLockfile = () => ({
+    version: 1,
+    packages: {
+      'acme.sdr@0.2.0': { kind: 'agent', version: '0.2.0', source: 'github:acme/bits#agents/sdr', ref: 'main', commitSha: 'c'.repeat(40), installedAt: '2026-10-01T00:00:00.000Z', state: 'managed', agentId: 'sdr', dependencies: ['ocr-pack@1.0.0', 'web-pack@1.0.0', 'notion-pack@1.0.0', 'arm-pack@1.0.0'] },
+    },
+  }) as never
   const observed = async () => {
-    const parsed = parseHealthCheckRunInput(await checkCapabilities())
+    const parsed = parseHealthCheckRunInput(await checkCapabilities({ lockfile: declaredLockfile }))
     if (parsed.outcome !== 'observed') throw new Error(parsed.reason)
     return parsed.observations
   }
@@ -157,7 +173,7 @@ describe('package-sync / package-reinstall', () => {
     expectRepairContract(action, run)
     expect(syncs).toEqual([{ packageId: 'ocr-pack', reinstall: true, check: undefined, hasOp: false }])
     expect(reloads).toBe(1)
-    expect(run.results[0]).toMatchObject({ itemId: 'ocr-pack', status: 'applied', affectedCheckIds: ['health.capabilities'] })
+    expect(run.results[0]).toMatchObject({ itemId: 'package-reinstall:ocr-pack', status: 'applied', affectedCheckIds: ['health.capabilities'] })
   })
 
   it('sync plans the sync-shaped packs; a targeted incident plans only its pack; an unchanged sync still reports applied without a reload', async () => {

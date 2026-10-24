@@ -76,9 +76,10 @@ function seedFullAssetsTree() {
   mkdirSync(join(assetsRoot, '.trash'), { recursive: true })
 }
 
-function observations(result = checkAssets(testDir)) {
-  if (result.outcome !== 'observed') throw new Error(`Expected observed Assets health, got ${result.outcome}`)
-  return result.observations
+async function observations(result: ReturnType<typeof checkAssets> = checkAssets(testDir)) {
+  const resolved = await result
+  if (resolved.outcome !== 'observed') throw new Error(`Expected observed Assets health, got ${resolved.outcome}`)
+  return resolved.observations
 }
 
 const repairTarget = { type: 'all_actionable' as const, reportId: 'test-report' }
@@ -106,8 +107,8 @@ function seedVersionedAsset(assetId: string, overrides?: { currentVersion?: numb
 // ─── Store shape ──────────────────────────────────────────────────────────
 
 describe('checkAssets — store shape', () => {
-  it('surfaces a repair action when the assets directory does not exist', () => {
-    const results = observations()
+  it('surfaces a repair action when the assets directory does not exist', async () => {
+    const results = await observations()
     expect(results.some(r =>
       r.status === 'warning' &&
       r.summary.includes('assets directory is missing') &&
@@ -129,15 +130,15 @@ describe('checkAssets — store shape', () => {
     expect(applied[0].changes.some(change => change.description.includes('asset store root'))).toBe(true)
   })
 
-  it('reports missing required store directories without mutating them', () => {
+  it('reports missing required store directories without mutating them', async () => {
     mkdirSync(assetsRoot, { recursive: true })
-    const results = observations()
+    const results = await observations()
     expect(results.filter(r => r.status === 'warning' && r.key.startsWith('directory-missing-'))).toHaveLength(3)
   })
 
-  it('reports ok when the tree is empty and clean (incl. unimported + enrichment checks)', () => {
+  it('reports ok when the tree is empty and clean (incl. unimported + enrichment checks)', async () => {
     seedFullAssetsTree()
-    const results = observations()
+    const results = await observations()
     expect(results).toHaveLength(3)
     expect(results.every(r => r.status === 'healthy')).toBe(true)
     expect(results[0].summary).toMatch(/asset store is empty and healthy/i)
@@ -145,11 +146,11 @@ describe('checkAssets — store shape', () => {
     expect(results[2].summary).toMatch(/enrichment/)
   })
 
-  it('surfaces an advisory when unmanaged files await import', () => {
+  it('surfaces an advisory when unmanaged files await import', async () => {
     seedFullAssetsTree()
     mkdirSync(join(assetsRoot, 'inbox'), { recursive: true })
     writeFileSync(join(assetsRoot, 'inbox', 'dropped.png'), 'x')
-    const results = observations()
+    const results = await observations()
     const unimported = results.find(r => r.key === 'unimported')!
     expect(unimported.status).toBe('warning')
     expect(unimported.summary).toContain('1 unmanaged file')
@@ -158,29 +159,29 @@ describe('checkAssets — store shape', () => {
     expect(unimported.detail).toContain('/assets?tab=import')
   })
 
-  it('warns about legacy top-level type directories instead of scanning them', () => {
+  it('warns about legacy top-level type directories instead of scanning them', async () => {
     seedFullAssetsTree()
     const legacyDir = join(assetsRoot, 'images', 'task-abc')
     mkdirSync(legacyDir, { recursive: true })
     writeFileSync(join(legacyDir, 'hero.png'), 'fake-image')
 
-    const results = observations()
+    const results = await observations()
     expect(results.some(r => r.status === 'warning' && r.summary.includes('Unexpected assets/images'))).toBe(true)
   })
 
-  it('warns about non-assetId entries inside a month shard', () => {
+  it('warns about non-assetId entries inside a month shard', async () => {
     seedFullAssetsTree()
     writeFileSync(join(storeDir, 'loose-file.png'), 'fake-image')
 
-    const results = observations()
+    const results = await observations()
     expect(results.some(r => r.status === 'warning' && r.summary.includes('entries must be asset directories'))).toBe(true)
   })
 
-  it('warns about non-canonical month shards', () => {
+  it('warns about non-canonical month shards', async () => {
     seedFullAssetsTree()
     mkdirSync(join(storeRoot, 'not-a-shard'), { recursive: true })
 
-    const results = observations()
+    const results = await observations()
     expect(results.some(r => r.status === 'warning' && r.summary.includes('canonical YYYY-MM shard'))).toBe(true)
   })
 })
@@ -188,37 +189,37 @@ describe('checkAssets — store shape', () => {
 // ─── Versioned manifest integrity ──────────────────────────────────────────
 
 describe('checkAssets — manifest integrity', () => {
-  it('reports ok when all manifests are valid', () => {
+  it('reports ok when all manifests are valid', async () => {
     seedFullAssetsTree()
     seedVersionedAsset('20260323-hero-a1b2c3d4')
     seedVersionedAsset('20260323-banner-b2c3d4e5')
 
-    const results = observations()
+    const results = await observations()
     expect(results.some(r => r.status === 'healthy' && r.summary.includes('2 versioned asset(s) have valid manifests'))).toBe(true)
   })
 
-  it('warns about an asset directory with no manifest', () => {
+  it('warns about an asset directory with no manifest', async () => {
     seedFullAssetsTree()
     mkdirSync(join(storeDir, '20260323-broken-c3d4e5f6'), { recursive: true })
 
-    const results = observations()
+    const results = await observations()
     expect(results.some(r => r.status === 'warning' && r.summary.includes('missing or invalid manifest.json'))).toBe(true)
   })
 
-  it('warns when currentVersion is not in versions[]', () => {
+  it('warns when currentVersion is not in versions[]', async () => {
     seedFullAssetsTree()
     seedVersionedAsset('20260323-bad-d4e5f6a7', { currentVersion: 9 })
 
-    const results = observations()
+    const results = await observations()
     expect(results.some(r => r.status === 'warning' && r.summary.includes('currentVersion 9 is absent from versions[]'))).toBe(true)
   })
 
-  it('warns when a version file is missing on disk', () => {
+  it('warns when a version file is missing on disk', async () => {
     seedFullAssetsTree()
     // Manifest references v1.png but we write no version files.
     seedVersionedAsset('20260323-nofile-e5f6a7b8', { files: [] })
 
-    const results = observations()
+    const results = await observations()
     expect(results.some(r => r.status === 'warning' && r.summary.includes('missing version file v1.png'))).toBe(true)
   })
 })
@@ -279,7 +280,7 @@ describe('checkAssets — trash purge', () => {
     expect(existsSync(late)).toBe(true)
   })
 
-  it('does not purge trash items during diagnostics', () => {
+  it('does not purge trash items during diagnostics', async () => {
     seedFullAssetsTree()
     const trashDir = join(assetsRoot, '.trash')
     const oldFile = join(trashDir, 'ancient.bin')
@@ -287,7 +288,7 @@ describe('checkAssets — trash purge', () => {
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
     utimesSync(oldFile, thirtyDaysAgo / 1000, thirtyDaysAgo / 1000)
 
-    checkAssets(testDir)
+    await checkAssets(testDir)
     expect(existsSync(oldFile)).toBe(true)
   })
 })
@@ -295,7 +296,7 @@ describe('checkAssets — trash purge', () => {
 // ─── Disk-usage warning (>5GB) ────────────────────────────────────────────
 
 describe('checkAssets — disk usage', () => {
-  it('warns when the assets tree exceeds 5GB', () => {
+  it('warns when the assets tree exceeds 5GB', async () => {
     seedFullAssetsTree()
     const dir = join(storeDir, '20260323-huge-a1b2c3d4')
     mkdirSync(dir, { recursive: true })
@@ -304,7 +305,7 @@ describe('checkAssets — disk usage', () => {
     truncateSync(bigFile, 6 * 1024 * 1024 * 1024)
     expect(statSync(bigFile).size).toBe(6 * 1024 * 1024 * 1024)
 
-    const results = observations()
+    const results = await observations()
     expect(results.some(r => r.status === 'warning' && r.summary.includes('GB'))).toBe(true)
   })
 })
@@ -360,12 +361,12 @@ function seedEnrichedAsset(name: string, enrichment?: Record<string, unknown>, c
 }
 
 describe('enrichment coverage — one stat, never a per-asset nag', () => {
-  it('healthy single observation with coverage evidence when coverage is fine (failures fold in)', () => {
+  it('healthy single observation with coverage evidence when coverage is fine (failures fold in)', async () => {
     seedFullAssetsTree()
     for (let i = 0; i < 19; i++) seedEnrichedAsset(`ok-${i}`, { status: 'done', forVersion: 1 })
     seedEnrichedAsset('failed-1', { status: 'failed', error: 'boom' })
 
-    const results = observations()
+    const results = await observations()
     const coverage = results.filter((r) => r.key === 'enrichment-coverage')
     expect(coverage).toHaveLength(1)
     expect(coverage[0].status).toBe('healthy')
@@ -374,12 +375,12 @@ describe('enrichment coverage — one stat, never a per-asset nag', () => {
     expect(results.some((r) => r.key === 'enrichment-failed' || r.key === 'enrichment-incomplete')).toBe(false)
   })
 
-  it('ONE advisory when coverage craters below the threshold', () => {
+  it('ONE advisory when coverage craters below the threshold', async () => {
     seedFullAssetsTree()
     for (let i = 0; i < 2; i++) seedEnrichedAsset(`ok-${i}`, { status: 'done', forVersion: 1 })
     for (let i = 0; i < 8; i++) seedEnrichedAsset(`missing-${i}`)
 
-    const results = observations()
+    const results = await observations()
     const coverage = results.filter((r) => r.key === 'enrichment-coverage')
     expect(coverage).toHaveLength(1)
     expect(coverage[0].status).toBe('warning')
@@ -390,18 +391,18 @@ describe('enrichment coverage — one stat, never a per-asset nag', () => {
     expect(coverage[0].evidence).toMatchObject({ enriched: 2, missing: 8 })
   })
 
-  it('tiny stores never alert regardless of coverage', () => {
+  it('tiny stores never alert regardless of coverage', async () => {
     seedFullAssetsTree()
     for (let i = 0; i < 3; i++) seedEnrichedAsset(`missing-${i}`)
-    const coverage = observations().filter((r) => r.key === 'enrichment-coverage')
+    const coverage = (await observations()).filter((r) => r.key === 'enrichment-coverage')
     expect(coverage[0].status).toBe('healthy')
   })
 
-  it('skipped assets leave the denominator — deliberate opt-outs never count against coverage', () => {
+  it('skipped assets leave the denominator — deliberate opt-outs never count against coverage', async () => {
     seedFullAssetsTree()
     for (let i = 0; i < 2; i++) seedEnrichedAsset(`ok-${i}`, { status: 'done', forVersion: 1 })
     for (let i = 0; i < 8; i++) seedEnrichedAsset(`skipped-${i}`, { status: 'skipped', error: 'unsupported', forVersion: 1 })
-    const coverage = observations().filter((r) => r.key === 'enrichment-coverage')
+    const coverage = (await observations()).filter((r) => r.key === 'enrichment-coverage')
     expect(coverage[0].status).toBe('healthy')
     expect(coverage[0].evidence).toMatchObject({ wanting: 2, skipped: 8 })
   })
@@ -420,23 +421,23 @@ describe('incompleteEnrichmentAssetIds — the self-heal selector', () => {
     expect(names).toEqual(['failed-1', 'missing-1', 'stale-1'])
   })
 
-  it('a skip for an OLDER version is stale and retried (#855) — the verdict was about other bytes', () => {
+  it('a skip for an OLDER version is stale and retried (#855) — the verdict was about other bytes', async () => {
     seedFullAssetsTree()
     seedEnrichedAsset('oldskip', { status: 'skipped', error: 'cannot decode image/bmp', forVersion: 1 }, 2)
     const names = incompleteEnrichmentAssetIds().map((id) => id.split('-').slice(1, -1).join('-'))
     expect(names).toEqual(['oldskip'])
-    const coverage = observations().filter((r) => r.key === 'enrichment-coverage')
+    const coverage = (await observations()).filter((r) => r.key === 'enrichment-coverage')
     expect(coverage[0].evidence).toMatchObject({ stale: 1, skipped: 0 })
   })
 })
 
 describe('stranded pending enrichment (review finding)', () => {
-  it('counts pending as incomplete so the self-heal pass retries crash-stranded jobs', () => {
+  it('counts pending as incomplete so the self-heal pass retries crash-stranded jobs', async () => {
     seedFullAssetsTree()
     seedEnrichedAsset('pending-1', { status: 'pending' })
     const names = incompleteEnrichmentAssetIds().map((id) => id.split('-').slice(1, -1).join('-'))
     expect(names).toEqual(['pending-1'])
-    const coverage = observations().filter((r) => r.key === 'enrichment-coverage')
+    const coverage = (await observations()).filter((r) => r.key === 'enrichment-coverage')
     expect(coverage[0].evidence).toMatchObject({ missing: 1, enriched: 0 })
   })
 })

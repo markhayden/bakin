@@ -2470,7 +2470,8 @@
       },
       "sourcePath": "packages/host/src/components/runtime/overview-tab.tsx",
       "symbols": [
-        "OverviewTab"
+        "OverviewTab",
+        "credentialHandoffFor"
       ],
       "exportStatus": "private",
       "classification": "shared-ui",

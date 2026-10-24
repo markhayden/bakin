@@ -41,6 +41,7 @@ beforeEach(() => {
     versionFiles: [{ version: 1, file: 'v1.txt', size: 3 }],
     versions: [{ version: 1, file: 'v1.txt', present: true }, { version: 2, file: 'v2.txt', present: false }],
     exports: [{ name: 'plain', file: 'exports/plain.txt', fromVersion: 2, present: true }],
+    references: { known: true, task: { taskId: 't-7', title: 'Launch notes', open: true }, brands: [{ brandId: 'acme', where: 'logo (dark)' }] },
   }
   globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -113,6 +114,27 @@ describe('AssetRecoverPage', () => {
     await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Move to trash' })) })
     await waitFor(() => expect(requests.some((r) => r.url === BASE && r.method === 'DELETE')).toBe(true))
     await waitFor(() => expect(push).toHaveBeenCalledWith('/assets'))
+  })
+
+  it('Detach references (spec §3.9) names the task and brands that still point at the asset, confirms, posts, reloads and reruns the check; nothing to detach disables it', async () => {
+    await renderPage()
+    expect(screen.getByText(/Still referenced by task Launch notes, brand acme \(logo \(dark\)\)/)).toBeTruthy()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Detach references' })) })
+    const dialog = await screen.findByRole('dialog', { name: 'Detach every reference?' })
+    expect(dialog.textContent).toContain('task Launch notes, brand acme (logo (dark)) will no longer point at')
+    report = { ...report, references: { known: true, task: null, brands: [] } }
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' })) })
+    await waitFor(() => expect(requests.some((r) => r.url === `${BASE}/recover/detach-references` && r.method === 'POST')).toBe(true))
+    await waitFor(() => expect(screen.getByText('Nothing references this asset.')).toBeTruthy())
+    expect((screen.getByRole('button', { name: 'Detach references' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(requests.find((r) => r.url === '/api/plugins/health/doctor/run')).toMatchObject({ body: { checkIds: ['assets.assets'] } })
+  })
+
+  it('an unreadable usage leg is said so, never shown as "nothing references it"', async () => {
+    report = { ...report, references: { known: false, task: null, brands: [] } }
+    await renderPage()
+    expect(screen.getByText(/could not be fully read/)).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Detach references' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('a directory that no longer exists is an honest end state, not a spinner', async () => {

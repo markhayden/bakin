@@ -113,7 +113,8 @@ describe('plugin-upgrade repair', () => {
     installStranded('terminal')
     const action = pluginUpgradeRepair(deps)
     expect(action.mutation).toBe('upgrade')
-    expect(action.effects).toEqual({ deletesUserContent: false, spendsMoney: false, widensAuthorization: false })
+    // The upgrade also resolves the folded `assets-unavailable` family (row 92 → 96 fold).
+    expect(action.effects).toEqual({ deletesUserContent: false, spendsMoney: false, widensAuthorization: false, resolves: ['assets-unavailable'] })
     const [item] = await action.plan(target)
     expect(item!.changes.map((c) => c.target)).toEqual([
       `plugin:terminal@1.5.0#${'d'.repeat(64)}!${'7'.repeat(64)}`,

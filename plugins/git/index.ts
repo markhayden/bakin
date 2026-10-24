@@ -628,13 +628,15 @@ export function gitReleaseWorktreeRepair(ctx: PluginContextLite): HealthRepairAc
       op.stage('release')
       const results: HealthRepairApplyResult[] = []
       for (const item of items) {
-        const entry = readRegistry(ctx).worktrees.find((row) => row.id === item.id)
-        op.item('release', { id: item.id, label: entry?.taskId ?? item.id, status: 'active' })
+        // `localId` is the planner's worktree id; `item.id` is core's opaque canonical id.
+        const worktreeId = item.localId
+        const entry = readRegistry(ctx).worktrees.find((row) => row.id === worktreeId)
+        op.item('release', { id: worktreeId, label: entry?.taskId ?? worktreeId, status: 'active' })
         const released = entry
           ? await releaseWorktree(ctx, { worktreePath: entry.worktreePath, force: true }, 'system')
           : { ok: false as const, error: 'The registry entry is gone already.' }
-        const message = released.ok ? `Released the stale worktree entry for task ${entry?.taskId}.` : `Could not release ${entry?.taskId ?? item.id}: ${String((released as { error?: unknown }).error ?? 'unknown error')}`
-        op.item('release', { id: item.id, label: entry?.taskId ?? item.id, status: released.ok ? 'done' : 'failed', message })
+        const message = released.ok ? `Released the stale worktree entry for task ${entry?.taskId}.` : `Could not release ${entry?.taskId ?? worktreeId}: ${String((released as { error?: unknown }).error ?? 'unknown error')}`
+        op.item('release', { id: worktreeId, label: entry?.taskId ?? worktreeId, status: released.ok ? 'done' : 'failed', message })
         results.push({ itemId: item.id, actionId: item.actionId, status: released.ok ? 'applied' : 'failed', message, affectedCheckIds: ['git.worktrees'], changes: item.changes })
       }
       return results

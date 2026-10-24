@@ -144,9 +144,11 @@ describe('checkPluginArtifacts — what the source offers this host', () => {
     installPlugin('stale', 'react18-old-vX')
     lockEntry('stale')
     const [row] = observed(await checkPluginArtifacts(offering(null, '2.0.0')))
-    // Row 98: upstream-blocked is the operator's decision (wait, or disable); the reason rides the impact copy.
-    expect(row.incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', key: 'await-compatible-release', href: '/health?tab=updates' })
-    expect(row.incident).toMatchObject({ declarationId: 'needs-update-blocked', required: true })
+    // Row 98: upstream-blocked is the operator's decision on the plugin's Explore card (wait, or disable — the card choice);
+    // the reason rides the impact copy. This fixture declares no contributions, so it is advisory (see plugin-disable.test.ts).
+    expect(row.incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', key: 'await-compatible-release', href: '/explore?tab=plugins&item=plugin:stale' })
+    expect(row.incident?.resolution.choices?.map((choice) => choice.key)).toEqual(['disable-plugin', 'updates'])
+    expect(row.incident).toMatchObject({ declarationId: 'needs-update-blocked', required: false, disposition: 'advisory' })
     expect(row.incident?.impact).toContain('newest is 2.0.0')
   })
 

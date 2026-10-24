@@ -8,8 +8,8 @@ import { Wrench } from 'lucide-react'
 import { startOperation, toast, useJsonFetch, useOperation, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { ConfirmDialog, OperationProgress, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
-import { type OperationStartResponse } from '@makinbakin/sdk/types'
+import { ConfirmDialog, HandoffCard, OperationProgress, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { type HealthIncident, type HealthReport, type OperationStartResponse } from '@makinbakin/sdk/types'
 import { RuntimeTable } from './runtime-table'
 import { Badge, Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { capabilityRows } from '../../lib/runtime-report'
@@ -17,9 +17,56 @@ import { ModeBadge, MODE_LEGEND, CheckStatusBadge, capabilityStateCopy, delivery
 import type { CapabilityReport, OnboardingComponentStatus } from './types'
 
 /**
+ * The runtime's own sign-in, read from the canonical Health report (the
+ * adapter's credential incident on `runtime:<adapter>` carries the exact
+ * command — Pi's `/login` inside its TUI, row 198). The runtime page never
+ * invents a command: with no such incident it names the gap and where the
+ * runtime's own tooling lives. Copy-only on purpose — the Terminal session
+ * handoff is the Health card's; this page re-reads credentials when it
+ * mounts again after the operator comes back.
+ */
+const HEALTH_REPORT_FETCH_OPTIONS = { timeoutMs: 10_000 }
+
+type HumanCredentialHandoff = Extract<HealthIncident['resolution'], { type: 'human' }> & { handoff: NonNullable<Extract<HealthIncident['resolution'], { type: 'human' }>['handoff']> }
+
+/** The runtime's credential handoff from the report, if its adapter published one. */
+export function credentialHandoffFor(report: Pick<HealthReport, 'incidents'> | null | undefined, adapter: string): HumanCredentialHandoff | null {
+  for (const incident of report?.incidents ?? []) {
+    const { resolution, subject } = incident
+    if (subject.kind !== 'runtime' || subject.id !== adapter) continue
+    if (resolution.type !== 'human' || resolution.needs !== 'credential' || !resolution.handoff) continue
+    return resolution as HumanCredentialHandoff
+  }
+  return null
+}
+
+function CredentialHandoff({ adapter }: { adapter: string }) {
+  const health = useJsonFetch<Pick<HealthReport, 'incidents'>>('/api/plugins/health/doctor', HEALTH_REPORT_FETCH_OPTIONS)
+  if (health.loading) return null
+  const handoff = credentialHandoffFor(health.data, adapter)
+  if (!handoff) {
+    return (
+      <Text as="p" tone="muted" size="meta" data-testid="runtime-credential-gap">
+        No model provider is signed in for {adapter}. Sign in with the runtime's own tooling, then come back — this page re-reads credentials when it loads.
+      </Text>
+    )
+  }
+  return (
+    <HandoffCard
+      title={handoff.label}
+      description="Bakin cannot sign you in to a provider. Run this in your terminal, then come back — this page re-reads credentials when it loads."
+      command={handoff.handoff.command}
+      cwd={handoff.handoff.cwd}
+    />
+  )
+}
+
+/**
  * `?field=credentials` (the health runtime-credentials incident's deep link)
  * lands on this group: it takes focus and the kit highlight outline, the
- * same treatment a deep-linked spend incident gets.
+ * same treatment a deep-linked spend incident gets. With no provider signed
+ * in, the group IS the control: the runtime's sign-in handoff sits under the
+ * tiles (Codex r1 #9 — a highlighted statistic is not a control).
  */
 function CredentialTiles({ report, highlighted }: { report: CapabilityReport; highlighted: boolean }) {
   const creds = report.credentialStatus
@@ -40,6 +87,7 @@ function CredentialTiles({ report, highlighted }: { report: CapabilityReport; hi
       data-highlighted={highlighted ? 'true' : undefined}
       className={highlighted ? 'rounded-bakin-surface outline outline-2 outline-offset-2 outline-bakin-signal-highlight' : undefined}
     >
+    <Stack gap="item">
     <StatGroup label="Runtime and credentials">
       <StatTile
         variant="surface"
@@ -74,6 +122,8 @@ function CredentialTiles({ report, highlighted }: { report: CapabilityReport; hi
           : report.toolAccess.issues.join('; ')}
       />
     </StatGroup>
+    {providers.length === 0 ? <CredentialHandoff adapter={report.adapter} /> : null}
+    </Stack>
     </div>
   )
 }

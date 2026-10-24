@@ -28,7 +28,7 @@ import type { EnrichmentSettings } from './lib/enrichment/providers'
 import { setUnmanagedEmitter, unmanagedSnapshot } from './lib/unmanaged-tracker'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
-import { ASSETS_INCIDENTS, assetRepair, checkAssets, checkEnrichmentEngine, incompleteEnrichmentAssetIds } from './lib/health-checks'
+import { ASSETS_INCIDENTS, assetRepair, assetUsageFromContext, checkAssets, checkEnrichmentEngine, incompleteEnrichmentAssetIds } from './lib/health-checks'
 import { healthObserved } from '@makinbakin/sdk/utils'
 
 const log = createLogger('assets')
@@ -128,7 +128,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
       maxAgeMs: 5 * 60_000,
       incidents: ASSETS_INCIDENTS,
       run: async () => {
-        const base = checkAssets(getContentDir())
+        const base = await checkAssets(getContentDir(), assetUsageFromContext(ctx))
         if (base.outcome === 'not_applicable') return base
         return healthObserved([
           ...base.observations,

@@ -28,6 +28,7 @@ import {
 import {
   ensureBakinJob,
   indexJob,
+  scheduledWorkflowIds,
   readMergedRuntimeJobs,
   jobToSearchDoc,
 } from './lib/job-service'
@@ -71,6 +72,12 @@ const schedulePlugin: BakinPlugin = definePlugin({
       hookKind: 'rpc',
       label: 'Ensure Bakin schedule',
       summary: 'Create or update a Bakin-owned schedule keyed by the caller\'s logical id and return its job id. The effective prompt (taskPrompt, else command) must be a task prompt — a sentence an agent can act on, never a bare marker token (spec D5).',
+    })
+
+    ctx.hooks.register('schedule.workflowsScheduled', () => scheduledWorkflowIds(), {
+      hookKind: 'rpc',
+      label: 'Scheduled workflows',
+      summary: 'Workflow ids an enabled Bakin schedule targets — the "scheduled" half of the workflows health checks\' in-use fact (re-homing rows 133–137). A paused job still counts; a disabled or completed one does not.',
     })
 
     ctx.hooks.register('schedule.adoptCronJobs', (data: unknown) => adoptCronJobs(ctx, data as AdoptCronJobsInput), {

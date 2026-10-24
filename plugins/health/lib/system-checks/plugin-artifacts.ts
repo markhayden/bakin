@@ -21,7 +21,7 @@
  * `pluginUpgradeOffer` is the ONE answer plugin-assets and plugin-registry
  * use to choose between the two.
  */
-import { existsSync, readdirSync, type Dirent } from 'fs'
+import { existsSync, readFileSync, readdirSync, type Dirent } from 'fs'
 import { join } from 'path'
 import type { UpdateRecord } from '@makinbakin/sdk/types'
 import { getContentDir } from '../../../../src/core/content-dir'
@@ -29,7 +29,7 @@ import { verifyInstalledArtifact } from '../../../../src/core/whiskit/verify'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput, HealthRepairActionDefinition, HealthRepairApplyResult, HealthRepairChange, HealthRepairPlanItem, HealthRepairPlanItemInput, HealthRepairTarget, HealthResolution, OperationContext } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
-import { isLinked, readPluginLockfile } from '@bakin/core/plugins/lockfile'
+import { isLinked, isPluginDisabled, readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { createLogger } from '../../../../src/core/logger'
 import { getUpdatesEngine } from '../../../../src/core/updates/service'
 import { stableKeyPart } from './key'
@@ -42,8 +42,10 @@ const CHECK_ID = 'health.plugin-artifacts'
 /**
  * Rows 96–99: a stranded plugin with an offered release upgrades (97); one
  * with no compatible release yet is upstream-blocked — the operator decides
- * (98; the containment control lands in PR6, so the decision lives on the
- * Updates tab); an unknown offer or invalid provenance reinstalls (99); an
+ * on the plugin's Explore card, with "Disable plugin" as the containment
+ * choice on the Health card itself (98; required while the plugin is
+ * enabled AND referenced; a disabled plugin's stale artifact is a plain
+ * observation); an unknown offer or invalid provenance reinstalls (99); an
  * unreadable directory is an observation (96).
  */
 export const PLUGIN_ARTIFACTS_INCIDENTS: HealthIncidentDeclaration[] = [
@@ -156,7 +158,7 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
     const verification = verifyInstalledArtifact(pluginDir)
     if (verification.status === 'needs-update' || verification.status === 'invalid') {
       const status = verification.status
-      pending.push(pluginUpgradeOffer(name, deps).then((offer) => pluginArtifactWarning(name, status, verification.reason, offer)))
+      pending.push(pluginUpgradeOffer(name, deps).then((offer) => pluginArtifactWarning(name, status, verification.reason, offer, pluginUsage(name, pluginDir))))
     }
   }
   const observations: HealthObservationInput[] = await Promise.all(pending)
@@ -173,17 +175,87 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
-function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid', reason: string, offer: PluginUpgradeOffer) {
+/**
+ * Row 98's two facts about an installed plugin: the lock ledger's `disabled`
+ * mark, and whether anything references it. The strongest usage fact Bakin
+ * can read without the plugin running is DECLARED: the on-disk manifest's
+ * contributions (nav, routes, exec tools, CLI commands, client routes) and
+ * the ledger's installed skills/bins (agents hold those). No live usage fact
+ * (an open task or workflow calling its tools) exists today — a plugin that
+ * declares nothing and installed nothing is advisory, never presumed required.
+ */
+export interface PluginUsage {
+  disabled: boolean
+  referenced: boolean
+  /** Why `referenced` is what it is, for the impact copy. */
+  referencedBy: string[]
+}
+
+export function pluginUsage(name: string, pluginDir: string): PluginUsage {
+  let entry: PluginLockEntry | undefined
+  try {
+    entry = readPluginLockfile().plugins[name]
+  } catch (err) {
+    log.warn('Could not read the plugin lockfile for the plugin usage facts', { pluginId: name, err: err instanceof Error ? err.message : String(err) })
+  }
+  const referencedBy: string[] = []
+  try {
+    const manifest = JSON.parse(readFileSync(join(pluginDir, 'bakin-plugin.json'), 'utf-8')) as { contributes?: Record<string, unknown> }
+    const contributes = manifest.contributes ?? {}
+    for (const key of ['navItems', 'routes', 'clientRoutes', 'apiRoutes', 'execTools', 'cliCommands', 'slots']) {
+      const value = contributes[key]
+      if (Array.isArray(value) && value.length > 0) referencedBy.push(`${value.length} declared ${key}`)
+    }
+  } catch (err) {
+    log.warn('Could not read the plugin manifest for the plugin usage facts', { pluginId: name, err: err instanceof Error ? err.message : String(err) })
+  }
+  if ((entry?.installedSkills?.length ?? 0) > 0) referencedBy.push(`${entry!.installedSkills!.length} installed runtime skill(s)`)
+  if ((entry?.installedBins?.length ?? 0) > 0) referencedBy.push(`${entry!.installedBins!.length} installed binary(ies)`)
+  return { disabled: isPluginDisabled(entry), referenced: referencedBy.length > 0, referencedBy }
+}
+
+function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid', reason: string, offer: PluginUpgradeOffer, usage: PluginUsage = { disabled: false, referenced: true, referencedBy: [] }) {
   const id = stableKeyPart(name)
   const label = name.slice(0, 120)
   // A stranded plugin with no compatible release yet is upstream-blocked: the
   // operator decides (wait, or disable it) instead of a reinstall that would
   // refuse (row 98 — a human row).
   const blocked = status === 'needs-update' && offer.kind === 'none'
+  if (blocked && usage.disabled) {
+    // Row 98, disabled: nothing loads it, nothing waits on it — an observation.
+    return healthWarning({
+      key: `plugin:${id}`,
+      summary: `${label} is disabled; its artifact still needs a compatible update.`,
+      detail: `${reason.slice(0, 3_000)} The plugin stays disabled until a compatible release is published and you enable it again (Explore → ${label}).`,
+      evidence: { pluginId: name.slice(0, 500), verificationStatus: status, reason: reason.slice(0, 4_000), disabled: true, updateObservedAt: offer.observedAt ?? null },
+    })
+  }
   const resolution: HealthResolution = status === 'needs-update' && offer.kind === 'upgrade'
     ? { key: PLUGIN_UPGRADE_ACTION, type: 'repair', label: `Install ${offer.version} for this Bakin`.slice(0, 120), actionId: PLUGIN_UPGRADE_ACTION }
     : blocked
-      ? { key: 'await-compatible-release', type: 'human', needs: 'decision', label: 'Wait for a compatible release, or disable the plugin', href: '/health?tab=updates' }
+      ? {
+          key: 'await-compatible-release',
+          type: 'human',
+          needs: 'decision',
+          label: 'Wait for a compatible release, or disable the plugin',
+          href: `/explore?tab=plugins&item=plugin:${encodeURIComponent(name)}`,
+          choices: [
+            {
+              key: 'disable-plugin',
+              kind: 'request',
+              label: 'Disable plugin',
+              method: 'POST',
+              url: '/api/plugins/disable',
+              body: { pluginId: name },
+              tone: 'danger',
+              confirm: {
+                title: `Disable ${label}?`,
+                description: `${label} stays installed but stops loading: ${usage.referencedBy.length > 0 ? `${usage.referencedBy.join(', ')} go away` : 'nothing it contributes is available'} until you enable it again in Explore. Its data is kept.`,
+              },
+            },
+            { key: 'updates', kind: 'link', label: 'See the update row', href: '/health?tab=updates' },
+          ],
+        }
       : pluginRepairResolution([{ pluginId: id, offer }])
   const declarationId = status === 'needs-update'
     ? (offer.kind === 'upgrade' ? 'needs-update' : blocked ? 'needs-update-blocked' : 'needs-update-reinstall')
@@ -208,11 +280,11 @@ function pluginArtifactWarning(name: string, status: 'needs-update' | 'invalid',
       impact: blocked
         ? `The plugin remains inactive until a compatible, verified artifact is installed. ${offer.kind === 'none' ? `${offer.reason.charAt(0).toUpperCase()}${offer.reason.slice(1)}. ` : ''}Its author has to publish one; Health offers the upgrade as soon as the updates engine observes it.`
         : 'The plugin remains inactive until a compatible, verified artifact is installed.',
-      disposition: 'action_required',
+      // Row 98: required while the plugin is enabled AND referenced — an enabled plugin that declares and installed nothing is advisory.
+      disposition: blocked && !usage.referenced ? 'advisory' : 'action_required',
       subject: { kind: 'plugin', id, label },
       declarationId,
-      // An installed artifact is presumed enabled and referenced (row 98 "AR while enabled and referenced").
-      ...(blocked ? { required: true } : {}),
+      ...(blocked ? { required: usage.referenced } : {}),
       resources: [{ kind: 'plugin', id, label }],
       resolution,
     },

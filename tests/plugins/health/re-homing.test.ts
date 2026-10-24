@@ -137,19 +137,19 @@ const OBSERVATION_ROWS: Array<{ rows: string; catalog: HealthIncidentDeclaration
 
 /** The table's effects per action → the ONE mode policy's verdict. */
 const ACTIONS: Array<{ action: HealthRepairActionDefinition; mode: 'self-heal' | 'one-click'; restarts?: 'bakin' | 'runtime' | 'search-engine'; mutation?: string }> = [
-  { action: healthAcksResetRepair(), mode: 'self-heal' },
-  { action: healthAcksPruneRepair(), mode: 'self-heal' },
-  { action: mediaStoreRepair(), mode: 'self-heal' },
+  { action: healthAcksResetRepair(), mode: 'self-heal', mutation: 'none' },
+  { action: healthAcksPruneRepair(), mode: 'self-heal', mutation: 'none' },
+  { action: mediaStoreRepair(), mode: 'self-heal', mutation: 'rebuild' },
   { action: packageSyncRepair(), mode: 'self-heal', mutation: 'sync' },
   { action: packageReinstallRepair(), mode: 'self-heal', mutation: 'reinstall' },
   { action: serviceSetupRepair(), mode: 'self-heal', restarts: 'bakin', mutation: 'restart' },
   { action: runtimeRestartRepair({ restart: async () => {}, ping: async () => true }), mode: 'self-heal', restarts: 'runtime', mutation: 'restart' },
   { action: sessionStorePruneRepair({ sessions: {} as never }), mode: 'one-click', mutation: 'delete' },
   { action: discordBridgeReconnectRepair(), mode: 'self-heal', mutation: 'restart' },
-  { action: requeueStrandedTasksRepair(), mode: 'one-click' },
-  { action: runDirsSweepRepair(), mode: 'self-heal' },
-  { action: syncSkillRepair('/repo', {} as never), mode: 'self-heal' },
-  { action: installPluginAssetsRepair(), mode: 'self-heal' },
+  { action: requeueStrandedTasksRepair(), mode: 'one-click', mutation: 'none' },
+  { action: runDirsSweepRepair(), mode: 'self-heal', mutation: 'none' },
+  { action: syncSkillRepair('/repo', {} as never), mode: 'self-heal', mutation: 'none' },
+  { action: installPluginAssetsRepair(), mode: 'self-heal', mutation: 'rebuild' },
   { action: pluginUpgradeRepair({ record: async () => undefined }), mode: 'self-heal', mutation: 'upgrade' },
   { action: pluginReinstallRepair(), mode: 'self-heal', mutation: 'reinstall' },
 ]
@@ -186,14 +186,18 @@ describe('re-homing — effects → mode per action', () => {
 describe('re-homing — emitted instances the fakes can reach', () => {
   const observed = (input: unknown) => (input as { observations: Array<Record<string, unknown> & { incident?: Record<string, unknown> }> }).observations
 
-  it('row 7: an unauthenticated gh is a credential handoff of `gh auth login`, required', async () => {
-    const [row] = observed(await checkGithubReadiness({ which: async () => '/usr/local/bin/gh', authOk: async () => false }))
-    expect(row!.incident).toMatchObject({
+  it('row 7: an unauthenticated gh is a credential handoff of `gh auth login` — required while repo roots are allowed (gh is used), advisory otherwise', async () => {
+    const [used] = observed(await checkGithubReadiness({ which: async () => '/usr/local/bin/gh', authOk: async () => false, inUse: async () => true }))
+    expect(used!.incident).toMatchObject({
       declarationId: 'authentication-required',
       subject: { kind: 'system', id: 'github-cli' },
       required: true,
+      disposition: 'action_required',
       resolution: { type: 'human', needs: 'credential', handoff: { command: 'gh auth login' } },
     })
+    const [unused] = observed(await checkGithubReadiness({ which: async () => '/usr/local/bin/gh', authOk: async () => false, inUse: async () => false }))
+    expect(unused!.incident).toMatchObject({ declarationId: 'authentication-required', required: false, disposition: 'advisory' })
+    expect(unused!.evidence).toMatchObject({ inUse: false })
   })
 
   it('row 12: an unreachable runtime is the restart repair on the active runtime', async () => {

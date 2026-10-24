@@ -197,6 +197,16 @@ describe('SpendPage', () => {
     expect(screen.getAllByText('Main').length).toBeGreaterThan(0)
   })
 
+  it('Limits: `?field=<rule id>` (a Health cap-reached card) focuses that rule\'s row and marks it highlighted', async () => {
+    querySeed.tab = 'limits'
+    querySeed.field = 'g'
+    render(<SpendPage />)
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Limits', selected: true })).toBeTruthy())
+    const row = await waitFor(() => { const el = document.getElementById('budget-rule-g'); if (!el) throw new Error('row not rendered'); return el })
+    expect(row.getAttribute('data-highlighted')).toBe('true')
+    await waitFor(() => expect(document.activeElement).toBe(row))
+  })
+
   it('Limits: every saved rule shows its utilization with the next reset, and "This period\'s milestones" discloses what the ladder recorded (#911 review)', async () => {
     render(<SpendPage />)
     await waitFor(() => expect(screen.getAllByText('$4.25').length).toBeGreaterThan(0))

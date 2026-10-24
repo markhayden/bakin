@@ -16,12 +16,13 @@ Spec `.claude/specs/self-healing-health-and-updates-2026-10.md` (rev 7, approved
 - [x] 1.3c core/adapters/channels actions + repointed incidents
 - [x] 1.3d tasks/spend/git actions + repointed incidents
 - [x] 1.4a assets + brands recover pages
-- [x] 1.4b workflows/spend/team/tasks controls + card buttons (three commits; "Disable plugin" for an upstream-blocked artifact deferred to PR6)
+- [x] 1.4b workflows/spend/team/tasks controls + card buttons (three commits; "Disable plugin" for an upstream-blocked artifact landed in the Codex r1 fold: ledger flag + loader skip + `/api/plugins/{disable,enable}` + Explore switch + `bakin plugins disable|enable` + the row-98 card choice)
 - [x] 1.4c HandoffCard (gh, Pi install/login, OpenClaw, gateway below-floor) + Explore capability= + readiness legs + aliases field + Discord invite + runtime credentials highlight (OpenClaw grant row keeps its steps — no verified command)
 - [x] 1.5 incident catalogs (finite families + declarationId) + validation + core.diagnose + brief builder [unactivated] (public API regen — no change: the freeze covers the browser entrypoints, not sdk/types)
 - [x] 1.6 raw retirement of pending legacy health approvals (intent receipt first, resumed until done) [unactivated — `src/core/approvals/legacy-retire.ts`, wired from startup recovery + bridge reconnect in 1.7]
 - [x] 1.7 THE CUTOVER (contract, catalogs for 206 rows, consumers, old engine adapted, authorizeMutation on every Health apply, legacy retirement at boot; public API freeze unchanged — browser entrypoints only)
 - [x] 1.8 scoped pins (`tests/architecture/health-three-outcomes.test.ts`: retired vocabulary, shared engine actions registered before plugins, every table check declares a catalog) + knowledge (contract sections + re-homing deviations landed with 1.7)
+- [x] Codex r1 (17 findings) folded: correctness fold 42ceddc73 (localId handles, report-resolved targets, `mutation` required, decision choices, page-owned handoff return, bounded legacy retirement) + scope fold (workflows/roster recover editors, asset/brand detach + usage facts, plugin disable containment, spend/models/health card choices, runtime credential/grant/gateway handoffs); Codex r2 pending
 - [ ] PR 1 merged
 
 ## PR 2 — `fix/search-and-companion-resilience`

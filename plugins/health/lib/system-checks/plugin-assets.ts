@@ -17,7 +17,8 @@ const ASSETS_SUBJECT: HealthSubject = { kind: 'system', id: 'plugin-assets', lab
  * Rows 93–95. A plugin incident lands in the upgrade family when the updates
  * engine offers a release, in the reinstall family otherwise (one family per
  * action). The user-edited row keeps the install repair: its one-click
- * restore item (D) IS the operator's decision, Keep = acknowledge the card.
+ * restore item (D) is "Restore shipped"; "Keep my edit" is a request choice
+ * that records the shipped sha the operator accepted (`accepted-edits.json`).
  */
 export const PLUGIN_ASSETS_INCIDENTS: HealthIncidentDeclaration[] = [
   { id: 'plugin-bins-invalid-upgrade', subjectKind: 'plugin', resolution: { type: 'repair', actionId: PLUGIN_UPGRADE_ACTION }, required: 'always' },
@@ -59,7 +60,7 @@ export async function checkPluginAssets(deps?: PluginArtifactDeps): Promise<Heal
       })])
     }
     type SkillRef = { name: string; pluginId: string }
-    const scan = result.details as { missing?: unknown[]; drifted?: unknown[]; userEditedDrifted?: SkillRef[]; invalidSource?: SkillRef[]; bins?: { missing?: unknown[]; drifted?: unknown[]; unsupported?: unknown[]; invalid?: Array<{ pluginId: string; reason: string }> } } | undefined
+    const scan = result.details as { missing?: unknown[]; drifted?: unknown[]; userEditedDrifted?: Array<SkillRef & { shippedSha?: string }>; invalidSource?: SkillRef[]; bins?: { missing?: unknown[]; drifted?: unknown[]; unsupported?: unknown[]; invalid?: Array<{ pluginId: string; reason: string }> } } | undefined
     const repairable = (scan?.missing?.length ?? 0) + (scan?.drifted?.length ?? 0)
       + (scan?.bins?.missing?.length ?? 0) + (scan?.bins?.drifted?.length ?? 0) + (scan?.bins?.unsupported?.length ?? 0)
     const locked = scan?.userEditedDrifted ?? []
@@ -93,11 +94,19 @@ export async function checkPluginAssets(deps?: PluginArtifactDeps): Promise<Heal
       // button that does nothing (#898).
       const skillResource = (ref: SkillRef) => ({ kind: 'asset' as const, id: `skill:${ref.name}`, label: `${ref.name} (${ref.pluginId})` })
       // A skill that is not text is the plugin's to fix: reinstall (or the
-      // offered upgrade). A user-edited skill is the operator's decision —
-      // its Keep/Restore control lands in 1.4, so the text stays until then.
-      // Keep = acknowledge the incident; Restore = the install repair's per-skill manual item (row 94).
+      // offered upgrade). A user-edited skill is the operator's decision (row
+      // 94): Restore shipped = the install repair's per-skill one-click item;
+      // Keep my edit = a recorded decision for the shipped version on the card.
+      const keepable = locked.filter((ref): ref is SkillRef & { shippedSha: string } => typeof ref.shippedSha === 'string')
       const resolution = locked.length > 0
-        ? { key: INSTALL_PLUGIN_ASSETS_ACTION, type: 'repair' as const, label: 'Restore the shipped copies', actionId: INSTALL_PLUGIN_ASSETS_ACTION }
+        ? {
+            key: INSTALL_PLUGIN_ASSETS_ACTION, type: 'repair' as const, label: locked.length === 1 ? 'Restore the shipped copy' : 'Restore the shipped copies', actionId: INSTALL_PLUGIN_ASSETS_ACTION,
+            ...(keepable.length > 0 ? { choices: [{
+              key: 'keep-edit', kind: 'request' as const, label: keepable.length === 1 ? 'Keep my edit' : `Keep my ${keepable.length} edits`, method: 'POST' as const,
+              url: '/api/plugins/health/plugin-assets/keep-edit',
+              body: { skills: keepable.map((ref) => ({ name: ref.name, pluginId: ref.pluginId, shippedSha: ref.shippedSha })) },
+            }] } : {}),
+          }
         : await pluginRepair(invalid.map((ref) => ref.pluginId), deps)
       return healthObserved([healthWarning({
         key: 'runtime-assets',

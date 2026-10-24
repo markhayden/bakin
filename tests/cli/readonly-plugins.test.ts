@@ -223,6 +223,20 @@ describe('read-only CLI TTY commands — plugins', () => {
     await main()
     expect(output()).toContain('Unlinked "local-tools" and deactivated it.')
 
+    // Row 98 containment: disable / enable ride the bounded host routes and print the server's sentence.
+    harness.log.mockClear()
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, id: 'messaging', disabled: true, changed: true, live: true, message: 'Disabled "messaging".' }), { status: 200 }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'disable', 'messaging']
+    await main()
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('/api/plugins/disable')
+    expect(output()).toContain('Disabled "messaging".')
+    harness.log.mockClear()
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, id: 'messaging', disabled: false, changed: true, live: false, liveError: 'The plugin registry is not running — the change applies at the next server start.', message: 'Enabled "messaging" (takes effect at the next restart: The plugin registry is not running — the change applies at the next server start.).' }), { status: 200 }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'enable', 'messaging']
+    await main()
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('/api/plugins/enable')
+    expect(output()).toContain('takes effect at the next restart')
+
     harness.log.mockClear()
     queueOperation('op-upgrade-preview', { ok: true, ready: true, awaitingConsent: false, id: 'messaging', consentToken: 'tok-ready' })
     queueOperation('op-upgrade', {

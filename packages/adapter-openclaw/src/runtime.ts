@@ -72,7 +72,7 @@ import {
 import { getOpenClawPath } from './home'
 import type { OpenClawRuntimeAdapterOptions } from './index'
 import { OpenClawApprovalGatewayClient } from './approval-gateway'
-import { GATEWAY_REQUIRED_PROTOCOL, OpenClawGatewayRpcClient, lastGatewayHandshake, type OpenClawGatewayAcceptedAck } from './gateway-rpc'
+import { OpenClawGatewayRpcClient, gatewayCompatibility, type OpenClawGatewayAcceptedAck } from './gateway-rpc'
 import {
   CANONICAL_DURABLE_FILES,
   getOpenClawMemoryEntry,
@@ -1234,17 +1234,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * handshake (#1007 D7.10) — the same evidence `protocolFloorError` judged
    * at connect. Never a live probe, never inferred from the CLI version.
    */
-  compatibility = (): RuntimeCompatibility => {
-    const evidence = lastGatewayHandshake()
-    const required = String(GATEWAY_REQUIRED_PROTOCOL)
-    if (!evidence) return { required, state: 'unknown' }
-    return {
-      required,
-      observed: evidence.protocol === null ? 'unreported' : String(evidence.protocol),
-      observedAt: evidence.at,
-      state: evidence.belowFloor ? 'below-floor' : 'ok',
-    }
-  }
+  compatibility = (): RuntimeCompatibility => gatewayCompatibility()
 
   private async runtimeAgentIds(): Promise<string[]> {
     return (await this.agents.list()).map((agent) => agent.id).filter(Boolean)

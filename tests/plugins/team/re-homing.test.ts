@@ -98,8 +98,8 @@ describe('team re-homing — emitted instances', () => {
     expect(unreadable[0]!.incident).toBeUndefined()
     agents = [{ id: '', name: 'Broken', status: 'active' }, { id: 'main', name: 'Main', status: 'active' }, { id: 'main', name: 'Main', status: 'active' }]
     const rows = observed(await checkAgentRoster(reader))
-    expect(rows.find((r) => r.key === 'missing-id-0')!.incident).toMatchObject({ declarationId: 'missing-id', subject: { kind: 'agent', id: 'roster-0' }, resolution: { type: 'human', needs: 'decision', href: '/team?recover=1' } })
-    expect(rows.find((r) => r.key === 'duplicate-main')!.incident).toMatchObject({ declarationId: 'duplicate', subject: { kind: 'agent', id: 'main' }, resolution: { type: 'human', needs: 'decision', href: '/team?recover=1' } })
+    expect(rows.find((r) => r.key === 'missing-id-0')!.incident).toMatchObject({ declarationId: 'missing-id', subject: { kind: 'agent', id: 'roster-0' }, resolution: { type: 'human', needs: 'decision', href: '/team?recover=1&entry=0' } })
+    expect(rows.find((r) => r.key === 'duplicate-main')!.incident).toMatchObject({ declarationId: 'duplicate', subject: { kind: 'agent', id: 'main' }, resources: [{ kind: 'agent', id: 'main' }, { kind: 'runtime', id: 'roster-entry-1' }, { kind: 'runtime', id: 'roster-entry-2' }], resolution: { type: 'human', needs: 'decision', href: '/team?recover=1&agent=main' } })
   })
   it('rows 108–110: unreadable roster is an observation; a missing directory and a missing persona repair through create-personas', async () => {
     const unreadable = observed(await checkPersonas(testDir, { list: async () => { throw new Error('nope') } }))

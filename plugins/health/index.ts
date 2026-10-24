@@ -18,6 +18,8 @@ import { CHANNEL_HEALTH_CHECK_IDS, subscribeChannelReadiness } from '../../src/c
 import { wireChannelHealthReruns } from './lib/channel-readiness-reruns'
 import { acknowledgeHealthIncident } from '../../src/core/doctor-report-cache'
 import { HealthAckNotFoundError, HealthAckStoreError, inspectAckStore } from '../../src/core/health-acks'
+import { acceptUserEditedSkills } from '../../src/core/onboarding/plugin-assets'
+import { forgetKeptSearchTables, keepSearchTables, readKeptSearchTables } from './lib/system-checks/kept-search-tables'
 import { createLogger } from '../../src/core/logger'
 import { getAgentUsageSnapshot, getAllAgentUsage } from '../../src/core/agent-usage'
 import {
@@ -779,6 +781,73 @@ const routes = [
           return Response.json({ error: err.message }, { status: err instanceof HealthAckNotFoundError ? 404 : 400 })
         }
         throw err
+      }
+    },
+  }),
+
+  // Decision choices (self-healing PR1, re-homing rows 76 and 94): the card's
+  // "Keep" buttons land here; the check honours the record on its next run.
+  defineRoute({
+    path: '/search/unclaimed-tables/keep',
+    method: 'POST',
+    summary: 'Keep unclaimed Search engine tables',
+    description: 'Row 76 "Keep": records the named unclaimed engine tables as kept, so Health stops raising them (a table that appears later is raised anew). Reversible through /search/unclaimed-tables/forget.',
+    body: z.object({ tables: z.array(z.string().min(1).max(200)).min(1).max(200) }).strict(),
+    responses: { 200: z.object({ kept: z.array(z.string()) }), 400: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        return Response.json({ kept: keepSearchTables(body.tables) })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/search/unclaimed-tables/forget',
+    method: 'POST',
+    summary: 'Forget kept Search engine tables',
+    description: 'Reverses a "Keep": the named tables (or every kept table when none are named) are raised again by the next deep sweep.',
+    body: z.object({ tables: z.array(z.string().min(1).max(200)).max(200).optional() }).strict(),
+    responses: { 200: z.object({ kept: z.array(z.string()) }), 400: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        return Response.json({ kept: forgetKeptSearchTables(body.tables) })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/search/unclaimed-tables/kept',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'List kept Search engine tables',
+    responses: { 200: z.object({ kept: z.array(z.string()) }), 400: errorResponse },
+    handler: async () => {
+      try {
+        return Response.json({ kept: readKeptSearchTables() })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/plugin-assets/keep-edit',
+    method: 'POST',
+    summary: 'Keep a user-edited plugin skill',
+    description: 'Row 94 "Keep my edit": records the shipped version (sha) the operator accepted for each named skill; the plugin-assets check raises the drift again only when the plugin ships something new.',
+    body: z.object({
+      skills: z.array(z.object({ name: z.string().min(1).max(200), pluginId: z.string().min(1).max(200), shippedSha: z.string().regex(/^[0-9a-f]{64}$/) }).strict()).min(1).max(100),
+    }).strict(),
+    responses: { 200: z.object({ accepted: z.array(z.object({ name: z.string(), pluginId: z.string(), shippedSha: z.string(), acceptedAt: z.string() })) }), 400: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        return Response.json({ accepted: acceptUserEditedSkills(body.skills) })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
       }
     },
   }),

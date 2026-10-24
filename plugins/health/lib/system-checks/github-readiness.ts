@@ -10,6 +10,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthIncidentDeclaration } from '@makinbakin/sdk'
+import { readPluginSettings } from '../../../../packages/core/src/plugins/settings-store'
 
 const execFileAsync = promisify(execFile)
 
@@ -23,6 +24,13 @@ export interface GhProbe {
   which(): Promise<string | null>
   /** Exit-code truth of `gh auth status`. */
   authOk(): Promise<boolean>
+  /**
+   * Row 7's usage fact: is GitHub work configured here? Today that is the
+   * git plugin's `allowedRepoRoots` (the gate on every repo-bound dispatch
+   * and worktree); an empty allowlist means no agent can reach a repo, so an
+   * unauthenticated gh blocks nothing yet.
+   */
+  inUse(): Promise<boolean>
 }
 
 export const defaultGhProbe: GhProbe = {
@@ -43,6 +51,10 @@ export const defaultGhProbe: GhProbe = {
       return false
     }
   },
+  async inUse() {
+    const roots = readPluginSettings<{ allowedRepoRoots?: unknown }>('git').allowedRepoRoots
+    return Array.isArray(roots) && roots.length > 0
+  },
 }
 
 export async function checkGithubReadiness(probe: GhProbe = defaultGhProbe): Promise<HealthCheckRunInput> {
@@ -57,7 +69,8 @@ export async function checkGithubReadiness(probe: GhProbe = defaultGhProbe): Pro
   }
 
   const authed = await probe.authOk()
-  const evidence = { installed: true, authenticated: authed, path: ghPath }
+  const inUse = await probe.inUse()
+  const evidence = { installed: true, authenticated: authed, path: ghPath, inUse }
   if (authed) {
     return healthObserved([healthHealthy({
       key: 'github-cli',
@@ -75,12 +88,14 @@ export async function checkGithubReadiness(probe: GhProbe = defaultGhProbe): Pro
     incident: {
       key: 'authentication-required',
       title: 'GitHub CLI needs authentication',
-      impact: 'Agents cannot create or update GitHub issues, pull requests, or releases. Run `gh auth login` and follow the prompts to sign in to GitHub.',
-      disposition: 'action_required',
+      impact: inUse
+        ? 'Agents cannot create or update GitHub issues, pull requests, or releases for the repos you allow. Run `gh auth login` and follow the prompts to sign in to GitHub.'
+        : 'No repo roots are allowed for agents yet, so nothing is blocked; sign in before you allow one.',
+      disposition: inUse ? 'action_required' : 'advisory',
       subject: { kind: 'system', id: 'github-cli', label: 'GitHub CLI' },
       declarationId: 'authentication-required',
-      // gh is installed on this box, so something here uses it (row 7: "AR while gh is used").
-      required: true,
+      // Row 7: "AR while gh is used" — the git plugin's repo allowlist is the usage fact.
+      required: inUse,
       resources: [{ kind: 'system', id: 'github-cli', label: 'GitHub CLI' }],
       resolution: {
         key: 'authenticate',

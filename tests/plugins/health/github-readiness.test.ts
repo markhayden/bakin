@@ -24,9 +24,10 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 
 import { checkGithubReadiness, type GhProbe } from '../../../plugins/health/lib/system-checks/github-readiness'
 
-const probe = (path: string | null, authed: boolean): GhProbe => ({
+const probe = (path: string | null, authed: boolean, inUse = true): GhProbe => ({
   which: async () => path,
   authOk: async () => authed,
+  inUse: async () => inUse,
 })
 
 describe('github readiness check', () => {
@@ -57,6 +58,7 @@ describe('github readiness check', () => {
         installed: true,
         authenticated: false,
         path: '/opt/homebrew/bin/gh',
+        inUse: true,
       },
     }))
     expect(observation.incident).toEqual(expect.objectContaining({
@@ -86,6 +88,7 @@ describe('github readiness check', () => {
         installed: true,
         authenticated: true,
         path: '/opt/homebrew/bin/gh',
+        inUse: true,
       },
     })])
   })

@@ -28,7 +28,13 @@ mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info: mo
 const board = { columns: { todo: [{ id: 'task-exists' }], inProgress: [], review: [], done: [], archived: [], blocked: [], backlog: [] } }
 mock.module('../../../src/core/task-store', () => ({ readTaskboard: () => board }))
 mock.module('@/core/task-store', () => ({ readTaskboard: () => board }))
-const registry = () => ({ invoke: async () => undefined, has: () => false, register: () => () => {} })
+// The schedule plugin's hook answer (rows 133–137 "scheduled"): a test sets it; `undefined` = no schedule plugin.
+let scheduledAnswer: unknown = undefined
+const registry = () => ({
+  invoke: async (name: string) => (name === 'schedule.workflowsScheduled' ? scheduledAnswer : undefined),
+  has: () => false,
+  register: () => () => {},
+})
 mock.module('../../../src/core/plugin-registry', () => ({ getPluginSkills: () => pluginSkills, getHookRegistry: registry }))
 mock.module('@bakin/core/skills/plugin-skill-registry', () => ({ getPluginSkills: () => pluginSkills }))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({ getHookRegistry: registry }))
@@ -51,7 +57,7 @@ const skillsDir = join(testDir, 'workflows', 'skills')
 const definitionsDir = join(testDir, 'workflows', 'definitions')
 const instancesDir = join(testDir, 'workflows', 'instances')
 
-type Row = { key: string; status: string; incident?: Record<string, unknown> & { resolution: Record<string, unknown> } }
+type Row = { key: string; status: string; summary: string; evidence?: Record<string, unknown>; incident?: Record<string, unknown> & { resolution: Record<string, unknown> } }
 function rows(result: { outcome: string }): Row[] {
   if (result.outcome !== 'observed') throw new Error(`expected observed, got ${result.outcome}`)
   return (result as unknown as { observations: Row[] }).observations
@@ -65,6 +71,7 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   for (const dir of [skillsDir, definitionsDir, instancesDir]) mkdirSync(dir, { recursive: true })
   pluginSkills.clear()
+  scheduledAnswer = undefined
   resetShippedDefaults()
 })
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
@@ -102,26 +109,36 @@ describe('workflows re-homing catalogs (rows 127–144)', () => {
 })
 
 describe('workflows re-homing emissions — skills (127–132)', () => {
-  it('127/128 frontmatter and output-schema → human decision on the skill editor; required only while a definition references the skill', () => {
+  it('127/128 frontmatter and output-schema → human decision on the skill editor; required only while a RUNNING or SCHEDULED definition references the skill', async () => {
     writeFileSync(join(skillsDir, 'loose.md'), 'no frontmatter here')
     writeFileSync(join(skillsDir, 'used.md'), '---\nname: Used\n---\nbody without a schema\n')
     writeFileSync(join(definitionsDir, 'uses.yaml'), workflowYaml('Uses', skillStep('s1', 'used')))
-    const all = rows(checkWorkflowSkills(testDir))
-    const loose = all.find((r) => r.key === 'frontmatter-loose.md')
-    const used = all.find((r) => r.key === 'output-schema-used.md')
-    expect(loose!.incident).toMatchObject({ declarationId: 'frontmatter', required: false, disposition: 'advisory', subject: { kind: 'record', id: 'workflows/skills/loose.md' }, resolution: decision('/workflows?recover=1&skill=loose.md') })
-    expect(used!.incident).toMatchObject({ declarationId: 'output-schema', required: true, disposition: 'action_required', subject: { kind: 'record', id: 'workflows/skills/used.md' }, resolution: decision('/workflows?recover=1&skill=used.md') })
+    // Referenced by an IDLE definition: still advisory (a reference alone is not use).
+    const idle = rows(await checkWorkflowSkills(testDir))
+    expect(idle.find((r) => r.key === 'frontmatter-loose.md')!.incident).toMatchObject({ declarationId: 'frontmatter', required: false, disposition: 'advisory', subject: { kind: 'record', id: 'workflows/skills/loose.md' }, resolution: decision('/workflows?recover=1&skill=loose.md') })
+    expect(idle.find((r) => r.key === 'output-schema-used.md')!.incident).toMatchObject({ declarationId: 'output-schema', required: false, disposition: 'advisory', subject: { kind: 'record', id: 'workflows/skills/used.md' } })
+    expect(idle.find((r) => r.key === 'output-schema-used.md')!.incident?.resolution).toMatchObject(decision('/workflows?recover=1&skill=used.md'))
+    // The schedule plugin targets `uses`: the skill it calls is required; the unreferenced one stays advisory.
+    scheduledAnswer = { workflowIds: ['uses'] }
+    const scheduled = rows(await checkWorkflowSkills(testDir))
+    expect(scheduled.find((r) => r.key === 'output-schema-used.md')!.incident).toMatchObject({ required: true, disposition: 'action_required' })
+    expect(scheduled.find((r) => r.key === 'frontmatter-loose.md')!.incident).toMatchObject({ required: false, disposition: 'advisory' })
+    // A running instance is the other half of the fact.
+    scheduledAnswer = undefined
+    writeFileSync(join(instancesDir, 'task-exists.json'), JSON.stringify({ instanceId: 'i1', taskId: 'task-exists', workflowId: 'uses', status: 'in_progress', currentStepId: 's1', updatedAt: new Date().toISOString() }))
+    const running = rows(await checkWorkflowSkills(testDir))
+    expect(running.find((r) => r.key === 'output-schema-used.md')!.incident).toMatchObject({ required: true, disposition: 'action_required' })
   })
 
-  it('129 an unreadable skill file and 130 an uninspectable skills directory are observations', () => {
+  it('129 an unreadable skill file and 130 an uninspectable skills directory are observations', async () => {
     mkdirSync(join(skillsDir, 'dir.md')) // EISDIR on read
-    const [unreadable] = rows(checkWorkflowSkills(testDir))
+    const [unreadable] = rows(await checkWorkflowSkills(testDir))
     expect(unreadable).toMatchObject({ key: 'unreadable-dir.md', status: 'warning' })
     expect(unreadable!.incident).toBeUndefined()
 
     rmSync(skillsDir, { recursive: true, force: true })
     writeFileSync(skillsDir, 'not a directory') // ENOTDIR on readdir
-    const [dir] = rows(checkWorkflowSkills(testDir))
+    const [dir] = rows(await checkWorkflowSkills(testDir))
     expect(dir).toMatchObject({ key: 'skills-directory', status: 'unknown' })
     expect(dir!.incident).toBeUndefined()
   })
@@ -136,13 +153,13 @@ describe('workflows re-homing emissions — skills (127–132)', () => {
     const target = join(skillsDir, 'generate-image.md')
     writeFileSync(target, stale)
     // Unmarked local file: not repairable → observation (132).
-    const [unmarked] = rows(checkWorkflowSkills(testDir))
+    const [unmarked] = rows(await checkWorkflowSkills(testDir))
     expect(unmarked).toMatchObject({ key: 'drift-generate-image', status: 'warning' })
     expect(unmarked!.incident).toBeUndefined()
 
     // Marked managed file whose bytes still match the install: repairable (131).
     writeWorkflowSkillInstallMarker(target, { sourceKind: 'plugin', sourceId: 'images', sourcePath, sha256: hashWorkflowSkillContent(stale), installedAt: '2026-06-02T00:00:00.000Z' })
-    const [marked] = rows(checkWorkflowSkills(testDir))
+    const [marked] = rows(await checkWorkflowSkills(testDir))
     expect(marked!.incident).toMatchObject({ declarationId: 'drift', disposition: 'action_required', subject: { kind: 'record', id: 'workflows/skills/generate-image.md' }, resolution: { type: 'repair', actionId: 'repair-skill-drift' } })
     const plan = await workflowSkillDriftRepair(testDir).plan({ type: 'all_actionable', reportId: 'r' })
     expect(plan).toHaveLength(1)
@@ -173,6 +190,35 @@ describe('workflows re-homing emissions — definitions (133–138)', () => {
     expect(nestedMap?.incident).toBeUndefined()
     // The idle child's own nested-map row (child → broken) is an observation too; nothing else about it is required.
     expect(all.filter((r) => r.key.startsWith('nested-map-child-')).every((r) => r.incident === undefined)).toBe(true)
+  })
+
+  it('133 a workflow SCHEDULED but not running is in use (the schedule hook\'s fact); an idle twin is advisory; a missing hook is never "in use"', async () => {
+    const unknownKey = '  - id: s1\n    label: S1\n    type: agent\n    agent: main\n    bogus: 1\n'
+    writeFileSync(join(definitionsDir, 'nightly.yaml'), workflowYaml('nightly', unknownKey))
+    writeFileSync(join(definitionsDir, 'idle.yaml'), workflowYaml('idle', unknownKey))
+    scheduledAnswer = { workflowIds: ['nightly'] }
+    const all = rows(await checkWorkflowDefinitions(testDir))
+    expect(all.find((r) => r.key.startsWith('schema-nightly-'))?.incident).toMatchObject({ declarationId: 'schema', required: true, disposition: 'action_required', resolution: decision('/workflows/nightly?recover=1') })
+    expect(all.find((r) => r.key.startsWith('schema-idle-'))?.incident).toMatchObject({ declarationId: 'schema', required: false, disposition: 'advisory' })
+    // The failing key rides the evidence so the recover editor can land on it.
+    expect(all.find((r) => r.key.startsWith('schema-nightly-'))).toMatchObject({ evidence: { path: 'steps.0.bogus' } })
+    // A throwing hook is "no schedule fact", never "in use".
+    scheduledAnswer = Promise.reject(new Error('schedule plugin down'))
+    const down = rows(await checkWorkflowDefinitions(testDir))
+    expect(down.find((r) => r.key.startsWith('schema-nightly-'))?.incident).toMatchObject({ required: false, disposition: 'advisory' })
+  })
+
+  it('133 a definition file that does not parse is NAMED (schema family, with the line) and never hides the rest of the scan', async () => {
+    writeFileSync(join(definitionsDir, 'torn.yaml'), 'name: torn\nsteps:\n  - id: s1\n    label: [unclosed\n')
+    writeFileSync(join(definitionsDir, 'fine.yaml'), workflowYaml('fine', skillStep('s1', 'missing-skill')))
+    const all = rows(await checkWorkflowDefinitions(testDir))
+    const torn = all.find((r) => r.key === 'schema-torn-parse')
+    expect(torn).toMatchObject({ status: 'warning', evidence: { line: expect.any(Number) } })
+    expect(torn!.incident).toMatchObject({ declarationId: 'schema', required: false, disposition: 'advisory', subject: { kind: 'record', id: 'workflows/torn' }, resolution: decision('/workflows/torn?recover=1') })
+    expect(torn!.summary).toMatch(/does not parse as YAML \(line \d+\)/)
+    // The other file is still scanned.
+    expect(all.find((r) => r.key.startsWith('skill-fine-s1-'))?.incident).toMatchObject({ declarationId: 'skill' })
+    expect(all.find((r) => r.key === 'definitions-scan')).toBeUndefined()
   })
 
   // 138 definitions-scan: `listDefinitions` tolerates a missing dir and the

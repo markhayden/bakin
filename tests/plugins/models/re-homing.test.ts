@@ -35,7 +35,7 @@ const description = (): SelectionsDescription => ({
   pending: [],
   evidence: { catalog: 'ok', runtimeAvailability: 'ok', credentials: 'failed', rejections: 'ok' },
 })
-const deps: DeadSelectionDeps = { describe: async () => description(), apply: async (proposals) => ({ applied: proposals.map((p) => p.ref), failed: [], pending: [], warnings: [], revision: 'rev-2' }) }
+const deps: DeadSelectionDeps = { describe: async () => description(), openTaskTags: async () => new Set<string>(), apply: async (proposals) => ({ applied: proposals.map((p) => p.ref), failed: [], pending: [], warnings: [], revision: 'rev-2' }) }
 const routingDeps = {} as RoutingHealthDeps
 
 describe('models re-homing — catalogs', () => {
@@ -48,10 +48,10 @@ describe('models re-homing — catalogs', () => {
     expect(action.effects).toEqual({ deletesUserContent: false, spendsMoney: false, widensAuthorization: true })
     expect(action.mutation).toBe('policy')
   })
-  it('models.dead-selections (157–159): proposal → one-click repoint (158, W), no proposal → human decision (159); evidence (157) is an observation', () => {
+  it('models.dead-selections (157–159): proposal → one-click repoint (158, W), no proposal → human decision (159), both required only while in use; evidence (157) is an observation', () => {
     expect(MODELS_DEAD_SELECTIONS_INCIDENTS).toEqual([
-      { id: 'dead-selection', subjectKind: 'setting', resolution: { type: 'repair', actionId: 'apply-model-proposal' }, required: 'always' },
-      { id: 'dead-selection-manual', subjectKind: 'setting', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+      { id: 'dead-selection', subjectKind: 'setting', resolution: { type: 'repair', actionId: 'apply-model-proposal' }, required: 'owner-decides' },
+      { id: 'dead-selection-manual', subjectKind: 'setting', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
     ])
     const action = deadSelectionRepair(deps)
     expect(action.effects.widensAuthorization).toBe(true)
@@ -68,9 +68,25 @@ describe('models re-homing — emitted instances (dead-selections)', () => {
     expect(evidence.incident).toBeUndefined()
     const proposal = parsed.observations.find((o) => o.key === 'dead-selection:agent:enrich:model')!
     expect(proposal.incident).toMatchObject({ declarationId: 'dead-selection', subject: { kind: 'setting', id: 'models.selection.agent:enrich:model' }, resolution: { type: 'repair', actionId: 'apply-model-proposal' } })
+    // An agent pin (live roster) and a route with a model are in use by construction: required + action_required.
+    expect(proposal.incident).toMatchObject({ required: true, disposition: 'action_required' })
     const manual = parsed.observations.find((o) => o.key === 'dead-selection:route:relay')!
-    expect(manual.incident).toMatchObject({ declarationId: 'dead-selection-manual', resolution: { type: 'human', needs: 'decision', href: '/models?ref=route%3Arelay' } })
+    expect(manual.incident).toMatchObject({ declarationId: 'dead-selection-manual', required: true, disposition: 'action_required', resolution: { type: 'human', needs: 'decision', href: '/models?ref=route%3Arelay' } })
     const items = stampPlanItems(deadSelectionRepair(deps), await deadSelectionRepair(deps).plan({ type: 'incidents', reportId: 'r', ids: ['models:models:dead-selection:agent:enrich:model'] }))
     expect(items[0]!.mode).toBe('one-click')
+  })
+
+  it('rows 158/159 "AR while in use": a dead tag override no open task carries is advisory (required:false); with such a task it is required', async () => {
+    const tagged = (): SelectionsDescription => ({
+      ...description(),
+      states: [{ ref: 'tag:legal', model: DEAD, document: 'routing', label: 'legal', eligibility: { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai' } }],
+      proposals: [],
+    })
+    const unused = parseHealthCheckRunInput(await checkDeadSelections({ ...deps, describe: async () => tagged(), openTaskTags: async () => new Set() }))
+    if (unused.outcome !== 'observed') throw new Error(unused.reason)
+    expect(unused.observations.find((o) => o.key === 'dead-selection:tag:legal')).toMatchObject({ status: 'warning', incident: { declarationId: 'dead-selection-manual', required: false, disposition: 'advisory' } })
+    const used = parseHealthCheckRunInput(await checkDeadSelections({ ...deps, describe: async () => tagged(), openTaskTags: async () => new Set(['legal']) }))
+    if (used.outcome !== 'observed') throw new Error(used.reason)
+    expect(used.observations.find((o) => o.key === 'dead-selection:tag:legal')).toMatchObject({ status: 'error', incident: { declarationId: 'dead-selection-manual', required: true, disposition: 'action_required' } })
   })
 })

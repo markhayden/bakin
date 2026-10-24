@@ -135,41 +135,41 @@ beforeEach(() => {
 })
 
 describe('checkWorkflowSkills', () => {
-  it('returns an ok result when the skills directory is empty', () => {
-    const results = observations(checkWorkflowSkills(testDir))
+  it('returns an ok result when the skills directory is empty', async () => {
+    const results = observations(await checkWorkflowSkills(testDir))
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('healthy')
   })
 
-  it('flags a skill missing YAML frontmatter', () => {
+  it('flags a skill missing YAML frontmatter', async () => {
     writeFileSync(join(skillsDir, 'bad.md'), 'just some content, no frontmatter')
-    const results = observations(checkWorkflowSkills(testDir))
+    const results = observations(await checkWorkflowSkills(testDir))
     expect(results.some(r => r.status === 'warning' && r.summary.includes('no YAML frontmatter'))).toBe(true)
     // The skill's recover view is the control (self-healing 1.4b, row 127).
     // Not referenced by any definition → advisory, not required (row 127).
     expect(results.find(r => r.summary.includes('no YAML frontmatter'))?.incident).toMatchObject({ declarationId: 'frontmatter', required: false, disposition: 'advisory', resolution: { type: 'human', needs: 'decision', href: '/workflows?recover=1&skill=bad.md' } })
   })
 
-  it('flags a skill missing output_schema', () => {
+  it('flags a skill missing output_schema', async () => {
     writeFileSync(
       join(skillsDir, 'no-schema.md'),
       '---\nname: no-schema\ndescription: test\n---\nbody',
     )
-    const results = observations(checkWorkflowSkills(testDir))
+    const results = observations(await checkWorkflowSkills(testDir))
     expect(results.some(r => r.status === 'warning' && r.summary.includes('no output_schema'))).toBe(true)
   })
 
-  it('returns ok when all skills have output_schema', () => {
+  it('returns ok when all skills have output_schema', async () => {
     writeFileSync(
       join(skillsDir, 'good.md'),
       '---\nname: good\noutput_schema: { foo: string }\n---\nbody',
     )
-    const results = observations(checkWorkflowSkills(testDir))
+    const results = observations(await checkWorkflowSkills(testDir))
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('healthy')
   })
 
-  it('flags stale local skills that shadow managed plugin skills', () => {
+  it('flags stale local skills that shadow managed plugin skills', async () => {
     const sourcePath = join(testDir, 'managed-generate-image.md')
     writeFileSync(
       sourcePath,
@@ -202,7 +202,7 @@ Return image_filename and promptAssetFilename after savePromptPacket.
 `,
     )
 
-    const results = observations(checkWorkflowSkills(testDir))
+    const results = observations(await checkWorkflowSkills(testDir))
 
     const stale = results.find(result => result.summary.includes('appears stale'))
     expect(stale?.status).toBe('warning')
@@ -257,7 +257,7 @@ Return image_filename and promptAssetFilename after savePromptPacket.
     expect(plan).toHaveLength(1)
     expect(plan[0].title).toContain('generate-image')
     expect(applied[0].status).toBe('applied')
-    expect(observations(checkWorkflowSkills(testDir))[0].status).toBe('healthy')
+    expect(observations(await checkWorkflowSkills(testDir))[0].status).toBe('healthy')
   })
 })
 

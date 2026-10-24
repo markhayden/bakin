@@ -791,6 +791,35 @@ describe('PluginRegistryImpl', () => {
       })
     })
 
+    it('skips a user plugin the lock ledger marks disabled and lists it as disabled (row 98 containment)', async () => {
+      const pluginDir = writeUserPlugin('contained-user', {
+        activate: `global.__contained = (global.__contained || 0) + 1`,
+      })
+      const contentDir = await import('../../packages/core/src/content-dir')
+      contentDir.resetContentDir()
+      const { getPluginLockfilePath } = await import('../../packages/core/src/plugins/lockfile')
+      const lockPath = getPluginLockfilePath()
+      mkdirSync(dirname(lockPath), { recursive: true })
+      writeFileSync(lockPath, JSON.stringify({
+        version: 1,
+        plugins: {
+          'contained-user': {
+            source: pluginDir, type: 'local', ref: '', commitSha: '',
+            installedAt: '2026-05-25T02:57:29.278Z', version: '3.1.0', permissions: [], manifestSha: 'sha256:test',
+            disabled: true,
+          },
+        },
+      }))
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect((globalThis as any).__contained).toBeUndefined()
+      expect(pluginRegistry.getPluginIds()).not.toContain('contained-user')
+      expect(pluginRegistry.isPluginDisabled('contained-user')).toBe(true)
+      const listed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'contained-user')
+      expect(listed).toMatchObject({ status: 'disabled', source: 'user', version: '3.1.0', routes: 0 })
+    })
+
     it('reports a clear failure when a user plugin is not built', async () => {
       const pluginDir = writeUserPlugin('unbuilt-user')
       rmSync(join(pluginDir, 'dist'), { recursive: true, force: true })

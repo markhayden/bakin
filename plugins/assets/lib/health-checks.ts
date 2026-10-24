@@ -4,6 +4,7 @@ import { join } from 'path'
 
 import type {
   HealthCheckRunInput,
+  HealthDecisionChoice,
   HealthIncidentDeclaration,
   HealthObservationInput,
   HealthRepairActionDefinition,
@@ -25,8 +26,31 @@ import { scanUnmanaged } from './import-unmanaged'
 import { getAsset, isVersionScopedVerdictStale, listAssets } from './asset-core'
 import { reseedUnmanaged } from './unmanaged-tracker'
 import { readManifest } from './manifest'
+import { inspectAssetReferences, referencesInUse, type AssetReferences, type AssetUsageContext } from './asset-recovery'
 import { resolveEnrichmentEngine } from './enrichment/engine'
 import type { EnrichmentSettings } from './enrichment/providers'
+
+/**
+ * The usage fact behind rows 174/180–182 ("AR only while referenced by a
+ * task/brand"): what still points at a broken asset. Built from the plugin
+ * context at registration; tests pass their own.
+ */
+export type AssetUsageLookup = (assetId: string, manifestTaskId: string | null | undefined) => Promise<AssetReferences>
+
+/** No facts at all: nothing is in use and nothing is claimed (`known: false`). */
+export const NO_USAGE_FACTS: AssetUsageLookup = async () => ({ known: false, task: null, brands: [] })
+
+export function assetUsageFromContext(ctx: AssetUsageContext): AssetUsageLookup {
+  return (assetId, manifestTaskId) => inspectAssetReferences(assetId, ctx, manifestTaskId)
+}
+
+function describeUsage(references: AssetReferences): { inUse: boolean; referencedBy: string; usageKnown: boolean } {
+  const parts = [
+    ...(references.task?.open ? [`task:${references.task.taskId}`] : []),
+    ...references.brands.map((ref) => `brand:${ref.brandId}`),
+  ]
+  return { inUse: referencesInUse(references), referencedBy: parts.join(', ') || 'none', usageKnown: references.known }
+}
 
 const REQUIRED_ASSET_DIRS = ['store', 'inbox', '.trash'] as const
 
@@ -75,8 +99,10 @@ function assetIncident(input: {
   /** The asset id for a broken record — its recover page is the control. */
   assetId?: string
   disposition?: 'advisory' | 'watch' | 'action_required'
-  /** `owner-decides` families carry the verdict; the check has no referenced-by-task fact, so a broken record is required (deviation noted in re-homing). */
+  /** `owner-decides` families carry the verdict: in use (an open task or a brand still references the record) ⇒ required. */
   required?: boolean
+  /** Named card buttons (the table's "card buttons"); row 174 moves the offending file aside. */
+  choices?: HealthDecisionChoice[]
   evidence?: Record<string, string | number | boolean | null>
 }): HealthObservationInput {
   const repair = input.family === 'store-missing' || input.family === 'directory-missing' || input.family === 'expired-trash'
@@ -101,8 +127,8 @@ function assetIncident(input: {
       resolution: repair
         ? { key: 'repair-store', type: 'repair', label: 'Repair asset store', actionId: 'repair-store' }
         : input.assetId
-          ? { key: 'recover-asset', type: 'human', needs: 'decision', label: 'Recover this asset', href: `/assets/${encodeURIComponent(input.assetId)}?recover=1` }
-          : { key: 'review-assets', type: 'human', needs: 'decision', label: 'Review Assets', href: '/assets' },
+          ? { key: 'recover-asset', type: 'human', needs: 'decision', label: 'Recover this asset', href: `/assets/${encodeURIComponent(input.assetId)}?recover=1`, ...(input.choices ? { choices: input.choices } : {}) }
+          : { key: 'review-assets', type: 'human', needs: 'decision', label: 'Review Assets', href: '/assets', ...(input.choices ? { choices: input.choices } : {}) },
     },
   })
 }
@@ -123,9 +149,9 @@ function assetObservation(input: {
 }
 
 /** Store shape, manifest integrity, unmanaged files, and enrichment coverage. */
-export function checkAssets(contentDir: string): HealthCheckRunInput {
+export async function checkAssets(contentDir: string, usage: AssetUsageLookup = NO_USAGE_FACTS): Promise<HealthCheckRunInput> {
   return healthObserved([
-    ...checkAssetStore(contentDir),
+    ...(await checkAssetStore(contentDir, usage)),
     ...checkUnimported(),
     ...checkEnrichment(),
   ] as [HealthObservationInput, ...HealthObservationInput[]])
@@ -291,9 +317,26 @@ export async function checkEnrichmentEngine(
   })
 }
 
-function checkAssetStore(contentDir: string): HealthObservationInput[] {
+async function checkAssetStore(contentDir: string, usage: AssetUsageLookup): Promise<HealthObservationInput[]> {
   const observations: HealthObservationInput[] = []
   const assetsRoot = join(contentDir, 'assets')
+  /** Rows 174/180–182: a broken record is required only while something still uses it. */
+  const brokenRecord = async (input: { key: string; family: 'manifest-missing' | 'current-version' | 'version-file'; summary: string; impact: string; assetId: string; manifestTaskId: string | null | undefined }): Promise<HealthObservationInput> => {
+    const references = await usage(input.assetId, input.manifestTaskId)
+    const described = describeUsage(references)
+    return assetIncident({
+      key: input.key,
+      family: input.family,
+      summary: input.summary,
+      impact: described.inUse
+        ? `${input.impact} ${described.referencedBy.startsWith('task:') ? 'An open task' : 'A brand'} still references it (${described.referencedBy}).`
+        : `${input.impact} Nothing open references it right now.`,
+      assetId: input.assetId,
+      disposition: described.inUse ? 'action_required' : 'advisory',
+      required: described.inUse,
+      evidence: described,
+    })
+  }
 
   if (!existsSync(assetsRoot)) {
     return [assetIncident({
@@ -317,14 +360,25 @@ function checkAssetStore(contentDir: string): HealthObservationInput[] {
     } else {
       try {
         if (!statSync(dirPath).isDirectory()) {
-          // Row 174: a required store location that is not a directory — the operator decides what the file is.
+          // Row 174: a required store location that is not a directory — the
+          // operator decides what the file is. The card's one choice moves it
+          // aside (nothing deleted); the self-heal repair then recreates the directory.
           observations.push(assetIncident({
             key: `directory-invalid-${stablePart(dirName)}`,
             family: 'directory-invalid',
             subject: { kind: 'record', id: `assets/${stablePart(dirName)}`, label: `assets/${dirName}` },
             summary: `assets/${dirName} exists but is not a directory.`,
-            impact: 'Operations that depend on this asset-store location will fail. Move the file aside so Bakin can recreate the directory.',
+            impact: 'Operations that depend on this asset-store location fail until a directory is back. Move the file aside and Bakin recreates the directory on its next repair pass; or inspect the file first.',
             disposition: 'action_required',
+            choices: [{
+              key: 'move-aside',
+              kind: 'request',
+              label: 'Move the file aside',
+              method: 'POST',
+              url: '/api/plugins/assets/recover/store-location',
+              body: { location: dirName },
+              confirm: { title: `Move assets/${dirName} aside?`, description: `The file is renamed to assets/${dirName}.invalid-<timestamp> beside its old place — nothing is deleted — and the directory is recreated by the next repair pass.` },
+            }],
           }))
         }
       } catch {
@@ -398,40 +452,37 @@ function checkAssetStore(contentDir: string): HealthObservationInput[] {
         const dirAbs = join(shardDir, entry)
         const manifest = readManifest(dirAbs)
         if (!manifest) {
-          observations.push(assetIncident({
+          observations.push(await brokenRecord({
             key: `manifest-missing-${stablePart(entry)}`,
             family: 'manifest-missing',
             summary: `Asset ${entry} has a missing or invalid manifest.json.`,
             impact: 'The asset cannot be read or versioned reliably.',
             assetId: entry,
-            disposition: 'action_required',
-            required: true,
+            manifestTaskId: undefined,
           }))
           brokenCount++
           continue
         }
         if (!manifest.versions.some(version => version.version === manifest.currentVersion)) {
-          observations.push(assetIncident({
+          observations.push(await brokenRecord({
             key: `current-version-${stablePart(entry)}`,
             family: 'current-version',
             summary: `Asset ${entry} currentVersion ${manifest.currentVersion} is absent from versions[].`,
             impact: 'The asset points at a version that cannot be resolved.',
             assetId: entry,
-            disposition: 'action_required',
-            required: true,
+            manifestTaskId: manifest.taskId,
           }))
           brokenCount++
         }
         for (const version of manifest.versions) {
           if (!existsSync(join(dirAbs, version.file))) {
-            observations.push(assetIncident({
+            observations.push(await brokenRecord({
               key: `version-file-${stablePart(entry)}-${version.version}`,
               family: 'version-file',
               summary: `Asset ${entry} is missing version file ${version.file}.`,
               impact: 'That asset version cannot be opened or exported.',
               assetId: entry,
-              disposition: 'action_required',
-              required: true,
+              manifestTaskId: manifest.taskId,
             }))
             brokenCount++
           }

@@ -613,6 +613,63 @@ export const brandRoutes = [
   }),
 
   defineRoute({
+    path: '/:brandId/recover',
+    method: 'GET',
+    summary: "A brand's recovery facts",
+    description: "The recover page's facts (self-healing PR1, row 189): manifest status (with the raw bytes when unreadable), dangling references, and the open tasks that use the brand.",
+    params: brandIdParams,
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const { brandId } = parsed.params
+      const read = getBrand(brandId)
+      const { readRawBrandManifest } = await import('./store')
+      const raw = readRawBrandManifest(brandId)
+      if (read.status === 'missing' && raw === null) return Response.json({ error: 'brand not found' }, { status: 404 })
+      const { scanBrandIntegrity } = await import('./integrity')
+      const integrity = await scanBrandIntegrity(async (assetId) => (await ctx.assets.getAsset(assetId)) !== null, brandId)
+      let tasks: Array<{ taskId: string; title: string; column: string }> = []
+      let tasksKnown = true
+      try {
+        tasks = (await ctx.tasks.list({ brandId }))
+          .filter((task) => task.column !== 'done' && task.column !== 'archived')
+          .map((task) => ({ taskId: task.id, title: task.title, column: task.column }))
+      } catch {
+        tasksKnown = false
+      }
+      return Response.json({
+        brandId,
+        status: read.status,
+        name: read.status === 'ok' ? read.manifest.name : brandId,
+        ...(read.status === 'invalid' ? { error: read.error, raw } : {}),
+        dangling: integrity.findings.find((f) => f.brandId === brandId)?.dangling ?? [],
+        tasks,
+        tasksKnown,
+      })
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/recover/recreate',
+    method: 'POST',
+    summary: 'Recreate an unreadable brand manifest',
+    description: 'A fresh valid brand.json keeping the id, name, description, draft flag and createdAt the old file still says; palette, logos, groups and references start empty. Refused while the manifest reads.',
+    params: brandIdParams,
+    body: { contentType: 'none' as const },
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      try {
+        const { recreateBrandManifest } = await import('./store')
+        const result = recreateBrandManifest(parsed.params.brandId)
+        emitChanged(ctx, parsed.params.brandId, 'brand.updated')
+        return Response.json({ ok: true, ...result })
+      } catch (err) {
+        const code = (err as { code?: string }).code
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: code === 'missing' ? 404 : 400 })
+      }
+    },
+  }),
+
+  defineRoute({
     path: '/:brandId/recover/detach',
     method: 'POST',
     summary: 'Detach dangling asset references from a brand',

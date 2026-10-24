@@ -925,14 +925,14 @@ describe('checkSearchConsistency', () => {
     mockTableStates = []
   })
 
-  it('unclaimed engine tables point at the drop repair — the operator decides per table; Keep is acknowledging (self-healing 1.4b, row 76)', async () => {
+  it('unclaimed engine tables point at the drop repair with Keep as the recorded-decision choice (self-healing 1.4b, row 76)', async () => {
     mockSearchEnabled = true
     mockSearchAvailable = true
     mockUnclaimed = ['bakin_tasks_v1_dead']
     try {
       const results = observed(await checkSearchConsistency())
       const row = results.find((observation) => observation.key === 'indexes.sweep.unclaimed')!
-      expect(row.incident).toMatchObject({ key: 'unclaimed-tables', disposition: 'advisory', resolution: { type: 'repair', actionId: 'search-drop-unclaimed-tables' } })
+      expect(row.incident).toMatchObject({ key: 'unclaimed-tables', disposition: 'advisory', resolution: { type: 'repair', actionId: 'search-drop-unclaimed-tables', choices: [{ key: 'keep', kind: 'request', body: { tables: ['bakin_tasks_v1_dead'] } }] } })
     } finally {
       mockUnclaimed = []
     }
@@ -1251,6 +1251,16 @@ describe('checkPluginAssets — user-edited skills (#898)', () => {
     expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:cold-email', label: 'cold-email (sdr)' }])
   })
 
+  it('row 94: "Keep my edit" is a request choice beside Restore, carrying the shipped sha the operator accepts', async () => {
+    const shippedSha = 'a'.repeat(64)
+    warnWith({ userEditedDrifted: [{ ...lockedRef, shippedSha }] })
+    const results = observed(await checkPluginAssets())
+    expect(results[0].incident?.resolution).toMatchObject({
+      type: 'repair', actionId: 'install-plugin-assets', label: 'Restore the shipped copy',
+      choices: [{ key: 'keep-edit', kind: 'request', label: 'Keep my edit', method: 'POST', url: '/api/plugins/health/plugin-assets/keep-edit', body: { skills: [{ name: 'cold-email', pluginId: 'sdr', shippedSha }] } }],
+    })
+  })
+
   it('a plugin skill that is not text is a watch incident naming the plugin that points at the reinstall repair, never the install repair', async () => {
     warnWith({ userEditedDrifted: [], invalidSource: [{ pluginId: 'sdr', name: 'blobby', error: 'x' }] })
     const results = observed(await checkPluginAssets())
@@ -1297,7 +1307,7 @@ describe('installPluginAssetsRepair', () => {
     const repairAction = installPluginAssetsRepair()
     const items = stampPlanItems(repairAction, await repairAction.plan(target))
     expect(items).toHaveLength(1)
-    expect(items[0]).toMatchObject({ id: 'install-plugin-assets', actionId: 'install-plugin-assets', mode: 'self-heal' })
+    expect(items[0]).toMatchObject({ id: 'install-plugin-assets:install-plugin-assets', localId: 'install-plugin-assets', actionId: 'install-plugin-assets', mode: 'self-heal' })
     expect(items[0].changes.map((c) => c.target)).toEqual(['runtime skill store', '~/.bakin/bin'])
   })
 

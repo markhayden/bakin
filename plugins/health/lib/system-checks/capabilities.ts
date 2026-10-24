@@ -7,6 +7,7 @@
  * src/core/agent-packages/capability-readiness.
  */
 import { listCapabilities, type CapabilityReadiness } from '../../../../src/core/agent-packages/capability-readiness'
+import { readLockfile, type Lockfile } from '../../../../packages/core/src/agent-packages/lockfile'
 import { capabilityRemedy } from '../../../../src/core/agent-packages/capability-remedy'
 import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput, HealthResolution } from '@makinbakin/sdk'
@@ -19,8 +20,9 @@ import { stableKeyPart } from './key'
  * manifest problem reinstalls, a missing required secret is the operator's
  * credential, a missing required tool is an install outside Bakin. A
  * platform-only gap is an observation. Required only while an agent declares
- * the capability — the readiness engine does not know that yet, so every
- * not-ready pack counts as required (it was installed to be used).
+ * the capability: an installed agent package that depends on the pack (the
+ * lockfile's `dependents` / the agent entry's `dependencies`). A pack nothing
+ * declares is advisory — installed, not yet put to use.
  */
 export const CAPABILITIES_INCIDENTS: HealthIncidentDeclaration[] = [
   { id: 'not-ready-sync', subjectKind: 'package', resolution: { type: 'repair', actionId: PACKAGE_SYNC_ACTION }, required: 'owner-decides' },
@@ -56,8 +58,21 @@ export function capabilityFamily(cap: CapabilityReadiness): { declarationId: Fam
   return null
 }
 
-export async function checkCapabilities(): Promise<HealthCheckRunInput> {
+/** Pure: the installed agent packages that declare this pack (lockfile `dependents` ∪ agent entries whose `dependencies` name it). */
+export function capabilityDeclaredBy(lock: Lockfile, cap: Pick<CapabilityReadiness, 'packageId' | 'version'>): string[] {
+  const key = `${cap.packageId}@${cap.version}`
+  const entry = lock.packages[key] ?? lock.packages[cap.packageId]
+  const declared = new Set<string>(entry?.dependents ?? [])
+  for (const [agentKey, candidate] of Object.entries(lock.packages)) {
+    if (candidate.kind !== 'agent') continue
+    if ((candidate.dependencies ?? []).some((dep) => dep === key || dep === cap.packageId || dep.startsWith(`${cap.packageId}@`))) declared.add(agentKey)
+  }
+  return [...declared].sort()
+}
+
+export async function checkCapabilities(deps: { lockfile?: () => Lockfile } = {}): Promise<HealthCheckRunInput> {
   const capabilities = await listCapabilities()
+  const lock = (deps.lockfile ?? readLockfile)()
   if (capabilities.length === 0) {
     return healthObserved([healthHealthy({
       key: 'none-installed',
@@ -87,6 +102,9 @@ export async function checkCapabilities(): Promise<HealthCheckRunInput> {
       })
     }
     const family = capabilityFamily(cap)
+    // Row 6: required only while an agent declares the capability (a usage FACT from the lockfile), else advisory.
+    const declaredBy = capabilityDeclaredBy(lock, cap)
+    const required = declaredBy.length > 0
     if (!family) {
       // A platform-only gap (or optional prereqs): an observation, never a card.
       return healthWarning({
@@ -100,15 +118,17 @@ export async function checkCapabilities(): Promise<HealthCheckRunInput> {
       key: capabilityId,
       summary: `${capabilityName} needs setup.`,
       detail: missing.join('; ').slice(0, 4_000),
-      evidence,
+      evidence: { ...evidence, declaredBy },
       incident: {
         key: `not-ready:${capabilityId}`,
         title: `${capabilityName.slice(0, 100)} is not ready`,
-        impact: 'Agents cannot use this capability until its required content and tools are available.',
-        disposition: 'action_required',
+        impact: required
+          ? `Agents that declare this capability (${declaredBy.join(', ')}) cannot use it until its required content and tools are available.`
+          : 'No installed agent declares this capability yet; nothing is blocked until one does.',
+        disposition: required ? 'action_required' : 'advisory',
         subject: { kind: 'package', id: cap.packageId.slice(0, 500), label: capabilityName.slice(0, 120) },
         declarationId: family.declarationId,
-        required: true,
+        required,
         resources: [{ kind: 'capability', id: capabilityId, label: capabilityName.slice(0, 120) }],
         resolution: family.resolution,
       },

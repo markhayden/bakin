@@ -214,7 +214,9 @@ describe('re-homing rows 52–68 — emitted by the health.search check', () => 
 
     serviceStatus = { mode: 'launchd', provisioned: false, refusal: { reason: 'temporary-home', detail: 'This temporary home cannot claim the shared service.', remediation: 'configure-endpoint' } }
     const decision = incidentOf(observed(await checkSearchAdapter()), 'service-ownership')
-    expect(decision).toMatchObject({ declarationId: 'service-ownership', resolution: { type: 'human', needs: 'decision', href: '/settings?tab=system' } })
+    expect(decision).toMatchObject({ declarationId: 'service-ownership', resolution: { type: 'human', needs: 'decision', href: '/settings?tab=system&field=search.settings.url', field: 'search.settings.url' } })
+    // Claim / Use as guest — BOTH on the card: the claim is the repair, the guest endpoint its named link choice.
+    expect(claim?.resolution.choices).toEqual([{ key: 'guest', kind: 'link', label: 'Use that engine as a guest', href: '/settings?tab=system&field=search.settings.url', field: 'search.settings.url' }])
     expect(decision?.impact).toContain('search.settings.url')
   })
 
@@ -232,7 +234,7 @@ describe('re-homing rows 52–68 — emitted by the health.search check', () => 
     searchAvailable = false
     expect(incidentOf(observed(await checkSearchAdapter()), 'engine-unavailable')).toMatchObject({ declarationId: 'engine-unavailable', resolution: { type: 'repair', actionId: 'search-engine-restart' } })
     serviceStatus = { mode: 'guest', provisioned: true }
-    expect(incidentOf(observed(await checkSearchAdapter()), 'engine-unavailable')).toMatchObject({ declarationId: 'engine-unavailable-guest', resolution: { type: 'human', needs: 'decision', href: '/settings?tab=system' } })
+    expect(incidentOf(observed(await checkSearchAdapter()), 'engine-unavailable')).toMatchObject({ declarationId: 'engine-unavailable-guest', resolution: { type: 'human', needs: 'decision', href: '/settings?tab=system&field=search.settings.url', field: 'search.settings.url' } })
   })
 
   it('rows 53/58/62: unknowns are plain observations', async () => {
@@ -250,7 +252,7 @@ describe('re-homing rows 52–68 — emitted by the health.search check', () => 
     expect(incidentOf(rows, 'stale-backlog')).toMatchObject({
       declarationId: 'stale-backlog',
       disposition: 'watch',
-      dependsOn: { subject: { kind: 'service', id: 'search-engine' }, resolvedBy: 'search-engine-restart' },
+      dependsOn: { subject: { kind: 'service', id: 'search-engine' }, resolvedBy: 'health.search-engine-restart' },
       resolution: { type: 'repair', actionId: 'search-engine-restart' },
     })
   })

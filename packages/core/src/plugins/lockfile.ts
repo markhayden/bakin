@@ -160,6 +160,13 @@ export const PluginLockEntrySchema = z.object({
     member: z.string().optional(),
   })).optional(),
   /**
+   * Operator containment (self-healing PR1, re-homing row 98): the plugin
+   * stays installed on disk and in this ledger but the loader never
+   * activates it until it is enabled again. Absent = enabled. Core plugins
+   * never carry it (the mutators refuse core ids).
+   */
+  disabled: z.boolean().optional(),
+  /**
    * Phase 2 (#171). True when this entry was registered via
    * `bakin plugins link <localPath>` — i.e. the plugin dir at
    * `~/.bakin/plugins/<id>/` is a symlink to a developer-owned source
@@ -210,6 +217,11 @@ export const PluginLockfileSchema = z.object({
   version: z.literal(1),
   plugins: z.record(z.string(), PluginLockEntrySchema),
 })
+
+/** The ledger's word on whether the loader may activate this plugin. */
+export function isPluginDisabled(entry: Pick<PluginLockEntry, 'disabled'> | null | undefined): boolean {
+  return entry?.disabled === true
+}
 
 export type PluginType = z.infer<typeof PluginTypeSchema>
 export type PluginLockEntry = z.infer<typeof PluginLockEntrySchema>

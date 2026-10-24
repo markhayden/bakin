@@ -126,6 +126,62 @@ describe('OverviewTab', () => {
     expect(group.getAttribute('tabindex')).toBeNull()
   })
 
+  // Codex r1 #9: `?field=credentials` must land on a CONTROL, not a statistic.
+  describe('the credentials group is the control when no provider is signed in', () => {
+    const noProviders: CapabilityReport = { ...report, credentialStatus: { llmProviders: [], llmCredentials: [], channels: [] } }
+    const piSignIn = {
+      id: 'pi:runtime:provider-configuration', status: 'error', disposition: 'action_required', effectiveDisposition: 'action_required',
+      title: 'Pi has no usable model provider', impact: 'Run pi and sign in with /login.',
+      subject: { kind: 'runtime', id: 'pi', label: 'Pi' }, declarationId: 'provider-configuration', required: true, resources: [], observationIds: [],
+      resolution: { key: 'configure-provider', type: 'human', needs: 'credential', label: 'Sign in to a model provider', href: '/runtime?tab=overview&field=credentials', handoff: { command: 'pi', cwd: '/Users/me/.pi' } },
+      observedAt: '2026-10-24T00:00:00.000Z', staleAt: '2026-10-24T01:00:00.000Z', stale: false,
+    }
+    const stubHealth = (incidents: unknown[]) => {
+      const urls: string[] = []
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        urls.push(String(input))
+        if (String(input).startsWith('/api/plugins/health/doctor')) return new Response(JSON.stringify({ incidents }), { status: 200 })
+        return new Response(JSON.stringify({}), { status: 200 })
+      }) as unknown as typeof fetch
+      return urls
+    }
+
+    it('renders the runtime\'s own sign-in handoff from the Health report (Pi: `pi` + /login, copy-only, with its home)', async () => {
+      stubHealth([piSignIn])
+      await act(async () => {
+        render(<OverviewTab report={noProviders} onRefreshOnboarding={() => {}} onboarding={[]} highlightField="credentials" />)
+      })
+      const card = await screen.findByRole('region', { name: 'Sign in to a model provider' })
+      expect(within(screen.getByTestId('runtime-field-credentials')).getByRole('region', { name: 'Sign in to a model provider' })).toBe(card)
+      expect(within(card).getByText('pi')).toBeTruthy()
+      expect(within(card).getByText('/Users/me/.pi')).toBeTruthy()
+      expect(within(card).getByRole('button', { name: /copy/i })).toBeTruthy()
+      expect(within(card).queryByRole('button', { name: 'Open in Terminal' })).toBeNull()
+      expect(screen.queryByTestId('runtime-credential-gap')).toBeNull()
+    })
+
+    it('another runtime\'s incident is never shown as this runtime\'s control; with no handoff the gap is named honestly', async () => {
+      stubHealth([{ ...piSignIn, subject: { kind: 'runtime', id: 'openclaw', label: 'OpenClaw' } }])
+      await act(async () => {
+        render(<OverviewTab report={noProviders} onRefreshOnboarding={() => {}} onboarding={[]} />)
+      })
+      const gap = await screen.findByTestId('runtime-credential-gap')
+      expect(gap.textContent).toContain('No model provider is signed in for pi')
+      expect(screen.queryByRole('region', { name: 'Sign in to a model provider' })).toBeNull()
+    })
+
+    it('with a provider signed in the Health report is not read and no handoff renders', async () => {
+      const urls = stubHealth([piSignIn])
+      await act(async () => {
+        render(<OverviewTab report={report} onRefreshOnboarding={() => {}} onboarding={[]} />)
+      })
+      await settleReact()
+      expect(urls.some((url) => url.startsWith('/api/plugins/health/doctor'))).toBe(false)
+      expect(screen.queryByRole('region', { name: 'Sign in to a model provider' })).toBeNull()
+      expect(screen.queryByTestId('runtime-credential-gap')).toBeNull()
+    })
+  })
+
   it('media is repairable from the hub (#895)', async () => {
     await act(async () => {
       render(

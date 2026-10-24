@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, Trash } from 'lucide-react'
 import { Inline, Section, Stack } from '@makinbakin/sdk/layout'
 import { AgentAvatar, ListRow, ListRows } from '@makinbakin/sdk/patterns'
@@ -113,12 +113,21 @@ function BudgetRuleRow({
   rule,
   rules,
   m,
+  highlighted = false,
 }: {
   index: number
   rule: BudgetRuleWire
   rules: BudgetRuleWire[]
   m: SpendData
+  /** The deep-linked rule (`?field=<rule id>` from a Health card): focused once and scrolled into view. */
+  highlighted?: boolean
 }) {
+  const rowRef = useRef<HTMLLIElement>(null)
+  useEffect(() => {
+    if (!highlighted) return
+    rowRef.current?.focus({ preventScroll: true })
+    rowRef.current?.scrollIntoView?.({ block: 'center' })
+  }, [highlighted])
   const edit = (patch: Partial<BudgetRuleWire>) => {
     m.setPendingRules(rules.map((current, currentIndex) => (
       currentIndex === index ? { ...current, ...patch } : current
@@ -131,7 +140,13 @@ function BudgetRuleRow({
       : m.modelIds
 
   return (
-    <ListRow className="px-bakin-4 py-bakin-4">
+    <ListRow
+      ref={rowRef}
+      id={`budget-rule-${rowKey(rule, index)}`}
+      tabIndex={highlighted ? -1 : undefined}
+      data-highlighted={highlighted ? 'true' : undefined}
+      className={`px-bakin-4 py-bakin-4${highlighted ? ' outline outline-2 outline-offset-2 outline-bakin-signal-highlight' : ''}`}
+    >
       <Field name={`budget-rule-${index}-scope`}>
         <FieldLabel>Scope</FieldLabel>
         <RuleSelect
@@ -222,7 +237,7 @@ function BudgetRuleRow({
 
 let stagedRowSeq = 0
 
-export function BudgetRulesSection({ m, onAddLimit }: { m: SpendData; onAddLimit: () => void }) {
+export function BudgetRulesSection({ m, onAddLimit, highlightRuleId }: { m: SpendData; onAddLimit: () => void; highlightRuleId?: string }) {
   // `null` = the current limits have not loaded (failed or pending): the
   // editor cannot show "No spending limits" for a policy it does not know,
   // and nothing can be added to a list that might replace unseen rules.
@@ -298,6 +313,7 @@ export function BudgetRulesSection({ m, onAddLimit }: { m: SpendData; onAddLimit
                 rule={rule}
                 rules={rules}
                 m={m}
+                highlighted={highlightRuleId !== undefined && rowKey(rule, index) === highlightRuleId}
               />
             ))}
           </ListRows>

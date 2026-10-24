@@ -121,7 +121,7 @@ interface TaskDetailFormProps {
   focusField?: string
 }
 
-const FOCUSABLE_FIELDS: Record<string, string> = { assignee: 'task-assignee' }
+const FOCUSABLE_FIELDS: Record<string, string> = { assignee: 'task-assignee', brand: 'task-brand' }
 
 /** Create / edit form drawer. */
 export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit, focusField }: TaskDetailFormProps) {
@@ -267,7 +267,7 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit,
           <Field name="brand">
             <FieldLabel>Brand</FieldLabel>
             <Select value={brandId} onValueChange={(v) => { setBrandId(v ?? ''); markDirty() }}>
-              <SelectTrigger aria-label="Brand" className="w-full">
+              <SelectTrigger id="task-brand" aria-label="Brand" className="w-full">
                 <SelectValue placeholder="None">
                   {brands.find(b => b.id === brandId)?.name || (brandId || 'None (inherits from parent/project)')}
                 </SelectValue>

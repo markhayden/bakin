@@ -46,6 +46,7 @@ function description(over: Partial<SelectionsDescription> = {}): SelectionsDescr
 function deps(desc: SelectionsDescription, applied: Proposal[] = [], calls: Proposal[][] = []): DeadSelectionDeps {
   return {
     describe: async () => desc,
+    openTaskTags: async () => new Set<string>(),
     apply: async (proposals) => {
       applied.push(...proposals)
       calls.push(proposals)
@@ -81,6 +82,36 @@ describe('checkDeadSelections', () => {
     expect(relay.incident?.declarationId).toBe('dead-selection-manual')
     expect(enrich.incident?.declarationId).toBe('dead-selection')
     expect(enrich.incident?.subject).toEqual({ kind: 'setting', id: 'models.selection.agent:enrich:model', label: "H'enrich" })
+  })
+
+  it('rows 158/159 "while in use": a dead tag override is required while an open task carries its tag, advisory otherwise; an unreadable board is its own unknown observation and never presumes use', async () => {
+    const desc = description({
+      states: [
+        { ref: 'tag:legal', model: DEAD, document: 'routing', label: 'legal', eligibility: { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai' } },
+        { ref: 'policy:alias:fast', model: DEAD, document: 'policy', label: 'Alias fast', eligibility: { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai' } },
+        { ref: 'route:relay', model: 'fast', document: 'routing', label: 'relay', eligibility: { status: 'eligible' } },
+      ],
+      proposals: [{ ref: 'tag:legal', from: DEAD, to: FIX, reason: 'no credentials for openai', source: 'same-id-credentialed-provider', revision: 'rev-1' }],
+    })
+    const inUse = await checkDeadSelections({ ...deps(desc), openTaskTags: async () => new Set(['legal']) })
+    if (inUse.outcome !== 'observed') throw new Error('expected observed')
+    expect(inUse.observations.find((o) => o.key === 'dead-selection:tag:legal')).toMatchObject({ status: 'error', incident: { required: true, disposition: 'action_required', declarationId: 'dead-selection' } })
+    // The alias is named by the relay route → in use.
+    expect(inUse.observations.find((o) => o.key === 'dead-selection:policy:alias:fast')).toMatchObject({ status: 'error', incident: { required: true, disposition: 'action_required' } })
+
+    const idle = await checkDeadSelections({ ...deps(desc), openTaskTags: async () => new Set(['sales']) })
+    if (idle.outcome !== 'observed') throw new Error('expected observed')
+    expect(idle.observations.find((o) => o.key === 'dead-selection:tag:legal')).toMatchObject({ status: 'warning', incident: { required: false, disposition: 'advisory', declarationId: 'dead-selection', resolution: { type: 'repair' } } })
+    expect(idle.observations.some((o) => o.key === 'evidence:open-tasks')).toBe(false)
+
+    const unreadable = await checkDeadSelections({ ...deps(desc), openTaskTags: async () => { throw new Error('taskboard locked') } })
+    if (unreadable.outcome !== 'observed') throw new Error('expected observed')
+    expect(unreadable.observations.find((o) => o.key === 'evidence:open-tasks')).toMatchObject({ status: 'unknown', detail: expect.stringContaining('taskboard locked') })
+    expect(unreadable.observations.find((o) => o.key === 'dead-selection:tag:legal')).toMatchObject({ status: 'warning', incident: { required: false, disposition: 'advisory' }, evidence: { usageFact: 'unavailable' } })
+    // The alias is unused when nothing names it.
+    const orphanAlias = await checkDeadSelections({ ...deps(description({ states: desc.states.filter((s) => s.ref !== 'route:relay'), proposals: desc.proposals })), openTaskTags: async () => new Set(['legal']) })
+    if (orphanAlias.outcome !== 'observed') throw new Error('expected observed')
+    expect(orphanAlias.observations.find((o) => o.key === 'dead-selection:policy:alias:fast')).toMatchObject({ status: 'warning', incident: { required: false, disposition: 'advisory' } })
   })
 
   it('its output passes the canonical health contract (the resource kind is a real enum member)', async () => {
@@ -169,6 +200,7 @@ describe('deadSelectionRepair', () => {
     let desc = description()
     const d: DeadSelectionDeps = {
       describe: async () => desc,
+      openTaskTags: async () => new Set<string>(),
       apply: async (proposals) => { applied.push(...proposals); return { applied: proposals.map((p) => p.ref), failed: [], pending: [], warnings: [], revision: 'rev-3' } },
     }
     const repair = deadSelectionRepair(d)
@@ -188,7 +220,7 @@ describe('deadSelectionRepair', () => {
   })
 
   it('reports failed when the mutation refuses (stale revision / write pending)', async () => {
-    const d: DeadSelectionDeps = { describe: async () => description(), apply: async () => { throw Object.assign(new Error('the configuration changed'), { code: 'stale_revision', status: 409 }) } }
+    const d: DeadSelectionDeps = { describe: async () => description(), openTaskTags: async () => new Set<string>(), apply: async () => { throw Object.assign(new Error('the configuration changed'), { code: 'stale_revision', status: 409 }) } }
     const repair = deadSelectionRepair(d)
     const items = await repair.plan({ type: 'incidents', reportId: 'r1', ids: ['models:models:dead-selection:agent:enrich:model'] })
     const results = await repair.apply(stampPlanItems(repair, items), noopOp())

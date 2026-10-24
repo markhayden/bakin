@@ -312,6 +312,8 @@ describe('schedule plugin activation', () => {
     const call = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')
 
     expect(call).toBeDefined()
+    // The workflows checks' "scheduled" fact rides this hook (re-homing rows 133–137).
+    expect(registerMock.mock.calls.some(([name]) => name === 'schedule.workflowsScheduled')).toBe(true)
     const handler = call![1]
     const result = await handler({
       jobId: 'plugin-nightly-sync',

@@ -25,7 +25,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }) }))
 
-import { detachMissingVersions, inspectAssetRecovery, rebuildManifestFromFiles, restoreVersionFromExport } from '../../../plugins/assets/lib/asset-recovery'
+import { detachAssetReferences, detachMissingVersions, inspectAssetRecovery, inspectAssetReferences, moveStoreLocationAside, rebuildManifestFromFiles, restoreVersionFromExport, type AssetUsageContext } from '../../../plugins/assets/lib/asset-recovery'
 import { assetDirAbs } from '../../../plugins/assets/lib/asset-id'
 import { readManifest } from '../../../plugins/assets/lib/manifest'
 
@@ -111,5 +111,79 @@ describe('restoreVersionFromExport', () => {
     expect(existsSync(pathJoin(dir(), 'v3.txt'))).toBe(true)
     expect(readFileSync(pathJoin(dir(), 'v3.txt'), 'utf-8')).toBe('two again')
     await expect(restoreVersionFromExport(ID, 'nope')).rejects.toThrow(/no export named/)
+  })
+})
+
+function usageContext(input: { open?: string[]; brands?: Record<string, Array<{ brandId: string; where: string }>>; brandsPlugin?: boolean; detached?: string[]; throwTasks?: boolean }): AssetUsageContext & { detachCalls: unknown[] } {
+  const detachCalls: unknown[] = []
+  return {
+    detachCalls,
+    tasks: { get: async (id) => { if (input.throwTasks) throw new Error('task store down'); return { id, title: `Task ${id}`, column: (input.open ?? []).includes(id) ? 'todo' : 'done' } } },
+    hooks: {
+      has: (name) => input.brandsPlugin !== false && (name === 'brands.assetReferences' || name === 'brands.detachAsset'),
+      invoke: async <R,>(name: string, data: unknown) => {
+        if (name === 'brands.assetReferences') return { byAsset: { [ID]: input.brands?.[ID] ?? [] } } as R
+        detachCalls.push(data)
+        return { detached: input.detached ?? [] } as R
+      },
+    },
+  }
+}
+
+describe('inspectAssetReferences (spec §3.9 usage facts)', () => {
+  it('the task leg is the manifest\'s own taskId (open or closed); the brands leg is the brands hook; nothing is guessed', async () => {
+    writeFileSync(pathJoin(dir(), 'manifest.json'), JSON.stringify(manifest()))
+    const inUse = await inspectAssetReferences(ID, usageContext({ open: ['task-1'], brands: { [ID]: [{ brandId: 'acme', where: 'logo (dark)' }] } }))
+    expect(inUse).toEqual({ known: true, task: { taskId: 'task-1', title: 'Task task-1', open: true }, brands: [{ brandId: 'acme', where: 'logo (dark)' }] })
+    const closed = await inspectAssetReferences(ID, usageContext({ open: [] }))
+    expect(closed).toEqual({ known: true, task: { taskId: 'task-1', title: 'Task task-1', open: false }, brands: [] })
+    // No brands plugin at all: no brand can reference it — a fact, still known.
+    expect((await inspectAssetReferences(ID, usageContext({ brandsPlugin: false }))).known).toBe(true)
+    // A throwing task store: the leg is unknown, never "not in use".
+    const blind = await inspectAssetReferences(ID, usageContext({ throwTasks: true }))
+    expect(blind.known).toBe(false)
+    expect(blind.task).toEqual({ taskId: 'task-1', title: null, open: null })
+  })
+  it('a missing manifest has no readable task link: that leg is unknown; a caller-supplied taskId skips the disk read', async () => {
+    const noManifest = await inspectAssetReferences(ID, usageContext({}))
+    expect(noManifest).toMatchObject({ known: false, task: null })
+    const supplied = await inspectAssetReferences(ID, usageContext({ open: ['t9'] }), 't9')
+    expect(supplied).toMatchObject({ known: true, task: { taskId: 't9', open: true } })
+  })
+})
+
+describe('detachAssetReferences', () => {
+  it('the manifest forgets its task and every brand drops the asset through the hook; files are untouched', async () => {
+    writeFileSync(pathJoin(dir(), 'manifest.json'), JSON.stringify(manifest()))
+    writeFileSync(pathJoin(dir(), 'v1.txt'), 'one')
+    const ctx = usageContext({ detached: ['acme', 'globex'] })
+    const result = await detachAssetReferences(ID, ctx)
+    expect(result).toEqual({ task: 'task-1', brands: ['acme', 'globex'] })
+    expect(ctx.detachCalls).toEqual([{ assetId: ID }])
+    expect(readManifest(dir())!.taskId).toBeNull()
+    expect(existsSync(pathJoin(dir(), 'v1.txt'))).toBe(true)
+    // Idempotent: nothing left to detach on the task side.
+    expect((await detachAssetReferences(ID, ctx)).task).toBeNull()
+  })
+  it('without a readable manifest only the brands leg runs; without the brands plugin only the task leg', async () => {
+    const ctx = usageContext({ detached: ['acme'] })
+    expect(await detachAssetReferences(ID, ctx)).toEqual({ task: null, brands: ['acme'] })
+    writeFileSync(pathJoin(dir(), 'manifest.json'), JSON.stringify(manifest()))
+    expect(await detachAssetReferences(ID, usageContext({ brandsPlugin: false }))).toEqual({ task: 'task-1', brands: [] })
+  })
+})
+
+describe('moveStoreLocationAside (row 174)', () => {
+  it('renames a required location that is a FILE aside — nothing deleted — and refuses a directory or a missing path', () => {
+    const inbox = pathJoin(testDir, 'assets', 'inbox')
+    rmSync(inbox, { recursive: true, force: true })
+    writeFileSync(inbox, 'stray bytes')
+    const { movedTo } = moveStoreLocationAside('inbox')
+    expect(movedTo.startsWith(`${inbox}.invalid-`)).toBe(true)
+    expect(existsSync(inbox)).toBe(false)
+    expect(readFileSync(movedTo, 'utf-8')).toBe('stray bytes')
+    expect(() => moveStoreLocationAside('inbox')).toThrow(/does not exist/)
+    mkdirSync(inbox, { recursive: true })
+    expect(() => moveStoreLocationAside('inbox')).toThrow(/is a directory/)
   })
 })

@@ -54,7 +54,8 @@ mock.module('../../../src/core/plugin-registry', hookRegistryMock)
 
 import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from '@bakin/spend/lib/health-checks'
 import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
-import { recordRunCost } from '../../../src/core/execution-ledger'
+import { openBudgetIncident, recordRunCost } from '../../../src/core/execution-ledger'
+import { dayStartMs } from '../../../src/core/budget'
 import { closeAllDbs, closeDb } from '../../../packages/core/src/storage/db'
 import { replaceSessionUsage, toLocalDayKey } from '../../../packages/core/src/usage-history/store'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
@@ -552,6 +553,69 @@ describe('budget health check', () => {
     seedSpend(10_000_000)
     const rows = observed(await checkBudget())
     expect(rows.some((row) => row.status === 'error' && row.key === 'spend')).toBe(true)
+  })
+
+  // Rows 163/167 (self-healing, Codex r1 #10/#11): the card's buttons are the
+  // decisions through the resolve route, and "required" is the gate's own fact.
+  function openIncident(over: Partial<Parameters<typeof openBudgetIncident>[0]> = {}): number {
+    const now = Date.now()
+    return openBudgetIncident({
+      scope: 'global', lane: 'metered', window: 'daily', windowStartMs: dayStartMs(now), kind: 'cap', unit: 'usd_micros',
+      capValue: 10_000_000, spentValue: 10_000_000, atCap: 'defer', openedAt: now, ...over,
+    }).id
+  }
+
+  it('row 163: a pause-mode hold is blocking — required, action_required, and the card offers raise (link to the banner) / ack / resume (confirmed) through the resolve route', async () => {
+    budgetPolicy = { rules: [{ id: 'g1', scope: 'global', lane: 'metered', dailyCap: 10, atCap: 'pause' }] }
+    seedSpend(1_000_000) // back under the cap — the PAUSE hold still blocks
+    const id = openIncident({ atCap: 'pause' })
+    const row = observed(await checkBudget()).find((r) => r.key === 'incidents')!
+    expect(row.status).toBe('error')
+    expect(row.incident).toMatchObject({ declarationId: 'open-incidents', required: true, disposition: 'action_required', subject: { kind: 'system', id: `spend-incident:${id}` } })
+    expect(row.incident?.resolution).toMatchObject({
+      type: 'human', needs: 'decision', href: `/spend?incident=${id}`,
+      choices: [
+        { key: 'raise', kind: 'link', href: `/spend?incident=${id}` },
+        { key: 'ack', kind: 'request', method: 'POST', url: `/api/plugins/spend/incidents/${id}/resolve`, body: { action: 'ack' } },
+        { key: 'resume', kind: 'request', method: 'POST', url: `/api/plugins/spend/incidents/${id}/resolve`, body: { action: 'resume' }, confirm: { title: 'Resume dispatch for the global rule?' } },
+      ],
+    })
+    expect(row.evidence).toMatchObject({ pausing: 1, stillOver: 0, blocking: true })
+  })
+
+  it('row 163: an open defer incident whose rule is back under its cap blocks nothing — advisory, required:false; an acknowledged one offers no second ack', async () => {
+    budgetPolicy = { rules: [{ id: 'g1', scope: 'global', lane: 'metered', dailyCap: 10, atCap: 'defer' }] }
+    seedSpend(1_000_000)
+    const id = openIncident()
+    const { resolveBudgetIncident } = await import('../../../src/core/execution-ledger')
+    resolveBudgetIncident({ id, status: 'acknowledged', resolution: 'acknowledged' })
+    const row = observed(await checkBudget()).find((r) => r.key === 'incidents')!
+    expect(row.status).toBe('warning')
+    expect(row.incident).toMatchObject({ required: false, disposition: 'advisory' })
+    expect(row.incident?.resolution.choices?.map((c) => c.key)).toEqual(['raise', 'resume'])
+    expect(row.evidence).toMatchObject({ pausing: 0, stillOver: 0, blocking: false })
+  })
+
+  it('row 163: an open defer incident whose rule is STILL at/over its cap is blocking (the same breach the gate defers on)', async () => {
+    budgetPolicy = { rules: [{ id: 'g1', scope: 'global', lane: 'metered', dailyCap: 10, atCap: 'defer' }] }
+    seedSpend(10_000_000)
+    openIncident()
+    const row = observed(await checkBudget()).find((r) => r.key === 'incidents')!
+    expect(row.status).toBe('error')
+    expect(row.incident).toMatchObject({ required: true, disposition: 'action_required' })
+    expect(row.evidence).toMatchObject({ pausing: 0, stillOver: 1, blocking: true })
+  })
+
+  it('row 167: a reached cap lands on ITS rule on the Limits tab (?field=) and, while that rule has an open incident, acknowledges it from the card', async () => {
+    budgetPolicy = { rules: [{ id: 'g1', scope: 'global', lane: 'metered', dailyCap: 10 }] }
+    seedSpend(10_000_000)
+    const bare = observed(await checkBudget()).find((r) => r.key === 'spend')!
+    expect(bare.incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', href: '/spend?tab=limits&field=g1', field: 'budget-rule-g1' })
+    expect(bare.incident?.resolution.choices).toEqual([{ key: 'raise', kind: 'link', label: 'Raise the limit', href: '/spend?tab=limits&field=g1', field: 'budget-rule-g1' }])
+    const id = openIncident()
+    const withIncident = observed(await checkBudget()).find((r) => r.key === 'spend')!
+    expect(withIncident.incident?.resolution.choices?.map((c) => c.key)).toEqual(['raise', 'ack'])
+    expect(withIncident.incident?.resolution.choices?.[1]).toMatchObject({ kind: 'request', url: `/api/plugins/spend/incidents/${id}/resolve`, body: { action: 'ack' } })
   })
 
   it('stamps cap breaches budget_block — never demotable by sensitivity (#690)', async () => {

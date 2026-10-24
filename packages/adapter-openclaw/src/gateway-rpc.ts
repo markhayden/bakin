@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
-import { RuntimeError } from '@bakin/core/adapters/runtime'
+import { RuntimeError, type RuntimeCompatibility } from '@bakin/core/adapters/runtime'
 
 import { buildDeviceConnectFields, loadDeviceAuth } from './device-auth'
 import { openClawRuntimeErrorFromMessage } from './errors'
@@ -47,6 +47,24 @@ export function lastGatewayHandshake(): GatewayHandshakeEvidence | null {
 /** Test seam. */
 export function _resetGatewayHandshakeForTests(): void {
   lastHandshake = null
+}
+
+/**
+ * The gateway's protocol vs Bakin's floor, from the last recorded handshake
+ * (#1007 D7.10) — the same evidence `protocolFloorError` judged at connect.
+ * Never a live probe, never inferred from the CLI version. Answers both
+ * `runtime.compatibility()` and the adapter's `gateway-protocol` health check.
+ */
+export function gatewayCompatibility(): RuntimeCompatibility {
+  const evidence = lastGatewayHandshake()
+  const required = String(GATEWAY_REQUIRED_PROTOCOL)
+  if (!evidence) return { required, state: 'unknown' }
+  return {
+    required,
+    observed: evidence.protocol === null ? 'unreported' : String(evidence.protocol),
+    observedAt: evidence.at,
+    state: evidence.belowFloor ? 'below-floor' : 'ok',
+  }
 }
 /** tool-stream agent events are only sent to connections declaring this cap. */
 const GATEWAY_CLIENT_CAPS = ['tool-events']

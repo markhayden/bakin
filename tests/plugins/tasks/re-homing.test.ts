@@ -83,11 +83,11 @@ describe('tasks re-homing catalogs (rows 117–126)', () => {
     for (const id of ['progress-missing', 'overloaded', 'verification-failed']) expect(declared.has(id)).toBe(false)
   })
 
-  it('repair actions carry the table effects: both self-heal, no installation mutation', () => {
+  it('repair actions carry the table effects: both self-heal, mutation `none` (nothing to authorize)', () => {
     for (const action of [taskConsistencyRepair(), taskOrderRepair()]) {
       expect(action.effects).toEqual({ deletesUserContent: false, spendsMoney: false, widensAuthorization: false })
       expect(repairMode(action.effects)).toBe('self-heal')
-      expect(action.mutation).toBeUndefined()
+      expect(action.mutation).toBe('none')
     }
   })
 })

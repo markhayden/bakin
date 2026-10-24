@@ -20,7 +20,8 @@ import {
 } from '@makinbakin/sdk/utils'
 import { splitFrontmatter } from '@bakin/core/format/frontmatter'
 
-import { listDefinitions } from './parser'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { listDefinitionsTolerant } from './parser'
 import { workflowDefinitionSchema } from '@bakin/core/workflows/node-type-registry'
 import { getAgentPackageSkills } from '@bakin/core/workflows/agent-package-skill-registry'
 import { getPluginSkills } from '@bakin/core/skills/plugin-skill-registry'
@@ -110,14 +111,16 @@ function recoverDecision(href: string): HealthResolution {
 }
 
 /**
- * Skill names every definition on disk references (steps and parallel
- * branches) — the "in use" fact behind rows 127/128/134/137. Best effort:
- * an unreadable definitions dir simply references nothing.
+ * Skill names the IN-USE definitions reference (steps and parallel branches)
+ * — the fact behind rows 127/128: a broken skill blocks something only when
+ * a running or scheduled workflow would call it. Best effort: an unreadable
+ * definitions dir references nothing.
  */
-function referencedSkillNames(contentDir: string): Set<string> {
+function referencedSkillNames(contentDir: string, inUseWorkflowIds: Set<string>): Set<string> {
   const names = new Set<string>()
   try {
-    for (const { definition } of listDefinitions(contentDir)) {
+    for (const { name, definition } of listDefinitionsTolerant(contentDir).entries) {
+      if (!inUseWorkflowIds.has(name)) continue
       for (const step of definition.steps) {
         const typed = step as { skill?: string; steps?: Array<{ skill?: string }> }
         if (typed.skill) names.add(typed.skill)
@@ -139,17 +142,37 @@ function runningWorkflowIds(contentDir: string): Set<string> {
   }
 }
 
+/**
+ * Workflow ids an enabled Bakin schedule targets — the "scheduled" half,
+ * answered by the schedule plugin's `schedule.workflowsScheduled` hook. A
+ * missing or throwing hook means "no schedule fact", never "in use".
+ */
+export async function scheduledWorkflowIds(): Promise<Set<string>> {
+  try {
+    const answer = await getHookRegistry().invoke<{ workflowIds?: unknown }>('schedule.workflowsScheduled', {})
+    const ids = Array.isArray(answer?.workflowIds) ? answer.workflowIds : []
+    return new Set(ids.filter((id): id is string => typeof id === 'string'))
+  } catch {
+    return new Set()
+  }
+}
+
+/** Running OR scheduled (rows 127/128/133–137): the ONE in-use fact both workflows checks read. */
+async function inUseWorkflowIds(contentDir: string): Promise<Set<string>> {
+  return new Set([...runningWorkflowIds(contentDir), ...(await scheduledWorkflowIds())])
+}
+
 /** Validate workflow skill metadata and detect managed-source drift. */
-export function checkWorkflowSkills(contentDir: string): HealthCheckRunInput {
+export async function checkWorkflowSkills(contentDir: string): Promise<HealthCheckRunInput> {
   const observations: HealthObservationInput[] = []
   const skillsDir = join(contentDir, 'workflows', 'skills')
 
   if (existsSync(skillsDir)) {
     try {
       const files = readdirSync(skillsDir).filter(file => file.endsWith('.md'))
-      const referenced = files.length > 0 ? referencedSkillNames(contentDir) : new Set<string>()
+      const referenced = files.length > 0 ? referencedSkillNames(contentDir, await inUseWorkflowIds(contentDir)) : new Set<string>()
       for (const file of files) {
-        // Rows 127/128: action_required only while an in-use definition references the skill, else advisory.
+        // Rows 127/128: action_required only while a running or scheduled definition references the skill, else advisory.
         const inUse = referenced.has(file.replace(/\.md$/, ''))
         try {
           const content = readFileSync(join(skillsDir, file), 'utf-8')
@@ -164,6 +187,7 @@ export function checkWorkflowSkills(contentDir: string): HealthCheckRunInput {
               resourceId: file,
               disposition: inUse ? 'action_required' : 'advisory',
               required: inUse,
+              evidence: { section: 'frontmatter', inUse },
               resolution: recoverDecision(`/workflows?recover=1&skill=${encodeURIComponent(file)}`),
             }))
             continue
@@ -179,6 +203,7 @@ export function checkWorkflowSkills(contentDir: string): HealthCheckRunInput {
               resourceId: file,
               disposition: inUse ? 'action_required' : 'advisory',
               required: inUse,
+              evidence: { section: 'output_schema', inUse },
               resolution: recoverDecision(`/workflows?recover=1&skill=${encodeURIComponent(file)}`),
             }))
           }
@@ -358,31 +383,49 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
   const skillExists = (name: string): boolean => existsSync(join(skillsDir, `${name}.md`)) || registered.has(name)
 
   try {
-    const definitions = listDefinitions(contentDir)
+    const { entries: definitions, unparseable } = listDefinitionsTolerant(contentDir)
     const knownWorkflowIds = new Set(definitions.map(entry => entry.name))
-    const running = runningWorkflowIds(contentDir)
-    for (const { name, definition } of definitions) {
-      const workflowKey = stablePart(name)
-      // Rows 133–137: required while the workflow is running (a schedule that
-      // targets it is the schedule plugin's fact; it is not read here).
-      const inUse = running.has(name)
-      const decision = (href: string) => ({
+    // Rows 133–137: required while the workflow runs OR a schedule targets it (the schedule plugin's fact, via its hook).
+    const inUseIds = await inUseWorkflowIds(contentDir)
+    const decisionFor = (name: string) => {
+      const inUse = inUseIds.has(name)
+      return (href: string) => ({
         subject: workflowRecordSubject(name),
         resourceId: name,
         disposition: (inUse ? 'action_required' : 'advisory') as 'action_required' | 'advisory',
         required: inUse,
         resolution: recoverDecision(href),
       })
+    }
+    // A file that does not parse is the schema family's first instance (row 133): named, with the line, never swallowed into "could not inspect".
+    for (const broken of unparseable) {
+      observations.push(workflowWarning({
+        key: `schema-${stablePart(broken.name)}-parse`,
+        declarationId: 'schema',
+        summary: `Workflow ${broken.name} does not parse as YAML${broken.line ? ` (line ${broken.line})` : ''}: ${broken.message}`,
+        impact: 'The workflow cannot load, match or run until the file parses.',
+        evidence: { path: '', line: broken.line, parseError: bounded(broken.message, 500) },
+        ...decisionFor(broken.name)(`/workflows/${encodeURIComponent(broken.name)}?recover=1`),
+      }))
+    }
+    for (const { name, definition } of definitions) {
+      const workflowKey = stablePart(name)
+      const decision = decisionFor(name)
       const { source: _source, pluginId: _pluginId, packageId: _packageId, ...bare } = definition
       const parsed = workflowDefinitionSchema.safeParse(bare)
       if (!parsed.success) {
         unknownKeyIssues(parsed.error.issues).forEach((issue, index) => {
-          const at = issue.path.length ? ` at ${issue.path.join('.')}` : ''
+          const objectPath = issue.path.join('.')
+          const at = issue.path.length ? ` at ${objectPath}` : ''
+          // zod names the object; the offending key is in the message — the editor lands on the KEY.
+          const unknownKey = /Unrecognized keys?: "([^"]+)"/.exec(issue.message)?.[1]
+          const path = unknownKey ? [...issue.path, unknownKey].join('.') : objectPath
           observations.push(workflowWarning({
             key: `schema-${workflowKey}-${index}`,
             declarationId: 'schema',
             summary: `Workflow ${name} has unknown YAML keys${at}: ${issue.message}`,
             impact: 'Unknown fields are ignored, so the workflow may not behave as its author intended.',
+            evidence: { path },
             ...decision(`/workflows/${encodeURIComponent(name)}?recover=1`),
           }))
         })
@@ -396,6 +439,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
             declarationId: 'skill',
             summary: `Workflow ${name} step ${typedStep.id} references missing skill ${typedStep.skill}.`,
             impact: 'The workflow cannot execute this step.',
+            evidence: { path: `steps.${definition.steps.indexOf(step)}.skill` },
             ...decision(`/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`),
           }))
         }
@@ -407,6 +451,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
               declarationId: 'nested',
               summary: `Workflow ${name} step ${typedStep.id} references missing workflow ${childId}.`,
               impact: 'The nested workflow step cannot start.',
+              evidence: { path: `steps.${definition.steps.indexOf(step)}.workflow_id` },
               ...decision(`/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`),
             }))
           }
@@ -431,6 +476,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
               declarationId: 'parallel-skill',
               summary: `Workflow ${name} parallel step ${child.id} references missing skill ${child.skill}.`,
               impact: 'The parallel workflow branch cannot execute this step.',
+              evidence: { path: `steps.${definition.steps.indexOf(step)}.steps.${(typedStep.steps ?? []).indexOf(child)}.skill` },
               ...decision(`/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`),
             }))
           }

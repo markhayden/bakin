@@ -1,8 +1,11 @@
 /**
  * Re-homing rows 202–204 (self-healing 1.7): the OpenClaw override-
  * authorization check declares ONE family — the human credential for a
- * connection that lacks `operator.admin` while model routes exist — and its
- * two "cannot see yet" states are plain observations, never cards.
+ * connection that lacks `operator.admin` while model routes exist, with the
+ * device scope-upgrade handoff (Codex r1 #9) — and its two "cannot see yet"
+ * states are plain observations, never cards. The gateway-protocol check
+ * (the Updates engine's `gateway` row) declares the below-floor family whose
+ * handoff is OpenClaw's own updater.
  */
 import { afterAll, describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
@@ -33,20 +36,29 @@ mock.module('../../packages/core/src/hooks/hook-registry-singleton', () => ({
   }),
 }))
 
-import { OPENCLAW_OVERRIDE_AUTHORIZATION_INCIDENTS, createOpenClawHealthChecks } from '../../packages/adapter-openclaw/src/health-checks'
+import { OPENCLAW_GATEWAY_PROTOCOL_INCIDENTS, OPENCLAW_OVERRIDE_AUTHORIZATION_INCIDENTS, createOpenClawHealthChecks } from '../../packages/adapter-openclaw/src/health-checks'
+import type { RuntimeCompatibility } from '../../packages/core/src/adapters/runtime'
 import { parseHealthCheckRegistration, parseHealthCheckRunInput } from '../../src/core/health-contract'
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
+const routing = (perTurnModel: boolean) => ({
+  defaultModel: true, fallbackModels: true, defaultSubagentModel: true,
+  aliases: true, perAgentSubagentModel: true,
+  supportedThinkingLevels: ['off'] as Array<'off'>, perTurnModel,
+})
+
 async function run(perTurnModel: boolean, scopesVerified = true) {
-  const [check] = createOpenClawHealthChecks({
-    routingSupport: () => ({
-      defaultModel: true, fallbackModels: true, defaultSubagentModel: true,
-      aliases: true, perAgentSubagentModel: true,
-      supportedThinkingLevels: ['off'], perTurnModel,
-    }),
-    scopesVerified: () => scopesVerified,
-  })
+  const check = createOpenClawHealthChecks({ routingSupport: () => routing(perTurnModel), scopesVerified: () => scopesVerified })
+    .find((candidate) => candidate.id === 'override-authorization')
+  const parsed = parseHealthCheckRunInput(await check!.run())
+  if (parsed.outcome !== 'observed') throw new Error('expected observed')
+  return parsed.observations[0]!
+}
+
+async function runGateway(verdict: RuntimeCompatibility) {
+  const check = createOpenClawHealthChecks({ routingSupport: () => routing(true), scopesVerified: () => true, compatibility: () => verdict })
+    .find((candidate) => candidate.id === 'gateway-protocol')
   const parsed = parseHealthCheckRunInput(await check!.run())
   if (parsed.outcome !== 'observed') throw new Error('expected observed')
   return parsed.observations[0]!
@@ -54,7 +66,7 @@ async function run(perTurnModel: boolean, scopesVerified = true) {
 
 describe('OpenClaw catalog matches the re-homing table (rows 202–204)', () => {
   it('declares exactly the row-204 family: human credential, required while overrides are configured', () => {
-    const [check] = createOpenClawHealthChecks({ routingSupport: () => ({ defaultModel: true, fallbackModels: true, defaultSubagentModel: true, aliases: true, perAgentSubagentModel: true, supportedThinkingLevels: ['off'], perTurnModel: true }), scopesVerified: () => true })
+    const [check] = createOpenClawHealthChecks({ routingSupport: () => routing(true), scopesVerified: () => true })
     expect(parseHealthCheckRegistration(check!).id).toBe('override-authorization')
     expect(check!.incidents).toEqual(OPENCLAW_OVERRIDE_AUTHORIZATION_INCIDENTS)
     expect(check!.incidents).toEqual([
@@ -62,7 +74,7 @@ describe('OpenClaw catalog matches the re-homing table (rows 202–204)', () => 
     ])
   })
 
-  it('row 204: routes on an unauthorized connection → the declared human credential, required, no shell handoff (no verified grant command)', async () => {
+  it('row 204: routes on an unauthorized connection → the declared human credential, required, with the device scope-upgrade handoff (list → approve by id → bakin restart)', async () => {
     routingConfig = { routes: [{ workClass: 'relay', model: 'openai/gpt-5.5' }], tagOverrides: [] }
     const observation = await run(false)
     expect(observation.status).toBe('error')
@@ -71,9 +83,11 @@ describe('OpenClaw catalog matches the re-homing table (rows 202–204)', () => 
       subject: { kind: 'runtime', id: 'openclaw' },
       required: true,
       disposition: 'action_required',
-      resolution: { type: 'human', needs: 'credential', href: '/runtime?tab=runtimes' },
+      resolution: { type: 'human', needs: 'credential', href: '/runtime?tab=runtimes', handoff: { command: 'openclaw devices list' } },
     })
-    expect(observation.incident?.resolution).not.toHaveProperty('handoff')
+    // The approve step takes the request id the listing prints; the restart re-dials with the scope requested again.
+    expect(observation.incident?.impact).toContain('openclaw devices approve <requestId>')
+    expect(observation.incident?.impact).toContain('bakin restart')
     expect(observation.incident?.impact).toContain('operator.admin')
   })
 
@@ -92,5 +106,47 @@ describe('OpenClaw catalog matches the re-homing table (rows 202–204)', () => 
     expect(observation.status).toBe('unknown')
     expect(observation.incident).toBeUndefined()
     expect(observation.evidence).toMatchObject({ routesKnown: false })
+  })
+})
+
+describe('OpenClaw gateway protocol floor (the Updates `gateway` row, Codex r1 #9)', () => {
+  it('declares exactly the below-floor family: human external-install, always required', () => {
+    const check = createOpenClawHealthChecks({ routingSupport: () => routing(true), scopesVerified: () => true }).find((c) => c.id === 'gateway-protocol')
+    expect(parseHealthCheckRegistration(check!).id).toBe('gateway-protocol')
+    expect(check!.incidents).toEqual(OPENCLAW_GATEWAY_PROTOCOL_INCIDENTS)
+    expect(check!.incidents).toEqual([{ id: 'gateway-below-floor', subjectKind: 'runtime', resolution: { type: 'human', needs: 'external-install' }, required: 'always' }])
+  })
+
+  it('below the floor → the declared external-install with the `openclaw update` handoff on the runtime page', async () => {
+    const observation = await runGateway({ required: '4', observed: '3', observedAt: '2026-10-24T00:00:00.000Z', state: 'below-floor' })
+    expect(observation.status).toBe('error')
+    expect(observation.incident).toMatchObject({
+      declarationId: 'gateway-below-floor',
+      subject: { kind: 'runtime', id: 'openclaw' },
+      disposition: 'action_required',
+      resolution: { type: 'human', needs: 'external-install', href: '/runtime?tab=runtimes', handoff: { command: 'openclaw update' } },
+    })
+    expect(observation.incident?.impact).toContain('2026.6.11')
+    expect(observation.evidence).toMatchObject({ required: '4', observed: '3', state: 'below-floor' })
+  })
+
+  it('a gateway that reported no protocol at all is below the floor too', async () => {
+    const observation = await runGateway({ required: '4', observed: 'unreported', state: 'below-floor' })
+    expect(observation.incident?.resolution).toMatchObject({ handoff: { command: 'openclaw update' } })
+  })
+
+  it('at or above the floor → healthy; no handshake yet → an unknown observation, never healthy and never a card', async () => {
+    expect((await runGateway({ required: '4', observed: '4', state: 'ok' })).status).toBe('healthy')
+    const unknown = await runGateway({ required: '4', state: 'unknown' })
+    expect(unknown.status).toBe('unknown')
+    expect(unknown.incident).toBeUndefined()
+    expect(unknown.detail).toContain('protocol 4')
+  })
+
+  it('without an injected verdict the check reads the adapter\'s cached handshake evidence (none in this process → unknown)', async () => {
+    const check = createOpenClawHealthChecks({ routingSupport: () => routing(true), scopesVerified: () => true }).find((c) => c.id === 'gateway-protocol')
+    const parsed = parseHealthCheckRunInput(await check!.run())
+    if (parsed.outcome !== 'observed') throw new Error('expected observed')
+    expect(parsed.observations[0]).toMatchObject({ status: 'unknown', evidence: { state: 'unknown', required: '4' } })
   })
 })

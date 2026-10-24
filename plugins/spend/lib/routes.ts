@@ -31,7 +31,6 @@ import {
   resolveBudgetIncident,
   resolveExpiredBudgetIncidents,
   LedgerUnavailableError,
-  type BudgetIncidentRow,
   type BudgetMilestoneRow,
 } from '../../../src/core/execution-ledger'
 import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs, type BudgetSpendFacets, type LaneSums, type ScopeSpend } from '../../../src/core/budget-spend'
@@ -41,6 +40,7 @@ import { getSettings as getSystemSettings } from '../../../src/core/settings'
 import { emitBudgetIncidentResolved, emitSpendMilestoneAcknowledged } from '../../../src/core/budget-notify'
 import { createLogger } from '../../../src/core/logger'
 import { resolveBilling } from './billing'
+import { capInUnit, ruleMatchesIncident } from './incident-rule'
 import { coverageSummary, suggestMonthlyLimit } from './coverage'
 import { coveredDaysSince } from '@bakin/core/usage-history/store'
 import {
@@ -83,12 +83,6 @@ function observeAfterPolicyWrite(reason: string): void {
     .catch((err: unknown) => log.warn('spend observer pass after a policy write failed', { reason, err: err instanceof Error ? err.message : String(err) }))
 }
 
-/** A cap in the rule's unit (micro-USD for metered, tokens for subscription), or null when the window has no cap. */
-function capInUnit(rule: BudgetRule, window: 'daily' | 'monthly'): number | null {
-  const cap = window === 'daily' ? rule.dailyCap : rule.monthlyCap
-  if (cap === undefined) return null
-  return rule.lane === 'metered' ? Math.round(cap * 1_000_000) : Math.round(cap)
-}
 
 /**
  * Reconcile live incidents with a freshly written rule list. Every case an
@@ -195,9 +189,6 @@ function ruleSpend(rule: BudgetRule, facets: BudgetSpendFacets, window: 'daily' 
     : bucket.meteredUsdMicros + (unattributed?.meteredUsdMicros ?? 0)
 }
 
-function ruleMatchesIncident(rule: BudgetRule, incident: BudgetIncidentRow): boolean {
-  return rule.scope === incident.scope && (rule.scopeId ?? '') === incident.scopeId && rule.lane === incident.lane
-}
 
 function sweepRollover(): void {
   // Maintenance-on-read: a quiet board (no dispatch attempts) must not show

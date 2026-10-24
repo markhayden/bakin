@@ -321,6 +321,10 @@ stale-plugin  Stale Plugin      0.5.0      github         (last checked 12 days 
   list reads the stored records; status is `unknown` and core plugins are
   absent (both are server facts), said on stderr
 
+### 4.5a `bakin plugins disable <id>` / `enable <id>` (self-healing PR1, row 98)
+
+Containment for an installed USER plugin: `disabled: true` on its lock-ledger row (`PluginLockEntrySchema.disabled`; core ids refused). The loader discovers a disabled directory but never activates it — the registry lists it `status: 'disabled'` (manifest, Health's registry snapshot, Explore's drawer switch). `POST /api/plugins/{disable,enable}` (`packages/host/src/api/plugins/enable-toggle.ts`) is a bounded synchronous install-state writer (`holdNow`, 409 `install_busy`; 409 `core_plugin`, 404 `not_installed`); the engine is `src/core/plugins/disable.ts#setPluginEnabled` (asserts install-state, audits `plugin.disabled` / `plugin.enabled`). The running server follows the flag live — disable deactivates in-process and reloads the browser manifest, enable activates the directory again — and answers `live: false` with the reason when it cannot (the flag then applies at the next start; never a silent no-op). The `health.plugin-artifacts` row-98 card offers "Disable plugin" as a `request` choice; a disabled plugin's stale artifact is a plain observation, not a card.
+
 ### 4.5 Plugin activation logging (#142 layer 1)
 
 Every plugin activation appends:

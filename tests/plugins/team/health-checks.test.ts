@@ -148,7 +148,7 @@ const repairTarget = { type: 'all_actionable' as const, reportId: 'test-report' 
 
 function observations<T extends { outcome: string }>(result: T) {
   if (result.outcome !== 'observed') throw new Error(`Expected observed Team health, got ${result.outcome}`)
-  return (result as T & { observations: Array<{ key: string; status: string; summary: string; detail?: string; incident?: { resolution: { type: string } } }> }).observations
+  return (result as T & { observations: Array<{ key: string; status: string; summary: string; detail?: string; evidence?: unknown; incident?: { resolution: { type: string } } }> }).observations
 }
 
 const runtimeAgentReader = {
@@ -275,16 +275,26 @@ describe('checkAgentRoster', () => {
     expect(results[0].summary).toMatch(/2 runtime agent/)
   })
 
-  it('warns about duplicate runtime agent ids', async () => {
-    runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('main')]
+  it('a duplicated id is ONE entry-addressed finding naming every position (a triple is still one row), with the editor href on the agent', async () => {
+    runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('main'), { ...makeRuntimeAgent('main'), name: 'Main (old)' }, makeRuntimeAgent('patch')]
     const results = observations(await checkAgentRoster(runtimeAgentReader))
-    expect(results.some(r => r.status === 'warning' && r.summary.includes('appears more than once'))).toBe(true)
+    const duplicates = results.filter(r => r.status === 'warning' && r.key.startsWith('duplicate-'))
+    expect(duplicates).toHaveLength(1)
+    expect(duplicates[0]!.summary).toBe('Runtime agent id main appears 3 times (roster positions 1, 2, 3).')
+    expect(duplicates[0]!.evidence).toEqual({ kind: 'duplicate', agentId: 'main', positions: [0, 1, 2], names: ['main', 'Main (old)'] })
+    expect(duplicates[0]!.incident).toMatchObject({
+      resources: [{ kind: 'agent', id: 'main' }, { kind: 'runtime', id: 'roster-entry-0' }, { kind: 'runtime', id: 'roster-entry-1' }, { kind: 'runtime', id: 'roster-entry-2' }],
+      resolution: { href: '/team?recover=1&agent=main' },
+    })
   })
 
-  it('warns about runtime agents without ids', async () => {
-    runtimeAgents = [{ id: '', name: 'Broken' }]
+  it('an entry without an id is addressed by position, carrying its name and workspace for the editor row', async () => {
+    runtimeAgents = [makeRuntimeAgent('main'), { id: '', name: 'Broken', metadata: { workspace: '/home/x/.pi/agent/broken' } }]
     const results = observations(await checkAgentRoster(runtimeAgentReader))
-    expect(results.some(r => r.status === 'warning' && r.summary.includes('has no id'))).toBe(true)
+    const missing = results.find(r => r.key === 'missing-id-1')!
+    expect(missing.status).toBe('warning')
+    expect(missing.evidence).toEqual({ kind: 'missing-id', rosterIndex: 1, name: 'Broken', workspace: '/home/x/.pi/agent/broken' })
+    expect(missing.incident).toMatchObject({ subject: { kind: 'agent', id: 'roster-1' }, resources: [{ kind: 'runtime', id: 'roster-entry-1' }], resolution: { href: '/team?recover=1&entry=1' } })
   })
 })
 
@@ -380,7 +390,7 @@ describe('checkAgentSync — wrapper', () => {
     const repair = agentSyncRepair()
     const plan = stampPlanItems(repair, await repair.plan(repairTarget))
     expect(plan.length).toBeGreaterThanOrEqual(1)
-    const local = plan.find((p) => p.id === 'sync-agents')
+    const local = plan.find((p) => p.localId === 'sync-agents')
     expect(local?.mode).toBe('self-heal')
 
     const run = await runRepairContract(repair, [local!])
@@ -413,7 +423,7 @@ describe('checkAgentSync — wrapper', () => {
 
     const repair = agentSyncMigrationRepair()
     const plan = stampPlanItems(repair, await repair.plan(repairTarget))
-    const migrate = plan.find((p) => p.id === 'migrate-agent-blocks')
+    const migrate = plan.find((p) => p.localId === 'migrate-agent-blocks')
     expect(migrate?.mode).toBe('one-click')
     expect(migrate?.effects.deletesUserContent).toBe(true)
 

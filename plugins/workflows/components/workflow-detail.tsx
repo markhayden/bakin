@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
 import { useQueryState } from '@makinbakin/sdk/navigation'
-import { WorkflowRecoverBanner, stableKey } from './workflow-recover-banner'
+import { WorkflowRecoverView, stableKey } from './workflow-recover-banner'
 import {
   PageHeader,
   WorkspacePage,
@@ -333,6 +333,37 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
     )
   }
 
+  if ((error || !definition) && recoverParam === '1') {
+    // The recover view exists precisely for a record the parsed page cannot
+    // show (a YAML file that does not parse): the raw editor, keyed by id.
+    return (
+      <WorkspacePage>
+        <WorkspacePageHeader>
+          <PageHeader
+            navigation={(
+              <Button type="button" variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to workflows">
+                <ArrowLeft aria-hidden="true" />
+              </Button>
+            )}
+            eyebrow="Workflows / recover"
+            title={`Recover ${workflowId}`}
+            description={error === 'Workflow not found' ? 'This workflow could not be loaded as a definition. The file is edited here as it is on disk.' : 'The definition could not be loaded. The file is edited here as it is on disk.'}
+          />
+        </WorkspacePageHeader>
+        <WorkspacePageBody className="px-bakin-4 @md/page-shell:px-bakin-6 @xl/page-shell:px-bakin-8">
+          <PageBody gap="content" className="w-full">
+            <WorkflowRecoverView
+              resource={{ kind: 'workflow', id: stableKey(workflowId) }}
+              target={{ kind: 'definition', id: workflowId }}
+              onDismiss={() => setRecoverParam('')}
+              onSaved={() => { void fetchDefinition({ preserveLoading: true }) }}
+            />
+          </PageBody>
+        </WorkspacePageBody>
+      </WorkspacePage>
+    )
+  }
+
   if (error || !definition) {
     return (
       <WorkspacePage>
@@ -377,11 +408,13 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
   const feedback = hasFeedback ? (
     <>
       {recovering ? (
-        <WorkflowRecoverBanner
+        <WorkflowRecoverView
           resource={{ kind: 'workflow', id: stableKey(workflowId) }}
-          editHref={`/workflows/${encodeURIComponent(workflowId)}/edit`}
-          editLabel="Open editor"
+          target={{ kind: 'definition', id: workflowId }}
+          editHref={isManagedSource ? undefined : `/workflows/${encodeURIComponent(workflowId)}/edit`}
+          editLabel="Open canvas editor"
           onDismiss={() => setRecoverParam('')}
+          onSaved={() => { void fetchDefinition({ preserveLoading: true }) }}
         />
       ) : null}
       {availabilityError ? (

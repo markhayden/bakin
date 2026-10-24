@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { PluginLink, useQueryState, useRouter } from '@makinbakin/sdk/navigation'
-import { RosterRecoverBanner } from './roster-recover-banner'
+import { RosterRecoverPanel } from './roster-recover-panel'
 import { Plus, Settings2, ScrollText } from 'lucide-react'
 import {
   ReactFlow,
@@ -380,7 +380,7 @@ export function TeamGrid() {
             className="h-full min-h-0 flex-1"
             feedback={runtimeStatus.pending || recoverParam === '1' ? (
               <>
-              {recoverParam === '1' ? <RosterRecoverBanner onDismiss={() => setRecoverParam('')} /> : null}
+              {recoverParam === '1' ? <RosterRecoverPanel onDismiss={() => setRecoverParam('')} onChanged={() => { void reload() }} /> : null}
               {runtimeStatus.pending ? (
               <Alert tone="attention">
                 <AlertTitle>{runtimeStatus.advice.title ?? 'Runtime config changed'}</AlertTitle>
