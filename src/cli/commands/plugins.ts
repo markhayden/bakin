@@ -412,7 +412,7 @@ async function cmdPluginsRemove(pluginId: string, opts: { json?: boolean } = {})
   if (exitCode !== 0 || result.ok !== true) process.exit(1)
 }
 
-/** `bakin plugins disable|enable <id>` — the row-98 containment flag, flipped through the host route (bounded, install-state held). */
+/** `bakin plugins disable|enable <id>` — the row 98 containment flag, flipped through the host route (bounded, install-state held). */
 async function cmdPluginsSetEnabled(pluginId: string, enabled: boolean, opts: { json?: boolean } = {}): Promise<void> {
   const res = await apiPostJson(`/api/plugins/${enabled ? 'enable' : 'disable'}`, { pluginId })
   const body = res.ok ? jsonObject(res.data) ?? {} : res.data

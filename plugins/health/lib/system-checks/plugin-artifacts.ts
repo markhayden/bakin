@@ -228,7 +228,7 @@ export async function checkPluginArtifacts(deps: PluginArtifactDeps = defaultDep
  */
 export interface PluginUsage {
   disabled: boolean
-  /** A live consumer exists (open task / running workflow) — the row-98 `required` fact. */
+  /** A live consumer exists (open task / running workflow) — the row 98 `required` fact. */
   referenced: boolean
   /** The consumers, for the impact copy. */
   referencedBy: string[]
