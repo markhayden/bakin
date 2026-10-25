@@ -35,21 +35,26 @@ function parseValue(arg: CliArgContribution, raw: string, label: string): { valu
  */
 export function matchCliCommand(command: CliCommandContribution, words: string[]): CliArgMatch | null {
   const literal = commandLiteralWords(command.usage)
-  if (literal.some((word, index) => words[index] !== word)) return null
+  // A bare `<scope>` runs that scope's `list` command (`bakin projects`).
+  const impliedList = words.length === 1 && literal.length === 2 && literal[1] === 'list' && words[0] === literal[0]
+  if (!impliedList && literal.some((word, index) => words[index] !== word)) return null
   const declared = command.args ?? []
   const positionals = declared.filter((arg) => arg.positional)
   const flags = new Map(declared.filter((arg) => !arg.positional).map((arg) => [arg.name, arg]))
-  const params: Record<string, unknown> = {}
+  // A Map, not an object: inherited properties (`constructor`) are never arguments.
+  const params = new Map<string, unknown>()
   let next = 0
+  let optionsEnded = false
   const rest = words.slice(literal.length)
   for (let i = 0; i < rest.length; i++) {
     const word = rest[i]
-    if (!word.startsWith('--')) {
+    if (word === '--' && !optionsEnded) { optionsEnded = true; continue }
+    if (optionsEnded || !word.startsWith('--')) {
       const arg = positionals[next++]
       if (!arg) return { ok: false, error: `Unexpected argument "${word}"` }
       const parsed = parseValue(arg, word, `<${arg.name}>`)
       if ('error' in parsed) return { ok: false, error: parsed.error }
-      params[arg.name] = parsed.value
+      params.set(arg.name, parsed.value)
       continue
     }
     const eq = word.indexOf('=')
@@ -67,14 +72,14 @@ export function matchCliCommand(command: CliCommandContribution, words: string[]
     const parsed = parseValue(arg, raw, `--${name}`)
     if ('error' in parsed) return { ok: false, error: parsed.error }
     if (arg.type === 'string[]') {
-      params[name] = [...(params[name] as string[] | undefined ?? []), parsed.value as string]
-    } else if (name in params) {
+      params.set(name, [...(params.get(name) as string[] | undefined ?? []), parsed.value as string])
+    } else if (params.has(name)) {
       return { ok: false, error: `--${name} was given more than once` }
     } else {
-      params[name] = parsed.value
+      params.set(name, parsed.value)
     }
   }
-  const missing = declared.find((arg) => arg.required && !(arg.name in params))
+  const missing = declared.find((arg) => arg.required && !params.has(arg.name))
   if (missing) return { ok: false, error: missing.positional ? `Missing required argument <${missing.name}>` : `Missing required option --${missing.name}` }
-  return { ok: true, params }
+  return { ok: true, params: Object.fromEntries(params) }
 }

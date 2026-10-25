@@ -1602,7 +1602,7 @@ A dispatched command (`dispatch: execTool | apiRoute`) must declare `args`. That
 
 **Interactive launch** (`dispatch.launch: { bin }`) is for POST `apiRoute` commands that hand the operator's terminal to a managed binary (Terminal's `bakin terminal attach`).
 - The manifest parser requires `bin` to be in the plugin's `requires.bins`.
-- `src/cli/launch.ts` `runLaunch` refuses before any request when:
+- `src/cli/launch.ts` `runLaunch` refuses before the preparation POST when:
   - stdin/stdout is not a TTY;
   - the target is not this home's server (`CLI_TARGET.source !== 'lock'`);
   - the CLI runs in an agent context;

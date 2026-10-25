@@ -19,19 +19,27 @@ interface PluginManifestRow {
   }
 }
 
-/** Global flags the CLI consumes itself; they never reach command params. */
-function withoutGlobalFlags(args: string[]): string[] {
-  return stripActorFlag(args).rest.filter((arg) => arg !== '--json')
+/**
+ * Global flags the CLI consumes itself (`--as`, `--json`) never reach command
+ * params; everything after `--` is the command's own text.
+ */
+function withoutGlobalFlags(args: string[]): { rest: string[]; invalid?: string } {
+  const end = args.indexOf('--')
+  const options = end === -1 ? args : args.slice(0, end)
+  const actor = stripActorFlag(options)
+  return { rest: [...actor.rest.filter((arg) => arg !== '--json'), ...(end === -1 ? [] : args.slice(end))], invalid: actor.invalid }
 }
 
 export async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<boolean> {
   const manifest = await apiGet('/api/plugins/manifest') as { plugins: PluginManifestRow[] }
-  const words = [cmd, ...withoutGlobalFlags(args)]
+  const global = withoutGlobalFlags(args)
+  const words = [cmd, ...global.rest]
   for (const plugin of manifest.plugins) {
     for (const command of plugin.contributes?.cliCommands ?? []) {
       if (!command.dispatch) continue
       const match = matchCliCommand(command, words)
       if (!match) continue
+      if (global.invalid) await exitCommandIssue(global.invalid, { usage: command.usage })
       if (!match.ok) await exitCommandIssue(match.error, { usage: command.usage })
       const params = match.ok ? match.params : {}
       const invocation = invocationCommand([cmd, ...args])

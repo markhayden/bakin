@@ -97,4 +97,13 @@ describe('dispatchPluginCliCommand', () => {
     expect(fetchMock.mock.calls).toHaveLength(1)
     expect(errorOutput()).toContain('run it from an interactive terminal')
   })
+
+  it('refuses a malformed --as before anything is prepared', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(manifest))
+
+    await expect(dispatchPluginCliCommand('terminal', ['attach', 's1', '--as=human', '--as='])).rejects.toThrow('exit:1')
+
+    expect(fetchMock.mock.calls).toHaveLength(1)
+    expect(errorOutput()).toContain('--as needs a value')
+  })
 })

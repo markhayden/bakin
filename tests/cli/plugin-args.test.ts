@@ -86,4 +86,19 @@ describe('matchCliCommand', () => {
   it('rejects a non-repeatable flag given twice', () => {
     expect(matchCliCommand(create, ['projects', 'create', 'T', '--priority', '1', '--priority', '2'])).toEqual({ ok: false, error: '--priority was given more than once' })
   })
+
+  it('treats everything after -- as positional text', () => {
+    expect(matchCliCommand(create, ['projects', 'create', '--', '--important'])).toEqual({ ok: true, params: { title: '--important' } })
+  })
+
+  it('lets a bare `<scope>` invoke its list command', () => {
+    expect(matchCliCommand(list, ['projects'])).toEqual({ ok: true, params: {} })
+    expect(matchCliCommand(create, ['projects'])).toBeNull()
+  })
+
+  it('never reads inherited object properties as arguments', () => {
+    const proto: CliCommandContribution = { ...list, args: [{ name: 'constructor', type: 'string', required: true }, { name: 'toString', type: 'string[]' }] }
+    expect(matchCliCommand(proto, ['projects', 'list'])).toEqual({ ok: false, error: 'Missing required option --constructor' })
+    expect(matchCliCommand(proto, ['projects', 'list', '--constructor', 'a', '--toString', 'b'])).toEqual({ ok: true, params: { constructor: 'a', toString: ['b'] } })
+  })
 })

@@ -186,7 +186,7 @@ A command that should take over the operator's terminal, such as attaching to a 
 ```
 
 - `bin` must be one of the plugin's own `requires.bins`. The CLI runs only that managed binary from Bakin's bin dir, never a path or command taken from a response.
-- **Before sending anything**, the CLI refuses to run unless all of these hold:
+- **Before the preparation POST**, the CLI refuses to run unless all of these hold:
   - stdin and stdout are a TTY;
   - the target is this home's own running server (not `BAKIN_URL`);
   - the caller passes `--as human`;
