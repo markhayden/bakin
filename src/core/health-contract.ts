@@ -716,7 +716,10 @@ export const healthObservationInputSchema = z.discriminatedUnion('status', [
 
 const observedHealthCheckRunInputSchema = z.object({
   outcome: z.literal('observed'),
-  observations: z.array(healthObservationInputSchema).min(1, 'An observed run must return at least one observation.'),
+  observations: z.array(healthObservationInputSchema).min(1, 'An observed run must return at least one observation.')
+    // Observation ids are `<checkId>:<key>`: two rows with one key would collide in the report (the wire schema refuses
+    // duplicate ids, and the whole page went dark on Mark's box, 2026-10-24). A producer bug reads `invalid` instead.
+    .refine((rows) => new Set(rows.map((row) => row.key)).size === rows.length, 'Observation keys must be unique within a run.'),
 }).strict()
 
 const notApplicableHealthCheckRunInputSchema = z.object({

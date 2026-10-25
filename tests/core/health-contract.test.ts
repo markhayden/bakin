@@ -410,6 +410,12 @@ describe('health run-output validation', () => {
     ]))
   })
 
+  it('two observations with one key in a single run are refused — the id would collide in the report (live incident 2026-10-24)', () => {
+    const twice = safeParseHealthCheckRunInput({ outcome: 'observed', observations: [warningObservation(), warningObservation()] })
+    expect(twice.success).toBe(false)
+    expect(JSON.stringify(twice.success ? null : twice.error.issues)).toContain('Observation keys must be unique within a run.')
+  })
+
   it('decision choices: same-origin only, unique keys, at most four, nothing else on the object', () => {
     const base = warningObservation().incident as Record<string, unknown>
     const withChoices = (choices: unknown) => safeParseHealthCheckRunInput({ outcome: 'observed', observations: [warningObservation({ incident: { ...base, resolution: { key: 'review', type: 'human', needs: 'decision', label: 'Review', href: '/health', choices } } })] })

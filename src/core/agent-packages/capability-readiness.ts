@@ -133,10 +133,16 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
   const binDir = getBakinPaths().bin
   const platform = binPlatformKey()
   const out: CapabilityReadiness[] = []
+  // A lockfile can carry a stale key beside the live one (`ocr@0.1.0` and `ocr@0.1.1`, both version 0.1.1 — seen on
+  // the operator's box after an upgrade): the SAME installed manifest is judged once, never twice.
+  const seen = new Set<string>()
 
   for (const [key, entry] of Object.entries(lock.packages)) {
     if (entry.kind !== 'skill-pack') continue
     const id = key.includes('@') ? key.slice(0, key.lastIndexOf('@')) : key
+    const identity = `${id}@${entry.version}`
+    if (seen.has(identity)) continue
+    seen.add(identity)
     const installed = readInstalledManifest(entry.kind, id, entry.version)
     if (!installed) continue
     if (!installed.ok) {
