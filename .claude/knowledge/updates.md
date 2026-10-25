@@ -115,8 +115,14 @@ with the observe signal, and a retired or expired checkout directory is
 deleted (one directory per key). A github package is compared
 by `ls-remote` against the installed commit and its manifest is fetched (a
 staged clone, removed after) ONLY when the ref moved, to name the version on
-offer — same version, newer commit is still an update, named by the commit; a
-local package compares its directory's manifest version. A hub skill's
+offer. The fetched package folder is then hashed (`computeDirSha`, the bytes
+an install commits) and compared with the installed folder: equal is
+`current` — in a monorepo source (`github:…/bakin-bits-official#agents/x`)
+every commit anywhere in the repo moves the ref, and only the package's own
+bytes say whether there is something newer (an unreadable installed folder
+is never assumed current). A changed folder at the same version is still an
+update, named by the commit; a local package compares its directory's
+manifest version. A hub skill's
 TRACKING POLICY comes from the lock entry's original `source` string and its
 installed identity from `upstream.ref` (every ClawHub install records the
 RESOLVED version there — never read as a pin): `clawhub:<slug>` tracks latest
