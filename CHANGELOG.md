@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.44] - 2026-10-25
+
 Health → Updates stops listing agent packages that did not change, and the Updates tab count reads clearly.
 
 ### Fixed
@@ -860,5 +862,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.42]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.42
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.43...HEAD
 [0.0.1-rc.43]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.43
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.44...HEAD
+[0.0.1-rc.44]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.44
