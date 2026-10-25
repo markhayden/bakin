@@ -127,6 +127,7 @@ const mockRepairPlan = {
   expiresAt: '2026-04-01T10:10:00.000Z',
   items: [{
     id: 'tasks.repair-store:repair.taskboard',
+    localId: 'repair.taskboard',
     actionId: 'tasks.repair-store',
     title: 'Repair taskboard',
     reason: 'Missing columns',

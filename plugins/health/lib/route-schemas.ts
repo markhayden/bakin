@@ -436,6 +436,8 @@ const healthRepairPreconditionSchema = z.object({
 
 export const healthRepairPlanItemSchema = z.object({
   id: nonEmptyString,
+  /** The planner's own handle (core stamps `id` = `<canonicalActionId>:<localId>`). */
+  localId: nonEmptyString,
   actionId: nonEmptyString,
   title: nonEmptyString,
   reason: nonEmptyString,

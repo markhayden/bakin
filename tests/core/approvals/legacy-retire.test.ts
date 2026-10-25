@@ -88,7 +88,10 @@ function auditRows(): Array<{ event: string; data: Record<string, unknown> }> {
 }
 
 let clock = 0
-const deps = (channels: LegacyRetireDeps['channels']): LegacyRetireDeps => ({ channels, now: () => `2026-10-24T00:00:${String(clock++).padStart(2, '0')}.000Z` })
+const completedTasks: string[] = []
+// Like the real task store: a task completed once is done from then on.
+const tasks: LegacyRetireDeps['tasks'] = { complete: async (taskId) => { if (taskId.startsWith('done-') || completedTasks.includes(taskId)) return 'skipped'; completedTasks.push(taskId); return 'completed' } }
+const deps = (channels: LegacyRetireDeps['channels']): LegacyRetireDeps => ({ channels, tasks, now: () => `2026-10-24T00:00:${String(clock++).padStart(2, '0')}.000Z` })
 const workingChannels = () => {
   const calls: Array<{ approvalId: string; deliveries: unknown; reason?: string }> = []
   const surface = { cancelApproval: async (args: { approvalId: string; deliveries: unknown; reason?: string }) => { calls.push(args) } }
@@ -100,6 +103,7 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   clock = 0
+  completedTasks.length = 0
 })
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
@@ -278,6 +282,21 @@ describe('retireLegacyHealthApprovals', () => {
     const { calls, channels } = workingChannels()
     expect(await resumeRetirementReceipts({ contentDir: testDir, deps: deps(channels) })).toEqual({ resumed: 1, done: 1, editFailed: 0 })
     expect(calls.map((c) => c.approvalId)).toEqual(['nav-early'])
+  })
+
+  it('the old engine\'s review tasks are completed for every legacy health record — pending OR already cancelled — once each, never a v2 task (Mark\'s live test 2026-10-24)', async () => {
+    writeApproval(legacyNavigate('nav-open'))
+    writeApproval(legacyNavigate('nav-old', { status: 'cancelled', owner: { kind: 'health-navigate', taskId: 't-old', requestId: 'r-old', incidentIds: ['x'], href: '/x' } }))
+    writeApproval(legacyNavigate('nav-old-2', { status: 'cancelled', owner: { kind: 'health-navigate', taskId: 't-old', requestId: 'r-old-2', incidentIds: ['x'], href: '/x' } }))
+    writeApproval(legacyRepair('rep-done', { status: 'cancelled', owner: { kind: 'health-repair', taskId: 'done-1', requestId: 'r-d', incidentIds: ['x'] } }))
+    writeApproval(legacyRepair('rep-v2', { schemaVersion: 2, owner: { kind: 'health-repair', taskId: 't-v2', requestId: 'r-v2', incidentIds: ['x'] } }))
+    const { channels } = workingChannels()
+    const summary = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
+    expect(summary).toMatchObject({ selected: 1, tasksCompleted: 2 })
+    expect([...completedTasks].sort()).toEqual(['t-nav', 't-old'])
+    const again = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
+    expect(again).toMatchObject({ selected: 0, tasksCompleted: 0 })
+    expect(auditRows().filter((row) => row.event === LEGACY_RETIRE_AUDIT_EVENT)).toHaveLength(1)
   })
 
   it('a quiet pass (nothing legacy, nothing open) writes no receipt file and no audit row', async () => {

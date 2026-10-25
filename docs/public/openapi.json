@@ -33308,6 +33308,10 @@
                             "type": "string",
                             "minLength": 1
                           },
+                          "localId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
                           "actionId": {
                             "type": "string",
                             "minLength": 1
@@ -33459,6 +33463,7 @@
                         },
                         "required": [
                           "id",
+                          "localId",
                           "actionId",
                           "title",
                           "reason",

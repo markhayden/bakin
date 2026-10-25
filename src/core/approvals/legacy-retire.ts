@@ -28,7 +28,9 @@
  * not the file size — an unfinished receipt is never dropped behind a long
  * tail of finished ones).
  * Records the adapted engine writes carry `schemaVersion: 2` and are never
- * selected.
+ * selected. The old engine's REVIEW TASKS (every legacy health record's
+ * `owner.taskId`, whatever the record's status) are completed when still
+ * open — nothing from the retired engine lingers on the board.
  */
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'fs'
 import { dirname, join } from 'path'
@@ -99,11 +101,32 @@ export interface LegacyRetireSummary {
   resumed: number
   /** Files that could not be read as JSON or were oversized (left untouched). */
   unreadable: number
+  /** The old engine's review tasks completed (every legacy health record's task that was still open). */
+  tasksCompleted: number
 }
 
 export interface LegacyRetireDeps {
   channels?: () => Pick<RuntimeChannelSurface, 'cancelApproval'> | undefined
   now?: () => string
+  /** Completes the old engine's review task for a retired record; the default reads the task store and moves health-sourced open tasks to done. */
+  tasks?: { complete(taskId: string): Promise<'completed' | 'skipped'> }
+}
+
+/**
+ * The review task the old escalation opened for a legacy record (any status —
+ * a record cancelled before this release still left its task in Review) is
+ * completed when it is still open and health-sourced; anything else is left
+ * alone. Idempotent: a done task is skipped.
+ */
+async function defaultCompleteLegacyTask(taskId: string): Promise<'completed' | 'skipped'> {
+  const { getTask } = await import('../task-store')
+  const { getTaskDetails, moveTaskWithEffects } = await import('../task-service')
+  const task = getTask(taskId)
+  if (!task || task.source?.pluginId !== 'health') return 'skipped'
+  const details = await getTaskDetails(taskId).catch(() => null)
+  if (!details || details.column === 'done' || details.column === 'archived') return 'skipped'
+  await moveTaskWithEffects(taskId, 'done', 'system', { skipDoneGuard: true, channel: 'system' })
+  return 'completed'
 }
 
 export function retirementReceiptsPath(contentDir = getContentDir()): string {
@@ -210,10 +233,16 @@ function* approvalFiles(contentDir: string): Generator<string> {
   }
 }
 
-function isLegacyPending(raw: Record<string, unknown>): boolean {
+function legacyOwner(raw: Record<string, unknown>): { kind: string; taskId: string | null } | null {
   const owner = raw.owner
   const kind = owner && typeof owner === 'object' ? (owner as { kind?: unknown }).kind : undefined
-  return typeof kind === 'string' && LEGACY_KINDS.has(kind) && raw.status === 'pending' && raw.schemaVersion !== APPROVAL_SCHEMA_VERSION
+  if (typeof kind !== 'string' || !LEGACY_KINDS.has(kind) || raw.schemaVersion === APPROVAL_SCHEMA_VERSION) return null
+  const taskId = (owner as { taskId?: unknown }).taskId
+  return { kind, taskId: typeof taskId === 'string' && taskId !== '' ? taskId : null }
+}
+
+function isLegacyPending(raw: Record<string, unknown>): boolean {
+  return legacyOwner(raw) !== null && raw.status === 'pending'
 }
 
 /** Every delivered card the raw record names, each tracked on its own. */
@@ -341,8 +370,10 @@ export async function retireLegacyHealthApprovals(
   const contentDir = options.contentDir ?? getContentDir()
   const now = options.deps?.now ?? (() => new Date().toISOString())
   const channels = (options.deps?.channels ?? defaultChannels)()
+  const completeTask = options.deps?.tasks?.complete ?? defaultCompleteLegacyTask
   const resumed = await resumeRetirementReceipts({ contentDir, deps: { channels: () => channels, now } })
-  const summary: LegacyRetireSummary = { selected: 0, batches: 0, cancelledViaStore: 0, cancelledRaw: 0, done: resumed.done, editFailed: resumed.editFailed, resumed: resumed.resumed, unreadable: 0 }
+  const summary: LegacyRetireSummary = { selected: 0, batches: 0, cancelledViaStore: 0, cancelledRaw: 0, done: resumed.done, editFailed: resumed.editFailed, resumed: resumed.resumed, unreadable: 0, tasksCompleted: 0 }
+  const tasksSeen = new Set<string>()
 
   // Drain in bounded batches: each batch re-derives the selection from disk
   // (records retired so far carry a receipt and drop out), yields to the
@@ -356,6 +387,16 @@ export async function retireLegacyHealthApprovals(
       if (selectedThisBatch >= MAX_RETIREMENTS_PER_BATCH) break
       const entry = readRawApproval(path)
       if (!entry) { unreadable += 1; continue }
+      // Every legacy health record — pending or already cancelled — may still hold the old engine's review task open.
+      const owner = legacyOwner(entry.raw)
+      if (owner?.taskId && !tasksSeen.has(owner.taskId)) {
+        tasksSeen.add(owner.taskId)
+        try {
+          if (await completeTask(owner.taskId) === 'completed') summary.tasksCompleted += 1
+        } catch (err) {
+          log.warn('Legacy Health review task could not be completed — left in place', { taskId: owner.taskId, err: err instanceof Error ? err.message : String(err) })
+        }
+      }
       if (!isLegacyPending(entry.raw)) continue
       const approvalId = entry.raw.approvalId
       if (typeof approvalId !== 'string' || approvalId === '') continue
@@ -388,7 +429,7 @@ export async function retireLegacyHealthApprovals(
     await new Promise<void>((resolve) => setImmediate(resolve))
   }
 
-  if (summary.selected > 0 || summary.resumed > 0) {
+  if (summary.selected > 0 || summary.resumed > 0 || summary.tasksCompleted > 0) {
     appendAudit(contentDir, LEGACY_RETIRE_AUDIT_EVENT, 'system', { ...summary, reason: LEGACY_RETIRE_REASON })
     log.info('Legacy Health approvals retired', { ...summary })
   }
