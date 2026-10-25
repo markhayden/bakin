@@ -14,6 +14,7 @@ import { createLogger } from '../../logger'
 import { clawhubHasVersion, clawhubLatestVersion, fetchSourceAsync, parseGithubSpec, resolveLocalPath } from '../../agent-packages/source-fetcher'
 import { canonicalPackageEntries, readLockfile, type PackageEntry } from '../../../../packages/core/src/agent-packages/lockfile'
 import { parseManifest, type Manifest } from '../../../../packages/core/src/agent-packages/manifest'
+import { computeDirSha } from '../../../../packages/core/src/agent-packages/markers'
 import { getPackageSourceDir } from '../../../../packages/core/src/agent-packages/package-paths'
 import type { UpdateSource } from '../types'
 import { createHubSkillSource } from './hub-skill'
@@ -127,13 +128,26 @@ function packageCloneUrl(source: string): string {
 }
 
 /** The manifest at a github source+ref: a staged clone (the fetcher's own temp dir), removed after; the git child dies with the signal. */
-async function fetchPackageManifest(sourceWithRef: string, signal: AbortSignal, opts: { fresh?: boolean } = {}): Promise<{ id: string; version: string; commitSha: string }> {
+async function fetchPackageManifest(sourceWithRef: string, signal: AbortSignal, opts: { fresh?: boolean } = {}): Promise<{ id: string; version: string; commitSha: string; treeSha: string }> {
   const fetched = await fetchSourceAsync(sourceWithRef, { signal, fresh: opts.fresh })
   try {
     const manifest = parseManifest(JSON.parse(readFileSync(join(fetched.stagingDir, 'bakin-package.json'), 'utf-8')))
-    return { id: manifest.id, version: manifest.version, commitSha: fetched.commitSha }
+    // The staged folder is what an install commits byte for byte — the same digest the installed folder carries.
+    return { id: manifest.id, version: manifest.version, commitSha: fetched.commitSha, treeSha: computeDirSha(fetched.stagingDir) }
   } finally {
     rmSync(fetched.stagingDir, { recursive: true, force: true })
+  }
+}
+
+/** The installed package folder's digest, or null when it is missing or unreadable (never assumed current). */
+function installedPackageTreeSha(pkg: InstalledPackage): string | null {
+  const dir = getPackageSourceDir(getContentDir(), pkg.entry.kind, pkg.id, pkg.entry.version)
+  if (!existsSync(dir)) return null
+  try {
+    return computeDirSha(dir)
+  } catch (err) {
+    log.warn('installed package folder unreadable — its update check falls back to the commit', { id: pkg.id, error: err instanceof Error ? err.message : String(err) })
+    return null
   }
 }
 
@@ -161,6 +175,7 @@ export function createPackageUpdateSources(): UpdateSource[] {
       ...packageDeps,
       fetchManifest: fetchPackageManifest,
       localManifest: localPackageManifest,
+      installedTreeSha: installedPackageTreeSha,
     }),
     createHubSkillSource({
       ...packageDeps,
