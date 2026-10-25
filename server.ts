@@ -28,6 +28,7 @@ import { createLogger } from './src/core/logger'
 import { getContentDir, getBakinPaths } from './src/core/content-dir'
 import { broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
+import { archiveRefusedRepairRequests } from './src/core/doctor-repair-store'
 import { createAppServices } from './src/core/app-services'
 import { reconcileDeliveryBridge } from './src/core/delivery'
 import { startChannelReadiness } from './src/core/delivery/readiness'
@@ -124,6 +125,15 @@ const storage = new MarkdownStorageAdapter(CONTENT_DIR)
 const eventBus = new BakinEventBus(broadcast)
 
 ;(async () => {
+  // Repair-request records an earlier release wrote and this schema refuses
+  // move to the immutable refused archive BEFORE anything lists the store —
+  // app-services initialization already reads it (the first boot after the
+  // cutover warned per stale file at that moment, 2026-10-24).
+  const refusedRequests = archiveRefusedRepairRequests(CONTENT_DIR)
+  if (refusedRequests.archived.length > 0) {
+    appendAudit(CONTENT_DIR, 'doctor.repair_requests_archived', 'system', { count: refusedRequests.archived.length, archiveRoot: refusedRequests.archiveRoot })
+  }
+
   // Initialize the adapter/task service spine before plugin activation.
   const appServices = await createAppServices()
 
