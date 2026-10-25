@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { identityHeaders, resolveCliIdentity } from '../../src/cli/identity'
+import { identityHeaders, resolveCliIdentity, stripActorFlag } from '../../src/cli/identity'
 
 const root = mkdtempSync(join(tmpdir(), 'bakin-cli-identity-'))
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -55,5 +55,17 @@ describe('resolveCliIdentity', () => {
 
   it('no flag and no context sends nothing', async () => {
     expect(identityHeaders(await resolveCliIdentity({ argv: ['doctor'], cwd: plain, env: {}, probeWorkspace: noProbe }))).toEqual({})
+  })
+})
+
+describe('stripActorFlag', () => {
+  it('never reads command text after -- as the actor flag', () => {
+    expect(stripActorFlag(['projects', 'create', '--', '--as=human'])).toEqual({ as: undefined, rest: ['projects', 'create', '--', '--as=human'] })
+    expect(stripActorFlag(['--as', 'human', 'x', '--', '--as', 'patch'])).toEqual({ as: 'human', rest: ['x', '--', '--as', 'patch'] })
+  })
+
+  it('--as human written after -- declares nobody', async () => {
+    const identity = await resolveCliIdentity({ argv: ['projects', 'create', '--', '--as=human'], cwd: plain, env: {}, probeWorkspace: noProbe })
+    expect(identity).toEqual({ agentContext: null, operatorDeclared: false })
   })
 })

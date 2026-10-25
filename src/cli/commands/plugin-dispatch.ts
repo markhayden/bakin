@@ -24,10 +24,10 @@ interface PluginManifestRow {
  * params; everything after `--` is the command's own text.
  */
 function withoutGlobalFlags(args: string[]): { rest: string[]; invalid?: string } {
-  const end = args.indexOf('--')
-  const options = end === -1 ? args : args.slice(0, end)
-  const actor = stripActorFlag(options)
-  return { rest: [...actor.rest.filter((arg) => arg !== '--json'), ...(end === -1 ? [] : args.slice(end))], invalid: actor.invalid }
+  const actor = stripActorFlag(args)
+  const end = actor.rest.indexOf('--')
+  const options = end === -1 ? actor.rest : actor.rest.slice(0, end)
+  return { rest: [...options.filter((arg) => arg !== '--json'), ...(end === -1 ? [] : actor.rest.slice(end))], invalid: actor.invalid }
 }
 
 export async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<boolean> {
