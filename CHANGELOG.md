@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.43] - 2026-10-25
+
 Every Health finding is now one of two things — a repair Bakin runs, or a human need that lands on a working control — and the retired approval engine's leftovers are cleaned up at boot.
 
 ### Added
@@ -850,5 +852,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.41]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.41
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.42...HEAD
 [0.0.1-rc.42]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.42
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.43...HEAD
+[0.0.1-rc.43]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.43
