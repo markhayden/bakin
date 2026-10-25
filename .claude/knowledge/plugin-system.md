@@ -1600,6 +1600,19 @@ A dispatched command (`dispatch: execTool | apiRoute`) must declare `args`. That
 - Help renders the declared flags (`usageWithFlags` in `src/cli/help.ts`).
 - Older cores drop the unknown `args` key, so declaring args is additive for Bits manifests.
 
+**Interactive launch** (`dispatch.launch: { bin }`) is for POST `apiRoute` commands that hand the operator's terminal to a managed binary (Terminal's `bakin terminal attach`).
+- The manifest parser requires `bin` to be in the plugin's `requires.bins`.
+- `src/cli/launch.ts` `runLaunch` refuses before any request when:
+  - stdin/stdout is not a TTY;
+  - the target is not this home's server (`CLI_TARGET.source !== 'lock'`);
+  - the CLI runs in an agent context;
+  - `--as human` is absent.
+- It then POSTs the params and zod-validates `{ args, confirm? }`.
+- It spawns `<binDir>/<bin> ...args` with inherited stdio/env and no shell (`spawnInherited`).
+- It reports `{ token, pid }` to `confirm.path` (failure kills the child) and propagates the exit code.
+- Routes check provenance with `approvalProvenanceFromRequest`.
+- The PTY test in `tests/cli/launch.test.ts` proves TTY inheritance and has teeth.
+
 ## Plugin `defaults/` Conventions
 
 A plugin may ship three sibling directories under `defaults/`. The

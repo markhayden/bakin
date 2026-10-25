@@ -177,6 +177,28 @@ A `cliCommands` entry with `dispatch` becomes a real `bakin` command. Its `args`
 
 String values are never coerced: commas, JSON-looking text, and `true` stay text. `--json` and `--as` are global CLI flags and cannot be declared. `apiRoute` dispatch resolves under the contributing plugin's id (`/api/plugins/{pluginId}{path}`), with GET arguments sent as query parameters. `bakin --help` lists the declared flags.
 
+#### Interactive commands (`launch`)
+
+A command that should take over the operator's terminal, such as attaching to a session, declares `launch` on a POST `apiRoute` dispatch:
+
+```json
+{ "dispatch": { "type": "apiRoute", "method": "POST", "path": "/cli/attach", "launch": { "bin": "tmux" } } }
+```
+
+- `bin` must be one of the plugin's own `requires.bins`. The CLI runs only that managed binary from Bakin's bin dir, never a path or command taken from a response.
+- **Before sending anything**, the CLI refuses to run unless all of these hold:
+  - stdin and stdout are a TTY;
+  - the target is this home's own running server (not `BAKIN_URL`);
+  - the caller passes `--as human`;
+  - the CLI is not running in a detected agent context.
+- Your route prepares the work and answers `{ "args": string[], "confirm"?: { "path": string, "token": string } }`.
+- The CLI spawns `bin` with those args, with no shell and with inherited stdio and environment (including `TERMINFO`).
+- When `confirm` is present, the CLI immediately POSTs `{ token, pid }` to `confirm.path`. If that is refused, the CLI kills the child.
+- The child's exit code becomes the command's exit code.
+- Routes check the caller with `approvalProvenanceFromRequest(request)` from `@makinbakin/sdk/routing`. Require `actor.kind === 'operator-declared'` and refuse agents.
+
+This is trusted installed-plugin execution, not a sandbox. Keep the argument contract small.
+
 ### Declarative client metadata (lazy loading)
 
 `nav`, `routes`, and `slots` describe the client bundle's contributions so the shell can render the sidebar and route the first navigation **before** the bundle loads. A plugin that declares any of them is lazy by default: its `client.js` imports on the first render of a declared slot or navigation into a declared route pattern. Declarations must exactly match what `client.tsx` registers at runtime — Bakin warns on drift after every client load.
