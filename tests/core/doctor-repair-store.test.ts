@@ -11,10 +11,12 @@ mock.module('../../src/core/logger', () => ({
 // Imported after the logger mock so the store's module-level logger is the mock.
 const {
   DoctorRepairRequestNotFoundError,
+  archiveRefusedRepairRequests,
   createDoctorRepairRequest,
   getDoctorRepairRequest,
   legacyRepairRequestArchiveRoot,
   listDoctorRepairRequests,
+  refusedRepairRequestArchiveRoot,
   openRepairWorkByIncident,
   repairRequestV2Root,
   updateDoctorRepairRequest,
@@ -132,6 +134,27 @@ describe('request files are validated on read (#898)', () => {
       expect(getDoctorRepairRequest(dir, 'repair-no-kind')).toBeNull()
       expect(listDoctorRepairRequests(dir)).toEqual([])
       expect(warn.mock.calls.map((call) => String(call[0]))).toContain('Skipping invalid doctor repair request')
+    })
+  })
+
+  it('boot archives every record the schema refuses ONCE into the immutable refused archive — valid rows stay, listing goes quiet, a second pass moves nothing (live incident 2026-10-24)', () => {
+    withDir((dir, shard) => {
+      const good = createDoctorRepairRequest(dir, { plan: plan(), incidentIds: ['health:search:down'], observationIds: ['health.search:engine'] })
+      const legacy = { version: 2, id: 'repair-legacy', kind: 'delegate', status: 'sent', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z', plan: plan(), incidentIds: ['x'], observationIds: [], taskId: 'task-1', events: [] }
+      writeFileSync(join(shard, 'repair-legacy.json'), JSON.stringify(legacy)) // pre-#942: no checkIds
+      writeFileSync(join(shard, 'repair-old-proposal.json'), JSON.stringify({ ...good, id: 'repair-old-proposal', kind: 'approval-repair', proposal: { reportId: 'r', observationIds: [], items: [{ actionId: 'a', itemId: 'a:x', safety: 'destructive', changes: [] }] } })) // pre-cutover proposal shape
+      writeFileSync(join(shard, 'not-json.json'), '{ nope')
+      const older = join(repairRequestV2Root(dir), '2026-08')
+      mkdirSync(older, { recursive: true })
+      writeFileSync(join(older, 'repair-older.json'), JSON.stringify({ ...legacy, id: 'repair-older' }))
+
+      const first = archiveRefusedRepairRequests(dir)
+      expect(first.archived.sort()).toEqual(['2026-08/repair-older.json', '2026-10/not-json.json', '2026-10/repair-legacy.json', '2026-10/repair-old-proposal.json'])
+      expect(readFileSync(join(refusedRepairRequestArchiveRoot(dir), '2026-10', 'repair-legacy.json'), 'utf-8')).toBe(JSON.stringify(legacy)) // bytes preserved
+      warn.mockClear()
+      expect(listDoctorRepairRequests(dir).map((request) => request.id)).toEqual([good.id])
+      expect(warn).not.toHaveBeenCalled() // the store is quiet afterwards
+      expect(archiveRefusedRepairRequests(dir).archived).toEqual([])
     })
   })
 })

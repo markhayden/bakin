@@ -107,6 +107,15 @@ export async function runStartupRecovery(contentDir: string, port: number): Prom
     // resumed on every boot) BEFORE recovery or rehydration reads them.
     const { retireLegacyHealthApprovals } = await import('../approvals/legacy-retire')
     await retireLegacyHealthApprovals({ contentDir })
+    // Repair-request records an earlier release wrote and this schema refuses
+    // move to the immutable refused archive ONCE, so the listers below and
+    // every later doctor pass read a quiet store instead of warning per file.
+    const { archiveRefusedRepairRequests } = await import('../doctor-repair-store')
+    const refused = archiveRefusedRepairRequests(contentDir)
+    if (refused.archived.length > 0) {
+      const { appendAudit } = await import('../audit')
+      appendAudit(contentDir, 'doctor.repair_requests_archived', 'system', { count: refused.archived.length, archiveRoot: refused.archiveRoot })
+    }
     // A repair interrupted mid-apply by the previous process is verified or
     // failed honestly BEFORE rehydration looks at its (still pending) record.
     await recoverInterruptedApplies(contentDir)
