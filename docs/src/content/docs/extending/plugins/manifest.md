@@ -134,7 +134,7 @@ The signature covers canonical JSON for `bakin-plugin.json` with the top-level `
 | `apiRoutes[]` | `method`, plugin-relative `path`, `summary` |
 | `clientRoutes[]` | app `path`, `summary` |
 | `execTools[]` | `name`, `summary` |
-| `cliCommands[]` | `name`, `usage`, `summary`, `dispatch` |
+| `cliCommands[]` | `name`, `usage`, `summary`, `dispatch`, `args` (required with `dispatch`) |
 | `settings[]` | `key`, `summary` |
 | `docs` | `slug` |
 | `nav[]` | NavItem JSON: `id`, `label` (plus `icon`, `href`, `order`, `section`, `children`, ...) |
@@ -147,6 +147,35 @@ The signature covers canonical JSON for `bakin-plugin.json` with the top-level `
 API route paths are plugin-relative. A route declared as `/hello` is exposed under `/api/plugins/{pluginId}/hello`. Do not declare `/api/...` paths in a plugin manifest.
 
 `apiRoutes` and `execTools` are enforced at activation — a user plugin that registers an undeclared route or exec tool fails to load. Keep them in sync automatically with `bakin plugins sync-manifest` (`--check` for a non-writing CI drift gate); it regenerates both sections from the plugin's actual code while preserving author-written summaries on kept entries. Client sections (`nav`, `clientRoutes`, `routes`, `slots`) are author-maintained.
+
+### CLI commands
+
+A `cliCommands` entry with `dispatch` becomes a real `bakin` command. Its `args` array declares the **complete** argument surface:
+- Positionals bind in order and must match the `<name>` words in `usage`.
+- Every flag must be declared. Unknown flags and extra arguments are rejected before anything is sent.
+
+```json
+{
+  "name": "projects:create",
+  "usage": "bakin projects create <title>",
+  "summary": "Create a project",
+  "dispatch": { "type": "execTool", "name": "bakin_exec_projects_create" },
+  "args": [
+    { "name": "title", "type": "string", "positional": true, "required": true },
+    { "name": "tasks", "type": "string[]", "summary": "Repeat --tasks once per task" },
+    { "name": "status", "type": "string", "values": ["draft", "active"] }
+  ]
+}
+```
+
+| `type` | CLI form | Parsed as |
+|---|---|---|
+| `string` | `--name value` / `--name=value` | literal text (optionally limited to `values`) |
+| `number` | `--n 2` | finite number |
+| `boolean` | `--flag`, `--flag=false`; positional `true`/`false` | boolean |
+| `string[]` | `--tag a --tag b` | array in order (never positional) |
+
+String values are never coerced: commas, JSON-looking text, and `true` stay text. `--json` and `--as` are global CLI flags and cannot be declared. `apiRoute` dispatch resolves under the contributing plugin's id (`/api/plugins/{pluginId}{path}`), with GET arguments sent as query parameters. `bakin --help` lists the declared flags.
 
 ### Declarative client metadata (lazy loading)
 

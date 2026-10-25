@@ -1,5 +1,6 @@
 import type {
   ApiRouteContribution,
+  CliArgContribution,
   CliCommandContribution,
   ClientRouteContribution,
   ClientRoutePatternContribution,
@@ -338,14 +339,63 @@ function parseCliCommand(raw: unknown, index: number): CliCommandContribution {
       throw new PluginManifestError(`contributes.cliCommands[${index}].dispatch.type must be "apiRoute" or "execTool"`)
     }
   }
+  const usage = stringField(raw, 'usage', { required: true })!
+  const args = parseCliArgs(raw.args, usage, index, parsedDispatch !== undefined)
   return {
     name: stringField(raw, 'name', { required: true })!,
-    usage: stringField(raw, 'usage', { required: true })!,
+    usage,
     summary: stringField(raw, 'summary', { required: true })!,
     description: stringField(raw, 'description'),
     aliases: stringArrayField(raw, 'aliases'),
     dispatch: parsedDispatch,
+    ...(args ? { args } : {}),
   }
+}
+
+const CLI_ARG_TYPES = new Set<CliArgContribution['type']>(['string', 'number', 'boolean', 'string[]'])
+/** Flags the CLI consumes itself (output format, actor identity). */
+const RESERVED_CLI_FLAGS = new Set(['json', 'as'])
+
+function parseCliArgs(raw: unknown, usage: string, index: number, dispatched: boolean): CliArgContribution[] | undefined {
+  const label = `contributes.cliCommands[${index}].args`
+  if (raw === undefined) {
+    if (dispatched) throw new PluginManifestError(`${label} is required when dispatch is declared`)
+    return undefined
+  }
+  if (!Array.isArray(raw)) throw new PluginManifestError(`${label} must be an array`)
+  const seen = new Set<string>()
+  const args = raw.map((item, argIndex): CliArgContribution => {
+    const at = `${label}[${argIndex}]`
+    if (!isRecord(item)) throw new PluginManifestError(`${at} must be an object`)
+    const name = item.name
+    if (typeof name !== 'string' || !/^[a-zA-Z][a-zA-Z0-9-]*$/.test(name)) throw new PluginManifestError(`${at}.name must be an identifier`)
+    if (seen.has(name)) throw new PluginManifestError(`${label} has duplicate arg "${name}"`)
+    seen.add(name)
+    if (RESERVED_CLI_FLAGS.has(name)) throw new PluginManifestError(`${at}: "${name}" is a reserved global flag`)
+    if (!CLI_ARG_TYPES.has(item.type as CliArgContribution['type'])) {
+      throw new PluginManifestError(`${at}.type must be one of: ${[...CLI_ARG_TYPES].join(', ')}`)
+    }
+    for (const key of ['positional', 'required'] as const) {
+      if (item[key] !== undefined && typeof item[key] !== 'boolean') throw new PluginManifestError(`${at}.${key} must be a boolean`)
+    }
+    const values = stringArrayField(item, 'values')
+    if (values && item.type !== 'string') throw new PluginManifestError(`${at}.values is only valid for string args`)
+    if (item.positional === true && item.type === 'string[]') throw new PluginManifestError(`${at}: a string[] arg cannot be positional`)
+    return {
+      name,
+      type: item.type as CliArgContribution['type'],
+      ...(item.positional === true ? { positional: true } : {}),
+      ...(item.required === true ? { required: true } : {}),
+      ...(values ? { values } : {}),
+      ...(typeof item.summary === 'string' && item.summary.trim() ? { summary: item.summary } : {}),
+    }
+  })
+  const placeholders = usage.trim().split(/\s+/).filter((word) => /^<[^>]+>$/.test(word)).map((word) => word.slice(1, -1).replace(/\?$/, ''))
+  const positionals = args.filter((arg) => arg.positional).map((arg) => arg.name)
+  if (positionals.join(' ') !== placeholders.join(' ')) {
+    throw new PluginManifestError(`${label}: positional args must match usage placeholders ${placeholders.map((name) => `<${name}>`).join(' ') || '(none)'}`)
+  }
+  return args
 }
 
 function parseSettings(raw: unknown, index: number): SettingsContribution {

@@ -12,6 +12,7 @@
  * never anything that statically pulls react/ink/server-core into the binary
  * entry's import graph.
  */
+import type { CliCommandContribution } from '../../packages/sdk/src/types/manifest'
 import { CLI_TARGET, apiGet } from './http'
 
 /** Shown only when there IS a target; with no server running, help states the default rule. */
@@ -57,16 +58,26 @@ export async function printHelpReportTui(groups: HelpGroupData[], error?: string
  * (audit P2 #7). Help must always render, so a down/unreachable server or a
  * malformed manifest yields an empty group, never an error.
  */
+/** `usage` plus each declared flag, so help shows the complete argument surface. */
+function usageWithFlags(command: CliCommandContribution): string {
+  const flags = (command.args ?? []).filter((arg) => !arg.positional).map((arg) => {
+    const value = arg.type === 'boolean' ? '' : arg.values ? ` ${arg.values.join('|')}` : arg.type === 'number' ? ' <number>' : ' <text>'
+    const flag = `--${arg.name}${value}${arg.type === 'string[]' ? '...' : ''}`
+    return arg.required ? flag : `[${flag}]`
+  })
+  return [command.usage, ...flags].join(' ')
+}
+
 export async function pluginCommandHelpGroups(): Promise<HelpGroupData[]> {
   try {
     const manifest = await apiGet('/api/plugins/manifest') as {
-      plugins?: Array<{ contributes?: { cliCommands?: Array<{ name?: string; usage?: string; summary?: string }> } }>
+      plugins?: Array<{ contributes?: { cliCommands?: CliCommandContribution[] } }>
     }
     const commands = (manifest.plugins ?? []).flatMap((p) => p.contributes?.cliCommands ?? [])
     if (commands.length === 0) return []
     return [{
       group: 'Plugin commands',
-      commands: commands.map((c) => ({ name: c.name, usage: c.usage, summary: c.summary })),
+      commands: commands.map((c) => ({ name: c.name, usage: usageWithFlags(c), summary: c.summary })),
     }]
   } catch {
     return []

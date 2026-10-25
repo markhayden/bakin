@@ -1580,6 +1580,26 @@ Request to `/api/plugins/workflows/definitions/my-workflow` → extracts
 `pluginId=workflows`, `path=/definitions/my-workflow` → matches route
 `/definitions/:name` → injects `name=my-workflow` into searchParams.
 
+## CLI Commands (manifest `cliCommands`)
+
+A dispatched command (`dispatch: execTool | apiRoute`) must declare `args`. That array is its complete argument surface.
+- `packages/core/src/plugins/manifest.ts` `parseCliArgs` validates it:
+  - positionals must equal the `usage` `<placeholders>`, in order;
+  - names are unique;
+  - `--json` and `--as` are reserved;
+  - `string[]` is flag-only;
+  - `values` applies to strings only.
+- `src/cli/plugin-args.ts` `matchCliCommand` is the ONE parser:
+  - it matches the literal usage words, binds positionals and declared flags, and parses values by type;
+  - it never coerces a string: no comma-splitting, no JSON, no `"true"` → boolean;
+  - it rejects unknown flags, surplus positionals, repeated scalars and missing required args, all before any request.
+- `src/cli/commands/plugin-dispatch.ts`:
+  - strips the global flags (`stripActorFlag` plus `--json`) first;
+  - resolves `apiRoute` paths under the **contributing plugin's id** (never the typed command word);
+  - sends GET args as query parameters.
+- Help renders the declared flags (`usageWithFlags` in `src/cli/help.ts`).
+- Older cores drop the unknown `args` key, so declaring args is additive for Bits manifests.
+
 ## Plugin `defaults/` Conventions
 
 A plugin may ship three sibling directories under `defaults/`. The
