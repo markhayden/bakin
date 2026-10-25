@@ -31,6 +31,7 @@ import {
   MAX_APPROVAL_FILE_BYTES,
   MAX_RETIREMENTS_PER_BATCH,
   RECEIPT_JOURNAL_CHUNK_BYTES,
+  legacyApprovalArchiveRoot,
   openRetirementReceipts,
   readRetirementReceipts,
   resumeRetirementReceipts,
@@ -75,6 +76,11 @@ function legacyRepair(approvalId: string, over: Record<string, unknown> = {}): R
 function writeApproval(record: Record<string, unknown>): void {
   mkdirSync(approvalsDir, { recursive: true })
   writeFileSync(join(approvalsDir, `${encodeURIComponent(String(record.approvalId))}.json`), JSON.stringify(record))
+}
+
+/** A settled legacy record lives in the archive after the pass that settled it. */
+function readSettled(approvalId: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(join(legacyApprovalArchiveRoot(testDir), `${encodeURIComponent(approvalId)}.json`), 'utf-8')) as Record<string, unknown>
 }
 
 function readRaw(approvalId: string): Record<string, unknown> {
@@ -122,10 +128,12 @@ describe('retireLegacyHealthApprovals', () => {
     expect(summary).toMatchObject({ selected: 2, cancelledViaStore: 1, cancelledRaw: 1, done: 2, editFailed: 0, resumed: 0, unreadable: 0 })
 
     // Cancelled through the store: the current schema's cancel write, with the retirement reason as the comment.
-    expect(getApprovalRecord('nav-1', testDir)).toMatchObject({ status: 'cancelled', response: { selectedOption: 'cancel', comment: LEGACY_RETIRE_REASON } })
-    expect(readRaw('rep-1')).toMatchObject({ status: 'cancelled', retiredBy: 'legacy-retire' })
-    // Untouched: resolved, schemaVersion 2, and a workflow gate.
-    expect(readRaw('nav-done').status).toBe('approved')
+    // Settled in this pass → archived (bytes intact): cancelled through the store, or raw, and the long-resolved legacy record.
+    expect(readSettled('nav-1')).toMatchObject({ status: 'cancelled', response: { selectedOption: 'cancel', comment: LEGACY_RETIRE_REASON } })
+    expect(readSettled('rep-1')).toMatchObject({ status: 'cancelled', retiredBy: 'legacy-retire' })
+    expect(readSettled('nav-done').status).toBe('approved')
+    expect(getApprovalRecord('nav-1', testDir)).toBeNull() // no longer in the live directory
+    // Untouched: schemaVersion 2, and a workflow gate.
     expect(readRaw('rep-v2').status).toBe('pending')
     expect(readRaw('gate-1').status).toBe('pending')
     // The cards were edited with the receipt's delivery and reason.
@@ -152,7 +160,7 @@ describe('retireLegacyHealthApprovals', () => {
     const { channels } = workingChannels()
     const summary = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
     expect(summary).toMatchObject({ selected: 1, cancelledViaStore: 0, cancelledRaw: 1, done: 1 })
-    const raw = readRaw('rep-raw')
+    const raw = readSettled('rep-raw')
     expect(raw).toMatchObject({ status: 'cancelled', retiredBy: 'legacy-retire', owner: { kind: 'health-repair', taskId: 't' }, response: { selectedOption: 'cancel', comment: LEGACY_RETIRE_REASON } })
     expect(typeof raw.resolvedAt).toBe('string')
   })
@@ -197,7 +205,7 @@ describe('retireLegacyHealthApprovals', () => {
 
     const summary = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
     expect(summary).toMatchObject({ resumed: 1, done: 1, selected: 0 }) // resumed, never selected twice
-    expect(getApprovalRecord('nav-crash', testDir)?.status).toBe('cancelled')
+    expect(readSettled('nav-crash').status).toBe('cancelled') // cancelled, receipt done, archived in the same pass
     expect(calls).toHaveLength(1)
     expect(readRetirementReceipts(testDir).get('nav-crash')).toMatchObject({ state: 'done', attempts: 1 })
     expect(auditRows().filter((row) => row.event === LEGACY_RETIRE_AUDIT_EVENT)[0]!.data).toMatchObject({ resumed: 1, selected: 0 })
@@ -297,6 +305,28 @@ describe('retireLegacyHealthApprovals', () => {
     const again = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })
     expect(again).toMatchObject({ selected: 0, tasksCompleted: 0 })
     expect(auditRows().filter((row) => row.event === LEGACY_RETIRE_AUDIT_EVENT)).toHaveLength(1)
+  })
+
+  it('settled legacy records leave the live directory for approvals/legacy-archive (bytes intact); pending ones and open receipts stay; the store never parses them again (live boot warnings 2026-10-24)', async () => {
+    writeApproval(legacyNavigate('nav-live'))                                                 // pending → retired, card edited, receipt done → archived in the SAME pass
+    writeApproval(legacyRepair('rep-old', { status: 'cancelled', owner: { kind: 'health-repair', taskId: 'done-1', requestId: 'r', incidentIds: ['x'] } })) // settled long ago → archived
+    writeApproval(legacyNavigate('nav-stuck'))                                                // its card edit will fail → receipt open → stays
+    writeApproval(legacyRepair('rep-v2', { schemaVersion: 2 }))                                // the new engine's → stays
+    const raw = readRaw('rep-old')
+    const flaky = () => ({ cancelApproval: async (args: { approvalId: string }) => { if (args.approvalId === 'nav-stuck') throw new Error('Discord 503') } })
+    const summary = await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(flaky) })
+    expect(summary).toMatchObject({ selected: 2, done: 1, editFailed: 1, archived: 2 })
+    const archive = legacyApprovalArchiveRoot(testDir)
+    expect(JSON.parse(readFileSync(join(archive, 'rep-old.json'), 'utf-8'))).toEqual(raw)
+    expect(existsSync(join(archive, 'nav-live.json'))).toBe(true)
+    expect(existsSync(join(approvalsDir, 'nav-stuck.json'))).toBe(true)
+    expect(existsSync(join(approvalsDir, 'rep-v2.json'))).toBe(true)
+    expect(getApprovalRecord('nav-stuck', testDir)?.status).toBe('cancelled') // still live: its receipt is open
+    // The reconnect carries the stuck card to done; the next pass archives it too.
+    const { channels } = workingChannels()
+    await resumeRetirementReceipts({ contentDir: testDir, deps: deps(channels) })
+    expect((await retireLegacyHealthApprovals({ contentDir: testDir, deps: deps(channels) })).archived).toBe(1)
+    expect(existsSync(join(archive, 'nav-stuck.json'))).toBe(true)
   })
 
   it('a quiet pass (nothing legacy, nothing open) writes no receipt file and no audit row', async () => {

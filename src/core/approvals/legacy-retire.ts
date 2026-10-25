@@ -32,7 +32,7 @@
  * `owner.taskId`, whatever the record's status) are completed when still
  * open — nothing from the retired engine lingers on the board.
  */
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'fs'
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync } from 'fs'
 import { dirname, join } from 'path'
 import type { RuntimeChannelSurface } from '@bakin/core/adapters/runtime/channels'
 import { approvalPath, approvalsDir, type ApprovalRecord } from '@bakin/core/approvals'
@@ -103,6 +103,8 @@ export interface LegacyRetireSummary {
   unreadable: number
   /** The old engine's review tasks completed (every legacy health record's task that was still open). */
   tasksCompleted: number
+  /** Settled legacy records (not pending, receipt done or never needed) moved into `approvals/legacy-archive/`. */
+  archived: number
 }
 
 export interface LegacyRetireDeps {
@@ -131,6 +133,17 @@ async function defaultCompleteLegacyTask(taskId: string): Promise<'completed' | 
 
 export function retirementReceiptsPath(contentDir = getContentDir()): string {
   return join(contentDir, 'health', 'retirement-receipts.jsonl')
+}
+
+/**
+ * Where SETTLED legacy records go: the old engine's health approvals that are
+ * no longer pending and whose receipt (if one exists) is done. The approvals
+ * store lists only top-level files, so an archived record is never parsed
+ * again (the current schema refuses the rc.42 proposal shape and warned per
+ * file at every rehydration). Immutable: bytes are moved, never rewritten.
+ */
+export function legacyApprovalArchiveRoot(contentDir = getContentDir()): string {
+  return join(approvalsDir(contentDir), 'legacy-archive')
 }
 
 /** Stream the journal's lines with bounded memory (one chunk at a time); an over-long line is skipped, never buffered. */
@@ -372,7 +385,7 @@ export async function retireLegacyHealthApprovals(
   const channels = (options.deps?.channels ?? defaultChannels)()
   const completeTask = options.deps?.tasks?.complete ?? defaultCompleteLegacyTask
   const resumed = await resumeRetirementReceipts({ contentDir, deps: { channels: () => channels, now } })
-  const summary: LegacyRetireSummary = { selected: 0, batches: 0, cancelledViaStore: 0, cancelledRaw: 0, done: resumed.done, editFailed: resumed.editFailed, resumed: resumed.resumed, unreadable: 0, tasksCompleted: 0 }
+  const summary: LegacyRetireSummary = { selected: 0, batches: 0, cancelledViaStore: 0, cancelledRaw: 0, done: resumed.done, editFailed: resumed.editFailed, resumed: resumed.resumed, unreadable: 0, tasksCompleted: 0, archived: 0 }
   const tasksSeen = new Set<string>()
 
   // Drain in bounded batches: each batch re-derives the selection from disk
@@ -429,7 +442,23 @@ export async function retireLegacyHealthApprovals(
     await new Promise<void>((resolve) => setImmediate(resolve))
   }
 
-  if (summary.selected > 0 || summary.resumed > 0 || summary.tasksCompleted > 0) {
+  // Settled legacy records leave the live directory: not pending, and no open receipt (none, or done).
+  const settledReceipts = readRetirementReceipts(contentDir)
+  for (const path of approvalFiles(contentDir)) {
+    const entry = readRawApproval(path)
+    if (!entry) continue
+    const owner = legacyOwner(entry.raw)
+    if (!owner || entry.raw.status === 'pending') continue
+    const approvalId = typeof entry.raw.approvalId === 'string' ? entry.raw.approvalId : null
+    const receipt = approvalId ? settledReceipts.get(approvalId) : undefined
+    if (receipt && receipt.state !== 'done') continue
+    const archiveRoot = legacyApprovalArchiveRoot(contentDir)
+    mkdirSync(archiveRoot, { recursive: true })
+    renameSync(path, join(archiveRoot, path.slice(path.lastIndexOf('/') + 1)))
+    summary.archived += 1
+  }
+
+  if (summary.selected > 0 || summary.resumed > 0 || summary.tasksCompleted > 0 || summary.archived > 0) {
     appendAudit(contentDir, LEGACY_RETIRE_AUDIT_EVENT, 'system', { ...summary, reason: LEGACY_RETIRE_REASON })
     log.info('Legacy Health approvals retired', { ...summary })
   }
