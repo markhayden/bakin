@@ -34,6 +34,12 @@ const manifest = {
       ],
     }] } },
     { id: 'terminal', contributes: { cliCommands: [{
+      name: 'terminal:attach',
+      usage: 'bakin terminal attach <ref>',
+      summary: 'Attach this terminal',
+      dispatch: { type: 'apiRoute', method: 'POST', path: '/cli/attach', launch: { bin: 'tmux' } },
+      args: [{ name: 'ref', type: 'string', positional: true, required: true }],
+    }, {
       name: 'term:ls',
       usage: 'bakin term ls',
       summary: 'List terminal sessions',
@@ -81,5 +87,14 @@ describe('dispatchPluginCliCommand', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(manifest))
 
     expect(await dispatchPluginCliCommand('projects', ['archive', 'p1'])).toBe(false)
+  })
+
+  it('runs launch commands through the launcher, which refuses a non-interactive caller before posting', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(manifest))
+
+    await expect(dispatchPluginCliCommand('terminal', ['attach', 's1', '--as', 'human'])).rejects.toThrow('exit:1')
+
+    expect(fetchMock.mock.calls).toHaveLength(1)
+    expect(errorOutput()).toContain('run it from an interactive terminal')
   })
 })

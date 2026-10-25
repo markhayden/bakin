@@ -157,6 +157,12 @@ export interface CliCommandContribution {
     type: 'apiRoute'
     method: HttpMethod
     path: string
+    /**
+     * Interactive launch: the POST route answers `{ args, confirm? }` and the
+     * CLI runs `bin` (one of this plugin's `requires.bins`, resolved in the
+     * Bakin bin dir) in the foreground with the caller's terminal.
+     */
+    launch?: { bin: string }
   } | {
     type: 'execTool'
     name: string

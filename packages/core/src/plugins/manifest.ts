@@ -333,6 +333,14 @@ function parseCliCommand(raw: unknown, index: number): CliCommandContribution {
       const path = stringField(dispatch, 'path', { required: true })!
       validatePluginRelativePath(path, `contributes.cliCommands[${index}].dispatch`)
       parsedDispatch = { type: 'apiRoute', method: method as HttpMethod, path }
+      if (dispatch.launch !== undefined) {
+        const at = `contributes.cliCommands[${index}].dispatch.launch`
+        if (method !== 'POST') throw new PluginManifestError(`${at} requires method POST`)
+        if (!isRecord(dispatch.launch) || typeof dispatch.launch.bin !== 'string' || !dispatch.launch.bin) {
+          throw new PluginManifestError(`${at}.bin must name a binary`)
+        }
+        parsedDispatch.launch = { bin: dispatch.launch.bin }
+      }
     } else if (dispatchType === 'execTool') {
       parsedDispatch = { type: 'execTool', name: stringField(dispatch, 'name', { required: true })! }
     } else {
@@ -561,6 +569,18 @@ export function parsePluginManifest(raw: unknown): PluginManifest {
     }
   }
 
+  const contributes = parseContributions(raw.contributes)
+  const requires = parseRequires(raw.requires)
+  // A launch runs a binary in the operator's terminal: only one this plugin
+  // installs (and Bakin verifies) may be named.
+  const bins = new Set((requires?.bins ?? []).map((bin) => bin.name))
+  for (const [index, command] of (contributes?.cliCommands ?? []).entries()) {
+    const launch = command.dispatch?.type === 'apiRoute' ? command.dispatch.launch : undefined
+    if (launch && !bins.has(launch.bin)) {
+      throw new PluginManifestError(`contributes.cliCommands[${index}].dispatch.launch.bin "${launch.bin}" must be declared in requires.bins`)
+    }
+  }
+
   if (raw.uninstallPreflightRequired !== undefined && typeof raw.uninstallPreflightRequired !== 'boolean') {
     throw new PluginManifestError('uninstallPreflightRequired must be a boolean')
   }
@@ -576,10 +596,10 @@ export function parsePluginManifest(raw: unknown): PluginManifest {
     dependencies: stringArrayField(raw, 'dependencies'),
     permissions: stringArrayField(raw, 'permissions') as PluginPermission[] | undefined,
     runtimeCapabilities,
-    contributes: parseContributions(raw.contributes),
+    contributes,
     devWatch: stringArrayField(raw, 'devWatch'),
     signature: parseSignature(raw.signature),
-    ...(parseRequires(raw.requires) ? { requires: parseRequires(raw.requires) } : {}),
+    ...(requires ? { requires } : {}),
   }
 }
 

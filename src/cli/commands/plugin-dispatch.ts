@@ -6,7 +6,7 @@
  * resolve under the contributing plugin's id.
  */
 import type { CliCommandContribution } from '../../../packages/sdk/src/types/manifest'
-import { api, apiGet, apiPost } from '../http'
+import { CLI_TARGET, api, apiGet, apiPost, cliIdentity } from '../http'
 import { invocationCommand } from '../output'
 import { exitCommandIssue, printPluginCliCommandResult } from '../help'
 import { stripActorFlag } from '../identity'
@@ -39,6 +39,26 @@ export async function dispatchPluginCliCommand(cmd: string, args: string[]): Pro
       if (command.dispatch.type === 'execTool') {
         const result = await apiPost(`/api/exec-tools/${encodeURIComponent(command.dispatch.name)}`, { params, agent: 'cli' })
         await printPluginCliCommandResult(invocation, args, result)
+        return true
+      }
+
+      if (command.dispatch.launch) {
+        const { LaunchError, runLaunch, spawnInherited } = await import('../launch')
+        const { getBakinPaths } = await import('../../core/content-dir')
+        try {
+          const code = await runLaunch({ pluginId: plugin.id, path: command.dispatch.path, bin: command.dispatch.launch.bin }, params, {
+            interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+            localServer: CLI_TARGET.source === 'lock',
+            binDir: getBakinPaths().bin,
+            identity: cliIdentity,
+            post: apiPost,
+            spawn: spawnInherited,
+          })
+          process.exit(code)
+        } catch (err) {
+          if (!(err instanceof LaunchError)) throw err
+          await exitCommandIssue(err.message, { usage: command.usage })
+        }
         return true
       }
 

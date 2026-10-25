@@ -94,4 +94,33 @@ describe('plugin manifest requires.bins', () => {
       expect(pack.data.requires?.bins?.[0]?.install['darwin-arm64']?.sizeBytes).toBe(2_100_000)
     }
   })
+
+  describe('cliCommands launch', () => {
+    const attach = (launch: unknown, method = 'POST') => ({
+      name: 'terminal:attach',
+      usage: 'bakin terminal attach <ref>',
+      summary: 'Attach this terminal',
+      dispatch: { type: 'apiRoute', method, path: '/cli/attach', launch },
+      args: [{ name: 'ref', type: 'string', positional: true, required: true }],
+    })
+
+    it('keeps a launch naming one of the plugin\'s own bins', () => {
+      const manifest = parsePluginManifest({ ...base, requires: { bins: [tmux] }, contributes: { cliCommands: [attach({ bin: 'tmux' })] } })
+      expect(manifest.contributes?.cliCommands?.[0]?.dispatch).toEqual({ type: 'apiRoute', method: 'POST', path: '/cli/attach', launch: { bin: 'tmux' } })
+    })
+
+    it('rejects a launch bin the plugin does not declare in requires.bins', () => {
+      expect(() => parsePluginManifest({ ...base, contributes: { cliCommands: [attach({ bin: 'tmux' })] } }))
+        .toThrow(/launch\.bin "tmux" must be declared in requires\.bins/)
+      expect(() => parsePluginManifest({ ...base, requires: { bins: [tmux] }, contributes: { cliCommands: [attach({ bin: 'zsh' })] } }))
+        .toThrow(/launch\.bin "zsh"/)
+    })
+
+    it('requires launch to be a POST with a bin name', () => {
+      expect(() => parsePluginManifest({ ...base, requires: { bins: [tmux] }, contributes: { cliCommands: [attach({ bin: 'tmux' }, 'GET')] } }))
+        .toThrow(/launch requires method POST/)
+      expect(() => parsePluginManifest({ ...base, requires: { bins: [tmux] }, contributes: { cliCommands: [attach({})] } }))
+        .toThrow(/launch\.bin/)
+    })
+  })
 })
