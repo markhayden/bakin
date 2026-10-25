@@ -5,7 +5,8 @@
  * re-exports this module; typecheck compiles it, and the public API inventory
  * never sees a new symbol. Either side drifting breaks the build here.
  */
-import type { ConversationMessage, DisplayAttachment } from '../types/conversation'
+import type { BakinQuestion, ConversationMessage, DisplayAttachment } from '../types/conversation'
+import type { BakinQuestion as CoreBakinQuestion } from '@bakin/core/conversation/questions'
 import type {
   ConversationMessage as UiConversationMessage,
   DisplayAttachment as UiDisplayAttachment,
@@ -15,5 +16,7 @@ type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 
 const conversationMessageContract: Mutual<UiConversationMessage, ConversationMessage> = true
 const displayAttachmentContract: Mutual<UiDisplayAttachment, DisplayAttachment> = true
+const bakinQuestionCoreContract: Mutual<CoreBakinQuestion, BakinQuestion> = true
+void bakinQuestionCoreContract
 void conversationMessageContract
 void displayAttachmentContract
