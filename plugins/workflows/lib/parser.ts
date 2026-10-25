@@ -211,3 +211,68 @@ export function listDefinitions(contentDir?: string): LoadedDefinitionEntry[] {
 
   return Array.from(byName.values())
 }
+
+/** A user definition file whose YAML does not parse — named, never swallowed. */
+export interface UnparseableDefinition {
+  name: string
+  file: string
+  message: string
+  /** 1-based line of the parse error when js-yaml knows it. */
+  line: number | null
+}
+
+/** The YAML parse failure of `content`, or null when it parses. */
+export function yamlParseError(content: string): { message: string; line: number | null } | null {
+  try {
+    load(content)
+    return null
+  } catch (err) {
+    const mark = (err as { mark?: { line?: unknown } }).mark
+    const line = typeof mark?.line === 'number' ? mark.line + 1 : null
+    const reason = (err as { reason?: unknown }).reason
+    return { message: typeof reason === 'string' ? reason : err instanceof Error ? err.message : String(err), line }
+  }
+}
+
+/**
+ * `listDefinitions` for consumers that must keep going past ONE broken file
+ * (the Health check, the recover editor): every disk file that fails to
+ * parse is returned by name beside the entries that loaded. `listDefinitions`
+ * itself still throws on the first bad file.
+ */
+export function listDefinitionsTolerant(contentDir?: string): { entries: LoadedDefinitionEntry[]; unparseable: UnparseableDefinition[] } {
+  const unparseable: UnparseableDefinition[] = []
+  const defsDir = getDefinitionsDir(contentDir)
+  if (existsSync(defsDir)) {
+    for (const file of readdirSync(defsDir)) {
+      if (!file.endsWith('.yaml') && !file.endsWith('.yml')) continue
+      let content: string
+      try {
+        content = readFileSync(join(defsDir, file), 'utf-8')
+      } catch (err) {
+        unparseable.push({ name: file.replace(/\.(yaml|yml)$/, ''), file, message: err instanceof Error ? err.message : String(err), line: null })
+        continue
+      }
+      const failure = yamlParseError(content)
+      if (failure) unparseable.push({ name: file.replace(/\.(yaml|yml)$/, ''), file, ...failure })
+    }
+  }
+  if (unparseable.length === 0) return { entries: listDefinitions(contentDir), unparseable }
+  // Rebuild the merged list without the broken files (loadDefinition would throw on them).
+  const broken = new Set(unparseable.map((entry) => entry.name))
+  const byName = new Map<string, LoadedDefinitionEntry>()
+  for (const entry of listRegistryAll()) {
+    if (entry.source === 'plugin') byName.set(entry.id, { name: entry.id, definition: { ...entry.definition, source: entry.source, pluginId: entry.pluginId }, source: entry.source, pluginId: entry.pluginId })
+  }
+  for (const entry of listRegistryAll()) {
+    if (entry.source === 'agent-package') byName.set(entry.id, { name: entry.id, definition: { ...entry.definition, source: entry.source, packageId: entry.packageId }, source: entry.source, packageId: entry.packageId })
+  }
+  for (const file of readdirSync(defsDir)) {
+    if (!file.endsWith('.yaml') && !file.endsWith('.yml')) continue
+    const name = file.replace(/\.(yaml|yml)$/, '')
+    if (broken.has(name)) continue
+    const definition = loadDefinition(name, contentDir)
+    if (definition) byName.set(name, { name, definition, source: 'user' })
+  }
+  return { entries: Array.from(byName.values()), unparseable }
+}

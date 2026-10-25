@@ -118,11 +118,10 @@ function DoctorFixScreen() {
     <Box flexDirection="column">
       <Header title="Doctor repair plan" subtitle="Preview only; no changes have been applied" />
       <SummaryStrip items={[
-        { label: 'safe', value: 3, status: 'ready' },
-        { label: 'manual', value: 1, status: 'warn' },
-        { label: 'blocked', value: 0, status: 'ok' },
+        { label: 'automatic', value: 3, status: 'ready' },
+        { label: 'needs confirmation', value: 1, status: 'warn' },
       ]} />
-      <Section title="Safe deterministic repairs">
+      <Section title="Automatic repairs">
         <ActionList rows={[
           {
             status: 'ready',
@@ -144,19 +143,19 @@ function DoctorFixScreen() {
           },
         ]} />
       </Section>
-      <Section title="Manual follow-up">
+      <Section title="Need your confirmation">
         <ActionList rows={[
           {
             status: 'warn',
-            label: 'channels',
-            message: 'Approval channel setup requires user credentials and cannot be repaired automatically.',
-            next: 'bakin settings channels add',
+            label: 'search.drop-unclaimed-tables',
+            message: 'Drop 2 engine tables Bakin does not own (deletes content).',
+            next: 'Confirm it from Health, or run `bakin doctor repair` with the item id.',
           },
         ]} />
       </Section>
       <NextActions actions={[
-        'Run `bakin doctor --fix --yes` to apply the safe repairs.',
-        'Run `bakin doctor --delegate --yes` to create a board task for unresolved manual work.',
+        'Run `bakin doctor --fix --yes` to apply the automatic repairs.',
+        'Open Health to confirm the one repair that deletes content; incidents that need you name their control.',
       ]} />
     </Box>
   )
@@ -165,7 +164,7 @@ function DoctorFixScreen() {
 function DoctorAppliedScreen() {
   return (
     <Box flexDirection="column">
-      <Header title="Doctor repair results" subtitle="Safe deterministic repairs applied" />
+      <Header title="Doctor repair results" subtitle="Automatic repairs applied and verified" />
       <SummaryStrip items={[
         { label: 'applied', value: 3, status: 'applied' },
         { label: 'skipped', value: 1, status: 'skip' },

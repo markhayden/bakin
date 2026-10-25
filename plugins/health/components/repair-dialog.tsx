@@ -22,11 +22,20 @@ import {
 import { TriangleAlert, CircleCheck, Wrench } from 'lucide-react'
 import { useRepairPlan } from '../hooks/use-repair-plan'
 
-const SAFETY_TONE = {
-  safe: 'success',
-  manual: 'attention',
-  destructive: 'danger',
+/** The ONE mode policy's verdict, in words: automatic repairs are pre-selected; one-click ones need the operator's confirmation. */
+const MODE_PRESENTATION = {
+  'self-heal': { tone: 'success', label: 'Automatic' },
+  'one-click': { tone: 'attention', label: 'Confirm first' },
 } as const
+
+function describeEffects(item: { effects: { deletesUserContent: boolean; spendsMoney: boolean; widensAuthorization: boolean; restartsService?: string } }): string | null {
+  const parts: string[] = []
+  if (item.effects.deletesUserContent) parts.push('deletes content')
+  if (item.effects.spendsMoney) parts.push('spends money')
+  if (item.effects.widensAuthorization) parts.push('widens access')
+  if (item.effects.restartsService) parts.push(`restarts ${item.effects.restartsService}`)
+  return parts.length > 0 ? parts.join(', ') : null
+}
 
 function repairErrorTitle(stale: boolean): string {
   return stale ? 'The evidence changed before apply.' : 'The repair request failed.'
@@ -55,7 +64,7 @@ export function RepairDialog({
     if (!open) return
     void planRepair().then((plan) => {
       if (!plan) return
-      setSelected(new Set(plan.items.filter((item) => item.safety === 'safe').map((item) => item.id)))
+      setSelected(new Set(plan.items.filter((item) => item.mode === 'self-heal').map((item) => item.id)))
       setAnnouncement(`Repair plan ready with ${plan.items.length} option${plan.items.length === 1 ? '' : 's'}.`)
     })
   }, [open, planRepair, setSelected, setAnnouncement])
@@ -64,7 +73,7 @@ export function RepairDialog({
     () => repair.plan?.items.filter((item) => selected.has(item.id)) ?? [],
     [repair.plan, selected],
   )
-  const confirmedItemIds = selectedItems.filter((item) => item.safety !== 'safe').map((item) => item.id)
+  const confirmedItemIds = selectedItems.filter((item) => item.mode === 'one-click').map((item) => item.id)
   const hasNonSafe = confirmedItemIds.length > 0
 
   const toggle = (id: string) => {
@@ -80,7 +89,7 @@ export function RepairDialog({
     setAnnouncement('Re-planning against the latest Health evidence.')
     const plan = await repair.planRepair()
     if (!plan) return
-    setSelected(new Set(plan.items.filter((item) => item.safety === 'safe').map((item) => item.id)))
+    setSelected(new Set(plan.items.filter((item) => item.mode === 'self-heal').map((item) => item.id)))
     setAnnouncement('Repair plan updated.')
   }
 
@@ -161,11 +170,12 @@ export function RepairDialog({
                 kind="initial-empty"
                 scope="inline"
                 title="No deterministic repair is available for this issue."
-                description="Follow its resolution steps instead."
+                description="This incident needs you — follow the action on its Health card instead."
               />
             )}
             {repair.plan.items.map((item) => {
-              const nonSafe = item.safety !== 'safe'
+              const nonSafe = item.mode === 'one-click'
+              const effects = describeEffects(item)
               return (
                 <div key={item.id} className="flex items-start gap-bakin-3 rounded-bakin-surface border border-bakin-border-subtle p-bakin-4 focus-within:ring-2 focus-within:ring-bakin-focus-ring">
                   <Checkbox
@@ -177,7 +187,8 @@ export function RepairDialog({
                   <div className="min-w-0 space-y-bakin-2 text-bakin-typography-size-body">
                     <span className="flex flex-wrap items-center gap-bakin-2 font-bakin-typography-weight-medium text-bakin-text-primary">
                       {item.title}
-                      <StatusBadge variant="outline" tone={SAFETY_TONE[item.safety]}>{item.safety}</StatusBadge>
+                      <StatusBadge variant="outline" tone={MODE_PRESENTATION[item.mode].tone}>{MODE_PRESENTATION[item.mode].label}</StatusBadge>
+                      {effects && <StatusBadge variant="soft" tone="neutral">{effects}</StatusBadge>}
                     </span>
                     <span className="block text-bakin-text-muted">{item.reason}</span>
                     {item.changes.length > 0 && (

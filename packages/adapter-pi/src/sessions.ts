@@ -8,13 +8,13 @@
  * disposed after the turn settles — the JSONL file on disk carries the
  * conversation across turns.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
 
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 
-import type { AgentRuntimeAdapter, RuntimeSession, RuntimeSessionStoreStats } from '@bakin/core/adapters/runtime'
+import type { AgentRuntimeAdapter, RuntimeSession, RuntimeSessionPruneResult, RuntimeSessionStoreStats } from '@bakin/core/adapters/runtime'
 import { getAgentSessionsDir, getAgentWorkspaceDir } from './home'
 import { readRegistry } from './registry'
 
@@ -127,14 +127,70 @@ export function sessionManagerForThread(agentId: string, threadId?: string): Ses
 // One turn at a time per (agent, thread): concurrent sends against the same
 // thread would interleave one session file. Independent threads run freely.
 const threadLocks = new Map<string, Promise<unknown>>()
+/** Threads with a turn running or queued right now (`${agentId}::${threadId}` → count) — what a prune must never touch. */
+const inFlightThreads = new Map<string, number>()
 
 export function withThreadLock<T>(agentId: string, threadId: string | undefined, fn: () => Promise<T>): Promise<T> {
   const key = `${agentId}::${threadId ?? '__ephemeral__'}`
   if (!threadId) return fn()
+  inFlightThreads.set(key, (inFlightThreads.get(key) ?? 0) + 1)
+  const release = () => {
+    const left = (inFlightThreads.get(key) ?? 1) - 1
+    if (left <= 0) inFlightThreads.delete(key)
+    else inFlightThreads.set(key, left)
+  }
   const prior = threadLocks.get(key) ?? Promise.resolve()
   const next = prior.then(fn, fn)
+  next.then(release, release)
   threadLocks.set(key, next.catch(() => {}))
   return next
+}
+
+export function isThreadInFlight(agentId: string, threadId: string): boolean {
+  return inFlightThreads.has(`${agentId}::${threadId}`)
+}
+
+const DEFAULT_PRUNE_AGE_MS = 30 * 24 * 60 * 60 * 1000
+
+/**
+ * The adapter's documented cleanup, done by the adapter: delete top-level
+ * session JSONL files older than the cutoff unless a turn on their thread is
+ * in flight, then forget the thread-map entries whose files are gone.
+ */
+async function pruneAgentStore(agentId: string, opts: { olderThanMs?: number; dryRun?: boolean } = {}): Promise<RuntimeSessionPruneResult> {
+  const dir = getAgentSessionsDir(agentId)
+  const result: RuntimeSessionPruneResult = { agentId, removedFiles: 0, freedBytes: 0, skippedInFlight: 0, remainingFiles: 0 }
+  if (!existsSync(dir)) return result
+  const cutoff = Date.now() - (opts.olderThanMs ?? DEFAULT_PRUNE_AGE_MS)
+  const map = readThreadMap(agentId)
+  const threadByFile = new Map(Object.entries(map.threads).map(([threadId, entry]) => [entry.file, threadId]))
+  const removed = new Set<string>()
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
+    const abs = join(dir, entry.name)
+    const stat = statSync(abs)
+    if (stat.mtimeMs >= cutoff) {
+      result.remainingFiles++
+      continue
+    }
+    const threadId = threadByFile.get(abs)
+    if (threadId && isThreadInFlight(agentId, threadId)) {
+      result.skippedInFlight++
+      result.remainingFiles++
+      continue
+    }
+    result.removedFiles++
+    result.freedBytes += stat.size
+    if (!opts.dryRun) {
+      unlinkSync(abs)
+      removed.add(abs)
+    }
+  }
+  if (removed.size > 0) {
+    const threads = Object.fromEntries(Object.entries(map.threads).filter(([, entry]) => !removed.has(entry.file)))
+    writeThreadMap(agentId, { version: 1, threads })
+  }
+  return result
 }
 
 function dirSizeBytes(dir: string): number {
@@ -199,6 +255,7 @@ export function createSessionsSurface(): AgentRuntimeAdapter['sessions'] {
         }
       })
     },
+    pruneStore: pruneAgentStore,
     // contextStats is wired at runtime assembly (runtime.ts), NOT here:
     // context-stats imports messaging (settings manager) which imports
     // this module — wiring it here closed an import cycle (CI check).

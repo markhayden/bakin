@@ -244,17 +244,23 @@ export async function findRestartRecoveryCandidates(contentDir: string): Promise
  * the FRESH verdict (a reset counter recovers instead of blocking, a run that
  * went live is left alone).
  */
+/** One task's settlement: what the engine did and, when it did nothing, why. */
+export interface StrandedTaskOutcome {
+  id: string
+  outcome: 'recovered' | 'blocked' | 'skipped'
+  reason?: string
+}
+
 async function settleCandidate(
   snapshot: RestartRecoveryCandidate,
   contentDir: string,
   settings: ReturnType<typeof getSettings>,
-  result: RestartRecoveryResult,
-): Promise<void> {
+): Promise<StrandedTaskOutcome> {
+  const skipped = (reason: string): StrandedTaskOutcome => ({ id: snapshot.id, outcome: 'skipped', reason })
   const fresh = getTaskWithColumn(snapshot.id)
   if (!fresh || fresh.column !== 'inProgress') {
     log.info('Restart recovery skipped a candidate that left in-progress meanwhile', { id: snapshot.id })
-    result.skipped++
-    return
+    return skipped('left in progress meanwhile')
   }
   let candidate: RestartRecoveryCandidate | null
   let stillStranded: () => boolean
@@ -268,13 +274,11 @@ async function settleCandidate(
     }, contentDir))
   } catch (err) {
     log.warn('Failed to re-assess restart recovery candidate', err, { id: snapshot.id })
-    result.skipped++
-    return
+    return skipped(`re-assessment failed: ${err instanceof Error ? err.message : String(err)}`)
   }
   if (!candidate) {
     log.info('Restart recovery skipped a candidate that gained a live run meanwhile', { id: snapshot.id })
-    result.skipped++
-    return
+    return skipped('gained a live run meanwhile')
   }
   // The re-assessment awaited workflow hooks; any write to the row in that
   // window (operator move or reset, engine step advance, agent log) bumps
@@ -283,8 +287,7 @@ async function settleCandidate(
   const again = getTaskWithColumn(snapshot.id)
   if (!again || again.column !== 'inProgress' || again.task.version !== fresh.task.version) {
     log.info('Restart recovery skipped a candidate written during re-assessment', { id: snapshot.id })
-    result.skipped++
-    return
+    return skipped('the task changed during re-assessment')
   }
   // A workflow step claim writes the ledger, not the task row (the card is
   // already in progress), so `version` cannot see it. Re-check the ledger
@@ -293,8 +296,7 @@ async function settleCandidate(
   // log line, not a mutation of the work — it still records.
   if (candidate.action !== 'manual' && !stillStranded()) {
     log.info('Restart recovery skipped a candidate whose run went live during re-assessment', { id: snapshot.id })
-    result.skipped++
-    return
+    return skipped('its run went live during re-assessment')
   }
 
   if (candidate.action === 'manual') {
@@ -312,8 +314,7 @@ async function settleCandidate(
     } catch (err) {
       log.warn('Failed to write manual recovery hold marker', err, { taskId: candidate.id })
     }
-    result.skipped++
-    return
+    return skipped(`manual hold: ${candidate.reason} — an operator chooses the next state`)
   }
 
   try {
@@ -335,13 +336,12 @@ async function settleCandidate(
         recoveryCount: candidate.recoveryCount,
         reason: candidate.reason,
       })
-      result.blocked++
       log.warn('Restart recovery blocked exhausted task', {
         id: candidate.id,
         title: candidate.title,
         recoveryCount: candidate.recoveryCount,
       })
-      return
+      return { id: candidate.id, outcome: 'blocked', reason: `recovery limit reached after ${candidate.recoveryCount} attempts; moved to blocked for review` }
     }
 
     // ONE store write (todo + recoveries+1), THEN the log line.
@@ -360,16 +360,44 @@ async function settleCandidate(
       reason: candidate.reason,
       recoveryCount: candidate.recoveryCount + 1,
     })
-    result.recovered++
     log.info('Restart recovery moved task to todo', {
       id: candidate.id,
       title: candidate.title,
       reason: candidate.reason,
     })
+    return { id: candidate.id, outcome: 'recovered' }
   } catch (err) {
-    result.skipped++
     log.error('Restart recovery failed for task', err, { id: candidate.id })
+    return skipped(`recovery failed: ${err instanceof Error ? err.message : String(err)}`)
   }
+}
+
+function count(result: RestartRecoveryResult, outcome: StrandedTaskOutcome): void {
+  if (outcome.outcome === 'recovered') result.recovered++
+  else if (outcome.outcome === 'blocked') result.blocked++
+  else result.skipped++
+}
+
+/**
+ * The operator's requeue (Health's `requeue-stranded-tasks`, self-healing
+ * 1.3d): settle exactly the named tasks through the same engine — the same
+ * re-assessment, lock and verdicts as the boot pass — and report each one.
+ * A task that is not stranded any more (not in progress, or with a live run)
+ * is reported, never touched.
+ */
+export async function recoverStrandedTasks(contentDir: string, ids: readonly string[]): Promise<StrandedTaskOutcome[]> {
+  const settings = getSettings()
+  const candidates = await findRestartRecoveryCandidates(contentDir)
+  const outcomes: StrandedTaskOutcome[] = []
+  for (const id of ids) {
+    const snapshot = candidates.find((candidate) => candidate.id === id)
+    if (!snapshot) {
+      outcomes.push({ id, outcome: 'skipped', reason: 'not stranded any more: the task is not in progress or has a live run' })
+      continue
+    }
+    outcomes.push(await withStateLock(() => settleCandidate(snapshot, contentDir, settings)))
+  }
+  return outcomes
 }
 
 export async function runRestartRecovery(contentDir: string): Promise<RestartRecoveryResult> {
@@ -395,7 +423,7 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
     // it (dispatch-cycle / -single / -team → claimDispatchRun), so while a
     // candidate is re-assessed and written no step or child can go live —
     // and HTTP is up during startup recovery, so claims DO arrive.
-    await withStateLock(() => settleCandidate(snapshot, contentDir, settings, result))
+    count(result, await withStateLock(() => settleCandidate(snapshot, contentDir, settings)))
   }
 
   if (result.recovered > 0 || result.blocked > 0 || result.skipped > 0) {

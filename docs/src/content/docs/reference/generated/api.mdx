@@ -612,6 +612,16 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="assets.post.recover-store-location">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/recover/store-location' \
+  -H 'Content-Type: application/json' \
+  --data '{"location":"store"}'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="assets.get.search">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -735,6 +745,45 @@ curl -sS \
 curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/assets/versioned/<assetId>/promote'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.get.versioned-asset-id-recover">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/recover'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-recover-detach-missing">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/recover/detach-missing'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-recover-detach-references">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/recover/detach-references'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-recover-rebuild">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/recover/rebuild'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-recover-restore-export">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/recover/restore-export'
 ```
 </OpenApiReference>
 
@@ -906,6 +955,31 @@ curl -sS \
 curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/brands/<brandId>/publish'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.get.brand-id-recover">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/<brandId>/recover'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.post.brand-id-recover-detach">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/<brandId>/recover/detach' \
+  -H 'Content-Type: application/json' \
+  --data '{"assetIds":["value"]}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.post.brand-id-recover-recreate">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/<brandId>/recover/recreate'
 ```
 </OpenApiReference>
 
@@ -1227,7 +1301,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/health/doctor/run' \
   -H 'Content-Type: application/json' \
-  --data '{}'
+  --data '{"checkIds":["value"]}'
 ```
 </OpenApiReference>
 
@@ -1242,6 +1316,16 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/health/live-now'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.post.plugin-assets-keep-edit">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/health/plugin-assets/keep-edit' \
+  -H 'Content-Type: application/json' \
+  --data '{"skills":[{"name":"value","pluginId":"value","shippedSha":"value"}]}'
 ```
 </OpenApiReference>
 
@@ -1270,6 +1354,33 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/health/search-telemetry'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.post.search-unclaimed-tables-forget">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/health/search/unclaimed-tables/forget' \
+  -H 'Content-Type: application/json' \
+  --data '{"tables":["value"]}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.post.search-unclaimed-tables-keep">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/health/search/unclaimed-tables/keep' \
+  -H 'Content-Type: application/json' \
+  --data '{"tables":["value"]}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.get.search-unclaimed-tables-kept">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/search/unclaimed-tables/kept'
 ```
 </OpenApiReference>
 
@@ -1769,6 +1880,31 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="spend.get.recover">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/spend/recover'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="spend.put.recover">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/spend/recover' \
+  -H 'Content-Type: application/json' \
+  --data '{"text":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="spend.post.recover-reset">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/spend/recover/reset'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="spend.get.spend">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -2229,6 +2365,23 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="workflows.get.definitions-name-raw">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/definitions/<name>/raw'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows.put.definitions-name-raw">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/workflows/definitions/<name>/raw' \
+  -H 'Content-Type: application/json' \
+  --data '{"yaml":"value"}'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="workflows.post.gates-task-id-approve">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -2341,6 +2494,23 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="workflows.get.skills-name-raw">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/skills/<name>/raw'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows.put.skills-name-raw">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/workflows/skills/<name>/raw' \
+  -H 'Content-Type: application/json' \
+  --data '{"content":"value"}'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="workflows.post.skills-name-repair">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -2367,5 +2537,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 20, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 24, 2026 · Bakin 0.0.0-dev</span>
 </aside>

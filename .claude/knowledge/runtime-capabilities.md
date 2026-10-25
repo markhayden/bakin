@@ -353,6 +353,39 @@ allowlist — see the contract doc, born of the P5.3 conflation below).
   live `OperationProgress`, grouped result cards). Unknown ?tab= values fall back
   to Overview.
 
+## Gateway floor and the operator.admin grant as Health handoffs (self-healing PR1)
+
+`gatewayCompatibility()` (`packages/adapter-openclaw/src/gateway-rpc.ts`) is the ONE verdict
+behind both `runtime.compatibility()` and the adapter's `gateway-protocol` health check — the
+cached handshake evidence, never a live probe or the CLI version. Below the floor the check
+raises `gateway-below-floor` (subject `runtime:openclaw`, human external-install, handoff
+`openclaw update` — OpenClaw's own updater, which also restarts the gateway service); no
+handshake yet is an unknown observation, never a card. Row 204's grant is OpenClaw's device
+scope-upgrade flow: the gateway that refuses `operator.admin` files a PENDING upgrade request
+for Bakin's device, so the handoff is `openclaw devices list` (Requested vs Approved + the
+request id), then `openclaw devices approve <requestId>`, then `bakin restart` — the chat
+gateway client drops the optional scope for its lifetime after a refusal (#880), so only a
+fresh process asks again. The `/runtime?field=credentials` group reads the runtime's
+credential incident from the Health report and renders its handoff (Pi's `pi` + `/login`)
+under the tiles; the host never hardcodes an adapter command.
+
+Codex round 2 additions: (1) `agents.registryLocation?()` is an OPTIONAL neutral member
+(`RuntimeRegistryLocation { path, entryKey(index) }`) — the roster file and the entry key at a
+position, in the runtime's own notation — for the ONE case the id-keyed contract cannot
+address: a roster entry WITHOUT an id (Health row 106). Pi and OpenClaw implement it,
+the mock omits it; the conformance suite pins presence per adapter (`registryLocation:
+'present' | 'absent'`) with teeth. (2) `gateway-protocol` re-probes: when the cached verdict
+is not `ok` the check calls the adapter-private `probeGatewayCompatibility()` (a bounded
+`probeHandshake()` on the chat gateway client — dials only when the connection is down, so a
+gateway upgraded since the last handshake is SEEN), falling back to the cached verdict with
+`probe: 'failed'` in evidence; a live `ok` connection is current evidence and is not re-dialed.
+(3) OpenClaw declares a `provider-configuration` family (parity with Pi row 198) from the
+status-only `credentials.providers()` inventory: no provider in a COMPLETE inventory → human
+credential with handoff `openclaw models auth login`; a PARTIAL inventory (the CLI probe
+failed) is an unknown observation, never "no provider" (#615). (4) The runtime page's
+credentials group has return verification: a copied command arms one re-read of the Health
+and capability reports on the next focus/visibility.
+
 ## concurrency.sameAgentTurns (same-agent concurrency)
 
 REQUIRED `CapabilitySet` member: `'isolated'` (adapter honors `MessageArgs.runWorkspace` per-turn

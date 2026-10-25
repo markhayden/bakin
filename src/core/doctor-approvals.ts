@@ -1,14 +1,15 @@
 /**
  * Health approval kinds (spec D6/D7, plan review R1/R4).
  *
- *   health-repair   — a NON-SAFE repair proposal frozen at escalation time.
+ *   health-repair   — a ONE-CLICK repair proposal frozen at escalation time.
  *                     Apply re-plans against fresh evidence and mutates only
  *                     when the fresh change set equals the frozen one; a
  *                     differing set cancels the approval (`plan-changed`) and
  *                     posts a fresh one. `applying` is written before any
  *                     mutation so a crash mid-apply is recoverable.
- *   health-navigate — an operator-only incident (resolution type navigate).
- *                     The one decision is Dismiss.
+ *   health-navigate — a human incident (resolution type human: a credential,
+ *                     a payment, a decision, an external install). The one
+ *                     decision is Dismiss.
  *
  * Dismiss = snooze 7 d on action_required incidents (the ack store refuses a
  * permanent ack on that tier), ack on lower tiers; the task completes.
@@ -22,6 +23,7 @@ import { describeApprovalProvenance, findPendingApproval, getApprovalRecord, typ
 import type {
   HealthIncident,
   HealthRepairChange,
+  HealthRepairEffects,
   HealthRepairPlan,
   HealthRepairPlanItem,
   HealthReport,
@@ -96,7 +98,8 @@ export function freezeProposal(report: HealthReport, items: readonly HealthRepai
     items: items.map((item) => ({
       actionId: item.actionId,
       itemId: item.id,
-      safety: item.safety,
+      effects: { ...item.effects },
+      mode: item.mode,
       changes: item.changes.map((change) => ({ ...change })),
     })),
   }
@@ -108,9 +111,19 @@ export function checkIdsForObservations(report: HealthReport, observationIds: re
   return [...new Set(report.observations.filter((row) => wanted.has(row.id)).map((row) => row.checkId))].sort()
 }
 
+/** The effects in words — the reason this proposal waits for a click. */
+export function describeEffects(effects: HealthRepairEffects): string {
+  const parts: string[] = []
+  if (effects.deletesUserContent) parts.push('deletes content')
+  if (effects.spendsMoney) parts.push('spends money')
+  if (effects.widensAuthorization) parts.push('widens access')
+  if (effects.restartsService) parts.push(`restarts ${effects.restartsService}`)
+  return parts.length > 0 ? parts.join(', ') : 'no side effects'
+}
+
 export function describeProposedChanges(proposal: RepairProposal): string[] {
   return proposal.items.flatMap((item) =>
-    item.changes.map((change) => `- [${item.safety}] ${change.action} ${change.kind} \`${change.target}\` — ${change.description}`))
+    item.changes.map((change) => `- [${describeEffects(item.effects)}] ${change.action} ${change.kind} \`${change.target}\` — ${change.description}`))
 }
 
 function summarizeIncidents(incidents: readonly HealthIncident[]): string {
@@ -197,8 +210,8 @@ function requestRepairApprovalRecord(request: DoctorRepairRequest, taskId: strin
 }
 
 /**
- * ONE review task + ONE `health-repair` approval for a set of non-safe plan
- * items. The task has no assignee: it is never dispatched (dispatch pulls
+ * ONE review task + ONE `health-repair` approval for a set of one-click plan
+ * items (and self-heal items the authorization gate handed to the operator). The task has no assignee: it is never dispatched (dispatch pulls
  * from todo only) and never stranded (restart recovery/watchdog read
  * inProgress only).
  */
@@ -288,14 +301,14 @@ export async function openOperatorReview(input: {
   return { request: sent, taskId: task.id }
 }
 
-/** ONE review task + ONE `health-navigate` approval per operator-only incident. */
+/** ONE review task + ONE `health-navigate` approval per human incident. */
 export async function openNavigateApproval(input: {
   contentDir: string
   report: HealthReport
   incident: HealthIncident
 }): Promise<OpenedApproval> {
   const { incident } = input
-  const href = incident.resolution.type === 'navigate' ? incident.resolution.href : '/health'
+  const href = incident.resolution.type === 'human' ? incident.resolution.href : '/health'
   const absoluteHref = new URL(href, bakinBaseUrl()).toString()
   const request = createDoctorRepairRequest(input.contentDir, {
     kind: 'approval-navigate',
@@ -307,7 +320,8 @@ export async function openNavigateApproval(input: {
     `${incident.title}`,
     `Impact: ${incident.impact}`,
     '',
-    `This needs you: ${incident.resolution.label} — ${absoluteHref}`,
+    `This needs you (${incident.resolution.type === 'human' ? incident.resolution.needs : 'decision'}): ${incident.resolution.label} — ${absoluteHref}`,
+    ...(incident.resolution.type === 'human' && incident.resolution.handoff ? [`Run: ${incident.resolution.handoff.command}${incident.resolution.handoff.cwd ? ` (in ${incident.resolution.handoff.cwd})` : ''}`] : []),
     '',
     'Dismiss snoozes the incident for 7 days; it closes on its own once Health verifies the fix.',
   ].join('\n')

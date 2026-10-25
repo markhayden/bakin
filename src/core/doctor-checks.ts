@@ -2,13 +2,16 @@
 import type {
   HealthCheckDef,
   HealthCheckExecution,
+  HealthIncidentDeclaration,
   HealthIncidentInput,
   HealthObservation,
   HealthObservationInput,
   HealthOwner,
+  HealthSubject,
 } from '../../packages/core/src/plugin-types'
+import { SHARED_ENGINE_ACTIONS, decisionControlOwnedBy } from '@bakin/core/health/authorize-mutation'
 import { safeParseHealthCheckRunInput } from './health-contract'
-import { getHealthRepairAction, listHealthChecks } from './health-check-registry'
+import { getHealthRepairAction, listHealthChecks, resolveDeclaredRepairAction } from './health-check-registry'
 import { createLogger } from './logger'
 
 const log = createLogger('doctor-checks')
@@ -85,9 +88,75 @@ function staleAt(observedAt: string, ttlMs: number): string {
   return new Date(Date.parse(observedAt) + ttlMs + graceMs(ttlMs)).toISOString()
 }
 
+/** An emitted instance that contradicts its declared family (self-healing 1.5). */
+class HealthDeclarationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'HealthDeclarationError'
+  }
+}
+
+function describeResolution(resolution: HealthIncidentInput['resolution']): string {
+  return resolution.type === 'repair' ? `repair "${resolution.actionId}"` : `human (${resolution.needs})`
+}
+
+/** The subject a check OWNER stands for when core speaks about the check itself (verification rows). */
+export function ownerSubject(owner: HealthOwner): HealthSubject {
+  return { kind: owner.kind === 'plugin' ? 'plugin' : owner.kind === 'adapter' ? 'runtime' : 'system', id: owner.id, label: owner.label }
+}
+
+function findDeclaration(def: HealthCheckDef, incident: HealthIncidentInput): HealthIncidentDeclaration {
+  const declaration = def.incidents.find((entry) => entry.id === incident.declarationId)
+  if (!declaration) {
+    throw new HealthDeclarationError(`Incident "${incident.key}" names declaration "${incident.declarationId}", which check ${def.id} does not declare.`)
+  }
+  return declaration
+}
+
+/**
+ * An instance must match its declared family: a repair family's action
+ * (canonical), or a human family's `needs`. `required` is derived from the
+ * family (`always` / `never`) or carried by the instance (`owner-decides`,
+ * mandatory). Returns the canonical incident with `required` resolved.
+ */
+function assertDeclaredInstance(def: HealthCheckDef, incident: HealthIncidentInput): HealthIncidentInput & { required: boolean } {
+  const declaration = findDeclaration(def, incident)
+  const resolution = incident.resolution
+  if (declaration.resolution.type === 'repair') {
+    const declared = resolveDeclaredRepairAction(def.owner, declaration.resolution.actionId) ?? declaration.resolution.actionId
+    if (resolution.type !== 'repair' || resolution.actionId !== declared) {
+      throw new HealthDeclarationError(`Incident "${incident.key}" is declared as repair "${declared}" but was emitted as ${describeResolution(resolution)}.`)
+    }
+  } else if (resolution.type !== 'human' || resolution.needs !== declaration.resolution.needs) {
+    throw new HealthDeclarationError(`Incident "${incident.key}" is declared as a human need (${declaration.resolution.needs}) but was emitted as ${describeResolution(resolution)}.`)
+  }
+  let required: boolean
+  if (declaration.required === 'owner-decides') {
+    if (typeof incident.required !== 'boolean') {
+      throw new HealthDeclarationError(`Incident "${incident.key}" belongs to the owner-decides family "${declaration.id}" but carries no \`required\` verdict.`)
+    }
+    required = incident.required
+  } else {
+    required = declaration.required === 'always'
+  }
+  // A family covers ONE subject kind (Codex r1 #16): an instance on another kind is not that family.
+  if (incident.subject.kind !== declaration.subjectKind) {
+    throw new HealthDeclarationError(`Incident "${incident.key}" is declared on a ${declaration.subjectKind} subject but was emitted on ${incident.subject.kind}:${incident.subject.id}.`)
+  }
+  // A request choice performs the decision through the OWNER's own route (or a shared host control) — never another owner's mutation (Codex r2 N2).
+  for (const choice of resolution.choices ?? []) {
+    if (choice.kind === 'request' && !decisionControlOwnedBy(choice.url, def.owner)) {
+      throw new HealthDeclarationError(`Incident "${incident.key}" choice "${choice.key}" requests ${choice.url}, which ${def.owner.kind} ${def.owner.id} does not own (a plugin may name only /api/plugins/${def.owner.id}/… or a shared decision control).`)
+    }
+  }
+  return { ...incident, required }
+}
+
 function namespaceRepairAction(owner: HealthOwner, incident: HealthIncidentInput): HealthIncidentInput {
   if (incident.resolution.type !== 'repair') return incident
   const localOrCanonical = incident.resolution.actionId
+  // A shared engine action (`core.diagnose`) is referenced verbatim by every owner.
+  if (SHARED_ENGINE_ACTIONS.includes(localOrCanonical)) return incident
   const actionId = localOrCanonical.startsWith(`${owner.id}.`)
     ? localOrCanonical
     : `${owner.id}.${localOrCanonical}`
@@ -120,8 +189,8 @@ function stampObservation(
     staleAt: staleAt(observedAt, ttlMs),
     snapshot: 'current' as const,
   }
-  if (input.status === 'healthy') return base as HealthObservation
-  const incident = namespaceRepairAction(def.owner, input.incident)
+  if (input.status === 'healthy' || !input.incident) return base as HealthObservation
+  const incident = assertDeclaredInstance(def, namespaceRepairAction(def.owner, input.incident))
   return {
     ...base,
     incident,
@@ -161,15 +230,18 @@ function verificationObservation(
       // instructions must reference what is actually on screen).
       impact: `Bakin cannot currently confirm whether this part of the system is healthy — the check crashed instead of reporting evidence. Error: ${reason.slice(0, 300)}`,
       disposition: 'watch',
+      // The check OWNER's subject (re-homing row 206): a crashed check is
+      // the fallback lane's business, never a human's — `core.diagnose`
+      // investigates it once the engine's bound (spec §3.1) is reached.
+      subject: ownerSubject(def.owner),
+      declarationId: 'verification',
+      required: false,
       resources: [{ kind: 'plugin', id: def.owner.id, label: def.owner.label }],
       resolution: {
         key: 'diagnose-check-failure',
-        type: 'instructions',
-        label: 'Diagnose the failed check',
-        steps: [
-          'Fix what the error above names (a missing tool, unreadable file, or unreachable service), then run checks again.',
-          'If the error is opaque or persists across reruns, it is a Bakin bug worth reporting — a check should report evidence, not crash.',
-        ],
+        type: 'repair',
+        label: 'Investigate the failed check',
+        actionId: 'core.diagnose',
       },
     },
   }
@@ -263,7 +335,7 @@ export async function runHealthCheck(
           startedAt,
           completedAt,
           outcome: 'invalid',
-          error: { code: 'INVALID_HEALTH_REFERENCE', message },
+          error: { code: error instanceof HealthDeclarationError ? 'INVALID_HEALTH_DECLARATION' : 'INVALID_HEALTH_REFERENCE', message },
         },
         observations: [verificationObservation(def, completedAt, ttlMs, message)],
       }

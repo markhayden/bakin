@@ -506,6 +506,7 @@ Use the focused patterns entrypoint for consequential actions and staged drafts:
 | --- | --- | --- |
 | Confirm one consequential action | `ConfirmDialog` | Caller owns open, busy, error, retry, and mutation state; use `confirmValue` only when an exact typed value is warranted |
 | Keep a staged draft actionable | `SaveBar` | Caller owns dirty comparison, persistence, and discard; the pattern supplies dirty, saving, retryable error, and brief saved presentation |
+| Hand a command to the operator | `HandoffCard` | Show the exact command (copyable); offer "Open in Terminal" only when the host can prefill it; never run it yourself |
 | Separate irreversible settings | `DangerZone` | Place after routine settings, state the consequence in words, and route through the same typed `ConfirmDialog` engine |
 | Resolve navigation with a dirty draft | `UnsavedChangesDialog` | Presentation-only save, discard, and stay decision; a router-aware consumer decides when it opens and what continuation means |
 

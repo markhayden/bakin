@@ -79,7 +79,7 @@ describe('workflows.shipped-defaults', () => {
     expect(obs?.evidence).toMatchObject({ source: 'embedded', embeddedEntries: 1, filesFound: 1, registered: 1, skipped: 0 })
   })
 
-  it('reports each shipped workflow that failed validation as a watch item', () => {
+  it('reports each shipped workflow that failed validation as an observation (row 144: no card)', () => {
     recordShippedDefaults({
       files: [
         { id: 'good', path: '/x/good.yaml', source: 'disk' },
@@ -92,7 +92,8 @@ describe('workflows.shipped-defaults', () => {
     const result = checkShippedDefaults() as unknown as Observed
     expect(result.observations).toHaveLength(1)
     expect(result.observations[0]?.key).toBe('shipped-default-bad')
-    expect(result.observations[0]?.incident?.disposition).toBe('watch')
+    expect(result.observations[0]?.status).toBe('warning')
+    expect(result.observations[0]?.incident).toBeUndefined()
     expect(result.observations[0]?.summary).toContain('steps: required')
   })
 })

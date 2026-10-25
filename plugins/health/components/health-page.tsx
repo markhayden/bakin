@@ -24,6 +24,7 @@ import { withDeadline } from '../lib/request-deadline'
 import { ActivityTab } from './activity-tab'
 import { AgentsTab } from './agents-tab'
 import { OverviewTab } from './overview-tab'
+import { useHandoffReturn } from './handoff-return'
 import { RepairDialog } from './repair-dialog'
 import { SystemTab } from './system-tab'
 import { UpdatesTab } from './updates-tab'
@@ -38,6 +39,8 @@ const HEALTH_TABS = [
 
 type HealthTab = typeof HEALTH_TABS[number]['id']
 type RunChecks = () => Promise<unknown>
+/** The doctor's targeted run (`{ checkIds }`) — what a handoff return verifies through. */
+const HEALTH_RUN_URL = '/api/plugins/health/doctor/run'
 
 function isHealthTab(value: string): value is HealthTab {
   return HEALTH_TABS.some((tab) => tab.id === value)
@@ -46,7 +49,8 @@ function isHealthTab(value: string): value is HealthTab {
 interface OverviewPanelProps {
   updates: UseHealthResourceResult<UpdatesData>
   onRunChecksReady: (runChecks: RunChecks | null) => void
-  onRunChecks: () => Promise<void>
+  /** Overview's background refresh — what a targeted recheck republishes through. */
+  onRefreshReady: (refresh: (() => Promise<void>) | null) => void
 }
 
 interface SelectedRepair {
@@ -59,7 +63,7 @@ interface SelectedRepair {
  * receives only an imperative Run checks callback, so selecting another tab
  * fully unmounts Overview and stops its background endpoint traffic.
  */
-function OverviewPanel({ updates, onRunChecksReady, onRunChecks }: OverviewPanelProps) {
+function OverviewPanel({ updates, onRunChecksReady, onRefreshReady }: OverviewPanelProps) {
   const overview = useOverviewData({ updates: updates.data })
   const [selectedRepair, setSelectedRepair] = useState<SelectedRepair | null>(null)
 
@@ -67,6 +71,10 @@ function OverviewPanel({ updates, onRunChecksReady, onRunChecks }: OverviewPanel
     onRunChecksReady(overview.runChecks)
     return () => onRunChecksReady(null)
   }, [onRunChecksReady, overview.runChecks])
+  useEffect(() => {
+    onRefreshReady(overview.refresh)
+    return () => onRefreshReady(null)
+  }, [onRefreshReady, overview.refresh])
 
   const reviewRepair = useCallback((incident: HealthIncident) => {
     if (!overview.model.reportId) return
@@ -119,7 +127,7 @@ function OverviewPanel({ updates, onRunChecksReady, onRunChecks }: OverviewPanel
       <OverviewTab
         data={overview}
         onRepair={reviewRepair}
-        onRerun={() => { void onRunChecks() }}
+        onDecided={() => { void overview.runChecks() }}
         onAck={(incident, action, window) => { void ackIncident(incident, action, window) }}
       />
 
@@ -148,6 +156,7 @@ export function HealthPage() {
   const availableUpdates = updates.data ? countAvailableUpdates(updates.data.records) : 0
   const activeTab: HealthTab = isHealthTab(tabParam) ? tabParam : 'overview'
   const overviewRunChecksRef = useRef<RunChecks | null>(null)
+  const overviewRefreshRef = useRef<(() => Promise<void>) | null>(null)
   const checksInFlightRef = useRef<Promise<void> | null>(null)
   const [runningChecks, setRunningChecks] = useState(false)
   const [announcement, setAnnouncement] = useState('')
@@ -161,6 +170,9 @@ export function HealthPage() {
 
   const registerOverviewRunChecks = useCallback((runChecks: RunChecks | null) => {
     overviewRunChecksRef.current = runChecks
+  }, [])
+  const registerOverviewRefresh = useCallback((refresh: (() => Promise<void>) | null) => {
+    overviewRefreshRef.current = refresh
   }, [])
 
   const runChecks = useCallback((): Promise<void> => {
@@ -194,6 +206,28 @@ export function HealthPage() {
     checksInFlightRef.current = request
     return request
   }, [])
+  // A taken handoff (terminal opened / command copied) reruns the ORIGINATING
+  // checks when the operator is back here — a targeted run, never a sweep;
+  // the result is republished (SSE) and Overview refreshes its resources.
+  const recheckAfterHandoff = useCallback((checkIds: string[]) => {
+    if (checkIds.length === 0) return
+    setAnnouncement(`Rechecking ${checkIds.length} health ${checkIds.length === 1 ? 'check' : 'checks'} after the handoff.`)
+    void (async () => {
+      try {
+        const res = await fetch(HEALTH_RUN_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ checkIds }),
+        })
+        if (!res.ok) throw new Error(`Recheck failed (${res.status})`)
+        await overviewRefreshRef.current?.()
+        setAnnouncement('Health recheck completed.')
+      } catch {
+        setAnnouncement('The health recheck could not be completed. Existing evidence remains visible.')
+      }
+    })()
+  }, [])
+  useHandoffReturn(recheckAfterHandoff)
 
   return (
     <Page
@@ -277,7 +311,7 @@ export function HealthPage() {
             <OverviewPanel
               updates={updates}
               onRunChecksReady={registerOverviewRunChecks}
-              onRunChecks={runChecks}
+              onRefreshReady={registerOverviewRefresh}
             />
           )}
           {activeTab === 'agents' && <AgentsTab />}

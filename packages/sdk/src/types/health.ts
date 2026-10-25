@@ -58,6 +58,94 @@ export const HEALTH_INCIDENT_CLASSES = [
 ] as const
 export type HealthIncidentClass = (typeof HEALTH_INCIDENT_CLASSES)[number]
 
+// ---------------------------------------------------------------------------
+// Declared incident catalogs (self-healing 1.5 — optional until the
+// three-outcomes cutover makes `incidents` and `declarationId` required)
+// ---------------------------------------------------------------------------
+
+/** What an incident is ABOUT — one card per subject once the cutover lands (spec §3.1). */
+export const HEALTH_SUBJECT_KINDS = [
+  'plugin',
+  'package',
+  'hub-skill',
+  'service',
+  'agent',
+  'table',
+  'runtime',
+  'channel',
+  'setting',
+  /** An owned record: an asset, brand, workflow, spend policy, … */
+  'record',
+  'task',
+  'system',
+] as const
+export type HealthSubjectKind = (typeof HEALTH_SUBJECT_KINDS)[number]
+
+/** What an incident is ABOUT (spec §3.1). One card per subject in the report. */
+export interface HealthSubject {
+  kind: HealthSubjectKind
+  id: string
+  label?: string
+}
+
+/** Why a human has to act: the engine cannot supply a credential, pay, decide, or install outside Bakin. */
+export const HEALTH_HUMAN_NEEDS = ['credential', 'payment', 'decision', 'external-install'] as const
+export type HealthHumanNeed = (typeof HEALTH_HUMAN_NEEDS)[number]
+
+/**
+ * Whether the family's subject is REQUIRED: the attention rule goes red only
+ * for an operator action on a required capability. `owner-decides` = the
+ * check supplies the fact per instance.
+ */
+export const HEALTH_INCIDENT_REQUIREMENTS = ['always', 'never', 'owner-decides'] as const
+export type HealthIncidentRequirement = (typeof HEALTH_INCIDENT_REQUIREMENTS)[number]
+
+export type HealthIncidentDeclarationResolution =
+  /** Owner-local action id, or a shared engine action such as `core.diagnose`. */
+  | { type: 'repair'; actionId: string }
+  | { type: 'human'; needs: HealthHumanNeed }
+
+/** What a repair action DOES to the installation — the input of the ONE authorization gate (spec §3.2). */
+export const HEALTH_MUTATION_KINDS = ['upgrade', 'sync', 'reinstall', 'restart', 'rebuild', 'delete', 'policy'] as const
+export type HealthMutationKind = (typeof HEALTH_MUTATION_KINDS)[number]
+
+/**
+ * What a repair action declares to the gate: one of the mutation kinds, or
+ * `none` — the action changes no installed identity, writes no policy and
+ * deletes nothing the user owns (it creates directories, re-projects
+ * Bakin-owned files, sweeps Bakin's own scratch). The declaration is
+ * REQUIRED so that no action opts out of the gate silently.
+ */
+export const HEALTH_REPAIR_MUTATIONS = [...HEALTH_MUTATION_KINDS, 'none'] as const
+export type HealthRepairMutation = (typeof HEALTH_REPAIR_MUTATIONS)[number]
+
+/** Why the authorization gate refused an unattended mutation; every surface renders the SAME copy for each (spec §3.2). */
+export const HEALTH_MUTATION_REFUSAL_REASONS = [
+  'consent-delta',
+  'consent-unreviewed',
+  'declined',
+  'untrusted-source',
+  'hub-skill',
+  'operator-only',
+  'quarantined',
+  'disabled',
+] as const
+export type HealthMutationRefusalReason = (typeof HEALTH_MUTATION_REFUSAL_REASONS)[number]
+
+/**
+ * One FINITE incident family a check may emit (plan R3 N5): `not-ready`
+ * covers every `not-ready:<capability>` instance, `schema-error` every
+ * `schema-<workflow>-<n>`. Validated when the owner registers — a dangling
+ * action or a human family without `needs` fails the owner's activation —
+ * and again per emitted instance in the runner.
+ */
+export interface HealthIncidentDeclaration {
+  id: string
+  subjectKind: HealthSubjectKind
+  resolution: HealthIncidentDeclarationResolution
+  required: HealthIncidentRequirement
+}
+
 /**
  * Health sensitivity mode (#690): how loudly findings surface. `developer`
  * shows raw dispositions everywhere; `standard` (default) demotes expected
@@ -117,40 +205,82 @@ export interface HealthResource {
 // Producer inputs
 // ---------------------------------------------------------------------------
 
+/**
+ * One named, executable choice on an incident card beside its resolution
+ * (the re-homing table's "card buttons": Claim / Use as guest, Drop / Keep,
+ * Keep my edit / Restore shipped, Disable plugin, raise / ack / resume).
+ * A `link` lands on a control; a `request` performs the decision through
+ * the owner's existing route and the check reruns — with `confirm` the card
+ * asks first. Choices never add a third outcome (spec D1): they are the
+ * controls of the human decision, named on the card instead of behind it.
+ */
+export interface HealthDecisionChoiceEffects {
+  deletesUserContent: boolean
+  spendsMoney: boolean
+  widensAuthorization: boolean
+}
+
+export type HealthDecisionChoice =
+  | { key: string; label: string; kind: 'link'; href: string; field?: string }
+  | {
+      key: string
+      label: string
+      kind: 'request'
+      method: 'POST' | 'PUT' | 'DELETE'
+      /**
+       * The OWNER's own route (`/api/plugins/<ownerId>/…` for a plugin; a
+       * host route for core/adapters) or one of core's shared decision
+       * controls — the runner refuses anything else.
+       */
+      url: string
+      body?: Record<string, unknown>
+      tone?: 'default' | 'danger'
+      /** What the request does; any true effect (or `tone: 'danger'`) REQUIRES `confirm`. */
+      effects: HealthDecisionChoiceEffects
+      confirm?: { title: string; description?: string }
+    }
+
 interface HealthResolutionBase {
   /** Stable within the incident; repair preconditions use this key. */
   key: string
   label: string
+  /** Up to four named choices rendered beside the resolution (table "card buttons"). */
+  choices?: HealthDecisionChoice[]
 }
 
 export interface HealthRepairResolution extends HealthResolutionBase {
   type: 'repair'
-  /** Owner-local on input; core namespaces it in canonical output. */
+  /** Owner-local on input; core namespaces it in canonical output. A shared engine action (`core.diagnose`) is referenced verbatim. */
   actionId: string
 }
 
-export interface HealthNavigateResolution extends HealthResolutionBase {
-  type: 'navigate'
-  /** Same-origin application path, validated by core. */
+/**
+ * A credential or an install the operator performs in a shell: the exact
+ * command the Health card hands to a Terminal session (or offers to copy).
+ * Never free-text steps — one command, optionally where to run it.
+ */
+export interface HealthHumanHandoff {
+  command: string
+  cwd?: string
+}
+
+/**
+ * Something only a human can supply (spec §3.1): a credential, a payment,
+ * a decision, or an install outside Bakin. `href` is the same-origin path
+ * to the control; `field` the settings/form field id when the fix is a
+ * value to enter; `handoff` the command for a shell-side credential or
+ * install (the card's Terminal handoff with return verification).
+ */
+export interface HealthHumanResolution extends HealthResolutionBase {
+  type: 'human'
+  needs: HealthHumanNeed
   href: string
+  field?: string
+  handoff?: HealthHumanHandoff
 }
 
-export interface HealthInstructionsResolution extends HealthResolutionBase {
-  type: 'instructions'
-  steps: HealthNonEmptyArray<string>
-  /** Copyable operator command; never executed automatically. */
-  command?: string
-}
-
-export interface HealthRerunResolution extends HealthResolutionBase {
-  type: 'rerun'
-}
-
-export type HealthResolution =
-  | HealthRepairResolution
-  | HealthNavigateResolution
-  | HealthInstructionsResolution
-  | HealthRerunResolution
+/** The two outcomes (spec D1): Bakin repairs it, or a human must act. Nothing else exists. */
+export type HealthResolution = HealthRepairResolution | HealthHumanResolution
 
 export interface HealthIncidentBaseInput {
   /** Stable within the registration's owner and subsystem group. */
@@ -159,8 +289,30 @@ export interface HealthIncidentBaseInput {
   impact: string
   /** Behavior class for the sensitivity projection; absent = service_failure (never demoted). */
   class?: HealthIncidentClass
+  /** REQUIRED: what this incident is about. One card per subject in the report. */
+  subject: HealthSubject
+  /** Other affected resources. */
   resources?: HealthResource[]
   resolution: HealthResolution
+  /**
+   * The declared family this instance belongs to (`incidents[].id` on the
+   * registration). The runner refuses an instance whose resolution
+   * contradicts its declaration.
+   */
+  declarationId: string
+  /**
+   * Whether the subject is REQUIRED — something that runs references it
+   * (an enabled plugin, a capability an agent declares, search while
+   * enabled, a scheduled workflow). Mandatory for an `owner-decides`
+   * family; derived from the family for `always` / `never`.
+   */
+  required?: boolean
+  /**
+   * This incident is a symptom of another subject's failure; the report
+   * folds it under that owner ONLY when the owner's repair declares it
+   * resolves this incident key (spec D7).
+   */
+  dependsOn?: { subject: HealthSubject; resolvedBy: string }
 }
 
 export interface AdvisoryIncidentInput extends HealthIncidentBaseInput {
@@ -194,9 +346,15 @@ export type HealthyObservationInput = HealthObservationBaseInput & {
   incident?: never
 }
 
+/**
+ * A warning is an incident when it carries one. Without an incident it is a
+ * plain observation (spec §3.1: a transient or informational state listed
+ * under its check, never a card) — the "observation" rows of the re-homing
+ * table. An error is always an incident.
+ */
 export type WarningObservationInput = HealthObservationBaseInput & {
   status: 'warning'
-  incident: HealthIncidentInput
+  incident?: HealthIncidentInput
 }
 
 export type ErrorObservationInput = HealthObservationBaseInput & {
@@ -207,13 +365,15 @@ export type ErrorObservationInput = HealthObservationBaseInput & {
 export type UnknownObservationInput = HealthObservationBaseInput & {
   status: 'unknown'
   /**
-   * watch = a human should keep an eye on this unknown; advisory = the
-   * producer vouches it SELF-RESOLVES (a scan warming up after restart,
-   * attribution completing as transcripts land) — surfaced, but never in
-   * the fix-first banner. action_required stays unrepresentable: an
-   * unknown cannot honestly demand action.
+   * Optional — an unknown WITHOUT an incident is a plain "could not see"
+   * observation the check's `maxAgeMs` re-runs. With one: watch = a human
+   * should keep an eye on this unknown; advisory = the producer vouches it
+   * SELF-RESOLVES (a scan warming up after restart, attribution completing
+   * as transcripts land) — surfaced, but never in the fix-first banner.
+   * action_required stays unrepresentable: an unknown cannot honestly
+   * demand action.
    */
-  incident: WatchIncidentInput | AdvisoryIncidentInput
+  incident?: WatchIncidentInput | AdvisoryIncidentInput
 }
 
 /** Status-discriminated producer observation; illegal combinations do not typecheck. */
@@ -249,6 +409,8 @@ export interface HealthCheckRegistrationInput {
   maxAgeMs?: number
   /** Optional override for checks whose expected runtime differs from the global doctor deadline. */
   timeoutMs?: number
+  /** The finite incident families this check may emit; validated at registration (a refused catalog fails the owner's activation). */
+  incidents: HealthIncidentDeclaration[]
   run(context?: HealthCheckRunContext): Promise<HealthCheckRunInput>
 }
 
@@ -256,7 +418,26 @@ export interface HealthCheckRegistrationInput {
 // Repair contracts
 // ---------------------------------------------------------------------------
 
-export type HealthRepairSafety = 'safe' | 'manual' | 'destructive'
+/**
+ * What a repair action does beyond fixing the incident (spec §3.2). The ONE
+ * mode policy reads these: an action self-heals unless it deletes user
+ * content, spends money or widens what the operator authorized. Restarting
+ * a service is a scheduling matter (the maintenance coordinator), never a
+ * reason to ask.
+ */
+export interface HealthRepairEffects {
+  deletesUserContent: boolean
+  spendsMoney: boolean
+  /** Consents to new permissions/bins/secrets/npm payloads, or changes spend, routing or policy — always one-click. */
+  widensAuthorization: boolean
+  /** The action restarts a supervised service or Bakin; the engine serializes these behind the restart gate. */
+  restartsService?: 'search-engine' | 'bakin' | 'runtime'
+  /** Declaration ids (families) of dependent incidents this repair resolves — what `dependsOn.resolvedBy` folds under (spec §3.1). */
+  resolves?: string[]
+}
+
+/** Derived from `HealthRepairEffects` by the ONE policy (`repairMode`); stamped on every canonical plan item. */
+export type HealthRepairMode = 'self-heal' | 'one-click'
 
 export interface HealthRepairChange {
   kind: 'file' | 'setting' | 'service' | 'runtime' | 'task' | 'other'
@@ -289,16 +470,25 @@ export interface HealthRepairPrecondition {
 }
 
 export interface HealthRepairPlanItem {
+  /** Canonical: `<canonical action id>:<localId>`, unique across the plan. Opaque to actions. */
   id: string
+  /** The id the planner gave this item — the DOMAIN handle an action's `apply` reads (a package, an agent, a task), never `id`. */
+  localId: string
   actionId: string
   title: string
   reason: string
-  safety: HealthRepairSafety
+  /** Per item (a planner may stamp stricter effects than its action declares, e.g. the purge item of a store repair). */
+  effects: HealthRepairEffects
+  /** Core-stamped from `effects` by the ONE policy — clients never re-derive it. */
+  mode: HealthRepairMode
   incidentIds: string[]
   observationIds: string[]
   preconditions: HealthRepairPrecondition[]
   changes: HealthRepairChange[]
 }
+
+/** What a planner returns: core stamps `effects` (defaulting to the action's) and `mode`. */
+export type HealthRepairPlanItemInput = Omit<HealthRepairPlanItem, 'effects' | 'mode' | 'localId'> & { effects?: HealthRepairEffects }
 
 export interface HealthRepairPlan {
   planId: string
@@ -312,7 +502,7 @@ export interface HealthRepairPlan {
 export interface HealthRepairApplyRequest {
   planId: string
   itemIds: HealthNonEmptyArray<string>
-  /** Individually confirmed manual/destructive item ids. */
+  /** Individually confirmed one-click item ids. */
   confirmedItemIds: string[]
 }
 
@@ -323,6 +513,12 @@ export interface HealthRepairApplyResult {
   message: string
   affectedCheckIds: string[]
   changes: HealthRepairChange[]
+  /**
+   * Set when the ONE authorization gate refused this item for an unattended
+   * actor (status `skipped`): the operator path runs it instead, and this
+   * never counts as a failed attempt.
+   */
+  authorization?: { refused: true; reason: HealthMutationRefusalReason }
 }
 
 /**
@@ -338,8 +534,18 @@ export interface HealthRepairApplyResult {
 export interface HealthRepairActionDefinition {
   id: string
   name: string
+  /** REQUIRED: what applying this action does; the ONE mode policy decides self-heal vs one-click from it. */
+  effects: HealthRepairEffects
+  /**
+   * REQUIRED: the installation mutation this action performs (upgrade /
+   * sync / reinstall of a tracked subject, a restart, a rebuild, a
+   * deletion, a policy write), or `none`. The ONE authorization gate judges
+   * every apply by it; `none` is an explicit, reviewable declaration that
+   * there is nothing to authorize beyond the mode — never a silent opt-out.
+   */
+  mutation: HealthRepairMutation
   /** Bounded and local: no network, no engine calls. */
-  plan(target: HealthRepairTarget): Promise<HealthRepairPlanItem[]>
+  plan(target: HealthRepairTarget): Promise<HealthRepairPlanItemInput[]>
   /** The stages applying these items will report. */
   operationPlan(items: HealthRepairPlanItem[]): OperationPlan
   resources?: string[]
@@ -370,8 +576,8 @@ export type CanonicalHealthyObservation = CanonicalHealthObservationBase & {
 
 export type CanonicalWarningObservation = CanonicalHealthObservationBase & {
   status: 'warning'
-  incidentId: string
-  incident: HealthIncidentInput
+  incidentId?: string
+  incident?: HealthIncidentInput
 }
 
 export type CanonicalErrorObservation = CanonicalHealthObservationBase & {
@@ -382,8 +588,8 @@ export type CanonicalErrorObservation = CanonicalHealthObservationBase & {
 
 export type CanonicalUnknownObservation = CanonicalHealthObservationBase & {
   status: 'unknown'
-  incidentId: string
-  incident: WatchIncidentInput
+  incidentId?: string
+  incident?: WatchIncidentInput | AdvisoryIncidentInput
 }
 
 /** Validated, core-stamped observation retained in immutable check snapshots. */
@@ -423,8 +629,16 @@ export interface HealthIncident {
   class?: HealthIncidentClass
   title: string
   impact: string
+  /** What the incident is about (spec §3.1). */
+  subject: HealthSubject
   resources: HealthResource[]
   resolution: HealthResolution
+  /** The declared family this incident belongs to. */
+  declarationId: string
+  /** Whether the subject is required (the attention rule goes red only for an operator action on a required subject). */
+  required: boolean
+  /** A symptom of another subject's failure (folding, spec D7). */
+  dependsOn?: { subject: HealthSubject; resolvedBy: string }
   observationIds: string[]
   observedAt: string
   staleAt: string

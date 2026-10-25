@@ -66,8 +66,12 @@ describe('override-authorization check (#880)', () => {
     const obs = result.observations[0]!
     expect(obs.status).toBe('error')
     expect(obs.summary).toContain('2 model route(s)')
-    expect((obs as { incident?: { disposition?: string; resolution?: { steps?: string[] } } }).incident?.disposition).toBe('action_required')
-    expect((obs as { incident?: { resolution?: { steps?: string[] } } }).incident?.resolution?.steps?.join(' ')).toContain('operator.admin')
+    const incident = (obs as { incident?: { disposition?: string; impact?: string; subject?: unknown; declarationId?: string; required?: boolean; resolution?: Record<string, unknown> } }).incident
+    expect(incident?.disposition).toBe('action_required')
+    // Row 204: a human credential (grant operator.admin or clear the routes), required while overrides are configured; the grant steps ride the impact copy.
+    expect(incident).toMatchObject({ declarationId: 'override-authorization', subject: { kind: 'runtime', id: 'openclaw' }, required: true })
+    expect(incident?.resolution).toMatchObject({ type: 'human', needs: 'credential', href: '/runtime?tab=runtimes' })
+    expect(incident?.impact).toContain('operator.admin')
   })
 
   it('reports on authorization alone when the models plugin is unavailable', async () => {
@@ -87,6 +91,8 @@ describe('override-authorization check (#880)', () => {
     const obs = result.observations[0]!
     expect(obs.status).toBe('unknown')
     expect(obs.evidence).toMatchObject({ routesKnown: false })
+    // Row 203: a plain observation — listed under the check, never a card.
+    expect((obs as { incident?: unknown }).incident).toBeUndefined()
   })
 
   it('a failed routing-config read on an AUTHORIZED connection stays healthy — routes are irrelevant', async () => {
@@ -105,6 +111,8 @@ describe('override-authorization check (#880)', () => {
     if (result.outcome !== 'observed') throw new Error('expected observed')
     const obs = result.observations[0]!
     expect(obs.status).toBe('unknown')
-    expect((obs as { incident?: { disposition?: string } }).incident?.disposition).toBe('advisory')
+    // Row 202: a plain observation (the next connection resolves it), never a card.
+    expect((obs as { incident?: unknown }).incident).toBeUndefined()
+    expect(obs.detail).toContain('granted scopes')
   })
 })

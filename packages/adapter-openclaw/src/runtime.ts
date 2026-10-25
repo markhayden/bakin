@@ -72,7 +72,7 @@ import {
 import { getOpenClawPath } from './home'
 import type { OpenClawRuntimeAdapterOptions } from './index'
 import { OpenClawApprovalGatewayClient } from './approval-gateway'
-import { GATEWAY_REQUIRED_PROTOCOL, OpenClawGatewayRpcClient, lastGatewayHandshake, type OpenClawGatewayAcceptedAck } from './gateway-rpc'
+import { OpenClawGatewayRpcClient, gatewayCompatibility, type OpenClawGatewayAcceptedAck } from './gateway-rpc'
 import {
   CANONICAL_DURABLE_FILES,
   getOpenClawMemoryEntry,
@@ -458,6 +458,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
       walk(root, '')
       return out.sort()
+    },
+    // Row 106: the roster lives in openclaw.json — the legacy `agents.list`
+    // ARRAY is the only shape where an entry can lack an id (the keyed
+    // `agents.entries` map carries the id in the key), so the key names the
+    // list position when a list exists and the entries map otherwise.
+    registryLocation: async () => {
+      const config = readOpenClawConfig()
+      const legacyList = Array.isArray(config?.agents?.list) && config!.agents!.list!.length > 0
+      return {
+        path: getOpenClawPath('openclaw.json'),
+        entryKey: (index: number) => (legacyList ? `agents.list[${index}]` : `agents.entries[<id>] (entry ${index + 1})`),
+      }
     },
     workspaces: async (): Promise<Array<{ agentId: string; path: string }>> => {
       // ONE strict snapshot for the roster, the main identity and every path:
@@ -1234,16 +1246,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * handshake (#1007 D7.10) — the same evidence `protocolFloorError` judged
    * at connect. Never a live probe, never inferred from the CLI version.
    */
-  compatibility = (): RuntimeCompatibility => {
-    const evidence = lastGatewayHandshake()
-    const required = String(GATEWAY_REQUIRED_PROTOCOL)
-    if (!evidence) return { required, state: 'unknown' }
-    return {
-      required,
-      observed: evidence.protocol === null ? 'unreported' : String(evidence.protocol),
-      observedAt: evidence.at,
-      state: evidence.belowFloor ? 'below-floor' : 'ok',
-    }
+  compatibility = (): RuntimeCompatibility => gatewayCompatibility()
+
+  /**
+   * Adapter-private (duck-typed by the health composition, like
+   * `gatewayScopesVerified`): a FRESH floor verdict for a targeted rerun —
+   * dials the gateway when the connection is down (bounded by the connect
+   * timeout) so an `openclaw update` the operator just ran is seen, then
+   * answers from the handshake that connection recorded.
+   */
+  probeGatewayCompatibility = async (): Promise<RuntimeCompatibility> => {
+    await this.openClawChatGateway().probeHandshake()
+    return gatewayCompatibility()
   }
 
   private async runtimeAgentIds(): Promise<string[]> {

@@ -15,7 +15,10 @@ import {
   Badge,
   Banner,
   Button,
+  Field,
+  FieldLabel,
   Skeleton,
+  Switch,
   SystemState,
   Tabs,
   TabsList,
@@ -285,6 +288,29 @@ function ExplorePageInner() {
     [entries],
   )
   const catalogState = override ?? data
+  // Row 98 containment: an installed user plugin can be disabled (stays on
+  // disk, never activated) or enabled again — the ONE place that writes it is
+  // the host route; the catalog re-read shows the ledger's answer.
+  const [togglingPlugin, setTogglingPlugin] = useState<string | null>(null)
+  const setPluginEnabled = async (pluginId: string, enabled: boolean) => {
+    setTogglingPlugin(pluginId)
+    try {
+      const res = await fetch(`/api/plugins/${enabled ? 'enable' : 'disable'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...OPERATOR_DECLARATION_HEADERS },
+        body: JSON.stringify({ pluginId }),
+      })
+      const body = await res.json().catch(() => ({})) as { ok?: boolean; message?: string; error?: string; live?: boolean }
+      if (!res.ok || body.ok !== true) throw new Error(body.message ?? body.error ?? `HTTP ${res.status}`)
+      toast(body.message ?? `${enabled ? 'Enabled' : 'Disabled'} ${pluginId}`, body.live === false ? 'info' : 'success')
+      setOverride(null)
+      refresh()
+    } catch (err) {
+      toast(`Could not ${enabled ? 'enable' : 'disable'} ${pluginId}: ${err instanceof Error ? err.message : String(err)}`, 'error')
+    } finally {
+      setTogglingPlugin(null)
+    }
+  }
   const filtered = searchDraft.trim().length > 0 || activeCategories.length > 0
   const clearFilters = () => {
     onSearchChange('')
@@ -503,15 +529,28 @@ function ExplorePageInner() {
           selected && !selected.builtin
             ? selected.installed
               ? (
-                  <Button
-                    data-testid="drawer-installed"
-                    size="xs"
-                    variant="primary"
-                    disabled
-                  >
-                    <Check />
-                    Installed
-                  </Button>
+                  <span className="flex min-w-0 flex-wrap items-center gap-bakin-3">
+                    {selected.kind === 'plugin' && (
+                      <Field orientation="horizontal" data-testid="drawer-plugin-enabled">
+                        <Switch
+                          checked={selected.disabled !== true}
+                          disabled={togglingPlugin !== null}
+                          aria-label={`${selected.name} enabled`}
+                          onCheckedChange={(checked) => { void setPluginEnabled(selected.id, checked) }}
+                        />
+                        <FieldLabel className="m-0">{selected.disabled ? 'Disabled' : 'Enabled'}</FieldLabel>
+                      </Field>
+                    )}
+                    <Button
+                      data-testid="drawer-installed"
+                      size="xs"
+                      variant="primary"
+                      disabled
+                    >
+                      <Check />
+                      Installed
+                    </Button>
+                  </span>
                 )
               : (
                   <Button

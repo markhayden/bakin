@@ -38,8 +38,9 @@ describe('Images health check', () => {
 
     const providers = result.find(observation => observation.key === 'providers')
     expect(providers?.status).toBe('warning')
-    expect(providers?.incident?.disposition).toBe('advisory')
-    expect(providers?.incident?.resolution).toMatchObject({ type: 'navigate', href: '/settings?tab=integrations', label: 'Open Integrations & Keys' })
+    // Row 193: an observation — the detail points at Integrations & Keys.
+    expect(providers?.incident).toBeUndefined()
+    expect(providers?.detail).toContain('/settings?tab=integrations')
   })
 
   it('makes a missing Assets save API actionable', async () => {
@@ -48,6 +49,8 @@ describe('Images health check', () => {
 
     expect(assets?.status).toBe('error')
     expect(assets?.incident?.disposition).toBe('action_required')
-    expect(assets?.incident?.resolution).toMatchObject({ type: 'navigate', href: '/assets' })
+    // Row 191: a symptom of the assets plugin — folds under it; the fallback lane investigates if it survives.
+    expect(assets?.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'core.diagnose' })
+    expect(assets?.incident?.dependsOn).toEqual({ subject: { kind: 'plugin', id: 'assets', label: 'Assets' }, resolvedBy: 'health.plugin-upgrade' })
   })
 })

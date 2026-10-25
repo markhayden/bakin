@@ -16,13 +16,34 @@
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type {
   HealthCheckRunInput,
+  HealthIncidentDeclaration,
   HealthObservationInput,
   HealthRepairActionDefinition,
   HealthRepairApplyResult,
   HealthRepairPlanItem,
+  HealthRepairPlanItemInput,
   HealthRepairTarget,
+  HealthSubject,
 } from '@makinbakin/sdk'
 import { stableKeyPart } from './key'
+import { partitionUnclaimedTables, readKeptSearchTables } from './kept-search-tables'
+
+const SEARCH_ENGINE_SUBJECT: HealthSubject = { kind: 'service', id: 'search-engine', label: 'Search engine' }
+const tableSubject = (logical: string): HealthSubject => ({ kind: 'table', id: logical, label: logical.slice(0, 120) })
+
+/**
+ * The `health.search-consistency` check's finite families (re-homing rows
+ * 69–78). Per-table rows are families: `migration-parked` covers every
+ * `migration-parked:<t>`. Unknowns, running migrations, sweep failures and
+ * remaining tombstones are plain observations.
+ */
+export const SEARCH_CONSISTENCY_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'migration-parked', subjectKind: 'table', resolution: { type: 'repair', actionId: 'search-consistency-rebuild' }, required: 'always' },
+  { id: 'table-unreadable', subjectKind: 'table', resolution: { type: 'repair', actionId: 'search-consistency-restart' }, required: 'always' },
+  { id: 'table-missing', subjectKind: 'table', resolution: { type: 'repair', actionId: 'search-consistency-rebuild' }, required: 'always' },
+  // Row 76: dropping tables another instance may own is the operator's decision — Drop is the one-click repair (deletes engine data), Keep is the recorded decision (`kept-search-tables.ts`).
+  { id: 'unclaimed-tables', subjectKind: 'service', resolution: { type: 'repair', actionId: 'search-drop-unclaimed-tables' }, required: 'never' },
+]
 
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000
 const SEARCH_CONSISTENCY_CHECK_ID = 'health.search-consistency'
@@ -85,13 +106,12 @@ function targetSelectsTable(target: HealthRepairTarget, table: SearchRepairTable
   return incidentId !== null && selected.has(incidentId)
 }
 
-function planItemForTable(table: SearchRepairTableState): HealthRepairPlanItem {
+function planItemForTable(table: SearchRepairTableState): HealthRepairPlanItemInput {
   return {
     id: `rebuild-index:${table.logical}`,
     actionId: SEARCH_CONSISTENCY_ACTION_ID,
     title: `Rebuild ${table.logical} (blue/green)`,
     reason: `${table.logical} is parked or points to a missing physical table.`,
-    safety: 'destructive',
     incidentIds: [],
     observationIds: [tableObservationId(table.logical)],
     preconditions: [],
@@ -164,16 +184,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
     return healthObserved([healthUnknown({
       key: 'indexes.availability',
       summary: 'Search index consistency could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'availability-unknown',
-        title: 'Search index consistency is unknown',
-        class: 'evidence_gap',
-        impact: 'Health cannot confirm that logical indexes point to available engine tables.',
-        disposition: 'watch',
-        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
+      detail: `${err instanceof Error ? err.message : String(err)} Health cannot confirm that logical indexes point to available engine tables.`,
     })])
   }
 
@@ -206,6 +217,8 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
             class: 'service_failure',
             impact: 'The index cannot advance to its replacement table and may remain stale.',
             disposition: 'action_required',
+            subject: tableSubject(table.logical),
+            declarationId: 'migration-parked',
             resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
             resolution: {
               key: 'rebuild-table',
@@ -220,14 +233,6 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
           summary: `${table.logical} migration is in progress.`,
           detail: `${table.phase ?? 'running'}${table.backfillDone != null ? `, ${table.backfillDone} rows backfilled` : ''}. Queries remain available during migration.`,
           evidence,
-          incident: {
-            key: `migration-running:${tableId}`,
-            title: 'Search index migration is still running',
-            impact: 'Search remains available, but the replacement index is not ready yet.',
-            disposition: 'watch',
-            resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
-            resolution: { key: 'rerun', type: 'rerun', label: 'Check migration again' },
-          },
         }))
       continue
     }
@@ -255,6 +260,8 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
               class: 'service_failure',
               impact: 'Queries touching this index hang or fail while the rest of Search stays up.',
               disposition: 'action_required',
+              subject: tableSubject(table.logical),
+              declarationId: 'table-unreadable',
               resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
               resolution: {
                 key: 'restart-engine',
@@ -269,15 +276,6 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
             key: `indexes.table:${tableId}`,
             summary: `${table.logical} could not be verified.`,
             detail: 'The index status read came back not-found, and the engine table list could not be fetched to distinguish a missing table from an unreadable one.',
-            incident: {
-              key: `table-unknown:${tableId}`,
-              title: 'Search index status is unknown',
-              class: 'evidence_gap',
-              impact: 'Health cannot confirm that this logical index has an active physical table.',
-              disposition: 'watch',
-              resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
-              resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-            },
           }))
         } else {
           missingThisRun.set(table.logical, table.physical)
@@ -292,6 +290,8 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
               class: 'service_failure',
               impact: 'Queries against this logical index cannot return its source data.',
               disposition: 'action_required',
+              subject: tableSubject(table.logical),
+              declarationId: 'table-missing',
               resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
               resolution: {
                 key: 'rebuild-table',
@@ -307,16 +307,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
       observations.push(healthUnknown({
         key: `indexes.table:${tableId}`,
         summary: `${table.logical} could not be verified.`,
-        detail: err instanceof Error ? err.message : String(err),
-        incident: {
-          key: `table-unknown:${tableId}`,
-          title: 'Search index status is unknown',
-          class: 'evidence_gap',
-          impact: 'Health cannot confirm that this logical index has an active physical table.',
-          disposition: 'watch',
-          resources: [{ kind: 'search_table', id: tableId, label: table.logical.slice(0, 120) }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-        },
+        detail: `${err instanceof Error ? err.message : String(err)} Health cannot confirm that this logical index has an active physical table.`,
       }))
     }
   }
@@ -342,16 +333,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
         observations.push(healthUnknown({
           key: 'indexes.sweep.engine-tables',
           summary: 'Stale engine-table sweep could not be completed.',
-          detail: err instanceof Error ? err.message : String(err),
-          incident: {
-            key: 'engine-table-sweep-failed',
-            title: 'Stale Search tables could not be verified',
-            class: 'cleanup_backlog',
-            impact: 'Unused engine tables may continue consuming storage until the next successful sweep.',
-            disposition: 'watch',
-            resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-            resolution: { key: 'rerun', type: 'rerun', label: 'Retry the sweep' },
-          },
+          detail: `${err instanceof Error ? err.message : String(err)} Unused engine tables may continue consuming storage until the next successful sweep.`,
         }))
       }
       const tombstonesLeft = await sweepTombstones(search)
@@ -379,26 +361,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
         }))
       }
       if (orphanTables && orphanTables.unclaimed.length > 0) {
-        observations.push(healthWarning({
-          key: 'indexes.sweep.unclaimed',
-          summary: `${orphanTables.unclaimed.length} unreferenced engine table${orphanTables.unclaimed.length === 1 ? ' was' : 's were'} left untouched.`,
-          detail: `${orphanTables.unclaimed.join(', ')}. Another Bakin instance may own them.`,
-          evidence: { unclaimed: orphanTables.unclaimed },
-          incident: {
-            key: 'unclaimed-tables',
-            title: 'Unclaimed Search tables need review',
-            class: 'cleanup_backlog',
-            impact: 'Stale unclaimed tables consume engine storage, but deleting tables owned by another instance would lose its index data.',
-            disposition: 'advisory',
-            resources: orphanTables.unclaimed.slice(0, 50).map((table) => ({ kind: 'search_table' as const, id: stableKeyPart(table), label: table.slice(0, 120) })),
-            resolution: {
-              key: 'review-tables',
-              type: 'instructions',
-              label: 'Review unclaimed tables',
-              steps: ['Confirm table ownership, then manually drop only tables that are known to be stale.'],
-            },
-          },
-        }))
+        observations.push(unclaimedTablesObservation(orphanTables.unclaimed, readKeptSearchTables()))
       }
       if (tombstonesLeft > 0) {
         observations.push(healthWarning({
@@ -406,15 +369,6 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
           summary: `${tombstonesLeft} retired physical table${tombstonesLeft === 1 ? ' is' : 's are'} still awaiting deletion.`,
           detail: 'Health will retry during the next deep sweep.',
           evidence: { remaining: tombstonesLeft },
-          incident: {
-            key: 'tombstones-remain',
-            title: 'Retired Search tables could not be dropped',
-            class: 'cleanup_backlog',
-            impact: 'Old physical tables continue consuming engine storage.',
-            disposition: 'watch',
-            resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-            resolution: { key: 'rerun', type: 'rerun', label: 'Retry during the next sweep' },
-          },
         }))
       }
       if (sweepVerified) lastSweepAt = Date.now()
@@ -422,16 +376,7 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
       observations.push(healthUnknown({
         key: 'indexes.sweep',
         summary: 'Search index deep sweep could not be completed.',
-        detail: err instanceof Error ? err.message : String(err),
-        incident: {
-          key: 'deep-sweep-failed',
-          title: 'Search index maintenance status is unknown',
-          class: 'evidence_gap',
-          impact: 'Orphaned rows and retired tables may remain until the next successful sweep.',
-          disposition: 'watch',
-          resources: [{ kind: 'system', id: 'search-index-maintenance', label: 'Search index maintenance' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Retry the sweep' },
-        },
+        detail: `${err instanceof Error ? err.message : String(err)} Orphaned rows and retired tables may remain until the next successful sweep.`,
       }))
     }
   }
@@ -446,10 +391,67 @@ export async function checkSearchConsistency(): Promise<HealthCheckRunInput> {
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
+/**
+ * Row 76. The tables the operator already decided to keep are reported, never
+ * raised; the rest carry the incident with Drop (the one-click repair, each
+ * table its own item) and Keep (a request choice recording the decision for
+ * exactly the tables on the card — a table that appears later is raised anew).
+ */
+export function unclaimedTablesObservation(unclaimed: readonly string[], keptSoFar: readonly string[]): HealthObservationInput {
+  const { pending, kept } = partitionUnclaimedTables(unclaimed, keptSoFar)
+  const keptNote = kept.length > 0 ? ` Kept by your decision: ${kept.join(', ')}.` : ''
+  if (pending.length === 0) {
+    return healthHealthy({
+      key: 'indexes.sweep.unclaimed',
+      summary: `${kept.length} unreferenced engine table${kept.length === 1 ? ' is' : 's are'} kept by your decision.`,
+      detail: `${kept.join(', ')}. Another Bakin instance may own them; they are not raised again unless you forget the decision.`,
+      evidence: { unclaimed: [], kept },
+    })
+  }
+  return healthWarning({
+    key: 'indexes.sweep.unclaimed',
+    summary: `${pending.length} unreferenced engine table${pending.length === 1 ? ' was' : 's were'} left untouched.`,
+    detail: `${pending.join(', ')}. Another Bakin instance may own them.${keptNote}`,
+    evidence: { unclaimed: pending, kept },
+    incident: {
+      key: 'unclaimed-tables',
+      title: 'Unclaimed Search tables need review',
+      class: 'cleanup_backlog',
+      impact: 'Stale unclaimed tables consume engine storage, but deleting tables owned by another instance would lose its index data.',
+      disposition: 'advisory',
+      subject: SEARCH_ENGINE_SUBJECT,
+      declarationId: 'unclaimed-tables',
+      resources: pending.slice(0, 50).map((table) => ({ kind: 'search_table' as const, id: stableKeyPart(table), label: table.slice(0, 120) })),
+      resolution: {
+        key: 'search-drop-unclaimed-tables',
+        type: 'repair',
+        label: 'Drop the unclaimed tables',
+        actionId: 'search-drop-unclaimed-tables',
+        choices: [{
+          key: 'keep',
+          kind: 'request',
+          label: 'Keep',
+          method: 'POST',
+          url: '/api/plugins/health/search/unclaimed-tables/keep',
+          body: { tables: pending },
+          effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+          confirm: {
+            title: `Keep ${pending.length === 1 ? 'this table' : `these ${pending.length} tables`}?`,
+            description: 'Bakin stops raising them; they stay in the engine. Forget the decision later with `POST /api/plugins/health/search/unclaimed-tables/forget`.',
+          },
+        }],
+      },
+    },
+  })
+}
+
 export function searchConsistencyRepair(): HealthRepairActionDefinition {
   return {
     id: SEARCH_CONSISTENCY_ACTION_ID,
     name: 'Rebuild inconsistent Search indexes',
+    // Rows 70/74: blue/green keeps content — no effects, self-heal (was destructive).
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'rebuild',
     resources: ['search-engine'],
     operationPlan: () => ({
       stages: [

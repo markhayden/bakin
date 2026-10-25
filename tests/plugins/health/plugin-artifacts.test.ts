@@ -136,7 +136,7 @@ describe('checkPluginArtifacts — what the source offers this host', () => {
     installPlugin('stale', 'react18-old-vX')
     lockEntry('stale')
     const [row] = observed(await checkPluginArtifacts(offering('1.5.0')))
-    expect(row.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'upgrade-plugin-artifact', label: 'Install 1.5.0 for this Bakin' })
+    expect(row.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-upgrade', label: 'Install 1.5.0 for this Bakin' })
     expect(row.evidence).toMatchObject({ compatibleVersion: '1.5.0', updateObservedAt: '2026-10-19T12:00:00.000Z' })
   })
 
@@ -144,42 +144,46 @@ describe('checkPluginArtifacts — what the source offers this host', () => {
     installPlugin('stale', 'react18-old-vX')
     lockEntry('stale')
     const [row] = observed(await checkPluginArtifacts(offering(null, '2.0.0')))
-    expect(row.incident?.resolution).toMatchObject({ type: 'instructions', key: 'await-compatible-release' })
-    expect(JSON.stringify(row.incident?.resolution)).toContain('newest is 2.0.0')
+    // Row 98: upstream-blocked is the operator's decision on the plugin's Explore card (wait, or disable — the card choice);
+    // the reason rides the impact copy. This fixture declares no contributions, so it is advisory (see plugin-disable.test.ts).
+    expect(row.incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', key: 'await-compatible-release', href: '/explore?tab=plugins&item=plugin:stale' })
+    expect(row.incident?.resolution.choices?.map((choice) => choice.key)).toEqual(['disable-plugin', 'updates'])
+    expect(row.incident).toMatchObject({ declarationId: 'needs-update-blocked', required: false, disposition: 'advisory' })
+    expect(row.incident?.impact).toContain('newest is 2.0.0')
   })
 
-  it('no record, no successful observation, or a record read that throws keeps the generic instructions (never a fake repair)', async () => {
+  it('no record, no successful observation, or a record read that throws offers the reinstall of the recorded install (never a fake upgrade)', async () => {
     installPlugin('stale', 'react18-old-vX')
     lockEntry('stale')
     const none = observed(await checkPluginArtifacts({ record: async () => undefined }))[0]
-    expect(none.incident?.resolution).toMatchObject({ type: 'instructions', key: 'upgrade-plugin' })
+    expect(none.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-reinstall' })
     expect(none.evidence).toMatchObject({ updateObservedAt: null })
 
     const failed = observed(await checkPluginArtifacts({ record: async () => record({ outcome: 'unknown', observedAt: undefined, attempt: { at: 'now', error: 'index: 503' } }) }))[0]
-    expect(failed.incident?.resolution).toMatchObject({ type: 'instructions', key: 'upgrade-plugin' })
+    expect(failed.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-reinstall' })
     expect(failed.evidence).toMatchObject({ updateObservedAt: null, updateCheckError: 'index: 503' })
 
     const threw = observed(await checkPluginArtifacts({ record: async () => { throw new Error('engine gone') } }))[0]
-    expect(threw.incident?.resolution).toMatchObject({ type: 'instructions', key: 'upgrade-plugin' })
+    expect(threw.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-reinstall' })
   })
 
   it('review r1 #8: a failed attempt after a retained offer or a blocked verdict is never hidden — the offer stands AND the error is in evidence', async () => {
     installPlugin('stale', 'react18-old-vX')
     lockEntry('stale')
     const offerThenFail = observed(await checkPluginArtifacts({ record: async () => record({ outcome: 'update-available', available: { version: '1.5.0', display: '1.5.0' }, attempt: { at: '2026-10-20T00:00:00.000Z', error: 'index: 503' } }) }))[0]
-    expect(offerThenFail.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'upgrade-plugin-artifact' })
+    expect(offerThenFail.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-upgrade' })
     expect(offerThenFail.evidence).toMatchObject({ compatibleVersion: '1.5.0', updateObservedAt: '2026-10-19T12:00:00.000Z', updateCheckError: 'index: 503' })
 
     const blockedThenFail = observed(await checkPluginArtifacts({ record: async () => record({ outcome: 'blocked', blockedReason: 'no published release of stale runs on this Bakin yet (newest is 2.0.0)', attempt: { at: '2026-10-20T00:00:00.000Z', error: 'index: 503' } }) }))[0]
-    expect(blockedThenFail.incident?.resolution).toMatchObject({ type: 'instructions', key: 'await-compatible-release' })
+    expect(blockedThenFail.incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', key: 'await-compatible-release' })
     expect(blockedThenFail.evidence).toMatchObject({ updateObservedAt: '2026-10-19T12:00:00.000Z', updateCheckError: 'index: 503' })
   })
 
-  it('without a running engine the default reads are unknown — the check never probes an index itself', async () => {
+  it('without a running engine the default reads are unknown — the check never probes an index itself; the reinstall repair stands', async () => {
     installPlugin('stale', 'react18-old-vX')
     lockEntry('stale')
     const [row] = observed(await checkPluginArtifacts())
-    expect(row.incident?.resolution).toMatchObject({ type: 'instructions', key: 'upgrade-plugin' })
+    expect(row.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-reinstall' })
     expect(row.evidence).toMatchObject({ updateObservedAt: null })
   })
 
@@ -187,6 +191,6 @@ describe('checkPluginArtifacts — what the source offers this host', () => {
     installPlugin('stale', 'react18-old-vX')
     lockEntry('stale', '1.5.0')
     const [row] = observed(await checkPluginArtifacts({ record: async () => record({ outcome: 'update-available', installed: { version: '1.5.0', display: '1.5.0' }, available: { version: '1.5.0', display: '1.5.0 (rebuilt for this Bakin)' }, reason: 'compatible-rebuild' }) }))
-    expect(row.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'upgrade-plugin-artifact' })
+    expect(row.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-upgrade' })
   })
 })

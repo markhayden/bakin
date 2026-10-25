@@ -28,12 +28,14 @@ import { createLogger } from './src/core/logger'
 import { getContentDir, getBakinPaths } from './src/core/content-dir'
 import { broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
+import { archiveRefusedRepairRequests } from './src/core/doctor-repair-store'
 import { createAppServices } from './src/core/app-services'
 import { reconcileDeliveryBridge } from './src/core/delivery'
 import { startChannelReadiness } from './src/core/delivery/readiness'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import * as watcher from './src/core/watcher'
 import { runStartupRecovery } from './src/core/server/startup-recovery'
+import { ensureCoreRepairActions } from './src/core/doctor'
 import { createRequestHandler } from './src/core/server/request-handler'
 import { getBootId } from './src/core/boot-id'
 import { formatBindFailureHelp } from './src/core/server-lock'
@@ -123,6 +125,15 @@ const storage = new MarkdownStorageAdapter(CONTENT_DIR)
 const eventBus = new BakinEventBus(broadcast)
 
 ;(async () => {
+  // Repair-request records an earlier release wrote and this schema refuses
+  // move to the immutable refused archive BEFORE anything lists the store —
+  // app-services initialization already reads it (the first boot after the
+  // cutover warned per stale file at that moment, 2026-10-24).
+  const refusedRequests = archiveRefusedRepairRequests(CONTENT_DIR)
+  if (refusedRequests.archived.length > 0) {
+    appendAudit(CONTENT_DIR, 'doctor.repair_requests_archived', 'system', { count: refusedRequests.archived.length, archiveRoot: refusedRequests.archiveRoot })
+  }
+
   // Initialize the adapter/task service spine before plugin activation.
   const appServices = await createAppServices()
 
@@ -171,7 +182,10 @@ const eventBus = new BakinEventBus(broadcast)
   const userPluginsDir = join(CONTENT_DIR, 'plugins')
   await buildAllUserPlugins(userPluginsDir, log)
 
-  // Initialize plugin registry
+  // Initialize plugin registry. The engine-owned repair actions
+  // (`core.diagnose`, `core.onboard`) exist first so every owner's incident
+  // catalog can reference them at registration (self-healing 1.5).
+  ensureCoreRepairActions()
   log.info('Loading plugins...')
   await pluginRegistry.initialize(config, storage, eventBus, appServices)
 

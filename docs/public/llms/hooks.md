@@ -176,7 +176,7 @@ const result = await ctx.hooks.invoke(
 
 Label: Prepared git worktree
 Kind: rpc
-Source: plugins/git/index.ts:711
+Source: plugins/git/index.ts:777
 
 Example:
 
@@ -191,7 +191,7 @@ const result = await ctx.hooks.invoke(
 
 Label: Prepared git worktree
 Kind: rpc
-Source: plugins/git/index.ts:715
+Source: plugins/git/index.ts:781
 
 Example:
 
@@ -211,7 +211,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns canonical metadata for one registered Health check by stable id without executing it.
 Kind: rpc
-Source: plugins/health/index.ts:881
+Source: plugins/health/index.ts:958
 
 Example:
 
@@ -229,7 +229,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns canonical metadata for registered Health checks without executing them.
 Kind: rpc
-Source: plugins/health/index.ts:880
+Source: plugins/health/index.ts:957
 
 Example:
 
@@ -349,7 +349,7 @@ await ctx.hooks.callAll(
 Label: Adopt runtime cron jobs
 Purpose: Adopt snapshotted runtime cron jobs into Bakin schedules during a runtime switch (opt-in, idempotent per job id).
 Kind: rpc
-Source: plugins/schedule/index.ts:76
+Source: plugins/schedule/index.ts:83
 
 Example:
 
@@ -365,13 +365,29 @@ const result = await ctx.hooks.invoke(
 Label: Ensure Bakin schedule
 Purpose: Create or update a Bakin-owned schedule keyed by the caller's logical id and return its job id. The effective prompt (taskPrompt, else command) must be a task prompt — a sentence an agent can act on, never a bare marker token (spec D5).
 Kind: rpc
-Source: plugins/schedule/index.ts:70
+Source: plugins/schedule/index.ts:71
 
 Example:
 
 ```ts
 const result = await ctx.hooks.invoke(
   'schedule.ensureBakinJob',
+  {},
+)
+```
+
+### schedule.workflowsScheduled
+
+Label: Scheduled workflows
+Purpose: Workflow ids an enabled Bakin schedule targets — the "scheduled" half of the workflows health checks' in-use fact (re-homing rows 133–137). A paused job still counts; a disabled or completed one does not.
+Kind: rpc
+Source: plugins/schedule/index.ts:77
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'schedule.workflowsScheduled',
   {},
 )
 ```
@@ -547,7 +563,7 @@ Team hooks expose runtime agent and team metadata for plugins that need agent-aw
 Label: Check team exists.
 Purpose: Returns true when the given teamId is a configured team. Use it for write-time validation of team assignments.
 Kind: rpc
-Source: plugins/team/index.ts:300
+Source: plugins/team/index.ts:304
 
 Example:
 
@@ -563,7 +579,7 @@ const result = await ctx.hooks.invoke(
 Label: Get an agent.
 Purpose: Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record.
 Kind: rpc
-Source: plugins/team/index.ts:278
+Source: plugins/team/index.ts:282
 
 Example:
 
@@ -581,7 +597,7 @@ const result = await ctx.hooks.invoke(
 Label: List agent ids.
 Purpose: Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata.
 Kind: rpc
-Source: plugins/team/index.ts:283
+Source: plugins/team/index.ts:287
 
 Example:
 
@@ -597,7 +613,7 @@ const result = await ctx.hooks.invoke(
 Label: Get agent team.
 Purpose: Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views.
 Kind: rpc
-Source: plugins/team/index.ts:290
+Source: plugins/team/index.ts:294
 
 Example:
 
@@ -615,7 +631,7 @@ const result = await ctx.hooks.invoke(
 Label: Get org structure.
 Purpose: Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records.
 Kind: rpc
-Source: plugins/team/index.ts:297
+Source: plugins/team/index.ts:301
 
 Example:
 
@@ -631,7 +647,7 @@ const result = await ctx.hooks.invoke(
 Label: List team members.
 Purpose: Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership.
 Kind: rpc
-Source: plugins/team/index.ts:287
+Source: plugins/team/index.ts:291
 
 Example:
 
@@ -649,7 +665,7 @@ const result = await ctx.hooks.invoke(
 Label: List agents.
 Purpose: Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it.
 Kind: rpc
-Source: plugins/team/index.ts:277
+Source: plugins/team/index.ts:281
 
 Example:
 
@@ -665,7 +681,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve team assignment.
 Purpose: Resolves a team-assigned task to the best-suited member via an ephemeral runtime turn (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent.
 Kind: rpc
-Source: plugins/team/index.ts:303
+Source: plugins/team/index.ts:307
 
 Example:
 
@@ -681,7 +697,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve agent profile.
 Purpose: Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record.
 Kind: rpc
-Source: plugins/team/index.ts:284
+Source: plugins/team/index.ts:288
 
 Example:
 

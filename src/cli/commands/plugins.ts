@@ -1,5 +1,5 @@
 /**
- * `bakin plugins {list,install,publish,export,import,remove,upgrade,restore,link,unlink,scaffold}`
+ * `bakin plugins {list,install,publish,export,import,remove,upgrade,restore,link,unlink,disable,enable,scaffold}`
  * — plugin lifecycle. Relocated verbatim from cli/bakin.ts (B5.3
  * command-module split); this module owns the whiskit publish/artifacts-index,
  * plugin import-export, and node:fs static imports so they stay out of the
@@ -412,6 +412,21 @@ async function cmdPluginsRemove(pluginId: string, opts: { json?: boolean } = {})
   if (exitCode !== 0 || result.ok !== true) process.exit(1)
 }
 
+/** `bakin plugins disable|enable <id>` — the row 98 containment flag, flipped through the host route (bounded, install-state held). */
+async function cmdPluginsSetEnabled(pluginId: string, enabled: boolean, opts: { json?: boolean } = {}): Promise<void> {
+  const res = await apiPostJson(`/api/plugins/${enabled ? 'enable' : 'disable'}`, { pluginId })
+  const body = res.ok ? jsonObject(res.data) ?? {} : res.data
+  if (opts.json) {
+    print(body)
+  } else if (typeof body.message === 'string') {
+    console.log(body.message)
+  } else {
+    print(body)
+  }
+  if (body.core === true || body.error === 'core_plugin') process.exit(2)
+  if (!res.ok || body.ok !== true) process.exit(1)
+}
+
 async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?: boolean } = {}): Promise<void> {
   // Two-phase (spec plugin-managed-binaries S17), each phase an operation
   // followed to its outcome (#895): the preview ends `awaitingConsent` (prompt,
@@ -792,6 +807,9 @@ export async function run(args: string[]): Promise<void> {
   } else if (sub === 'unlink') {
     if (!args[2]) await exitUsage('bakin plugins unlink <id> [--json]')
     await cmdPluginsUnlink(args[2], { json: args.slice(3).includes('--json') })
+  } else if (sub === 'disable' || sub === 'enable') {
+    if (!args[2]) await exitUsage(`bakin plugins ${sub} <id> [--json]`)
+    await cmdPluginsSetEnabled(args[2], sub === 'enable', { json: args.slice(3).includes('--json') })
   } else if (sub === 'scaffold') {
     if (!args[2]) await exitUsage('bakin plugins scaffold <name> [--json]')
     await cmdPluginsScaffold(args[2], { json: args.slice(3).includes('--json') })
@@ -810,6 +828,6 @@ export async function run(args: string[]): Promise<void> {
       json: flags.includes('--json'),
     })
   } else {
-    await exitUnknownSubcommand('plugins', sub, ['list', 'install', 'export', 'import', 'remove', 'upgrade', 'restore', 'link', 'unlink', 'scaffold', 'sync-manifest'])
+    await exitUnknownSubcommand('plugins', sub, ['list', 'install', 'export', 'import', 'remove', 'upgrade', 'restore', 'link', 'unlink', 'disable', 'enable', 'scaffold', 'sync-manifest'])
   }
 }

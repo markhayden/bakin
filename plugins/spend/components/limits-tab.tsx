@@ -37,7 +37,7 @@ function CurrentPeriodSection({ m }: { m: SpendData }) {
 }
 
 /** Limits: where the rules stand this period, the guided "Add a limit" dialog, the rule editor, and the per-agent billing-lane overrides. */
-export function LimitsTab({ m }: { m: SpendData }) {
+export function LimitsTab({ m, highlightRuleId }: { m: SpendData; highlightRuleId?: string }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [dialogSaving, setDialogSaving] = useState(false)
@@ -57,7 +57,7 @@ export function LimitsTab({ m }: { m: SpendData }) {
   return (
     <div className="flex min-w-0 flex-col gap-bakin-8">
       <CurrentPeriodSection m={m} />
-      <BudgetRulesSection m={m} onAddLimit={() => { setDialogError(null); setDialogOpen(true) }} />
+      <BudgetRulesSection m={m} onAddLimit={() => { setDialogError(null); setDialogOpen(true) }} highlightRuleId={highlightRuleId} />
       <BillingLanesSection m={m} />
       <LimitDialog open={dialogOpen} onOpenChange={setDialogOpen} onSave={saveLimit} saving={dialogSaving} error={dialogError} agents={m.agents} providers={m.availableProviders} />
     </div>

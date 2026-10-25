@@ -371,6 +371,28 @@ function mergeGuildResults(
   })
 }
 
+/**
+ * Discord's bot-authorize URL for ONE server. A bot's user id is its
+ * application id, so the READY payload's `botUser.id` is the client id — the
+ * only identity the bridge learns (no token). Offered beside a "Not joined"
+ * server so the guild-unjoined incident is one click to fix (self-healing
+ * 1.4c, row 26). The bridge is the ONE Discord client: UIs render this link,
+ * they never build it.
+ */
+export function botInviteUrl(botUserId: string, guildId: string): string {
+  const permissions = String(VERIFY_GUILD_PERMISSION_BITS.viewChannels | VERIFY_GUILD_PERMISSION_BITS.sendMessages)
+  const params = new URLSearchParams({ client_id: botUserId, scope: 'bot', permissions, guild_id: guildId, disable_guild_select: 'true' })
+  return `https://discord.com/oauth2/authorize?${params.toString()}`
+}
+
+/** A not-joined server carries its invite link once the bot user is known; a joined one never keeps a stale link. */
+function withInviteLinks(guilds: GuildReadiness[], botUser: { id: string } | null | undefined): GuildReadiness[] {
+  return guilds.map((guild) => {
+    const { inviteUrl: _stale, ...rest } = guild
+    return guild.joined === false && botUser ? { ...rest, inviteUrl: botInviteUrl(botUser.id, guild.id) } : rest
+  })
+}
+
 function settledState(guilds: GuildReadiness[]): 'connected' | 'degraded' {
   return guilds.every((guild) => guild.joined === true && guild.channelCount !== null && !guild.error) ? 'connected' : 'degraded'
 }
@@ -415,7 +437,7 @@ async function attempt(generation: number, cfg: DesiredConfig, key: string): Pro
       void replaced.transport.destroy()
     }
     const ts = transport.status()
-    const guildResults = mergeGuildResults(cfg.settings.guildIds, ts.readyGuildIds, cache.guildResults())
+    const guildResults = withInviteLinks(mergeGuildResults(cfg.settings.guildIds, ts.readyGuildIds, cache.guildResults()), ts.botUser)
     const state = settledState(guildResults)
     publish({
       state,
@@ -559,7 +581,7 @@ function onTransportEvent(transport: DiscordTransport): (event: TransportEvent) 
         return
       case 'ready': {
         const joined = new Set(event.guildIds)
-        const guildResults = status.guildResults.map((guild) => ({ ...guild, joined: joined.has(guild.id) }))
+        const guildResults = withInviteLinks(status.guildResults.map((guild) => ({ ...guild, joined: joined.has(guild.id) })), event.botUser)
         publish({ state: settledState(guildResults), guildResults, joinedGuildIds: event.guildIds, botUser: event.botUser, lastError: null })
         return
       }

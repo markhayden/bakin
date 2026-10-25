@@ -5,8 +5,10 @@ import {
   actionIncidentInputSchema,
   advisoryIncidentInputSchema,
   healthIncidentInputSchema,
+  healthRepairEffectsSchema,
   healthResourceSchema,
   healthResolutionSchema,
+  healthSubjectSchema,
   watchIncidentInputSchema,
 } from '../../../src/core/health-contract'
 
@@ -99,12 +101,18 @@ const healthyObservationSchema = z.object({
   incident: z.never().optional(),
 }).strict()
 
+// A warning or unknown WITHOUT an incident is a plain observation (spec
+// §3.1, the re-homing table's "observation" rows): listed under its check,
+// never a card. Both fields travel together — core stamps neither or both.
 const warningObservationSchema = z.object({
   ...canonicalObservationBase,
   status: z.literal('warning'),
-  incidentId: nonEmptyString,
-  incident: healthIncidentInputSchema,
-}).strict()
+  incidentId: nonEmptyString.optional(),
+  incident: healthIncidentInputSchema.optional(),
+}).strict().refine((row) => (row.incidentId === undefined) === (row.incident === undefined), {
+  message: 'A warning observation carries an incident id and an incident together, or neither.',
+  path: ['incidentId'],
+})
 
 const errorObservationSchema = z.object({
   ...canonicalObservationBase,
@@ -116,14 +124,17 @@ const errorObservationSchema = z.object({
 const unknownObservationSchema = z.object({
   ...canonicalObservationBase,
   status: z.literal('unknown'),
-  incidentId: nonEmptyString,
+  incidentId: nonEmptyString.optional(),
   // Mirror of the producer contract: watch, or advisory when the unknown
   // self-resolves. This mirror lagging the contract made the CLIENT reject
   // the ENTIRE health report the first time a server emitted an advisory
   // unknown — "Health report response was invalid" on a healthy box
   // (rc.24 field report, 2026-07-23). Keep the two in lockstep.
-  incident: z.union([watchIncidentInputSchema, advisoryIncidentInputSchema]),
-}).strict()
+  incident: z.union([watchIncidentInputSchema, advisoryIncidentInputSchema]).optional(),
+}).strict().refine((row) => (row.incidentId === undefined) === (row.incident === undefined), {
+  message: 'An unknown observation carries an incident id and an incident together, or neither.',
+  path: ['incidentId'],
+})
 
 export const canonicalHealthObservationSchema = z.discriminatedUnion('status', [
   healthyObservationSchema,
@@ -164,8 +175,12 @@ export const canonicalHealthIncidentSchema = z.object({
   class: z.enum(HEALTH_INCIDENT_CLASSES).optional(),
   title: nonEmptyString,
   impact: nonEmptyString,
+  subject: healthSubjectSchema,
   resources: z.array(healthResourceSchema),
   resolution: healthResolutionSchema,
+  declarationId: nonEmptyString,
+  required: z.boolean(),
+  dependsOn: z.object({ subject: healthSubjectSchema, resolvedBy: nonEmptyString }).strict().optional(),
   observationIds: z.array(nonEmptyString),
   observedAt: isoDateTime,
   staleAt: isoDateTime,
@@ -248,7 +263,8 @@ export const healthReportSchema = z.object({
   const incidentsById = indexUniqueRows(report.incidents, (incident) => incident.id, 'incidents', 'id', context)
 
   report.observations.forEach((observation, index) => {
-    if (observation.status === 'healthy') return
+    // Healthy rows and plain warning/unknown observations reference no incident.
+    if (observation.status === 'healthy' || observation.incidentId === undefined) return
     const incident = incidentsById.get(observation.incidentId)?.row
     if (incident === undefined) {
       context.addIssue({
@@ -342,6 +358,7 @@ export const healthCheckMetadataSchema = z.object({
   owner: healthOwnerSchema,
   group: healthGroupSchema,
   maxAgeMs: z.number().int().positive().optional(),
+  incidents: z.array(z.unknown()),
 }).strict()
 
 export const healthChecksResponseSchema = z.object({
@@ -419,10 +436,13 @@ const healthRepairPreconditionSchema = z.object({
 
 export const healthRepairPlanItemSchema = z.object({
   id: nonEmptyString,
+  /** The planner's own handle (core stamps `id` = `<canonicalActionId>:<localId>`). */
+  localId: nonEmptyString,
   actionId: nonEmptyString,
   title: nonEmptyString,
   reason: nonEmptyString,
-  safety: z.enum(['safe', 'manual', 'destructive']),
+  effects: healthRepairEffectsSchema,
+  mode: z.enum(['self-heal', 'one-click']),
   incidentIds: z.array(nonEmptyString),
   observationIds: z.array(nonEmptyString),
   preconditions: z.array(healthRepairPreconditionSchema),
@@ -455,6 +475,7 @@ const healthRepairApplyResultSchema = z.object({
   message: nonEmptyString,
   affectedCheckIds: z.array(nonEmptyString),
   changes: z.array(healthRepairChangeSchema),
+  authorization: z.object({ refused: z.literal(true), reason: nonEmptyString }).strict().optional(),
 }).strict()
 
 export const healthRepairApplyReportSchema = z.object({

@@ -4,11 +4,13 @@
  * the owner is a tagged union so each kind carries exactly what its handler
  * needs to act on a decision, and nothing else.
  */
+import type { HealthRepairEffects, HealthRepairMode } from '@makinbakin/sdk/types'
 import type { ApprovalDelivery, ApprovalOption, ApprovalResponse, RuntimeMetadata } from '../adapters/runtime/channels'
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired'
 
-export type RepairSafety = 'safe' | 'manual' | 'destructive'
+/** Records the adapted engine writes carry this; legacy records lack it and are retired raw at boot (self-healing 1.6/1.7). */
+export const APPROVAL_SCHEMA_VERSION = 2
 
 /** One deterministic change a repair item proposes — frozen at approval time (plan review R1). */
 export interface ProposedChange {
@@ -21,7 +23,8 @@ export interface ProposedChange {
 export interface ProposedRepairItem {
   actionId: string
   itemId: string
-  safety: RepairSafety
+  effects: HealthRepairEffects
+  mode: HealthRepairMode
   changes: ProposedChange[]
 }
 
@@ -66,6 +69,8 @@ export type StoredApprovalResponse = Omit<ApprovalResponse, 'provenance'> & { pr
 
 export interface ApprovalRecord {
   approvalId: string
+  /** `APPROVAL_SCHEMA_VERSION` on every record the current engine writes; absent on legacy records. */
+  schemaVersion?: number
   owner: ApprovalOwner
   status: ApprovalStatus
   request: ApprovalRequest

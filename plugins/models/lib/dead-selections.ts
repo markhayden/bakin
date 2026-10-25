@@ -12,9 +12,9 @@
  */
 import { createHash } from 'crypto'
 
-import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@bakin/core/plugin-types'
-import { healthError, healthHealthy, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
-import type { HealthObservationInput, HealthRepairPlanItem, HealthRepairTarget, ModelEligibilitySummary } from '@makinbakin/sdk/types'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition } from '@bakin/core/plugin-types'
+import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
+import type { HealthObservationInput, HealthRepairPlanItem, HealthRepairPlanItemInput, HealthRepairTarget, ModelEligibilitySummary } from '@makinbakin/sdk/types'
 import type { EvidenceStatus } from '../../../src/core/model-eligibility'
 import type { MutateResult } from '../../../src/core/model-mutations'
 import type { Proposal, SelectionState } from '../../../src/core/model-selections'
@@ -22,6 +22,22 @@ import type { Proposal, SelectionState } from '../../../src/core/model-selection
 export const DEAD_SELECTION_REPAIR_ID = 'apply-model-proposal'
 export const DEAD_SELECTIONS_CHECK_ID = 'models.dead-selections'
 const INCIDENT_KEY_PREFIX = 'dead-selection:'
+
+/**
+ * models.dead-selections incident families (re-homing rows 157–159): a
+ * failed evidence source is an observation; a dead selection with a
+ * proposal is the one-click repoint, without one the operator chooses.
+ * Both are required only while the selection is IN USE (rows 158/159 "AR
+ * while in use"): defaults, fallbacks, routes with a model and live agents'
+ * pins are resolved by turns by construction; a tag override is in use
+ * while an open task carries its tag; an alias while another selection
+ * names it. (Selections are enumerated from the LIVE roster — a removed
+ * agent's pin never appears here.)
+ */
+export const MODELS_DEAD_SELECTIONS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'dead-selection', subjectKind: 'setting', resolution: { type: 'repair', actionId: DEAD_SELECTION_REPAIR_ID }, required: 'owner-decides' },
+  { id: 'dead-selection-manual', subjectKind: 'setting', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+]
 
 export interface SelectionsDescription {
   revision: string
@@ -41,6 +57,22 @@ export interface DeadSelectionDeps {
    * MutationRefused on stale/pending.
    */
   apply(proposals: Proposal[]): Promise<MutateResult>
+  /** The tags carried by OPEN tasks (every column but done/archived): the usage fact for tag overrides. */
+  openTaskTags(): Promise<ReadonlySet<string>>
+}
+
+/**
+ * Whether turns resolve to this selection today. `usage` null = the task
+ * fact could not be read: a tag override is then NOT presumed in use
+ * (never red on a guess) and the check says so in its own observation.
+ */
+export function selectionInUse(state: SelectionState, states: readonly SelectionState[], usage: ReadonlySet<string> | null): boolean {
+  if (state.ref.startsWith('tag:')) return usage !== null && usage.has(state.ref.slice('tag:'.length))
+  if (state.ref.startsWith('policy:alias:')) {
+    const alias = state.ref.slice('policy:alias:'.length)
+    return states.some((other) => other.ref !== state.ref && other.model === alias)
+  }
+  return true
 }
 
 const EVIDENCE_LABEL: Record<keyof SelectionsDescription['evidence'], string> = {
@@ -56,22 +88,31 @@ export async function checkDeadSelections(deps: DeadSelectionDeps): Promise<Heal
 
   for (const [source, status] of Object.entries(desc.evidence) as Array<[keyof SelectionsDescription['evidence'], EvidenceStatus]>) {
     if (status === 'ok') continue
+    // Row 157: an observation — nothing is refused or repaired on missing evidence.
     observations.push(healthUnknown({
       key: `evidence:${source}`,
       summary: status === 'partial'
         ? `Could only partly read ${EVIDENCE_LABEL[source]} — some models cannot be verified.`
         : `Could not read ${EVIDENCE_LABEL[source]} — models that depend on it cannot be verified.`,
+      detail: 'Selections that depend on this evidence show as unverified rather than dead; nothing is refused or repaired on missing evidence.',
       evidence: { source, status },
-      incident: {
-        key: `evidence:${source}`,
-        title: `Model verification incomplete (${EVIDENCE_LABEL[source]})`,
-        impact: 'Selections that depend on this evidence show as unverified rather than dead; nothing is refused or repaired on missing evidence.',
-        disposition: 'watch',
-        class: 'evidence_gap',
-        resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
-        resolution: { key: 'view-models', type: 'navigate', label: 'Open Models', href: '/models' },
-      },
     }))
+  }
+
+  // The usage fact for tag overrides; unreadable = its own observation, and
+  // dead tag overrides read advisory rather than presumed required.
+  let openTags: ReadonlySet<string> | null = null
+  if (desc.states.some((state) => state.ref.startsWith('tag:') && state.model && state.eligibility?.status === 'ineligible')) {
+    try {
+      openTags = await deps.openTaskTags()
+    } catch (err) {
+      observations.push(healthUnknown({
+        key: 'evidence:open-tasks',
+        summary: 'Could not read open tasks — whether a dead tag override is in use cannot be verified.',
+        detail: `${err instanceof Error ? err.message : String(err)} Dead tag overrides are listed as advisory until the task board can be read.`,
+        evidence: { source: 'open-tasks' },
+      }))
+    }
   }
 
   const proposalByRef = new Map(desc.proposals.map((p) => [p.ref, p]))
@@ -80,29 +121,40 @@ export async function checkDeadSelections(deps: DeadSelectionDeps): Promise<Heal
     const proposal = proposalByRef.get(state.ref)
     const key = `${INCIDENT_KEY_PREFIX}${state.ref}`
     const href = `/models?ref=${encodeURIComponent(state.ref)}`
-    observations.push(healthError({
+    const inUse = selectionInUse(state, desc.states, openTags)
+    // A tag override's usage is the task board's fact; when the board could not be read, absence is NOT established (Codex r4 R4-4).
+    const usageKnown = !(state.ref.startsWith('tag:') && openTags === null)
+    const incident = {
       key,
-      summary: `${state.label} uses ${state.model} — ${state.eligibility.detail}.`,
-      evidence: {
-        ref: state.ref,
-        from: state.model,
-        to: proposal?.to ?? null,
-        reason: state.eligibility.reason,
-        source: proposal?.source ?? 'none',
-        revision: desc.revision,
-      },
-      incident: {
-        key,
-        title: `${state.label} points at a model that cannot run (${state.eligibility.reason.replace(/_/g, ' ')})`,
-        impact: 'Every turn that resolves to this selection fails at the provider until it is repointed.',
-        disposition: 'action_required',
-        class: 'service_failure',
-        resources: [{ kind: 'model_selection', id: state.ref, label: state.label }],
-        resolution: proposal?.to
-          ? { key: 'apply-proposal', type: 'repair', actionId: DEAD_SELECTION_REPAIR_ID, label: `Use ${proposal.to}` }
-          : { key: 'choose-model', type: 'navigate', label: 'Choose another model', href },
-      },
-    }))
+      title: `${state.label} points at a model that cannot run (${state.eligibility.reason.replace(/_/g, ' ')})`,
+      impact: inUse
+        ? 'Every turn that resolves to this selection fails at the provider until it is repointed.'
+        : usageKnown
+          ? 'Nothing resolves to this selection today; the first turn that does will fail at the provider until it is repointed.'
+          : 'Whether an open task carries this tag could not be read (see the open-tasks evidence row), so who resolves to this selection is unknown; any turn that does will fail at the provider until it is repointed.',
+      class: 'service_failure' as const,
+      subject: { kind: 'setting' as const, id: `models.selection.${state.ref}`, label: state.label },
+      declarationId: proposal?.to ? 'dead-selection' : 'dead-selection-manual',
+      required: inUse,
+      resources: [{ kind: 'model_selection' as const, id: state.ref, label: state.label }],
+      resolution: proposal?.to
+        ? { key: 'apply-proposal', type: 'repair' as const, actionId: DEAD_SELECTION_REPAIR_ID, label: `Use ${proposal.to}` }
+        : { key: 'choose-model', type: 'human' as const, needs: 'decision' as const, label: 'Choose another model', href },
+    }
+    const evidence = {
+      ref: state.ref,
+      from: state.model,
+      to: proposal?.to ?? null,
+      reason: state.eligibility.reason,
+      source: proposal?.source ?? 'none',
+      revision: desc.revision,
+      inUse,
+      ...(state.ref.startsWith('tag:') ? { usageFact: openTags === null ? 'unavailable' : 'open-tasks' } : {}),
+    }
+    const summary = `${state.label} uses ${state.model} — ${state.eligibility.detail}.`
+    observations.push(inUse
+      ? healthError({ key, summary, evidence, incident: { ...incident, disposition: 'action_required' as const } })
+      : healthWarning({ key, summary, evidence, incident: { ...incident, disposition: 'advisory' as const } }))
   }
 
   if (observations.length === 0) {
@@ -140,15 +192,18 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
   return {
     id: DEAD_SELECTION_REPAIR_ID,
     name: 'Repoint a dead model selection to the proposed model',
+    // Row 158: a routing change widens what the operator authorized (spec D2) — one-click, a policy write.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true },
+    mutation: 'policy',
     operationPlan: () => ({
       stages: [{ id: 'repoint', kind: 'committing', label: 'Repoint the selections' }],
       pointOfNoReturn: 'repoint',
     }),
-    async plan(target: HealthRepairTarget): Promise<HealthRepairPlanItem[]> {
+    async plan(target: HealthRepairTarget): Promise<HealthRepairPlanItemInput[]> {
       if (target.type !== 'incidents') return []
       const desc = await deps.describe()
       const proposalByRef = new Map(desc.proposals.map((p) => [p.ref, p]))
-      const items: HealthRepairPlanItem[] = []
+      const items: HealthRepairPlanItemInput[] = []
       for (const incidentId of target.ids) {
         const ref = refFromIncidentId(incidentId)
         const proposal = ref ? proposalByRef.get(ref) : undefined
@@ -162,7 +217,6 @@ export function deadSelectionRepair(deps: DeadSelectionDeps): HealthRepairAction
           actionId: DEAD_SELECTION_REPAIR_ID,
           title: `Repoint ${ref} to ${proposal.to}`,
           reason: proposal.reason,
-          safety: 'safe',
           incidentIds: [incidentId],
           observationIds: [],
           preconditions: [],

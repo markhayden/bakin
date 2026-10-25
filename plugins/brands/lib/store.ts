@@ -96,6 +96,11 @@ export function createBrand(input: CreateBrandInput): BrandManifest {
   return manifest
 }
 
+/** The brand's directory exists on disk — true for a record whose `brand.json` is missing as well (row 189's "no manifest" case). */
+export function brandDirectoryExists(id: string): boolean {
+  return brandIdSchema.safeParse(id).success && existsSync(brandDir(id))
+}
+
 export function getBrand(id: string): BrandReadResult {
   const path = manifestPath(id)
   if (!brandIdSchema.safeParse(id).success || !existsSync(path)) return { status: 'missing' }
@@ -159,6 +164,55 @@ export function updateBrand(
     }
     return saveManifest(await mutate(current.manifest))
   })
+}
+
+/** The bytes of `brand.json` as they are (bounded) — what the recover page shows for an unreadable manifest. */
+export function readRawBrandManifest(id: string, maxBytes = 16_000): string | null {
+  if (!brandIdSchema.safeParse(id).success) return null
+  const path = manifestPath(id)
+  if (!existsSync(path)) return null
+  const raw = readFileSync(path, 'utf-8')
+  return raw.length > maxBytes ? `${raw.slice(0, maxBytes)}\n… (${raw.length - maxBytes} more characters)` : raw
+}
+
+/**
+ * The recover page's "Recreate manifest" for an unreadable `brand.json`
+ * (self-healing PR1, row 189): a fresh, valid manifest that keeps whatever
+ * the old file still says for id, name, description, draft and createdAt;
+ * palette, logos, groups and references start empty (nothing is invented).
+ * Guidelines and lessons on disk are untouched. Refused for a readable one.
+ */
+export function recreateBrandManifest(id: string): { manifest: BrandManifest; salvaged: string[] } {
+  if (!brandIdSchema.safeParse(id).success) throw new BrandStoreError('invalid_id', `invalid brand id: ${id}`)
+  const current = getBrand(id)
+  if (current.status === 'missing' && !existsSync(brandDir(id))) throw new BrandStoreError('missing', `brand not found: ${id}`)
+  if (current.status === 'ok') throw new BrandStoreError('invalid_manifest', `brand ${id} manifest is readable — nothing to recreate`)
+  let raw: Record<string, unknown> = {}
+  try {
+    const parsed = JSON.parse(readFileSync(manifestPath(id), 'utf-8')) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) raw = parsed as Record<string, unknown>
+  } catch {
+    // Not JSON at all — nothing to salvage beyond the id.
+  }
+  const salvaged: string[] = []
+  const pick = <T,>(key: string, ok: (value: unknown) => value is T): T | undefined => {
+    const value = raw[key]
+    if (ok(value)) { salvaged.push(key); return value }
+    return undefined
+  }
+  const now = new Date().toISOString()
+  const name = pick('name', (v): v is string => typeof v === 'string' && v.trim().length > 0) ?? id
+  const description = pick('description', (v): v is string => typeof v === 'string')
+  const draft = pick('draft', (v): v is boolean => typeof v === 'boolean')
+  const createdAt = pick('createdAt', (v): v is string => typeof v === 'string' && Number.isFinite(Date.parse(v))) ?? now
+  const manifest = brandManifestSchema.parse({
+    id, name, ...(description !== undefined ? { description } : {}), ...(draft !== undefined ? { draft } : {}),
+    palette: [], logos: [], assetGroups: [], createdAt, updatedAt: now,
+  })
+  mkdirSync(join(brandDir(id), 'guidelines'), { recursive: true })
+  mkdirSync(join(brandDir(id), 'lessons'), { recursive: true })
+  atomicWriteJson(manifestPath(id), manifest)
+  return { manifest, salvaged }
 }
 
 export function deleteBrand(id: string): boolean {

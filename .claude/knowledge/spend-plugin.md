@@ -15,6 +15,7 @@ The 14th core plugin (`plugins/spend/`, initiative #907 / spec `.claude/specs/mo
 | Durable milestones + incident episodes | core ledger | `budget_milestones`, `budget_incidents` (v10) — see `execution-ledger.md` |
 | Observer + delivery worker | core | `src/core/spend-observer.ts` |
 | Coverage receipts | core usage.db | `scan_days` (v5) — see `usage-recording.md` |
+- **Recover controls (self-healing PR1 slice 1.4b):** `/spend?recover=1` is the spend.json recover editor (`components/spend-recover.tsx`; `GET/PUT /api/plugins/spend/recover` show the file as it is on disk with its issues and write it back only once it validates as a policy; `POST /recover/reset` moves it to a dated `.rejected-*` copy — "Start without limits" behind a typed confirmation; engine `lib/recover.ts`). Both `policy-invalid` incidents (spend.budget and health.spend-policy) link there. `/spend?incident=<id>` focuses and outlines that incident's banner (`IncidentBanners highlightId`); the open-incidents incident links to its first open incident, cap-reached to `?tab=limits`.
 
 ## Hooks (`plugins/spend/lib/register-hooks.ts`)
 

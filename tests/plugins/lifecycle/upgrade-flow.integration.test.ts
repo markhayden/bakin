@@ -143,6 +143,49 @@ describe('upgradePlugin — github (hermetic bare repo)', () => {
     expect(result.before).toEqual(result.after)
   })
 
+  it('reinstall (self-healing 1.3b, in-place lane): the RECORDED commit is re-staged and rebuilt even though the ref moved on — a repair never upgrades', async () => {
+    const repo = createBareRepo(testDir, 'reinstall-fixture', fixturePluginFiles({ id: 'reinst', version: '1.0.0' }))
+    cloneRepoIntoPluginsDir({ pluginId: 'reinst', cloneUrl: repo.cloneUrl })
+    const pluginDir = join(testDir, 'plugins', 'reinst')
+    const installedSha = headSha(pluginDir)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'reinst', makeLockEntry({ cloneUrl: repo.cloneUrl, ref: 'main', commitSha: installedSha, version: '1.0.0' })))
+    const movedSha = pushCommit(repo.workingClonePath, fixturePluginFiles({ id: 'reinst', version: '2.0.0' }), 'moved on')
+    expect(movedSha).not.toBe(installedSha)
+    writeFileSync(join(pluginDir, 'index.ts'), 'export default { broken: true }')
+
+    const preview = await upgradePlugin('reinst', { previewOnly: true, reinstall: true })
+    expect(preview.identity).toEqual({ version: '1.0.0', sha: installedSha })
+    const result = await upgradePlugin('reinst', { reinstall: true, accepted: preview.consent, expected: { version: '1.0.0', sha: installedSha } })
+    expect(result.noop).toBe(false)
+    expect(result.after).toEqual({ version: '1.0.0', commitSha: installedSha })
+    expect(headSha(pluginDir)).toBe(installedSha)
+    expect(readFileSync(join(pluginDir, 'index.ts'), 'utf-8')).not.toContain('broken')
+    expect(readPluginLockfile().plugins['reinst']?.commitSha).toBe(installedSha)
+  })
+
+  it('reinstall (self-healing 1.3b, subpath lane): the recorded commit is fetched into staging and copied in; a lockfile without a commit is refused untouched', async () => {
+    const nested = (files: Record<string, string>) => Object.fromEntries(Object.entries(files).map(([k, v]) => [`plugins/sub/${k}`, v]))
+    const repo = createBareRepo(testDir, 'sub-reinstall-fixture', nested(fixturePluginFiles({ id: 'subreinst', version: '1.0.0' })))
+    const pluginDir = join(testDir, 'plugins', 'subreinst')
+    mkdirSync(pluginDir, { recursive: true })
+    for (const [name, body] of Object.entries(fixturePluginFiles({ id: 'subreinst', version: '1.0.0' }))) writeFileSync(join(pluginDir, name), body)
+    const installedSha = headSha(repo.workingClonePath)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'subreinst', makeLockEntry({ cloneUrl: `${repo.cloneUrl}#plugins/sub`, ref: 'main', commitSha: installedSha, version: '1.0.0' })))
+    pushCommit(repo.workingClonePath, nested(fixturePluginFiles({ id: 'subreinst', version: '2.0.0' })), 'moved on')
+    writeFileSync(join(pluginDir, 'index.ts'), 'export default { broken: true }')
+
+    const result = await upgradePlugin('subreinst', { reinstall: true, expected: { version: '1.0.0', sha: installedSha } })
+    expect(result.noop).toBe(false)
+    expect(result.identity).toEqual({ version: '1.0.0', sha: installedSha })
+    expect(readFileSync(join(pluginDir, 'index.ts'), 'utf-8')).not.toContain('broken')
+    expect(readdirSync(join(testDir, 'plugins')).filter((n) => n.startsWith('.upgrade-staging'))).toEqual([])
+
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'subreinst', makeLockEntry({ cloneUrl: `${repo.cloneUrl}#plugins/sub`, ref: 'main', commitSha: '', version: '1.0.0' })))
+    const treeBefore = treeDigest(pluginDir)
+    await expect(upgradePlugin('subreinst', { reinstall: true })).rejects.toThrow(/no recorded commit/)
+    expect(treeDigest(pluginDir)).toEqual(treeBefore)
+  })
+
   it('fast-forwards to a new remote commit and updates the lockfile', async () => {
     const repo = createBareRepo(testDir, 'ff-fixture', fixturePluginFiles({ id: 'ff', version: '1.0.0' }))
     cloneRepoIntoPluginsDir({ pluginId: 'ff', cloneUrl: repo.cloneUrl })

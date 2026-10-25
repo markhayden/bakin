@@ -27,10 +27,12 @@ const repairPlan: HealthRepairPlan = {
   items: [
     {
       id: 'tasks.repair-taskboard:restore-columns',
+      localId: 'tasks.repair-taskboard:restore-columns',
       actionId: 'tasks.repair-taskboard',
       title: 'Restore task board columns',
       reason: 'The canonical task board check found missing columns.',
-      safety: 'safe',
+      effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+      mode: 'self-heal',
       incidentIds: [actionableIncident.id],
       observationIds: [actionableObservation.id],
       preconditions: [{
@@ -48,10 +50,12 @@ const repairPlan: HealthRepairPlan = {
     },
     {
       id: 'channels.configure:approval-channel',
+      localId: 'channels.configure:approval-channel',
       actionId: 'channels.configure',
       title: 'Configure an approval channel',
       reason: 'Credentials require an operator decision.',
-      safety: 'manual',
+      effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true },
+      mode: 'one-click',
       incidentIds: ['core:channels:approval-missing'],
       observationIds: ['core.channels:approval-missing'],
       preconditions: [],
@@ -119,9 +123,11 @@ describe('doctor repair CLI UI', () => {
 
     expect(rendered).toContain("┃ 🐷 Bakin'")
     expect(rendered).toContain('Doctor repair plan')
-    expect(rendered).toContain(' READY    1 safe')
-    expect(rendered).toContain(' WARN     1 manual')
-    expect(rendered).toContain('SAFE DETERMINISTIC REPAIRS')
+    expect(rendered).toContain(' READY    1 automatic')
+    expect(rendered).toContain(' WARN     1 needs confirmation')
+    expect(rendered).toContain('(widens access)')
+    expect(rendered).toContain('AUTOMATIC REPAIRS')
+    expect(rendered).toContain('NEED YOUR CONFIRMATION')
     expect(rendered).toContain('tasks.repair-taskboar')
     expect(rendered).toContain('Restore task board columns')
     expect(rendered).not.toContain('NEXT\n------------')

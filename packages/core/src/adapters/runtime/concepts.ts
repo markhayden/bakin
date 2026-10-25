@@ -318,6 +318,16 @@ export interface RuntimeSessionContextStats {
   model?: string
 }
 
+/** What a session-store prune removed, kept and skipped (`sessions.pruneStore`). */
+export interface RuntimeSessionPruneResult {
+  agentId: string
+  removedFiles: number
+  freedBytes: number
+  /** Files kept because a turn on their thread was in flight. */
+  skippedInFlight: number
+  remainingFiles: number
+}
+
 export interface RuntimeSessionStoreStats {
   agentId: string
   /** Live entries in the runtime's session store for this agent. */
@@ -606,6 +616,14 @@ export interface ProviderCredentialInventory {
   providers: ProviderCredentialStatus[]
   evidence: 'complete' | 'partial'
   detail?: string
+}
+
+/** The runtime's roster file and how it names the entry at a position (`agents.registryLocation`). */
+export interface RuntimeRegistryLocation {
+  /** Absolute path of the registry file. */
+  path: string
+  /** The key of the entry at `index` in the file's own notation, e.g. `agents.list[2]`. */
+  entryKey: (index: number) => string
 }
 
 /** Kinds of Bakin-initiated config change an adapter may need a restart to apply. */
@@ -907,6 +925,17 @@ export interface AgentRuntimeAdapter {
      */
     workspaces?(): Promise<Array<{ agentId: string; path: string }>>
     /**
+     * Where the runtime keeps its agent roster, for the ONE case the id-keyed
+     * contract cannot address: a roster entry WITHOUT an id (Health row 106).
+     * Read-only — the file and the key of the entry at a roster position, in
+     * the runtime's own notation (`agents[3]`, `agents.list[3]`), so a human
+     * handoff can name exactly what to edit. `null` when the roster is not a
+     * file this process can name. Optional: runtimes without a file-backed
+     * roster omit it; consumers feature-detect and fall back to naming the
+     * position.
+     */
+    registryLocation?(): Promise<RuntimeRegistryLocation | null>
+    /**
      * The SUBAGENT-DISPATCH allowlist: the patch strings are AGENT IDS this
      * agent may dispatch subtasks to (P5.3 live incident: these were once fed
      * into an exec-tool name filter — they are never tool names). OpenClaw
@@ -955,6 +984,16 @@ export interface AgentRuntimeAdapter {
      * as "stats unavailable" — skip, never error.
      */
     storeStats?(): Promise<RuntimeSessionStoreStats[]>
+    /**
+     * Shrink one agent's session store the way the runtime itself documents
+     * (self-healing row 14): delete session artifacts older than
+     * `olderThanMs` (default 30 days) that no in-flight turn uses. Optional:
+     * a runtime without a file-backed store, or without a safe cleanup,
+     * omits it and Health keeps rendering `remediation` text instead.
+     * `dryRun` counts without deleting. Deletes USER content — every caller
+     * routes it through an operator decision.
+     */
+    pruneStore?(agentId: string, opts?: { olderThanMs?: number; dryRun?: boolean }): Promise<RuntimeSessionPruneResult>
     /**
      * Context stats for one Bakin thread's session (#737), read AT REST —
      * no gateway calls, no turn, no session mutation, no thread locks.

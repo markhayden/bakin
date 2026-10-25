@@ -42,7 +42,8 @@ interface ManifestPlugin {
   upgradeAvailable: boolean
   /** ISO instant of the updates engine's last successful observation of this plugin; null for core plugins and before the first one. */
   updateObservedAt: string | null
-  status: 'active' | 'failed'
+  /** `disabled` = the lock ledger's containment mark (row 98): on disk, never activated, no client entry. */
+  status: 'active' | 'failed' | 'disabled'
   errorCode?: string
   errorMessage?: string
   missingDependencies?: string[]

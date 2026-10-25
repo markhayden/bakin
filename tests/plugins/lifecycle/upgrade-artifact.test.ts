@@ -228,6 +228,28 @@ describe('artifact-lane upgrade (upgradePlugin)', () => {
     expect(result.after.version).toBe('0.1.0')
   })
 
+  it('reinstall (self-healing 1.3b): re-fetches the INSTALLED version — never the newer release — and replaces the tree even when nothing is newer', async () => {
+    await publishVersion('0.1.0')
+    const installDir = await installVersion('0.1.0')
+    await publishVersion('0.2.0')
+    // Damage the install the way a half-applied upgrade or a stray edit would.
+    writeFileSync(join(installDir, 'dist', 'index.js'), 'garbage')
+    rmSync(join(installDir, 'bakin-plugin.json'))
+
+    // A preview carries the recorded identity (version + artifact digest) for the approval to freeze.
+    const preview = await upgradePlugin('messaging', { previewOnly: true, reinstall: true })
+    expect(preview.noop).toBe(false)
+    expect(preview.identity?.version).toBe('0.1.0')
+    expect(preview.identity?.digest).toMatch(/^[0-9a-f]{64}$/)
+    expect(existsSync(join(installDir, 'bakin-plugin.json'))).toBe(false) // a preview holds nothing
+
+    const result = await upgradePlugin('messaging', { reinstall: true, accepted: preview.consent, expected: { version: '0.1.0', digest: preview.identity!.digest } })
+    expect(result.noop).toBe(false)
+    expect(result.after.version).toBe('0.1.0')
+    expect(readFileSync(join(installDir, 'dist', 'index.js'), 'utf-8')).toContain("version: '0.1.0'")
+    expect(readPluginLockfile().plugins['messaging']?.version).toBe('0.1.0')
+  })
+
   it('gates widened permissions behind consent without touching disk', async () => {
     await publishVersion('0.1.0')
     const installDir = await installVersion('0.1.0')

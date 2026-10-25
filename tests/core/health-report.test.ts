@@ -29,8 +29,11 @@ function observation(overrides: Partial<HealthObservation> = {}): HealthObservat
       title: 'Search is rebuilding',
       impact: 'Some results may be incomplete.',
       disposition: 'watch',
+      subject: { kind: 'service', id: 'search', label: 'Search' },
+      declarationId: 'degraded',
+      required: false,
       resources: [{ kind: 'service', id: 'search', label: 'Search' }],
-      resolution: { key: 'review', type: 'navigate', label: 'Review Search', href: '/health?tab=system' },
+      resolution: { key: 'review', type: 'human', needs: 'decision', label: 'Review Search', href: '/health?tab=system' },
     },
     ...overrides,
   } as HealthObservation

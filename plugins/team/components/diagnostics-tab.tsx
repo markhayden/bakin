@@ -53,6 +53,7 @@ import { formatDuration } from '@makinbakin/sdk/utils'
 import type { HealthReport } from '@makinbakin/sdk/types'
 import type { ScanFinding, TimelineEventView } from '../types'
 import { usePackageOperation } from '../hooks/use-package-operation'
+import { AgentDispatchPausePanel } from './agent-dispatch-pause'
 
 // ── Small shared bits ────────────────────────────────────────────────────────
 
@@ -1009,6 +1010,7 @@ export function DiagnosticsTab({ agentId }: { agentId: string }) {
       <DriftPanel agentId={agentId} />
       <ContextPanel agentId={agentId} />
       <TimelinePanel agentId={agentId} />
+      <AgentDispatchPausePanel agentId={agentId} />
     </Stack>
   )
 }

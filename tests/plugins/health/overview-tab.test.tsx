@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { AgentUsage, HealthIncident, HealthObservation, HealthReport, SearchReadiness } from '@makinbakin/sdk/types'
 import type { InteractionSummaryData, UsageHistoryData } from '../../../plugins/health/types'
 import '../../rtl-settle'
@@ -34,7 +34,8 @@ function incident(overrides: Partial<HealthIncident> & Pick<HealthIncident, 'id'
   return {
     id,
     status: 'warning', disposition: 'watch', effectiveDisposition: rest.disposition ?? 'watch', title: id, impact: 'Operator impact.', resources: [],
-    resolution: { key: 'again', type: 'rerun', label: 'Check again' },
+    subject: { kind: 'system', id: 'fixture' }, declarationId: 'fixture', required: false,
+    resolution: { key: 'diagnose-check-failure', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' },
     observationIds: [`observation:${id}`], observedAt: OBSERVED_AT, staleAt: STALE_AT, stale: false,
     ...rest,
   }
@@ -50,6 +51,7 @@ function observation(source: HealthIncident): HealthObservation {
     snapshot: source.stale ? 'last_known' : 'current', incidentId: source.id,
     incident: {
       key: source.id, title: source.title, impact: source.impact, disposition: source.disposition,
+      subject: source.subject, declarationId: source.declarationId, required: source.required,
       resources: source.resources, resolution: source.resolution,
     },
   } as HealthObservation
@@ -249,11 +251,13 @@ describe('OverviewTabView', () => {
     expect(screen.queryByText('Engine')).toBeNull()
     expect(screen.queryByText('Technical evidence')).toBeNull()
 
-    const notices = screen.getByRole('button', { name: '1 notice' })
-    expect(notices.getAttribute('data-slot')).toBe('popover-trigger')
-    expect(notices.getAttribute('aria-expanded')).toBe('false')
-    fireEvent.click(notices)
-    expect(screen.getByText('Journal backlog is growing')).toBeDefined()
+    // Notices are a calm, collapsed disclosure of the SAME incident rows (N6): the watch finding is
+    // listed with its own resolution, never only a title behind a popover.
+    const notices = screen.getByTestId('overview-notices')
+    expect((notices as HTMLDetailsElement).open).toBe(false)
+    expect(within(notices).getByText('1 notice')).toBeDefined()
+    expect(within(notices).getByText('Journal backlog is growing')).toBeDefined()
+    expect(within(notices).getByRole('list', { name: 'Health findings' })).toBeDefined()
 
     fireEvent.click(screen.getByRole('button', { name: 'Restart Search' }))
     expect(onRepair).toHaveBeenCalledWith(repair)
@@ -621,20 +625,60 @@ describe('OverviewTabView', () => {
     }
   })
 
+  it('advisory and watch decisions are reachable from the real Overview (N6): Keep posts through the owner route behind its confirm, Restore opens the repair', async () => {
+    const realFetch = globalThis.fetch
+    const posts: Array<{ url: string; body: unknown }> = []
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      posts.push({ url: String(input), body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      return Response.json({ ok: true })
+    }) as unknown as typeof fetch
+    try {
+      const unclaimed = incident({
+        id: 'health:search:unclaimed-tables', title: 'Unclaimed Search tables', disposition: 'advisory',
+        resolution: {
+          key: 'drop', type: 'repair', label: 'Drop unclaimed tables', actionId: 'health.search-drop-unclaimed-tables',
+          choices: [{ key: 'keep', kind: 'request', label: 'Keep', method: 'POST', url: '/api/plugins/health/search/unclaimed-tables/keep', body: { tables: ['t1'] }, effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false }, confirm: { title: 'Keep these tables?', description: 'They stay out of future findings.' } }],
+        },
+      })
+      const edited = incident({
+        id: 'health:plugin-assets:user-edited-drifted', title: 'Edited skill drifted from the shipped copy', disposition: 'watch',
+        resolution: { key: 'restore', type: 'repair', label: 'Restore shipped', actionId: 'health.install-plugin-assets' },
+      })
+      const onRepair = mock()
+      const onDecided = mock()
+      const model = buildHealthOverviewViewModel({ report: report([unclaimed, edited]), now: NOW })
+      expect(model.needsAction).toEqual([]) // calm: nothing is red, nothing lights the nav
+      render(<OverviewTabView model={model} onRepair={onRepair} onDecided={onDecided} />)
+
+      const notices = screen.getByTestId('overview-notices')
+      expect(within(notices).getByText('2 notices')).toBeDefined()
+      await act(async () => { fireEvent.click(within(notices).getByText('Notices')) })
+      await act(async () => { fireEvent.click(within(notices).getByRole('button', { name: 'Keep' })) })
+      const dialog = await screen.findByRole('dialog', { name: 'Keep these tables?' })
+      await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Keep' })) })
+      await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1))
+      expect(posts).toEqual([{ url: '/api/plugins/health/search/unclaimed-tables/keep', body: { tables: ['t1'] } }])
+
+      fireEvent.click(within(notices).getByRole('button', { name: 'Restore shipped' }))
+      expect(onRepair).toHaveBeenCalledWith(edited)
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
   it('preserves focus on a stable incident action across a report refresh', () => {
     const retry = incident({ id: 'retry-runtime', status: 'unknown', title: 'Runtime probe failed' })
     const first = buildHealthOverviewViewModel({ report: report([retry], 'unknown_stale'), now: NOW })
-    const onRerun = mock()
-    const view = render(<OverviewTabView model={first} onRerun={onRerun} />)
-    const button = screen.getByRole('button', { name: 'Check again' })
+    const view = render(<OverviewTabView model={first} />)
+    const button = screen.getByRole('button', { name: 'Investigate' })
     button.focus()
     expect(document.activeElement).toBe(button)
 
     const refreshedIncident = { ...retry, impact: 'The latest probe still did not complete.' }
     const refreshed = buildHealthOverviewViewModel({ report: { ...report([refreshedIncident], 'unknown_stale'), id: 'report-2', revision: 2 }, now: NOW })
-    view.rerender(<OverviewTabView model={refreshed} onRerun={onRerun} />)
+    view.rerender(<OverviewTabView model={refreshed} />)
 
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Check again' }))
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Investigate' }))
   })
 
   it('keeps Search visible when the initial report fails', () => {

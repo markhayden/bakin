@@ -1,7 +1,8 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
+import { PluginLink, useQueryState, useRouter } from '@makinbakin/sdk/navigation'
+import { RosterRecoverPanel } from './roster-recover-panel'
 import { Plus, Settings2, ScrollText } from 'lucide-react'
 import {
   ReactFlow,
@@ -215,6 +216,8 @@ const nodeTypes: NodeTypes = {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function TeamGrid() {
+  // `?recover=1`: Health's roster findings, named on the page (self-healing 1.4b).
+  const [recoverParam, setRecoverParam] = useQueryState('recover', '')
   const router = useRouter()
   const agentsWithStatus = useAgentStore((s) => s.agentsWithStatus)
   const teams = useAgentStore((s) => s.teams)
@@ -375,7 +378,10 @@ export function TeamGrid() {
           <PageBody
             gap="content"
             className="h-full min-h-0 flex-1"
-            feedback={runtimeStatus.pending ? (
+            feedback={runtimeStatus.pending || recoverParam === '1' ? (
+              <>
+              {recoverParam === '1' ? <RosterRecoverPanel onDismiss={() => setRecoverParam('')} onChanged={() => { void reload() }} /> : null}
+              {runtimeStatus.pending ? (
               <Alert tone="attention">
                 <AlertTitle>{runtimeStatus.advice.title ?? 'Runtime config changed'}</AlertTitle>
                 <AlertDescription>
@@ -395,6 +401,8 @@ export function TeamGrid() {
                   </AlertAction>
                 ) : null}
               </Alert>
+              ) : null}
+              </>
             ) : undefined}
           >
             <PageCanvas

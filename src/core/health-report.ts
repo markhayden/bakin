@@ -95,8 +95,14 @@ export function buildHealthIncidents(
         ...(raw.incident.class ? { class: raw.incident.class } : {}),
         title: raw.incident.title,
         impact: raw.incident.impact,
+        subject: { ...raw.incident.subject },
         resources: dedupeResources(raw.incident.resources ?? []),
         resolution: raw.incident.resolution,
+        declarationId: raw.incident.declarationId,
+        // The runner resolved `required` on every canonical incident; a raw
+        // row without it (offline CLI projections) counts as not required.
+        required: raw.incident.required === true,
+        ...(raw.incident.dependsOn ? { dependsOn: raw.incident.dependsOn } : {}),
         observationIds: [raw.id],
         observedAt: raw.observedAt,
         staleAt: raw.staleAt,
@@ -111,6 +117,8 @@ export function buildHealthIncidents(
       ? raw.incident.disposition
       : existing.disposition
     existing.effectiveDisposition = existing.disposition
+    // Required if ANY observation of the incident says so.
+    existing.required = existing.required || raw.incident.required === true
     existing.resources = dedupeResources([...existing.resources, ...(raw.incident.resources ?? [])])
     existing.observationIds = [...new Set([...existing.observationIds, raw.id])].sort()
     existing.observedAt = earlier(existing.observedAt, raw.observedAt)
@@ -171,6 +179,8 @@ export interface HealthStatusInput {
   registeredChecks: number
   checks: readonly HealthCheckState[]
   incidents: readonly HealthIncident[]
+  /** Canonical observations — a plain `unknown` row (no incident) is still "we cannot see" and keeps the report `unknown_stale`. */
+  observations?: readonly HealthObservation[]
 }
 
 /**
@@ -191,9 +201,11 @@ export function deriveHealthReportStatus(input: HealthStatusInput): HealthReport
       state.latestExecution.outcome === 'failed'
         || state.latestExecution.outcome === 'invalid',
     )
-  const unknownOrStale = incomplete || input.incidents.some((incident) =>
-    incident.status === 'unknown' || incident.stale,
-  )
+  const unknownOrStale = incomplete
+    || input.incidents.some((incident) => incident.status === 'unknown' || incident.stale)
+    // Spec §3.1: an inspection that could not see is an observation, not a
+    // card — but never an all-clear (the unknown-is-never-healthy contract).
+    || (input.observations ?? []).some((observation) => observation.status === 'unknown')
   if (unknownOrStale) return 'unknown_stale'
   if (input.incidents.some((incident) => incident.effectiveDisposition === 'watch')) return 'degraded'
   return 'healthy'

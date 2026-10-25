@@ -16,10 +16,12 @@ const now = new Date('2026-07-13T12:00:00.000Z')
 function item(overrides: Partial<HealthRepairPlanItem> = {}): HealthRepairPlanItem {
   return {
     id: 'restart-search',
+    localId: 'restart-search',
     actionId: 'health.restart-search',
     title: 'Restart Search',
     reason: 'The engine is unavailable.',
-    safety: 'safe',
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mode: 'self-heal',
     incidentIds: ['health:search:unavailable'],
     observationIds: ['health.search:engine'],
     preconditions: [{
@@ -50,6 +52,9 @@ function report(overrides: Partial<HealthReport> = {}): HealthReport {
     incidentId: 'health:search:unavailable',
     incident: {
       key: 'unavailable', title: 'Search is unavailable', impact: 'Search fails.', disposition: 'action_required' as const,
+      subject: { kind: 'service' as const, id: 'search-engine' },
+      declarationId: 'unavailable',
+      required: true,
       resolution: { key: 'restart', type: 'repair' as const, label: 'Restart', actionId: 'health.restart-search' },
     },
   }
@@ -64,6 +69,7 @@ function report(overrides: Partial<HealthReport> = {}): HealthReport {
     observations: [observation],
     incidents: [{
       id: observation.incidentId, status: 'error', disposition: 'action_required', effectiveDisposition: 'action_required', title: 'Search is unavailable', impact: 'Search fails.',
+      subject: observation.incident.subject, declarationId: 'unavailable', required: true,
       resources: [], resolution: observation.incident.resolution, observationIds: [observation.id],
       observedAt: now.toISOString(), staleAt: observation.staleAt, stale: false,
     }],
@@ -96,13 +102,13 @@ describe('server-held repair plan validation', () => {
     expect(() => validateRepairApplication({ planId: make().planId, itemIds: [item().id], confirmedItemIds: [], report: report(), now: new Date(now.getTime() + PLAN_TTL_MS) })).toThrow(DoctorRepairStalePlanError)
     expect(() => validateRepairApplication({ planId: make().planId, itemIds: [item().id], confirmedItemIds: [], report: report({ observations: [] }), now })).toThrow(DoctorRepairStalePlanError)
     const changed = report()
-    changed.observations[0] = { ...changed.observations[0], incident: { ...changed.observations[0].incident!, resolution: { key: 'different', type: 'rerun', label: 'Retry' } } } as any
+    changed.observations[0] = { ...changed.observations[0], incident: { ...changed.observations[0].incident!, resolution: { key: 'different', type: 'repair', label: 'Retry', actionId: 'health.other' } } } as any
     expect(() => validateRepairApplication({ planId: make().planId, itemIds: [item().id], confirmedItemIds: [], report: changed, now })).toThrow(DoctorRepairStalePlanError)
   })
 
-  it('requires individual confirmation for every selected non-safe item', () => {
-    const manual = item({ id: 'manual', safety: 'manual' })
-    const destructive = item({ id: 'destructive', safety: 'destructive' })
+  it('requires individual confirmation for every selected one-click item', () => {
+    const manual = item({ id: 'manual', effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true }, mode: 'one-click' })
+    const destructive = item({ id: 'destructive', effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false }, mode: 'one-click' })
     const plan = createStoredRepairPlan({ basedOnReportId: 'health-report-1', target: { type: 'all_actionable', reportId: 'health-report-1' }, items: [manual, destructive] }, now)
     expect(() => validateRepairApplication({ planId: plan.planId, itemIds: ['manual', 'destructive'], confirmedItemIds: ['manual'], report: report(), now })).toThrow(DoctorRepairConfirmationError)
   })

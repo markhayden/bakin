@@ -66,14 +66,11 @@ function MountedPanel({ name, children }: { name: string; children?: ReactNode }
 mock.module('../../../plugins/health/components/overview-tab', () => ({
   OverviewTab: ({
     onRepair,
-    onRerun,
   }: {
     onRepair?: (incident: HealthIncident) => void
-    onRerun?: (incident: HealthIncident) => void
   }) => (
     <MountedPanel name="overview">
       <button type="button" onClick={() => onRepair?.(repairIncident)}>Review repair</button>
-      <button type="button" onClick={() => onRerun?.(repairIncident)}>Check again</button>
     </MountedPanel>
   ),
 }))
@@ -117,6 +114,7 @@ mock.module('../../../plugins/health/components/repair-dialog', () => ({
 }))
 
 import { HealthPage } from '../../../plugins/health/components/health-page'
+import { armHandoffReturn, resetHandoffReturnForTests } from '../../../plugins/health/components/handoff-return'
 import { HEALTH_REPORT_SWEEP_TIMEOUT_MS } from '../../../plugins/health/hooks/use-health-report'
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -139,6 +137,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  resetHandoffReturnForTests()
   vi.useRealTimers()
   cleanup()
   vi.unstubAllGlobals()
@@ -266,9 +265,24 @@ describe('HealthPage tab shell', () => {
     await waitFor(() => expect(status.textContent).toBe('Health checks completed.'))
     expect(screen.getByTestId('health-action-visible-status').textContent).toBe('Health checks completed.')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
-    expect(status.textContent).toBe('Running health checks.')
-    expect(overviewRunChecks).toHaveBeenCalledTimes(2)
+    // Return verification (self-healing 1.4c): a taken handoff reruns the ORIGINATING checks (a
+    // targeted run, never the sweep) when the operator comes back to this tab — and only then.
+    const runCalls: Array<{ url: string; body: unknown }> = []
+    vi.stubGlobal('fetch', mock(async (input: string | URL | Request, init?: RequestInit) => {
+      runCalls.push({ url: String(input), body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      return jsonResponse({ id: 'report-3' })
+    }))
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(runCalls).toEqual([])
+    armHandoffReturn('health:runtime:credentials', ['team.runtime-credentials'])
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(status.textContent).toBe('Rechecking 1 health check after the handoff.')
+    expect(runCalls).toEqual([{ url: '/api/plugins/health/doctor/run', body: { checkIds: ['team.runtime-credentials'] } }])
+    await waitFor(() => expect(status.textContent).toBe('Health recheck completed.'))
+    expect(overviewRefresh).toHaveBeenCalledTimes(1) // Overview republishes what the targeted run found
+    expect(overviewRunChecks).toHaveBeenCalledTimes(1) // never the sweep
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(runCalls).toHaveLength(1) // one-shot
   })
 
   it('keeps Overview unmounted while another tab runs checks on demand', async () => {

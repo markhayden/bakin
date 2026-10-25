@@ -15,6 +15,7 @@ import {
   deleteAsset, listTrashedAssets, restoreAsset, permanentlyDeleteTrashed, emptyAssetTrash,
 } from '../lib/asset-trash'
 import type { AssetType } from '../lib/constants'
+import type { AssetUsageContext } from '../lib/asset-recovery'
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -237,6 +238,79 @@ export async function handleVersionedExport(req: Request): Promise<Response> {
       quality: typeof body.quality === 'number' ? body.quality : undefined,
     })
     return Response.json({ ok: true, ...r })
+  } catch (err) {
+    return Response.json({ error: errMsg(err) }, { status: 400 })
+  }
+}
+
+// ─── Recovery (self-healing 1.4a) — the operator's controls on /assets/<id>?recover=1 ───
+
+/** GET /versioned/:assetId/recover — facts about a (possibly broken) asset directory. */
+export async function handleVersionedRecoverInspect(req: Request, ctx: AssetUsageContext): Promise<Response> {
+  const assetId = segmentsAfterVersioned(new URL(req.url))[0] || ''
+  const { inspectAssetRecovery, inspectAssetReferences } = await import('../lib/asset-recovery')
+  const report = inspectAssetRecovery(assetId)
+  if (!report.dirExists) return Response.json({ error: 'Not found' }, { status: 404 })
+  const references = await inspectAssetReferences(assetId, ctx, report.manifest.status === 'ok' ? report.manifest.taskId : undefined)
+  return Response.json({ ...report, references })
+}
+
+/** POST /versioned/:assetId/recover/detach-references — the manifest forgets its task, every brand drops the asset (spec §3.9). */
+export async function handleVersionedRecoverDetachReferences(req: Request, ctx: AssetUsageContext): Promise<Response> {
+  const assetId = segmentsAfterVersioned(new URL(req.url))[0] || ''
+  try {
+    const { detachAssetReferences } = await import('../lib/asset-recovery')
+    return Response.json({ ok: true, ...(await detachAssetReferences(assetId, ctx)) })
+  } catch (err) {
+    return Response.json({ error: errMsg(err) }, { status: 400 })
+  }
+}
+
+/** POST /recover/store-location { location } — row 174's card choice: a required store location that is a file is moved aside. */
+export async function handleRecoverStoreLocation(req: Request): Promise<Response> {
+  const body = await req.json().catch(() => ({})) as { location?: unknown }
+  const { STORE_LOCATIONS, moveStoreLocationAside } = await import('../lib/asset-recovery')
+  const location = STORE_LOCATIONS.find((candidate) => candidate === body.location)
+  if (!location) return Response.json({ error: `location must be one of ${STORE_LOCATIONS.join(', ')}` }, { status: 400 })
+  try {
+    return Response.json({ ok: true, ...moveStoreLocationAside(location) })
+  } catch (err) {
+    return Response.json({ error: errMsg(err) }, { status: 400 })
+  }
+}
+
+/** POST /versioned/:assetId/recover/rebuild — a manifest from the files on disk. */
+export async function handleVersionedRecoverRebuild(req: Request): Promise<Response> {
+  const assetId = segmentsAfterVersioned(new URL(req.url))[0] || ''
+  try {
+    const { rebuildManifestFromFiles } = await import('../lib/asset-recovery')
+    return Response.json({ ok: true, asset: await rebuildManifestFromFiles(assetId) })
+  } catch (err) {
+    return Response.json({ error: errMsg(err) }, { status: 400 })
+  }
+}
+
+/** POST /versioned/:assetId/recover/detach-missing — forget versions/exports whose files are gone. */
+export async function handleVersionedRecoverDetach(req: Request): Promise<Response> {
+  const assetId = segmentsAfterVersioned(new URL(req.url))[0] || ''
+  try {
+    const { detachMissingVersions } = await import('../lib/asset-recovery')
+    const result = await detachMissingVersions(assetId)
+    return Response.json({ ok: true, asset: result.manifest, detachedVersions: result.detachedVersions, detachedExports: result.detachedExports })
+  } catch (err) {
+    return Response.json({ error: errMsg(err) }, { status: 400 })
+  }
+}
+
+/** POST /versioned/:assetId/recover/restore-export { name } — an export becomes the new current version. */
+export async function handleVersionedRecoverRestoreExport(req: Request): Promise<Response> {
+  const assetId = segmentsAfterVersioned(new URL(req.url))[0] || ''
+  const body = await req.json().catch(() => ({})) as { name?: unknown }
+  if (typeof body.name !== 'string' || body.name.length === 0) return Response.json({ error: 'name required' }, { status: 400 })
+  try {
+    const { restoreVersionFromExport } = await import('../lib/asset-recovery')
+    const result = await restoreVersionFromExport(assetId, body.name)
+    return Response.json({ ok: true, asset: result.manifest, version: result.version })
   } catch (err) {
     return Response.json({ error: errMsg(err) }, { status: 400 })
   }

@@ -5,8 +5,10 @@ import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { createLogger } from '../../../src/core/logger'
 import type {
   HealthCheckRunInput,
+  HealthIncidentDeclaration,
   HealthObservationInput,
   HealthRepairActionDefinition,
+  HealthSubject,
 } from '../../../packages/core/src/plugin-types'
 import {
   healthError,
@@ -35,6 +37,25 @@ function stablePart(value: string): string {
 
 function bounded(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max - 1)}…`
+}
+
+/** Rows 145–146: an untracked runtime cron with a task prompt is tracked for triage (self-heal); the read failure is an observation. */
+export const SCHEDULE_SYNC_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'orphan', subjectKind: 'system', resolution: { type: 'repair', actionId: 'track-runtime-cron' }, required: 'always' },
+]
+
+/** Rows 147–148: completing the cutover removes the runtime cron — one-click. */
+export const SCHEDULE_CUTOVER_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'lingering', subjectKind: 'system', resolution: { type: 'repair', actionId: 'complete-cutover' }, required: 'always' },
+]
+
+/** Rows 149–150: one family; required while the job still fires (not paused). */
+export const SCHEDULE_PROMPTS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'unrunnable', subjectKind: 'system', resolution: { type: 'repair', actionId: 'remove-unrunnable-jobs' }, required: 'owner-decides' },
+]
+
+function scheduleJobSubject(jobId: string, name: string): HealthSubject {
+  return { kind: 'system', id: `schedule:${jobId}`, label: bounded(name, 120) }
 }
 
 /**
@@ -67,18 +88,11 @@ export async function checkScheduleSync(
     // into summary blew the 500-char contract bound and invalidated the
     // whole run (2026-07-22 field diagnosis). Builders clamp now, but the
     // error belongs in detail regardless.
+    // Row 145: a "could not see" observation.
     return healthObserved([healthUnknown({
       key: 'runtime-cron',
       summary: 'Runtime cron jobs could not be read.',
-      detail: (error instanceof Error ? error.message : String(error)) || undefined,
-      incident: {
-        key: 'runtime-cron',
-        title: 'Schedule synchronization could not be verified',
-        impact: 'Bakin cannot determine whether runtime cron jobs are tracked in its schedule sidecar.',
-        disposition: 'watch',
-        resources: [{ kind: 'runtime', id: 'cron', label: 'Runtime cron' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
-      },
+      detail: `Bakin cannot determine whether runtime cron jobs are tracked in its schedule sidecar. ${(error instanceof Error ? error.message : String(error)) || ''}`.trim(),
     })])
   }
 
@@ -112,6 +126,8 @@ export async function checkScheduleSync(
       title: bounded(`Runtime cron job ${orphan.name} needs triage`, 120),
       impact: 'The job is not visible in Bakin schedule ownership and may run without operator context.',
       disposition: 'action_required' as const,
+      subject: scheduleJobSubject(orphan.id, orphan.name),
+      declarationId: 'orphan',
       resources: [{ kind: 'schedule' as const, id: stablePart(orphan.id), label: bounded(orphan.name, 120) }],
       resolution: { key: 'track-runtime-cron', type: 'repair' as const, label: 'Track for triage', actionId: 'track-runtime-cron' },
     },
@@ -131,18 +147,11 @@ export async function checkScheduleCutover(
   try {
     runtimeIds = new Set((await cron.list()).map(job => job.id))
   } catch (error) {
+    // Row 147: a "could not see" observation.
     return healthObserved([healthUnknown({
       key: 'cutover-verification',
       summary: 'Runtime cron could not be read.',
-      detail: (error instanceof Error ? error.message : String(error)) || undefined,
-      incident: {
-        key: 'cutover-verification',
-        title: 'Schedule cutover could not be verified',
-        impact: 'Bakin cannot confirm that duplicate runtime cron fire paths are absent.',
-        disposition: 'watch',
-        resources: [{ kind: 'runtime', id: 'cron', label: `${runtimeName ?? 'Runtime'} cron` }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
-      },
+      detail: `Bakin cannot confirm that duplicate ${runtimeName ?? 'runtime'} cron fire paths are absent. ${(error instanceof Error ? error.message : String(error)) || ''}`.trim(),
     })])
   }
 
@@ -162,6 +171,8 @@ export async function checkScheduleCutover(
       title: bounded(`Schedule ${id} has two possible fire paths`, 120),
       impact: 'The lingering runtime cron can rogue-fire and execute the schedule twice.',
       disposition: 'action_required',
+      subject: scheduleJobSubject(id, id),
+      declarationId: 'lingering',
       resources: [{ kind: 'schedule', id: stablePart(id), label: bounded(id, 120) }],
       resolution: { key: 'complete-cutover', type: 'repair', label: 'Complete cutover', actionId: 'complete-cutover' },
     },
@@ -175,6 +186,9 @@ export function scheduleCutoverRepair(
   return {
     id: 'complete-cutover',
     name: 'Complete schedule cutover',
+    // Row 148: removes the backing runtime cron → one-click.
+    effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
+    mutation: 'delete',
     operationPlan: () => ({
       stages: [{ id: 'migrate', kind: 'committing', label: 'Move schedules off runtime cron' }],
       pointOfNoReturn: 'migrate',
@@ -185,7 +199,6 @@ export function scheduleCutoverRepair(
         actionId: 'complete-cutover',
         title: 'Complete schedule cutover from runtime cron',
         reason: 'One or more Bakin schedules still have a backing runtime cron job.',
-        safety: 'destructive',
         incidentIds: [],
         observationIds: [],
         preconditions: [],
@@ -227,12 +240,15 @@ export function scheduleCutoverRepair(
 
 /** Add unowned runtime cron jobs to the sidecar without guessing an agent assignment. */
 export function scheduleSyncRepair(
-  cron: RuntimeCronReader,
+  cron: RuntimeCronReader | undefined,
   resolveDefaultOwner: () => Promise<string>,
 ): HealthRepairActionDefinition {
   return {
     id: 'track-runtime-cron',
     name: 'Track runtime cron jobs for triage',
+    // Row 146: sidecar bookkeeping only (never writes runtime cron) — self-heal; a policy write for the gate.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'policy',
     operationPlan: () => ({
       stages: [
         { id: 'scan', kind: 'preparing', label: 'Find untracked runtime cron jobs' },
@@ -241,6 +257,7 @@ export function scheduleSyncRepair(
       pointOfNoReturn: 'track',
     }),
     async plan() {
+      if (!cron) return []
       let orphans: RuntimeJob[]
       try { orphans = (await orphanRuntimeJobs(cron)).orphans } catch { return [] }
       if (orphans.length === 0) return []
@@ -249,7 +266,6 @@ export function scheduleSyncRepair(
         actionId: 'track-runtime-cron',
         title: 'Track orphan runtime cron jobs',
         reason: `${orphans.length} runtime cron job(s) are absent from the schedule sidecar.`,
-        safety: 'safe',
         incidentIds: [],
         observationIds: [],
         preconditions: [],
@@ -265,7 +281,7 @@ export function scheduleSyncRepair(
       if (items.length === 0) return []
       try {
         op.stage('scan')
-        const { orphans } = await orphanRuntimeJobs(cron)
+        const { orphans } = cron ? await orphanRuntimeJobs(cron) : { orphans: [] as RuntimeJob[] }
         if (orphans.length === 0) {
           op.skip('track', 'every runtime cron job is already tracked')
           return items.map(item => ({
@@ -360,6 +376,10 @@ export async function checkSchedulePrompts(): Promise<HealthCheckRunInput> {
       key: `unrunnable-${stablePart(job.jobId)}`,
       title: bounded(`Schedule ${name} can never run`, 120),
       class: 'cleanup_backlog' as const,
+      subject: scheduleJobSubject(job.jobId, name),
+      declarationId: 'unrunnable',
+      // Rows 149/150: required while the job still fires; a paused one is cleanup.
+      required: !contained,
       resources: [{ kind: 'schedule' as const, id: stablePart(job.jobId), label: bounded(name, 120) }],
       resolution: { key: 'remove-unrunnable-jobs', type: 'repair' as const, label: 'Remove job', actionId: 'remove-unrunnable-jobs' },
     }
@@ -369,7 +389,7 @@ export async function checkSchedulePrompts(): Promise<HealthCheckRunInput> {
       ? 'Paused automatically, so it no longer fires. Give it a task prompt to resume it, or remove it.'
       : 'Paused, so it no longer fires. Give it a task prompt and resume it, or remove it.'
     return contained
-      ? healthWarning({ ...base, incident: { ...incident, disposition: 'watch' as const, impact: containedImpact } })
+      ? healthWarning({ ...base, incident: { ...incident, disposition: 'advisory' as const, impact: containedImpact } })
       : healthError({ ...base, incident: { ...incident, disposition: 'action_required' as const, impact: 'Every fire creates a task with no actionable prompt; the task fails or blocks and the schedule keeps firing.' } })
   }) as [HealthObservationInput, ...HealthObservationInput[]])
 }
@@ -384,6 +404,9 @@ export function scheduleUnrunnableJobsRepair(onRemoved: (jobId: string) => void)
   return {
     id: 'remove-unrunnable-jobs',
     name: 'Remove Bakin schedules that can never run',
+    // Rows 149/150: deletes schedules → one-click.
+    effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
+    mutation: 'delete',
     operationPlan: () => ({
       stages: [{ id: 'remove', kind: 'cleanup', label: 'Remove schedules' }],
       pointOfNoReturn: 'remove',
@@ -396,7 +419,6 @@ export function scheduleUnrunnableJobsRepair(onRemoved: (jobId: string) => void)
         actionId: 'remove-unrunnable-jobs',
         title: `Remove ${jobs.length} Bakin schedule(s) without a runnable prompt`,
         reason: 'A schedule whose prompt is not a task prompt fails on every fire and keeps firing.',
-        safety: 'destructive',
         ...repairTargetSelection(target),
         changes: jobs.map(job => ({
           kind: 'file' as const,

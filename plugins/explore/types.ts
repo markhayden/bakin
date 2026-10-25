@@ -23,6 +23,8 @@ export interface ExploreCatalogEntry extends CatalogEntry {
   updateReason?: string
   /** Installed version from the relevant lockfile, when installed. */
   installedVersion: string | null
+  /** Plugins only: the lock ledger's containment mark (row 98) — installed, never activated until enabled again. */
+  disabled?: boolean
 }
 
 export interface ExploreCatalogResponse {

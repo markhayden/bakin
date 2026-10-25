@@ -33,7 +33,7 @@ function snapshot(state: State, over: Partial<ChannelReadinessPayload> = {}): Ch
     owner: state === 'native' ? 'runtime' : 'bridge',
     enabled: state !== 'disabled',
     token: { present: state !== 'missing_token', source: state === 'missing_token' ? null : 'store' },
-    guilds: state === 'missing_guild' ? [] : [{ id: '1483917789918920714', name: 'Made In Wyo', joined: connected ? state === 'connected' : null, channelCount: state === 'connected' ? 2 : null }],
+    guilds: state === 'missing_guild' ? [] : [{ id: '1483917789918920714', name: 'Made In Wyo', joined: connected ? state === 'connected' : null, channelCount: state === 'connected' ? 2 : null, ...(state === 'degraded' ? { inviteUrl: INVITE_URL } : {}) }],
     connection: { state, since: '2026-10-06T00:00:00.000Z', lastError, ...(connected ? { botUser: { id: 'bot', name: 'Margo' } } : {}) },
     channels: connected || state === 'native'
       ? { items: [{ id: 'discord:channel:1', platform: 'discord', label: '#general', capabilities: ['message', 'interactive-approval'] }, { id: 'discord:channel:2', platform: 'discord', label: `#${'x'.repeat(78)}`, capabilities: ['message'] }], source: state === 'native' ? 'runtime' : 'bridge', collectedAt: 'x' }
@@ -49,6 +49,9 @@ function snapshot(state: State, over: Partial<ChannelReadinessPayload> = {}): Ch
     ...over,
   }
 }
+
+/** The bridge builds the real authorize link (pinned in tests/core/delivery/readiness-collect.test.ts); the tab only renders what the snapshot carries. */
+const INVITE_URL = 'https://invite.example.invalid/authorize?guild_id=1483917789918920714'
 
 const settings = { integrations: { discord: { enabled: true, guildIds: ['1483917789918920714'], approvers: ['202168845362921483'], inbound: { enabled: false, agentId: 'main', requireMention: true, allowFrom: [] } } } }
 const slot = { provider: 'discord', name: 'botToken', label: 'Discord bot token', description: 'Bot token.', envVar: 'DISCORD_BOT_TOKEN', injectEnv: false, owner: { label: 'Settings → Channels', href: '/settings?tab=channels' }, status: { present: false, source: null } }
@@ -198,6 +201,22 @@ describe('ChannelsTab', () => {
     })
     expect(fieldIdFor('notifications.channelAliases.alerts')).toBe('channels-field-aliases')
     expect(fieldIdFor('nope')).toBeNull()
+  })
+
+  it('a server the bot has not joined offers the one-click invite link (row 26)', async () => {
+    mockFetch(snapshot('degraded'))
+    await actRender(() => render(<ChannelsTab />))
+    const link = await screen.findByRole('link', { name: 'Invite Margo to Made In Wyo' })
+    expect(link.getAttribute('href')).toBe(INVITE_URL)
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toBe('noreferrer')
+  })
+
+  it('a joined server offers no invite link', async () => {
+    mockFetch(snapshot('connected'))
+    await actRender(() => render(<ChannelsTab />))
+    await screen.findByTestId('channels-tab')
+    expect(screen.queryByRole('link', { name: /Invite Margo/ })).toBeNull()
   })
 
   it('long identifiers keep their full value and never leak a token', async () => {

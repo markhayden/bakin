@@ -29,6 +29,8 @@ export interface CopyButtonProps {
   /** Action name; the accessible name becomes `<label> complete` on success. */
   label?: string
   className?: string
+  /** Runs after the text actually reached the clipboard — never on a refused write. */
+  onCopied?: () => void
 }
 
 /**
@@ -38,7 +40,7 @@ export interface CopyButtonProps {
  * never by a native tooltip, which would leave the result unannounced.
  * Success only shows when the clipboard write actually happened.
  */
-export function CopyButton({ text, label = 'Copy', className }: CopyButtonProps) {
+export function CopyButton({ text, label = 'Copy', className, onCopied }: CopyButtonProps) {
   const [copied, setCopied] = useState(false)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // The clipboard write is awaited, so the component can unmount mid-copy.
@@ -51,11 +53,12 @@ export function CopyButton({ text, label = 'Copy', className }: CopyButtonProps)
 
   const copy = useCallback(async () => {
     if (!await copyToClipboard(text)) return
+    onCopied?.()
     if (!mounted.current) return
     setCopied(true)
     if (resetTimer.current) clearTimeout(resetTimer.current)
     resetTimer.current = setTimeout(() => setCopied(false), 1500)
-  }, [text])
+  }, [onCopied, text])
 
   return (
     <Button

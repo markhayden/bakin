@@ -66,7 +66,7 @@ interface ManifestPlugin {
   clientVersion?: string
   clientCss?: string
   cssVersion?: string
-  status?: 'active' | 'failed'
+  status?: 'active' | 'failed' | 'disabled'
   contributes?: PluginContributions
 }
 
@@ -353,12 +353,12 @@ function runDriftCheck(plugin: ManifestPlugin): void {
 }
 
 async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
-  if (plugin.status === 'failed' || !plugin.clientEntry) {
+  if (plugin.status === 'failed' || plugin.status === 'disabled' || !plugin.clientEntry) {
     debugPluginStartup('pluginHost.clientImport', {
       pluginId: plugin.id,
       status: 'skipped',
       durationMs: 0,
-      reason: plugin.status === 'failed' ? 'failed-plugin' : 'missing-client-entry',
+      reason: plugin.status === 'failed' ? 'failed-plugin' : plugin.status === 'disabled' ? 'disabled-plugin' : 'missing-client-entry',
     })
     return
   }

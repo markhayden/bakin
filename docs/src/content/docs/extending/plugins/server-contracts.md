@@ -221,7 +221,7 @@ registered or returns `{ ok: false, error }`, the run is recorded as a failure.
 Health checks are plugin-registered, owner-aware producers. Each `ctx.registerHealthCheck()` call adds one definition to the canonical registry. The runner isolates failures, validates the complete result, stamps ownership and freshness, and projects one immutable `HealthReport` for every consumer.
 
 ```ts
-import { healthHealthy, healthObserved } from '@makinbakin/sdk/utils'
+import { healthError, healthHealthy, healthObserved } from '@makinbakin/sdk/utils'
 
 ctx.registerHealthCheck({
   id: 'storage',
@@ -229,13 +229,33 @@ ctx.registerHealthCheck({
   description: 'Verifies that the plugin storage directory is readable.',
   group: { key: 'storage', label: 'Storage' },
   maxAgeMs: 60_000,
-  run: async () => healthObserved([
-    healthHealthy({
-      key: 'directory',
-      summary: 'Plugin storage is reachable.',
-      evidence: { mode: 'read-write' },
-    }),
-  ]),
+  // Every incident this check may raise, as a FINITE family. The registry
+  // validates the catalog when the plugin activates: a repair family must
+  // name an action this plugin registered (or `core.diagnose`), a human
+  // family must say what it needs. A bad catalog fails activation.
+  incidents: [
+    { id: 'unreadable', subjectKind: 'record', resolution: { type: 'repair', actionId: 'recreate-storage' }, required: 'always' },
+  ],
+  run: async () => {
+    if (!storageReadable()) {
+      return healthObserved([healthError({
+        key: 'directory',
+        summary: 'Plugin storage cannot be read.',
+        incident: {
+          key: 'unreadable',
+          declarationId: 'unreadable',
+          title: 'Docs Basic storage is unreadable',
+          impact: 'Documents cannot be listed or saved until storage is restored.',
+          disposition: 'action_required',
+          subject: { kind: 'record', id: 'docs-basic/storage', label: 'Docs Basic storage' },
+          resolution: { key: 'recreate', type: 'repair', label: 'Recreate the storage directory', actionId: 'recreate-storage' },
+        },
+      })])
+    }
+    return healthObserved([
+      healthHealthy({ key: 'directory', summary: 'Plugin storage is reachable.', evidence: { mode: 'read-write' } }),
+    ])
+  },
 })
 ```
 
@@ -243,28 +263,41 @@ The registered ID is namespaced to `{pluginId}.{id}`. Observation and incident k
 
 An observed run must contain at least one observation. Return `healthNotApplicable(reason)` when a check does not apply. Do not return an empty array, invent a healthy result after a failed read, or mutate state while diagnosing. A thrown or invalid result becomes a core-owned **Unable to verify** incident while unrelated checks continue.
 
+### Two outcomes
+
+Every incident resolves one of two ways — there is no third:
+
+- `{ type: 'repair', actionId }` — Bakin fixes it with a repair action you registered (or the shared engine action `core.diagnose`, which opens an agent investigation). Whether it runs on its own or waits for a click is decided from the action's **effects**, never by the incident.
+- `{ type: 'human', needs, href, field?, handoff? }` — only a person can supply it: a `credential`, a `payment`, a `decision`, or an `external-install`. `href` is the same-origin path to the control, `field` the form field id when the fix is a value to enter, and `handoff: { command, cwd? }` the exact command when the person performs it in a shell — the Health card hands it to a Terminal session (or offers to copy it) and re-checks when they come back. Never free-text steps.
+
+Every incident names its **subject** (`{ kind, id, label? }` — plugin, package, hub-skill, service, agent, table, runtime, channel, setting, record, task or system) and its **family** (`declarationId`, one of the check's `incidents`). A family whose `required` is `owner-decides` makes the instance carry `required: true|false` — whether something that runs depends on the subject. The runner refuses an instance that contradicts its family (wrong action, wrong need, undeclared id).
+
 Status and incident disposition are intentionally constrained:
 
 - `healthHealthy(...)` has no incident.
-- `healthWarning(...)` carries an advisory, watch, or action-required incident.
+- `healthWarning(...)` carries an advisory, watch, or action-required incident — or none at all, when the state is merely worth listing under the check (a transient or informational condition is an observation, not a card).
 - `healthError(...)` always carries an action-required incident.
-- `healthUnknown(...)` carries a watch incident for evidence that could not be verified.
+- `healthUnknown(...)` carries a watch incident (or an advisory one when the producer vouches it self-resolves) for evidence that could not be verified — or none, when Bakin simply could not see and the next run will.
 
 Core stamps the plugin owner, full check and observation IDs, execution timestamps, snapshot freshness, and incident IDs. `maxAgeMs` controls when retained evidence becomes stale; stale last-known evidence is never presented as current health.
 
 ### Repair actions
 
-Register deterministic repairs separately with `ctx.registerHealthRepairAction()`, then reference the owner-local action ID from an observation's repair resolution. A repair action declares:
+Register deterministic repairs separately with `ctx.registerHealthRepairAction()` **before** the checks whose catalogs reference them, then name the owner-local action ID from an incident's repair resolution. A repair action declares:
 
-1. `plan(target)` — concrete changes, safety (`safe`, `manual`, or `destructive`), and affected evidence, without mutating anything. Keep it bounded and local: no network, no engine calls.
-2. `operationPlan(items)` — the stages applying these items will report, with `pointOfNoReturn` at the first stage that changes anything (or `null` when nothing live changes until an atomic swap at the end).
-3. `resources` (optional) — acquired before `apply` runs. Any plugin may declare its own `<pluginId>:<name>` resources; the core resources (`install-state`, `media-store`, `search-engine`) are reserved for core plugins. Anything else is refused at registration.
-4. `apply(items, op)` — performs only the selected items, reporting through `op` (`op.stage`, `op.item`, `op.bytes`, `op.output`), and returns applied/skipped/failed results plus affected check IDs.
+1. `effects` — what applying it does beyond fixing the incident: `deletesUserContent`, `spendsMoney`, `widensAuthorization` (new permissions, binaries, secrets, payloads, or a spend/routing/policy change), optionally `restartsService` (`'search-engine' | 'bakin' | 'runtime'`) and `resolves` (incident keys on dependent subjects this repair also fixes). The ONE mode policy reads these: an action **self-heals** unless it deletes content, spends money or widens authorization — then it is **one-click** and waits for the operator. Restarting a service is a scheduling matter, never a reason to ask. An optional `mutation` (`upgrade | sync | reinstall | restart | rebuild | delete | policy`) names the installation mutation it performs so the authorization gate can judge unattended applies.
+2. `plan(target)` — concrete changes and affected evidence, without mutating anything. Keep it bounded and local: no network, no engine calls. An item may stamp stricter `effects` than its action (the purge item of a store repair); core stamps every item's `effects` and `mode`.
+3. `operationPlan(items)` — the stages applying these items will report, with `pointOfNoReturn` at the first stage that changes anything (or `null` when nothing live changes until an atomic swap at the end).
+4. `resources` (optional) — acquired before `apply` runs. Any plugin may declare its own `<pluginId>:<name>` resources; the core resources (`install-state`, `media-store`, `search-engine`) are reserved for core plugins. Anything else is refused at registration.
+5. `apply(items, op)` — performs only the selected items, reporting through `op` (`op.stage`, `op.item`, `op.bytes`, `op.output`), and returns applied/skipped/failed results plus affected check IDs.
 
 ```ts
 ctx.registerHealthRepairAction({
   id: 'clear-cache',
   name: 'Clear the cache',
+  // Removes derived entries only: self-heals. A purge of the user's own
+  // files would set deletesUserContent and wait for a click.
+  effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
   resources: ['cache-tools:cache'],
   plan: async (target) => [/* … */],
   operationPlan: () => ({
@@ -283,9 +316,9 @@ ctx.registerHealthRepairAction({
 })
 ```
 
-The server stores the opaque plan, binds it to observation execution IDs and resolution keys, and expires it after ten minutes. Manual and destructive items require individual confirmation. If affected evidence changes or resolves before apply, the server returns `STALE_PLAN` and performs zero mutations. Applying runs as an operation: each selected action is a child operation with its own plan and resources, the person sees each stage live (and can cancel before the point of no return), and core then reruns the affected checks so “applied” and “verified” remain distinct. In tests, `harness.applyHealthRepair(actionId, items)` runs your action exactly that way and returns the rows plus the operation view, so you can assert it reports.
+The server stores the opaque plan, binds it to observation execution IDs and resolution keys, and expires it after ten minutes. One-click items require individual confirmation. If affected evidence changes or resolves before apply, the server returns `STALE_PLAN` and performs zero mutations. Applying runs as an operation: each selected action is a child operation with its own plan and resources, the person sees each stage live (and can cancel before the point of no return), and core then reruns the affected checks so “applied” and “verified” remain distinct. In tests, `harness.applyHealthRepair(actionId, items)` runs your action exactly that way and returns the rows plus the operation view, so you can assert it reports.
 
-Registration validates IDs and lengths, group metadata, same-origin navigation, resource shapes, evidence JSON safety and size, and owner-local repair references. Invalid registration fails plugin activation and appears in the plugin failure registry. Hot reload removes the plugin's checks, repair actions, and cached snapshots together.
+Registration validates IDs and lengths, group metadata, incident catalogs (families, dangling actions, human needs), same-origin control paths, resource shapes, evidence JSON safety and size, and owner-local repair references. Invalid registration fails plugin activation and appears in the plugin failure registry. Hot reload removes the plugin's checks, repair actions, and cached snapshots together.
 
 ## Settings
 

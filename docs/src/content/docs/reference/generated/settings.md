@@ -175,6 +175,10 @@ description: Generated reference for Bakin core settings defaults.
       <td><code>false</code></td>
     </tr>
     <tr>
+      <td><code>dispatch.pausedAgents</code></td>
+      <td><code>[]</code></td>
+    </tr>
+    <tr>
       <td><code>dispatch.runDirMaxTotalGb</code></td>
       <td><code>4</code></td>
     </tr>
@@ -559,5 +563,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 20, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 24, 2026 · Bakin 0.0.0-dev</span>
 </aside>

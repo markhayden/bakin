@@ -159,12 +159,22 @@ function GateApproval({ approval, busy, error, onResolve, gate }: {
   )
 }
 
-function proposedChanges(approval: TaskApproval): Array<{ key: string; safety: string; text: string }> {
+/** The effects in words — why this proposal waits for a click. */
+function describeEffects(effects: { deletesUserContent: boolean; spendsMoney: boolean; widensAuthorization: boolean; restartsService?: string }): string {
+  const parts: string[] = []
+  if (effects.deletesUserContent) parts.push('deletes content')
+  if (effects.spendsMoney) parts.push('spends money')
+  if (effects.widensAuthorization) parts.push('widens access')
+  if (effects.restartsService) parts.push(`restarts ${effects.restartsService}`)
+  return parts.length > 0 ? parts.join(', ') : 'no side effects'
+}
+
+function proposedChanges(approval: TaskApproval): Array<{ key: string; effects: string; text: string }> {
   if (approval.owner.kind !== 'health-repair') return []
   return approval.owner.proposal.items.flatMap((item) =>
     item.changes.map((change, index) => ({
       key: `${item.itemId}:${index}`,
-      safety: item.safety,
+      effects: describeEffects(item.effects),
       text: `${change.action} ${change.kind} ${change.target} — ${change.description}`,
     })))
 }
@@ -209,7 +219,7 @@ function RepairApproval({ approval, busy, error, onResolve }: {
         <ul className="grid gap-bakin-1" aria-label="Proposed changes">
           {changes.map((change) => (
             <li key={change.key} className="min-w-0 break-words">
-              <span className="font-bakin-typography-weight-medium">[{change.safety}]</span> {change.text}
+              <span className="font-bakin-typography-weight-medium">[{change.effects}]</span> {change.text}
             </li>
           ))}
         </ul>

@@ -13,21 +13,28 @@
  * kill switch surfaces as its own warn row.
  */
 import { queryAuditEvents } from '../../../src/core/audit'
+
+/** An acknowledgement records a decision and changes nothing the gate cares about. */
+const NO_CHOICE_EFFECTS = { deletesUserContent: false, spendsMoney: false, widensAuthorization: false } as const
 import { getContentDir } from '../../../src/core/content-dir'
-import { LedgerUnavailableError, listBudgetIncidents } from '../../../src/core/execution-ledger'
+import { LedgerUnavailableError, listBudgetIncidents, type BudgetIncidentRow } from '../../../src/core/execution-ledger'
 import { assembleBudgetSpend } from '../../../src/core/budget-spend'
 import { evaluateBudget, milestoneCrossings, type BudgetPolicy, type BudgetRule, type SpendEvidenceGap, type TurnBillingContext } from '../../../src/core/budget'
-import { getSettings } from '../../../src/core/settings'
+import { getSettings, updateSettings } from '../../../src/core/settings'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type {
   HealthCheckRunInput,
+  HealthDecisionChoice,
+  HealthHumanResolution,
+  HealthIncidentDeclaration,
   HealthObservationInput,
   HealthRepairActionDefinition,
   HealthRepairPlanItem,
   JsonObject,
 } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
+import { ruleMatchesIncident } from './incident-rule'
 import { toLocalDayKey } from '@bakin/core/usage-history/store'
 import {
   getUsageHistoryScanState,
@@ -36,6 +43,27 @@ import {
 } from '../../../src/core/usage-history-timer'
 
 const WINDOW_MS = 24 * 60 * 60 * 1000
+
+export const BUDGET_RESUME_ACTION = 'budget-resume'
+
+/**
+ * spend.budget incident families (re-homing rows 160–171). Every row that
+ * is a human decision names its control on the Spend page; the three
+ * repairs are the kill-switch resume (spends money → one-click), the pricing
+ * refresh (self-heal) and the fossil write-off (a policy write → one-click).
+ * policy-unavailable / incidents-unavailable / audit-unavailable /
+ * approaching-cap / settling evidence are observations.
+ */
+export const SPEND_BUDGET_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'dispatch-paused', subjectKind: 'system', resolution: { type: 'repair', actionId: BUDGET_RESUME_ACTION }, required: 'always' },
+  /** Row 161: the same record as the health plugin's row 40 — one subject, one card once subjects fold. */
+  { id: 'policy-invalid', subjectKind: 'record', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+  { id: 'open-incidents', subjectKind: 'system', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+  { id: 'spend-ledger-unavailable', subjectKind: 'system', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+  { id: 'cap-reached', subjectKind: 'setting', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+  { id: 'spend-evidence-pricing', subjectKind: 'system', resolution: { type: 'repair', actionId: 'spend-evidence-refresh-pricing' }, required: 'never' },
+  { id: 'spend-evidence-unattributed', subjectKind: 'setting', resolution: { type: 'repair', actionId: 'accept-unattributed-history' }, required: 'never' },
+]
 
 /** Bounded human summary of evidence gaps — the card must NAME what is
  *  unverifiable ("openai/gpt-5.5: unpriced — 3 runs"), never gesture at it.
@@ -157,14 +185,10 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
         class: 'budget_block',
         impact: 'No tasks dispatch and no billed media runs until an operator resumes dispatch.',
         disposition: 'action_required',
+        subject: { kind: 'system', id: 'dispatch', label: 'Dispatch' },
+        declarationId: 'dispatch-paused',
         resources: [{ kind: 'setting', id: 'dispatch.paused', label: 'Dispatch kill switch' }],
-        resolution: {
-          key: 'resume-dispatch',
-          type: 'instructions',
-          label: 'Resume dispatch',
-          steps: ['Confirm it is safe to resume dispatch, then use Settings or the budget command.'],
-          command: 'bakin budget resume',
-        },
+        resolution: { key: BUDGET_RESUME_ACTION, type: 'repair', label: 'Resume dispatch', actionId: BUDGET_RESUME_ACTION },
       },
     }))
   }
@@ -194,24 +218,19 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
           class: 'service_failure',
           impact: 'Task dispatch and billed media calls defer until spend.json is a valid policy again; your limits are still in the file.',
           disposition: 'action_required',
+          // Row 161: the record itself is the subject — the same one the health plugin's spend-policy check names (row 40).
+          subject: { kind: 'record', id: 'spend.json', label: 'Spend limits file' },
+          declarationId: 'policy-invalid',
           resources: [{ kind: 'plugin', id: 'spend', label: 'Spend plugin' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+          resolution: { key: 'recover-spend-policy', type: 'human', needs: 'decision', label: 'Fix spend.json', href: '/spend?recover=1' },
         },
       }))
     } else {
+      // Row 162: a transient read failure is an observation — the check re-runs it.
       observations.push(healthUnknown({
         key: 'policy',
         summary: 'Spending policy could not be verified — dispatch is failing closed.',
-        detail,
-        incident: {
-          key: 'policy-unavailable',
-          title: 'Spending policy is unavailable',
-          class: 'service_failure',
-          impact: 'Task dispatch and billed media calls defer until the policy read succeeds.',
-          disposition: 'watch',
-          resources: [{ kind: 'plugin', id: 'spend', label: 'Spend plugin' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-        },
+        detail: `${detail} Task dispatch and billed media calls defer until the policy read succeeds.`,
       }))
     }
     return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
@@ -228,76 +247,6 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
   }
 
-  // Open incidents block/alert independently of CURRENT spend — a pause-mode
-  // hold survives window rollover, so "spend is under cap" must never read
-  // as "healthy" while dispatch is frozen (the frozen-but-green trap).
-  try {
-    const open = listBudgetIncidents({ openOnly: true })
-    if (open.length > 0) {
-      const pausing = open.filter((i) => i.kind === 'cap' && i.atCap === 'pause')
-      const evidence: JsonObject = {
-        incidents: open.map((incident) => ({
-          id: incident.id,
-          scope: incident.scope,
-          ...(incident.scopeId ? { scopeId: incident.scopeId } : {}),
-          lane: incident.lane,
-          window: incident.window,
-          kind: incident.kind,
-          atCap: incident.atCap,
-          status: incident.status,
-        })),
-        pausing: pausing.length,
-      }
-      const incident = {
-        key: 'open-incidents',
-        title: 'Budget incidents need resolution',
-        class: 'budget_block' as const,
-        impact: pausing.length > 0
-          ? 'Pause-mode holds are blocking task dispatch until an operator resolves them.'
-          : 'Unresolved budget alerts can hide continued spend pressure.',
-        disposition: 'action_required' as const,
-        resources: open.slice(0, 50).map((entry) => ({
-          kind: 'budget_rule' as const,
-          id: String(entry.id),
-          label: (entry.scopeId ? `${entry.scope} ${entry.scopeId}` : entry.scope).slice(0, 120),
-        })),
-        resolution: {
-          key: 'open-spend-settings',
-          type: 'navigate' as const,
-          label: 'Resolve budget incidents',
-          href: '/spend',
-        },
-      }
-      observations.push(pausing.length > 0
-        ? healthError({
-          key: 'incidents',
-          summary: `${open.length} budget incident${open.length === 1 ? '' : 's'} remain open; ${pausing.length} ${pausing.length === 1 ? 'is' : 'are'} blocking dispatch.`,
-          evidence,
-          incident,
-        })
-        : healthWarning({
-          key: 'incidents',
-          summary: `${open.length} budget incident${open.length === 1 ? ' remains' : 's remain'} open.`,
-          evidence,
-          incident,
-        }))
-    }
-  } catch (err) {
-    observations.push(healthUnknown({
-      key: 'incidents',
-      summary: 'Open budget incidents could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'incidents-unavailable',
-        title: 'Budget incident status is unknown',
-        class: 'evidence_gap',
-        impact: 'Health cannot confirm whether an unresolved budget hold is blocking dispatch.',
-        disposition: 'watch',
-        resources: [{ kind: 'system', id: 'budget-incidents', label: 'Budget incidents' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
-    }))
-  }
 
   const now = Date.now()
   const usageScanBefore = getUsageHistoryScanState()
@@ -317,13 +266,11 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
         class: 'service_failure',
         impact: 'Budget gating fails closed, so task dispatch defers until spend can be evaluated.',
         disposition: 'action_required',
+        subject: { kind: 'system', id: 'spend-ledger', label: 'Spend ledger' },
+        declarationId: 'spend-ledger-unavailable',
         resources: [{ kind: 'system', id: 'spend-ledger', label: 'Spend ledger' }],
-        resolution: {
-          key: 'restore-ledger',
-          type: 'instructions',
-          label: 'Restore the spend ledger',
-          steps: ['Check the execution-ledger storage path and permissions, then rerun Health.'],
-        },
+        // Row 165: the fallback lane investigates the ledger (storage path, permissions).
+        resolution: { key: 'diagnose', type: 'repair', label: 'Investigate the spend ledger', actionId: 'core.diagnose' },
       },
     }))
     return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
@@ -347,19 +294,11 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       }
     }
   } catch (err) {
+    // Row 166: observation only.
     observations.push(healthUnknown({
       key: 'deferred-history',
       summary: 'Recent budget deferrals could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'audit-unavailable',
-        title: 'Budget deferral history is unknown',
-        class: 'evidence_gap',
-        impact: 'Health cannot report how often budget gates deferred work in the last 24 hours.',
-        disposition: 'watch',
-        resources: [{ kind: 'file', id: 'audit-log', label: 'audit.jsonl' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
+      detail: `${err instanceof Error ? err.message : String(err)} Health cannot report how often budget gates deferred work in the last 24 hours.`,
     }))
   }
   const deferNote = deferred ? ` ${deferred} run(s) deferred in the last 24h.` : ''
@@ -402,6 +341,90 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
       continue
     }
     breaches.push({ rule, action: decision.action, window: decision.window, unit: decision.unit, spentValue: decision.spentValue, capValue: decision.capValue })
+  }
+
+  // Open incidents block/alert independently of CURRENT spend — a pause-mode
+  // hold survives window rollover, so "spend is under cap" must never read
+  // as "healthy" while dispatch is frozen (the frozen-but-green trap).
+  // Row 163: REQUIRED only while a hold blocks dispatch NOW — a pause-mode
+  // hold, or an incident whose rule is still at/over its cap on current
+  // spend: the same two facts the gate (and GET /status) derive "deferred"
+  // from. An open defer incident whose rule is back under cap is advisory.
+  let openIncidents: BudgetIncidentRow[] = []
+  let openIncidentsError: string | null = null
+  try {
+    openIncidents = listBudgetIncidents({ openOnly: true })
+  } catch (err) {
+    openIncidentsError = err instanceof Error ? err.message : String(err)
+  }
+  if (openIncidentsError !== null) {
+    // Row 164: observation only.
+    observations.push(healthUnknown({
+      key: 'incidents',
+      summary: 'Open budget incidents could not be verified.',
+      detail: `${openIncidentsError} Health cannot confirm whether an unresolved budget hold is blocking dispatch.`,
+    }))
+  } else if (openIncidents.length > 0) {
+    const open = openIncidents
+    const pausing = open.filter((i) => i.kind === 'cap' && i.atCap === 'pause')
+    const stillOver = open.filter((i) => breaches.some((b) => ruleMatchesIncident(b.rule, i)))
+    const blocking = pausing.length > 0 || stillOver.length > 0
+    const first = open[0]!
+    const evidence: JsonObject = {
+      incidents: open.map((incident) => ({
+        id: incident.id,
+        scope: incident.scope,
+        ...(incident.scopeId ? { scopeId: incident.scopeId } : {}),
+        lane: incident.lane,
+        window: incident.window,
+        kind: incident.kind,
+        atCap: incident.atCap,
+        status: incident.status,
+      })),
+      pausing: pausing.length,
+      stillOver: stillOver.length,
+      blocking,
+    }
+    const incident = {
+      key: 'open-incidents',
+      title: 'Budget incidents need resolution',
+      class: 'budget_block' as const,
+      impact: pausing.length > 0
+        ? 'Pause-mode holds are blocking task dispatch until an operator resolves them.'
+        : stillOver.length > 0
+          ? 'Spend is still at or over a capped limit — work under it is deferring until the cap is raised or the window rolls.'
+          : 'Spend is back under the cap; the open alert only hides continued spend pressure until it is acknowledged.',
+      subject: { kind: 'system' as const, id: `spend-incident:${first.id}`, label: `Budget incident ${first.id}` },
+      declarationId: 'open-incidents',
+      required: blocking,
+      resources: open.slice(0, 50).map((entry) => ({
+        kind: 'budget_rule' as const,
+        id: String(entry.id),
+        label: (entry.scopeId ? `${entry.scope} ${entry.scopeId}` : entry.scope).slice(0, 120),
+      })),
+      // The card's buttons ARE the decisions (raise / ack / resume) through the resolve route the Spend page uses.
+      resolution: {
+        key: 'open-spend-settings',
+        type: 'human' as const,
+        needs: 'decision' as const,
+        label: 'Resolve budget incidents',
+        href: `/spend?incident=${encodeURIComponent(String(first.id))}`,
+        choices: incidentDecisionChoices(first),
+      },
+    }
+    observations.push(blocking
+      ? healthError({
+        key: 'incidents',
+        summary: `${open.length} budget incident${open.length === 1 ? '' : 's'} remain open; ${pausing.length > 0 ? `${pausing.length} ${pausing.length === 1 ? 'is' : 'are'} blocking dispatch` : `${stillOver.length} still at or over the cap`}.`,
+        evidence,
+        incident: { ...incident, disposition: 'action_required' as const },
+      })
+      : healthWarning({
+        key: 'incidents',
+        summary: `${open.length} budget incident${open.length === 1 ? ' remains' : 's remain'} open.`,
+        evidence,
+        incident: { ...incident, disposition: 'advisory' as const },
+      }))
   }
 
   // Agent-scoped breaches attribute directly; global/provider breaches get a
@@ -486,17 +509,16 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
         class: 'budget_block',
         impact: 'Task dispatch is deferring for work covered by the capped budget rules.',
         disposition: 'action_required',
+        subject: { kind: 'setting', id: `spend.cap.${budgetRuleId(capped[0]!.rule, 0)}`, label: `Spending cap (${ruleLabel(capped[0]!.rule)})` },
+        declarationId: 'cap-reached',
         resources: capped.slice(0, 50).map((entry, index) => ({
           kind: 'budget_rule' as const,
           id: budgetRuleId(entry.rule, index),
           label: ruleLabel(entry.rule),
         })),
-        resolution: {
-          key: 'open-spend-settings',
-          type: 'navigate',
-          label: 'Review spending caps',
-          href: '/spend',
-        },
+        // Row 167: raise the cap (the rule's row on the Limits tab, focused by
+        // `?field=`) or acknowledge the open incident it raised — both on the card.
+        resolution: capReachedResolution(capped[0]!.rule, openIncidents),
       },
     }))
   } else if (incompleteSpendRules.length > 0
@@ -527,102 +549,78 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
     const detail = incompleteSpendRules.length > 0
       ? `${incompleteSpendRules.length} budget rule${incompleteSpendRules.length === 1 ? '' : 's'} cannot be evaluated because one or more matching spend records have incomplete value or attribution evidence.${detailSuffix}`
       : `Known Bakin-managed spend is below its configured limits, but recent transcript-observed usage is incomplete.${detailSuffix}`
-    observations.push(healthUnknown({
-      key: 'spend',
-      summary: 'Spend could not be fully verified.',
-      detail,
-      evidence: data,
-      incident: {
-        key: 'spend-evidence-incomplete',
-        title: 'Spend evidence is incomplete',
-        class: 'evidence_gap',
-        impact: `${incompleteSpendRules.length > 0
-          ? 'Matching budget caps fail closed until spend values and billing attribution can be verified.'
-          : 'Health cannot confirm that agent spend outside Bakin-managed runs remains within budget.'}${impactSummary}`,
-        // Pricing gaps are ACTIONABLE (the one-click catalog refresh) —
-        // watch. Attribution-only gaps and scan freshness self-resolve as
-        // transcripts land, and caps fail closed meanwhile: advisory, so
-        // a state that needs no human stops lighting the banner.
-        disposition: hasPricingGap ? 'watch' : 'advisory',
-        resources: incompleteSpendRules.length > 0
-          ? [
-              { kind: 'system' as const, id: 'spend-ledger', label: 'Spend ledger' },
-              { kind: 'system' as const, id: 'usage-history', label: 'Usage history' },
-            ]
-          : [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
-        resolution: hasPricingGap
-          ? {
-              key: 'refresh-model-pricing',
-              type: 'repair',
-              label: 'Refresh model pricing',
-              actionId: 'spend-evidence-refresh-pricing',
-            }
-          : hasFossilGap
-            ? {
-                // Attribution-only gaps: recent ones settle on their own,
-                // but fossils (old sessions that will never attribute)
-                // otherwise fail caps closed FOREVER. The write-off is a
-                // confirmation-gated repair — accept only history you know
-                // will never attribute.
-                key: 'accept-unattributed-history',
-                type: 'repair',
-                label: 'Accept unattributed history',
-                actionId: 'accept-unattributed-history',
-              }
-            : {
-                key: 'attribution-settles',
-                type: 'instructions',
-                label: 'Attribution completes on its own',
-                steps: [
-                  'Recent usage lacks billing attribution, which completes as the runtime finishes writing its transcripts — no action needed.',
-                  'Budget caps stay fail-closed (deferring, never overspending) until then — that is by design.',
-                  'If the same gaps persist for hours across recheck, report it: attribution should converge without help.',
-                ],
-              },
-      },
-    }))
+    const impact = `${incompleteSpendRules.length > 0
+      ? 'Matching budget caps fail closed until spend values and billing attribution can be verified.'
+      : 'Health cannot confirm that agent spend outside Bakin-managed runs remains within budget.'}${impactSummary}`
+    const resources = incompleteSpendRules.length > 0
+      ? [
+          { kind: 'system' as const, id: 'spend-ledger', label: 'Spend ledger' },
+          { kind: 'system' as const, id: 'usage-history', label: 'Usage history' },
+        ]
+      : [{ kind: 'system' as const, id: 'usage-history', label: 'Usage history' }]
+    // Rows 168–170. A pricing gap is the self-heal catalog refresh (watch —
+    // actionable). A fossil (old sessions that will never attribute) is the
+    // confirmation-gated write-off (advisory). Anything else settles on its
+    // own as transcripts land and is an OBSERVATION: caps stay fail-closed
+    // (deferring, never overspending) meanwhile — by design.
+    observations.push(hasPricingGap
+      ? healthUnknown({
+        key: 'spend',
+        summary: 'Spend could not be fully verified.',
+        detail,
+        evidence: data,
+        incident: {
+          key: 'spend-evidence-incomplete',
+          title: 'Spend evidence is incomplete',
+          class: 'evidence_gap',
+          impact,
+          disposition: 'watch',
+          subject: { kind: 'system', id: 'pricing-cache', label: 'Model pricing cache' },
+          declarationId: 'spend-evidence-pricing',
+          resources,
+          resolution: { key: 'refresh-model-pricing', type: 'repair', label: 'Refresh model pricing', actionId: 'spend-evidence-refresh-pricing' },
+        },
+      })
+      : hasFossilGap
+        ? healthUnknown({
+          key: 'spend',
+          summary: 'Spend could not be fully verified.',
+          detail,
+          evidence: data,
+          incident: {
+            key: 'spend-evidence-incomplete',
+            title: 'Spend evidence is incomplete',
+            class: 'evidence_gap',
+            impact,
+            disposition: 'advisory',
+            subject: { kind: 'setting', id: 'spend.acceptUnattributedBefore', label: 'Unattributed-history cutoff' },
+            declarationId: 'spend-evidence-unattributed',
+            resources,
+            resolution: { key: 'accept-unattributed-history', type: 'repair', label: 'Accept unattributed history', actionId: 'accept-unattributed-history' },
+          },
+        })
+        : healthUnknown({
+          key: 'spend',
+          summary: 'Spend could not be fully verified.',
+          detail: `${detail} Recent usage lacks billing attribution, which completes as the runtime finishes writing its transcripts — no action needed; budget caps stay fail-closed (deferring, never overspending) until then. If the same gaps persist for hours across rechecks, report it.`,
+          evidence: data,
+        }))
   } else if (approaching) {
     const detail = ` ${ruleLabel(approaching.rule)} ${approaching.window} ${approaching.rule.lane} at ${Math.round((approaching.spentValue / approaching.capValue) * 100)}% of ${fmtValue(approaching.unit, approaching.capValue)}.`
+    // Row 171: an observation — covered work may begin deferring; review at /spend.
     observations.push(healthWarning({
       key: 'spend',
       summary: 'Spend is approaching a budget limit.',
-      detail: `${detail}${deferNote}`.trim(),
+      detail: `${detail}${deferNote} Covered work may begin deferring if spend continues at the current pace (review at /spend).`.trim(),
       evidence: data,
-      incident: {
-        key: 'approaching-cap',
-        title: 'Spend is approaching its cap',
-        class: 'budget_block',
-        impact: 'Covered work may begin deferring if spend continues at the current pace.',
-        disposition: 'watch',
-        resources: [{ kind: 'budget_rule', id: 'active', label: 'Active spending rules' }],
-        resolution: {
-          key: 'open-spend-settings',
-          type: 'navigate',
-          label: 'Review spending',
-          href: '/spend',
-        },
-      },
     }))
   } else if (deferred > 0) {
+    // Row 171: an observation.
     observations.push(healthWarning({
       key: 'spend',
       summary: 'Spend is approaching a budget limit.',
-      detail: deferNote.trim(),
+      detail: `${deferNote} Covered work may begin deferring if spend continues at the current pace (review at /spend).`.trim(),
       evidence: data,
-      incident: {
-        key: 'approaching-cap',
-        title: 'Spend is approaching its cap',
-        class: 'budget_block',
-        impact: 'Covered work may begin deferring if spend continues at the current pace.',
-        disposition: 'watch',
-        resources: [{ kind: 'budget_rule', id: 'active', label: 'Active spending rules' }],
-        resolution: {
-          key: 'open-spend-settings',
-          type: 'navigate',
-          label: 'Review spending',
-          href: '/spend',
-        },
-      },
     }))
   } else {
     observations.push(healthHealthy({
@@ -634,6 +632,54 @@ export async function checkBudget(): Promise<HealthCheckRunInput> {
   return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
+/** Rows 163/167: the resolve route the Spend page's banner uses, as card buttons. */
+export function incidentDecisionChoices(incident: Pick<BudgetIncidentRow, 'id' | 'scope' | 'scopeId' | 'lane' | 'window' | 'status'>): HealthDecisionChoice[] {
+  const url = `/api/plugins/spend/incidents/${incident.id}/resolve`
+  const who = incident.scopeId ? `${incident.scope} ${incident.scopeId}` : 'the global rule'
+  return [
+    // A raise needs an amount: the banner (deep-linked) holds that input.
+    { key: 'raise', kind: 'link', label: 'Raise the limit', href: `/spend?incident=${encodeURIComponent(String(incident.id))}` },
+    ...(incident.status === 'open'
+      ? [{ key: 'ack', kind: 'request' as const, label: 'Acknowledge', method: 'POST' as const, url, body: { action: 'ack' }, effects: NO_CHOICE_EFFECTS }]
+      : []),
+    {
+      key: 'resume',
+      kind: 'request',
+      label: 'Resume',
+      method: 'POST',
+      url,
+      body: { action: 'resume' },
+      // Resuming dispatch resumes spending — the confirm is required, not optional.
+      effects: { deletesUserContent: false, spendsMoney: true, widensAuthorization: false },
+      confirm: {
+        title: `Resume dispatch for ${who}?`,
+        description: `Work covered by this ${incident.window} ${incident.lane} limit dispatches again. Bakin refuses this while spend is still at or over the limit — raise the limit instead.`,
+      },
+    },
+  ]
+}
+
+/** Row 167: the capped rule's row on the Limits tab is the control; an open incident on that rule can be acknowledged from the card. */
+export function capReachedResolution(rule: BudgetRule, openIncidents: readonly BudgetIncidentRow[]): HealthHumanResolution {
+  const ruleId = budgetRuleId(rule, 0)
+  const field = `budget-rule-${ruleId}`
+  const incident = openIncidents.find((candidate) => ruleMatchesIncident(rule, candidate))
+  return {
+    key: 'open-spend-settings',
+    type: 'human',
+    needs: 'decision',
+    label: 'Review spending caps',
+    href: `/spend?tab=limits&field=${encodeURIComponent(ruleId)}`,
+    field,
+    choices: [
+      { key: 'raise', kind: 'link', label: 'Raise the limit', href: `/spend?tab=limits&field=${encodeURIComponent(ruleId)}`, field },
+      ...(incident && incident.status === 'open'
+        ? [{ key: 'ack', kind: 'request' as const, label: 'Acknowledge', method: 'POST' as const, url: `/api/plugins/spend/incidents/${incident.id}/resolve`, body: { action: 'ack' }, effects: NO_CHOICE_EFFECTS }]
+        : []),
+    ],
+  }
+}
+
 function budgetRuleId(rule: BudgetRule, index: number): string {
   // Rules carry stable uuids now (ack/snooze continuity keys on them); the
   // synthesized identity is only the fallback for a rule that never got one.
@@ -642,18 +688,54 @@ function budgetRuleId(rule: BudgetRule, index: number): string {
   return raw.toLowerCase().replace(/[^a-z0-9._:-]/g, '-').slice(0, 120) || `rule-${index}`
 }
 
+
 /**
- * One-click repair for the pricing leg of incomplete spend evidence: force-
- * refresh the model catalog (with pricing) through the models plugin's own
- * hook — the deterministic version of "open the Models page so pricing
- * caches", which asked a human to trigger a machine operation (field
- * feedback, 2026-07-22). Attribution gaps are NOT repairable here; they
- * complete as transcripts land, and the incident copy says so.
+ * `budget-resume` (self-healing PR1 slice 1.3d, row 160): the global kill
+ * switch off — what `bakin budget resume` and the Settings toggle write.
+ * Resuming re-runs turns and billed media, so it is `manual`.
  */
+export function budgetResumeRepair(): HealthRepairActionDefinition {
+  return {
+    id: BUDGET_RESUME_ACTION,
+    name: 'Resume dispatch',
+    // Row 160: resuming re-runs turns and billed media — spends money, one-click; a policy write.
+    effects: { deletesUserContent: false, spendsMoney: true, widensAuthorization: false },
+    mutation: 'policy',
+    operationPlan: () => ({ stages: [{ id: 'resume', kind: 'committing', label: 'Clear the kill switch' }], pointOfNoReturn: 'resume' }),
+    async plan(target) {
+      if (!getSettings().dispatch?.paused) return []
+      return [{
+        id: BUDGET_RESUME_ACTION,
+        actionId: BUDGET_RESUME_ACTION,
+        title: 'Resume dispatch',
+        reason: 'The global kill switch is on: no task dispatches and no billed media runs until it is cleared.',
+        ...repairTargetSelection(target),
+        changes: [{ kind: 'setting', target: 'dispatch.paused', action: 'update', description: 'Set dispatch.paused to false. Queued tasks dispatch on the next cycle; limits and holds still apply.' }],
+      }]
+    },
+    async apply(items, op) {
+      if (items.length === 0) return []
+      op.stage('resume')
+      try {
+        updateSettings({ dispatch: { paused: false } })
+        op.item('resume', { id: 'dispatch.paused', label: 'dispatch.paused', status: 'done' })
+        return items.map((item) => ({ itemId: item.id, actionId: item.actionId, status: 'applied' as const, message: 'Dispatch resumed; queued tasks dispatch on the next cycle.', affectedCheckIds: ['spend.budget'], changes: item.changes }))
+      } catch (err) {
+        const message = `Could not clear the kill switch: ${err instanceof Error ? err.message : String(err)}`
+        op.item('resume', { id: 'dispatch.paused', label: 'dispatch.paused', status: 'failed', message })
+        return items.map((item) => ({ itemId: item.id, actionId: item.actionId, status: 'failed' as const, message, affectedCheckIds: ['spend.budget'], changes: item.changes }))
+      }
+    },
+  }
+}
+
 export function spendEvidenceRepair(): HealthRepairActionDefinition {
   return {
     id: 'spend-evidence-refresh-pricing',
     name: 'Refresh model pricing',
+    // Row 168: a local cache refresh — self-heal.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     // Read-only toward providers; the local cache swap is the only write.
     operationPlan: () => ({
       stages: [{ id: 'refresh', kind: 'downloading', label: 'Refresh the model catalog with pricing' }],
@@ -665,7 +747,6 @@ export function spendEvidenceRepair(): HealthRepairActionDefinition {
         actionId: 'spend-evidence-refresh-pricing',
         title: 'Refresh model pricing',
         reason: 'Spend records reference models without cached pricing, so USD caps cannot be evaluated.',
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: [{
           kind: 'other',
@@ -722,6 +803,9 @@ export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition 
   return {
     id: 'accept-unattributed-history',
     name: 'Accept unattributed history',
+    // Row 169: a budget-policy write widens what the operator authorized — one-click.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true },
+    mutation: 'policy',
     operationPlan: () => ({
       stages: [{ id: 'record', kind: 'committing', label: 'Record the write-off cutoff' }],
       pointOfNoReturn: 'record',
@@ -733,7 +817,6 @@ export function acceptUnattributedHistoryRepair(): HealthRepairActionDefinition 
         actionId: 'accept-unattributed-history',
         title: `Accept unattributed usage before ${cutoff}`,
         reason: 'Old sessions with no billing-lane evidence will never attribute; they keep budget caps fail-closed and the spend card lit until explicitly written off.',
-        safety: 'destructive',
         ...repairTargetSelection(target),
         changes: [{
           kind: 'other',

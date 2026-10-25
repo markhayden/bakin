@@ -337,14 +337,16 @@ describe('checkAgentBurn', () => {
     expect(results).toHaveLength(2)
     const unexplainedRow = results.find((r) => r.key === 'unexplained:pixel')!
     expect(unexplainedRow.status).toBe('warning')
-    expect(unexplainedRow.incident?.disposition).toBe('watch')
+    // Row 48: an observation naming the diagnostics page — never a card.
+    expect(unexplainedRow.incident).toBeUndefined()
+    expect(unexplainedRow.detail).toContain('/team/pixel?tab=diagnostics')
     expect(unexplainedRow.evidence).toMatchObject({ agents: ['pixel'], kinds: ['unexplained'], tokens: 790_000 })
     const legacyRow = results.find((r) => r.key === 'agent:pixel')!
     expect(legacyRow.summary).toContain('pixel')
     expect(legacyRow.evidence).toEqual({ agents: ['pixel'], kinds: ['effort-no-outcome'] })
   })
 
-  it('interactive usage is an advisory incident with calm copy', async () => {
+  it('interactive usage is a calm observation (row 47) — never a card', async () => {
     reports = [{
       ...cleanReport,
       agent: 'main',
@@ -358,9 +360,8 @@ describe('checkAgentBurn', () => {
     const row = results[0]!
     expect(row.status).toBe('warning')
     expect(row.key).toBe('interactive:main')
-    expect(row.incident?.disposition).toBe('advisory')
-    expect(row.incident?.title).toBe('Interactive agent chat usage')
-    expect(row.incident?.impact).toContain('normal use')
+    expect(row.incident).toBeUndefined()
+    expect(row.detail).toContain('normal use')
     expect(row.evidence).toMatchObject({ agents: ['main'], kinds: ['interactive'], tokens: 10_000_000 })
   })
 
@@ -407,8 +408,9 @@ describe('checkAgentBurn', () => {
     const results = observed(await checkAgentBurn())
     const row = results[0]!
     expect(row.status).toBe('warning')
-    expect(row.incident?.disposition).toBe('watch')
-    expect(row.incident?.title).toContain('scheduled jobs present')
+    // Row 49: the downgrade is an observation — never a card.
+    expect(row.incident).toBeUndefined()
+    expect(row.detail).toContain('scheduled jobs')
     expect(row.evidence).toMatchObject({ downgraded: true, scheduledJobs: ['nightly-digest'] })
   })
 

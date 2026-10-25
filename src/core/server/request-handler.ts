@@ -51,6 +51,8 @@ import * as pluginsRestoreRoute from '../../../packages/host/src/api/plugins/res
 import * as pluginsUpgradeRoute from '../../../packages/host/src/api/plugins/upgrade'
 import * as pluginsLinkRoute from '../../../packages/host/src/api/plugins/link'
 import * as pluginsUnlinkRoute from '../../../packages/host/src/api/plugins/unlink'
+import * as pluginsDisableRoute from '../../../packages/host/src/api/plugins/disable'
+import * as pluginsEnableRoute from '../../../packages/host/src/api/plugins/enable'
 import * as agentPackagesListRoute from '../../../packages/host/src/api/agent-packages/list'
 import * as agentPackagesInstallRoute from '../../../packages/host/src/api/agent-packages/install'
 import * as agentPackagesDynamicRoute from '../../../packages/host/src/api/agent-packages/dynamic'
@@ -449,6 +451,16 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
+    // Row 98 containment: disable / enable an installed user plugin (bounded, install-state held).
+    if (url.pathname === '/api/plugins/disable' && req.method === 'POST') {
+      dispatchWebHandler(req, res, pluginsDisableRoute.post)
+      return
+    }
+    if (url.pathname === '/api/plugins/enable' && req.method === 'POST') {
+      dispatchWebHandler(req, res, pluginsEnableRoute.post)
+      return
+    }
+
     // ─── Agent-package routes (install / list / remove / update / lessons) ──
     // Distinct from the runtime /api/agents/* surface below — see
     // packages/host/src/api/agent-packages/dynamic.ts for the rationale.
@@ -673,7 +685,9 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       url.pathname !== '/api/plugins/remove' &&
       url.pathname !== '/api/plugins/upgrade' &&
       url.pathname !== '/api/plugins/link' &&
-      url.pathname !== '/api/plugins/unlink'
+      url.pathname !== '/api/plugins/unlink' &&
+      url.pathname !== '/api/plugins/disable' &&
+      url.pathname !== '/api/plugins/enable'
     ) {
       const method = req.method?.toLowerCase() ?? 'get'
       const handler = pluginCatchAllRoute[method === 'delete' ? 'del' : method as 'get' | 'post' | 'put' | 'patch' | 'del']

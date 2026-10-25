@@ -57,6 +57,14 @@ export interface PluginFailureState {
   missingDependencies?: string[]
 }
 
+/** A user plugin the lock ledger marks disabled: discovered, listed, never activated (row 98 containment). */
+export interface PluginDisabledState {
+  id: string
+  name: string
+  version: string
+  description: string
+}
+
 export interface PluginLoadEntry {
   path: string
   id: string

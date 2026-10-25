@@ -509,6 +509,42 @@ describe('PluginRegistryImpl', () => {
       expect(() => registerPluginDefinition('bravo', 'shared-flow', { id: 'shared-flow', name: 'Claimed', steps: [] } as any)).not.toThrow()
     })
 
+    it('suspendPlugin (the disable route, row 98 / Codex r2 N1) sweeps the runtime surfaces but keeps the durable search table; deactivatePlugin is the one that purges', async () => {
+      const activate = `
+        ctx.hooks.register('things.ping', () => 'pong')
+        ctx.search.registerContentType({ table: 'things', schemaVersion: 1, schema: { title: { type: 'text' } } })
+      `
+      // A content type wires GET /search — declared, with the permission the search API asks for.
+      const pluginDir = writeUserPlugin('things', { activate, manifest: { permissions: ['search.write'], contributes: { apiRoutes: [{ method: 'GET', path: '/search', summary: 'Search things' }] } } })
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+      const { getContentTypes, fullTableName, ensurePluginSearchReady } = await import('@/core/search-registry')
+      const { tableStatus } = await import('@bakin/core/search/tables')
+      const logical = fullTableName('things')
+      expect(getHookRegistry().has('things.ping')).toBe(true)
+      expect(getContentTypes().has(logical)).toBe(true)
+      // The durable registration is written when the table is ensured (live activation does this; boot does it in its own pass).
+      await ensurePluginSearchReady('things')
+      expect(tableStatus(logical)).not.toBeNull()
+
+      // Suspend: hooks, exec tools and the search RUNTIME wiring go; the plugin state is gone; the durable table registration stays.
+      expect(await pluginRegistry.suspendPlugin('things')).toBe(true)
+      expect(getHookRegistry().has('things.ping')).toBe(false)
+      expect(getContentTypes().has(logical)).toBe(false)
+      expect(pluginRegistry.getPluginState('things')).toBeUndefined()
+      expect(tableStatus(logical)).not.toBeNull()
+      expect(await pluginRegistry.suspendPlugin('things')).toBe(false) // idempotent on an absent plugin
+
+      // Enable = activate the directory again: the content type re-registers over the data it kept.
+      await pluginRegistry.activateUserPluginFromDir(pluginDir, { cacheBust: true })
+      expect(getHookRegistry().has('things.ping')).toBe(true)
+      expect(getContentTypes().has(logical)).toBe(true)
+      expect(tableStatus(logical)).not.toBeNull()
+
+      // Uninstall is the destructive path: the table registration is retired.
+      await pluginRegistry.deactivatePlugin('things', { callShutdown: true, removeState: true })
+      expect(tableStatus(logical)).toBeNull()
+    })
+
     it('registerWorkflow cross-plugin id collision THROWS and fails activation (R18)', async () => {
       // Same-plugin re-registration is an UPDATE by contract (hot-reload of
       // defaults re-registers); only a cross-plugin id collision throws.
@@ -789,6 +825,35 @@ describe('PluginRegistryImpl', () => {
         source: 'user',
         version: '2.5.0',
       })
+    })
+
+    it('skips a user plugin the lock ledger marks disabled and lists it as disabled (row 98 containment)', async () => {
+      const pluginDir = writeUserPlugin('contained-user', {
+        activate: `global.__contained = (global.__contained || 0) + 1`,
+      })
+      const contentDir = await import('../../packages/core/src/content-dir')
+      contentDir.resetContentDir()
+      const { getPluginLockfilePath } = await import('../../packages/core/src/plugins/lockfile')
+      const lockPath = getPluginLockfilePath()
+      mkdirSync(dirname(lockPath), { recursive: true })
+      writeFileSync(lockPath, JSON.stringify({
+        version: 1,
+        plugins: {
+          'contained-user': {
+            source: pluginDir, type: 'local', ref: '', commitSha: '',
+            installedAt: '2026-05-25T02:57:29.278Z', version: '3.1.0', permissions: [], manifestSha: 'sha256:test',
+            disabled: true,
+          },
+        },
+      }))
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect((globalThis as any).__contained).toBeUndefined()
+      expect(pluginRegistry.getPluginIds()).not.toContain('contained-user')
+      expect(pluginRegistry.isPluginDisabled('contained-user')).toBe(true)
+      const listed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'contained-user')
+      expect(listed).toMatchObject({ status: 'disabled', source: 'user', version: '3.1.0', routes: 0 })
     })
 
     it('reports a clear failure when a user plugin is not built', async () => {

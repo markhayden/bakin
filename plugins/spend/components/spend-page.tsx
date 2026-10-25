@@ -10,6 +10,7 @@ import { Banner, Button, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
 
 import type { SpendTab, SpendWindow } from '../types'
 import { IncidentBanners } from './incident-banners'
+import { SpendRecoverPage } from './spend-recover'
 import { LimitsTab } from './limits-tab'
 import { OverviewTab } from './overview-tab'
 import type { SpendBreakdownDimension } from './spend-breakdown'
@@ -40,6 +41,11 @@ export function SpendPage() {
   const [spendMetric, setSpendMetric] = useQueryState('spendMetric', 'cost')
   const [spendPage, setSpendPage] = useQueryState('spendPage', '1')
   const [spendShowAll, setSpendShowAll] = useQueryState('spendAll', 'false')
+  // `?recover=1` is the spend.json recover editor; `?incident=<id>` lands on that incident's banner (self-healing 1.4b).
+  const [recoverParam, setRecoverParam] = useQueryState('recover', '')
+  const [incidentParam] = useQueryState('incident', '')
+  // `?field=<rule id>` (a Health cap-reached card) lands on that rule's row on the Limits tab.
+  const [fieldParam] = useQueryState('field', '')
   const paused = m.budgetStatus?.paused === true
 
   // Opening Spend is "seen" for the 50/75 heads-ups: their badge entries
@@ -102,6 +108,10 @@ export function SpendPage() {
     />
   ) : undefined
 
+  if (recoverParam === '1') {
+    return <SpendRecoverPage onExit={() => setRecoverParam('')} />
+  }
+
   return (
     <Page>
       <PageHeader
@@ -137,7 +147,7 @@ export function SpendPage() {
       {m.budgetWarnings.map((warning) => (
         <Banner key={warning} tone="attention" title="Budget rule needs review" description={warning} />
       ))}
-      <IncidentBanners incidents={m.incidents} resolveIncident={m.resolveIncident} rules={m.budgetRules} facets={m.spend?.facets} paused={paused} />
+      <IncidentBanners incidents={m.incidents} resolveIncident={m.resolveIncident} rules={m.budgetRules} facets={m.spend?.facets} paused={paused} highlightId={incidentParam || undefined} />
 
       <Tabs value={tab} onValueChange={(id) => setTab(id === 'overview' ? null : id)}>
         <TabsList variant="underline" activateOnFocus aria-label="Spend sections">
@@ -164,7 +174,7 @@ export function SpendPage() {
               onShowAllChange={setSpendShowAll}
             />
           ) : (
-            <LimitsTab m={m} />
+            <LimitsTab m={m} highlightRuleId={fieldParam || undefined} />
           )}
         </Suspense>
       </PageBody>

@@ -13,11 +13,17 @@
  * have no prebuilds at all.
  */
 import { healthError, healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition, HealthSubject } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { MEDIA_PLAN } from '../../../../packages/core/src/media/install-plan'
 
 export const MEDIA_REPAIR_ACTION_ID = 'media-install-store'
+const SUBJECT: HealthSubject = { kind: 'system', id: 'media-store', label: 'Image processing (sharp)' }
+/** Rows 3–4 self-heal through the store installer; row 5 (unsupported platform) is an observation. */
+export const MEDIA_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'media-store-broken', subjectKind: 'system', resolution: { type: 'repair', actionId: MEDIA_REPAIR_ACTION_ID }, required: 'always' },
+  { id: 'media-store-missing', subjectKind: 'system', resolution: { type: 'repair', actionId: MEDIA_REPAIR_ACTION_ID }, required: 'always' },
+]
 
 interface MediaDeps {
   bundledSharpAvailable(): Promise<boolean>
@@ -70,6 +76,8 @@ export async function checkMediaSharp(depsOverride?: MediaDeps): Promise<HealthC
           title: 'Image processing store is present but broken',
           impact: 'Images over 2 MB cannot be enriched; asset exports and thumbnails fail — while the receipt claims otherwise.',
           disposition: 'action_required',
+          subject: SUBJECT,
+          declarationId: 'media-store-broken',
           resolution: {
             key: 'reinstall-media-store',
             type: 'repair',
@@ -88,27 +96,12 @@ export async function checkMediaSharp(depsOverride?: MediaDeps): Promise<HealthC
   }
 
   if (store.status === 'unsupported') {
+    // Row 5: a platform gap is an observation, never a card — nothing fixes it here.
     return healthObserved([healthWarning({
       key: 'media.sharp',
       summary: `No sharp prebuilds for this platform (${store.platform}).`,
-      detail: 'Image resize, thumbnails, and >2 MB enrichment stay degraded — no remediation exists on this platform.',
-      evidence: { platform: store.platform },
-      incident: {
-        key: 'unsupported-platform',
-        title: 'Image processing has no prebuilds for this platform',
-        class: 'unsupported_surface',
-        impact: 'Images over 2 MB cannot be enriched; asset exports and thumbnails stay degraded.',
-        disposition: 'advisory',
-        resolution: {
-          key: 'unsupported-platform-info',
-          type: 'instructions',
-          label: 'Why this platform is degraded',
-          steps: [
-            'sharp ships prebuilds for darwin-arm64, linux-x64 (glibc), and linux-arm64 (glibc) only.',
-            'Run Bakin on a supported platform, or install from source with sharp as a devDependency.',
-          ],
-        },
-      },
+      detail: 'Image resize, thumbnails, and >2 MB enrichment stay degraded — sharp ships prebuilds for darwin-arm64, linux-x64 (glibc) and linux-arm64 (glibc) only. Run Bakin on a supported platform, or install from source with sharp as a devDependency.',
+      evidence: { platform: store.platform, unsupported: true },
     })])
   }
 
@@ -122,6 +115,8 @@ export async function checkMediaSharp(depsOverride?: MediaDeps): Promise<HealthC
       title: 'Image processing is degraded on this install',
       impact: 'Generated or attached images over 2 MB cannot be enriched or sent to vision models; asset exports and thumbnails fail.',
       disposition: 'action_required',
+      subject: SUBJECT,
+      declarationId: 'media-store-missing',
       resolution: {
         key: 'install-media-store',
         type: 'repair',
@@ -136,6 +131,10 @@ export function mediaStoreRepair(): HealthRepairActionDefinition {
   return {
     id: MEDIA_REPAIR_ACTION_ID,
     name: 'Install the media store (sharp prebuilds)',
+    // Pinned, sha256-verified tarballs from a fixed source: no user content,
+    // no spend, nothing the operator did not already authorize (self-heal).
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'rebuild', // pinned sharp tarballs (trusted by construction) — a rebuild of the store, never a new identity
     resources: ['media-store'],
     operationPlan: () => MEDIA_PLAN,
     async plan(target) {
@@ -144,7 +143,6 @@ export function mediaStoreRepair(): HealthRepairActionDefinition {
         actionId: MEDIA_REPAIR_ACTION_ID,
         title: 'Download pinned sharp prebuilds into ~/.bakin/media',
         reason: 'The compiled binary cannot carry sharp’s native modules; the store provides them with a probe-verified install.',
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: [{
           kind: 'other',

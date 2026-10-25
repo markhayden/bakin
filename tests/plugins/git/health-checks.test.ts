@@ -21,14 +21,12 @@ describe('Git worktree health check', () => {
     expect(result[0]).toMatchObject({ key: 'registry', status: 'healthy' })
   })
 
-  it('reports unreadable registry state as a watch incident', async () => {
+  it('reports unreadable registry state as an observation (row 195)', async () => {
     const result = observations(await checkWorktrees(gitContext('{not-json')))
 
-    expect(result[0]).toMatchObject({
-      key: 'registry-read',
-      status: 'warning',
-      incident: { disposition: 'watch', resolution: { type: 'rerun' } },
-    })
+    expect(result[0]).toMatchObject({ key: 'registry-read', status: 'warning' })
+    expect(result[0]!.incident).toBeUndefined()
+    expect(result[0]!.detail).toContain('cannot confirm')
   })
 
   it('makes a missing active worktree actionable', async () => {
@@ -54,8 +52,10 @@ describe('Git worktree health check', () => {
       status: 'warning',
       incident: {
         disposition: 'action_required',
+        subject: { kind: 'task', id: 'task-1' },
+        declarationId: 'missing',
         resources: expect.arrayContaining([{ kind: 'task', id: 'task-1', label: 'task-1' }]),
-        resolution: { type: 'instructions' },
+        resolution: { type: 'repair', actionId: 'git-release-worktree' },
       },
     })
   })

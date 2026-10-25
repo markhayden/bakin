@@ -18,6 +18,8 @@ import { CHANNEL_HEALTH_CHECK_IDS, subscribeChannelReadiness } from '../../src/c
 import { wireChannelHealthReruns } from './lib/channel-readiness-reruns'
 import { acknowledgeHealthIncident } from '../../src/core/doctor-report-cache'
 import { HealthAckNotFoundError, HealthAckStoreError, inspectAckStore } from '../../src/core/health-acks'
+import { acceptUserEditedSkills } from '../../src/core/onboarding/plugin-assets'
+import { forgetKeptSearchTables, keepSearchTables, readKeptSearchTables } from './lib/system-checks/kept-search-tables'
 import { createLogger } from '../../src/core/logger'
 import { getAgentUsageSnapshot, getAllAgentUsage } from '../../src/core/agent-usage'
 import {
@@ -55,32 +57,34 @@ import {
   getHealthCheck,
   type HealthCheckDef,
 } from '../../src/core/health-check-registry'
-import { checkContentDir } from './lib/system-checks/content-dir'
-import { checkMediaSharp, mediaStoreRepair } from './lib/system-checks/media'
-import { checkCapabilities } from './lib/system-checks/capabilities'
-import { checkGithubReadiness } from './lib/system-checks/github-readiness'
-import { checkService } from './lib/system-checks/service'
-import { checkRuntime } from './lib/system-checks/runtime'
-import { checkSessionStore } from './lib/system-checks/session-store'
-import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
-import { checkChannelAliases } from './lib/system-checks/channel-aliases'
-import { checkDeliveryDiscord } from './lib/system-checks/delivery-discord'
-import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
-import { checkExecutionSafety } from './lib/system-checks/execution-safety'
-import { checkRunDirs, runDirsSweepRepair } from './lib/system-checks/run-dirs'
-import { checkStartupContextSize } from './lib/system-checks/context-report'
-import { checkAgentBurn } from './lib/system-checks/agent-burn'
-import { checkSearchAdapter, searchScarRepair } from './lib/system-checks/search'
+import { checkContentDir, CONTENT_DIR_INCIDENTS } from './lib/system-checks/content-dir'
+import { checkMediaSharp, mediaStoreRepair, MEDIA_INCIDENTS } from './lib/system-checks/media'
+import { checkCapabilities, CAPABILITIES_INCIDENTS } from './lib/system-checks/capabilities'
+import { checkGithubReadiness, GITHUB_READINESS_INCIDENTS } from './lib/system-checks/github-readiness'
+import { checkService, serviceSetupRepair, SERVICE_INCIDENTS } from './lib/system-checks/service'
+import { checkRuntime, runtimeRestartRepair, RUNTIME_INCIDENTS } from './lib/system-checks/runtime'
+import { checkSessionStore, sessionStorePruneRepair, SESSION_STORE_INCIDENTS } from './lib/system-checks/session-store'
+import { checkChannelApprovals, CHANNEL_APPROVALS_INCIDENTS } from './lib/system-checks/channel-approvals'
+import { checkChannelAliases, CHANNEL_ALIASES_INCIDENTS } from './lib/system-checks/channel-aliases'
+import { checkDeliveryDiscord, discordBridgeReconnectRepair, DELIVERY_DISCORD_INCIDENTS } from './lib/system-checks/delivery-discord'
+import { checkRestartRecovery, requeueStrandedTasksRepair, RESTART_RECOVERY_INCIDENTS } from './lib/system-checks/restart-recovery'
+import { checkExecutionSafety, EXECUTION_SAFETY_INCIDENTS } from './lib/system-checks/execution-safety'
+import { checkRunDirs, runDirsSweepRepair, RUN_DIRS_INCIDENTS } from './lib/system-checks/run-dirs'
+import { checkStartupContextSize, CONTEXT_REPORT_INCIDENTS } from './lib/system-checks/context-report'
+import { checkAgentBurn, AGENT_BURN_INCIDENTS } from './lib/system-checks/agent-burn'
+import { checkSearchAdapter, searchScarRepair, SEARCH_INCIDENTS } from './lib/system-checks/search'
 import { searchOutboxRepair } from './lib/system-checks/search-outbox'
-import { checkSearchConsistency, searchConsistencyRepair } from './lib/system-checks/search-consistency'
-import { checkSearchSpin, searchSpinRepair } from './lib/system-checks/search-spin'
-import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchConsistencyRestartRepair, searchEngineBurnRepair } from './lib/system-checks/search-engine-watch'
-import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
-import { checkPluginAssets, installPluginAssetsRepair } from './lib/system-checks/plugin-assets'
-import { checkPluginArtifacts, upgradePluginArtifactRepair } from './lib/system-checks/plugin-artifacts'
-import { checkPluginRegistry } from './lib/system-checks/plugin-registry'
-import { checkSpendPolicyAvailable } from './lib/system-checks/spend-policy'
-import { checkHealthAcks } from './lib/system-checks/health-acks'
+import { checkSearchConsistency, searchConsistencyRepair, SEARCH_CONSISTENCY_INCIDENTS } from './lib/system-checks/search-consistency'
+import { checkSearchSpin, searchSpinRepair, SEARCH_SPIN_INCIDENTS } from './lib/system-checks/search-spin'
+import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchConsistencyRestartRepair, searchEngineBurnRepair, searchEngineRestartRepair, SEARCH_CANARY_INCIDENTS, SEARCH_ENGINE_BURN_INCIDENTS } from './lib/system-checks/search-engine-watch'
+import { searchDropUnclaimedTablesRepair, searchEngineClaimRepair, searchEngineInstallRepair, searchEngineWatchResetRepair } from './lib/system-checks/search-engine-repairs'
+import { checkAndSyncSkill, syncSkillRepair, SKILL_INCIDENTS } from './lib/system-checks/sync-skill'
+import { checkPluginAssets, installPluginAssetsRepair, PLUGIN_ASSETS_INCIDENTS } from './lib/system-checks/plugin-assets'
+import { checkPluginArtifacts, pluginReinstallRepair, pluginUpgradeRepair, PLUGIN_ARTIFACTS_INCIDENTS } from './lib/system-checks/plugin-artifacts'
+import { packageReinstallRepair, packageSyncRepair } from './lib/system-checks/package-repairs'
+import { checkPluginRegistry, PLUGIN_REGISTRY_INCIDENTS } from './lib/system-checks/plugin-registry'
+import { checkSpendPolicyAvailable, SPEND_POLICY_INCIDENTS } from './lib/system-checks/spend-policy'
+import { checkHealthAcks, healthAcksPruneRepair, healthAcksResetRepair, HEALTH_ACKS_INCIDENTS } from './lib/system-checks/health-acks'
 import {
   agentEffortResponseSchema,
   agentUsageSnapshotResponseSchema,
@@ -188,6 +192,8 @@ const stripRun = (def: HealthCheckDef) => ({
   owner: def.owner,
   group: def.group,
   ...(def.maxAgeMs === undefined ? {} : { maxAgeMs: def.maxAgeMs }),
+  // The declared incident families (self-healing 1.7): what this check may raise, never what it did.
+  incidents: def.incidents,
 })
 
 // ─── Schemas ─────────────────────────────────────────────────────────────
@@ -240,7 +246,10 @@ const USAGE_HISTORY_WINDOW_MS: Record<'24h' | '7d' | '30d', number> = {
 
 const doctorReadQuery = z.object({}).strict()
 
-const doctorRunBody = z.object({}).strict()
+const doctorRunBody = z.object({
+  /** Rerun only these checks (a recover page's return verification); omitted = the full sweep. */
+  checkIds: z.array(z.string().min(1)).min(1).max(20).optional(),
+}).strict()
 
 const acceptedBody = z.object({
   accepted: z.boolean(),
@@ -625,9 +634,10 @@ const routes = [
     description: 'Explicitly starts or joins a fresh diagnostic sweep. Escalation (auto-repair, approval tasks, delegation) only ever runs from the doctor cycle, never from this route.',
     body: doctorRunBody,
     responses: { 200: healthReportSchema, 500: healthErrorResponseSchema },
-    handler: async () => {
+    handler: async (_req, _ctx, parsed) => {
       try {
-        const report = await runDiagnostics(getContentDir(), process.cwd())
+        const checkIds = parsed.body?.checkIds
+        const report = checkIds ? await runTargetedDiagnostics(checkIds) : await runDiagnostics(getContentDir(), process.cwd())
         return Response.json(report)
       } catch (err) {
         log.error('Health diagnostics run failed', err)
@@ -771,6 +781,73 @@ const routes = [
           return Response.json({ error: err.message }, { status: err instanceof HealthAckNotFoundError ? 404 : 400 })
         }
         throw err
+      }
+    },
+  }),
+
+  // Decision choices (self-healing PR1, re-homing rows 76 and 94): the card's
+  // "Keep" buttons land here; the check honours the record on its next run.
+  defineRoute({
+    path: '/search/unclaimed-tables/keep',
+    method: 'POST',
+    summary: 'Keep unclaimed Search engine tables',
+    description: 'Row 76 "Keep": records the named unclaimed engine tables as kept, so Health stops raising them (a table that appears later is raised anew). Reversible through /search/unclaimed-tables/forget.',
+    body: z.object({ tables: z.array(z.string().min(1).max(200)).min(1).max(200) }).strict(),
+    responses: { 200: z.object({ kept: z.array(z.string()) }), 400: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        return Response.json({ kept: keepSearchTables(body.tables) })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/search/unclaimed-tables/forget',
+    method: 'POST',
+    summary: 'Forget kept Search engine tables',
+    description: 'Reverses a "Keep": the named tables (or every kept table when none are named) are raised again by the next deep sweep.',
+    body: z.object({ tables: z.array(z.string().min(1).max(200)).max(200).optional() }).strict(),
+    responses: { 200: z.object({ kept: z.array(z.string()) }), 400: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        return Response.json({ kept: forgetKeptSearchTables(body.tables) })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/search/unclaimed-tables/kept',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'List kept Search engine tables',
+    responses: { 200: z.object({ kept: z.array(z.string()) }), 400: errorResponse },
+    handler: async () => {
+      try {
+        return Response.json({ kept: readKeptSearchTables() })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/plugin-assets/keep-edit',
+    method: 'POST',
+    summary: 'Keep a user-edited plugin skill',
+    description: 'Row 94 "Keep my edit": records the shipped version (sha) the operator accepted for each named skill; the plugin-assets check raises the drift again only when the plugin ships something new.',
+    body: z.object({
+      skills: z.array(z.object({ name: z.string().min(1).max(200), pluginId: z.string().min(1).max(200), shippedSha: z.string().regex(/^[0-9a-f]{64}$/) }).strict()).min(1).max(100),
+    }).strict(),
+    responses: { 200: z.object({ accepted: z.array(z.object({ name: z.string(), pluginId: z.string(), shippedSha: z.string(), acceptedAt: z.string() })) }), 400: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        return Response.json({ accepted: acceptUserEditedSkills(body.skills) })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
       }
     },
   }),
@@ -943,6 +1020,36 @@ const healthPlugin: BakinPlugin = definePlugin({
     const workGroup = { key: 'work-cost', label: 'Work & Cost' }
     const searchGroup = { key: 'search', label: 'Search' }
     const pluginsGroup = { key: 'plugins', label: 'Plugins' }
+    // Repair actions register BEFORE the checks that declare them: every
+    // check's incident catalog is validated at registration against the
+    // actions this owner already registered (self-healing 1.7).
+    ctx.registerHealthRepairAction(packageSyncRepair())
+    ctx.registerHealthRepairAction(packageReinstallRepair())
+    ctx.registerHealthRepairAction(requeueStrandedTasksRepair())
+    ctx.registerHealthRepairAction(runDirsSweepRepair())
+    ctx.registerHealthRepairAction(installPluginAssetsRepair())
+    ctx.registerHealthRepairAction(pluginUpgradeRepair())
+    ctx.registerHealthRepairAction(healthAcksResetRepair())
+    ctx.registerHealthRepairAction(healthAcksPruneRepair())
+    ctx.registerHealthRepairAction(serviceSetupRepair())
+    ctx.registerHealthRepairAction(runtimeRestartRepair(ctx.runtime))
+    ctx.registerHealthRepairAction(sessionStorePruneRepair(ctx.runtime))
+    ctx.registerHealthRepairAction(discordBridgeReconnectRepair())
+    ctx.registerHealthRepairAction(pluginReinstallRepair())
+    ctx.registerHealthRepairAction(mediaStoreRepair())
+    ctx.registerHealthRepairAction(searchOutboxRepair())
+    ctx.registerHealthRepairAction(searchConsistencyRepair())
+    ctx.registerHealthRepairAction(searchSpinRepair())
+    ctx.registerHealthRepairAction(searchScarRepair())
+    ctx.registerHealthRepairAction(searchCanaryRepair())
+    ctx.registerHealthRepairAction(searchEngineBurnRepair())
+    ctx.registerHealthRepairAction(searchConsistencyRestartRepair())
+    ctx.registerHealthRepairAction(searchEngineRestartRepair())
+    ctx.registerHealthRepairAction(searchEngineInstallRepair())
+    ctx.registerHealthRepairAction(searchEngineClaimRepair())
+    ctx.registerHealthRepairAction(searchEngineWatchResetRepair())
+    ctx.registerHealthRepairAction(searchDropUnclaimedTablesRepair())
+    ctx.registerHealthRepairAction(syncSkillRepair(process.cwd(), ctx.runtime))
 
     ctx.registerHealthCheck({
       id: 'content-dir',
@@ -950,6 +1057,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Confirms where Bakin stores its local state.',
       group: systemGroup,
       maxAgeMs: 3_600_000,
+      incidents: CONTENT_DIR_INCIDENTS,
       run: () => checkContentDir(),
     })
     ctx.registerHealthCheck({
@@ -958,6 +1066,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Names acknowledge/snooze records that break the acknowledge rules — those records suppress nothing.',
       group: systemGroup,
       maxAgeMs: 300_000,
+      incidents: HEALTH_ACKS_INCIDENTS,
       run: () => checkHealthAcks(),
     })
     ctx.registerHealthCheck({
@@ -966,6 +1075,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Confirms sharp is usable — bundled on dev trees, via the media store on compiled binaries (#889).',
       group: systemGroup,
       maxAgeMs: 900_000,
+      incidents: MEDIA_INCIDENTS,
       run: () => checkMediaSharp(),
     })
     ctx.registerHealthCheck({
@@ -974,6 +1084,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Checks that installed capability packs have their required content and tools.',
       group: pluginsGroup,
       maxAgeMs: 900_000,
+      incidents: CAPABILITIES_INCIDENTS,
       run: () => checkCapabilities(),
     })
     ctx.registerHealthCheck({
@@ -982,6 +1093,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Confirms GitHub CLI authentication for issue, pull request, and release operations.',
       group: systemGroup,
       maxAgeMs: 300_000,
+      incidents: GITHUB_READINESS_INCIDENTS,
       run: () => checkGithubReadiness(),
     })
     ctx.registerHealthCheck({
@@ -990,6 +1102,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Verifies the managed macOS background service is installed, current, and loaded.',
       group: systemGroup,
       maxAgeMs: 300_000,
+      incidents: SERVICE_INCIDENTS,
       run: () => checkService(process.cwd()),
     })
     ctx.registerHealthCheck({
@@ -998,6 +1111,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Confirms the active agent runtime can serve turns.',
       group: runtimeGroup,
       maxAgeMs: 60_000,
+      incidents: RUNTIME_INCIDENTS,
       run: () => checkRuntime(ctx.runtime),
     })
     ctx.registerHealthCheck({
@@ -1006,6 +1120,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Watches runtime session artifacts for excessive disk use and orphan growth.',
       group: runtimeGroup,
       maxAgeMs: 600_000,
+      incidents: SESSION_STORE_INCIDENTS,
       run: () => checkSessionStore(ctx.runtime),
     })
     ctx.registerHealthCheck({
@@ -1014,6 +1129,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Checks whether runtime channels can return workflow approval decisions.',
       group: runtimeGroup,
       maxAgeMs: 300_000,
+      incidents: CHANNEL_APPROVALS_INCIDENTS,
       run: () => checkChannelApprovals(),
     })
     ctx.registerHealthCheck({
@@ -1022,6 +1138,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Validates configured channel aliases and the alert channel against the active runtime.',
       group: runtimeGroup,
       maxAgeMs: 300_000,
+      incidents: CHANNEL_ALIASES_INCIDENTS,
       run: () => checkChannelAliases(),
     })
     ctx.registerHealthCheck({
@@ -1030,6 +1147,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Projects the channel-readiness snapshot: bridge config (token, guilds, allowlists), gateway connection, and reachable servers.',
       group: runtimeGroup,
       maxAgeMs: 300_000,
+      incidents: DELIVERY_DISCORD_INCIDENTS,
       run: () => checkDeliveryDiscord(),
     })
     // Readiness transitions rerun the three channel checks (debounced), so
@@ -1046,6 +1164,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Finds stale in-progress tasks that need automatic or manual restart recovery.',
       group: systemGroup,
       maxAgeMs: 120_000,
+      incidents: RESTART_RECOVERY_INCIDENTS,
       run: () => checkRestartRecovery(),
     })
     ctx.registerHealthCheck({
@@ -1054,15 +1173,16 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Confirms the execution ledger is reachable and surfaces recently suppressed duplicate work.',
       group: systemGroup,
       maxAgeMs: 300_000,
+      incidents: EXECUTION_SAFETY_INCIDENTS,
       run: () => checkExecutionSafety(),
     })
-    ctx.registerHealthRepairAction(runDirsSweepRepair())
     ctx.registerHealthCheck({
       id: 'dispatch.run-dirs',
       name: 'Per-run workspace disk usage',
       description: 'Watches run-workspace scratch dirs against retention windows and the disk budget (sweep aggregate — never a live walk).',
       group: workGroup,
       maxAgeMs: 600_000,
+      incidents: RUN_DIRS_INCIDENTS,
       run: () => checkRunDirs(),
     })
     ctx.registerHealthCheck({
@@ -1071,6 +1191,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Estimates each agent\'s injected startup context against the configured cost guardrail.',
       group: workGroup,
       maxAgeMs: 600_000,
+      incidents: CONTEXT_REPORT_INCIDENTS,
       run: () => checkStartupContextSize(ctx.runtime),
     })
     ctx.registerHealthCheck({
@@ -1079,6 +1200,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Confirms the spend plugin answers the limits-policy hook the dispatch gate consults; while it does not, dispatch fails closed.',
       group: workGroup,
       maxAgeMs: 120_000,
+      incidents: SPEND_POLICY_INCIDENTS,
       run: () => checkSpendPolicyAvailable(),
     })
     ctx.registerHealthCheck({
@@ -1087,6 +1209,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Flags unusually high or spiking token use, interactive-session usage, unexplained usage, and possible runaway autonomous activity.',
       group: workGroup,
       maxAgeMs: 600_000,
+      incidents: AGENT_BURN_INCIDENTS,
       run: () => checkAgentBurn(() => fetchScheduledJobsEvidence(ctx.runtime)),
     })
     ctx.registerHealthCheck({
@@ -1095,6 +1218,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Checks Search enablement, engine installation and connectivity, supervision, and journal drain state.',
       group: searchGroup,
       maxAgeMs: 60_000,
+      incidents: SEARCH_INCIDENTS,
       run: () => checkSearchAdapter(),
     })
     ctx.registerHealthCheck({
@@ -1104,6 +1228,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       group: searchGroup,
       maxAgeMs: 300_000,
       timeoutMs: 120_000,
+      incidents: SEARCH_CONSISTENCY_INCIDENTS,
       run: () => checkSearchConsistency(),
     })
     ctx.registerHealthCheck({
@@ -1112,6 +1237,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Detects index legs that remain building without queued work or measurable progress.',
       group: searchGroup,
       maxAgeMs: 300_000,
+      incidents: SEARCH_SPIN_INCIDENTS,
       run: () => checkSearchSpin(),
     })
     ctx.registerHealthCheck({
@@ -1120,6 +1246,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Runs a real cross-table query to verify Search serves production traffic, not only probes.',
       group: searchGroup,
       maxAgeMs: 120_000,
+      incidents: SEARCH_CANARY_INCIDENTS,
       run: () => checkSearchCanary(),
     })
     ctx.registerHealthCheck({
@@ -1128,6 +1255,7 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Watches Search process CPU and engine logs for a persistent zero-progress wedge.',
       group: searchGroup,
       maxAgeMs: 120_000,
+      incidents: SEARCH_ENGINE_BURN_INCIDENTS,
       run: () => checkSearchEngineBurn(),
     })
     ctx.registerHealthCheck({
@@ -1136,24 +1264,25 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Confirms the runtime has Bakin\'s current generated skill instructions.',
       group: runtimeGroup,
       maxAgeMs: 900_000,
+      incidents: SKILL_INCIDENTS,
       run: () => checkAndSyncSkill(process.cwd(), ctx.runtime),
     })
-    ctx.registerHealthRepairAction(installPluginAssetsRepair())
     ctx.registerHealthCheck({
       id: 'plugin-assets',
       name: 'Plugin assets install state',
       description: 'Checks installation and drift for runtime skills and sha256-pinned binaries shipped by plugins.',
       group: pluginsGroup,
       maxAgeMs: 900_000,
+      incidents: PLUGIN_ASSETS_INCIDENTS,
       run: () => checkPluginAssets(),
     })
-    ctx.registerHealthRepairAction(upgradePluginArtifactRepair())
     ctx.registerHealthCheck({
       id: 'plugin-artifacts',
       name: 'Installed plugin artifact compatibility',
       description: 'Verifies user-installed plugin artifacts are compatible with and trusted by this host, and offers the upgrade when a compatible release exists.',
       group: pluginsGroup,
       maxAgeMs: 900_000,
+      incidents: PLUGIN_ARTIFACTS_INCIDENTS,
       run: () => checkPluginArtifacts(),
     })
     ctx.registerHealthCheck({
@@ -1162,18 +1291,10 @@ const healthPlugin: BakinPlugin = definePlugin({
       description: 'Surfaces plugins that failed during activation and are unavailable.',
       group: pluginsGroup,
       maxAgeMs: 300_000,
+      incidents: PLUGIN_REGISTRY_INCIDENTS,
       run: () => checkPluginRegistry(),
     })
 
-    ctx.registerHealthRepairAction(mediaStoreRepair())
-    ctx.registerHealthRepairAction(searchOutboxRepair())
-    ctx.registerHealthRepairAction(searchConsistencyRepair())
-    ctx.registerHealthRepairAction(searchSpinRepair())
-    ctx.registerHealthRepairAction(searchScarRepair())
-    ctx.registerHealthRepairAction(searchCanaryRepair())
-    ctx.registerHealthRepairAction(searchEngineBurnRepair())
-    ctx.registerHealthRepairAction(searchConsistencyRestartRepair())
-    ctx.registerHealthRepairAction(syncSkillRepair(process.cwd(), ctx.runtime))
   },
 
   onSettingsChange(settings) {

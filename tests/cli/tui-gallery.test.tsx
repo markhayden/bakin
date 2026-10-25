@@ -74,7 +74,7 @@ describe('CLI TUI style gallery', () => {
     const delegated = renderGalleryScreen('doctor-delegate', { columns: 110 })
 
     expect(repair).toContain('Run `bakin doctor --fix --yes`')
-    expect(repair).toContain('SAFE DETERMINISTIC REPAIRS')
+    expect(repair).toContain('AUTOMATIC REPAIRS')
     expect(delegated).toContain('task-184')
     expect(delegated).toContain('bakin doctor repair verify')
   })

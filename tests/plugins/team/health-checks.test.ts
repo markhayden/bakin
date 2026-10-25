@@ -141,14 +141,14 @@ import {
   checkTeamRouting,
   personaRepair,
 } from '../../../plugins/team/lib/health-checks'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
 import { installInOperation } from '../../helpers/operation-harness'
 
 const repairTarget = { type: 'all_actionable' as const, reportId: 'test-report' }
 
 function observations<T extends { outcome: string }>(result: T) {
   if (result.outcome !== 'observed') throw new Error(`Expected observed Team health, got ${result.outcome}`)
-  return (result as T & { observations: Array<{ key: string; status: string; summary: string; detail?: string; incident?: { resolution: { type: string } } }> }).observations
+  return (result as T & { observations: Array<{ key: string; status: string; summary: string; detail?: string; evidence?: unknown; incident?: { resolution: { type: string } } }> }).observations
 }
 
 const runtimeAgentReader = {
@@ -211,6 +211,8 @@ describe('checkTeamRouting', () => {
     }))
     expect(results[0].status).toBe('error')
     expect(results[0].summary).toContain('no usable LLM credentials')
+    // Row 104: a credential only the operator can supply — the incident lands on the credential tiles themselves.
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'human', needs: 'credential', href: '/runtime?tab=overview&field=credentials' })
   })
 
   it('passes when team tasks exist and the runtime has credentials; surfaces the route model', async () => {
@@ -239,6 +241,8 @@ describe('checkTeamRouting', () => {
     }))
     expect(results[0].status).toBe('unknown')
     expect(results[0].key).toBe('runtime-credentials')
+    // Row 103: could not see — an observation, never a card.
+    expect(results[0].incident).toBeUndefined()
   })
 
   it('ignores done/archived team tasks', async () => {
@@ -260,6 +264,7 @@ describe('checkAgentRoster', () => {
     expect(results[0].key).toBe('roster-read')
     expect(results[0].status).toBe('unknown')
     expect(results[0].summary).toMatch(/runtime agent roster/i)
+    expect(results[0].incident).toBeUndefined() // row 105: an observation
   })
 
   it('reports ok when runtime returns a coherent roster', async () => {
@@ -270,16 +275,66 @@ describe('checkAgentRoster', () => {
     expect(results[0].summary).toMatch(/2 runtime agent/)
   })
 
-  it('warns about duplicate runtime agent ids', async () => {
-    runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('main')]
+  it('a duplicated id is ONE entry-addressed finding naming every position (a triple is still one row), with the editor href on the agent', async () => {
+    runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('main'), { ...makeRuntimeAgent('main'), name: 'Main (old)' }, makeRuntimeAgent('patch')]
     const results = observations(await checkAgentRoster(runtimeAgentReader))
-    expect(results.some(r => r.status === 'warning' && r.summary.includes('appears more than once'))).toBe(true)
+    const duplicates = results.filter(r => r.status === 'warning' && r.key.startsWith('duplicate-'))
+    expect(duplicates).toHaveLength(1)
+    expect(duplicates[0]!.summary).toBe('Runtime agent id main appears 3 times (roster positions 1, 2, 3).')
+    expect(duplicates[0]!.evidence).toEqual({ kind: 'duplicate', agentId: 'main', positions: [0, 1, 2], names: ['main', 'Main (old)'], removable: true })
+    expect(duplicates[0]!.incident).toMatchObject({
+      resources: [{ kind: 'agent', id: 'main' }, { kind: 'runtime', id: 'roster-entry-0' }, { kind: 'runtime', id: 'roster-entry-1' }, { kind: 'runtime', id: 'roster-entry-2' }],
+      resolution: { href: '/team?recover=1&agent=main' },
+    })
   })
 
-  it('warns about runtime agents without ids', async () => {
-    runtimeAgents = [{ id: '', name: 'Broken' }]
+  it('an entry without an id is addressed by position, carrying its name and workspace for the editor row', async () => {
+    runtimeAgents = [makeRuntimeAgent('main'), { id: '', name: 'Broken', metadata: { workspace: '/home/x/.pi/agent/broken' } }]
     const results = observations(await checkAgentRoster(runtimeAgentReader))
-    expect(results.some(r => r.status === 'warning' && r.summary.includes('has no id'))).toBe(true)
+    const missing = results.find(r => r.key === 'missing-id-1')!
+    expect(missing.status).toBe('warning')
+    expect(missing.evidence).toEqual({ kind: 'missing-id', rosterIndex: 1, name: 'Broken', workspace: '/home/x/.pi/agent/broken' })
+    expect(missing.incident).toMatchObject({ subject: { kind: 'agent', id: 'roster-1' }, resources: [{ kind: 'runtime', id: 'roster-entry-1' }], resolution: { href: '/team?recover=1&entry=1' } })
+    expect(missing.incident?.resolution).not.toHaveProperty('handoff') // no registry location → no command to invent
+  })
+
+  it('with agents.registryLocation the id-less entry gets the registry file + entry key as its handoff (row 106, Codex r2 #7)', async () => {
+    runtimeAgents = [makeRuntimeAgent('main'), { id: '', name: 'Broken' }]
+    const located = { ...runtimeAgentReader, registryLocation: async () => ({ path: '/Users/me/.pi/agent/bakin-agents.json', entryKey: (index: number) => `agents[${index}]` }) }
+    const missing = observations(await checkAgentRoster(located)).find(r => r.key === 'missing-id-1')!
+    expect(missing.evidence).toEqual({ kind: 'missing-id', rosterIndex: 1, name: 'Broken', registry: { path: '/Users/me/.pi/agent/bakin-agents.json', entryKey: 'agents[1]' } })
+    expect(missing.incident).toMatchObject({
+      impact: expect.stringContaining('agents[1] in /Users/me/.pi/agent/bakin-agents.json'),
+      resolution: { type: 'human', needs: 'decision', href: '/team?recover=1&entry=1', handoff: { command: '"${EDITOR:-nano}" "/Users/me/.pi/agent/bakin-agents.json"' } },
+    })
+    // A throwing member is "no location", never a failed check.
+    const throwing = { ...runtimeAgentReader, registryLocation: async () => { throw new Error('roster moved') } }
+    const fallback = observations(await checkAgentRoster(throwing)).find(r => r.key === 'missing-id-1')!
+    expect(fallback.evidence).toEqual({ kind: 'missing-id', rosterIndex: 1, name: 'Broken' })
+    expect(fallback.incident?.resolution).not.toHaveProperty('handoff')
+  })
+
+  it('a duplicate gets the registry edit handoff too, naming EVERY entry key; the main agent is never removable (row 107, Codex r3 #6)', async () => {
+    runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('main'), makeRuntimeAgent('relay'), makeRuntimeAgent('relay')]
+    const located = {
+      ...runtimeAgentReader,
+      registryLocation: async () => ({ path: '/Users/me/.pi/agent/bakin-agents.json', entryKey: (index: number) => `agents[${index}]` }),
+      mainAgentId: async () => 'main',
+    }
+    const results = observations(await checkAgentRoster(located))
+    const main = results.find(r => r.key === 'duplicate-main')!
+    expect(main.evidence).toEqual({ kind: 'duplicate', agentId: 'main', positions: [0, 1], names: ['main'], removable: false, registry: { path: '/Users/me/.pi/agent/bakin-agents.json', entryKeys: ['agents[0]', 'agents[1]'] } })
+    expect(main.incident).toMatchObject({
+      impact: expect.stringContaining('main is the main agent and cannot be removed. Edit agents[0] and agents[1] in /Users/me/.pi/agent/bakin-agents.json'),
+      resolution: { href: '/team?recover=1&agent=main', handoff: { command: '"${EDITOR:-nano}" "/Users/me/.pi/agent/bakin-agents.json"' } },
+    })
+    const relay = results.find(r => r.key === 'duplicate-relay')!
+    expect(relay.evidence).toMatchObject({ removable: true, registry: { entryKeys: ['agents[2]', 'agents[3]'] } })
+    expect(relay.incident?.resolution).toHaveProperty('handoff')
+    // No registry location and no main fact: removable, no command to invent.
+    const bare = observations(await checkAgentRoster(runtimeAgentReader)).find(r => r.key === 'duplicate-main')!
+    expect(bare.evidence).toEqual({ kind: 'duplicate', agentId: 'main', positions: [0, 1], names: ['main'], removable: true })
+    expect(bare.incident?.resolution).not.toHaveProperty('handoff')
   })
 })
 
@@ -340,7 +395,7 @@ describe('checkPersonas', () => {
     const repair = personaRepair(testDir, runtimeAgentReader)
     const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
-    const run = await runRepairContract(repair, plan)
+    const run = await runRepairContract(repair, stampPlanItems(repair, plan))
     expectRepairContract(repair, run)
     expect(run.view.stages[0]!.items?.map((i) => i.id).sort()).toEqual(['main', 'patch', 'pixel'])
     const applied = run.results
@@ -373,10 +428,10 @@ describe('checkAgentSync — wrapper', () => {
 
   it('plans and applies a safe repair for locally managed drift', async () => {
     const repair = agentSyncRepair()
-    const plan = await repair.plan(repairTarget)
+    const plan = stampPlanItems(repair, await repair.plan(repairTarget))
     expect(plan.length).toBeGreaterThanOrEqual(1)
-    const local = plan.find((p) => p.id === 'sync-agents')
-    expect(local?.safety).toBe('safe')
+    const local = plan.find((p) => p.localId === 'sync-agents')
+    expect(local?.mode).toBe('self-heal')
 
     const run = await runRepairContract(repair, [local!])
     expectRepairContract(repair, run)
@@ -389,7 +444,7 @@ describe('checkAgentSync — wrapper', () => {
     expect(after[0].status).toBe('healthy')
   })
 
-  it('plans the migration as a destructive, confirmation-required item', async () => {
+  it('plans the migration as a one-click item (it overwrites workspace files, with a backup)', async () => {
     const { writeLockfile } = await import('../../../packages/core/src/agent-packages/lockfile')
     writeLockfile({
       version: 1,
@@ -407,9 +462,10 @@ describe('checkAgentSync — wrapper', () => {
     expect(results.some((r) => r.summary.includes('migration'))).toBe(true)
 
     const repair = agentSyncMigrationRepair()
-    const plan = await repair.plan(repairTarget)
-    const migrate = plan.find((p) => p.id === 'migrate-agent-blocks')
-    expect(migrate?.safety).toBe('destructive')
+    const plan = stampPlanItems(repair, await repair.plan(repairTarget))
+    const migrate = plan.find((p) => p.localId === 'migrate-agent-blocks')
+    expect(migrate?.mode).toBe('one-click')
+    expect(migrate?.effects.deletesUserContent).toBe(true)
 
     const run = await runRepairContract(repair, [migrate!])
     expectRepairContract(repair, run)

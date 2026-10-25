@@ -8,13 +8,13 @@
  */
 import { z } from 'zod'
 
-import { HEALTH_INCIDENT_CLASSES } from '@makinbakin/sdk/types'
+import { HEALTH_HUMAN_NEEDS, HEALTH_INCIDENT_CLASSES, HEALTH_INCIDENT_REQUIREMENTS, HEALTH_REPAIR_MUTATIONS, HEALTH_SUBJECT_KINDS } from '@makinbakin/sdk/types'
 import type {
   HealthCheckRegistrationInput,
   HealthCheckRunInput,
   HealthRepairActionDefinition,
   HealthRepairApplyResult,
-  HealthRepairPlanItem,
+  HealthRepairPlanItemInput,
 } from '@makinbakin/sdk/types'
 
 export type HealthContractErrorCode =
@@ -95,6 +95,27 @@ const callableSchema = z.custom<HealthCheckRegistrationInput['run']>(
   { message: 'Run must be a function.' },
 )
 
+/** One declared incident family (self-healing 1.5); the registry checks that a repair family's action resolves. */
+export const healthIncidentDeclarationSchema = z.object({
+  id: stableKeySchema,
+  subjectKind: z.enum(HEALTH_SUBJECT_KINDS),
+  resolution: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('repair'), actionId: stableKeySchema }).strict(),
+    z.object({ type: z.literal('human'), needs: z.enum(HEALTH_HUMAN_NEEDS) }).strict(),
+  ]),
+  required: z.enum(HEALTH_INCIDENT_REQUIREMENTS),
+}).strict()
+
+export const healthIncidentCatalogSchema = z.array(healthIncidentDeclarationSchema)
+  .max(200, 'A check may declare at most 200 incident families.')
+  .superRefine((declarations, ctx) => {
+    const seen = new Set<string>()
+    declarations.forEach((declaration, index) => {
+      if (seen.has(declaration.id)) ctx.addIssue({ code: 'custom', path: [index, 'id'], message: `Incident family "${declaration.id}" is declared twice.` })
+      seen.add(declaration.id)
+    })
+  })
+
 /** Exact producer registration schema. Core adds owner metadata separately. */
 export const healthCheckRegistrationInputSchema = z.object({
   id: stableKeySchema,
@@ -103,6 +124,7 @@ export const healthCheckRegistrationInputSchema = z.object({
   group: healthGroupSchema,
   maxAgeMs: z.number().int().positive().finite().optional(),
   timeoutMs: z.number().int().positive().finite().optional(),
+  incidents: healthIncidentCatalogSchema,
   run: callableSchema,
 }).strict()
 
@@ -121,10 +143,21 @@ const repairOperationPlanCallableSchema = z.custom<NonNullable<HealthRepairActio
   { message: 'operationPlan must be a function.' },
 )
 
+/** What a repair does (spec §3.2); the ONE mode policy reads it. */
+export const healthRepairEffectsSchema = z.object({
+  deletesUserContent: z.boolean(),
+  spendsMoney: z.boolean(),
+  widensAuthorization: z.boolean(),
+  restartsService: z.enum(['search-engine', 'bakin', 'runtime']).optional(),
+  resolves: z.array(stableKeySchema).max(50).optional(),
+}).strict()
+
 /** Exact owner-local repair-action schema; core namespaces the action id. */
 export const healthRepairActionDefinitionSchema = z.object({
   id: stableKeySchema,
   name: nonBlankString(120, 'Repair action name'),
+  effects: healthRepairEffectsSchema,
+  mutation: z.enum(HEALTH_REPAIR_MUTATIONS),
   plan: repairPlanCallableSchema,
   operationPlan: repairOperationPlanCallableSchema,
   resources: z.array(nonBlankString(200, 'Repair resource')).max(16).optional(),
@@ -151,7 +184,8 @@ export const healthRepairPlanItemOutputSchema = z.object({
   actionId: nonBlankString(512, 'Repair action id'),
   title: nonBlankString(500, 'Repair item title'),
   reason: nonBlankString(4_000, 'Repair item reason'),
-  safety: z.enum(['safe', 'manual', 'destructive']),
+  /** Per-item effects; absent = the action's declared effects. `mode` is never producer-authored — core stamps it. */
+  effects: healthRepairEffectsSchema.optional(),
   incidentIds: z.array(nonBlankString(512, 'Repair incident id')),
   observationIds: z.array(nonBlankString(512, 'Repair observation id')),
   preconditions: z.array(healthRepairPreconditionOutputSchema),
@@ -162,6 +196,7 @@ export const healthRepairPlanOutputSchema = z.array(healthRepairPlanItemOutputSc
 
 /** Exact producer-authored apply results before core publishes or audits them. */
 export const healthRepairApplyResultOutputSchema = z.object({
+  authorization: z.object({ refused: z.literal(true), reason: z.enum(['consent-delta', 'consent-unreviewed', 'declined', 'untrusted-source', 'hub-skill', 'operator-only', 'quarantined', 'disabled']) }).strict().optional(),
   itemId: nonBlankString(512, 'Repair result item id'),
   actionId: nonBlankString(512, 'Repair result action id'),
   status: z.enum(['applied', 'skipped', 'failed']),
@@ -271,7 +306,7 @@ export function parseHealthRepairActionDefinition(input: unknown): HealthRepairA
 
 export function safeParseHealthRepairPlanOutput(
   input: unknown,
-): HealthContractSafeParseResult<HealthRepairPlanItem[]> {
+): HealthContractSafeParseResult<HealthRepairPlanItemInput[]> {
   return safeParseContract(
     healthRepairPlanOutputSchema,
     input,
@@ -280,7 +315,7 @@ export function safeParseHealthRepairPlanOutput(
   )
 }
 
-export function parseHealthRepairPlanOutput(input: unknown): HealthRepairPlanItem[] {
+export function parseHealthRepairPlanOutput(input: unknown): HealthRepairPlanItemInput[] {
   const result = safeParseHealthRepairPlanOutput(input)
   if (!result.success) throw result.error
   return result.data
@@ -338,15 +373,58 @@ function isSameOriginApplicationPath(value: string): boolean {
   if (/\p{Cc}/u.test(value)) return false
   try {
     const base = new URL('http://bakin.local')
-    return new URL(value, base).origin === base.origin
+    const parsed = new URL(value, base)
+    // Canonical path only: a `..`/`.` segment or an encoded path byte would make the
+    // requested path differ from the declared one (Codex r3 R3-1).
+    const rawPath = value.split(/[?#]/)[0]!
+    return parsed.origin === base.origin && parsed.pathname === rawPath && !rawPath.includes('%')
   } catch {
     return false
   }
 }
 
+const sameOriginPath = (what: string) => nonBlankString(4_000, what).refine(
+  isSameOriginApplicationPath,
+  `${what} must be a same-origin application path.`,
+)
+
+const decisionChoiceBaseShape = {
+  key: stableKeySchema,
+  label: nonBlankString(80, 'Choice label'),
+}
+
+/** The card buttons of a human decision (SDK `HealthDecisionChoice`). */
+export const healthDecisionChoiceSchema = z.discriminatedUnion('kind', [
+  z.object({
+    ...decisionChoiceBaseShape,
+    kind: z.literal('link'),
+    href: sameOriginPath('A choice href'),
+    field: nonBlankString(200, 'Field id').optional(),
+  }).strict(),
+  z.object({
+    ...decisionChoiceBaseShape,
+    kind: z.literal('request'),
+    method: z.enum(['POST', 'PUT', 'DELETE']),
+    url: sameOriginPath('A choice url'),
+    body: z.record(z.string(), z.unknown()).optional(),
+    tone: z.enum(['default', 'danger']).optional(),
+    effects: z.object({ deletesUserContent: z.boolean(), spendsMoney: z.boolean(), widensAuthorization: z.boolean() }).strict(),
+    confirm: z.object({
+      title: nonBlankString(200, 'Choice confirm title'),
+      description: nonBlankString(2_000, 'Choice confirm description').optional(),
+    }).strict().optional(),
+  }).strict().refine(
+    (choice) => choice.confirm !== undefined || (choice.tone !== 'danger' && !choice.effects.deletesUserContent && !choice.effects.spendsMoney && !choice.effects.widensAuthorization),
+    'A destructive or dangerous request choice must carry `confirm`.',
+  ),
+])
+
 const resolutionBaseShape = {
   key: stableKeySchema,
   label: nonBlankString(120, 'Resolution label'),
+  choices: z.array(healthDecisionChoiceSchema).min(1).max(4)
+    .refine((choices) => new Set(choices.map((choice) => choice.key)).size === choices.length, 'Choice keys must be unique within a resolution.')
+    .optional(),
 }
 
 export const healthRepairResolutionSchema = z.object({
@@ -355,33 +433,34 @@ export const healthRepairResolutionSchema = z.object({
   actionId: stableKeySchema,
 }).strict()
 
-export const healthNavigateResolutionSchema = z.object({
+export const healthHumanHandoffSchema = z.object({
+  command: nonBlankString(4_000, 'Handoff command'),
+  cwd: nonBlankString(4_000, 'Handoff working directory').optional(),
+}).strict()
+
+export const healthHumanResolutionSchema = z.object({
   ...resolutionBaseShape,
-  type: z.literal('navigate'),
-  href: nonBlankString(4_000, 'Navigation path').refine(
+  type: z.literal('human'),
+  needs: z.enum(HEALTH_HUMAN_NEEDS),
+  href: nonBlankString(4_000, 'Control path').refine(
     isSameOriginApplicationPath,
-    'Navigation href must be a same-origin application path.',
+    'A human resolution href must be a same-origin application path.',
   ),
+  field: nonBlankString(200, 'Field id').optional(),
+  handoff: healthHumanHandoffSchema.optional(),
 }).strict()
 
-export const healthInstructionsResolutionSchema = z.object({
-  ...resolutionBaseShape,
-  type: z.literal('instructions'),
-  steps: z.array(nonBlankString(4_000, 'Instruction step')).min(1, 'At least one instruction step is required.'),
-  command: nonBlankString(4_000, 'Command').optional(),
-}).strict()
-
-export const healthRerunResolutionSchema = z.object({
-  ...resolutionBaseShape,
-  type: z.literal('rerun'),
-}).strict()
-
+/** The two outcomes (spec D1). */
 export const healthResolutionSchema = z.discriminatedUnion('type', [
   healthRepairResolutionSchema,
-  healthNavigateResolutionSchema,
-  healthInstructionsResolutionSchema,
-  healthRerunResolutionSchema,
+  healthHumanResolutionSchema,
 ])
+
+export const healthSubjectSchema = z.object({
+  kind: z.enum(HEALTH_SUBJECT_KINDS),
+  id: nonBlankString(500, 'Subject id'),
+  label: nonBlankString(120, 'Subject label').optional(),
+}).strict()
 
 const incidentBaseShape = {
   key: stableKeySchema,
@@ -389,8 +468,13 @@ const incidentBaseShape = {
   impact: nonBlankString(500, 'Incident impact'),
   /** Producer-stamped behavior class (#690); absent = unclassified (never demoted). */
   class: z.enum(HEALTH_INCIDENT_CLASSES).optional(),
+  subject: healthSubjectSchema,
   resources: z.array(healthResourceSchema).max(50, 'An incident may reference at most 50 resources.').optional(),
   resolution: healthResolutionSchema,
+  /** The declared family; the runner validates the instance against it. */
+  declarationId: stableKeySchema,
+  required: z.boolean().optional(),
+  dependsOn: z.object({ subject: healthSubjectSchema, resolvedBy: stableKeySchema }).strict().optional(),
 }
 
 export const advisoryIncidentInputSchema = z.object({
@@ -604,7 +688,8 @@ export const healthyObservationInputSchema = z.object({
 export const warningObservationInputSchema = z.object({
   ...observationBaseShape,
   status: z.literal('warning'),
-  incident: healthIncidentInputSchema,
+  /** Absent = a plain observation listed under the check, never a card (spec §3.1). */
+  incident: healthIncidentInputSchema.optional(),
 }).strict()
 
 export const errorObservationInputSchema = z.object({
@@ -616,9 +701,10 @@ export const errorObservationInputSchema = z.object({
 export const unknownObservationInputSchema = z.object({
   ...observationBaseShape,
   status: z.literal('unknown'),
-  // watch, or advisory when the producer vouches the unknown self-resolves
-  // (scan warm-up, attribution landing). Never action_required.
-  incident: z.union([watchIncidentInputSchema, advisoryIncidentInputSchema]),
+  // Absent = a plain "could not see" observation; watch, or advisory when
+  // the producer vouches the unknown self-resolves (scan warm-up,
+  // attribution landing). Never action_required.
+  incident: z.union([watchIncidentInputSchema, advisoryIncidentInputSchema]).optional(),
 }).strict()
 
 export const healthObservationInputSchema = z.discriminatedUnion('status', [
@@ -630,7 +716,10 @@ export const healthObservationInputSchema = z.discriminatedUnion('status', [
 
 const observedHealthCheckRunInputSchema = z.object({
   outcome: z.literal('observed'),
-  observations: z.array(healthObservationInputSchema).min(1, 'An observed run must return at least one observation.'),
+  observations: z.array(healthObservationInputSchema).min(1, 'An observed run must return at least one observation.')
+    // Observation ids are `<checkId>:<key>`: two rows with one key would collide in the report (the wire schema refuses
+    // duplicate ids, and the whole page went dark on Mark's box, 2026-10-24). A producer bug reads `invalid` instead.
+    .refine((rows) => new Set(rows.map((row) => row.key)).size === rows.length, 'Observation keys must be unique within a run.'),
 }).strict()
 
 const notApplicableHealthCheckRunInputSchema = z.object({

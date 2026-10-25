@@ -234,6 +234,14 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       description: 'Doctor warn threshold for estimated Bakin-injected per-dispatch context per agent (static prompt sections + configured caps). Warn-only — dispatch is never blocked. Default 65536.',
       default: 65536,
     },
+    // ── Search endpoint (re-homing row 54: "Use that engine as a guest") ──
+    {
+      key: 'search.settings.url',
+      type: 'string',
+      label: 'Search engine URL',
+      description: 'Where Bakin sends search requests. The default (http://127.0.0.1:3738) is the engine this home supervises. Any other origin is GUEST mode: Bakin uses that engine as-is and never installs, claims, restarts or wipes it. Takes effect on the next server restart.',
+      default: 'http://127.0.0.1:3738',
+    },
   ],
 }
 

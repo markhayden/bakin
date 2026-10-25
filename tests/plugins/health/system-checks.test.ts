@@ -108,6 +108,7 @@ mock.module('../../../src/core/search-outbox', () => ({
   stopOutboxPump: () => {},
 }))
 let mockTableStates: Array<Record<string, unknown>> = []
+let mockUnclaimed: string[] = []
 mock.module('@bakin/core/search/tables', () => ({
   // Full surface: the plugin-activation test pulls the real registry, which
   // imports more than the checks do.
@@ -116,7 +117,7 @@ mock.module('@bakin/core/search/tables', () => ({
   queryTarget: () => null,
   resolveDrainTargets: (logical: string) => [logical],
   sweepTombstones: async () => 0,
-  sweepOrphanEngineTables: async () => ({ dropped: [], pending: 0, unclaimed: [] }),
+  sweepOrphanEngineTables: async () => ({ dropped: [], pending: 0, unclaimed: mockUnclaimed }),
   ensureTable: async () => 'unchanged',
   rebuildTable: async () => 'migrated',
   resumeMigrations: async () => {},
@@ -363,7 +364,7 @@ import {
   searchConsistencyRepair,
 } from '../../../plugins/health/lib/system-checks/search-consistency'
 import { checkAndSyncSkill, syncSkillRepair } from '../../../plugins/health/lib/system-checks/sync-skill'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
 import { checkPluginAssets, installPluginAssetsRepair } from '../../../plugins/health/lib/system-checks/plugin-assets'
 import { createMockRuntimeAdapter, mockChannels } from '@bakin/core/adapters/runtime/testing'
 import type { AgentRuntimeAdapter, RuntimeSkill } from '@bakin/core/adapters/runtime'
@@ -707,13 +708,14 @@ describe('checkChannelAliases', () => {
     expect(results[0].summary).toContain('1 channel alias')
   })
 
-  it('warns when the configured alert channel is a missing alias and links to the Channels tab', async () => {
+  it('warns when the configured alert channel is a missing alias and lands on the aliases editor (row 20)', async () => {
     mockNotificationChannel = 'general'
     mockReadiness = readinessWith(discordOnly)
     const results = observed(await checkChannelAliases())
     expect(results[0].status).toBe('warning')
     expect(results[0].detail).toContain('notifications.channelAliases.general')
-    expect(results[0].incident?.resolution).toMatchObject({ type: 'navigate', href: '/settings?tab=channels' })
+    // `field=` is a setting key; the Channels tab maps the alias prefix to its editor.
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', href: expect.stringContaining('/settings?tab=channels&field=notifications.channelAliases') })
   })
 
   it('is not-applicable while bridge delivery is unavailable — no second incident for one outage', async () => {
@@ -732,16 +734,17 @@ describe('checkSearchAdapter', () => {
     mockSearchEnabled = false
     mockSearchInstalled = false
     const results = observed(await checkSearchAdapter())
-    expect(results[0].status).toBe('error')
+    // Row 52: search disabled is a plain observation — a setting the operator chose, never a card.
+    expect(results[0].status).toBe('warning')
     expect(results[0].key).toBe('engine.enabled')
-    expect(results[0].incident?.resolution).toMatchObject({ type: 'instructions' })
+    expect(results[0].incident).toBeUndefined()
   })
 
   it('still reports disabled when the binary is installed', async () => {
     mockSearchEnabled = false
     mockSearchInstalled = true
     const results = observed(await checkSearchAdapter())
-    expect(results[0].status).toBe('error')
+    expect(results[0].status).toBe('warning')
     expect(results[0].summary).toMatch(/Search is disabled/)
   })
 
@@ -888,8 +891,8 @@ describe('Search write-journal observations', () => {
     expect(results[0].evidence).toEqual({ quarantined: 1, sampleTables: ['bakin_t'] })
 
     const repair = searchOutboxRepair()
-    const plan = await repair.plan(repairTarget)
-    expect(plan[0]?.safety).toBe('manual')
+    const plan = stampPlanItems(repair, await repair.plan(repairTarget))
+    expect(plan[0]?.mode).toBe('self-heal') // row 67: reviving quarantined writes deletes nothing
     const applied = await repair.apply(plan, noopOp())
     expect(applied[0]?.status).toBe('applied')
     expect(applied[0]?.message).toMatch(/Revived 1/)
@@ -922,6 +925,19 @@ describe('checkSearchConsistency', () => {
     mockTableStates = []
   })
 
+  it('unclaimed engine tables point at the drop repair with Keep as the recorded-decision choice (self-healing 1.4b, row 76)', async () => {
+    mockSearchEnabled = true
+    mockSearchAvailable = true
+    mockUnclaimed = ['bakin_tasks_v1_dead']
+    try {
+      const results = observed(await checkSearchConsistency())
+      const row = results.find((observation) => observation.key === 'indexes.sweep.unclaimed')!
+      expect(row.incident).toMatchObject({ key: 'unclaimed-tables', disposition: 'advisory', resolution: { type: 'repair', actionId: 'search-drop-unclaimed-tables', choices: [{ key: 'keep', kind: 'request', body: { tables: ['bakin_tasks_v1_dead'] } }] } })
+    } finally {
+      mockUnclaimed = []
+    }
+  })
+
   it('warns on an in-flight migration without flagging repair', async () => {
     mockSearchEnabled = true
     mockSearchAvailable = true
@@ -929,7 +945,7 @@ describe('checkSearchConsistency', () => {
     const results = observed(await checkSearchConsistency())
     const row = results.find((observation) => observation.key === 'indexes.table:bakin_t')!
     expect(row.status).toBe('warning')
-    expect(row.incident?.disposition).toBe('watch')
+    expect(row.incident).toBeUndefined() // row 71: an in-flight migration is a plain observation
     mockTableStates = []
   })
 
@@ -985,7 +1001,7 @@ describe('checkSearchConsistency', () => {
     mockEngineTables = [{ name: 'bakin_t_v2_ff' }]
 
     const repair = searchConsistencyRepair()
-    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')), noopOp())
+    const outcomes = await repair.apply(stampPlanItems(repair, await repair.plan(searchConsistencyTarget('bakin_t'))), noopOp())
 
     expect(mockRebuiltLogicalTables).toEqual([])
     expect(outcomes).toEqual([
@@ -1000,7 +1016,7 @@ describe('checkSearchConsistency', () => {
     mockTableStatsError = new Error('engine timed out')
 
     const repair = searchConsistencyRepair()
-    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')), noopOp())
+    const outcomes = await repair.apply(stampPlanItems(repair, await repair.plan(searchConsistencyTarget('bakin_t'))), noopOp())
 
     expect(outcomes).toEqual([
       expect.objectContaining({
@@ -1016,7 +1032,7 @@ describe('checkSearchConsistency', () => {
     mockTableStats = null
 
     const repair = searchConsistencyRepair()
-    const outcomes = await repair.apply(await repair.plan(searchConsistencyTarget('bakin_t')), noopOp())
+    const outcomes = await repair.apply(stampPlanItems(repair, await repair.plan(searchConsistencyTarget('bakin_t'))), noopOp())
 
     expect(outcomes[0]?.message).toContain('bakin_t:')
   })
@@ -1029,7 +1045,7 @@ describe('checkSearchConsistency', () => {
     ]
 
     const repair = searchConsistencyRepair()
-    const plan = await repair.plan(searchConsistencyIncidentTarget('bakin_selected'))
+    const plan = stampPlanItems(repair, await repair.plan(searchConsistencyIncidentTarget('bakin_selected')))
     const outcomes = await repair.apply(plan, noopOp())
 
     expect(plan).toHaveLength(1)
@@ -1051,7 +1067,7 @@ describe('checkSearchConsistency', () => {
     ]
 
     const repair = searchConsistencyRepair()
-    const plan = await repair.plan(searchConsistencyTarget('bakin_selected'))
+    const plan = stampPlanItems(repair, await repair.plan(searchConsistencyTarget('bakin_selected')))
     mockTableStates = [
       { logical: 'bakin_selected', physical: 'bakin_selected_v3_aa', schemaVersion: 3, state: 'active' },
       { logical: 'bakin_unrelated', physical: 'bakin_unrelated_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_unrelated_v3_aa', phase: 'parked' },
@@ -1090,7 +1106,7 @@ describe('checkSearchConsistency', () => {
     mockSearchEnabled = true
     mockTableStates = [{ logical: 'bakin_selected', physical: 'bakin_selected_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_selected_v3_aa', phase: 'parked' }]
     const repair = searchConsistencyRepair()
-    const run = await runRepairContract(repair, await repair.plan(searchConsistencyIncidentTarget('bakin_selected')))
+    const run = await runRepairContract(repair, stampPlanItems(repair, await repair.plan(searchConsistencyIncidentTarget('bakin_selected'))))
     expectRepairContract(repair, run)
     expect(run.view.resources).toEqual(['search-engine'])
     expect(run.calls).toEqual(['stage:confirm', 'stage:rebuild', 'item:rebuild:bakin_selected', 'item:rebuild:bakin_selected'])
@@ -1159,12 +1175,13 @@ describe('checkAndSyncSkill', () => {
     )
     const results = observed(await checkAndSyncSkill(projectRoot, mockRuntime))
     expect(results[0].status).toBe('warning')
-    const applied = await syncSkillRepair(projectRoot, mockRuntime).apply(
-      await syncSkillRepair(projectRoot, mockRuntime).plan({
+    const skillRepair = syncSkillRepair(projectRoot, mockRuntime)
+    const applied = await skillRepair.apply(
+      stampPlanItems(skillRepair, await skillRepair.plan({
         type: 'observations',
         reportId: 'report-test',
         ids: ['health.skill:runtime-skill'],
-      }),
+      })),
       noopOp(),
     )
     expect(applied[0].status).toBe('applied')
@@ -1177,7 +1194,7 @@ describe('checkAndSyncSkill', () => {
     mkdirSync(join(projectRoot, 'skill'), { recursive: true })
     writeFileSync(join(projectRoot, 'skill', 'SKILL.md'), '# Bakin Skill\n<!-- bakin:exec-tools:start -->\n<!-- bakin:exec-tools:end -->\n')
     const repair = syncSkillRepair(projectRoot, mockRuntime)
-    const run = await runRepairContract(repair, await repair.plan({ type: 'all_actionable', reportId: 'r' }))
+    const run = await runRepairContract(repair, stampPlanItems(repair, await repair.plan({ type: 'all_actionable', reportId: 'r' })))
     expectRepairContract(repair, run)
     expect(run.calls).toEqual(['stage:render', 'stage:write'])
   })
@@ -1225,28 +1242,40 @@ describe('checkPluginAssets — user-edited skills (#898)', () => {
     }
   }
 
-  it('locked-and-drifted alone is a watch warning with instructions — never the install repair that would skip it', async () => {
+  it('locked-and-drifted alone is a watch warning pointing at the install repair, whose Restore item is the operator\'s decision (self-healing 1.4b, row 94)', async () => {
     warnWith({})
     const results = observed(await checkPluginAssets())
     expect(results[0].status).toBe('warning')
     expect(results[0].incident).toMatchObject({ key: 'user-edited-drifted', disposition: 'watch' })
-    expect(results[0].incident?.resolution.type).toBe('instructions')
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'repair', actionId: 'install-plugin-assets' })
     expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:cold-email', label: 'cold-email (sdr)' }])
   })
 
-  it('a plugin skill that is not text is a watch incident naming the plugin, never the install repair', async () => {
+  it('row 94: "Keep my edit" is a request choice beside Restore, carrying the shipped sha the operator accepts', async () => {
+    const shippedSha = 'a'.repeat(64)
+    warnWith({ userEditedDrifted: [{ ...lockedRef, shippedSha }] })
+    const results = observed(await checkPluginAssets())
+    expect(results[0].incident?.resolution).toMatchObject({
+      type: 'repair', actionId: 'install-plugin-assets', label: 'Restore the shipped copy',
+      choices: [{ key: 'keep-edit', kind: 'request', label: 'Keep my edit', method: 'POST', url: '/api/plugins/health/plugin-assets/keep-edit', body: { skills: [{ name: 'cold-email', pluginId: 'sdr', shippedSha }] } }],
+    })
+  })
+
+  it('a plugin skill that is not text is a watch incident naming the plugin that points at the reinstall repair, never the install repair', async () => {
     warnWith({ userEditedDrifted: [], invalidSource: [{ pluginId: 'sdr', name: 'blobby', error: 'x' }] })
     const results = observed(await checkPluginAssets())
     expect(results[0].incident).toMatchObject({ key: 'skill-source-invalid', disposition: 'watch' })
-    expect(results[0].incident?.resolution.type).toBe('instructions')
-    expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:blobby', label: 'blobby (sdr)' }])
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-reinstall' })
+    // The plugin is the subject the reinstall resolves from the report (row 94); the skill stays named beside it.
+    expect(results[0].incident?.resources).toEqual([{ kind: 'asset', id: 'skill:blobby', label: 'blobby (sdr)' }, { kind: 'plugin', id: 'sdr', label: 'sdr' }])
   })
 
   it('an invalid plugin bin declaration is an action-required incident naming the plugin and the upgrade — never the install repair (#898 D)', async () => {
     warnWith({ userEditedDrifted: [], bins: { missing: [], drifted: [], unsupported: [], invalid: [{ pluginId: 'terminal', reason: 'requires.bins.0.install.darwin-arm64.archive.extractedSha256: Required' }] } })
     const results = observed(await checkPluginAssets())
     expect(results[0].incident).toMatchObject({ key: 'plugin-bins-invalid', disposition: 'action_required' })
-    expect(results[0].incident?.resolution).toMatchObject({ type: 'instructions', steps: [expect.stringContaining('bakin plugins upgrade terminal')] })
+    // No updates engine runs here, so no upgrade is offered: the reinstall repair is the fallback (re-homing row 93).
+    expect(results[0].incident?.resolution).toMatchObject({ type: 'repair', actionId: 'plugin-reinstall' })
     expect(results[0].incident?.resources).toEqual([{ kind: 'plugin', id: 'terminal', label: 'terminal' }])
   })
 
@@ -1266,8 +1295,8 @@ describe('checkPluginAssets — discovery failure', () => {
     }
     const results = observed(await checkPluginAssets())
     expect(results[0].status).toBe('unknown')
-    expect(results[0].incident?.key).toBe('inspection-failed')
-    expect(results[0].incident?.resolution.type).toBe('rerun')
+    expect(results[0].key).toBe('runtime-assets')
+    expect(results[0].incident).toBeUndefined() // row 92: a failed inspection is a plain observation, never a card
   })
 })
 
@@ -1275,15 +1304,16 @@ describe('installPluginAssetsRepair', () => {
   const target = { scope: 'check' as const, checkId: 'health.plugin-assets' } as unknown as Parameters<ReturnType<typeof installPluginAssetsRepair>['plan']>[0]
 
   it('plans one safe item that touches the runtime skill store and ~/.bakin/bin', async () => {
-    const items = await installPluginAssetsRepair().plan(target)
+    const repairAction = installPluginAssetsRepair()
+    const items = stampPlanItems(repairAction, await repairAction.plan(target))
     expect(items).toHaveLength(1)
-    expect(items[0]).toMatchObject({ id: 'install-plugin-assets', actionId: 'install-plugin-assets', safety: 'safe' })
+    expect(items[0]).toMatchObject({ id: 'install-plugin-assets:install-plugin-assets', localId: 'install-plugin-assets', actionId: 'install-plugin-assets', mode: 'self-heal' })
     expect(items[0].changes.map((c) => c.target)).toEqual(['runtime skill store', '~/.bakin/bin'])
   })
 
   it('apply runs the ONE component install and reports its outcome', async () => {
     const action = installPluginAssetsRepair()
-    const items = await action.plan(target)
+    const items = stampPlanItems(action, await action.plan(target))
     mockPluginAssetsInstall = { name: 'plugin-assets', status: 'installed', message: 'Installed 1 binary: tmux (terminal)', durationMs: 5 }
     const applied = await action.apply(items, noopOp())
     expect(applied[0]).toMatchObject({ status: 'applied', message: 'Installed 1 binary: tmux (terminal)', affectedCheckIds: ['health.plugin-assets'] })
@@ -1297,7 +1327,7 @@ describe('installPluginAssetsRepair', () => {
   it('declares install-state and passes the repair runtime contract', async () => {
     const action = installPluginAssetsRepair()
     mockPluginAssetsInstall = { name: 'plugin-assets', status: 'installed', message: 'Installed 1 skill(s)', durationMs: 5 }
-    const run = await runRepairContract(action, await action.plan(target))
+    const run = await runRepairContract(action, stampPlanItems(action, await action.plan(target)))
     expectRepairContract(action, run)
     expect(run.view.resources).toEqual(['install-state'])
     expect(run.calls).toEqual(['stage:skills', 'stage:bins'])
@@ -1351,18 +1381,33 @@ describe('plugin registration', () => {
       'skill', 'plugin-assets', 'plugin-artifacts', 'plugin-registry',
     ]))
     expect(actionIds.sort()).toEqual([
+      'discord-bridge-reconnect',
+      'health-acks-prune',
+      'health-acks-reset',
       'install-plugin-assets',
       'media-install-store',
+      'package-reinstall',
+      'package-sync',
+      'plugin-reinstall',
+      'plugin-upgrade',
+      'requeue-stranded-tasks',
+      'runtime-restart',
       'search-canary-restart',
       'search-consistency-rebuild',
       'search-consistency-restart',
+      'search-drop-unclaimed-tables',
       'search-engine-burn-restart',
+      'search-engine-claim',
+      'search-engine-install',
+      'search-engine-restart',
+      'search-engine-watch-reset',
       'search-outbox-revive',
       'search-scar-rebuild',
       'search-spin-rebuild',
+      'service-setup',
+      'session-store-prune',
       'sweep-run-dirs',
       'sync-skill',
-      'upgrade-plugin-artifact',
     ])
     for (const registration of registrations) {
       expect(registration.description.length).toBeGreaterThan(0)
@@ -1389,7 +1434,7 @@ for (const installed of [false, true]) {
     const row = engineRows[0]
     const [incident] = projectEffectiveDispositions([{
       ...row.incident!, resources: row.incident!.resources ?? [], id: 'ownership', status: row.status as 'error',
-      effectiveDisposition: row.incident!.disposition, observationIds: [],
+      effectiveDisposition: row.incident!.disposition, observationIds: [], required: row.incident!.required === true,
       observedAt: new Date().toISOString(), staleAt: '2099-01-01T00:00:00.000Z', stale: false,
     }], 'standard')
     expect(incident.effectiveDisposition).toBe('action_required')
@@ -1399,6 +1444,17 @@ for (const installed of [false, true]) {
     expect(searchProbeCalls).toBe(0)
   })
 }
+it('an installable ownership refusal is the Claim repair (the guest alternative is named in its confirmation — row 54); other refusals keep their steps', async () => {
+  mockSearchEnabled = true
+  mockSearchInstalled = true
+  mockSearchAvailable = false
+  mockServiceStatus = { mode: 'launchd', provisioned: false, refusal: { reason: 'unowned', detail: 'Another home owns the service.', remediation: 'install' } }
+  const rows = observed(await checkSearchAdapter())
+  expect(rows.find((r) => r.key === 'engine.supervision')?.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'search-engine-claim' })
+  mockServiceStatus = { mode: 'launchd', provisioned: false, refusal: { reason: 'temporary-home', detail: 'Temporary home.', remediation: 'configure-endpoint' } }
+  expect(observed(await checkSearchAdapter()).find((r) => r.key === 'engine.supervision')?.incident?.resolution.type).toBe('human')
+})
+
 it('guest Health skips local binary requirements and probes the configured adapter', async () => {
   mockSearchEnabled = true
   mockSearchInstalled = false

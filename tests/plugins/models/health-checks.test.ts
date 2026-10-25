@@ -14,7 +14,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 import { checkModelRouting, recommendRoutes, recommendedRoutesRepair, type RoutingHealthDeps } from '../../../plugins/models/lib/health-checks'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
 import type { RunCostSpendRow } from '../../../src/core/execution-ledger'
 import type { WorkClassRoute } from '../../../src/core/model-routing'
 import { recommendPlan, type PlanCandidate } from '../../../src/core/model-plan'
@@ -219,8 +219,11 @@ describe('checkModelRouting', () => {
     }))
     if (result.outcome !== 'observed') throw new Error('expected observed')
     const warn = result.observations.find((o) => o.key === 'premium-on-cheap-relay')
-    expect(warn?.incident?.resolution).toMatchObject({ type: 'navigate', href: '/models' })
-    expect(warn?.incident?.impact).toContain('No cheaper model has been seen running here yet')
+    // Row 156: an observation — no card nobody can act on; the detail says where to look.
+    expect(warn?.status).toBe('warning')
+    expect(warn?.incident).toBeUndefined()
+    expect(warn?.detail).toContain('No cheaper model has been seen running here yet')
+    expect(warn?.detail).toContain('/models')
   })
 
   it('premium-on-cheap on an EXPLICITLY routed class points at that route, not at proving a model', async () => {
@@ -230,8 +233,10 @@ describe('checkModelRouting', () => {
     }))
     if (result.outcome !== 'observed') throw new Error('expected observed')
     const warn = result.observations.find((o) => o.key === 'premium-on-cheap-relay')
-    expect(warn?.incident?.resolution).toMatchObject({ type: 'navigate', href: '/models?ref=route:relay' })
-    expect(warn?.incident?.impact).toContain('routed to anthropic/claude-opus-4-6 on purpose')
+    // Row 155: an observation pointing at the explicit route.
+    expect(warn?.incident).toBeUndefined()
+    expect(warn?.detail).toContain('/models?ref=route:relay')
+    expect(warn?.detail).toContain('routed to anthropic/claude-opus-4-6 on purpose')
   })
 
   it('premium-on-cheap escalates to WATCH past $5 of KNOWN spend in the window — unpriced rows never fabricate', async () => {
@@ -276,7 +281,9 @@ describe('recommendedRoutesRepair', () => {
     const plan = await repair.plan({ kind: 'check', checkId: 'models.routing' } as never)
     expect(plan).toHaveLength(1)
     expect(plan[0]?.changes.length).toBeGreaterThanOrEqual(4)
-    const run = await runRepairContract(repair, plan)
+    // Rows 153/154: a routing change is one-click.
+    expect(stampPlanItems(repair, plan)[0]!.mode).toBe('one-click')
+    const run = await runRepairContract(repair, stampPlanItems(repair, plan))
     expectRepairContract(repair, run)
     expect(run.calls.slice(0, 2)).toEqual(['stage:recommend', 'stage:save'])
     expect(run.view.stages[1]!.items!.every((i) => i.status === 'done')).toBe(true)

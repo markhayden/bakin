@@ -30,9 +30,11 @@
 import { createHash } from 'crypto'
 import {
   existsSync,
+  mkdirSync,
   readFileSync,
+  writeFileSync,
 } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { listPluginDefaultFiles, type PluginResourceFile } from '../plugin-resources'
 import { createAppServices, getAppServices, maybeGetAppServices } from '../app-services'
 import { createLogger } from '../logger'
@@ -107,8 +109,13 @@ export interface ScanReport {
   installed: SkillRef[]
   /** Locked by `.userEdited` (overwrite blocked), content matching or not. */
   userEdited: SkillRef[]
-  /** The locked skills whose content differs from what the plugin ships. */
-  userEditedDrifted: SkillRef[]
+  /**
+   * The locked skills whose content differs from what the plugin ships AND
+   * whose shipped version the operator has not accepted (row 94 "Keep my
+   * edit" records `shippedSha`; the drift is raised again only when the
+   * plugin ships something new).
+   */
+  userEditedDrifted: Array<SkillRef & { shippedSha: string }>
   /** Skills whose plugin source is not UTF-8 text — the runtime skill contract is text, so they are never installed. */
   invalidSource: Array<SkillRef & { error: string }>
   bins: BinScanReport
@@ -118,6 +125,8 @@ export interface InstallReport {
   installed: SkillRef[]
   unchanged: SkillRef[]
   skipped: SkillRefSkipped[]
+  /** User-edited skills the caller explicitly asked to restore: their edit was released, the shipped copy written. */
+  restored: string[]
   /** Skills that could not be laid down verified (non-text source, or still differing after a full rewrite). */
   failed: Array<SkillRef & { error: string }>
   bins: BinInstallReport
@@ -251,6 +260,52 @@ function sameFiles(a: Record<string, string>, b: Record<string, string>): boolea
   return keys.length === Object.keys(b).length && keys.every((key) => b[key] === a[key])
 }
 
+/** Content identity of what the plugin ships for a skill: sha256 over its files in a stable order. */
+function shippedSkillSha(files: Record<string, string>): string {
+  const hash = createHash('sha256')
+  for (const relPath of Object.keys(files).sort()) hash.update(`${relPath}\0${files[relPath]}\0`)
+  return hash.digest('hex')
+}
+
+// ─── Accepted edits (row 94 "Keep my edit") ──────────────────────────────────
+
+export interface AcceptedSkillEdit {
+  name: string
+  pluginId: string
+  /** The shipped version the operator saw when keeping the edit; a different shipped sha raises the drift again. */
+  shippedSha: string
+  acceptedAt: string
+}
+
+interface AcceptedEditsFile {
+  version: 1
+  skills: Record<string, AcceptedSkillEdit>
+}
+
+/** `~/.bakin/plugins/accepted-edits.json` — the operator's recorded "keep my edit" decisions, by skill name. */
+export function acceptedEditsPath(): string {
+  const { getContentDir } = require('../content-dir') as typeof import('../content-dir')
+  return join(getContentDir(), 'plugins', 'accepted-edits.json')
+}
+
+export function readAcceptedEdits(): Record<string, AcceptedSkillEdit> {
+  const path = acceptedEditsPath()
+  if (!existsSync(path)) return {}
+  const raw = JSON.parse(readFileSync(path, 'utf-8')) as Partial<AcceptedEditsFile> | null
+  if (!raw || raw.version !== 1 || !raw.skills || typeof raw.skills !== 'object') throw new Error(`${path} is not an accepted-edits record`)
+  return raw.skills
+}
+
+/** Record that the operator keeps their edit of these skills AS SHIPPED NOW (`shippedSha` from the scan). */
+export function acceptUserEditedSkills(skills: ReadonlyArray<Pick<AcceptedSkillEdit, 'name' | 'pluginId' | 'shippedSha'>>, now: () => string = () => new Date().toISOString()): AcceptedSkillEdit[] {
+  const accepted = readAcceptedEdits()
+  for (const skill of skills) accepted[skill.name] = { name: skill.name, pluginId: skill.pluginId, shippedSha: skill.shippedSha, acceptedAt: now() }
+  const path = acceptedEditsPath()
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, `${JSON.stringify({ version: 1, skills: accepted } satisfies AcceptedEditsFile, null, 2)}\n`)
+  return Object.values(accepted)
+}
+
 /**
  * The ONE skill predicate behind scan and install: the installed files
  * must equal the expected build of the plugin's skill, file for file.
@@ -328,6 +383,7 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
     invalidSource: [],
     bins: scanPluginBins(plugins),
   }
+  const accepted = readAcceptedEdits()
 
   const runtime = getAppServices().runtime
   for (const plugin of plugins) {
@@ -346,7 +402,12 @@ export async function scanPluginAssets(plugins: PluginEntry[]): Promise<ScanRepo
 
       if (installedSkill && isUserEditedSkill(installedSkill)) {
         report.userEdited.push(ref)
-        if (verdict === 'drifted') report.userEditedDrifted.push(ref)
+        if (verdict === 'drifted') {
+          // A kept edit is a decision about ONE shipped version: the same
+          // shipped sha stays quiet, a newer shipped copy is new evidence.
+          const shippedSha = shippedSkillSha(readSkillFiles(skill))
+          if (accepted[skill.name]?.shippedSha !== shippedSha) report.userEditedDrifted.push({ ...ref, shippedSha })
+        }
         continue
       }
       report[verdict].push(ref)
@@ -368,11 +429,29 @@ export const PLUGIN_ASSETS_PLAN: OperationPlan = {
   pointOfNoReturn: 'skills',
 }
 
-export async function installPluginAssets(plugins: PluginEntry[], op?: OperationContext): Promise<InstallReport> {
-  const report: InstallReport = { installed: [], unchanged: [], skipped: [], failed: [], bins: { installed: [], unchanged: [], failed: [], invalid: [] } }
+export interface InstallPluginAssetsOptions {
+  /**
+   * User-edited skills to RESTORE to the shipped copy (self-healing 1.4b,
+   * row 94's "Restore shipped"): the lock is released by removing the skill
+   * (the sentinel goes with it) so the install below writes it fresh. Only
+   * an explicit decision names a skill here — the default never overwrites
+   * an edit.
+   */
+  restoreUserEdited?: readonly string[]
+}
+
+export async function installPluginAssets(plugins: PluginEntry[], op?: OperationContext, opts: InstallPluginAssetsOptions = {}): Promise<InstallReport> {
+  const report: InstallReport = { installed: [], unchanged: [], skipped: [], failed: [], restored: [], bins: { installed: [], unchanged: [], failed: [], invalid: [] } }
   const runtime = getAppServices().runtime
 
   op?.stage('skills')
+  for (const name of opts.restoreUserEdited ?? []) {
+    const existing = await runtime.skills.get(name)
+    if (!existing || !isUserEditedSkill(existing)) continue
+    await runtime.skills.remove(name)
+    report.restored.push(name)
+    op?.log(`Released the edited copy of ${name}; the plugin's copy is installed below.`)
+  }
   for (const plugin of plugins) {
     const skills = findSkillsForPlugin(plugin)
     if (skills.length === 0) continue
@@ -692,7 +771,7 @@ async function install(_opts: ComponentInstallOptions, op: OperationContext): Pr
 }
 
 /** The component's install, reporting through `op` when run as an operation (the Health repair). */
-export async function applyPluginAssets(op?: OperationContext): Promise<InstallResult> {
+export async function applyPluginAssets(op?: OperationContext, opts: InstallPluginAssetsOptions = {}): Promise<InstallResult & { restored: string[] }> {
   await ensureAppServices()
   const start = Date.now()
   let plugins: PluginEntry[]
@@ -700,9 +779,9 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
     plugins = discoverPlugins()
   } catch (err) {
     if (!(err instanceof PluginDiscoveryError)) throw err
-    return { name: 'plugin-assets', status: 'failed', message: `Plugin assets could not be inspected — ${err.message}`, error: err, durationMs: Date.now() - start }
+    return { name: 'plugin-assets', status: 'failed', message: `Plugin assets could not be inspected — ${err.message}`, error: err, durationMs: Date.now() - start, restored: [] }
   }
-  const report = await installPluginAssets(plugins, op)
+  const report = await installPluginAssets(plugins, op, opts)
   const durationMs = Date.now() - start
   const { bins } = report
 
@@ -719,6 +798,7 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
     ].filter(Boolean).join(' and ')
     return {
       name: 'plugin-assets',
+      restored: report.restored,
       status: 'failed',
       message: `${counts} could not be installed — ${failures.join('; ')}`,
       error: failures,
@@ -731,6 +811,7 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
     const unchanged = report.unchanged.length + bins.unchanged.length
     return {
       name: 'plugin-assets',
+      restored: report.restored,
       status: 'noop',
       message: unchanged === 0
         ? '0 plugin assets to install'
@@ -747,6 +828,7 @@ export async function applyPluginAssets(op?: OperationContext): Promise<InstallR
     : ''
   return {
     name: 'plugin-assets',
+      restored: report.restored,
     status: 'installed',
     message: `Installed ${parts.join(' and ') || '0 plugin asset(s)'}${skippedNote}`,
     durationMs,

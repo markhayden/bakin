@@ -169,6 +169,12 @@ export type {
   DangerZoneProps,
 } from './danger-zone'
 
+export { HandoffCard } from './handoff-card'
+export type {
+  HandoffCardHeadingLevel,
+  HandoffCardProps,
+} from './handoff-card'
+
 export { UnsavedChangesDialog } from './unsaved-changes-dialog'
 export type { UnsavedChangesDialogProps } from './unsaved-changes-dialog'
 

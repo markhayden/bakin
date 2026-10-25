@@ -52,14 +52,16 @@ async function seedIncident(disposition: 'watch' | 'action_required', localId: s
         key: localId, summary: 'Cap breached.',
         incident: {
           key: localId, title: 'Spending cap reached', impact: 'Dispatch defers.', disposition: 'action_required',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          subject: { kind: 'setting', id: 'spend-cap' }, declarationId: 'cap',
+          resolution: { key: 'raise', type: 'human', needs: 'decision', label: 'Raise the cap', href: '/spend?tab=limits' },
         },
       })
     : healthWarning({
         key: localId, summary: 'Slow.',
         incident: {
           key: localId, title: 'Runtime is slow', impact: 'Turns take longer.', disposition: 'watch',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          subject: { kind: 'runtime', id: 'active' }, declarationId: 'slow',
+          resolution: { key: 'diagnose-check-failure', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' },
         },
       })
   const id = registerPluginHealthCheck('ack-route-test', {
@@ -68,6 +70,10 @@ async function seedIncident(disposition: 'watch' | 'action_required', localId: s
     description: 'ack route probe',
     group: { key: 'runtime', label: 'Runtime' },
     maxAgeMs: 60_000,
+    incidents: [
+      { id: 'cap', subjectKind: 'setting', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+      { id: 'slow', subjectKind: 'runtime', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'never' },
+    ],
     run: async () => healthObserved([observation]),
   }, 'Ack Route Test')
   applyHealthCheckRun(await runHealthCheck(getHealthCheck(id)!))

@@ -314,7 +314,7 @@ ONE apply service (`src/core/updates/apply.ts`) behind `GET
    so a still-valid consent token). A reviewed field the lane cannot report
    is itself a refusal: a lane that cannot prove the identity never installs
    on it. Every non-noop `UpgradeResult` carries that verified `identity`.
-   Health's `upgrade-plugin-artifact` repair freezes it in its approved
+   Health's `plugin-upgrade` repair freezes it in its approved
    targets (`plugin:<id>@<version>#<manifestSha>!<artifactSha256>`) and
    commits with `expected: { version, digest }`, so a covering approval
    resolved through `confirmApply` is bound to the artifact bytes it showed —

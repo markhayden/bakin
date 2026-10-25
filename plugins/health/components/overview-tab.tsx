@@ -22,7 +22,7 @@ export interface OverviewTabViewProps {
   backgroundError?: string | null
   onRetry?: () => void
   onRepair?: (incident: HealthIncident) => void
-  onRerun?: (incident: HealthIncident) => void
+  onDecided?: (incident: HealthIncident) => void
   onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
 }
 
@@ -35,7 +35,7 @@ export function OverviewTabView({
   backgroundError = null,
   onRetry,
   onRepair,
-  onRerun,
+  onDecided,
   onAck,
 }: OverviewTabViewProps) {
   return (
@@ -65,7 +65,7 @@ export function OverviewTabView({
         />
       )}
 
-      <OverviewAlerts model={model} onRepair={onRepair} onRerun={onRerun} onAck={onAck} />
+      <OverviewAlerts model={model} onRepair={onRepair} onDecided={onDecided} onAck={onAck} />
 
       <OverviewOperations model={model} telemetry={telemetry} />
     </div>
@@ -76,14 +76,14 @@ export interface OverviewTabProps {
   /** Allows the page shell to share one report hook with its Run checks action. */
   data?: UseOverviewDataResult
   onRepair?: (incident: HealthIncident) => void
-  onRerun?: (incident: HealthIncident) => void
+  onDecided?: (incident: HealthIncident) => void
   onAck?: (incident: HealthIncident, action: 'ack' | 'snooze' | 'clear', window?: '24h' | '7d') => void
 }
 
 function ConnectedOverviewTab({
   data,
   onRepair,
-  onRerun,
+  onDecided,
   onAck,
 }: Required<Pick<OverviewTabProps, 'data'>> & Omit<OverviewTabProps, 'data'>) {
   const contextError = data.contextReport.error ?? data.settings.error
@@ -126,7 +126,7 @@ function ConnectedOverviewTab({
       backgroundError={data.backgroundError}
       onRetry={() => { void data.refresh() }}
       onRepair={onRepair}
-      onRerun={onRerun ?? (() => { void data.runChecks() })}
+      onDecided={onDecided ?? (() => { void data.runChecks() })}
       onAck={onAck}
     />
   )

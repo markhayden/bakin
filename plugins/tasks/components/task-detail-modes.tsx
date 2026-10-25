@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect } from 'react'
+
 import {
   Button,
   Drawer,
@@ -115,10 +117,21 @@ interface TaskDetailFormProps {
   open: boolean
   onClose: () => void
   onCancelEdit: () => void
+  /** A deep link's field to focus once the form is open (`assignee` — the Health "unknown agent" row lands here). */
+  focusField?: string
 }
 
+const FOCUSABLE_FIELDS: Record<string, string> = { assignee: 'task-assignee', brand: 'task-brand' }
+
 /** Create / edit form drawer. */
-export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit }: TaskDetailFormProps) {
+export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit, focusField }: TaskDetailFormProps) {
+  useEffect(() => {
+    const elementId = focusField ? FOCUSABLE_FIELDS[focusField] : undefined
+    if (!open || !elementId) return
+    // The drawer mounts its content on open; focus on the next frame so the control exists.
+    const frame = requestAnimationFrame(() => document.getElementById(elementId)?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [open, focusField])
   const {
     title, setTitle, description, setDescription, agent, setAgent, column, setColumn,
     workflowId, setWorkflowId, workflows, brandId, setBrandId, brands, saving, dirty, pasting, descriptionRef,
@@ -254,7 +267,7 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
           <Field name="brand">
             <FieldLabel>Brand</FieldLabel>
             <Select value={brandId} onValueChange={(v) => { setBrandId(v ?? ''); markDirty() }}>
-              <SelectTrigger aria-label="Brand" className="w-full">
+              <SelectTrigger id="task-brand" aria-label="Brand" className="w-full">
                 <SelectValue placeholder="None">
                   {brands.find(b => b.id === brandId)?.name || (brandId || 'None (inherits from parent/project)')}
                 </SelectValue>

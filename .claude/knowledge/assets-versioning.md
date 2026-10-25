@@ -50,6 +50,7 @@ manifest's `currentVersion` is the default and is omitted from the URL; picking 
 does not carry previews the current one WITHOUT rewriting the URL (rule 4). A promote changes the default; a pinned
 `?version=` keeps pointing at the (still existing) old version and the badge says "selected". The list page's params
 (`view`, `q`, `type`, `tags`, `page`, `sort`, `dir`) are unchanged.
+- `?recover=1` (self-healing PR1 slice 1.4a) renders the asset's **recover page** instead of the detail: the facts (`GET /versioned/:id/recover` — manifest status, files on disk, which recorded versions/exports are present) and only the controls those facts allow — Rebuild manifest from files (`POST …/recover/rebuild`, manifest missing/invalid), Detach missing versions (`…/recover/detach-missing`), Restore a version from an export (`…/recover/restore-export`), and Move to trash (DangerZone, typed confirm). Each control reruns the `assets.assets` check (`POST /api/plugins/health/doctor/run { checkIds }`). Health's `manifest-missing` / `current-version` / `version-file` incidents link here; the not-found branch of the detail page offers it too. Engine: `lib/asset-recovery.ts` — nothing is invented, a rebuilt manifest records only what the files prove.
 
 ## Key modules (`plugins/assets/lib/`)
 

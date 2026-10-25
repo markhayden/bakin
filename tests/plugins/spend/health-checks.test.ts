@@ -53,8 +53,9 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
 mock.module('../../../src/core/plugin-registry', hookRegistryMock)
 
 import { acceptUnattributedHistoryRepair, checkBudget, spendEvidenceRepair } from '@bakin/spend/lib/health-checks'
-import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
-import { recordRunCost } from '../../../src/core/execution-ledger'
+import { expectRepairContract, runRepairContract, stampPlanItems } from '../../helpers/repair-contract'
+import { openBudgetIncident, recordRunCost } from '../../../src/core/execution-ledger'
+import { dayStartMs } from '../../../src/core/budget'
 import { closeAllDbs, closeDb } from '../../../packages/core/src/storage/db'
 import { replaceSessionUsage, toLocalDayKey } from '../../../packages/core/src/usage-history/store'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
@@ -140,7 +141,10 @@ describe('budget health check', () => {
     try {
       const [r] = observed(await checkBudget())
       expect(r.status).toBe('unknown')
-      expect(r.incident).toMatchObject({ key: 'policy-unavailable', class: 'service_failure' })
+      // Row 162: a transient read failure is an observation, not a card.
+      expect(r.key).toBe('policy')
+      expect(r.incident).toBeUndefined()
+      expect(r.summary).toContain('failing closed')
     } finally {
       budgetPolicyRegistered = true
     }
@@ -152,6 +156,9 @@ describe('budget health check', () => {
       const [r] = observed(await checkBudget())
       expect(r.status).toBe('error')
       expect(r.incident).toMatchObject({ key: 'policy-invalid', disposition: 'action_required' })
+      // The recover editor is the control (self-healing 1.4b, rows 40/161) — the operator's decision on the record.
+      expect(r.incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', href: '/spend?recover=1' })
+      expect(r.incident?.subject).toEqual({ kind: 'record', id: 'spend.json', label: 'Spend limits file' })
     } finally {
       budgetPolicyError = null
     }
@@ -527,7 +534,10 @@ describe('budget health check', () => {
     seedSpend(600_000) // → $9.10 = 91%
     const [r] = observed(await checkBudget())
     expect(r.status).toBe('warning')
-    expect(r.incident?.key).toBe('approaching-cap')
+    // Row 171: an observation — the ladder's own toast carries the 90% milestone.
+    expect(r.key).toBe('spend')
+    expect(r.incident).toBeUndefined()
+    expect(r.summary).toContain('approaching a budget limit')
   })
 
   it('a rule that never got an id cannot report approach (milestones key on the id) but still reports a breach', async () => {
@@ -543,6 +553,69 @@ describe('budget health check', () => {
     seedSpend(10_000_000)
     const rows = observed(await checkBudget())
     expect(rows.some((row) => row.status === 'error' && row.key === 'spend')).toBe(true)
+  })
+
+  // Rows 163/167 (self-healing, Codex r1 #10/#11): the card's buttons are the
+  // decisions through the resolve route, and "required" is the gate's own fact.
+  function openIncident(over: Partial<Parameters<typeof openBudgetIncident>[0]> = {}): number {
+    const now = Date.now()
+    return openBudgetIncident({
+      scope: 'global', lane: 'metered', window: 'daily', windowStartMs: dayStartMs(now), kind: 'cap', unit: 'usd_micros',
+      capValue: 10_000_000, spentValue: 10_000_000, atCap: 'defer', openedAt: now, ...over,
+    }).id
+  }
+
+  it('row 163: a pause-mode hold is blocking — required, action_required, and the card offers raise (link to the banner) / ack / resume (confirmed) through the resolve route', async () => {
+    budgetPolicy = { rules: [{ id: 'g1', scope: 'global', lane: 'metered', dailyCap: 10, atCap: 'pause' }] }
+    seedSpend(1_000_000) // back under the cap — the PAUSE hold still blocks
+    const id = openIncident({ atCap: 'pause' })
+    const row = observed(await checkBudget()).find((r) => r.key === 'incidents')!
+    expect(row.status).toBe('error')
+    expect(row.incident).toMatchObject({ declarationId: 'open-incidents', required: true, disposition: 'action_required', subject: { kind: 'system', id: `spend-incident:${id}` } })
+    expect(row.incident?.resolution).toMatchObject({
+      type: 'human', needs: 'decision', href: `/spend?incident=${id}`,
+      choices: [
+        { key: 'raise', kind: 'link', href: `/spend?incident=${id}` },
+        { key: 'ack', kind: 'request', method: 'POST', url: `/api/plugins/spend/incidents/${id}/resolve`, body: { action: 'ack' } },
+        { key: 'resume', kind: 'request', method: 'POST', url: `/api/plugins/spend/incidents/${id}/resolve`, body: { action: 'resume' }, confirm: { title: 'Resume dispatch for the global rule?' } },
+      ],
+    })
+    expect(row.evidence).toMatchObject({ pausing: 1, stillOver: 0, blocking: true })
+  })
+
+  it('row 163: an open defer incident whose rule is back under its cap blocks nothing — advisory, required:false; an acknowledged one offers no second ack', async () => {
+    budgetPolicy = { rules: [{ id: 'g1', scope: 'global', lane: 'metered', dailyCap: 10, atCap: 'defer' }] }
+    seedSpend(1_000_000)
+    const id = openIncident()
+    const { resolveBudgetIncident } = await import('../../../src/core/execution-ledger')
+    resolveBudgetIncident({ id, status: 'acknowledged', resolution: 'acknowledged' })
+    const row = observed(await checkBudget()).find((r) => r.key === 'incidents')!
+    expect(row.status).toBe('warning')
+    expect(row.incident).toMatchObject({ required: false, disposition: 'advisory' })
+    expect(row.incident?.resolution.choices?.map((c) => c.key)).toEqual(['raise', 'resume'])
+    expect(row.evidence).toMatchObject({ pausing: 0, stillOver: 0, blocking: false })
+  })
+
+  it('row 163: an open defer incident whose rule is STILL at/over its cap is blocking (the same breach the gate defers on)', async () => {
+    budgetPolicy = { rules: [{ id: 'g1', scope: 'global', lane: 'metered', dailyCap: 10, atCap: 'defer' }] }
+    seedSpend(10_000_000)
+    openIncident()
+    const row = observed(await checkBudget()).find((r) => r.key === 'incidents')!
+    expect(row.status).toBe('error')
+    expect(row.incident).toMatchObject({ required: true, disposition: 'action_required' })
+    expect(row.evidence).toMatchObject({ pausing: 0, stillOver: 1, blocking: true })
+  })
+
+  it('row 167: a reached cap lands on ITS rule on the Limits tab (?field=) and, while that rule has an open incident, acknowledges it from the card', async () => {
+    budgetPolicy = { rules: [{ id: 'g1', scope: 'global', lane: 'metered', dailyCap: 10 }] }
+    seedSpend(10_000_000)
+    const bare = observed(await checkBudget()).find((r) => r.key === 'spend')!
+    expect(bare.incident?.resolution).toMatchObject({ type: 'human', needs: 'decision', href: '/spend?tab=limits&field=g1', field: 'budget-rule-g1' })
+    expect(bare.incident?.resolution.choices).toEqual([{ key: 'raise', kind: 'link', label: 'Raise the limit', href: '/spend?tab=limits&field=g1', field: 'budget-rule-g1' }])
+    const id = openIncident()
+    const withIncident = observed(await checkBudget()).find((r) => r.key === 'spend')!
+    expect(withIncident.incident?.resolution.choices?.map((c) => c.key)).toEqual(['raise', 'ack'])
+    expect(withIncident.incident?.resolution.choices?.[1]).toMatchObject({ kind: 'request', url: `/api/plugins/spend/incidents/${id}/resolve`, body: { action: 'ack' } })
   })
 
   it('stamps cap breaches budget_block — never demotable by sensitivity (#690)', async () => {
@@ -596,9 +669,11 @@ describe('budget health check', () => {
     }
 
     const rows = observed(await checkBudget())
-    const gap = rows.find((row) => row.incident?.key === 'spend-evidence-incomplete')
-    expect(gap).toBeDefined()
-    expect(gap!.incident?.disposition).toBe('advisory')
+    // Row 170: settling evidence is an OBSERVATION — unknown status, no card at all.
+    const gap = rows.find((row) => row.key === 'spend')
+    expect(gap?.status).toBe('unknown')
+    expect(gap?.incident).toBeUndefined()
+    expect(gap?.detail).toContain('no action needed')
   })
 
   it('warns when runs were deferred even if utilization looks ok', async () => {
@@ -671,7 +746,7 @@ describe('budget health check', () => {
 describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
   it('force-refreshes the model catalog through the models hook and reports the count', async () => {
     const repair = spendEvidenceRepair()
-    const run = await runRepairContract(repair, await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    const run = await runRepairContract(repair, stampPlanItems(repair, await repair.plan({ type: 'all_actionable', reportId: 'r1' })))
     expectRepairContract(repair, run)
     expect(run.view.plan.pointOfNoReturn).toBeNull()
     const outcomes = run.results
@@ -684,7 +759,7 @@ describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
   it('fails honestly when the models plugin is absent', async () => {
     refreshModelsRegistered = false
     const repair = spendEvidenceRepair()
-    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }), noopOp())
+    const outcomes = await repair.apply(stampPlanItems(repair, await repair.plan({ type: 'all_actionable', reportId: 'r1' })), noopOp())
     expect(outcomes[0]).toMatchObject({ status: 'failed' })
     expect(outcomes[0]!.message).toContain('models plugin is not active')
   })
@@ -692,7 +767,7 @@ describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
   it('fails with the credentials pointer when the provider returns zero models', async () => {
     refreshModelsResult = { count: 0, live: true, error: null }
     const repair = spendEvidenceRepair()
-    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }), noopOp())
+    const outcomes = await repair.apply(stampPlanItems(repair, await repair.plan({ type: 'all_actionable', reportId: 'r1' })), noopOp())
     expect(outcomes[0]).toMatchObject({ status: 'failed' })
     expect(outcomes[0]!.message).toContain('bakin check llm')
   })
@@ -700,7 +775,7 @@ describe('spend evidence repair (spend-evidence-refresh-pricing)', () => {
   it('surfaces the fetch error when the refresh itself fails', async () => {
     refreshModelsResult = { count: 0, live: false, error: 'gateway unreachable' }
     const repair = spendEvidenceRepair()
-    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }), noopOp())
+    const outcomes = await repair.apply(stampPlanItems(repair, await repair.plan({ type: 'all_actionable', reportId: 'r1' })), noopOp())
     expect(outcomes[0]).toMatchObject({ status: 'failed' })
     expect(outcomes[0]!.message).toContain('gateway unreachable')
   })
@@ -774,8 +849,10 @@ describe('accept-unattributed-history (spend fossils, health trust overhaul)', (
 
   it('the repair writes the cutoff through the models hook after confirmation-tier planning', async () => {
     const repair = acceptUnattributedHistoryRepair()
-    const plan = await repair.plan({ type: 'all_actionable', reportId: 'r1' })
-    expect(plan[0]?.safety).toBe('destructive')
+    const plan = stampPlanItems(repair, await repair.plan({ type: 'all_actionable', reportId: 'r1' }))
+    // Row 169: a policy write widens what the operator authorized — one-click.
+    expect(plan[0]?.mode).toBe('one-click')
+    expect(plan[0]?.effects.widensAuthorization).toBe(true)
 
     const run = await runRepairContract(repair, plan)
     expectRepairContract(repair, run)
@@ -809,7 +886,7 @@ describe('cutoff clamping and fossil gating (review findings)', () => {
     expect(rows.find((row) => row.key === 'spend')?.status).toBe('unknown')
   })
 
-  it('today-only lane gaps get the settle-on-its-own instructions, never the destructive write-off', async () => {
+  it('today-only lane gaps are a settle-on-its-own observation, never the write-off', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
     resolveBilling = null
     replaceSessionUsage('fresh-lane-gap', 'patch', [{
@@ -821,7 +898,8 @@ describe('cutoff clamping and fossil gating (review findings)', () => {
     }], { mtimeMs: 10, size: 10 })
 
     const spend = observed(await checkBudget()).find((row) => row.key === 'spend')
-    expect(spend?.incident?.resolution).toMatchObject({ type: 'instructions' })
+    expect(spend?.incident).toBeUndefined()
+    expect(spend?.detail).toContain('no action needed')
   })
 
   it('the hook rejects a future cutoff', async () => {
@@ -830,7 +908,7 @@ describe('cutoff clamping and fossil gating (review findings)', () => {
     // covered at the models plugin level; here we pin the read-side clamp
     // (test above) and the repair writes today (below).
     const repair = acceptUnattributedHistoryRepair()
-    const outcomes = await repair.apply(await repair.plan({ type: 'all_actionable', reportId: 'r1' }), noopOp())
+    const outcomes = await repair.apply(stampPlanItems(repair, await repair.plan({ type: 'all_actionable', reportId: 'r1' })), noopOp())
     expect(outcomes[0]).toMatchObject({ status: 'applied' })
     expect(budgetPolicyPatches[0]!.acceptUnattributedBefore).toBe('2026-07-15')
   })

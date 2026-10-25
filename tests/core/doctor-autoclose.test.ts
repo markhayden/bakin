@@ -65,14 +65,18 @@ const CHECK_ID = 'autoclose-test.search'
 function register() {
   registerPluginHealthCheck('autoclose-test', {
     id: 'search', name: 'Search', description: 'Search readiness.', group: { key: 'search', label: 'Search' },
+    incidents: [
+      { id: 'unavailable', subjectKind: 'service', resolution: { type: 'human', needs: 'external-install' }, required: 'always' },
+      { id: 'unknown', subjectKind: 'service', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'never' },
+    ],
     run: async () => {
       duringRun?.()
       if (mode === 'throw') throw new Error('engine timed out')
-      if (mode === 'unknown') return healthObserved([healthUnknown({ key: 'engine', summary: 'Cannot tell.', incident: { key: 'unknown', title: 'Search state unknown', impact: 'Unknown.', disposition: 'watch', resolution: { key: 'rerun', type: 'rerun', label: 'Re-run' } } })])
+      if (mode === 'unknown') return healthObserved([healthUnknown({ key: 'engine', summary: 'Cannot tell.', incident: { key: 'unknown', title: 'Search state unknown', impact: 'Unknown.', disposition: 'watch', subject: { kind: 'service', id: 'search-engine' }, declarationId: 'unknown', resolution: { key: 'diagnose', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' } } })])
       if (mode === 'healthy') return healthObserved([healthHealthy({ key: 'engine', summary: 'Ready.' })])
       return healthObserved([healthError({
         key: 'engine', summary: 'Search is unavailable.',
-        incident: { key: 'unavailable', title: 'Search is unavailable', impact: 'Search fails.', disposition: 'action_required', resolution: { key: 'restart', type: 'instructions', label: 'Restart', steps: ['bakin install search'] } },
+        incident: { key: 'unavailable', title: 'Search is unavailable', impact: 'Search fails.', disposition: 'action_required', subject: { kind: 'service', id: 'search-engine' }, declarationId: 'unavailable', resolution: { key: 'restart', type: 'human', needs: 'external-install', label: 'Restart', href: '/health', handoff: { command: 'bakin install search' } } },
       })])
     },
   }, 'Autoclose Test')

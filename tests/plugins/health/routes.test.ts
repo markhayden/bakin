@@ -83,6 +83,7 @@ const cachedReport: HealthReport = {
     incident: {
       key: 'taskboard.missing-columns', disposition: 'action_required', title: 'Task board columns are missing',
       impact: 'Tasks cannot move through the full workflow.',
+      subject: { kind: 'system', id: 'task-board', label: 'Task board' }, declarationId: 'missing-columns', required: true,
       resources: [{ kind: 'plugin', id: 'tasks', label: 'Tasks' }],
       resolution: { key: 'repair-board', type: 'repair', label: 'Repair board', actionId: 'tasks.repair-store' },
     },
@@ -90,8 +91,10 @@ const cachedReport: HealthReport = {
   incidents: [{
     id: 'tasks:taskboard:missing-columns', status: 'error', disposition: 'action_required', effectiveDisposition: 'action_required',
     title: 'Task board columns are missing', impact: 'Tasks cannot move through the full workflow.',
+    subject: { kind: 'system', id: 'task-board', label: 'Task board' },
     resources: [{ kind: 'plugin', id: 'tasks', label: 'Tasks' }],
     resolution: { key: 'repair-board', type: 'repair', label: 'Repair board', actionId: 'tasks.repair-store' },
+    declarationId: 'missing-columns', required: true,
     observationIds: ['tasks.taskboard:columns'], observedAt: generatedAt, staleAt: '2026-04-01T10:02:00.000Z', stale: false,
   }],
   subsystems: {
@@ -108,11 +111,12 @@ const cachedReport: HealthReport = {
 
 const freshReport: HealthReport = { ...cachedReport, id: 'health-report-2', revision: 5 }
 const runDiagnosticsMock = mock(async () => freshReport)
+const runTargetedDiagnosticsMock = mock(async () => freshReport)
 
 mock.module('../../../src/core/doctor', () => ({
   getLastReport: mock(() => cachedReport),
   runDiagnostics: runDiagnosticsMock,
-  runTargetedDiagnostics: mock(async () => freshReport),
+  runTargetedDiagnostics: runTargetedDiagnosticsMock,
 }))
 
 const mockRepairPlan = {
@@ -123,10 +127,12 @@ const mockRepairPlan = {
   expiresAt: '2026-04-01T10:10:00.000Z',
   items: [{
     id: 'tasks.repair-store:repair.taskboard',
+    localId: 'repair.taskboard',
     actionId: 'tasks.repair-store',
     title: 'Repair taskboard',
     reason: 'Missing columns',
-    safety: 'safe' as const,
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mode: 'self-heal' as const,
     incidentIds: ['tasks:taskboard:missing-columns'],
     observationIds: ['tasks.taskboard:columns'],
     preconditions: [{ observationId: 'tasks.taskboard:columns', executionId: 'execution-1', status: 'error' as const, resolutionKey: 'repair-board' }],
@@ -341,8 +347,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 21 routes', () => {
-    expect(activated.routes.length).toBe(23)
+  it('registers 27 routes', () => {
+    expect(activated.routes.length).toBe(27)
   })
 
   it('registers 2 exec tools', () => {
@@ -1057,6 +1063,19 @@ describe('Health Plugin Routes', () => {
       expect(status).toBe(200)
       expect(body.id).toBe(freshReport.id)
       expect(runDiagnosticsMock).toHaveBeenCalledWith(testDir, process.cwd())
+    })
+
+    it('`checkIds` reruns only those checks (a recover page\'s return verification, self-healing 1.4a) — never a full sweep', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/run')!
+      runDiagnosticsMock.mockClear()
+      runTargetedDiagnosticsMock.mockClear()
+      const { status, body } = await callRoute(route, activated.ctx, { body: { checkIds: ['assets.assets'] } })
+      expect(status).toBe(200)
+      expect(body.id).toBe(freshReport.id)
+      expect(runTargetedDiagnosticsMock).toHaveBeenCalledWith(['assets.assets'])
+      expect(runDiagnosticsMock).not.toHaveBeenCalled()
+      const empty = await callRoute(route, activated.ctx, { body: { checkIds: [] } })
+      expect(empty.status).toBe(400)
     })
   })
 

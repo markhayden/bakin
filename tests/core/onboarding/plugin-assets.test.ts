@@ -46,7 +46,7 @@ mock.module('@/core/logger', () => ({
 // branch, so isolate it from whatever runtime-skills core plugins ship.
 mock.module('../../../bakin.config', () => ({ default: { plugins: [] } }))
 
-import { scanPluginAssets, installPluginAssets as installPluginAssetsUnowned, planPluginAssetsRemoval, PLUGIN_ASSETS_PLAN, pluginAssetsComponent } from '@/core/onboarding/plugin-assets'
+import { acceptUserEditedSkills, readAcceptedEdits, scanPluginAssets, installPluginAssets as installPluginAssetsUnowned, planPluginAssetsRemoval, PLUGIN_ASSETS_PLAN, pluginAssetsComponent } from '@/core/onboarding/plugin-assets'
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { withOperationView, installInOperation } from '../../helpers/operation-harness'
 import { createMemoryResourceAcquirer, createOperationRegistry } from '../../../packages/core/src/operations'
@@ -321,6 +321,23 @@ describe('plugin-assets onboarding component', () => {
       expect(result.installed.length).toBe(1)
     })
 
+    it('restoreUserEdited (self-healing 1.4b, row 94): the named locked skill is released and the shipped copy written; an unnamed one stays locked', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      await installPluginAssets([{ id: 'sdr', path: pluginDir }])
+      writeFileSync(join(runtimeSkillHome, 'skills', 'cold-email', '.userEdited'), '')
+      writeFileSync(join(pluginDir, 'defaults', 'runtime-skills', 'cold-email', 'SKILL.md'), SKILL_BODY_V2)
+
+      const kept = await installPluginAssets([{ id: 'sdr', path: pluginDir }], undefined, { restoreUserEdited: ['something-else'] })
+      expect(kept.restored).toEqual([])
+      expect(kept.skipped).toEqual([{ pluginId: 'sdr', name: 'cold-email', reason: 'userEdited' }])
+
+      const restored = await installPluginAssets([{ id: 'sdr', path: pluginDir }], undefined, { restoreUserEdited: ['cold-email'] })
+      expect(restored.restored).toEqual(['cold-email'])
+      expect(restored.installed).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
+      expect(readFileSync(join(runtimeSkillHome, 'skills', 'cold-email', 'SKILL.md'), 'utf-8')).toBe(SKILL_BODY_V2)
+      expect(existsSync(join(runtimeSkillHome, 'skills', 'cold-email', '.userEdited'))).toBe(false)
+    })
+
     it('skips skills with .userEdited sentinel and records them in skipped', async () => {
       const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
       await installPluginAssets([{ id: 'sdr', path: pluginDir }])
@@ -376,10 +393,34 @@ describe('plugin-assets onboarding component', () => {
 
       writeFileSync(join(installedDir, 'SKILL.md'), 'My own version.\n')
       report = await scanPluginAssets([{ id: 'sdr', path: pluginDir }])
-      expect(report.userEditedDrifted).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
+      expect(report.userEditedDrifted).toEqual([{ pluginId: 'sdr', name: 'cold-email', shippedSha: expect.stringMatching(/^[0-9a-f]{64}$/) }])
       expect(report.drifted).toEqual([])
       expect((await installPluginAssets([{ id: 'sdr', path: pluginDir }])).skipped).toEqual([{ pluginId: 'sdr', name: 'cold-email', reason: 'userEdited' }])
       expect(readFileSync(join(installedDir, 'SKILL.md'), 'utf-8')).toBe('My own version.\n')
+    })
+
+    it('"Keep my edit" (row 94) records the shipped sha: the drift stays quiet for that shipped copy and is raised again when the plugin ships a new one', async () => {
+      const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
+      await installPluginAssets([{ id: 'sdr', path: pluginDir }])
+      const installedDir = join(runtimeSkillHome, 'skills', 'cold-email')
+      writeFileSync(join(installedDir, '.userEdited'), '')
+      writeFileSync(join(installedDir, 'SKILL.md'), 'My own version.\n')
+      const [drifted] = (await scanPluginAssets([{ id: 'sdr', path: pluginDir }])).userEditedDrifted
+      expect(drifted).toBeDefined()
+
+      const accepted = acceptUserEditedSkills([{ name: 'cold-email', pluginId: 'sdr', shippedSha: drifted!.shippedSha }], () => '2026-10-24T00:00:00.000Z')
+      expect(accepted).toEqual([{ name: 'cold-email', pluginId: 'sdr', shippedSha: drifted!.shippedSha, acceptedAt: '2026-10-24T00:00:00.000Z' }])
+      expect(readAcceptedEdits()['cold-email']).toMatchObject({ shippedSha: drifted!.shippedSha })
+      let report = await scanPluginAssets([{ id: 'sdr', path: pluginDir }])
+      expect(report.userEdited).toEqual([{ pluginId: 'sdr', name: 'cold-email' }])
+      expect(report.userEditedDrifted).toEqual([]) // kept: the operator decided for THIS shipped version
+
+      // The plugin ships a new copy: new evidence, raised again with the new shipped sha.
+      writeFileSync(join(pluginDir, 'defaults', 'runtime-skills', 'cold-email', 'SKILL.md'), SKILL_BODY_V2)
+      report = await scanPluginAssets([{ id: 'sdr', path: pluginDir }])
+      expect(report.userEditedDrifted).toHaveLength(1)
+      expect(report.userEditedDrifted[0]!.shippedSha).not.toBe(drifted!.shippedSha)
+      expect(readFileSync(join(installedDir, 'SKILL.md'), 'utf-8')).toBe('My own version.\n') // never rewritten
     })
 
     it('a content-only drift is rewritten in place — the skill is never removed first (review r1)', async () => {

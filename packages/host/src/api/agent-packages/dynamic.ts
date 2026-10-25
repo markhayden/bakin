@@ -28,6 +28,8 @@ import {
   ResourceBusyError,
   operationOriginFromRequest,
   responseOutcome,
+  type OperationOrigin,
+  type StartOperationInput,
 } from '@bakin/core/operations'
 import { PackageStillRequiredError } from '@/core/agent-packages/errors'
 import { removePackageById } from '@/core/agent-packages/uninstaller'
@@ -69,9 +71,58 @@ const SyncBodySchema = z
   .object({
     check: z.boolean().optional(),
     reclaim: z.union([z.literal('all'), z.array(z.string())]).optional(),
+    /** Fetch exactly this commit (self-healing 1.2). */
+    expected: z.object({ sha: z.string().regex(/^[0-9a-f]{40}$/i) }).optional(),
+    /** Re-stage from upstream even at the same commit. */
+    reinstall: z.boolean().optional(),
   })
   .optional()
   .default({})
+
+export interface AgentSyncOptions {
+  check?: boolean
+  reclaim?: string[] | 'all'
+  expected?: { sha: string }
+  reinstall?: boolean
+}
+
+/**
+ * The agent-package sync as an operation — the SAME input the route starts,
+ * exported for the updates apply service and the Health repair actions
+ * (plan 1.2; model: `pluginUpgradeOperation`).
+ */
+export function agentSyncOperation(agentId: string, options: AgentSyncOptions, origin: OperationOrigin): StartOperationInput<RouteBody> {
+  const check = options.check === true
+  const reclaim = options.reclaim
+  const pin = options.expected?.sha ?? ''
+  return {
+    kind: 'sync',
+    owner: 'core',
+    origin,
+    title: `${check ? 'Check' : options.reinstall ? 'Reinstall' : 'Sync'} ${agentId}`,
+    href: `/team/${encodeURIComponent(agentId)}`,
+    fingerprint: `agent-packages:sync:${agentId}|${check ? 'check' : ''}|${JSON.stringify(reclaim ?? null)}|${pin}|${options.reinstall ? 'reinstall' : ''}`,
+    // A check is read-only: it holds nothing and never waits on an install.
+    resources: check ? [] : ['install-state'],
+    plan: check ? PACKAGE_SYNC_CHECK_PLAN : PACKAGE_SYNC_PLAN,
+    run: async (op) => {
+      try {
+        const receipt = await syncAgent(agentId, { check, reclaim, trigger: 'rest', op, ...(options.expected ? { expected: options.expected } : {}), ...(options.reinstall ? { reinstall: true } : {}) })
+        if (!check) await reloadAgentPackageRegistries({ kind: 'synced', agentId })
+        // A check whose upstream question went unanswered is a FAILED check (review r6 #1) — never a quiet 200 "unchanged".
+        if (check && receipt.package?.checkError) return responseOutcome(502, { ok: false, error: receipt.package.checkError, receipt }, 'check_failed')
+        return responseOutcome(200, { ok: true, receipt })
+      } catch (err) {
+        if (err instanceof OperationCancelledError) throw err
+        if (err instanceof MigrationRequiredError) {
+          return responseOutcome(409, { ok: false, migrationRequired: true, error: err.message }, 'migration_required')
+        }
+        log.error('agents/sync failed', err as Error, { agentId })
+        return responseOutcome(500, { ok: false, error: err instanceof Error ? err.message : String(err) })
+      }
+    },
+  }
+}
 
 const ToggleBodySchema = z.object({
   enabled: z.boolean(),
@@ -217,36 +268,7 @@ async function handleSync(req: Request, agentId: string): Promise<Response> {
   const raw = await parseJsonBodyWeb(req) ?? {}
   const parsed = SyncBodySchema.safeParse(raw)
   if (!parsed.success) return invalid(parsed.error.issues)
-  const check = parsed.data?.check === true
-  const reclaim = parsed.data?.reclaim
-
-  return startOperationResponse<RouteBody>({
-    kind: 'sync',
-    owner: 'core',
-    origin: operationOriginFromRequest(req),
-    title: `${check ? 'Check' : 'Sync'} ${agentId}`,
-    href: `/team/${encodeURIComponent(agentId)}`,
-    fingerprint: `agent-packages:sync:${agentId}|${check ? 'check' : ''}|${JSON.stringify(reclaim ?? null)}`,
-    // A check is read-only: it holds nothing and never waits on an install.
-    resources: check ? [] : ['install-state'],
-    plan: check ? PACKAGE_SYNC_CHECK_PLAN : PACKAGE_SYNC_PLAN,
-    run: async (op) => {
-      try {
-        const receipt = await syncAgent(agentId, { check, reclaim, trigger: 'rest', op })
-        if (!check) await reloadAgentPackageRegistries({ kind: 'synced', agentId })
-        // A check whose upstream question went unanswered is a FAILED check (review r6 #1) — never a quiet 200 "unchanged".
-        if (check && receipt.package?.checkError) return responseOutcome(502, { ok: false, error: receipt.package.checkError, receipt }, 'check_failed')
-        return responseOutcome(200, { ok: true, receipt })
-      } catch (err) {
-        if (err instanceof OperationCancelledError) throw err
-        if (err instanceof MigrationRequiredError) {
-          return responseOutcome(409, { ok: false, migrationRequired: true, error: err.message }, 'migration_required')
-        }
-        log.error('agents/sync failed', err as Error, { agentId })
-        return responseOutcome(500, { ok: false, error: err instanceof Error ? err.message : String(err) })
-      }
-    },
-  })
+  return startOperationResponse<RouteBody>(agentSyncOperation(agentId, parsed.data ?? {}, operationOriginFromRequest(req)))
 }
 
 async function handleMigrate(req: Request): Promise<Response> {

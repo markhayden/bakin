@@ -63,7 +63,9 @@ describe('context.startup-size check', () => {
     expect(res.summary).toContain('jessica')
     expect(res.detail).toContain('Largest components')
     expect(res.detail).toContain('Dispatch remains enabled')
-    expect(res.incident?.disposition).toBe('watch')
+    // Row 38: an observation naming the diagnostics page — never a card.
+    expect(res.incident).toBeUndefined()
+    expect(res.detail).toContain('?tab=diagnostics')
   })
 
   it('re-reads settings every run — raising the budget clears the warn without restart', async () => {

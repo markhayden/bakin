@@ -76,6 +76,7 @@ const WRITERS = [
   'syncAgent', 'syncAllAgents', 'syncPack', 'repairPackLocally', 'migrateToManagedBlocks', 'setLessonEnabled',
   'confirmSkillInstall', 'replacePluginDir', 'installPluginBins', 'installManifestBins', 'installManifestRequirements',
   'restoreUninstallSnapshot', 'linkPlugin', 'unlinkPlugin', 'applyMapping', 'applyPluginAssets', 'installPluginAssets',
+  'setPluginEnabled',
 ]
 
 /** How a caller owns install-state: an operation, a local operation, a bounded non-blocking hold, or a repair declaring it. */

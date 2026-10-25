@@ -13,6 +13,9 @@ import {
   checkWorkflowSkills,
   workflowSkillDriftRepair,
   staleWorkflowInstancesRepair,
+  WORKFLOW_DEFINITIONS_INCIDENTS,
+  WORKFLOW_INSTANCES_INCIDENTS,
+  WORKFLOW_SKILLS_INCIDENTS,
 } from './lib/health-checks'
 import { listInstances, reconcilePendingApprovalTaskColumns } from './lib/runtime'
 import { setWorkflowPluginContext } from './lib/plugin-context'
@@ -26,7 +29,7 @@ import { ensurePendingGateApprovals, registerWorkflowGateApprovalKind } from './
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../src/core/content-dir'
 import { pluginRootFromModuleUrl, shippedWorkflowFiles } from '../../src/core/plugin-resources'
-import { checkShippedDefaults, recordShippedDefaults } from './lib/shipped-defaults'
+import { SHIPPED_DEFAULTS_INCIDENTS, checkShippedDefaults, recordShippedDefaults } from './lib/shipped-defaults'
 import { setEventBus, setNotificationRuntime } from './lib/notifications'
 
 const log = createLogger('workflows')
@@ -91,6 +94,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
       description: 'Checks workflow schemas and every skill or nested-workflow reference.',
       group: { key: 'workflows', label: 'Workflows' },
       maxAgeMs: 5 * 60_000,
+      incidents: WORKFLOW_DEFINITIONS_INCIDENTS,
       run: () => checkWorkflowDefinitions(getContentDir()),
     })
     ctx.registerHealthCheck({
@@ -99,6 +103,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
       description: 'Verifies this build can locate and register the workflows the plugin ships.',
       group: { key: 'workflows', label: 'Workflows' },
       maxAgeMs: 10 * 60_000,
+      incidents: SHIPPED_DEFAULTS_INCIDENTS,
       run: async () => checkShippedDefaults(),
     })
     ctx.registerHealthCheck({
@@ -107,6 +112,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
       description: 'Finds workflow instances that are stalled or belong to deleted tasks.',
       group: { key: 'workflows', label: 'Workflows' },
       maxAgeMs: 2 * 60_000,
+      incidents: WORKFLOW_INSTANCES_INCIDENTS,
       run: () => checkStaleWorkflowInstances(getContentDir()),
     })
     ctx.registerHealthCheck({
@@ -115,6 +121,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
       description: 'Checks workflow skill metadata and managed-source drift.',
       group: { key: 'workflows', label: 'Workflows' },
       maxAgeMs: 5 * 60_000,
+      incidents: WORKFLOW_SKILLS_INCIDENTS,
       run: async () => checkWorkflowSkills(getContentDir()),
     })
 

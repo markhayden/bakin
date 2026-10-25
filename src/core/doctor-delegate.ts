@@ -14,6 +14,7 @@ import {
   type DoctorRepairRequest,
   type OpenRepairWork,
 } from './doctor-repair-store'
+import { buildRepairBrief, type FallbackBriefInput } from './doctor-brief'
 import { createTaskWithEffects, getTaskDetails } from './task-service'
 import { randomUUID } from 'crypto'
 import { incidentHolder, releaseIncidents, reserveIncidents, transferIncidents } from './doctor-reservations'
@@ -30,6 +31,12 @@ export interface DoctorDelegateOptions {
    * persistence, and releases them once the request file is written.
    */
   reservation?: string
+  /**
+   * The fallback-investigation sections of the brief (`core.diagnose`,
+   * self-healing 1.5): engine attempts, hand-back contract, verbs, Terminal
+   * convention, turn budget. Absent = today's delegated-repair brief.
+   */
+  fallback?: FallbackBriefInput
 }
 
 export type DoctorDelegateReport = DoctorDelegateOutcome | DoctorDelegateRefusal
@@ -62,56 +69,6 @@ export interface DoctorDelegateVerificationReport {
 
 function summarize(incidents: readonly HealthIncident[]): string {
   return `${incidents.length} incident${incidents.length === 1 ? '' : 's'} need attention`
-}
-
-/**
- * One line naming the incident's SANCTIONED fix. The margo forgery
- * (2026-09-21, #898): a delegated repair agent whose installer hung
- * hand-built the artifact and forged its receipt — because the brief never
- * told it what the sanctioned path was, nor that fabrication is worse than
- * failure. Every incident now names its published resolution explicitly.
- */
-function describeSanctionedFix(incident: HealthIncident): string[] {
-  const resolution = incident.resolution
-  if (!resolution) {
-    return ['  Sanctioned fix: none published — diagnose and report findings; do NOT improvise a fix.']
-  }
-  switch (resolution.type) {
-    case 'repair':
-      return [`  Sanctioned fix: one-click repair "${resolution.label}" — run the matching documented \`bakin\` command if the incident names one; otherwise report that this repair needs the operator's one-click in Health. Never re-implement it by hand.`]
-    case 'instructions':
-      return [
-        `  Sanctioned fix: ${resolution.label}${resolution.command ? ` — run \`${resolution.command}\`` : ''}`,
-        ...resolution.steps.slice(0, 4).map((step) => `    • ${step}`),
-      ]
-    case 'rerun':
-      return [`  Sanctioned fix: re-run the check ("${resolution.label}") after addressing the cause.`]
-    default:
-      return ['  Sanctioned fix: see the incident in Health.']
-  }
-}
-
-function buildRepairBrief(request: DoctorRepairRequest, incidents: readonly HealthIncident[]): string {
-  return [
-    `Health repair request: ${request.id}`,
-    '',
-    'Resolve these Bakin Health incidents. Use their stable IDs when recording progress.',
-    '',
-    ...incidents.flatMap((incident) => [
-      `- ${incident.title} (${incident.id})`,
-      `  Impact: ${incident.impact}`,
-      ...describeSanctionedFix(incident),
-    ]),
-    '',
-    'INTEGRITY RULES (non-negotiable):',
-    '- Repair ONLY through the sanctioned fixes above, documented `bakin` commands, or published exec tools.',
-    '- NEVER create, edit, or fabricate Bakin-internal state by hand: receipts, stores under ~/.bakin (media/, packages/, bin/, models/), lockfiles, .installedBy/.userEdited sidecars, the .onboarded marker, health acks, or databases. A hand-built artifact poisons health reporting and bricks the real repair.',
-    '- If a sanctioned fix fails, hangs, or cannot be verified: STOP and block this task with exactly what you ran and what happened. A clearly reported failure is a SUCCESS outcome for this task; a fabricated fix is the worst possible outcome.',
-    '- Verification means fresh Health checks passing on their own. Never edit anything to make a check pass without fixing the underlying cause.',
-    '- NEVER silence an incident instead of fixing it: do not acknowledge or snooze Health incidents, do not change doctor or escalation settings, and do not move this task to review to make it go quiet. If you cannot fix it, block this task and report why.',
-    '',
-    'When the root causes are addressed, run fresh Health checks and complete this task with a short summary.',
-  ].join('\n')
 }
 
 /**
@@ -198,7 +155,7 @@ async function persistDelegation(options: DoctorDelegateOptions, request: Doctor
     title: `Health repair: ${summarize(incidents)}`,
     column: 'todo',
     assignee: agentId,
-    description: buildRepairBrief(request, incidents),
+    description: buildRepairBrief({ requestId: request.id, incidents, ...(options.fallback ? { fallback: options.fallback } : {}) }),
     createdBy: 'system',
     source: {
       pluginId: 'health',

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
@@ -87,6 +87,52 @@ export function repairRequestV2Root(contentDir: string): string {
 
 export function legacyRepairRequestArchiveRoot(contentDir: string): string {
   return join(contentDir, 'doctor', 'repair-requests')
+}
+
+/**
+ * Where records the CURRENT schema refuses are moved at boot — bytes an
+ * earlier release wrote (pre-#942 rows without `checkIds`, pre-cutover
+ * proposals with `safety` instead of `effects`/`mode`). Immutable like the
+ * v1 archive: never listed, never parsed, never deleted.
+ */
+export function refusedRepairRequestArchiveRoot(contentDir: string): string {
+  return join(contentDir, 'doctor', 'repair-requests-v2-archive')
+}
+
+/**
+ * ONE pass at boot (startup recovery): every v2 record the current schema
+ * refuses is moved — shard preserved — into the refused archive, so the
+ * listers (escalation cover, auto-close, interrupted-apply recovery) stop
+ * logging a warning per stale file on every doctor pass (68 of them on the
+ * operator's box after the three-outcomes cutover, 2026-10-24). Unreadable
+ * JSON moves too. Returns what moved; the caller logs once.
+ */
+export function archiveRefusedRepairRequests(contentDir: string): { archived: string[]; archiveRoot: string } {
+  const root = repairRequestV2Root(contentDir)
+  const archiveRoot = refusedRepairRequestArchiveRoot(contentDir)
+  const archived: string[] = []
+  if (!existsSync(root)) return { archived, archiveRoot }
+  for (const shard of readdirSync(root)) {
+    const dir = join(root, shard)
+    if (!existsSync(dir)) continue
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith('.json')) continue
+      const path = join(dir, file)
+      let refused = false
+      try {
+        refused = !doctorRepairRequestSchema.safeParse(JSON.parse(readFileSync(path, 'utf-8'))).success
+      } catch {
+        refused = true
+      }
+      if (!refused) continue
+      const target = join(archiveRoot, shard)
+      mkdirSync(target, { recursive: true })
+      renameSync(path, join(target, file))
+      archived.push(`${shard}/${file}`)
+    }
+  }
+  if (archived.length > 0) log.info('Archived doctor repair requests the current schema refuses', { count: archived.length, archiveRoot })
+  return { archived, archiveRoot }
 }
 
 function requestPath(contentDir: string, request: Pick<DoctorRepairRequest, 'id' | 'createdAt'>): string {

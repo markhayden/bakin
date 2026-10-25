@@ -205,6 +205,7 @@ never sit at rest in a card — surface on hover or behind the detail view.
   asset library; takes effect when you save").
 - Irreversible entity deletion = `DangerZone`: red-bordered, consequences
   spelled out, type-the-id-to-confirm, at the very BOTTOM of Settings.
+- A step only the operator can run (install a runtime, sign in to a provider, grant a scope) = `HandoffCard`: the exact command in a copyable `CodeBlock`, an optional "Open in Terminal" the host wires to the Terminal plugin (prefilled, never executed), an error line that never hides the copy block. Bakin never runs it for you; Health reruns the check when the tab regains focus.
 - Light confirms for high-consequence flips (publish/unpublish) that name
   what changes.
 

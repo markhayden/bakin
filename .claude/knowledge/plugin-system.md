@@ -62,8 +62,11 @@ published):
   neutral). The artifact upgrade lane, the updates engine's `plugin` source (what
   `bakin plugins list --check` and Health read, #1007) all use it — never
   the index's `latest`, which may target another host. Health's
-  `plugin-artifacts` check offers the one-click `upgrade-plugin-artifact`
-  repair when a stranded plugin's source has a compatible release (any — a
+  `plugin-artifacts` check offers the one-click `plugin-upgrade`
+  repair (renamed from `upgrade-plugin-artifact` in the self-healing
+  initiative; `plugin-reinstall` is the fallback that re-stages the RECORDED
+  install through `upgradePlugin({ reinstall: true })` — every lane honours
+  it, a reinstall never upgrades) when a stranded plugin's source has a compatible release (any — a
   rebuild published under the installed version counts, because the
   installed artifact does not run): `plan()` previews and puts the IDENTITY in
   the change targets (`plugin:<id>@<version>#<manifestSha>`,

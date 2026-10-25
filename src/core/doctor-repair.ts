@@ -1,12 +1,17 @@
 /** Targeted canonical Health repair planning, application, and verification. */
 import type {
   HealthObservation,
+  HealthSubject,
+  HealthRepairActionDef,
   HealthRepairApplyResult,
   HealthRepairPlan,
   HealthRepairPlanItem,
   HealthRepairTarget,
   HealthReport,
 } from '../../packages/core/src/plugin-types'
+import { authorizeMutation, type MutationActor } from '@bakin/core/health/authorize-mutation'
+import { automationBlockCopy } from '@bakin/core/health/copy'
+import { repairMode } from '@bakin/core/health/repair-mode'
 import { appendAudit } from './audit'
 import { getHealthReport } from './doctor-report-cache'
 import { runTargetedDiagnostics } from './doctor-execution'
@@ -42,10 +47,11 @@ import {
 } from '@bakin/core/operations'
 import { getOperationRegistry } from './operations'
 
-type IncidentObservation = Exclude<HealthObservation, { status: 'healthy' }>
+type IncidentObservation = Exclude<HealthObservation, { status: 'healthy' }> & { incidentId: string; incident: NonNullable<Exclude<HealthObservation, { status: 'healthy' }>['incident']> }
 
+/** Warning/unknown rows without an incident are plain observations — nothing to repair. */
 function hasIncident(observation: HealthObservation): observation is IncidentObservation {
-  return observation.status !== 'healthy'
+  return observation.status !== 'healthy' && observation.incident !== undefined && observation.incidentId !== undefined
 }
 
 export interface DoctorRepairOptions {
@@ -103,8 +109,12 @@ function repairObservations(report: HealthReport, target: HealthRepairTarget): I
     .filter((observation) => ids.has(observation.id) && observation.incident.resolution.type === 'repair')
 }
 
+/** Producer plan items carry optional per-item effects; core stamps the effects, the mode and the local id. */
+type ProducerPlanItem = Omit<HealthRepairPlanItem, 'effects' | 'mode' | 'localId'> & { effects?: HealthRepairPlanItem['effects'] }
+
 function canonicalizeItem(
-  item: HealthRepairPlanItem,
+  item: ProducerPlanItem,
+  action: HealthRepairActionDef,
   actionId: string,
   eligible: readonly IncidentObservation[],
   report: HealthReport,
@@ -114,10 +124,18 @@ function canonicalizeItem(
   if (observations.length === 0) throw new Error(`Repair plan item ${item.id} did not target eligible observations.`)
   const observationIds = observations.map((row) => row.id).sort()
   const incidentIds = [...new Set(observations.map((row) => row.incidentId))].sort()
+  // The ONE mode policy, applied per item (a planner may stamp stricter
+  // effects than its action declares); clients never re-derive it.
+  const effects = structuredClone(item.effects ?? action.effects)
   return {
     ...structuredClone(item),
+    // The canonical id is opaque to actions; the planner's own id survives
+    // as `localId` — the domain handle `apply` reads (plan review r1 #1).
     id: `${actionId}:${item.id}`,
+    localId: item.id,
     actionId,
+    effects,
+    mode: repairMode(effects),
     observationIds,
     incidentIds,
     preconditions: observations.map((observation) => {
@@ -137,8 +155,8 @@ function planOutput(
   raw: unknown,
   actionId: string,
   localActionId: string,
-): HealthRepairPlanItem[] {
-  const items = parseHealthRepairPlanOutput(raw)
+): ProducerPlanItem[] {
+  const items = parseHealthRepairPlanOutput(raw) as ProducerPlanItem[]
   const ids = new Set<string>()
   for (const item of items) {
     if ((item.actionId !== localActionId && item.actionId !== actionId) || ids.has(item.id)) {
@@ -196,7 +214,7 @@ export async function planDoctorRepair(options: DoctorRepairPlanOptions): Promis
     if (!action) throw new Error(`Repair action ${actionId} is no longer registered.`)
     const planned = planOutput(await action.plan(options.target), action.id, action.localId)
     for (const item of planned) {
-      const canonical = canonicalizeItem(item, actionId, eligible, report)
+      const canonical = canonicalizeItem(item, action, actionId, eligible, report)
       if (dedupe.has(canonical.id)) continue
       dedupe.add(canonical.id)
       items.push(canonical)
@@ -213,10 +231,81 @@ export async function planDoctorRepair(options: DoctorRepairPlanOptions): Promis
     planId: plan.planId,
     reportId: report.id,
     items: plan.items.length,
-    safe: plan.items.filter((item) => item.safety === 'safe').length,
-    nonSafe: plan.items.filter((item) => item.safety !== 'safe').length,
+    selfHeal: plan.items.filter((item) => item.mode === 'self-heal').length,
+    oneClick: plan.items.filter((item) => item.mode === 'one-click').length,
   })
   return plan
+}
+
+/** Who is applying, for the ONE authorization gate: a system origin, an agent acting for its task, or the operator. */
+function mutationActor(options: Pick<DoctorRepairStartOptions, 'origin' | 'actingAgentId'>): MutationActor {
+  if (options.actingAgentId) return 'agent'
+  return options.origin === 'system' ? 'system' : 'operator'
+}
+
+/**
+ * The ONE authorization gate on every apply path (spec §3.2, plan R3 N2):
+ * an action that performs an installation mutation is judged per item for
+ * the actor applying it. Until consent records exist (PR6) nothing is
+ * reviewed, so an unattended upgrade/sync/reinstall is refused
+ * `consent-unreviewed` and handed to the operator path — never counted as a
+ * failed attempt. Items the gate passes (or actions with no mutation) are
+ * returned to run; refused ones become `skipped` results with the reason.
+ */
+/**
+ * The identity the gate judges, from the incident's Health subject: the
+ * tracked update subjects keep their kind (plugin / package / hub-skill);
+ * the search engine, its models and Bakin itself are the kinds pinned in
+ * the binary (trusted by construction); every other Health subject is
+ * Bakin-owned content the gate treats as Bakin's own (`bakin`).
+ */
+export function authorizationSubject(subject: HealthSubject | undefined): { kind: string; id: string } {
+  if (!subject) return { kind: 'bakin', id: 'bakin' }
+  switch (subject.kind) {
+    case 'plugin':
+    case 'package':
+    case 'hub-skill':
+      return { kind: subject.kind, id: subject.id }
+    case 'service':
+      return subject.id === 'search-engine' ? { kind: 'search-engine', id: subject.id } : { kind: 'bakin', id: subject.id }
+    case 'setting':
+      return subject.id === 'search.settings.embedders' ? { kind: 'search-models', id: subject.id } : { kind: 'bakin', id: subject.id }
+    default:
+      return { kind: 'bakin', id: subject.id }
+  }
+}
+
+function authorizeItems(
+  action: HealthRepairActionDef,
+  items: readonly HealthRepairPlanItem[],
+  actor: MutationActor,
+  report: HealthReport,
+): { allowed: HealthRepairPlanItem[]; refused: HealthRepairApplyResult[] } {
+  // Every item passes the ONE gate — `none` and one-click items included; the policy decides, never this caller.
+  const allowed: HealthRepairPlanItem[] = []
+  const refused: HealthRepairApplyResult[] = []
+  for (const item of items) {
+    const incident = report.incidents.find((row) => item.incidentIds.includes(row.id))
+    const verdict = authorizeMutation({
+      subject: authorizationSubject(incident?.subject),
+      mutation: action.mutation,
+      item: { mode: item.mode },
+      actor,
+      consentReviewed: false,
+    })
+    if (verdict.allowed) { allowed.push(item); continue }
+    const copy = automationBlockCopy(verdict.reason)
+    refused.push({
+      itemId: item.id,
+      actionId: item.actionId,
+      status: 'skipped',
+      message: copy.detail ? `${copy.title} ${copy.detail}` : copy.title,
+      affectedCheckIds: [],
+      changes: item.changes,
+      authorization: { refused: true, reason: verdict.reason },
+    })
+  }
+  return { allowed, refused }
 }
 
 function skippedResult(item: HealthRepairPlanItem, message: string): HealthRepairApplyResult {
@@ -457,17 +546,21 @@ async function runDoctorRepair(
   let cancelled = false
   // Actions unregistered since validation (a plugin unloaded) fail without a child.
   let missingActions = 0
-  for (const [actionId, items] of byAction) {
+  const actor = mutationActor(options)
+  for (const [actionId, selected] of byAction) {
     const action = getHealthRepairAction(actionId)
     if (!action) {
       missingActions += 1
-      results.push(...items.map((item) => failedResult(item, new Error(`Repair action ${actionId} is no longer registered.`))))
+      results.push(...selected.map((item) => failedResult(item, new Error(`Repair action ${actionId} is no longer registered.`))))
       continue
     }
     if (cancelled) {
-      results.push(...items.map((item) => skippedResult(item, 'Cancelled before this repair started.')))
+      results.push(...selected.map((item) => skippedResult(item, 'Cancelled before this repair started.')))
       continue
     }
+    const { allowed: items, refused } = authorizeItems(action, selected, actor, current)
+    results.push(...refused)
+    if (items.length === 0) continue
     try {
       const child = await registry.startChild<HealthRepairApplyResult[]>(op.id, {
         kind: `repair:${actionId}`,
@@ -498,7 +591,12 @@ async function runDoctorRepair(
   tally.failed += missingActions
   if (cancelled && tally.applied === 0) throw new OperationCancelledError(op.id)
 
-  const selectedObservationIds = new Set(validated.items.flatMap((item) => item.observationIds))
+  // Items the authorization gate handed to the operator never ran: their
+  // incidents are not this run's verification scope, and their refusal is
+  // never this run's failure (plan R3 N2).
+  const refusedItemIds = new Set(results.filter((result) => result.authorization?.refused).map((result) => result.itemId))
+  const ranItems = validated.items.filter((item) => !refusedItemIds.has(item.id))
+  const selectedObservationIds = new Set(ranItems.flatMap((item) => item.observationIds))
   const inferredCheckIds = current.observations
     .filter((observation) => selectedObservationIds.has(observation.id))
     .map((observation) => observation.checkId)
@@ -546,10 +644,11 @@ async function runDoctorRepair(
     && !report.observations.some((row) => selectedObservationIds.has(row.id) && row.status !== 'healthy')
   const outcome = parentOutcome(tally, { cancelled, verified: cancelled ? null : verified })
   const failedRows = results.filter((r) => r.status === 'failed').length
+  const awaitingOperator = refusedItemIds.size
   const message = outcome.code === 'ok'
-    ? `Applied and verified.`
+    ? awaitingOperator > 0 ? `Applied and verified; ${awaitingOperator} repair item(s) wait for your approval.` : `Applied and verified.`
     : outcome.code === 'nothing_applied'
-      ? 'Nothing needed changing.'
+      ? awaitingOperator > 0 ? `Nothing applied: ${awaitingOperator} repair item(s) wait for your approval.` : 'Nothing needed changing.'
       : outcome.code === 'verification_failed'
         ? remainingIncidentIds.length > 0
           ? `Applied, but ${remainingIncidentIds.length} related incident(s) remain.`

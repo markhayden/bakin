@@ -214,8 +214,9 @@ describe('session-death-incidents health check', () => {
           { taskId: 't-200', agentId: 'jessica', completionBytes: expect.any(Number), oversizedOutput: true },
         ],
       },
-      incident: { disposition: 'watch' },
     })
+    // Row 126: recent session deaths are a plain observation — listed under the check, never a card.
+    expect(result.observations[0]!.incident).toBeUndefined()
   })
 
   it('reports ok when the window is clean', () => {

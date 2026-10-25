@@ -102,6 +102,11 @@ export async function runStartupRecovery(contentDir: string, port: number): Prom
   try {
     const { registerDoctorApprovalKinds, recoverInterruptedApplies } = await import('../doctor-approvals')
     registerDoctorApprovalKinds({ contentDir, projectRoot: process.cwd() })
+    // Pending Health approvals the pre-cutover engine raised cannot be
+    // resolved by this one: retire them raw (receipt first, card edited,
+    // resumed on every boot) BEFORE recovery or rehydration reads them.
+    const { retireLegacyHealthApprovals } = await import('../approvals/legacy-retire')
+    await retireLegacyHealthApprovals({ contentDir })
     // A repair interrupted mid-apply by the previous process is verified or
     // failed honestly BEFORE rehydration looks at its (still pending) record.
     await recoverInterruptedApplies(contentDir)

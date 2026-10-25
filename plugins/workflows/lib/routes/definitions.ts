@@ -7,9 +7,9 @@
  * parser/template-list/source-registry/availability/node-type lib modules and
  * the search-sync indexer — no gate, dispatch, or instance state.
  */
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
-import { dump } from 'js-yaml'
+import { dump, load } from 'js-yaml'
 import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
@@ -17,7 +17,8 @@ import { createLogger } from '@bakin/core/logger'
 import type { WorkflowDefinition } from '../../types'
 import { getContentDir } from '../content-dir'
 import { collectTeamTokenIds } from '@bakin/core/workflows/team-token'
-import { loadDefinition, listDefinitions, validateDefinition, validateWorkflowId } from '../parser'
+import { loadDefinition, listDefinitions, listDefinitionsTolerant, validateDefinition, validateWorkflowId, yamlParseError } from '../parser'
+import { validateWorkflowSkillSource } from '../skill-validate'
 import {
   buildTemplateList,
   resolveSubWorkflows,
@@ -34,7 +35,7 @@ import { indexDefinition } from '../search-sync'
 import { repairWorkflowSkillDrift } from '../workflow-skill-drift'
 import { workflowDefinitionSchema, listNodeTypes } from '@bakin/core/workflows/node-type-registry'
 import { listNotificationChannels } from '@bakin/core/workflows/notification-channel-registry'
-import { passthroughWf, errorResponseWf, repairSkillBodyWf } from '../route-schemas'
+import { passthroughWf, errorResponseWf, repairSkillBodyWf, rawDefinitionBodyWf, rawSkillBodyWf } from '../route-schemas'
 
 const log = createLogger('workflows')
 
@@ -327,6 +328,108 @@ const deleteDefinitionHandler = async (req: Request, _ctx: PluginContextLite) =>
   return Response.json({ id: name, deleted: true })
 }
 
+// ─── Raw recovery (self-healing PR1, Codex r1 #7) ────────────────────────
+// A definition whose YAML does not parse (or carries a key the schema
+// refuses) has no canvas to edit; the recover view edits the FILE. GET hands
+// back the bytes on disk whatever state they are in; PUT accepts text that
+// parses, passes the strict schema and the semantic validation, and writes
+// it verbatim (formatting kept) — a failing save names the line or the key.
+
+const managedDefinitionYaml = (name: string): string | null => {
+  const entry = getRegistryDefinition(name)
+  if (!entry) return null
+  const { source: _source, pluginId: _pluginId, packageId: _packageId, ...bare } = entry.definition as Record<string, unknown>
+  return dump(bare)
+}
+
+// GET /definitions/:name/raw
+const getRawDefinitionHandler = async (req: Request, _ctx: PluginContextLite) => {
+  const name = new URL(req.url).searchParams.get('name')
+  if (!name) return Response.json({ error: 'name param required' }, { status: 400 })
+  const nameError = validateWorkflowId(name)
+  if (nameError) return Response.json({ error: nameError }, { status: 400 })
+  const userPath = findExistingUserDefinitionPath(name)
+  if (userPath) {
+    const yaml = readFileSync(userPath, 'utf-8')
+    const parseError = yamlParseError(yaml)
+    return Response.json({ id: name, source: 'user', path: userPath, yaml, ...(parseError ? { parseError } : {}) })
+  }
+  const managed = managedDefinitionYaml(name)
+  if (managed === null) return Response.json({ error: 'Definition not found' }, { status: 404 })
+  const entry = getRegistryDefinition(name)
+  // Saving a managed definition's raw text writes a user shadow (the user-wins rule) — said up front.
+  return Response.json({ id: name, source: entry?.source ?? 'plugin', path: null, yaml: managed, shadowsOnSave: true })
+}
+
+// PUT /definitions/:name/raw  { yaml }
+const putRawDefinitionHandler = async (req: Request, ctx: PluginContextLite, parsed?: { body?: { yaml?: string } }) => {
+  const name = new URL(req.url).searchParams.get('name')
+  if (!name) return Response.json({ error: 'name param required' }, { status: 400 })
+  const nameError = validateWorkflowId(name)
+  if (nameError) return Response.json({ error: nameError }, { status: 400 })
+  const yaml = parsed?.body?.yaml
+  if (typeof yaml !== 'string' || yaml.trim() === '') return Response.json({ error: 'yaml is required' }, { status: 400 })
+  const parseError = yamlParseError(yaml)
+  if (parseError) return Response.json({ error: `YAML does not parse${parseError.line ? ` at line ${parseError.line}` : ''}: ${parseError.message}`, parseError }, { status: 400 })
+  const loaded = load(yaml)
+  if (!loaded || typeof loaded !== 'object' || Array.isArray(loaded)) return Response.json({ error: 'The YAML must be a mapping (a workflow definition).' }, { status: 400 })
+  const { id: _id, source: _source, pluginId: _pluginId, packageId: _packageId, ...rest } = loaded as Record<string, unknown>
+  const schema = workflowDefinitionSchema.safeParse(rest)
+  if (!schema.success) return Response.json({ error: 'validation failed', issues: schema.error.issues }, { status: 400 })
+  const definition = schema.data as WorkflowDefinition
+  const semanticErrors = validateDefinition(definition, {
+    definitionId: name,
+    source: 'user',
+    knownWorkflowIds: new Set([...listDefinitionsTolerant().entries.map((entry) => entry.name), name]),
+    allowEmptySteps: true,
+    knownTeamIds: await knownTeamIdsFor(definition, ctx),
+  })
+  if (semanticErrors.length > 0) return Response.json({ error: 'validation failed', errors: semanticErrors }, { status: 400 })
+  const dir = getDefinitionsDir()
+  mkdirSync(dir, { recursive: true })
+  const path = findExistingUserDefinitionPath(name) ?? join(dir, `${name}.yaml`)
+  writeFileSync(path, yaml.endsWith('\n') ? yaml : `${yaml}\n`, 'utf-8')
+  return Response.json({ id: name, source: 'user', path, definition })
+}
+
+// Workflow skills live at ~/.bakin/workflows/skills/<file>.md; the file name is the record id (rows 127/128).
+const SKILL_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/
+const skillFilePath = (file: string): string => join(getContentDir(), 'workflows', 'skills', file)
+
+/** What the skills health check flags on this text — the ONE verdict (`skill-validate.ts`), so the editor shows the words a save is refused with. */
+export function workflowSkillProblems(content: string): Array<{ section: 'frontmatter' | 'output_schema'; code: string; message: string }> {
+  return validateWorkflowSkillSource(content).problems
+}
+
+// GET /skills/:name/raw
+const getRawSkillHandler = async (_req: Request, _ctx: PluginContextLite, parsed?: { params?: { name?: string } }) => {
+  const file = parsed?.params?.name
+  if (!file || !SKILL_FILE_RE.test(file)) return Response.json({ error: 'name must be a skill file name (<name>.md)' }, { status: 400 })
+  const path = skillFilePath(file)
+  if (!existsSync(path)) return Response.json({ error: 'Skill file not found' }, { status: 404 })
+  let content: string
+  try {
+    content = readFileSync(path, 'utf-8')
+  } catch (err) {
+    return Response.json({ error: `Skill file could not be read: ${err instanceof Error ? err.message : String(err)}` }, { status: 500 })
+  }
+  return Response.json({ name: file, path, content, problems: workflowSkillProblems(content) })
+}
+
+// PUT /skills/:name/raw  { content }
+const putRawSkillHandler = async (_req: Request, _ctx: PluginContextLite, parsed?: { params?: { name?: string }; body?: { content?: string } }) => {
+  const file = parsed?.params?.name
+  if (!file || !SKILL_FILE_RE.test(file)) return Response.json({ error: 'name must be a skill file name (<name>.md)' }, { status: 400 })
+  const content = parsed?.body?.content
+  if (typeof content !== 'string' || content.trim() === '') return Response.json({ error: 'content is required' }, { status: 400 })
+  const path = skillFilePath(file)
+  if (!existsSync(path)) return Response.json({ error: 'Skill file not found' }, { status: 404 })
+  const problems = workflowSkillProblems(content)
+  if (problems.length > 0) return Response.json({ error: problems.map((problem) => problem.message).join(' '), problems }, { status: 400 })
+  writeFileSync(path, content.endsWith('\n') ? content : `${content}\n`, 'utf-8')
+  return Response.json({ name: file, path, saved: true })
+}
+
 // GET /node-types — palette data source. Returns the registered node-type
 // metadata (builtin + plugin-registered) minus the Zod schemas (which
 // aren't JSON-serializable). The canvas-editor palette hydrates from this.
@@ -360,5 +463,9 @@ export const definitionRoutes = [
   defineRoute({ path: '/definitions/:name', method: 'PUT', description: 'Update or shadow a workflow definition (writes user YAML)', summary: 'Update or shadow a workflow definition (writes user YAML)', params: z.object({ name: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: updateDefinitionHandler }),
   defineRoute({ path: '/definitions/:name/availability', method: 'PATCH', description: 'Enable or disable a managed workflow definition for automatic selection', summary: 'Toggle managed workflow availability', params: z.object({ name: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: updateAvailabilityHandler }),
   defineRoute({ path: '/definitions/:name', method: 'DELETE', description: 'Delete a user-owned workflow definition', summary: 'Delete a user-owned workflow definition', params: z.object({ name: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: deleteDefinitionHandler }),
+  defineRoute({ path: '/definitions/:name/raw', method: 'GET', description: 'Read a workflow definition file verbatim for the recover editor — bytes on disk whatever state they parse into (managed definitions are dumped; saving them writes a user shadow)', summary: 'Read raw workflow YAML', params: z.object({ name: z.string() }), responses: { 200: passthroughWf, 400: errorResponseWf, 404: errorResponseWf, 500: errorResponseWf }, handler: getRawDefinitionHandler }),
+  defineRoute({ path: '/definitions/:name/raw', method: 'PUT', description: 'Save a workflow definition from raw YAML text (parse + strict schema + semantic validation; written verbatim) — the recover editor\'s save', summary: 'Save raw workflow YAML', params: z.object({ name: z.string() }), body: rawDefinitionBodyWf, responses: { 200: passthroughWf, 400: errorResponseWf, 404: errorResponseWf, 500: errorResponseWf }, handler: putRawDefinitionHandler }),
+  defineRoute({ path: '/skills/:name/raw', method: 'GET', description: 'Read a workflow skill file verbatim with the problems the skills health check would flag (frontmatter / output_schema)', summary: 'Read raw workflow skill', params: z.object({ name: z.string() }), responses: { 200: passthroughWf, 400: errorResponseWf, 404: errorResponseWf, 500: errorResponseWf }, handler: getRawSkillHandler }),
+  defineRoute({ path: '/skills/:name/raw', method: 'PUT', description: 'Save a workflow skill file from raw text; refused while it still lacks frontmatter or an output_schema', summary: 'Save raw workflow skill', params: z.object({ name: z.string() }), body: rawSkillBodyWf, responses: { 200: passthroughWf, 400: errorResponseWf, 404: errorResponseWf, 500: errorResponseWf }, handler: putRawSkillHandler }),
   defineRoute({ path: '/node-types', method: 'GET', description: 'List registered workflow node types (builtin + plugin-registered) for the canvas palette', summary: 'List registered workflow node types (builtin + plugin-registered) for the canvas palette', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: nodeTypesHandler }),
 ]

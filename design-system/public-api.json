@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 318,
-    "typeExports": 428
+    "valueExports": 319,
+    "typeExports": 431
   },
   "entrypoints": [
     {
@@ -455,6 +455,7 @@
         "DEFAULT_MODEL_VALUE",
         "FacetFilter",
         "GuideCard",
+        "HandoffCard",
         "InspectorPanel",
         "InspectorPanelContent",
         "InspectorPanelFooter",
@@ -559,6 +560,8 @@
         "GuideCardHeadingLevel",
         "GuideCardPoint",
         "GuideCardProps",
+        "HandoffCardHeadingLevel",
+        "HandoffCardProps",
         "InspectorPanelContentProps",
         "InspectorPanelFooterProps",
         "InspectorPanelHeaderProps",
@@ -840,6 +843,7 @@
         "Router",
         "RouterNavigationOptions",
         "StringNavigationOptions",
+        "UnsavedChangesGuardLocation",
         "UnsavedChangesGuardOptions",
         "UnsavedChangesGuardResult"
       ]

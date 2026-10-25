@@ -246,6 +246,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `CopyButton` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `KeyValue` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DangerZone` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `HandoffCard` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DataTable` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `FacetFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `AgentFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -389,6 +390,8 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `ConfirmDialogTone` | — |
 | `DangerZoneHeadingLevel` | — |
 | `DangerZoneProps` | — |
+| `HandoffCardHeadingLevel` | — |
+| `HandoffCardProps` | — |
 | `DataTableAlign` | — |
 | `DataTableCollapse` | — |
 | `DataTableColumn` | — |
@@ -604,17 +607,33 @@ import type { BakinPlugin, PluginContext, ExecToolDefinition } from '@makinbakin
 | `HealthReportStatus` | — |
 | `HEALTH_INCIDENT_CLASSES` | Producer-stamped behavior class (#690) — what KIND of problem an incident |
 | `HealthIncidentClass` | — |
+| `HEALTH_SUBJECT_KINDS` | What an incident is ABOUT — one card per subject once the cutover lands (spec §3.1). |
+| `HealthSubjectKind` | — |
+| `HealthSubject` | What an incident is ABOUT (spec §3.1). One card per subject in the report. |
+| `HEALTH_HUMAN_NEEDS` | Why a human has to act: the engine cannot supply a credential, pay, decide, or install outside Bakin. |
+| `HealthHumanNeed` | — |
+| `HEALTH_INCIDENT_REQUIREMENTS` | Whether the family's subject is REQUIRED: the attention rule goes red only |
+| `HealthIncidentRequirement` | — |
+| `HealthIncidentDeclarationResolution` | — |
+| `HEALTH_MUTATION_KINDS` | What a repair action DOES to the installation — the input of the ONE authorization gate (spec §3.2). |
+| `HealthMutationKind` | — |
+| `HEALTH_REPAIR_MUTATIONS` | What a repair action declares to the gate: one of the mutation kinds, or |
+| `HealthRepairMutation` | — |
+| `HEALTH_MUTATION_REFUSAL_REASONS` | Why the authorization gate refused an unattended mutation; every surface renders the SAME copy for each (spec §3.2). |
+| `HealthMutationRefusalReason` | — |
+| `HealthIncidentDeclaration` | One FINITE incident family a check may emit (plan R3 N5): `not-ready` |
 | `HealthSensitivity` | Health sensitivity mode (#690): how loudly findings surface. `developer` |
 | `HealthOwnerKind` | — |
 | `HealthOwner` | Core-stamped owner of a registration or canonical finding. |
 | `HealthGroup` | Stable subsystem grouping supplied by a registration. |
 | `HealthResourceKind` | — |
 | `HealthResource` | Stable reference to a resource affected by an incident. |
+| `HealthDecisionChoiceEffects` | One named, executable choice on an incident card beside its resolution |
+| `HealthDecisionChoice` | — |
 | `HealthRepairResolution` | — |
-| `HealthNavigateResolution` | — |
-| `HealthInstructionsResolution` | — |
-| `HealthRerunResolution` | — |
-| `HealthResolution` | — |
+| `HealthHumanHandoff` | A credential or an install the operator performs in a shell: the exact |
+| `HealthHumanResolution` | Something only a human can supply (spec §3.1): a credential, a payment, |
+| `HealthResolution` | The two outcomes (spec D1): Bakin repairs it, or a human must act. Nothing else exists. |
 | `HealthIncidentBaseInput` | — |
 | `AdvisoryIncidentInput` | — |
 | `WatchIncidentInput` | — |
@@ -622,7 +641,7 @@ import type { BakinPlugin, PluginContext, ExecToolDefinition } from '@makinbakin
 | `HealthIncidentInput` | — |
 | `HealthObservationBaseInput` | — |
 | `HealthyObservationInput` | — |
-| `WarningObservationInput` | — |
+| `WarningObservationInput` | A warning is an incident when it carries one. Without an incident it is a |
 | `ErrorObservationInput` | — |
 | `UnknownObservationInput` | — |
 | `HealthObservationInput` | Status-discriminated producer observation; illegal combinations do not typecheck. |
@@ -631,11 +650,13 @@ import type { BakinPlugin, PluginContext, ExecToolDefinition } from '@makinbakin
 | `HealthCheckRunInput` | — |
 | `HealthCheckRunContext` | Cancellation context supplied by core when it executes a health check. |
 | `HealthCheckRegistrationInput` | Plugin- or adapter-authored check definition; core supplies owner metadata. |
-| `HealthRepairSafety` | — |
+| `HealthRepairEffects` | What a repair action does beyond fixing the incident (spec §3.2). The ONE |
+| `HealthRepairMode` | Derived from `HealthRepairEffects` by the ONE policy (`repairMode`); stamped on every canonical plan item. |
 | `HealthRepairChange` | — |
 | `HealthRepairTarget` | — |
 | `HealthRepairPrecondition` | — |
 | `HealthRepairPlanItem` | — |
+| `HealthRepairPlanItemInput` | What a planner returns: core stamps `effects` (defaulting to the action's) and `mode`. |
 | `HealthRepairPlan` | — |
 | `HealthRepairApplyRequest` | — |
 | `HealthRepairApplyResult` | — |
@@ -750,9 +771,10 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `useQueryState` | URL-backed string state with clean defaults and same-tick batching. |
 | `useHistoryBack` | History-aware back navigation with a cold-deep-link fallback. |
 | `useUnsavedChangesGuard` | Complete browser-unload, in-app route, anchor, and explicit-exit protection. |
+| `UnsavedChangesGuardLocation` | Inputs and result contract for complete unsaved-change protection. |
 | `UnsavedChangesGuardOptions` | Inputs and result contract for complete unsaved-change protection. |
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 22, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 24, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -39,6 +39,75 @@ function collectRefs(manifest: BrandManifest): Map<string, string> {
   return refs
 }
 
+export interface BrandAssetReference {
+  brandId: string
+  where: string
+}
+
+/**
+ * The usage fact behind the `brands.assetReferences` hook: every brand (with
+ * a readable manifest) that references each asset id, and where. A brand
+ * whose manifest is unreadable cannot be scanned and is not counted.
+ */
+export function brandsReferencingAssets(assetIds: readonly string[]): Record<string, BrandAssetReference[]> {
+  const wanted = new Set(assetIds)
+  const byAsset: Record<string, BrandAssetReference[]> = {}
+  for (const manifest of listBrands().brands) {
+    for (const [assetId, where] of collectRefs(manifest)) {
+      if (!wanted.has(assetId)) continue
+      ;(byAsset[assetId] ??= []).push({ brandId: manifest.id, where })
+    }
+  }
+  return byAsset
+}
+
+/**
+ * Drop the named asset ids from every place ONE brand references them —
+ * unconditionally. This is the operator's explicit detach (the asset recover
+ * page's "Detach references", the `brands.detachAsset` hook); the dangling
+ * path below adds the liveness check in front of it.
+ */
+export async function detachAssetRefs(
+  brandId: string,
+  assetIds: readonly string[],
+): Promise<{ brand: BrandManifest; detached: string[] }> {
+  const { updateBrand } = await import('./store')
+  const wanted = [...new Set(assetIds)]
+  const gone = new Set(wanted)
+  const brand = await updateBrand(brandId, (manifest) => ({
+    ...manifest,
+    logos: manifest.logos.filter((logo) => !gone.has(logo.assetId)),
+    assetGroups: manifest.assetGroups.map((group) => ({ ...group, assetIds: group.assetIds.filter((id) => !gone.has(id)) })),
+    ...(manifest.defaultImageReferences ? { defaultImageReferences: manifest.defaultImageReferences.filter((id) => !gone.has(id)) } : {}),
+  }))
+  return { brand, detached: wanted }
+}
+
+/** Detach ONE asset from every brand that references it (spec §3.9 — the asset's own recover page). */
+export async function detachAssetFromAllBrands(assetId: string): Promise<{ detached: string[] }> {
+  const referencing = brandsReferencingAssets([assetId])[assetId] ?? []
+  const brandIds = [...new Set(referencing.map((ref) => ref.brandId))]
+  for (const brandId of brandIds) await detachAssetRefs(brandId, [assetId])
+  return { detached: brandIds }
+}
+
+/**
+ * The operator's "Detach" (self-healing 1.4a, row 189): drop the named asset
+ * ids from every place the brand references them. Refuses an id that still
+ * resolves to an asset — detaching a live reference is an edit, not a repair.
+ */
+export async function detachDanglingRefs(
+  brandId: string,
+  assetIds: readonly string[],
+  assetExists: (assetId: string) => Promise<boolean>,
+): Promise<{ brand: BrandManifest; detached: string[] }> {
+  const wanted = [...new Set(assetIds)]
+  for (const assetId of wanted) {
+    if (await assetExists(assetId)) throw new Error(`${assetId} still resolves to an asset — it is a live reference, not a dangling one.`)
+  }
+  return detachAssetRefs(brandId, wanted)
+}
+
 export async function scanBrandIntegrity(
   assetExists: (assetId: string) => Promise<boolean>,
   brandId?: string,

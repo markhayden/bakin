@@ -799,10 +799,11 @@ describe('brands.integrity doctor check (#419 §10)', () => {
     const broken = await checkBrandsIntegrity(activated.ctx)
     expect(broken.outcome).toBe('observed')
     if (broken.outcome !== 'observed') throw new Error('expected observed brand health')
-    expect(broken.observations[0].status).toBe('warning')
-    const data = broken.observations[0].evidence as { dangling: Array<{ brandId: string }>; ghostTasks: Array<{ brandId: string }> }
-    expect(data.dangling[0].brandId).toBe('acme')
-    expect(data.ghostTasks[0].brandId).toBe('ghost')
+    // One incident per affected brand (self-healing PR1, row 189): the dangling ref on acme, the ghost brand the task waits on.
+    const byKey = new Map(broken.observations.map((o) => [o.key, o]))
+    expect(byKey.get('integrity-acme')).toMatchObject({ status: 'warning', evidence: { refs: [{ assetId: 'gone', where: 'logo (dark)' }] } })
+    expect(byKey.get('ghost-ghost')).toMatchObject({ status: 'warning', evidence: { brandId: 'ghost', draft: false } })
+    expect(byKey.get('ghost-ghost')!.incident).toMatchObject({ required: true, subject: { kind: 'record', id: 'brands/ghost' } })
   })
 })
 

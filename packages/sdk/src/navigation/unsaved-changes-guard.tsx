@@ -8,9 +8,23 @@ type RouteNavigationBlocker =
   | { status: 'idle' }
   | { status: 'blocked'; proceed: () => void; reset: () => void }
 
+/** The parts of a parsed location a same-location decision may read. */
+export interface UnsavedChangesGuardLocation {
+  pathname: string
+  search: Record<string, unknown>
+  searchStr: string
+}
+
 export interface UnsavedChangesGuardOptions {
   /** True while the surface holds unsaved edits. */
   hasUnsavedChanges: boolean
+  /**
+   * When is a navigation "staying here"? Default: the same pathname (query
+   * and hash changes never prompt). A surface whose identity lives in query
+   * params (a recover editor keyed by `?recover=1&skill=…`) passes its own
+   * comparison so Back or a query change that unmounts it asks first.
+   */
+  isSameLocation?: (current: UnsavedChangesGuardLocation, next: UnsavedChangesGuardLocation) => boolean
   /** True while a save is in flight. */
   saving: boolean
   /** Whether the save-and-exit choice is available. */
@@ -44,6 +58,7 @@ export interface UnsavedChangesGuardResult {
  */
 export function useUnsavedChangesGuard({
   hasUnsavedChanges,
+  isSameLocation,
   saving,
   canSaveInPlace = true,
   saveDisabled = false,
@@ -90,7 +105,10 @@ export function useUnsavedChangesGuard({
       }) => {
         const current = tanStackRouter.parseLocation(currentLocation)
         const next = tanStackRouter.parseLocation(nextLocation)
-        if (current.pathname === next.pathname) return false
+        const staying = isSameLocation
+          ? isSameLocation(current as UnsavedChangesGuardLocation, next as UnsavedChangesGuardLocation)
+          : current.pathname === next.pathname
+        if (staying) return false
 
         // A newer navigation supersedes a pending one: the older stays blocked
         // (settled now, never orphaned) and the decision is about the newer.
@@ -117,7 +135,7 @@ export function useUnsavedChangesGuard({
     // unsubscribe never resolves an in-flight blocker call; the ref still
     // holds it, so the decision dialog can still settle it.
     return unblock
-  }, [hasUnsavedChanges, tanStackRouter])
+  }, [hasUnsavedChanges, isSameLocation, tanStackRouter])
 
   // Clean again (saved or discarded): nothing is left to lose, so a
   // navigation still waiting on the decision goes through. The blocker's
