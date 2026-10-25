@@ -290,7 +290,7 @@ export function HealthPage() {
               >
                 {tab.label}
                 {tab.id === 'updates' && availableUpdates > 0 && (
-                  <Badge tone="accent" variant="soft" size="xs" aria-label={`${availableUpdates} available`} data-testid="health-updates-count">
+                  <Badge tone="accent" variant="solid" size="xs" aria-label={`${availableUpdates} available`} data-testid="health-updates-count">
                     {availableUpdates}
                   </Badge>
                 )}
