@@ -6,6 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+Every Health finding is now one of two things — a repair Bakin runs, or a human need that lands on a working control — and the retired approval engine's leftovers are cleaned up at boot.
+
+### Added
+- **Three outcomes for Health (#1026, self-healing PR 1 of 8).** Every incident resolves as `repair { actionId }` or `human { needs, href, field?, handoff? }`; the `instructions`, `rerun` and `navigate` shapes and the `safety` tiers are gone. Every check registers a finite `incidents` catalog validated at activation; every incident names its `subject` and `declarationId`, and an owner-decides family carries a `required` verdict derived from an owner FACT (running or scheduled workflows, capability packs an agent declares, asset/brand references, live plugin consumers, spend holds, model selections in use) — advisory, never red on a guess.
+- **Repairs through ONE policy and ONE gate.** Actions declare `effects` + `mutation`; `repairMode` stamps self-heal vs one-click; `authorizeMutation` runs in every apply path (one-click items are never applied unattended). `core.diagnose` is the shared fallback lane with the one brief builder.
+- **Named decision choices on cards.** Claim / use as guest, Drop / Keep (a recorded decision), Restore shipped / Keep my edit, Disable plugin, spend raise / acknowledge / resume — bound to the owner's own route and confirmed when consequential. Advisory and watch findings get a calm Notices surface.
+- **Human controls that work:** recover editors for assets (rebuild manifest, detach references, move a bad store location aside), brands (per-brand incidents, manifest-less directories, effective-brand usage), workflows (raw YAML/skill editors at the failing key, real frontmatter validation, guarded drafts), the roster (entry-addressed panel; registry handoff through the new optional `agents.registryLocation()` runtime member), spend (choices on the card), runtime (provider sign-in handoff selected by family, the verified `openclaw devices list` grant flow, a `gateway-below-floor` handoff). `HandoffCard` + Terminal session prefill with return verification that reruns exactly the originating checks.
+- **Plugin disable.** `bakin plugins disable|enable <id>`, `POST /api/plugins/{disable,enable}`, an Explore switch; suspend is non-destructive (tables and outbox rows stay) and the one activation boundary honours the mark through upgrades.
+
+### Changed
+- **Plugin health checks must declare their incident catalog** — a check without `incidents` fails its plugin's activation. Official companion: Terminal 0.3.5.
+- The legacy `health-repair` / `health-navigate` approvals and the old engine's review tasks are retired at boot (receipt first, Discord cards edited, resumed on every boot until done); settled records move to `approvals/legacy-archive/`, and repair-request records the current schema refuses move to `doctor/repair-requests-v2-archive/` before anything reads the store.
+- A Health check that emits two observations with one key reads `invalid` instead of poisoning the report; the capability readiness engine judges an installed pack once even when the lockfile carries a stale key.
+
+### Fixed
+- Agent-package reinstalls pin to the RECORDED commit (local sources by tree digest); the asset store repair is two items (directories self-heal, the trash purge is one click with frozen targets).
+- The spend plugin declares the roster permission its cap-hold fact reads.
+
+### Upgrade notes
+- **Install Terminal 0.3.5 before or with this release** (`bakin plugins upgrade terminal`): older Terminal artifacts register a health check without a catalog and fail to activate here.
+- First boot retires pending legacy Health approvals and completes their review tasks; one `approvals.legacy_retired` audit row carries the counts.
+
 ## [0.0.1-rc.42] - 2026-10-23
 
 Bakin now knows what is newer across everything it installs, every long-running step runs as an operation end to end, and the plugin toolchain is honest about what runs where.
