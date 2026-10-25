@@ -50,6 +50,7 @@ function packageDeps(over: Partial<PackageSourceDeps> = {}): PackageSourceDeps {
     defaultBranch: async () => null,
     fetchManifest: async () => { throw new Error('no clone expected') },
     localManifest: () => null,
+    installedTreeSha: () => null,
     ...over,
   }
 }
@@ -164,6 +165,22 @@ describe('package source', () => {
     // Same version, newer commit: still an update (the commit is the identity), named by the commit.
     const sameVersion = createPackageSource(packageDeps({ installed: () => [ops], lsRemote: async () => SHA_B, fetchManifest: async () => ({ id: 'ops', version: '1.0.0', commitSha: SHA_B }) }))
     expect(await engine([sameVersion]).observe('package:ops')).toMatchObject({ outcome: 'update-available', reason: 'newer-commit', available: { version: '1.0.0', sha: SHA_B, display: `1.0.0 (${SHA_B.slice(0, 7)})` } })
+  })
+
+  it('a repo-wide commit that leaves the package folder untouched is NOT an update: the fetched folder hashes to the installed folder → current', async () => {
+    // A monorepo source (`#agents/ops`): any commit elsewhere in the repo moves the ref. The package's own bytes are the identity of "is there something newer".
+    const ops = installed('ops', { kind: 'agent', agentId: 'ops', source: 'github:acme/bits#agents/ops', ref: 'main', commitSha: SHA_A })
+    const treeOf = (tree: string | null) => createPackageSource(packageDeps({
+      installed: () => [ops],
+      lsRemote: async () => SHA_B,
+      fetchManifest: async () => ({ id: 'ops', version: '1.0.0', commitSha: SHA_B, treeSha: 'tree-same' }),
+      installedTreeSha: () => tree,
+    }))
+    expect((await engine([treeOf('tree-same')]).observe('package:ops')).outcome).toBe('current')
+    // The folder changed: a real update, named by the commit.
+    expect(await engine([treeOf('tree-old')]).observe('package:ops')).toMatchObject({ outcome: 'update-available', reason: 'newer-commit', available: { sha: SHA_B } })
+    // The installed folder could not be hashed: never assumed current.
+    expect((await engine([treeOf(null)]).observe('package:ops')).outcome).toBe('update-available')
   })
 
   it('review r1 #1: an entry installed without @ref (empty lock ref) tracks the remote DEFAULT branch — resolved, compared, fetched there; a remote without one is blocked', async () => {

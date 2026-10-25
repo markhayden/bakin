@@ -6,6 +6,9 @@
  * only when the ref moved, to name the version on offer. A local source is
  * compared by its directory's manifest version. The package/frontmatter
  * version alone is never an identity — the commit (or the directory) is.
+ * A moved ref whose fetched package folder hashes to the installed folder is
+ * current: in a monorepo every commit moves the ref, and only the package's
+ * own bytes say whether there is something newer.
  *
  * Applying is the existing sync path (`bakin agents sync` / `bakin packages
  * sync`), so the action is a manual pointer until that path is an operation.
@@ -53,7 +56,13 @@ export interface PackageSourceDeps {
    * Called only when the ref moved; `fresh` bypasses the short-lived
    * checkout cache (a checkout older than the observed commit is no answer).
    */
-  fetchManifest: (sourceWithRef: string, signal: AbortSignal, opts?: { fresh?: boolean }) => Promise<{ id: string; version: string; commitSha: string }>
+  fetchManifest: (sourceWithRef: string, signal: AbortSignal, opts?: { fresh?: boolean }) => Promise<{ id: string; version: string; commitSha: string; treeSha?: string }>
+  /**
+   * The digest of the installed package folder (`computeDirSha`), or null when
+   * it cannot be read. A monorepo source moves its ref on EVERY commit, so a
+   * moved ref whose fetched folder hashes to this is no update at all.
+   */
+  installedTreeSha: (pkg: InstalledPackage) => string | null
   /** The manifest of a local-path source, or null when the directory is gone. */
   localManifest: (path: string) => { id: string; version: string } | null
 }
@@ -155,6 +164,8 @@ export function createPackageSource(deps: PackageSourceDeps): UpdateSource {
         if (manifest.commitSha && manifest.commitSha !== remote) manifest = await deps.fetchManifest(spec, signal, { fresh: true })
         if (manifest.id !== (pkg.manifestId ?? id)) throw new Error(`source manifest id "${manifest.id}" does not match installed package "${pkg.manifestId ?? id}"`)
         if (manifest.commitSha && manifest.commitSha === entry.commitSha) return { installed, source, outcome: 'current' }
+        // The ref moved but the package's own bytes did not (a commit elsewhere in the repo): current.
+        if (manifest.treeSha && manifest.treeSha === deps.installedTreeSha(pkg)) return { installed, source, outcome: 'current' }
         const sha = manifest.commitSha || remote
         return {
           installed,
