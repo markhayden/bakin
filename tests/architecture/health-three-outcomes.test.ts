@@ -45,6 +45,7 @@ const LEGACY_SHAPE_ALLOWED = [
   'tests/sdk-testing/health-contract.test.ts',
   'tests/core/approvals/legacy-retire.test.ts',
   'tests/core/doctor-registration-teeth.test.ts',
+  'tests/core/doctor-repair-store.test.ts', // the refused-record archive is fed a pre-cutover proposal on purpose
 ]
 
 /** Health producers and their direct consumers: where a resolution literal is a contract statement. */
