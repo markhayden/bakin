@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+Health → Updates stops listing agent packages that did not change, and the Updates tab count reads clearly.
+
+### Fixed
+- **Agent packages are only behind when their own folder changed (#1027).** Packages installed from a monorepo source (official Bits) track the repo's branch, so any commit anywhere in the repo flagged every installed pack as an update with the same version on both sides. The check now compares the fetched package folder with the installed one.
+- **Updates tab count** is a solid badge, and underline tabs space a badge or icon from their label.
+
 ## [0.0.1-rc.43] - 2026-10-25
 
 Every Health finding is now one of two things — a repair Bakin runs, or a human need that lands on a working control — and the retired approval engine's leftovers are cleaned up at boot.
