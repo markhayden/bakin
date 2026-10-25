@@ -28,8 +28,8 @@ Spec `.claude/specs/self-healing-health-and-updates-2026-10.md` (rev 7, approved
 - [x] Codex r4 (4 findings) folded: the runtime credentials return listener lives on the always-mounted group (a successful sign-in still verifies); roster handoff arming is module-level and survives the Terminal round trip; a refused roster recheck is shown in every evidence branch; dead tag overrides say usage is unknown when the board could not be read
 - [x] Codex r5 (final): every ledger item RESOLVED; the one P2 (browser fixtures did not render the recovery surfaces) closed — team + workflows `test:ui` fixtures now render the roster recovery panel and the skill/definition recovery editors (reports inspected)
 - [x] `ui:conformance --full`: payload ceiling regenerated with Mark's approval (2026-10-24); the two Docker browser failures (`form-controls.browser.pw.ts:95` forced-colors focus, chromium + firefox, passes locally, untouched surface) accepted by Mark as not this PR's
-- [ ] Mark's live test on 3737 (server restart is Mark's) → squash-merge
-- [ ] PR 1 merged
+- [x] Mark's live test on 3737 (steps 1–4; six fixes folded, see PR body) → Mark authorized the merge on green CI
+- [x] PR 1 merged — #1026 squash-merged 2026-10-24 as a88603c4e; Bits companion `bakin-bits-official#124` (terminal 0.3.5 + template catalog + CI SDK pin) open; rc.43 after it publishes
 
 ## PR 2 — `fix/search-and-companion-resilience`
 - [ ] 2.1 adapter re-init + in-process re-init
