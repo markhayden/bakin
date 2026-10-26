@@ -38,5 +38,5 @@ export type { DispatchInput } from './dispatcher'
 
 export { searchRoute } from './search-route'
 
-export { createPluginSocket, DEFAULT_SOCKET_SEND_BOUND } from './socket'
+export { createPluginSocket } from './socket'
 export type { PluginSocketHandle, SocketTransport } from './socket'

@@ -1,7 +1,14 @@
 /**
  * The ONE `PluginSocket` implementation, over a minimal transport so the
  * host (a `ws` connection) and the SDK test harness (an in-memory pair)
- * share the send bound, drain and close semantics.
+ * share message, close and failure semantics.
+ *
+ * Deliberately no host send bound or drain signal. Measured on Bun 1.4.3's
+ * built-in `ws` with a client that stops reading: `bufferedAmount` stays 0
+ * for the first ~18 MiB, then grows, and stays stale after the client has
+ * read everything — no reliable backlog or drain can be observed, so none is
+ * promised. Protocols that must not outrun their reader acknowledge at the
+ * application level (the Terminal plugin's output windows bound its queue).
  */
 import type { PluginSocket } from '@makinbakin/sdk/types'
 import { createLogger } from '../logger'
@@ -10,14 +17,9 @@ const log = createLogger('plugin-socket')
 
 /** What a socket needs from its connection; `ws`'s WebSocket satisfies it. */
 export interface SocketTransport {
-  /** Bytes queued but not yet written. */
-  readonly bufferedAmount: number
-  /** Queue a frame; `done` runs once it has been written (or failed). */
-  send(data: string | Uint8Array, done: (err?: Error) => void): void
+  send(data: string | Uint8Array): void
   close(code: number, reason: string): void
 }
-
-export const DEFAULT_SOCKET_SEND_BOUND = 2 * 1024 * 1024
 
 export interface PluginSocketHandle {
   socket: PluginSocket
@@ -27,33 +29,18 @@ export interface PluginSocketHandle {
   closed(code: number, reason: string): void
 }
 
-export function createPluginSocket(transport: SocketTransport, opts: { sendBound?: number } = {}): PluginSocketHandle {
-  const sendBound = opts.sendBound ?? DEFAULT_SOCKET_SEND_BOUND
+export function createPluginSocket(transport: SocketTransport): PluginSocketHandle {
   const messageListeners: Array<(data: string | Uint8Array) => void> = []
-  const drainListeners: Array<() => void> = []
   const closeListeners: Array<(code: number, reason: string) => void> = []
-  let wantDrain = false
   let isClosed = false
-
-  const afterWrite = () => {
-    if (!wantDrain || transport.bufferedAmount > sendBound / 2) return
-    wantDrain = false
-    for (const listener of drainListeners) listener()
-  }
 
   const socket: PluginSocket = {
     send(data) {
       if (isClosed) return false
-      if (transport.bufferedAmount > sendBound) {
-        wantDrain = true
-        return false
-      }
-      transport.send(data, afterWrite)
+      transport.send(data)
       return true
     },
-    get bufferedBytes() { return transport.bufferedAmount },
     onMessage(listener) { messageListeners.push(listener) },
-    onDrain(listener) { drainListeners.push(listener) },
     onClose(listener) { closeListeners.push(listener) },
     close(code = 1000, reason = '') { transport.close(code, reason) },
   }

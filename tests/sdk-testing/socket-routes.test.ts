@@ -1,7 +1,7 @@
 /**
  * Socket routes through the published harness, written the way an external
  * author would: only `@makinbakin/sdk` imports. The harness socket shares the
- * host's PluginSocket implementation (bounds, drain, close).
+ * host's PluginSocket implementation (messages, close, failures).
  */
 import { describe, expect, it } from 'bun:test'
 import { definePlugin, defineSocketRoute } from '@makinbakin/sdk'
@@ -37,23 +37,6 @@ describe('socket routes in the SDK harness', () => {
     const connection = await connectTestSocket(echo, new Request('http://localhost/', { headers: { 'x-test-key': 'nope' } }))
     expect(connection.ok).toBe(false)
     if (!connection.ok) expect(connection.response.status).toBe(403)
-  })
-
-  it('applies the send bound while the client is not reading', async () => {
-    const flood = defineSocketRoute({
-      path: '/flood',
-      summary: 'Send until refused',
-      open: (socket) => {
-        let sent = 0
-        while (socket.send(new Uint8Array(1024))) sent++
-        socket.send(String(sent))
-      },
-    })
-    const connection = await connectTestSocket(flood, undefined, { sendBound: 4096, autoFlush: false })
-    if (!connection.ok) throw new Error('refused')
-    expect(connection.client.received).toHaveLength(0)
-    connection.client.flush()
-    expect(connection.client.received).toHaveLength(5)
   })
 
   it('records a server-side close', async () => {

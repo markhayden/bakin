@@ -2,25 +2,22 @@
  * Plugin WebSocket routes — the PUBLISHED declaration. A LEAF module (no
  * `@bakin/core` imports), like `api-route.ts`.
  *
- * The host owns the upgrade: same-origin admission, per-connection send
- * bounds, and closing every socket when the plugin is disabled, reloaded or
- * shut down. The plugin owns its protocol, identity and flow control.
+ * The host owns the upgrade: same-origin admission and closing every socket
+ * when the plugin is disabled, reloaded or shut down. The plugin owns its
+ * protocol, identity and flow control.
  */
 
 /** One accepted connection, as the plugin sees it. */
 export interface PluginSocket {
   /**
-   * Queue a text or binary frame. Returns `false` WITHOUT queueing when the
-   * connection already holds more than its send bound (default 2 MiB) — the
-   * plugin decides what a lagging client means (pause, evict, resync).
+   * Send a text or binary frame; `false` once the connection is closed.
+   * There is no host send bound or drain signal (the runtime cannot report a
+   * reliable backlog): a protocol that must not outrun its reader
+   * acknowledges at the application level.
    */
   send(data: string | Uint8Array): boolean
-  /** Bytes queued but not yet flushed to the network. */
-  readonly bufferedBytes: number
   /** Text frames arrive as strings, binary frames as bytes. */
   onMessage(listener: (data: string | Uint8Array) => void): void
-  /** Fires when queued bytes fall back under half the send bound after `send` returned false. */
-  onDrain(listener: () => void): void
   /** Fires once, for either side closing (or the host closing it). */
   onClose(listener: (code: number, reason: string) => void): void
   close(code?: number, reason?: string): void

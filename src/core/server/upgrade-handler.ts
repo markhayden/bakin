@@ -11,6 +11,10 @@
  *   3. the route's own `admit(request)` may refuse with any Response.
  * Accepted connections run over the ONE PluginSocket implementation and are
  * tracked by the registry, which closes them on sweep/disable/shutdown.
+ *
+ * `ws` here is Bun's built-in implementation: Bun resolves the specifier to
+ * it in source and in the compiled binary (the npm package is never loaded),
+ * which is why the host declares no `ws` dependency — only `@types/ws`.
  */
 import type { IncomingMessage } from 'node:http'
 import type { Duplex } from 'node:stream'
@@ -63,8 +67,7 @@ export function createUpgradeHandler(registry: SocketRouteRegistry): (req: Incom
 
   const accept = (ws: WebSocket, pluginId: string, route: SocketRoute, request: Request) => {
     const handle = createPluginSocket({
-      get bufferedAmount() { return ws.bufferedAmount },
-      send: (data, done) => { ws.send(data, done) },
+      send: (data) => { ws.send(data) },
       close: (code, reason) => { ws.close(code, reason) },
     })
     const untrack = registry.trackSocket(pluginId, handle.socket)

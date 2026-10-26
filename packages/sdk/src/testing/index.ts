@@ -449,7 +449,7 @@ export function findSocketRoute(routes: SocketRoute[], path: string): SocketRout
 
 /** The client end of a `connectTestSocket` connection. */
 export interface TestSocketClient {
-  /** Frames the plugin sent and the network has delivered, in order. */
+  /** Frames the plugin sent, in order. */
   readonly received: Array<string | Uint8Array>
   /** Set once either side closed. */
   readonly closed: { code: number; reason: string } | null
@@ -457,58 +457,32 @@ export interface TestSocketClient {
   send(data: string | Uint8Array): void
   /** Close from the client side. */
   close(code?: number, reason?: string): void
-  /** With `autoFlush: false`: deliver queued frames (all, or the oldest `count`). */
-  flush(count?: number): void
 }
 
 export type TestSocketConnection = { ok: true; client: TestSocketClient } | { ok: false; response: Response }
 
 /**
  * Connect to a socket route in-memory: runs `admit`, then `open`, over the
- * host's own PluginSocket implementation. `autoFlush: false` holds sent
- * frames as queued bytes until `client.flush()`, exercising the send bound.
+ * host's own PluginSocket implementation.
  */
 export async function connectTestSocket(
   route: SocketRoute,
   request: Request = new Request('http://localhost/'),
-  options: { sendBound?: number; autoFlush?: boolean } = {},
 ): Promise<TestSocketConnection> {
   const refused = await route.admit?.(request)
   if (refused) return { ok: false, response: refused }
-  const autoFlush = options.autoFlush ?? true
-  const queue: Array<{ data: string | Uint8Array; done: () => void }> = []
   const received: Array<string | Uint8Array> = []
-  let buffered = 0
   let closed: { code: number; reason: string } | null = null
-  const size = (data: string | Uint8Array) => (typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength)
-  const flush = (count = queue.length) => {
-    for (const frame of queue.splice(0, count)) {
-      buffered -= size(frame.data)
-      received.push(frame.data)
-      frame.done()
-    }
+  const end = (code: number, reason: string) => {
+    closed ??= { code, reason }
+    handle.closed(code, reason)
   }
-  const handle = createPluginSocket({
-    get bufferedAmount() { return buffered },
-    send(data, done) {
-      buffered += size(data)
-      queue.push({ data, done })
-      if (autoFlush) flush()
-    },
-    close(code, reason) {
-      closed ??= { code, reason }
-      handle.closed(code, reason)
-    },
-  }, { sendBound: options.sendBound })
+  const handle = createPluginSocket({ send: (data) => { received.push(data) }, close: end })
   const client: TestSocketClient = {
     received,
     get closed() { return closed },
     send(data) { handle.deliver(data) },
-    close(code = 1000, reason = '') {
-      closed ??= { code, reason }
-      handle.closed(code, reason)
-    },
-    flush,
+    close(code = 1000, reason = '') { end(code, reason) },
   }
   try {
     await route.open(handle.socket, request)
