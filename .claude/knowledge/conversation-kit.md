@@ -136,6 +136,8 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   writes (from a listener, or an appendRow that awaits a nested append)
   returns `queued` at once and joins the loop, never awaits the flush it is
   inside; `start()` waits out any running flush before its synchronous busy check;
+  Accepted rows and notice are SNAPSHOTTED (structuredClone) before the call
+  returns — a caller reusing its buffer after `queued` changes nothing.
   `waitFor()` covers the flush AND an in-progress admission (the reserved
   entry's promise settles to the launched turn, or to the release flush when
   the user-row write fails). Every settle shape (done/error/abort) flushes —

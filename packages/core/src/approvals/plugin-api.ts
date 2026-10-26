@@ -106,7 +106,11 @@ function toPluginDecision(decision: CoreGateDecision): PluginApprovalDecision {
  */
 const OPTION_ID = /^[A-Za-z0-9_-]{1,64}$/
 
+/** A sign-off is a decision, not a menu — and channel cards stay well inside transport limits. */
+const MAX_GATE_OPTIONS = 10
+
 function validOptions(options: PluginApprovalOption[]): PluginApprovalOption[] {
+  if (options.length > MAX_GATE_OPTIONS) throw new Error(`ctx.approvals.request: at most ${MAX_GATE_OPTIONS} options`)
   const seen = new Set<string>()
   for (const option of options) {
     if (!OPTION_ID.test(option.id)) {

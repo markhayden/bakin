@@ -154,6 +154,13 @@ describe('createPluginApprovalsAPI', () => {
     expect(resolved.owner).toMatchObject({ entityId: 'launch' })
   })
 
+  it('caps a sign-off at 10 options', () => {
+    const approvals = createPluginApprovalsAPI('projects', createMemoryApprovalsBackend())
+    const options = Array.from({ length: 11 }, (_, i) => ({ id: `o${i}`, label: `Option ${i}` }))
+    expect(() => approvals.request({ ...input(), options })).toThrow(/at most 10/)
+    expect(approvals.request({ ...input(), options: options.slice(0, 10) }).options).toHaveLength(10)
+  })
+
   it('backends get a snapshot of the options — the caller\'s objects never reach them', () => {
     const backend = createMemoryApprovalsBackend()
     const seen: unknown[] = []

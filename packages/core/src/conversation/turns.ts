@@ -674,8 +674,10 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       // Handled here so an ignored `written` is never an unhandled rejection;
       // callers that await it still see the failure.
       written.catch(() => {})
+      // A snapshot, taken before returning: the caller may reuse or mutate its
+      // buffer after a `queued` answer without changing the accepted batch.
       const batches = pendingExternal.get(key) ?? []
-      batches.push({ rows, ...(notice ? { notice } : {}), settle })
+      batches.push({ rows: structuredClone(rows), ...(notice ? { notice: { ...notice } } : {}), settle })
       pendingExternal.set(key, batches)
       // A turn in flight OR a flush already writing occupies the slot: queue and
       // return at once. Joining a running flush and awaiting it would deadlock

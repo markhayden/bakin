@@ -1472,6 +1472,24 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
     expect(contents(h.rows.get('x12'))).toContain('assistant:check-in q')
   })
 
+  test('a queued batch is a snapshot — reusing the caller\'s buffer after `queued` changes nothing', async () => {
+    const h = makeHarness()
+    const release = gated(h, [])
+    const service = makeService(h, { events: APPENDED_EVENTS })
+    expect(await service.start(h.ctx, 'x13', 'hello')).toBe('accepted')
+    const buffer = externalRows('q')
+    const notice = { agentId: 'lead', preview: 'Which date?' }
+    const queued = await service.appendExternal(h.ctx, 'x13', buffer, notice)
+    expect(queued.status).toBe('queued')
+    buffer.length = 0
+    notice.preview = 'mutated'
+    release()
+    await queued.written
+    await service.waitFor('x13')
+    expect(contents(h.rows.get('x13')).slice(-2)).toEqual(['assistant:check-in q', 'tool'])
+    expect(h.events.find((e) => e.event === 'test.appended')?.data.notice).toEqual({ agentId: 'lead', preview: 'Which date?' })
+  })
+
   test('a failed user-row write at admission still flushes rows accepted while the slot was held', async () => {
     const h = makeHarness()
     let failUser!: (err: Error) => void
