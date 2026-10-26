@@ -116,6 +116,15 @@ describe('plugin manifest requires.bins', () => {
         .toThrow(/launch\.bin "zsh"/)
     })
 
+    it('keeps refuseEnv names and rejects anything that is not an environment variable name', () => {
+      const manifest = parsePluginManifest({ ...base, requires: { bins: [tmux] }, contributes: { cliCommands: [attach({ bin: 'tmux', refuseEnv: ['TMUX'] })] } })
+      expect(manifest.contributes?.cliCommands?.[0]?.dispatch).toEqual({ type: 'apiRoute', method: 'POST', path: '/cli/attach', launch: { bin: 'tmux', refuseEnv: ['TMUX'] } })
+      for (const refuseEnv of ['TMUX', ['tmux'], ['A B'], [''], Array.from({ length: 9 }, (_, i) => `V${i}`)]) {
+        expect(() => parsePluginManifest({ ...base, requires: { bins: [tmux] }, contributes: { cliCommands: [attach({ bin: 'tmux', refuseEnv })] } }))
+          .toThrow(/launch\.refuseEnv/)
+      }
+    })
+
     it('requires launch to be a POST with a bin name', () => {
       expect(() => parsePluginManifest({ ...base, requires: { bins: [tmux] }, contributes: { cliCommands: [attach({ bin: 'tmux' }, 'GET')] } }))
         .toThrow(/launch requires method POST/)

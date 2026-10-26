@@ -54,10 +54,12 @@ export async function dispatchPluginCliCommand(cmd: string, args: string[]): Pro
         const { LaunchError, runLaunch, spawnInherited } = await import('../launch')
         const { getBakinPaths } = await import('../../core/content-dir')
         try {
-          const code = await runLaunch({ pluginId: plugin.id, path: command.dispatch.path, bin: command.dispatch.launch.bin }, params, {
+          const code = await runLaunch({ pluginId: plugin.id, path: command.dispatch.path, ...command.dispatch.launch }, params, {
             interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
             localServer: CLI_TARGET.source === 'lock',
             binDir: getBakinPaths().bin,
+            cwd: process.cwd(),
+            env: process.env,
             identity: cliIdentity,
             post: apiPost,
             spawn: spawnInherited,

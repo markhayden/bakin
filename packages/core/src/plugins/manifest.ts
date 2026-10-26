@@ -340,7 +340,11 @@ function parseCliCommand(raw: unknown, index: number): CliCommandContribution {
         if (!isRecord(dispatch.launch) || typeof dispatch.launch.bin !== 'string' || !dispatch.launch.bin) {
           throw new PluginManifestError(`${at}.bin must name a binary`)
         }
-        parsedDispatch.launch = { bin: dispatch.launch.bin }
+        const refuseEnv = dispatch.launch.refuseEnv
+        if (refuseEnv !== undefined && (!Array.isArray(refuseEnv) || refuseEnv.length > 8 || !refuseEnv.every((name) => typeof name === 'string' && /^[A-Z_][A-Z0-9_]*$/.test(name)))) {
+          throw new PluginManifestError(`${at}.refuseEnv must be up to 8 environment variable names`)
+        }
+        parsedDispatch.launch = { bin: dispatch.launch.bin, ...(refuseEnv === undefined ? {} : { refuseEnv: refuseEnv as string[] }) }
       }
     } else if (dispatchType === 'execTool') {
       parsedDispatch = { type: 'execTool', name: stringField(dispatch, 'name', { required: true })! }

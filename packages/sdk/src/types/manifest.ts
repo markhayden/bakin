@@ -165,11 +165,16 @@ export interface CliCommandContribution {
     method: HttpMethod
     path: string
     /**
-     * Interactive launch: the POST route answers `{ args, confirm? }` and the
+     * Interactive launch: the POST route receives `{ params, caller: { cwd } }`,
+     * answers `{ args, confirm? }`, and the
      * CLI runs `bin` (one of this plugin's `requires.bins`, resolved in the
      * Bakin bin dir) in the foreground with the caller's terminal.
      */
-    launch?: { bin: string }
+    launch?: {
+      bin: string
+      /** Environment variables that mean the caller is already inside `bin` (tmux's `TMUX`); the CLI refuses before posting. */
+      refuseEnv?: string[]
+    }
   } | {
     type: 'execTool'
     name: string
