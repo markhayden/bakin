@@ -599,8 +599,14 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
 
     // Accept signal for attention surfaces — the first runtime chunk can be
     // seconds away (model latency), and the working dot must not wait it out.
+    // Guarded like the drain's: a throwing payload()/emit must never leave the
+    // slot held with no turn launched (and the admission promise unsettled).
     if (config.events.started) {
-      ctx.events.emit(config.events.started, { ...config.payload(key), agentId })
+      try {
+        ctx.events.emit(config.events.started, { ...config.payload(key), agentId })
+      } catch (emitErr) {
+        log.error(`[${config.name}] started-event emit failed for ${key}`, emitErr as Error)
+      }
     }
 
     // The busy slot releases when the TURN settles; onSettled work (e.g.

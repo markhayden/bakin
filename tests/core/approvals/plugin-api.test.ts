@@ -154,6 +154,19 @@ describe('createPluginApprovalsAPI', () => {
     expect(resolved.owner).toMatchObject({ entityId: 'launch' })
   })
 
+  it('backends get a snapshot of the options — the caller\'s objects never reach them', () => {
+    const backend = createMemoryApprovalsBackend()
+    const seen: unknown[] = []
+    const spy = { ...backend, request: (input: Parameters<typeof backend.request>[0]) => { seen.push(input.request.options); return backend.request(input) } }
+    const approvals = createPluginApprovalsAPI('projects', spy)
+    const options = [{ id: 'approve', label: 'Approve' }]
+    approvals.request({ ...input(), options })
+    approvals.request({ ...input('projects:launch:complete:project:2') })
+    expect(seen[0]).not.toBe(options)
+    expect((seen[0] as Array<unknown>)[0]).not.toBe(options[0])
+    expect((seen[1] as Array<unknown>)[0]).not.toBe(DEFAULT_GATE_OPTIONS[0])
+  })
+
   it('the harness snapshots the request — mutating the caller\'s options later changes nothing', async () => {
     const backend = createMemoryApprovalsBackend()
     const approvals = createPluginApprovalsAPI('projects', backend)

@@ -123,6 +123,19 @@ describe('conversation turn service', () => {
     expect(h.events.map((e) => e.event)).toEqual(['test.started', 'test.chunk', 'test.done'])
   })
 
+  test('a throwing started emit never strands the slot: the turn still runs and settles', async () => {
+    const h = makeHarness()
+    const service = makeService(h, {
+      events: { chunk: 'test.chunk', done: 'test.done', error: 'test.error', started: 'test.started' },
+      payload: () => { throw new Error('payload exploded') },
+    })
+    // payload() also feeds chunk/done; the done emit is already guarded.
+    expect(await service.start(h.ctx, 't-throw', 'hello')).toBe('accepted')
+    await service.waitFor('t-throw')
+    expect(service.isInFlight('t-throw')).toBe(false)
+    expect((h.rows.get('t-throw') ?? []).map((r) => r.kind)).toContain('user')
+  })
+
   test('no started event configured → none emitted (optional wire contract)', async () => {
     const h = makeHarness()
     const service = makeService(h)

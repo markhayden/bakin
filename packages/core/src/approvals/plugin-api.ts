@@ -155,7 +155,9 @@ export function createPluginApprovalsAPI(pluginId: string, backend: PluginApprov
       // refresh could swap the subject under a resolver mid-decision. A
       // changed request is a new generation — a new id.
       if (existing) return toPluginApproval(existing)
-      const options = input.options?.length ? validOptions(input.options) : DEFAULT_GATE_OPTIONS
+      // A snapshot: the caller's (or the shared default) objects never reach a
+      // backend, so later mutation cannot change what is offered or rendered.
+      const options = (input.options?.length ? validOptions(input.options) : DEFAULT_GATE_OPTIONS).map((o) => ({ ...o }))
       const record = backend.request({
         approvalId,
         owner: {

@@ -38,6 +38,7 @@ import { createConversationTurnService } from '@bakin/core/conversation/turns'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 import { taskStatusChangedPayload } from '@bakin/core/tasks/status-change'
+import { taskPatchFromPublic } from '@bakin/core/tasks/public-patch'
 import { assertPluginResources, createMemoryResourceAcquirer, createOperationRegistry, toPluginOperationInput } from '@bakin/core/operations'
 import { createMemoryApprovalsBackend, createPluginApprovalsAPI, toPluginApproval } from '@bakin/core/approvals/plugin-api'
 import type {
@@ -247,7 +248,13 @@ export function createTestContext(
     // and MUST typecheck via `satisfies` so a type change can't silently
     // desync the mocks.
     runtime: createMockRuntimeAdapter() as unknown as PluginContext['runtime'],
-    tasks: taskStore as unknown as PluginContext['tasks'],
+    // update() takes the PUBLIC patch (checked → column) through the host's
+    // own translation, so status events match production.
+    tasks: {
+      ...taskStore,
+      update: (id: string, patch: Parameters<PluginContext['tasks']['update']>[1]) =>
+        taskStore.update(id, taskPatchFromPublic(patch as Parameters<typeof taskPatchFromPublic>[0])),
+    } as unknown as PluginContext['tasks'],
     // The REAL turn engine (host implementation) — external-author tests
     // exercise genuine turn lifecycle against the mock runtime. Same
     // documented cross-tier cast as runtime/tasks above.
