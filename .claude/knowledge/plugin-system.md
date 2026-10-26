@@ -1608,9 +1608,10 @@ A dispatched command (`dispatch: execTool | apiRoute`) must declare `args`. That
   - the CLI runs in an agent context;
   - `--as human` is absent;
   - a `refuseEnv` variable is set (tmux's `TMUX`: the caller is already inside the binary).
-- It then POSTs `{ params, caller: { cwd } }` and zod-validates `{ args, confirm? }`.
+- It then POSTs `{ params, caller: { cwd, cols, rows } }` and zod-validates `{ args, confirm?, recovery? }`.
 - It spawns `<binDir>/<bin> ...args` with inherited stdio/env and no shell (`spawnInherited`).
 - It reports `{ token, pid }` to `confirm.path` (failure kills the child) and propagates the exit code.
+- `recovery` (the work the route already did and how to pick it up) is added to a spawn or confirm failure and printed on a non-zero exit.
 - Routes check provenance with `approvalProvenanceFromRequest`.
 - The PTY test in `tests/cli/launch.test.ts` proves TTY inheritance and has teeth.
 

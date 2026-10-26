@@ -8,16 +8,19 @@ import { LaunchError, runLaunch, type LaunchDeps } from '../../src/cli/launch'
 const binDir = mkdtempSync(join(tmpdir(), 'bakin-test-launch-bin-'))
 writeFileSync(join(binDir, 'tmux'), '#!/bin/sh\n', { mode: 0o755 })
 
-function deps(overrides: Partial<LaunchDeps> = {}): LaunchDeps & { posts: Array<{ path: string; body: unknown }>; spawned: string[][]; state: { killed: number } } {
+function deps(overrides: Partial<LaunchDeps> = {}): LaunchDeps & { posts: Array<{ path: string; body: unknown }>; spawned: string[][]; warnings: string[]; state: { killed: number } } {
   const posts: Array<{ path: string; body: unknown }> = []
   const spawned: string[][] = []
+  const warnings: string[] = []
   const state = { killed: 0 }
   const base: LaunchDeps = {
     interactive: true,
     localServer: true,
     binDir,
     cwd: '/work/repo',
+    size: { cols: 120, rows: 40 },
     env: {},
+    warn: (message) => { warnings.push(message) },
     identity: async () => ({ agentContext: null, operatorDeclared: true }),
     post: async (path, body) => {
       posts.push({ path, body })
@@ -29,7 +32,7 @@ function deps(overrides: Partial<LaunchDeps> = {}): LaunchDeps & { posts: Array<
     },
     ...overrides,
   }
-  return Object.assign(base, { posts, spawned, state })
+  return Object.assign(base, { posts, spawned, warnings, state })
 }
 
 const command = { pluginId: 'terminal', path: '/cli/attach', bin: 'tmux' }
@@ -40,7 +43,7 @@ describe('runLaunch', () => {
 
     expect(await runLaunch(command, { ref: 's1' }, d)).toBe(3)
 
-    expect(d.posts[0]).toEqual({ path: '/api/plugins/terminal/cli/attach', body: { params: { ref: 's1' }, caller: { cwd: '/work/repo' } } })
+    expect(d.posts[0]).toEqual({ path: '/api/plugins/terminal/cli/attach', body: { params: { ref: 's1' }, caller: { cwd: '/work/repo', cols: 120, rows: 40 } } })
     expect(d.spawned).toEqual([[join(binDir, 'tmux'), '-S', '/tmp/x.sock', 'attach-session', '-t', 's1']])
     expect(d.posts[1]).toEqual({ path: '/api/plugins/terminal/cli/confirm', body: { token: 'tok-0123456789abcdef', pid: 4242 } })
   })
@@ -92,6 +95,27 @@ describe('runLaunch', () => {
     } })
     await expect(runLaunch(command, {}, d)).rejects.toThrow(/reservation expired/)
     expect(d.state.killed).toBe(1)
+  })
+})
+
+describe('runLaunch recovery', () => {
+  const recovery = 'Created session 1a2b3c4d. Attach with: bakin terminal attach terminal-1a2b --as human'
+  const answer = { args: ['attach'], confirm: { path: '/cli/confirm', token: 'tok-0123456789abcdef' }, recovery }
+
+  it('adds the route\'s recovery line when the child cannot start or is not admitted', async () => {
+    const unstartable = deps({ post: async () => answer, spawn: () => { throw new Error('ENOENT') } })
+    await expect(runLaunch(command, {}, unstartable)).rejects.toThrow(`tmux did not start: ENOENT\n${recovery}`)
+    const refused = deps({ post: async (path) => { if (path.endsWith('/confirm')) throw new Error('expired'); return answer } })
+    await expect(runLaunch(command, {}, refused)).rejects.toThrow(`The plugin did not admit this terminal: expired\n${recovery}`)
+  })
+
+  it('warns with it when the child exits non-zero, and stays quiet on success', async () => {
+    const failing = deps({ post: async () => answer })
+    expect(await runLaunch(command, {}, failing)).toBe(3)
+    expect(failing.warnings).toEqual([recovery])
+    const fine = deps({ post: async () => answer, spawn: () => ({ pid: 1, exited: Promise.resolve(0), kill: () => {} }) })
+    expect(await runLaunch(command, {}, fine)).toBe(0)
+    expect(fine.warnings).toEqual([])
   })
 })
 

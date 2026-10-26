@@ -158,8 +158,8 @@ export interface CliCommandContribution {
     method: HttpMethod
     path: string
     /**
-     * Interactive launch: the POST route receives `{ params, caller: { cwd } }`,
-     * answers `{ args, confirm? }`, and the
+     * Interactive launch: the POST route receives `{ params, caller: { cwd, cols, rows } }`,
+     * answers `{ args, confirm?, recovery? }`, and the
      * CLI runs `bin` (one of this plugin's `requires.bins`, resolved in the
      * Bakin bin dir) in the foreground with the caller's terminal.
      */

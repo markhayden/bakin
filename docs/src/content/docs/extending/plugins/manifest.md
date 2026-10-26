@@ -192,7 +192,7 @@ A command that should take over the operator's terminal, such as attaching to a 
   - the caller passes `--as human`;
   - the CLI is not running in a detected agent context;
   - none of the optional `refuseEnv` variables is set. Use these for the binary's own nesting marker, such as tmux's `TMUX`.
-- Your route receives `{ "params": {...}, "caller": { "cwd": string } }`. `params` holds the declared arguments; `cwd` is the directory the command ran in. It prepares the work and answers `{ "args": string[], "confirm"?: { "path": string, "token": string } }`.
+- Your route receives `{ "params": {...}, "caller": { "cwd": string, "cols": number, "rows": number } }`. `params` holds the declared arguments; `caller` is the directory the command ran in and the terminal's size. It prepares the work and answers `{ "args": string[], "confirm"?: { "path": string, "token": string }, "recovery"?: string }`. Set `recovery` when the route already did work (such as creating a session): the CLI prints it if the launch then fails.
 - The CLI spawns `bin` with those args, with no shell and with inherited stdio and environment (including `TERMINFO`).
 - When `confirm` is present, the CLI immediately POSTs `{ token, pid }` to `confirm.path`. If that is refused, the CLI kills the child.
 - The child's exit code becomes the command's exit code.
