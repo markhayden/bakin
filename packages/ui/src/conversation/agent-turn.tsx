@@ -189,6 +189,14 @@ export function AgentTurn({
               />
             )
           }
+          if (item.type === 'question') {
+            return (
+              <p key={index} data-conv-question="" className="min-w-0 break-words">
+                {item.question.question}
+                {item.answer ? ` → ${item.answer}` : null}
+              </p>
+            )
+          }
           return (
             <Alert key={index} tone="danger" role="status" data-conv-error="">
               <AlertIcon />

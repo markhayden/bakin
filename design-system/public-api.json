@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 319,
-    "typeExports": 431
+    "valueExports": 320,
+    "typeExports": 433
   },
   "entrypoints": [
     {
@@ -726,6 +726,7 @@
         "formatAbsoluteTime",
         "formatDayLabel",
         "formatDuration",
+        "formatQuestionAnswer",
         "formatRelativeTime",
         "formatTokenCount",
         "formatUsageCost",
@@ -783,6 +784,8 @@
         "DisplayAttachment",
         "FoldedTurnOutput",
         "FoldOptions",
+        "QuestionAnswer",
+        "QuestionState",
         "QueuedMessageListProps",
         "ThinkingIndicatorProps",
         "ToolCallDrawerProps",

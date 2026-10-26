@@ -6,7 +6,11 @@
  */
 /** Fold persisted rows and live chunks into ordered render-ready turns. */
 export { foldConversation } from '@bakin/ui/conversation'
+/** The user message a question-card answer sends (and the fold recognises). */
+export { formatQuestionAnswer } from '@bakin/ui/conversation'
 export type {
+  QuestionAnswer,
+  QuestionState,
   ConversationChunk,
   ConversationTextFormat,
   ConversationToolActivity,

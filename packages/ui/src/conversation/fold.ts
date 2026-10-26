@@ -81,11 +81,74 @@ export interface ConversationToolCall {
   metadata?: Record<string, unknown>
 }
 
+/**
+ * One structured question an agent asked (`bakin_exec_ask_user`), carried on
+ * its tool row as `metadata.bakinQuestion`. Structural copy of the SDK types
+ * entry's `BakinQuestion`, pinned by the SDK's private message-contract module.
+ */
+export interface BakinQuestion {
+  v: 1
+  id: string
+  question: string
+  options: { label: string; description?: string }[]
+  recommended?: number
+  allowOther: boolean
+}
+
+/** Where a question card stands — derived from the transcript, never stored. */
+export type QuestionState = 'open' | 'answered' | 'skipped'
+
 /** One ordered item inside an agent turn. */
 export type TurnItem =
   | { type: 'text'; format: ConversationTextFormat; content: string }
   | { type: 'activity'; calls: ConversationToolCall[] }
   | { type: 'error'; message: string; errorKind?: string }
+  | {
+      type: 'question'
+      question: BakinQuestion
+      state: QuestionState
+      /** The chosen answer's text, when answered. */
+      answer?: string
+      /** True only for the newest open card in the conversation. */
+      answerable: boolean
+    }
+
+/** What the user picked on a question card. */
+export type QuestionAnswer =
+  | { kind: 'option'; index: number }
+  | { kind: 'other'; text: string }
+  | { kind: 'unsure' }
+
+const UNSURE_ANSWER = 'Not sure — help me choose'
+
+function answerPrefix(question: BakinQuestion): string {
+  return `**${question.question}** → `
+}
+
+/**
+ * The user message a card answer sends. Plain, readable text — the agent
+ * needs no special parsing, and the same prefix lets the fold recognise the
+ * answer when it derives the card's state.
+ */
+export function formatQuestionAnswer(question: BakinQuestion, answer: QuestionAnswer, note?: string): string {
+  const choice = answer.kind === 'option'
+    ? question.options[answer.index]?.label ?? ''
+    : answer.kind === 'other' ? answer.text.trim() : UNSURE_ANSWER
+  const trimmedNote = note?.trim()
+  return `${answerPrefix(question)}${choice}${trimmedNote ? `\n\n${trimmedNote}` : ''}`
+}
+
+function isBakinQuestion(value: unknown): value is BakinQuestion {
+  if (!value || typeof value !== 'object') return false
+  const q = value as Partial<BakinQuestion>
+  return q.v === 1
+    && typeof q.id === 'string'
+    && typeof q.question === 'string'
+    && typeof q.allowOther === 'boolean'
+    && Array.isArray(q.options)
+    && q.options.length >= 2
+    && q.options.every(option => !!option && typeof option.label === 'string')
+}
 
 /** Lifecycle state for an agent turn. */
 export type TurnStatus = 'streaming' | 'complete' | 'error' | 'aborted'
@@ -138,8 +201,29 @@ function settledStatus(status: string | undefined): 'completed' | 'failed' {
   return status === 'failed' ? 'failed' : 'completed'
 }
 
+/** Swap a question tool result (and its running call, if any) for a question item. */
+function addQuestion(builder: AgentTurnBuilder, data: ConversationToolActivity, question: BakinQuestion): void {
+  const running = data.callId ? builder.byCallId.get(data.callId) : undefined
+  if (running) {
+    builder.byCallId.delete(data.callId!)
+    for (let i = builder.items.length - 1; i >= 0; i--) {
+      const item = builder.items[i]
+      if (item.type !== 'activity' || !item.calls.includes(running)) continue
+      item.calls = item.calls.filter(call => call !== running)
+      if (item.calls.length === 0) builder.items.splice(i, 1)
+      break
+    }
+  }
+  builder.items.push({ type: 'question', question, state: 'open', answerable: false })
+}
+
 function addToolActivity(builder: AgentTurnBuilder, data: ConversationToolActivity): void {
   if (!data.toolName) return
+  const question = data.phase === 'result' ? data.metadata?.bakinQuestion : undefined
+  if (isBakinQuestion(question)) {
+    addQuestion(builder, data, question)
+    return
+  }
   const status: ConversationToolCall['status'] =
     data.phase === 'result' ? settledStatus(data.status) : 'running'
 
@@ -332,5 +416,36 @@ export function foldConversation(
     turns.push(finishAgentTurn(live, `live-${agentTurnIndex}`))
   }
 
+  deriveQuestionStates(turns)
   return turns
+}
+
+/**
+ * The user turn after a card decides it: the formatted answer prefix means
+ * answered, anything else means the user moved on (skipped). Only the newest
+ * still-open card can be answered.
+ */
+function deriveQuestionStates(turns: ConversationTurn[]): void {
+  let newestOpen: Extract<TurnItem, { type: 'question' }> | null = null
+  turns.forEach((turn, index) => {
+    if (turn.kind !== 'agent') return
+    const reply = turns.slice(index + 1).find(next => next.kind === 'user')
+    for (const item of turn.items) {
+      if (item.type !== 'question') continue
+      item.answerable = false
+      if (!reply || reply.kind !== 'user') {
+        item.state = 'open'
+        newestOpen = item
+        continue
+      }
+      const prefix = answerPrefix(item.question)
+      if (reply.content.startsWith(prefix)) {
+        item.state = 'answered'
+        item.answer = reply.content.slice(prefix.length).split('\n\n')[0]
+      } else {
+        item.state = 'skipped'
+      }
+    }
+  })
+  if (newestOpen) (newestOpen as Extract<TurnItem, { type: 'question' }>).answerable = true
 }

@@ -8,6 +8,7 @@
 import type { BakinQuestion, ConversationMessage, DisplayAttachment } from '../types/conversation'
 import type { BakinQuestion as CoreBakinQuestion } from '@bakin/core/conversation/questions'
 import type {
+  BakinQuestion as UiBakinQuestion,
   ConversationMessage as UiConversationMessage,
   DisplayAttachment as UiDisplayAttachment,
 } from '@bakin/ui/conversation'
@@ -16,6 +17,8 @@ type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
 
 const conversationMessageContract: Mutual<UiConversationMessage, ConversationMessage> = true
 const displayAttachmentContract: Mutual<UiDisplayAttachment, DisplayAttachment> = true
+const bakinQuestionUiContract: Mutual<UiBakinQuestion, BakinQuestion> = true
+void bakinQuestionUiContract
 const bakinQuestionCoreContract: Mutual<CoreBakinQuestion, BakinQuestion> = true
 void bakinQuestionCoreContract
 void conversationMessageContract
