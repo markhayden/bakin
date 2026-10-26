@@ -5,19 +5,19 @@ Plan: `.claude/specs/terminal-multi-device-plan.md`
 
 Each line is one commit. Tick a checkpoint once its tag is set.
 
-- [ ] T0 Branches, bases, docs commit → `tmd/cp0`
+- [x] T0 Branches, bases, docs commit → `tmd/cp0`
 
 **Bakin H1**
-- [ ] T1 Typed cliCommand args + plugin-id dispatch
-- [ ] T2 Interactive launch mode + confirm handshake
-- [ ] T3 H1 docs
-- [ ] Checkpoint H1 → `tmd/cp1` (full suite, 2× Codex, PR opened with do-not-merge)
+- [x] T1 Typed cliCommand args + plugin-id dispatch
+- [x] T2 Interactive launch mode + confirm handshake
+- [x] T3 H1 docs
+- [x] Checkpoint H1 → `tmd/cp1` (full suite, 2× Codex, PR opened with do-not-merge)
 
 **Bakin H2**
-- [ ] T4 Socket-route contract + SDK harness
-- [ ] T5 Upgrade handler (`server.ts` + `ws`) + admission + lifecycle
-- [ ] T6 Real-socket integration + H2 docs
-- [ ] Checkpoint H2 → `tmd/cp2`
+- [x] T4 Socket-route contract + SDK harness
+- [x] T5 Upgrade handler (`server.ts` + `ws`) + admission + lifecycle
+- [x] T6 Real-socket integration + H2 docs
+- [x] Checkpoint H2 → `tmd/cp2`
 
 **Bits B0** (merged and released first)
 - [ ] T7 messaging/projects arg declarations + patch bumps
