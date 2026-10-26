@@ -475,9 +475,10 @@ class TurnObserver {
  * Map one Pi session event to normalized chunks — the single event→chunk
  * mapping shared by `stream()` (all chunk kinds) and the `send()` activity
  * tap (which keeps only tool/status). `state` carries the once-per-turn
- * thinking announcement.
+ * thinking announcement. Exported so conformance tests can drive the real
+ * mapping (e.g. question enrichment through Pi's summary-only tool results).
  */
-function sessionEventChunks(event: AgentSessionEvent, state: { announcedThinking: boolean }): ChatChunk[] {
+export function sessionEventChunks(event: AgentSessionEvent, state: { announcedThinking: boolean }): ChatChunk[] {
   if (event.type === 'message_update') {
     const delta = event.assistantMessageEvent
     if (delta.type === 'text_delta') return [{ type: 'text', content: delta.delta }]

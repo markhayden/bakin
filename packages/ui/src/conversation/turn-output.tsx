@@ -56,6 +56,9 @@ export function foldTurnChunks(chunks: readonly ConversationChunk[]): FoldedTurn
             status: call.status,
           })
         }
+      } else if (item.type === 'question') {
+        // Embeds are read-only: a question renders as the chip it was asked through.
+        tools.push({ key: item.question.id, toolName: 'bakin_exec_ask_user', summary: `Asked: ${item.question.question}`, status: 'completed' })
       } else if (!error) {
         error = {
           message: item.message,

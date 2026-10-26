@@ -251,7 +251,11 @@
       "$type": "dimension",
       "control": { "$value": { "value": 2.25, "unit": "rem" } },
       "row": { "$value": { "value": 3, "unit": "rem" } },
-      "rowDense": { "$value": { "value": 2.5, "unit": "rem" } }
+      "rowDense": { "$value": { "value": 2.5, "unit": "rem" } },
+      "railStrip": { "$value": { "value": 3.25, "unit": "rem" } },
+      "railNav": { "$value": { "value": 13, "unit": "rem" } },
+      "railSession": { "$value": { "value": 18, "unit": "rem" } },
+      "railConversation": { "$value": { "value": 22.5, "unit": "rem" } }
     },
     "radius": {
       "$type": "dimension",

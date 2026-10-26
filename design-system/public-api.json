@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 319,
-    "typeExports": 431
+    "valueExports": 320,
+    "typeExports": 435
   },
   "entrypoints": [
     {
@@ -598,6 +598,7 @@
         "OperationProgressVariant",
         "PageAsideCollapsible",
         "PageAsideProps",
+        "PageAsideSide",
         "PageAsideWidth",
         "PageBodyGap",
         "PageBodyLayout",
@@ -726,6 +727,7 @@
         "formatAbsoluteTime",
         "formatDayLabel",
         "formatDuration",
+        "formatQuestionAnswer",
         "formatRelativeTime",
         "formatTokenCount",
         "formatUsageCost",
@@ -749,6 +751,7 @@
         "ActivityGroupProps",
         "AgentTurnProps",
         "AttentionActions",
+        "BakinQuestion",
         "ComposerAttachmentItem",
         "ComposerAttachments",
         "ComposerAttachmentStatus",
@@ -783,6 +786,8 @@
         "DisplayAttachment",
         "FoldedTurnOutput",
         "FoldOptions",
+        "QuestionAnswer",
+        "QuestionState",
         "QueuedMessageListProps",
         "ThinkingIndicatorProps",
         "ToolCallDrawerProps",

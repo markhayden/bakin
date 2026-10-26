@@ -38,6 +38,7 @@ import type { PreparedAttachment } from '../media/downscale'
 import { isVisionRasterMime } from '../media/image-format'
 
 import { createTurnRecorder } from './turn-recorder'
+import { enrichQuestionChunk, type BakinQuestion } from './questions'
 import { createLogger } from '../logger'
 
 const log = createLogger('conversation-turns')
@@ -613,7 +614,10 @@ async function runTurn(
       }
       noteSuffix = `\n\n${files.map((f) => fileLaneNote(f, agentId, renderCall)).join('\n')}`
     }
-    for await (const chunk of ctx.runtime.messaging.stream({
+    // A turn that ends on a question previews the question, not the
+    // reflection that led up to it (attention toasts read this preview).
+    let pendingQuestion: string | undefined
+    for await (const rawChunk of ctx.runtime.messaging.stream({
       agentId,
       content: (runtimeContent ?? (config.framing ? `${content}\n\n${config.framing}` : content)) + noteSuffix,
       threadId: config.threadId(key, agentId),
@@ -623,6 +627,9 @@ async function runTurn(
         ? { attachments: prepared.map((a) => ({ path: a.path, mimeType: a.mimeType })) }
         : {}),
     })) {
+      const chunk = enrichQuestionChunk(rawChunk)
+      if (bakinQuestionOf(chunk)) pendingQuestion = bakinQuestionOf(chunk)!.question
+      else if (chunk.type === 'text' && chunk.content.trim()) pendingQuestion = undefined
       tap(chunk)
       // Only liveness chunks ride the chunk event — done/error have the
       // dedicated done/error events, and consumer wire contracts (chat's
@@ -679,7 +686,9 @@ async function runTurn(
     ctx.events.emit(config.events.done, {
       ...config.payload(key),
       agentId,
-      ...(assistantText ? { preview: firstLine(assistantText) } : {}),
+      ...(pendingQuestion
+        ? { preview: `Asked: ${pendingQuestion}` }
+        : assistantText ? { preview: firstLine(assistantText) } : {}),
       ...(aborted ? { aborted: true } : {}),
     })
     return { aborted, errored: false }
@@ -736,6 +745,12 @@ async function runTurn(
   } finally {
     for (const p of prepared) cleanupPrepared?.(p)
   }
+}
+
+/** The structured question an enriched tool chunk carries, if any. */
+function bakinQuestionOf(chunk: ChatChunk): BakinQuestion | undefined {
+  if (chunk.type !== 'tool') return undefined
+  return chunk.data.metadata?.bakinQuestion as BakinQuestion | undefined
 }
 
 function firstLine(text: string): string {

@@ -284,6 +284,15 @@ never sit at rest in a card — surface on hover or behind the detail view.
   text restoration and focus. Preserve its mount when a disclosure must retain
   a draft/turn/scroll position; do not inspect private localStorage keys. Contained
   history is keyboard-focusable; give panels distinct titles on multi-panel pages.
+- Collapsible edge rails are ONE treatment: `PageAside collapsible` with a
+  `width` preset — `nav`, `session`, or `conversation` (a docked chat thread,
+  sized for a question card + composer) — and `side="end"` for a rail docked
+  after the content. Rail widths are the `layout.size.rail*` tokens
+  (`--bakin-layout-size-rail-{strip,nav,session,conversation}`); never write
+  raw rail widths. Story: Components/Pages/Collapsible aside — ConversationDock.
+- Agents ask the user structured questions through `bakin_exec_ask_user`; the
+  kit renders the card. Never hand-roll an option picker inside a transcript —
+  see `conversation-kit.md` § Structured questions.
 
 - One engine per domain; components are thin. Chat-like surfaces compose the
   conversation kit; embedded agent help = `ConversationPanel` +

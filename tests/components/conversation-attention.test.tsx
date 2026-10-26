@@ -239,3 +239,25 @@ describe('useConversationAttention (provider hook)', () => {
     await waitFor(() => expect(document.title).toBe('Bakin'))
   })
 })
+
+describe('appended notices (projects revamp D6a/D24a)', () => {
+  it('an appended event with a notice announces like a reply; without one it only refreshes totals', async () => {
+    const { config, calls } = makeConfig({ events: { ...EVENTS, appended: 'probe2.appended' } })
+    renderHook(() => useConversationAttention(config))
+    await act(async () => {})
+    const refreshesAfterMount = calls.refreshes
+
+    await act(async () => {
+      emitPluginEvent({ event: 'probe2.appended', threadKey: 'other-thread', notice: { agentId: 'roscoe', preview: 'Asked: Which inbox?' } })
+    })
+    expect(calls.toasts).toEqual(['reply:other-thread'])
+    expect(calls.chimes).toBe(1)
+
+    await act(async () => {
+      emitPluginEvent({ event: 'probe2.appended', threadKey: 'other-thread' })
+    })
+    expect(calls.toasts).toHaveLength(1)
+    expect(calls.chimes).toBe(1)
+    expect(calls.refreshes).toBeGreaterThan(refreshesAfterMount + 1)
+  })
+})

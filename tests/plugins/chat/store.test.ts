@@ -64,6 +64,20 @@ afterAll(() => {
 })
 
 describe('chat store', () => {
+  test('a question tool row counts as an unread reply and previews the question (projects revamp D6a)', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    await appendTranscriptRow(chat.id, { kind: 'user', ts: new Date().toISOString(), content: 'help me clean my inbox' })
+    await appendTranscriptRow(chat.id, {
+      kind: 'tool', ts: new Date().toISOString(), turnId: 't1', callId: 'c1', toolName: 'bakin_exec_ask_user', status: 'completed',
+      metadata: { bakinQuestion: { v: 1, id: 'q_0123456789abcdef', question: 'Which inbox?', options: [{ label: 'Personal' }, { label: 'Work' }], allowOther: true } },
+    })
+    // An ordinary tool row stays silent.
+    await appendTranscriptRow(chat.id, { kind: 'tool', ts: new Date().toISOString(), turnId: 't1', callId: 'c2', toolName: 'web_search', status: 'completed' })
+    const summary = listChats().find((c) => c.id === chat.id)!
+    expect(summary.unreadCount).toBe(1)
+    expect(summary.lastMessagePreview).toBe('Asked: Which inbox?')
+  })
+
   test('createChat + appendTranscriptRow maintain index and transcript (v2 rows)', async () => {
     const chat = await createChat({ agentId: 'main' })
     expect(chat.messageCount).toBe(0)

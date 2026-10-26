@@ -28,6 +28,7 @@ import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { z } from 'zod'
 
+import { parseBakinQuestion } from '@bakin/core/conversation/questions'
 import { getBakinPaths } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
 import type { ChatQueuedMessage, ChatSummary, ChatTitleSource, ChatTranscriptRow } from '../types'
@@ -372,8 +373,8 @@ export function readTranscript(chatId: string): ChatTranscriptRow[] {
 /**
  * Append a transcript row and maintain the summary: messageCount counts
  * user+assistant rows, the first user row titles an untitled chat
- * (titleSource 'fallback'), assistant rows bump unreadCount and refresh
- * the last-message preview.
+ * (titleSource 'fallback'), assistant rows (and structured question rows)
+ * bump unreadCount and refresh the last-message preview.
  */
 export function appendTranscriptRow(chatId: string, row: ChatTranscriptRow): Promise<void> {
   return serialized(() => {
@@ -393,6 +394,13 @@ export function appendTranscriptRow(chatId: string, row: ChatTranscriptRow): Pro
     }
     if (row.kind === 'assistant') {
       summary.unreadCount += 1
+    }
+    // A turn that ends asking the user a question is a reply waiting on them.
+    const asked = row.kind === 'tool' ? parseBakinQuestion(row.metadata?.bakinQuestion) : null
+    if (asked) {
+      summary.unreadCount += 1
+      summary.lastMessageAt = row.ts
+      summary.lastMessagePreview = `Asked: ${asked.question}`
     }
     if (row.kind === 'user') {
       // The user is looking at the chat when they send.

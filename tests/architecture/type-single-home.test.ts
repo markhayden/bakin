@@ -50,6 +50,8 @@ const SANCTIONED_HOMES: Record<string, string[]> = {
   // pinned to each other by packages/sdk/src/conversation/message-contract.ts (#809)
   ConversationMessage: ['packages/sdk/src/types/conversation.ts', 'packages/ui/src/conversation/fold.ts'],
   DisplayAttachment: ['packages/sdk/src/types/conversation.ts', 'packages/ui/src/conversation/fold.ts'],
+  // Three homes: canonical SDK type, zod-inferred core schema, dependency-free ui copy (message-contract pins all three).
+  BakinQuestion: ['packages/sdk/src/types/conversation.ts', 'packages/core/src/conversation/questions.ts', 'packages/ui/src/conversation/fold.ts'],
 }
 
 const SCAN_ROOTS = [

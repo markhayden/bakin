@@ -55,8 +55,13 @@ export interface ConversationThreadLoad<Meta> {
 export interface ConversationThreadOptions<Meta = unknown, Attachment = unknown> {
   /** Active thread key; empty string disables loading and sending. */
   threadKey: string
-  /** The consumer's bus event names (e.g. chat.chunk/chat.done/chat.error). */
-  events: { chunk: string; done: string; error: string }
+  /**
+   * The consumer's bus event names (e.g. chat.chunk/chat.done/chat.error).
+   * `appended` announces rows written OUTSIDE a turn (e.g. an agent's
+   * scheduled check-in): the idle thread refetches; a streaming thread
+   * waits for its settle refetch, which already includes them.
+   */
+  events: { chunk: string; done: string; error: string; appended?: string }
   /** Extract the thread key from a bus payload (e.g. p => p.chatId). */
   keyOf: (payload: Record<string, unknown>) => unknown
   /** Fetch the durable transcript (+ in-flight flag + consumer meta). Null = gone. */
@@ -123,6 +128,12 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   // Monotonic send counter: a load snapshot taken BEFORE the newest send
   // must never clobber the optimistic user row appended by that send.
   const sendSeqRef = useRef(0)
+  // Overlapping loads (mount + appended + queue refetches) resolve in any
+  // order: a response applies only if it STARTED after the one on screen, so
+  // an older snapshot never erases rows a newer one already showed — and a
+  // failed newer load never blocks an older success.
+  const loadSeqRef = useRef(0)
+  const appliedLoadSeqRef = useRef(0)
 
   const loadTranscript = useCallback(async () => {
     if (!threadKey) {
@@ -132,6 +143,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
       return
     }
     const sendSeqAtStart = sendSeqRef.current
+    const loadSeq = ++loadSeqRef.current
     let body: ConversationThreadLoad<Meta> | null = null
     try {
       body = await optionsRef.current.load(threadKey)
@@ -145,6 +157,8 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     if (activeKeyRef.current !== threadKey) return
     if (!body) return
     if (sendSeqRef.current !== sendSeqAtStart) return
+    if (loadSeq < appliedLoadSeqRef.current) return
+    appliedLoadSeqRef.current = loadSeq
     setMeta(body.meta ?? null)
     setMessages(body.messages)
     setQueued(body.queued ?? [])
@@ -216,6 +230,14 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
 
   const streamingRef = useRef(streaming)
   streamingRef.current = streaming
+
+  usePluginEvent(events.appended ?? '__conv_thread_no_appended__', (payload) => {
+    if (optionsRef.current.keyOf(payload) !== activeKeyRef.current) return
+    // Mid-stream, the persisted partial rows would render twice beside the
+    // live chunks — the settle refetch delivers the appended rows anyway.
+    if (streamingRef.current) return
+    void loadTranscript()
+  })
 
   const send = useCallback(async (content: string, attachments?: Attachment[]) => {
     const key = activeKeyRef.current
