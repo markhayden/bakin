@@ -1083,6 +1083,9 @@ describe('PluginRegistryImpl', () => {
       const closes: string[] = []
       const a = pluginRegistry.findSocketRoute('socket-a', '/live')!
       const b = pluginRegistry.findSocketRoute('socket-b', '/live')!
+      // Generations are registry-wide tokens: a replacement plugin state can
+      // never reuse one an in-flight admission still holds.
+      expect(a.generation).not.toBe(b.generation)
       pluginRegistry.trackSocket('socket-a', a.generation, { close: (code: number, reason: string) => { closes.push(`a:${code}:${reason}`) } })
       const untrack = pluginRegistry.trackSocket('socket-b', b.generation, { close: (code: number) => { closes.push(`b:${code}`) } })
       pluginRegistry.trackSocket('socket-b', b.generation, { close: (code: number) => { closes.push(`b2:${code}`) } })

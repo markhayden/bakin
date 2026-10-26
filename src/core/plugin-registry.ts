@@ -185,6 +185,12 @@ let userPluginImportCounter = 0
 class PluginRegistryImpl {
   /** Set by shutdownAll: no socket route admits or tracks after it. */
   private socketsShutDown = false
+  /**
+   * Registry-wide source of socket generations: every plugin state and every
+   * sweep takes a fresh one, so a replacement instance (disable → enable,
+   * reinstall) never matches an admission pending against the old one.
+   */
+  private nextSocketGeneration = 1
   private plugins = new Map<string, PluginState>()
   private failedPlugins = new Map<string, PluginFailureState>()
   /** User plugins the lock ledger marks `disabled` — present on disk, never activated (row 98 containment). */
@@ -342,7 +348,7 @@ class PluginRegistryImpl {
     // A swept plugin's live sockets belong to the old module: end them so
     // clients reconnect to the re-activated (or absent) plugin, and fence
     // off admissions still in flight against the old routes.
-    state.socketGeneration++
+    state.socketGeneration = this.nextSocketGeneration++
     this.closeSockets(state, 1012, 'Plugin restarting')
     state.slots.length = 0
     state.navItems.length = 0
@@ -961,7 +967,7 @@ class PluginRegistryImpl {
         healthRepairActionIds: [],
         socketRoutes: [],
         sockets: new Set(),
-        socketGeneration: 0,
+        socketGeneration: this.nextSocketGeneration++,
       }
 
       const skillResult = await this.finalizeActivation(plugin, state, pluginPath, storage, events, services, {
@@ -1076,7 +1082,7 @@ class PluginRegistryImpl {
       healthRepairActionIds: [],
       socketRoutes: [],
       sockets: new Set(),
-      socketGeneration: 0,
+      socketGeneration: this.nextSocketGeneration++,
     }
 
     let skillResult: ReturnType<typeof loadPluginSkillFiles>
