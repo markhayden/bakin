@@ -430,7 +430,7 @@ ctx.approvals.request({
 })
 ```
 
-- Approval ids must start with `<your plugin id>:` and should be deterministic. Requesting the same id again while it is pending updates it. Requesting an id that has already been decided returns the decision unchanged, so bump a generation number to ask again.
+- Approval ids must start with `<your plugin id>:` and should be deterministic. Requesting an existing id, whether pending or decided, returns it unchanged. To ask something different, or to ask again, bump a generation number in the id.
 - `onResolve` runs before the decision is saved. Throw `ctx.approvals.refusal(message, status)` to refuse it, and the approval stays pending. `decision.comment` carries the reject reason, which the board requires when the operator setting asks for one.
 - `ownerState` is asked at boot. Return `'orphaned'` once the subject is gone and Bakin cancels the approval. Return `'unknown'` when you cannot tell yet, and Bakin leaves it alone.
 - `cancel`, `get` and `listPending({ entityId, gateKind })` only ever see your own approvals. Gates are removed when your plugin unloads. Pending approvals wait until it is back.

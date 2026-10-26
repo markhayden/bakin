@@ -10,6 +10,7 @@
  * throws), so an uninstalled or not-yet-activated plugin can never get its
  * pending sign-offs cancelled out from under it.
  */
+import { rejectReasonMissing } from '@bakin/core/approvals/plugin-api'
 import { getSettings } from '../settings'
 import { ApprovalKindUnavailableError, ApprovalResolveError } from './errors'
 import { getApprovalKind, registerApprovalKind, type ApprovalDecision, type ApprovalKindHandler, type ApprovalOwnerState, type RecordOf } from './kinds'
@@ -40,8 +41,7 @@ const pluginGateApprovalKind: ApprovalKindHandler<'plugin-gate'> = {
     // The one reject-reason rule, as for workflow gates: a typed surface
     // (board, CLI) must carry a reason when the setting asks for one; a
     // channel button without a reason modal is the provider's decision.
-    const typedSurface = decision.provenance.channel !== 'discord' && decision.provenance.channel !== 'runtime'
-    if (decision.option === 'reject' && !decision.comment?.trim() && typedSurface && getSettings().approvals.requireRejectReason) {
+    if (rejectReasonMissing(decision, getSettings().approvals.requireRejectReason)) {
       throw new ApprovalResolveError('A reject reason is required', 400)
     }
     return handler.onResolve(record, decision)

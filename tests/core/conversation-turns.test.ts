@@ -1370,6 +1370,45 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
     }
   })
 
+  test('a SYNCHRONOUS `appended` listener that appends again joins the running flush — no turn admitted while it writes', async () => {
+    const h = makeHarness()
+    let releaseWrite!: () => void
+    const slowWrite = new Promise<void>((r) => { releaseWrite = r })
+    let reentered: Promise<{ written: Promise<void> }> | null = null
+    const ctx = {
+      ...h.ctx,
+      events: {
+        ...h.ctx.events,
+        emit: (event: string, data?: Record<string, unknown>) => {
+          h.events.push({ event, data: data ?? {} })
+          if (event === 'test.appended' && !reentered) reentered = service.appendExternal(ctx, 'x10', externalRows('slow'))
+        },
+      },
+    } as TurnContext
+    // Read lazily by the listener above, which only runs after this line.
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: async (key, row) => {
+        if ('turnId' in row && row.turnId === 'ext-slow') await slowWrite
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+      },
+    })
+
+    // An empty batch announces synchronously inside the flush's first segment.
+    const first = service.appendExternal(ctx, 'x10', [])
+    const started = service.start(ctx, 'x10', 'question')
+    await settleFor(20, 'the re-entrant slow batch is still writing — no turn may be admitted')
+    expect(service.isInFlight('x10')).toBe(false)
+    releaseWrite()
+    await first
+    await (await reentered!).written
+    expect(await started).toBe('accepted')
+    await service.waitFor('x10')
+    expect(contents(h.rows.get('x10')).slice(0, 3)).toEqual(['assistant:check-in slow', 'tool', 'user:question'])
+  })
+
   test('a failed user-row write at admission still flushes rows accepted while the slot was held', async () => {
     const h = makeHarness()
     let failUser!: (err: Error) => void

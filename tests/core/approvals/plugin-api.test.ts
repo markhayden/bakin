@@ -117,14 +117,48 @@ describe('createPluginApprovalsAPI', () => {
     expect(approvals.get('projects:launch:complete:project:2')?.status).toBe('cancelled')
   })
 
-  it('re-requesting a pending id refreshes it; a decided id comes back untouched', async () => {
+  it('an existing id is never rewritten — pending or decided (a changed request is a new generation)', async () => {
     const backend = createMemoryApprovalsBackend()
     const approvals = createPluginApprovalsAPI('projects', backend)
     approvals.registerGate('complete', { ownerState: () => 'live', onResolve: () => {} })
     approvals.request(input())
-    expect(approvals.request({ ...input(), summary: 'Updated.' }).summary).toBe('Updated.')
+    expect(approvals.request({ ...input(), summary: 'Updated.' }).summary).toBe('All steps done.')
     await backend.resolve('projects:launch:complete:project:1', 'approve')
-    const again = approvals.request({ ...input(), summary: 'Again.' })
-    expect(again).toMatchObject({ status: 'approved', summary: 'Updated.' })
+    expect(approvals.request({ ...input(), summary: 'Again.' })).toMatchObject({ status: 'approved', summary: 'All steps done.' })
+  })
+
+  it('a re-request while the gate is deciding cannot swap the subject being approved', async () => {
+    const backend = createMemoryApprovalsBackend()
+    const approvals = createPluginApprovalsAPI('projects', backend)
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const applied: string[] = []
+    approvals.registerGate('complete', { ownerState: () => 'live', onResolve: async (a) => { applied.push(a.entityId); await gate } })
+    approvals.request(input())
+    const deciding = backend.resolve('projects:launch:complete:project:1', 'approve')
+    approvals.request({ ...input(), entityId: 'other-project' })
+    release()
+    const resolved = await deciding
+    expect(applied).toEqual(['launch'])
+    expect(resolved.owner).toMatchObject({ entityId: 'launch' })
+  })
+
+  it('the harness applies the host reject-reason rule (default on; configurable)', async () => {
+    const strict = createMemoryApprovalsBackend()
+    const approvals = createPluginApprovalsAPI('projects', strict)
+    const seen: string[] = []
+    approvals.registerGate('complete', { ownerState: () => 'live', onResolve: (_a, d) => { seen.push(d.option) } })
+    expect(approvals.request(input())).toBeTruthy()
+    expect(strict.get('projects:launch:complete:project:1')?.request.context).toEqual({ requireRejectReason: true })
+    const err = await strict.resolve('projects:launch:complete:project:1', 'reject').catch((e: unknown) => e)
+    expect((err as PluginApprovalRefusal).status).toBe(400)
+    expect(seen).toEqual([])
+    expect((await strict.resolve('projects:launch:complete:project:1', 'reject', 'needs docs')).status).toBe('rejected')
+
+    const lax = createMemoryApprovalsBackend({ requireRejectReason: false })
+    const laxApprovals = createPluginApprovalsAPI('projects', lax)
+    laxApprovals.registerGate('complete', { ownerState: () => 'live', onResolve: () => {} })
+    laxApprovals.request(input())
+    expect((await lax.resolve('projects:launch:complete:project:1', 'reject')).status).toBe('rejected')
   })
 })

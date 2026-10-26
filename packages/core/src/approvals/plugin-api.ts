@@ -80,6 +80,16 @@ export function toPluginApproval(record: PluginGateRecord): PluginApproval {
   }
 }
 
+/**
+ * The ONE reject-reason rule (host dispatcher and SDK harness): a reject typed
+ * on a Bakin surface needs a reason when the setting asks for one; a channel
+ * button without a reason modal is the provider's decision.
+ */
+export function rejectReasonMissing(decision: CoreGateDecision, requireRejectReason: boolean): boolean {
+  const typedSurface = decision.provenance.channel !== 'discord' && decision.provenance.channel !== 'runtime'
+  return decision.option === 'reject' && !decision.comment?.trim() && typedSurface && requireRejectReason
+}
+
 function toPluginDecision(decision: CoreGateDecision): PluginApprovalDecision {
   return {
     option: decision.option,
@@ -121,6 +131,10 @@ export function createPluginApprovalsAPI(pluginId: string, backend: PluginApprov
       if (existing && !isOwned(existing, pluginId)) {
         throw new Error(`ctx.approvals.request: approval "${approvalId}" belongs to another owner`)
       }
+      // Pending or decided, an existing id is never rewritten (spec D26): a
+      // refresh could swap the subject under a resolver mid-decision. A
+      // changed request is a new generation — a new id.
+      if (existing) return toPluginApproval(existing)
       const options = input.options?.length ? input.options : DEFAULT_GATE_OPTIONS
       const record = backend.request({
         approvalId,
@@ -176,8 +190,13 @@ export interface MemoryApprovalsBackend extends PluginApprovalsBackend {
   resolve(approvalId: string, option: string, comment?: string): Promise<ApprovalRecord>
 }
 
-/** In-memory backend for the SDK testing harness and host test contexts — no files, no events. */
-export function createMemoryApprovalsBackend(): MemoryApprovalsBackend {
+/**
+ * In-memory backend for the SDK testing harness and host test contexts — no
+ * files, no events. `requireRejectReason` mirrors the host setting (default
+ * on, as on the host).
+ */
+export function createMemoryApprovalsBackend(opts: { requireRejectReason?: boolean } = {}): MemoryApprovalsBackend {
+  const requireRejectReason = opts.requireRejectReason ?? true
   const records = new Map<string, ApprovalRecord>()
   const gates = new Map<string, CoreGateHandler>()
   // The host's resolve guards: one resolver at a time, and the decision only
@@ -185,8 +204,9 @@ export function createMemoryApprovalsBackend(): MemoryApprovalsBackend {
   const resolving = new Set<string>()
   const gateKey = (pluginId: string, gateKind: string) => `${pluginId}\u0000${gateKind}`
   return {
-    request({ approvalId, owner, request }) {
+    request({ approvalId, owner, request: input }) {
       const now = new Date().toISOString()
+      const request = { ...input, context: { ...input.context, requireRejectReason } }
       const existing = records.get(approvalId)
       if (existing && existing.status !== 'pending') return existing
       const record: ApprovalRecord = existing
@@ -225,6 +245,10 @@ export function createMemoryApprovalsBackend(): MemoryApprovalsBackend {
       resolving.add(approvalId)
       const respondedAt = new Date().toISOString()
       const provenance: ApprovalProvenance = { channel: 'ui', actor: { kind: 'operator-declared' }, evidence: 'declared' }
+      if (rejectReasonMissing({ option, comment, provenance }, requireRejectReason)) {
+        resolving.delete(approvalId)
+        throw new PluginApprovalRefusal('A reject reason is required', 400)
+      }
       try {
         await gate.onResolve(record as PluginGateRecord, { option, ...(comment ? { comment } : {}), respondedAt, provenance })
       } finally {

@@ -91,14 +91,18 @@ ONE implementation, `packages/core/src/approvals/plugin-api.ts`
 `registerPluginGate`) and the SDK harness (`createMemoryApprovalsBackend()`;
 `harness.resolveApproval(id, option, comment?)` plays the operator). Rules:
 the owner's `pluginId` is the context's; `approvalId` must start with
-`<pluginId>:` and is caller-chosen + deterministic (idempotent re-request;
-a decided id comes back untouched); `request`/`get`/`cancel`/`listPending`
-refuse or hide every record that is not this plugin's `plugin-gate` (a
-pending record's owner is refreshed on re-request, so an unchecked id could
-take over another owner's approval). Default options Approve (primary) /
+`<pluginId>:` and is caller-chosen + deterministic; an EXISTING id — pending
+or decided — is returned untouched, never rewritten (a refresh could swap the
+subject under a resolver mid-decision; a changed request is a new
+generation id); `request`/`get`/`cancel`/`listPending` refuse or hide every
+record that is not this plugin's `plugin-gate` (the core store refreshes a
+pending record's owner on create, so an unchecked id could take over another
+owner's approval). Default options Approve (primary) /
 Reject (destructive). The host stamps `request.context.requireRejectReason`
 from settings; the core dispatcher enforces it like workflow gates (typed
-reject without a reason → 400; Discord/runtime buttons exempt). Gates see a
+reject without a reason → 400; Discord/runtime buttons exempt) through the
+ONE predicate `rejectReasonMissing` that the memory backend also applies
+(`createMemoryApprovalsBackend({ requireRejectReason })`, default on). Gates see a
 plugin view (`PluginApproval`) and a decision with `decidedBy`
 (`describeApprovalProvenance`) — never raw provenance. `refusal(message,
 status)` is the error a gate throws to refuse (host: `ApprovalResolveError`).

@@ -126,9 +126,12 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   settles only when the rows are durable and rejects on a failed write). Each
   batch is announced only when all its rows persisted; a failed batch is
   rejected, never announced. Queued rows flush at slot release BEFORE the next
-  admission: every release (turn settle, a failed user-row write at admission,
-  a flush's own teardown — which re-checks for batches that arrived after its
-  last loop check) goes through `releaseSlot` (flush first, else drain);
+  admission: the flush reserves its guard BEFORE any writer or listener runs
+  (a synchronous `appended` listener or re-entrant appendRow joins it, never
+  starts a second flush) and only the owning flush clears it; every release
+  (turn settle, a failed user-row write at admission, a flush's own teardown —
+  which re-checks for batches that arrived after its last loop check) goes
+  through `releaseSlot` (flush first, else drain);
   `start()` waits out any running flush before its synchronous busy check;
   `waitFor()` covers the flush. Every settle shape (done/error/abort) flushes —
   pinned in the settle-shape matrix of `tests/core/conversation-turns.test.ts`

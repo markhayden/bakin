@@ -355,19 +355,27 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
 
   const flushExternal = (ctx: TurnContext, key: string) => {
     if (flushing.has(key)) return
-    const run = async () => {
-      for (let batches = pendingExternal.get(key); batches?.length; batches = pendingExternal.get(key)) {
-        pendingExternal.delete(key)
-        for (const batch of batches) await writeBatch(ctx, key, batch)
+    // Reserve BEFORE any writer or listener runs: a synchronous `appended`
+    // listener or a re-entrant appendRow that appends again must join this
+    // flush, never start a second one beside it.
+    let finished!: () => void
+    const guard = new Promise<void>((resolve) => { finished = resolve })
+    flushing.set(key, guard)
+    void (async () => {
+      try {
+        for (let batches = pendingExternal.get(key); batches?.length; batches = pendingExternal.get(key)) {
+          pendingExternal.delete(key)
+          for (const batch of batches) await writeBatch(ctx, key, batch)
+        }
+      } finally {
+        if (flushing.get(key) === guard) flushing.delete(key)
+        // A batch that arrived after the loop's last check flushes before any
+        // admission; otherwise the next queued turn drains — reserving its
+        // slot before start() waiters resume.
+        releaseSlot(ctx, key)
+        finished()
       }
-    }
-    flushing.set(key, run().finally(() => {
-      flushing.delete(key)
-      // A batch that arrived after the loop's last check (e.g. from an
-      // `appended` listener) flushes before any admission; otherwise rows
-      // first, THEN the next admission: queued sends drain behind them.
-      releaseSlot(ctx, key)
-    }))
+    })()
   }
 
   /** Slot released (or never taken): flush out-of-turn rows first, else admit the next queued turn. */

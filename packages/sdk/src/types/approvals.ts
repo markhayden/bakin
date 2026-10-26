@@ -62,9 +62,10 @@ export interface PluginGateHandler {
 
 export interface PluginApprovalRequestInput {
   /**
-   * Caller-chosen, deterministic id — re-requesting the same id while pending
-   * refreshes it; a decided id is returned untouched. Must start with
-   * `<pluginId>:` (e.g. `projects:<projectId>:complete:project:1`).
+   * Caller-chosen, deterministic id — re-requesting an existing id (pending or
+   * decided) returns it untouched; a changed request needs a new id (bump a
+   * generation). Must start with `<pluginId>:` (e.g.
+   * `projects:<projectId>:complete:project:1`).
    */
   approvalId: string
   gateKind: string
