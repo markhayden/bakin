@@ -190,6 +190,7 @@ export function ConversationPanel({
         resolveAgent={resolveAgent}
         emptyState={emptyState}
         onRetry={onRetry}
+        onAnswerQuestion={readOnly ? undefined : (text: string) => { void onSend(text) }}
         onOpenCall={setOpenCall}
         renderAvatar={renderAvatar}
         renderText={renderText}

@@ -36,6 +36,8 @@ export interface ConversationProps {
   resolveAgent?: (agentId?: string) => ConversationAgent | undefined
   emptyState?: ReactNode
   onRetry?: () => void
+  /** Sends a question card's formatted answer; omit for read-only transcripts. */
+  onAnswerQuestion?: (text: string) => void
   onOpenCall?: (call: ConversationToolCall) => void
   renderAvatar?: ConversationAvatarRenderer
   renderText?: ConversationTextRenderer
@@ -84,6 +86,7 @@ export function Conversation({
   resolveAgent,
   emptyState,
   onRetry,
+  onAnswerQuestion,
   onOpenCall,
   renderAvatar,
   renderText,
@@ -192,6 +195,7 @@ export function Conversation({
                           ? onRetry
                           : undefined
                       }
+                      onAnswerQuestion={onAnswerQuestion}
                       onOpenCall={onOpenCall}
                       renderAvatar={renderAvatar}
                       renderText={renderText}
