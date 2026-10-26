@@ -108,7 +108,9 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   message-contract module and `tests/architecture/type-single-home.test.ts`.
   Plugin servers validate with `parseBakinQuestion` from `@makinbakin/sdk/utils`.
 - **Out-of-turn rows.** `useConversationThread` takes `events.appended`
-  (idle thread refetches; a streaming thread waits for its settle refetch) and
+  (idle thread refetches; a streaming thread waits for its settle refetch —
+  overlapping loads apply in START order: a response older than the one on
+  screen is dropped, and a failed newer load never blocks an older success) and
   `useConversationAttention` takes `events.appended` (a payload `notice:
   { agentId, preview }` announces through the same path as a finished reply).
   Chat counts a question row as an unread reply (`plugins/chat/lib/store.ts`).

@@ -128,6 +128,12 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   // Monotonic send counter: a load snapshot taken BEFORE the newest send
   // must never clobber the optimistic user row appended by that send.
   const sendSeqRef = useRef(0)
+  // Overlapping loads (mount + appended + queue refetches) resolve in any
+  // order: a response applies only if it STARTED after the one on screen, so
+  // an older snapshot never erases rows a newer one already showed — and a
+  // failed newer load never blocks an older success.
+  const loadSeqRef = useRef(0)
+  const appliedLoadSeqRef = useRef(0)
 
   const loadTranscript = useCallback(async () => {
     if (!threadKey) {
@@ -137,6 +143,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
       return
     }
     const sendSeqAtStart = sendSeqRef.current
+    const loadSeq = ++loadSeqRef.current
     let body: ConversationThreadLoad<Meta> | null = null
     try {
       body = await optionsRef.current.load(threadKey)
@@ -150,6 +157,8 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     if (activeKeyRef.current !== threadKey) return
     if (!body) return
     if (sendSeqRef.current !== sendSeqAtStart) return
+    if (loadSeq < appliedLoadSeqRef.current) return
+    appliedLoadSeqRef.current = loadSeq
     setMeta(body.meta ?? null)
     setMessages(body.messages)
     setQueued(body.queued ?? [])
