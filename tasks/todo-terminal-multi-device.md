@@ -41,13 +41,13 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [ ] T24b H3 CSS sync + repin
 - [x] Checkpoint B3 → `tmd/cp5` (optional early live preview)
 
-**Bits B4**
-- [ ] T16a CLI commands
-- [ ] T16b Attach admission + ownership
-- [ ] T16c Native size authority
-- [ ] T17 Handoff UI + README
+**Bits B4** (#133; H1 gained caller {cwd, cols, rows}, refuseEnv, recovery)
+- [x] T16a CLI commands
+- [x] T16b Attach admission + ownership
+- [x] T16c Native size authority
+- [x] T17 Handoff UI + README (attach command in Details with CopyButton)
 - [ ] T24b H3 CSS sync + repin
-- [ ] Checkpoint B4 → `tmd/cp6`
+- [x] Checkpoint B4 → `tmd/cp6` (8 Codex rounds; live test at the cutover)
 
 **Bits B5**
 - [ ] T18 Compose sheet

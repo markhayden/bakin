@@ -156,7 +156,13 @@ research item in D9 was selected by Mark.
   the environment (including `TERMINFO`; never `env -i`), and its exit code
   propagates.
 - The CLI requires a TTY and a reachable local server, both checked before
-  anything is created.
+  anything is created. `launch.refuseEnv` names the binary's own nesting
+  marker (`TMUX`); the CLI refuses when it is set, also before anything is
+  created (the route cannot see the caller's environment).
+- The route receives `{ params, caller: { cwd, cols, rows } }` and answers
+  `{ args, confirm?, recovery? }`. `recovery` is for a route that already did
+  work: the CLI adds it to a spawn or confirm failure and prints it on a
+  non-zero exit. (Added during B4.)
 - Principal: operator provenance (`--as human`, `src/cli/identity.ts`).
   Agent contexts are refused in the CLI **and** in the route.
 - Not a sandbox: `requires.bins` is trusted installed-plugin execution, so
@@ -195,14 +201,18 @@ research item in D9 was selected by Mark.
   - cwd or worktree
   - count of native clients (Bakin's bridge and control clients are excluded)
 - Both verbs require a TTY and refuse when `$TMUX` is set.
+- `new` starts the program at the caller's terminal size.
 - If `new` creates the session but attaching fails, the session is kept and
   the command prints its id and the attach command, then exits non-zero. It
-  never retries.
+  never retries. (Before the launch the route says so; after it, the CLI
+  prints the launch answer's `recovery` line.)
+- `ls` answers a preformatted table, which the host prints verbatim.
 - No `detach`, `kill`, or `--detach` verbs.
 - Web UI:
-  - The session menu has **"Copy attach command"**, which copies
-    `bakin terminal attach <full-id> --as human`.
-  - The Details popover shows the short id.
+  - The Details popover shows the short id and the attach command
+    `bakin terminal attach <full-id> --as human` with the kit `CopyButton`
+    (the kit's one copy affordance for CLI commands), rather than a session
+    menu item.
   - The list and detail views show an "Open in a terminal app" indicator
     while native clients are attached.
 
@@ -227,7 +237,9 @@ research item in D9 was selected by Mark.
   - `set-titles on` with `set-titles-string 'Bakin · #{@bakin_title}'`.
     `@bakin_title` is set on creation and on recovery.
 - `mouse` stays `off`. History moved to D9's History view.
-- On attach, the CLI prints `Detach: Ctrl-b d · Scrollback: Ctrl-b [ · Closing the window also detaches`.
+- On attach, tmux shows `Detach: Ctrl-b d · Scrollback: Ctrl-b [ · Closing the window also detaches`
+  in its status line for 5 s (a `display-message` chained after the attach),
+  where it is visible; text the CLI printed would sit behind tmux's screen.
 - Native attach to an **agent-owned** session is refused ("Take control
   first"). There is no read-only fallback, because read-only clients cannot
   enter copy-mode.
@@ -236,14 +248,25 @@ research item in D9 was selected by Mark.
   1. The launch route mints a single-use reservation bound to session +
      `generation`, with a 15 s TTL, and returns the attach arguments.
   2. The CLI spawns tmux and posts the child pid back to confirm.
-  3. The server watches `client-attached` on the control connection
-     (`#{client_pid}`). A new native client that matches no live,
-     unexpired reservation for the current `generation` is detached
-     immediately. This also catches a hand-typed raw `tmux attach`.
-- Take, Return, and assign invalidate outstanding reservations.
-- Return control detaches every admitted native client and waits for it
-  before granting agent ownership. Bridge and control clients are left in
-  place.
+  3. The server hears every client attach, resize and leave on the control
+     connection (`%client-session-changed`, `%client-detached`, and a
+     subscription to `@bakin_client`, which a `client-resized` hook sets),
+     then reads `list-clients`. A client that matches no reservation for
+     the current `generation` is detached immediately. This also catches a
+     hand-typed raw `tmux attach` and any foreign `tmux -C` client.
+     Bakin's bridge and control clients are recognised by process.
+  4. The app attaches read-only (`-f read-only`) and becomes writable only
+     once its size claim and resize succeed; then the confirm resolves.
+     If they cannot be reconciled the admission is revoked (detached,
+     confirm refused). While a confirm is pending, other terminal clients
+     are held read-only; a reservation lapses on its own 15 s timer.
+- Take, Return, and assign invalidate outstanding reservations, refusing a
+  waiting confirm.
+- Return control detaches every non-Bakin client (admitted or held) and
+  waits for it before granting agent ownership. Bridge and control clients
+  are left in place.
+- Admission state is in memory: a Bakin restart detaches attached terminal
+  apps.
 
 ### D8 Transport: WebSocket (host capability + terminal)
 **Host side:**
