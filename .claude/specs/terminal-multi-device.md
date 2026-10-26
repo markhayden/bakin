@@ -245,11 +245,23 @@ research item in D9 was selected by Mark.
 **Host side:**
 - New plugin capability **socket routes**: manifest `contributes.socketRoutes`
   plus SDK types.
-- It uses the `node:http` `upgrade` event with a host-owned `ws` dependency,
-  gated by integration tests on Bun 1.4.3. `Bun.serve` is not used.
-- Origin is validated against the public origin, and host auth runs, both
-  before the upgrade.
-- Messages are typed. Sends are bounded and report drain.
+- It uses the `node:http` `upgrade` event. `Bun.serve` is not used.
+  - `ws` resolves to **Bun's built-in implementation**; Bun refuses every npm
+    `ws` subpath. So there is no `ws` runtime dependency, only `@types/ws`.
+    This revises the original "host-owned `ws` dependency", which was found
+    to be unloadable during T5.
+- Origin is validated against the server's own host before the upgrade, and
+  the route's `admit(request)` may then refuse.
+- Messages are typed.
+- **No host send bound or drain.** This revises "bounded sends with drain";
+  it was measured during T5 on Bun 1.4.3 against a client that stops
+  reading:
+  - `bufferedAmount` reads 0 for ~18 MiB, then grows;
+  - it stays stale after the client has read everything;
+  - send callbacks fire immediately.
+
+  No reliable backlog is observable, so the terminal's application-level
+  ACK windows (below) are the bound.
 - Sockets close when the plugin is disabled, reloaded (hot reload), or shut
   down.
 - Terminal client identity is **not** part of the host contract.

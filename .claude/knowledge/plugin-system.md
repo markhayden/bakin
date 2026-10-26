@@ -1580,6 +1580,35 @@ Request to `/api/plugins/workflows/definitions/my-workflow` → extracts
 `pluginId=workflows`, `path=/definitions/my-workflow` → matches route
 `/definitions/:name` → injects `name=my-workflow` into searchParams.
 
+## Socket Routes (plugin WebSockets)
+
+A plugin declares WebSocket routes with `defineSocketRoute({ path, summary, admit?, open })` in `definePlugin({ socketRoutes })`. User plugins also list them in `contributes.socketRoutes`, which the registry enforces at activation and `sync-manifest` regenerates.
+
+Server side:
+- `server.ts` wires `server.on('upgrade', createUpgradeHandler(pluginRegistry))`. The handler lives in `src/core/server/upgrade-handler.ts`.
+- **Admission order:** path → live route (404), then Origin host must equal the Host header (403), then the route's `admit(request)` (any `Response` refuses). No custom headers reach browsers' WebSockets, so plugins bind identity in the first message or the query.
+- Connections run over the ONE `createPluginSocket` (`packages/core/src/routing/socket.ts`).
+- Registry (`trackSocket`):
+  - `clearStateArrays` (reload/suspend/deactivate) closes them with 1012.
+  - `shutdownAll` closes them with 1001.
+  - `open` throws → 1011.
+  - A message listener throws → 1011.
+
+`ws` resolves to **Bun's built-in implementation**, in source and in the compiled binary. Bun refuses every npm `ws` subpath, so the host declares only `@types/ws`.
+
+**No host send bound or drain.** Measured on Bun 1.4.3 against a client that stops reading:
+- `bufferedAmount` reads 0 for ~18 MiB, then grows;
+- it stays stale after the client has read everything;
+- send callbacks run immediately.
+
+So the host promises nothing about backlog. Protocols that stream acknowledge at the application level (Terminal's output windows).
+
+Tests:
+- `tests/core/routing/plugin-socket.test.ts`
+- `tests/core/server/upgrade-handler.test.ts` (real node:http + ws, origin teeth)
+- `tests/integration/sockets/plugin-sockets.test.ts` (booted server: frames, refusals, disable → 1012, shutdown → 1001)
+- `tests/sdk-testing/socket-routes.test.ts` (the published harness `connectTestSocket`)
+
 ## CLI Commands (manifest `cliCommands`)
 
 A dispatched command (`dispatch: execTool | apiRoute`) must declare `args`. That array is its complete argument surface.
