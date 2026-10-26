@@ -37,6 +37,7 @@ import * as watcher from './src/core/watcher'
 import { runStartupRecovery } from './src/core/server/startup-recovery'
 import { ensureCoreRepairActions } from './src/core/doctor'
 import { createRequestHandler } from './src/core/server/request-handler'
+import { createUpgradeHandler } from './src/core/server/upgrade-handler'
 import { getBootId } from './src/core/boot-id'
 import { formatBindFailureHelp } from './src/core/server-lock'
 import { publishServerLockUnderInstallState, ServerStartBlockedError } from './src/core/server-boot-lock'
@@ -240,6 +241,9 @@ const eventBus = new BakinEventBus(broadcast)
   })
 
   const server = createServer(createRequestHandler({ port, CONTENT_DIR, collectOpenApiSources }))
+  // Plugin socket routes (definePlugin({ socketRoutes })): admitted and
+  // tracked per plugin; the registry closes them on sweep/disable/shutdown.
+  server.on('upgrade', createUpgradeHandler(pluginRegistry))
 
   // Start file watching before the server loops. Dispatch/watchdog wait until
   // restart recovery has taken the first look at stale in-progress tasks.

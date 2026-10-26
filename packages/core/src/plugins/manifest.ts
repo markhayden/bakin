@@ -407,14 +407,28 @@ function parseCliArgs(raw: unknown, usage: string, index: number, dispatched: bo
   return args
 }
 
-function parseSocketRoute(raw: unknown, index: number): SocketRouteContribution {
-  const label = `contributes.socketRoutes[${index}]`
-  if (!isRecord(raw)) throw new PluginManifestError(`${label} must be an object`)
-  const path = stringField(raw, 'path', { required: true })!
+function validateSocketRoutePath(path: string, label: string): void {
   validatePluginRelativePath(path, label)
   if (!/^\/[A-Za-z0-9/_-]*$/.test(path) || path.includes('//')) {
     throw new PluginManifestError(`${label} path "${path}" must be a plain plugin-relative path`)
   }
+}
+
+/** sync-manifest's twin of the load-time socket path rule (message, not throw). */
+export function validateCapturedSocketRoute(path: string): string | null {
+  try {
+    validateSocketRoutePath(path, 'captured socket route')
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
+  }
+  return null
+}
+
+function parseSocketRoute(raw: unknown, index: number): SocketRouteContribution {
+  const label = `contributes.socketRoutes[${index}]`
+  if (!isRecord(raw)) throw new PluginManifestError(`${label} must be an object`)
+  const path = stringField(raw, 'path', { required: true })!
+  validateSocketRoutePath(path, label)
   return { path, summary: stringField(raw, 'summary', { required: true })! }
 }
 

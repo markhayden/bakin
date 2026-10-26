@@ -13,7 +13,7 @@ import type {
   RegisteredAPIRoute,
   UISlotRegistration,
 } from '@bakin/core/plugin-types'
-import type { PluginManifest as PublicPluginManifest } from '@makinbakin/sdk/types'
+import type { PluginManifest as PublicPluginManifest, SocketRoute } from '@makinbakin/sdk/types'
 
 /**
  * One entry in the static core-plugin table that `server.ts` registers via
@@ -25,6 +25,11 @@ export interface CorePluginRegistration {
   manifest: PublicPluginManifest
 }
 
+/** What the registry needs to end a live plugin socket. */
+export interface TrackedSocket {
+  close(code: number, reason: string): void
+}
+
 export interface PluginState {
   plugin: BakinPlugin
   manifest?: PublicPluginManifest
@@ -32,6 +37,10 @@ export interface PluginState {
   description: string
   navItems: NavItem[]
   routes: RegisteredAPIRoute[]
+  /** Declarative `plugin.socketRoutes`. */
+  socketRoutes: SocketRoute[]
+  /** Open connections on this plugin's socket routes — closed on sweep/shutdown. */
+  sockets: Set<TrackedSocket>
   slots: UISlotRegistration[]
   watchPatterns: string[]
   /** Namespaced workflow node kinds registered via ctx.registerNodeType. */

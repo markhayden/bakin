@@ -136,6 +136,8 @@ function seedRegistryEntry(opts: SeedOptions = {}): void {
     channelIds: [] as string[],
     healthCheckIds: [] as string[],
     healthRepairActionIds: [] as string[],
+    socketRoutes: [],
+    sockets: new Set(),
     ctx: {
       pluginId: 'fixture',
       registerNav: () => {},
