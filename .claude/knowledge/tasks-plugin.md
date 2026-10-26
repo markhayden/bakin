@@ -322,7 +322,7 @@ When `autoArchiveDays > 0`, the plugin moves old Done tasks to Archived. `archiv
 
 ### Projects Plugin
 - Tasks can carry plugin-owned metadata such as `projectId`
-- When a task status changes, core emits `tasks.statusChanged`; installed plugins can react to it without Bakin core naming that plugin
+- When a task changes column, core emits `tasks.statusChanged` `{ taskId, title, from, to, task }` (store column ids; `task` is the written task); installed plugins can react to it without Bakin core naming that plugin. ONE emitter: the shared store's column write (`updateSync` flags `previousColumn` on its event; `getSharedBakinTaskStore()` turns it into the hook after the write) — so effects-based moves, blocks, recoveries and plugin `ctx.tasks.update/move` each fire it exactly once, and reason/title/log writes never do. Never add a per-path emission (pinned by `tests/core/task-status-hook.test.ts`)
 
 ### Dispatch Engine
 - `src/core/dispatch.ts` reads todo tasks through `src/core/task-store.ts` and assigns them to available runtime agents

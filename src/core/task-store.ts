@@ -96,10 +96,28 @@ export function getSharedBakinTaskStore(): SyncBakinTaskStore {
   let store = g.__bakinTaskStores.get(root)
   if (!store) {
     store = createFileBakinTaskStore(root)
-    store.subscribe(() => broadcastChange())
+    store.subscribe((event) => {
+      broadcastChange()
+      if (event.previousColumn !== undefined && event.task) emitStatusChanged(event.task, event.previousColumn)
+    })
     g.__bakinTaskStores.set(root, store)
   }
   return store
+}
+
+/**
+ * The ONE `tasks.statusChanged` emission (spec D21): every column write —
+ * effects-based moves, blocks, recoveries, plugin `ctx.tasks.update/move` —
+ * lands in the store's `updateSync`, which flags a real column change on its
+ * event. Fired after the write returns so handlers always read the new state.
+ */
+function emitStatusChanged(task: BakinTask, from: string): void {
+  void (async () => {
+    const { getHookRegistry } = await import('@bakin/core/hooks/hook-registry-singleton')
+    await getHookRegistry().callAll('tasks.statusChanged', { taskId: task.id, title: task.title, from, to: task.column, task })
+  })().catch((err) => {
+    log.debug('Task status extension hook failed', { taskId: task.id, err: err instanceof Error ? err.message : String(err) })
+  })
 }
 
 function broadcastChange(): void {
