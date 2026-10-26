@@ -38,7 +38,7 @@ import { createConversationTurnService } from '@bakin/core/conversation/turns'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 import { taskStatusChangedPayload } from '@bakin/core/tasks/status-change'
-import { taskPatchFromPublic } from '@bakin/core/tasks/public-patch'
+import { taskPatchFromPublic, toPluginTask } from '@bakin/core/tasks/public-task'
 import { assertPluginResources, createMemoryResourceAcquirer, createOperationRegistry, toPluginOperationInput } from '@bakin/core/operations'
 import { createMemoryApprovalsBackend, createPluginApprovalsAPI, toPluginApproval } from '@bakin/core/approvals/plugin-api'
 import type {
@@ -248,12 +248,21 @@ export function createTestContext(
     // and MUST typecheck via `satisfies` so a type change can't silently
     // desync the mocks.
     runtime: createMockRuntimeAdapter() as unknown as PluginContext['runtime'],
-    // update() takes the PUBLIC patch (checked → column) through the host's
-    // own translation, so status events match production.
+    // The PUBLIC task shape both ways, through the host's own translation:
+    // updates take the public patch (checked → column) and every returned
+    // task is projected (derived `checked`), so plugins see production's
+    // shapes and status events.
     tasks: {
       ...taskStore,
-      update: (id: string, patch: Parameters<PluginContext['tasks']['update']>[1]) =>
-        taskStore.update(id, taskPatchFromPublic(patch as Parameters<typeof taskPatchFromPublic>[0])),
+      create: async (input: Parameters<typeof taskStore.create>[0]) => toPluginTask(await taskStore.create(input)),
+      get: async (id: string) => {
+        const task = await taskStore.get(id)
+        return task ? toPluginTask(task) : null
+      },
+      list: async (filter?: Parameters<typeof taskStore.list>[0]) => (await taskStore.list(filter)).map(toPluginTask),
+      update: async (id: string, patch: Parameters<PluginContext['tasks']['update']>[1]) =>
+        toPluginTask(await taskStore.update(id, taskPatchFromPublic(patch as Parameters<typeof taskPatchFromPublic>[0]))),
+      move: async (id: string, column: string, order?: number) => toPluginTask(await taskStore.move(id, column, order)),
     } as unknown as PluginContext['tasks'],
     // The REAL turn engine (host implementation) — external-author tests
     // exercise genuine turn lifecycle against the mock runtime. Same

@@ -48,8 +48,13 @@ describe('tasks.statusChanged in the SDK harness', () => {
   it('the public `checked` patch completes and reopens a task, firing the hook like the host', async () => {
     changes.length = 0
     const task = await tasks!.create({ title: 'Check me', column: 'todo' })
-    await tasks!.update(task.id, { checked: true })
-    await tasks!.update(task.id, { checked: false })
+    expect(task.checked).toBe(false)
+    const done = await tasks!.update(task.id, { checked: true })
+    expect(done).toMatchObject({ checked: true, column: 'done' })
+    expect((await tasks!.get(task.id))?.checked).toBe(true)
+    expect((await tasks!.list()).find((t) => t.id === task.id)?.checked).toBe(true)
+    const reopened = await tasks!.update(task.id, { checked: false })
+    expect(reopened).toMatchObject({ checked: false, column: 'todo' })
     await eventsArrived(2)
     expect(changes.map((c) => [c.from, c.to])).toEqual([['todo', 'done'], ['done', 'todo']])
   })

@@ -439,6 +439,27 @@ describe('appended rows (projects revamp D24a)', () => {
     expect(store.loads).toEqual(['a'])
   })
 
+  it('done then appended in the SAME tick (before a render) still refetches — the flush lands after the settle load', async () => {
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', { events: { ...EVENTS, appended: 'probe.appended' } })
+    await waitFor(() => expect(store.loads).toEqual(['a']))
+    await act(async () => { emitPluginEvent({ event: 'probe.chunk', threadKey: 'a', chunk: { type: 'text', content: 'reply' } }) })
+    expect(result.current.streaming).toBe(true)
+    await act(async () => {
+      // The settle load reads storage BEFORE the out-of-turn rows flush…
+      store.transcripts.set('a', [{ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 't1', content: 'reply' }])
+      emitPluginEvent({ event: 'probe.done', threadKey: 'a' })
+      // …then the flush writes them and announces, before any re-render.
+      store.transcripts.set('a', [
+        { kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 't1', content: 'reply' },
+        { kind: 'assistant', ts: '2026-07-20T00:00:02Z', turnId: 'steward:t2', content: 'question' },
+      ])
+      emitPluginEvent({ event: 'probe.appended', threadKey: 'a' })
+    })
+    await waitFor(() => expect(result.current.messages.map((m) => (m as { content: string }).content)).toEqual(['reply', 'question']))
+    expect(store.loads).toEqual(['a', 'a', 'a'])
+  })
+
   it('overlapping loads apply in start order — an older response never erases a newer one', async () => {
     const row = (content: string): ConversationMessage => ({ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 't', content })
     // Each load parks on a deferred the test resolves out of order.

@@ -8,39 +8,8 @@ import type {
 } from '@bakin/core/plugin-types'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import type { BakinTask, BakinTaskStore } from '@bakin/core/tasks/store'
-import { taskPatchFromPublic } from '@bakin/core/tasks/public-patch'
+import { taskPatchFromPublic, toPluginTask } from '@bakin/core/tasks/public-task'
 
-function isDoneColumn(column: string): boolean {
-  return column === 'done' || column === 'archived'
-}
-
-function toPluginTask(task: BakinTask): PluginTask {
-  return {
-    id: task.id,
-    title: task.title,
-    agent: task.agent,
-    createdBy: task.createdBy,
-    checked: isDoneColumn(task.column),
-    column: task.column as PluginTaskColumn,
-    date: task.date,
-    blockedReason: task.blockedReason,
-    description: task.description,
-    log: task.log.map(({ timestamp, author, message, data }) => ({ timestamp, author, message, data })),
-    dependsOn: task.dependsOn,
-    parentId: task.parentId,
-    workflowId: task.workflowId,
-    scheduleJobId: task.scheduleJobId,
-    projectId: task.projectId,
-    brandId: task.brandId,
-    tags: task.tags,
-    availableAt: task.availableAt,
-    dueAt: task.dueAt,
-    source: task.source,
-    order: task.order,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
-  }
-}
 
 
 export function createPluginTaskService(store: BakinTaskStore): PluginTaskService {

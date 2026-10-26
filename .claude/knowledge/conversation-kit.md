@@ -111,6 +111,9 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   Plugin servers validate with `parseBakinQuestion` from `@makinbakin/sdk/utils`.
 - **Out-of-turn rows.** `useConversationThread` takes `events.appended`
   (idle thread refetches; a streaming thread waits for its settle refetch —
+  `settle` flips the streaming ref synchronously, because out-of-turn rows
+  flush AFTER the done event and an `appended` landing before the next render
+  must still refetch;
   overlapping loads apply in START order: a response older than the one on
   screen is dropped, and a failed newer load never blocks an older success) and
   `useConversationAttention` takes `events.appended` (a payload `notice:
