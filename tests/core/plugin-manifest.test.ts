@@ -463,4 +463,20 @@ describe('plugin manifest declarative client contributions (lazy loading)', () =
       ] }))).toThrow(/"json" is a reserved global flag/)
     })
   })
+
+  describe('socketRoutes', () => {
+    it('parses plugin-relative socket routes', () => {
+      const manifest = parsePluginManifest({ ...baseManifest, contributes: { socketRoutes: [{ path: '/socket', summary: 'Live output' }] } })
+      expect(manifest.contributes?.socketRoutes).toEqual([{ path: '/socket', summary: 'Live output' }])
+    })
+
+    it('rejects API paths, traversal, params and duplicates', () => {
+      const bad = (socketRoutes: unknown) => () => parsePluginManifest({ ...baseManifest, contributes: { socketRoutes } })
+      expect(bad([{ path: '/api/x', summary: 's' }])).toThrow(/socketRoutes\[0\]/)
+      expect(bad([{ path: '/../x', summary: 's' }])).toThrow(/socketRoutes\[0\]/)
+      expect(bad([{ path: '/x/:id', summary: 's' }])).toThrow(/plain plugin-relative path/)
+      expect(bad([{ path: '/x', summary: 's' }, { path: '/x', summary: 't' }])).toThrow(/duplicate path "\/x"/)
+      expect(bad([{ path: '/x' }])).toThrow(/summary/)
+    })
+  })
 })

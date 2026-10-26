@@ -15,6 +15,7 @@ import type {
   RuntimeCapability,
   SecretDeclaration,
   SettingsContribution,
+  SocketRouteContribution,
 } from '@makinbakin/sdk/types'
 import { BinRequirementsSchema } from './bin-requirement'
 
@@ -406,6 +407,17 @@ function parseCliArgs(raw: unknown, usage: string, index: number, dispatched: bo
   return args
 }
 
+function parseSocketRoute(raw: unknown, index: number): SocketRouteContribution {
+  const label = `contributes.socketRoutes[${index}]`
+  if (!isRecord(raw)) throw new PluginManifestError(`${label} must be an object`)
+  const path = stringField(raw, 'path', { required: true })!
+  validatePluginRelativePath(path, label)
+  if (!/^\/[A-Za-z0-9/_-]*$/.test(path) || path.includes('//')) {
+    throw new PluginManifestError(`${label} path "${path}" must be a plain plugin-relative path`)
+  }
+  return { path, summary: stringField(raw, 'summary', { required: true })! }
+}
+
 function parseSettings(raw: unknown, index: number): SettingsContribution {
   if (!isRecord(raw)) throw new PluginManifestError(`contributes.settings[${index}] must be an object`)
   return {
@@ -430,6 +442,15 @@ function parseContributions(input: unknown): PluginContributions | undefined {
   if (input.execTools !== undefined) {
     if (!Array.isArray(input.execTools)) throw new PluginManifestError('contributes.execTools must be an array')
     out.execTools = input.execTools.map(parseExecTool)
+  }
+  if (input.socketRoutes !== undefined) {
+    if (!Array.isArray(input.socketRoutes)) throw new PluginManifestError('contributes.socketRoutes must be an array')
+    out.socketRoutes = input.socketRoutes.map(parseSocketRoute)
+    const seen = new Set<string>()
+    for (const route of out.socketRoutes) {
+      if (seen.has(route.path)) throw new PluginManifestError(`contributes.socketRoutes declares duplicate path "${route.path}"`)
+      seen.add(route.path)
+    }
   }
   if (input.cliCommands !== undefined) {
     if (!Array.isArray(input.cliCommands)) throw new PluginManifestError('contributes.cliCommands must be an array')

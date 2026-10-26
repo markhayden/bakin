@@ -33,7 +33,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { BakinEventBus } from '@bakin/core/events'
 import { MarkdownStorageAdapter } from '@bakin/core/storage'
-import { dispatchRoute } from '@bakin/core/routing'
+import { createPluginSocket, dispatchRoute } from '@bakin/core/routing'
 import { createConversationTurnService } from '@bakin/core/conversation/turns'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
@@ -55,6 +55,7 @@ import type {
   SearchResponse,
   SearchResult,
   SkillDefinition,
+  SocketRoute,
   UISlotRegistration,
   WorkflowDefinitionInput,
 } from '../types'
@@ -85,6 +86,8 @@ export interface PluginTestContext {
   ctx: PluginContext
   /** All routes: declarative `plugin.routes` + the auto-wired search route. */
   routes: APIRoute[]
+  /** Declarative `plugin.socketRoutes` — connect with `connectTestSocket`. */
+  socketRoutes: SocketRoute[]
   /** Exec tools registered via `ctx.registerExecTool`. */
   execTools: ExecToolDefinition[]
   /** Nav items registered via `ctx.registerNav`. */
@@ -158,6 +161,7 @@ export function createTestContext(
   const dir = options.dir ?? mkdtempSync(join(tmpdir(), `bakin-${pluginId}-test-`))
 
   const routes: APIRoute[] = []
+  const socketRoutes: SocketRoute[] = []
   const execTools: ExecToolDefinition[] = []
   const navItems: NavItem[] = []
   const slots: UISlotRegistration[] = []
@@ -343,6 +347,7 @@ export function createTestContext(
   return {
     ctx,
     routes,
+    socketRoutes,
     execTools,
     navItems,
     slots,
@@ -420,6 +425,7 @@ export async function activatePlugin(
   const harness = createTestContext(plugin.id, options)
   const declarative = (plugin as { routes?: APIRoute[] }).routes
   if (declarative) harness.routes.push(...declarative)
+  if (plugin.socketRoutes) harness.socketRoutes.push(...plugin.socketRoutes)
   try {
     await plugin.activate(harness.ctx)
   } catch (err) {
@@ -434,6 +440,84 @@ export async function activatePlugin(
 /** Find a route by method and declared path (`'GET', '/items/:id'`). */
 export function findRoute(routes: APIRoute[], method: string, path: string): APIRoute | undefined {
   return routes.find((r) => r.method === method && r.path === path)
+}
+
+/** Find a socket route by its declared path. */
+export function findSocketRoute(routes: SocketRoute[], path: string): SocketRoute | undefined {
+  return routes.find((route) => route.path === path)
+}
+
+/** The client end of a `connectTestSocket` connection. */
+export interface TestSocketClient {
+  /** Frames the plugin sent and the network has delivered, in order. */
+  readonly received: Array<string | Uint8Array>
+  /** Set once either side closed. */
+  readonly closed: { code: number; reason: string } | null
+  /** Send a frame to the plugin. */
+  send(data: string | Uint8Array): void
+  /** Close from the client side. */
+  close(code?: number, reason?: string): void
+  /** With `autoFlush: false`: deliver queued frames (all, or the oldest `count`). */
+  flush(count?: number): void
+}
+
+export type TestSocketConnection = { ok: true; client: TestSocketClient } | { ok: false; response: Response }
+
+/**
+ * Connect to a socket route in-memory: runs `admit`, then `open`, over the
+ * host's own PluginSocket implementation. `autoFlush: false` holds sent
+ * frames as queued bytes until `client.flush()`, exercising the send bound.
+ */
+export async function connectTestSocket(
+  route: SocketRoute,
+  request: Request = new Request('http://localhost/'),
+  options: { sendBound?: number; autoFlush?: boolean } = {},
+): Promise<TestSocketConnection> {
+  const refused = await route.admit?.(request)
+  if (refused) return { ok: false, response: refused }
+  const autoFlush = options.autoFlush ?? true
+  const queue: Array<{ data: string | Uint8Array; done: () => void }> = []
+  const received: Array<string | Uint8Array> = []
+  let buffered = 0
+  let closed: { code: number; reason: string } | null = null
+  const size = (data: string | Uint8Array) => (typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength)
+  const flush = (count = queue.length) => {
+    for (const frame of queue.splice(0, count)) {
+      buffered -= size(frame.data)
+      received.push(frame.data)
+      frame.done()
+    }
+  }
+  const handle = createPluginSocket({
+    get bufferedAmount() { return buffered },
+    send(data, done) {
+      buffered += size(data)
+      queue.push({ data, done })
+      if (autoFlush) flush()
+    },
+    close(code, reason) {
+      closed ??= { code, reason }
+      handle.closed(code, reason)
+    },
+  }, { sendBound: options.sendBound })
+  const client: TestSocketClient = {
+    received,
+    get closed() { return closed },
+    send(data) { handle.deliver(data) },
+    close(code = 1000, reason = '') {
+      closed ??= { code, reason }
+      handle.closed(code, reason)
+    },
+    flush,
+  }
+  try {
+    await route.open(handle.socket, request)
+  } catch (err) {
+    // The host closes the connection with 1011; a test sees the real error.
+    handle.closed(1011, 'Socket route open failed')
+    throw err
+  }
+  return { ok: true, client }
 }
 
 /** Find an exec tool by name. */

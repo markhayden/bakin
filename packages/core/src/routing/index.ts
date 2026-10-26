@@ -25,7 +25,7 @@ export type {
   PluginWithRoutes,
 } from './types'
 
-export { defineRoute, defineCoreRoute, definePlugin } from './define'
+export { defineRoute, defineCoreRoute, definePlugin, defineSocketRoute } from './define'
 export type { DefinePluginInput } from './define'
 
 export { RouteRegistry } from './registry'
@@ -37,3 +37,6 @@ export { assertValidBodySpec, dispatchRoute } from './dispatcher'
 export type { DispatchInput } from './dispatcher'
 
 export { searchRoute } from './search-route'
+
+export { createPluginSocket, DEFAULT_SOCKET_SEND_BOUND } from './socket'
+export type { PluginSocketHandle, SocketTransport } from './socket'

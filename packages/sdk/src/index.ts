@@ -50,6 +50,9 @@ export { defineRoute } from './routing'
 export { defineCoreRoute } from './routing'
 /** Compose a plugin's routes into a single definition for the server. */
 export { definePlugin } from './routing'
+/** Define a plugin WebSocket route. */
+export { defineSocketRoute } from './routing'
+export type { PluginSocket, SocketRoute } from './routing'
 export type {
   APIRoute,
   HttpStatus,

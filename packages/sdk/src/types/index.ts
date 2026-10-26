@@ -42,3 +42,4 @@ export * from './host-state'
 // `C = unknown`; the contextful default rides `@makinbakin/sdk/routing`,
 // which also re-exports the tier-bound `PluginContextLite`.
 export * from './api-route'
+export * from './socket-route'
