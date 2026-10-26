@@ -148,7 +148,10 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   (plus a microtask-delay sweep for the flush-tail window). Rows carry their own
   `turnId` + `agentId` (both optional fields on assistant/tool rows) so the
   fold renders a separate agent turn. `events.appended` joins the
-  user-plugin namespace guard.
+  user-plugin namespace guard. Reference consumer: Bits Projects' steward
+  tools (`bakin_exec_projects_checkin` / `_request_input`, README § Check-ins)
+  — rows on a `steward:<taskId>` turn attributed to the check-in's frozen
+  assignee, `written` never awaited from a tool call.
 
 ## Components
 

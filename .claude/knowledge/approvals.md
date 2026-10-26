@@ -123,6 +123,16 @@ The board renders it with the explicit `plugin-gate` renderer in
 primary trailing, reject → shared `RejectReasonForm`); attention titles it
 "Sign-off needed".
 
+**Reference consumer — Bits Projects' steward** (`../bakin-bits-official/plugins/projects/lib/steward/gates.ts`,
+README § Check-ins): deterministic ids
+`projects:<projectId>:<gateKind>:<subject>:<generation>` mirrored in the
+project frontmatter (`gates[<gateKind>:<subject>]`), a re-request after a
+rejection bumps the generation, `ownerState` is `live` only while the project
+is active AND the record is the current generation, and completion cleanup
+cancels every OTHER pending sign-off — never the approval resolving (core
+runs `onResolve` before its compare-and-set; cancelling it would fail the
+decision).
+
 ## Settings
 
 `settings.approvals = { channelAlerts: false, channel: 'general',
