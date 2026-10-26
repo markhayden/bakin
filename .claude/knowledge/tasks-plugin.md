@@ -322,6 +322,7 @@ When `autoArchiveDays > 0`, the plugin moves old Done tasks to Archived. `archiv
 
 ### Projects Plugin
 - Tasks can carry plugin-owned metadata such as `projectId`
+- `tags` ride every task layer (D30): plugin `ctx.tasks.create/update` (update REPLACES, `[]` clears) → `createTaskWithEffects` → the store → `PluginTask.tags` readback → the board `Task` view the dispatcher reads (omitted when empty), so a models `tagOverrides` entry routes a plugin's tasks (e.g. Projects' `project-steward` check-ins to a cheaper model). Before this every layer but the store dropped them and tag overrides never matched a dispatched task (pinned by `tests/core/task-tags-routing.test.ts`)
 - When a task changes column, core emits `tasks.statusChanged` `{ taskId, title, from, to, task }` (store column ids; `task` is the written task); installed plugins can react to it without Bakin core naming that plugin. ONE emitter: the shared store's column write (`updateSync` flags `previousColumn` on its event; `getSharedBakinTaskStore()` turns it into the hook after the write) — so effects-based moves, blocks, recoveries and plugin `ctx.tasks.update/move` each fire it exactly once, and reason/title/log writes never do. Never add a per-path emission (pinned by `tests/core/task-status-hook.test.ts`)
 
 ### Dispatch Engine

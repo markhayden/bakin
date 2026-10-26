@@ -31,6 +31,7 @@ function toPluginTask(task: BakinTask): PluginTask {
     scheduleJobId: task.scheduleJobId,
     projectId: task.projectId,
     brandId: task.brandId,
+    tags: task.tags,
     availableAt: task.availableAt,
     dueAt: task.dueAt,
     source: task.source,
@@ -54,6 +55,7 @@ function taskPatchFromPublic(patch: PluginTaskUpdateInput): BakinTaskPatch {
   if ('scheduleJobId' in patch) next.scheduleJobId = patch.scheduleJobId
   if ('projectId' in patch) next.projectId = patch.projectId
   if ('brandId' in patch) next.brandId = patch.brandId
+  if ('tags' in patch) next.tags = patch.tags ?? []
   if ('parentId' in patch) next.parentId = patch.parentId
   if ('availableAt' in patch) next.availableAt = patch.availableAt || undefined
   if ('dueAt' in patch) next.dueAt = patch.dueAt || undefined
@@ -83,6 +85,7 @@ export function createPluginTaskService(store: BakinTaskStore): PluginTaskServic
         parentId: input.parentId ?? undefined,
         projectId: input.projectId,
         brandId: input.brandId,
+        tags: input.tags,
         availableAt: input.availableAt,
         dueAt: input.dueAt,
         source: input.source,

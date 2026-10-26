@@ -514,6 +514,7 @@ export interface PluginTask {
   scheduleJobId?: string
   projectId?: string
   brandId?: string
+  tags?: string[]
   availableAt?: string
   dueAt?: string
   source?: PluginTaskSource
@@ -544,6 +545,7 @@ export interface PluginTaskCreateInput {
   workflowId?: string
   projectId?: string
   brandId?: string
+  tags?: string[]
   parentId?: string | null
   availableAt?: string
   dueAt?: string
@@ -564,6 +566,7 @@ export interface PluginTaskUpdateInput {
   scheduleJobId?: string
   projectId?: string
   brandId?: string
+  tags?: string[]
   parentId?: string | null
   availableAt?: string | null
   dueAt?: string | null

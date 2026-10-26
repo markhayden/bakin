@@ -49,6 +49,8 @@ export interface Task {
   /** Brand link (#419) — resolved lazily at dispatch, mirrors projectId. */
   brandId?: string
   repoPath?: string
+  /** Routing labels — dispatch hands them to the models tag overrides. */
+  tags?: string[]
   availableAt?: string
   dueAt?: string
   source?: TaskSource
@@ -172,6 +174,7 @@ function taskToView(task: BakinTask): Task {
     projectId: task.projectId,
     brandId: task.brandId,
     repoPath: task.repoPath,
+    tags: task.tags?.length ? task.tags : undefined,
     availableAt: task.availableAt,
     dueAt: task.dueAt,
     source: task.source,
@@ -310,6 +313,7 @@ export function createTask(
     brandId?: string
     /** Repo binding override (same-agent-concurrency D6). */
     repoPath?: string
+    tags?: string[]
   },
 ): Promise<Task> {
   try {
@@ -330,6 +334,7 @@ export function createTask(
       projectId,
       brandId: options?.brandId,
       repoPath: options?.repoPath,
+      tags: options?.tags,
       scheduleJobId: options?.scheduleJobId,
       dependsOn: options?.dependsOn,
       availableAt: options?.availableAt,

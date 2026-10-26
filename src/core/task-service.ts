@@ -453,6 +453,7 @@ export async function createTaskWithEffects(opts: {
   projectId?: string
   brandId?: string
   repoPath?: string
+  tags?: string[]
   availableAt?: string
   dueAt?: string
   source?: TaskSource
@@ -511,6 +512,7 @@ export async function createTaskWithEffects(opts: {
       team: opts.team,
       brandId: opts.brandId,
       repoPath: opts.repoPath,
+      tags: opts.tags,
     },
   )
 
