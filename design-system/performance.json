@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 193393,
+    "canonicalBytes": 193255,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -37,8 +37,8 @@
     {
       "name": "sdk-conversation",
       "path": "packages/host/public/vendor/sdk-conversation.js",
-      "bytes": 58103,
-      "reachableBytes": 352594
+      "bytes": 59148,
+      "reachableBytes": 353639
     },
     {
       "name": "sdk-layout",
@@ -55,8 +55,8 @@
     {
       "name": "sdk-patterns",
       "path": "packages/host/public/vendor/sdk-patterns.js",
-      "bytes": 123722,
-      "reachableBytes": 537159
+      "bytes": 124028,
+      "reachableBytes": 537465
     },
     {
       "name": "sdk-ui",
@@ -92,7 +92,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-conversation.js",
-      "bytes": 58103
+      "bytes": 59148
     },
     {
       "path": "packages/host/public/vendor/sdk-hooks.js",
@@ -116,7 +116,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-patterns.js",
-      "bytes": 123722
+      "bytes": 124028
     },
     {
       "path": "packages/host/public/vendor/sdk-routing.js",
@@ -252,7 +252,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-utils.js",
-      "bytes": 10371
+      "bytes": 10534
     },
     {
       "path": "packages/host/public/vendor/tanstack-router.js",
@@ -280,7 +280,7 @@
       "repository": "bakin-bits-official",
       "pluginId": "projects",
       "path": "bakin-bits-official/plugins/projects/dist/client.js",
-      "bytes": 145853
+      "bytes": 166310
     },
     {
       "repository": "bakin-bits-official",
@@ -304,7 +304,7 @@
       "repository": "bakin",
       "pluginId": "chat",
       "path": "plugins/chat/dist/client.js",
-      "bytes": 35208
+      "bytes": 35244
     },
     {
       "repository": "bakin",

@@ -16,37 +16,6 @@ active runtime — each agent's Tool access section carries the exact form.
 
 Use the exact tool name shown below. Tools with no parameters take no arguments.
 
-## Ask
-
-### bakin_exec_ask_user
-
-Label: Asked a question
-Purpose: Ask the user ONE question in a live conversation, shown as an answerable card.
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `question` | string | yes | The question (max ${QUESTION_LIMITS.question} chars) |
-| `options` | array | yes |  |
-| `label` | string | yes | Short answer (max ${QUESTION_LIMITS.label} chars) |
-| `description` | string | no | Why/what it means (max ${QUESTION_LIMITS.description} chars) |
-| `recommended` | number | no | Index of the option you recommend |
-| `allowOther` | boolean | no | Offer a free-text "Something else" answer (default true) |
-
-Example:
-
-```sh
-bakin_exec_ask_user {
-  "question": "value",
-  "options": [
-    "value"
-  ],
-  "label": "value",
-  "description": "value",
-  "recommended": 20,
-  "allowOther": true
-}
-```
-
 ## Assets
 
 Asset tools let agents list, inspect, save, link, restore, and clean up files managed by Bakin.
@@ -1456,8 +1425,7 @@ Purpose: Apply a confirmed project plan update in one operation. Use this after 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `projectId` | string | yes | Project ID |
-| `title` | string | no | Optional new project title |
-| `status` | choice | no | Optional new status |
+| `title` | string | no | Optional new project title (refused when the user named the project) |
 | `body` | string | no | Replacement markdown body for the project plan |
 | `appendBody` | string | no | Markdown to append to the existing project body; cannot be combined with body |
 | `owner` | string | no | Optional new owner |
@@ -1469,7 +1437,6 @@ Example:
 bakin_exec_projects_apply_plan {
   "projectId": "value",
   "title": "value",
-  "status": "value",
   "body": "value",
   "appendBody": "value",
   "owner": "value",
@@ -1543,23 +1510,6 @@ bakin_exec_projects_create {
   "tasks": [
     "value"
   ]
-}
-```
-
-### bakin_exec_projects_delete
-
-Label: Deleted a project
-Purpose: Delete a project by ID.
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `projectId` | string | yes | Project ID |
-
-Example:
-
-```sh
-bakin_exec_projects_delete {
-  "projectId": "value"
 }
 ```
 
@@ -1640,7 +1590,7 @@ bakin_exec_projects_list {
 ### bakin_exec_projects_mark_item
 
 Label: Marked project item
-Purpose: Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage.
+Purpose: Mark a standalone checklist item as checked (done) or unchecked. Steps linked to a board task complete from that task and are refused (linked_step). Returns updated progress percentage.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1702,29 +1652,10 @@ bakin_exec_projects_relink_asset {
 }
 ```
 
-### bakin_exec_projects_remove_item
-
-Label: Removed project item
-Purpose: Remove a checklist item from a project.
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `projectId` | string | yes | Project ID |
-| `taskItemId` | string | yes | Checklist item ID to remove |
-
-Example:
-
-```sh
-bakin_exec_projects_remove_item {
-  "projectId": "value",
-  "taskItemId": "value"
-}
-```
-
 ### bakin_exec_projects_toggle_item
 
 Label: Toggled project item
-Purpose: Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage.
+Purpose: Toggle a standalone checklist item checked/unchecked by item ID. Steps linked to a board task complete from that task and are refused (linked_step). Returns updated progress percentage.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1745,13 +1676,12 @@ bakin_exec_projects_toggle_item {
 ### bakin_exec_projects_update
 
 Label: Updated a project
-Purpose: Update a project's title, status, body, or owner. Lifecycle status is independent of checklist completion; completed may contain unchecked work.
+Purpose: Update a project's title, body, or owner. Lifecycle status (start, complete, archive) is the user's decision and cannot be changed by agents. A title the user typed cannot be overwritten.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `projectId` | string | yes | Project ID |
-| `title` | string | no | New title |
-| `status` | choice | no | New status |
+| `title` | string | no | New title (refused when the user named the project) |
 | `body` | string | no | New markdown body |
 | `owner` | string | no | New owner |
 
@@ -1761,7 +1691,6 @@ Example:
 bakin_exec_projects_update {
   "projectId": "value",
   "title": "value",
-  "status": "value",
   "body": "value",
   "owner": "value"
 }

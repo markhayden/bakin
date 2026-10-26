@@ -3,65 +3,43 @@ title: Projects
 description: "Markdown spec docs with checklists that can link to real tasks and attach assets. Durable context for multi-task work."
 ---
 
-Some work needs more than a task can hold. Projects give you a spec, milestone tasks, pinned attachments, and a brainstorm panel where you and an agent shape the bigger picture. Tasks ship; projects orchestrate.
+Some work needs more than a task can hold. A project is a conversation with a lead agent that turns a rough idea into a plan, steps that run on the [board](/docs/using/tasks/), and the files the work produced. Tasks ship; projects orchestrate.
 
-<figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-projects--grid.webp" alt="The projects grid with status tabs and per-card progress." loading="lazy">
-</figure>
+## Starting a project
 
-Start at the grid. Each card is a live read on how far along you and your agents are. Filter by status from the tabs, search by name or content, click in for the full spec. Hit `+ New Project` to start fresh: title, status, owner, body, done. Tasks and attachments show up once you save.
+Hit `New project` and Bakin asks one thing: what kind of project is on your mind? Pick a starter ("Clean up my email", "Plan a trip", …) or just type. A rough idea is enough. Choose a lead agent beside the box if you don't want your main agent on it.
 
-## Project Plan
+Nothing exists until you send. Your first message creates the project and starts the conversation, and the lead names the project once it understands it. If the send fails, your text comes back so you can retry, and a retry never makes a second project.
 
-The plan sits at the heart of every project. A markdown spec covering what you're doing, why, how it'll get done, and what done looks like. Starts rough, sharpens with each pass as you and your agents work through it.
+## Shaping it with the lead
 
-### Brainstorm
+A new project opens on its **Conversation** tab. The lead plays brainstorm buddy: a short reflection on what you said, at most one challenge, and one question at a time as a card with options and a recommendation. Pick an option, write your own, or say you're not sure. Once the goal, the scope and what "done" means are settled, the lead drafts the plan and its steps and tells you it's ready in the Plan tab. Say "just write it" and it drafts right away.
 
-<figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-projects--brainstorm-panel.webp" alt="The brainstorm panel inside a project: chat thread with an agent, reference material, and task suggestions in context." loading="lazy">
-</figure>
+When you're ready, **Start project**. From then on the lead tracks progress with you: what's blocked, what's next, whether the scope still holds. A finished project gets **Mark complete**; you can reopen or archive it later. Status only changes because you said so. Agents can't start, complete or archive a project, can't rename one you named yourself, and can't delete steps or projects.
 
-Most of the work happens here. Open the panel, pick an agent, start the conversation. Talk through goals, constraints, the things you haven't figured out yet. With your pinned attachments on hand, the agent grounds every suggestion in what you've got. Bit by bit the plan sharpens, tasks surface, new attachments come in. The conversation stays put so you can come back tomorrow.
+## The project page
 
-Hammer the plan out here before any real work starts.
+Four tabs, and the conversation follows you between them:
 
-Project brainstorm uses a stable runtime thread per project and agent, so a reopened project continues the same adapter-backed conversation instead of replaying the old transcript into every prompt. The project file still stores the visible chat timeline, including streamed tool/status activity, so you can see how the agent reached an answer after navigation or reload.
+- **Conversation:** the full thread.
+- **Plan:** the markdown plan. `Edit plan` edits it in place; History shows every earlier version with a diff and one-click restore. When the lead changes the plan, the tab gets a dot and the conversation shows "Plan updated · Review changes", compared against the version you last looked at.
+- **Steps:** the checklist, with progress. `Send to board` turns a step into a real task; from then on the step says what the task is doing ("In progress · Roscoe") and checks itself when the task is done (and unchecks if it's reopened).
+- **Files:** what the project's tasks produced, plus anything you attached from the [Assets](/docs/using/assets/) library or with the paperclip in the conversation.
 
-### Tasks
+On a wide screen the conversation docks beside Plan, Steps and Files; collapse it to a slim strip when you want the room. On a phone, the `Ask` button takes you back to the conversation.
 
-<figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-projects--tasks-panel.webp" alt="The tasks panel inside a project: plain checkboxes alongside linked board tasks with live status." loading="lazy">
-</figure>
-
-Project tasks are the plan in motion. Each one starts as a milestone in the spec, a checkbox sitting next to something that needs to happen. Small stuff you tick yourself and move on. When an item hardens into real work, promote it. One click spins up a task on the [board](/docs/using/tasks/) and wires the link back to the project.
-
-From there the checkbox stops being yours to tick. It follows the task. Hits `Done` on the board, flips checked here. The progress bar tracks what actually shipped, not what you remembered to update.
-
-### Attachments
-
-Raw assets that give additional context or direction to the project. Customer feedback, a goals doc, some imagery, a PDF, whatever shapes the conversation. Pin anything from the [Assets](/docs/using/assets/) library and it's right there when you and your agents brainstorm. Attach yourself, or let your agent pull things in as you explore together.
+The list shows each project's one most useful signal: waiting for you, the lead is working, a new reply, the plan changed, or how many steps are done. Archived projects stay out of the way until you filter for them.
 
 ## Where they live
 
 ```
-~/.bakin/projects/
-  <project-id>.md      # frontmatter + spec body + Checklist + Assets sections
+~/.bakin/plugin-data/projects/projects/
+  <project-id>.md                  # frontmatter + plan body
+  <project-id>.brainstorm.json     # the conversation
+  <project-id>.history.json        # earlier plan versions
 ```
 
-Projects index into search (table `bakin_projects`) on `title` and `body`, faceted by `status`, with semantic chunking enabled for long specs.
-
-## Settings
-
-<!-- docs:settings projects -->
-<div class="settings-table">
-
-| Setting | Type | Default | What it does |
-| --- | --- | --- | --- |
-| Default project status | `select` | `active` | Status assigned to new projects |
-| Auto-promote threshold | `number` | `0` | Auto-promote checklist items to tasks when project has more than N unchecked items (0 = disabled) |
-
-</div>
-<!-- /docs:settings -->
+Projects index into search (table `bakin_projects`) on `title` and `body`, faceted by `status`, with semantic chunking enabled for long plans.
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
@@ -73,11 +51,9 @@ Projects index into search (table `bakin_projects`) on `title` and `body`, facet
 | `bakin projects create <title>` | Create a project |
 | `bakin projects update <projectId>` | Update a project |
 | `bakin projects apply-plan <projectId>` | Apply a confirmed project plan update |
-| `bakin projects delete <projectId>` | Delete a project |
 | `bakin projects add-item <projectId> <title>` | Add a checklist item |
 | `bakin projects toggle-item <projectId> <itemId> <checked>` | Toggle a checklist item |
 | `bakin projects update-item <projectId> <itemId>` | Update a checklist item |
-| `bakin projects remove-item <projectId> <taskItemId>` | Remove a checklist item |
 | `bakin projects link-item <projectId> <taskItemId> <taskId>` | Link a checklist item to a task |
 | `bakin projects promote-item <projectId> <taskItemId>` | Promote a checklist item to a task |
 | `bakin projects attach-asset <projectId> <assetId>` | Attach an asset to a project |
@@ -94,7 +70,7 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents
 
-Agents drive projects through MCP exec tools. The full set covers create/update, checklist items, task linking, and asset attachments:
+Agents work on projects through MCP exec tools: reading projects, updating the plan and its steps (`bakin_exec_projects_apply_plan`), task linking and asset attachments. In a project conversation the lead asks questions with `bakin_exec_ask_user`. Lifecycle status, a title the user typed, and deleting steps or projects stay with the user.
 
 
 

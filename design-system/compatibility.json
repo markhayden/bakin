@@ -7,10 +7,10 @@
   ],
   "repositories": {
     "bakin": {
-      "ref": "f58fd592ae0275bfea2f5c4fa1135e86407abe5f"
+      "ref": "11ea1b3536bc7a0dd09fdfb43350c7aee304d4b9"
     },
     "bakin-bits-official": {
-      "ref": "7fa54da6727ec01841d7c508501933f14fcb31a3"
+      "ref": "15c3c96aaed55f7a99ea2e70817849df787cb122"
     }
   },
   "sdk": {
@@ -51,14 +51,12 @@
     "projects": {
       "repository": "bakin-bits-official",
       "role": "official-plugin",
-      "version": "0.11.4",
-      "bakinRange": ">=0.0.1-rc.41",
+      "version": "0.12.1",
+      "bakinRange": ">=0.0.1-rc.45",
       "routes": {
-        "total": 4,
+        "total": 3,
         "visual": 3,
-        "aliases": [
-          "/projects/new"
-        ]
+        "aliases": []
       },
       "slots": [
         "nav-badge-providers"
