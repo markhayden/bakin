@@ -457,13 +457,20 @@ export interface TestSocketClient {
   send(data: string | Uint8Array): void
   /** Close from the client side. */
   close(code?: number, reason?: string): void
+  /**
+   * Settles when the route's `open` does; rejects with its error (the socket
+   * is then closed 1011). Like the host, the client is usable while `open`
+   * is still pending, e.g. awaiting a first-message handshake.
+   */
+  readonly opened: Promise<void>
 }
 
 export type TestSocketConnection = { ok: true; client: TestSocketClient } | { ok: false; response: Response }
 
 /**
  * Connect to a socket route in-memory: runs `admit`, then `open`, over the
- * host's own PluginSocket implementation.
+ * host's own PluginSocket implementation. The client is returned without
+ * waiting for `open` to finish; await `client.opened` for that.
  */
 export async function connectTestSocket(
   route: SocketRoute,
@@ -478,19 +485,26 @@ export async function connectTestSocket(
     handle.closed(code, reason)
   }
   const handle = createPluginSocket({ send: (data) => { received.push(data) }, close: end })
+  const opened = Promise.resolve()
+    .then(() => route.open(handle.socket, request))
+    .catch((err: unknown) => {
+      // The host closes the connection with 1011; a test sees the real error.
+      end(1011, 'Socket route open failed')
+      throw err
+    })
+  // Handled here so an unawaited failure is not an unhandled rejection;
+  // `client.opened` still rejects for the test that awaits it.
+  opened.catch(() => {})
   const client: TestSocketClient = {
     received,
     get closed() { return closed },
     send(data) { handle.deliver(data) },
     close(code = 1000, reason = '') { end(code, reason) },
+    opened,
   }
-  try {
-    await route.open(handle.socket, request)
-  } catch (err) {
-    // The host closes the connection with 1011; a test sees the real error.
-    handle.closed(1011, 'Socket route open failed')
-    throw err
-  }
+  // Let a synchronous open (and the first microtasks of an async one) run, as
+  // the host does before the first frame can arrive.
+  await Promise.resolve()
   return { ok: true, client }
 }
 

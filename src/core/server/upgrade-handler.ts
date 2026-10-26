@@ -26,16 +26,24 @@ import { createLogger } from '../logger'
 const log = createLogger('plugin-sockets')
 
 const PLUGIN_SOCKET_PATH = /^\/api\/plugins\/([a-z][a-z0-9-]{0,39})(\/[A-Za-z0-9/_-]*)$/
-/** Largest incoming frame a plugin socket accepts. */
+/**
+ * Largest incoming frame a plugin socket accepts. Enforced here: Bun's
+ * built-in WebSocketServer stores `maxPayload` but never applies it.
+ */
 const MAX_PAYLOAD = 1024 * 1024
 
 export interface SocketRouteRegistry {
-  findSocketRoute(pluginId: string, path: string): SocketRoute | null
-  trackSocket(pluginId: string, socket: { close(code: number, reason: string): void }): (() => void) | null
+  /** The live route and the plugin generation the admission belongs to. */
+  findSocketRoute(pluginId: string, path: string): { route: SocketRoute; generation: number } | null
+  /** False once the plugin was swept/removed (or the server is shutting down) since `generation`. */
+  isCurrent(pluginId: string, generation: number): boolean
+  trackSocket(pluginId: string, generation: number, socket: { close(code: number, reason: string): void }): (() => void) | null
 }
 
+const STATUS_TEXT: Record<number, string> = { 400: 'Bad Request', 403: 'Forbidden', 404: 'Not Found', 503: 'Service Unavailable' }
+
 function refuse(socket: Duplex, status: number, body: string): void {
-  const reason = status === 403 ? 'Forbidden' : status === 404 ? 'Not Found' : 'Refused'
+  const reason = STATUS_TEXT[status] ?? 'Refused'
   socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`)
 }
 
@@ -57,25 +65,31 @@ function toRequest(req: IncomingMessage): Request {
   return new Request(`http://${req.headers.host ?? 'localhost'}${req.url ?? '/'}`, { headers })
 }
 
-function frame(data: RawData, isBinary: boolean): string | Uint8Array {
-  const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer)
-  return isBinary ? new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength) : bytes.toString('utf8')
+function frameBytes(data: RawData): Buffer {
+  return Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer)
 }
 
 export function createUpgradeHandler(registry: SocketRouteRegistry): (req: IncomingMessage, socket: Duplex, head: Buffer) => void {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD })
 
-  const accept = (ws: WebSocket, pluginId: string, route: SocketRoute, request: Request) => {
+  const accept = (ws: WebSocket, pluginId: string, generation: number, route: SocketRoute, request: Request) => {
     const handle = createPluginSocket({
       send: (data) => { ws.send(data) },
       close: (code, reason) => { ws.close(code, reason) },
     })
-    const untrack = registry.trackSocket(pluginId, handle.socket)
+    const untrack = registry.trackSocket(pluginId, generation, handle.socket)
     if (!untrack) {
-      ws.close(1001, 'Plugin unavailable')
+      ws.close(1012, 'Plugin restarted; reconnect')
       return
     }
-    ws.on('message', (data, isBinary) => handle.deliver(frame(data, isBinary)))
+    ws.on('message', (data, isBinary) => {
+      const bytes = frameBytes(data)
+      if (bytes.byteLength > MAX_PAYLOAD) {
+        ws.close(1009, 'Message too big')
+        return
+      }
+      handle.deliver(isBinary ? new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength) : bytes.toString('utf8'))
+    })
     ws.on('close', (code, reason) => {
       untrack()
       handle.closed(code, reason.toString())
@@ -90,20 +104,32 @@ export function createUpgradeHandler(registry: SocketRouteRegistry): (req: Incom
   }
 
   return (req, socket, head) => {
-    const url = new URL(req.url ?? '/', 'http://localhost')
-    const match = PLUGIN_SOCKET_PATH.exec(url.pathname)
-    const route = match ? registry.findSocketRoute(match[1], match[2]) : null
-    if (!match || !route) { refuse(socket, 404, 'No socket route'); return }
+    let pathname: string
+    let request: Request
+    try {
+      pathname = new URL(req.url ?? '/', 'http://localhost').pathname
+      request = toRequest(req)
+    } catch {
+      // An unparseable request target is the client's error, never the host's.
+      refuse(socket, 400, 'Malformed socket request')
+      return
+    }
+    const match = PLUGIN_SOCKET_PATH.exec(pathname)
+    const found = match ? registry.findSocketRoute(match[1], match[2]) : null
+    if (!match || !found) { refuse(socket, 404, 'No socket route'); return }
     if (!sameOrigin(req.headers.origin, req.headers.host)) { refuse(socket, 403, 'Cross-origin socket refused'); return }
-    const request = toRequest(req)
+    const pluginId = match[1]
+    const { route, generation } = found
     Promise.resolve()
       .then(() => route.admit?.(request))
       .then(async (refusal) => {
         if (refusal) { refuse(socket, refusal.status, await refusal.text()); return }
-        wss.handleUpgrade(req, socket, head, (ws) => accept(ws, match[1], route, request))
+        // The plugin may have been swept while admit ran: its routes are gone.
+        if (!registry.isCurrent(pluginId, generation)) { refuse(socket, 503, 'Plugin restarted; reconnect'); return }
+        wss.handleUpgrade(req, socket, head, (ws) => accept(ws, pluginId, generation, route, request))
       })
       .catch((err) => {
-        log.error('plugin socket admission failed', err, { pluginId: match[1], path: route.path })
+        log.error('plugin socket admission failed', err, { pluginId, path: route.path })
         refuse(socket, 500, 'Socket admission failed')
       })
   }

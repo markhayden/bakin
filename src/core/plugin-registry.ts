@@ -183,6 +183,8 @@ export { getPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/
 let userPluginImportCounter = 0
 
 class PluginRegistryImpl {
+  /** Set by shutdownAll: no socket route admits or tracks after it. */
+  private socketsShutDown = false
   private plugins = new Map<string, PluginState>()
   private failedPlugins = new Map<string, PluginFailureState>()
   /** User plugins the lock ledger marks `disabled` — present on disk, never activated (row 98 containment). */
@@ -338,7 +340,9 @@ class PluginRegistryImpl {
     state.routes.length = 0
     state.socketRoutes.length = 0
     // A swept plugin's live sockets belong to the old module: end them so
-    // clients reconnect to the re-activated (or absent) plugin.
+    // clients reconnect to the re-activated (or absent) plugin, and fence
+    // off admissions still in flight against the old routes.
+    state.socketGeneration++
     this.closeSockets(state, 1012, 'Plugin restarting')
     state.slots.length = 0
     state.navItems.length = 0
@@ -609,6 +613,9 @@ class PluginRegistryImpl {
           `Plugin "${plugin.id}" registered undeclared socket route ${route.path}. ` +
           `Declare it in bakin-plugin.json contributes.socketRoutes.`,
         )
+      }
+      if (state.socketRoutes.some((existing) => existing.path === route.path)) {
+        throw new Error(`Plugin "${plugin.id}" declares socket route ${route.path} twice.`)
       }
       state.socketRoutes.push(route)
     }
@@ -954,6 +961,7 @@ class PluginRegistryImpl {
         healthRepairActionIds: [],
         socketRoutes: [],
         sockets: new Set(),
+        socketGeneration: 0,
       }
 
       const skillResult = await this.finalizeActivation(plugin, state, pluginPath, storage, events, services, {
@@ -1068,6 +1076,7 @@ class PluginRegistryImpl {
       healthRepairActionIds: [],
       socketRoutes: [],
       sockets: new Set(),
+      socketGeneration: 0,
     }
 
     let skillResult: ReturnType<typeof loadPluginSkillFiles>
@@ -1241,18 +1250,27 @@ class PluginRegistryImpl {
     ) || null
   }
 
-  findSocketRoute(pluginId: string, path: string): SocketRoute | null {
-    return this.plugins.get(pluginId)?.socketRoutes.find((route) => route.path === path) ?? null
+  /** A live socket route plus the generation an admission must still match. */
+  findSocketRoute(pluginId: string, path: string): { route: SocketRoute; generation: number } | null {
+    if (this.socketsShutDown) return null
+    const state = this.plugins.get(pluginId)
+    const route = state?.socketRoutes.find((candidate) => candidate.path === path)
+    return state && route ? { route, generation: state.socketGeneration } : null
+  }
+
+  /** Whether an admission taken at `generation` may still open. */
+  isCurrent(pluginId: string, generation: number): boolean {
+    return !this.socketsShutDown && this.plugins.get(pluginId)?.socketGeneration === generation
   }
 
   /**
-   * Track an open connection on one of the plugin's socket routes. Returns
-   * the untrack function, or null when the plugin is no longer active (the
-   * caller must close the connection).
+   * Track an open connection admitted at `generation`. Returns the untrack
+   * function, or null when the plugin was swept/removed or the server is
+   * shutting down since (the caller must close the connection).
    */
-  trackSocket(pluginId: string, socket: TrackedSocket): (() => void) | null {
+  trackSocket(pluginId: string, generation: number, socket: TrackedSocket): (() => void) | null {
     const state = this.plugins.get(pluginId)
-    if (!state) return null
+    if (!state || !this.isCurrent(pluginId, generation)) return null
     state.sockets.add(socket)
     return () => { state.sockets.delete(socket) }
   }
@@ -1401,6 +1419,7 @@ class PluginRegistryImpl {
 
   /** Call onShutdown() on all plugins in reverse activation order. */
   async shutdownAll(): Promise<void> {
+    this.socketsShutDown = true
     for (const state of this.plugins.values()) this.closeSockets(state, 1001, 'Server shutting down')
     const ids = [...this.plugins.keys()].reverse()
     for (const id of ids) {

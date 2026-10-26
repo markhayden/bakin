@@ -67,4 +67,14 @@ describe('createPluginSocket', () => {
     socket.close()
     expect(transport.closedWith).toEqual([1000, ''])
   })
+
+  it('runs every close listener even when one throws', () => {
+    const { transport } = fakeTransport()
+    const { socket, closed } = createPluginSocket(transport)
+    const ran: string[] = []
+    socket.onClose(() => { throw new Error('cleanup bug') })
+    socket.onClose(() => { ran.push('second') })
+    expect(() => closed(1000, '')).not.toThrow()
+    expect(ran).toEqual(['second'])
+  })
 })

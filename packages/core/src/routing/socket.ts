@@ -60,7 +60,15 @@ export function createPluginSocket(transport: SocketTransport): PluginSocketHand
     closed(code, reason) {
       if (isClosed) return
       isClosed = true
-      for (const listener of closeListeners) listener(code, reason)
+      // One plugin cleanup failure must not skip the others or escape into
+      // the host's connection handling.
+      for (const listener of closeListeners) {
+        try {
+          listener(code, reason)
+        } catch (err) {
+          log.error('Plugin socket close handler failed', err)
+        }
+      }
     },
   }
 }

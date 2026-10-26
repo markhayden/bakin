@@ -45,4 +45,28 @@ describe('socket routes in the SDK harness', () => {
     if (!connection.ok) throw new Error('refused')
     expect(connection.client.closed).toEqual({ code: 4000, reason: 'bye' })
   })
+
+  it('returns the client while open still awaits the first message', async () => {
+    const handshake = defineSocketRoute({
+      path: '/hello',
+      summary: 'Waits for a hello before greeting',
+      open: async (socket) => {
+        const name = await new Promise<string>((resolve) => socket.onMessage((data) => resolve(String(data))))
+        socket.send(`hi ${name}`)
+      },
+    })
+    const connection = await connectTestSocket(handshake)
+    if (!connection.ok) throw new Error('refused')
+    connection.client.send('mark')
+    await connection.client.opened
+    expect(connection.client.received).toEqual(['hi mark'])
+  })
+
+  it('surfaces an open failure through client.opened and closes 1011', async () => {
+    const broken = defineSocketRoute({ path: '/broken', summary: 'Throws', open: () => { throw new Error('nope') } })
+    const connection = await connectTestSocket(broken)
+    if (!connection.ok) throw new Error('refused')
+    await expect(connection.client.opened).rejects.toThrow('nope')
+    expect(connection.client.closed).toEqual({ code: 1011, reason: 'Socket route open failed' })
+  })
 })

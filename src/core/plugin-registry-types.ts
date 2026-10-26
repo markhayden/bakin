@@ -41,6 +41,8 @@ export interface PluginState {
   socketRoutes: SocketRoute[]
   /** Open connections on this plugin's socket routes — closed on sweep/shutdown. */
   sockets: Set<TrackedSocket>
+  /** Bumped on every sweep: an admission started before it can no longer open. */
+  socketGeneration: number
   slots: UISlotRegistration[]
   watchPatterns: string[]
   /** Namespaced workflow node kinds registered via ctx.registerNodeType. */

@@ -191,6 +191,19 @@ module.exports.default = plugin
     expect(result.error).toContain('socket route /live/:id')
   })
 
+  it('refuses to write duplicate socket route paths', async () => {
+    const dir = writePlugin({
+      dist: `
+const plugin = { id: '__ID__', name: '__ID__', version: '1.0.0', socketRoutes: [{ path: '/live', summary: 'a', open() {} }, { path: '/live', summary: 'b', open() {} }], activate() {} }
+module.exports = plugin
+module.exports.default = plugin
+`,
+    })
+    const result = await syncPluginManifest(dir, { skipBuild: true })
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('socket route /live: declared more than once')
+  })
+
   it('records the search auto-route when the plugin registers a content type', async () => {
     const dir = writePlugin({
       dist: `

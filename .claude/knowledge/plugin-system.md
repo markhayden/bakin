@@ -1588,11 +1588,14 @@ Server side:
 - `server.ts` wires `server.on('upgrade', createUpgradeHandler(pluginRegistry))`. The handler lives in `src/core/server/upgrade-handler.ts`.
 - **Admission order:** path → live route (404), then Origin host must equal the Host header (403), then the route's `admit(request)` (any `Response` refuses). No custom headers reach browsers' WebSockets, so plugins bind identity in the first message or the query.
 - Connections run over the ONE `createPluginSocket` (`packages/core/src/routing/socket.ts`).
-- Registry (`trackSocket`):
-  - `clearStateArrays` (reload/suspend/deactivate) closes them with 1012.
-  - `shutdownAll` closes them with 1001.
-  - `open` throws → 1011.
-  - A message listener throws → 1011.
+- Registry (`findSocketRoute` → `{ route, generation }`, `isCurrent`, `trackSocket(id, generation, socket)`):
+  - `clearStateArrays` (reload/suspend/deactivate) bumps `socketGeneration` and closes sockets with 1012.
+  - An admission whose `admit` finished after a sweep is refused with 503 before the handshake.
+  - `shutdownAll` sets `socketsShutDown` (nothing admits or tracks after it) and closes sockets with 1001.
+  - Duplicate code paths fail activation.
+- Close codes: `open` throws → 1011; a message listener throws → 1011; a close listener throws → logged, the other listeners still run.
+- Frames: an incoming frame over 1 MiB → 1009, enforced by the handler because Bun's built-in ignores `maxPayload`. A malformed target → 400, never a throw.
+- The SDK harness returns the client before `open` settles; `client.opened` reports the result.
 
 `ws` resolves to **Bun's built-in implementation**, in source and in the compiled binary. Bun refuses every npm `ws` subpath, so the host declares only `@types/ws`.
 

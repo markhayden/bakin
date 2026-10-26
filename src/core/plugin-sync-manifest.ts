@@ -279,9 +279,12 @@ export async function syncPluginManifest(
     const problem = validateCapturedApiRoute(r.method, r.path)
     if (problem) violations.push(`route ${r.method} ${r.path}: ${problem}`)
   }
+  const seenSocketPaths = new Set<string>()
   for (const socket of sockets) {
     const problem = validateCapturedSocketRoute(socket.path)
     if (problem) violations.push(`socket route ${socket.path}: ${problem}`)
+    if (seenSocketPaths.has(socket.path)) violations.push(`socket route ${socket.path}: declared more than once`)
+    seenSocketPaths.add(socket.path)
   }
   const expectedToolPrefix = `bakin_exec_${pluginId}_`
   for (const t of tools) {

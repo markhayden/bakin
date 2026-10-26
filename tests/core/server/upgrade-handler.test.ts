@@ -18,7 +18,7 @@ mock.module('../../../packages/core/src/content-dir', contentDirMock)
 mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }) }))
 
 import { createUpgradeHandler, type SocketRouteRegistry } from '../../../src/core/server/upgrade-handler'
-import { waitUntil } from '../../helpers/wait'
+import { settleFor, waitUntil } from '../../helpers/wait'
 
 const opened: PluginSocket[] = []
 const tracked = new Set<{ close(code: number, reason: string): void }>()
@@ -35,9 +35,25 @@ const routes: Record<string, SocketRoute> = {
   },
   'echo /boom': { path: '/boom', summary: 'Throws', open: () => { throw new Error('open failed') } },
 }
+let generation = 1
+let gate: Promise<void> | null = null
+routes['echo /slow'] = {
+  path: '/slow',
+  summary: 'Admission waits on the test',
+  admit: async () => { await gate },
+  open: (socket) => { opened.push(socket); socket.send('opened') },
+}
 const registry: SocketRouteRegistry = {
-  findSocketRoute: (pluginId, path) => routes[`${pluginId} ${path}`] ?? null,
-  trackSocket: (_pluginId, socket) => { tracked.add(socket); return () => { tracked.delete(socket) } },
+  findSocketRoute: (pluginId, path) => {
+    const route = routes[`${pluginId} ${path}`]
+    return route ? { route, generation } : null
+  },
+  isCurrent: (_pluginId, at) => at === generation,
+  trackSocket: (_pluginId, at, socket) => {
+    if (at !== generation) return null
+    tracked.add(socket)
+    return () => { tracked.delete(socket) }
+  },
 }
 
 let server: Server
@@ -114,5 +130,34 @@ describe('createUpgradeHandler', () => {
     await waitUntil(() => tracked.size === 1, { label: 'tracked' })
     for (const socket of [...tracked]) socket.close(1012, 'Plugin restarting')
     expect(await closed).toEqual([1012, 'Plugin restarting'])
+  })
+
+  it('refuses a malformed request target without throwing', async () => {
+    const handler = createUpgradeHandler(registry)
+    const written: string[] = []
+    const socket = { end: (data: string) => { written.push(data) }, destroy: () => {} }
+    expect(() => handler({ url: '//[', headers: { host: base, origin: `http://${base}` } } as never, socket as never, Buffer.alloc(0))).not.toThrow()
+    expect(written[0]).toStartWith('HTTP/1.1 400')
+  })
+
+  it('closes 1009 on a frame over the 1 MiB limit without delivering it', async () => {
+    const result = await connect('/api/plugins/echo/live?id=big')
+    if (!('ws' in result)) throw new Error(`refused ${result.status}`)
+    const closed = new Promise<number>((resolve) => result.ws.on('close', (code) => resolve(code)))
+    result.ws.send(Buffer.alloc(1024 * 1024 + 1))
+    expect(await closed).toBe(1009)
+    expect(result.messages).toEqual(['hello big'])
+  })
+
+  it('refuses an admission that finished after the plugin was swept', async () => {
+    let release!: () => void
+    gate = new Promise<void>((resolve) => { release = resolve })
+    const pending = connect('/api/plugins/echo/slow')
+    await settleFor(50, 'let the upgrade reach the pending admit')
+    generation++
+    release()
+    expect(await pending).toEqual({ status: 503, body: 'Plugin restarted; reconnect' })
+    expect(opened).toHaveLength(0)
+    gate = null
   })
 })

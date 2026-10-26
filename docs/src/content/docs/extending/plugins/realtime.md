@@ -91,10 +91,15 @@ User plugins declare each path in `bakin-plugin.json` under `contributes.socketR
 
 **Lifecycle:**
 - Disabling, reloading or removing the plugin closes its sockets with code 1012.
-- Server shutdown closes them with 1001.
+- An admission still running when that happens is refused with 503 (`Plugin restarted; reconnect`).
+- Server shutdown closes sockets with 1001; after it, nothing is admitted.
 - A throwing `open` closes the socket with 1011, and so does a throwing message listener.
+- A throwing close listener is logged and never stops the other close listeners.
 
-**Frames:** text frames arrive as strings and binary frames as `Uint8Array`. Incoming frames are capped at 1 MiB.
+**Frames:**
+- Text frames arrive as strings and binary frames as `Uint8Array`.
+- An incoming frame over 1 MiB closes the connection with 1009 and is never delivered. The host enforces this cap itself because Bun's built-in server ignores `maxPayload`.
+- A malformed request target is refused with 400.
 
 ### Flow control is yours
 
@@ -104,5 +109,7 @@ A protocol that streams a lot of data must acknowledge at the application level:
 
 ### Testing
 
-`@makinbakin/sdk/testing` exposes `harness.socketRoutes`, `findSocketRoute`, and `connectTestSocket(route, request?)`. These connect in-memory over the host's own socket implementation, return `{ ok: false, response }` when `admit` refuses, and rethrow an `open` failure.
+`@makinbakin/sdk/testing` exposes `harness.socketRoutes`, `findSocketRoute`, and `connectTestSocket(route, request?)`. These connect in-memory over the host's own socket implementation and return `{ ok: false, response }` when `admit` refuses.
+
+The client is returned while `open` may still be pending, as on the host, so a first-message handshake works. Await `client.opened` to see `open` settle; it rejects with the error when `open` throws, and the socket is then closed with 1011.
 
