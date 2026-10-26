@@ -7,6 +7,8 @@
 after mounting to inspect restored draft text; storage keys stay private to the
 composer. `isEmpty` describes text, not consumer-owned attachments. Consumers
 must also consider their attachment state when deciding to collapse a panel.
+The attach button is the control; its native file input is `aria-hidden` and
+out of tab order, so enabling attachments passes the plugin keyboard check.
 Hidden-but-preserved disclosures retain the panel mount and remove hidden controls
 from keyboard traversal. Give each panel a distinct title: contained history uses
 that title for its accessible region name. Standalone `Conversation` accepts
@@ -128,7 +130,7 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
 | `QueuedMessageList` | Queued follow-up bubbles (Queued badge, remove ×) rendered by consumers BETWEEN Conversation and Composer — never via foldConversation (queued items belong below the live turn); `onRemove(item)` hands the whole item back so the surface restores its text into an EMPTY composer (spec D8) |
 | `ContextMeter` | The compaction bar (#737): slim fill + reading (`45.3k / 272k (17%)`, amber ≥70%/red ≥90%, threshold tick when the runtime reports one), number-only when the window is unknown, `context — (compacted 2m ago)` during a post-compaction gap, NOTHING when nothing is honest; fill clamps at 100%. Feed it `RuntimeSessionContextStats`-shaped data from `sessions.contextStats` ONLY — never billing aggregates |
 | `ConversationPanel` | The embedded mode (above) |
-| `ThinkingIndicator` / `ConversationEmptyState` | Standalone avatar+shimmer; designed empty state with suggestion chips |
+| `ThinkingIndicator` / `ConversationEmptyState` | Standalone avatar+shimmer; designed empty state with suggestion chips (`headingLevel` 2–4, default 3 — match the page outline: directly under a page `h1` it is 2) |
 | `useConversationThread` | THE client hook for engine consumers (#703): synchronous optimistic user echo, bus-event streaming with text-delta coalescing, active-thread guards, settle-by-refetch, optional server-seeded `streaming` rehydration, chat's failed-send semantics (state rollback, optimistic row stays, `sendError`). Queue opt-in (#732): `queue: { enabled, queuedEvent?, startedEvent?, remove? }` — streaming sends POST instead of refusing, a `{ queued: { id } }` post result records an optimistic queued row (server id — nothing optimistic before the 202), `load()`'s `queued[]` hydrates, queued/started events refetch queue state (drain-race coverage), `removeQueued(id)` returns the removed item for composer restore. Default stays the strict refusal. `events.appended` refetches out-of-turn rows while idle |
 | `useConversationAttention` | Provider building block for `nav-badge-providers` slots: green unread-only `badgeFor` nav dot, retained-state reconnect/resume recovery, optional `(N)` title prefix, toast/chime/OS fanout via the pure rules; `events.appended` notices announce like replies |
 | `attentionForDone` / `badgeFor` / `withUnreadPrefix` / `visibleIdFromLocation` / `playReplyChime` | Pure attention rules + the reply chime (generalized from chat's S6 matrix; chat's `attention.ts` is a facade over these) |

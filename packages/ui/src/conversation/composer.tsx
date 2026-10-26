@@ -502,10 +502,12 @@ export function Composer({
                       {attachments.disabledReason ?? 'Attachments unavailable'}
                     </span>
                   ) : null}
+                  {/* The visible add button is the control; this input is
+                      its implementation, so it stays out of the a11y tree. */}
                   <input
                     ref={fileRef}
                     type="file"
-                    aria-label={`${addLabel} file picker`}
+                    aria-hidden="true"
                     accept={acceptedTypes.join(',')}
                     multiple={attachments.multiple !== false}
                     disabled={!attachments.enabled || disabled}

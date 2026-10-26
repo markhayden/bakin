@@ -403,6 +403,13 @@ describe('Conversation', () => {
     expect(container.textContent).toContain('Chat with Main')
     expect(container.textContent).toContain('Ask anything.')
   })
+
+  it('the empty state title follows the surrounding outline (h3 by default)', () => {
+    const { container } = render(<ConversationEmptyState title="Default" />)
+    expect(container.querySelector('h3')?.textContent).toBe('Default')
+    const nested = render(<ConversationEmptyState title="Under the page title" headingLevel={2} />)
+    expect(nested.container.querySelector('h2')?.textContent).toBe('Under the page title')
+  })
 })
 
 describe('ThinkingIndicator', () => {

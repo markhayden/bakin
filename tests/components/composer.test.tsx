@@ -138,6 +138,9 @@ describe('Composer attachments', () => {
     expect(removed).toEqual(['a1'])
 
     const input = container.querySelector('input[type="file"]')!
+    // The visible add button is the control; the native input stays out of the a11y tree.
+    expect(input.getAttribute('aria-hidden')).toBe('true')
+    expect(input.getAttribute('tabindex')).toBe('-1')
     const file = new File(['x'], 'pasted.png', { type: 'image/png' })
     fireEvent.change(input, { target: { files: [file] } })
     expect(added).toEqual(['pasted.png'])
