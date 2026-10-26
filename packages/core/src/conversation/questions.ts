@@ -13,6 +13,7 @@
  * copy; the SDK's private message-contract module pins all three.
  */
 import { z } from 'zod'
+import type { ChatChunk } from '../adapters/runtime/concepts'
 
 export const QUESTION_LIMITS = {
   question: 200,
@@ -134,3 +135,19 @@ export function createQuestionRegistry(
 
 /** The process-wide registry shared by the tool and the turn engine. */
 export const questionRegistry: QuestionRegistry = createQuestionRegistry()
+
+/**
+ * Attach the registered question to a tool chunk that carries its token, so
+ * the live event and the persisted row both hold `metadata.bakinQuestion`.
+ * The token can sit in the summary (Pi), the clipped output preview
+ * (OpenClaw) or the chunk text; anything else is returned untouched.
+ */
+export function enrichQuestionChunk(chunk: ChatChunk, registry: QuestionRegistry = questionRegistry): ChatChunk {
+  if (chunk.type !== 'tool' || chunk.data.phase !== 'result') return chunk
+  const id = findQuestionToken(chunk.data.summary)
+    ?? findQuestionToken(chunk.data.outputPreview)
+    ?? findQuestionToken(chunk.content)
+  const question = id ? registry.get(id) : null
+  if (!question) return chunk
+  return { ...chunk, data: { ...chunk.data, metadata: { ...chunk.data.metadata, bakinQuestion: question } } }
+}
