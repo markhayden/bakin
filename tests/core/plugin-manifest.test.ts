@@ -97,6 +97,7 @@ describe('plugin manifest schema', () => {
             usage: 'bakin messaging <subcommand>',
             summary: 'Manage messaging content',
             dispatch: { type: 'apiRoute', method: 'POST', path: '/sessions' },
+            args: [{ name: 'subcommand', type: 'string', positional: true, required: true }],
           },
         ],
         settings: [
@@ -407,5 +408,59 @@ describe('plugin manifest declarative client contributions (lazy loading)', () =
       ...baseManifest,
       contributes: { eager: 'yes' },
     })).toThrow(/eager must be a boolean/)
+  })
+
+  describe('cliCommands args', () => {
+    const command = (overrides: Record<string, unknown>) => ({
+      ...baseManifest,
+      contributes: { cliCommands: [{
+        name: 'messaging:session',
+        usage: 'bakin messaging session <sessionId> [--json]',
+        summary: 'Get a planning session',
+        dispatch: { type: 'execTool', name: 'bakin_exec_messaging_session_get' },
+        args: [{ name: 'sessionId', type: 'string', positional: true, required: true }],
+        ...overrides,
+      }] },
+    })
+
+    it('keeps declared args on dispatched commands', () => {
+      const manifest = parsePluginManifest(command({ args: [
+        { name: 'sessionId', type: 'string', positional: true, required: true, summary: 'Session id' },
+        { name: 'channels', type: 'string[]' },
+        { name: 'mode', type: 'string', values: ['a', 'b'] },
+      ] }))
+      expect(manifest.contributes?.cliCommands?.[0]?.args).toEqual([
+        { name: 'sessionId', type: 'string', positional: true, required: true, summary: 'Session id' },
+        { name: 'channels', type: 'string[]' },
+        { name: 'mode', type: 'string', values: ['a', 'b'] },
+      ])
+    })
+
+    it('requires args whenever dispatch is declared', () => {
+      expect(() => parsePluginManifest(command({ args: undefined }))).toThrow(/cliCommands\[0\]\.args is required/)
+    })
+
+    it('requires positionals to match the usage placeholders in order', () => {
+      expect(() => parsePluginManifest(command({ args: [] }))).toThrow(/positional args must match usage placeholders <sessionId>/)
+      expect(() => parsePluginManifest(command({ args: [{ name: 'id', type: 'string', positional: true }] }))).toThrow(/usage placeholders/)
+    })
+
+    it('rejects unknown types, duplicate names and values on non-strings', () => {
+      expect(() => parsePluginManifest(command({ args: [
+        { name: 'sessionId', type: 'string', positional: true }, { name: 'x', type: 'json' },
+      ] }))).toThrow(/args\[1\]\.type/)
+      expect(() => parsePluginManifest(command({ args: [
+        { name: 'sessionId', type: 'string', positional: true }, { name: 'sessionId', type: 'number' },
+      ] }))).toThrow(/duplicate arg "sessionId"/)
+      expect(() => parsePluginManifest(command({ args: [
+        { name: 'sessionId', type: 'string', positional: true }, { name: 'n', type: 'number', values: ['1'] },
+      ] }))).toThrow(/values is only valid for string args/)
+    })
+
+    it('reserves the global flags', () => {
+      expect(() => parsePluginManifest(command({ args: [
+        { name: 'sessionId', type: 'string', positional: true }, { name: 'json', type: 'boolean' },
+      ] }))).toThrow(/"json" is a reserved global flag/)
+    })
   })
 })

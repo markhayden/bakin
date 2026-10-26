@@ -20,8 +20,8 @@ import {
 export const ACTOR_FLAG_USAGE = '--as needs a value: --as=<agent> to act as that agent, or --as=human for an operator action'
 
 /**
- * Remove `--as <value>` / `--as=<value>` wherever it sits; positionals keep
- * their order. A flag with no value, an empty value, or an option-shaped
+ * Remove `--as <value>` / `--as=<value>` wherever it sits before a `--`
+ * terminator; positionals keep their order. A flag with no value, an empty value, or an option-shaped
  * value (`--as --json`) is `invalid` — the command must refuse it rather
  * than silently act under a different identity.
  */
@@ -35,6 +35,11 @@ export function stripActorFlag(args: string[]): { as: string | undefined; rest: 
   }
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
+    // `--` ends options: what follows is command text, never an identity.
+    if (arg === '--') {
+      rest.push(...args.slice(i))
+      break
+    }
     if (arg === '--as') {
       take(args[i + 1])
       if (args[i + 1] !== undefined && !args[i + 1].startsWith('-')) i++

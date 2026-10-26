@@ -144,38 +144,22 @@
       {
         "name": "tasks list",
         "usage": "bakin tasks list [--column=<column>]",
-        "summary": "List tasks.",
-        "dispatch": {
-          "type": "execTool",
-          "name": "bakin_exec_tasks_list"
-        }
+        "summary": "List tasks."
       },
       {
         "name": "tasks get",
         "usage": "bakin tasks get <id>",
-        "summary": "Get task details.",
-        "dispatch": {
-          "type": "execTool",
-          "name": "bakin_exec_tasks_get"
-        }
+        "summary": "Get task details."
       },
       {
         "name": "tasks create",
         "usage": "bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>] [--as=<actor>]",
-        "summary": "Create a task.",
-        "dispatch": {
-          "type": "execTool",
-          "name": "bakin_exec_tasks_create"
-        }
+        "summary": "Create a task."
       },
       {
         "name": "tasks move",
         "usage": "bakin tasks move <id> <column> [--as=<actor>]",
-        "summary": "Move a task.",
-        "dispatch": {
-          "type": "execTool",
-          "name": "bakin_exec_tasks_move"
-        }
+        "summary": "Move a task."
       },
       {
         "name": "tasks log",
@@ -185,11 +169,7 @@
       {
         "name": "tasks block",
         "usage": "bakin tasks block <id> <reason> [--as=<actor>]",
-        "summary": "Block a task.",
-        "dispatch": {
-          "type": "execTool",
-          "name": "bakin_exec_tasks_block"
-        }
+        "summary": "Block a task."
       },
       {
         "name": "tasks depend",
@@ -199,11 +179,7 @@
       {
         "name": "tasks complete",
         "usage": "bakin tasks complete <id> <summary> [--as=<actor>]",
-        "summary": "Complete a task.",
-        "dispatch": {
-          "type": "execTool",
-          "name": "bakin_exec_tasks_complete"
-        }
+        "summary": "Complete a task."
       }
     ],
     "docs": {

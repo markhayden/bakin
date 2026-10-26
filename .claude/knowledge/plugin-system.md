@@ -1580,6 +1580,41 @@ Request to `/api/plugins/workflows/definitions/my-workflow` → extracts
 `pluginId=workflows`, `path=/definitions/my-workflow` → matches route
 `/definitions/:name` → injects `name=my-workflow` into searchParams.
 
+## CLI Commands (manifest `cliCommands`)
+
+A dispatched command (`dispatch: execTool | apiRoute`) must declare `args`. That array is its complete argument surface.
+- `packages/core/src/plugins/manifest.ts` `parseCliArgs` validates it:
+  - positionals must equal the `usage` `<placeholders>`, in order;
+  - names are unique;
+  - `--json` and `--as` are reserved;
+  - `string[]` is flag-only;
+  - `values` applies to strings only.
+- `src/cli/plugin-args.ts` `matchCliCommand` is the ONE parser:
+  - it matches the literal usage words, binds positionals and declared flags, and parses values by type;
+  - it never coerces a string: no comma-splitting, no JSON, no `"true"` → boolean;
+  - it rejects unknown flags, surplus positionals, repeated scalars and missing required args, all before any request.
+- `src/cli/commands/plugin-dispatch.ts`:
+  - strips the global flags (`stripActorFlag` plus `--json`) first;
+  - resolves `apiRoute` paths under the **contributing plugin's id** (never the typed command word);
+  - sends GET args as query parameters.
+- Help renders the declared flags (`usageWithFlags` in `src/cli/help.ts`).
+- Older cores drop the unknown `args` key, so declaring args is additive for Bits manifests.
+
+**Interactive launch** (`dispatch.launch: { bin, refuseEnv? }`) is for POST `apiRoute` commands that hand the operator's terminal to a managed binary (Terminal's `bakin terminal attach`).
+- The manifest parser requires `bin` to be in the plugin's `requires.bins`.
+- `src/cli/launch.ts` `runLaunch` refuses before the preparation POST when:
+  - stdin/stdout is not a TTY;
+  - the target is not this home's server (`CLI_TARGET.source !== 'lock'`);
+  - the CLI runs in an agent context;
+  - `--as human` is absent;
+  - a `refuseEnv` variable is set (tmux's `TMUX`: the caller is already inside the binary).
+- It then POSTs `{ params, caller: { cwd, cols, rows } }` and zod-validates `{ args, confirm?, recovery? }`.
+- It spawns `<binDir>/<bin> ...args` with inherited stdio/env and no shell (`spawnInherited`).
+- It reports `{ token, pid }` to `confirm.path` (failure kills the child) and propagates the exit code.
+- `recovery` (the work the route already did and how to pick it up) is added to a spawn or confirm failure and printed on a non-zero exit.
+- Routes check provenance with `approvalProvenanceFromRequest`.
+- The PTY test in `tests/cli/launch.test.ts` proves TTY inheritance and has teeth.
+
 ## Plugin `defaults/` Conventions
 
 A plugin may ship three sibling directories under `defaults/`. The

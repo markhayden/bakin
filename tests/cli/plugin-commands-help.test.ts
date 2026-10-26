@@ -67,4 +67,20 @@ describe('plugin commands in CLI help', () => {
     const { pluginCommandHelpGroups } = await import('../../src/cli/help')
     expect(await pluginCommandHelpGroups()).toEqual([])
   })
+
+  it('pluginCommandHelpGroups appends declared flags to the usage line', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ plugins: [{ id: 'projects', contributes: { cliCommands: [{
+      name: 'projects:create', usage: 'bakin projects create <title>', summary: 'Create a project.',
+      args: [
+        { name: 'title', type: 'string', positional: true, required: true },
+        { name: 'tasks', type: 'string[]' },
+        { name: 'status', type: 'string', values: ['draft', 'active'], required: true },
+        { name: 'pinned', type: 'boolean' },
+        { name: 'priority', type: 'number' },
+      ],
+    }] } }] }))
+    const { pluginCommandHelpGroups } = await import('../../src/cli/help')
+    const [group] = await pluginCommandHelpGroups()
+    expect(group.commands[0].usage).toBe('bakin projects create <title> [--tasks <text>...] --status draft|active [--pinned] [--priority <number>]')
+  })
 })

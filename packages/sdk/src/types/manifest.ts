@@ -124,12 +124,31 @@ export interface ExecToolContribution {
 }
 
 /** Manifest declaration of a CLI command the plugin contributes. */
+/**
+ * One declared argument of a dispatched CLI command. Values are parsed
+ * strictly by type; a string stays literal text.
+ */
+export interface CliArgContribution {
+  /** Positional placeholder name (`<name>` in `usage`) or flag name (`--name`). */
+  name: string
+  /** `string[]` is a repeatable flag (`--tag a --tag b`). */
+  type: 'string' | 'number' | 'boolean' | 'string[]'
+  /** Positionals bind in declaration order and must match `usage` placeholders. */
+  positional?: boolean
+  required?: boolean
+  /** Allowed values for a `string` argument. */
+  values?: string[]
+  summary?: string
+}
+
 export interface CliCommandContribution {
   name: string
   usage: string
   summary: string
   description?: string
   aliases?: string[]
+  /** Required whenever `dispatch` is present: the complete argument surface. */
+  args?: CliArgContribution[]
   /** Optional. When present, the manifest-driven CLI dispatcher routes the
    *  command through either the named exec-tool or the given API route.
    *  When absent, the command is documentation-only — its real
@@ -138,6 +157,17 @@ export interface CliCommandContribution {
     type: 'apiRoute'
     method: HttpMethod
     path: string
+    /**
+     * Interactive launch: the POST route receives `{ params, caller: { cwd, cols, rows } }`,
+     * answers `{ args, confirm?, recovery? }`, and the
+     * CLI runs `bin` (one of this plugin's `requires.bins`, resolved in the
+     * Bakin bin dir) in the foreground with the caller's terminal.
+     */
+    launch?: {
+      bin: string
+      /** Environment variables that mean the caller is already inside `bin` (tmux's `TMUX`); the CLI refuses before posting. */
+      refuseEnv?: string[]
+    }
   } | {
     type: 'execTool'
     name: string
