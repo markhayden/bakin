@@ -187,6 +187,23 @@ describe('ctx.conversations guardrails (#703 review)', () => {
     ).not.toThrow()
   })
 
+  it('the appended event joins the user-plugin namespace guard, and appendExternal is on the service', async () => {
+    expect(() =>
+      userCtx().conversations.createTurnService({
+        ...baseConfig,
+        events: { ...baseConfig.events, appended: 'chat.appended' }, // spoof attempt
+      }),
+    ).toThrow(/namespaced/)
+    const service = userCtx().conversations.createTurnService({
+      ...baseConfig,
+      events: { ...baseConfig.events, appended: 'demo4.appended' },
+    })
+    const emitted: string[] = []
+    const turnCtx = { events: { emit: (e: string) => { emitted.push(e) }, on: () => () => {}, once: () => () => {} } }
+    expect(await service.appendExternal(turnCtx as never, 'k1', [{ kind: 'assistant', ts: new Date().toISOString(), turnId: 'x', agentId: 'lead', content: 'hi' }])).toBe('appended')
+    expect(emitted).toEqual(['demo4.appended'])
+  })
+
   it('rejects non-chat metering work classes (the spend dimension is enum-pinned)', () => {
     expect(() =>
       userCtx().conversations.createTurnService({

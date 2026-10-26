@@ -116,6 +116,20 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   `useConversationAttention` takes `events.appended` (a payload `notice:
   { agentId, preview }` announces through the same path as a finished reply).
   Chat counts a question row as an unread reply (`plugins/chat/lib/store.ts`).
+- **Server side: `appendExternal(ctx, key, rows, notice?)`** (projects revamp
+  P3a, spec D24a) shares the engine's admission state. Idle slot → rows append
+  in order, then `events.appended` fires `{ ...payload(key), notice? }`
+  (resolves `'appended'`). Turn in flight → rows QUEUE (resolves `'queued'`
+  at once — never awaits the live turn, so a tool call inside that turn cannot
+  deadlock) and flush at slot release BEFORE the next admission: the release
+  block flushes first and the queued-send drain runs from the flush's tail;
+  `start()` waits out any running flush before its synchronous busy check;
+  `waitFor()` covers the flush. Every settle shape (done/error/abort) flushes —
+  pinned in the settle-shape matrix of `tests/core/conversation-turns.test.ts`.
+  Row append failures are logged, the rest still land. Rows carry their own
+  `turnId` + `agentId` (both optional fields on assistant/tool rows) so the
+  fold renders a separate agent turn. `events.appended` joins the
+  user-plugin namespace guard.
 
 ## Components
 

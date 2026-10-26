@@ -23,11 +23,12 @@ export interface ConversationTurnAttachment {
 /** The durable transcript row shape (identical to chat's schema-v2 rows). */
 export type ConversationTurnRow =
   | { kind: 'user'; ts: string; content: string; attachments?: ConversationTurnAttachment[] }
-  | { kind: 'assistant'; ts: string; turnId?: string; content: string }
+  | { kind: 'assistant'; ts: string; turnId?: string; agentId?: string; content: string }
   | {
       kind: 'tool'
       ts: string
       turnId?: string
+      agentId?: string
       callId?: string
       toolName: string
       status: 'completed' | 'failed'
@@ -107,8 +108,9 @@ export interface ConversationStartTurnOptions {
 export interface ConversationTurnServiceConfig {
   /** Consumer label for log lines (e.g. 'projects.brainstorm'). */
   name: string
-  /** Bus event names — the consumer's wire contract. */
-  events: { chunk: string; done: string; error: string; started?: string }
+  /** Bus event names — the consumer's wire contract. `appended` announces
+   *  rows written outside a turn by `appendExternal`. */
+  events: { chunk: string; done: string; error: string; started?: string; appended?: string }
   /** Base payload identifying the thread on every event (e.g. key => ({ projectId: key })). */
   payload: (key: string) => Record<string, unknown>
   /** Resolve the thread's agent; null → start() returns 'not_found'. */
@@ -208,6 +210,25 @@ export interface ConversationTurnService {
   waitFor(key: string): Promise<void>
   /** Every in-flight turn — consumers build active-turn resolution on top. */
   listInFlight(): ConversationInflightTurnInfo[]
+  /**
+   * Append rows written OUTSIDE a turn (a check-in, a question). Idle → they
+   * land now and `events.appended` fires (with `notice` for attention); a
+   * turn in flight → they queue and flush at slot release, before the next
+   * turn is admitted. Never waits on the live turn. Give rows their own
+   * turnId/agentId so they render as a separate agent turn.
+   */
+  appendExternal(
+    ctx: ConversationTurnContext,
+    key: string,
+    rows: ConversationTurnRow[],
+    notice?: ConversationAppendNotice,
+  ): Promise<'appended' | 'queued'>
+}
+
+/** Attention notice carried on the `appended` event. */
+export interface ConversationAppendNotice {
+  agentId: string
+  preview: string
 }
 
 /** `ctx.conversations` — build turn services for this plugin's surfaces. */

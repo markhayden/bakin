@@ -1161,3 +1161,153 @@ describe('conversation turn service — terminal marker rows (#735)', () => {
     expect(rows[rows.length - 1]?.kind).toBe('assistant')
   })
 })
+
+describe('conversation turn service — out-of-turn appends (appendExternal)', () => {
+  const APPENDED_EVENTS = { chunk: 'test.chunk', done: 'test.done', error: 'test.error', appended: 'test.appended' }
+
+  function externalRows(tag: string): ConversationTurnRow[] {
+    return [
+      { kind: 'assistant', ts: new Date().toISOString(), turnId: `ext-${tag}`, agentId: 'lead', content: `check-in ${tag}` },
+      { kind: 'tool', ts: new Date().toISOString(), turnId: `ext-${tag}`, agentId: 'lead', toolName: 'bakin_exec_ask_user', status: 'completed' },
+    ]
+  }
+
+  function contents(rows: ConversationTurnRow[] | undefined): string[] {
+    return (rows ?? []).map((r) => ('content' in r ? `${r.kind}:${r.content}` : r.kind))
+  }
+
+  function gated(h: Harness, chunks: ChatChunk[], end: ChatChunk = { type: 'done' } as ChatChunk) {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    h.setStream(async function* () {
+      for (const c of chunks) yield c
+      await gate
+      yield end
+    })
+    return () => release()
+  }
+
+  test('idle slot: rows land now, appended fires once with the notice', async () => {
+    const h = makeHarness()
+    const service = makeService(h, { events: APPENDED_EVENTS })
+    const notice = { agentId: 'lead', preview: 'Which launch date?' }
+
+    expect(await service.appendExternal(h.ctx, 'x1', externalRows('a'), notice)).toBe('appended')
+
+    expect(contents(h.rows.get('x1'))).toEqual(['assistant:check-in a', 'tool'])
+    expect(h.events).toEqual([{ event: 'test.appended', data: { threadKey: 'x1', notice } }])
+  })
+
+  test('no appended event configured: rows still land, nothing is emitted', async () => {
+    const h = makeHarness()
+    const service = makeService(h)
+    expect(await service.appendExternal(h.ctx, 'x2', externalRows('a'))).toBe('appended')
+    expect(contents(h.rows.get('x2'))).toEqual(['assistant:check-in a', 'tool'])
+    expect(h.events).toEqual([])
+  })
+
+  for (const shape of ['done', 'error', 'abort'] as const) {
+    test(`turn in flight (${shape} settle): queued immediately, flushed after the turn's rows, appended after its terminal event`, async () => {
+      const h = makeHarness()
+      const end = shape === 'error'
+        ? ({ type: 'error', content: 'boom' } as ChatChunk)
+        : ({ type: 'done' } as ChatChunk)
+      const release = gated(h, [{ type: 'text', content: 'thinking' } as ChatChunk], end)
+      const service = makeService(h, { events: APPENDED_EVENTS })
+      expect(await service.start(h.ctx, 'x3', 'hello')).toBe('accepted')
+      await waitUntil(() => service.inflightPreview('x3') === 'thinking', { label: 'turn streaming' })
+
+      // Never waits on the live turn — it resolves while the stream is gated.
+      expect(await service.appendExternal(h.ctx, 'x3', externalRows('q'))).toBe('queued')
+      expect(contents(h.rows.get('x3'))).not.toContain('assistant:check-in q')
+
+      if (shape === 'abort') service.abort('x3')
+      release()
+      await service.waitFor('x3')
+
+      const rows = contents(h.rows.get('x3'))
+      expect(rows.slice(-2)).toEqual(['assistant:check-in q', 'tool'])
+      expect(rows.indexOf('assistant:check-in q')).toBeGreaterThan(rows.indexOf('user:hello'))
+      const names = h.events.map((e) => e.event)
+      const terminal = shape === 'error' ? 'test.error' : 'test.done'
+      expect(names).toContain(terminal)
+      expect(names.filter((n) => n === 'test.appended')).toHaveLength(1)
+      expect(names.indexOf('test.appended')).toBeGreaterThan(names.lastIndexOf(terminal))
+    })
+  }
+
+  test('flush precedes the next admission: queued send drains BEHIND the external rows', async () => {
+    const h = makeHarness()
+    const scripts: Array<() => AsyncIterable<ChatChunk>> = []
+    h.setStream(() => (scripts.shift() ?? (async function* () { yield { type: 'done' } as ChatChunk }))())
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    scripts.push(async function* () {
+      await gate
+      yield { type: 'text', content: 'first reply' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    const service = makeService(h, { events: APPENDED_EVENTS, queue: {} })
+
+    expect(await service.start(h.ctx, 'x4', 'first')).toBe('accepted')
+    expect(await service.appendExternal(h.ctx, 'x4', externalRows('q'))).toBe('queued')
+    expect(await service.start(h.ctx, 'x4', 'follow-up', { queueIfBusy: true })).toMatchObject({ queued: true })
+
+    release()
+    await waitUntil(() => contents(h.rows.get('x4')).includes('user:follow-up') && !service.isInFlight('x4'), { label: 'drained turn settled' })
+    expect(contents(h.rows.get('x4'))).toEqual([
+      'user:first', 'assistant:first reply',
+      'assistant:check-in q', 'tool',
+      'user:follow-up',
+    ])
+    expect(h.seenArgs).toHaveLength(2)
+  })
+
+  test('a start() racing a slow idle flush lands its user row after the external rows', async () => {
+    const h = makeHarness()
+    let releaseWrite!: () => void
+    const writeGate = new Promise<void>((r) => { releaseWrite = r })
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: async (key, row) => {
+        if ('turnId' in row && row.turnId === 'ext-slow') await writeGate
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+      },
+    })
+
+    const appended = service.appendExternal(h.ctx, 'x5', externalRows('slow'))
+    const started = service.start(h.ctx, 'x5', 'hello')
+    await settleFor(20, 'start() must wait out the parked flush, not reserve around it')
+    expect(service.isInFlight('x5')).toBe(false)
+
+    releaseWrite()
+    expect(await appended).toBe('appended')
+    expect(await started).toBe('accepted')
+    await service.waitFor('x5')
+    expect(contents(h.rows.get('x5')).slice(0, 3)).toEqual(['assistant:check-in slow', 'tool', 'user:hello'])
+  })
+
+  test('waitFor covers a queued flush; a failing row append is logged, the rest still land and appended fires', async () => {
+    const h = makeHarness()
+    const release = gated(h, [])
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: (key, row) => {
+        if (row.kind === 'tool' && 'turnId' in row && row.turnId === 'ext-q') throw new Error('disk full')
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+      },
+    })
+    expect(await service.start(h.ctx, 'x6', 'hello')).toBe('accepted')
+    expect(await service.appendExternal(h.ctx, 'x6', externalRows('q'))).toBe('queued')
+    expect(await service.appendExternal(h.ctx, 'x6', externalRows('r'))).toBe('queued')
+    release()
+    await service.waitFor('x6')
+
+    expect(contents(h.rows.get('x6')).slice(-3)).toEqual(['assistant:check-in q', 'assistant:check-in r', 'tool'])
+    expect(h.events.filter((e) => e.event === 'test.appended')).toHaveLength(2)
+  })
+})
