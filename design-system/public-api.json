@@ -11,7 +11,7 @@
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
     "valueExports": 320,
-    "typeExports": 433
+    "typeExports": 434
   },
   "entrypoints": [
     {
@@ -598,6 +598,7 @@
         "OperationProgressVariant",
         "PageAsideCollapsible",
         "PageAsideProps",
+        "PageAsideSide",
         "PageAsideWidth",
         "PageBodyGap",
         "PageBodyLayout",

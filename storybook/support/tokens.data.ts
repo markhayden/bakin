@@ -1000,6 +1000,54 @@ export const GENERATED_TOKENS: readonly GeneratedStoryToken[] = [
     }
   },
   {
+    "path": "reference.size.railConversation",
+    "layer": "reference",
+    "visibility": "internal",
+    "type": "dimension",
+    "source": "packages/ui/tokens/reference.tokens.json#/reference/size/railConversation",
+    "references": [],
+    "value": {
+      "unit": "rem",
+      "value": 22.5
+    }
+  },
+  {
+    "path": "reference.size.railNav",
+    "layer": "reference",
+    "visibility": "internal",
+    "type": "dimension",
+    "source": "packages/ui/tokens/reference.tokens.json#/reference/size/railNav",
+    "references": [],
+    "value": {
+      "unit": "rem",
+      "value": 13
+    }
+  },
+  {
+    "path": "reference.size.railSession",
+    "layer": "reference",
+    "visibility": "internal",
+    "type": "dimension",
+    "source": "packages/ui/tokens/reference.tokens.json#/reference/size/railSession",
+    "references": [],
+    "value": {
+      "unit": "rem",
+      "value": 18
+    }
+  },
+  {
+    "path": "reference.size.railStrip",
+    "layer": "reference",
+    "visibility": "internal",
+    "type": "dimension",
+    "source": "packages/ui/tokens/reference.tokens.json#/reference/size/railStrip",
+    "references": [],
+    "value": {
+      "unit": "rem",
+      "value": 3.25
+    }
+  },
+  {
     "path": "reference.size.row",
     "layer": "reference",
     "visibility": "internal",
@@ -2087,6 +2135,66 @@ export const GENERATED_TOKENS: readonly GeneratedStoryToken[] = [
     "value": {
       "unit": "rem",
       "value": 2.25
+    }
+  },
+  {
+    "path": "semantic.layout.size.railConversation",
+    "layer": "semantic",
+    "visibility": "public",
+    "type": "dimension",
+    "description": "Expanded width of a docked conversation rail; fits a question card and composer.",
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/size/railConversation",
+    "references": [
+      "reference.size.railConversation"
+    ],
+    "value": {
+      "unit": "rem",
+      "value": 22.5
+    }
+  },
+  {
+    "path": "semantic.layout.size.railNav",
+    "layer": "semantic",
+    "visibility": "public",
+    "type": "dimension",
+    "description": "Expanded width of an app-navigation rail.",
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/size/railNav",
+    "references": [
+      "reference.size.railNav"
+    ],
+    "value": {
+      "unit": "rem",
+      "value": 13
+    }
+  },
+  {
+    "path": "semantic.layout.size.railSession",
+    "layer": "semantic",
+    "visibility": "public",
+    "type": "dimension",
+    "description": "Expanded width of a session-manager list rail.",
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/size/railSession",
+    "references": [
+      "reference.size.railSession"
+    ],
+    "value": {
+      "unit": "rem",
+      "value": 18
+    }
+  },
+  {
+    "path": "semantic.layout.size.railStrip",
+    "layer": "semantic",
+    "visibility": "public",
+    "type": "dimension",
+    "description": "Collapsed width of a collapsible edge rail: the kit strip with its expand control.",
+    "source": "packages/ui/tokens/semantic.tokens.json#/semantic/layout/size/railStrip",
+    "references": [
+      "reference.size.railStrip"
+    ],
+    "value": {
+      "unit": "rem",
+      "value": 3.25
     }
   },
   {

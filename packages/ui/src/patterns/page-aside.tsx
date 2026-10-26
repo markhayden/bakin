@@ -14,8 +14,22 @@ type NativeAsideProps = Omit<
   'aria-label' | 'aria-labelledby'
 >
 
-/** Named width presets for the collapsible rail: `nav` (app navigation) or `session` (session-manager lists). */
-export type PageAsideWidth = 'nav' | 'session'
+/**
+ * Named width presets for the collapsible rail: `nav` (app navigation),
+ * `session` (session-manager lists) or `conversation` (a docked chat thread).
+ */
+export type PageAsideWidth = 'nav' | 'session' | 'conversation'
+
+/** Which page edge a collapsible rail sits on. */
+export type PageAsideSide = 'start' | 'end'
+
+// Rail widths are the layout.size.rail* tokens — never raw scale values.
+const RAIL_WIDTHS: Record<PageAsideWidth, string> = {
+  nav: 'w-[var(--bakin-layout-size-rail-nav)]',
+  session: 'w-[var(--bakin-layout-size-rail-session)]',
+  conversation: 'w-[var(--bakin-layout-size-rail-conversation)]',
+}
+const RAIL_STRIP_WIDTH = 'w-[var(--bakin-layout-size-rail-strip)]'
 
 export interface PageAsideCollapsible {
   collapsed: boolean
@@ -44,11 +58,14 @@ export type PageAsideProps = NativeAsideProps
     collapsible?: PageAsideCollapsible
     /** Expanded rail width preset; only meaningful with `collapsible`. */
     width?: PageAsideWidth
+    /** Rail edge; `end` docks it after the content (e.g. a conversation). Only meaningful with `collapsible`. */
+    side?: PageAsideSide
   }
 
-function ExpandIcon() {
+function ExpandIcon({ side }: { side: PageAsideSide }) {
+  // Drawn for a start-edge rail; an end rail mirrors it so the arrow points into the page.
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="size-bakin-4 fill-none stroke-current stroke-2">
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={cn('size-bakin-4 fill-none stroke-current stroke-2', side === 'end' && '-scale-x-100')}>
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <path d="M9 4v16" strokeLinecap="round" />
       <path d="m13 9 3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
@@ -95,6 +112,7 @@ export function PageAside({
   label,
   labelledBy,
   width = 'session',
+  side = 'start',
   ...props
 }: PageAsideProps) {
   if (!collapsible) {
@@ -121,13 +139,15 @@ export function PageAside({
       data-slot="page-aside"
       data-rail=""
       data-collapsed={collapsed ? '' : undefined}
+      data-side={side === 'end' ? 'end' : undefined}
       {...props}
       aria-label={label}
       aria-labelledby={labelledBy}
       className={cn(
-        'flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-bakin-border-subtle',
+        'flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-bakin-border-subtle',
+        side === 'end' ? 'border-l' : 'border-r',
         'transition-[width] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard motion-reduce:transition-none',
-        collapsed ? 'w-13' : width === 'nav' ? 'w-52' : 'w-72',
+        collapsed ? RAIL_STRIP_WIDTH : RAIL_WIDTHS[width],
         className,
       )}
     >
@@ -142,7 +162,7 @@ export function PageAside({
             onClick={() => onCollapsedChange(false)}
             className="text-bakin-text-muted"
           >
-            <ExpandIcon />
+            <ExpandIcon side={side} />
           </Button>
           {strip}
         </div>
