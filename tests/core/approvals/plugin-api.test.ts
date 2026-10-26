@@ -154,6 +154,18 @@ describe('createPluginApprovalsAPI', () => {
     expect(resolved.owner).toMatchObject({ entityId: 'launch' })
   })
 
+  it('the harness snapshots the request — mutating the caller\'s options later changes nothing', async () => {
+    const backend = createMemoryApprovalsBackend()
+    const approvals = createPluginApprovalsAPI('projects', backend)
+    approvals.registerGate('complete', { ownerState: () => 'live', onResolve: () => {} })
+    const options = [{ id: 'approve', label: 'Approve' }, { id: 'reject', label: 'Reject' }]
+    approvals.request({ ...input(), options })
+    options[0]!.id = 'unoffered'
+    const err = await backend.resolve('projects:launch:complete:project:1', 'unoffered').catch((e: unknown) => e)
+    expect((err as PluginApprovalRefusal).status).toBe(400)
+    expect(approvals.get('projects:launch:complete:project:1')?.options[0]?.id).toBe('approve')
+  })
+
   it('the harness applies the host reject-reason rule (default on; configurable)', async () => {
     const strict = createMemoryApprovalsBackend()
     const approvals = createPluginApprovalsAPI('projects', strict)

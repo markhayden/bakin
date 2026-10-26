@@ -136,7 +136,9 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   writes (from a listener, or an appendRow that awaits a nested append)
   returns `queued` at once and joins the loop, never awaits the flush it is
   inside; `start()` waits out any running flush before its synchronous busy check;
-  `waitFor()` covers the flush. Every settle shape (done/error/abort) flushes —
+  `waitFor()` covers the flush AND an in-progress admission (the reserved
+  entry's promise settles to the launched turn, or to the release flush when
+  the user-row write fails). Every settle shape (done/error/abort) flushes —
   pinned in the settle-shape matrix of `tests/core/conversation-turns.test.ts`
   (plus a microtask-delay sweep for the flush-tail window). Rows carry their own
   `turnId` + `agentId` (both optional fields on assistant/tool rows) so the

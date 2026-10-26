@@ -34,6 +34,7 @@ import { createPluginApprovalsAPI, getApprovalRecord, listApprovalRecords } from
 import { cancelApproval, requestApproval } from '../core/approvals/service'
 import { getSettings } from '../core/settings'
 import { registerPluginGate } from '../core/approvals/plugin-gates'
+import { taskUrl } from '../core/approvals/links'
 import { ApprovalResolveError } from '../core/approvals/errors'
 import { wrapPluginContextPermissions } from './plugin-permissions'
 import {
@@ -222,7 +223,12 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
       // gate's, so the board and channel cards know whether to demand one.
       request: (input) => requestApproval({
         ...input,
-        request: { ...input.request, context: { ...input.request.context, requireRejectReason: getSettings().approvals.requireRejectReason } },
+        request: {
+          ...input.request,
+          // The board link is every channel card's fallback (custom options
+          // may render without native buttons on some runtimes).
+          context: { ...input.request.context, requireRejectReason: getSettings().approvals.requireRejectReason, approvalUrl: taskUrl(input.owner.taskId) },
+        },
       }),
       get: (approvalId) => getApprovalRecord(approvalId),
       listPending: () => listApprovalRecords({ status: 'pending', kind: 'plugin-gate' }),

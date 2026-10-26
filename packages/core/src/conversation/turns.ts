@@ -572,6 +572,12 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       turnId,
       livePreview: '',
     }
+    // The admission itself is part of the turn's lifecycle: waitFor() during
+    // the user-row write must not return early (rows may queue meanwhile).
+    // It settles to the launched turn's promise, or to the release flush on
+    // an admission failure.
+    let admitted!: (next: Promise<unknown>) => void
+    entry.promise = new Promise((resolve) => { admitted = resolve })
     inflight.set(key, entry)
 
     try {
@@ -587,6 +593,7 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       // No turn launched, so no settle tail: release here so out-of-turn rows
       // accepted while the slot was held still land.
       releaseSlot(ctx, key)
+      admitted(flushing.get(key) ?? Promise.resolve())
       return 'not_found'
     }
 
@@ -603,6 +610,7 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     launchTurn(ctx, key, entry, () =>
       runTurn(config, ctx, key, agentId, content, controller, turnId, inflight, attachments, opts?.runtimeContent),
     )
+    admitted(entry.promise)
     return 'accepted'
   }
 

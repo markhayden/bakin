@@ -99,7 +99,9 @@ record that is not this plugin's `plugin-gate` (the core store refreshes a
 pending record's owner on create, so an unchecked id could take over another
 owner's approval). Default options Approve (primary) /
 Reject (destructive). The host stamps `request.context.requireRejectReason`
-from settings; the core dispatcher enforces it like workflow gates (typed
+from settings and `approvalUrl` (`taskUrl(taskId)` — every channel card's
+board fallback); the memory backend snapshots each request (structuredClone),
+as the host's serialized record does; the core dispatcher enforces it like workflow gates (typed
 reject without a reason → 400; Discord/runtime buttons exempt) through the
 ONE predicate `rejectReasonMissing` that the memory backend also applies
 (`createMemoryApprovalsBackend({ requireRejectReason })`, default on). Gates see a

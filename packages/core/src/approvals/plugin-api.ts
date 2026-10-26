@@ -226,7 +226,9 @@ export function createMemoryApprovalsBackend(opts: { requireRejectReason?: boole
   return {
     request({ approvalId, owner, request: input }) {
       const now = new Date().toISOString()
-      const request = { ...input, context: { ...input.context, requireRejectReason } }
+      // A snapshot, like the host's serialized record: later mutation of the
+      // caller's objects never changes what was offered.
+      const request = structuredClone({ ...input, context: { ...input.context, requireRejectReason } })
       const existing = records.get(approvalId)
       if (existing && existing.status !== 'pending') return existing
       const record: ApprovalRecord = existing

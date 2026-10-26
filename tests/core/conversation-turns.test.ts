@@ -1431,6 +1431,34 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
     expect(await service.start(h.ctx, 'x11', 'next')).toBe('accepted')
   })
 
+  test('waitFor() during admission (user row still writing) covers the turn AND rows queued meanwhile', async () => {
+    const h = makeHarness()
+    let releaseUser!: () => void
+    const userGate = new Promise<void>((r) => { releaseUser = r })
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: async (key, row) => {
+        if (row.kind === 'user') await userGate
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+      },
+    })
+    const started = service.start(h.ctx, 'x12', 'hello')
+    await waitUntil(() => service.isInFlight('x12'), { label: 'slot reserved' })
+    const queued = await service.appendExternal(h.ctx, 'x12', externalRows('q'))
+    expect(queued.status).toBe('queued')
+    let waited = false
+    const waiting = service.waitFor('x12').then(() => { waited = true })
+    await settleFor(20, 'waitFor must not return while the admission write is parked')
+    expect(waited).toBe(false)
+    releaseUser()
+    expect(await started).toBe('accepted')
+    await waiting
+    expect(service.isInFlight('x12')).toBe(false)
+    expect(contents(h.rows.get('x12'))).toContain('assistant:check-in q')
+  })
+
   test('a failed user-row write at admission still flushes rows accepted while the slot was held', async () => {
     const h = makeHarness()
     let failUser!: (err: Error) => void
