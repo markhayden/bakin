@@ -729,6 +729,8 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
    - `unregisterPluginNodeTypes`, `unregisterPluginNotificationChannels`,
      `unregisterPluginHealthChecks` — the Health sweep removes the owner's
      checks, repair actions, and cached snapshots
+   - `unregisterPluginGates` — the plugin's `ctx.approvals` gates (its
+     pending records stay; resolving one answers 503 until a gate returns)
    - `purgeContentType(table)` for every content type the plugin
      registered — atomic Antfly `dropTable`
 6. Filesystem deletes — skill dirs (per plan),
@@ -933,7 +935,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `events: EventBus` | Pub/sub with pattern matching |
 | `pluginId: string` | This plugin's ID |
 | `runtime: AgentRuntimeAdapter` | Adapter-backed runtime surface for agents, messaging, channels, cron, workspace files, skills, sessions, memory, models, image generation, and execution status. Plugins never import runtime provider packages directly. |
-| `tasks: BakinTaskStore` | Bakin-owned task metadata store under `~/.bakin/tasks/`. Runtime execution ids are delivery refs only. |
+| `tasks: BakinTaskStore` | Bakin-owned task metadata store under `~/.bakin/tasks/`. Runtime execution ids are delivery refs only. `create`/`update` carry `tags` (update replaces, `[]` clears) — a models `tagOverrides` entry routes the task's dispatch (D30); every column change fires `tasks.statusChanged` exactly once from the store write (D21). |
 | `registerNav(items)` | Add sidebar navigation items (server-side) |
 | `registerRoute(route)` | Add HTTP API route at `/api/plugins/{id}/{path}` |
 | `registerSlot(reg)` | Register React component for a named UI slot (server-side) |
@@ -958,6 +960,8 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `search.remove(key)` | Remove a document from the index |
 | `search.transform(key, ops)` | Atomic metadata update without re-embedding |
 | `search.query(params)` | Search this plugin's content type |
+| `conversations.createTurnService(config)` | The shared turn engine (#703); the service's `appendExternal(ctx, key, rows, notice?)` writes rows outside a turn (idle → now + `events.appended`; in flight → queued, flushed before the next admission). Deep ref: `.claude/knowledge/conversation-kit.md`. |
+| `approvals.registerGate(gateKind, { ownerState, onResolve })` / `request({ approvalId, gateKind, entityId, taskId, title, summary, options? })` / `cancel` / `get` / `listPending({ entityId?, gateKind? })` / `refusal(message, status)` | The plugin's own sign-off gates on the ONE approval primitive (`plugin-gate` owner, spec D26). Ids must start with `<pluginId>:`; a plugin only ever sees its own records; gates are swept with the plugin. Deep ref: `.claude/knowledge/approvals.md`. |
 
 Both `search.registerContentType` and `search.registerFileBackedContentType`
 auto-register a `GET /search` route on the plugin's router so callers can
@@ -1687,6 +1691,7 @@ runReloadPipeline:
             unregisterPluginNodeTypes,
             unregisterPluginNotificationChannels,
             unregisterPluginHealthChecks (checks + repair actions + snapshots),
+            unregisterPluginGates (ctx.approvals gates; records stay),
             unregisterContentTypesByPlugin (preserve search tables),
             removePluginSkillsByPlugin
   4. Clear state arrays (routes/slots/navItems/etc.)

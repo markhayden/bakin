@@ -83,6 +83,30 @@ Boot order (`src/core/server/startup-recovery.ts`): plugins activate (kinds)
 → `bootApprovals`. Kinds must exist before rehydration or their records are
 "unknown kind" for that boot.
 
+## `ctx.approvals` — plugin sign-off gates (spec D26)
+
+ONE implementation, `packages/core/src/approvals/plugin-api.ts`
+(`createPluginApprovalsAPI(pluginId, backend)`), shared by the host
+(`src/lib/plugin-context-factory.ts` — backend = the real service +
+`registerPluginGate`) and the SDK harness (`createMemoryApprovalsBackend()`;
+`harness.resolveApproval(id, option, comment?)` plays the operator). Rules:
+the owner's `pluginId` is the context's; `approvalId` must start with
+`<pluginId>:` and is caller-chosen + deterministic (idempotent re-request;
+a decided id comes back untouched); `request`/`get`/`cancel`/`listPending`
+refuse or hide every record that is not this plugin's `plugin-gate` (a
+pending record's owner is refreshed on re-request, so an unchecked id could
+take over another owner's approval). Default options Approve (primary) /
+Reject (destructive). The host stamps `request.context.requireRejectReason`
+from settings; the core dispatcher enforces it like workflow gates (typed
+reject without a reason → 400; Discord/runtime buttons exempt). Gates see a
+plugin view (`PluginApproval`) and a decision with `decidedBy`
+(`describeApprovalProvenance`) — never raw provenance. `refusal(message,
+status)` is the error a gate throws to refuse (host: `ApprovalResolveError`).
+The board renders it with the explicit `plugin-gate` renderer in
+`plugins/tasks/components/approval-panel.tsx` (record title/summary/options,
+primary trailing, reject → shared `RejectReasonForm`); attention titles it
+"Sign-off needed".
+
 ## Settings
 
 `settings.approvals = { channelAlerts: false, channel: 'general',
@@ -282,7 +306,7 @@ cancel).
 
 ## Tests
 
-`tests/core/approvals/{store,service,rehydration,channel-wiring,plugin-gates}.test.ts`,
+`tests/core/approvals/{store,service,rehydration,channel-wiring,plugin-gates,plugin-api}.test.ts`, `tests/sdk-testing/approvals.test.ts`,
 `tests/host/{approvals-api,approvals-attention}.test.*`,
 `tests/plugins/workflows/{approval-kind,notifications,gate-decision-page,gate-hooks}.test.ts`,
 `tests/core/{doctor-approvals,doctor-escalation,doctor-autoclose}.test.ts`,

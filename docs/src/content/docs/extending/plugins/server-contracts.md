@@ -403,6 +403,39 @@ In tests, `@makinbakin/sdk/testing` runs a real operations registry with in-memo
 
 Show it in your UI with `startOperation` and `useOperation` from `@makinbakin/sdk/hooks` and the `OperationProgress` pattern from `@makinbakin/sdk/patterns` (see [UI overview → Long-running work](/docs/extending/ui/overview/#long-running-work)). The header's operations tray and the shell's finished/failed/stuck notifications pick up every operation automatically — never add your own progress poller or `EventSource`.
 
+## Sign-offs
+
+When a person has to approve something before your plugin continues, ask through `ctx.approvals`. Never build your own approve button. The request lands on the task board (on the task you anchor it to), in notifications, and on approval channels like Discord. Bakin only accepts the decision from the operator, never from an agent.
+
+```ts
+activate(ctx) {
+  ctx.approvals.registerGate('publish', {
+    ownerState: (approval) => (postExists(approval.entityId) ? 'live' : 'orphaned'),
+    onResolve: async (approval, decision) => {
+      if (isLocked(approval.entityId)) throw ctx.approvals.refusal('The post is locked', 409)
+      if (decision.option === 'approve') await publish(approval.entityId)
+      else await sendBack(approval.entityId, decision.comment)
+    },
+  })
+}
+
+// Later, from a route or exec tool:
+ctx.approvals.request({
+  approvalId: `${ctx.pluginId}:${postId}:publish:1`,
+  gateKind: 'publish',
+  entityId: postId,
+  taskId,
+  title: 'Publish "Spring launch"?',
+  summary: 'The draft passed review.',
+})
+```
+
+- Approval ids must start with `<your plugin id>:` and should be deterministic. Requesting the same id again while it is pending updates it. Requesting an id that has already been decided returns the decision unchanged, so bump a generation number to ask again.
+- `onResolve` runs before the decision is saved. Throw `ctx.approvals.refusal(message, status)` to refuse it, and the approval stays pending. `decision.comment` carries the reject reason, which the board requires when the operator setting asks for one.
+- `ownerState` is asked at boot. Return `'orphaned'` once the subject is gone and Bakin cancels the approval. Return `'unknown'` when you cannot tell yet, and Bakin leaves it alone.
+- `cancel`, `get` and `listPending({ entityId, gateKind })` only ever see your own approvals. Gates are removed when your plugin unloads. Pending approvals wait until it is back.
+- In tests, `@makinbakin/sdk/testing` runs the same rules in memory, and `await harness.resolveApproval(id, 'approve')` decides one the way the operator would.
+
 ## Cleanup
 
 Use lifecycle hooks deliberately:
