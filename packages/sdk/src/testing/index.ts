@@ -37,6 +37,7 @@ import { dispatchRoute } from '@bakin/core/routing'
 import { createConversationTurnService } from '@bakin/core/conversation/turns'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
+import { taskStatusChangedPayload } from '@bakin/core/tasks/status-change'
 import { assertPluginResources, createMemoryResourceAcquirer, createOperationRegistry, toPluginOperationInput } from '@bakin/core/operations'
 import { createMemoryApprovalsBackend, createPluginApprovalsAPI, toPluginApproval } from '@bakin/core/approvals/plugin-api'
 import type {
@@ -223,6 +224,10 @@ export function createTestContext(
     acquireResources: createMemoryResourceAcquirer(),
   })
 
+  // Column changes fire tasks.statusChanged through the plugin's own hooks,
+  // with the host's mapping — one event per real column change, after the write.
+  const taskStore = createMockBakinTaskStore()
+
   // ctx.approvals runs the host's own rules (namespaced ids, owner checks)
   // over an in-memory store; resolveApproval plays the operator.
   const approvalsBackend = createMemoryApprovalsBackend()
@@ -242,7 +247,7 @@ export function createTestContext(
     // and MUST typecheck via `satisfies` so a type change can't silently
     // desync the mocks.
     runtime: createMockRuntimeAdapter() as unknown as PluginContext['runtime'],
-    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    tasks: taskStore as unknown as PluginContext['tasks'],
     // The REAL turn engine (host implementation) — external-author tests
     // exercise genuine turn lifecycle against the mock runtime. Same
     // documented cross-tier cast as runtime/tasks above.
@@ -351,6 +356,14 @@ export function createTestContext(
       health: async () => ({ enabled: false as const, tables: [] }),
     } satisfies PluginContext['search'],
   }
+
+  taskStore.subscribe((event) => {
+    const payload = taskStatusChangedPayload(event)
+    if (!payload) return
+    void Promise.resolve()
+      .then(() => ctx.hooks.callAll('tasks.statusChanged', payload))
+      .catch((err: unknown) => { logs.push({ level: 'error', message: 'tasks.statusChanged handler failed', data: err }) })
+  })
 
   let disposed = false
   return {

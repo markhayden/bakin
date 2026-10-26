@@ -27,6 +27,17 @@ describe('createPluginApprovalsAPI', () => {
     expect(() => approvals.request({ ...input(), taskId: '' })).toThrow(/taskId is required/)
   })
 
+  it('refuses option ids a decision transport cannot round-trip, duplicates and blank labels', () => {
+    const approvals = createPluginApprovalsAPI('projects', createMemoryApprovalsBackend())
+    const ask = (options: Array<{ id: string; label: string }>) => () => approvals.request({ ...input(), options })
+    expect(ask([{ id: 'approve', label: 'All' }, { id: 'approve:partial', label: 'Partial' }])).toThrow(/letters, digits/)
+    expect(ask([{ id: 'x'.repeat(65), label: 'Long' }])).toThrow(/1–64/)
+    expect(ask([{ id: '', label: 'Empty' }])).toThrow(/1–64/)
+    expect(ask([{ id: 'approve', label: 'A' }, { id: 'approve', label: 'B' }])).toThrow(/offered twice/)
+    expect(ask([{ id: 'approve', label: ' ' }])).toThrow(/needs a label/)
+    expect(approvals.request({ ...input(), options: [{ id: 'approve_partial', label: 'Partial' }, { id: 'reject', label: 'Reject' }] }).options.map((o) => o.id)).toEqual(['approve_partial', 'reject'])
+  })
+
   it('never touches a record another owner holds — not by request, get, cancel or list', async () => {
     const backend = createMemoryApprovalsBackend()
     backend.request({ approvalId: 'projects:hijack', owner: { kind: 'workflow-gate', taskId: 't', workflowId: 'w', runId: 'r', stepId: 's' }, request: { title: 'Gate', body: '', options: [] } })

@@ -99,6 +99,26 @@ function toPluginDecision(decision: CoreGateDecision): PluginApprovalDecision {
   }
 }
 
+/**
+ * Option ids travel through every decision transport — Discord custom ids
+ * split on `:`, the decision endpoint caps them at 64 — so only ids every
+ * transport round-trips losslessly are accepted.
+ */
+const OPTION_ID = /^[A-Za-z0-9_-]{1,64}$/
+
+function validOptions(options: PluginApprovalOption[]): PluginApprovalOption[] {
+  const seen = new Set<string>()
+  for (const option of options) {
+    if (!OPTION_ID.test(option.id)) {
+      throw new Error(`ctx.approvals.request: option id "${option.id}" must be 1–64 characters of letters, digits, "-" or "_"`)
+    }
+    if (seen.has(option.id)) throw new Error(`ctx.approvals.request: option id "${option.id}" is offered twice`)
+    if (!option.label?.trim()) throw new Error(`ctx.approvals.request: option "${option.id}" needs a label`)
+    seen.add(option.id)
+  }
+  return options
+}
+
 function requireText(field: string, value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`ctx.approvals.request: ${field} is required`)
   return value
@@ -135,7 +155,7 @@ export function createPluginApprovalsAPI(pluginId: string, backend: PluginApprov
       // refresh could swap the subject under a resolver mid-decision. A
       // changed request is a new generation — a new id.
       if (existing) return toPluginApproval(existing)
-      const options = input.options?.length ? input.options : DEFAULT_GATE_OPTIONS
+      const options = input.options?.length ? validOptions(input.options) : DEFAULT_GATE_OPTIONS
       const record = backend.request({
         approvalId,
         owner: {

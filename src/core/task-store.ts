@@ -16,6 +16,7 @@ import {
   type TaskSource,
 } from '@bakin/core/tasks/store'
 import { generateTaskId } from '@bakin/core/ids'
+import { taskStatusChangedPayload, type TaskStatusChangedPayload } from '@bakin/core/tasks/status-change'
 import { join } from 'path'
 import { getBakinPaths, getContentDir } from './content-dir'
 import { purgeTaskRows } from './execution-ledger'
@@ -100,7 +101,8 @@ export function getSharedBakinTaskStore(): SyncBakinTaskStore {
     store = createFileBakinTaskStore(root)
     store.subscribe((event) => {
       broadcastChange()
-      if (event.previousColumn !== undefined && event.task) emitStatusChanged(event.task, event.previousColumn)
+      const statusChanged = taskStatusChangedPayload(event)
+      if (statusChanged) emitStatusChanged(statusChanged)
     })
     g.__bakinTaskStores.set(root, store)
   }
@@ -113,12 +115,12 @@ export function getSharedBakinTaskStore(): SyncBakinTaskStore {
  * lands in the store's `updateSync`, which flags a real column change on its
  * event. Fired after the write returns so handlers always read the new state.
  */
-function emitStatusChanged(task: BakinTask, from: string): void {
+function emitStatusChanged(payload: TaskStatusChangedPayload): void {
   void (async () => {
     const { getHookRegistry } = await import('@bakin/core/hooks/hook-registry-singleton')
-    await getHookRegistry().callAll('tasks.statusChanged', { taskId: task.id, title: task.title, from, to: task.column, task })
+    await getHookRegistry().callAll('tasks.statusChanged', payload)
   })().catch((err) => {
-    log.debug('Task status extension hook failed', { taskId: task.id, err: err instanceof Error ? err.message : String(err) })
+    log.debug('Task status extension hook failed', { taskId: payload.taskId, err: err instanceof Error ? err.message : String(err) })
   })
 }
 

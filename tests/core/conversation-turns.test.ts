@@ -1409,6 +1409,28 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
     expect(contents(h.rows.get('x10')).slice(0, 3)).toEqual(['assistant:check-in slow', 'tool', 'user:question'])
   })
 
+  test('an appendRow that AWAITS a nested appendExternal does not deadlock — the nested batch queues behind it', async () => {
+    const h = makeHarness()
+    let nested: { status: string; written: Promise<void> } | null = null
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: async (key, row) => {
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+        if (!nested && 'turnId' in row && row.turnId === 'ext-a' && row.kind === 'assistant') {
+          nested = await service.appendExternal(h.ctx, key, externalRows('b'))
+        }
+      },
+    })
+    const outer = await service.appendExternal(h.ctx, 'x11', externalRows('a'))
+    expect(outer.status).toBe('appended')
+    expect(nested!.status).toBe('queued')
+    await nested!.written
+    expect(contents(h.rows.get('x11'))).toEqual(['assistant:check-in a', 'tool', 'assistant:check-in b', 'tool'])
+    expect(await service.start(h.ctx, 'x11', 'next')).toBe('accepted')
+  })
+
   test('a failed user-row write at admission still flushes rows accepted while the slot was held', async () => {
     const h = makeHarness()
     let failUser!: (err: Error) => void

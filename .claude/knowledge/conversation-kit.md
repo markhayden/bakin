@@ -132,7 +132,10 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   (turn settle, a failed user-row write at admission, a flush's own teardown —
   which re-checks for batches that arrived after its last loop check) goes
   through `releaseSlot` (flush first, else drain);
-  `start()` waits out any running flush before its synchronous busy check;
+  a running flush OCCUPIES the slot like a turn — an append made while it
+  writes (from a listener, or an appendRow that awaits a nested append)
+  returns `queued` at once and joins the loop, never awaits the flush it is
+  inside; `start()` waits out any running flush before its synchronous busy check;
   `waitFor()` covers the flush. Every settle shape (done/error/abort) flushes —
   pinned in the settle-shape matrix of `tests/core/conversation-turns.test.ts`
   (plus a microtask-delay sweep for the flush-tail window). Rows carry their own

@@ -106,8 +106,10 @@ ONE predicate `rejectReasonMissing` that the memory backend also applies
 plugin view (`PluginApproval`) and a decision with `decidedBy`
 (`describeApprovalProvenance`) — never raw provenance. `refusal(message,
 status)` is the error a gate throws to refuse (host: `ApprovalResolveError`).
-An option the record never offered is refused (400) in the shared gate
-wrapper before plugin code runs. The memory backend keeps the host's resolve
+Options are validated at request time — ids `^[A-Za-z0-9_-]{1,64}$` (every
+decision transport round-trips them: Discord custom ids split on `:`, the
+decision endpoint caps at 64), unique, labelled. An option the record never
+offered is refused (400) in the shared gate wrapper before plugin code runs. The memory backend keeps the host's resolve
 guards (one resolver at a time; the decision lands only on a record still
 pending after the gate ran — a gate that cancels its own approval keeps it
 cancelled), so harness tests cannot pass what the host would refuse.

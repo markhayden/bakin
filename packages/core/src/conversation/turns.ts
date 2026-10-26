@@ -663,7 +663,10 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       const batches = pendingExternal.get(key) ?? []
       batches.push({ rows, ...(notice ? { notice } : {}), settle })
       pendingExternal.set(key, batches)
-      if (inflight.has(key)) return { status: 'queued', written }
+      // A turn in flight OR a flush already writing occupies the slot: queue and
+      // return at once. Joining a running flush and awaiting it would deadlock
+      // an appendRow (or listener) that awaits this call.
+      if (inflight.has(key) || flushing.has(key)) return { status: 'queued', written }
       flushExternal(ctx, key)
       await written
       return { status: 'appended', written }
