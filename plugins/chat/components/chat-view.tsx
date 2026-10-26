@@ -559,6 +559,7 @@ export function ChatView({ chatId, onChanged, composerHandleRef }: {
         turnUsage={turnUsage}
         liveOutEstimate={streamingOutEstimate}
         onRetry={retry}
+        onAnswerQuestion={(text) => { void send(text) }}
         onOpenCall={setOpenCall}
         emptyState={
           <ConversationEmptyState
