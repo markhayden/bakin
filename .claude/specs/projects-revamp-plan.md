@@ -91,7 +91,7 @@ P3b T33 test-sdk ─► T34 scan/digest ─► T35 reservation+timer ─► T36 
 
 ```
 # Bakin, after each Bakin checkpoint:
-bun run scripts/publish-sdk.ts --dry-run --version 0.0.0-local \
+bun run scripts/publish-sdk.ts --dry-run --version 0.0.0-rc.1 \
   --package-dir /tmp/bakin-sdk-revamp --keep-package-dir
 # Bits:
 BAKIN_SDK_DIR=/tmp/bakin-sdk-revamp bun run build
