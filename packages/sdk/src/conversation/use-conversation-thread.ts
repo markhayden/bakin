@@ -55,8 +55,13 @@ export interface ConversationThreadLoad<Meta> {
 export interface ConversationThreadOptions<Meta = unknown, Attachment = unknown> {
   /** Active thread key; empty string disables loading and sending. */
   threadKey: string
-  /** The consumer's bus event names (e.g. chat.chunk/chat.done/chat.error). */
-  events: { chunk: string; done: string; error: string }
+  /**
+   * The consumer's bus event names (e.g. chat.chunk/chat.done/chat.error).
+   * `appended` announces rows written OUTSIDE a turn (e.g. an agent's
+   * scheduled check-in): the idle thread refetches; a streaming thread
+   * waits for its settle refetch, which already includes them.
+   */
+  events: { chunk: string; done: string; error: string; appended?: string }
   /** Extract the thread key from a bus payload (e.g. p => p.chatId). */
   keyOf: (payload: Record<string, unknown>) => unknown
   /** Fetch the durable transcript (+ in-flight flag + consumer meta). Null = gone. */
@@ -216,6 +221,14 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
 
   const streamingRef = useRef(streaming)
   streamingRef.current = streaming
+
+  usePluginEvent(events.appended ?? '__conv_thread_no_appended__', (payload) => {
+    if (optionsRef.current.keyOf(payload) !== activeKeyRef.current) return
+    // Mid-stream, the persisted partial rows would render twice beside the
+    // live chunks — the settle refetch delivers the appended rows anyway.
+    if (streamingRef.current) return
+    void loadTranscript()
+  })
 
   const send = useCallback(async (content: string, attachments?: Attachment[]) => {
     const key = activeKeyRef.current

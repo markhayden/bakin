@@ -412,3 +412,29 @@ describe('review-hardening guards (#703)', () => {
     expect(result.current.meta).toBeNull()
   })
 })
+
+describe('appended rows (projects revamp D24a)', () => {
+  it('an appended event for the idle active thread refetches the transcript', async () => {
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', { events: { ...EVENTS, appended: 'probe.appended' } })
+    await waitFor(() => expect(store.loads).toEqual(['a']))
+    store.transcripts.set('a', [{ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 'steward:t1', content: 'Checked in.' }])
+    await act(async () => { emitPluginEvent({ event: 'probe.appended', threadKey: 'a' }) })
+    await waitFor(() => expect(result.current.messages).toHaveLength(1))
+    // Other threads are ignored.
+    await act(async () => { emitPluginEvent({ event: 'probe.appended', threadKey: 'b' }) })
+    expect(store.loads).toEqual(['a', 'a'])
+  })
+
+  it('an appended event mid-stream never settles or refetches over the live turn', async () => {
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', { events: { ...EVENTS, appended: 'probe.appended' } })
+    await waitFor(() => expect(store.loads).toEqual(['a']))
+    await act(async () => { emitPluginEvent({ event: 'probe.chunk', threadKey: 'a', chunk: { type: 'text', content: 'working' } }) })
+    expect(result.current.streaming).toBe(true)
+    await act(async () => { emitPluginEvent({ event: 'probe.appended', threadKey: 'a' }) })
+    expect(result.current.streaming).toBe(true)
+    expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'working' }])
+    expect(store.loads).toEqual(['a'])
+  })
+})

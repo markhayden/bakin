@@ -32,7 +32,7 @@ export interface ConversationAttentionConfig {
    * events — AT MOST TWO (hook-count constraints; extras would be
    * silently dropped, so the type forbids them).
    */
-  events: { done: string; error: string; started?: string; refresh?: [string] | [string, string] }
+  events: { done: string; error: string; started?: string; appended?: string; refresh?: [string] | [string, string] }
   keyOf: (payload: PluginEventPayload) => string
   /** The thread key currently on screen ('' = none) — read at event time. */
   visibleKey: () => string
@@ -92,15 +92,10 @@ export function useConversationAttention(config: ConversationAttentionConfig): v
   // A new send may mark prior replies read before any reply arrives.
   usePluginEvent(config.events.started ?? `${config.pluginId}.__attention_noop_started`, () => { void refreshTotals() })
 
-  usePluginEvent(config.events.done, (payload) => {
+  // One announce path for a finished reply AND an out-of-turn appended
+  // notice (e.g. a check-in asking a question) — identical rules either way.
+  const announce = (done: ConversationDonePayload) => {
     const cfg = configRef.current
-    const key = cfg.keyOf(payload)
-    const done: ConversationDonePayload = {
-      key,
-      agentId: String(payload.agentId ?? ''),
-      ...(typeof payload.preview === 'string' ? { preview: payload.preview } : {}),
-      ...(payload.aborted ? { aborted: true } : {}),
-    }
     const actions = attentionForDone(done, {
       visibleKey: cfg.visibleKey(),
       settings: cfg.settings?.() ?? { sound: true, toasts: true },
@@ -120,6 +115,23 @@ export function useConversationAttention(config: ConversationAttentionConfig): v
       const desc = cfg.osNotification(done)
       // browser-notify self-suppresses while the tab is focused.
       if (desc) sendBrowserNotification(desc.title, desc.body, desc.href)
+    }
+  }
+
+  usePluginEvent(config.events.done, (payload) => {
+    announce({
+      key: configRef.current.keyOf(payload),
+      agentId: String(payload.agentId ?? ''),
+      ...(typeof payload.preview === 'string' ? { preview: payload.preview } : {}),
+      ...(payload.aborted ? { aborted: true } : {}),
+    })
+    void refreshTotals()
+  })
+
+  usePluginEvent(config.events.appended ?? `${config.pluginId}.__attention_noop_appended`, (payload) => {
+    const notice = payload.notice as { agentId?: unknown; preview?: unknown } | undefined
+    if (notice && typeof notice.preview === 'string') {
+      announce({ key: configRef.current.keyOf(payload), agentId: String(notice.agentId ?? ''), preview: notice.preview })
     }
     void refreshTotals()
   })
