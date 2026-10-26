@@ -47,6 +47,17 @@ const navigate: TaskApproval = {
   owner: { kind: 'health-navigate', taskId: 'undated', requestId: 'repair-2', incidentIds: ['health:runtime:auth-expired'], href: '/settings?tab=integrations' },
   request: { title: 'OpenAI auth expired', body: 'OpenAI auth expired\nImpact: Turns on OpenAI models fail until the key is renewed.\n\nThis needs you: Renew the key — http://localhost:3737/settings?tab=integrations\n\nDismiss snoozes the incident for 7 days; it closes on its own once Health verifies the fix.', options: [{ id: 'dismiss', label: 'Dismiss', variant: 'neutral' }] },
 }
+const pluginGate: TaskApproval = {
+  ...base,
+  approvalId: 'projects:launch-docs:complete:project:1',
+  owner: { kind: 'plugin-gate', taskId: 'review', pluginId: 'projects', gateKind: 'complete', entityId: 'launch-docs' },
+  request: {
+    title: 'Sign off: Launch the docs site',
+    body: 'All six steps are done and every deliverable is attached. Approve to complete the project, or reject with what still needs to change.',
+    options: [{ id: 'approve', label: 'Approve', variant: 'primary' }, { id: 'reject', label: 'Reject', variant: 'destructive' }],
+    context: { requireRejectReason: true },
+  },
+}
 const noop = () => {}
 const priorOutput = { caption: 'A long caption that proves the prior-step output viewer wraps inside the approval card instead of forcing a horizontal scroll on a phone-width screen.', hashtags: ['#launch', '#editorial', '#spring'], image_brief: { mood: 'calm', palette: 'warm pastels' } }
 
@@ -58,7 +69,7 @@ function TasksFixture() {
           <ApprovalPanel approvals={[]} loading failed={false} busyApprovalId={null} error={null} onResolve={noop} onRetry={noop} />
           <ApprovalPanel approvals={[gate]} loading={false} failed busyApprovalId={null} error={null} onResolve={noop} onRetry={noop} />
           <ApprovalPanel
-            approvals={[gate, repair, navigate]}
+            approvals={[gate, repair, navigate, pluginGate]}
             loading={false}
             failed={false}
             busyApprovalId={repair.approvalId}

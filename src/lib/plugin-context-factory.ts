@@ -32,6 +32,7 @@ import { getOperationRegistry } from '../core/operations'
 import { toPluginOperationInput } from '@bakin/core/operations'
 import { createPluginApprovalsAPI, getApprovalRecord, listApprovalRecords } from '@bakin/core/approvals'
 import { cancelApproval, requestApproval } from '../core/approvals/service'
+import { getSettings } from '../core/settings'
 import { registerPluginGate } from '../core/approvals/plugin-gates'
 import { ApprovalResolveError } from '../core/approvals/errors'
 import { wrapPluginContextPermissions } from './plugin-permissions'
@@ -217,7 +218,12 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
     // Gates register into core's plugin-gate dispatcher (swept on deactivate
     // and hot reload); requests go through the one approvals service.
     approvals: createPluginApprovalsAPI(pluginId, {
-      request: requestApproval,
+      // The one reject-reason setting rides the record like a workflow
+      // gate's, so the board and channel cards know whether to demand one.
+      request: (input) => requestApproval({
+        ...input,
+        request: { ...input.request, context: { ...input.request.context, requireRejectReason: getSettings().approvals.requireRejectReason } },
+      }),
       get: (approvalId) => getApprovalRecord(approvalId),
       listPending: () => listApprovalRecords({ status: 'pending', kind: 'plugin-gate' }),
       cancel: (approvalId, reason) => cancelApproval(approvalId, reason),

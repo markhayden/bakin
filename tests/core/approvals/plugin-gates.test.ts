@@ -5,7 +5,7 @@
  * answers 503 on resolve and is skipped — never cancelled — at rehydration.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { UI_OPERATOR, agentActor } from '../../helpers/approval-provenance'
+import { UI_OPERATOR, agentActor, discordUser } from '../../helpers/approval-provenance'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -25,8 +25,9 @@ mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 
 let channelAlerts = false
+let requireRejectReason = true
 mock.module('../../../src/core/settings', () => ({
-  getSettings: () => ({ approvals: { channelAlerts, channel: 'general', requireRejectReason: true } }),
+  getSettings: () => ({ approvals: { channelAlerts, channel: 'general', requireRejectReason } }),
   resetSettingsCache: () => {},
 }))
 
@@ -70,6 +71,7 @@ beforeEach(() => {
   mkdirSync(testDir, { recursive: true })
   broadcasts.length = 0
   channelAlerts = false
+  requireRejectReason = true
   clearApprovalKinds()
   clearPluginGates()
 })
@@ -167,6 +169,23 @@ describe('plugin-gate approvals', () => {
     requestApproval({ approvalId: 'g6', owner: owner('complete', 'messaging'), request })
     await expect(resolveApproval('g5', { option: 'approve', provenance: UI_OPERATOR })).rejects.toBeInstanceOf(ApprovalKindUnavailableError)
     expect((await resolveApproval('g6', { option: 'approve', provenance: UI_OPERATOR })).status).toBe('approved')
+  })
+
+  it('the one reject-reason rule: a typed reject needs a reason when required; channel buttons and the off setting do not', async () => {
+    const g = gate()
+    registerPluginGate('projects', 'complete', g.handler)
+    requestApproval({ approvalId: 'r1', owner: owner(), request })
+    const err = await resolveApproval('r1', { option: 'reject', provenance: UI_OPERATOR }).catch((e: unknown) => e)
+    expect(approvalErrorStatus(err)).toBe(400)
+    expect(g.onResolve).not.toHaveBeenCalled()
+    expect((await resolveApproval('r1', { option: 'reject', comment: 'Missing changelog', provenance: UI_OPERATOR })).status).toBe('rejected')
+
+    requestApproval({ approvalId: 'r2', owner: owner(), request })
+    expect((await resolveApproval('r2', { option: 'reject', provenance: discordUser('u1') })).status).toBe('rejected')
+
+    requireRejectReason = false
+    requestApproval({ approvalId: 'r3', owner: owner(), request })
+    expect((await resolveApproval('r3', { option: 'reject', provenance: UI_OPERATOR })).status).toBe('rejected')
   })
 
   it('the record schema requires every plugin-gate owner field, taskId included', () => {

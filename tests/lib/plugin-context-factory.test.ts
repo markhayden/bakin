@@ -311,6 +311,8 @@ describe('ctx.approvals on the host (spec D26)', () => {
       approvalId: 'projects:launch:complete:project:1', gateKind: 'complete', entityId: 'launch', taskId: 'steward-1', title: 'Sign off: Launch', summary: 'Done.',
     })
     expect(getApprovalRecord('projects:launch:complete:project:1')?.owner).toEqual({ kind: 'plugin-gate', pluginId: 'projects', gateKind: 'complete', entityId: 'launch', taskId: 'steward-1' })
+    // The one reject-reason setting rides the record (default: required).
+    expect(getApprovalRecord('projects:launch:complete:project:1')?.request.context).toEqual({ requireRejectReason: true })
     expect(ctx.approvals.listPending({ entityId: 'launch' })).toEqual([approval])
 
     const err = await resolveApproval(approval.approvalId, { option: 'approve', provenance: UI_OPERATOR }).catch((e: unknown) => e)

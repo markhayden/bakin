@@ -6,6 +6,7 @@
  *   workflow-gate   → Approve / Reject (typed reason), with the prior step's output
  *   health-repair   → Apply repair (ConfirmDialog listing every frozen change) / Dismiss
  *   health-navigate → Open the place that needs the operator / Dismiss
+ *   plugin-gate     → the plugin's own options from the record (reject takes a reason)
  * Patterns: storybook/public/feedback/alert.stories.tsx — WithAction;
  * storybook/public/feedback/confirm-dialog.stories.tsx — CanonicalUsage / Busy.
  * Presentational: the task-detail hook owns fetch, busy, error and the mutation.
@@ -70,6 +71,49 @@ function DecisionError({ error }: { error: ApprovalPanelError | null }) {
   )
 }
 
+/** The typed reject step shared by every renderer whose reject carries a reason. */
+function RejectReasonForm({ requireReason, busy, onCancel, onReject }: {
+  requireReason: boolean
+  busy: boolean
+  onCancel: () => void
+  onReject: (reason: string | undefined) => void
+}) {
+  const [reason, setReason] = useState('')
+  return (
+    <div className="mt-bakin-3 grid min-w-0 gap-bakin-3">
+      <Field name="rejectReason">
+        <FieldLabel requirement={requireReason ? 'required' : 'optional'}>Rejection reason</FieldLabel>
+        <FieldControl
+          render={(
+            <Textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Describe what needs to change…"
+              rows={3}
+              autoFocus
+            />
+          )}
+        />
+      </Field>
+      <div className="flex flex-wrap justify-end gap-bakin-2">
+        <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          variant="danger"
+          size="sm"
+          onClick={() => onReject(reason.trim() || undefined)}
+          disabled={busy || (requireReason && !reason.trim())}
+        >
+          <X aria-hidden="true" />
+          {busy ? 'Rejecting…' : 'Reject'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function GateApproval({ approval, busy, error, onResolve, gate }: {
   approval: TaskApproval
   busy: boolean
@@ -78,7 +122,6 @@ function GateApproval({ approval, busy, error, onResolve, gate }: {
   gate?: ApprovalGateContext
 }) {
   const [rejecting, setRejecting] = useState(false)
-  const [reason, setReason] = useState('')
   const requireReason = approval.request.context?.requireRejectReason !== false
 
   return (
@@ -112,37 +155,12 @@ function GateApproval({ approval, busy, error, onResolve, gate }: {
         <DecisionError error={error} />
 
         {rejecting ? (
-          <div className="mt-bakin-3 grid min-w-0 gap-bakin-3">
-            <Field name="rejectReason">
-              <FieldLabel requirement={requireReason ? 'required' : 'optional'}>Rejection reason</FieldLabel>
-              <FieldControl
-                render={(
-                  <Textarea
-                    value={reason}
-                    onChange={(event) => setReason(event.target.value)}
-                    placeholder="Describe what needs to change…"
-                    rows={3}
-                    autoFocus
-                  />
-                )}
-              />
-            </Field>
-            <div className="flex flex-wrap justify-end gap-bakin-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => { setRejecting(false); setReason('') }} disabled={busy}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                onClick={() => onResolve(approval, 'reject', reason.trim() || undefined)}
-                disabled={busy || (requireReason && !reason.trim())}
-              >
-                <X aria-hidden="true" />
-                {busy ? 'Rejecting…' : 'Reject'}
-              </Button>
-            </div>
-          </div>
+          <RejectReasonForm
+            requireReason={requireReason}
+            busy={busy}
+            onCancel={() => setRejecting(false)}
+            onReject={(reason) => onResolve(approval, 'reject', reason)}
+          />
         ) : (
           <div className="mt-bakin-3 flex flex-wrap justify-end gap-bakin-2">
             <Button type="button" variant="danger" size="sm" onClick={() => setRejecting(true)} disabled={busy}>
@@ -258,6 +276,65 @@ function NavigateApproval({ approval, busy, error, onResolve }: {
   )
 }
 
+const OPTION_VARIANT = { primary: 'primary', destructive: 'danger', neutral: 'outline' } as const
+
+/**
+ * A plugin's own sign-off (spec D26): title, summary and options come from
+ * the record — core never knows what a plugin's gate means. Primary options
+ * trail (the confirm position); a `reject` option opens the reason step.
+ */
+function PluginGateApproval({ approval, busy, error, onResolve }: {
+  approval: TaskApproval
+  busy: boolean
+  error: ApprovalPanelError | null
+  onResolve: ApprovalPanelProps['onResolve']
+}) {
+  const [rejecting, setRejecting] = useState(false)
+  const [chosen, setChosen] = useState<string | null>(null)
+  const requireReason = approval.request.context?.requireRejectReason === true
+  const options = [...approval.request.options].sort((a, b) => Number(a.variant === 'primary') - Number(b.variant === 'primary'))
+
+  return (
+    <Alert tone="attention" data-approval-kind="plugin-gate">
+      <Hourglass aria-hidden="true" />
+      <AlertTitle>{approval.request.title}</AlertTitle>
+      <AlertDescription>
+        {approval.request.body ? <MarkdownContent content={approval.request.body} /> : null}
+        <DecisionError error={error} />
+        {rejecting ? (
+          <RejectReasonForm
+            requireReason={requireReason}
+            busy={busy}
+            onCancel={() => setRejecting(false)}
+            onReject={(reason) => onResolve(approval, 'reject', reason)}
+          />
+        ) : (
+          <div className="mt-bakin-3 flex flex-wrap justify-end gap-bakin-2">
+            {options.map((option) => option.id === 'reject' ? (
+              <Button key={option.id} type="button" variant="danger" size="sm" onClick={() => setRejecting(true)} disabled={busy}>
+                <X aria-hidden="true" /> {option.label}
+              </Button>
+            ) : (
+              <Button
+                key={option.id}
+                type="button"
+                variant={OPTION_VARIANT[option.variant ?? 'neutral']}
+                size="sm"
+                busy={busy && chosen === option.id}
+                disabled={busy && chosen !== option.id}
+                onClick={() => { setChosen(option.id); onResolve(approval, option.id) }}
+              >
+                {option.variant === 'primary' ? <Check aria-hidden="true" /> : null}
+                {option.label}
+              </Button>
+            ))}
+          </div>
+        )}
+      </AlertDescription>
+    </Alert>
+  )
+}
+
 export function ApprovalPanel({ approvals, loading, failed, busyApprovalId, error, onResolve, onRetry, gate }: ApprovalPanelProps) {
   if (failed) {
     return (
@@ -289,6 +366,7 @@ export function ApprovalPanel({ approvals, loading, failed, busyApprovalId, erro
         const own = error?.approvalId === approval.approvalId ? error : null
         if (approval.owner.kind === 'workflow-gate') return <GateApproval key={approval.approvalId} approval={approval} busy={busy} error={own} onResolve={onResolve} gate={gate} />
         if (approval.owner.kind === 'health-repair') return <RepairApproval key={approval.approvalId} approval={approval} busy={busy} error={own} onResolve={onResolve} />
+        if (approval.owner.kind === 'plugin-gate') return <PluginGateApproval key={approval.approvalId} approval={approval} busy={busy} error={own} onResolve={onResolve} />
         return <NavigateApproval key={approval.approvalId} approval={approval} busy={busy} error={own} onResolve={onResolve} />
       })}
     </div>

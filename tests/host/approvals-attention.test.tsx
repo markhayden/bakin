@@ -37,6 +37,7 @@ describe('approval attention (pure rules)', () => {
     const elsewhere = attentionForApproval(repair, { pathname: '/health', search: '' })
     expect(elsewhere).toEqual({ notify: true, title: 'Repair needs your approval', body: 'Rebuild search table bakin_tasks is waiting for your decision.', url: '/tasks?taskId=t-42' })
     expect(attentionForApproval({ ...repair, kind: 'workflow-gate' }, { pathname: '/', search: '' }).title).toBe('Approval needed')
+    expect(attentionForApproval({ ...repair, kind: 'plugin-gate' }, { pathname: '/', search: '' }).title).toBe('Sign-off needed')
     expect(attentionForApproval({ ...repair, kind: 'health-navigate', title: undefined }, { pathname: '/', search: '' }).body).toBe('A decision is waiting on the task board.')
   })
 })
