@@ -6,7 +6,7 @@
  */
 import { afterAll, describe, expect, it } from 'bun:test'
 import { definePlugin } from '@makinbakin/sdk'
-import type { PluginApprovalDecision, PluginContext } from '@makinbakin/sdk/types'
+import type { PluginApproval, PluginApprovalDecision, PluginContext } from '@makinbakin/sdk/types'
 import { activatePlugin } from '@makinbakin/sdk/testing'
 
 const decisions: PluginApprovalDecision[] = []
@@ -20,7 +20,7 @@ const plugin = definePlugin({
     approvals = ctx.approvals
     ctx.approvals.registerGate('ship', {
       ownerState: () => 'live',
-      onResolve: (approval, decision) => {
+      onResolve: (approval: PluginApproval, decision: PluginApprovalDecision) => {
         if (approval.entityId === 'frozen') throw ctx.approvals.refusal('Launch is frozen', 409)
         decisions.push(decision)
       },
