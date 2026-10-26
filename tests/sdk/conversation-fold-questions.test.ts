@@ -7,10 +7,11 @@
  */
 import { describe, expect, it } from 'bun:test'
 
-import type { BakinQuestion, RuntimeChatChunk } from '@makinbakin/sdk/types'
+import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 import {
   foldConversation,
   formatQuestionAnswer,
+  type BakinQuestion,
   type ConversationMessage,
   type ConversationTurn,
   type TurnItem,

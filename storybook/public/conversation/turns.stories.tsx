@@ -8,10 +8,10 @@ import {
   UserMessage,
   foldConversation,
   formatQuestionAnswer,
+  type BakinQuestion,
   type ConversationMessage,
   type ConversationTurn,
 } from '@makinbakin/sdk/conversation'
-import type { BakinQuestion } from '@makinbakin/sdk/types'
 import { PageShell, Stack } from '@makinbakin/sdk/layout'
 
 import './conversation.stories.css'

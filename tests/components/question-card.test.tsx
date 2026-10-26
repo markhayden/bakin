@@ -20,8 +20,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import '../rtl-settle'
 
-import type { BakinQuestion } from '@makinbakin/sdk/types'
-import { Conversation, foldConversation, type ConversationMessage } from '@makinbakin/sdk/conversation'
+import { Conversation, foldConversation, type BakinQuestion, type ConversationMessage } from '@makinbakin/sdk/conversation'
 
 const Q: BakinQuestion = {
   v: 1,

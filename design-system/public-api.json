@@ -11,7 +11,7 @@
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
     "valueExports": 320,
-    "typeExports": 434
+    "typeExports": 435
   },
   "entrypoints": [
     {
@@ -751,6 +751,7 @@
         "ActivityGroupProps",
         "AgentTurnProps",
         "AttentionActions",
+        "BakinQuestion",
         "ComposerAttachmentItem",
         "ComposerAttachments",
         "ComposerAttachmentStatus",
