@@ -13,4 +13,4 @@ export {
   registerPluginCleanup,
   setNavBadge,
 } from '../packages/sdk/src/register'
-export { defineCoreRoute, definePlugin, defineRoute } from '../packages/sdk/src/routing'
+export { defineCoreRoute, definePlugin, defineRoute, defineSocketRoute } from '../packages/sdk/src/routing'

@@ -871,6 +871,8 @@ export interface BakinPlugin {
    *
    */
   routes?: ReadonlyArray<DeclarativeAPIRoute<PluginContextLite, any, any, any>>
+  /** Declarative WebSocket routes, registered before `activate()` like `routes`. */
+  socketRoutes?: ReadonlyArray<import('@makinbakin/sdk/types').SocketRoute>
 }
 
 // ---------------------------------------------------------------------------

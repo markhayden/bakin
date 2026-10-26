@@ -177,6 +177,8 @@ export interface BakinPlugin {
    * `defineRoute()` at authoring time, not from this field.
    */
   routes?: ReadonlyArray<import('./api-route').APIRoute<any, any, any, any>>
+  /** Declarative WebSocket routes, registered before `activate()` like `routes`. */
+  socketRoutes?: ReadonlyArray<import('./socket-route').SocketRoute>
   /** Convenience: nav items to auto-register at activation. */
   navItems?: NavItem[]
   /** Convenience: static content files declared at construction. */

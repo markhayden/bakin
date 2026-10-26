@@ -61,7 +61,7 @@ import {
 } from '../../packages/core/src/plugins/manifest'
 import { checkBakinRangeCompatibility, IncompatibleHostError } from '../../packages/core/src/plugins/compat'
 import { getAppServices } from './app-services'
-import type { PluginManifest as PublicPluginManifest } from '@makinbakin/sdk/types'
+import type { PluginManifest as PublicPluginManifest, SocketRoute } from '@makinbakin/sdk/types'
 import { buildPluginContext, type PluginContextRegistrars } from '../lib/plugin-context-factory'
 import { startStartupSpan } from './startup-diagnostics'
 import type {
@@ -70,6 +70,7 @@ import type {
   PluginDisabledState,
   PluginFailureState,
   PluginLoadEntry,
+  TrackedSocket,
 } from './plugin-registry-types'
 import { withCapturedPluginConsole, createPluginScopedLogger } from './plugin-console-capture'
 import { logPluginActivation } from './plugin-activation-audit'
@@ -182,6 +183,14 @@ export { getPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/
 let userPluginImportCounter = 0
 
 class PluginRegistryImpl {
+  /** Set by shutdownAll: no socket route admits or tracks after it. */
+  private socketsShutDown = false
+  /**
+   * Registry-wide source of socket generations: every plugin state and every
+   * sweep takes a fresh one, so a replacement instance (disable → enable,
+   * reinstall) never matches an admission pending against the old one.
+   */
+  private nextSocketGeneration = 1
   private plugins = new Map<string, PluginState>()
   private failedPlugins = new Map<string, PluginFailureState>()
   /** User plugins the lock ledger marks `disabled` — present on disk, never activated (row 98 containment). */
@@ -335,6 +344,12 @@ class PluginRegistryImpl {
 
   private clearStateArrays(state: PluginState): void {
     state.routes.length = 0
+    state.socketRoutes.length = 0
+    // A swept plugin's live sockets belong to the old module: end them so
+    // clients reconnect to the re-activated (or absent) plugin, and fence
+    // off admissions still in flight against the old routes.
+    state.socketGeneration = this.nextSocketGeneration++
+    this.closeSockets(state, 1012, 'Plugin restarting')
     state.slots.length = 0
     state.navItems.length = 0
     state.watchPatterns.length = 0
@@ -585,7 +600,31 @@ class PluginRegistryImpl {
     this.registerDeclarativeRoutes(plugin, state)
   }
 
+  private closeSockets(state: PluginState, code: number, reason: string): void {
+    const sockets = [...state.sockets]
+    state.sockets.clear()
+    for (const socket of sockets) {
+      try {
+        socket.close(code, reason)
+      } catch (err) {
+        log.warn('closing a plugin socket failed', { pluginId: state.plugin.id, err: String(err) })
+      }
+    }
+  }
+
   private registerDeclarativeRoutes(plugin: BakinPlugin, state: PluginState): void {
+    for (const route of plugin.socketRoutes ?? []) {
+      if (state.source === 'user' && !(state.manifest?.contributes?.socketRoutes ?? []).some((item) => item.path === route.path)) {
+        throw new Error(
+          `Plugin "${plugin.id}" registered undeclared socket route ${route.path}. ` +
+          `Declare it in bakin-plugin.json contributes.socketRoutes.`,
+        )
+      }
+      if (state.socketRoutes.some((existing) => existing.path === route.path)) {
+        throw new Error(`Plugin "${plugin.id}" declares socket route ${route.path} twice.`)
+      }
+      state.socketRoutes.push(route)
+    }
     const declarative = plugin.routes ?? []
     if (declarative.length === 0) return
     for (const route of declarative) {
@@ -926,6 +965,9 @@ class PluginRegistryImpl {
         channelIds: [],
         healthCheckIds: [],
         healthRepairActionIds: [],
+        socketRoutes: [],
+        sockets: new Set(),
+        socketGeneration: this.nextSocketGeneration++,
       }
 
       const skillResult = await this.finalizeActivation(plugin, state, pluginPath, storage, events, services, {
@@ -1038,6 +1080,9 @@ class PluginRegistryImpl {
       channelIds: [],
       healthCheckIds: [],
       healthRepairActionIds: [],
+      socketRoutes: [],
+      sockets: new Set(),
+      socketGeneration: this.nextSocketGeneration++,
     }
 
     let skillResult: ReturnType<typeof loadPluginSkillFiles>
@@ -1211,6 +1256,31 @@ class PluginRegistryImpl {
     ) || null
   }
 
+  /** A live socket route plus the generation an admission must still match. */
+  findSocketRoute(pluginId: string, path: string): { route: SocketRoute; generation: number } | null {
+    if (this.socketsShutDown) return null
+    const state = this.plugins.get(pluginId)
+    const route = state?.socketRoutes.find((candidate) => candidate.path === path)
+    return state && route ? { route, generation: state.socketGeneration } : null
+  }
+
+  /** Whether an admission taken at `generation` may still open. */
+  isCurrent(pluginId: string, generation: number): boolean {
+    return !this.socketsShutDown && this.plugins.get(pluginId)?.socketGeneration === generation
+  }
+
+  /**
+   * Track an open connection admitted at `generation`. Returns the untrack
+   * function, or null when the plugin was swept/removed or the server is
+   * shutting down since (the caller must close the connection).
+   */
+  trackSocket(pluginId: string, generation: number, socket: TrackedSocket): (() => void) | null {
+    const state = this.plugins.get(pluginId)
+    if (!state || !this.isCurrent(pluginId, generation)) return null
+    state.sockets.add(socket)
+    return () => { state.sockets.delete(socket) }
+  }
+
   getSlotComponents(slotName: string): UISlotRegistration[] {
     const registrations: UISlotRegistration[] = []
     for (const state of this.plugins.values()) {
@@ -1355,6 +1425,8 @@ class PluginRegistryImpl {
 
   /** Call onShutdown() on all plugins in reverse activation order. */
   async shutdownAll(): Promise<void> {
+    this.socketsShutDown = true
+    for (const state of this.plugins.values()) this.closeSockets(state, 1001, 'Server shutting down')
     const ids = [...this.plugins.keys()].reverse()
     for (const id of ids) {
       const state = this.plugins.get(id)

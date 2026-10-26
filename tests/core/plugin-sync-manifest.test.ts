@@ -158,6 +158,52 @@ describe('syncPluginManifest', () => {
     expect(Object.keys(manifest)[0]).toBe('id')
   })
 
+  it('regenerates socketRoutes from plugin.socketRoutes, keeping author summaries', async () => {
+    const dir = writePlugin({
+      manifest: { contributes: { socketRoutes: [{ path: '/live', summary: 'Author summary' }, { path: '/old', summary: 'Gone' }] } },
+      dist: `
+const plugin = {
+  id: '__ID__', name: '__ID__', version: '1.0.0',
+  socketRoutes: [{ path: '/live', summary: 'Code summary', open() {} }, { path: '/new', summary: 'New socket', open() {} }],
+  activate() {},
+}
+module.exports = plugin
+module.exports.default = plugin
+`,
+    })
+    const result = await syncPluginManifest(dir, { skipBuild: true })
+    expect(result.ok).toBe(true)
+    expect(result.diff!.socketRoutes).toEqual({ added: ['/new'], removed: ['/old'], kept: 1 })
+    const manifest = JSON.parse(readFileSync(join(dir, 'bakin-plugin.json'), 'utf-8'))
+    expect(manifest.contributes.socketRoutes).toEqual([{ path: '/live', summary: 'Author summary' }, { path: '/new', summary: 'New socket' }])
+  })
+
+  it('refuses to write a socket route path the host loader would reject', async () => {
+    const dir = writePlugin({
+      dist: `
+const plugin = { id: '__ID__', name: '__ID__', version: '1.0.0', socketRoutes: [{ path: '/live/:id', summary: 'x', open() {} }], activate() {} }
+module.exports = plugin
+module.exports.default = plugin
+`,
+    })
+    const result = await syncPluginManifest(dir, { skipBuild: true })
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('socket route /live/:id')
+  })
+
+  it('refuses to write duplicate socket route paths', async () => {
+    const dir = writePlugin({
+      dist: `
+const plugin = { id: '__ID__', name: '__ID__', version: '1.0.0', socketRoutes: [{ path: '/live', summary: 'a', open() {} }, { path: '/live', summary: 'b', open() {} }], activate() {} }
+module.exports = plugin
+module.exports.default = plugin
+`,
+    })
+    const result = await syncPluginManifest(dir, { skipBuild: true })
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('socket route /live: declared more than once')
+  })
+
   it('records the search auto-route when the plugin registers a content type', async () => {
     const dir = writePlugin({
       dist: `

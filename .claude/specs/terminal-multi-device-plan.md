@@ -810,3 +810,4 @@ Filled in during execution:
 - Live checklist results
 
 - 2026-10-25 T0 base SHAs: bakin `ad2010cf3` (origin/main, v0.0.1-rc.44 prep); bits `7fa54da` (origin/main, terminal 0.3.5). B0 is a standalone PR off bits main; B1–B6 stack on bits main.
+- 2026-10-25 T5 finding: Bun resolves `ws` to its built-in (npm `ws` unloadable), whose `bufferedAmount` is unobservable/stale and whose send callbacks are immediate. The host therefore declares no `ws` runtime dependency and offers no send bound or drain; the terminal's ACK windows (T12) are the bound. Spec D8 revised.

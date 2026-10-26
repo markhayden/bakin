@@ -257,6 +257,8 @@ describe('PluginRegistryImpl', () => {
       root?: string
       /** JS source for a declarative `routes` array on the plugin object. */
       routes?: string
+      /** JS source for a declarative `socketRoutes` array on the plugin object. */
+      socketRoutes?: string
     } = {},
   ): string {
     const pluginDir = join(opts.root ?? join(tempDir, 'plugins'), id)
@@ -282,6 +284,7 @@ describe('PluginRegistryImpl', () => {
         version: '1.0.0',
         settingsSchema: ${opts.settingsSchema || 'undefined'},
         routes: ${opts.routes || 'undefined'},
+        socketRoutes: ${opts.socketRoutes || 'undefined'},
         activate: function(ctx) { ${opts.activate || ''} },
         onReady: ${opts.onReady || 'undefined'},
       }
@@ -1047,6 +1050,57 @@ describe('PluginRegistryImpl', () => {
       })
       expect(failed.errorMessage).toContain('undeclared API route')
       expect(pluginRegistry.findRoute('undeclared-route', '/data', 'GET')).toBeNull()
+    })
+
+    it('registers declared socket routes and fails undeclared ones', async () => {
+      const route = `[{ path: '/live', summary: 'Live', open: function() {} }]`
+      writeUserPlugin('declared-socket', { socketRoutes: route, manifest: { contributes: { socketRoutes: [{ path: '/live', summary: 'Live' }] } } })
+      writeUserPlugin('undeclared-socket', { socketRoutes: route })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect(pluginRegistry.findSocketRoute('declared-socket', '/live')?.route.summary).toBe('Live')
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'undeclared-socket')
+      expect(failed).toMatchObject({ status: 'failed', errorCode: 'activation_failed' })
+      expect(failed.errorMessage).toContain('undeclared socket route /live')
+    })
+
+    it('fails a plugin that declares the same socket path twice', async () => {
+      const twice = `[{ path: '/live', summary: 'A', open: function() {} }, { path: '/live', summary: 'B', open: function() {} }]`
+      writeUserPlugin('twice-socket', { socketRoutes: twice, manifest: { contributes: { socketRoutes: [{ path: '/live', summary: 'Live' }] } } })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'twice-socket')
+      expect(failed.errorMessage).toContain('declares socket route /live twice')
+    })
+
+    it('closes tracked sockets when a plugin is swept and when the server shuts down', async () => {
+      const route = `[{ path: '/live', summary: 'Live', open: function() {} }]`
+      writeUserPlugin('socket-a', { socketRoutes: route, manifest: { contributes: { socketRoutes: [{ path: '/live', summary: 'Live' }] } } })
+      writeUserPlugin('socket-b', { socketRoutes: route, manifest: { contributes: { socketRoutes: [{ path: '/live', summary: 'Live' }] } } })
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+      const closes: string[] = []
+      const a = pluginRegistry.findSocketRoute('socket-a', '/live')!
+      const b = pluginRegistry.findSocketRoute('socket-b', '/live')!
+      // Generations are registry-wide tokens: a replacement plugin state can
+      // never reuse one an in-flight admission still holds.
+      expect(a.generation).not.toBe(b.generation)
+      pluginRegistry.trackSocket('socket-a', a.generation, { close: (code: number, reason: string) => { closes.push(`a:${code}:${reason}`) } })
+      const untrack = pluginRegistry.trackSocket('socket-b', b.generation, { close: (code: number) => { closes.push(`b:${code}`) } })
+      pluginRegistry.trackSocket('socket-b', b.generation, { close: (code: number) => { closes.push(`b2:${code}`) } })
+      untrack?.()
+
+      await pluginRegistry.suspendPlugin('socket-a', { callShutdown: false })
+      expect(closes).toEqual(['a:1012:Plugin restarting'])
+      expect(pluginRegistry.trackSocket('socket-a', a.generation, { close: () => {} })).toBeNull()
+      expect(pluginRegistry.isCurrent('socket-a', a.generation)).toBe(false)
+
+      await pluginRegistry.shutdownAll()
+      expect(closes).toEqual(['a:1012:Plugin restarting', 'b2:1001'])
+      // After shutdown no route admits and no socket can be tracked.
+      expect(pluginRegistry.findSocketRoute('socket-b', '/live')).toBeNull()
+      expect(pluginRegistry.trackSocket('socket-b', b.generation, { close: () => {} })).toBeNull()
     })
 
     it('fails user plugins with undeclared DECLARATIVE routes (T16 symmetric enforcement)', async () => {

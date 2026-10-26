@@ -539,9 +539,11 @@ async function cmdPluginsSyncManifest(dir: string, opts: { check?: boolean; json
   for (const key of diff.apiRoutes.removed) lines.push(`  - apiRoutes: ${key}`)
   for (const name of diff.execTools.added) lines.push(`  + execTools: ${name}`)
   for (const name of diff.execTools.removed) lines.push(`  - execTools: ${name}`)
+  for (const path of diff.socketRoutes.added) lines.push(`  + socketRoutes: ${path}`)
+  for (const path of diff.socketRoutes.removed) lines.push(`  - socketRoutes: ${path}`)
 
   if (!result.changed) {
-    console.log(`Manifest in sync (${diff.apiRoutes.kept} routes, ${diff.execTools.kept} exec tools).`)
+    console.log(`Manifest in sync (${diff.apiRoutes.kept} routes, ${diff.execTools.kept} exec tools, ${diff.socketRoutes.kept} socket routes).`)
   } else if (opts.check) {
     console.log('Manifest drift detected:')
     for (const line of lines) console.log(line)

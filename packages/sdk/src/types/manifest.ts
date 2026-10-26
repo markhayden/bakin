@@ -48,6 +48,13 @@ export interface SecretDeclaration {
 }
 
 /** Manifest declaration of an HTTP route the plugin exposes. */
+/** A WebSocket route the plugin serves under `/api/plugins/{id}/...`. */
+export interface SocketRouteContribution {
+  /** Plugin-relative path. Exposed as `/api/plugins/{pluginId}{path}`. */
+  path: string
+  summary: string
+}
+
 export interface ApiRouteContribution {
   method: HttpMethod
   /** Plugin-relative path. Exposed as `/api/plugins/{pluginId}{path}`. */
@@ -189,6 +196,8 @@ export interface DocsContribution {
 export interface PluginContributions {
   /** HTTP routes the plugin exposes under `/api/plugins/{id}/...`. */
   apiRoutes?: ApiRouteContribution[]
+  /** WebSocket routes (`definePlugin({ socketRoutes })`); enforced at activation for user plugins. */
+  socketRoutes?: SocketRouteContribution[]
   /** Client-side routes the plugin renders (sidebar nav targets). */
   clientRoutes?: ClientRouteContribution[]
   /** MCP exec tools agents can call. */
