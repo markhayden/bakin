@@ -10,6 +10,27 @@ import McpToolCard from '../../../../components/McpToolCard.astro'
   <p>Use this reference when you need the exact tool name, the arguments it accepts, and a copyable call shape.</p>
 </div>
 
+## Ask
+
+<p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
+
+<div class="mcp-tool-list">
+<McpToolCard id="ask-user" name="bakin_exec_ask_user" label="Asked a question" description="Ask the user ONE question in a live conversation, shown as an answerable card." source="src/core/exec-tools/tools/ask-user.ts:22" parameters={[{"name":"question","type":"string","required":true,"description":"The question (max ${QUESTION_LIMITS.question} chars)"},{"name":"options","type":"array","required":true},{"name":"label","type":"string","required":true,"description":"Short answer (max ${QUESTION_LIMITS.label} chars)"},{"name":"description","type":"string","required":false,"description":"Why/what it means (max ${QUESTION_LIMITS.description} chars)"},{"name":"recommended","type":"number","required":false,"description":"Index of the option you recommend"},{"name":"allowOther","type":"boolean","required":false,"description":"Offer a free-text \"Something else\" answer (default true)"}]}>
+```sh frame="terminal"
+bakin_exec_ask_user {
+  "question": "value",
+  "options": [
+    "value"
+  ],
+  "label": "value",
+  "description": "value",
+  "recommended": 20,
+  "allowOther": true
+}
+```
+</McpToolCard>
+</div>
+
 ## Assets
 
 <p class="mcp-section-description">Asset tools let agents list, inspect, save, link, restore, and clean up files managed by Bakin.</p>
@@ -1258,7 +1279,7 @@ bakin_exec_team_update_identity {
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="terminal-session" name="bakin_exec_terminal_session" label="Terminal Session." source="bakin-bits-official/plugins/terminal/index.ts:115" parameters={[{"name":"operation","type":"choice","required":true,"description":"list: your sessions. create: start one. screen: read the visible pane (start here). output: read raw output after a cursor. write: type input. interrupt: send Ctrl-C. resize: set cols/rows. complete: finish an exited session. terminate: stop a running process then finish."},{"name":"input","type":"object","required":true},{"name":"id","type":"string","required":false,"description":"Session id. Required for screen, output, write, resize, interrupt, complete, terminate."},{"name":"title","type":"string","required":false,"description":"create: a short human-readable name for the session."},{"name":"cwd","type":"string","required":false,"description":"create: absolute working directory."},{"name":"program","type":"choice","required":false,"description":"create: program to launch (default shell)."},{"name":"checkout","type":"choice","required":false,"description":"create (coding programs): new isolated git worktree (default) or the existing checkout at cwd."},{"name":"taskId","type":"string","required":false,"description":"create: link the session to a Bakin task id."},{"name":"generation","type":"number","required":false,"description":"write, resize, interrupt: the `generation` from your latest response for this session."},{"name":"sequence","type":"number","required":false,"description":"write: the latest `inputSequence` + 1. Consumed once — never reuse or guess it."},{"name":"data","type":"string","required":false,"description":"write: the exact keystrokes to send. End a command with a carriage return \"\\\\r\" to run it."},{"name":"cursor","type":"number","required":false,"description":"output: return output produced after this cursor (0 for all retained output)."},{"name":"cols","type":"number","required":false,"description":"resize: terminal columns."},{"name":"rows","type":"number","required":false,"description":"resize: terminal rows."}]}>
+<McpToolCard id="terminal-session" name="bakin_exec_terminal_session" label="Terminal Session." source="bakin-bits-official/plugins/terminal/index.ts:124" parameters={[{"name":"operation","type":"choice","required":true,"description":"list: your sessions. create: start one. screen: read the visible pane (start here). output: read raw output after a cursor. write: type input. interrupt: send Ctrl-C. resize: set cols/rows. complete: finish an exited session. terminate: stop a running process then finish."},{"name":"input","type":"object","required":true},{"name":"id","type":"string","required":false,"description":"Session id. Required for screen, output, write, resize, interrupt, complete, terminate."},{"name":"title","type":"string","required":false,"description":"create: a short human-readable name for the session."},{"name":"cwd","type":"string","required":false,"description":"create: absolute working directory."},{"name":"program","type":"choice","required":false,"description":"create: program to launch (default shell)."},{"name":"checkout","type":"choice","required":false,"description":"create (coding programs): new isolated git worktree (default) or the existing checkout at cwd."},{"name":"taskId","type":"string","required":false,"description":"create: link the session to a Bakin task id."},{"name":"generation","type":"number","required":false,"description":"write, resize, interrupt: the `generation` from your latest response for this session."},{"name":"sequence","type":"number","required":false,"description":"write: the latest `inputSequence` + 1. Consumed once — never reuse or guess it."},{"name":"data","type":"string","required":false,"description":"write: the exact keystrokes to send. End a command with a carriage return \"\\\\r\" to run it."},{"name":"cursor","type":"number","required":false,"description":"output: return output produced after this cursor (0 for all retained output)."},{"name":"cols","type":"number","required":false,"description":"resize: terminal columns."},{"name":"rows","type":"number","required":false,"description":"resize: terminal rows."}]}>
 ```sh frame="terminal"
 bakin_exec_terminal_session {
   "operation": "value",
@@ -1361,5 +1382,5 @@ bakin_exec_workflows_start {
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 24, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 25, 2026 · Bakin 0.0.0-dev</span>
 </aside>

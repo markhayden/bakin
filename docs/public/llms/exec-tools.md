@@ -16,6 +16,37 @@ active runtime — each agent's Tool access section carries the exact form.
 
 Use the exact tool name shown below. Tools with no parameters take no arguments.
 
+## Ask
+
+### bakin_exec_ask_user
+
+Label: Asked a question
+Purpose: Ask the user ONE question in a live conversation, shown as an answerable card.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `question` | string | yes | The question (max ${QUESTION_LIMITS.question} chars) |
+| `options` | array | yes |  |
+| `label` | string | yes | Short answer (max ${QUESTION_LIMITS.label} chars) |
+| `description` | string | no | Why/what it means (max ${QUESTION_LIMITS.description} chars) |
+| `recommended` | number | no | Index of the option you recommend |
+| `allowOther` | boolean | no | Offer a free-text "Something else" answer (default true) |
+
+Example:
+
+```sh
+bakin_exec_ask_user {
+  "question": "value",
+  "options": [
+    "value"
+  ],
+  "label": "value",
+  "description": "value",
+  "recommended": 20,
+  "allowOther": true
+}
+```
+
 ## Assets
 
 Asset tools let agents list, inspect, save, link, restore, and clean up files managed by Bakin.
