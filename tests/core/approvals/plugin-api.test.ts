@@ -80,6 +80,43 @@ describe('createPluginApprovalsAPI', () => {
     expect(approvals.get('projects:launch:complete:project:1')).toMatchObject({ status: 'rejected', response: { option: 'reject', comment: 'needs the docs page' } })
   })
 
+  it('an option the approval did not offer never reaches the gate (400)', async () => {
+    const backend = createMemoryApprovalsBackend()
+    const approvals = createPluginApprovalsAPI('projects', backend)
+    const seen: string[] = []
+    approvals.registerGate('complete', { ownerState: () => 'live', onResolve: (_a, d) => { seen.push(d.option) } })
+    approvals.request(input())
+    const err = await backend.resolve('projects:launch:complete:project:1', 'rejectt').catch((e: unknown) => e)
+    expect((err as PluginApprovalRefusal).status).toBe(400)
+    expect(seen).toEqual([])
+    expect(approvals.get('projects:launch:complete:project:1')?.status).toBe('pending')
+  })
+
+  it('the harness keeps the host guards: one resolver at a time, and a record cancelled during onResolve stays cancelled', async () => {
+    const backend = createMemoryApprovalsBackend()
+    const approvals = createPluginApprovalsAPI('projects', backend)
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    let cancelInside = false
+    approvals.registerGate('complete', {
+      ownerState: () => 'live',
+      onResolve: async (approval) => {
+        if (cancelInside) { await approvals.cancel(approval.approvalId, 'project completed'); return }
+        await gate
+      },
+    })
+    approvals.request(input())
+    const first = backend.resolve('projects:launch:complete:project:1', 'approve')
+    await expect(backend.resolve('projects:launch:complete:project:1', 'reject', 'no')).rejects.toThrow(/already being resolved/)
+    release()
+    expect((await first).status).toBe('approved')
+
+    cancelInside = true
+    approvals.request(input('projects:launch:complete:project:2'))
+    await expect(backend.resolve('projects:launch:complete:project:2', 'approve')).rejects.toThrow(/no longer pending \(cancelled\)/)
+    expect(approvals.get('projects:launch:complete:project:2')?.status).toBe('cancelled')
+  })
+
   it('re-requesting a pending id refreshes it; a decided id comes back untouched', async () => {
     const backend = createMemoryApprovalsBackend()
     const approvals = createPluginApprovalsAPI('projects', backend)

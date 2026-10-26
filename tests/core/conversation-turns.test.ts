@@ -1192,7 +1192,7 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
     const service = makeService(h, { events: APPENDED_EVENTS })
     const notice = { agentId: 'lead', preview: 'Which launch date?' }
 
-    expect(await service.appendExternal(h.ctx, 'x1', externalRows('a'), notice)).toBe('appended')
+    expect(await service.appendExternal(h.ctx, 'x1', externalRows('a'), notice)).toMatchObject({ status: 'appended' })
 
     expect(contents(h.rows.get('x1'))).toEqual(['assistant:check-in a', 'tool'])
     expect(h.events).toEqual([{ event: 'test.appended', data: { threadKey: 'x1', notice } }])
@@ -1201,7 +1201,7 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
   test('no appended event configured: rows still land, nothing is emitted', async () => {
     const h = makeHarness()
     const service = makeService(h)
-    expect(await service.appendExternal(h.ctx, 'x2', externalRows('a'))).toBe('appended')
+    expect(await service.appendExternal(h.ctx, 'x2', externalRows('a'))).toMatchObject({ status: 'appended' })
     expect(contents(h.rows.get('x2'))).toEqual(['assistant:check-in a', 'tool'])
     expect(h.events).toEqual([])
   })
@@ -1218,7 +1218,7 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
       await waitUntil(() => service.inflightPreview('x3') === 'thinking', { label: 'turn streaming' })
 
       // Never waits on the live turn — it resolves while the stream is gated.
-      expect(await service.appendExternal(h.ctx, 'x3', externalRows('q'))).toBe('queued')
+      expect(await service.appendExternal(h.ctx, 'x3', externalRows('q'))).toMatchObject({ status: 'queued' })
       expect(contents(h.rows.get('x3'))).not.toContain('assistant:check-in q')
 
       if (shape === 'abort') service.abort('x3')
@@ -1250,7 +1250,7 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
     const service = makeService(h, { events: APPENDED_EVENTS, queue: {} })
 
     expect(await service.start(h.ctx, 'x4', 'first')).toBe('accepted')
-    expect(await service.appendExternal(h.ctx, 'x4', externalRows('q'))).toBe('queued')
+    expect(await service.appendExternal(h.ctx, 'x4', externalRows('q'))).toMatchObject({ status: 'queued' })
     expect(await service.start(h.ctx, 'x4', 'follow-up', { queueIfBusy: true })).toMatchObject({ queued: true })
 
     release()
@@ -1283,13 +1283,13 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
     expect(service.isInFlight('x5')).toBe(false)
 
     releaseWrite()
-    expect(await appended).toBe('appended')
+    expect(await appended).toMatchObject({ status: 'appended' })
     expect(await started).toBe('accepted')
     await service.waitFor('x5')
     expect(contents(h.rows.get('x5')).slice(0, 3)).toEqual(['assistant:check-in slow', 'tool', 'user:hello'])
   })
 
-  test('waitFor covers a queued flush; a failing row append is logged, the rest still land and appended fires', async () => {
+  test('a failed queued write rejects ITS `written` and announces nothing; other batches still land and announce', async () => {
     const h = makeHarness()
     const release = gated(h, [])
     const service = makeService(h, {
@@ -1302,12 +1302,93 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
       },
     })
     expect(await service.start(h.ctx, 'x6', 'hello')).toBe('accepted')
-    expect(await service.appendExternal(h.ctx, 'x6', externalRows('q'))).toBe('queued')
-    expect(await service.appendExternal(h.ctx, 'x6', externalRows('r'))).toBe('queued')
+    const failing = await service.appendExternal(h.ctx, 'x6', externalRows('q'))
+    const ok = await service.appendExternal(h.ctx, 'x6', externalRows('r'))
+    expect(failing.status).toBe('queued')
     release()
+    await expect(failing.written).rejects.toThrow('disk full')
+    await ok.written
     await service.waitFor('x6')
 
-    expect(contents(h.rows.get('x6')).slice(-3)).toEqual(['assistant:check-in q', 'assistant:check-in r', 'tool'])
-    expect(h.events.filter((e) => e.event === 'test.appended')).toHaveLength(2)
+    expect(h.events.filter((e) => e.event === 'test.appended')).toHaveLength(1)
+    expect(contents(h.rows.get('x6')).slice(-2)).toEqual(['assistant:check-in r', 'tool'])
+  })
+
+  test('idle write failure throws to the caller and announces nothing', async () => {
+    const h = makeHarness()
+    const service = makeService(h, { events: APPENDED_EVENTS, appendRow: () => { throw new Error('disk full') } })
+    await expect(service.appendExternal(h.ctx, 'x7', externalRows('a'))).rejects.toThrow('disk full')
+    expect(h.events).toEqual([])
+  })
+
+  test('a batch appended from an `appended` listener at any microtask delay is never stranded and never lands inside a turn', async () => {
+    // The listener's append can arrive after the flush loop's last check but
+    // before its teardown (the stranding window); sweep the delay so one of
+    // them hits it. Later arrivals legitimately queue behind the next turn.
+    for (const followUp of [false, true]) for (let hops = 0; hops <= 8; hops++) {
+      const key = `x8-${followUp}-${hops}`
+      const h = makeHarness()
+      const scripts: Array<() => AsyncIterable<ChatChunk>> = []
+      h.setStream(() => (scripts.shift() ?? (async function* () { yield { type: 'done' } as ChatChunk }))())
+      let release!: () => void
+      const gate = new Promise<void>((r) => { release = r })
+      scripts.push(async function* () { await gate; yield { type: 'done' } as ChatChunk })
+      scripts.push(async function* () {
+        yield { type: 'text', content: 'second reply' } as ChatChunk
+        yield { type: 'done' } as ChatChunk
+      })
+      let chained: Promise<{ written: Promise<void> }> | null = null
+      const ctx = {
+        ...h.ctx,
+        events: {
+          ...h.ctx.events,
+          emit: (event: string, data?: Record<string, unknown>) => {
+            h.events.push({ event, data: data ?? {} })
+            if (event !== 'test.appended' || chained) return
+            let p: Promise<void> = Promise.resolve()
+            for (let i = 0; i < hops; i++) p = p.then(() => {})
+            chained = p.then(() => service.appendExternal(ctx, key, externalRows('b')))
+          },
+        },
+      } as TurnContext
+      // Read lazily by the listener above, which only runs after this line.
+      const service = makeService(h, { events: APPENDED_EVENTS, queue: {} })
+
+      expect(await service.start(ctx, key, 'first')).toBe('accepted')
+      await service.appendExternal(ctx, key, externalRows('a'))
+      if (followUp) expect(await service.start(ctx, key, 'follow-up', { queueIfBusy: true })).toMatchObject({ queued: true })
+      release()
+      // No later turn to rescue it: a stranded batch is never written.
+      await waitUntil(() => contents(h.rows.get(key)).includes('assistant:check-in b'), { label: `batch b written (followUp ${followUp}, hops ${hops})` })
+      if (!followUp) continue
+      await waitUntil(() => contents(h.rows.get(key)).includes('assistant:second reply') && !service.isInFlight(key), { label: `drained turn settled (hops ${hops})` })
+
+      const rows = contents(h.rows.get(key))
+      const b = rows.indexOf('assistant:check-in b')
+      const inside = b > rows.indexOf('user:follow-up') && b < rows.indexOf('assistant:second reply')
+      expect({ hops, inside }).toEqual({ hops, inside: false })
+    }
+  })
+
+  test('a failed user-row write at admission still flushes rows accepted while the slot was held', async () => {
+    const h = makeHarness()
+    let failUser!: (err: Error) => void
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: async (key, row) => {
+        if (row.kind === 'user') await new Promise<void>((_, reject) => { failUser = reject })
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+      },
+    })
+    const started = service.start(h.ctx, 'x9', 'hello')
+    await waitUntil(() => service.isInFlight('x9'), { label: 'slot reserved' })
+    const queued = await service.appendExternal(h.ctx, 'x9', externalRows('q'))
+    expect(queued.status).toBe('queued')
+    failUser(new Error('thread gone'))
+    expect(await started).toBe('not_found')
+    await queued.written
+    expect(contents(h.rows.get('x9'))).toEqual(['assistant:check-in q', 'tool'])
   })
 })

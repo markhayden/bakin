@@ -200,7 +200,7 @@ describe('ctx.conversations guardrails (#703 review)', () => {
     })
     const emitted: string[] = []
     const turnCtx = { events: { emit: (e: string) => { emitted.push(e) }, on: () => () => {}, once: () => () => {} } }
-    expect(await service.appendExternal(turnCtx as never, 'k1', [{ kind: 'assistant', ts: new Date().toISOString(), turnId: 'x', agentId: 'lead', content: 'hi' }])).toBe('appended')
+    expect(await service.appendExternal(turnCtx as never, 'k1', [{ kind: 'assistant', ts: new Date().toISOString(), turnId: 'x', agentId: 'lead', content: 'hi' }])).toMatchObject({ status: 'appended' })
     expect(emitted).toEqual(['demo4.appended'])
   })
 
@@ -318,6 +318,9 @@ describe('ctx.approvals on the host (spec D26)', () => {
     const err = await resolveApproval(approval.approvalId, { option: 'approve', provenance: UI_OPERATOR }).catch((e: unknown) => e)
     expect(approvalErrorStatus(err)).toBe(409)
     expect(getApprovalRecord(approval.approvalId)?.status).toBe('pending')
+
+    // An option the approval never offered is refused before the gate runs.
+    expect(approvalErrorStatus(await resolveApproval(approval.approvalId, { option: 'rejectt', provenance: UI_OPERATOR }).catch((e: unknown) => e))).toBe(400)
 
     refuse = false
     await resolveApproval(approval.approvalId, { option: 'approve', provenance: UI_OPERATOR })

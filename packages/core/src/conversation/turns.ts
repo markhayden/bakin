@@ -147,8 +147,16 @@ export interface AppendNotice {
   preview: string
 }
 
-/** Written now (idle slot) or queued behind the in-flight turn. */
-export type AppendExternalResult = 'appended' | 'queued'
+/**
+ * `appended` — the rows are durable now (the call throws if a write failed).
+ * `queued` — they wait behind the in-flight turn; `written` settles when they
+ * are durable and rejects if a write failed. Never await `written` from inside
+ * that conversation's own turn — it settles only after the turn does.
+ */
+export interface AppendExternalResult {
+  status: 'appended' | 'queued'
+  written: Promise<void>
+}
 
 export interface InflightTurnInfo {
   key: string
@@ -276,8 +284,10 @@ export interface ConversationTurnService {
    * Idle slot → the rows land now and `appended` fires; a turn in flight →
    * they QUEUE and flush at slot release, before the next turn is admitted,
    * so they never interleave with a live turn's rows. Never awaits the live
-   * turn (safe to call from a tool call). Rows should carry their own
-   * turnId/agentId so the fold renders them as a separate agent turn.
+   * turn (safe to call from a tool call). `appended` fires only once a batch's
+   * rows are all durable; a failed write rejects that batch (idle: the call
+   * throws; queued: `written` rejects) and announces nothing. Rows should
+   * carry their own turnId/agentId so the fold renders a separate agent turn.
    */
   appendExternal(ctx: TurnContext, key: string, rows: ConversationTurnRow[], notice?: AppendNotice): Promise<AppendExternalResult>
 }
@@ -314,41 +324,55 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
   // Out-of-turn rows waiting for the slot (appendExternal), and the flush
   // currently writing them. While a flush runs no turn is admitted: start()
   // waits it out and maybeDrain defers to the flush's tail.
-  const pendingExternal = new Map<string, Array<{ rows: ConversationTurnRow[]; notice?: AppendNotice }>>()
+  interface ExternalBatch {
+    rows: ConversationTurnRow[]
+    notice?: AppendNotice
+    settle: (err?: Error) => void
+  }
+  const pendingExternal = new Map<string, ExternalBatch[]>()
   const flushing = new Map<string, Promise<void>>()
+
+  /** Write one batch; announce it only when every row is durable. */
+  const writeBatch = async (ctx: TurnContext, key: string, batch: ExternalBatch) => {
+    for (const row of batch.rows) {
+      try {
+        await config.appendRow(key, row)
+      } catch (err) {
+        log.error(`[${config.name}] external row append failed for ${key}`, err as Error)
+        batch.settle(err instanceof Error ? err : new Error(String(err)))
+        return
+      }
+    }
+    if (config.events.appended) {
+      try {
+        ctx.events.emit(config.events.appended, { ...config.payload(key), ...(batch.notice ? { notice: batch.notice } : {}) })
+      } catch (emitErr) {
+        log.error(`[${config.name}] appended-event emit failed for ${key}`, emitErr as Error)
+      }
+    }
+    batch.settle()
+  }
 
   const flushExternal = (ctx: TurnContext, key: string) => {
     if (flushing.has(key)) return
     const run = async () => {
-      for (let batch = pendingExternal.get(key); batch?.length; batch = pendingExternal.get(key)) {
+      for (let batches = pendingExternal.get(key); batches?.length; batches = pendingExternal.get(key)) {
         pendingExternal.delete(key)
-        for (const entry of batch) {
-          for (const row of entry.rows) {
-            try {
-              await config.appendRow(key, row)
-            } catch (err) {
-              log.error(`[${config.name}] external row append failed for ${key}`, err as Error)
-            }
-          }
-          if (config.events.appended) {
-            try {
-              ctx.events.emit(config.events.appended, { ...config.payload(key), ...(entry.notice ? { notice: entry.notice } : {}) })
-            } catch (emitErr) {
-              log.error(`[${config.name}] appended-event emit failed for ${key}`, emitErr as Error)
-            }
-          }
-        }
+        for (const batch of batches) await writeBatch(ctx, key, batch)
       }
     }
     flushing.set(key, run().finally(() => {
       flushing.delete(key)
-      // Rows first, THEN the next admission: queued sends drain behind them.
-      maybeDrain(ctx, key)
+      // A batch that arrived after the loop's last check (e.g. from an
+      // `appended` listener) flushes before any admission; otherwise rows
+      // first, THEN the next admission: queued sends drain behind them.
+      releaseSlot(ctx, key)
     }))
   }
 
-  /** Slot released: flush out-of-turn rows first, else admit the next queued turn. */
+  /** Slot released (or never taken): flush out-of-turn rows first, else admit the next queued turn. */
   const releaseSlot = (ctx: TurnContext, key: string) => {
+    if (inflight.has(key)) return
     if (pendingExternal.get(key)?.length) flushExternal(ctx, key)
     else maybeDrain(ctx, key)
   }
@@ -552,6 +576,9 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     } catch (err) {
       inflight.delete(key)
       log.error(`[${config.name}] user row append failed for ${key}`, err as Error)
+      // No turn launched, so no settle tail: release here so out-of-turn rows
+      // accepted while the slot was held still land.
+      releaseSlot(ctx, key)
       return 'not_found'
     }
 
@@ -618,13 +645,20 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
         startedAt: t.startedAt,
       })),
     appendExternal: async (ctx, key, rows, notice) => {
-      const batch = pendingExternal.get(key) ?? []
-      batch.push({ rows, ...(notice ? { notice } : {}) })
-      pendingExternal.set(key, batch)
-      if (inflight.has(key)) return 'queued'
+      let settle!: (err?: Error) => void
+      const written = new Promise<void>((resolve, reject) => {
+        settle = (err) => (err ? reject(err) : resolve())
+      })
+      // Handled here so an ignored `written` is never an unhandled rejection;
+      // callers that await it still see the failure.
+      written.catch(() => {})
+      const batches = pendingExternal.get(key) ?? []
+      batches.push({ rows, ...(notice ? { notice } : {}), settle })
+      pendingExternal.set(key, batches)
+      if (inflight.has(key)) return { status: 'queued', written }
       flushExternal(ctx, key)
-      await flushing.get(key)
-      return 'appended'
+      await written
+      return { status: 'appended', written }
     },
   }
 }

@@ -101,7 +101,14 @@ export function createPluginApprovalsAPI(pluginId: string, backend: PluginApprov
       requireText('gateKind', gateKind)
       return backend.registerGate(pluginId, gateKind, {
         ownerState: async (record) => handler.ownerState(toPluginApproval(record)),
-        onResolve: async (record, decision) => handler.onResolve(toPluginApproval(record), toPluginDecision(decision)),
+        onResolve: async (record, decision) => {
+          // Only what the approval offered reaches plugin code — an unoffered
+          // id would otherwise take whichever branch the gate falls through to.
+          if (!record.request.options.some((o) => o.id === decision.option)) {
+            throw backend.refusal(`"${decision.option}" is not an option on this approval`, 400)
+          }
+          return handler.onResolve(toPluginApproval(record), toPluginDecision(decision))
+        },
       })
     },
 
@@ -173,6 +180,9 @@ export interface MemoryApprovalsBackend extends PluginApprovalsBackend {
 export function createMemoryApprovalsBackend(): MemoryApprovalsBackend {
   const records = new Map<string, ApprovalRecord>()
   const gates = new Map<string, CoreGateHandler>()
+  // The host's resolve guards: one resolver at a time, and the decision only
+  // lands on a record that is STILL pending after the gate ran (CAS).
+  const resolving = new Set<string>()
   const gateKey = (pluginId: string, gateKind: string) => `${pluginId}\u0000${gateKind}`
   return {
     request({ approvalId, owner, request }) {
@@ -211,11 +221,19 @@ export function createMemoryApprovalsBackend(): MemoryApprovalsBackend {
       }
       const gate = gates.get(gateKey(record.owner.pluginId, record.owner.gateKind))
       if (!gate) throw new Error(`No gate registered for ${record.owner.pluginId}/${record.owner.gateKind}`)
+      if (resolving.has(approvalId)) throw new Error(`Approval "${approvalId}" is already being resolved`)
+      resolving.add(approvalId)
       const respondedAt = new Date().toISOString()
       const provenance: ApprovalProvenance = { channel: 'ui', actor: { kind: 'operator-declared' }, evidence: 'declared' }
-      await gate.onResolve(record as PluginGateRecord, { option, ...(comment ? { comment } : {}), respondedAt, provenance })
+      try {
+        await gate.onResolve(record as PluginGateRecord, { option, ...(comment ? { comment } : {}), respondedAt, provenance })
+      } finally {
+        resolving.delete(approvalId)
+      }
+      const current = records.get(approvalId)
+      if (current?.status !== 'pending') throw new Error(`Approval "${approvalId}" is no longer pending (${current?.status ?? 'deleted'})`)
       const resolved: ApprovalRecord = {
-        ...record,
+        ...current,
         status: option === 'reject' || option === 'dismiss' ? 'rejected' : 'approved',
         response: { selectedOption: option, respondedAt, provenance, ...(comment !== undefined ? { comment } : {}) },
         updatedAt: respondedAt,

@@ -117,16 +117,22 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   { agentId, preview }` announces through the same path as a finished reply).
   Chat counts a question row as an unread reply (`plugins/chat/lib/store.ts`).
 - **Server side: `appendExternal(ctx, key, rows, notice?)`** (projects revamp
-  P3a, spec D24a) shares the engine's admission state. Idle slot → rows append
-  in order, then `events.appended` fires `{ ...payload(key), notice? }`
-  (resolves `'appended'`). Turn in flight → rows QUEUE (resolves `'queued'`
-  at once — never awaits the live turn, so a tool call inside that turn cannot
-  deadlock) and flush at slot release BEFORE the next admission: the release
-  block flushes first and the queued-send drain runs from the flush's tail;
+  P3a, spec D24a) shares the engine's admission state and resolves
+  `{ status, written }`. Idle slot → rows append in order, then
+  `events.appended` fires `{ ...payload(key), notice? }` (`status:
+  'appended'`; a failed write THROWS and announces nothing). Turn in flight →
+  `status: 'queued'` at once (never awaits the live turn, so a tool call
+  inside that turn cannot deadlock — and must not await `written`, which
+  settles only when the rows are durable and rejects on a failed write). Each
+  batch is announced only when all its rows persisted; a failed batch is
+  rejected, never announced. Queued rows flush at slot release BEFORE the next
+  admission: every release (turn settle, a failed user-row write at admission,
+  a flush's own teardown — which re-checks for batches that arrived after its
+  last loop check) goes through `releaseSlot` (flush first, else drain);
   `start()` waits out any running flush before its synchronous busy check;
   `waitFor()` covers the flush. Every settle shape (done/error/abort) flushes —
-  pinned in the settle-shape matrix of `tests/core/conversation-turns.test.ts`.
-  Row append failures are logged, the rest still land. Rows carry their own
+  pinned in the settle-shape matrix of `tests/core/conversation-turns.test.ts`
+  (plus a microtask-delay sweep for the flush-tail window). Rows carry their own
   `turnId` + `agentId` (both optional fields on assistant/tool rows) so the
   fold renders a separate agent turn. `events.appended` joins the
   user-plugin namespace guard.

@@ -102,6 +102,11 @@ reject without a reason → 400; Discord/runtime buttons exempt). Gates see a
 plugin view (`PluginApproval`) and a decision with `decidedBy`
 (`describeApprovalProvenance`) — never raw provenance. `refusal(message,
 status)` is the error a gate throws to refuse (host: `ApprovalResolveError`).
+An option the record never offered is refused (400) in the shared gate
+wrapper before plugin code runs. The memory backend keeps the host's resolve
+guards (one resolver at a time; the decision lands only on a record still
+pending after the gate ran — a gate that cancels its own approval keeps it
+cancelled), so harness tests cannot pass what the host would refuse.
 The board renders it with the explicit `plugin-gate` renderer in
 `plugins/tasks/components/approval-panel.tsx` (record title/summary/options,
 primary trailing, reject → shared `RejectReasonForm`); attention titles it

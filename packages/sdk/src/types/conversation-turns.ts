@@ -212,9 +212,11 @@ export interface ConversationTurnService {
   listInFlight(): ConversationInflightTurnInfo[]
   /**
    * Append rows written OUTSIDE a turn (a check-in, a question). Idle → they
-   * land now and `events.appended` fires (with `notice` for attention); a
-   * turn in flight → they queue and flush at slot release, before the next
-   * turn is admitted. Never waits on the live turn. Give rows their own
+   * land now (the call throws if a write fails) and `events.appended` fires
+   * with `notice`; a turn in flight → `status: 'queued'` at once, and the rows
+   * flush at slot release before the next turn is admitted — `written`
+   * settles when they are durable and rejects if a write failed. Never await
+   * `written` from inside that conversation's own turn. Give rows their own
    * turnId/agentId so they render as a separate agent turn.
    */
   appendExternal(
@@ -222,7 +224,13 @@ export interface ConversationTurnService {
     key: string,
     rows: ConversationTurnRow[],
     notice?: ConversationAppendNotice,
-  ): Promise<'appended' | 'queued'>
+  ): Promise<ConversationAppendResult>
+}
+
+/** `appended`: durable now. `queued`: `written` settles once durable (rejects on a failed write). */
+export interface ConversationAppendResult {
+  status: 'appended' | 'queued'
+  written: Promise<void>
 }
 
 /** Attention notice carried on the `appended` event. */
