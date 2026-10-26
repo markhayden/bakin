@@ -71,7 +71,10 @@ no shims, no migrations for old UI state. Delete what is replaced.
   cheap structural guard, pinned against the SDK type by the existing private
   message-contract module (same pattern as `ConversationMessage`).
 - **D3. `QuestionCard` kit component** (`packages/ui/src/conversation/question-card.tsx`,
-  exported via `@makinbakin/sdk/conversation`). Options as a radio list; the
+  kit-internal: `AgentTurn` renders it for every `question` turn item, so
+  surfaces get it by composing `Conversation`/`ConversationPanel` and pass
+  `onAnswerQuestion` + `busy`; no standalone public export — resolved at the
+  P1 review, 2026-10-25). Options as a radio list; the
   recommended option is **labelled "Recommended" but never preselected**;
   "Something else…" (free text, when `allowOther`) and "Not sure — help me
   choose" are always last; optional note field; explicit **Answer** button

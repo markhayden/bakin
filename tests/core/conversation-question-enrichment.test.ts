@@ -121,6 +121,20 @@ describe('enrichQuestionChunk through real adapter mappings', () => {
     expect(enrichQuestionChunk(chunk)).toBe(chunk)
   })
 
+  test('a token is honoured once; replays (and other tools quoting it) stay plain rows', async () => {
+    const chunk = await piResultChunk()
+    expect(bakinQuestionOf(enrichQuestionChunk(chunk))).toBeDefined()
+    // The same result replayed — e.g. a duplicate frame — no longer opens a card.
+    expect(bakinQuestionOf(enrichQuestionChunk(chunk))).toBeUndefined()
+
+    // A different tool reading a transcript that quotes a LIVE token.
+    const fresh = await piResultChunk()
+    const summary = (fresh.data as { summary?: string }).summary
+    const reader: ChatChunk = { type: 'tool', content: 'x', data: { phase: 'result', toolName: 'read_file', status: 'completed', outputPreview: JSON.stringify({ summary }) } }
+    expect(bakinQuestionOf(enrichQuestionChunk(reader))).toBeUndefined()
+    expect(bakinQuestionOf(enrichQuestionChunk(fresh))).toBeDefined()
+  })
+
   test('an unknown or expired id is left as a plain tool row', () => {
     const chunk: ChatChunk = { type: 'tool', content: 'x', data: { phase: 'result', toolName: 'bakin_exec_ask_user', status: 'completed', summary: 'bakin-question:q_0000000000000000 posted.' } }
     expect(bakinQuestionOf(enrichQuestionChunk(chunk))).toBeUndefined()

@@ -106,6 +106,8 @@ export interface AgentTurnProps {
   onRetry?: () => void
   /** Sends a question card's formatted answer as the user's next message. */
   onAnswerQuestion?: (text: string) => void
+  /** The thread has a turn in flight; question cards hold input. */
+  busy?: boolean
   onOpenCall?: (call: ConversationToolCall) => void
   renderAvatar?: ConversationAvatarRenderer
   /** Render text formats; markdown falls back to safe pre-wrapped text. */
@@ -127,6 +129,7 @@ export function AgentTurn({
   agent,
   onRetry,
   onAnswerQuestion,
+  busy = false,
   onOpenCall,
   renderAvatar,
   renderText,
@@ -199,7 +202,7 @@ export function AgentTurn({
                 key={item.question.id}
                 item={item}
                 onAnswer={onAnswerQuestion}
-                busy={turn.status === 'streaming'}
+                busy={busy || turn.status === 'streaming'}
               />
             )
           }

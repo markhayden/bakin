@@ -204,7 +204,7 @@ kit capabilities.
 ## Phase P2 — Projects UX (Bits)
 
 ### T11: test-sdk parity — XS
-Stubs for `QuestionCard` exports, `parseBakinQuestion`, `events.appended`,
+Stubs for the question fold exports (`formatQuestionAnswer`, `BakinQuestion`, `Conversation` `busy`/`onAnswerQuestion`), `parseBakinQuestion`, `events.appended`,
 PageAside width; `bun install`.
 - Verify: `bun run typecheck` in Bits.
 

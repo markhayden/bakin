@@ -49,7 +49,7 @@ describe('bakin_exec_ask_user', () => {
     expect(message.length).toBeLessThan(200)
     const id = findQuestionToken(message)
     expect(id).not.toBeNull()
-    const stored = questionRegistry.get(id!)
+    const stored = questionRegistry.take(id!)
     expect(stored).toMatchObject({ v: 1, id, question: args.question, recommended: 0, allowOther: true })
     expect(stored?.options).toHaveLength(2)
   })

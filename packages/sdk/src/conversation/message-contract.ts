@@ -6,7 +6,8 @@
  * never sees a new symbol. Either side drifting breaks the build here.
  */
 import type { BakinQuestion, ConversationMessage, DisplayAttachment } from '../types/conversation'
-import type { BakinQuestion as CoreBakinQuestion } from '@bakin/core/conversation/questions'
+import type { BakinQuestion as CoreBakinQuestion, QUESTION_LIMITS } from '@bakin/core/conversation/questions'
+import type { QUESTION_RENDER_LIMITS } from '@bakin/ui/conversation/fold'
 import type {
   BakinQuestion as UiBakinQuestion,
   ConversationMessage as UiConversationMessage,
@@ -21,5 +22,8 @@ const bakinQuestionUiContract: Mutual<UiBakinQuestion, BakinQuestion> = true
 void bakinQuestionUiContract
 const bakinQuestionCoreContract: Mutual<CoreBakinQuestion, BakinQuestion> = true
 void bakinQuestionCoreContract
+/** The ui render guard enforces exactly the server schema's field limits. */
+const questionLimitsContract: Mutual<typeof QUESTION_RENDER_LIMITS, Omit<typeof QUESTION_LIMITS, 'serializedBytes'>> = true
+void questionLimitsContract
 void conversationMessageContract
 void displayAttachmentContract

@@ -195,7 +195,7 @@ export const CompleteAndLifecycleStates = {
 
 const askedQuestion: BakinQuestion = {
   v: 1,
-  id: 'q_story0000000001',
+  id: 'q_story00000000001',
   question: 'Which inbox are we cleaning?',
   options: [
     { label: 'Just my personal Gmail', description: 'Fastest win; work mail has retention rules to check first.' },
@@ -226,16 +226,16 @@ function agentTurnsOf(rows: ConversationMessage[], live?: ConversationMessage): 
 
 function QuestionCardStates() {
   const [sent, setSent] = useState('Nothing sent yet')
-  const open = agentTurnsOf([questionRow('q_story0000000002', 'open')])[0]!
+  const open = agentTurnsOf([questionRow('q_story00000000002', 'open')])[0]!
   const answered = agentTurnsOf([
-    questionRow('q_story0000000003', 'answered'),
+    questionRow('q_story00000000003', 'answered'),
     { kind: 'user', ts: '2026-07-20T12:00:09.000Z', content: formatQuestionAnswer(askedQuestion, { kind: 'option', index: 0 }) },
   ])[0]!
   const skipped = agentTurnsOf([
-    questionRow('q_story0000000004', 'skipped'),
+    questionRow('q_story00000000004', 'skipped'),
     { kind: 'user', ts: '2026-07-20T12:00:09.000Z', content: 'Let us talk about the budget first.' },
   ])[0]!
-  const streaming = agentTurnsOf([], questionRow('q_story0000000005', 'live'))[0]!
+  const streaming = agentTurnsOf([], questionRow('q_story00000000005', 'live'))[0]!
 
   return (
     <main className="bakin-conversation-story">
@@ -276,7 +276,7 @@ function QuestionCardStates() {
               <p>At dock widths the note and Answer stack instead of squeezing the options.</p>
             </header>
             <div style={{ inlineSize: '320px' }}>
-              <AgentTurn agent={mainAgent} turn={agentTurnsOf([questionRow('q_story0000000006', 'narrow')])[0]!} />
+              <AgentTurn agent={mainAgent} turn={agentTurnsOf([questionRow('q_story00000000006', 'narrow')])[0]!} />
             </div>
           </section>
         </Stack>
@@ -298,6 +298,13 @@ export const QuestionCards = {
     await userEvent.click(within(form).getByRole('button', { name: 'Answer' }))
     await expect(canvas.getByRole('status', { name: 'Sent answer' }))
       .toHaveTextContent('**Which inbox are we cleaning?** → Personal and work last year only')
+    // Keyboard: arrows move the selection, Enter submits from the group.
+    await userEvent.click(within(group).getByRole('radio', { name: /Personal and work/ }))
+    await userEvent.keyboard('{ArrowUp}')
+    await expect(within(group).getByRole('radio', { name: new RegExp(askedQuestion.options[0]!.label) })).toHaveAttribute('aria-checked', 'true')
+    await userEvent.keyboard('{Enter}')
+    await expect(canvas.getByRole('status', { name: 'Sent answer' }))
+      .toHaveTextContent(`→ ${askedQuestion.options[0]!.label}`)
     await expect(canvas.getByText('Skipped')).toBeVisible()
   },
 } satisfies Story

@@ -27,6 +27,7 @@ export const QUESTION_LIMITS = {
 
 const QUESTION_ID_RE = /^q_[a-z0-9]{16}$/
 const QUESTION_TOKEN_RE = /bakin-question:(q_[a-z0-9]{16})/
+const ENVELOPE_ID_PLACEHOLDER = 'q_0000000000000000'
 
 const optionSchema = z.object({
   label: z.string().trim().min(1).max(QUESTION_LIMITS.label),
@@ -53,7 +54,10 @@ function checkQuestion(value: QuestionShape, ctx: z.RefinementCtx): void {
   if (new Set(labels).size !== labels.length) {
     ctx.addIssue({ code: 'custom', path: ['options'], message: 'option labels must be unique' })
   }
-  if (new TextEncoder().encode(JSON.stringify(value)).length > QUESTION_LIMITS.serializedBytes) {
+  // Measure the minted envelope (`v` + `id` included) so an accepted input
+  // always becomes an envelope `parseBakinQuestion` accepts.
+  const envelope = { v: 1, id: ENVELOPE_ID_PLACEHOLDER, ...value }
+  if (new TextEncoder().encode(JSON.stringify(envelope)).length > QUESTION_LIMITS.serializedBytes) {
     ctx.addIssue({ code: 'custom', path: [], message: `question is too large (max ${QUESTION_LIMITS.serializedBytes} bytes serialized)` })
   }
 }
@@ -106,29 +110,41 @@ export function findQuestionToken(text: string | undefined): string | null {
 
 export interface QuestionRegistry {
   put(question: BakinQuestion): void
-  get(id: string): BakinQuestion | null
+  /** Remove and return a question; a token is honoured exactly once. */
+  take(id: string): BakinQuestion | null
 }
 
 /**
  * In-memory id → question map. Enrichment happens in-process within the
- * same turn, so the TTL only bounds memory; nothing is persisted here.
+ * same turn, so nothing is persisted here: the TTL and the capacity bound
+ * cap what orphans (a dispatch turn that never reaches the turn engine)
+ * can hold. Insertion order is expiry order — every entry gets the same
+ * TTL — so a sweep stops at the first live entry.
  */
 export function createQuestionRegistry(
-  { ttlMs = 10 * 60_000, now = Date.now }: { ttlMs?: number; now?: () => number } = {},
+  { ttlMs = 10 * 60_000, capacity = 256, now = Date.now }: { ttlMs?: number; capacity?: number; now?: () => number } = {},
 ): QuestionRegistry {
   const entries = new Map<string, { question: BakinQuestion; expiresAt: number }>()
   const sweep = () => {
     const at = now()
-    for (const [id, entry] of entries) if (entry.expiresAt <= at) entries.delete(id)
+    for (const [id, entry] of entries) {
+      if (entry.expiresAt > at) break
+      entries.delete(id)
+    }
   }
   return {
     put(question) {
       sweep()
+      entries.delete(question.id)
       entries.set(question.id, { question, expiresAt: now() + ttlMs })
+      while (entries.size > capacity) entries.delete(entries.keys().next().value!)
     },
-    get(id) {
+    take(id) {
       sweep()
-      return entries.get(id)?.question ?? null
+      const entry = entries.get(id)
+      if (!entry) return null
+      entries.delete(id)
+      return entry.question
     },
   }
 }
@@ -140,14 +156,20 @@ export const questionRegistry: QuestionRegistry = createQuestionRegistry()
  * Attach the registered question to a tool chunk that carries its token, so
  * the live event and the persisted row both hold `metadata.bakinQuestion`.
  * The token can sit in the summary (Pi), the clipped output preview
- * (OpenClaw) or the chunk text; anything else is returned untouched.
+ * (OpenClaw) or the chunk text; anything else is returned untouched. Only
+ * the asking tool's own result is enriched, and the token is consumed: a
+ * later tool that merely reads a transcript or log quoting the token never
+ * reopens the question.
  */
+/** The asking tool. Both adapters report bare tool names (OpenClaw strips its MCP server prefix). */
+export const ASK_USER_TOOL = 'bakin_exec_ask_user'
+
 export function enrichQuestionChunk(chunk: ChatChunk, registry: QuestionRegistry = questionRegistry): ChatChunk {
-  if (chunk.type !== 'tool' || chunk.data.phase !== 'result') return chunk
+  if (chunk.type !== 'tool' || chunk.data.phase !== 'result' || chunk.data.toolName !== ASK_USER_TOOL) return chunk
   const id = findQuestionToken(chunk.data.summary)
     ?? findQuestionToken(chunk.data.outputPreview)
     ?? findQuestionToken(chunk.content)
-  const question = id ? registry.get(id) : null
+  const question = id ? registry.take(id) : null
   if (!question) return chunk
   return { ...chunk, data: { ...chunk.data, metadata: { ...chunk.data.metadata, bakinQuestion: question } } }
 }

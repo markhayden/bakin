@@ -39,13 +39,13 @@ const questionRow: ConversationMessage = {
   status: 'completed', metadata: { bakinQuestion: Q },
 }
 
-function renderConversation(rows: ConversationMessage[], opts: { streaming?: boolean } = {}) {
+function renderConversation(rows: ConversationMessage[], opts: { streaming?: boolean; busy?: boolean } = {}) {
   const onAnswerQuestion = mock((_text: string) => {})
   // Streaming: the question arrives inside the still-live turn's chunks.
   const turns = opts.streaming
     ? foldConversation([], { liveChunks: [{ type: 'tool', data: { phase: 'result', callId: 'c1', toolName: 'bakin_exec_ask_user', status: 'completed', metadata: { bakinQuestion: Q } } }] })
     : foldConversation(rows)
-  const view = render(<Conversation turns={turns} onAnswerQuestion={onAnswerQuestion} />)
+  const view = render(<Conversation turns={turns} onAnswerQuestion={onAnswerQuestion} busy={opts.busy} />)
   return { ...view, onAnswerQuestion }
 }
 
@@ -110,6 +110,40 @@ describe('QuestionCard', () => {
     const radios = within(card()).getAllByRole('radio')
     for (const radio of radios) expect(radio.getAttribute('aria-disabled') === 'true' || radio.hasAttribute('data-disabled')).toBe(true)
     expect((within(card()).getByRole('button', { name: 'Answer' }) as HTMLButtonElement).disabled).toBe(true)
+    cleanup()
+  })
+
+  it('Enter on a selected radio submits the answer', async () => {
+    const { onAnswerQuestion } = renderConversation([questionRow])
+    const radio = within(card()).getByRole('radio', { name: /Personal Gmail/ })
+    await act(async () => { fireEvent.click(radio) })
+    await act(async () => { fireEvent.keyDown(radio, { key: 'Enter' }) })
+    expect(onAnswerQuestion).toHaveBeenCalledWith('**Which inbox are we cleaning?** → Personal Gmail')
+    cleanup()
+  })
+
+  it('Enter with nothing selected sends nothing', async () => {
+    const { onAnswerQuestion } = renderConversation([questionRow])
+    await act(async () => { fireEvent.keyDown(within(card()).getAllByRole('radio')[0]!, { key: 'Enter' }) })
+    expect(onAnswerQuestion).not.toHaveBeenCalled()
+    cleanup()
+  })
+
+  it('holds input while the thread is busy even when the persisted turn folded as settled', () => {
+    // Remount mid-turn: the question row is persisted (folds complete) while
+    // the surface still reports the turn in flight.
+    renderConversation([questionRow], { busy: true })
+    for (const radio of within(card()).getAllByRole('radio')) {
+      expect(radio.getAttribute('aria-disabled') === 'true' || radio.hasAttribute('data-disabled')).toBe(true)
+    }
+    expect((within(card()).getByRole('button', { name: 'Answer' }) as HTMLButtonElement).disabled).toBe(true)
+    cleanup()
+  })
+
+  it('a malformed option description never reaches the card', () => {
+    const malformed = { ...Q, options: [{ label: 'A', description: { unexpected: 'object' } }, { label: 'B' }] }
+    renderConversation([{ ...questionRow, metadata: { bakinQuestion: malformed } } as ConversationMessage])
+    expect(card()).toBeNull()
     cleanup()
   })
 

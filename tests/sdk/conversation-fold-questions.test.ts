@@ -90,6 +90,34 @@ describe('foldConversation question items', () => {
     expect(agent?.kind === 'agent' && agent.items[0]?.type).toBe('activity')
   })
 
+  it('rejects envelopes the card cannot render safely', () => {
+    const bad: unknown[] = [
+      { ...Q, options: [{ label: 'A', description: 7 }, { label: 'B' }] },
+      { ...Q, options: [{ label: 'A' }] },
+      { ...Q, options: Array.from({ length: 6 }, (_, i) => ({ label: `o${i}` })) },
+      { ...Q, question: 'x'.repeat(201) },
+      { ...Q, recommended: 2 },
+      { ...Q, id: 'not-an-id' },
+    ]
+    for (const bakinQuestion of bad) {
+      const turns = foldConversation([{ ...questionRow(), metadata: { bakinQuestion } } as ConversationMessage])
+      expect(questionItems(turns)).toHaveLength(0)
+    }
+  })
+
+  it('across a long history only the newest open card is answerable', () => {
+    const rows: ConversationMessage[] = []
+    for (let i = 0; i < 2_000; i++) {
+      const q = { ...Q, id: `q_${i.toString(16).padStart(16, '0')}`, question: `Q${i}?` }
+      rows.push(questionRow(q, `turn-${i}`))
+      if (i < 1_999) rows.push({ kind: 'user', ts: ts(3), content: i % 2 ? formatQuestionAnswer(q, { kind: 'unsure' }) : 'moving on' })
+    }
+    const items = questionItems(foldConversation(rows))
+    expect(items.filter(item => item.answerable).map(item => item.question.question)).toEqual(['Q1999?'])
+    expect(items[0]).toMatchObject({ state: 'skipped' })
+    expect(items[1]).toMatchObject({ state: 'answered', answer: 'Not sure — help me choose' })
+  })
+
   it('live chunks: the running call is replaced by the question when its result lands', () => {
     const call: RuntimeChatChunk = { type: 'tool', data: { phase: 'call', callId: 'c1', toolName: 'bakin_exec_ask_user', status: 'running' } }
     const result: RuntimeChatChunk = { type: 'tool', data: { phase: 'result', callId: 'c1', toolName: 'bakin_exec_ask_user', status: 'completed', metadata: { bakinQuestion: Q } } }

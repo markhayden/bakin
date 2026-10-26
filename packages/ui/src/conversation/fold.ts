@@ -138,16 +138,38 @@ export function formatQuestionAnswer(question: BakinQuestion, answer: QuestionAn
   return `${answerPrefix(question)}${choice}${trimmedNote ? `\n\n${trimmedNote}` : ''}`
 }
 
+/**
+ * Structural guard for the rendered envelope. Mirrors the server schema's
+ * shape and limits (`QUESTION_LIMITS`, pinned by the SDK message contract) so
+ * a malformed or oversized row stays an ordinary activity row instead of
+ * reaching the card.
+ */
+export const QUESTION_RENDER_LIMITS = { question: 200, label: 60, description: 160, minOptions: 2, maxOptions: 5 } as const
+
+const isText = (value: unknown, max: number): value is string =>
+  typeof value === 'string' && value.trim().length > 0 && value.length <= max
+
 function isBakinQuestion(value: unknown): value is BakinQuestion {
   if (!value || typeof value !== 'object') return false
-  const q = value as Partial<BakinQuestion>
+  const q = value as Record<string, unknown>
+  const options = q.options
+  if (!Array.isArray(options)
+    || options.length < QUESTION_RENDER_LIMITS.minOptions
+    || options.length > QUESTION_RENDER_LIMITS.maxOptions) return false
+  const optionsOk = options.every((option: unknown) => {
+    if (!option || typeof option !== 'object') return false
+    const { label, description } = option as Record<string, unknown>
+    return isText(label, QUESTION_RENDER_LIMITS.label)
+      && (description === undefined || isText(description, QUESTION_RENDER_LIMITS.description))
+  })
+  const recommended = q.recommended
   return q.v === 1
-    && typeof q.id === 'string'
-    && typeof q.question === 'string'
+    && typeof q.id === 'string' && /^q_[a-z0-9]{16}$/.test(q.id)
+    && isText(q.question, QUESTION_RENDER_LIMITS.question)
     && typeof q.allowOther === 'boolean'
-    && Array.isArray(q.options)
-    && q.options.length >= 2
-    && q.options.every(option => !!option && typeof option.label === 'string')
+    && optionsOk
+    && (recommended === undefined
+      || (typeof recommended === 'number' && Number.isInteger(recommended) && recommended >= 0 && recommended < options.length))
 }
 
 /** Lifecycle state for an agent turn. */
@@ -426,16 +448,23 @@ export function foldConversation(
  * still-open card can be answered.
  */
 function deriveQuestionStates(turns: ConversationTurn[]): void {
+  // One backward pass: track the nearest following user turn; the first open
+  // card met walking backward is the newest one.
+  let reply: Extract<ConversationTurn, { kind: 'user' }> | null = null
   let newestOpen: Extract<TurnItem, { type: 'question' }> | null = null
-  turns.forEach((turn, index) => {
-    if (turn.kind !== 'agent') return
-    const reply = turns.slice(index + 1).find(next => next.kind === 'user')
-    for (const item of turn.items) {
+  for (let index = turns.length - 1; index >= 0; index--) {
+    const turn = turns[index]!
+    if (turn.kind === 'user') {
+      reply = turn
+      continue
+    }
+    for (let i = turn.items.length - 1; i >= 0; i--) {
+      const item = turn.items[i]!
       if (item.type !== 'question') continue
       item.answerable = false
-      if (!reply || reply.kind !== 'user') {
+      if (!reply) {
         item.state = 'open'
-        newestOpen = item
+        newestOpen ??= item
         continue
       }
       const prefix = answerPrefix(item.question)
@@ -446,6 +475,6 @@ function deriveQuestionStates(turns: ConversationTurn[]): void {
         item.state = 'skipped'
       }
     }
-  })
-  if (newestOpen) (newestOpen as Extract<TurnItem, { type: 'question' }>).answerable = true
+  }
+  if (newestOpen) newestOpen.answerable = true
 }

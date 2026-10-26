@@ -9,6 +9,7 @@
  */
 import { z } from 'zod'
 import {
+  ASK_USER_TOOL,
   QUESTION_LIMITS,
   mintQuestionId,
   questionRegistry,
@@ -19,7 +20,7 @@ import { succeed, fail } from './common'
 import { addExecTool } from '../registry'
 
 addExecTool({
-  name: 'bakin_exec_ask_user',
+  name: ASK_USER_TOOL,
   label: 'Asked a question',
   description:
     'Ask the user ONE question in a live conversation, shown as an answerable card. ' +

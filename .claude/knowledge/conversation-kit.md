@@ -66,30 +66,37 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
 - **Why a side channel.** Neither runtime transport carries structured tool
   output: Pi emits only a redacted one-line `summary`; OpenClaw clips previews
   at 500 chars. So the tool validates (`packages/core/src/conversation/questions.ts`
-  — zod schema with field caps AND a 2 KB serialized cap), parks the question
-  in the in-process `questionRegistry` (10-min TTL), and returns a SHORT
+  — zod schema with field caps AND a 2 KB serialized cap measured on the
+  minted envelope, so an accepted input always parses), parks the question
+  in the in-process `questionRegistry` (10-min TTL, 256-entry cap evicting
+  the oldest orphan), and returns a SHORT
   message LED by the token `bakin-question:<id>`.
 - **Engine enrichment.** The turn engine runs every runtime chunk through
-  `enrichQuestionChunk` BEFORE tap/emit/record: a tool result carrying the
-  token gets `data.metadata.bakinQuestion` (full validated question) on the
+  `enrichQuestionChunk` BEFORE tap/emit/record: a `bakin_exec_ask_user`
+  result carrying the token gets `data.metadata.bakinQuestion` (full validated question) on the
   live chunk event AND the persisted row (the recorder keeps `metadata`
   unclipped). Proven through the REAL adapter mappings
   (`tests/core/conversation-question-enrichment.test.ts`: Pi
   `sessionEventChunks`, OpenClaw `OpenClawTurnChunkMachine`). Outside a
   conversation turn (dispatch runs) nothing enriches → an ordinary tool row,
-  never a broken card. A turn that ENDS on a question previews
+  never a broken card. Enrichment CONSUMES the token (`registry.take`): a
+  replayed frame, or another tool reading a transcript/log that quotes the
+  token, never reopens an answered question. A turn that ENDS on a question previews
   `Asked: <question>` on its done event (attention toasts/OS).
 - **Fold.** A tool row/chunk whose `metadata.bakinQuestion` passes the
-  structural guard becomes a `{ type: 'question' }` turn item (live: the
+  structural guard (every rendered field type-checked against
+  `QUESTION_RENDER_LIMITS`, compile-pinned to core `QUESTION_LIMITS`) becomes a `{ type: 'question' }` turn item (live: the
   running call is swapped out). State is DERIVED, never stored: the next user
   turn answers it when it starts with the `formatQuestionAnswer` prefix
   (`**<question>** → `), otherwise skips it; only the newest open card is
-  `answerable`.
+  `answerable`. State derivation is one backward pass — linear in history.
 - **Card.** `QuestionCard` (kit-internal; AgentTurn renders it) composes
   RadioGroup/Input/Badge/Button: recommendation LABELLED, never preselected;
   "Something else…" (when allowed), "Not sure — help me choose", optional
-  note, explicit Answer; read-only while its turn streams or when not
-  answerable; answered/skipped collapse. The form is deliberately UNNAMED (a
+  note, explicit Answer (arrows select, Enter submits — handled explicitly
+  because Base UI radios swallow Enter); read-only while its turn streams,
+  while the thread is `busy` (surfaces pass their in-flight flag: a remount
+  mid-turn folds the persisted rows as settled), or when not answerable; answered/skipped collapse. The form is deliberately UNNAMED (a
   named form is a landmark — a transcript of cards would duplicate them); the
   radiogroup carries the question. Answers leave through
   `Conversation.onAnswerQuestion` (ConversationPanel routes it to `onSend`) as

@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent, type KeyboardEvent } from 'react'
 
 import { Badge } from '../primitives/badge'
 import { Button } from '../primitives/button'
@@ -74,6 +74,16 @@ function OpenQuestionCard({ item, onAnswer, busy }: QuestionCardProps) {
     onAnswer!(formatQuestionAnswer(question, answer, note))
   }
 
+  // Arrows select, Enter submits (D3). Base UI radios swallow Enter's
+  // default — a radio activates only with Space — so implicit form
+  // submission never fires from the group; submit through the same guard.
+  const submitFromRadio = (event: KeyboardEvent<HTMLFormElement>) => {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+    if ((event.target as HTMLElement).getAttribute('role') !== 'radio') return
+    event.preventDefault()
+    event.currentTarget.requestSubmit()
+  }
+
   return (
     <form
       data-conv-question=""
@@ -81,6 +91,7 @@ function OpenQuestionCard({ item, onAnswer, busy }: QuestionCardProps) {
       // Unnamed on purpose: a named form is a landmark, and a transcript of
       // cards would fill the page with duplicates. The radiogroup carries the name.
       onSubmit={submit}
+      onKeyDown={submitFromRadio}
       className="@container/question grid min-w-0 gap-bakin-3 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4"
     >
       <p id={`${id}-question`} className="min-w-0 break-words font-bakin-typography-weight-medium">

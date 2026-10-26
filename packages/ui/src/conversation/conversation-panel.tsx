@@ -191,6 +191,7 @@ export function ConversationPanel({
         emptyState={emptyState}
         onRetry={onRetry}
         onAnswerQuestion={readOnly ? undefined : (text: string) => { void onSend(text) }}
+        busy={streaming}
         onOpenCall={setOpenCall}
         renderAvatar={renderAvatar}
         renderText={renderText}

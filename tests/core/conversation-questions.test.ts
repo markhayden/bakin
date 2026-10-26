@@ -109,19 +109,67 @@ describe('question tokens', () => {
 })
 
 describe('createQuestionRegistry', () => {
-  test('stores and returns a question until its TTL expires', () => {
-    let now = 1_000
-    const registry = createQuestionRegistry({ ttlMs: 500, now: () => now })
+  const mint = () => {
     const input = validateBakinQuestionInput(valid)
     if (!input.ok) throw new Error(input.error)
-    const question = { v: 1 as const, id: mintQuestionId(), ...input.value }
+    return { v: 1 as const, id: mintQuestionId(), ...input.value }
+  }
+
+  test('take returns a question once, then it is gone', () => {
+    const registry = createQuestionRegistry()
+    const question = mint()
     registry.put(question)
-    expect(registry.get(question.id)).toEqual(question)
+    expect(registry.take(question.id)).toEqual(question)
+    expect(registry.take(question.id)).toBeNull()
+  })
+
+  test('an entry expires after its TTL', () => {
+    let now = 1_000
+    const registry = createQuestionRegistry({ ttlMs: 500, now: () => now })
+    const question = mint()
+    registry.put(question)
     now += 501
-    expect(registry.get(question.id)).toBeNull()
+    expect(registry.take(question.id)).toBeNull()
+  })
+
+  test('capacity evicts the oldest orphan first', () => {
+    const registry = createQuestionRegistry({ capacity: 2 })
+    const [a, b, c] = [mint(), mint(), mint()]
+    registry.put(a)
+    registry.put(b)
+    registry.put(c)
+    expect(registry.take(a.id)).toBeNull()
+    expect(registry.take(b.id)).toEqual(b)
+    expect(registry.take(c.id)).toEqual(c)
   })
 
   test('unknown ids are null', () => {
-    expect(createQuestionRegistry().get(mintQuestionId())).toBeNull()
+    expect(createQuestionRegistry().take(mintQuestionId())).toBeNull()
+  })
+})
+
+describe('serialized size', () => {
+  test('an input at the byte ceiling still mints an envelope parseBakinQuestion accepts', () => {
+    const base = { question: 'q', options: [{ label: 'A' }, { label: 'B' }] }
+    // Grow the question text until the INPUT is as large as validation allows.
+    let accepted: Record<string, unknown> | null = null
+    let hitCeiling = false
+    for (let n = 1; n <= QUESTION_LIMITS.question; n++) {
+      const candidate = {
+        ...base,
+        question: 'é'.repeat(n),
+        // Four two-byte-heavy options leave the question to cross the ceiling.
+        options: Array.from({ length: 4 }, (_, i) => ({
+          label: `${i}${'é'.repeat(QUESTION_LIMITS.label - 1)}`,
+          description: 'é'.repeat(QUESTION_LIMITS.description),
+        })),
+      }
+      const result = validateBakinQuestionInput(candidate)
+      if (!result.ok) { hitCeiling = true; break }
+      accepted = { v: 1, id: mintQuestionId(), ...result.value }
+    }
+    expect(hitCeiling).toBe(true)
+    expect(accepted).not.toBeNull()
+    expect(parseBakinQuestion(accepted)).not.toBeNull()
   })
 })

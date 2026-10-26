@@ -38,6 +38,12 @@ export interface ConversationProps {
   onRetry?: () => void
   /** Sends a question card's formatted answer; omit for read-only transcripts. */
   onAnswerQuestion?: (text: string) => void
+  /**
+   * A turn is in flight for this thread. Question cards hold input until it
+   * settles — a streaming turn in `turns` implies it, but a remount mid-turn
+   * can fold the in-flight rows as settled, so surfaces pass their own flag.
+   */
+  busy?: boolean
   onOpenCall?: (call: ConversationToolCall) => void
   renderAvatar?: ConversationAvatarRenderer
   renderText?: ConversationTextRenderer
@@ -87,6 +93,7 @@ export function Conversation({
   emptyState,
   onRetry,
   onAnswerQuestion,
+  busy = false,
   onOpenCall,
   renderAvatar,
   renderText,
@@ -101,6 +108,7 @@ export function Conversation({
   const pinnedRef = useRef(true)
   const [showJump, setShowJump] = useState(false)
   const contained = mode === 'contained'
+  const threadBusy = busy || turns.some(turn => turn.kind === 'agent' && turn.status === 'streaming')
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     if (!contained) return
@@ -196,6 +204,7 @@ export function Conversation({
                           : undefined
                       }
                       onAnswerQuestion={onAnswerQuestion}
+                      busy={threadBusy}
                       onOpenCall={onOpenCall}
                       renderAvatar={renderAvatar}
                       renderText={renderText}
