@@ -274,3 +274,54 @@ describe('buildPluginContext ctx.operations (#895 D19)', () => {
     _resetOperationRegistryForTests()
   })
 })
+
+describe('ctx.approvals on the host (spec D26)', () => {
+  function ctxFor(pluginId: string) {
+    return buildPluginContext({
+      pluginId,
+      source: 'user',
+      services,
+      storage: {} as never,
+      events,
+      registrars: noopRegistrars(pluginId),
+      skipFileBackedWiring: true,
+      manifestPermissions: [],
+    })
+  }
+
+  it('requests a durable plugin-gate record, resolves through the one decision path, and refuses with the gate status', async () => {
+    const { resolveApproval } = await import('../../src/core/approvals/service')
+    const { approvalErrorStatus } = await import('../../src/core/approvals/errors')
+    const { clearPluginGates } = await import('../../src/core/approvals/plugin-gates')
+    const { getApprovalRecord } = await import('../../packages/core/src/approvals')
+    const { UI_OPERATOR } = await import('../helpers/approval-provenance')
+    clearPluginGates()
+
+    const ctx = ctxFor('projects')
+    const decisions: string[] = []
+    let refuse = true
+    ctx.approvals.registerGate('complete', {
+      ownerState: () => 'live',
+      onResolve: (_approval, decision) => {
+        if (refuse) throw ctx.approvals.refusal('Project already completed')
+        decisions.push(decision.option)
+      },
+    })
+    const approval = ctx.approvals.request({
+      approvalId: 'projects:launch:complete:project:1', gateKind: 'complete', entityId: 'launch', taskId: 'steward-1', title: 'Sign off: Launch', summary: 'Done.',
+    })
+    expect(getApprovalRecord('projects:launch:complete:project:1')?.owner).toEqual({ kind: 'plugin-gate', pluginId: 'projects', gateKind: 'complete', entityId: 'launch', taskId: 'steward-1' })
+    expect(ctx.approvals.listPending({ entityId: 'launch' })).toEqual([approval])
+
+    const err = await resolveApproval(approval.approvalId, { option: 'approve', provenance: UI_OPERATOR }).catch((e: unknown) => e)
+    expect(approvalErrorStatus(err)).toBe(409)
+    expect(getApprovalRecord(approval.approvalId)?.status).toBe('pending')
+
+    refuse = false
+    await resolveApproval(approval.approvalId, { option: 'approve', provenance: UI_OPERATOR })
+    expect(decisions).toEqual(['approve'])
+    expect(ctx.approvals.get(approval.approvalId)).toMatchObject({ status: 'approved', response: { option: 'approve', decidedBy: 'Declared in UI' } })
+    // Another plugin can neither see nor cancel it.
+    expect(ctxFor('messaging').approvals.get(approval.approvalId)).toBeNull()
+  })
+})

@@ -27,6 +27,7 @@ import type {
 import { registerPluginDefinition, unregisterPluginDefinitions } from '@bakin/core/workflows/source-registry'
 import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
 import { registerPluginNodeType, unregisterPluginNodeTypes } from '@bakin/core/workflows/node-type-registry'
+import { unregisterPluginGates } from './approvals/plugin-gates'
 import {
   registerPluginNotificationChannel,
   unregisterPluginNotificationChannels,
@@ -372,6 +373,9 @@ class PluginRegistryImpl {
     try { unregisterPluginHealthChecks(pluginId) } catch (err) {
       log.warn('sweep: unregisterPluginHealthChecks failed', { pluginId, err: String(err) })
     }
+    try { unregisterPluginGates(pluginId) } catch (err) {
+      log.warn('sweep: unregisterPluginGates failed', { pluginId, err: String(err) })
+    }
     try { removePluginSkillsByPlugin(pluginId) } catch (err) {
       log.warn('sweep: removePluginSkillsByPlugin failed', { pluginId, err: String(err) })
     }
@@ -446,6 +450,9 @@ class PluginRegistryImpl {
     }
     try { unregisterPluginHealthChecks(pluginId) } catch (err) {
       log.warn('deactivate: unregisterPluginHealthChecks failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginGates(pluginId) } catch (err) {
+      log.warn('deactivate: unregisterPluginGates failed', { pluginId, err: String(err) })
     }
     // Plugin-owned workflow definitions: with cross-plugin id collisions now
     // THROWING (R18), a removed plugin's stale ids would make its workflow

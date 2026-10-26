@@ -38,6 +38,7 @@ import { createConversationTurnService } from '@bakin/core/conversation/turns'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 import { assertPluginResources, createMemoryResourceAcquirer, createOperationRegistry, toPluginOperationInput } from '@bakin/core/operations'
+import { createMemoryApprovalsBackend, createPluginApprovalsAPI, toPluginApproval } from '@bakin/core/approvals/plugin-api'
 import type {
   BakinPlugin,
   ExecToolDefinition,
@@ -48,6 +49,7 @@ import type {
   HealthRepairPlanItem,
   NavItem,
   OperationView,
+  PluginApproval,
   PluginContext,
   PluginNodeTypeInput,
   PluginNotificationChannelInput,
@@ -125,6 +127,12 @@ export interface PluginTestContext {
    * returned rows and on `operation.stages` to prove the action reports.
    */
   applyHealthRepair(actionId: string, items: HealthRepairPlanItem[]): Promise<{ results: HealthRepairApplyResult[]; operation: OperationView }>
+  /**
+   * Decide one of the plugin's pending `ctx.approvals` requests as the
+   * operator would: runs its registered gate (a `ctx.approvals.refusal`
+   * rejects and leaves it pending), then records the decision.
+   */
+  resolveApproval(approvalId: string, option: string, comment?: string): Promise<PluginApproval>
   /** Delete the temp directory. Call from `afterAll`. Safe to call twice. */
   dispose(): void
 }
@@ -215,6 +223,10 @@ export function createTestContext(
     acquireResources: createMemoryResourceAcquirer(),
   })
 
+  // ctx.approvals runs the host's own rules (namespaced ids, owner checks)
+  // over an in-memory store; resolveApproval plays the operator.
+  const approvalsBackend = createMemoryApprovalsBackend()
+
   const capture = (level: CapturedLog['level']) =>
     (message: string, data?: unknown) => {
       logs.push({ level, message, data })
@@ -238,6 +250,7 @@ export function createTestContext(
       start: async (input) => operations.start(toPluginOperationInput(pluginId, options.core ?? false, input)),
       await: (operationId) => operations.await(operationId),
     },
+    approvals: createPluginApprovalsAPI(pluginId, approvalsBackend),
     conversations: {
       createTurnService: (config) =>
         createConversationTurnService(
@@ -382,6 +395,11 @@ export function createTestContext(
       })
       const operation = await operations.await(operationId)
       return { results, operation }
+    },
+    resolveApproval: async (approvalId, option, comment) => {
+      const record = await approvalsBackend.resolve(approvalId, option, comment)
+      if (record.owner.kind !== 'plugin-gate') throw new Error(`"${approvalId}" is not a plugin approval`)
+      return toPluginApproval(record as Parameters<typeof toPluginApproval>[0])
     },
     toolContext: (invocation) => ({
       invocation,

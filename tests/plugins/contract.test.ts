@@ -97,6 +97,7 @@ import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import fs from 'fs'
 import { createConversationTurnService } from '../../packages/core/src/conversation/turns'
+import { createMemoryApprovalsBackend, createPluginApprovalsAPI } from '../../packages/core/src/approvals/plugin-api'
 
 // Import all plugins via require — ES imports are hoisted above the IIFE
 // that seeds BAKIN_HOME / OPENCLAW_HOME, so plugin modules that call
@@ -156,6 +157,7 @@ function createMockContext(pluginId: string): {
       start: async () => { throw new Error('ctx.operations is not used by this test') },
       await: async () => { throw new Error('ctx.operations is not used by this test') },
     },
+    approvals: createPluginApprovalsAPI(pluginId, createMemoryApprovalsBackend()),
     conversations: {
       createTurnService: (config) => createConversationTurnService(config as unknown as Parameters<typeof createConversationTurnService>[0]) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
     },

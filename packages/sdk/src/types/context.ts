@@ -7,6 +7,7 @@ import type { ContentFile, ExecToolDefinition, NavItem, PluginNodeTypeInput, Plu
 import type { AgentRuntimeAdapter } from './runtime'
 import type { AssetsAPI, SearchAPI, TaskService } from './services'
 import type { ConversationTurnsAPI } from './conversation-turns'
+import type { PluginApprovalsAPI } from './approvals'
 import type { EventBus } from './events'
 import type { PluginOperationsAPI } from './operations'
 
@@ -140,6 +141,8 @@ export interface PluginContext {
   conversations: ConversationTurnsAPI
   /** Staged, cancellable, boot-aware progress for long-running work (#895). */
   operations: PluginOperationsAPI
+  /** This plugin's sign-off gates on Bakin's one approval primitive (spec D26). */
+  approvals: PluginApprovalsAPI
 }
 
 /** The main plugin interface. The default export of a plugin's `index.ts`. */

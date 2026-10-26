@@ -30,6 +30,10 @@ import { buildSearchAPI } from '../core/search-registry'
 import { createConversationTurnService, type ConversationTurnServiceConfig } from '@bakin/core/conversation/turns'
 import { getOperationRegistry } from '../core/operations'
 import { toPluginOperationInput } from '@bakin/core/operations'
+import { createPluginApprovalsAPI, getApprovalRecord, listApprovalRecords } from '@bakin/core/approvals'
+import { cancelApproval, requestApproval } from '../core/approvals/service'
+import { registerPluginGate } from '../core/approvals/plugin-gates'
+import { ApprovalResolveError } from '../core/approvals/errors'
 import { wrapPluginContextPermissions } from './plugin-permissions'
 import {
   createPluginAssetsAPI,
@@ -210,6 +214,16 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
         >
       },
     },
+    // Gates register into core's plugin-gate dispatcher (swept on deactivate
+    // and hot reload); requests go through the one approvals service.
+    approvals: createPluginApprovalsAPI(pluginId, {
+      request: requestApproval,
+      get: (approvalId) => getApprovalRecord(approvalId),
+      listPending: () => listApprovalRecords({ status: 'pending', kind: 'plugin-gate' }),
+      cancel: (approvalId, reason) => cancelApproval(approvalId, reason),
+      registerGate: registerPluginGate,
+      refusal: (message, status) => new ApprovalResolveError(message, status),
+    }),
     hooks: {
       register: (name, handler, metadata) =>
         getHookRegistry().register(name, handler as (data: unknown) => unknown, { pluginId, metadata }),
