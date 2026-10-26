@@ -83,11 +83,12 @@ export function fileLaneNote(a: TurnAttachment, agentId: string, renderCall?: (t
  */
 export type ConversationTurnRow =
   | { kind: 'user'; ts: string; content: string; attachments?: TurnAttachment[] }
-  | { kind: 'assistant'; ts: string; turnId?: string; content: string }
+  | { kind: 'assistant'; ts: string; turnId?: string; agentId?: string; content: string }
   | {
       kind: 'tool'
       ts: string
       turnId?: string
+      agentId?: string
       callId?: string
       toolName: string
       status: 'completed' | 'failed'
@@ -136,6 +137,27 @@ export interface QueuedMessage {
   attachments?: TurnAttachment[]
 }
 
+/**
+ * Attention notice for rows appended outside a turn (a check-in asking a
+ * question): rides the `appended` event so attention surfaces announce it
+ * exactly like a finished reply.
+ */
+export interface AppendNotice {
+  agentId: string
+  preview: string
+}
+
+/**
+ * `appended` — the rows are durable now (the call throws if a write failed).
+ * `queued` — they wait behind the in-flight turn; `written` settles when they
+ * are durable and rejects if a write failed. Never await `written` from inside
+ * that conversation's own turn — it settles only after the turn does.
+ */
+export interface AppendExternalResult {
+  status: 'appended' | 'queued'
+  written: Promise<void>
+}
+
 export interface InflightTurnInfo {
   key: string
   agentId: string
@@ -149,8 +171,10 @@ export interface ConversationTurnServiceConfig {
   /** Bus event names — the consumer's wire contract (e.g. chat.chunk/done/error).
    *  `started` (optional) fires at turn-accept, BEFORE any runtime chunk —
    *  attention providers light the working dot instantly instead of waiting
-   *  out model latency for the first chunk (#707). */
-  events: { chunk: string; done: string; error: string; started?: string }
+   *  out model latency for the first chunk (#707). `appended` (optional)
+   *  announces rows written OUTSIDE a turn by appendExternal — clients
+   *  refetch without settling a live stream. */
+  events: { chunk: string; done: string; error: string; started?: string; appended?: string }
   /** Base payload identifying the thread on every event (e.g. key => ({ chatId: key })). */
   payload: (key: string) => Record<string, unknown>
   /** Resolve the thread's agent; null → start() returns 'not_found'. */
@@ -255,6 +279,17 @@ export interface ConversationTurnService {
   waitFor(key: string): Promise<void>
   /** Every in-flight turn — consumers build active-turn resolution on top. */
   listInFlight(): InflightTurnInfo[]
+  /**
+   * Append rows written OUTSIDE a turn (an agent's check-in, a question).
+   * Idle slot → the rows land now and `appended` fires; a turn in flight →
+   * they QUEUE and flush at slot release, before the next turn is admitted,
+   * so they never interleave with a live turn's rows. Never awaits the live
+   * turn (safe to call from a tool call). `appended` fires only once a batch's
+   * rows are all durable; a failed write rejects that batch (idle: the call
+   * throws; queued: `written` rejects) and announces nothing. Rows should
+   * carry their own turnId/agentId so the fold renders a separate agent turn.
+   */
+  appendExternal(ctx: TurnContext, key: string, rows: ConversationTurnRow[], notice?: AppendNotice): Promise<AppendExternalResult>
 }
 
 /** Carries an error chunk's typed RuntimeError kind through the throw. */
@@ -286,6 +321,70 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
   // config.queue is set and a send opted into queueIfBusy (or restore()).
   const queues = new Map<string, QueuedMessage[]>()
 
+  // Out-of-turn rows waiting for the slot (appendExternal), and the flush
+  // currently writing them. While a flush runs no turn is admitted: start()
+  // waits it out and maybeDrain defers to the flush's tail.
+  interface ExternalBatch {
+    rows: ConversationTurnRow[]
+    notice?: AppendNotice
+    settle: (err?: Error) => void
+  }
+  const pendingExternal = new Map<string, ExternalBatch[]>()
+  const flushing = new Map<string, Promise<void>>()
+
+  /** Write one batch; announce it only when every row is durable. */
+  const writeBatch = async (ctx: TurnContext, key: string, batch: ExternalBatch) => {
+    for (const row of batch.rows) {
+      try {
+        await config.appendRow(key, row)
+      } catch (err) {
+        log.error(`[${config.name}] external row append failed for ${key}`, err as Error)
+        batch.settle(err instanceof Error ? err : new Error(String(err)))
+        return
+      }
+    }
+    if (config.events.appended) {
+      try {
+        ctx.events.emit(config.events.appended, { ...config.payload(key), ...(batch.notice ? { notice: batch.notice } : {}) })
+      } catch (emitErr) {
+        log.error(`[${config.name}] appended-event emit failed for ${key}`, emitErr as Error)
+      }
+    }
+    batch.settle()
+  }
+
+  const flushExternal = (ctx: TurnContext, key: string) => {
+    if (flushing.has(key)) return
+    // Reserve BEFORE any writer or listener runs: a synchronous `appended`
+    // listener or a re-entrant appendRow that appends again must join this
+    // flush, never start a second one beside it.
+    let finished!: () => void
+    const guard = new Promise<void>((resolve) => { finished = resolve })
+    flushing.set(key, guard)
+    void (async () => {
+      try {
+        for (let batches = pendingExternal.get(key); batches?.length; batches = pendingExternal.get(key)) {
+          pendingExternal.delete(key)
+          for (const batch of batches) await writeBatch(ctx, key, batch)
+        }
+      } finally {
+        if (flushing.get(key) === guard) flushing.delete(key)
+        // A batch that arrived after the loop's last check flushes before any
+        // admission; otherwise the next queued turn drains — reserving its
+        // slot before start() waiters resume.
+        releaseSlot(ctx, key)
+        finished()
+      }
+    })()
+  }
+
+  /** Slot released (or never taken): flush out-of-turn rows first, else admit the next queued turn. */
+  const releaseSlot = (ctx: TurnContext, key: string) => {
+    if (inflight.has(key)) return
+    if (pendingExternal.get(key)?.length) flushExternal(ctx, key)
+    else maybeDrain(ctx, key)
+  }
+
   const persistQueue = async (key: string) => {
     try {
       await config.queue?.persist?.(key, [...(queues.get(key) ?? [])])
@@ -307,7 +406,8 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
         // Drain reserves the next slot SYNCHRONOUSLY inside the release
         // block, so a racing start() can never slip between settle and
         // drain — it sees the drained turn's slot and queues behind it.
-        maybeDrain(ctx, key)
+        // Pending out-of-turn rows flush first (start() waits that out).
+        releaseSlot(ctx, key)
       })
       .then(async (outcome) => {
         // Null = a drain that found its thread gone: nothing ran, nothing
@@ -326,7 +426,7 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
   /** Slot idle + queue non-empty → reserve and run the combined drained turn. */
   const maybeDrain = (ctx: TurnContext, key: string) => {
     const items = queues.get(key)
-    if (!items?.length || inflight.has(key)) return
+    if (!items?.length || inflight.has(key) || flushing.has(key)) return
     queues.delete(key)
     const controller = new AbortController()
     const turnId = randomUUID()
@@ -428,6 +528,10 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       content = attachments.every(isRasterAttachment) ? 'See the attached image.' : 'See the attached file.'
     }
 
+    // Out-of-turn rows being written land before this turn's user row; the
+    // busy check + reservation below stay one synchronous block after it.
+    for (let f = flushing.get(key); f; f = flushing.get(key)) await f
+
     if (inflight.has(key)) {
       if (!(opts?.queueIfBusy && config.queue)) return 'busy'
       // Busy-check → push happens in ONE synchronous block (no TOCTOU with
@@ -468,6 +572,12 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
       turnId,
       livePreview: '',
     }
+    // The admission itself is part of the turn's lifecycle: waitFor() during
+    // the user-row write must not return early (rows may queue meanwhile).
+    // It settles to the launched turn's promise, or to the release flush on
+    // an admission failure.
+    let admitted!: (next: Promise<unknown>) => void
+    entry.promise = new Promise((resolve) => { admitted = resolve })
     inflight.set(key, entry)
 
     try {
@@ -480,13 +590,23 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     } catch (err) {
       inflight.delete(key)
       log.error(`[${config.name}] user row append failed for ${key}`, err as Error)
+      // No turn launched, so no settle tail: release here so out-of-turn rows
+      // accepted while the slot was held still land.
+      releaseSlot(ctx, key)
+      admitted(flushing.get(key) ?? Promise.resolve())
       return 'not_found'
     }
 
     // Accept signal for attention surfaces — the first runtime chunk can be
     // seconds away (model latency), and the working dot must not wait it out.
+    // Guarded like the drain's: a throwing payload()/emit must never leave the
+    // slot held with no turn launched (and the admission promise unsettled).
     if (config.events.started) {
-      ctx.events.emit(config.events.started, { ...config.payload(key), agentId })
+      try {
+        ctx.events.emit(config.events.started, { ...config.payload(key), agentId })
+      } catch (emitErr) {
+        log.error(`[${config.name}] started-event emit failed for ${key}`, emitErr as Error)
+      }
     }
 
     // The busy slot releases when the TURN settles; onSettled work (e.g.
@@ -496,6 +616,7 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     launchTurn(ctx, key, entry, () =>
       runTurn(config, ctx, key, agentId, content, controller, turnId, inflight, attachments, opts?.runtimeContent),
     )
+    admitted(entry.promise)
     return 'accepted'
   }
 
@@ -536,6 +657,7 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
     inflightPreview: (key) => inflight.get(key)?.livePreview ?? null,
     waitFor: async (key) => {
       await (inflight.get(key)?.promise ?? Promise.resolve())
+      for (let f = flushing.get(key); f; f = flushing.get(key)) await f
     },
     listInFlight: () =>
       [...inflight.entries()].map(([key, t]) => ({
@@ -544,6 +666,27 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
         turnId: t.turnId,
         startedAt: t.startedAt,
       })),
+    appendExternal: async (ctx, key, rows, notice) => {
+      let settle!: (err?: Error) => void
+      const written = new Promise<void>((resolve, reject) => {
+        settle = (err) => (err ? reject(err) : resolve())
+      })
+      // Handled here so an ignored `written` is never an unhandled rejection;
+      // callers that await it still see the failure.
+      written.catch(() => {})
+      // A snapshot, taken before returning: the caller may reuse or mutate its
+      // buffer after a `queued` answer without changing the accepted batch.
+      const batches = pendingExternal.get(key) ?? []
+      batches.push({ rows: structuredClone(rows), ...(notice ? { notice: { ...notice } } : {}), settle })
+      pendingExternal.set(key, batches)
+      // A turn in flight OR a flush already writing occupies the slot: queue and
+      // return at once. Joining a running flush and awaiting it would deadlock
+      // an appendRow (or listener) that awaits this call.
+      if (inflight.has(key) || flushing.has(key)) return { status: 'queued', written }
+      flushExternal(ctx, key)
+      await written
+      return { status: 'appended', written }
+    },
   }
 }
 

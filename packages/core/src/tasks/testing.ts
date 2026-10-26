@@ -44,7 +44,12 @@ export function createMockBakinTaskStore(seed: BakinTask[] = []): BakinTaskStore
       updatedAt: new Date().toISOString(),
     }
     tasks.set(id, next)
-    emit({ type: 'updated', taskId: id, task: cloneTask(next) })
+    emit({
+      type: 'updated',
+      taskId: id,
+      task: cloneTask(next),
+      ...(next.column !== current.column ? { previousColumn: current.column } : {}),
+    })
     return cloneTask(next)
   }
 

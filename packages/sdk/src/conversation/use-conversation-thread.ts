@@ -115,6 +115,8 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   const [meta, setMeta] = useState<Meta | null>(null)
   const [liveChunks, setLiveChunks] = useState<RuntimeChatChunk[] | null>(null)
   const [streaming, setStreaming] = useState(false)
+  const streamingRef = useRef(streaming)
+  streamingRef.current = streaming
   const [sendError, setSendError] = useState<string | null>(null)
   const [queued, setQueued] = useState<ConversationQueuedItem[]>([])
   const queuedRef = useRef(queued)
@@ -213,6 +215,10 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
 
   const settle = useCallback((payload: Record<string, unknown>) => {
     setStreaming(false)
+    // Synchronously too: out-of-turn rows flush AFTER the done event, and an
+    // `appended` that lands before React re-renders must still refetch (the
+    // settle load may have read storage before the flush).
+    streamingRef.current = false
     setLiveChunks(null)
     // The settle refetch IS the newest truth — bump the seq so it applies
     // even if an older send's guard would otherwise block a stale load.
@@ -228,13 +234,11 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     if (optionsRef.current.keyOf(payload) === activeKeyRef.current) settle(payload)
   })
 
-  const streamingRef = useRef(streaming)
-  streamingRef.current = streaming
-
   usePluginEvent(events.appended ?? '__conv_thread_no_appended__', (payload) => {
     if (optionsRef.current.keyOf(payload) !== activeKeyRef.current) return
     // Mid-stream, the persisted partial rows would render twice beside the
-    // live chunks — the settle refetch delivers the appended rows anyway.
+    // live chunks; the engine never flushes out-of-turn rows during a turn,
+    // so an `appended` after settle always gets its own refetch.
     if (streamingRef.current) return
     void loadTranscript()
   })

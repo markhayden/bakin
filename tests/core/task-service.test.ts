@@ -276,15 +276,9 @@ describe('task-service', () => {
         expect.objectContaining({ id: 'task-1', to: 'done' }),
         undefined,
       )
-      expect(mockHookRegistry.callAll).toHaveBeenCalledWith(
-        'tasks.statusChanged',
-        expect.objectContaining({
-          taskId: 'task-1',
-          to: 'done',
-          agent: 'pixel',
-          task: expect.objectContaining({ id: 'task-1' }),
-        }),
-      )
+      // tasks.statusChanged is the task store's column write's to emit (spec
+      // D21, tests/core/task-status-hook.test.ts) — never a per-path emission.
+      expect(mockHookRegistry.callAll).not.toHaveBeenCalledWith('tasks.statusChanged', expect.anything())
     })
 
     it('should trigger continuation when moved to done', async () => {

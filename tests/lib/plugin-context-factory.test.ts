@@ -187,6 +187,23 @@ describe('ctx.conversations guardrails (#703 review)', () => {
     ).not.toThrow()
   })
 
+  it('the appended event joins the user-plugin namespace guard, and appendExternal is on the service', async () => {
+    expect(() =>
+      userCtx().conversations.createTurnService({
+        ...baseConfig,
+        events: { ...baseConfig.events, appended: 'chat.appended' }, // spoof attempt
+      }),
+    ).toThrow(/namespaced/)
+    const service = userCtx().conversations.createTurnService({
+      ...baseConfig,
+      events: { ...baseConfig.events, appended: 'demo4.appended' },
+    })
+    const emitted: string[] = []
+    const turnCtx = { events: { emit: (e: string) => { emitted.push(e) }, on: () => () => {}, once: () => () => {} } }
+    expect(await service.appendExternal(turnCtx as never, 'k1', [{ kind: 'assistant', ts: new Date().toISOString(), turnId: 'x', agentId: 'lead', content: 'hi' }])).toMatchObject({ status: 'appended' })
+    expect(emitted).toEqual(['demo4.appended'])
+  })
+
   it('rejects non-chat metering work classes (the spend dimension is enum-pinned)', () => {
     expect(() =>
       userCtx().conversations.createTurnService({
@@ -255,5 +272,61 @@ describe('buildPluginContext ctx.operations (#895 D19)', () => {
     const { operationId } = await ctx.operations.start({ kind: 'repair', title: 'Repair', fingerprint: 'm', plan, resources: ['media-store'], run })
     expect((await ctx.operations.await(operationId)).status).toBe('succeeded')
     _resetOperationRegistryForTests()
+  })
+})
+
+describe('ctx.approvals on the host (spec D26)', () => {
+  function ctxFor(pluginId: string) {
+    return buildPluginContext({
+      pluginId,
+      source: 'user',
+      services,
+      storage: {} as never,
+      events,
+      registrars: noopRegistrars(pluginId),
+      skipFileBackedWiring: true,
+      manifestPermissions: [],
+    })
+  }
+
+  it('requests a durable plugin-gate record, resolves through the one decision path, and refuses with the gate status', async () => {
+    const { resolveApproval } = await import('../../src/core/approvals/service')
+    const { approvalErrorStatus } = await import('../../src/core/approvals/errors')
+    const { clearPluginGates } = await import('../../src/core/approvals/plugin-gates')
+    const { getApprovalRecord } = await import('../../packages/core/src/approvals')
+    const { UI_OPERATOR } = await import('../helpers/approval-provenance')
+    clearPluginGates()
+
+    const ctx = ctxFor('projects')
+    const decisions: string[] = []
+    let refuse = true
+    ctx.approvals.registerGate('complete', {
+      ownerState: () => 'live',
+      onResolve: (_approval, decision) => {
+        if (refuse) throw ctx.approvals.refusal('Project already completed')
+        decisions.push(decision.option)
+      },
+    })
+    const approval = ctx.approvals.request({
+      approvalId: 'projects:launch:complete:project:1', gateKind: 'complete', entityId: 'launch', taskId: 'steward-1', title: 'Sign off: Launch', summary: 'Done.',
+    })
+    expect(getApprovalRecord('projects:launch:complete:project:1')?.owner).toEqual({ kind: 'plugin-gate', pluginId: 'projects', gateKind: 'complete', entityId: 'launch', taskId: 'steward-1' })
+    // The one reject-reason setting rides the record (default: required).
+    expect(getApprovalRecord('projects:launch:complete:project:1')?.request.context).toEqual({ requireRejectReason: true, approvalUrl: expect.stringMatching(/\/tasks\?taskId=steward-1$/) })
+    expect(ctx.approvals.listPending({ entityId: 'launch' })).toEqual([approval])
+
+    const err = await resolveApproval(approval.approvalId, { option: 'approve', provenance: UI_OPERATOR }).catch((e: unknown) => e)
+    expect(approvalErrorStatus(err)).toBe(409)
+    expect(getApprovalRecord(approval.approvalId)?.status).toBe('pending')
+
+    // An option the approval never offered is refused before the gate runs.
+    expect(approvalErrorStatus(await resolveApproval(approval.approvalId, { option: 'rejectt', provenance: UI_OPERATOR }).catch((e: unknown) => e))).toBe(400)
+
+    refuse = false
+    await resolveApproval(approval.approvalId, { option: 'approve', provenance: UI_OPERATOR })
+    expect(decisions).toEqual(['approve'])
+    expect(ctx.approvals.get(approval.approvalId)).toMatchObject({ status: 'approved', response: { option: 'approve', decidedBy: 'Declared in UI' } })
+    // Another plugin can neither see nor cancel it.
+    expect(ctxFor('messaging').approvals.get(approval.approvalId)).toBeNull()
   })
 })

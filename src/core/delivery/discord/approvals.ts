@@ -171,7 +171,12 @@ export function createApprovalSurface(deps: ApprovalSurfaceDeps): ApprovalSurfac
           color: 0x3b82f6,
           footer: { text: `${FOOTER_PREFIX}${args.approvalId}` },
         }],
-        components: [{ type: COMPONENT_ACTION_ROW, components: buttons }],
+        // Discord caps an action row at 5 buttons (25 per message): the
+        // options plus the board link fill as many rows as they need.
+        components: Array.from({ length: Math.ceil(buttons.length / 5) }, (_, row) => ({
+          type: COMPONENT_ACTION_ROW,
+          components: buttons.slice(row * 5, row * 5 + 5),
+        })),
       }
       const deliveries = []
       for (const channelRef of args.channels) {

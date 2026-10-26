@@ -281,18 +281,6 @@ export async function moveTaskWithEffects(
     meta: { taskId, previousStatus: opts?.from, title },
   })
 
-  hooks().callAll('tasks.statusChanged', {
-    taskId,
-    title,
-    from: opts?.from,
-    to,
-    agent,
-    channel: opts?.channel,
-    task: taskBeforeMove,
-  }).catch((err) => {
-    log.debug('Task status extension hook failed', { taskId, err: err instanceof Error ? err.message : String(err) })
-  })
-
   // Side effects when moved to done — only the completion-gate winner
   // reaches this branch, so continuation fires exactly once per completion.
   if (movingToDone) {
@@ -465,6 +453,7 @@ export async function createTaskWithEffects(opts: {
   projectId?: string
   brandId?: string
   repoPath?: string
+  tags?: string[]
   availableAt?: string
   dueAt?: string
   source?: TaskSource
@@ -523,6 +512,7 @@ export async function createTaskWithEffects(opts: {
       team: opts.team,
       brandId: opts.brandId,
       repoPath: opts.repoPath,
+      tags: opts.tags,
     },
   )
 

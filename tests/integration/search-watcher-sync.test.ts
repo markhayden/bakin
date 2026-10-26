@@ -95,6 +95,7 @@ import type { PluginContext, BakinPlugin } from '@bakin/core/plugin-types'
 import workflowsPlugin from '../../plugins/workflows'
 import assetsPlugin from '../../plugins/assets'
 import { createConversationTurnService } from '../../packages/core/src/conversation/turns'
+import { createMemoryApprovalsBackend, createPluginApprovalsAPI } from '../../packages/core/src/approvals/plugin-api'
 
 interface ChokidarHandlers {
   add: (path: string) => void
@@ -129,6 +130,7 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
       start: async () => { throw new Error('ctx.operations is not used by this test') },
       await: async () => { throw new Error('ctx.operations is not used by this test') },
     },
+    approvals: createPluginApprovalsAPI(plugin.id, createMemoryApprovalsBackend()),
     conversations: {
       createTurnService: (config) => createConversationTurnService(config as unknown as Parameters<typeof createConversationTurnService>[0]) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
     },

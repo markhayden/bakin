@@ -7,59 +7,10 @@ import type {
   PluginTaskUpdateInput,
 } from '@bakin/core/plugin-types'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
-import type { BakinTask, BakinTaskPatch, BakinTaskStore } from '@bakin/core/tasks/store'
+import type { BakinTask, BakinTaskStore } from '@bakin/core/tasks/store'
+import { taskPatchFromPublic, toPluginTask } from '@bakin/core/tasks/public-task'
 
-function isDoneColumn(column: string): boolean {
-  return column === 'done' || column === 'archived'
-}
 
-function toPluginTask(task: BakinTask): PluginTask {
-  return {
-    id: task.id,
-    title: task.title,
-    agent: task.agent,
-    createdBy: task.createdBy,
-    checked: isDoneColumn(task.column),
-    column: task.column as PluginTaskColumn,
-    date: task.date,
-    blockedReason: task.blockedReason,
-    description: task.description,
-    log: task.log.map(({ timestamp, author, message, data }) => ({ timestamp, author, message, data })),
-    dependsOn: task.dependsOn,
-    parentId: task.parentId,
-    workflowId: task.workflowId,
-    scheduleJobId: task.scheduleJobId,
-    projectId: task.projectId,
-    brandId: task.brandId,
-    availableAt: task.availableAt,
-    dueAt: task.dueAt,
-    source: task.source,
-    order: task.order,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
-  }
-}
-
-function taskPatchFromPublic(patch: PluginTaskUpdateInput): BakinTaskPatch {
-  const next: BakinTaskPatch = {}
-  if ('title' in patch) next.title = patch.title
-  if ('description' in patch) next.description = patch.description
-  if ('agent' in patch) next.agent = patch.agent
-  if ('createdBy' in patch) next.createdBy = patch.createdBy
-  if ('column' in patch && patch.column) next.column = patch.column
-  if ('checked' in patch && patch.checked !== undefined) next.column = patch.checked ? 'done' : 'todo'
-  if ('date' in patch) next.date = patch.date
-  if ('blockedReason' in patch) next.blockedReason = patch.blockedReason
-  if ('workflowId' in patch) next.workflowId = patch.workflowId
-  if ('scheduleJobId' in patch) next.scheduleJobId = patch.scheduleJobId
-  if ('projectId' in patch) next.projectId = patch.projectId
-  if ('brandId' in patch) next.brandId = patch.brandId
-  if ('parentId' in patch) next.parentId = patch.parentId
-  if ('availableAt' in patch) next.availableAt = patch.availableAt || undefined
-  if ('dueAt' in patch) next.dueAt = patch.dueAt || undefined
-  if ('source' in patch) next.source = patch.source || undefined
-  return next
-}
 
 export function createPluginTaskService(store: BakinTaskStore): PluginTaskService {
   async function requireTask(id: string): Promise<BakinTask> {
@@ -83,6 +34,7 @@ export function createPluginTaskService(store: BakinTaskStore): PluginTaskServic
         parentId: input.parentId ?? undefined,
         projectId: input.projectId,
         brandId: input.brandId,
+        tags: input.tags,
         availableAt: input.availableAt,
         dueAt: input.dueAt,
         source: input.source,

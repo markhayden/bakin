@@ -22,6 +22,7 @@ provider and one place to decide: the task the approval belongs to.
 | `workflow-gate` | `taskId, workflowId, runId, stepId` | the workflow engine, every gate (`requestGateApproval`) |
 | `health-repair` | `taskId, requestId, incidentIds, proposal` (frozen `{reportId, observationIds, items[{actionId,itemId,safety,changes[]}], failure?}`, plan review R1; `failure` = the safe attempt that already failed, #896) | escalation, for non-safe repair items |
 | `health-navigate` | `taskId, requestId, incidentIds, href` | escalation, for operator-only incidents |
+| `plugin-gate` | `taskId, pluginId, gateKind, entityId` (all required, non-empty; `taskId` is the board anchor) | a plugin's own sign-off via `ctx.approvals` (spec D26 — Projects' `complete`/`signoff`) |
 
 Store verbs (`store.ts`): `createApprovalRecord` (idempotent — a pending record
 is refreshed, a resolved one is returned untouched so a replay never reopens
@@ -54,6 +55,18 @@ read.
   `channels.resolveApproval`, `approval.resolved`. `cancelApproval(id,
   reason)` (idempotent) tells the channel and publishes `approval.resolved`
   with `status: 'cancelled'`.
+- `plugin-gates.ts` — core's OWN kind (`plugin-gate`, spec D26): one handler
+  that fans each decision out to the gate registered for
+  `(owner.pluginId, owner.gateKind)` via `registerPluginGate(pluginId,
+  gateKind, { ownerState, onResolve })` (returns an unregister that removes
+  only that registration — a hot reload's stale teardown never drops the
+  fresh gate) / `unregisterPluginGates(pluginId)` (deactivate). No gate loaded
+  ⇒ `ApprovalKindUnavailableError`: resolve answers 503 with the record still
+  pending, and rehydration counts it `skipped` (ownerState throws) — an
+  absent or not-yet-activated plugin never gets its sign-offs cancelled.
+  Provenance and the one decision path are untouched (agents are refused
+  before the gate runs). `bootApprovals` registers the kind idempotently, so
+  a plugin-gate record is never an "unknown kind".
 - `rehydration.ts` — prune resolved records older than 30 days; per record
   ask the kind's `ownerState`; re-render delivery-less live records when
   channel alerts are on. Unknown kinds are left untouched and logged.
@@ -69,6 +82,46 @@ Boot order (`src/core/server/startup-recovery.ts`): plugins activate (kinds)
 → `doctor.start` → `registerDoctorApprovalKinds` → `recoverInterruptedApplies`
 → `bootApprovals`. Kinds must exist before rehydration or their records are
 "unknown kind" for that boot.
+
+## `ctx.approvals` — plugin sign-off gates (spec D26)
+
+ONE implementation, `packages/core/src/approvals/plugin-api.ts`
+(`createPluginApprovalsAPI(pluginId, backend)`), shared by the host
+(`src/lib/plugin-context-factory.ts` — backend = the real service +
+`registerPluginGate`) and the SDK harness (`createMemoryApprovalsBackend()`;
+`harness.resolveApproval(id, option, comment?)` plays the operator). Rules:
+the owner's `pluginId` is the context's; `approvalId` must start with
+`<pluginId>:` and is caller-chosen + deterministic; an EXISTING id — pending
+or decided — is returned untouched, never rewritten (a refresh could swap the
+subject under a resolver mid-decision; a changed request is a new
+generation id); `request`/`get`/`cancel`/`listPending` refuse or hide every
+record that is not this plugin's `plugin-gate` (the core store refreshes a
+pending record's owner on create, so an unchecked id could take over another
+owner's approval). Default options Approve (primary) /
+Reject (destructive). The host stamps `request.context.requireRejectReason`
+from settings and `approvalUrl` (`taskUrl(taskId)` — every channel card's
+board fallback); options are snapshotted in the shared API before reaching either backend
+(channel rendering never sees the caller's objects) and the memory backend
+also snapshots each request (structuredClone); the core dispatcher enforces it like workflow gates (typed
+reject without a reason → 400; Discord/runtime buttons exempt) through the
+ONE predicate `rejectReasonMissing` that the memory backend also applies
+(`createMemoryApprovalsBackend({ requireRejectReason })`, default on). Gates see a
+plugin view (`PluginApproval`) and a decision with `decidedBy`
+(`describeApprovalProvenance`) — never raw provenance. `refusal(message,
+status)` is the error a gate throws to refuse (host: `ApprovalResolveError`).
+Options are validated at request time — ids `^[A-Za-z0-9_-]{1,64}$` (every
+decision transport round-trips them: Discord custom ids split on `:`, the
+decision endpoint caps at 64), unique, labelled, at most 10 per sign-off
+(the Discord renderer splits buttons into action rows of ≤ 5 — options plus
+the board link). An option the record never
+offered is refused (400) in the shared gate wrapper before plugin code runs. The memory backend keeps the host's resolve
+guards (one resolver at a time; the decision lands only on a record still
+pending after the gate ran — a gate that cancels its own approval keeps it
+cancelled), so harness tests cannot pass what the host would refuse.
+The board renders it with the explicit `plugin-gate` renderer in
+`plugins/tasks/components/approval-panel.tsx` (record title/summary/options,
+primary trailing, reject → shared `RejectReasonForm`); attention titles it
+"Sign-off needed".
 
 ## Settings
 
@@ -269,7 +322,7 @@ cancel).
 
 ## Tests
 
-`tests/core/approvals/{store,service,rehydration,channel-wiring}.test.ts`,
+`tests/core/approvals/{store,service,rehydration,channel-wiring,plugin-gates,plugin-api}.test.ts`, `tests/sdk-testing/approvals.test.ts`,
 `tests/host/{approvals-api,approvals-attention}.test.*`,
 `tests/plugins/workflows/{approval-kind,notifications,gate-decision-page,gate-hooks}.test.ts`,
 `tests/core/{doctor-approvals,doctor-escalation,doctor-autoclose}.test.ts`,

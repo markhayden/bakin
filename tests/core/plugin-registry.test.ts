@@ -545,6 +545,22 @@ describe('PluginRegistryImpl', () => {
       expect(tableStatus(logical)).toBeNull()
     })
 
+    it('ctx.approvals gates are swept by suspend (disable / hot reload) and by deactivate (spec D26)', async () => {
+      const { hasPluginGate } = await import('@/core/approvals/plugin-gates')
+      const activate = `ctx.approvals.registerGate('complete', { ownerState: () => 'live', onResolve: () => {} })`
+      const pluginDir = writeUserPlugin('gated', { activate })
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+      expect(hasPluginGate('gated', 'complete')).toBe(true)
+
+      expect(await pluginRegistry.suspendPlugin('gated')).toBe(true)
+      expect(hasPluginGate('gated', 'complete')).toBe(false)
+
+      await pluginRegistry.activateUserPluginFromDir(pluginDir, { cacheBust: true })
+      expect(hasPluginGate('gated', 'complete')).toBe(true)
+      await pluginRegistry.deactivatePlugin('gated', { callShutdown: false })
+      expect(hasPluginGate('gated', 'complete')).toBe(false)
+    })
+
     it('registerWorkflow cross-plugin id collision THROWS and fails activation (R18)', async () => {
       // Same-plugin re-registration is an UPDATE by contract (hot-reload of
       // defaults re-registers); only a cross-plugin id collision throws.
