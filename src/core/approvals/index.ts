@@ -1,4 +1,5 @@
 export * from './kinds'
+export * from './plugin-gates'
 export * from './errors'
 export * from './links'
 export * from './service'

@@ -3,7 +3,8 @@
  *
  * A kind handler owns what a decision MEANS: the workflows plugin registers
  * `workflow-gate` (approve/reject a gate), the doctor registers
- * `health-repair` and `health-navigate`. Core owns the record, the resolve
+ * `health-repair` and `health-navigate`, and core itself owns `plugin-gate`
+ * (one handler fanning out to plugin gates — `plugin-gates.ts`). Core owns the record, the resolve
  * orchestration, rehydration and channel wiring; it never imports a kind.
  */
 import type { ApprovalDelivery, ApprovalProvenance } from '@bakin/core/adapters/runtime'

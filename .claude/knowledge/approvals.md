@@ -22,6 +22,7 @@ provider and one place to decide: the task the approval belongs to.
 | `workflow-gate` | `taskId, workflowId, runId, stepId` | the workflow engine, every gate (`requestGateApproval`) |
 | `health-repair` | `taskId, requestId, incidentIds, proposal` (frozen `{reportId, observationIds, items[{actionId,itemId,safety,changes[]}], failure?}`, plan review R1; `failure` = the safe attempt that already failed, #896) | escalation, for non-safe repair items |
 | `health-navigate` | `taskId, requestId, incidentIds, href` | escalation, for operator-only incidents |
+| `plugin-gate` | `taskId, pluginId, gateKind, entityId` (all required, non-empty; `taskId` is the board anchor) | a plugin's own sign-off via `ctx.approvals` (spec D26 — Projects' `complete`/`signoff`) |
 
 Store verbs (`store.ts`): `createApprovalRecord` (idempotent — a pending record
 is refreshed, a resolved one is returned untouched so a replay never reopens
@@ -54,6 +55,18 @@ read.
   `channels.resolveApproval`, `approval.resolved`. `cancelApproval(id,
   reason)` (idempotent) tells the channel and publishes `approval.resolved`
   with `status: 'cancelled'`.
+- `plugin-gates.ts` — core's OWN kind (`plugin-gate`, spec D26): one handler
+  that fans each decision out to the gate registered for
+  `(owner.pluginId, owner.gateKind)` via `registerPluginGate(pluginId,
+  gateKind, { ownerState, onResolve })` (returns an unregister that removes
+  only that registration — a hot reload's stale teardown never drops the
+  fresh gate) / `unregisterPluginGates(pluginId)` (deactivate). No gate loaded
+  ⇒ `ApprovalKindUnavailableError`: resolve answers 503 with the record still
+  pending, and rehydration counts it `skipped` (ownerState throws) — an
+  absent or not-yet-activated plugin never gets its sign-offs cancelled.
+  Provenance and the one decision path are untouched (agents are refused
+  before the gate runs). `bootApprovals` registers the kind idempotently, so
+  a plugin-gate record is never an "unknown kind".
 - `rehydration.ts` — prune resolved records older than 30 days; per record
   ask the kind's `ownerState`; re-render delivery-less live records when
   channel alerts are on. Unknown kinds are left untouched and logged.
@@ -269,7 +282,7 @@ cancel).
 
 ## Tests
 
-`tests/core/approvals/{store,service,rehydration,channel-wiring}.test.ts`,
+`tests/core/approvals/{store,service,rehydration,channel-wiring,plugin-gates}.test.ts`,
 `tests/host/{approvals-api,approvals-attention}.test.*`,
 `tests/plugins/workflows/{approval-kind,notifications,gate-decision-page,gate-hooks}.test.ts`,
 `tests/core/{doctor-approvals,doctor-escalation,doctor-autoclose}.test.ts`,

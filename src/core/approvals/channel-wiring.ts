@@ -7,12 +7,17 @@ import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { provenanceFromChannelDecision } from '@bakin/core/approvals'
 import { createLogger } from '../logger'
 import { ApprovalKindUnavailableError, ApprovalNotFoundError, ApprovalNotPendingError, ApprovalRefusedError, ApprovalResolveError } from './errors'
+import { registerPluginGateKind } from './plugin-gates'
 import { rehydratePendingApprovals } from './rehydration'
 import { resolveApproval } from './service'
 
 const log = createLogger('approvals:channel')
 
 export async function bootApprovals(runtime: Pick<AgentRuntimeAdapter, 'channels'>): Promise<() => void> {
+  // Core's own kind: present even when no plugin registered a gate, so a
+  // plugin-gate record reads as "plugin unavailable" (skipped), never as an
+  // unknown kind.
+  registerPluginGateKind()
   await rehydratePendingApprovals()
   const channels = runtime.channels
   if (!channels) {

@@ -53,6 +53,12 @@ export type ApprovalOwner =
   | { kind: 'workflow-gate'; taskId: string; workflowId: string; runId: string; stepId: string }
   | { kind: 'health-repair'; taskId: string; requestId: string; incidentIds: string[]; proposal: RepairProposal }
   | { kind: 'health-navigate'; taskId: string; requestId: string; incidentIds: string[]; href: string }
+  /**
+   * A plugin's own sign-off (spec D26): core dispatches the decision to the
+   * plugin handler registered for `(pluginId, gateKind)`. `entityId` is the
+   * plugin's subject (e.g. a project id); `taskId` anchors it on the board.
+   */
+  | { kind: 'plugin-gate'; taskId: string; pluginId: string; gateKind: string; entityId: string }
 
 export type ApprovalKind = ApprovalOwner['kind']
 
