@@ -79,11 +79,15 @@ research item in D9 was selected by Mark.
   1. tmux `resize-window` runs first. It is the source of truth.
   2. Then the bridge PTY, the headless `Screen`, and the stored `cols`/`rows`
      are updated.
-  3. If any step fails, the session enters `sizeState: 'reconciling'`. Input
-     from every viewer pauses, the actual `#{window_width}×#{window_height}`
-     is read back from tmux and applied to the other three, then input resumes.
-  4. If tmux is unreachable, the attachment is unavailable and viewers
-     resync on reconnect.
+  3. The whole sequence runs inside the session's command queue, so input
+     from every viewer waits until it settles. If tmux refuses, the actual
+     `#{window_width}×#{window_height}` is read back and applied to the
+     other three.
+  4. If they still cannot be made to agree (tmux unreachable, the record
+     unwritable), the attachment is dropped: input is refused before its
+     sequence is consumed, viewers resync, and every fresh attachment adopts
+     tmux's actual window first. (Built 2026-10-25 in place of a persisted
+     `sizeState: 'reconciling'`: the queue already gives the pause.)
 - Policy lives on the server. The session window is `window-size manual`,
   and only the server calls `resize-window`, because tmux's `latest`,
   `largest`, and `smallest` cannot express explicit authority. The bridge and
