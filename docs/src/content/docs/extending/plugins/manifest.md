@@ -182,7 +182,7 @@ String values are never coerced: commas, JSON-looking text, and `true` stay text
 A command that should take over the operator's terminal, such as attaching to a session, declares `launch` on a POST `apiRoute` dispatch:
 
 ```json
-{ "dispatch": { "type": "apiRoute", "method": "POST", "path": "/cli/attach", "launch": { "bin": "tmux" } } }
+{ "dispatch": { "type": "apiRoute", "method": "POST", "path": "/cli/attach", "launch": { "bin": "tmux", "refuseEnv": ["TMUX"] } } }
 ```
 
 - `bin` must be one of the plugin's own `requires.bins`. The CLI runs only that managed binary from Bakin's bin dir, never a path or command taken from a response.
@@ -190,8 +190,9 @@ A command that should take over the operator's terminal, such as attaching to a 
   - stdin and stdout are a TTY;
   - the target is this home's own running server (not `BAKIN_URL`);
   - the caller passes `--as human`;
-  - the CLI is not running in a detected agent context.
-- Your route prepares the work and answers `{ "args": string[], "confirm"?: { "path": string, "token": string } }`.
+  - the CLI is not running in a detected agent context;
+  - none of the optional `refuseEnv` variables is set. Use these for the binary's own nesting marker, such as tmux's `TMUX`.
+- Your route receives `{ "params": {...}, "caller": { "cwd": string } }`. `params` holds the declared arguments; `cwd` is the directory the command ran in. It prepares the work and answers `{ "args": string[], "confirm"?: { "path": string, "token": string } }`.
 - The CLI spawns `bin` with those args, with no shell and with inherited stdio and environment (including `TERMINFO`).
 - When `confirm` is present, the CLI immediately POSTs `{ token, pid }` to `confirm.path`. If that is refused, the CLI kills the child.
 - The child's exit code becomes the command's exit code.

@@ -16,6 +16,8 @@ function deps(overrides: Partial<LaunchDeps> = {}): LaunchDeps & { posts: Array<
     interactive: true,
     localServer: true,
     binDir,
+    cwd: '/work/repo',
+    env: {},
     identity: async () => ({ agentContext: null, operatorDeclared: true }),
     post: async (path, body) => {
       posts.push({ path, body })
@@ -38,7 +40,7 @@ describe('runLaunch', () => {
 
     expect(await runLaunch(command, { ref: 's1' }, d)).toBe(3)
 
-    expect(d.posts[0]).toEqual({ path: '/api/plugins/terminal/cli/attach', body: { ref: 's1' } })
+    expect(d.posts[0]).toEqual({ path: '/api/plugins/terminal/cli/attach', body: { params: { ref: 's1' }, caller: { cwd: '/work/repo' } } })
     expect(d.spawned).toEqual([[join(binDir, 'tmux'), '-S', '/tmp/x.sock', 'attach-session', '-t', 's1']])
     expect(d.posts[1]).toEqual({ path: '/api/plugins/terminal/cli/confirm', body: { token: 'tok-0123456789abcdef', pid: 4242 } })
   })
@@ -61,6 +63,14 @@ describe('runLaunch', () => {
     const undeclared = deps({ identity: async () => ({ agentContext: null, operatorDeclared: false }) })
     await expect(runLaunch(command, {}, undeclared)).rejects.toThrow(/--as human/)
     expect([...agent.posts, ...undeclared.posts]).toHaveLength(0)
+  })
+
+  it('refuses before sending anything when a refuseEnv variable is set (already inside the binary)', async () => {
+    const d = deps({ env: { TMUX: '/tmp/tmux-501/default,1,0' } })
+    await expect(runLaunch({ ...command, refuseEnv: ['TMUX'] }, {}, d)).rejects.toThrow(new LaunchError('This terminal is already inside tmux ($TMUX is set). Run this from a new terminal window.'))
+    expect(d.posts).toHaveLength(0)
+    const empty = deps({ env: { TMUX: '' } })
+    expect(await runLaunch({ ...command, refuseEnv: ['TMUX'] }, {}, empty)).toBe(3)
   })
 
   it('refuses a missing managed binary before sending anything', async () => {

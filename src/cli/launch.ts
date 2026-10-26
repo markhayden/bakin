@@ -1,6 +1,7 @@
 /**
  * Interactive launch for plugin CLI commands (`dispatch.launch`): the plugin's
- * POST route prepares the work and answers `{ args, confirm? }`; the CLI runs
+ * POST route receives `{ params, caller: { cwd } }`, prepares the work and
+ * answers `{ args, confirm? }`; the CLI runs
  * the declared managed binary in the foreground with this terminal's stdio and
  * environment, then reports the child pid so the plugin can admit it.
  *
@@ -28,13 +29,16 @@ export interface LaunchDeps {
   /** The CLI targets this home's own running server (server.lock), not BAKIN_URL. */
   localServer: boolean
   binDir: string
+  /** The caller's working directory, sent to the route. */
+  cwd: string
+  env: Record<string, string | undefined>
   identity(): Promise<Pick<CliIdentity, 'agentContext' | 'operatorDeclared'>>
   post(path: string, body: unknown): Promise<unknown>
   spawn(argv: string[]): LaunchChild
 }
 
 export async function runLaunch(
-  command: { pluginId: string; path: string; bin: string },
+  command: { pluginId: string; path: string; bin: string; refuseEnv?: string[] },
   params: Record<string, unknown>,
   deps: LaunchDeps,
 ): Promise<number> {
@@ -43,10 +47,13 @@ export async function runLaunch(
   const identity = await deps.identity()
   if (identity.agentContext !== null) throw new LaunchError(`Refused in an agent context (${identity.agentContext}); interactive commands are operator-only.`)
   if (!identity.operatorDeclared) throw new LaunchError('This command acts as you: add --as human.')
+  // The binary's own nesting marker (tmux's $TMUX): refused before the route creates anything.
+  const nested = command.refuseEnv?.find((name) => deps.env[name])
+  if (nested) throw new LaunchError(`This terminal is already inside ${command.bin} ($${nested} is set). Run this from a new terminal window.`)
   const executable = join(deps.binDir, command.bin)
   if (!existsSync(executable)) throw new LaunchError(`${command.bin} is not installed; run bakin install plugin-assets.`)
 
-  const parsed = LaunchAnswerSchema.safeParse(await deps.post(`/api/plugins/${command.pluginId}${command.path}`, params))
+  const parsed = LaunchAnswerSchema.safeParse(await deps.post(`/api/plugins/${command.pluginId}${command.path}`, { params, caller: { cwd: deps.cwd } }))
   if (!parsed.success) throw new LaunchError(`The plugin sent an unexpected launch answer: ${parsed.error.issues[0]?.message ?? 'invalid'}`)
   const child = deps.spawn([executable, ...parsed.data.args])
   if (parsed.data.confirm) {
