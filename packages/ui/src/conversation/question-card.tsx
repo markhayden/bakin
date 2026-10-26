@@ -78,7 +78,8 @@ function OpenQuestionCard({ item, onAnswer, busy }: QuestionCardProps) {
     <form
       data-conv-question=""
       data-state="open"
-      aria-labelledby={`${id}-question`}
+      // Unnamed on purpose: a named form is a landmark, and a transcript of
+      // cards would fill the page with duplicates. The radiogroup carries the name.
       onSubmit={submit}
       className="@container/question grid min-w-0 gap-bakin-3 rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-4"
     >
