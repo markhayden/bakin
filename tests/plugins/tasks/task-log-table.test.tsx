@@ -105,6 +105,24 @@ describe('TaskLogTable', () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe('/api/plugins/tasks/history')
   })
 
+  it('a reopened historical task loses its completion; an archive keeps the done date', async () => {
+    vi.stubGlobal('fetch', mock(async () => Response.json({ entries: [
+      { ts: '2026-01-10T12:00:00Z', event: 'task.created', agent: 'main', data: { id: 'reopened', title: 'Reopened later' } },
+      { ts: '2026-01-11T12:00:00Z', event: 'task.moved', agent: 'pixel', data: { id: 'reopened', from: 'todo', to: 'done' } },
+      { ts: '2026-01-12T12:00:00Z', event: 'task.moved', agent: 'pixel', data: { id: 'reopened', from: 'done', to: 'todo' } },
+      { ts: '2026-02-10T12:00:00Z', event: 'task.created', agent: 'main', data: { id: 'shipped', title: 'Shipped then archived' } },
+      { ts: '2026-02-11T12:00:00Z', event: 'task.moved', agent: 'pixel', data: { id: 'shipped', from: 'review', to: 'done' } },
+      { ts: '2026-02-20T12:00:00Z', event: 'task.moved', agent: 'pixel', data: { id: 'shipped', from: 'done', to: 'archived' } },
+    ] })))
+    render(<TaskLogTable currentTasks={[]} statusFilter={[]} onTaskOpen={mock()} />)
+    const table = await screen.findByRole('table', { name: 'Task log' })
+    await waitFor(() => expect(within(table).getByText('Reopened later')).toBeDefined())
+    const row = (title: string) => within(table).getByText(title).closest('tr')!
+    expect(row('Reopened later').textContent).not.toContain('Jan 11')
+    expect(row('Shipped then archived').textContent).toContain('Feb 11')
+    expect(row('Shipped then archived').textContent).not.toContain('Feb 20')
+  })
+
   it('shares the URL sort with its persistent control and labels narrow dates', async () => {
     sortQuery = 'createdAt:asc'
     vi.stubGlobal('fetch', mock(async () => Response.json({ entries: [] })))

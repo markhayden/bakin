@@ -149,10 +149,13 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
             if (entry.data?.title) existing.title = entry.data.title
           }
           if (entry.event === 'task.moved' && entry.data?.to) {
-            existing.status = entry.data.to as ColumnId
-            if (entry.data.to === 'done' || entry.data.to === 'archived') {
-              existing.completedAt = entry.ts
-            }
+            const to = entry.data.to as ColumnId
+            existing.status = to
+            // Completion is the move to done; archiving keeps that date (or
+            // supplies one when no done move was retained); reopening clears it.
+            if (to === 'done') existing.completedAt = entry.ts
+            else if (to === 'archived') existing.completedAt ??= entry.ts
+            else existing.completedAt = undefined
           }
           if (entry.agent) existing.agent = entry.agent
           taskMap.set(id, existing)
