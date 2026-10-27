@@ -299,7 +299,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Task hooks let plugins enrich task details and react to task lifecycle changes.</p>
 
 <div class="hook-card-list">
-<HookCard id="tasks-enrichdetails" name="tasks.enrichDetails" label="Add project task context." summary="Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage." source="bakin-bits-official/plugins/projects/index.ts:359" badges={["waterfall"]}>
+<HookCard id="tasks-enrichdetails" name="tasks.enrichDetails" label="Add project task context." summary="Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage." source="bakin-bits-official/plugins/projects/index.ts:438" badges={["waterfall"]}>
 ```ts frame="terminal"
 const next = await ctx.hooks.call(
   'tasks.enrichDetails',
@@ -312,7 +312,7 @@ const next = await ctx.hooks.call(
 )
 ```
 </HookCard>
-<HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="Refresh project task state." summary="Tells open project pages to refetch when a linked task changes column; linked step completion is derived from the board at read time." source="bakin-bits-official/plugins/projects/index.ts:350" badges={["event"]}>
+<HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="Refresh project task state." summary="Tells open project pages to refetch when a linked task changes column (linked step completion is derived from the board at read time) and schedules the project steward's check for work tasks reaching done, blocked or review." source="bakin-bits-official/plugins/projects/index.ts:428" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'tasks.statusChanged',

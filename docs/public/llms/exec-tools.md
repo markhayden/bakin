@@ -1488,6 +1488,31 @@ bakin_exec_projects_attach_asset {
 }
 ```
 
+### bakin_exec_projects_checkin
+
+Label: Checked in on a project
+Purpose: Report what this check-in did, in the project conversation. Call once at the end of a project check-in task with the taskId from that task.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `projectId` | string | yes | Project ID |
+| `taskId` | string | yes | Your check-in task id (from the task description) |
+| `summary` | string | yes | One line: what you did or found |
+| `actions` | array | no | Short list of the actions you took (sent steps to the board, reassigned a task, …) |
+
+Example:
+
+```sh
+bakin_exec_projects_checkin {
+  "projectId": "value",
+  "taskId": "value",
+  "summary": "value",
+  "actions": [
+    "value"
+  ]
+}
+```
+
 ### bakin_exec_projects_create
 
 Label: Created a project
@@ -1649,6 +1674,66 @@ bakin_exec_projects_relink_asset {
   "assetId": "value",
   "newAssetId": "value",
   "label": "value"
+}
+```
+
+### bakin_exec_projects_request_input
+
+Label: Asked the user about a project
+Purpose: Ask the user ONE decision you cannot make yourself (scope, dropping steps, spend) during a project check-in. It appears as an answerable card in the project conversation; check-ins pause until they reply. Use the taskId from your check-in task, then finish the check-in.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `projectId` | string | yes | Project ID |
+| `taskId` | string | yes | Your check-in task id (from the task description) |
+| `question` | string | yes | The question (max ${QUESTION_LIMITS.question} chars) |
+| `options` | array | yes |  |
+| `label` | string | yes | Short answer (max ${QUESTION_LIMITS.label} chars) |
+| `description` | string | no | What it means (max ${QUESTION_LIMITS.description} chars) |
+| `recommended` | number | no | Index of the option you recommend |
+| `allowOther` | boolean | no | Offer a free-text answer (default true) |
+| `context` | string | no | Why you are asking — replayed to you with their reply (max 1 KB) |
+
+Example:
+
+```sh
+bakin_exec_projects_request_input {
+  "projectId": "value",
+  "taskId": "value",
+  "question": "value",
+  "options": [
+    "value"
+  ],
+  "label": "value",
+  "description": "value",
+  "recommended": 20,
+  "allowOther": true,
+  "context": "value"
+}
+```
+
+### bakin_exec_projects_request_signoff
+
+Label: Requested a project sign-off
+Purpose: Ask the user to sign off during a project check-in: gateKind "complete" when every step is done (the user decides whether the project is complete), or "signoff" with subjectTaskId when a deliverable needs their approval. Only the user can decide; finish the check-in after asking.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `projectId` | string | yes | Project ID |
+| `taskId` | string | yes | Your check-in task id (from the task description) |
+| `gateKind` | choice | yes | "complete" for the whole project, "signoff" for one deliverable |
+| `subjectTaskId` | string | no | The deliverable's board task id (required for "signoff") |
+| `summary` | string | yes | What the user is approving, and why it is ready |
+
+Example:
+
+```sh
+bakin_exec_projects_request_signoff {
+  "projectId": "value",
+  "taskId": "value",
+  "gateKind": "value",
+  "subjectTaskId": "value",
+  "summary": "value"
 }
 ```
 

@@ -15,7 +15,20 @@ Nothing exists until you send. Your first message creates the project and starts
 
 A new project opens on its **Conversation** tab. The lead plays brainstorm buddy: a short reflection on what you said, at most one challenge, and one question at a time as a card with options and a recommendation. Pick an option, write your own, or say you're not sure. Once the goal, the scope and what "done" means are settled, the lead drafts the plan and its steps and tells you it's ready in the Plan tab. Say "just write it" and it drafts right away.
 
-When you're ready, **Start project**. From then on the lead tracks progress with you: what's blocked, what's next, whether the scope still holds. A finished project gets **Mark complete**; you can reopen or archive it later. Status only changes because you said so. Agents can't start, complete or archive a project, can't rename one you named yourself, and can't delete steps or projects.
+When you're ready, **Start project**. That's a hand-off: the lead takes it from there, sends steps to the [board](/docs/using/tasks/), gives each to the right agent or keeps it, and checks in as work moves. With no steps yet, its first check-in breaks the plan down. A finished project gets **Mark complete**; you can reopen or archive it later. Status only changes because you said so. Agents can't start, complete or archive a project, can't rename one you named yourself, and can't delete steps or projects.
+
+## Check-ins
+
+Once a project is active, the lead looks in when something changed: a task got blocked, a review sat idle for a day, work finished, steps are waiting with nothing in flight, or nothing has moved at all. Progressing work and a situation it already handled create nothing. A quick scan runs every 15 minutes, and within about 30 seconds when a task reaches done, blocked or review. It costs no model call; only a real change creates a check-in.
+
+A check-in is an ordinary board task ("Check in: Launch site", tagged `project-steward`), so budgets, the watchdog and spend reporting cover it like any task. A models tag route on `project-steward` can send check-ins to a cheaper model. There's at most one open per project and at most six a day. Past that, the list says "Check-ins paused for today".
+
+On its own, the lead may send steps to the board, add steps that follow from the agreed plan, make small plan edits, and reassign or re-describe stuck work. Each check-in ends with a "Checked in: …" note in the conversation. Anything bigger comes to you:
+
+- **A question** shows up as a card in the conversation, and the list says "Waiting for you". Check-ins pause until you answer.
+- **A sign-off** (a deliverable, or completing the project) is a Bakin approval. Decide it from the "Needs approval" card on the board. Approving completion completes the project; rejecting sends your reason back to the lead and the work carries on. Agents can never decide one.
+
+**Pause check-ins** (in the ⋯ menu) stops the loop without changing the status; the list shows "Paused". Completing or archiving a project closes its open check-in and any pending sign-offs. Settings → Projects tunes the scan interval, the stuck window and the daily cap.
 
 ## The project page
 
@@ -28,7 +41,7 @@ Four tabs, and the conversation follows you between them:
 
 On a wide screen the conversation docks beside Plan, Steps and Files; collapse it to a slim strip when you want the room. On a phone, the `Ask` button takes you back to the conversation.
 
-The list shows each project's one most useful signal: waiting for you, the lead is working, a new reply, the plan changed, or how many steps are done. Archived projects stay out of the way until you filter for them.
+The list shows each project's one most useful signal: needs approval, waiting for you, stuck, the lead is working, a new reply, the plan changed, check-ins paused for today, or how many steps are done. A project whose check-ins you paused carries a "Paused" badge. Archived projects stay out of the way until you filter for them.
 
 ## Where they live
 
@@ -70,7 +83,7 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents
 
-Agents work on projects through MCP exec tools: reading projects, updating the plan and its steps (`bakin_exec_projects_apply_plan`), task linking and asset attachments. In a project conversation the lead asks questions with `bakin_exec_ask_user`. Lifecycle status, a title the user typed, and deleting steps or projects stay with the user.
+Agents work on projects through MCP exec tools: reading projects, updating the plan and its steps (`bakin_exec_projects_apply_plan`), task linking and asset attachments. In a project conversation the lead asks questions with `bakin_exec_ask_user`. A check-in task reports with `bakin_exec_projects_checkin`, asks with `bakin_exec_projects_request_input`, and asks for a sign-off with `bakin_exec_projects_request_signoff`; each takes the check-in's `taskId` and is refused for anyone but that check-in's assignee. Lifecycle status, a title the user typed, and deleting steps or projects stay with the user.
 
 
 
