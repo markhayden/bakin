@@ -50288,31 +50288,6 @@
         "x-bakin-full-path": "/api/agents/avatar"
       }
     },
-    "/api/agents/health": {
-      "get": {
-        "operationId": "core.get.api-agents-health",
-        "summary": "List agent health status",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Core"
-        ],
-        "description": "Returns enriched heartbeat and staleness data for agents.",
-        "x-bakin-full-path": "/api/agents/health"
-      }
-    },
     "/api/agents/settings": {
       "get": {
         "operationId": "core.get.api-agents-settings",

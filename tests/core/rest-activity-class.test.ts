@@ -25,7 +25,6 @@ function resolve(
 
 describe('REST activity classification', () => {
   it('marks host monitoring and shell snapshot reads as routine', () => {
-    expect(classify('/api/agents/health')).toBe('routine')
     expect(classify('/api/updates')).toBe('routine')
     expect(classify('/api/dispatch')).toBe('routine')
     expect(classify('/api/plugins/manifest')).toBe('routine')
@@ -107,7 +106,6 @@ describe('REST activity classification', () => {
 
   it('publishes routine metadata on host-owned cadence route declarations', () => {
     for (const path of [
-      '/api/agents/health',
       '/api/agents/:id',
       '/api/agents/:id/status',
       '/api/dispatch',

@@ -32,7 +32,6 @@ const stub = async () => Response.json({ error: 'core route not handled by core-
 const agentsRoutes = [
   defineCoreRoute({ path: '/api/agents', method: 'GET', summary: 'List agents', description: 'Lists all agents with status and active tasks.', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/avatar', method: 'GET', summary: 'Get agent avatar', description: 'Serves an agent avatar image.', query: z.object({ id: z.string() }), responses: { 200: { contentType: 'application/octet-stream' }, 404: errorResponse }, handler: stub }),
-  defineCoreRoute({ path: '/api/agents/health', method: 'GET', activityClass: 'routine', summary: 'List agent health status', description: 'Returns enriched heartbeat and staleness data for agents.', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/settings', method: 'GET', summary: 'Get agent settings', description: 'Returns host display and behavior settings for agents.', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/settings', method: 'PUT', summary: 'Update agent settings', description: 'Updates host display and behavior settings for agents.', body: passthrough, responses: { 200: okResponse, 400: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/start', method: 'POST', summary: 'Start an agent', body: z.object({ agentId: z.string() }), responses: { 200: okResponse, 400: errorResponse, 500: errorResponse }, handler: stub }),
