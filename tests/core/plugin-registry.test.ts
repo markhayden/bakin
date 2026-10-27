@@ -183,7 +183,7 @@ describe('PluginRegistryImpl', () => {
   // Helpers
 
   function mockStorage() {
-    return { read: mock(), write: mock(), append: mock(), exists: mock(), readAll: mock() }
+    return { read: mock(), write: mock(), append: mock(), exists: mock() }
   }
 
   function mockEvents() {

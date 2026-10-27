@@ -52,23 +52,4 @@ describe('MarkdownStorageAdapter', () => {
     adapter.write('yes.md', 'here')
     expect(adapter.exists('yes.md')).toBe(true)
   })
-
-  it('readAll walks directories and returns md/json/jsonl files', () => {
-    adapter.write('root.md', 'root content')
-    adapter.write('sub/nested.json', '{}')
-    adapter.write('sub/deep/file.jsonl', '{"a":1}')
-    adapter.write('skip.txt', 'should be skipped')
-
-    const all = adapter.readAll()
-    expect(all['root.md']).toBe('root content')
-    expect(all['sub/nested.json']).toBe('{}')
-    expect(all['sub/deep/file.jsonl']).toBe('{"a":1}')
-    expect(all['skip.txt']).toBeUndefined()
-  })
-
-  it('readAll skips dotfiles', () => {
-    adapter.write('.hidden.md', 'secret')
-    const all = adapter.readAll()
-    expect(all['.hidden.md']).toBeUndefined()
-  })
 })

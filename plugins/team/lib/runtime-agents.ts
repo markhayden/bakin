@@ -47,7 +47,7 @@ function metadataStringArray(agent: RuntimeAgent, key: string): string[] | null 
 }
 
 export function agentToMeta(agent: RuntimeAgent): AgentMeta {
-  const headshot = resolveAgentAvatar(agent.id) ? `/api/plugins/team/${agent.id}/avatar` : ''
+  const headshot = resolveAgentAvatar(agent.id) ? `/api/agents/avatar?id=${encodeURIComponent(agent.id)}` : ''
 
   return {
     id: agent.id,

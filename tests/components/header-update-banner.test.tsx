@@ -11,7 +11,7 @@ import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
   ...realSdkHooks,
   useDebug: () => [false, mock()] as const,
-  useContentStore: (selector: (state: { connected: boolean }) => unknown) => selector({ connected: true }),
+  useHostStore: (selector: (state: { connected: boolean }) => unknown) => selector({ connected: true }),
   toast: mock(),
 }))
 

@@ -484,10 +484,14 @@ export async function deleteTask(identifier: string): Promise<string> {
   return task.id
 }
 
-export function addTaskLog(identifier: string, author: string, message: string, data?: Record<string, unknown>): Promise<void> {
+/**
+ * Append one entry to a task's log. `timestamp` lets a caller that already
+ * broadcast the entry persist it under the same instant (one activity identity).
+ */
+export function addTaskLog(identifier: string, author: string, message: string, data?: Record<string, unknown>, timestamp?: string): Promise<void> {
   try {
     const task = requireTask(identifier)
-    getSharedBakinTaskStore().appendLogSync(task.id, { timestamp: new Date().toISOString(), author, message, ...(data ? { data } : {}) })
+    getSharedBakinTaskStore().appendLogSync(task.id, { timestamp: timestamp ?? new Date().toISOString(), author, message, ...(data ? { data } : {}) })
     return Promise.resolve()
   } catch (err) {
     return Promise.reject(err)

@@ -34990,8 +34990,8 @@
     },
     "/api/plugins/memory/audit": {
       "get": {
-        "operationId": "core.get.api-plugins-memory-audit",
-        "summary": "List memory audit entries",
+        "operationId": "memory.get.audit",
+        "summary": "List indexed audit entries with optional filters",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -35004,11 +35004,31 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         },
         "tags": [
-          "Core"
+          "Memory"
         ],
+        "description": "List indexed audit entries with optional filters",
         "x-bakin-full-path": "/api/plugins/memory/audit"
       }
     },
@@ -40050,6 +40070,82 @@
         "x-bakin-full-path": "/api/plugins/tasks/summary"
       }
     },
+    "/api/plugins/tasks/history": {
+      "get": {
+        "operationId": "tasks.get.history",
+        "summary": "Task lifecycle history from the audit log",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ts": {
+                            "type": "string"
+                          },
+                          "event": {
+                            "type": "string"
+                          },
+                          "agent": {
+                            "type": "string"
+                          },
+                          "data": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          }
+                        },
+                        "required": [
+                          "ts",
+                          "event",
+                          "agent",
+                          "data"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "entries"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Tasks"
+        ],
+        "description": "The newest 500 task.created / task.moved audit records, oldest first — the task log table derives rows for tasks no longer on the board from them. Bounded tail read.",
+        "x-bakin-full-path": "/api/plugins/tasks/history"
+      }
+    },
     "/api/plugins/tasks/{taskId}": {
       "get": {
         "operationId": "tasks.get.task-id",
@@ -42696,98 +42792,6 @@
           "Team"
         ],
         "description": "Upload agent avatar image",
-        "parameters": [
-          {
-            "name": "agentId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "x-bakin-full-path": "/api/plugins/team/:agentId/avatar"
-      },
-      "get": {
-        "operationId": "team.get.agent-id-avatar",
-        "summary": "Serve agent avatar image",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
-              }
-            }
-          },
-          "304": {
-            "description": "Not modified."
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Team"
-        ],
-        "description": "Serve agent avatar image",
         "parameters": [
           {
             "name": "agentId",
@@ -50132,8 +50136,11 @@
               }
             }
           },
+          "304": {
+            "description": "Not modified."
+          },
           "400": {
-            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "description": "Invalid input.",
             "content": {
               "application/json": {
                 "schema": {
@@ -50141,16 +50148,12 @@
                   "properties": {
                     "error": {
                       "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
                     }
                   },
                   "required": [
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": {}
                 }
               }
             }
@@ -50178,7 +50181,7 @@
         "tags": [
           "Core"
         ],
-        "description": "Serves an agent avatar image.",
+        "description": "Serves an agent avatar image — a cached display-size WebP for large stored files, the stored file otherwise.",
         "parameters": [
           {
             "name": "id",
@@ -50190,31 +50193,6 @@
           }
         ],
         "x-bakin-full-path": "/api/agents/avatar"
-      }
-    },
-    "/api/agents/health": {
-      "get": {
-        "operationId": "core.get.api-agents-health",
-        "summary": "List agent health status",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Core"
-        ],
-        "description": "Returns enriched heartbeat and staleness data for agents.",
-        "x-bakin-full-path": "/api/agents/health"
       }
     },
     "/api/agents/settings": {
@@ -53831,30 +53809,6 @@
         ],
         "description": "Returns important local filesystem paths used by the runtime.",
         "x-bakin-full-path": "/api/paths"
-      }
-    },
-    "/api/state": {
-      "get": {
-        "operationId": "core.get.api-state",
-        "summary": "Get dashboard state snapshot",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Core"
-        ],
-        "x-bakin-full-path": "/api/state"
       }
     },
     "/api/search": {

@@ -55,5 +55,6 @@ do not replay historical toasts, sounds, or OS notifications.
 
 File-backed consumers use `bakin.file.changed` on the same connection. Its `file`
 is the relative content path and `change` is the original file event (including
-unlink). Filter by your owned prefix; content is not guaranteed on deletion.
+unlink). It is an invalidation signal only — it never carries the file's content —
+so filter by your owned prefix and refetch what you show.
 Do not open a second EventSource for file-backed navigation indicators.

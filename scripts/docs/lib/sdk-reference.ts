@@ -52,7 +52,7 @@ const CORE_TYPES = new Set([
 const HOOKS_GROUPS: Record<string, string> = {
   useAssets: 'Data & State',
   useTrash: 'Data & State',
-  useContentStore: 'Data & State',
+  useHostStore: 'Data & State',
   useScheduleJobs: 'Data & State',
   useRunHistory: 'Data & State',
   ScheduleJob: 'Data & State',

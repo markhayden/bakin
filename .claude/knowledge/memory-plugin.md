@@ -138,6 +138,9 @@ plugins/memory/
 
     routes/
       audit.ts        ─ GET /audit — tier='audit' facet query + agent/event filters.
+                        (A host route once shadowed this URL with a raw
+                        whole-file audit read; it is gone — task history
+                        lives at the tasks plugin's GET /history.)
       durable.ts      ─ GET /durable?agent=<id> (list), GET /durable/:agent/:basename (render).
       daily-notes.ts  ─ GET /daily-notes?agent=<id> (sorted by date desc),
                         GET /daily-notes/:agent/:filename (render),

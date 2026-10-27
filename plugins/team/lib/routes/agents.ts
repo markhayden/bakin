@@ -15,7 +15,7 @@ import { join } from 'path'
 
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
-import { serveAvatar, detectImageExtension } from '@bakin/core/agents/avatar'
+import { detectImageExtension } from '@bakin/core/agents/avatar'
 import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
 import { getRuntimeMainAgentId, RuntimeError } from '@bakin/core/adapters/runtime'
 
@@ -748,26 +748,6 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
         log.error('Failed to assemble agent timeline', err, { agentId })
         return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
-    },
-  }))
-
-  // GET /:agentId/avatar — Serve agent avatar (webp/png/jpg, via shared resolver)
-  arr.push(defineRoute({
-    path: '/:agentId/avatar',
-    method: 'GET',
-    activityClass: 'routine',
-    description: 'Serve agent avatar image',
-    summary: 'Serve agent avatar image',
-    params: z.object({ agentId: z.string() }),
-    // 304: serveAvatar honors If-None-Match/If-Modified-Since (RFC 7232) —
-    // undeclared, every conditional browser refetch logs a dev-validator warn.
-    responses: { 200: { contentType: 'application/octet-stream' }, 304: { contentType: 'none' }, 400: errorResponseTeam, 404: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (req: Request, _ctx: PluginContextLite) => {
-      const url = new URL(req.url)
-      const agentId = url.searchParams.get('agentId')
-      if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
-
-      return serveAvatar(req, agentId)
     },
   }))
 

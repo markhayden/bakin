@@ -264,9 +264,10 @@ function printAuditEntry(entry: Record<string, unknown>, options: { json?: boole
 
 async function cmdLogs(options: LogsOptions = {}): Promise<void> {
   const { spawn } = await import('child_process')
-  const { existsSync, readFileSync } = await import('fs')
+  const { existsSync } = await import('fs')
   const { getBakinPaths } = await import('../../../packages/core/src/content-dir')
-  const auditPath = getBakinPaths().audit
+  const { queryAuditEvents } = await import('../../core/audit')
+  const { home, audit: auditPath } = getBakinPaths()
   const lines = options.lines ?? 20
   const follow = options.follow !== false
   const jsonOutput = options.json === true || !process.stdout.isTTY
@@ -296,8 +297,12 @@ async function cmdLogs(options: LogsOptions = {}): Promise<void> {
     console.log(['TIME'.padEnd(14), 'EVENT'.padEnd(28), 'AGENT'.padEnd(14), 'CHANNEL'.padEnd(10), 'SUMMARY'].join(' '))
   }
 
-  const history = lines > 0 ? readFileSync(auditPath, 'utf-8').trimEnd().split('\n').slice(-lines) : []
-  for (const line of history) emitLine(line)
+  // The last N entries via the bounded tail read — never the whole log.
+  const history = lines > 0 ? queryAuditEvents(home, { limit: lines }) : []
+  for (const event of history) {
+    const entry: Record<string, unknown> = { ...event }
+    if (auditLogMatches(entry, options.filter)) printAuditEntry(entry, { json: jsonOutput })
+  }
 
   if (!follow) return
 

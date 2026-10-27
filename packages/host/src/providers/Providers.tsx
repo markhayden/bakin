@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useSSE, useContentStore, useSidebar } from '@makinbakin/sdk/hooks'
+import { useSSE, useHostStore, useSidebar } from '@makinbakin/sdk/hooks'
 import { TooltipProvider } from '@bakin/ui'
 import { Toaster } from '../components/layout/toaster'
 import { SidebarContext } from '@/context/sidebar-context'
@@ -12,7 +12,7 @@ function SSEProvider({ children }: { children: React.ReactNode }) {
 }
 
 function DebugSeed() {
-  const setDebug = useContentStore((s) => s.setDebug)
+  const setDebug = useHostStore((s) => s.setDebug)
   useEffect(() => {
     // Seed from URL query param
     if (new URLSearchParams(window.location.search).get('debug') === 'true') {

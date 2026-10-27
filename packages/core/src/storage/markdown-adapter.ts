@@ -6,7 +6,6 @@ import fs from 'fs'
 import path from 'path'
 import type { StorageAdapter } from '../plugin-types'
 import { getContentDir } from '../content-dir'
-import { walkFiles } from './walk'
 
 export class MarkdownStorageAdapter implements StorageAdapter {
   private contentDir: string
@@ -86,22 +85,6 @@ export class MarkdownStorageAdapter implements StorageAdapter {
 
   writeJson(relativePath: string, value: unknown): void {
     this.write(relativePath, JSON.stringify(value, null, 2))
-  }
-
-  readAll(): Record<string, string> {
-    const result: Record<string, string> = {}
-    const files = walkFiles(this.contentDir, {
-      skipDotEntries: true,
-      ext: ['.md', '.json', '.jsonl'],
-    })
-    for (const file of files) {
-      try {
-        result[file.relPath] = fs.readFileSync(file.path, 'utf-8')
-      } catch {
-        // skip unreadable files
-      }
-    }
-    return result
   }
 
   searchPath(relativePath: string): string {

@@ -176,7 +176,7 @@ archived   → done, todo
 | `plugins/tasks/components/delete-task-dialog.tsx` | Confirmation dialog for task deletion |
 | `plugins/tasks/components/task-filters.tsx` | Agent avatar filter bar + status facet filter |
 | `plugins/tasks/components/task-metrics.tsx` | Summary metrics row (counts by column) |
-| `plugins/tasks/components/task-log-table.tsx` | Table view of tasks (alternative to kanban) |
+| `plugins/tasks/components/task-log-table.tsx` | Table view of tasks (alternative to kanban); rows for tasks no longer on the board are folded (oldest first, later transitions win) from `GET /history`'s raw `{ ts, event, agent, data }` audit records |
 
 ### Drag-and-Drop (dnd-kit)
 
@@ -226,11 +226,13 @@ The core store is synchronous and file-backed. The plugin service functions keep
 
 ## API Routes
 
-All routes are registered at `/api/plugins/tasks/{path}` via the plugin route system. 12 RESTful routes:
+All routes are registered at `/api/plugins/tasks/{path}` via the plugin route system. The RESTful routes:
 
 | Method | Path | Handler |
 |--------|------|---------|
 | GET | `/` | List all tasks (taskboard) |
+| GET | `/summary` | Blocked/review counts (nav badge) |
+| GET | `/history` | Newest 500 `task.created`/`task.moved` audit records, oldest first — bounded `queryAuditEvents` tail read; the task log table's history source |
 | GET | `/:taskId` | Get single task details |
 | POST | `/` | Create task |
 | PUT | `/:taskId` | Update task |

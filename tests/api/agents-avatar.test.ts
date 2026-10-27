@@ -20,11 +20,11 @@ const agentsDir = pathJoin(testDir, 'agents')
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ agents: agentsDir }),
+  getBakinPaths: () => ({ agents: agentsDir, cache: pathJoin(testDir, '.cache'), media: pathJoin(testDir, 'media') }),
 }))
 mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ agents: agentsDir }),
+  getBakinPaths: () => ({ agents: agentsDir, cache: pathJoin(testDir, '.cache'), media: pathJoin(testDir, 'media') }),
 }))
 mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
@@ -85,5 +85,25 @@ describe('GET /api/agents/avatar', () => {
       const res = await request(id)
       expect(res.status).toBe(400)
     }
+  })
+
+  it('answers a missing avatar with a JSON 404', async () => {
+    const res = await request('no-such-agent')
+    expect(await res.json()).toEqual({ error: 'Avatar not found' })
+  })
+
+  it('serves 304 for a matching If-None-Match and declares 304/400 on the route', async () => {
+    const url = new URL('http://localhost:3737/api/agents/avatar?id=main')
+    const first = await avatarGet(new Request(url), url)
+    const etag = first.headers.get('ETag')
+    expect(etag).toBeTruthy()
+    const second = await avatarGet(new Request(url, { headers: { 'If-None-Match': etag! } }), url)
+    expect(second.status).toBe(304)
+
+    // Undeclared statuses make the dev-mode response validator warn on every
+    // conditional browser refetch.
+    const { coreRoutes } = await import('../../packages/host/src/core-routes')
+    const route = coreRoutes.find((r) => r.method === 'GET' && r.path === '/api/agents/avatar')!
+    expect(Object.keys(route.responses ?? {})).toEqual(expect.arrayContaining(['200', '304', '400', '404']))
   })
 })

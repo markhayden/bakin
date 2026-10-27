@@ -20,8 +20,8 @@
 
 // Group 1: Bakin-wide hooks
 
-/** Access the global Zustand store for SSE-driven content state. */
-export { useContentStore } from './use-content-store'
+/** Host-wide browser state: live connection, debug toggle, activity feed. */
+export { useHostStore } from './use-host-store'
 /** Sync a nav item's badge to a derived value; the recommended provider glue. */
 export { useNavBadge } from './use-nav-badge'
 /** Read/toggle the global debug (X-Ray) flag. */

@@ -1240,14 +1240,23 @@ Mechanics (`packages/sdk/src/hooks/use-plugin-event.ts`, exported like `useSSE`)
   `bakin.reconcile` (after a reconnect or a tab wake), `turn-activity`, and
   `search.rebuild.start|progress|complete` (from the per-table rebuild
   frames). There is no other `EventSource` — architecture-test pinned. Adding a new event name = one `emit`
-  line here; no content-store change.
+  line here; no host-store change.
 
 This replaced two older patterns: the assets plugin's 3 raw
-`EventSource`s and the content store's hardcoded per-plugin counters
+`EventSource`s and the old content store's hardcoded per-plugin counters
 (`taskboardVersion`/`doctorVersion`/`reindexProgress`). Consumers now
-hold their own local state and subscribe to the relevant event. The
-content store is back to file/audit/activity/heartbeat state only —
-it no longer knows which plugin cares about which event.
+hold their own local state and subscribe to the relevant event.
+
+The host store (`useHostStore`, `@makinbakin/sdk/hooks`) holds ONLY host-wide
+browser state: `connected`, `debug` (hydrated from `localStorage` at creation),
+and the activity feed. It fetches exactly one thing — `GET /api/activity`,
+once per successful SSE connection (first open and every reconnect) — and
+merges that snapshot with the live events it already holds (one row per id
+from the shared `@bakin/core/events/activity-id` derivation, newest first,
+capped at 100; a stale response is discarded). It holds no file contents,
+heartbeats or audit backlog: the old content store fetched a whole-home
+`/api/state` snapshot (155 MB on a lived-in install) on mount and every
+reconnect, and the task board waited on it (Margo perf, 2026-10-26).
 
 ## Slot System
 
@@ -1347,7 +1356,7 @@ a no-op (no snapshot rebuild, no subscriber notification).
 The refresh signal is per-plugin — the hook doesn't prescribe one. The
 adopters subscribe to named server events via `usePluginEvent` (see
 § Client SSE fan-out below) — no per-plugin `EventSource`, no
-content-store counters:
+host-store counters:
 - **tasks** (blocked→`error` / review→`attention`, winning-severity) —
   `usePluginEvent('taskboard', refresh)`, the same signal the Kanban
   board uses.
@@ -1392,7 +1401,10 @@ state and agent activity alone do not produce indicators.
 Providers subscribe to `bakin.reconcile` for connection/resume recovery in addition
 to their domain events. Retain successful snapshots on errors, retry failed reads,
 and reject superseded results. `bakin.file.changed` carries file invalidations on
-the same shell stream. Snapshot recovery never replays historical fanfare.
+the same shell stream — `{ file, change }` only: watcher SSE frames are
+`{ file, event, timestamp }` with NO content (the event bus and sync hooks still
+receive content server-side), so a large file change never rides every
+browser's stream or the SSE replay buffer. Snapshot recovery never replays historical fanfare.
 
 ### Lifecycle
 
@@ -1618,7 +1630,6 @@ S-B (runtime skills, on disk). See
 | `write(path, content)` | Write file, creates directories as needed |
 | `append(path, content)` | Append to file |
 | `exists(path)` | Check file existence |
-| `readAll()` | Read all files in content dir (flat) |
 
 All paths relative to `~/.bakin/` (resolved via `getContentDir()`).
 

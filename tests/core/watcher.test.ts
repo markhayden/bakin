@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn, type Mock } from 'bun:test'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -296,40 +296,79 @@ describe('watcher', () => {
       return changeCall[1] as (path: string) => void
     }
 
-    it('processes .yaml files and broadcasts content', async () => {
+    async function getHandler(name: 'change' | 'add' | 'unlink'): Promise<(path: string) => void> {
+      const chokidar = await import('chokidar')
+      const mockWatcher = vi.mocked(chokidar.watch).mock.results[0].value as FSWatcher
+      const call = vi.mocked(mockWatcher.on).mock.calls.find((c: unknown[]) => c[0] === name)
+      if (!call) throw new Error(`no ${name} handler registered`)
+      return call[1] as (path: string) => void
+    }
+
+    /** SSE file frames are invalidation signals: path + event + timestamp, never content. */
+    function expectInvalidationFrame(file: string, event: string): void {
+      expect(broadcast).toHaveBeenCalledTimes(1)
+      const frame = vi.mocked(broadcast).mock.calls[0]![0] as Record<string, unknown>
+      expect(Object.keys(frame).sort()).toEqual(['event', 'file', 'timestamp'])
+      expect(frame.file).toBe(file)
+      expect(frame.event).toBe(event)
+    }
+
+    it('a text change broadcasts path-only; server-side consumers still get the content', async () => {
       const eventBus = new BakinEventBus(() => {})
+      const injected = spyOn(eventBus, 'injectFileEvent')
+      const hook = mock()
+      const unregister = registerSyncHook(hook)
       start({ contentDir: tempDir, eventBus, onInboxFile: mock() })
 
       mkdirSync(join(tempDir, 'workflows', 'definitions'), { recursive: true })
       const yamlPath = join(tempDir, 'workflows', 'definitions', 'sample.yaml')
       writeFileSync(yamlPath, 'name: sample\nsteps: []\n')
+      ;(await getChangeHandler())(yamlPath)
 
-      const onChange = await getChangeHandler()
-      onChange(yamlPath)
-
-      expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({
-        file: 'workflows/definitions/sample.yaml',
-        event: 'change',
-        content: 'name: sample\nsteps: []\n',
-      }))
+      expectInvalidationFrame('workflows/definitions/sample.yaml', 'change')
+      expect(injected).toHaveBeenCalledWith('workflows/definitions/sample.yaml', 'change', 'name: sample\nsteps: []\n')
+      await waitUntil(() => hook.mock.calls.length > 0, { label: 'workflow sync hook' })
+      expect(hook).toHaveBeenCalledWith('workflows/definitions/sample.yaml', 'name: sample\nsteps: []\n')
+      unregister()
     })
 
-    it('processes .yml files (short extension)', async () => {
+    it('processes .yml files (short extension) as path-only frames', async () => {
       const eventBus = new BakinEventBus(() => {})
       start({ contentDir: tempDir, eventBus, onInboxFile: mock() })
 
       mkdirSync(join(tempDir, 'workflows', 'definitions'), { recursive: true })
       const ymlPath = join(tempDir, 'workflows', 'definitions', 'short.yml')
       writeFileSync(ymlPath, 'name: short\n')
+      ;(await getChangeHandler())(ymlPath)
 
-      const onChange = await getChangeHandler()
-      onChange(ymlPath)
+      expectInvalidationFrame('workflows/definitions/short.yml', 'change')
+    })
 
-      expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({
-        file: 'workflows/definitions/short.yml',
-        event: 'change',
-        content: 'name: short\n',
-      }))
+    it('an asset sidecar change broadcasts path-only', async () => {
+      start({ contentDir: tempDir, eventBus: new BakinEventBus(() => {}), onInboxFile: mock() })
+      mkdirSync(join(tempDir, 'assets', 'images'), { recursive: true })
+      const sidecar = join(tempDir, 'assets', 'images', 'logo.png.meta.json')
+      writeFileSync(sidecar, '{"caption":"logo"}')
+      ;(await getChangeHandler())(sidecar)
+
+      expectInvalidationFrame('assets/images/logo.png.meta.json', 'change')
+    })
+
+    it('a binary asset add broadcasts path-only with the asset event name', async () => {
+      start({ contentDir: tempDir, eventBus: new BakinEventBus(() => {}), onInboxFile: mock() })
+      mkdirSync(join(tempDir, 'assets', 'images'), { recursive: true })
+      const binary = join(tempDir, 'assets', 'images', 'logo.png')
+      writeFileSync(binary, 'not really a png')
+      ;(await getHandler('add'))(binary)
+
+      expectInvalidationFrame('assets/images/logo.png', 'asset.add')
+    })
+
+    it('an unlink broadcasts path-only', async () => {
+      start({ contentDir: tempDir, eventBus: new BakinEventBus(() => {}), onInboxFile: mock() })
+      ;(await getHandler('unlink'))(join(tempDir, 'team', 'contacts.md'))
+
+      expectInvalidationFrame('team/contacts.md', 'unlink')
     })
 
     it('ignores unsupported extensions', async () => {

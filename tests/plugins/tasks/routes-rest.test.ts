@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { join } from 'path'
-import { mkdirSync, rmSync, existsSync } from 'fs'
+import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs'
 import {
   activatePlugin,
   findRoute,
@@ -160,13 +160,14 @@ describe('Tasks Plugin — :taskId path-param routing', () => {
 // ─── Route Registration ────────────────────────────────────────────────────
 
 describe('Tasks Plugin — Route Registration', () => {
-  it('registers 15 routes', () => {
-    expect(activated.routes.length).toBe(15)
+  it('registers 16 routes', () => {
+    expect(activated.routes.length).toBe(16)
   })
 
   it.each([
     ['GET', '/'],
     ['GET', '/summary'],
+    ['GET', '/history'],
     ['GET', '/:taskId'],
     ['GET', '/:taskId/runs'],
     ['POST', '/'],
@@ -255,6 +256,55 @@ describe('GET /summary — nav badge counts', () => {
   it('registers /summary as a distinct literal route', () => {
     const summary = findRoute(activated.routes, 'GET', '/summary')
     expect(summary?.path).toBe('/summary')
+  })
+})
+
+// ─── GET /history — task lifecycle history ────────────────────────────────
+
+describe('GET /history — task lifecycle history', () => {
+  const auditPath = () => join(testDir, 'audit.jsonl')
+  const record = (i: number, event: string, data: Record<string, unknown>) =>
+    JSON.stringify({ ts: new Date(Date.UTC(2026, 9, 1) + i * 1000).toISOString(), event, agent: 'main', data })
+
+  afterAll(() => rmSync(auditPath(), { force: true }))
+
+  it('returns only task.created / task.moved raw records, oldest first', async () => {
+    writeFileSync(auditPath(), [
+      record(1, 'task.created', { id: 'a', title: 'A' }),
+      record(2, 'doctor.run', {}),
+      record(3, 'task.moved', { id: 'a', from: 'todo', to: 'done' }),
+      record(4, 'task.dispatched', { id: 'a' }),
+    ].join('\n') + '\n')
+
+    const route = findRoute(activated.routes, 'GET', '/history')!
+    const { status, body } = await callRoute(route, activated.ctx)
+
+    expect(status).toBe(200)
+    const entries = body.entries as Array<Record<string, unknown> & { event: string }>
+    expect(entries.map((e) => e.event)).toEqual(['task.created', 'task.moved'])
+    expect(entries[1]).toEqual({ ts: new Date(Date.UTC(2026, 9, 1) + 3000).toISOString(), event: 'task.moved', agent: 'main', data: { id: 'a', from: 'todo', to: 'done' } })
+  })
+
+  it('caps the history at the newest 500 records', async () => {
+    const lines: string[] = []
+    for (let i = 0; i < 700; i++) lines.push(record(i, 'task.created', { id: `t-${i}` }))
+    writeFileSync(auditPath(), lines.join('\n') + '\n')
+
+    const route = findRoute(activated.routes, 'GET', '/history')!
+    const { body } = await callRoute(route, activated.ctx)
+
+    const entries = body.entries as Array<{ data: { id: string } }>
+    expect(entries).toHaveLength(500)
+    expect(entries[0]!.data.id).toBe('t-200')
+    expect(entries[499]!.data.id).toBe('t-699')
+  })
+
+  it('returns an empty history when there is no audit log', async () => {
+    rmSync(auditPath(), { force: true })
+    const route = findRoute(activated.routes, 'GET', '/history')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    expect(body.entries).toEqual([])
   })
 })
 

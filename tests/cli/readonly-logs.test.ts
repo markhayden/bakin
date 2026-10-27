@@ -10,7 +10,7 @@
  * can touch the real ~/.bakin. (The mock-checker hook flags this file as a
  * known false positive for the BAKIN_HOME-pattern.)
  */
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
 import { setupTtyCliHarness, withTempBakinHome } from './helpers/tty-cli-harness'
@@ -114,6 +114,33 @@ describe('read-only CLI TTY commands — logs', () => {
     })
 
     expect(output()).toBe('{"ts":"2026-05-19T19:36:18.405Z","event":"doctor.run","agent":"system","channel":null,"data":{"total":81}}')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('prints only the last N entries without reading the whole audit log', async () => {
+    const fs = await import('fs')
+    let auditReads = 0
+    await withTempBakinHome('bakin-cli-logs-tail-', async (tempHome) => {
+      const lines: string[] = []
+      for (let i = 0; i < 5000; i++) {
+        lines.push(JSON.stringify({ ts: new Date(Date.UTC(2026, 9, 1) + i * 1000).toISOString(), event: 'doctor.run', agent: 'system', data: { i } }))
+      }
+      writeFileSync(join(tempHome, 'audit.jsonl'), lines.join('\n') + '\n')
+      process.argv = ['bun', 'cli/bakin.ts', 'logs', '--json', '--no-follow', '--lines', '3']
+
+      const readFileSpy = spyOn(fs, 'readFileSync')
+      try {
+        const { main } = await import('../../cli/bakin')
+        await main()
+        auditReads = readFileSpy.mock.calls.filter((c) => String(c[0]).endsWith('audit.jsonl')).length
+      } finally {
+        readFileSpy.mockRestore()
+      }
+    })
+
+    expect(auditReads).toBe(0)
+    const printed = output().trim().split('\n').map((l) => (JSON.parse(l) as { data: { i: number } }).data.i)
+    expect(printed).toEqual([4997, 4998, 4999])
     expect(errorOutput()).toBe('')
   })
 })

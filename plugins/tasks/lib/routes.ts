@@ -34,6 +34,8 @@ import {
   logProgress,
   WorkflowTaskMoveError,
 } from '../../../src/core/task-service'
+import { queryAuditEvents } from '../../../src/core/audit'
+import { getContentDir } from '../../../src/core/content-dir'
 import { readTaskOutcome, readTaskRuns } from './runs-reader'
 import type { ColumnId } from '../types'
 import { taskEditGuard, guardResponse, resolveTaskIdentifier } from './edit-guard'
@@ -67,6 +69,19 @@ function operatorChannel(actor: string, channel: string | undefined): 'human' | 
   return channel === 'human' && actor === 'human' ? 'human' : 'rest'
 }
 
+/** The lifecycle events the task log table folds into historical rows. */
+const TASK_HISTORY_EVENTS = ['task.created', 'task.moved'] as const
+const TASK_HISTORY_LIMIT = 500
+
+const taskHistoryResponse = z.object({
+  entries: z.array(z.object({
+    ts: z.string(),
+    event: z.string(),
+    agent: z.string(),
+    data: z.record(z.string(), z.unknown()),
+  })),
+})
+
 export const tasksRoutes = [
   defineRoute({
     path: '/',
@@ -98,6 +113,24 @@ export const tasksRoutes = [
           blocked: board.columns.blocked.length,
           review: board.columns.review.length,
         })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/history',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'Task lifecycle history from the audit log',
+    description: 'The newest 500 task.created / task.moved audit records, oldest first — the task log table derives rows for tasks no longer on the board from them. Bounded tail read.',
+    responses: { 200: taskHistoryResponse, 500: errorResponse },
+    handler: async () => {
+      try {
+        const entries = queryAuditEvents(getContentDir(), { kinds: [...TASK_HISTORY_EVENTS], limit: TASK_HISTORY_LIMIT })
+          .map(({ ts, event, agent, data }) => ({ ts, event, agent, data }))
+        return Response.json({ entries })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }

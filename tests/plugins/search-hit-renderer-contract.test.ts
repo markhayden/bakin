@@ -101,7 +101,6 @@ mock.module('../../src/core/task-store', taskStoreMock)
 // content-files calls getContentDir() at module top (team plugin imports it)
 // — mock the module itself, same as tests/plugins/team/exec-tools.test.ts.
 const contentFilesMock = () => ({
-  readAllContent: mock(() => ({})),
   readContentFile: mock(() => null),
   writeContentFile: mock(),
   readHeartbeats: mock(() => ({})),
@@ -209,5 +208,12 @@ describe('search hit-renderer contract', () => {
       expect(descriptor.title).toBeTruthy()
     }
     expect(broken).toEqual([])
+  })
+
+  // Regression: the team renderer once pointed at /api/agents/<id>/avatar —
+  // a URL no route serves — so ⌘K team hits never showed a face.
+  it('team hits use the host avatar route for their thumbnail', () => {
+    const descriptor = getSearchHitRenderersSnapshot().get('team')!(syntheticHit('team', { name: '', role: '' }))
+    expect(descriptor.thumbnailUrl).toBe('/api/agents/avatar?id=test-id')
   })
 })

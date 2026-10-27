@@ -4,239 +4,160 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, renderHook } from '@testing-library/react'
 import '../rtl-settle'
 
-// Mock fetch globally so initialize() doesn't hit the network
-vi.stubGlobal('fetch', mock(() =>
-  Promise.resolve({ ok: false, json: () => Promise.resolve({}) }),
-))
+type HostStoreModule = typeof import('../../packages/sdk/src/hooks/use-host-store')
 
-describe('useContentStore — debug state', () => {
-  let storage: Map<string, string>
+const STORE_PATH = '../../packages/sdk/src/hooks/use-host-store'
+let fresh = 0
 
-  beforeEach(() => {
-    storage = new Map<string, string>()
+/** A genuinely new store: a cache-busted module import runs creation again. */
+async function freshStore(): Promise<HostStoreModule['useHostStore']> {
+  const mod = (await import(`${STORE_PATH}.ts?case=${++fresh}`)) as HostStoreModule
+  return mod.useHostStore
+}
+
+/** The shared singleton every hook in the SDK uses. */
+function sharedStore(): HostStoreModule['useHostStore'] {
+  return (require(STORE_PATH) as HostStoreModule).useHostStore
+}
+
+function installStorage(storage: Map<string, string>): void {
+  Object.defineProperty(window, 'localStorage', {
+    value: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) },
+      clear: () => { storage.clear() },
+    },
+    configurable: true,
+  })
+}
+
+let storage: Map<string, string>
+
+beforeEach(() => {
+  storage = new Map<string, string>()
+  installStorage(storage)
+  vi.stubGlobal('fetch', mock(async () => Response.json({ events: [] })))
+  act(() => { sharedStore().setState({ debug: false }, false) })
+})
+
+afterEach(() => {
+  storage.clear()
+  vi.unstubAllGlobals()
+})
+
+describe('useHostStore — debug hydration at creation', () => {
+  it('hydrates true from localStorage', async () => {
+    storage.set('bakin-debug', 'true')
+    expect((await freshStore()).getState().debug).toBe(true)
+  })
+
+  it('hydrates false when the key is absent or not "true"', async () => {
+    expect((await freshStore()).getState().debug).toBe(false)
+    storage.set('bakin-debug', 'false')
+    expect((await freshStore()).getState().debug).toBe(false)
+  })
+
+  it('falls back to false when getItem throws', async () => {
     Object.defineProperty(window, 'localStorage', {
-      value: {
-        getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: string) => { storage.set(key, value) },
-        removeItem: (key: string) => { storage.delete(key) },
-        clear: () => { storage.clear() },
-      },
+      value: { getItem: () => { throw new Error('denied') }, setItem: () => {}, removeItem: () => {}, clear: () => {} },
       configurable: true,
     })
-    // bun:test has no vi.resetModules; reset the zustand store state directly.
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-    useContentStore.setState({ debug: false }, false)
+    expect((await freshStore()).getState().debug).toBe(false)
   })
 
-  afterEach(() => {
-    storage.clear()
+  it('falls back to false when the localStorage getter itself throws', async () => {
+    Object.defineProperty(window, 'localStorage', { get: () => { throw new Error('SecurityError') }, configurable: true })
+    expect((await freshStore()).getState().debug).toBe(false)
   })
 
-  it('defaults debug to false', async () => {
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-    const state = useContentStore.getState()
-    expect(state.debug).toBe(false)
+  it('falls back to false when localStorage is absent', async () => {
+    Object.defineProperty(window, 'localStorage', { value: undefined, configurable: true })
+    const saved = (globalThis as { localStorage?: unknown }).localStorage
+    delete (globalThis as { localStorage?: unknown }).localStorage
+    try {
+      expect((await freshStore()).getState().debug).toBe(false)
+    } finally {
+      ;(globalThis as { localStorage?: unknown }).localStorage = saved
+    }
   })
+})
 
-  it('setDebug(true) updates state and persists to localStorage', async () => {
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-
-    act(() => { useContentStore.getState().setDebug(true) })
-
-    expect(useContentStore.getState().debug).toBe(true)
+describe('useHostStore — debug writes', () => {
+  it('setDebug persists true and false', () => {
+    const store = sharedStore()
+    act(() => { store.getState().setDebug(true) })
+    expect(store.getState().debug).toBe(true)
     expect(storage.get('bakin-debug')).toBe('true')
-  })
-
-  it('setDebug(false) updates state and persists "false" to localStorage', async () => {
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-
-    act(() => { useContentStore.getState().setDebug(true) })
-    act(() => { useContentStore.getState().setDebug(false) })
-
-    expect(useContentStore.getState().debug).toBe(false)
+    act(() => { store.getState().setDebug(false) })
+    expect(store.getState().debug).toBe(false)
     expect(storage.get('bakin-debug')).toBe('false')
   })
 
-  it('initialize() hydrates debug from localStorage when "true"', async () => {
-    storage.set('bakin-debug', 'true')
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-
-    await act(async () => { await useContentStore.getState().initialize() })
-
-    expect(useContentStore.getState().debug).toBe(true)
-  })
-
-  it('initialize() leaves debug false when localStorage key is absent', async () => {
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-
-    await act(async () => { await useContentStore.getState().initialize() })
-
-    expect(useContentStore.getState().debug).toBe(false)
-  })
-
-  it('initialize() leaves debug false when localStorage value is not "true"', async () => {
-    storage.set('bakin-debug', 'false')
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-
-    await act(async () => { await useContentStore.getState().initialize() })
-
-    expect(useContentStore.getState().debug).toBe(false)
-  })
-
-  it('setDebug tolerates localStorage throwing', async () => {
+  it('setDebug tolerates localStorage throwing', () => {
     Object.defineProperty(window, 'localStorage', {
-      value: {
-        getItem: () => { throw new Error('quota exceeded') },
-        setItem: () => { throw new Error('quota exceeded') },
-        removeItem: () => {},
-        clear: () => {},
-      },
+      value: { getItem: () => null, setItem: () => { throw new Error('quota exceeded') }, removeItem: () => {}, clear: () => {} },
       configurable: true,
     })
-
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-
-    // Should not throw
-    act(() => { useContentStore.getState().setDebug(true) })
-
-    expect(useContentStore.getState().debug).toBe(true)
+    const store = sharedStore()
+    act(() => { store.getState().setDebug(true) })
+    expect(store.getState().debug).toBe(true)
   })
 })
 
 describe('useDebug hook', () => {
-  let storage: Map<string, string>
-
-  beforeEach(() => {
-    storage = new Map<string, string>()
-    Object.defineProperty(window, 'localStorage', {
-      value: {
-        getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: string) => { storage.set(key, value) },
-        removeItem: (key: string) => { storage.delete(key) },
-        clear: () => { storage.clear() },
-      },
-      configurable: true,
-    })
-    // bun:test has no vi.resetModules; reset the zustand store state directly.
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-    useContentStore.setState({ debug: false }, false)
-  })
-
-  afterEach(() => {
-    storage.clear()
-  })
-
-  it('returns [false, toggleFn] by default', async () => {
+  it('returns [false, toggleFn] by default', () => {
     const { useDebug } = require('../../packages/sdk/src/hooks/use-debug') as typeof import('../../packages/sdk/src/hooks/use-debug')
     const { result } = renderHook(() => useDebug())
-
     expect(result.current[0]).toBe(false)
     expect(typeof result.current[1]).toBe('function')
   })
 
-  it('toggleDebug flips debug from false to true', async () => {
+  it('toggles both ways and persists', () => {
     const { useDebug } = require('../../packages/sdk/src/hooks/use-debug') as typeof import('../../packages/sdk/src/hooks/use-debug')
     const { result } = renderHook(() => useDebug())
-
     act(() => { result.current[1]() })
-
     expect(result.current[0]).toBe(true)
     expect(storage.get('bakin-debug')).toBe('true')
-  })
-
-  it('toggleDebug flips debug from true to false', async () => {
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-    const { useDebug } = require('../../packages/sdk/src/hooks/use-debug') as typeof import('../../packages/sdk/src/hooks/use-debug')
-
-    act(() => { useContentStore.getState().setDebug(true) })
-
-    const { result } = renderHook(() => useDebug())
-    expect(result.current[0]).toBe(true)
-
     act(() => { result.current[1]() })
-
     expect(result.current[0]).toBe(false)
     expect(storage.get('bakin-debug')).toBe('false')
   })
 })
 
-describe('DebugSeed', () => {
-  let storage: Map<string, string>
-
-  beforeEach(() => {
-    storage = new Map<string, string>()
-    Object.defineProperty(window, 'localStorage', {
-      value: {
-        getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: string) => { storage.set(key, value) },
-        removeItem: (key: string) => { storage.delete(key) },
-        clear: () => { storage.clear() },
-      },
-      configurable: true,
-    })
-    // bun:test has no vi.resetModules; reset the zustand store state directly.
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-    useContentStore.setState({ debug: false }, false)
-  })
-
-  afterEach(() => {
-    storage.clear()
-  })
-
-  it('seeds debug from ?debug=true URL param', async () => {
-    // Set the URL with ?debug=true
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, search: '?debug=true' },
-      configurable: true,
-      writable: true,
-    })
-
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-
-    // Import and render DebugSeed — it's a React component, so we need React
+describe('DebugSeed (?debug=true one-shot)', () => {
+  async function renderSeed(search: string): Promise<void> {
+    Object.defineProperty(window, 'location', { value: { ...window.location, search }, configurable: true, writable: true })
     const React = await import('react')
-    const { render: rtlRender } = require('@testing-library/react') as typeof import('@testing-library/react')
-
-    // DebugSeed uses useContentStore directly, no other providers needed
+    const { render } = require('@testing-library/react') as typeof import('@testing-library/react')
+    const useHostStore = sharedStore()
+    // Mirrors packages/host/src/providers/Providers.tsx DebugSeed.
     function DebugSeed() {
-      const setDebug = useContentStore((s: any) => s.setDebug)
+      const setDebug = useHostStore((s) => s.setDebug)
       React.useEffect(() => {
-        if (new URLSearchParams(window.location.search).get('debug') === 'true') {
-          setDebug(true)
-        }
+        if (new URLSearchParams(window.location.search).get('debug') === 'true') setDebug(true)
       }, [setDebug])
       return null
     }
+    render(React.createElement(DebugSeed))
+  }
 
-    rtlRender(React.createElement(DebugSeed))
-
-    expect(useContentStore.getState().debug).toBe(true)
+  it('seeds debug from the URL', async () => {
+    await renderSeed('?debug=true')
+    expect(sharedStore().getState().debug).toBe(true)
     expect(storage.get('bakin-debug')).toBe('true')
   })
 
-  it('does not activate debug when URL param is absent', async () => {
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, search: '' },
-      configurable: true,
-      writable: true,
-    })
+  it('does not activate debug without the param', async () => {
+    await renderSeed('')
+    expect(sharedStore().getState().debug).toBe(false)
+  })
 
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store') as typeof import('../../packages/sdk/src/hooks/use-content-store')
-    const React = await import('react')
-    const { render: rtlRender } = require('@testing-library/react') as typeof import('@testing-library/react')
-
-    function DebugSeed() {
-      const setDebug = useContentStore((s: any) => s.setDebug)
-      React.useEffect(() => {
-        if (new URLSearchParams(window.location.search).get('debug') === 'true') {
-          setDebug(true)
-        }
-      }, [setDebug])
-      return null
-    }
-
-    rtlRender(React.createElement(DebugSeed))
-
-    expect(useContentStore.getState().debug).toBe(false)
+  it('a toggle-off sticks across a reconnect refresh (no reseed)', async () => {
+    await renderSeed('?debug=true')
+    const store = sharedStore()
+    act(() => { store.getState().toggleDebug() })
+    await act(async () => { await store.getState().refreshActivity() })
+    expect(store.getState().debug).toBe(false)
   })
 })
