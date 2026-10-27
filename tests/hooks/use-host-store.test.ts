@@ -27,6 +27,34 @@ describe('useHostStore — shape', () => {
   })
 })
 
+describe('useHostStore — appendActivityEvent', () => {
+  it('orders a late, older live event by its timestamp, not its arrival', () => {
+    act(() => {
+      useHostStore.getState().appendActivityEvent(event('newer', '2026-10-26T20:00:05.000Z'))
+      useHostStore.getState().appendActivityEvent(event('older', '2026-10-26T20:00:01.000Z'))
+    })
+    expect(useHostStore.getState().activityEvents.map((e) => e.id)).toEqual(['newer', 'older'])
+  })
+
+  it('at capacity, an older arrival never evicts a newer retained row', () => {
+    const full = Array.from({ length: 100 }, (_, i) => event(`e-${i}`, new Date(Date.UTC(2026, 9, 2) + i * 1000).toISOString()))
+    act(() => { useHostStore.setState({ activityEvents: [...full].reverse() }) })
+    act(() => { useHostStore.getState().appendActivityEvent(event('ancient', '2026-10-01T00:00:00.000Z')) })
+    const ids = useHostStore.getState().activityEvents.map((e) => e.id)
+    expect(ids).toHaveLength(100)
+    expect(ids).not.toContain('ancient')
+    expect(ids[0]).toBe('e-99')
+  })
+
+  it('ignores a duplicate id', () => {
+    act(() => {
+      useHostStore.getState().appendActivityEvent(event('same', '2026-10-26T20:00:00.000Z'))
+      useHostStore.getState().appendActivityEvent(event('same', '2026-10-26T20:00:00.000Z'))
+    })
+    expect(useHostStore.getState().activityEvents).toHaveLength(1)
+  })
+})
+
 describe('useHostStore — refreshActivity', () => {
   it('fetches only /api/activity', async () => {
     const fetchMock = mock(async (_url: RequestInfo | URL) => Response.json({ events: [] }))

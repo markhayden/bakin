@@ -58,9 +58,11 @@ export const useHostStore = create<HostStore>((set, get) => ({
     persistDebug(debug)
   },
   toggleDebug: () => get().setDebug(!get().debug),
+  // Live events go through the same merge as the snapshot: a late, older
+  // arrival lands in timestamp order and never evicts a newer row.
   appendActivityEvent: (event) => set((state) => {
     if (isNoisyEvent(event) || state.activityEvents.some((e) => e.id === event.id)) return state
-    return { activityEvents: [event, ...state.activityEvents].slice(0, ACTIVITY_CAP) }
+    return { activityEvents: mergeActivity(state.activityEvents, [event]) }
   }),
   refreshActivity: async () => {
     const request = ++latestActivityRequest
