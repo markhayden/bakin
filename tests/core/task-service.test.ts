@@ -210,7 +210,29 @@ describe('task-service', () => {
           taskId: 'task-1',
         })
       )
-      expect(mockAddTaskLog).toHaveBeenCalledWith('task-1', 'pixel', 'Generating image...')
+      // One timestamp: the persisted entry and the broadcast share it, so the
+      // activity snapshot and the live event derive the same identity.
+      const broadcastTs = (mockBroadcast.mock.calls[0]![0] as { ts: string }).ts
+      expect(mockAddTaskLog).toHaveBeenCalledWith('task-1', 'pixel', 'Generating image...', undefined, broadcastTs)
+    })
+
+    it('resolves a title to the canonical id before authorizing, broadcasting and persisting', async () => {
+      mockHookRegistry.has.mockReturnValueOnce(true)
+      mockHookRegistry.invoke.mockResolvedValueOnce({ allowed: true })
+      await service.logProgress('Target', 'pixel', 'by title')
+
+      expect(mockHookRegistry.invoke).toHaveBeenCalledWith('workflows.authorizeToolUse', expect.objectContaining({ taskId: 'task-b' }))
+      expect(mockBroadcast).toHaveBeenCalledWith(expect.objectContaining({ taskId: 'task-b' }))
+      expect(mockBumpHeartbeat).toHaveBeenCalledWith('task-b', 'pixel')
+      expect(mockAddTaskLog).toHaveBeenCalledWith('task-b', 'pixel', 'by title', undefined, expect.any(String))
+    })
+
+    it('an unknown task rejects with no side effects', async () => {
+      mockBumpHeartbeat.mockClear()
+      await expect(service.logProgress('no-such-task', 'pixel', 'hello')).rejects.toThrow(/Task not found/)
+      expect(mockBroadcast).not.toHaveBeenCalled()
+      expect(mockBumpHeartbeat).not.toHaveBeenCalled()
+      expect(mockAddTaskLog).not.toHaveBeenCalled()
     })
 
     it('should broadcast even if no SSE handler registered', async () => {
@@ -250,7 +272,7 @@ describe('task-service', () => {
       await service.logProgress('task-1', 'human', 'Task complete: shipped by hand', 'human')
 
       expect(mockHookRegistry.invoke).not.toHaveBeenCalledWith('workflows.authorizeToolUse', expect.anything())
-      expect(mockAddTaskLog).toHaveBeenCalledWith('task-1', 'human', 'Task complete: shipped by hand')
+      expect(mockAddTaskLog).toHaveBeenCalledWith('task-1', 'human', 'Task complete: shipped by hand', undefined, expect.any(String))
       expect(mockBroadcast).toHaveBeenCalledWith(expect.objectContaining({ agent: 'human', channel: 'human' }))
     })
 

@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useContentStore } from './use-content-store'
 import { emitPluginEvent } from './use-plugin-event'
 import { mapAuditMessage } from '@bakin/core/events/audit-message'
+import { auditActivityId, taskLogActivityId } from '@bakin/core/events/activity-id'
 import type { Heartbeat } from '../types'
 import { sendBrowserNotification } from '../internal/browser-notify'
 
@@ -110,7 +111,7 @@ export function useSSE() {
           // Agent activity logs (from task log broadcasts via SSE)
           if (data.type === 'activity') {
             appendActivityEvent({
-              id: `${data.ts}-activity-${data.agent}`,
+              id: taskLogActivityId(data.taskId, data.ts, data.agent, data.message),
               ts: data.ts,
               type: 'log',
               agent: data.agent || 'system',
@@ -133,7 +134,7 @@ export function useSSE() {
             // Health nav badge / summary (they subscribe to 'doctor.run').
             if (entry.event === 'doctor.run') emitPluginEvent({ event: 'doctor.run' })
             appendActivityEvent({
-              id: `${entry.ts}-${entry.event}-${entry.agent}`,
+              id: auditActivityId(entry),
               ts: entry.ts,
               type: 'audit',
               agent: entry.agent || 'system',

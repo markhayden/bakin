@@ -163,13 +163,20 @@ export function backfillMissingCompletionRows(): number {
 /**
  * Log a progress message for a task.
  * Broadcasts to SSE immediately, then persists to task log.
+ *
+ * `identifier` may be an id or a title; it resolves to the canonical id FIRST,
+ * so authorization, the heartbeat, the broadcast and the persisted entry all
+ * name the same task — and an unknown task rejects before any side effect.
  */
 export async function logProgress(
-  taskId: string,
+  identifier: string,
   agent: string,
   message: string,
   channel?: Channel,
 ): Promise<void> {
+  const found = findTaskWithColumn(identifier)
+  if (!found) throw new Error(`Task not found: ${identifier}`)
+  const taskId = found.task.id
   // The workflow step-ownership check is for AGENTS writing on a workflow
   // task. The operator (spec D4: channel 'human' AND agent 'human') owns no
   // step and may annotate any card — the board UI and `bakin tasks … --as
@@ -177,12 +184,15 @@ export async function logProgress(
   if (!isOperatorAction(agent, channel)) {
     await assertWorkflowToolAllowed({ taskId, agent, action: 'progress-log' })
   }
+  // One instant for the broadcast and the persisted entry: the activity
+  // snapshot and the live event derive the same identity from it.
+  const ts = new Date().toISOString()
   // Broadcast to live activity feed first (never block on persistence)
-  broadcast({ type: 'activity', agent, message, ts: new Date().toISOString(), taskId, ...(channel ? { channel } : {}) })
+  broadcast({ type: 'activity', agent, message, ts, taskId, ...(channel ? { channel } : {}) })
   // Progress is a liveness signal — bump the agent's run heartbeat so a
   // quiet-but-alive agent is never superseded (advisory; never throws).
   bumpTaskRunHeartbeat(taskId, agent)
-  await appendTaskLog(taskId, agent, message)
+  await appendTaskLog(taskId, agent, message, undefined, ts)
 }
 
 /**
