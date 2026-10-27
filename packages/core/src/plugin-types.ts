@@ -57,7 +57,6 @@ export interface StorageAdapter {
   write(path: string, content: string): void
   append(path: string, content: string): void
   exists(path: string): boolean
-  readAll(): Record<string, string>
   list(path?: string): string[]
   remove(path: string): void
   rename(from: string, to: string): void

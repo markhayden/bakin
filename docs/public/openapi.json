@@ -53929,30 +53929,6 @@
         "x-bakin-full-path": "/api/paths"
       }
     },
-    "/api/state": {
-      "get": {
-        "operationId": "core.get.api-state",
-        "summary": "Get dashboard state snapshot",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Core"
-        ],
-        "x-bakin-full-path": "/api/state"
-      }
-    },
     "/api/search": {
       "get": {
         "operationId": "core.get.api-search",

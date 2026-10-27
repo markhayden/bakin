@@ -38,7 +38,6 @@ const reportedGrantFallbacks = new Set<string>()
 const METHOD_PERMISSIONS: Record<string, Permission> = {
   'storage.read': 'storage.read',
   'storage.exists': 'storage.read',
-  'storage.readAll': 'storage.read',
   'storage.list': 'storage.read',
   'storage.stat': 'storage.read',
   'storage.readJson': 'storage.read',

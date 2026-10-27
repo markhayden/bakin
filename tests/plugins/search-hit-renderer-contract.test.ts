@@ -101,7 +101,6 @@ mock.module('../../src/core/task-store', taskStoreMock)
 // content-files calls getContentDir() at module top (team plugin imports it)
 // — mock the module itself, same as tests/plugins/team/exec-tools.test.ts.
 const contentFilesMock = () => ({
-  readAllContent: mock(() => ({})),
   readContentFile: mock(() => null),
   writeContentFile: mock(),
   readHeartbeats: mock(() => ({})),

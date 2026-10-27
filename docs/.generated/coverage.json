@@ -10,7 +10,7 @@
     },
     "httpRoutes": {
       "status": "active",
-      "count": 67,
+      "count": 66,
       "withInputSchema": 0,
       "withOutputSchema": 0,
       "withExamples": 0,

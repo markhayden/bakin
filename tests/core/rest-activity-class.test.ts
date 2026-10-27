@@ -34,7 +34,6 @@ describe('REST activity classification', () => {
     expect(classify('/api/activity')).toBe('routine')
     expect(classify('/api/context-report')).toBe('routine')
     expect(classify('/api/settings')).toBe('routine')
-    expect(classify('/api/state')).toBe('routine')
     expect(classify('/api/version')).toBe('routine')
     expect(classify('/api/agent-packages')).toBe('routine')
     expect(classify('/api/plugins/health/assets/client.js')).toBe('routine')
@@ -114,7 +113,6 @@ describe('REST activity classification', () => {
       '/api/dispatch',
       '/api/activity',
       '/api/settings',
-      '/api/state',
       '/api/version',
       '/api/agent-packages',
       '/api/plugins/manifest',

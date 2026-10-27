@@ -68,25 +68,6 @@ export class ScopedPluginStorageAdapter implements StorageAdapter {
     return existsSync(this.resolve(path))
   }
 
-  readAll(): Record<string, string> {
-    const out: Record<string, string> = {}
-    if (!existsSync(this.root)) return out
-    const visit = (dir: string) => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const full = join(dir, entry.name)
-        if (entry.isDirectory()) {
-          visit(full)
-          continue
-        }
-        if (!entry.isFile()) continue
-        const rel = relative(this.root, full)
-        out[rel] = readFileSync(full, 'utf-8')
-      }
-    }
-    visit(this.root)
-    return out
-  }
-
   list(path = ''): string[] {
     const dir = this.resolve(path)
     if (!existsSync(dir)) return []

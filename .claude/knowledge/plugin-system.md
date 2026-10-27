@@ -1627,7 +1627,6 @@ S-B (runtime skills, on disk). See
 | `write(path, content)` | Write file, creates directories as needed |
 | `append(path, content)` | Append to file |
 | `exists(path)` | Check file existence |
-| `readAll()` | Read all files in content dir (flat) |
 
 All paths relative to `~/.bakin/` (resolved via `getContentDir()`).
 

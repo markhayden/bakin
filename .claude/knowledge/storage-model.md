@@ -54,7 +54,6 @@ interface StorageAdapter {
   write(path: string, content: string): void  // write file, create dirs
   append(path: string, content: string): void // append to file
   exists(path: string): boolean           // check existence
-  readAll(): Record<string, string>       // read all files (flat)
 }
 ```
 

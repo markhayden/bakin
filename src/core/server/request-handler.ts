@@ -64,7 +64,6 @@ import * as skillsRoute from '../../../packages/host/src/api/skills'
 import * as packagesDynamicRoute from '../../../packages/host/src/api/packages/dynamic'
 import * as packagesCapabilitiesRoute from '../../../packages/host/src/api/packages/capabilities'
 import * as pluginsMemoryWorkspaceRoute from '../../../packages/host/src/api/plugins/memory/workspace'
-import * as stateRoute from '../../../packages/host/src/api/state'
 import * as assetsRoute from '../../../packages/host/src/api/assets/[...path]'
 import * as pluginCatchAllRoute from '../../../packages/host/src/api/plugins/[pluginId]/[[...path]]'
 import * as pluginsManifestRoute from '../../../packages/host/src/api/plugins/manifest'
@@ -626,11 +625,6 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     // directly (it shadows the plugin catch-all).
     if (url.pathname === '/api/plugins/memory/workspace' && req.method === 'GET') {
       dispatchWebHandler(req, res, pluginsMemoryWorkspaceRoute.get)
-      return
-    }
-
-    if (url.pathname === '/api/state' && req.method === 'GET') {
-      dispatchWebHandler(req, res, stateRoute.get)
       return
     }
 
