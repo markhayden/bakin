@@ -6,7 +6,6 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider, type DragDropEventHandlers } from '@dnd-kit/react'
 import {
   toast,
-  useContentStore,
   useDebug,
   useJsonFetch,
   usePluginEvent,
@@ -179,7 +178,6 @@ export function KanbanBoard() {
   const [boardRefreshing, setBoardRefreshing] = useState(false)
   const [boardFailed, setBoardFailed] = useState(false)
   const boardLoadedRef = useRef(false)
-  const loading = useContentStore((s) => s.loading)
 
   const fetchBoard = useCallback(async () => {
     setBoardRefreshing(true)
@@ -544,7 +542,7 @@ export function KanbanBoard() {
     || brandFilter.length > 0
     || (view === 'table' && statusFilter.length > 0)
     || (view === 'kanban' && !showScheduled)
-  const initialLoading = !boardFailed && (Boolean(loading) || !boardLoaded)
+  const initialLoading = !boardFailed && !boardLoaded
   const searchSettled = !search.trim() || searchStatus !== 'loading'
 
   const searchFeedback = search.trim() && (searchStatus === 'unavailable' || searchMeta?.partial) ? (

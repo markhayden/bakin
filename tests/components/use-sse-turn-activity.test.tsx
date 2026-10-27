@@ -23,7 +23,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 import { render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { useSSE } from '../../packages/sdk/src/hooks/use-sse'
-import { useContentStore } from '../../packages/sdk/src/hooks/use-content-store'
+import { useHostStore } from '../../packages/sdk/src/hooks/use-host-store'
 import { usePluginEvent, type PluginEventPayload } from '../../packages/sdk/src/hooks/use-plugin-event'
 
 interface MockEventSource {
@@ -84,7 +84,7 @@ describe('useSSE — turn-activity fan-out', () => {
   it('never writes turn-activity into the activity feed', async () => {
     render(<Probe />)
     await waitFor(() => expect(lastES).not.toBeNull())
-    const before = useContentStore.getState().activityEvents.length
+    const before = useHostStore.getState().activityEvents.length
 
     lastES!.onmessage!({
       data: JSON.stringify({
@@ -98,6 +98,6 @@ describe('useSSE — turn-activity fan-out', () => {
     })
 
     expect(received).toHaveLength(1)
-    expect(useContentStore.getState().activityEvents.length).toBe(before)
+    expect(useHostStore.getState().activityEvents.length).toBe(before)
   })
 })

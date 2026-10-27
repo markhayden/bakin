@@ -131,7 +131,7 @@ packages/sdk/src/
 │                             from @bakin/core/routing)
 ├── types/                  ← CANONICAL contract types, self-contained, split into
 │                             primitives/manifest/runtime/services/registration/context/
-│                             host-state (the SSE content store's shapes) behind an
+│                             host-state (the browser host store's shapes) behind an
 │                             index.ts barrel (see the two-tier note below)
 └── utils/                  ← cn, formatAge, formatSize, isStale
 ```

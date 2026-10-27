@@ -30,7 +30,7 @@ mock.module('../../packages/sdk/src/internal/browser-notify', () => ({
 import { render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { useSSE } from '../../packages/sdk/src/hooks/use-sse'
-import { useContentStore } from '../../packages/sdk/src/hooks/use-content-store'
+import { useHostStore } from '../../packages/sdk/src/hooks/use-host-store'
 
 interface MockEventSource {
   onmessage: ((e: { data: string }) => void) | null
@@ -79,7 +79,7 @@ describe('useSSE — budget incident wiring', () => {
     expect(notifications[0].title).toBe('Budget alert')
     expect(notifications[0].body).toContain('$11.00 of $10.00')
 
-    const entry = useContentStore.getState().activityEvents.find((e) => e.eventName === 'budget.incident_opened')
+    const entry = useHostStore.getState().activityEvents.find((e) => e.eventName === 'budget.incident_opened')
     expect(entry).toBeDefined()
     expect(entry?.data).toMatchObject({ incidentId: 3, scope: 'global', lane: 'metered' })
   })

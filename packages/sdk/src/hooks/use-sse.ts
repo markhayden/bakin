@@ -1,11 +1,10 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { useContentStore } from './use-content-store'
+import { useHostStore } from './use-host-store'
 import { emitPluginEvent } from './use-plugin-event'
 import { mapAuditMessage } from '@bakin/core/events/audit-message'
 import { auditActivityId, taskLogActivityId } from '@bakin/core/events/activity-id'
-import type { Heartbeat } from '../types'
 import { sendBrowserNotification } from '../internal/browser-notify'
 
 const BASE_DELAY = 1000
@@ -18,21 +17,14 @@ function isDevPluginHotReloadActive(): boolean {
 }
 
 export function useSSE() {
-  const updateFile = useContentStore((s) => s.updateFile)
-  const setConnected = useContentStore((s) => s.setConnected)
-  const setHeartbeats = useContentStore((s) => s.setHeartbeats)
-  const initialize = useContentStore((s) => s.initialize)
-  const appendAuditEntry = useContentStore((s) => s.appendAuditEntry)
-  const appendActivityEvent = useContentStore((s) => s.appendActivityEvent)
-  const setSseConnected = useContentStore((s) => s.setSseConnected)
+  const setConnected = useHostStore((s) => s.setConnected)
+  const refreshActivity = useHostStore((s) => s.refreshActivity)
+  const appendActivityEvent = useHostStore((s) => s.appendActivityEvent)
   const esRef = useRef<EventSource | null>(null)
   const retryRef = useRef(0)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Debounce heartbeat refetches
-  const hbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    initialize()
     let disposed = false
     let reconcileQueued = false
     function reconcile() {
@@ -69,8 +61,10 @@ export function useSSE() {
 
       es.onopen = () => {
         setConnected(true)
-        setSseConnected(true)
         retryRef.current = 0 // Reset backoff on successful connect
+        // One activity snapshot per successful connection (first open and every
+        // reconnect) — it fills whatever the feed missed while disconnected.
+        void refreshActivity()
         reconcile()
       }
 
@@ -125,7 +119,6 @@ export function useSSE() {
           if (data.type === 'audit' && data.entry) {
             const entry = data.entry
             const entryData = entry.data || {}
-            appendAuditEntry(entry)
             // Every audit entry reaches usePluginEvent subscribers over this one
             // connection (surfaces that refresh on a domain's audit events, like
             // the schedule calendars, filter on `entry.event`).
@@ -147,20 +140,9 @@ export function useSSE() {
             })
           }
 
-          // Workflow plugin events
+          // Workflow plugin events → unified activity feed (task surfaces
+          // refresh from the same events through usePluginEvent).
           if (data.type === 'plugin-event' && typeof data.event === 'string' && data.event.startsWith('workflow.')) {
-            // Trigger full UI refresh for gate events so task cards update
-            if (data.event.startsWith('workflow.gate') || data.event === 'workflow.complete') {
-              initialize()
-            }
-            // Synthesize an audit entry so other consumers see it
-            appendAuditEntry({
-              ts: data.timestamp || new Date().toISOString(),
-              event: data.event,
-              agent: 'workflow',
-              data: { taskId: data.taskId, label: data.label, agent: data.agent, reason: data.reason, workflowId: data.workflowId },
-            })
-            // Route to unified activity feed
             appendActivityEvent({
               id: `${data.timestamp || new Date().toISOString()}-${data.event}-workflow`,
               ts: data.timestamp || new Date().toISOString(),
@@ -170,13 +152,6 @@ export function useSSE() {
               taskId: data.taskId,
               eventName: data.event,
             })
-          }
-
-          // Approvals (core, spec D7): a pending/resolved record changes the
-          // board's "Needs approval" signal — refresh the surfaces. Toast + OS
-          // notification are the host ApprovalsAttentionProvider's job.
-          if (data.type === 'plugin-event' && typeof data.event === 'string' && data.event.startsWith('approval.')) {
-            initialize()
           }
 
           // Budget incidents (cost-control v2): browser notification (same
@@ -289,20 +264,6 @@ export function useSSE() {
           if (typeof data.file === 'string') {
             emitPluginEvent({ ...data, event: 'bakin.file.changed', change: data.event })
           }
-          if (data.file && data.content !== undefined) {
-            updateFile(data.file, data.content)
-
-            // Debounced heartbeat refetch — coalesce rapid updates
-            if (data.file.startsWith('heartbeats/') && data.file.endsWith('.json')) {
-              if (hbTimerRef.current) clearTimeout(hbTimerRef.current)
-              hbTimerRef.current = setTimeout(() => {
-                fetch('/api/agents/health')
-                  .then(r => r.ok ? r.json() : null)
-                  .then(hb => { if (hb) setHeartbeats(hb as Record<string, Heartbeat>) })
-                  .catch(() => { /* best effort */ })
-              }, 500)
-            }
-          }
         } catch {
           // keep-alive or invalid
         }
@@ -311,7 +272,6 @@ export function useSSE() {
       es.onerror = () => {
         if (disposed || esRef.current !== es) return
         setConnected(false)
-        setSseConnected(false)
         es.close()
         esRef.current = null
 
@@ -330,9 +290,8 @@ export function useSSE() {
       window.removeEventListener('pageshow', resume)
       window.removeEventListener('online', resume)
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
-      if (hbTimerRef.current) clearTimeout(hbTimerRef.current)
       esRef.current?.close()
       esRef.current = null
     }
-  }, [updateFile, setConnected, setHeartbeats, initialize, appendAuditEntry, appendActivityEvent, setSseConnected])
+  }, [setConnected, refreshActivity, appendActivityEvent])
 }

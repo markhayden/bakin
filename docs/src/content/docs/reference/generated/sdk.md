@@ -46,7 +46,7 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 
 | Hook | Description |
 | --- | --- |
-| `useContentStore` | Access the global Zustand store for SSE-driven content state. |
+| `useHostStore` | Host-wide browser state: live connection, debug toggle, activity feed. |
 | `useScheduleJobs` | List scheduled jobs with live updates. |
 | `useRunHistory` | Fetch run history for a scheduled job. |
 | `ScheduleJob` | — |
@@ -784,5 +784,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 25, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 26, 2026 · Bakin 0.0.0-dev</span>
 </aside>
