@@ -38,7 +38,7 @@ describe('REST activity classification', () => {
     expect(classify('/api/plugins/health/assets/client.js')).toBe('routine')
     expect(classify('/api/plugin-settings/chat')).toBe('routine')
 
-    expect(classify('/api/agents/avatar')).toBe('user')
+    expect(classify('/api/agents/avatar')).toBe('routine')
     expect(classify('/api/agents/settings')).toBe('user')
     expect(classify('/api/agents/pixel', 'POST')).toBe('user')
     expect(classify('/api/dispatch', 'POST')).toBe('user')
@@ -108,6 +108,7 @@ describe('REST activity classification', () => {
     for (const path of [
       '/api/agents/:id',
       '/api/agents/:id/status',
+      '/api/agents/avatar',
       '/api/dispatch',
       '/api/activity',
       '/api/settings',

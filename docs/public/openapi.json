@@ -42803,98 +42803,6 @@
           }
         ],
         "x-bakin-full-path": "/api/plugins/team/:agentId/avatar"
-      },
-      "get": {
-        "operationId": "team.get.agent-id-avatar",
-        "summary": "Serve agent avatar image",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
-              }
-            }
-          },
-          "304": {
-            "description": "Not modified."
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Team"
-        ],
-        "description": "Serve agent avatar image",
-        "parameters": [
-          {
-            "name": "agentId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "x-bakin-full-path": "/api/plugins/team/:agentId/avatar"
       }
     },
     "/api/plugins/team/{agentId}/files": {
@@ -50228,8 +50136,11 @@
               }
             }
           },
+          "304": {
+            "description": "Not modified."
+          },
           "400": {
-            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "description": "Invalid input.",
             "content": {
               "application/json": {
                 "schema": {
@@ -50237,16 +50148,12 @@
                   "properties": {
                     "error": {
                       "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
                     }
                   },
                   "required": [
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": {}
                 }
               }
             }
@@ -50274,7 +50181,7 @@
         "tags": [
           "Core"
         ],
-        "description": "Serves an agent avatar image.",
+        "description": "Serves an agent avatar image — a cached display-size WebP for large stored files, the stored file otherwise.",
         "parameters": [
           {
             "name": "id",

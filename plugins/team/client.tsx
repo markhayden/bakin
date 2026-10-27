@@ -17,7 +17,7 @@ registerPlugin({
         title: String(hit.fields.name ?? hit.id),
         subtitle: String(hit.fields.role ?? 'agent'),
         href: `/team/${encodeURIComponent(hit.id)}`,
-        thumbnailUrl: `/api/agents/${encodeURIComponent(hit.id)}/avatar`,
+        thumbnailUrl: `/api/agents/avatar?id=${encodeURIComponent(hit.id)}`,
         icon: 'users',
       }),
       'agent-lessons': (hit) => {

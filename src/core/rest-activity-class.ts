@@ -17,6 +17,7 @@ export interface ResolvedRequestActivity {
 const HOST_ROUTINE_GET_PATHS = new Set([
   '/api/activity',
   '/api/agent-packages',
+  '/api/agents/avatar',
   '/api/context-report',
   '/api/dispatch',
   '/api/plugins/manifest',

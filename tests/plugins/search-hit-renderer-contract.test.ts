@@ -209,4 +209,11 @@ describe('search hit-renderer contract', () => {
     }
     expect(broken).toEqual([])
   })
+
+  // Regression: the team renderer once pointed at /api/agents/<id>/avatar —
+  // a URL no route serves — so ⌘K team hits never showed a face.
+  it('team hits use the host avatar route for their thumbnail', () => {
+    const descriptor = getSearchHitRenderersSnapshot().get('team')!(syntheticHit('team', { name: '', role: '' }))
+    expect(descriptor.thumbnailUrl).toBe('/api/agents/avatar?id=test-id')
+  })
 })
