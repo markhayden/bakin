@@ -6,6 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+Bakin loads fast again on a lived-in home: the page no longer downloads a snapshot of everything under `~/.bakin`, and avatars, activity and live file events stay small.
+
+### Changed
+- **No more full-home snapshot (#1038).** `GET /api/state` and `StorageAdapter.readAll` are gone. On Margo the snapshot was 155 MB (run workspaces, npm `node_modules`, the audit log), fetched on every load and every reconnect, and nothing read it. A cold board load is now ~0.5 MB.
+- **The host store holds only host state.** `useContentStore` is now `useHostStore` (`connected`, `debug`, `activityEvents`). The SSE connection refreshes activity once per successful connect.
+- **Activity and audit reads are bounded.** `/api/activity` reads the tail of the audit log, the task log's history rows come from `GET /api/plugins/tasks/history`, and `bakin logs` tails too. An architecture test refuses new whole-file audit reads.
+- **Live file events carry no file contents**, only `{ file, event, timestamp }`.
+- **One avatar route.** `/api/agents/avatar?id=` serves every avatar; the team plugin's duplicate GET is gone. Sources over 64 KiB get a cached ≤256 px WebP (1.9 MB → 8 KB on Margo); the original file is never touched.
+- The boot log names this machine's own Tailscale address instead of a hardcoded one.
+
+### Removed
+- `/api/agents/health`, the host memory `/audit` override, and the `storage.readAll` plugin permission.
+
+### Fixed
+- Activity entries logged in the same instant no longer collide, and live events land in timestamp order.
+- `bakin_log_progress` on an unknown task fails before writing anything.
+- A reopened task's log no longer keeps its old completion date, and history rows respect the board's agent and brand filters.
+
+### Upgrade notes
+- Official Bits is pinned to the release without `readAll`. Plugins that called `storage.readAll()` must list or read what they need.
+
 ## [0.0.1-rc.45] - 2026-10-27
 
 Agents can ask you a real question, and Projects become a conversation with a lead that keeps the work moving: it checks in when something changes and asks when a decision or a sign-off is yours.
