@@ -63,7 +63,6 @@ import * as packagesInstallRoute from '../../../packages/host/src/api/packages/i
 import * as skillsRoute from '../../../packages/host/src/api/skills'
 import * as packagesDynamicRoute from '../../../packages/host/src/api/packages/dynamic'
 import * as packagesCapabilitiesRoute from '../../../packages/host/src/api/packages/capabilities'
-import * as pluginsMemoryAuditRoute from '../../../packages/host/src/api/plugins/memory/audit'
 import * as pluginsMemoryWorkspaceRoute from '../../../packages/host/src/api/plugins/memory/workspace'
 import * as stateRoute from '../../../packages/host/src/api/state'
 import * as assetsRoute from '../../../packages/host/src/api/assets/[...path]'
@@ -623,13 +622,8 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
-    // /api/plugins/memory/{audit,workspace} — former standalone
-    // routes now served directly (they shadow the plugin catch-all).
-    if (url.pathname === '/api/plugins/memory/audit' && req.method === 'GET') {
-      dispatchWebHandler(req, res, pluginsMemoryAuditRoute.get)
-      return
-    }
-
+    // /api/plugins/memory/workspace — former standalone route now served
+    // directly (it shadows the plugin catch-all).
     if (url.pathname === '/api/plugins/memory/workspace' && req.method === 'GET') {
       dispatchWebHandler(req, res, pluginsMemoryWorkspaceRoute.get)
       return

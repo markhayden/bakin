@@ -21,9 +21,10 @@ import type { ColumnId, Task } from '../types'
 import { Inline } from '@makinbakin/sdk/layout'
 import { TaskActionsMenu } from './task-actions-menu'
 
+/** One raw audit record from `GET /api/plugins/tasks/history` (oldest first). */
 interface AuditEntry {
-  type: string
-  timestamp: string
+  ts: string
+  event: string
   agent?: string
   data?: {
     id?: string
@@ -126,15 +127,15 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
         // Dev rebuilds and engine hiccups can strand a response forever; a hung
         // request must degrade to the current-tasks-only view, not an eternal
         // loading state.
-        const res = await fetch('/api/plugins/memory/audit', { signal: AbortSignal.timeout(15_000) })
+        const res = await fetch('/api/plugins/tasks/history', { signal: AbortSignal.timeout(15_000) })
         if (!res.ok) return
         const { entries } = await res.json() as { entries: AuditEntry[] }
 
+        // Oldest first, so a later transition overwrites an earlier one.
         const taskMap = new Map<string, HistoricalTask>()
-        const sorted = [...entries].reverse()
-        for (const entry of sorted) {
+        for (const entry of entries) {
           const id = entry.data?.id
-          if (!id || !entry.type.startsWith('task.')) continue
+          if (!id) continue
 
           const existing = taskMap.get(id) ?? {
             id,
@@ -143,14 +144,14 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
             status: 'todo' as ColumnId,
           }
 
-          if (entry.type === 'task.created') {
-            existing.createdAt = entry.timestamp
+          if (entry.event === 'task.created') {
+            existing.createdAt = entry.ts
             if (entry.data?.title) existing.title = entry.data.title
           }
-          if (entry.type === 'task.moved' && entry.data?.to) {
+          if (entry.event === 'task.moved' && entry.data?.to) {
             existing.status = entry.data.to as ColumnId
             if (entry.data.to === 'done' || entry.data.to === 'archived') {
-              existing.completedAt = entry.timestamp
+              existing.completedAt = entry.ts
             }
           }
           if (entry.agent) existing.agent = entry.agent

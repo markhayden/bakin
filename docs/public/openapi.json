@@ -34990,8 +34990,8 @@
     },
     "/api/plugins/memory/audit": {
       "get": {
-        "operationId": "core.get.api-plugins-memory-audit",
-        "summary": "List memory audit entries",
+        "operationId": "memory.get.audit",
+        "summary": "List indexed audit entries with optional filters",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -35004,11 +35004,31 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         },
         "tags": [
-          "Core"
+          "Memory"
         ],
+        "description": "List indexed audit entries with optional filters",
         "x-bakin-full-path": "/api/plugins/memory/audit"
       }
     },
@@ -40048,6 +40068,82 @@
         ],
         "description": "Returns blocked/review counts only — cheap source for the Tasks nav badge.",
         "x-bakin-full-path": "/api/plugins/tasks/summary"
+      }
+    },
+    "/api/plugins/tasks/history": {
+      "get": {
+        "operationId": "tasks.get.history",
+        "summary": "Task lifecycle history from the audit log",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ts": {
+                            "type": "string"
+                          },
+                          "event": {
+                            "type": "string"
+                          },
+                          "agent": {
+                            "type": "string"
+                          },
+                          "data": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          }
+                        },
+                        "required": [
+                          "ts",
+                          "event",
+                          "agent",
+                          "data"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "entries"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Tasks"
+        ],
+        "description": "The newest 500 task.created / task.moved audit records, oldest first — the task log table derives rows for tasks no longer on the board from them. Bounded tail read.",
+        "x-bakin-full-path": "/api/plugins/tasks/history"
       }
     },
     "/api/plugins/tasks/{taskId}": {

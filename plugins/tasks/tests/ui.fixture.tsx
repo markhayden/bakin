@@ -89,7 +89,7 @@ function TasksFixture() {
 createRoot(document.getElementById('root')!).render(
   <PluginUiFixtureHost
     fixture={{ ...DEFAULT_PLUGIN_UI_FIXTURE, route: '/tasks', network: [
-      { path: '/api/plugins/memory/audit', status: 200, json: { entries: [] } },
+      { path: '/api/plugins/tasks/history', status: 200, json: { entries: [] } },
     ] }}
     registrations={[{ id: 'tasks', routes: { '/tasks': TasksFixture } }]}
   />,
