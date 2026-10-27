@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.45] - 2026-10-27
+
 Agents can ask you a real question, and Projects become a conversation with a lead that keeps the work moving: it checks in when something changes and asks when a decision or a sign-off is yours.
 
 ### Added
@@ -881,5 +883,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.43]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.43
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.44...HEAD
 [0.0.1-rc.44]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.44
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.45...HEAD
+[0.0.1-rc.45]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.45
