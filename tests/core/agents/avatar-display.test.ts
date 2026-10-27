@@ -1,8 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { randomBytes, randomUUID } from 'crypto'
+import { createHash, randomBytes, randomUUID } from 'crypto'
 import realSharp from 'sharp'
 
 // ── Mandatory isolation: temp content dir + OpenClaw home (CLAUDE.md rules) ──
@@ -170,6 +170,51 @@ describe('serveAvatar — display variant', () => {
     const responses = await Promise.all(Array.from({ length: 5 }, () => get('concurrent')))
     expect(responses.every((r) => r.headers.get('Content-Type') === 'image/webp')).toBe(true)
     expect(conversions).toBe(1)
+  })
+
+  it('content-addresses the derived validator: same bytes same ETag, new bytes new ETag', async () => {
+    const path = writeAvatar('etag-hash', 'jpg', await bigJpeg())
+    const first = await get('etag-hash')
+    const body = Buffer.from(await first.arrayBuffer())
+    const etag = first.headers.get('ETag')!
+    expect(etag).toContain(createHash('sha256').update(body).digest('hex').slice(0, 16))
+    // Cache hit: identical bytes, identical validator.
+    expect((await get('etag-hash')).headers.get('ETag')).toBe(etag)
+    // New source within the same second → new bytes → new validator.
+    writeFileSync(path, await bigJpeg())
+    utimesSync(path, new Date(), new Date(Date.now() + 1))
+    const next = await get('etag-hash')
+    expect(next.headers.get('ETag')).not.toBe(etag)
+  })
+
+  it('a source replaced (new format) mid-conversion serves the current avatar, and a request for the new source gets its own conversion', async () => {
+    const jpgPath = writeAvatar('swap', 'jpg', await bigJpeg())
+    const newPng = await realSharp(randomBytes(400 * 400 * 3), { raw: { width: 400, height: 400, channels: 3 } }).png().toBuffer()
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let firstCall = true
+    sharpImpl = ((input: unknown, opts?: unknown) => {
+      const pipeline = realSharp(input as string, opts as never)
+      if (!firstCall) return pipeline
+      firstCall = false
+      // The first conversion stalls until the source has been swapped.
+      return { rotate: () => ({ resize: () => ({ webp: () => ({ toBuffer: async () => { await gate; throw new Error('source vanished') } }) }) }) }
+    }) as unknown as SharpLike
+
+    const stalled = get('swap')
+    await new Promise((r) => setTimeout(r, 20))
+    // The upload path: write the new format, drop the old sibling.
+    writeFileSync(join(agentsDir, 'swap', 'avatar.png'), newPng)
+    unlinkSync(jpgPath)
+    const fresh = get('swap')
+    release()
+
+    const [a, b] = await Promise.all([stalled, fresh])
+    expect(a.status).toBe(200)
+    expect(b.status).toBe(200)
+    expect(b.headers.get('Content-Type')).toBe('image/webp')
+    const meta = await realSharp(Buffer.from(await b.arrayBuffer())).metadata()
+    expect([meta.width, meta.height]).toEqual([256, 256])
   })
 
   it('serves the original when the cache directory is unwritable', async () => {

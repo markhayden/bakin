@@ -9,6 +9,7 @@
  * re-declares mime strings; it only owns the avatar-specific priority order and
  * the magic-byte sniffing the pure image-format module can't do.
  */
+import { createHash } from 'crypto'
 import { statSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { getBakinPaths } from '../content-dir'
@@ -116,12 +117,18 @@ interface DisplayVariant {
   path: string
   size: number
   mtimeMs: number
+  /** Content hash of the derived bytes — the validator. */
+  hash: string
 }
 
-/** Generations in flight, per agent — concurrent requests share one conversion. */
-const displayInFlight = new Map<string, Promise<DisplayVariant | null>>()
-/** Source keys whose conversion failed (or did not fit the budget) — not retried until the source changes. */
-const displayFailed = new Set<string>()
+/** The generation in flight per agent, with the source key it converts. */
+const displayInFlight = new Map<string, { key: string; generation: Promise<DisplayVariant | null> }>()
+/**
+ * The source key whose conversion last failed (or did not fit the budget),
+ * per agent — not retried until that agent's source changes. One entry per
+ * agent, so repeated failures never grow it.
+ */
+const displayFailed = new Map<string, string>()
 
 function displaySourceKey(source: ResolvedAvatar): string {
   return `${source.path}|${source.mtimeMs}|${source.size}|v${DISPLAY_TRANSFORM_VERSION}`
@@ -135,10 +142,10 @@ function displayPaths(agentId: string): { image: string; meta: string } {
 function cachedDisplayVariant(agentId: string, key: string): DisplayVariant | null {
   const paths = displayPaths(agentId)
   try {
-    const meta = JSON.parse(readFileSync(paths.meta, 'utf-8')) as { sourceKey?: unknown }
-    if (meta.sourceKey !== key) return null
+    const meta = JSON.parse(readFileSync(paths.meta, 'utf-8')) as { sourceKey?: unknown; hash?: unknown }
+    if (meta.sourceKey !== key || typeof meta.hash !== 'string') return null
     const stat = statSync(paths.image)
-    return { path: paths.image, size: stat.size, mtimeMs: stat.mtimeMs }
+    return { path: paths.image, size: stat.size, mtimeMs: stat.mtimeMs, hash: meta.hash }
   } catch {
     return null // no (or unreadable) cache entry — generate
   }
@@ -168,12 +175,14 @@ async function generateDisplayVariant(agentId: string, source: ResolvedAvatar, k
     const now = statSync(source.path)
     if (now.mtimeMs !== source.mtimeMs || now.size !== source.size) return null
     const paths = displayPaths(agentId)
+    const hash = createHash('sha256').update(encoded).digest('hex').slice(0, 16)
     atomicWriteBytes(paths.image, encoded)
-    atomicWriteJson(paths.meta, { sourceKey: key })
+    atomicWriteJson(paths.meta, { sourceKey: key, hash })
+    displayFailed.delete(agentId)
     const stat = statSync(paths.image)
-    return { path: paths.image, size: stat.size, mtimeMs: stat.mtimeMs }
+    return { path: paths.image, size: stat.size, mtimeMs: stat.mtimeMs, hash }
   } catch (err) {
-    displayFailed.add(key)
+    displayFailed.set(agentId, key)
     log.warn('Avatar display variant unavailable; serving the original', {
       agentId,
       error: err instanceof Error ? err.message : String(err),
@@ -186,23 +195,28 @@ async function generateDisplayVariant(agentId: string, source: ResolvedAvatar, k
 async function displayVariant(agentId: string, source: ResolvedAvatar): Promise<DisplayVariant | null> {
   if (source.size <= DISPLAY_SOURCE_THRESHOLD) return null
   const key = displaySourceKey(source)
-  if (displayFailed.has(key)) return null
+  if (displayFailed.get(agentId) === key) return null
   const cached = cachedDisplayVariant(agentId, key)
   if (cached) return cached
   const pending = displayInFlight.get(agentId)
-  if (pending) return pending
+  if (pending) {
+    if (pending.key === key) return pending.generation
+    // A conversion of an older source is running — let it settle (it writes
+    // the same cache entry), then convert this one.
+    await pending.generation
+    return displayVariant(agentId, source)
+  }
   const generation = generateDisplayVariant(agentId, source, key).finally(() => displayInFlight.delete(agentId))
-  displayInFlight.set(agentId, generation)
+  displayInFlight.set(agentId, { key, generation })
   return generation
 }
 
 interface AvatarRepresentation {
   path: string
   contentType: string
-  size: number
   mtimeMs: number
-  /** Validator family — derived and original bytes never share an ETag. */
-  etagPrefix: string
+  /** Quoted validator — derived and original bytes never share one. */
+  etag: string
 }
 
 /** Conditional-GET-aware response for one stored representation. */
@@ -210,7 +224,7 @@ function respondWithRepresentation(req: Request, rep: AvatarRepresentation): Res
   // Truncate mtime to whole seconds so it agrees with the second-precision
   // Last-Modified header during If-Modified-Since comparisons.
   const mtimeSec = Math.floor(rep.mtimeMs / 1000)
-  const etag = `"${rep.etagPrefix}${rep.size}-${mtimeSec}"`
+  const etag = rep.etag
   const lastModified = new Date(mtimeSec * 1000).toUTCString()
 
   const ifNoneMatch = req.headers.get('if-none-match')
@@ -261,7 +275,22 @@ export async function serveAvatar(req: Request, agentId: string): Promise<Respon
   if (!resolved) return Response.json({ error: 'Avatar not found' }, { status: 404 })
 
   const variant = await displayVariant(agentId, resolved)
-  return respondWithRepresentation(req, variant
-    ? { ...variant, contentType: 'image/webp', etagPrefix: `display-v${DISPLAY_TRANSFORM_VERSION}-` }
-    : { ...resolved, etagPrefix: '' })
+  if (variant) {
+    return respondWithRepresentation(req, {
+      path: variant.path,
+      contentType: 'image/webp',
+      mtimeMs: variant.mtimeMs,
+      etag: `"display-v${DISPLAY_TRANSFORM_VERSION}-${variant.hash}"`,
+    })
+  }
+  // The source can be replaced (even in another format) while a conversion
+  // runs — serve whatever is stored now, not the path resolved before.
+  const current = resolveAgentAvatar(agentId)
+  if (!current) return Response.json({ error: 'Avatar not found' }, { status: 404 })
+  return respondWithRepresentation(req, {
+    path: current.path,
+    contentType: current.contentType,
+    mtimeMs: current.mtimeMs,
+    etag: `"${current.size}-${Math.floor(current.mtimeMs / 1000)}"`,
+  })
 }
