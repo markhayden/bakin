@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.46] - 2026-10-27
+
 Bakin loads fast again on a lived-in home: the page no longer downloads a snapshot of everything under `~/.bakin`, and avatars, activity and live file events stay small.
 
 ### Changed
@@ -906,5 +908,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.44]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.44
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.45...HEAD
 [0.0.1-rc.45]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.45
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.46...HEAD
+[0.0.1-rc.46]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.46
