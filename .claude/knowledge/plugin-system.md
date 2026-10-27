@@ -1401,7 +1401,10 @@ state and agent activity alone do not produce indicators.
 Providers subscribe to `bakin.reconcile` for connection/resume recovery in addition
 to their domain events. Retain successful snapshots on errors, retry failed reads,
 and reject superseded results. `bakin.file.changed` carries file invalidations on
-the same shell stream. Snapshot recovery never replays historical fanfare.
+the same shell stream — `{ file, change }` only: watcher SSE frames are
+`{ file, event, timestamp }` with NO content (the event bus and sync hooks still
+receive content server-side), so a large file change never rides every
+browser's stream or the SSE replay buffer. Snapshot recovery never replays historical fanfare.
 
 ### Lifecycle
 

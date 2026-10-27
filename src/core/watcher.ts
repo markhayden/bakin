@@ -214,13 +214,16 @@ function handleFileEvent(deps: WatcherDeps, fullPath: string, event: string): vo
   // Skip audit.jsonl — it's append-only and grows large.
   if (rel === 'audit.jsonl') return
 
-  // Asset files (binary) — notify sync hooks but don't broadcast content via SSE
+  // SSE file frames are invalidation signals — `{ file, event, timestamp }`,
+  // never content (browsers refetch what they show). Server-side consumers
+  // (event bus, sync hooks) still receive the content.
+  // Asset files (binary) — notify sync hooks with no content
   if (rel.startsWith('assets/') && !rel.includes('.trash/')) {
     if (rel.endsWith('.meta.json')) {
-      // Sidecar metadata is text — read and broadcast
+      // Sidecar metadata is text — read it for the sync hooks
       try {
         const content = readFileSync(fullPath, 'utf-8')
-        broadcast({ file: rel, content, event, timestamp: new Date().toISOString() })
+        broadcast({ file: rel, event, timestamp: new Date().toISOString() })
         runSyncHooks(rel, content).catch(err => {
           log.error('Sync hooks error', err, { file: rel })
         })
@@ -229,7 +232,7 @@ function handleFileEvent(deps: WatcherDeps, fullPath: string, event: string): vo
       }
     } else {
       // Binary asset — broadcast a notification (no content) and fire sync hooks
-      broadcast({ file: rel, content: '', event: 'asset.' + event, timestamp: new Date().toISOString() })
+      broadcast({ file: rel, event: 'asset.' + event, timestamp: new Date().toISOString() })
       runSyncHooks(rel, '').catch(err => {
         log.error('Sync hooks error', err, { file: rel })
       })
@@ -242,7 +245,7 @@ function handleFileEvent(deps: WatcherDeps, fullPath: string, event: string): vo
 
   try {
     const content = readFileSync(fullPath, 'utf-8')
-    broadcast({ file: rel, content, event, timestamp: new Date().toISOString() })
+    broadcast({ file: rel, event, timestamp: new Date().toISOString() })
     deps.eventBus.injectFileEvent(rel, event, content)
 
     // Fire sync hooks (non-blocking)
@@ -325,7 +328,7 @@ export function start(deps: WatcherDeps): void {
     const rel = relative(deps.contentDir, fullPath)
     if (rel === 'audit.jsonl') return
     log.info('File deleted', { file: rel })
-    broadcast({ file: rel, content: '', event: 'unlink', timestamp: new Date().toISOString() })
+    broadcast({ file: rel, event: 'unlink', timestamp: new Date().toISOString() })
     runUnlinkHooks(rel).catch(err => {
       log.error('Unlink hooks error', err, { file: rel })
     })
