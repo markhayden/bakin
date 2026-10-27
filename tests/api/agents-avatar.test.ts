@@ -20,11 +20,11 @@ const agentsDir = pathJoin(testDir, 'agents')
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ agents: agentsDir }),
+  getBakinPaths: () => ({ agents: agentsDir, cache: pathJoin(testDir, '.cache'), media: pathJoin(testDir, 'media') }),
 }))
 mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ agents: agentsDir }),
+  getBakinPaths: () => ({ agents: agentsDir, cache: pathJoin(testDir, '.cache'), media: pathJoin(testDir, 'media') }),
 }))
 mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => pathJoin(testDir, 'openclaw'),

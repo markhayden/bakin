@@ -122,6 +122,8 @@ export interface BakinPaths {
   bin: string
   /** Media prebuild store (sharp for compiled binaries, #889) — versioned dirs + receipt. */
   media: string
+  /** Derived, regenerable server caches (dot dir — the content watcher never sees it). */
+  cache: string
 }
 
 export function getBakinPaths(): BakinPaths {
@@ -150,6 +152,7 @@ export function getBakinPaths(): BakinPaths {
     db: join(home, 'bakin.db'),
     bin: join(home, 'bin'),
     media: join(home, 'media'),
+    cache: join(home, '.cache'),
   }
 }
 

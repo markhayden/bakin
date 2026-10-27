@@ -49,6 +49,8 @@ mock.module('../../../src/core/content-dir', () => ({
   getBakinPaths: () => ({
     agents: join(testDir, 'agents'),
     heartbeats: join(testDir, 'heartbeats'),
+    cache: join(testDir, '.cache'),
+    media: join(testDir, 'media'),
   }),
 }))
 
@@ -60,6 +62,8 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({
     agents: join(testDir, 'agents'),
     heartbeats: join(testDir, 'heartbeats'),
+    cache: join(testDir, '.cache'),
+    media: join(testDir, 'media'),
   }),
 }))
 

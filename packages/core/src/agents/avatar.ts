@@ -98,7 +98,7 @@ export function detectImageExtension(buffer: Uint8Array): AvatarExt | null {
  * `If-None-Match` or satisfying `If-Modified-Since` returns `304` without
  * reading the file. Returns a bodyless `404` when no avatar exists.
  */
-export function serveAvatar(req: Request, agentId: string): Response {
+export async function serveAvatar(req: Request, agentId: string): Promise<Response> {
   // Malformed (traversal-shaped) ids are a client error — reject before any
   // filesystem touch — distinct from a valid id that simply has no avatar.
   if (!isValidAgentId(agentId)) return Response.json({ error: 'Invalid agent id' }, { status: 400 })
