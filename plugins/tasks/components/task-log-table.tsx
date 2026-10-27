@@ -105,6 +105,13 @@ interface TaskLogTableProps {
   statusFilter: string[]
   /** When true, preserve search relevance order instead of manual sort */
   isSearching?: boolean
+  /**
+   * The parent narrowed `currentTasks` (search, agent or brand). Audit-only
+   * history rows cannot honor those filters — the audit agent is whoever
+   * acted, not the assignee, and audit records carry no brand — so they are
+   * left out rather than shown unfiltered.
+   */
+  narrowed?: boolean
   /** Per-task search score info, keyed by task id. Only set when debug + active search. */
   scoreMap?: Map<string, TaskScoreInfo>
   /** Opens the canonical task detail drawer for current and historical rows. */
@@ -114,7 +121,7 @@ interface TaskLogTableProps {
   onTaskDelete?: (task: Task) => void
 }
 
-export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap, onTaskOpen, onTaskEdit, onTaskDuplicate, onTaskDelete }: TaskLogTableProps) {
+export function TaskLogTable({ currentTasks, statusFilter, isSearching, narrowed, scoreMap, onTaskOpen, onTaskEdit, onTaskDuplicate, onTaskDelete }: TaskLogTableProps) {
   const [auditTasks, setAuditTasks] = useState<HistoricalTask[]>([])
   const [loading, setLoading] = useState(true)
   const [sortQuery, setSortQuery] = useQueryState('logSort', 'completedAt:desc')
@@ -173,14 +180,15 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
 
   // Merge current board tasks with audit history (current takes priority)
   const allTasks = useMemo(() => {
-    // The parent supplies ranked search matches. Unfiltered audit history
-    // must not introduce unrelated rows or reorder those matches.
-    if (isSearching) return currentTasks
+    // Under search, agent or brand filters the parent's rows are the answer;
+    // unfilterable audit history must not add unrelated rows (or reorder
+    // ranked search matches).
+    if (isSearching || narrowed) return currentTasks
     const merged = new Map<string, FlatTask | HistoricalTask>()
     for (const t of auditTasks) merged.set(t.id, t)
     for (const t of currentTasks) merged.set(t.id, t)
     return Array.from(merged.values())
-  }, [currentTasks, auditTasks, isSearching])
+  }, [currentTasks, auditTasks, isSearching, narrowed])
 
   // Status filter from parent facet
   const filtered = useMemo(() => {

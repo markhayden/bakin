@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '../../rtl-settle'
+import { settleFor } from '../../helpers/wait'
 
 const testDir = join(tmpdir(), `bakin-test-task-log-table-${process.pid}-${Date.now()}`)
 
@@ -121,6 +122,18 @@ describe('TaskLogTable', () => {
     expect(row('Reopened later').textContent).not.toContain('Jan 11')
     expect(row('Shipped then archived').textContent).toContain('Feb 11')
     expect(row('Shipped then archived').textContent).not.toContain('Feb 20')
+  })
+
+  it('leaves audit-only history out while the board is narrowed by agent or brand', async () => {
+    vi.stubGlobal('fetch', mock(async () => Response.json({ entries: [
+      { ts: '2026-01-10T12:00:00Z', event: 'task.created', agent: 'main', data: { id: 'other-agent', title: 'Someone else\'s task' } },
+    ] })))
+    render(<TaskLogTable currentTasks={[{ id: 'mine', title: 'Filtered match', checked: false, status: 'todo', agent: 'pixel' }]}
+      statusFilter={[]} narrowed onTaskOpen={mock()} />)
+    const table = await screen.findByRole('table', { name: 'Task log' })
+    await settleFor(50, 'history fetch resolves and would add rows if it were going to')
+    expect(within(table).getByText('Filtered match')).toBeDefined()
+    expect(within(table).queryByText('Someone else\'s task')).toBeNull()
   })
 
   it('shares the URL sort with its persistent control and labels narrow dates', async () => {

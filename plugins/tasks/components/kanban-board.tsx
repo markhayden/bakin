@@ -769,6 +769,7 @@ export function KanbanBoard() {
                 currentTasks={allTasksFlat}
                 statusFilter={statusFilter}
                 isSearching={Boolean(search)}
+                narrowed={hasBoardFilters}
                 scoreMap={scoreMap}
                 onTaskOpen={openTask}
                 onTaskEdit={editTask}
