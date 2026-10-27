@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+Agents can ask you a real question, and Projects become a conversation with a lead that keeps the work moving: it checks in when something changes and asks when a decision or a sign-off is yours.
+
+### Added
+- **Structured agent questions (#1031).** `bakin_exec_ask_user` lets an agent in a live conversation ask ONE question with 2-5 options and a recommendation. The turn engine attaches it to the tool row and every conversation surface renders an answerable card (pick, write your own, or "Not sure — help me choose"); answers are ordinary user messages. `parseBakinQuestion` / `validateBakinQuestionInput` / `QUESTION_LIMITS` are on `@makinbakin/sdk/utils`.
+- **Docked conversation rail** in the conversation kit, for pages that keep the thread beside other tabs.
+- **Plugin sign-offs (#1035).** A `plugin-gate` approval kind: plugins register gates through `ctx.approvals` and core fans each decision out to them; with the plugin absent the record stays pending (503), never cancelled.
+- **Out-of-turn conversation rows (#1035).** `appendExternal` on the turn service and `ctx.conversations` writes rows outside a turn; with a turn running they queue and land right after it, never inside it.
+- **Task tags through `ctx.tasks` (#1035)**, onto the board view the dispatcher reads, so models tag routes match plugin-created tasks.
+
+### Changed
+- **`tasks.statusChanged` fires from one place (#1035):** the task store's column write, exactly once per real column change. Blocks, recoveries and plugin moves used to change columns silently.
+- **Official Bits pinned to Projects 0.13.0**, the steward loop (check-ins, questions, sign-offs). The Projects guide covers check-ins. Projects 0.13.0 requires this release.
+
+### Fixed
+- Conversation empty states use the right heading level, and the composer's file input is hidden from assistive tech (#1032).
+- The docs generator no longer reads hook and tool registrations from test files.
+
 ## [0.0.1-rc.44] - 2026-10-25
 
 Health → Updates stops listing agent packages that did not change, and the Updates tab count reads clearly.
