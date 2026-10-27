@@ -12,7 +12,12 @@
 import { statSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { getBakinPaths } from '../content-dir'
+import { createLogger } from '../logger'
 import { IMAGE_EXTENSION_TO_MIME } from '../media/image-format'
+import { loadSharp } from '../media/sharp-loader'
+import { atomicWriteBytes, atomicWriteJson } from '../storage/atomic-write'
+
+const log = createLogger('avatar')
 
 /** Avatar formats in priority order — first existing file wins on read. */
 const AVATAR_EXT_PRIORITY = ['webp', 'png', 'jpg'] as const
@@ -91,25 +96,121 @@ export function detectImageExtension(buffer: Uint8Array): AvatarExt | null {
   return null
 }
 
-/**
- * Build the HTTP response for an agent avatar: resolves the file, sets the
- * matching Content-Type, and emits cache validators (weak `ETag` of
- * size+mtime, plus `Last-Modified`). Honors conditional requests — a matching
- * `If-None-Match` or satisfying `If-Modified-Since` returns `304` without
- * reading the file. Returns a bodyless `404` when no avatar exists.
- */
-export async function serveAvatar(req: Request, agentId: string): Promise<Response> {
-  // Malformed (traversal-shaped) ids are a client error — reject before any
-  // filesystem touch — distinct from a valid id that simply has no avatar.
-  if (!isValidAgentId(agentId)) return Response.json({ error: 'Invalid agent id' }, { status: 400 })
+// ---------------------------------------------------------------------------
+// Display variant — avatars render at ≤ 48 CSS px, so a large stored original
+// (a 1.9 MB photo on margo) is served as a cached ≤ 256 px WebP instead. The
+// original is never modified (uploads and package projections stay exactly
+// as stored, so package drift checks still hold).
+// ---------------------------------------------------------------------------
 
-  const resolved = resolveAgentAvatar(agentId)
-  if (!resolved) return Response.json({ error: 'Avatar not found' }, { status: 404 })
+/** Sources at or below this size are served as stored. */
+const DISPLAY_SOURCE_THRESHOLD = 64 * 1024
+const DISPLAY_MAX_EDGE = 256
+const DISPLAY_MAX_BYTES = 65_536
+/** Encode at the first quality that fits the byte budget. */
+const DISPLAY_QUALITIES = [80, 60, 40] as const
+/** Bump when the transform changes so cached variants regenerate. */
+const DISPLAY_TRANSFORM_VERSION = 1
 
+interface DisplayVariant {
+  path: string
+  size: number
+  mtimeMs: number
+}
+
+/** Generations in flight, per agent — concurrent requests share one conversion. */
+const displayInFlight = new Map<string, Promise<DisplayVariant | null>>()
+/** Source keys whose conversion failed (or did not fit the budget) — not retried until the source changes. */
+const displayFailed = new Set<string>()
+
+function displaySourceKey(source: ResolvedAvatar): string {
+  return `${source.path}|${source.mtimeMs}|${source.size}|v${DISPLAY_TRANSFORM_VERSION}`
+}
+
+function displayPaths(agentId: string): { image: string; meta: string } {
+  const dir = join(getBakinPaths().cache, 'avatars')
+  return { image: join(dir, `${agentId}.webp`), meta: join(dir, `${agentId}.json`) }
+}
+
+function cachedDisplayVariant(agentId: string, key: string): DisplayVariant | null {
+  const paths = displayPaths(agentId)
+  try {
+    const meta = JSON.parse(readFileSync(paths.meta, 'utf-8')) as { sourceKey?: unknown }
+    if (meta.sourceKey !== key) return null
+    const stat = statSync(paths.image)
+    return { path: paths.image, size: stat.size, mtimeMs: stat.mtimeMs }
+  } catch {
+    return null // no (or unreadable) cache entry — generate
+  }
+}
+
+async function generateDisplayVariant(agentId: string, source: ResolvedAvatar, key: string): Promise<DisplayVariant | null> {
+  // Absent sharp is not a failure to remember: the loader re-probes, so a
+  // `bakin install media` makes the next request derive without a restart.
+  const sharp = await loadSharp()
+  if (!sharp) return null
+  try {
+    let encoded: Buffer | null = null
+    for (const quality of DISPLAY_QUALITIES) {
+      const out = await sharp(source.path)
+        .rotate()
+        .resize({ width: DISPLAY_MAX_EDGE, height: DISPLAY_MAX_EDGE, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality })
+        .toBuffer()
+      if (out.length <= DISPLAY_MAX_BYTES) {
+        encoded = out
+        break
+      }
+    }
+    if (!encoded) throw new Error(`no encoding fits ${DISPLAY_MAX_BYTES} bytes`)
+    // The source may have been replaced while converting — publish only for
+    // the source this conversion read.
+    const now = statSync(source.path)
+    if (now.mtimeMs !== source.mtimeMs || now.size !== source.size) return null
+    const paths = displayPaths(agentId)
+    atomicWriteBytes(paths.image, encoded)
+    atomicWriteJson(paths.meta, { sourceKey: key })
+    const stat = statSync(paths.image)
+    return { path: paths.image, size: stat.size, mtimeMs: stat.mtimeMs }
+  } catch (err) {
+    displayFailed.add(key)
+    log.warn('Avatar display variant unavailable; serving the original', {
+      agentId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  }
+}
+
+/** The display variant for a large source, or null to serve the original. */
+async function displayVariant(agentId: string, source: ResolvedAvatar): Promise<DisplayVariant | null> {
+  if (source.size <= DISPLAY_SOURCE_THRESHOLD) return null
+  const key = displaySourceKey(source)
+  if (displayFailed.has(key)) return null
+  const cached = cachedDisplayVariant(agentId, key)
+  if (cached) return cached
+  const pending = displayInFlight.get(agentId)
+  if (pending) return pending
+  const generation = generateDisplayVariant(agentId, source, key).finally(() => displayInFlight.delete(agentId))
+  displayInFlight.set(agentId, generation)
+  return generation
+}
+
+interface AvatarRepresentation {
+  path: string
+  contentType: string
+  size: number
+  mtimeMs: number
+  /** Validator family — derived and original bytes never share an ETag. */
+  etagPrefix: string
+}
+
+/** Conditional-GET-aware response for one stored representation. */
+function respondWithRepresentation(req: Request, rep: AvatarRepresentation): Response {
   // Truncate mtime to whole seconds so it agrees with the second-precision
   // Last-Modified header during If-Modified-Since comparisons.
-  const mtimeSec = Math.floor(resolved.mtimeMs / 1000)
-  const etag = `"${resolved.size}-${mtimeSec}"`
+  const mtimeSec = Math.floor(rep.mtimeMs / 1000)
+  const etag = `"${rep.etagPrefix}${rep.size}-${mtimeSec}"`
   const lastModified = new Date(mtimeSec * 1000).toUTCString()
 
   const ifNoneMatch = req.headers.get('if-none-match')
@@ -131,13 +232,36 @@ export async function serveAvatar(req: Request, agentId: string): Promise<Respon
     })
   }
 
-  const data = readFileSync(resolved.path)
+  const data = readFileSync(rep.path)
   return new Response(new Uint8Array(data), {
     headers: {
-      'Content-Type': resolved.contentType,
+      'Content-Type': rep.contentType,
       'Cache-Control': CACHE_CONTROL,
       'Last-Modified': lastModified,
       ETag: etag,
     },
   })
+}
+
+/**
+ * Build the HTTP response for an agent avatar: resolves the file, serves a
+ * cached display-size WebP for large sources (the original otherwise, or
+ * whenever the variant cannot be made), and emits cache validators (weak-style
+ * `ETag` of size+mtime, distinct per representation, plus `Last-Modified`).
+ * Honors conditional requests — a matching `If-None-Match` or satisfying
+ * `If-Modified-Since` returns `304` without reading the file. Returns a
+ * `404` when no avatar exists.
+ */
+export async function serveAvatar(req: Request, agentId: string): Promise<Response> {
+  // Malformed (traversal-shaped) ids are a client error — reject before any
+  // filesystem touch — distinct from a valid id that simply has no avatar.
+  if (!isValidAgentId(agentId)) return Response.json({ error: 'Invalid agent id' }, { status: 400 })
+
+  const resolved = resolveAgentAvatar(agentId)
+  if (!resolved) return Response.json({ error: 'Avatar not found' }, { status: 404 })
+
+  const variant = await displayVariant(agentId, resolved)
+  return respondWithRepresentation(req, variant
+    ? { ...variant, contentType: 'image/webp', etagPrefix: `display-v${DISPLAY_TRANSFORM_VERSION}-` }
+    : { ...resolved, etagPrefix: '' })
 }
