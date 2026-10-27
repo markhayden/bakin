@@ -21,7 +21,11 @@ export function taskLogActivityId(taskId: string, timestamp: string, author: str
   return `log:${taskId}:${timestamp}:${author}:${shortHash(message)}`
 }
 
-/** Identity of one audit record. */
-export function auditActivityId(entry: { ts: string; event: string; agent?: string }): string {
-  return `audit:${entry.ts}:${entry.event}:${entry.agent || 'system'}`
+/**
+ * Identity of one audit record. The data fingerprint separates same-instant
+ * records from one agent (two tasks created in one millisecond); the HTTP
+ * snapshot and the SSE frame carry the same JSON, so both derive the same id.
+ */
+export function auditActivityId(entry: { ts: string; event: string; agent?: string; data?: unknown }): string {
+  return `audit:${entry.ts}:${entry.event}:${entry.agent || 'system'}:${shortHash(JSON.stringify(entry.data ?? {}))}`
 }

@@ -16,8 +16,19 @@ describe('activity identities', () => {
     expect(taskLogActivityId('task-1', ts, 'pixel', 'same')).not.toBe(taskLogActivityId('task-2', ts, 'pixel', 'same'))
   })
 
-  it('derives audit ids from ts, event and agent (system when absent)', () => {
-    expect(auditActivityId({ ts, event: 'task.created', agent: 'main' })).toBe(`audit:${ts}:task.created:main`)
-    expect(auditActivityId({ ts, event: 'doctor.run' })).toBe(`audit:${ts}:doctor.run:system`)
+  it('is deterministic for the same audit record, agent defaulting to system', () => {
+    const entry = { ts, event: 'task.created', agent: 'main', data: { id: 'a', title: 'A' } }
+    expect(auditActivityId(entry)).toBe(auditActivityId({ ...entry, data: { id: 'a', title: 'A' } }))
+    expect(auditActivityId({ ts, event: 'doctor.run' })).toBe(auditActivityId({ ts, event: 'doctor.run', agent: 'system', data: {} }))
+  })
+
+  it('separates same-instant audit records from the same agent by their data', () => {
+    expect(auditActivityId({ ts, event: 'task.created', agent: 'main', data: { id: 'a' } }))
+      .not.toBe(auditActivityId({ ts, event: 'task.created', agent: 'main', data: { id: 'b' } }))
+  })
+
+  it('derives the same id from a record and its JSON round-trip (HTTP snapshot vs SSE)', () => {
+    const live = { ts, event: 'task.moved', agent: 'pixel', data: { id: 'a', from: 'todo', to: 'done' } }
+    expect(auditActivityId(JSON.parse(JSON.stringify(live)))).toBe(auditActivityId(live))
   })
 })

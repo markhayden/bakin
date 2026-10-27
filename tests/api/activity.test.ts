@@ -80,8 +80,8 @@ describe('GET /api/activity', () => {
 
   it('derives ids with the shared activity identities', async () => {
     const events = await feed()
-    const audit = events.find((e) => e.type === 'audit')!
-    expect(audit.id).toBe(auditActivityId({ ts: audit.ts, event: 'task.created', agent: 'main' }))
+    const audit = events.find((e) => e.type === 'audit')! as { id: string; ts: string; taskId?: string }
+    expect(audit.id).toBe(auditActivityId({ ts: audit.ts, event: 'task.created', agent: 'main', data: { taskId: audit.taskId, title: `T${audit.taskId!.slice(2)}` } }))
     const logs = events.filter((e) => e.type === 'log')
     expect(logs.map((e) => e.id).sort()).toEqual([
       taskLogActivityId('task-1', '2026-10-26T20:00:00.000Z', 'pixel', 'same instant A'),
