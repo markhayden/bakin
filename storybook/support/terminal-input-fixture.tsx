@@ -12,6 +12,8 @@ const PREFIXES: Record<Modifier, string> = { ctrl: 'Ctrl+', alt: 'Alt+' }
 const sheetKeys = ['Esc', 'Tab', 'Shift+Tab', 'Enter', 'Left', 'Down', 'Up', 'Right', 'Home', 'End', 'Page Up', 'Page Down', 'Backspace', 'Delete', '|', '~', '/', '-']
 const controls = [['C', 'Interrupt'], ['D', 'End input'], ['R', 'Search history'], ['L', 'Clear screen'], ['A', 'Line start'], ['E', 'Line end'], ['U', 'Delete line'], ['W', 'Delete word'], ['K', 'Delete to end'], ['Z', 'Suspend']] as const
 const arrows = [['Left', ArrowLeft], ['Down', ArrowDown], ['Up', ArrowUp], ['Right', ArrowRight]] as const
+/** Named keys a keyboard delivers to the editor, by the names the row and sheet use. */
+const namedKeys: Record<string, string> = { ArrowLeft: 'Left', ArrowRight: 'Right', ArrowUp: 'Up', ArrowDown: 'Down', Home: 'Home', End: 'End', PageUp: 'Page Up', PageDown: 'Page Down', Tab: 'Tab', Enter: 'Enter', Backspace: 'Backspace', Delete: 'Delete', Escape: 'Esc' }
 
 /** A modifier's spoken name says its state; the lock is also shown by shape, not colour alone. */
 function modifierLabel(modifier: Modifier, state: ModifierState): string {
@@ -34,13 +36,34 @@ export function TerminalInputFixture() {
   const tap = (modifier: Modifier) => setModifiers(current => ({ ...current, [modifier]: current[modifier] === 'off' ? 'once' : 'off' }))
   const toggleLock = (modifier: Modifier) => setModifiers(current => ({ ...current, [modifier]: current[modifier] === 'locked' ? 'off' : 'locked' }))
   const backToKeyboard = () => { setSheet(false); editor.current?.focus() }
-  // While the sheet is open, Escape returns to the keyboard wherever focus is.
+  // While the sheet is open it owns Escape, wherever focus is: it closes the
+  // sheet and never reaches the editor (captured first). An Escape another
+  // owner already claimed (a dialog above it), or one inside a composition,
+  // is left alone.
   useEffect(() => {
     if (!sheet) return
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); setSheet(false); editor.current?.focus() } }
-    document.addEventListener('keydown', escape)
-    return () => document.removeEventListener('keydown', escape)
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return
+      event.preventDefault()
+      event.stopPropagation()
+      setSheet(false)
+      editor.current?.focus()
+    }
+    document.addEventListener('keydown', escape, true)
+    return () => document.removeEventListener('keydown', escape, true)
   }, [sheet])
+  const active = modifiers.ctrl !== 'off' || modifiers.alt !== 'off'
+  // The next key delivered to the editor takes an armed or locked modifier; committed
+  // text (IME, dictation, autocorrect) is sent as typed and ends a one-shot one.
+  // Simplified: a terminal consumer encodes every delivered key and chunk itself.
+  const editorKey = (event: React.KeyboardEvent) => {
+    if (!active || event.nativeEvent.isComposing || event.metaKey || event.ctrlKey || event.altKey) return
+    const name = event.key.length === 1 ? event.key : namedKeys[event.key]
+    if (!name) return
+    event.preventDefault()
+    send(name)
+  }
+  const editorText = () => setModifiers(current => ({ ctrl: current.ctrl === 'once' ? 'off' : current.ctrl, alt: current.alt === 'once' ? 'off' : current.alt }))
   const openSheet = (event: React.MouseEvent) => {
     setSheet(true)
     // The sheet stands in for the software keyboard, which goes down: focus
@@ -101,9 +124,7 @@ export function TerminalInputFixture() {
         <Stack gap="item" className="min-h-0 flex-1 overflow-y-auto p-bakin-3">
           <Text as="h1" weight="semibold">Terminal input</Text>
           <Button variant="outline" onClick={() => { setDisabled(value => !value); setModifiers({ ctrl: 'off', alt: 'off' }) }}>{disabled ? 'Enable keys' : 'Disable keys'}</Button>
-          {/* The next key typed here takes an armed or locked modifier, like a key from the row. */}
-          <Textarea ref={editor} aria-label="Example input" defaultValue="Try completion and cursor movement." className="min-h-0 flex-1"
-            onKeyDown={(event) => { if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && (modifiers.ctrl !== 'off' || modifiers.alt !== 'off')) { event.preventDefault(); send(event.key) } }} />
+          <Textarea ref={editor} aria-label="Example input" defaultValue="Try completion and cursor movement." className="min-h-0 flex-1" onKeyDown={editorKey} onInput={editorText} />
           <Text role="status">{lastKey}</Text>
         </Stack>
       </WorkspacePageBody>

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, waitFor } from 'storybook/test'
+import { expect, fireEvent, waitFor } from 'storybook/test'
 import { TerminalInputFixture } from '../../support/terminal-input-fixture'
 
 const meta = {
@@ -9,7 +9,7 @@ const meta = {
   parameters: {
     layout: 'fullscreen',
     bakinCoverage: ['desktop', 'mobile-320', 'overflow', 'interaction', 'scroll-ownership'],
-    docs: { description: { component: 'One row of square `icon-lg` Button keys (44px; six fit 320px) while the user is typing: Esc, Tab, the Control and Option modifiers, then More keys and Hide keyboard at the end; Hide keyboard stays enabled even while sending is disabled. A modifier is off, on for the next key, or locked; its spoken name says which, and a lock is also shown by shape. More keys opens a bounded, scrollable Panel in the same input accessory (the keyboard goes down) with labelled groups: keys, Control shortcuts with plain-language labels, and lock toggles; abc returns to the keyboard, Escape closes it, and keyboard users get focus moved into it. Use WorkspacePage viewport="visual" and WorkspacePageBody inputAccessory to keep the row above a software keyboard. Preserve editor focus on pointer activation with onMouseDown preventDefault; send once on click; keep normal keyboard and assistive activation. The consumer owns key encoding, availability and modifier reset on disconnection or session change; a plugin may restyle the keys as keycaps with scoped CSS on kit tokens. Show the row on coarse-pointer devices; hide it on fine-pointer desktops.' } },
+    docs: { description: { component: 'One row of square `icon-lg` Button keys (44px; six fit 320px) while the user is typing: Esc, Tab, the Control and Option modifiers, then More keys and Hide keyboard at the end; Hide keyboard stays enabled even while sending is disabled. A modifier is off, on for the next key, or locked; its spoken name says which, and a lock is also shown by shape. More keys opens a bounded, scrollable Panel in the same input accessory (the keyboard goes down) with labelled groups: keys, Control shortcuts with plain-language labels, and lock toggles; abc returns to the keyboard and keyboard users get focus moved into it. While it is open the sheet owns Escape wherever focus is: it closes the sheet and never reaches the editor, unless another owner (a dialog above it, a composition) already claimed it. The next key delivered to the editor takes an armed modifier; committed text (IME, dictation) is sent as typed and ends a one-shot one. Use WorkspacePage viewport="visual" and WorkspacePageBody inputAccessory to keep the row above a software keyboard. Preserve editor focus on pointer activation with onMouseDown preventDefault; send once on click; keep normal keyboard and assistive activation. The consumer owns key encoding, availability and modifier reset on disconnection or session change; a plugin may restyle the keys as keycaps with scoped CSS on kit tokens. Show the row on coarse-pointer devices; hide it on fine-pointer desktops.' } },
   },
 } satisfies Meta<typeof TerminalInputFixture>
 export default meta
@@ -50,19 +50,40 @@ export const BarAndSheet = {
     await userEvent.click(canvas.getByRole('button', { name: 'Back to keyboard' }))
     await expect(canvas.queryByRole('region', { name: 'More keys' })).toBeNull()
     await expect(editor).toHaveFocus()
-    // The next key typed in the editor takes an armed modifier.
+    // The next key typed in the editor takes an armed modifier, a named key too.
     await userEvent.click(canvas.getByRole('button', { name: 'Control' }))
     await userEvent.keyboard('c')
     await expect(status).toHaveTextContent('Ctrl+c')
     await expect(canvas.getByRole('button', { name: 'Control' })).toHaveAttribute('aria-pressed', 'false')
-    // Opened with a pointer, the sheet takes focus from the editor; Escape closes it and focus returns.
+    await userEvent.click(canvas.getByRole('button', { name: 'Control' }))
+    await userEvent.keyboard('{ArrowLeft}')
+    await expect(status).toHaveTextContent('Ctrl+Left')
+    // A key inside a composition is not a key; the text it commits ends a one-shot modifier.
+    await userEvent.click(canvas.getByRole('button', { name: 'Option' }))
+    fireEvent.keyDown(editor, { key: 'a', isComposing: true })
+    await expect(status).toHaveTextContent('Ctrl+Left')
+    const text = (editor as HTMLTextAreaElement).value
+    fireEvent.input(editor, { target: { value: text + 'あ' } })
+    await expect(canvas.getByRole('button', { name: 'Option' })).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.input(editor, { target: { value: text } })
+    // Opened with a pointer, the sheet takes focus from the editor (on the next frame).
     await userEvent.click(canvas.getByRole('button', { name: 'More keys' }))
-    // Focus moves into the sheet on the next frame.
     await waitFor(() => expect(canvas.getByRole('region', { name: 'More keys' })).toHaveFocus())
     await expect(editor).not.toHaveFocus()
+    // While it is open the sheet owns Escape, wherever focus is: it closes, the editor never sees it.
+    editor.focus()
     await userEvent.keyboard('{Escape}')
     await expect(canvas.queryByRole('region', { name: 'More keys' })).toBeNull()
     await expect(editor).toHaveFocus()
+    await expect(status).not.toHaveTextContent('Esc')
+    // An Escape another owner already claimed leaves it open.
+    await userEvent.click(canvas.getByRole('button', { name: 'More keys' }))
+    const claimed = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    claimed.preventDefault()
+    editor.dispatchEvent(claimed)
+    await expect(canvas.getByRole('region', { name: 'More keys' })).toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    await expect(canvas.queryByRole('region', { name: 'More keys' })).toBeNull()
     // Hide keyboard works while sending is disabled.
     await userEvent.click(canvas.getByRole('button', { name: 'Disable keys' }))
     await expect(canvas.getByRole('button', { name: 'Tab' })).toBeDisabled()
