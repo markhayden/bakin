@@ -378,7 +378,7 @@ research item in D9 was selected by Mark.
    - **On join:** a viewer receives the replica's history (D13 checkpoint +
      tail), so history from before it connected is there.
    - **Depth:** 10,000 lines by default on the server and every viewer
-     (≤ 24 MB retained per session, measured in T32d). More needs incremental
+     (≤ 32 MB retained per session, measured in T32d). More needs incremental
      checkpoints (a later task).
    - **Full-screen programs** (vim, less, htop) have no scrollback, as in
      any terminal; the grid pans as today.
@@ -397,13 +397,11 @@ research item in D9 was selected by Mark.
      URLs and OSC 8 links open through one handler — confirmed, no opener,
      http/https/mailto.
    - When iOS blocks a clipboard write, a tap-to-copy prompt appears instead.
-     **Open decision 6, for Mark (kit gap):** nothing in B5 writes the
-     clipboard yet (copying a selection on a phone needs an action), the
-     kit's public copy action is `CopyButton` (a 24 px icon button,
-     below the 44 px touch target), and `copyToClipboard` is no longer
-     public (#875). A touch-sized copy action is a public-API extension
-     (a `CopyButton` size, or re-exporting the helper) that needs his
-     approval; R3's T36b (OSC 52 offers, copied on a tap) needs the same.
+     **Decision 6 (Mark, 2026-10-28):** the kit's `CopyButton` gains a
+     44 px touch size (an approved public-API extension: story, docs, API
+     inventory); tap-to-copy and R3's T36b offers use it. (Nothing in B5
+     wrote the clipboard; the public copy action was a 24 px icon and
+     `copyToClipboard` is not public since #875.)
    - OSC 52 clipboard writes are never automatic: D13's profile decodes them
      into offers, and the latest offer is copied only on the operator's tap,
      live only (T36b).
@@ -553,11 +551,9 @@ research item in D9 was selected by Mark.
      exception record.
    - **Later:** pin editing and customisation; a seamless keyboard-height
      sheet (only if the device checkpoint shows it is worth it).
-   - **Open decision 5, for Mark:** the plan still carries pin editing as
-     T19b in B5 ("Edit pinned keys in •••… capped at 12"), while this item
-     says Later, and the v2 row has no room for pins at 320 px. Claude
-     recommends deferring T19b (the sheet is where keys are added) unless
-     Mark wants pins as a sheet group; not built until he decides.
+   - **Decision 5 (2026-10-28, by default — Mark did not object):** pin
+     editing stays Later; T19b is deferred out of B5 (the v2 row has no
+     room for pins at 320 px; the sheet is where keys are added).
    - Desktop (fine primary pointer) shows no key bar.
 
 Cut: the ghostty-web renderer, the image (sixel) addon, ligatures, and the
@@ -736,9 +732,10 @@ Codex reviews.
     points the replica's cursor is also compared with tmux's; a mismatch
     reseeds and is logged.
   - It is detection, not a guarantee.
-- **Memory budget** (T32d, per session at 120 × 10k): retained after GC
-  ≤ 24 MB on the raw path; peak ≤ 64 MB with R1's shadow screen, verifier,
-  full queues and three joins. The server warns past 480 MB retained (20
+- **Memory budget** (T32d, per session at 120 × 10k; re-baselined by Mark
+  2026-10-28 from the measured terminal cost): retained after GC ≤ 32 MB
+  on the raw path; peak ≤ 96 MB with R1's shadow screen, verifier, full
+  queues and three joins. The server warns past 640 MB retained (20
   sessions). Not covered by that figure and to be measured in T32d: a
   wide, densely coloured session (400 × 150 with per-cell colours
   serializes to about 84M characters, 1.1 s of sliced work), seeds and
@@ -751,7 +748,11 @@ Codex reviews.
     makes the base 24.4M characters (about 55 MB). The R1 peak holds three
     such terminals (replica, bridge Screen, verifier scratch: about 62 MB)
     before the 8 MiB log and any join. The plan forbids moving the number,
-    so this is **open decision 4, for Mark** (both views below).
+    so this was **open decision 4. Decided by Mark 2026-10-28: re-baseline
+    from the measured cost — retained ≤ 32 MB, peak ≤ 96 MB, warning at
+    640 MB retained (20 sessions)**, keeping the resident design;
+    file-backed replay storage is the follow-up if live totals ever
+    approach the warning. Both views as they were put:
     - Codex: keep exact replay (checkpoint + tail), move it out of the
       heap: an immutable file-backed checkpoint streamed through the
       verifier, the tail as ordered records on disk, a resident cache of
@@ -1019,8 +1020,13 @@ Bakin conventions also apply:
     while heavy work runs), Ctrl-C stopped it in about 150 ms, and the
     replica converged and agreed with the bridge afterwards. Input ACK is
     not keystroke-to-render; the visible echo gate is R2's.
-  - **Open for Mark before T33** (Claude and Codex agree on the
-    mechanism; these are product calls):
+  - **Decided by Mark 2026-10-28** (1 and 2 as recommended; 3 by default,
+    both views agreeing): **1** an overload rebuild shows one persistent,
+    non-modal notice per session; **2** the gate splits — 50 ms echo p95 in
+    normal use, and under overload Ctrl-C within 1 s with input never
+    queued behind replica work, the display allowed to lag up to about a
+    second; **3** established viewers keep their input permission through a
+    display rebase. The options as they were put:
     1. *Is an overload rebuild disclosed?* Codex: yes, one persistent,
        non-modal notice per affected session ("High output caused the
        terminal view to refresh from tmux. Some output or terminal state

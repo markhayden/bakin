@@ -58,8 +58,8 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T18b Arrow joystick (long-press locks: sheet lock toggles instead)
 - [x] T18d Kit recipe update (bakin 0ace3a54d … 972daf0dc + bits b0f33af keycaps → kit Buttons; 4 Codex rounds)
 - [x] T18 Compose sheet (opened from •••) (6a9acec … e624ff4; 4 Codex rounds; tmux now decides bracketed paste for every browser paste)
-- [ ] T19b Pin editing (Edit pinned keys; browser-local) — BLOCKED: open decision 5 (spec says Later)
-- [ ] T20 Links and tap-to-copy (widths moved to T30b) — links built (f0e2ddc); tap-to-copy BLOCKED: open decision 6 (kit gap)
+- [-] T19b Pin editing — deferred (decision 5: spec says Later)
+- [ ] T20 Links and tap-to-copy (widths moved to T30b) — links built (f0e2ddc); tap-to-copy next, on the kit CopyButton touch size (decision 6)
 - [ ] T24b H3 CSS sync + repin
 - [ ] Checkpoint B5 → `tmd/cp7`
 
@@ -73,7 +73,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T32a Checkpoint serializer (R1: f10d3ca, 85a61ac, c314bc3, bfa23ac; 3 rounds + clean confirm)
 - [x] T32b Full-state verifier + fuzz in CI (R1: c930f34 … 8459d6b; 2 rounds + 4 confirming; CI four-shard fuzz job; decoder + chunked-print-clear fixes)
 - [x] T32c Replica + tail + cadence + shadow mode (R1: fb3aa7f, 9fbf2fa, ca90e4b; review fixes ba0f675, 5e3b4df; overload rebuilds after measuring tmux 40 MB/s vs replica 21 MB/s; product decisions 1–3 open for Mark before T33, spec D13 Bounded load)
-- [ ] T32d Memory budget + warning — BLOCKED: open decision 4 for Mark (measured: one 120×10k terminal is 20.8 MB; ceilings assumed 14.5)
+- [ ] T32d Memory budget + warning — ceilings re-baselined (decision 4): retained ≤ 32 MB, peak ≤ 96 MB, warning 640 MB
 - [ ] Checkpoint R1 → `tmd/r1`
 - [ ] T33 Socket protocol v2 (join)
 - [ ] T34a Width-change rebase + one ordered resize source

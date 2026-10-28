@@ -724,7 +724,7 @@ Phase 8R (the raw-output transport, spec D13 and D9 item 3). Never built.
   only on the accepted revision, real-tmux and browser (Chromium + WebKit)
   coverage including a refused paste.
 
-**T19b: Pin editing** (S) — not built: open decision 5 (spec D9 item 9)
+**T19b: Pin editing** (S) — deferred out of B5 (decision 5, spec D9 item 9: Later)
 - Acceptance: **Edit pinned keys** in ••• adds, removes and moves pins with
   explicit buttons (no long-press needed); holding any key never sends it.
   Pins live per device in guarded `localStorage` (browser-local by Mark's
@@ -734,7 +734,7 @@ Phase 8R (the raw-output transport, spec D13 and D9 item 3). Never built.
   one browser test.
 
 **T20: Links and tap-to-copy** (S) — links built (f0e2ddc); tap-to-copy
-waits on open decision 6 (spec D9 item 4, a kit gap)
+uses the kit `CopyButton`'s new touch size (decision 6, spec D9 item 4)
 - Acceptance:
   - `@xterm/addon-web-links` 0.12.0 is added (plain-text URLs; OSC 8 links
     follow the profile's allowlist, T30).
@@ -987,19 +987,20 @@ we can test end to end manually again."
   - The keystroke-*render* echo gate needs a browser: it is R2's (T33), and
     its meaning under overload is open for Mark (spec D13, Bounded load).
 
-**T32d: Memory budget and warning** (S) — blocked on open decision 4
-(spec D13, Memory budget): measured, neither ceiling can be met as
-designed; Mark chooses between re-baselining from the measured terminal
-cost and Codex's file-backed replay storage (an L task).
+**T32d: Memory budget and warning** (S) — ceilings re-baselined by Mark
+2026-10-28 (decision 4, spec D13 Memory budget): retained ≤ 32 MB, peak
+≤ 96 MB, warning at 640 MB, from the measured 20.8 MB terminal.
 - Acceptance:
   - Measured on Bun 1.4.3 on the M4, two numbers per session at 120 ×
     10,000 rows of full scrollback, both recorded with the measurement:
     - **retained** (after `Bun.gc(true)`, raw path, no shadow): the replica
-      plus a bounded tail. Ceiling **24 MB** (one terminal's cell arrays
-      are about 14.5 MB);
+      plus a bounded tail. Ceiling **32 MB** (one profile terminal measured
+      20.7–20.8 MB at 120 × 10k: cell arrays 14.5 MB plus xterm's per-line
+      objects);
     - **peak** (R1 shadow mode, verifier peak, full 8 MiB log and 4 MiB
-      tail queues, three concurrent joins). Ceiling **64 MB**; the arrays
-      and queues alone are about 41.5 MB.
+      tail queues, three concurrent joins). Ceiling **96 MB**; three
+      terminals (replica, bridge Screen, verifier) and the queues alone are
+      about 75 MB.
     A ceiling that cannot be met changes the architecture (smaller shadow,
     streamed joins), never the number after the fact.
   - Bounded metadata: titles ≤ 4 KiB; at most one pending clipboard offer
@@ -1012,7 +1013,7 @@ cost and Codex's file-backed replay storage (an L task).
     supported size (400 × 150 with per-cell colours: about 84M characters)
     — with simultaneous sessions, and tmux's RSS separately.
   - A warning (server log plus a Health finding) appears when the live
-    sessions' retained total passes **480 MB** (20 sessions at the ceiling).
+    sessions' retained total passes **640 MB** (20 sessions at the ceiling).
   - Browser: R3's acceptance records Safari's per-tab memory at full
     10,000-row scrollback with WebGL (evidence, not a gate).
 - Verify: the measurement test against the budget, and the warning
