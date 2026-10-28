@@ -67,11 +67,11 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] xterm 6.0.0 erase-above crash fix + parser guard (B3: f347056, 3ccd66a; review fixes 7c3d0a2, 4be3341)
 - [x] T30 Terminal profile module (R1: ce411b3; review fixes 52f4826)
 - [x] T30b Profile owns terminal config (10k scrollback, Unicode 15 graphemes + generated tmux widths, UTF-8 boundaries, tmux width parity; 52f4826 + round-1 fixes)
-- [ ] T31a Control-mode output streaming + ordered event log
-- [ ] T31b Command/output coexistence on one control client
-- [ ] T31c Reseed core (SEED_CMD boundary)
-- [ ] T32a Checkpoint serializer
-- [ ] T32b Full-state verifier + fuzz in CI
+- [x] T31a Control-mode output streaming + ordered event log (R1: 8747b2e, 848b856, 4cc8d47; 3 Codex rounds)
+- [x] T31b Command/output coexistence on one control client (R1: 055a61d, f561941, eee03ad; B5 fixes c89278e store totals, 03db1cc Screen coalescing; 3 Codex rounds)
+- [x] T31c Reseed core (SEED_CMD boundary) (R1: b147fb8, e8d38bf, e682ccd, 73aa132, 976bf84; 2 rounds + 3 confirming; adds patchSharedTabStops)
+- [x] T32a Checkpoint serializer (R1: f10d3ca, 85a61ac, c314bc3, bfa23ac; 3 rounds + clean confirm)
+- [x] T32b Full-state verifier + fuzz in CI (R1: c930f34 … 8459d6b; 2 rounds + 4 confirming; CI four-shard fuzz job; decoder + chunked-print-clear fixes)
 - [ ] T32c Replica + tail + cadence + shadow mode
 - [ ] T32d Memory budget + warning
 - [ ] Checkpoint R1 → `tmd/r1`

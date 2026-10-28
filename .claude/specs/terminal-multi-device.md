@@ -627,7 +627,12 @@ Codex reviews.
     - inactive alt-buffer capacity;
     - stale combined/extended maps on reflow;
     - link entries, reclaimed when no live extended cell or the current
-      pen references them, in batches. Never deleting is not acceptable.
+      pen references them, in batches. Never deleting is not acceptable;
+    - one set of tab stops across alternate-screen switches (as tmux);
+    - the UTF-8 decoder dropping a held character whose continuation byte
+      carries no payload (a ZWJ split across writes);
+    - the start-of-print clear when a write boundary splits a printing run
+      (chunking must never change layout).
 
     Each has a test that fails once upstream fixes it.
 - **Checkpoint + bounded tail** (a join never waits on future output):
@@ -637,6 +642,9 @@ Codex reviews.
     cursor style, mouse and cursor visibility.
   - **Accepting a checkpoint:** only when xterm's parser is quiescent
     **and** restoring it into a scratch terminal reproduces the full state.
+    What bytes cannot carry travels beside them and is set after they are
+    parsed: the grapheme join state, the pen's HAS_EXTENDED bit (a latent
+    link) and the width the alternate screen was entered at.
   - **Cadence:** tried at 1 MiB of tail or after 2 s idle, coalesced and
     scheduled off the hot path. The tail has a **hard bound** (4 MiB).
   - **When no checkpoint can be accepted in time** (an unterminated

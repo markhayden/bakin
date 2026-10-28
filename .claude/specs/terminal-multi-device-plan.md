@@ -803,11 +803,14 @@ we can test end to end manually again."
     reach parity: xterm's provider sees only a packed join state that resets
     on every escape, never the cell left of the cursor tmux combines with,
     and it cannot discard a character.
-  - **UTF-8 chunk boundaries:** xterm 6.0.0's decoder loses the grapheme
-    join when a write ends inside a codepoint (a ZWJ split after `E2 80`:
-    🧑‍💻 takes 4 cells instead of 2). The profile carries an incomplete
-    trailing sequence into the next write, so chunking never changes
-    layout; a stock-vs-patched tripwire pins it.
+  - **UTF-8 split across writes:** xterm 6.0.0's UTF-8 decoder counts the
+    bytes it held by their payload, so a continuation byte with none (0x80,
+    as in ZWJ `E2 80 8D`) ends the count early and the held character is
+    dropped (🧑‍💻 then takes 4 cells instead of 2). `patchUtf8Decoder`
+    decodes the held bytes together with the next input (found by the T32b
+    fuzz; an earlier carried-tail wrapper was replaced by this root fix, so
+    resets and xterm's own 128 KiB parse split behave natively). Stock
+    tripwire included.
   - What tmux combines by context stays different and is pinned by the
     parity test: a skin tone after a letter, Thai SARA AM, the Hangul
     fillers tmux discards, and a modifier separated from its base by an
@@ -870,19 +873,21 @@ we can test end to end manually again."
 - Verify: real tmux with a seed during continuous numbered output (no
   gap, no duplicate), and repeated failures backing off.
 
-**T32a: Checkpoint serializer** (M)
+**T32a: Checkpoint serializer** (M) — built (f10d3ca … bfa23ac)
 - Acceptance: `lib/checkpoint.ts` writes the full state per D13, without
   SerializeAddon. The format is versioned.
 - Verify:
   - Spike 3's 14 named repros, plus Codex's (pending wrap, DEC graphics
     under a saved cursor, BEL inside DCS, idle prompt).
   - The underline-style raw attribute is preserved (it is not a defect).
-  - The parser's grapheme join state is part of the checkpoint and is
-    restored: a join between 👍 and 🏽, then `🏽X` on both sides, leaves the
-    viewer's cursor where the replica's is (a snapshot's own trailing
-    escapes reset it today).
+  - Three facts no bytes can rebuild travel beside them and are set once
+    the bytes are parsed: the parser's grapheme join state (any escape
+    clears it — a join between 👍 and 🏽 continues exactly), the pen's
+    HAS_EXTENDED bit (a link held with it clear is latent until an SGR
+    revives it), and the width the alternate screen was entered at (the
+    shared tab stops' rule on leaving it).
 
-**T32b: Full-state verifier and fuzz in CI** (M)
+**T32b: Full-state verifier and fuzz in CI** (M) — built (c930f34 … 8459d6b)
 - Acceptance:
   - The comparison covers cells (empty versus space), attributes, wrap
     flags, cursor, modes, region, saved cursor, charsets, tabs, pending
@@ -893,9 +898,21 @@ we can test end to end manually again."
     (mid-CSI included) with join offsets across deciles.
   - The reference run uses different chunking.
   - History differences are exact, with no broad allowances.
-  - The CI matrix: seeds 1–200 × sizes 80×24, 120×40 and 40×10, plus the
-    named repro seeds, within 90 s on one CI shard (measured on CI before
-    it gates; a slower run splits the matrix, never shrinks it).
+  - The CI matrix: seeds 1–200 × sizes 80×24, 120×40 and 40×10, plus 30
+    seeds at 2×1, with scrollback-trimming floods, CAN/SUB-cancelled
+    strings and writes past xterm's 128 KiB parse split (coverage gated on
+    observed behaviour). About 90 s locally in one run (114 s with
+    coverage), so CI runs it as its own four-shard job (`FUZZ_SHARD=k/4`,
+    about 24 s per shard locally); the coverage job skips it.
+  - Two references: the output between resizes concatenated and cut
+    afresh (compared at every resize boundary and the end), and an
+    incremental rechunked one compared at every join.
+  - The fuzz found, and T32b fixed: the UTF-8 decoder bug above; xterm's
+    start-of-print clear depending on where a write boundary splits a
+    printing run (`patchChunkedPrintClear`, a write-boundary rule, not the
+    join state, which xterm keeps through ignored escapes); latent pen
+    links; the alternate-entry width; the inactive normal cursor at an
+    alternate switch; charset names learned lazily.
 - Verify: clean across the matrix; teeth (a removed branch or category
   fails).
 
