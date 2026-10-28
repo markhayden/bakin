@@ -597,6 +597,24 @@ Codex reviews.
   order. Writes are queued, never awaited per chunk, with a hard bound.
   `%exit`, EOF, overflow or a too-far-behind exit invalidates the replica
   and goes to recovery.
+  - **Overload (measured 2026-10-28, T32c):** tmux delivers a `yes` flood
+    at about 40 MB/s; the replica parses about 21 MB/s (27 without the
+    profile), so a sustained flood would overflow the log in half a
+    second. tmux cannot apply backpressure while any normal client (the
+    bridge until T38b, any terminal app) is attached: it keeps reading
+    the pane and holds our unread output (`server_client_check_pane_buffer`).
+    So the log tells the replica its waiting output at ingress, and at
+    4 MiB the replica **rebuilds from tmux**: base and tail are dropped,
+    output is skipped unparsed until the next seed (it is superseded,
+    never in a tail), and a seed is asked for. Rebuilds start at most
+    once a second per session while output keeps coming, at once after
+    100 ms of quiet, one heavy job (checkpoint or capture) at a time in
+    the process. An overload rebuild is **lossy** (the seed is tmux's
+    reconstruction: the measured degradations), unlike T34a's
+    state-preserving width rebase. Log overflow stays the last safeguard
+    (recovery). Lossless backpressure (pausing reads when Bakin's control
+    client is the server's only attached client) is a follow-up after
+    T38b, not built.
 - **Shared terminal profile** (one module, used by the replica, every
   viewer and the checkpoint verifier; the same xterm release is pinned on
   both sides, enforced by an architecture test):
@@ -645,11 +663,15 @@ Codex reviews.
     What bytes cannot carry travels beside them and is set after they are
     parsed: the grapheme join state, the pen's HAS_EXTENDED bit (a latent
     link) and the width the alternate screen was entered at.
-  - **Cadence:** tried at 1 MiB of tail or after 2 s idle, coalesced and
-    scheduled off the hot path. The tail has a **hard bound** (4 MiB).
+  - **Cadence:** tried at 1 MiB of output since the last try or after 2 s
+    idle, in resumable steps (one row, or 16 KiB of restore, at most about
+    2 ms) run in 3 ms slices that yield to the event loop, one checkpoint
+    at a time in the process; overload abandons a running or waiting one.
+    About 50 ms of work at 120 × 40 + 10k rows. The tail has a **hard
+    bound**: 4 MiB or 4096 events.
   - **When no checkpoint can be accepted in time** (an unterminated
     string, a persistently unserializable state), the replica is rebuilt
-    from tmux under the recovery contract. It is never an unbounded tail.
+    from tmux (the same path as overload). It is never an unbounded tail.
   - **A join:** checkpoint plus tail, in ACKed chunks behind a replay
     barrier. Input is gated until the replay completes, and stale epochs
     are isolated.
@@ -694,7 +716,10 @@ Codex reviews.
 - **Memory budget** (T32d, per session at 120 × 10k): retained after GC
   ≤ 24 MB on the raw path; peak ≤ 64 MB with R1's shadow screen, verifier,
   full queues and three joins. The server warns past 480 MB retained (20
-  sessions).
+  sessions). Not covered by that figure and to be measured in T32d: a
+  wide, densely coloured session (400 × 150 with per-cell colours
+  serializes to about 84M characters, 1.1 s of sliced work), seeds and
+  capture replies in flight.
 - **Ended sessions:** the final bundle (last accepted checkpoint plus the
   bounded tail, dimensions, profile/format version, sequence boundary and
   recovery metadata) is persisted when the session ends: after a final
@@ -938,6 +963,30 @@ Bakin conventions also apply:
   - A healthy loopback viewer's keystroke-echo p95 stays under 50 ms.
   - Ctrl-C stops the flood within 1 s.
   - The evicted viewer re-snapshots to the same screen as a healthy viewer.
+  - Measured in R1 (T32c, shadow replica, 10 s flood): no overflow (worst
+    backlog 4.3 MB), input acknowledged by tmux at p95 4 ms (13–17 ms
+    while heavy work runs), Ctrl-C stopped it in about 150 ms, and the
+    replica converged and agreed with the bridge afterwards. Input ACK is
+    not keystroke-to-render; the visible echo gate is R2's.
+  - **Open for Mark before T33** (Claude and Codex agree on the
+    mechanism; these are product calls):
+    1. *Is an overload rebuild disclosed?* Codex: yes, one persistent,
+       non-modal notice per affected session ("High output caused the
+       terminal view to refresh from tmux. Some output or terminal state
+       may be missing…"), never cleared by a reconnect or a later
+       checkpoint, separate from a transient "catching up" indicator.
+       Claude: agree that silence is not honest (lost pen, saved cursor or
+       charset changes affect later output); recommend the notice.
+    2. *What does the echo gate mean during overload?* A rebuild cadence
+       of 1 s means the display can lag a flood by up to a second by
+       design. Codex: either keep the 50 ms gate and treat this design as
+       insufficient, or split it into normal-operation echo (50 ms) and
+       overload input responsiveness (Ctrl-C within 1 s, input never
+       queued behind replica work) plus display freshness. Claude:
+       recommend the split; no browser can render 40 MB/s anyway.
+    3. *Established viewers during a rebuild:* keep their input
+       permission (no join gate on a display rebase) so Ctrl-C always
+       works. Both recommend this.
 - **Resize failure:** inject a failure at each resize step. The session ends
   with every representation equal to tmux's actual window, and input paused
   until reconciliation finishes.

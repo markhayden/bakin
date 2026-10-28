@@ -72,7 +72,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T31c Reseed core (SEED_CMD boundary) (R1: b147fb8, e8d38bf, e682ccd, 73aa132, 976bf84; 2 rounds + 3 confirming; adds patchSharedTabStops)
 - [x] T32a Checkpoint serializer (R1: f10d3ca, 85a61ac, c314bc3, bfa23ac; 3 rounds + clean confirm)
 - [x] T32b Full-state verifier + fuzz in CI (R1: c930f34 … 8459d6b; 2 rounds + 4 confirming; CI four-shard fuzz job; decoder + chunked-print-clear fixes)
-- [ ] T32c Replica + tail + cadence + shadow mode
+- [x] T32c Replica + tail + cadence + shadow mode (R1: fb3aa7f, 9fbf2fa, ca90e4b; review fixes ba0f675, 5e3b4df; overload rebuilds after measuring tmux 40 MB/s vs replica 21 MB/s; product decisions 1–3 open for Mark before T33, spec D13 Bounded load)
 - [ ] T32d Memory budget + warning
 - [ ] Checkpoint R1 → `tmd/r1`
 - [ ] T33 Socket protocol v2 (join)

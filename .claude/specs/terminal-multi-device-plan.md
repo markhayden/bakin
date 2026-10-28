@@ -865,8 +865,12 @@ we can test end to end manually again."
   - An atomic `SEED_CMD` captures history plus screen plus formats in one
     grouped command.
   - **The boundary is the final correlated reply of `SEED_CMD`**: every
-    log event before it has been parsed first, and output after it
-    follows the seed.
+    log event before it has been processed or is superseded by the seed
+    (skipped output never appears in a tail), and output after it follows
+    the seed.
+  - Retries wait 100, 250, 500 and 1000 ms between the five attempts;
+    each capture takes the replica's heavy-work turn, the waits do not
+    (`ReseedOptions.attempt`, T32c).
   - It rebuilds a replica from tmux with bounded retry and backoff; no
     recovery loop grows memory.
   - It is used by T32c's fallback, T34a's rebase and T35's recovery.
@@ -916,23 +920,54 @@ we can test end to end manually again."
 - Verify: clean across the matrix; teeth (a removed branch or category
   fails).
 
-**T32c: Replica, tail, cadence and shadow mode** (M)
+**T32c: Replica, tail, cadence and shadow mode** (M) — built (fb3aa7f,
+9fbf2fa, ca90e4b; review fixes ba0f675, 5e3b4df)
 - Acceptance:
-  - One replica per session through the profile.
-  - Checkpoints are tried at 1 MiB of tail or 2 s idle. At most one
-    checkpoint runs at a time per process. It runs in slices of at most
-    8 ms, yielding to the event loop between them, so input that arrives
-    during a checkpoint is never queued behind it.
-  - The tail has a hard bound of 4 MiB. Without an accepted checkpoint in
-    time, it falls back to T31c's reseed.
-  - **Shadow mode:** the replica runs beside today's bridge, and its
-    screen is compared with the bridge's headless screen in logs, allowing
-    documented semantic differences.
-- Verify:
+  - One replica per session through the profile (`lib/replica.ts`),
+    starting at a seed; the first seed after attach goes through the same
+    queue as every capture.
+  - Checkpoints are tried at 1 MiB of output since the last try or 2 s
+    idle. At most one heavy job (a checkpoint or a capture) runs at a time
+    per process, in a queue whose waits can be cancelled. A checkpoint
+    runs in resumable steps (at most about 2 ms, even at 400 × 150 with
+    per-cell colours) in 3 ms slices, yielding to the event loop between
+    them, so input that arrives during a checkpoint is never queued behind
+    it. Measured: serialize 8 ms and verify 3 ms at 120 × 40 + 10k rows
+    (from 123 and 93 ms), about 50 ms per checkpoint in all, the
+    restore's parse being most of it.
+  - The tail has a hard bound of 4 MiB or 4096 events. Without an accepted
+    checkpoint in time, the replica rebuilds from tmux (T31c's reseed).
+  - **Overload** (measured, spec D13): the log tells the replica its
+    waiting output at ingress (`LogConsumer.pressure`; seeds are not
+    output, an event leaves the count when it is handed over); at 4 MiB
+    the replica rebuilds from tmux, skipping output unparsed until the
+    seed. Rebuilds start at most once a second per session while output
+    keeps coming, at once after 100 ms of quiet; seeds are parsed in
+    pieces; an episode lasts until a seed is applied whole and is logged
+    (`Terminal replica rebuilding/rebuilt/ended`: counts and positions,
+    never contents).
+  - Checkpoint data stays in chunks of about 16 KiB through the restore;
+    `restoreCheckpoint` has flow control (xterm discards past 50M queued
+    characters).
+  - **Shadow mode:** the replica runs beside today's bridge. When both
+    have been quiet for a second, size, visible text and cursor are
+    compared (attributes, trailing blanks, scrollback and a pending wrap
+    are documented differences, `lib/shadow.ts`); a reading during which
+    either side moved is discarded. Mismatches are counted and logged by
+    kind and row once per session per ten minutes, never with contents.
+- Verify (built):
   - Continuous printable output, an unterminated OSC/DCS and repeated
-    rejection stay bounded.
-  - **The keystroke-echo p95 and Ctrl-C gates hold for input sent while a
-    checkpoint is running**, not only between checkpoints.
+    rejection stay bounded; a waiting checkpoint is released by pressure;
+    the cadence counts from a capture's start.
+  - Real tmux (`replica.integration.test.ts`): the shadow agrees across
+    colours, wide characters, tabs, cursor moves and the alternate screen;
+    a 10 s `yes` flood never overflows, input is acknowledged at p95
+    4 ms (13–17 ms during heavy work), Ctrl-C stops it in about 150 ms,
+    and the replica converges and agrees with the bridge afterwards; a
+    checkpoint never holds the event loop for 8 ms (local suite; the unit
+    suite asserts the yielding).
+  - The keystroke-*render* echo gate needs a browser: it is R2's (T33), and
+    its meaning under overload is open for Mark (spec D13, Bounded load).
 
 **T32d: Memory budget and warning** (S)
 - Acceptance:
@@ -949,6 +984,12 @@ we can test end to end manually again."
   - Bounded metadata: titles ≤ 4 KiB; at most one pending clipboard offer
     per session (≤ 256 KiB decoded); link entries at most
     `LINK_ORPHAN_LIMIT` orphans beyond live ones.
+  - Also measured (Codex, T32c): the log's bound counts what waits, so a
+    peak holds 8 MiB waiting plus the one event being handled (a seed can
+    be several MB); capture replies, seed bytes and decoded text, the
+    replacement terminal of a rebuild, and checkpoint data at the widest
+    supported size (400 × 150 with per-cell colours: about 84M characters)
+    — with simultaneous sessions, and tmux's RSS separately.
   - A warning (server log plus a Health finding) appears when the live
     sessions' retained total passes **480 MB** (20 sessions at the ceiling).
   - Browser: R3's acceptance records Safari's per-tab memory at full
@@ -968,6 +1009,15 @@ a live session; two Codex rounds per task; docs.
   - Input is gated until the replay completes; stale epochs are isolated.
   - Resync is throttled.
   - B2's ACK windows, epochs, heartbeats and never-replayed input stay.
+  - **Replica rebuilds (T32c: overload, tail bound, width):** a rebuild is
+    one broadcast rebase that supersedes replay work in flight; stale ACKs
+    and digests from before it are isolated; a slow viewer's queue stays
+    bounded (never one seed per rebuild queued for it, never the skipped
+    output); its eviction deadline is not reset by rebuilds. A join while
+    the replica rebuilds waits for the seed, bounded. Established viewers
+    keep their input permission through a display rebase (no join gate,
+    no reset of input sequencing), so Ctrl-C always works — pending
+    Mark's decision 3 (spec D13, Bounded load).
 - Verify:
   - Unit: protocol.
   - Browser: joins during output, mid-escape, in alt screen, and with
@@ -987,6 +1037,9 @@ a live session; two Codex rounds per task; docs.
   - D3's agent reads (screen, dimensions, revision) are atomic from the
     current replica.
   - Partial-region history introduced by width rebases is documented.
+  - Not an overload rebuild: T32c's rebuilds skip output and are lossy;
+    a width rebase consumes the whole stream before it and transplants
+    the state, so it keeps its stronger promise.
 - Verify:
   - Rapid resizes with markers: transient and final states, attributes and
     modes.
@@ -1016,6 +1069,13 @@ a live session; two Codex rounds per task; docs.
   - After a T31c rebuild, the session shows the persistent kit Banner
     (`feedback/banner.stories.tsx — CanonicalUsage`) with D13's copy. The
     details name the cause; a reconnect doesn't clear it.
+  - Overload rebuilds (T32c): disclosure pending Mark's decision 1 (spec
+    D13, Bounded load); if disclosed, one persistent notice per session
+    with its own copy, never cleared by a reconnect or a later checkpoint,
+    and durable fidelity metadata carried into the bundle (T35b). A
+    session that ends while rebuilding takes a final seed, bounded, or
+    records "Output not saved"; it never saves an obsolete base as
+    complete.
   - `ui:conformance --quick`.
 - Verify: browser after a forced replica loss; real tmux degradations
   match D13's list.
@@ -1086,6 +1146,10 @@ a live session; two Codex rounds per task; docs.
     mismatch reseeds (T31c) and is logged with the positions, dimensions
     and a diagnostic category — never the line's contents (terminal output
     can hold credentials).
+  - Positions where the replica is rebuilding (no join point) are never
+    compared, and reports from before a rebuild are discarded; escalation
+    is bounded. Agreement after a lossy rebuild does not certify fidelity
+    to tmux (viewers and replica share the degradation).
 - Verify: injected divergence self-heals; no false mismatches over the
   fuzz corpus; an injected width difference (a test-only table entry) is
   caught by the tmux comparison and reseeded.
