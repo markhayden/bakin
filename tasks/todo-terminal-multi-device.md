@@ -59,7 +59,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T18d Kit recipe update (bakin 0ace3a54d … 972daf0dc + bits b0f33af keycaps → kit Buttons; 4 Codex rounds)
 - [x] T18 Compose sheet (opened from •••) (6a9acec … e624ff4; 4 Codex rounds; tmux now decides bracketed paste for every browser paste)
 - [-] T19b Pin editing — deferred (decision 5: spec says Later)
-- [ ] T20 Links and tap-to-copy (widths moved to T30b) — links built (f0e2ddc); tap-to-copy next, on the kit CopyButton touch size (decision 6)
+- [x] T20 Links (f0e2ddc) + kit CopyButton touch size (bakin 9265199a0, 2 Codex rounds); terminal tap-to-copy moved to T36b (B5 has no output clipboard write to fall back from; Mark to confirm)
 - [ ] T24b H3 CSS sync + repin
 - [ ] Checkpoint B5 → `tmd/cp7`
 
@@ -84,7 +84,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [ ] T38a Opt-in raw path (setting, default off)
 - [ ] Checkpoint R2 → `tmd/r2`
 - [ ] T36 Native scrolling, follow, gestures
-- [ ] T36b Clipboard offers (copy on tap)
+- [ ] T36b Clipboard offers (copy on tap) — the terminal's tap-to-copy, CopyButton size="touch"
 - [ ] Checkpoint R3 → Mark's manual end-to-end acceptance
 - [ ] T38b Delete the bridge (after acceptance)
 

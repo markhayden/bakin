@@ -738,8 +738,10 @@ uses the kit `CopyButton`'s new touch size (decision 6, spec D9 item 4)
 - Acceptance:
   - `@xterm/addon-web-links` 0.12.0 is added (plain-text URLs; OSC 8 links
     follow the profile's allowlist, T30).
-  - Copying a selection: when iOS rejects `writeText`, a tap-to-copy prompt
-    appears. Program clipboard offers (OSC 52) are T36b, not this task.
+  - ~~Copying a selection: when iOS rejects `writeText`, a tap-to-copy
+    prompt appears.~~ Moved to T36b (spec D9 item 4 § Scope): B5 has no
+    terminal-output clipboard write to fall back from. The kit half is
+    built: `CopyButton size="touch"` (bakin 9265199a0, two Codex rounds).
   - Character widths moved to the profile (T30b).
 - Verify:
   - Browser test: link and copy.
@@ -1224,6 +1226,10 @@ H3 CSS sync and repin.
   - The latest OSC 52 offer (decoded by the profile, one pending per
     session, live only) shows a Copy affordance in the canvas actions;
     the clipboard is written only on that tap (user activation).
+  - The affordance is the kit `CopyButton size="touch"` (44 px), the
+    terminal's tap-to-copy (moved here from T20): no automatic write
+    first; the offer stays after a failed write and clears only once
+    copied (`onCopied`).
   - Offers are never replayed by a join, a reconnect or a recovery.
   - Composes a kit pattern per `bakin-ui-conformance`.
 - Verify (browser, Chromium and WebKit): the copied text is exact,

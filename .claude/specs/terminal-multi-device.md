@@ -402,6 +402,16 @@ research item in D9 was selected by Mark.
      inventory); tap-to-copy and R3's T36b offers use it. (Nothing in B5
      wrote the clipboard; the public copy action was a 24 px icon and
      `copyToClipboard` is not public since #875.)
+     **Built:** `CopyButton size="touch"` (bakin 9265199a0).
+     **Scope (2026-10-28, Claude and Codex agree; for Mark to confirm):**
+     terminal-output tap-to-copy moves to R3's T36b. B5 has no
+     application-owned terminal-output clipboard write to fall back from:
+     desktop copying is xterm's synchronous copy event (never rejected),
+     and a phone has no touch selection to copy. At T36b a live OSC 52
+     offer supplies the text and the operator's tap on `CopyButton
+     size="touch"` copies it (no automatic write first; the offer stays on
+     a failed write). Arbitrary touch selection (long-press, handles) is
+     deferred on its own; it would be a new gesture system on the canvas.
    - OSC 52 clipboard writes are never automatic: D13's profile decodes them
      into offers, and the latest offer is copied only on the operator's tap,
      live only (T36b).
