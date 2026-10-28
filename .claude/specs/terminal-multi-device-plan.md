@@ -1094,6 +1094,43 @@ a live session; two Codex rounds per task; docs.
   - Not an overload rebuild: T32c's rebuilds skip output and are lossy;
     a width rebase consumes the whole stream before it and transplants
     the state, so it keeps its stronger promise.
+- **Design (2026-10-28, Codex-reviewed; replaces seed-plus-transplant):**
+  a width change keeps the live terminal and its parser and installs only
+  tmux's reflowed geometry into it, as an ordered operation in the tail
+  (not a new checkpoint base, which would need a portable parser-continuation
+  format).
+  - Ownership: tmux capture → history and screen cells, the active cursor
+    and pending wrap, the active region, the shared tab stops; the replica
+    → pen (protection, remembered underline, open/latent link), G0–G3, GL
+    and the effective charset, every mode, cursor visibility/style/blink,
+    mouse encoding, parser/decoder/printing-continuation state (untouched),
+    both DECSC slots and uncaptured inactive-buffer state; the profile →
+    alternate-entry width.
+  - Saved slots: `newSavedY = newYbase + (oldSavedY - oldYbase)` (no
+    clamping); `alternate_saved_x/y` only for the normal screen's return
+    slot when its 1049 provenance is known, never for the alternate DECSC.
+  - Links in copied cells are remapped into the destination registry.
+  - Flow: a width layout keeps today's ordered resize and asks for a
+    `width` capture (typed purpose and generation; coalesced), consuming
+    every output event meanwhile (no skip, no `rebuilding`, no fidelity
+    count); the capture lands as a `geometry` event at the log's boundary;
+    the replica applies it (seed parsed into a temporary terminal, its
+    geometry installed with one pinned-version helper shared by server and
+    browser) and commits it to the tail; viewers apply the same event
+    (payload streamed under credit). A verified checkpoint afterwards
+    compacts the tail when possible.
+  - Overload or tail bound during it: cancelled, the lossy rebuild takes
+    over; T33e's screen-only scope applies while history is owed.
+  - Size revisions on the raw path: one per applied dimension change,
+    carried on the ordered timeline; raw `readScreen` returns text,
+    dimensions and that revision from one replica step; `adoptSize` does
+    not advance the raw revision.
+  - Capture normalisation limits stay (empty cells as spaces, partial-region
+    scroll-offs): recorded, not claimed lossless without tests.
+  - Spike 2's lost character: tmux reflows the cursor line and moves the
+    cursor; xterm skips that line (and with `reflowCursorLine` keeps the
+    wrong column), so later output overwrites or misplaces characters
+    (spike 3 RESULTS; recorded as the reproduced mechanism).
 - Verify:
   - Rapid resizes with markers: transient and final states, attributes and
     modes.
