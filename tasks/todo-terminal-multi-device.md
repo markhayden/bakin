@@ -73,7 +73,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T32a Checkpoint serializer (R1: f10d3ca, 85a61ac, c314bc3, bfa23ac; 3 rounds + clean confirm)
 - [x] T32b Full-state verifier + fuzz in CI (R1: c930f34 … 8459d6b; 2 rounds + 4 confirming; CI four-shard fuzz job; decoder + chunked-print-clear fixes)
 - [x] T32c Replica + tail + cadence + shadow mode (R1: fb3aa7f, 9fbf2fa, ca90e4b; review fixes ba0f675, 5e3b4df; overload rebuilds after measuring tmux 40 MB/s vs replica 21 MB/s; product decisions 1–3 open for Mark before T33, spec D13 Bounded load)
-- [ ] T32d Memory budget + warning — ceilings re-baselined (decision 4): retained ≤ 32 MB, peak ≤ 96 MB, warning 640 MB
+- [x] T32d Memory budget + warning (R1: 27b0379, d4eae94, 5165ec7, 97d4bd3; 4 Codex rounds) — retained 27.4 MB with a full tail, live peak 79.4 MB; 32 MB is a reference-workload target (metadata-dense content recorded); tmux cell limit; 640 MB Health warning
 - [ ] Checkpoint R1 → `tmd/r1`
 - [ ] T33 Socket protocol v2 (join)
 - [ ] T34a Width-change rebase + one ordered resize source

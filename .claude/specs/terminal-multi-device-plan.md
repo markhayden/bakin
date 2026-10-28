@@ -1018,6 +1018,14 @@ we can test end to end manually again."
     10,000-row scrollback with WebGL (evidence, not a gate).
 - Verify: the measurement test against the budget, and the warning
   triggered by fixture.
+- As built (R1: 27b0379, d4eae94, 5165ec7, 97d4bd3, README e2e6dbe; four Codex rounds): spec
+  D13 Memory budget § As built. `lib/memory.ts` estimate and
+  `MemoryWarning`; `tests/memory.test.ts` (unit) and its local
+  measurement (`TERMINAL_MEMORY_TEST=1 TERMINAL_TMUX=~/.bakin/bin/tmux`,
+  one fresh process per shape via `tests/helpers/memory-measure.ts`);
+  the tmux cell limit in `lib/unicode-widths.ts` with a parity case;
+  the title bound in the profile; link sweeps from maintenance. The 32 MB
+  figure is a reference-workload target (scope change recorded in D13).
 
 **Checkpoint R1** (`tmd/r1`): all gates; shadow comparisons logged clean on
 a live session; two Codex rounds per task; docs.

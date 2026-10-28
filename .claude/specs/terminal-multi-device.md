@@ -772,6 +772,48 @@ Codex reviews.
       design. Recommends (b) for R1–R3, with file-backed storage recorded
       as the follow-up if the live sessions' totals ever approach the
       warning: one user, ten sessions at most (`maxSessions`).
+  - **As built (T32d, 2026-10-28).** The earlier figures summed
+    `heapStats().heapSize` and `extraMemorySize`, but the heap size
+    already counts typed arrays and string buffers, so they counted the
+    cell arrays twice. Measured again on the heap alone, in a fresh
+    process per shape: one profile terminal at 120 × 10k of coloured text
+    is 19.6 MB; a replica with its base 22.6 MB, at most 27.4 MB with a
+    full tail (**retained ≤ 32 MB met**); the live high-water of a real
+    checkpoint attempt in R1 shadow mode (replica, bridge Screen,
+    verifier, full 8 MiB queue, tail, three joins), stepped with a
+    collection every 250 steps, is 79.4 MB (**peak ≤ 96 MB met**).
+    Recorded, not gated: resident memory rises 47–58 MB through that
+    attempt (garbage and allocator slack) and about 30 MB through a
+    rebuild seed built from real tmux capture replies; three concurrent
+    sessions add up (128.5 MB); tmux's own server is 3.9 MB idle and
+    24.4 MB with three full sessions.
+  - **The 32 MB per-session figure is a reference-workload target**
+    (explicit scope change, agreed in the T32d Codex review): coloured
+    text at 120 × 10k, the workload decision 4 measured. Metadata-dense
+    output is larger by the nature of a resident xterm and is recorded,
+    not gated: a grapheme in every cell (a replica of 118 MB), a link in
+    every cell (a 57 MB terminal), every cell distinctly underlined
+    (75 MB), 400 × 150 with per-cell truecolour (123 MB). The server's
+    estimate follows every one of these within 25% (structure-based,
+    `lib/memory.ts`: cell arrays, per-line objects, combined and link
+    strings, the link registry, checkpoint text, tail and queues) and
+    feeds the 640 MB warning, which is advisory. File-backed replay stays
+    the follow-up; it would not remove xterm's own cost.
+  - **Bounded metadata as built:** titles and icon names past 4 KiB are
+    ignored (OSC 0, 1, 2); a cell keeps at most tmux's 32 bytes of UTF-8,
+    the code points past it dropped and never widening the cell, as tmux
+    3.7c does (100 cells of 100k combining marks had been 480 MB); link
+    orphans: at most `LINK_ORPHAN_LIMIT` beyond those referenced at the
+    last sweep, and orphans erased since are reclaimed by the server's
+    minute sweep (replica and Screen, sliced, in their own order; browser
+    viewers keep the threshold sweep only). Clipboard offers are capped
+    at 256 KiB decoded; one pending offer per session is the clipboard
+    UI's rule (T20 tap-to-copy), as nothing holds offers yet.
+  - **The warning as built:** a sliced reading (one step a line), with
+    the emulators' upkeep, every minute and on every Health run, one at a
+    time; past 640 MB one server log line and one Health observation
+    (`memory`, class `usage_anomaly`, disposition watch, "Open
+    Terminal"); it clears below 600 MB.
 - **Ended sessions:** the final bundle (last accepted checkpoint plus the
   bounded tail, dimensions, profile/format version, sequence boundary and
   recovery metadata) is persisted when the session ends: after a final
