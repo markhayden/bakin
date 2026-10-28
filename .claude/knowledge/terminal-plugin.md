@@ -149,3 +149,33 @@ row. Read-only viewers never resize the shared PTY.
 Implementation and verification: `.claude/specs/terminal-mobile-rendering-evidence.md`.
 Physical iPhone Safari and Android Chrome keyboard verification remains
 outstanding; automated Chromium/WebKit checks are not a native-phone result.
+
+## Raw output path (spec D13; R2, dormant until T38a)
+
+Two paths run side by side until T38b deletes the bridge. A session is on
+the raw path when `Sessions` options `rawPath(session)` says so (T38a wires
+the setting; the local preview forces it with `TERMINAL_PREVIEW_RAW=1`).
+
+- **Server:** `lib/replica.ts` holds the session's emulator, base
+  checkpoint and tail; `state()`/`cut()`/`subscribe()` give a viewer an
+  immutable cut and every committed event after it. `lib/raw-display.ts`
+  is one viewer's picture: `join`/`rebase` header (checkpoint side state,
+  exact UTF-8 `bytes`), the checkpoint text, the tail, `barrier`, then live
+  output and `layout` frames, all through one ordered sender. Credit is per
+  connection (`retired` from the client counts applied and discarded
+  display bytes); a replay in progress is never cancelled, an overflow or
+  rebuild during it is one pending replacement from the latest cut (at most
+  once a second). Input is refused until the client's first
+  `replay-applied` and never re-gated by a rebase (decision 3). Raw input
+  health is the control client alone (`controlConnected`).
+- **Browser:** `components/raw-picture.ts` is the ordered queue (writes
+  pipelined into xterm; the side state, layouts and the barrier after the
+  writes before them; a new header retires every frame of the old picture
+  once). The canvas mounts a fresh terminal per picture and sizes it only
+  from the picture and its layouts; `restoreSideState` lives in
+  `lib/side-state.ts` so the browser never imports the headless serializer.
+- **Gates:** `tests/raw-path.browser.test.ts` (against the preview with the
+  raw path forced; the overload test also needs `TERMINAL_PREVIEW_TMUX` and
+  `TERMINAL_PREVIEW_ROOT`, both printed by the preview). Echo latency must
+  be measured in the page and with keys spaced more than a second apart:
+  xterm throttles its accessibility rows to one refresh a second.

@@ -1055,6 +1055,23 @@ a live session; two Codex rounds per task; docs.
   - Browser: joins during output, mid-escape, in alt screen, and with
     **more than 2k retained rows**.
   - Stalled-viewer isolation.
+- As built (R2 `feat/terminal-md-r2-raw-path`; design in two Codex rounds,
+  then each slice reviewed at least twice): 33a replica subscription (cuts,
+  lifecycle state, committed events; bbd7f20, bb6d986) · 33b
+  `lib/raw-display.ts` server viewer (one ordered sender, connection credit,
+  never-cancelled replays with one pending replacement, the replay-applied
+  latch, the bounded hello-to-seed deadline; D8 amended for the raw path;
+  73fa04d … 8ebda94) · 33c-1 streamed restore (`restoreSideState`;
+  731053a, a61d155) · 33c-2 `components/raw-picture.ts` client queue and
+  socket integration (8df14b5, 7ad49df) · 33c-3 a fresh terminal per
+  picture in the canvas, raw sizes from the picture alone (0a75a9d) · 33d
+  raw input health on the control client, the preview's
+  `TERMINAL_PREVIEW_RAW=1` and the raw browser gates (02d6b84). Measured on
+  the preview: echo p95 37 ms (decision 2's normal-use gate, in-page,
+  keys spaced past xterm's one-second accessibility refresh); a 400 MB flood
+  with a stalled viewer: eviction at 10.3 s, Ctrl-C stops the flood in about
+  100 ms (read from tmux), a fresh viewer agrees once quiet. Dormant until
+  T38a's setting; no public (README) change until then.
 
 **T34a: Width-change rebase and one ordered resize source** (M)
 - Acceptance:

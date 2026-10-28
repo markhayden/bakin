@@ -330,6 +330,13 @@ research item in D9 was selected by Mark.
     `resync` close and re-snapshots on reconnect.
   - Ingestion and other viewers are never blocked.
   - The per-viewer send queue is bounded at 2 MiB.
+  - **Raw path (T33, amended for it):** the stall eviction stays (window
+    full for 10 s); a backlog over 2 MiB (or 4,096 events) is not an
+    eviction there but one pending replacement: the backlog is dropped and
+    the viewer takes the replica's latest cut, at most once a second, after
+    any replay in progress has sent its barrier. Credit is per connection:
+    the client reports every display byte applied or discarded, and a
+    rebase never resets it.
 - **Heartbeat:** a ping every 15 s; 30 s of silence closes the connection.
 - Reconnect (after D13's cutover, the sync bundle's snapshot is D13's
   **join**: the latest proven checkpoint plus the bounded raw tail since
