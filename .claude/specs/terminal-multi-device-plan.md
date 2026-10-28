@@ -1072,7 +1072,7 @@ a live session; two Codex rounds per task; docs.
   with a stalled viewer: eviction at 10.3 s, Ctrl-C stops the flood in about
   100 ms (read from tmux), a fresh viewer agrees once quiet. Dormant until
   T38a's setting; no public (README) change until then.
-  T33e (39cf26f, 621a3bd; Codex-recommended option A): overload rebuilds
+  T33e (39cf26f, 621a3bd, fd33eae; four Codex rounds; Codex-recommended option A): overload rebuilds
   seed the screen alone, a quiet restore brings the history back, the
   viewer keeps the latest cut, pictures are replayed unseen and shown at
   their barrier; the bounded-load gate passes except the 32 MiB heap
