@@ -1,6 +1,6 @@
 import { expect, test } from 'playwright/test'
 
-const story = '/iframe.html?id=recipes-terminalinput--compact-and-expanded&viewMode=story'
+const story = '/iframe.html?id=recipes-terminalinput--bar-and-sheet&viewMode=story'
 
 test('a short keyboard viewport keeps the visible full header accessible', async ({ page }) => {
   await page.addInitScript(() => {
@@ -44,7 +44,7 @@ test('a collapsed keyboard-aware workspace exposes one header to keyboard naviga
   await expect(identity).not.toHaveAttribute('aria-hidden')
 })
 
-test('compact keys preserve focus, fit narrow screens, and leave output above the accessory', async ({ page }) => {
+test('the key row preserves focus, fits narrow screens in one row, and leaves output above the accessory', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 })
   await page.goto(story)
   await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true')
@@ -53,8 +53,13 @@ test('compact keys preserve focus, fit narrow screens, and leave output above th
   await page.getByRole('button', { name: 'Tab', exact: true }).click()
   await expect(input).toBeFocused()
   await expect(page.getByRole('status')).toHaveText('Tab')
-  await page.getByRole('button', { name: 'More', exact: true }).click()
-  await expect(input).toBeFocused()
+  const row = page.getByRole('group', { name: 'Terminal keys', exact: true })
+  const tops = await row.getByRole('button').evaluateAll(buttons => new Set(buttons.map(button => Math.round(button.getBoundingClientRect().top))).size)
+  expect(tops).toBe(1)
+  // The sheet stands in for the keyboard: the editor lets go, and abc takes it back.
+  await page.getByRole('button', { name: 'More keys', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'More keys' })).toBeVisible()
+  await expect(input).not.toBeFocused()
   for (const size of [{ width: 320, height: 800 }, { width: 740, height: 320 }, { width: 820, height: 1180 }]) {
     await page.setViewportSize(size)
     await expect.poll(() => page.evaluate(() => {
@@ -68,12 +73,20 @@ test('compact keys preserve focus, fit narrow screens, and leave output above th
     return rect.height < 44 || rect.width < 44
   }).map(button => button.textContent))
   expect(smallTargets).toEqual([])
-  await page.getByRole('button', { name: 'More', exact: true }).click()
-  await page.getByRole('button', { name: 'Ctrl', exact: true }).focus()
+  await page.getByRole('button', { name: 'Back to keyboard', exact: true }).click()
+  await expect(input).toBeFocused()
+  await page.getByRole('button', { name: 'Control', exact: true }).focus()
   await page.keyboard.press('Space')
-  await expect(page.getByRole('button', { name: 'Ctrl', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Control, on for the next key', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await page.keyboard.press('Tab')
-  await expect(page.getByRole('button', { name: 'More', exact: true })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Option', exact: true })).toBeFocused()
+  // Opened from the keyboard, focus moves into the sheet; Escape closes it.
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: 'More keys', exact: true })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('button', { name: 'Esc', exact: true }).nth(1)).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('region', { name: 'More keys' })).toHaveCount(0)
 })
 
 test('visual viewport resize, panning and fractional geometry bound only the opted-in workspace', async ({ page }) => {
@@ -105,11 +118,12 @@ test('missing VisualViewport retains host sizing and enlarged text stays reachab
   await page.setViewportSize({ width: 320, height: 800 })
   await page.goto(story)
   await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true')
-  await expect(page.getByRole('button', { name: 'More', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'More keys', exact: true })).toBeVisible()
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.getByRole('button', { name: 'More', exact: true }).click()
-  await page.getByRole('button', { name: 'Ctrl+W', exact: true }).scrollIntoViewIfNeeded()
-  await page.getByRole('button', { name: 'Ctrl+W', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Hide keyboard', exact: true })).toBeInViewport()
+  await page.getByRole('button', { name: 'More keys', exact: true }).click()
+  await page.getByRole('button', { name: 'Ctrl+W Delete word', exact: true }).scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Ctrl+W Delete word', exact: true }).click()
   await expect(page.getByRole('status')).toHaveText('Ctrl+W')
 })

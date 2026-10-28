@@ -82,7 +82,8 @@ accent colors; terminal access policy still determines disabled choices.
 The approved public workspace extension adds `viewport="visual"` and the
 `WorkspacePageBody inputAccessory` slot. Its contract is exercised by
 `pages/workspace-page.stories.tsx — KeyboardAwareInput` and
-`recipes/terminal-input.stories.tsx — CompactAndExpanded`. No design exception
+`recipes/terminal-input.stories.tsx — BarAndSheet` (the v2 key row and
+More keys sheet, updated with the B5 redesign). No design exception
 or new public export is needed. Existing workspaces retain host sizing.
 
 ## Mobile input and rendering
