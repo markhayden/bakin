@@ -1103,7 +1103,30 @@ Bakin conventions also apply:
     3. *Established viewers during a rebuild:* keep their input
        permission (no join gate on a display rebase) so Ctrl-C always
        works. Both recommend this.
-- **Resize failure:** inject a failure at each resize step. The session ends
+  - **As built (T33e, 2026-10-28):** under a sustained flood (~50 MB/s) no
+    full-history seed parsed before the next overload, so the display stayed
+    stale for the whole flood. Overload rebuilds now seed the screen alone
+    (every format, the saved normal screen, the visual rows; no history),
+    which lands; one second without output brings the history back with one
+    full seed (the picture stays shown meanwhile); the session's fidelity
+    says history `incomplete`, then `reloaded`, and each picture's header
+    says whether it carries its history. Measured on the preview (raw path,
+    30 s timestamped flood, one stalled viewer): display freshness p95
+    about 1.0 s read from the rendered rows, no misses; eviction 10.1 s;
+    Ctrl-C stops the flood in well under a second (read from tmux); the
+    evicted viewer reconnects and converges; history restored.
+  - **Open decision 7 (for Mark): the heap figure.** "Plugin heap growth
+    stays under 32 MiB" predates decision 4. A 200-column session whose
+    flood fills 10,000 rows of scrollback in the replica and the bridge
+    Screen grows about 27–40 MiB over its idle start, then stays flat
+    (window medians 10–20 s and 20–30 s equal within 1 MiB). The test gates
+    a flat heap once the scrollback is full (medians within 8 MiB) and the
+    total within T32d's 96 MB session peak. Codex: take it to Mark as an
+    explicit decision, with separate limits for the retained session
+    footprint and growth after scrollback fills, on an agreed workload.
+    Claude: agree; recommend those two limits (growth after fill ≤ 8 MiB,
+    total within the session's peak budget).
+ The session ends
   with every representation equal to tmux's actual window, and input paused
   until reconciliation finishes.
 - **Native admission:**

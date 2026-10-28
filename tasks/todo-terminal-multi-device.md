@@ -75,7 +75,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T32c Replica + tail + cadence + shadow mode (R1: fb3aa7f, 9fbf2fa, ca90e4b; review fixes ba0f675, 5e3b4df; overload rebuilds after measuring tmux 40 MB/s vs replica 21 MB/s; product decisions 1–3 open for Mark before T33, spec D13 Bounded load)
 - [x] T32d Memory budget + warning (R1: 27b0379, d4eae94, 5165ec7, 97d4bd3; 4 Codex rounds) — retained 27.4 MB with a full tail, live peak 79.4 MB; 32 MB is a reference-workload target (metadata-dense content recorded); tmux cell limit; 640 MB Health warning
 - [ ] Checkpoint R1 → `tmd/r1`
-- [x] T33 Socket protocol v2 (join) — R2: 33a replica subscription, 33b raw-display viewer, 33c client (streamed restore, raw-picture queue, fresh terminal per picture), 33d input health + browser gates (echo p95 37 ms, eviction 10.3 s, Ctrl-C ~100 ms); dormant until T38a
+- [x] T33 Socket protocol v2 (join) — R2: 33a replica subscription, 33b raw-display viewer, 33c client (streamed restore, raw-picture queue, fresh terminal per picture), 33d input health + browser gates, 33e overload freshness (screen-only seeds, quiet history restore; freshness p95 ~1.0 s); dormant until T38a; open decision 7 (heap figure) for Mark
 - [ ] T34a Width-change rebase + one ordered resize source
 - [ ] T34b Service update: scroll-on-clear off
 - [ ] T35a Recovery banner
