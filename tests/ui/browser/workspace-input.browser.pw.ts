@@ -47,7 +47,7 @@ test('a collapsed keyboard-aware workspace exposes one header to keyboard naviga
 test('the key row preserves focus, fits narrow screens in one row, and leaves output above the accessory', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 })
   await page.goto(story)
-  await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true')
+  await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true', { timeout: 20_000 })
   const input = page.getByRole('textbox', { name: 'Example input' })
   await input.focus()
   await page.getByRole('button', { name: 'Tab', exact: true }).click()
@@ -84,9 +84,10 @@ test('the key row preserves focus, fits narrow screens in one row, and leaves ou
   await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: 'More keys', exact: true })).toBeFocused()
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('button', { name: 'Esc', exact: true }).nth(1)).toBeFocused()
+  await expect(page.getByRole('region', { name: 'More keys' }).getByRole('button', { name: 'Esc', exact: true })).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('region', { name: 'More keys' })).toHaveCount(0)
+  await expect(input).toBeFocused()
 })
 
 test('visual viewport resize, panning and fractional geometry bound only the opted-in workspace', async ({ page }) => {
@@ -96,7 +97,7 @@ test('visual viewport resize, panning and fractional geometry bound only the opt
   })
   await page.setViewportSize({ width: 320, height: 800 })
   await page.goto(story)
-  await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true')
+  await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true', { timeout: 20_000 })
   await expect(page.getByRole('textbox', { name: 'Example input' })).toBeVisible()
   for (const [height, offsetTop, width, offsetLeft] of [[350.5, 0, 320, 0], [310.25, 60.5, 280.5, 20.25], [800, 0, 320, 0]]) {
     await page.evaluate(({ height, offsetTop, width, offsetLeft }) => {
@@ -117,7 +118,7 @@ test('missing VisualViewport retains host sizing and enlarged text stays reachab
   await page.addInitScript(() => Object.defineProperty(window, 'visualViewport', { configurable: true, value: undefined }))
   await page.setViewportSize({ width: 320, height: 800 })
   await page.goto(story)
-  await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true')
+  await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true', { timeout: 20_000 })
   await expect(page.getByRole('button', { name: 'More keys', exact: true })).toBeVisible()
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

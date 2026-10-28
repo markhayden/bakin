@@ -95,15 +95,22 @@ the terminal output.
 Unavailable GPU contexts and context loss dispose the addon and restore the
 normal renderer. Each terminal mount owns its renderer and event cleanup.
 
-Narrow and touch-capable layouts reserve a persistent, centered Esc/Tab/Ctrl/arrow
-strip. Wrapped rows and expanded keys are centered as well.
-More expands an in-place, bounded panel with editing, navigation, and common
-Ctrl combinations. Kit buttons preserve existing editor focus on pointer taps;
-keyboard activation remains native. Ctrl is one-shot and cancellable. Paste,
-IME composition, focus leaving the interaction, disconnection, and session or
-ownership changes reset it; routine resize does not. Cursor sequences follow
-xterm's current normal/application mode. Every action uses the existing ordered
-input queue and generation/ownership checks.
+On coarse-pointer devices the key bar (spec D9 item 9, v2) follows an
+editing session (idle / typing / sheet) rather than measuring the keyboard:
+it shows while the operator is typing, in the always-mounted input
+accessory slot. One row of iOS-style keycaps — kit Buttons drawn by the
+plugin's scoped CSS — holds esc, ⇥, ⌃, ⌥, the arrow joystick (drag to
+repeat, tap an edge for one step), ••• (abc while the sheet is open) and
+Hide keyboard, which works even while sending is disabled. ⌃ and ⌥ are each
+off, on for the next key, or locked (from the sheet's lock toggles); one
+delivered key takes them and consumes a one-shot one, other text ends a
+one-shot one, a paste is sent exactly, and disconnection, ownership or
+session change and backgrounding clear everything, locks included. ••• puts
+the keyboard down and opens a bounded sheet with the remaining keys, the
+Control shortcuts with plain labels, and the lock toggles; keyboard users
+get focus moved into it and Escape closes it. Cursor sequences follow
+xterm's current normal/application mode. Every action uses the existing
+ordered input queue and generation/ownership checks.
 
 The kit measures the intersection of the host pane and VisualViewport, keeps
 the accessory above the keyboard, and owns bottom safe-area clearance. It does

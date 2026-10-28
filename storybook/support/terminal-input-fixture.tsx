@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Ellipsis, KeyboardOff, Lock } from 'lucide-react'
 import { Inline, Panel, Stack } from '@makinbakin/sdk/layout'
 import { WorkspacePage, WorkspacePageBody } from '@makinbakin/sdk/patterns'
@@ -26,20 +26,27 @@ export function TerminalInputFixture() {
   const [lastKey, setLastKey] = useState('No key sent')
   const editor = useRef<HTMLTextAreaElement>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
-  // One key takes the modifiers and consumes a one-shot one; a lock stays.
-  const send = (key: string) => {
-    setLastKey((['ctrl', 'alt'] as const).filter(modifier => modifiers[modifier] !== 'off').map(modifier => PREFIXES[modifier]).join('') + key)
+  // One key takes the modifiers (a Control shortcut adds Control once) and consumes a one-shot one; a lock stays.
+  const send = (key: string, control = false) => {
+    setLastKey((['ctrl', 'alt'] as const).filter(modifier => modifiers[modifier] !== 'off' || (modifier === 'ctrl' && control)).map(modifier => PREFIXES[modifier]).join('') + key)
     setModifiers(current => ({ ctrl: current.ctrl === 'once' ? 'off' : current.ctrl, alt: current.alt === 'once' ? 'off' : current.alt }))
   }
   const tap = (modifier: Modifier) => setModifiers(current => ({ ...current, [modifier]: current[modifier] === 'off' ? 'once' : 'off' }))
   const toggleLock = (modifier: Modifier) => setModifiers(current => ({ ...current, [modifier]: current[modifier] === 'locked' ? 'off' : 'locked' }))
   const backToKeyboard = () => { setSheet(false); editor.current?.focus() }
+  // While the sheet is open, Escape returns to the keyboard wherever focus is.
+  useEffect(() => {
+    if (!sheet) return
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); setSheet(false); editor.current?.focus() } }
+    document.addEventListener('keydown', escape)
+    return () => document.removeEventListener('keydown', escape)
+  }, [sheet])
   const openSheet = (event: React.MouseEvent) => {
     setSheet(true)
-    // The sheet stands in for the software keyboard, which goes down; opened
-    // from a keyboard (no pointer), focus moves into the sheet instead.
-    if (event.detail === 0) requestAnimationFrame(() => (sheetRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)') ?? sheetRef.current)?.focus())
-    else editor.current?.blur()
+    // The sheet stands in for the software keyboard, which goes down: focus
+    // leaves the editor for the sheet (not an input, so no keyboard), where
+    // Escape closes it. Opened from a keyboard, focus goes to its first key.
+    requestAnimationFrame(() => (event.detail === 0 && sheetRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)') || sheetRef.current)?.focus())
   }
   // Prevent the mouse focus default (also synthesized after a touch tap),
   // while leaving touch scrolling, click activation and keyboard focus alone.
@@ -54,7 +61,7 @@ export function TerminalInputFixture() {
   return <div className="h-dvh">
     <WorkspacePage viewport="visual">
       <WorkspacePageBody inputAccessory={
-        <Stack gap="dense" className="border-t border-bakin-border-subtle bg-bakin-canvas-default px-bakin-2 py-bakin-3" onKeyDown={(event) => { if (sheet && event.key === 'Escape') { event.preventDefault(); backToKeyboard() } }}>
+        <Stack gap="dense" className="border-t border-bakin-border-subtle bg-bakin-canvas-default px-bakin-2 py-bakin-3">
           <Inline gap="dense" role="group" aria-label="Terminal keys">
             {rowKey('Esc', 'esc')}
             {rowKey('Tab', '⇥')}
@@ -77,7 +84,7 @@ export function TerminalInputFixture() {
               </Inline>
               <Inline gap="dense" role="group" aria-label="Control">
                 {controls.map(([letter, label]) => <Button key={letter} size="lg" variant="secondary" aria-label={`Ctrl+${letter} ${label}`} disabled={disabled} onMouseDown={preserveFocus}
-                  onClick={() => { setLastKey(`Ctrl+${letter}`); setModifiers(current => ({ ctrl: current.ctrl === 'once' ? 'off' : current.ctrl, alt: current.alt === 'once' ? 'off' : current.alt })) }}>
+                  onClick={() => send(letter, true)}>
                   ^{letter} <Text as="span" tone="muted">{label}</Text>
                 </Button>)}
               </Inline>
@@ -94,7 +101,9 @@ export function TerminalInputFixture() {
         <Stack gap="item" className="min-h-0 flex-1 overflow-y-auto p-bakin-3">
           <Text as="h1" weight="semibold">Terminal input</Text>
           <Button variant="outline" onClick={() => { setDisabled(value => !value); setModifiers({ ctrl: 'off', alt: 'off' }) }}>{disabled ? 'Enable keys' : 'Disable keys'}</Button>
-          <Textarea ref={editor} aria-label="Example input" defaultValue="Try completion and cursor movement." className="min-h-0 flex-1" />
+          {/* The next key typed here takes an armed or locked modifier, like a key from the row. */}
+          <Textarea ref={editor} aria-label="Example input" defaultValue="Try completion and cursor movement." className="min-h-0 flex-1"
+            onKeyDown={(event) => { if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && (modifiers.ctrl !== 'off' || modifiers.alt !== 'off')) { event.preventDefault(); send(event.key) } }} />
           <Text role="status">{lastKey}</Text>
         </Stack>
       </WorkspacePageBody>

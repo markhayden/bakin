@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect } from 'storybook/test'
+import { expect, waitFor } from 'storybook/test'
 import { TerminalInputFixture } from '../../support/terminal-input-fixture'
 
 const meta = {
@@ -34,6 +34,11 @@ export const BarAndSheet = {
     await expect(canvas.getByRole('region', { name: 'More keys' })).toBeVisible()
     await userEvent.click(canvas.getByRole('button', { name: 'Ctrl+C Interrupt' }))
     await expect(status).toHaveTextContent('Ctrl+C')
+    // A Control shortcut takes an armed Option too.
+    await userEvent.click(canvas.getByRole('button', { name: 'Option' }))
+    await userEvent.click(canvas.getByRole('button', { name: 'Ctrl+W Delete word' }))
+    await expect(status).toHaveTextContent('Ctrl+Alt+W')
+    await expect(canvas.getByRole('button', { name: 'Option' })).toHaveAttribute('aria-pressed', 'false')
     // A lock stays on across keys until it is turned off.
     await userEvent.click(canvas.getByRole('button', { name: 'Option lock' }))
     await expect(canvas.getByRole('button', { name: 'Option, locked' })).toHaveAttribute('aria-pressed', 'true')
@@ -45,10 +50,24 @@ export const BarAndSheet = {
     await userEvent.click(canvas.getByRole('button', { name: 'Back to keyboard' }))
     await expect(canvas.queryByRole('region', { name: 'More keys' })).toBeNull()
     await expect(editor).toHaveFocus()
+    // The next key typed in the editor takes an armed modifier.
+    await userEvent.click(canvas.getByRole('button', { name: 'Control' }))
+    await userEvent.keyboard('c')
+    await expect(status).toHaveTextContent('Ctrl+c')
+    await expect(canvas.getByRole('button', { name: 'Control' })).toHaveAttribute('aria-pressed', 'false')
+    // Opened with a pointer, the sheet takes focus from the editor; Escape closes it and focus returns.
+    await userEvent.click(canvas.getByRole('button', { name: 'More keys' }))
+    // Focus moves into the sheet on the next frame.
+    await waitFor(() => expect(canvas.getByRole('region', { name: 'More keys' })).toHaveFocus())
+    await expect(editor).not.toHaveFocus()
+    await userEvent.keyboard('{Escape}')
+    await expect(canvas.queryByRole('region', { name: 'More keys' })).toBeNull()
+    await expect(editor).toHaveFocus()
     // Hide keyboard works while sending is disabled.
     await userEvent.click(canvas.getByRole('button', { name: 'Disable keys' }))
     await expect(canvas.getByRole('button', { name: 'Tab' })).toBeDisabled()
-    await expect(canvas.getByRole('button', { name: 'Hide keyboard' })).toBeEnabled()
+    await userEvent.click(canvas.getByRole('button', { name: 'Hide keyboard' }))
+    await expect(status).toHaveTextContent('Keyboard hidden')
     await userEvent.click(canvas.getByRole('button', { name: 'Enable keys' }))
     canvasElement.setAttribute('data-story-ready', 'true')
   },
