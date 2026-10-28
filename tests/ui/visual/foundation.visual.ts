@@ -809,6 +809,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=components-lists-keyvalue--layouts-and-value-kinds&viewMode=story', png: 'lists-key-value-layouts.png', text: 'One pair contract, three densities' },
   { url: '/iframe.html?id=components-content-codeblock--canonical-usage&viewMode=story', png: 'content-code-block.png', text: '"type"' },
   { url: '/iframe.html?id=components-primitives-copybutton--canonical-usage&viewMode=story', png: 'primitives-copy-button.png', role: 'button' as const, name: 'Copy command' },
+  { url: '/iframe.html?id=components-primitives-copybutton--touch-size&viewMode=story', png: 'primitives-copy-button-touch.png', role: 'button' as const, name: 'Copy selection' },
   { url: '/iframe.html?id=components-navigation-navlist--selection-and-keyboard&viewMode=story', png: 'navigation-nav-list.png', role: 'navigation' as const, name: 'Plugin settings' },
   { url: '/iframe.html?id=components-agents-agentavatar--sizes-and-presence&viewMode=story', png: 'agents-agent-avatar.png', text: 'Keep identity recognizable at every density' },
   { url: '/iframe.html?id=components-agents-agentstatus--presence-language&viewMode=story', png: 'agents-agent-status.png', text: 'Say the state in words, not color' },

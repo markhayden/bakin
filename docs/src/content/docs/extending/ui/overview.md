@@ -1692,6 +1692,13 @@ and SubmitButton. Counts use UTF-16 code units to match native `maxLength`.
 Keep copy feedback tied to the actual clipboard result; never display optimistic
 success. Loading need not disable typing; readonly still permits copying.
 
+`CopyButton` is the one copy action. Its default size is the compact 24px
+action beside inline text; `size="touch"` is a 44px target for a coarse
+pointer where copying is the point of the surface, such as a tap-to-copy
+prompt after a browser refused a programmatic clipboard write (the tap is a
+fresh user gesture). Either size confirms through the swapped icon and the
+accessible name, only once the write happened.
+
 
 SelectTrigger accepts `size="sm|md|lg"`, `variant="outlined|filled|ghost"`, and
 `width="auto|full"` (default auto). Use full width in forms. Multiple Select
