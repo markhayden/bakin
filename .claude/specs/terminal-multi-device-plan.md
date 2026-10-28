@@ -20,7 +20,10 @@ H3 canonical CSS (T24b)     ──┤
                               │    B2 WebSocket transport + reconnect baseline
    Bits CI BAKIN_SDK_REF ─────┘    B3 multi-device sizing           ◀── early live preview
    pinned to the H2, then H3 tip         B4 native handoff (CLI + attach admission)
-                                   B5 compose + History + links/copy + emoji width
+                                   B5 key bar + compose + pinning + links/copy
+                                   R1 bounded shadow replica (raw-output transport, dark)
+                                   R2 opt-in raw path (join, rebase, recovery, digest)
+                                   R3 native scrollback; Mark's acceptance; bridge deletion
                                    B6 attention/activity + image paste
 ```
 
@@ -55,6 +58,9 @@ integration tests before anything is built on them.
   | `feat/terminal-md-b3-sizing` | bits |
   | `feat/terminal-md-b4-handoff` | bits |
   | `feat/terminal-md-b5-mobile` | bits |
+  | `feat/terminal-md-r1-replica` | bits |
+  | `feat/terminal-md-r2-raw-path` | bits |
+  | `feat/terminal-md-r3-scroll` | bits |
   | `feat/terminal-md-b6-attention` | bits |
 
 - Record the base SHAs in this file's Evidence section at T0.
@@ -103,7 +109,11 @@ affected branch to the tag. That is always a fully green state.
 | `tmd/cp4` | B2 | WebSocket transport live. SSE and POST are deleted |
 | `tmd/cp5` | B3 | Sizing complete. **Early live preview for Mark** |
 | `tmd/cp6` | B4 | Native handoff |
-| `tmd/cp7` | B5 | Mobile reading and input |
+| `tmd/cp7` | B5 | Mobile input (key bar, compose, pins, links) |
+| `tmd/r0-baseline` | B5 tip, 2026-10-28 | R branches start here |
+| `tmd/r1` | R1 | Shadow replica, dark. Drop R1 and above to roll back |
+| `tmd/r2` | R2 | Opt-in raw path. Setting off = today's transport |
+| `tmd/r3` | R3 | Native scrollback, accepted by Mark; then T38b deletes the bridge |
 | `tmd/cp8` | B6 | Feature complete |
 
 ### Rollback by layer
@@ -128,8 +138,9 @@ affected branch to the tag. That is always a fully green state.
     3. Delete that plist.
     4. Run the restored version's **Set up service**, which now sees no
        plist and installs fresh.
-  - Data stays readable. Session JSON only gains fields, and the
-    history-capture and upload tables are additive.
+  - Data stays readable within the bridge era (B1–R3 before T38b): session
+    JSON only gains fields, and the history-capture, upload and bundle
+    tables are additive. Rolling back below T38b is narrowed (T35b).
   - **No rollback path** for live tmux panes across a service restart. That
     is acceptable because cutover requires drained sessions.
 - **After release:** reinstall the previous `terminal-v0.3.5` artifact and
@@ -155,7 +166,8 @@ affected branch to the tag. That is always a fully green state.
    **terminal** floor to `>=0.0.1-rc.45`. Both go in the B-stack's final
    commit, `chore(terminal): floor at rc.45`, which also sets 0.4.0, and are
    tested before merge.
-6. Merge the bits stack bottom-up (B1 → B6, with merge commits).
+6. Merge the bits stack bottom-up (B1 → B5, R1 → R3, then B6, with merge
+   commits). T38b lands on R3 only after Mark's acceptance.
 7. Tag `terminal-v0.4.0`. `publish.yml` clones moving Bakin `main`
    (`publish.yml:90`). Before tagging, verify Bakin main still equals the
    rc.45 commit. T25 changes `publish.yml` to check out the same pinned
@@ -169,8 +181,9 @@ affected branch to the tag. That is always a fully green state.
 ### Versions
 
 Every bits PR must bump its package version (`check-version-bump.sh`):
-- terminal: B1 `0.4.0-dev.1`, then B2 `dev.2` and so on through B6, and the
-  final floor commit sets `0.4.0`. `index.ts`, `package.json` and
+- terminal: B1 `0.4.0-dev.1`, then B2 `dev.2` and so on: B5, then R1, R2
+  and R3 each take the next dev number, then B6. The final floor commit sets
+  `0.4.0`. `index.ts`, `package.json` and
   `bakin-plugin.json` stay in agreement. They currently disagree (0.2.0 vs
   0.3.5); B1 fixes that.
 - messaging and projects: one patch bump each in B0, and they are touched
@@ -506,7 +519,7 @@ task.
     - supports custom pinch zoom (via `touch-action`), remembered per device
       with guarded `localStorage`, plus Reset view;
     - follows the cursor after each render batch, pausing on pan, selection,
-      or History until "Follow cursor" is tapped.
+      or scrolling into history until "↓ Live" is tapped (T15b).
   - The header shows the size line, "Fit to this device", and "Size frozen".
   - Panning never focuses the keyboard. Kit patterns follow
     `bakin-ui-conformance`; any deviation goes to Mark first.
@@ -514,6 +527,21 @@ task.
   - Browser tests on desktop and iPhone emulation, Chromium and WebKit:
     claim/fit, pan, pinch, follow pause/resume, and no input from pans.
   - `ui:conformance --quick`.
+
+**T15b: Follow controls off the input line** (XS, follow-up to the completed B3 checkpoint, from the live test 2026-10-27)
+- Acceptance:
+  - "Follow cursor" becomes a 32 px "↓ Live" pill (≥ 44 px touch target)
+    in the pane's top-right corner, with Reset view as a 32 px icon beside
+    it. Both are anchored to the viewport wrapper, outside the scrolling
+    content, shown only when not following, and keep terminal focus on tap.
+  - Follow uses three states (following / panned / reading history) with
+    selection as an inhibitor; it resumes on "↓ Live" or on focusing the
+    terminal to type (D10), never on merely reaching the bottom. Cursor reveal keeps the cursor out from under the
+    pill.
+- Verify: the sizing browser test asserts, at phone and desktop sizes, that
+  the controls overlap neither the last row nor the cursor (cursor placed
+  under the pill's corner), a horizontal pan at the bottom stays panned,
+  and tapping the pill with the keyboard up does not blur the terminal.
 
 **Checkpoint B3** (`tmd/cp5`, the **early live preview**)
 - All gates pass and two Codex rounds are done.
@@ -596,47 +624,518 @@ task.
 
 ### Phase 8 — Bits B5: mobile reading and input
 
+Amended 2026-10-27 after the first live test (Mark), then again on
+2026-10-28: the key bar (T18a–c, v2 after the iPhone test), Compose (T18),
+pin editing (T19b), and links/emoji (T20). Scrollback moved to Phase 8R
+(native, raw-output transport); the 2026-10-27 snapshot tasks were never
+built. Spec D9 items 3 and 9, D10 follow states and controls. Mockups: Claude artifact "Terminal mobile
+key bar" (boards C1, C2, A3). Playwright device emulation does not prove the
+native iOS keyboard or gestures, so two **physical-iPhone checkpoints with
+Mark** are part of this phase (after T18b, and Phase 8R's R3 acceptance).
+
+**T18a: Key bar v2 foundation** (M; v1 built as 86a5a1a failed the live
+iPhone test 2026-10-27, so v2 replaces it, spec D9 item 9)
+- Acceptance:
+  - An editing-session state (idle / typing / sheet) on touch devices. The
+    bar renders in the always-mounted accessory slot.
+  - `TerminalInputHandle` gains `focus()`, `blur()`, `text()` (gated literal
+    input) and `modifier(name)`. The handle's modifier state is
+    off / once / locked for ⌃ and ⌥.
+  - xterm-6-compatible encoding for Ctrl, Alt (ESC prefix), CSI `1;m`
+    cursor/Home/End and `n;m~` tilde keys. A modifier is never applied twice.
+    Paste and IME clear one-shot and keep a lock. Disconnection, ownership
+    or session change and backgrounding clear everything.
+  - iOS-style keycaps: esc ⇥ ⌃ ⌥, •••, a divider, and hide keyboard (always
+    enabled). A 38 px fallback applies below 370 px.
+- Verify:
+  - Unit: the encoding matrix against xterm 6's rules, modifier
+    transitions, and the session reducer.
+  - Browser (Chromium + WebKit): bar shows on focus and stays while using
+    it, hide keyboard ends the session, one input per activation, no
+    double modifier, desktop shows no bar.
+  - `ui:conformance --quick`.
+
+**T18c: ••• key sheet** (M)
+- Acceptance:
+  - ••• dismisses the keyboard and opens a bounded sheet in the slot: the
+    spec's Keys and Control groups plus Ctrl and Option lock toggles.
+  - `abc` refocuses the terminal directly from the tap. Hide keyboard
+    closes the sheet.
+  - Keyboard users get focus into the sheet, Escape closes it, and focus
+    returns.
+- Verify: unit tests for the sheet's sends and lock toggles; browser tests
+  for open, send, abc and hide, with focus behaviour.
+
+**Checkpoint: physical iPhone #1** (Mark, Home Screen app and a Safari tab,
+after the live install is refreshed)
+- Repeated open, hide, sheet and abc cycles.
+- Portrait and landscape.
+- Predictive and emoji keyboards.
+- Paste and dictation.
+- Background and resume.
+- A Bluetooth keyboard attached and detached.
+- No hidden cursor, unwanted resize, lost character or stuck modifier.
+
+**T18b: Arrow joystick + modifier locks** (M)
+- Acceptance:
+  - The joystick per spec: dead zone, hysteresis, step on entry, 350/100 ms
+    repeat, cancel paths, suppressed trailing click, tap-to-step, and arrow
+    keys when focused.
+  - ⌃ and ⌥ lock from the ••• sheet's lock toggles (built in place of
+    long-press, 2026-10-28; a tap arms or cancels).
+- Verify:
+  - Unit: the pure direction and repeat machine with an injected clock.
+  - Browser: drag sends and repeats, cancel stops, no click after a drag.
+
+**T18d: Kit recipe update** (S, bakin)
+- Acceptance: `recipes/terminal-input.stories.tsx` and its fixture show the
+  v2 pattern, with coverage and story compliance updated.
+- Verify: `ui:conformance --full` in bakin.
+
+**T19a / T19 / T19c (snapshot scrollback): superseded 2026-10-28** by
+Phase 8R (the raw-output transport, spec D13 and D9 item 3). Never built.
+
 **T18: Compose sheet** (M)
 - Acceptance:
   - A native textarea sheet with Paste and Paste+Enter. It uses bracketed
     paste only when the app enables it, read from xterm's mode.
   - Per-session drafts are kept in guarded `localStorage`.
   - `autocomplete="off"` is set on the helper textarea.
-  - Input enters through the same socket queue.
+  - Input enters through the same socket queue. Opened from **Compose** in
+    ••• (the keyboard button only focuses the terminal).
+  - Focus moves to the textarea deliberately without unmounting the bar's
+    parent.
 - Verify: unit tests for paste encoding; WebKit iPhone-emulation browser tests.
 
-**T19: History view** (M)
-- Acceptance:
-  - A server capture route returns one immutable snapshot, at most 50k
-    physical rows and 8 MiB.
-  - A final capture is persisted before termination, in both `finish` and
-    the maintenance completion path. It is deleted with output retention.
-  - The client sheet:
-    - renders SGR as escaped DOM spans in a `<pre>`, opening on the last 5k
-      rows, with Load earlier;
-    - offers search, a wrap toggle, Download text, Current screen, and
-      Refresh;
-    - pauses cursor-follow while open.
-- Verify:
-  - `history.test.ts`: SGR parsing and XSS fixtures.
-  - Real tmux: capture, then the final capture after terminate.
-  - A browser test.
+**T19b: Pin editing** (S)
+- Acceptance: **Edit pinned keys** in ••• adds, removes and moves pins with
+  explicit buttons (no long-press needed); holding any key never sends it.
+  Pins live per device in guarded `localStorage` (browser-local by Mark's
+  choice; synced settings only if it proves useful), validated against the
+  supported keys, deduplicated, capped at 12.
+- Verify: unit tests for edits, validation, the cap and storage failure;
+  one browser test.
 
-**T20: Links, tap-to-copy, emoji width** (S)
+**T20: Links and tap-to-copy** (S)
 - Acceptance:
-  - `@xterm/addon-web-links` 0.12.0 is added.
-  - When iOS rejects `writeText`, a tap-to-copy prompt appears.
-  - `@xterm/addon-unicode11` 0.9.0 is active on the browser and on the
-    headless `Screen`.
-  - Width alignment is verified against managed tmux with an emoji fixture,
-    with `codepoint-widths` overrides added only if needed.
+  - `@xterm/addon-web-links` 0.12.0 is added (plain-text URLs; OSC 8 links
+    follow the profile's allowlist, T30).
+  - Copying a selection: when iOS rejects `writeText`, a tap-to-copy prompt
+    appears. Program clipboard offers (OSC 52) are T36b, not this task.
+  - Character widths moved to the profile (T30b).
 - Verify:
-  - `screen.test.ts` width fixture.
-  - Real tmux: a capture comparison.
   - Browser test: link and copy.
   - The package and lockfile diff is reviewed.
 
 **Checkpoint B5** (`tmd/cp7`): all gates, the real-tmux run, and two Codex rounds.
+
+### Phase 8R — raw-output transport and native scrollback (spec D13, 2026-10-28; revised after Codex round 1)
+
+**Stack:** B5 → R1 → R2 → R3 → B6. R branches start from `tmd/r0-baseline`
+(the B5 tip on 2026-10-28). B5's remaining tasks (T18d, T18, T19b, T20) land
+on B5 and merge forward into the R branches. Character widths live in the
+terminal profile (T30b), not T20. Each R branch is its own PR with its own
+dev version bump. The release order is B5 → R1 → R2 → R3 → B6.
+
+**Process (Mark, 2026-10-28):** "as long as you review each step with codex
+a minimum of 2 times you are good to keep moving forward to completion where
+we can test end to end manually again."
+- Every task gets at least two Codex rounds, with findings fixed, before
+  the next one starts.
+- Every task's acceptance includes its docs (README, `.claude/knowledge`,
+  public docs), or says "no public change".
+- UI checkpoints (R2 banner, R3) run the H3 CSS sync and Bits SDK repin
+  (T24b).
+- The old transport stays the live default until T38a's opt-in path passes
+  Mark's acceptance. T38b deletes it afterwards.
+- **Two paths until T38b.** Every R task keeps the bridge path working
+  exactly as B5 ships it; the raw path's behavior is added beside it,
+  selected per session by T38a's setting:
+  - **Readiness:** the bridge path keeps its bridge-liveness check
+    (`processes.ts connected()`); the raw path's health is the control
+    client's.
+  - **Resizes:** the bridge path keeps resizing its bridge PTY and Screen
+    from `Sessions` and the browser from session updates; the raw path
+    resizes only from the ordered event log.
+  - **Ended sessions:** the bridge path keeps its retained redraw bytes.
+  - Every R checkpoint runs the bridge path's bridge-loss recovery and
+    resize tests with the setting off, so a regression on the default path
+    is caught where it was introduced.
+
+**Branches:** `feat/terminal-md-r1-replica` → `-r2-raw-path` → `-r3-scroll`.
+
+#### R1: bounded shadow replica (dark)
+
+**T30: Terminal profile module** (M) — built (ce411b3; review fixes 52f4826)
+- Acceptance: as built, the query, link, clipboard, colour and graphics
+  policy, live-only side effects, xterm 6.0.0 workarounds, and the xterm
+  pin architecture test. Review round one added:
+  - nothing the emulator generates leaves a viewer (focus reports were
+    escaping): only user input passes `triggerDataEvent`;
+  - OSC 52 offers carry decoded UTF-8, bounded at 256 KiB decoded;
+  - link reclamation roots are live extended cells plus the current pen,
+    and a sweep runs only after `LINK_ORPHAN_LIMIT` new orphans;
+  - mailto links open through a canvas link handler;
+  - a stock-vs-patched tripwire for every workaround (D13).
+
+**T30b: Profile owns the terminal configuration** (S) — built (52f4826)
+- Acceptance:
+  - The profile sets the same scrollback (10,000), Unicode provider and
+    parsing options on the replica, every viewer and the verifier.
+  - The Unicode provider is `@xterm/addon-unicode-graphemes` 0.4.0
+    (`15-graphemes`, released with xterm 6.0.0), corrected to tmux's widths.
+    Measured against tmux 3.7c, Unicode 11 diverged on the common emoji
+    sequences (ZWJ, skin tones, VS16, keycaps); graphemes match them.
+  - **tmux widths, generated:** the managed tmux is built with utf8proc, so
+    its scalar widths are deterministic. `scripts/generate-tmux-widths.ts`
+    reads tmux's own width for every codepoint (U+00A0 to plane 3, plus the
+    tag plane) through its `#{w:}` format, which runs the grid's width
+    function (tmux's default table, then utf8proc), compares it with the
+    grapheme provider's, and records the differences
+    (`lib/tmux-width-table.ts`, about 5,200 codepoints: format characters,
+    spacing marks, tmux's force-wide emoji bases (☝ ✌), newer emoji, the
+    Unicode 16 changes). A wrapping provider applies them: a zero-width one
+    joins the previous cell at its width; another applies outside a
+    grapheme cluster. A process test regenerates the table and fails when it
+    is stale (a tmux or addon change).
+  - **Decision (Codex-reviewed, 2026-10-28):** scalar widths only, over the
+    grapheme rules. Porting tmux's combining rules into a provider cannot
+    reach parity: xterm's provider sees only a packed join state that resets
+    on every escape, never the cell left of the cursor tmux combines with,
+    and it cannot discard a character.
+  - **UTF-8 chunk boundaries:** xterm 6.0.0's decoder loses the grapheme
+    join when a write ends inside a codepoint (a ZWJ split after `E2 80`:
+    🧑‍💻 takes 4 cells instead of 2). The profile carries an incomplete
+    trailing sequence into the next write, so chunking never changes
+    layout; a stock-vs-patched tripwire pins it.
+  - What tmux combines by context stays different and is pinned by the
+    parity test: a skin tone after a letter, Thai SARA AM, the Hangul
+    fillers tmux discards, and a modifier separated from its base by an
+    escape. The replica cannot detect a layout it shares with its viewers,
+    so T37 also compares the replica's cursor with tmux's.
+  - The browser moves from 2k to 10k scrollback.
+  - A test fails if any emulator is built outside the profile.
+- Verify:
+  - Architecture: identical options across emulator kinds.
+  - Real tmux: `tests/width-parity.integration.test.ts` (the table is
+    current, the agreements, and the pinned divergences).
+  - Unit: the provider rules and every UTF-8 split point.
+
+**T31a: Control-mode output streaming and the ordered event log** (M)
+- Acceptance:
+  - The control client stops attaching with `no-output`.
+  - `%output` is octal-decoded per pane into an ordered log with
+    `%layout-change`.
+  - Notifications, output and command replies are demultiplexed. A
+    command completes on ALL its reply blocks (grouped commands),
+    correlated by number and flags.
+  - Transport batches are ≤ 64 KiB / ≤ 16 ms at arbitrary byte boundaries;
+    parser state carries across them.
+  - Bounds: an 8 MiB log queue. Overflow invalidates.
+  - `%exit`, EOF and too-far-behind (explicit fault injection) invalidate,
+    and pending commands settle with a rejection.
+- Verify:
+  - Unit: decoding, demux, grouped replies (a captured row beginning
+    `%end` cannot terminate).
+  - Real tmux: a 40 MB burst, bounded.
+  - Fault injection: `%exit`, EOF, overflow, too-far-behind, with no
+    hung commands.
+
+**T31b: Command and output coexistence on one control client** (M)
+- Acceptance: these keep working while output streams:
+  - `send-keys -H` input and consume-before-delivery;
+  - copy-mode cancellation;
+  - `resize-window`;
+  - format subscriptions;
+  - native-client reconciliation and admission;
+  - liveness queries.
+
+  The raw path's connection health is the control client's; the bridge
+  path keeps its bridge-liveness check until T38b.
+- Verify (real tmux): concurrent output with send-keys, capture, resize
+  and a native attach; a disconnect between input consumption and its
+  reply gives `uncertain`. No deadlock, wrong reply, duplicate delivery or
+  retry.
+
+**T31c: Reseed core** (M)
+- Acceptance:
+  - An atomic `SEED_CMD` captures history plus screen plus formats in one
+    grouped command.
+  - **The boundary is the final correlated reply of `SEED_CMD`**: every
+    log event before it has been parsed first, and output after it
+    follows the seed.
+  - It rebuilds a replica from tmux with bounded retry and backoff; no
+    recovery loop grows memory.
+  - It is used by T32c's fallback, T34a's rebase and T35's recovery.
+- Verify: real tmux with a seed during continuous numbered output (no
+  gap, no duplicate), and repeated failures backing off.
+
+**T32a: Checkpoint serializer** (M)
+- Acceptance: `lib/checkpoint.ts` writes the full state per D13, without
+  SerializeAddon. The format is versioned.
+- Verify:
+  - Spike 3's 14 named repros, plus Codex's (pending wrap, DEC graphics
+    under a saved cursor, BEL inside DCS, idle prompt).
+  - The underline-style raw attribute is preserved (it is not a defect).
+  - The parser's grapheme join state is part of the checkpoint and is
+    restored: a join between 👍 and 🏽, then `🏽X` on both sides, leaves the
+    viewer's cursor where the replica's is (a snapshot's own trailing
+    escapes reset it today).
+
+**T32b: Full-state verifier and fuzz in CI** (M)
+- Acceptance:
+  - The comparison covers cells (empty versus space), attributes, wrap
+    flags, cursor, modes, region, saved cursor, charsets, tabs, pending
+    wrap, **CSI parameter contents, OSC/DCS payloads, the UTF-8 decoder
+    state and the after-print continuation state**.
+  - The fuzz uses an integer PRNG. It asserts per-branch coverage, and
+    covers **every join-state category from accepted checkpoints**
+    (mid-CSI included) with join offsets across deciles.
+  - The reference run uses different chunking.
+  - History differences are exact, with no broad allowances.
+  - The CI matrix: seeds 1–200 × sizes 80×24, 120×40 and 40×10, plus the
+    named repro seeds, within 90 s on one CI shard (measured on CI before
+    it gates; a slower run splits the matrix, never shrinks it).
+- Verify: clean across the matrix; teeth (a removed branch or category
+  fails).
+
+**T32c: Replica, tail, cadence and shadow mode** (M)
+- Acceptance:
+  - One replica per session through the profile.
+  - Checkpoints are tried at 1 MiB of tail or 2 s idle. At most one
+    checkpoint runs at a time per process. It runs in slices of at most
+    8 ms, yielding to the event loop between them, so input that arrives
+    during a checkpoint is never queued behind it.
+  - The tail has a hard bound of 4 MiB. Without an accepted checkpoint in
+    time, it falls back to T31c's reseed.
+  - **Shadow mode:** the replica runs beside today's bridge, and its
+    screen is compared with the bridge's headless screen in logs, allowing
+    documented semantic differences.
+- Verify:
+  - Continuous printable output, an unterminated OSC/DCS and repeated
+    rejection stay bounded.
+  - **The keystroke-echo p95 and Ctrl-C gates hold for input sent while a
+    checkpoint is running**, not only between checkpoints.
+
+**T32d: Memory budget and warning** (S)
+- Acceptance:
+  - Measured on Bun 1.4.3 on the M4, two numbers per session at 120 ×
+    10,000 rows of full scrollback, both recorded with the measurement:
+    - **retained** (after `Bun.gc(true)`, raw path, no shadow): the replica
+      plus a bounded tail. Ceiling **24 MB** (one terminal's cell arrays
+      are about 14.5 MB);
+    - **peak** (R1 shadow mode, verifier peak, full 8 MiB log and 4 MiB
+      tail queues, three concurrent joins). Ceiling **64 MB**; the arrays
+      and queues alone are about 41.5 MB.
+    A ceiling that cannot be met changes the architecture (smaller shadow,
+    streamed joins), never the number after the fact.
+  - Bounded metadata: titles ≤ 4 KiB; at most one pending clipboard offer
+    per session (≤ 256 KiB decoded); link entries at most
+    `LINK_ORPHAN_LIMIT` orphans beyond live ones.
+  - A warning (server log plus a Health finding) appears when the live
+    sessions' retained total passes **480 MB** (20 sessions at the ceiling).
+  - Browser: R3's acceptance records Safari's per-tab memory at full
+    10,000-row scrollback with WebGL (evidence, not a gate).
+- Verify: the measurement test against the budget, and the warning
+  triggered by fixture.
+
+**Checkpoint R1** (`tmd/r1`): all gates; shadow comparisons logged clean on
+a live session; two Codex rounds per task; docs.
+
+#### R2: opt-in raw path
+
+**T33: Socket protocol v2 (join)** (M)
+- Acceptance:
+  - A join is the checkpoint plus the tail, in ACKed chunks, behind a
+    replay barrier.
+  - Input is gated until the replay completes; stale epochs are isolated.
+  - Resync is throttled.
+  - B2's ACK windows, epochs, heartbeats and never-replayed input stay.
+- Verify:
+  - Unit: protocol.
+  - Browser: joins during output, mid-escape, in alt screen, and with
+    **more than 2k retained rows**.
+  - Stalled-viewer isolation.
+
+**T34a: Width-change rebase and one ordered resize source** (M)
+- Acceptance:
+  - On width change, T31c reseeds at its boundary, transplanting the
+    replica's full state (pen, charsets, modes, DECSC slot, tabs, region,
+    alt). It is broadcast as an event.
+  - Row-only changes are ordered resize events with **no rebase**.
+  - **On the raw path, the event log is the only resize source** for the
+    replica and viewers: raw-path viewers resize on log events, not React
+    session updates. The bridge path keeps `Sessions.adoptSize()` and
+    session-update resizes until T38b (Phase 8R "Two paths").
+  - D3's agent reads (screen, dimensions, revision) are atomic from the
+    current replica.
+  - Partial-region history introduced by width rebases is documented.
+- Verify:
+  - Rapid resizes with markers: transient and final states, attributes and
+    modes.
+  - Subsequent output after restored partial parser state, saved cursor,
+    charsets and regions.
+  - Split UTF-8/CSI at the resize.
+  - Root cause recorded for spike 2's lost character.
+  - With the setting off: the bridge path's resize and bridge-loss tests
+    still pass.
+
+**T34b: Service update — `scroll-on-clear off`** (S)
+- Acceptance:
+  - The generated `tmux.conf` gains the option, and the fingerprint
+    detects the update.
+  - Today's live config is unchanged until setup.
+  - Setup refuses with live or unknown panes, and records the fingerprint
+    only after verified startup with the option running.
+  - The drained maintenance step is scheduled **before raw-path
+    acceptance** (Mark).
+  - Code-only rollback is distinguished from service rollback (which
+    destroys retained panes).
+- Verify: unit and real tmux for detection, refusal, verified startup, and
+  the running option read back.
+
+**T35a: Recovery banner** (S, UI)
+- Acceptance:
+  - After a T31c rebuild, the session shows the persistent kit Banner
+    (`feedback/banner.stories.tsx — CanonicalUsage`) with D13's copy. The
+    details name the cause; a reconnect doesn't clear it.
+  - `ui:conformance --quick`.
+- Verify: browser after a forced replica loss; real tmux degradations
+  match D13's list.
+
+**T35b: Final bundle persistence, ended sessions and the rollback contract** (M)
+- Acceptance:
+  - **When a session ends,** the server persists the bundle. The control
+    client's own end (`%exit`, EOF) is **not** a session end (D4): with the
+    pane alive it is a replica loss and goes to recovery. The session ends
+    on:
+    - terminate (`finish`) and maintenance completion: after a final drain
+      to a reply boundary, before the kill;
+    - the program's exit (`#{pane_dead}` / the pane-died notification,
+      confirmed by a liveness query): every output event already received
+      is parsed first, then saved. No reply boundary is needed, and none is
+      waited for once the control connection is gone.
+
+    The bundle holds:
+    - the last accepted checkpoint plus the bounded tail;
+    - dimensions;
+    - the profile and format version;
+    - the sequence boundary;
+    - recovery metadata.
+
+    The write is atomic and idempotent.
+  - **A failed save never blocks termination.** The pane is killed (the
+    operator asked for it, and a retained pane leaks), and the session
+    records `outputSaved: false` durably; it shows the "Output not saved"
+    state, also after a restart.
+  - **Ended sessions without a bundle** load without a resync loop:
+    - sessions from before the raw path show their legacy retained output;
+    - a session whose bundle was never written (a crash before it) shows
+      the static "Output not saved" state.
+  - Until T38b the bridge keeps producing the legacy retained output beside
+    the bundle, so B5 can read every ended session after a rollback.
+  - The bundle is deleted with history deletion, session deletion and
+    retention. A rolled-back B5 cannot delete a table it doesn't know, so on
+    upgrade the server deletes bundles whose session or history no longer
+    exists.
+  - **Rollback after T38b is narrowed, not preserved:** sessions that ran
+    after the bridge's deletion have only a bundle, so a version below T38b
+    shows them as ended with no output. **T38b ships behind a drained
+    maintenance step** (every session ended first, as at the cutover), so no
+    session is continued across the deletion with a partial bridge-era
+    prefix. This is stated in the release notes; no B5-readable copy is
+    kept (no shims).
+- Verify:
+  - Rollback B5 → new → B5 → new: legacy output, resize/rebase events,
+    interrupted save, retention, and deletion while rolled back
+    (reconciled on upgrade).
+  - Against the post-T38b version: rollback with sessions created and
+    resized after T38b, and history/session deletion while rolled back.
+  - Terminate, natural exit with final output immediately before it, a
+    control-client `%exit`/EOF with the pane alive (recovery, not an end),
+    a failed save (and a restart after it), and a restart before
+    completion.
+
+**T37: Digest safety net** (S–M)
+- Acceptance:
+  - Viewers report `{epoch, seq, digest}` at periodic barriers and quiet
+    points.
+  - A mismatch triggers a fresh join, with bounded retries.
+  - A repeated mismatch escalates to a reseed and is logged.
+  - **Replica against tmux:** viewers and the replica share one layout, so
+    their digests cannot see a width they all get wrong. At quiet points
+    the replica's cursor is compared with tmux's (`#{cursor_x}`,
+    `#{cursor_y}` in the same grouped reply as a position barrier); a
+    mismatch reseeds (T31c) and is logged with the positions, dimensions
+    and a diagnostic category — never the line's contents (terminal output
+    can hold credentials).
+- Verify: injected divergence self-heals; no false mismatches over the
+  fuzz corpus; an injected width difference (a test-only table entry) is
+  caught by the tmux comparison and reseeded.
+
+**T38a: Opt-in raw path** (M)
+- Acceptance:
+  - A plugin setting (default off) makes viewers render the replica stream
+    (T33 joins).
+  - The bridge keeps running as the default and the rollback path.
+  - The input, sizing and admission contracts are unchanged.
+- Verify:
+  - The full Bits suite with the setting on and off.
+  - Real tmux with two viewers plus a native client, and exactly one query
+    answer.
+  - The browser suites on Chromium and WebKit.
+
+**Checkpoint R2** (`tmd/r2`): all gates; two Codex rounds per task; the
+H3 CSS sync and repin.
+
+#### R3: native scrollback in the canvas, then acceptance
+
+**T36: Native scrolling, follow and gestures** (M)
+- Acceptance:
+  - A vertical drag, wheel or trackpad scrolls xterm's history when there
+    is history, and pans otherwise; horizontal drags pan.
+  - Follow per D10 (↓ Live and focus-to-type resume, with
+    `scrollToBottom()`). A hidden cursor is followed vertically only.
+  - Alt screen pans.
+  - **Zero program input** from any gesture, including wheel when the grid
+    fits and mouse-reporting applications.
+- Verify (browser, Chromium and WebKit, phone and desktop, two viewers):
+  - history at its boundaries;
+  - an overflowing grid with history;
+  - alt screen with saved normal history;
+  - selection and pinch;
+  - a mouse-reporting app (no input);
+  - scrolling up and down while numbered output continues;
+  - the other viewer unmoved.
+
+**T36b: Clipboard offers** (S, UI)
+- Acceptance:
+  - The latest OSC 52 offer (decoded by the profile, one pending per
+    session, live only) shows a Copy affordance in the canvas actions;
+    the clipboard is written only on that tap (user activation).
+  - Offers are never replayed by a join, a reconnect or a recovery.
+  - Composes a kit pattern per `bakin-ui-conformance`.
+- Verify (browser, Chromium and WebKit): the copied text is exact,
+  nothing writes the clipboard automatically, no replayed offers, bells
+  or titles, and no query-generated program input.
+
+**Checkpoint R3 → Mark's manual end-to-end acceptance** (raw path on):
+- real Claude Code, the WebGL browser and a second browser;
+- Ghostty attached;
+- the iPhone from the Home Screen: scroll up and down and rejoin, the key
+  bar and joystick, rotation, background and resume;
+- a server restart (the recovery banner);
+- the T34b maintenance step done first.
+
+**T38b: Delete the bridge** (M, after acceptance only)
+- Acceptance:
+  - The raw path becomes the only path.
+  - It ships behind a drained maintenance step: every session is ended
+    before the upgrade (T35b's rollback contract).
+  - The per-viewer PTY attach bridge, its headless Screen, the setting and
+    D4's bridge text are removed, along with docs.
+  - D12's full-stack merge sign-off is still separate.
+- Verify: the full suite, real tmux, and the browser suites.
 
 ### Phase 9 — Bits B6: attention, activity, image paste
 
@@ -711,8 +1210,8 @@ task.
   - The terminal README is fully current: every retired claim is gone and
     every new feature is documented.
   - The bakin `.claude/knowledge/terminal-plugin.md` is rewritten for the
-    new architecture: bridge, sizing, socket, handoff, attention, History,
-    uploads.
+    new architecture: bridge, sizing, socket, handoff, key bar, inline scrollback,
+    attention, uploads.
   - The bits `CHANGELOG.md` is updated.
   - Spec status is updated.
   - New `terminal-multi-device-evidence.md` records SHAs, versions, test
@@ -763,6 +1262,10 @@ go-ahead at each live-box step)
    - a permission-prompt notification;
    - background/foreground and network loss;
    - keyboard and rotation;
+   - the key bar: keyboard dismiss/reopen, keys and the sheet, the
+     joystick (drag, hold, tap), Return hiding the keyboard, pin editing;
+   - scrollback (native): scroll up and down while output grows, rejoin
+     with history, ↓ Live, selection/copy, an ended session;
    - zero accidental input.
 6. Results go in the evidence file. Fixes go to the owning PR, then the
    affected checks re-run.
@@ -777,7 +1280,9 @@ go-ahead at each live-box step)
 | Risk | Impact | Mitigation |
 |---|---|---|
 | `ws` + `node:http` upgrade misbehaves under Bun 1.4.3 | High | T5/T6 first in H2; real-socket integration with teeth. If it fails, stop and bring Mark options (Bun.serve-native upgrade for the socket paths only) before B2 |
-| tmux control-mode edge cases (split frames, `%exit`, paused output) | High | T10 parser fixtures plus a mandatory real-tmux run per checkpoint. Output stays on the PTY redraw stream (hybrid), which limits exposure |
+| tmux control-mode edge cases (split frames, `%exit`, paused output, too-far-behind) | High | T10 and T31a parser/demux fixtures, fault injection, and a mandatory real-tmux run per checkpoint. The raw path is opt-in (T38a) beside the bridge until Mark's acceptance; the bridge is deleted only after it (T38b) |
+| xterm hidden state diverging between replica and viewers | Med | Profile shared by every emulator (T30/T30b), full-state verifier plus fuzz in CI (T32b), digest safety net (T37) |
+| Checkpoint work blocking the server's event loop | Med | One at a time, time-sliced or deferred while input is active; echo p95 and Ctrl-C gates during checkpoints (T32c) |
 | `client-resized` hook format expansion unsupported | Med | Verified in T16; the 1 s `list-clients` fallback is pre-approved in the spec |
 | Typed CLI args break existing messaging/projects commands | Med | B0 declares args first. T1 verifies older cores ignore the key, or reorders B0 after release |
 | Custom pinch conflicts with native pan or iOS gestures | Med | Browser tests plus an early live preview at cp5. Pinch is isolated in one module |

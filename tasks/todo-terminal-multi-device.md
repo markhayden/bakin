@@ -38,6 +38,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 **Bits B3**
 - [x] T14 Sizing server (claim/resize, defaultSize, agent resize removed)
 - [x] T15 Viewer rendering (fit/pan/pinch/follow/header)
+- [x] T15b Follow controls → top-right ↓ Live pill + three follow states (live-test fix, 2026-10-27)
 - [ ] T24b H3 CSS sync + repin
 - [x] Checkpoint B3 → `tmd/cp5` (optional early live preview)
 
@@ -50,11 +51,42 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] Checkpoint B4 → `tmd/cp6` (8 Codex rounds; live test at the cutover)
 
 **Bits B5**
-- [ ] T18 Compose sheet
-- [ ] T19 History view
-- [ ] T20 Links, tap-to-copy, emoji width
+- [x] ~~T18a v1 key bar (86a5a1a) — failed live iPhone test, replaced by v2~~
+- [x] T18a Key bar v2 foundation (session state, keycaps, ⌃/⌥ modifiers + encoding, hide keyboard)
+- [x] T18c ••• key sheet (abc, lock toggles)
+- [x] Physical iPhone checkpoint #1 (Mark, Home Screen + Safari tab) — follow-ups shipped: Return hides, hidden-cursor follow, bottom padding, one-word chip
+- [x] T18b Arrow joystick (long-press locks: sheet lock toggles instead)
+- [ ] T18d Kit recipe update (bakin)
+- [ ] T18 Compose sheet (opened from •••)
+- [ ] T19b Pin editing (Edit pinned keys; browser-local)
+- [ ] T20 Links and tap-to-copy (widths moved to T30b)
 - [ ] T24b H3 CSS sync + repin
 - [ ] Checkpoint B5 → `tmd/cp7`
+
+**Phase 8R: raw-output transport (spec D13; ≥2 Codex rounds per task; stack B5 → R1 → R2 → R3 → B6)**
+- [x] xterm 6.0.0 erase-above crash fix + parser guard (B3: f347056, 3ccd66a; review fixes 7c3d0a2, 4be3341)
+- [x] T30 Terminal profile module (R1: ce411b3; review fixes 52f4826)
+- [x] T30b Profile owns terminal config (10k scrollback, Unicode 15 graphemes + generated tmux widths, UTF-8 boundaries, tmux width parity; 52f4826 + round-1 fixes)
+- [ ] T31a Control-mode output streaming + ordered event log
+- [ ] T31b Command/output coexistence on one control client
+- [ ] T31c Reseed core (SEED_CMD boundary)
+- [ ] T32a Checkpoint serializer
+- [ ] T32b Full-state verifier + fuzz in CI
+- [ ] T32c Replica + tail + cadence + shadow mode
+- [ ] T32d Memory budget + warning
+- [ ] Checkpoint R1 → `tmd/r1`
+- [ ] T33 Socket protocol v2 (join)
+- [ ] T34a Width-change rebase + one ordered resize source
+- [ ] T34b Service update: scroll-on-clear off
+- [ ] T35a Recovery banner
+- [ ] T35b Final bundle persistence, ended sessions + rollback contract
+- [ ] T37 Digest safety net
+- [ ] T38a Opt-in raw path (setting, default off)
+- [ ] Checkpoint R2 → `tmd/r2`
+- [ ] T36 Native scrolling, follow, gestures
+- [ ] T36b Clipboard offers (copy on tap)
+- [ ] Checkpoint R3 → Mark's manual end-to-end acceptance
+- [ ] T38b Delete the bridge (after acceptance)
 
 **Bits B6**
 - [ ] T21 Attention server (resolve open questions 1–2 first)

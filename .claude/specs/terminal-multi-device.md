@@ -7,7 +7,9 @@ Mark.
 Started: 2026-10-25
 Repositories: `bakin` (host + SDK + CLI) and `../bakin-bits-official`
 (`plugins/terminal`).
-Implementation plan: `terminal-multi-device-plan.md` (to be written next).
+Implementation plan: `terminal-multi-device-plan.md`.
+Amended 2026-10-27 after the first live test (Mark): D9 item 3 (inline
+scrollback replaces the History sheet), D9 item 9 (key bar), D10 controls.
 Predecessors: `terminal-plugin.md` (D1–D10), `terminal-mobile-rendering.md`.
 
 ## Objective
@@ -26,8 +28,8 @@ and Codex, and also from his desktop and Ghostty. This initiative has three part
    any terminal app (`bakin terminal attach`). Or start in a terminal app
    (`bakin terminal new`) and pick it up from the phone later.
 3. **Mobile quality.** This part comes from research into xterm.js, tmux, and
-   phone-agent tools. It covers a reconnect baseline, a compose sheet, a
-   History view, links and tap-to-copy, attention plus activity status, emoji
+   phone-agent tools. It covers a reconnect baseline, a key bar, a compose sheet,
+   native scrollback, links and tap-to-copy, attention plus activity status, emoji
    width, WebSocket transport, and image paste.
 
 Priority: reduce tech debt. Single user, single machine. No backwards
@@ -43,8 +45,8 @@ compatibility, no shims, and no fallbacks for retired paths.
    the `terminal-<uuid>` session names stay. The plugin uses the **managed**
    tmux 3.7c from `requires.bins` only.
 3. xterm.js stays pinned at **6.0.0 stable** (6.1 exists only as betas; #6108
-   is open). Touch scrolling of history does not depend on xterm. It lives in
-   the History view.
+   is open). Touch scrolling of history does not depend on xterm. It is the
+   native scrollback (D9 item 3, D13).
 4. Ghostty 1.3.x has no tmux control mode (`-CC`). Native handoff is a plain
    `tmux attach` client. Moving a process from another tmux server into Bakin
    is impossible on macOS, so it is out of scope.
@@ -78,7 +80,9 @@ research item in D9 was selected by Mark.
 - Resize order and failure handling:
   1. tmux `resize-window` runs first. It is the source of truth.
   2. Then the bridge PTY, the headless `Screen`, and the stored `cols`/`rows`
-     are updated.
+     are updated. On D13's raw path the replica and its viewers take the
+     size from the ordered event log instead; until the bridge is deleted
+     (T38b) the bridge path keeps updating its PTY and `Screen` this way.
   3. The whole sequence runs inside the session's command queue, so input
      from every viewer waits until it settles. If tmux refuses, the actual
      `#{window_width}×#{window_height}` is read back and applied to the
@@ -121,7 +125,12 @@ research item in D9 was selected by Mark.
   captured together with the text. The tool description tells agents to
   re-read after a revision change before doing anything that depends on layout.
 
-### D4 Bridge: hybrid
+### D4 Bridge: hybrid (output superseded by D13, 2026-10-28)
+> **Amended 2026-10-28:** once D13's cutover gate passes, output comes from
+> the same control client (`%output`), and the per-viewer PTY attach
+> bridge is removed. Until then, the bridge below stays the live path and
+> D13's replica runs in shadow beside it.
+
 - **Output:** keep the PTY `attach-session` client per session. It is now
   attached with `-f ignore-size`, and its PTY is sized to the window. Its
   redraw stream stays the output source, because it provides redraw-based
@@ -236,7 +245,8 @@ research item in D9 was selected by Mark.
   - `status off`
   - `set-titles on` with `set-titles-string 'Bakin · #{@bakin_title}'`.
     `@bakin_title` is set on creation and on recovery.
-- `mouse` stays `off`. History moved to D9's History view.
+- `mouse` stays `off`. History is native xterm scrollback (D9 item 3, D13).
+- `scroll-on-clear off` (D13).
 - On attach, tmux shows `Detach: Ctrl-b d · Scrollback: Ctrl-b [ · Closing the window also detaches`
   in its status line for 5 s (a `display-message` chained after the attach),
   where it is visible; text the CLI printed would sit behind tmux's screen.
@@ -321,7 +331,9 @@ research item in D9 was selected by Mark.
   - Ingestion and other viewers are never blocked.
   - The per-viewer send queue is bounded at 2 MiB.
 - **Heartbeat:** a ping every 15 s; 30 s of silence closes the connection.
-- Reconnect:
+- Reconnect (after D13's cutover, the sync bundle's snapshot is D13's
+  **join**: the latest proven checkpoint plus the bounded raw tail since
+  it, in ACKed chunks behind a replay barrier):
   - It mints a new connection epoch, and the old epoch is invalidated.
   - The server sends an atomic sync bundle: snapshot plus output cursor,
     ownership `generation`, consumed input sequence, dimensions, and size
@@ -343,25 +355,40 @@ research item in D9 was selected by Mark.
    - Bracketed paste is honored only when the app enabled it.
    - Each session keeps its own draft.
    - `autocomplete="off"` is set on xterm's helper textarea.
-3. **History view ("Terminal scrollback").**
-   - Opened by a header button on any device. It is viewer-local and never
-     moves anyone else's screen.
-   - Each open or Refresh takes one immutable capture, `capture-pane -p -e -J`,
-     bounded at 50,000 physical rows and 8 MiB.
-   - It shows the last 5k rows first. **Load earlier** reveals more of the
-     same snapshot, up to the 50k history limit.
-   - Rendering: escaped text, with only recognized SGR rendered as DOM spans
-     in a `<pre>`. Content is never treated as HTML.
-   - Native selection, copy, and find work. An in-sheet search covers the
-     captured text.
-   - Also: a wrap toggle, **Download text**, and a **Current screen** option
-     for full-screen apps.
-   - A final bounded capture is persisted **before termination**, including on
-     the maintenance completion path. It is deleted with output retention.
+3. **Scrollback: native, through the raw-output transport (amended
+   2026-10-28; replaces the 2026-10-27 snapshot design, which never built).**
+   Mark: "in a normal terminal i can scroll up and down, no issues at all.
+   we want that." Three Codex-reviewed spikes showed the snapshot design
+   could not be seamless, and that the raw-output transport (D13) can.
+   - **What it is:** each viewer's xterm keeps **real scrollback** fed by
+     the program's own output, so history *is* the terminal. It looks the
+     same and selects/copies natively. Scrolling up and down is the normal
+     xterm viewport, with no separate view, boundary or Refresh.
+   - **Viewer-local:** every viewer scrolls its own copy; nobody else moves.
+     tmux copy-mode is never used.
+   - **On join:** a viewer receives the replica's history (D13 checkpoint +
+     tail), so history from before it connected is there.
+   - **Depth:** 10,000 lines by default on the server and every viewer
+     (≤ 24 MB retained per session, measured in T32d). More needs incremental
+     checkpoints (a later task).
+   - **Full-screen programs** (vim, less, htop) have no scrollback, as in
+     any terminal; the grid pans as today.
+   - **Ended sessions:** D13's final bundle (the last accepted checkpoint
+     plus the bounded tail), written when the session ends — terminate,
+     maintenance completion or a natural exit — atomically and
+     idempotently. A failed save never blocks termination; the session
+     durably shows "Output not saved". Sessions from before the raw path
+     show their legacy output. The bundle is deleted with history deletion,
+     session deletion and output retention. Format changes are versioned.
+   - **Reading tools (later):** Search and Download over xterm's buffer, in
+     the session header's output menu and the key bar's sheet.
+
 4. **Links and tap-to-copy.**
    - Add the `@xterm/addon-web-links` addon.
    - When iOS blocks a clipboard write, a tap-to-copy prompt appears instead.
-   - OSC 52 is not included until its delivery through the bridge is verified.
+   - OSC 52 clipboard writes are never automatic: D13's profile decodes them
+     into offers, and the latest offer is copied only on the operator's tap,
+     live only (T36b).
 5. **Attention and activity.**
    - **Semantic state:** a pane user option `@bakin_attention` with values
      `needs-you | turn-finished | working | unknown`, set by per-program
@@ -395,11 +422,10 @@ research item in D9 was selected by Mark.
        document focus, so the terminal adds its own per-session check.
    - Agent-owned sessions are included.
    - **Out of scope:** Home Screen Web Push for a backgrounded iPhone.
-6. **Emoji width.**
-   - Apply the `@xterm/addon-unicode11` provider to the browser terminal
-     **and** the headless `Screen`.
-   - Verify alignment against managed tmux, using its `codepoint-widths`
-     overrides if needed.
+6. **Emoji width.** Owned by D13's terminal profile (2026-10-28): Unicode 15
+   with grapheme clusters (`@xterm/addon-unicode-graphemes` 0.4.0) on every
+   emulator. Unicode 11 diverged from tmux 3.7c on every emoji sequence;
+   the remaining divergences are pinned by a real-tmux parity test.
 7. **WebSocket transport.** See D8.
 8. **Image paste.**
    - Sources: photo/file picker, paste, and drop into the compose draft. The
@@ -419,8 +445,101 @@ research item in D9 was selected by Mark.
      their sandboxes.
    - HEIC is deferred.
 
-Cut: the ghostty-web renderer, the image (sixel) addon, ligatures,
-unicode-graphemes, and the tmux mouse-on touch path.
+9. **Key bar v2 (2026-10-27, after v1 failed the live iPhone test; Mark chose
+   direction A + the C2 sheet; Codex-reviewed; canvas "Terminal mobile key
+   bar", row 2).** Replaces the always-on Esc/Tab/Ctrl/More/arrows row.
+   - **Shown while typing, not by measuring the keyboard.** WebKit offers no
+     keyboard API (no `interactive-widget`, no VirtualKeyboard) and Safari
+     26's floating toolbar sits outside the visual viewport, so v1's
+     occlusion heuristic missed open keyboards. A touch device (primary
+     pointer coarse) shows the bar in an explicit **editing session**:
+     `idle → typing` (the terminal input is focused, or focus is inside the
+     bar or sheet) `→ sheet` (••• opened) `→ typing` (abc) `→ idle` (hide
+     keyboard). A corner keyboard button (top-right, beside ↓ Live) starts
+     typing from idle; it hides while the sheet is open. Return on the
+     on-screen keyboard sends the line and ends the session (keyboard away)
+     so the response has the screen (Mark, 2026-10-28). It does not collapse:
+     - for a Return that continues the line (`\` + Return, or Return with
+       the bar's ⌃/⌥);
+     - for an IME key (229);
+     - for a hardware Enter (a physical key code and an uncovered screen);
+     - when neither signal is clear (a floating keyboard, a zoomed page):
+       the keyboard simply stays.
+
+     Known limit: a hardware keyboard used while the on-screen keyboard is
+     also showing (iOS normally hides it) looks like the on-screen one. The
+     browser cannot tell which keyboard a key came from.
+   - **Placement:** the workspace's `inputAccessory` slot, which the kit
+     already bounds to the visual viewport (one geometry owner; no second
+     transform). The slot stays mounted for any live session; only its
+     content changes, because toggling the slot remounts the terminal. In a
+     Safari tab the bar sits above Safari's pill (accepted); as a Home
+     Screen app (Mark's usage) it is flush with the keyboard.
+   - **One row of iOS-style keycaps:** filled, no outlines, about 9 px
+     radius, 40 px caps with ≥ 44 px hit targets, system glyphs, kit tokens.
+     The row holds `esc`, `⇥`, `⌃`, `⌥`, an **arrow joystick**, `•••`
+     (`abc` while the sheet is open), a divider, and **hide keyboard**,
+     which is always present and works even while sending is disabled.
+     Phones narrower than 370 px use 38 px caps with widened hit areas.
+   - **Modifiers:** ⌃ and ⌥ are each off / one-shot (tap) / locked
+     (long-press, or the lock toggles in the sheet). Escape sequences:
+     - Ctrl: as xterm 6.
+     - ⌥ (terminal Meta, never Command): ESC-prefixes text and keys.
+     - Modified cursor keys and Home/End: `CSI 1;m X` (m = 1 + alt·2 + ctrl·4).
+     - Modified tilde keys: `CSI n;m ~`.
+     - Unmodified application-cursor mode keeps SS3.
+
+     The contract is about what is sent, not which input path produced it.
+     xterm delivers typing through keypress, IME commits (deferred, or
+     flushed by the next key) and Android's composition path alike, and
+     these can't be told apart reliably (four Codex rounds showed it). So:
+     - one key takes the modifiers and consumes a one-shot one, however it
+       arrived (a locked Control makes every key Control+key). This is a
+       transformation per delivered chunk, not a held key: a dictated or
+       predicted single letter is one key too;
+     - other text (words, autocorrect, dictation, CJK commits) is sent as
+       typed and ends a one-shot modifier;
+     - paste is sent exactly as pasted;
+     - a typed DEL stays a plain Backspace (it may be an autocorrect
+       deletion or a hardware Ctrl+8); the sheet's ⌫ takes the modifiers;
+     - ESC sequences that are not keys (xterm's focus reports, answers and
+       mouse reports) are untouched and never consume; `CSI 1;m R` counts as
+       a reply, because a modified F3 is the same bytes;
+     - bar keys arrive encoded and never take a modifier twice;
+     - disconnection, ownership or session change and backgrounding clear
+       everything.
+   - **Arrow joystick:** one captured pointer, `touch-action: none`, 12 px
+     dead zone, directional hysteresis. Entering a direction sends one step;
+     holding repeats after 350 ms at 100 ms intervals. Cancel, lost capture,
+     unmount or disable stops it, and the trailing click is suppressed. A
+     quick tap off-centre sends one step that way. With keyboard focus, the
+     arrow keys send arrows. The four ordinary arrow buttons are in the
+     sheet, for VoiceOver.
+   - **••• sheet:** a bounded bottom sheet in the accessory slot (the
+     keyboard is dismissed first; no keyboard-height matching in v2). It
+     holds:
+     - **Keys:** Esc, Tab, ⇧Tab, Enter, ← ↓ ↑ →, Home, End, PgUp, PgDn, ⌫,
+       Del, `|`, `~`, `/`, `-`;
+     - **Control**, with plain labels: ^C Interrupt, ^D End input,
+       ^R Search history, ^L Clear screen, ^A Line start, ^E Line end,
+       ^U Delete line, ^W Delete word, ^K Delete to end, ^Z Suspend;
+     - Ctrl lock and Option lock toggles.
+
+     Literal keys go through a gated text path. Keyboard users get focus
+     moved into the sheet, Escape closes it, and focus returns.
+   - **Accessibility:** spoken names (Control, Option, Hide keyboard).
+     "Armed once" and "locked" are announced and shown by shape, not colour
+     alone. Focus is visible.
+   - **Kit:** the public recipe `recipes/terminal-input.stories.tsx` is
+     updated to this pattern (Mark: "kit updated after redesign"); no
+     exception record.
+   - **Later:** pin editing and customisation; a seamless keyboard-height
+     sheet (only if the device checkpoint shows it is worth it).
+   - Desktop (fine primary pointer) shows no key bar.
+
+Cut: the ghostty-web renderer, the image (sixel) addon, ligatures, and the
+tmux mouse-on touch path. (unicode-graphemes was cut here, then adopted by
+D13's profile on 2026-10-28 after measuring tmux 3.7c's widths.)
 
 ### D10 Viewer rendering and zoom
 - A non-authoritative viewer renders the real grid. Its font is fitted to the
@@ -435,8 +554,24 @@ unicode-graphemes, and the tmux mouse-on touch path.
   - "Reset view" restores fit-to-width.
 - **Cursor-follow:**
   - It reveals the cursor after each completed render batch.
-  - A manual pan, an active selection, or an open History sheet pauses it
-    **until the user taps "Follow cursor"**.
+  - Three states: **following**, **panned** (a manual pan), and **reading
+    history** (scrolled up in xterm's own scrollback, D9 item 3); an active
+    selection inhibits following in any state. Following resumes only on a
+    deliberate return: tapping "↓ Live" (which also calls
+    `scrollToBottom()`), or focusing the terminal to type. Reaching the bottom by itself does not resume it,
+    so a horizontal pan at the bottom is never undone. "↓ Live" reveals the
+    **cursor**, which may be above the last row.
+  - **Vertical scrolling** (one-finger drag, wheel, trackpad) scrolls
+    xterm's history when there is history to scroll, and pans the grid
+    otherwise. Horizontal drags pan the grid. A hidden cursor (DECTCEM off,
+    e.g. Claude Code) is followed vertically only.
+  - **Controls (amended 2026-10-27):** "↓ Live" is a small 32 px pill in the
+    pane's **top-right** corner (touch target ≥ 44 px), with Reset view as a
+    32 px icon beside it. It is anchored to the viewport wrapper, outside
+    the scrolling content, shown only when not following, and keeps
+    terminal focus on tap. Cursor reveal leaves clearance so the cursor is
+    never under it. Nothing floats over the bottom rows, where the
+    program's input line is.
 - **Header:**
   - Normally: `200×60 · Sized by <this device | desktop | phone | terminal app> · Fit to this device`.
   - `Size frozen` once the authority has disconnected.
@@ -444,6 +579,144 @@ unicode-graphemes, and the tmux mouse-on touch path.
 - Panning never focuses the keyboard or sends input.
 - `terminal-canvas.tsx` replaces its `writable` proxy with explicit
   sizing-authority state.
+
+### D13 Raw-output transport (2026-10-28; spikes 1–3, Codex-reviewed) — status: conditional, acceptance pending
+Viewers render the **program's own output** (tmux control mode `%output`),
+not tmux's attach redraws. That gives real scrollback (D9 item 3) and one
+ordered stream for every viewer. Evidence: scratchpad spikes 1–3 and four
+Codex reviews.
+
+- **One control client per session** (D4's) carries output, layout,
+  input and queries.
+  - Output is an **ordered event log**: decoded `%output` bytes,
+    `%layout-change` resizes, and rebase events.
+  - Replies are framed by their `%begin`/`%end` number plus flags; pane
+    text can never fake a terminator.
+  - No `pause-after`: it discards output.
+- **Server replica:** one headless xterm per session, fed by the log in
+  order. Writes are queued, never awaited per chunk, with a hard bound.
+  `%exit`, EOF, overflow or a too-far-behind exit invalidates the replica
+  and goes to recovery.
+- **Shared terminal profile** (one module, used by the replica, every
+  viewer and the checkpoint verifier; the same xterm release is pinned on
+  both sides, enforced by an architecture test):
+  - **Query policy:** every query or report is swallowed, so tmux is the
+    pane's only responder. Enforced at xterm's one exit: nothing the
+    emulator generates (replies, focus reports) leaves a viewer; only user
+    input does.
+  - **Links:** OSC 8 is limited to http, https and mailto; the browser
+    opens them through a link handler with the same allowlist.
+  - **Clipboard:** OSC 52 never writes it; its decoded UTF-8 text is
+    offered, bounded at 256 KiB decoded.
+  - **Character widths:** Unicode 15 with grapheme clusters
+    (`@xterm/addon-unicode-graphemes`), corrected to tmux's scalar widths
+    by a table generated from the managed tmux (utf8proc, deterministic);
+    a write split inside a UTF-8 codepoint is carried over so chunking
+    never changes layout. What tmux combines by context (the cell left of
+    the cursor) cannot be mirrored by a width provider; those cases are
+    pinned by a real-tmux parity test, and the replica's cursor is checked
+    against tmux's.
+  - **Colours and windows:** palette and dynamic-colour changes are
+    swallowed; window operations do nothing.
+  - **Graphics and strings:** sixel, kitty graphics, APC, PM and SOS are
+    never drawn.
+  - **Side effects fire only live, never on replay:** bells, titles and
+    clipboard offers.
+  - **xterm 6.0.0 workarounds:**
+    - ED 1 erase-above (shipped first, f347056);
+    - inactive alt-buffer capacity;
+    - stale combined/extended maps on reflow;
+    - link entries, reclaimed when no live extended cell or the current
+      pen references them, in batches. Never deleting is not acceptable.
+
+    Each has a test that fails once upstream fixes it.
+- **Checkpoint + bounded tail** (a join never waits on future output):
+  - **The serializer:** Bakin's own, not SerializeAddon. It covers lines
+    with wrap flags, empty cells, links, the DECSC slot, the inactive alt
+    buffer, tabs, scroll region, charsets, pending wrap, pen, modes,
+    cursor style, mouse and cursor visibility.
+  - **Accepting a checkpoint:** only when xterm's parser is quiescent
+    **and** restoring it into a scratch terminal reproduces the full state.
+  - **Cadence:** tried at 1 MiB of tail or after 2 s idle, coalesced and
+    scheduled off the hot path. The tail has a **hard bound** (4 MiB).
+  - **When no checkpoint can be accepted in time** (an unterminated
+    string, a persistently unserializable state), the replica is rebuilt
+    from tmux under the recovery contract. It is never an unbounded tail.
+  - **A join:** checkpoint plus tail, in ACKed chunks behind a replay
+    barrier. Input is gated until the replay completes, and stale epochs
+    are isolated.
+- **Width change → rebase:** tmux reflows history and the cursor line, and
+  xterm doesn't, so after a width change the replica is rebuilt from tmux
+  (`SEED_CMD`, one atomic grouped command). The boundary is its final
+  correlated reply: every earlier log event has been parsed, and output
+  after it follows the seed.
+  - The event log is the only resize source for the replica and viewers.
+  - D2's sizing contracts (claims, epochs, revisions, floors) stand; only
+    their implementation moves onto the log.
+  - It preserves the replica's full terminal state: pen, charsets, modes,
+    DECSC slot, tabs, region and alt screen. Continuation fidelity is
+    tested with split UTF-8/CSI, saved cursor, charsets, regions and alt
+    screens, comparing attributes and modes, not only text.
+  - It is broadcast as an event, so every viewer resets to it.
+  - Row-only changes are ordered resize events with no rebase.
+- **tmux config:** `set -g scroll-on-clear off` (a service update), so
+  `clear` leaves no stale history on either side.
+- **Recovery contract** (replica lost, e.g. server restart):
+  - The rebuild from tmux is one atomic command.
+  - The view shows a persistent banner (kit `feedback/banner`): "Terminal
+    view recovered with limitations. Some earlier output may be missing or
+    differ. Formatting and terminal behavior may remain incorrect until
+    the application resets or redraws." The details name the cause. A
+    reconnect does not clear it.
+  - Measured degradations: the current pen, the DECSC slot, charsets,
+    cursor style, focus mode, a program paused mid-escape, partial-region
+    scroll-offs, empty cells normalised to spaces, and after-print
+    combining/REP behaviour.
+  - Width rebases carry the same partial-region history (tmux keeps lines
+    that scroll out of a partial region).
+- **Digest safety net:**
+  - At matching `{epoch, seq}` positions (periodic barriers, and quiet
+    points), each viewer reports a digest of its screen, cursor and modes.
+  - A mismatch triggers a fresh join for that viewer, with bounded retries;
+    a repeated mismatch escalates to a replica rebuild and is logged.
+  - Viewer digests cannot see a layout the replica shares, so at quiet
+    points the replica's cursor is also compared with tmux's; a mismatch
+    reseeds and is logged.
+  - It is detection, not a guarantee.
+- **Memory budget** (T32d, per session at 120 × 10k): retained after GC
+  ≤ 24 MB on the raw path; peak ≤ 64 MB with R1's shadow screen, verifier,
+  full queues and three joins. The server warns past 480 MB retained (20
+  sessions).
+- **Ended sessions:** the final bundle (last accepted checkpoint plus the
+  bounded tail, dimensions, profile/format version, sequence boundary and
+  recovery metadata) is persisted when the session ends: after a final
+  drain, before the kill, on terminate and maintenance completion; on the
+  program's exit (`#{pane_dead}`, confirmed), after every received output
+  event is parsed. The control client's own `%exit`/EOF is not an end: with
+  the pane alive it is recovery. A failed save never blocks termination
+  and is recorded durably ("Output not saved"). Sessions without a bundle
+  load without resync: legacy output for pre-raw sessions, the static
+  "Output not saved" state otherwise.
+- **Two paths until the bridge is deleted:** the bridge path keeps its
+  readiness check, its resizes and its legacy retained output exactly as B5
+  ships them, so a rollback to B5 reads every ended session. After T38b,
+  which ships behind a drained maintenance step, that guarantee narrows:
+  sessions that ran afterwards have only a bundle, and an older version
+  shows them with no output (no B5-readable copy is kept). Bundles a rolled-back version could not delete are reconciled on
+  upgrade.
+- **Delivery and rollback** (additive PRs on top of B5; the built B0–B5
+  history is not rewritten):
+  1. **Crash fix** (done).
+  2. **R1, bounded shadow replica:** dark, beside the bridge. Its screen is
+     compared with the bridge's in logs, allowing for documented semantic
+     differences.
+  3. **R2, opt-in raw path:** socket v2, rebase, recovery, persistence and
+     digest, behind a setting that is off by default.
+  4. **R3, native scrolling** in the canvas, then Mark's acceptance: real
+     Claude Code, the WebGL browser, a second browser, Ghostty and his
+     iPhone.
+  5. **Only after acceptance** is the bridge deleted (T38b). D12's
+     full-stack merge sign-off stays separate.
 
 ### D11 Rollout: maintenance cutover, managed tmux only
 - tmux resolution is **managed bin only**. The Homebrew/PATH fallback in
@@ -495,7 +768,7 @@ See Testing Strategy and Success Criteria.
   - `@xterm/addon-fit` 0.11.0
   - `@xterm/addon-webgl` 0.19.0
   - `@xterm/addon-serialize` 0.14.0
-  - **new:** `@xterm/addon-unicode11` 0.9.0 and `@xterm/addon-web-links` 0.12.0
+  - **new:** `@xterm/addon-unicode-graphemes` 0.4.0 and `@xterm/addon-web-links` 0.12.0
 - **Process host:** managed tmux 3.7c in `~/.bakin/bin`, run under a launchd
   LaunchAgent.
 - **UI:** the SDK focused entrypoints (`/patterns`, `/layout`, `/ui`,
@@ -555,17 +828,20 @@ lib/sizing.ts (new)     → pure claim/revision/floor policy
 lib/control.ts (new)    → tmux control-mode client (%begin/%end/%error, subscriptions)
 lib/processes.ts        → bridge (ignore-size) + control + native client tracking
 lib/service.ts          → managed-only tmux, generated conf, fingerprint, setup exclusion
-lib/sessions.ts         → claims, create dims, final history capture, native admission
+lib/sessions.ts         → claims, create dims, final bundle, native admission
 lib/socket.ts (new)     → per-viewer socket protocol, flow control, epochs
-lib/history.ts (new)    → capture + SGR→escaped spans
+lib/terminal-profile.ts (new) → the one terminal profile (D13): options, query/report policy, links, clipboard, widths
+lib/xterm-fixes.ts (new)      → xterm 6.0.0 workarounds, each with an upstream tripwire
+lib/checkpoint.ts (new)       → checkpoint serializer + full-state verifier (D13)
 lib/attention.ts (new)  → adapters, hooks, derived activity
 lib/uploads.ts (new)    → image validation, storage, retention
 lib/cli.ts (new)        → launch-route handlers for new/attach/ls
-components/…            → canvas (authority/pinch/pan/follow), compose sheet, history sheet, attention chips
+components/…            → canvas (authority/pinch/pan/follow, native scrollback), key bar, compose sheet, attention chips
 tests/…                 → unit, process-integration, browser
 README.md
 ```
-Retired: `lib/http.ts`'s `stream`, plus the browser write/resize command paths.
+Retired: `lib/http.ts`'s `stream`, plus the browser write/resize command paths;
+after acceptance, the per-viewer attach bridge and its headless `Screen` (T38b).
 
 ## Code Style
 
@@ -606,7 +882,13 @@ Bakin conventions also apply:
     replay;
   - CLI ref resolution and typed args;
   - attention adapters (fixtures);
-  - History capture and SGR rendering, with XSS fixtures;
+  - D13: control-mode decoding and reply framing; the checkpoint serializer
+    and full-state verifier (named repros plus the integer-PRNG fuzz with
+    asserted branch coverage and join offsets across the stream); tail
+    bounds; rebase continuation fidelity; the terminal profile's policy
+    and xterm workarounds; digest comparison;
+  - key bar: encoding against xterm 6, the modifier contract, the editing
+    session, the joystick, Return-hides;
   - image validation;
   - fingerprint;
   - the tmux.conf generator.
@@ -624,7 +906,13 @@ Bakin conventions also apply:
   - attach racing Return control;
   - Return control detaching native clients;
   - copy-mode cancel on input;
-  - final history capture;
+  - D13 against real tmux: late joiners mid-escape/UTF-8/OSC/DCS/alt/region;
+    rapid resizes with markers (transient and final states); recovery
+    during output; `%exit`/EOF/overflow fault injection; two viewers plus
+    a native client with exactly one query answer;
+  - final bundle persistence (no-scrollback session, terminate, natural
+    exit, maintenance completion, a write failure and a restart after it,
+    sessions without a bundle);
   - fingerprint recorded only after verified startup;
   - setup refusing live panes.
 - **Race and failure:**
@@ -633,17 +921,18 @@ Bakin conventions also apply:
   - the control connection dropping after input is consumed but before its
     result;
   - reconnect during output or resize;
-  - each asserting zero input replay and consistent dimensions across all
-    four representations.
+  - each asserting zero input replay and consistent dimensions across every
+    representation: tmux, the stored size, and the path's own (the bridge
+    PTY and `Screen`, or the raw replica fed by the log).
 - **Bounded load:** run `yes` for 30 s while one viewer stops ACKing.
   - Plugin heap growth stays under 32 MiB.
   - The stalled viewer is evicted within 10 s.
   - A healthy loopback viewer's keystroke-echo p95 stays under 50 ms.
   - Ctrl-C stops the flood within 1 s.
   - The evicted viewer re-snapshots to the same screen as a healthy viewer.
-- **Resize failure:** inject a failure at each of the four steps. The session
-  ends with all four representations equal to tmux's actual window, and input
-  paused until reconciliation finishes.
+- **Resize failure:** inject a failure at each resize step. The session ends
+  with every representation equal to tmux's actual window, and input paused
+  until reconciliation finishes.
 - **Native admission:**
   - A raw `tmux attach` without a reservation is detached.
   - A reservation invalidated by Return control is refused.
@@ -651,8 +940,13 @@ Bakin conventions also apply:
 - **Browser (Playwright Chromium + WebKit, desktop + iPhone emulation, against
   the disposable preview):**
   - pan, pinch, and follow;
+  - the key bar (shown only with the keyboard up, strip scroll vs tap,
+    arrow hold-to-pick and its cancellations, ••• menu, pin editing,
+    focus kept, exactly one input per activation);
   - the compose sheet;
-  - History;
+  - native scrollback (scroll up and down while numbered output continues,
+    join with history, other viewers unmoved, no input/claim/resize from
+    scrolling, ↓ Live, full-screen programs pan);
   - links and tap-to-copy;
   - attention chips;
   - image draft;
@@ -692,7 +986,7 @@ Bakin conventions also apply:
 
 **Ask first:**
 - Any deviation from a Storybook pattern.
-- Adding dependencies beyond `ws`, `@xterm/addon-unicode11`, and
+- Adding dependencies beyond `ws`, `@xterm/addon-unicode-graphemes`, and
   `@xterm/addon-web-links`.
 - Touching the live 3737 server, the live tmux service, or the LaunchAgent
   outside the documented cutover.
@@ -725,7 +1019,7 @@ Bakin conventions also apply:
 5. The terminal runs over one WebSocket per viewer. The SSE `/stream` and the
    POST write paths are gone. Keystroke echo involves no polling. A stalled
    viewer never affects the others.
-6. The compose sheet, the History view (including on ended sessions), links
+6. The key bar, the compose sheet, native scrollback (including on ended sessions), links
    and tap-to-copy, attention plus activity status with notifications, emoji
    alignment, and image paste all pass their automated tests and Mark's
    iPhone checklist.
