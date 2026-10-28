@@ -37,13 +37,15 @@ export function TerminalInputFixture() {
   const toggleLock = (modifier: Modifier) => setModifiers(current => ({ ...current, [modifier]: current[modifier] === 'locked' ? 'off' : 'locked' }))
   const backToKeyboard = () => { setSheet(false); editor.current?.focus() }
   // While the sheet is open it owns Escape, wherever focus is: it closes the
-  // sheet and never reaches the editor (captured first). An Escape another
-  // owner already claimed (a dialog above it), or one inside a composition,
-  // is left alone.
+  // sheet and never reaches the editor (captured first). Left alone: an
+  // Escape inside an open dialog (the dialog's), inside a composition, or
+  // one another owner already claimed.
   useEffect(() => {
     if (!sheet) return
     const escape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest('[role="dialog"], [role="alertdialog"]')) return
       event.preventDefault()
       event.stopPropagation()
       setSheet(false)
@@ -63,7 +65,10 @@ export function TerminalInputFixture() {
     event.preventDefault()
     send(name)
   }
-  const editorText = () => setModifiers(current => ({ ctrl: current.ctrl === 'once' ? 'off' : current.ctrl, alt: current.alt === 'once' ? 'off' : current.alt }))
+  const endOnce = () => setModifiers(current => ({ ctrl: current.ctrl === 'once' ? 'off' : current.ctrl, alt: current.alt === 'once' ? 'off' : current.alt }))
+  // Committed text only: not the interim input of a composition, nor one that was cancelled.
+  const editorInput = (event: React.FormEvent) => { if (!(event.nativeEvent as InputEvent).isComposing) endOnce() }
+  const editorCommit = (event: React.CompositionEvent) => { if (event.data) endOnce() }
   const openSheet = (event: React.MouseEvent) => {
     setSheet(true)
     // The sheet stands in for the software keyboard, which goes down: focus
@@ -124,7 +129,7 @@ export function TerminalInputFixture() {
         <Stack gap="item" className="min-h-0 flex-1 overflow-y-auto p-bakin-3">
           <Text as="h1" weight="semibold">Terminal input</Text>
           <Button variant="outline" onClick={() => { setDisabled(value => !value); setModifiers({ ctrl: 'off', alt: 'off' }) }}>{disabled ? 'Enable keys' : 'Disable keys'}</Button>
-          <Textarea ref={editor} aria-label="Example input" defaultValue="Try completion and cursor movement." className="min-h-0 flex-1" onKeyDown={editorKey} onInput={editorText} />
+          <Textarea ref={editor} aria-label="Example input" defaultValue="Try completion and cursor movement." className="min-h-0 flex-1" onKeyDown={editorKey} onInput={editorInput} onCompositionEnd={editorCommit} />
           <Text role="status">{lastKey}</Text>
         </Stack>
       </WorkspacePageBody>
