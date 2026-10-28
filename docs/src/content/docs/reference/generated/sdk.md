@@ -26,6 +26,9 @@ The main entry. Re-exports the plugin contract types (`./types`) plus the high-t
 | `defineRoute` | Define a plugin HTTP route with typed input/output schemas. |
 | `defineCoreRoute` | Define a core (non-plugin) HTTP route. |
 | `definePlugin` | Compose a plugin's routes into a single definition for the server. |
+| `defineSocketRoute` | Define a plugin WebSocket route. |
+| `PluginSocket` | — |
+| `SocketRoute` | — |
 | `HttpStatus` | — |
 | `RouteContext` | — |
 | `PluginContextLite` | — |
@@ -730,6 +733,9 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `defineRoute` | Define a plugin HTTP route with typed input/output and handler. |
 | `defineCoreRoute` | Define a core (non-plugin) HTTP route. |
 | `definePlugin` | Compose a plugin's routes into a single definition for the server. |
+| `defineSocketRoute` | Define a plugin WebSocket route (served at `/api/plugins/{pluginId}{path}`). |
+| `PluginSocket` | — |
+| `SocketRoute` | — |
 | `approvalProvenanceFromRequest` | Provenance of an approval decision on a plugin route, from its transport only — pass it to the gate hooks (#898). |
 | `ApprovalProvenance` | Who decided an approval and how Bakin knows: channel, declared/provider-vouched actor, evidence (#898). |
 | `HttpMethod` | — |
@@ -776,5 +782,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 24, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 28, 2026 · Bakin 0.0.0-dev</span>
 </aside>
