@@ -720,6 +720,34 @@ Codex reviews.
   wide, densely coloured session (400 × 150 with per-cell colours
   serializes to about 84M characters, 1.1 s of sliced work), seeds and
   capture replies in flight.
+  - **Measured (2026-10-28): neither ceiling can be met as the
+    architecture stands.** One profile terminal at 120 × 10k is
+    20.7–20.8 MB, not the 14.5 MB the ceilings assumed (xterm's per-line
+    objects add about 0.6 KB a line). A replica with its base and an empty
+    tail is 22–27 MB; a full 4 MiB tail adds 4.2 MB; per-cell truecolour
+    makes the base 24.4M characters (about 55 MB). The R1 peak holds three
+    such terminals (replica, bridge Screen, verifier scratch: about 62 MB)
+    before the 8 MiB log and any join. The plan forbids moving the number,
+    so this is **open decision 4, for Mark** (both views below).
+    - Codex: keep exact replay (checkpoint + tail), move it out of the
+      heap: an immutable file-backed checkpoint streamed through the
+      verifier, the tail as ordered records on disk, a resident cache of
+      about 512 KiB, joins reading bounded windows of a pinned generation,
+      quotas and deadlines; and for the peak either a much smaller bridge
+      history (an explicit change to B5's bridge snapshots, which do
+      include their scrollback) or a compact verifier. It rejects
+      on-demand join checkpoints (they lose exact joins in states no bytes
+      rebuild, and at session end), sampling verification, and excluding
+      the shadow from the gate. T32d becomes an L task.
+    - Claude: agrees with the analysis and that on-demand checkpoints
+      lose too much. Since the ceilings rest on a measured-wrong premise,
+      the honest alternatives are (a) Codex's file-backed storage plus a
+      smaller bridge history for R1, or (b) Mark re-baselining the
+      ceilings from the measured terminal cost (for example retained
+      ≤ 32 MB, peak ≤ 96 MB, warning at 640 MB) and keeping the resident
+      design. Recommends (b) for R1–R3, with file-backed storage recorded
+      as the follow-up if the live sessions' totals ever approach the
+      warning: one user, ten sessions at most (`maxSessions`).
 - **Ended sessions:** the final bundle (last accepted checkpoint plus the
   bounded tail, dimensions, profile/format version, sequence boundary and
   recovery metadata) is persisted when the session ends: after a final

@@ -969,7 +969,10 @@ we can test end to end manually again."
   - The keystroke-*render* echo gate needs a browser: it is R2's (T33), and
     its meaning under overload is open for Mark (spec D13, Bounded load).
 
-**T32d: Memory budget and warning** (S)
+**T32d: Memory budget and warning** (S) — blocked on open decision 4
+(spec D13, Memory budget): measured, neither ceiling can be met as
+designed; Mark chooses between re-baselining from the measured terminal
+cost and Codex's file-backed replay storage (an L task).
 - Acceptance:
   - Measured on Bun 1.4.3 on the M4, two numbers per session at 120 ×
     10,000 rows of full scrollback, both recorded with the measurement:
