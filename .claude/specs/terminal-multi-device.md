@@ -355,6 +355,15 @@ research item in D9 was selected by Mark.
    - Bracketed paste is honored only when the app enabled it.
    - Each session keeps its own draft.
    - `autocomplete="off"` is set on xterm's helper textarea.
+   - **As built (T18, 2026-10-28):** a viewer cannot tell whether the app
+     enabled bracketed paste — tmux turns it on for every client it
+     attaches, so a viewer's xterm always reports it on the bridge path,
+     and browser input reached the pane past tmux's paste handling. Every
+     browser paste (xterm's and compose) is therefore explicit input
+     (`paste`, and `enter` for Paste + Enter: one envelope, Return only
+     once the paste went), delivered by `paste-buffer -p -r -S`: tmux
+     brackets it only if the program enabled it, byte for byte. The draft
+     clears only when the server accepts that paste.
 3. **Scrollback: native, through the raw-output transport (amended
    2026-10-28; replaces the 2026-10-27 snapshot design, which never built).**
    Mark: "in a normal terminal i can scroll up and down, no issues at all.
@@ -384,8 +393,17 @@ research item in D9 was selected by Mark.
      the session header's output menu and the key bar's sheet.
 
 4. **Links and tap-to-copy.**
-   - Add the `@xterm/addon-web-links` addon.
+   - Add the `@xterm/addon-web-links` addon. **Built (T20):** plain-text
+     URLs and OSC 8 links open through one handler — confirmed, no opener,
+     http/https/mailto.
    - When iOS blocks a clipboard write, a tap-to-copy prompt appears instead.
+     **Open decision 6, for Mark (kit gap):** nothing in B5 writes the
+     clipboard yet (copying a selection on a phone needs an action), the
+     kit's public copy action is `CopyButton` (a 24 px icon button,
+     below the 44 px touch target), and `copyToClipboard` is no longer
+     public (#875). A touch-sized copy action is a public-API extension
+     (a `CopyButton` size, or re-exporting the helper) that needs his
+     approval; R3's T36b (OSC 52 offers, copied on a tap) needs the same.
    - OSC 52 clipboard writes are never automatic: D13's profile decodes them
      into offers, and the latest offer is copied only on the operator's tap,
      live only (T36b).
@@ -535,6 +553,11 @@ research item in D9 was selected by Mark.
      exception record.
    - **Later:** pin editing and customisation; a seamless keyboard-height
      sheet (only if the device checkpoint shows it is worth it).
+   - **Open decision 5, for Mark:** the plan still carries pin editing as
+     T19b in B5 ("Edit pinned keys in •••… capped at 12"), while this item
+     says Later, and the v2 row has no room for pins at 320 px. Claude
+     recommends deferring T19b (the sheet is where keys are added) unless
+     Mark wants pins as a sheet group; not built until he decides.
    - Desktop (fine primary pointer) shows no key bar.
 
 Cut: the ghostty-web renderer, the image (sixel) addon, ligatures, and the

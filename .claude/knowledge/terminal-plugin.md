@@ -89,6 +89,10 @@ or new public export is needed. Existing workspaces retain host sizing.
 ## Mobile input and rendering
 
 Terminal loads the matching xterm WebGL addon after opening the terminal.
+Plain-text URLs are links through `@xterm/addon-web-links` 0.12.0; they and
+OSC 8 hyperlinks open through one link handler: confirmed, in a new window
+with no opener, http/https/mailto only (R1's profile owns the same
+allowlist, `isAllowedLink`).
 Inconsistent physical pixel measurements (including Chromium device emulation)
 switch back to the DOM renderer, preventing a scaled GPU viewport from clipping
 the terminal output.
@@ -108,7 +112,29 @@ one-shot one, a paste is sent exactly, and disconnection, ownership or
 session change and backgrounding clear everything, locks included. ••• puts
 the keyboard down and opens a bounded sheet with the remaining keys, the
 Control shortcuts with plain labels, and the lock toggles; keyboard users
-get focus moved into it and Escape closes it. Cursor sequences follow
+get focus moved into it and Escape closes it. The sheet's Compose opens
+the compose sheet (a fourth editing state): a kit Textarea for dictation,
+IME and longer edits, with Paste (back to typing) and Paste + Enter (the
+keyboard goes away). The page owns each session's draft (guarded
+localStorage up to 64 KB, the input bound; longer ones live only while the
+page is open, and the sheet says so) and clears it only when the server
+accepts the paste's envelope (named by connection and sequence: sequences
+restart with each connection, and a connection that ends retires its
+entries) and the draft is still the revision that was sent — a refused or
+uncertain one keeps it. Paste + Enter is one envelope (`paste` + `enter`):
+the server sends the Return only once the paste went.
+Bracketed paste is decided by tmux, not the viewer: on the bridge path a
+viewer's xterm reports tmux's client mode, which tmux turns on for every
+client it attaches. So a paste is explicit input — the socket's `input`
+frame carries `paste: true` (xterm's own paste events and compose; each
+travels alone in its envelope; only the data a paste event announced is
+marked, never a key typed after it) — and the server strips any markers and
+hands it to tmux as a paste (`load-buffer` from a private 0600 file, then
+`paste-buffer -p -r -S -d`: tmux brackets it only if the program enabled
+bracketed paste, `-r -S` keep every byte). Plain input is never
+reinterpreted. Paste files and buffers are cleaned up independently of the
+control connection, and leftovers from a crash go at the next process's
+first paste. Cursor sequences follow
 xterm's current normal/application mode. Every action uses the existing
 ordered input queue and generation/ownership checks.
 

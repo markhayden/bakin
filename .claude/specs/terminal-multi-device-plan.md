@@ -687,10 +687,22 @@ after the live install is refreshed)
   - Unit: the pure direction and repeat machine with an injected clock.
   - Browser: drag sends and repeats, cancel stops, no click after a drag.
 
-**T18d: Kit recipe update** (S, bakin)
+**T18d: Kit recipe update** (S, bakin) — built (bakin 0ace3a54d, c34d28437,
+4fb283cc8, 972daf0dc; bits b0f33af; 4 Codex rounds)
 - Acceptance: `recipes/terminal-input.stories.tsx` and its fixture show the
   v2 pattern, with coverage and story compliance updated.
-- Verify: `ui:conformance --full` in bakin.
+  - As built: `BarAndSheet` — one row of `icon-lg` keys (six fit 320 px),
+    off / one-shot / locked modifiers (named and shown by shape), a bounded
+    More keys Panel in the same accessory, Hide keyboard always enabled;
+    Escape owned by an open sheet (captured; a dialog's, a composition's or
+    a claimed Escape left alone); committed text ends a one-shot modifier.
+    Guidance in the story, style guide and public UI docs; four visual
+    baselines regenerated in the canonical image (only those).
+  - The Bits key bar's keycaps became kit Buttons drawn by scoped CSS (the
+    legacy-style ratchet counted the raw buttons), pixel-identical.
+- Verify: `ui:conformance --full` in bakin (the census step fails on the
+  stale Bits compatibility matrix until T24b's repin; every other step,
+  the story, browser and visual runs pass).
 
 **T19a / T19 / T19c (snapshot scrollback): superseded 2026-10-28** by
 Phase 8R (the raw-output transport, spec D13 and D9 item 3). Never built.
@@ -706,8 +718,13 @@ Phase 8R (the raw-output transport, spec D13 and D9 item 3). Never built.
   - Focus moves to the textarea deliberately without unmounting the bar's
     parent.
 - Verify: unit tests for paste encoding; WebKit iPhone-emulation browser tests.
+- Built (6a9acec, 78c2165, 4373cdc, d5f7377, e624ff4; 4 Codex rounds): see spec D9 item 2 "As
+  built" — explicit paste input delivered by tmux (`paste-buffer -p -r
+  -S`), Paste + Enter in one envelope, drafts owned by the page and cleared
+  only on the accepted revision, real-tmux and browser (Chromium + WebKit)
+  coverage including a refused paste.
 
-**T19b: Pin editing** (S)
+**T19b: Pin editing** (S) — not built: open decision 5 (spec D9 item 9)
 - Acceptance: **Edit pinned keys** in ••• adds, removes and moves pins with
   explicit buttons (no long-press needed); holding any key never sends it.
   Pins live per device in guarded `localStorage` (browser-local by Mark's
@@ -716,7 +733,8 @@ Phase 8R (the raw-output transport, spec D13 and D9 item 3). Never built.
 - Verify: unit tests for edits, validation, the cap and storage failure;
   one browser test.
 
-**T20: Links and tap-to-copy** (S)
+**T20: Links and tap-to-copy** (S) — links built (f0e2ddc); tap-to-copy
+waits on open decision 6 (spec D9 item 4, a kit gap)
 - Acceptance:
   - `@xterm/addon-web-links` 0.12.0 is added (plain-text URLs; OSC 8 links
     follow the profile's allowlist, T30).

@@ -56,10 +56,10 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T18c ••• key sheet (abc, lock toggles)
 - [x] Physical iPhone checkpoint #1 (Mark, Home Screen + Safari tab) — follow-ups shipped: Return hides, hidden-cursor follow, bottom padding, one-word chip
 - [x] T18b Arrow joystick (long-press locks: sheet lock toggles instead)
-- [ ] T18d Kit recipe update (bakin)
-- [ ] T18 Compose sheet (opened from •••)
-- [ ] T19b Pin editing (Edit pinned keys; browser-local)
-- [ ] T20 Links and tap-to-copy (widths moved to T30b)
+- [x] T18d Kit recipe update (bakin 0ace3a54d … 972daf0dc + bits b0f33af keycaps → kit Buttons; 4 Codex rounds)
+- [x] T18 Compose sheet (opened from •••) (6a9acec … e624ff4; 4 Codex rounds; tmux now decides bracketed paste for every browser paste)
+- [ ] T19b Pin editing (Edit pinned keys; browser-local) — BLOCKED: open decision 5 (spec says Later)
+- [ ] T20 Links and tap-to-copy (widths moved to T30b) — links built (f0e2ddc); tap-to-copy BLOCKED: open decision 6 (kit gap)
 - [ ] T24b H3 CSS sync + repin
 - [ ] Checkpoint B5 → `tmd/cp7`
 
