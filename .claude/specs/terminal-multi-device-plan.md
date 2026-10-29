@@ -1076,7 +1076,9 @@ a live session; two Codex rounds per task; docs.
   seed the screen alone, a quiet restore brings the history back, the
   viewer keeps the latest cut, pictures are replayed unseen and shown at
   their barrier; the bounded-load gate passes except the 32 MiB heap
-  figure, which is open decision 7 (spec D13 Bounded load).
+  figure, settled by decision 7 (Mark, 2026-10-28: growth after the
+  scrollback fills ≤ 8 MiB, total within the 96 MB session peak; spec D13
+  Bounded load).
 
 **T34a: Width-change rebase and one ordered resize source** (M)
 - Acceptance:

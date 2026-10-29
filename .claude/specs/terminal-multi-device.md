@@ -1134,7 +1134,10 @@ Bakin conventions also apply:
     about 1.0 s read from the rendered rows, no misses; eviction 10.1 s;
     Ctrl-C stops the flood in well under a second (read from tmux); the
     evicted viewer reconnects and converges; history restored.
-  - **Open decision 7 (for Mark): the heap figure.** "Plugin heap growth
+  - **Decision 7 — decided by Mark 2026-10-28, as recommended: two limits,
+    growth after the scrollback fills ≤ 8 MiB and the total within the
+    session's 96 MB peak budget** (the bounded-load test already gates both).
+    The question as it was put: the heap figure. "Plugin heap growth
     stays under 32 MiB" predates decision 4. A 200-column session whose
     flood fills 10,000 rows of scrollback in the replica and the bridge
     Screen grows about 27–40 MiB over its idle start, then stays flat

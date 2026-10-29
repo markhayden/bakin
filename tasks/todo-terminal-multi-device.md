@@ -59,7 +59,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T18d Kit recipe update (bakin 0ace3a54d … 972daf0dc + bits b0f33af keycaps → kit Buttons; 4 Codex rounds)
 - [x] T18 Compose sheet (opened from •••) (6a9acec … e624ff4; 4 Codex rounds; tmux now decides bracketed paste for every browser paste)
 - [-] T19b Pin editing — deferred (decision 5: spec says Later)
-- [x] T20 Links (f0e2ddc) + kit CopyButton touch size (bakin 9265199a0, 2 Codex rounds); terminal tap-to-copy moved to T36b (B5 has no output clipboard write to fall back from; Mark to confirm)
+- [x] T20 Links (f0e2ddc) + kit CopyButton touch size (bakin 9265199a0, 2 Codex rounds); terminal tap-to-copy moved to T36b (B5 has no output clipboard write to fall back from; Mark confirmed 2026-10-28)
 - [ ] T24b H3 CSS sync + repin
 - [ ] Checkpoint B5 → `tmd/cp7`
 
@@ -75,7 +75,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T32c Replica + tail + cadence + shadow mode (R1: fb3aa7f, 9fbf2fa, ca90e4b; review fixes ba0f675, 5e3b4df; overload rebuilds after measuring tmux 40 MB/s vs replica 21 MB/s; product decisions 1–3 open for Mark before T33, spec D13 Bounded load)
 - [x] T32d Memory budget + warning (R1: 27b0379, d4eae94, 5165ec7, 97d4bd3; 4 Codex rounds) — retained 27.4 MB with a full tail, live peak 79.4 MB; 32 MB is a reference-workload target (metadata-dense content recorded); tmux cell limit; 640 MB Health warning
 - [ ] Checkpoint R1 → `tmd/r1`
-- [x] T33 Socket protocol v2 (join) — R2: 33a replica subscription, 33b raw-display viewer, 33c client (streamed restore, raw-picture queue, fresh terminal per picture), 33d input health + browser gates, 33e overload freshness (screen-only seeds, quiet history restore; freshness p95 ~1.0 s); dormant until T38a; open decision 7 (heap figure) for Mark
+- [x] T33 Socket protocol v2 (join) — R2: 33a replica subscription, 33b raw-display viewer, 33c client (streamed restore, raw-picture queue, fresh terminal per picture), 33d input health + browser gates, 33e overload freshness (screen-only seeds, quiet history restore; freshness p95 ~1.0 s); dormant until T38a; decision 7 (heap figure) settled 2026-10-28: growth after fill ≤ 8 MiB, total within the 96 MB peak
 - [x] T34a Width-change rebase + one ordered resize source
 - [x] T34b Service update: scroll-on-clear off
 - [x] T35a Recovery banner
@@ -84,7 +84,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [ ] T38a Opt-in raw path (setting, default off)
 - [ ] Checkpoint R2 → `tmd/r2`
 - [ ] T36 Native scrolling, follow, gestures
-- [ ] T36b Clipboard offers (copy on tap) — the terminal's tap-to-copy, CopyButton size="touch"
+- [ ] T36b Clipboard offers (copy on tap) — the terminal's tap-to-copy, CopyButton size="touch"; also decide whether the T35a recovery banner collapses on phones (Mark: my call)
 - [ ] Checkpoint R3 → Mark's manual end-to-end acceptance
 - [ ] T38b Delete the bridge (after acceptance)
 
