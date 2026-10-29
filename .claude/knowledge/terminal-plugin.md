@@ -190,6 +190,16 @@ the setting; the local preview forces it with `TERMINAL_PREVIEW_RAW=1`).
   history), never the bridge shadow, whose emulator keeps cells from the
   old width; a discriminating case keeps the cursor inside a wrapped line
   (tmux reflows it, bare xterm does not).
+- **Recovery and the notice (T35a):** each path judges attachment health by
+  its own source — the raw path by its replica and control client only, so
+  a failed legacy bridge never tears down a live replica. A raw join calls
+  `Sessions.ensureReplica` first (instant for a live replica; a lost one is
+  reattached under the manager queue, bounded for the viewer by the join
+  deadline). A replacement replica's first seed counts `recoveries` in the
+  session's fidelity; `lib/fidelity-notice.ts` renders fidelity as the page's
+  persistent kit Banner (causes, never counts: the Banner re-announces
+  changed text). The UI conformance fixture joins raw after a recovery, so
+  the banner is always checked.
 - **Gates:** `tests/raw-path.browser.test.ts` (against the preview with the
   raw path forced; the overload and width-change tests also need
   `TERMINAL_PREVIEW_TMUX` and `TERMINAL_PREVIEW_ROOT`, both printed by the

@@ -78,7 +78,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T33 Socket protocol v2 (join) — R2: 33a replica subscription, 33b raw-display viewer, 33c client (streamed restore, raw-picture queue, fresh terminal per picture), 33d input health + browser gates, 33e overload freshness (screen-only seeds, quiet history restore; freshness p95 ~1.0 s); dormant until T38a; open decision 7 (heap figure) for Mark
 - [x] T34a Width-change rebase + one ordered resize source
 - [x] T34b Service update: scroll-on-clear off
-- [ ] T35a Recovery banner
+- [x] T35a Recovery banner
 - [ ] T35b Final bundle persistence, ended sessions + rollback contract
 - [ ] T37 Digest safety net
 - [ ] T38a Opt-in raw path (setting, default off)

@@ -1222,13 +1222,42 @@ a live session; two Codex rounds per task; docs.
   - Overload rebuilds (T32c): disclosure pending Mark's decision 1 (spec
     D13, Bounded load); if disclosed, one persistent notice per session
     with its own copy, never cleared by a reconnect or a later checkpoint,
-    and durable fidelity metadata carried into the bundle (T35b). A
-    session that ends while rebuilding takes a final seed, bounded, or
-    records "Output not saved"; it never saves an obsolete base as
-    complete.
+    and durable fidelity metadata carried into the bundle (T35b). (A
+    session ending while rebuilding: moved to T35b, which owns the bundle.)
   - `ui:conformance --quick`.
 - Verify: browser after a forced replica loss; real tmux degradations
   match D13's list.
+- **As built (2026-10-28; two Codex rounds, approved):** the raw path had no
+  replica recovery at all — a raw join only waited for a replica, and
+  reattachment ran on the bridge path judged by the bridge, so a closed
+  control client or a failed reseed left raw viewers looping. Now each path
+  judges health by its own source (`Sessions.ensureAttached`: the raw path by
+  its replica and control client alone, so a failed legacy bridge never costs
+  a live replica and is not repaired from there); a raw join calls
+  `ensureReplica` first (queue-free for a live replica; a recovery takes the
+  manager queue like every attachment, and the viewer's wait is bounded by
+  the join deadline), and raw `readScreen` recovers the same way. A
+  replacement replica's first applied seed counts `recoveries` in the
+  session's fidelity (`TmuxProcesses`; a session's first replica after its
+  creation counts nothing). `lib/fidelity-notice.ts` turns fidelity into the
+  notice — D13's recovery copy with its causes, decision 1's own copy for
+  overload alone, causes without counts so the Banner (which re-announces
+  changed text) speaks only when a cause or the history state changes. The
+  page shows it as the kit Banner (`feedback/banner.stories.tsx —
+  CanonicalUsage`, attention, `announce="polite"`, h2), restated by every
+  join so a reconnect or reload keeps it. Bits 22d9a81, 24eab32, e6449c1.
+  Tests: copy per cause; fidelity forwarded from join/rebase/rebuilding and a
+  reconnect; raw-only recovery (none, ended, closed control client; a failed
+  bridge left alone, through `readScreen` too); a live join not waiting on a
+  busy queue; a recovery past the deadline closing 4000; real tmux recovery
+  counts; browser: a detached control client recovered with the notice, input
+  working, a reload keeping it (fails without the join's recovery); the UI
+  conformance fixture now joins raw after a recovery. Known limits: a
+  recovery still holds the manager queue (input and termination for other
+  sessions wait);
+  the deadline bounds the viewer, not the recovery; the agent `output`
+  operation stays bridge-dependent until T38b; fidelity is in memory until
+  T35b makes it durable.
 
 **T35b: Final bundle persistence, ended sessions and the rollback contract** (M)
 - Acceptance:
@@ -1251,6 +1280,10 @@ a live session; two Codex rounds per task; docs.
     - recovery metadata.
 
     The write is atomic and idempotent.
+  - **A session that ends while rebuilding** (moved from T35a) takes a
+    final seed, bounded, or records "Output not saved"; it never saves an
+    obsolete base as complete. Verify termination during an overload
+    rebuild, a failed final seed, and a restart after either.
   - **A failed save never blocks termination.** The pane is killed (the
     operator asked for it, and a retained pane leaks), and the session
     records `outputSaved: false` durably; it shows the "Output not saved"
