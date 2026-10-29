@@ -18,8 +18,11 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       // Permission denied or transient failure — fall through to legacy.
     }
   }
+  // The hidden textarea takes focus; whatever had it (a terminal's input,
+  // with a phone keyboard up) gets it back, whether or not the copy worked.
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  const ta = document.createElement('textarea')
   try {
-    const ta = document.createElement('textarea')
     ta.value = text
     ta.setAttribute('readonly', '')
     ta.style.position = 'fixed'
@@ -34,7 +37,6 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     ta.focus()
     ta.select()
     const ok = document.execCommand('copy')
-    ta.remove()
     // Restore whatever the user had selected before the hidden-textarea trick.
     if (previousRange && selection) {
       selection.removeAllRanges()
@@ -43,5 +45,8 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return ok
   } catch {
     return false
+  } finally {
+    ta.remove()
+    if (previousFocus && previousFocus !== document.body && previousFocus.isConnected) previousFocus.focus({ preventScroll: true })
   }
 }

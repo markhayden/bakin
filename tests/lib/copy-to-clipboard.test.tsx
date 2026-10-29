@@ -61,6 +61,28 @@ describe('copyToClipboard', () => {
     expect(written).toEqual(['secure context'])
   })
 
+  it('gives focus back to what had it, after a copy and after a refused one (a terminal keeps its keyboard)', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    try {
+      for (const ok of [true, false]) {
+        input.focus()
+        document.execCommand = (() => ok) as typeof document.execCommand
+        await expect(copyToClipboard('focus kept')).resolves.toBe(ok)
+        expect(document.activeElement).toBe(input)
+      }
+      // A throwing copy too.
+      input.focus()
+      document.execCommand = (() => { throw new Error('blocked') }) as typeof document.execCommand
+      await expect(copyToClipboard('focus kept')).resolves.toBe(false)
+      expect(document.activeElement).toBe(input)
+      expect(document.querySelector('textarea')).toBeNull()
+    } finally {
+      input.remove()
+    }
+  })
+
   it('reports false when no path can copy — UIs must not flash a false success check', async () => {
     Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
     document.execCommand = (() => false) as typeof document.execCommand
