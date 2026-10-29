@@ -1527,6 +1527,11 @@ H3 CSS sync and repin.
   - Not done here: the Bits SDK repin. `CopyButton size="touch"` is in the
     H-stack SDK, not the pinned one; T24b repins (with the canonical CSS
     sync B5 already needs) before release.
+  - **Amended at acceptance (2026-10-29, Mark's live look):** "clears only
+    once copied" now also allows an explicit **×** Dismiss — an offer whose
+    text began with blank lines showed as an unlabelled box. The corner now
+    says **Text to copy · N lines** and previews the first line with text
+    (`lib/offer-preview.ts`). Dismiss never writes the clipboard.
 
 **Checkpoint R3 → Mark's manual end-to-end acceptance** (raw path on):
 - real Claude Code, the WebGL browser and a second browser;
