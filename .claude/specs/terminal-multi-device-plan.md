@@ -1500,6 +1500,33 @@ H3 CSS sync and repin.
 - Verify (browser, Chromium and WebKit): the copied text is exact,
   nothing writes the clipboard automatically, no replayed offers, bells
   or titles, and no query-generated program input.
+- **As built (2026-10-29; Codex 4 rounds, approved; bits 2129de2, 861f465,
+  b2824c5, 6d9453c, README aeac784; bakin kit fix 7cee0e82b):**
+  - Offers come from the profile's live-only `clipboardOffer`, on the raw
+    path only (the bridge path's syncs and ended-session output replay
+    effects; it goes in T38b). The canvas keeps `{ text, rev }`; the
+    corner shows a code Panel (first line) and `CopyButton size="touch"`
+    keyed by `rev`, so a copy that settles after a newer offer neither
+    clears nor confirms it. A copied offer keeps the kit check 1.5 s, then
+    goes; a refused one stays.
+  - Focus: the kit's `copyToClipboard` fallback now gives focus back
+    (bakin 7cee0e82b, all CopyButtons); a focused offer being replaced
+    hands focus to the new button; focus that bounces through a removed
+    element within one synchronous turn is not a return to the cursor.
+  - The corner wraps within the pane (the offer drops to its own row) on a
+    320 px phone.
+  - **Banner on phones (delegated to me):** the recovery notice folds to
+    its title with a 44 px **Show details** toggle (`aria-expanded`); full
+    text elsewhere.
+  - Tests: a recording clipboard on both engines — exact text, no automatic
+    write, latest-only, no replay on join, reload, reconnect or recovery,
+    refused and pending writes, focus transitions, a pending offer through
+    a recovery, the 320 px corner, the folded notice. Bells and titles stay
+    covered by the profile unit tests (no browser observer exists); the
+    query-input browser test is T38a's.
+  - Not done here: the Bits SDK repin. `CopyButton size="touch"` is in the
+    H-stack SDK, not the pinned one; T24b repins (with the canonical CSS
+    sync B5 already needs) before release.
 
 **Checkpoint R3 → Mark's manual end-to-end acceptance** (raw path on):
 - real Claude Code, the WebGL browser and a second browser;

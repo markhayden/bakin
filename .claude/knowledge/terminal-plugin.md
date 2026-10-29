@@ -225,6 +225,27 @@ sessions). The local preview sets it with `TERMINAL_PREVIEW_RAW=1`.
   persistent kit Banner (causes, never counts: the Banner re-announces
   changed text). The UI conformance fixture joins raw after a recovery, so
   the banner is always checked.
+- **Scrolling and gestures (T36, both paths):** `components/scroll-route.ts`
+  (pure) routes a vertical scroll to xterm's history first, then the pane
+  pan (D10). The canvas takes every wheel in the capture phase (xterm never
+  sees one: no mouse reports, no alternate-screen arrows); a one-finger
+  drag's owner is fixed on its first move (vertical with history: ours,
+  with a fling; otherwise the native pan); touch-made mouse events never
+  reach a mouse-reporting program (a desktop mouse still does). The pause
+  latches whenever the view is in history (`term.onScroll`, xterm's
+  scrollbar included); only ↓ Live or focusing to type resume, and both end
+  any gesture and clear a selection. Focus that bounces away and back in
+  one synchronous turn through a removed element (the kit copy fallback's
+  hidden textarea) is not a return.
+- **Clipboard offers (T36b, raw path only):** the profile's
+  `clipboardOffer` effect fires only live, so replays never offer; the
+  canvas keeps the latest as `{ text, rev }` and shows a code Panel with
+  the kit `CopyButton size="touch"` in the corner (it wraps below the
+  buttons on narrow phones). The clipboard is written only by that tap; a
+  copied offer clears after the kit's 1.5 s check if its `rev` is still
+  current. The bridge path shows none (its syncs and ended-session output
+  replay effects). Testing: the browser tests stub `navigator.clipboard`
+  (`RECORDING_CLIPBOARD`) on both engines — refuse, hold and fallback modes.
 - **Gates:** `tests/raw-path.browser.test.ts` (against the preview with the
   raw path forced; the overload and width-change tests also need
   `TERMINAL_PREVIEW_TMUX` and `TERMINAL_PREVIEW_ROOT`, both printed by the
