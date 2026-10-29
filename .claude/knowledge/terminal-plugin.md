@@ -190,6 +190,18 @@ the setting; the local preview forces it with `TERMINAL_PREVIEW_RAW=1`).
   history), never the bridge shadow, whose emulator keeps cells from the
   old width; a discriminating case keeps the cursor inside a wrapped line
   (tmux reflows it, bare xterm does not).
+- **Final output (T35b):** an ending session (terminate, the program's
+  exit via tmux's `pane_dead` subscription, maintenance) saves a bundle —
+  the replica's last cut after `drainFinal` (lib/processes.ts) — through
+  `Store.saveBundle` (lib/store.ts: header + parts, sliced writes, one
+  commit with the session's flag, a 250 MiB whole-bundle budget). The store
+  owns `outputSaved`/`outputEvicted` once a row exists, and `session_marks`
+  lets it see sessions another version wrote (rollback): those take their
+  legacy output. The save runs outside the manager queue with the session
+  reserved; shutdown drains every lifecycle operation before closing.
+  Ended raw sessions join their bundle (lib/socket.ts `joinEnded`) or close
+  4005 with why; the page shows a SystemState. Testing: `rollback.test.ts`
+  runs B5's own store (from git) against the same database.
 - **Recovery and the notice (T35a):** each path judges attachment health by
   its own source — the raw path by its replica and control client only, so
   a failed legacy bridge never tears down a live replica. A raw join calls

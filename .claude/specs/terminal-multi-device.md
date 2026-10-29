@@ -860,6 +860,24 @@ Codex reviews.
   and is recorded durably ("Output not saved"). Sessions without a bundle
   load without resync: legacy output for pre-raw sessions, the static
   "Output not saved" state otherwise.
+  > **As built (T35b, 2026-10-28):** the bundle is a small header plus
+  > many small parts (checkpoint pieces, one row per tail event), written
+  > across event-loop turns under a never-reused generation and committed
+  > in one transaction with the session's flag; bundles have their own
+  > 250 MiB limit (whole ones evicted oldest first, recorded as "Output
+  > removed"). The final picture is the replica's cut once it reaches the
+  > log's newest event after a control reply (bounded, 3 s): a rebuild
+  > meanwhile lands its seed in time or the output is not saved. tmux's
+  > `pane_dead` subscription prompts the exit save (no config change).
+  > The save runs outside the manager queue, the session reserved (input
+  > refused) from its reservation to its kill; shutdown refuses new
+  > lifecycle work and drains what was accepted. A session another version
+  > wrote since this one did (a rollback that continued or ended it) takes
+  > its final output from that version: its bundle and flags are dropped
+  > on open, so it shows its legacy output. Ended raw sessions join their
+  > bundle like a live picture; without one the socket closes 4005 with
+  > the reason (not saved, removed, unreadable) and the page shows a
+  > system state, never a reconnect loop.
 - **Two paths until the bridge is deleted:** the bridge path keeps its
   readiness check, its resizes and its legacy retained output exactly as B5
   ships them, so a rollback to B5 reads every ended session. After T38b,

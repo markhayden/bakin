@@ -79,7 +79,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T34a Width-change rebase + one ordered resize source
 - [x] T34b Service update: scroll-on-clear off
 - [x] T35a Recovery banner
-- [ ] T35b Final bundle persistence, ended sessions + rollback contract
+- [x] T35b Final bundle persistence, ended sessions + rollback contract (post-T38b rollback items deferred to T38b)
 - [ ] T37 Digest safety net
 - [ ] T38a Opt-in raw path (setting, default off)
 - [ ] Checkpoint R2 → `tmd/r2`

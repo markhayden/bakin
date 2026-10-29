@@ -1317,6 +1317,43 @@ a live session; two Codex rounds per task; docs.
     control-client `%exit`/EOF with the pane alive (recovery, not an end),
     a failed save (and a restart after it), and a restart before
     completion.
+- **As built (2026-10-28; Codex: 11 rounds on T35b-1/2, 3 on T35b-3, 3 on
+  T35b-4, each slice approved):**
+  - T35b-1 `lib/bundle.ts` + store (c579259, 5b6c1c3): the replica's last
+    cut, final size, bundle/profile (pinned xterm)/checkpoint versions and
+    fidelity; a header plus parts written across turns and committed in
+    one transaction; a 250 MiB bundle budget evicting whole bundles; zod
+    validation of every part a replay reads (84c51a4).
+  - T35b-2 ending (1fc2e54, b46e55f, 13c893f, 9ef0368, 7d5c31a, c44573d,
+    907eed8, 8fdd994, e2ce64f, 2cac3ac): `drainFinal` (control reply, then
+    the cut reaching the log's newest event, one 3 s bound); the save runs
+    outside the manager queue, one per session, the session reserved from
+    finish's first phase to its kill; tmux's `pane_dead` subscription;
+    maintenance waits for an in-flight save; a failed kill invalidates the
+    bundle; shutdown refuses new lifecycle work, drains the queue and every
+    accepted save, finish, sweep and refresh, then runs one last refresh.
+  - T35b-3 ended display (fe95d66, 84c51a4, 865f5ec, 50b29e9): ended raw
+    sessions join their bundle through RawDisplay; 4005 with not-saved /
+    evicted / unreadable otherwise, never a reconnect; the page shows
+    SystemState `kind="error" recovery="unavailable"`
+    (`feedback/system-state.stories.tsx — StateMatrix`).
+  - T35b-4 rollback (66913da, d2c974b, 6658145): `session_marks` records
+    the revision this version wrote; a session another version wrote since
+    takes its legacy output (bundle and flags dropped on open). Tested
+    against B5's own store code read from git, back and forth.
+  - Verified: every acceptance and verify item before T38b (Codex round 3
+    on T35b-4). Deferred to T38b: rollback after the bridge's deletion, the
+    drained maintenance step, the release note.
+  - Known limits: a finish holds its session (input refused) from its
+    reservation to its kill — the drain is bounded to 3 s, but the bundle
+    write, queue contention and the kill itself can extend the hold — and
+    a replica recovery holds the manager queue (T35a); page-level browser
+    tests cover "Output not saved" and in-app navigation, not the evicted
+    or unreadable states (unit and socket tests do) nor a history deleted
+    after joining; the agent `output` operation stays
+    bridge-dependent until T38b; a B5 write that does not touch the session
+    row (output only) is not seen as a touch (B5's lifecycle always saves
+    the row).
 
 **T37: Digest safety net** (S–M)
 - Acceptance:
