@@ -1535,6 +1535,17 @@ H3 CSS sync and repin.
   bar and joystick, rotation, background and resume;
 - a server restart (the recovery banner);
 - the T34b maintenance step done first.
+- **Reached, ready for acceptance (2026-10-29):** T36 (3 Codex rounds) and
+  T36b (4 rounds) built and approved on `feat/terminal-md-r3-scroll`
+  (moved there from the R2 branch, which is back at `tmd/r2`); 0.4.0-dev.7.
+  Gates: unit 608, fuzz shards 609 each, real tmux 27, raw browser 24/24
+  Chromium and 18 + 6 touch skips WebKit, UI conformance (against an SDK
+  package built from the H-stack with a fresh stylesheet), bridge suites
+  unchanged (the same 3 pre-R2 failures). R3 adds no utility class (its
+  CSS build is byte-identical to B5's). Bakin kit fix 7cee0e82b on the H2
+  branch. Open before release: T24b (canonical CSS sync + Bits SDK repin;
+  `CopyButton size="touch"` is not in the pinned SDK). Local tag `tmd/r3`
+  in Bits at 1906092; nothing pushed.
 
 **T38b: Delete the bridge** (M, after acceptance only)
 - Acceptance:
