@@ -1375,6 +1375,33 @@ a live session; two Codex rounds per task; docs.
 - Verify: injected divergence self-heals; no false mismatches over the
   fuzz corpus; an injected width difference (a test-only table entry) is
   caught by the tmux comparison and reseeded.
+- **As built (2026-10-29; Codex: 2 rounds on T37-1, 2 on T37-2, 3 on
+  T37-3, each approved):**
+  - T37-1 `lib/digest.ts` (75b7548, b7553bb): FNV-1a over the visible
+    screen (characters, width, attributes incl. underline style and colour,
+    wraps), the cursor (position, visibility, DECSCUSR style), the active
+    buffer, mouse protocol/encoding and the input/output modes; the same in
+    the headless replica and the browser package (cross-package tests, the
+    fuzz corpus: wherever full state is equal, so is the digest).
+  - T37-2 viewer digests (fb11851, db4a414): the socket places
+    `digest-point { epoch, seq }` frames, in order after their event, at
+    quiet points and at most every 10 s during output, from the replica's
+    digest read between events (kept per event); a rebuild or rebase makes
+    outstanding points stale; the viewer answers after every write before
+    the point; a mismatch rejoins it; the third within 10 minutes per
+    session escalates once (a `divergence` rebuild, logged without
+    contents); more are left alone.
+  - T37-3 replica against tmux (eb2d1ba, 46972f0, 1e72499): every 5 s a
+    quiet replica's cursor position, size and active buffer (normal or
+    alternate; not contents) are compared with tmux's at a
+    control reply's position (taken synchronously as the reply is parsed);
+    a disagreement rebuilds it, at most once per session in 10 minutes,
+    logged with positions and sizes only; the autowrap-off right margin is
+    the same place. `TEST_WIDTH_ENTRIES` is the test-only width entry.
+  - Known limits: the 10 s period is per viewer (staggered viewers each
+    hash during output; ~4–13 ms at 400×150); the check also runs for
+    bridge-path sessions' shadow replicas (it can rebuild one); agreement
+    after a lossy rebuild does not certify fidelity to tmux.
 
 **T38a: Opt-in raw path** (M)
 - Acceptance:
@@ -1387,9 +1414,30 @@ a live session; two Codex rounds per task; docs.
   - Real tmux with two viewers plus a native client, and exactly one query
     answer.
   - The browser suites on Chromium and WebKit.
+- **As built (2026-10-29; Codex 2 rounds):** Settings › "Use the new
+  terminal viewer for new sessions (preview)" (`rawPath`, default off,
+  285a9d6). It is asked once per session, at creation, and kept on the
+  record (`Session.rawPath`, bc98a08): every reader — input health,
+  recovery, agent screen reads, the ended display — uses the session's
+  own value, so a toggle applies to new sessions and never splits a live
+  one. Verified: the raw browser suite 10/10 on Chromium and WebKit; two
+  viewers plus an admitted terminal app, one device-attributes answer (by
+  tmux; three with the profile's query policy disabled); with the setting
+  off, the bridge browser suites match the B5 baseline — three tests
+  (renderer rescale, immersive layout, list row actions) fail on the B5
+  baseline too when linked to today's bakin SDK, so they predate R2.
 
 **Checkpoint R2** (`tmd/r2`): all gates; two Codex rounds per task; the
 H3 CSS sync and repin.
+- **Reached (2026-10-29):** every R2 task built and Codex-approved
+  (T34a–T38a; at least two rounds each). Gates: unit 603, real tmux 27,
+  raw browser 10/10 on Chromium and WebKit, fuzz shards with the digest
+  check, UI conformance. H3: R2 adds no utility class — the canonical CSS
+  built from the R2 tree is byte-identical to the one built from B5's — so
+  no CSS change and no repin (Banner/SystemState are in the pinned SDK).
+  The committed `styles.css` already differs from a fresh build of B5's
+  sources (drift before R2), left for T24b's sync before the release.
+  Local tag `tmd/r2` in Bits at e19a5d0; nothing pushed.
 
 #### R3: native scrollback in the canvas, then acceptance
 

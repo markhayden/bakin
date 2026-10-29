@@ -80,9 +80,9 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T34b Service update: scroll-on-clear off
 - [x] T35a Recovery banner
 - [x] T35b Final bundle persistence, ended sessions + rollback contract (post-T38b rollback items deferred to T38b)
-- [ ] T37 Digest safety net
-- [ ] T38a Opt-in raw path (setting, default off)
-- [ ] Checkpoint R2 → `tmd/r2`
+- [x] T37 Digest safety net
+- [x] T38a Opt-in raw path (setting, default off; latched per session)
+- [x] Checkpoint R2 → `tmd/r2` (Bits e19a5d0, local; no CSS change or repin needed)
 - [ ] T36 Native scrolling, follow, gestures
 - [ ] T36b Clipboard offers (copy on tap) — the terminal's tap-to-copy, CopyButton size="touch"; also decide whether the T35a recovery banner collapses on phones (Mark: my call)
 - [ ] Checkpoint R3 → Mark's manual end-to-end acceptance

@@ -150,11 +150,13 @@ Implementation and verification: `.claude/specs/terminal-mobile-rendering-eviden
 Physical iPhone Safari and Android Chrome keyboard verification remains
 outstanding; automated Chromium/WebKit checks are not a native-phone result.
 
-## Raw output path (spec D13; R2, dormant until T38a)
+## Raw output path (spec D13; R2, opt-in since T38a)
 
 Two paths run side by side until T38b deletes the bridge. A session is on
-the raw path when `Sessions` options `rawPath(session)` says so (T38a wires
-the setting; the local preview forces it with `TERMINAL_PREVIEW_RAW=1`).
+the raw path when it was created with the plugin setting `rawPath` on
+(`Sessions` option `rawPathForNew()`, asked once; the record keeps
+`Session.rawPath` for the session's life, so a toggle only affects new
+sessions). The local preview sets it with `TERMINAL_PREVIEW_RAW=1`.
 
 - **Server:** `lib/replica.ts` holds the session's emulator, base
   checkpoint and tail; `state()`/`cut()`/`subscribe()` give a viewer an
@@ -190,6 +192,17 @@ the setting; the local preview forces it with `TERMINAL_PREVIEW_RAW=1`).
   history), never the bridge shadow, whose emulator keeps cells from the
   old width; a discriminating case keeps the cursor inside a wrapped line
   (tmux reflows it, bare xterm does not).
+- **Safety net (T37):** `lib/digest.ts screenDigest` is shared by the
+  replica and the browser (visible cells, cursor, modes, mouse; pinned
+  6.0.0 internals for what the public API lacks). The socket places
+  `digest-point` frames (RawDisplay.digestPoint, after their event);
+  RawPicture answers with `digest`; a mismatch closes 4000 to rejoin, the
+  third in 10 min escalates `Sessions.diverged` → `Replica.diverged()` (a
+  `divergence` rebuild). `TmuxProcesses.watchCursor` compares the replica
+  with tmux at quiet points (`compareCursor`, the position taken in the
+  control reply's `onReply`). Testing: the fuzz corpus checks digest
+  equality wherever full state is equal; `TEST_WIDTH_ENTRIES` injects a
+  width difference for the tmux check.
 - **Final output (T35b):** an ending session (terminate, the program's
   exit via tmux's `pane_dead` subscription, maintenance) saves a bundle —
   the replica's last cut after `drainFinal` (lib/processes.ts) — through

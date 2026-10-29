@@ -768,6 +768,16 @@ Codex reviews.
     points the replica's cursor is also compared with tmux's; a mismatch
     reseeds and is logged.
   - It is detection, not a guarantee.
+  > **As built (T37, 2026-10-29):** the digest covers the visible cells
+  > and attributes, the cursor (position, visibility, style), the active
+  > buffer, mouse reporting and the input/output modes, identically in the
+  > replica and the browser. Points ride the ordered stream; a mismatch
+  > rejoins the viewer, the third in 10 minutes rebuilds the replica once.
+  > The tmux comparison reads the cursor position, size and active buffer
+  > (normal or alternate; never contents) at a control
+  > reply's exact position every 5 s while quiet; a disagreement rebuilds
+  > at most once in 10 minutes. Both log positions and counts, never
+  > contents.
 - **Memory budget** (T32d, per session at 120 × 10k; re-baselined by Mark
   2026-10-28 from the measured terminal cost): retained after GC ≤ 32 MB
   on the raw path; peak ≤ 96 MB with R1's shadow screen, verifier, full
