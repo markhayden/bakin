@@ -1199,6 +1199,20 @@ a live session; two Codex rounds per task; docs.
     destroys retained panes).
 - Verify: unit and real tmux for detection, refusal, verified startup, and
   the running option read back.
+- **As built (2026-10-28; three Codex rounds, approved):** the config sets
+  `scroll-on-clear off` and ends with `@bakin_config <stamp>` (a hash of
+  everything before it); setup records the fingerprint only once the
+  restarted server reports that stamp and the option (`VERIFIED_OPTIONS`),
+  and otherwise fails naming what the last attempt found (no answer, the
+  stamp unset or foreign, the option on) with no fingerprint recorded.
+  Live/unknown-pane refusal and code-only vs service rollback are as
+  before (README). Tests: refusals for a missing stamp, a foreign stamp and
+  the option on (each fails without its check); against real tmux the
+  options read back and a full-screen clear leaves tmux's history equal to
+  the replica's (fails without the option: tmux keeps a copy of the
+  cleared screen). Bits 4b1a6e8, e912600, 476b5b7, bd91a7e, 90c6cc0.
+  The maintenance step itself (Set up service on 3737, which drops
+  retained panes) is Mark's, before raw-path acceptance.
 
 **T35a: Recovery banner** (S, UI)
 - Acceptance:
