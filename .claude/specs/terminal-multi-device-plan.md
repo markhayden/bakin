@@ -1458,6 +1458,33 @@ H3 CSS sync and repin.
   - a mouse-reporting app (no input);
   - scrolling up and down while numbered output continues;
   - the other viewer unmoved.
+- **As built (2026-10-29; Codex 3 rounds, approved; bits bdbb96b,
+  b239439, 2c5ae83, README 6ce498c):**
+  - `components/scroll-route.ts` (pure): a vertical scroll uses xterm's
+    history first while there is history that way, then pans the grid
+    (D10 literally, both directions); the alternate screen only pans; whole
+    lines with a pixel carry that never crosses a boundary or a reversal.
+  - Wheels are always taken in the capture phase (xterm never turns one
+    into mouse reports or alternate-screen arrow keys); Ctrl+wheel zooms.
+  - A one-finger drag's owner is decided on its first move (the only one
+    whose cancel reliably stops the browser's scroll) and kept: vertical
+    with history is ours (history, then the pan, one motion, a fling on
+    release, none on `touchcancel`); anything else is the native pan.
+  - Taps never reach a mouse-reporting program (touch-compat mouse events
+    stop in the capture phase; the tap still focuses). Desktop mouse
+    clicks and drags still reach one — deliberate input, as in any terminal.
+  - `term.onScroll` latches the pause whenever the view is in the history
+    (xterm's own scrollbar too); a deliberate return (↓ Live, focus to
+    type) scrolls to the bottom, clears a selection and ends a gesture,
+    including a drag still under the finger. A new picture or a buffer
+    switch ends a gesture too.
+  - Tests: routing units; raw browser tests on Chromium and WebKit (touch
+    ones Chromium-only, via CDP): wheel to the history's top with the other
+    viewer and output left put, the scrollbar pause, the alternate screen
+    with and without mouse reporting, a phone drag down and back, a mostly
+    horizontal drag panning, taps, cancel versus release, focus mid-drag,
+    selection cleared by ↓ Live (xterm's copy handler). Each fails on the
+    commit before it.
 
 **T36b: Clipboard offers** (S, UI)
 - Acceptance:
