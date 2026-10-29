@@ -174,8 +174,25 @@ the setting; the local preview forces it with `TERMINAL_PREVIEW_RAW=1`).
   once). The canvas mounts a fresh terminal per picture and sizes it only
   from the picture and its layouts; `restoreSideState` lives in
   `lib/side-state.ts` so the browser never imports the headless serializer.
+- **Width changes (T34a):** not a rebuild. A width `layout` resizes the
+  replica and asks tmux for its reflowed picture; it lands as an ordered
+  `geometry` log event (cols, rows, generation, seed bytes) that
+  `lib/geometry.ts installGeometry` installs into the live emulator —
+  lines, cursor, region and tabs from tmux, everything else (parser, pen,
+  modes, saved slots by their screen row) kept, except that under a 1049
+  alternate screen the normal cursor and its return slot are tmux's. Viewers get a `geometry` header plus binary
+  frames, parse them into an unopened scratch terminal and install the
+  same way; a refused install reconnects (server side: a `width`
+  rebuild). Raw `readScreen` reads screen, size and `sizeRevision` from
+  the replica in one step; the revision counts applied dimension changes
+  and `TmuxProcesses` carries it across a reattachment. Testing: after a
+  width change compare with tmux's `capture-pane` (`-J -S - -E -` for
+  history), never the bridge shadow, whose emulator keeps cells from the
+  old width; a discriminating case keeps the cursor inside a wrapped line
+  (tmux reflows it, bare xterm does not).
 - **Gates:** `tests/raw-path.browser.test.ts` (against the preview with the
-  raw path forced; the overload test also needs `TERMINAL_PREVIEW_TMUX` and
-  `TERMINAL_PREVIEW_ROOT`, both printed by the preview). Echo latency must
+  raw path forced; the overload and width-change tests also need
+  `TERMINAL_PREVIEW_TMUX` and `TERMINAL_PREVIEW_ROOT`, both printed by the
+  preview). Echo latency must
   be measured in the page and with keys spaced more than a second apart:
   xterm throttles its accessibility rows to one refresh a second.

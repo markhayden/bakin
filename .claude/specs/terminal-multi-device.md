@@ -716,6 +716,25 @@ Codex reviews.
   (`SEED_CMD`, one atomic grouped command). The boundary is its final
   correlated reply: every earlier log event has been parsed, and output
   after it follows the seed.
+  > **As built (T34a, 2026-10-28):** not a rebuild. The live emulator and
+  > its parser stay; only tmux's reflowed geometry (both buffers' lines,
+  > the active cursor and pending wrap, region, tab stops) is installed
+  > into it (`lib/geometry.ts installGeometry`), as an ordered `geometry`
+  > log event that the replica commits to its tail and every viewer
+  > applies under credit. Everything else (pen, charsets, modes, both
+  > DECSC slots, a sequence or character split across the change) is the
+  > emulator's own and continues; saved slots keep their row on the
+  > screen, and on an alternate screen entered by 1049 the normal
+  > screen's cursor and return slot are tmux's (47/1047 keeps its own). A refused install (size, line capacity
+  > or active screen disagree) is a `width` rebuild. Raw-path size
+  > revisions count applied dimension changes on that ordered timeline and
+  > continue across a reattachment. Recorded limits: partial-region
+  > history and capture normalisation (below); a line wrapped across the
+  > alternate screen's saved grid cannot be captured joined, so it lands
+  > as two lines. Spike 2's lost character, reproduced: tmux reflows the
+  > cursor line and moves the cursor, xterm skips that line (and with
+  > `reflowCursorLine` keeps the wrong column), so later output overwrote
+  > or misplaced characters; installing tmux's cursor line fixes it.
   - The event log is the only resize source for the replica and viewers.
   - D2's sizing contracts (claims, epochs, revisions, floors) stand; only
     their implementation moves onto the log.

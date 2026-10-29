@@ -1140,6 +1140,51 @@ a live session; two Codex rounds per task; docs.
   - Root cause recorded for spike 2's lost character.
   - With the setting off: the bridge path's resize and bridge-loss tests
     still pass.
+- **As built (2026-10-28; at least two Codex rounds per slice, each
+  approved):** T34a-1 `lib/geometry.ts installGeometry` — one helper for the
+  replica and the browser, refusing (nothing changed) on size, capacity or
+  active-screen mismatch; links remapped with markers on the target;
+  saved slots kept by screen row; 1049 takes tmux's return slot, 47/1047
+  keeps its own (fae80e0, 0ea8c14). Found on the way: a full buffer's
+  filler line saved the DECSC slot a line low (05059a0), and a seed split
+  a line wrapped from the history into the screen (801032c; a 6th capture
+  command detects the continuation). T34a-2 the `geometry` log event,
+  `reseed(..., { geometry })`, the replica's owed/asked generations, a
+  stale screen-only geometry asked again in full, a refusal as a `width`
+  rebuild (53889de, aadebd7). T34a-3 geometry frames under credit and the
+  browser's scratch terminal plus install, a failed install reconnecting
+  (9e8e49e, 0efac81). T34a-4 raw size revisions on the replica (one per
+  applied dimension change, kept across a reattachment), raw `readScreen`
+  in one replica step, 503 until seeded (51e505f, 132e646). One ordered
+  resize source: once a picture is raw, the canvas ignores session-update
+  sizes and resizes only through the picture queue's layouts
+  (`terminal-canvas.tsx`); the bridge path keeps `adoptSize`.
+  Verification against real tmux (tmux is the oracle; the bridge path's
+  shadow is not after a width change, its emulator keeps stale cells):
+  - stepped changes 100→70→100→55 (ed2c953, its gate fixed in 3a0a5e7): at
+    each, the screen's printed cells (characters; foreground and background
+    colour, bold, italic, underline, inverse) against tmux's `-e` capture
+    parsed by a fresh profile terminal, plus the cursor, region and
+    application-cursor/insert/wrap modes; then, released by a gate after
+    the last comparison, the program's later output scrolls 24 lines
+    inside its region (rows outside it unchanged) and draws with the pen
+    and DEC line-drawing charset it left set, compared the same way. Fails
+    at the first width with the install disabled. Not compared: blank
+    cells past a row's last printed one, other attributes (dim, blink,
+    strikethrough, underline style and colour, invisible). (tmux's capture
+    writes line-drawing cells as their ASCII letters, so those compare as
+    letters.)
+  - rapid 70→90→60 without waiting: the final screen and joined history
+    (text) agree; transient states are not compared there.
+  - the browser test: one width change with the cursor inside a wrapped
+    line (fails with the install disabled).
+  - split UTF-8 and CSI at the change (`replica.test.ts`), saved slots,
+    1049/47 and links (`geometry.test.ts`).
+  - the bridge path's resize, reconcile and bridge-loss tests still pass
+    (`sessions.test.ts`, 509 unit and 23 process tests on 2026-10-28).
+  Not covered: charset designations other than G0 line drawing across a
+  change, and modes beyond those three plus the region. No README change
+  (dormant until T38a).
 
 **T34b: Service update — `scroll-on-clear off`** (S)
 - Acceptance:

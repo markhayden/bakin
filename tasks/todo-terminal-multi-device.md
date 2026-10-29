@@ -76,7 +76,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [x] T32d Memory budget + warning (R1: 27b0379, d4eae94, 5165ec7, 97d4bd3; 4 Codex rounds) — retained 27.4 MB with a full tail, live peak 79.4 MB; 32 MB is a reference-workload target (metadata-dense content recorded); tmux cell limit; 640 MB Health warning
 - [ ] Checkpoint R1 → `tmd/r1`
 - [x] T33 Socket protocol v2 (join) — R2: 33a replica subscription, 33b raw-display viewer, 33c client (streamed restore, raw-picture queue, fresh terminal per picture), 33d input health + browser gates, 33e overload freshness (screen-only seeds, quiet history restore; freshness p95 ~1.0 s); dormant until T38a; open decision 7 (heap figure) for Mark
-- [ ] T34a Width-change rebase + one ordered resize source
+- [x] T34a Width-change rebase + one ordered resize source
 - [ ] T34b Service update: scroll-on-clear off
 - [ ] T35a Recovery banner
 - [ ] T35b Final bundle persistence, ended sessions + rollback contract
