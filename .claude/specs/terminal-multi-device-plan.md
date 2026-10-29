@@ -1450,6 +1450,11 @@ H3 CSS sync and repin.
   - Alt screen pans.
   - **Zero program input** from any gesture, including wheel when the grid
     fits and mouse-reporting applications.
+    **Amended at acceptance (2026-10-29, Mark):** except vertical scrolling
+    in a full-screen program that asked for the mouse, which reaches it as
+    wheel reports, as native terminals do (Claude Code's transcript could
+    not be scrolled at all). Clicks and taps still never reach a program
+    through a gesture (spec D10 amendment).
 - Verify (browser, Chromium and WebKit, phone and desktop, two viewers):
   - history at its boundaries;
   - an overflowing grid with history;

@@ -601,6 +601,14 @@ D13's profile on 2026-10-28 after measuring tmux 3.7c's widths.)
     xterm's history when there is history to scroll, and pans the grid
     otherwise. Horizontal drags pan the grid. A hidden cursor (DECTCEM off,
     e.g. Claude Code) is followed vertically only.
+    **Amended at acceptance (2026-10-29, Mark: "match native terminals"):**
+    a full-screen program that asked for the mouse (alternate screen with
+    mouse tracking — Claude Code, vim with mouse on) has no terminal
+    history and scrolls itself, so vertical scrolling (wheel, one-finger
+    drag) reaches it as wheel reports, as Ghostty sends them — after an
+    overflowing grid has panned to its edge. Taps still never become
+    clicks; the alternate screen without mouse tracking still gets no
+    scroll input (no arrow keys).
   - **Controls (amended 2026-10-27):** "↓ Live" is a small 32 px pill in the
     pane's **top-right** corner (touch target ≥ 44 px), with Reset view as a
     32 px icon beside it. It is anchored to the viewport wrapper, outside
