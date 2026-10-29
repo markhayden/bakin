@@ -1546,6 +1546,18 @@ H3 CSS sync and repin.
   branch. Open before release: T24b (canonical CSS sync + Bits SDK repin;
   `CopyButton size="touch"` is not in the pinned SDK). Local tag `tmd/r3`
   in Bits at 1906092; nothing pushed.
+- **Before acceptance (2026-10-29, Mark's live look; Codex 3 rounds,
+  approved; bits a802a36, 821e7f5, 0aa2658, 0.4.0-dev.8):** the service
+  update notice was an empty state whose Set up service refused while any
+  session ran. Now an attention Banner on the Terminal list (a
+  recommendation: sessions keep working) whose **Apply update** opens one
+  ConfirmDialog listing the live sessions. `POST /service/update { end }`
+  (`Sessions.applyServiceUpdate`) checks in the manager queue that an
+  update is still due and that the live set is exactly the confirmed one
+  (nothing ends otherwise), reserves it (creation refused, 409) until
+  setup is done, ends each, then sets up; a failure names what ended.
+  Health offers its repair only with no live session, otherwise a human
+  incident (`service-update-live`, Open Terminal).
 
 **T38b: Delete the bridge** (M, after acceptance only)
 - Acceptance:
