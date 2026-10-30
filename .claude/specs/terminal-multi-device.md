@@ -79,10 +79,8 @@ research item in D9 was selected by Mark.
     dimension change bumps **`sizeRevision`**, which is what agents see.
 - Resize order and failure handling:
   1. tmux `resize-window` runs first. It is the source of truth.
-  2. Then the bridge PTY, the headless `Screen`, and the stored `cols`/`rows`
-     are updated. On D13's raw path the replica and its viewers take the
-     size from the ordered event log instead; until the bridge is deleted
-     (T38b) the bridge path keeps updating its PTY and `Screen` this way.
+  2. Then the stored `cols`/`rows` are updated. The replica and its
+     viewers take the size from the ordered event log (D13).
   3. The whole sequence runs inside the session's command queue, so input
      from every viewer waits until it settles. If tmux refuses, the actual
      `#{window_width}×#{window_height}` is read back and applied to the
@@ -94,8 +92,8 @@ research item in D9 was selected by Mark.
      `sizeState: 'reconciling'`: the queue already gives the pause.)
 - Policy lives on the server. The session window is `window-size manual`,
   and only the server calls `resize-window`, because tmux's `latest`,
-  `largest`, and `smallest` cannot express explicit authority. The bridge and
-  control clients attach `ignore-size`.
+  `largest`, and `smallest` cannot express explicit authority. The control
+  client attaches `ignore-size`.
 - **How a native authority's size is observed:**
   - A `client-resized` hook (also fired on `client-attached`) sets the
     session user option `@bakin_client_size` to
@@ -125,16 +123,11 @@ research item in D9 was selected by Mark.
   captured together with the text. The tool description tells agents to
   re-read after a revision change before doing anything that depends on layout.
 
-### D4 Bridge: hybrid (output superseded by D13, 2026-10-28)
-> **Amended 2026-10-28:** once D13's cutover gate passes, output comes from
-> the same control client (`%output`), and the per-viewer PTY attach
-> bridge is removed. Until then, the bridge below stays the live path and
-> D13's replica runs in shadow beside it.
+### D4 Bridge: one control client (output from D13)
+> **Amended 2026-10-29 (T38b):** the per-viewer PTY attach bridge is gone.
+> Output comes from the same control client (`%output`, D13); there is no
+> other Bakin client on a session.
 
-- **Output:** keep the PTY `attach-session` client per session. It is now
-  attached with `-f ignore-size`, and its PTY is sized to the window. Its
-  redraw stream stays the output source, because it provides redraw-based
-  recovery and makes tmux copy-mode visible.
 - **Input and commands:** add one persistent **control-mode client** (`tmux -C`)
   per session. It carries
   - `send-keys -H` (hex),
@@ -152,7 +145,8 @@ research item in D9 was selected by Mark.
   fire from the browser.
 - `%exit` means the control client ended, not the program. Process liveness
   uses `#{pane_dead}`.
-- Output is pushed to subscribers as it arrives. The 100 ms poll is retired.
+- Output feeds the session's event log as it arrives (D13). The 100 ms poll
+  is retired.
 
 ### D5 Native attach mechanism (host)
 - Plugin `cliCommands` gain an **interactive launch mode** on the existing
@@ -208,7 +202,7 @@ research item in D9 was selected by Mark.
   - state
   - size
   - cwd or worktree
-  - count of native clients (Bakin's bridge and control clients are excluded)
+  - count of native clients (Bakin's control client is excluded)
 - Both verbs require a TTY and refuse when `$TMUX` is set.
 - `new` starts the program at the caller's terminal size.
 - If `new` creates the session but attaching fails, the session is kept and
@@ -264,7 +258,7 @@ research item in D9 was selected by Mark.
      then reads `list-clients`. A client that matches no reservation for
      the current `generation` is detached immediately. This also catches a
      hand-typed raw `tmux attach` and any foreign `tmux -C` client.
-     Bakin's bridge and control clients are recognised by process.
+     Bakin's control client is recognised by process.
   4. The app attaches read-only (`-f read-only`) and becomes writable only
      once its size claim and resize succeed; then the confirm resolves.
      If they cannot be reconciled the admission is revoked (detached,
@@ -364,7 +358,7 @@ research item in D9 was selected by Mark.
    - `autocomplete="off"` is set on xterm's helper textarea.
    - **As built (T18, 2026-10-28):** a viewer cannot tell whether the app
      enabled bracketed paste — tmux turns it on for every client it
-     attaches, so a viewer's xterm always reports it on the bridge path,
+     attaches, so a viewer's xterm always reported it on the old bridge path,
      and browser input reached the pane past tmux's paste handling. Every
      browser paste (xterm's and compose) is therefore explicit input
      (`paste`, and `enter` for Paste + Enter: one envelope, Return only
@@ -610,8 +604,7 @@ D13's profile on 2026-10-28 after measuring tmux 3.7c's widths.)
     clicks; the alternate screen without mouse tracking still gets no
     scroll input (no arrow keys). Wheel-capable modes only (1000/1002/1003,
     never X10), SGR encoding only (the viewer's input is text; older
-    encodings' coordinates are raw bytes), raw path only (the bridge's
-    tmux re-encodes for its own client). **Reporting (revised after
+    encodings' coordinates are raw bytes). **Reporting (revised after
     Mark's live test, 2026-10-29):** the wheel reaches the program exactly
     as xterm reports it — one report per event, its own trackpad
     accumulation, Alt kept — as VS Code sends it; Claude Code scrolls a
@@ -656,7 +649,7 @@ Codex reviews.
     at about 40 MB/s; the replica parses about 21 MB/s (27 without the
     profile), so a sustained flood would overflow the log in half a
     second. tmux cannot apply backpressure while any normal client (the
-    bridge until T38b, any terminal app) is attached: it keeps reading
+    any terminal app) is attached: it keeps reading
     the pane and holds our unread output (`server_client_check_pane_buffer`).
     So the log tells the replica its waiting output at ingress, and at
     4 MiB the replica **rebuilds from tmux**: base and tail are dropped,
@@ -850,7 +843,9 @@ Codex reviews.
     full tail (**retained ≤ 32 MB met**); the live high-water of a real
     checkpoint attempt in R1 shadow mode (replica, bridge Screen,
     verifier, full 8 MiB queue, tail, three joins), stepped with a
-    collection every 250 steps, is 79.4 MB (**peak ≤ 96 MB met**).
+    collection every 250 steps, is 79.4 MB (**peak ≤ 96 MB met**). After
+    T38b, without the bridge Screen, the same attempt peaks at 57.7 MB
+    (2026-10-29).
     Recorded, not gated: resident memory rises 47–58 MB through that
     attempt (garbage and allocator slack) and about 30 MB through a
     rebuild seed built from real tmux capture replies; three concurrent
@@ -911,13 +906,14 @@ Codex reviews.
   > bundle like a live picture; without one the socket closes 4005 with
   > the reason (not saved, removed, unreadable) and the page shows a
   > system state, never a reconnect loop.
-- **Two paths until the bridge is deleted:** the bridge path keeps its
-  readiness check, its resizes and its legacy retained output exactly as B5
-  ships them, so a rollback to B5 reads every ended session. After T38b,
-  which ships behind a drained maintenance step, that guarantee narrows:
-  sessions that ran afterwards have only a bundle, and an older version
-  shows them with no output (no B5-readable copy is kept). Bundles a rolled-back version could not delete are reconciled on
-  upgrade.
+- **One path since T38b (2026-10-29):** until then the bridge path kept its
+  readiness check, its resizes and its legacy retained output, so a
+  rollback to B5 read every ended session. T38b ships behind a drained
+  maintenance step and drops the legacy tables with the rollback marks, so
+  the guarantee is gone, not narrowed: a version below T38b opening the
+  database deletes every saved bundle (verified against `tmd/r3-accepted`),
+  and upgrading again does not bring them back. No older-version-readable
+  copy is kept (no shims).
 - **Delivery and rollback** (additive PRs on top of B5; the built B0–B5
   history is not rewritten):
   1. **Crash fix** (done).
@@ -1040,7 +1036,7 @@ docs/src/content/docs/extending/plugins/…  → socket routes + interactive CLI
 lib/contracts.ts        → Session (+ sizeAuthority, sizeEpoch, sizeRevision, sizeState, attention), settings (+ defaultSize)
 lib/sizing.ts (new)     → pure claim/revision/floor policy
 lib/control.ts (new)    → tmux control-mode client (%begin/%end/%error, subscriptions)
-lib/processes.ts        → bridge (ignore-size) + control + native client tracking
+lib/processes.ts        → control client (ignore-size) + native client tracking
 lib/service.ts          → managed-only tmux, generated conf, fingerprint, setup exclusion
 lib/sessions.ts         → claims, create dims, final bundle, native admission
 lib/socket.ts (new)     → per-viewer socket protocol, flow control, epochs

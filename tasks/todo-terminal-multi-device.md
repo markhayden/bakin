@@ -86,7 +86,7 @@ Each line is one commit. Tick a checkpoint once its tag is set.
 - [ ] T36 Native scrolling, follow, gestures
 - [ ] T36b Clipboard offers (copy on tap) — the terminal's tap-to-copy, CopyButton size="touch"; also decide whether the T35a recovery banner collapses on phones (Mark: my call)
 - [ ] Checkpoint R3 → Mark's manual end-to-end acceptance
-- [ ] T38b Delete the bridge (after acceptance)
+- [x] T38b Delete the bridge (after acceptance) — Bits 0.4.0-dev.24, Codex 3 rounds
 
 **Bits B6**
 - [ ] T21 Attention server (resolve open questions 1–2 first)

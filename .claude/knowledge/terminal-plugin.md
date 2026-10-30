@@ -123,9 +123,8 @@ restart with each connection, and a connection that ends retires its
 entries) and the draft is still the revision that was sent — a refused or
 uncertain one keeps it. Paste + Enter is one envelope (`paste` + `enter`):
 the server sends the Return only once the paste went.
-Bracketed paste is decided by tmux, not the viewer: on the bridge path a
-viewer's xterm reports tmux's client mode, which tmux turns on for every
-client it attaches. So a paste is explicit input — the socket's `input`
+Bracketed paste is decided by tmux, not the viewer (tmux knows the pane's
+mode). So a paste is explicit input — the socket's `input`
 frame carries `paste: true` (xterm's own paste events and compose; each
 travels alone in its envelope; only the data a paste event announced is
 marked, never a key typed after it) — and the server strips any markers and
@@ -150,13 +149,18 @@ Implementation and verification: `.claude/specs/terminal-mobile-rendering-eviden
 Physical iPhone Safari and Android Chrome keyboard verification remains
 outstanding; automated Chromium/WebKit checks are not a native-phone result.
 
-## Raw output path (spec D13; R2, opt-in since T38a)
+## Output path (spec D13)
 
-Two paths run side by side until T38b deletes the bridge. A session is on
-the raw path when it was created with the plugin setting `rawPath` on
-(`Sessions` option `rawPathForNew()`, asked once; the record keeps
-`Session.rawPath` for the session's life, so a toggle only affects new
-sessions). The local preview sets it with `TERMINAL_PREVIEW_RAW=1`.
+One path since T38b (2026-10-29), which deleted the bridge (the per-viewer
+PTY attach, its server Screen, the shadow comparison, stored output and the
+sync/ack protocol): one control client per session (`tmux -C`) → its
+`OutputLog` → the `Replica` → each viewer's `RawDisplay` → the browser's
+`RawPicture`. `Processes.connected(id)` is that control client's health;
+`Sessions` keeps an `attached` set so a second attach never opens a second
+control client. Agents read the replica too: `readScreen` (the visible pane,
+503 until the replica is seeded) and `outputText` (the tool's `output`:
+history then screen as plain lines, `lines` keeps the last; an ended
+session's bundle replayed into a profile terminal by `lib/bundle-text.ts`).
 
 - **Server:** `lib/replica.ts` holds the session's emulator, base
   checkpoint and tail; `state()`/`cut()`/`subscribe()` give a viewer an
@@ -168,8 +172,8 @@ sessions). The local preview sets it with `TERMINAL_PREVIEW_RAW=1`.
   display bytes); a replay in progress is never cancelled, an overflow or
   rebuild during it is one pending replacement from the latest cut (at most
   once a second). Input is refused until the client's first
-  `replay-applied` and never re-gated by a rebase (decision 3). Raw input
-  health is the control client alone (`controlConnected`).
+  `replay-applied` and never re-gated by a rebase (decision 3). Input
+  health is the control client alone (`connected`).
 - **Browser:** `components/raw-picture.ts` is the ordered queue (writes
   pipelined into xterm; the side state, layouts and the barrier after the
   writes before them; a new header retires every frame of the old picture
@@ -185,12 +189,11 @@ sessions). The local preview sets it with `TERMINAL_PREVIEW_RAW=1`.
   alternate screen the normal cursor and its return slot are tmux's. Viewers get a `geometry` header plus binary
   frames, parse them into an unopened scratch terminal and install the
   same way; a refused install reconnects (server side: a `width`
-  rebuild). Raw `readScreen` reads screen, size and `sizeRevision` from
+  rebuild). `readScreen` reads screen, size and `sizeRevision` from
   the replica in one step; the revision counts applied dimension changes
   and `TmuxProcesses` carries it across a reattachment. Testing: after a
   width change compare with tmux's `capture-pane` (`-J -S - -E -` for
-  history), never the bridge shadow, whose emulator keeps cells from the
-  old width; a discriminating case keeps the cursor inside a wrapped line
+  history); a discriminating case keeps the cursor inside a wrapped line
   (tmux reflows it, bare xterm does not).
 - **Safety net (T37):** `lib/digest.ts screenDigest` is shared by the
   replica and the browser (visible cells, cursor, modes, mouse; pinned
@@ -208,16 +211,22 @@ sessions). The local preview sets it with `TERMINAL_PREVIEW_RAW=1`.
   the replica's last cut after `drainFinal` (lib/processes.ts) — through
   `Store.saveBundle` (lib/store.ts: header + parts, sliced writes, one
   commit with the session's flag, a 250 MiB whole-bundle budget). The store
-  owns `outputSaved`/`outputEvicted` once a row exists, and `session_marks`
-  lets it see sessions another version wrote (rollback): those take their
-  legacy output. The save runs outside the manager queue with the session
-  reserved; shutdown drains every lifecycle operation before closing.
-  Ended raw sessions join their bundle (lib/socket.ts `joinEnded`) or close
-  4005 with why; the page shows a SystemState. Testing: `rollback.test.ts`
-  runs B5's own store (from git) against the same database.
-- **Recovery (T35a):** each path judges attachment health by
-  its own source — the raw path by its replica and control client only, so
-  a failed legacy bridge never tears down a live replica. A raw join calls
+  owns `outputSaved`/`outputEvicted` once a row exists; it is the only
+  table besides `sessions` (T38b drops the legacy `output`, `cursors`,
+  `sizes` and `session_marks` tables on open). The save runs outside the
+  manager queue with the session reserved; shutdown drains every lifecycle
+  operation before closing. Every exit registers its save before it is
+  published (`Sessions.publishExit`; a session found dead at setup is
+  attached to its retained pane first), so an ended join waits for a save in
+  flight (`finalSaved`, within the join deadline, else 4000) and never says
+  not saved while it runs. Ended sessions join their bundle (lib/socket.ts
+  `joinEnded`) or close 4005 with why; the page shows a SystemState.
+  **Rollback below T38b is destructive:** an R3-era store finds no
+  `session_marks`, treats every session as written elsewhere and deletes
+  every bundle (verified 2026-10-29); re-upgrading does not bring them back.
+  T38b ships behind a drained maintenance step (end every session first).
+- **Recovery (T35a):** attachment health is the replica and its control
+  client. A join calls
   `Sessions.ensureReplica` first (instant for a live replica; a lost one is
   reattached under the manager queue, bounded for the viewer by the join
   deadline). A replacement replica's first seed counts `recoveries` in the
@@ -225,12 +234,12 @@ sessions). The local preview sets it with `TERMINAL_PREVIEW_RAW=1`.
   at acceptance, 2026-10-29): the canvas only sets `data-recoveries` on the
   pane, which the browser tests wait on. `lib/unavailable-notice.ts` is what an
   ended session without saved output shows.
-- **Scrolling and gestures (T36, both paths):** `components/scroll-route.ts`
+- **Scrolling and gestures (T36):** `components/scroll-route.ts`
   (pure) routes a vertical scroll to xterm's history first, then the pane
   pan (D10). The canvas takes wheels in the capture phase so xterm never
   scrolls its own viewport or sends alternate-screen arrows — except for a
-  full-screen program that asked for the mouse (raw path, VT200/DRAG/ANY,
-  SGR; `programScrolls()`), which gets the wheel exactly as xterm reports it
+  full-screen program that asked for the mouse (VT200/DRAG/ANY, SGR;
+  `programScrolls()`), which gets the wheel exactly as xterm reports it
   (one report per event, as VS Code; never per row — Claude Code overshoots
   and lags), after the pane's pan room. A one-finger drag's owner is fixed
   on its first move: vertical with history → ours (fling); a program that
@@ -243,17 +252,16 @@ sessions). The local preview sets it with `TERMINAL_PREVIEW_RAW=1`.
   any gesture and clear a selection. Focus that bounces away and back in
   one synchronous turn through a removed element (the kit copy fallback's
   hidden textarea) is not a return.
-- **Clipboard offers (T36b, raw path only):** the profile's
+- **Clipboard offers (T36b):** the profile's
   `clipboardOffer` effect fires only live, so replays never offer; the
   canvas keeps the latest as `{ text, rev }` and shows a code Panel with
   the kit `CopyButton size="touch"` in the corner (it wraps below the
   buttons on narrow phones). The clipboard is written only by that tap; a
   copied offer clears after the kit's 1.5 s check if its `rev` is still
-  current. The bridge path shows none (its syncs and ended-session output
-  replay effects). Testing: the browser tests stub `navigator.clipboard`
+  current. Testing: the browser tests stub `navigator.clipboard`
   (`RECORDING_CLIPBOARD`) on both engines — refuse, hold and fallback modes.
-- **Gates:** `tests/raw-path.browser.test.ts` (against the preview with the
-  raw path forced; the overload and width-change tests also need
+- **Gates:** `tests/viewer.browser.test.ts` (against the preview; the
+  overload and width-change tests also need
   `TERMINAL_PREVIEW_TMUX` and `TERMINAL_PREVIEW_ROOT`, both printed by the
   preview). Echo latency must
   be measured in the page and with keys spaced more than a second apart:

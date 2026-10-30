@@ -1302,7 +1302,10 @@ a live session; two Codex rounds per task; docs.
     exists.
   - **Rollback after T38b is narrowed, not preserved:** sessions that ran
     after the bridge's deletion have only a bundle, so a version below T38b
-    shows them as ended with no output. **T38b ships behind a drained
+    shows them as ended with no output — and, because T38b drops
+    `session_marks`, that version deletes every bundle on open (verified
+    2026-10-29 against `tmd/r3-accepted`); upgrading again does not bring
+    them back. **T38b ships behind a drained
     maintenance step** (every session ended first, as at the cutover), so no
     session is continued across the deletion with a partial bridge-era
     prefix. This is stated in the release notes; no B5-readable copy is
@@ -1578,6 +1581,40 @@ H3 CSS sync and repin.
     D4's bridge text are removed, along with docs.
   - D12's full-stack merge sign-off is still separate.
 - Verify: the full suite, real tmux, and the browser suites.
+- **As built (2026-10-29, Bits 0.4.0-dev.24):**
+  - Deleted: the per-viewer PTY attach and `bridges` map, `lib/screen.ts`,
+    `lib/shadow.ts`, the socket's sync/pump/ack protocol and epochs, the
+    store's `output`/`cursors`/`sizes`/`session_marks` tables (dropped on
+    open) with the rollback-mark rule, `Session.rawPath`, the `rawPath`
+    setting and `rawPathForNew`, `cursorVisibilitySequence`, and
+    `@xterm/addon-serialize`.
+  - `Processes.connected()` is the control client's health; `Sessions`
+    keeps an `attached` set so recovery never opens a second control
+    client. The socket's `rawPath` flag became `live` (a live join; an ended
+    session joins its bundle). The client's input gate is the first applied
+    replay (`ready`), and the picture callbacks are required.
+  - The agent tool's `output` operation is text history
+    (`Sessions.outputText`: history then screen as plain lines, optional
+    `lines`, an ended session's bundle replayed by `lib/bundle-text.ts`;
+    Mark's choice). Replica reads recheck access when they run.
+  - Every exit registers its final save before publishing `exited`
+    (`Sessions.publishExit`: refresh and setup's reconcile), and a viewer
+    joining an ended session awaits a save in flight (`finalSaved`) within
+    its join deadline, then closes 4000 to reconnect — never a final
+    not-saved while the save runs. A session that exited while nothing was
+    attached (a restart) is attached to its retained pane first, so its last
+    screen is still saved (real-tmux test). Sweep reserves every retried
+    save before awaiting any and replaces an unusable attachment (closed
+    control client or ended replica) first. Shutdown still waits for a save
+    in flight (bounded capture, local write; nothing commits after close).
+  - Codex: 3 rounds (round 1: access recheck, the pending-save join, the
+    downgrade note, wording; round 2: every exit path, sweep reservations,
+    the join deadline, test teeth; round 3: ended replicas on retry).
+  - Rollback below T38b deletes every saved bundle (see T35b); the README
+    says to end every session before upgrading.
+  - Measured: the checkpoint-attempt peak is 57.7 MB without the bridge
+    Screen (was 79.4 MB; budget 96 MB). `raw-path.browser.test.ts` became
+    `viewer.browser.test.ts`, always run against the preview.
 
 ### Phase 9 — Bits B6: attention, activity, image paste
 
