@@ -120,6 +120,8 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | Hook | Description |
 | --- | --- |
 | `useNavBadge` | Sync a nav item's badge to a derived value; the recommended provider glue. |
+| `useFullscreen` | Host full screen for a page that is the point of the visit: the host hides its chrome; the browser goes full screen where it can. |
+| `FullscreenControls` | Host full screen for a page that is the point of the visit: the host hides its chrome; the browser goes full screen where it can. |
 | `useJsonFetch` | Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. |
 | `usePluginJsonFetch` | Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. |
 | `UseJsonFetchOptions` | — |
@@ -782,5 +784,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 28, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Oct 29, 2026 · Bakin 0.0.0-dev</span>
 </aside>

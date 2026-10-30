@@ -26,6 +26,8 @@ export { useContentStore } from './use-content-store'
 export { useNavBadge } from './use-nav-badge'
 /** Read/toggle the global debug (X-Ray) flag. */
 export { useDebug } from './use-debug'
+/** Host full screen for a page that is the point of the visit: the host hides its chrome; the browser goes full screen where it can. */
+export { useFullscreen, type FullscreenControls } from './use-fullscreen'
 /** Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. */
 export { useJsonFetch, usePluginJsonFetch } from './use-json-fetch'
 export type { UseJsonFetchOptions, UseJsonFetchResult } from './use-json-fetch'

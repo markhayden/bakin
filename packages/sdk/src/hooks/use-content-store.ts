@@ -15,6 +15,9 @@ interface ContentStore extends ContentState {
   activityEvents: ActivityEvent[]
   sseConnected: boolean
   debug: boolean
+  /** Full screen (useFullscreen): the path of the page holding it, or null. The host hides its chrome while it is set. */
+  fullscreen: string | null
+  setFullscreen: (fullscreen: string | null) => void
   setFiles: (files: Record<string, string>) => void
   updateFile: (key: string, content: string) => void
   setHeartbeats: (heartbeats: Record<string, Heartbeat>) => void
@@ -37,7 +40,9 @@ export const useContentStore = create<ContentStore>((set, get) => ({
   activityEvents: [],
   sseConnected: false,
   debug: false,
+  fullscreen: null,
 
+  setFullscreen: (fullscreen) => set({ fullscreen }),
   setFiles: (files) => set({ files }),
   updateFile: (key, content) =>
     set((state) => ({ files: { ...state.files, [key]: content } })),

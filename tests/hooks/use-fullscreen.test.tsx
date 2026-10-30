@@ -1,0 +1,49 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { act, cleanup, renderHook } from '@testing-library/react'
+import { actRender } from '../rtl-settle'
+import { useContentStore } from '../../packages/sdk/src/hooks/use-content-store'
+import { useFullscreen } from '../../packages/sdk/src/hooks/use-fullscreen'
+
+type FullscreenDocument = { fullscreenEnabled: boolean; fullscreenElement: Element | null; exitFullscreen(): Promise<void> }
+
+function browser(enabled: boolean) {
+  const requested = mock(async () => undefined)
+  const exited = mock(async () => undefined)
+  const doc = document as unknown as FullscreenDocument
+  Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: enabled })
+  Object.defineProperty(document, 'fullscreenElement', { configurable: true, writable: true, value: null })
+  document.documentElement.requestFullscreen = requested as unknown as Element['requestFullscreen']
+  doc.exitFullscreen = exited
+  return { requested, exited, doc }
+}
+
+afterEach(() => {
+  cleanup()
+  useContentStore.setState({ fullscreen: null })
+})
+
+describe('useFullscreen (host full screen for a page that is the point of the visit)', () => {
+  it('enter holds full screen for this page and asks the browser (inside the click); exit releases both', async () => {
+    const { requested, exited, doc } = browser(true)
+    const view = await actRender(() => renderHook(() => useFullscreen()))
+    expect(view.result.current.active).toBe(false)
+    expect(view.result.current.browser).toBe(true)
+    await act(async () => { view.result.current.enter() })
+    expect(view.result.current.active).toBe(true)
+    expect(useContentStore.getState().fullscreen).toBe(window.location.pathname)
+    expect(requested).toHaveBeenCalledTimes(1)
+    doc.fullscreenElement = document.documentElement
+    await act(async () => { view.result.current.toggle() })
+    expect(view.result.current.active).toBe(false)
+    expect(exited).toHaveBeenCalledTimes(1)
+  })
+  it('where the browser cannot go full screen (an iPhone), the host still hides its chrome', async () => {
+    const { requested } = browser(false)
+    const view = await actRender(() => renderHook(() => useFullscreen()))
+    expect(view.result.current.browser).toBe(false)
+    await act(async () => { view.result.current.enter() })
+    expect(view.result.current.active).toBe(true)
+    expect(requested).not.toHaveBeenCalled()
+  })
+})

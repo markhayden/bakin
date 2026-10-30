@@ -1,0 +1,49 @@
+'use client'
+
+import { useCallback } from 'react'
+import { useContentStore } from './use-content-store'
+
+type KeyboardLock = { lock?(keys?: string[]): Promise<void>; unlock?(): void }
+const keyboard = () => (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard
+
+export interface FullscreenControls {
+  /** The host is in full screen: its header, sidebar and activity rail are hidden. */
+  active: boolean
+  /** Whether the browser itself can also go full screen here (not an iPhone's Safari: there the host only hides its chrome). */
+  browser: boolean
+  enter(): void
+  exit(): void
+  toggle(): void
+}
+
+/**
+ * Full screen for a page that is the point of the visit (a terminal, a
+ * canvas): the host hides its own chrome — header, sidebar, activity rail —
+ * and, where the browser can, the whole document goes full screen, so every
+ * menu, dialog, sheet and toast still shows (they render in the document).
+ * Call `enter` from the user's click (browsers require that gesture). While
+ * the browser is full screen, Escape is kept for the page where the browser
+ * allows it (Keyboard Lock; holding Esc still leaves). Leaving the page, the
+ * browser leaving full screen, or `exit` ends it (the host owns that).
+ */
+export function useFullscreen(): FullscreenControls {
+  const active = useContentStore((state) => state.fullscreen !== null)
+  const setFullscreen = useContentStore((state) => state.setFullscreen)
+  const browser = typeof document !== 'undefined' && Boolean(document.fullscreenEnabled)
+  const enter = useCallback(() => {
+    // Held by this page: the host ends it when the page changes.
+    setFullscreen(window.location.pathname)
+    if (!document.fullscreenEnabled || document.fullscreenElement) return
+    // Inside the click: the request needs its user activation.
+    document.documentElement.requestFullscreen({ navigationUI: 'hide' })
+      .then(() => keyboard()?.lock?.(['Escape']))
+      .catch(() => undefined)
+  }, [setFullscreen])
+  const exit = useCallback(() => {
+    setFullscreen(null)
+    keyboard()?.unlock?.()
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+  }, [setFullscreen])
+  const toggle = useCallback(() => { if (useContentStore.getState().fullscreen !== null) exit(); else enter() }, [enter, exit])
+  return { active, browser, enter, exit, toggle }
+}
