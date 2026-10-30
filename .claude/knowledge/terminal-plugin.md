@@ -215,16 +215,16 @@ sessions). The local preview sets it with `TERMINAL_PREVIEW_RAW=1`.
   Ended raw sessions join their bundle (lib/socket.ts `joinEnded`) or close
   4005 with why; the page shows a SystemState. Testing: `rollback.test.ts`
   runs B5's own store (from git) against the same database.
-- **Recovery and the notice (T35a):** each path judges attachment health by
+- **Recovery (T35a):** each path judges attachment health by
   its own source — the raw path by its replica and control client only, so
   a failed legacy bridge never tears down a live replica. A raw join calls
   `Sessions.ensureReplica` first (instant for a live replica; a lost one is
   reattached under the manager queue, bounded for the viewer by the join
   deadline). A replacement replica's first seed counts `recoveries` in the
-  session's fidelity; `lib/fidelity-notice.ts` renders fidelity as the page's
-  persistent kit Banner (causes, never counts: the Banner re-announces
-  changed text). The UI conformance fixture joins raw after a recovery, so
-  the banner is always checked.
+  session's fidelity. Recoveries are quiet (the persistent notice was removed
+  at acceptance, 2026-10-29): the canvas only sets `data-recoveries` on the
+  pane, which the browser tests wait on. `lib/unavailable-notice.ts` is what an
+  ended session without saved output shows.
 - **Scrolling and gestures (T36, both paths):** `components/scroll-route.ts`
   (pure) routes a vertical scroll to xterm's history first, then the pane
   pan (D10). The canvas takes every wheel in the capture phase (xterm never

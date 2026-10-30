@@ -765,6 +765,10 @@ Codex reviews.
     differ. Formatting and terminal behavior may remain incorrect until
     the application resets or redraws." The details name the cause. A
     reconnect does not clear it.
+    **Removed at acceptance (2026-10-29, Mark: "annoying and unhelpful"):**
+    recoveries are quiet. The session's fidelity is still recorded
+    (server-held, in bundles); the view keeps only a `data-recoveries`
+    count on its pane. Decision 1's notice is withdrawn with it.
   - Measured degradations: the current pen, the DECSC slot, charsets,
     cursor style, focus mode, a program paused mid-escape, partial-region
     scroll-offs, empty cells normalised to spaces, and after-print
