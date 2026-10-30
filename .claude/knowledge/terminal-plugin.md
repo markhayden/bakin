@@ -227,11 +227,17 @@ sessions). The local preview sets it with `TERMINAL_PREVIEW_RAW=1`.
   ended session without saved output shows.
 - **Scrolling and gestures (T36, both paths):** `components/scroll-route.ts`
   (pure) routes a vertical scroll to xterm's history first, then the pane
-  pan (D10). The canvas takes every wheel in the capture phase (xterm never
-  sees one: no mouse reports, no alternate-screen arrows); a one-finger
-  drag's owner is fixed on its first move (vertical with history: ours,
-  with a fling; otherwise the native pan); touch-made mouse events never
-  reach a mouse-reporting program (a desktop mouse still does). The pause
+  pan (D10). The canvas takes wheels in the capture phase so xterm never
+  scrolls its own viewport or sends alternate-screen arrows — except for a
+  full-screen program that asked for the mouse (raw path, VT200/DRAG/ANY,
+  SGR; `programScrolls()`), which gets the wheel exactly as xterm reports it
+  (one report per event, as VS Code; never per row — Claude Code overshoots
+  and lags), after the pane's pan room. A one-finger drag's owner is fixed
+  on its first move: vertical with history → ours (fling); a program that
+  scrolls itself → native while the grid can pan that way, else `program`
+  (pixel-mode synthetic wheels to xterm, with a fling); otherwise the native
+  pan. Touch-made mouse events never reach a mouse-reporting program (a
+  desktop mouse still does). The pause
   latches whenever the view is in history (`term.onScroll`, xterm's
   scrollbar included); only ↓ Live or focusing to type resume, and both end
   any gesture and clear a selection. Focus that bounces away and back in
