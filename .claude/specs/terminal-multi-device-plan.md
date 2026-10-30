@@ -1605,11 +1605,15 @@ H3 CSS sync and repin.
     attached (a restart) is attached to its retained pane first, so its last
     screen is still saved (real-tmux test). Sweep reserves every retried
     save before awaiting any and replaces an unusable attachment (closed
-    control client or ended replica) first. Shutdown still waits for a save
-    in flight (bounded capture, local write; nothing commits after close).
-  - Codex: 3 rounds (round 1: access recheck, the pending-save join, the
-    downgrade note, wording; round 2: every exit path, sweep reservations,
-    the join deadline, test teeth; round 3: ended replicas on retry).
+    control client or ended replica) first; it lets every save in flight
+    settle before deciding retries, and maintenance completes an unsaved
+    exited session only after a retry for it ran in that sweep. Shutdown
+    still waits for a save in flight (bounded capture, local write; nothing
+    commits after close).
+  - Codex: 5 rounds, clean on the fifth (round 1: access recheck, the
+    pending-save join, the downgrade note, wording; round 2: every exit
+    path, sweep reservations, the join deadline, test teeth; round 3: ended
+    replicas on retry; round 4: a retry sharing a save in flight).
   - Rollback below T38b deletes every saved bundle (see T35b); the README
     says to end every session before upgrading.
   - Measured: the checkpoint-attempt peak is 57.7 MB without the bridge
