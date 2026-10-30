@@ -46,4 +46,18 @@ describe('useFullscreen (host full screen for a page that is the point of the vi
     expect(view.result.current.active).toBe(true)
     expect(requested).not.toHaveBeenCalled()
   })
+  it('an exit while the browser is still granting full screen wins: the late grant is undone, Esc never locked', async () => {
+    const { exited, doc } = browser(true)
+    let grant = () => {}
+    document.documentElement.requestFullscreen = (() => new Promise<void>((resolve) => { grant = () => { doc.fullscreenElement = document.documentElement; resolve() } })) as unknown as Element['requestFullscreen']
+    const locked = mock(async () => undefined)
+    Object.defineProperty(navigator, 'keyboard', { configurable: true, value: { lock: locked, unlock: () => {} } })
+    const view = await actRender(() => renderHook(() => useFullscreen()))
+    await act(async () => { view.result.current.enter() })
+    await act(async () => { view.result.current.exit() })
+    await act(async () => { grant() })
+    expect(view.result.current.active).toBe(false)
+    expect(exited).toHaveBeenCalledTimes(1)
+    expect(locked).not.toHaveBeenCalled()
+  })
 })

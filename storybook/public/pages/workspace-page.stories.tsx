@@ -10,6 +10,7 @@ import {
   WorkspacePageMetrics,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, DropdownMenuItem } from '@makinbakin/sdk/ui'
+import { useContentStore, useFullscreen } from '@makinbakin/sdk/hooks'
 
 import './workspace-page.stories.css'
 import { WorkspaceInputFixture } from '../../support/workspace-input-fixture'
@@ -214,6 +215,45 @@ export const ImmersiveCanvas = {
       header!.style.height = originalHeight
       page.scrollTop = 0
     }
+  },
+} satisfies Story
+
+/**
+ * Full screen for a page that is the point of the visit (a terminal, a
+ * canvas): `useFullscreen()` from `@makinbakin/sdk/hooks`. The host hides its
+ * header, sidebar and activity rail and, where the browser can, puts the whole
+ * document in full screen — overlays render in the document, so menus, dialogs,
+ * sheets and toasts keep working. Call `enter` from the user's click; it ends
+ * on navigation, when the browser leaves full screen, or on `exit`. Never
+ * request full screen on one element (its overlays would be hidden).
+ */
+function FullScreenActionStory() {
+  const fullscreen = useFullscreen()
+  return (
+    <WorkspacePage mode="immersive" className="bakin-workspace-story" data-testid="fullscreen-workspace">
+      <WorkspacePageCompactHeader
+        navigation={<Button aria-label="Back to terminals" size="icon-sm" variant="ghost">←</Button>}
+        title="Build server"
+        action={<Button size="sm" variant={fullscreen.active ? 'secondary' : 'ghost'} aria-pressed={fullscreen.active} onClick={fullscreen.toggle}>{fullscreen.active ? 'Exit full screen' : 'Full screen'}</Button>}
+      />
+      <WorkspacePageBody className="bakin-workspace-story__immersive-body">
+        <div className="bakin-workspace-story__flow-node">
+          <strong>The page is the point of the visit</strong>
+          <span>In full screen the host's chrome is gone and this page fills the display.</span>
+        </div>
+      </WorkspacePageBody>
+    </WorkspacePage>
+  )
+}
+
+export const FullScreenAction = {
+  render: () => <FullScreenActionStory />,
+  play: async ({ canvas, userEvent }) => {
+    // The host state is what the shell reads; the browser's own full screen is best effort (a test browser may refuse it).
+    await userEvent.click(canvas.getByRole('button', { name: 'Full screen' }))
+    await waitFor(() => expect(useContentStore.getState().fullscreen).not.toBeNull())
+    await userEvent.click(canvas.getByRole('button', { name: 'Exit full screen' }))
+    await waitFor(() => expect(useContentStore.getState().fullscreen).toBeNull())
   },
 } satisfies Story
 

@@ -5,6 +5,12 @@ import { useContentStore } from './use-content-store'
 
 type KeyboardLock = { lock?(keys?: string[]): Promise<void>; unlock?(): void }
 const keyboard = () => (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard
+/**
+ * Which enter the browser's (asynchronous) full screen belongs to: an exit
+ * or a newer enter makes an earlier request's late grant stale, so it is
+ * undone instead of applied (shared by every hook instance, like the store).
+ */
+let request = 0
 
 export interface FullscreenControls {
   /** The host is in full screen: its header, sidebar and activity rail are hidden. */
@@ -35,11 +41,20 @@ export function useFullscreen(): FullscreenControls {
     setFullscreen(window.location.pathname)
     if (!document.fullscreenEnabled || document.fullscreenElement) return
     // Inside the click: the request needs its user activation.
+    const mine = ++request
     document.documentElement.requestFullscreen({ navigationUI: 'hide' })
-      .then(() => keyboard()?.lock?.(['Escape']))
+      .then(() => {
+        // Exited (or navigated away) while the browser was still granting it: undo, never lock Esc.
+        if (mine !== request || useContentStore.getState().fullscreen === null) {
+          if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+          return
+        }
+        void keyboard()?.lock?.(['Escape']).catch(() => undefined)
+      })
       .catch(() => undefined)
   }, [setFullscreen])
   const exit = useCallback(() => {
+    request++
     setFullscreen(null)
     keyboard()?.unlock?.()
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)

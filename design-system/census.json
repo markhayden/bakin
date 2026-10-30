@@ -18,13 +18,13 @@
     ]
   },
   "summary": {
-    "total": 101,
+    "total": 102,
     "byKind": {
       "host-route": 27,
       "plugin-route": 12,
       "plugin-slot": 32,
       "plugin-template": 2,
-      "shared-component": 28,
+      "shared-component": 29,
       "sdk-ui-export": 0
     },
     "nonVisualAliases": 3
@@ -2182,6 +2182,30 @@
         {
           "type": "source-export",
           "path": "packages/host/src/components/layout/dispatch-timer.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/fullscreen-shell",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/fullscreen-shell"
+      },
+      "sourcePath": "packages/host/src/components/layout/fullscreen-shell.tsx",
+      "symbols": [
+        "FullscreenShell"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/fullscreen-shell.tsx",
           "detail": "exported values discovered from TSX source"
         }
       ]
