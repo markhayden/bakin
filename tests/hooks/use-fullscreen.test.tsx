@@ -60,4 +60,24 @@ describe('useFullscreen (host full screen for a page that is the point of the vi
     expect(exited).toHaveBeenCalledTimes(1)
     expect(locked).not.toHaveBeenCalled()
   })
+  it('enter, exit, enter again while the first grant is pending: the stale grant never cancels the newer owner (either order)', async () => {
+    for (const order of ['stale-first', 'stale-last'] as const) {
+      const { exited, doc } = browser(true)
+      const grants: Array<() => void> = []
+      document.documentElement.requestFullscreen = (() => new Promise<void>((resolve) => { grants.push(() => { doc.fullscreenElement = document.documentElement; resolve() }) })) as unknown as Element['requestFullscreen']
+      const locked = mock(async () => undefined)
+      Object.defineProperty(navigator, 'keyboard', { configurable: true, value: { lock: locked, unlock: () => {} } })
+      const view = await actRender(() => renderHook(() => useFullscreen()))
+      await act(async () => { view.result.current.enter() })
+      await act(async () => { view.result.current.exit() })
+      await act(async () => { view.result.current.enter() })
+      const [stale, current] = [grants[0]!, grants[1]!]
+      if (order === 'stale-first') { await act(async () => { stale() }); await act(async () => { current() }) } else { await act(async () => { current() }); await act(async () => { stale() }) }
+      expect(view.result.current.active).toBe(true)
+      expect(exited).not.toHaveBeenCalled()
+      expect(locked).toHaveBeenCalledTimes(1)
+      cleanup()
+      useContentStore.setState({ fullscreen: null })
+    }
+  })
 })

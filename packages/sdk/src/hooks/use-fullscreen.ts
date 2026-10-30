@@ -44,9 +44,11 @@ export function useFullscreen(): FullscreenControls {
     const mine = ++request
     document.documentElement.requestFullscreen({ navigationUI: 'hide' })
       .then(() => {
-        // Exited (or navigated away) while the browser was still granting it: undo, never lock Esc.
+        // A stale grant (an exit, or a newer enter, came while the browser was still granting it) never
+        // locks Esc. It is undone only when nobody holds full screen now: a newer owner keeps it (and locks
+        // Esc from its own grant).
         if (mine !== request || useContentStore.getState().fullscreen === null) {
-          if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+          if (useContentStore.getState().fullscreen === null && document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
           return
         }
         void keyboard()?.lock?.(['Escape']).catch(() => undefined)
