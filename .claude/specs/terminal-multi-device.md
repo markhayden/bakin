@@ -426,17 +426,36 @@ research item in D9 was selected by Mark.
      - `idle_prompt` is **not** treated as needs-you;
      - `Stop` → `turn-finished`;
      - resume, cancel, and exit clear the state.
-   - **Codex adapter:** `notify` on agent-turn-complete → `turn-finished`.
-     Approval stays `unknown` until a verified structured hook exists.
+     Hooks passed with `--settings` merge with the user's, project and
+     plugin hooks and need no trust (verified on 2.1.316, 2026-10-31).
+   - **Codex adapter** (0.160 hooks, `-c hooks.<Event>=…`; verified
+     2026-10-31): `PermissionRequest` → `needs-you`, `Stop` →
+     `turn-finished`, `UserPromptSubmit` → `working`, `SessionStart` clears.
+     Codex runs a new hook only once trusted, so the hook definitions are
+     fixed (one command, no per-session arguments) and the operator trusts
+     them once in Codex's review screen; Codex records that trust itself.
+     Bakin never passes `--dangerously-bypass-hook-trust` (Mark, 2026-10-31).
+     Until they are trusted the state stays `unknown`.
    - **Shell:** no semantic state.
    - The helper receives an explicit managed tmux path, socket, and pane
-     target, because `env -i` strips `TMUX`.
+     target, because `env -i` strips `TMUX`. They arrive as environment
+     variables on the program, so every hook command line stays the same.
    - Mark's `~/.claude` and `~/.codex` are never touched.
    - **Derived activity:** active, quiet, or exited, computed from real pane
      output (bridge redraws after a resize or reconnect do not count).
-   - **Observation:** control-connection format subscriptions (at most one per
-     second and lossy, so the state is re-read on connect) plus the
-     `alert-bell` hook.
+   - **Observation:** a control-connection format subscription to
+     `@bakin_attention` (at most one per second and lossy; tmux sends the
+     current value on every attach, so a restart re-reads it). Bells are
+     tmux's own (its parser is the program's terminal, so an OSC title's
+     BEL is none): an `alert-bell` hook set per session at attach (not in
+     the tmux configuration, so the service is unchanged; T21, 2026-10-31)
+     counts them in `@bakin_bell`, which the control client subscribes to.
+     The session keeps the count last seen (`bellCount`): any other count
+     rang, so a bell before tmux's first sample or while Bakin was not
+     attached is never taken for the starting point.
+     A hand-written byte scanner was tried first and dropped: matching a
+     terminal parser's escape rules byte for byte never converged. The server records at most one bell per session every
+     30 s (`bellAt`), so every screen notifies once.
    - **Delivery:**
      - list and detail chips;
      - a host nav badge through the `nav-badge-providers` slot;
@@ -1296,12 +1315,11 @@ Bakin conventions also apply:
 
 ## Open Questions
 
-1. The Codex CLI 0.160 approval hook: is there a structured approval event?
-   If not, approval stays `unknown`. The build verifies this against the
-   installed Codex.
-2. Whether Claude Code's `--settings` merges hooks with the user's settings,
-   or replaces them, on the installed version. The build verifies this before
-   relying on it.
+1. **Resolved (T21, 2026-10-31):** Codex 0.160 has a `PermissionRequest`
+   hook. Hooks need one-time trust; see Attention and activity.
+2. **Resolved (T21, 2026-10-31):** `--settings` hooks merge with the user's,
+   project and plugin hooks (2.1.316: a flag hook and a plugin hook both ran
+   at startup).
 3. Exact `xterm-ghostty` behavior for extended keys and hyperlinks through
    tmux 3.7c, verified during the live checklist.
 4. Version numbers: terminal **0.4.0** (breaking: transport and the removed
