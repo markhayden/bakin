@@ -466,6 +466,17 @@ research item in D9 was selected by Mark.
      - acknowledged and resolved are separate states;
      - suppression is session-specific: the host helper only checks
        document focus, so the terminal adds its own per-session check.
+     - as built (T22, 2026-10-31): each state is a numbered occurrence
+       (an acknowledgement names the one seen); the server announces only
+       the session id, and every screen re-reads `GET /attention` (on the
+       event, the shell's reconnect, and every 60 s; the newest read wins),
+       telling what changed since its last read — so a change missed while
+       disconnected is told on the next. Tabs share, through per-tab
+       localStorage keys, which session they have open and focused (nobody
+       tells it; that tab acknowledges it) and whether they have focus (no OS
+       notification then: the toast is there). The one-OS-notification claim
+       is a single IndexedDB transaction: Web Locks exist only on secure
+       origins, and Bakin is often reached over HTTP on a tailnet.
    - Agent-owned sessions are included.
    - **Out of scope:** Home Screen Web Push for a backgrounded iPhone.
 6. **Emoji width.** Owned by D13's terminal profile (2026-10-28): Unicode 15
