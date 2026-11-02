@@ -1,268 +1,410 @@
-# Terminal Plugin Core Contracts
+# Terminal Plugin
 
-Terminal is an official Bits plugin, not a core plugin. Its README in
-`bakin-bits-official/plugins/terminal` owns operator instructions. The approved
-product decisions are in `.claude/specs/terminal-plugin.md` (D1-D10).
+Terminal is an official Bits plugin (`bakin-bits-official/plugins/terminal`),
+not a core plugin. Code is the source of truth; the plugin README owns
+operator-facing behavior; the design record is
+`.claude/specs/terminal-multi-device.md` (D1–D13 plus "As built" notes; where
+it and the code disagree, the code wins — see the end of this doc). The
+original product decisions are `.claude/specs/terminal-plugin.md`.
 
-## Caller Identity
+macOS only (launchd). Requires Bakin/SDK `>=0.0.1-rc.45` (`useFullscreen`).
 
-`PluginToolContext.invocation.agentId` is supplied only by a verified host
-transport. `ExecToolDefinition.requiresVerifiedAgent` rejects unverified MCP
-and generic HTTP exec dispatch before the handler runs. The runtime-native
-provider binds Pi's agent identity; OpenClaw provisioning adds per-agent bearer
-headers to MCP configuration. A private0600 `mcp-secret` under the Bakin home
-derives stable HMAC credentials. MCP checks credential and session binding on
-every request, not only initialization. Ordinary unverified MCP tools retain
-their existing behavior.
+## Map
 
-This is transport attribution inside the trusted single-user OS boundary, not
-protection from a malicious same-user process with filesystem/HTTP access.
-Never accept an input/body/query `agentId` as verified identity. Do not log
-credentials or terminal output. Runtime tool results may still be retained by
-the invoking agent's transcript system.
+`index.ts` wires routes, the `/socket` socket route, settings, Health, the
+hourly maintenance and minute memory reading, and the agent tool.
+`lib/sessions.ts` (`Sessions`) is the one serialized queue (`run()`) for
+lifecycle, ownership, input, sizing, native admission, attention, uploads and
+sweeps. Server modules live in `lib/`, browser modules in `components/`
+(`terminal-page.tsx` is the index + session workspace, `terminal-canvas.tsx`
+the xterm mount). Files are named per concern below.
 
-## Plugin Storage and Removal
+## Core contracts (Bakin side)
 
-`StorageAdapter.localRoot` is optional: scoped filesystem storage supplies the
-plugin's private data directory; nonlocal adapters may omit it. Terminal fails
-activation without it. The SDK testing harness exposes its own temporary root.
+**Caller identity.** `PluginToolContext.invocation.agentId` is set only by a
+verified host transport. `ExecToolDefinition.requiresVerifiedAgent` rejects
+unverified MCP and generic HTTP exec before the handler runs. Pi binds its
+in-process identity; OpenClaw provisioning adds per-agent bearer headers
+derived (HMAC) from a private 0600 `mcp-secret` (`src/core/mcp-credentials.ts`),
+checked on every MCP request. This is attribution inside the single-user OS
+boundary, not protection from a same-user process. Never accept a
+body/query `agentId` as identity; never log terminal output.
 
-`beforeUninstall(ctx)` is a blocking preflight before existing teardown. A
-manifest with `uninstallPreflightRequired: true` cannot be removed while its
-preflight is unavailable. Unlink refuses these plugins and directs callers to
-the regular remove path. Terminal uses this to require completed sessions,
-reviewed worktrees and successful independent-service shutdown. `onShutdown`
-is detach for restart, not permission to terminate shells or delete work.
+**Storage and removal.** Terminal fails activation without
+`StorageAdapter.localRoot` (dir forced to 0700). `uninstallPreflightRequired:
+true` makes `beforeUninstall` a blocking preflight (completed sessions,
+reviewed worktrees, successful service bootout); unlink refuses such plugins.
+`onShutdown` detaches, never kills shells.
 
-## Git Ownership
+**Git ownership.** Hooks `git.prepareSessionWorktree` (`repoPath`,
+`sessionId`, `agent`) and `git.releaseSessionWorktree` (`sessionId`,
+`worktreePath`, optional `teardown`) in `plugins/git/index.ts`. Normal release
+(maintenance `clean()`) refuses dirty/untracked/ignored/submodule changes or
+HEAD not merged into the recorded base; no force, branches kept. **Session
+delete passes `teardown: true`**, which force-removes the checkout (branch
+kept) best-effort — a git failure never blocks deleting the record. Coding
+programs default to `checkout: 'isolated'`, shells to `'existing'`.
 
-The existing Git worktree registry supports exactly one task or session owner.
-Hooks `git.prepareSessionWorktree` and `git.releaseSessionWorktree` are the plugin
-boundary. Session preparation requires `repoPath`, `sessionId`, and `agent`;
-release requires `sessionId` and `worktreePath`. Terminal never creates a dummy
-task. Session-owned entries cannot be deleted through the generic task release
-path, including force. All prepare/release mutations share serialization.
+**Host capabilities used.** Plugin socket routes
+(`src/core/server/upgrade-handler.ts`: live route → same-origin → `admit`;
+Bun's built-in `ws`, no send bound — Terminal does its own credit), and
+`cliCommands` `launch: { bin: 'tmux', refuseEnv: ['TMUX'] }`
+(`src/cli/launch.ts`).
 
-Session release checks ignored and untracked files, submodule changes, and the
-actual checkout HEAD's ancestry against the recorded original base branch.
-Unknown/dirty/unmerged state refuses release. Normal Git removal is used; no
-force and no automatic branch deletion. Terminal additionally checks completion
-and process use. A30-day age threshold is eligibility for review, not authority
-to discard unfinished work.
+## The tmux service
 
-## Verification
+- **Managed tmux only:** `TerminalService.tmux` is `$BAKIN_HOME/bin/tmux`
+  (default `~/.bakin/bin/tmux`)
+  (manifest `requires.bins`, tmux 3.7c universal, sha256-pinned incl. the
+  archive member). No PATH/Homebrew fallback. Missing → 503 pointing at the
+  plugin-assets repair; a repaired binary is picked up without restart.
+- Private server: socket `/tmp/bakin-terminal-<uid>-<hash(root)>/tmux.sock`,
+  LaunchAgent `io.bakin.terminal.<hash>` (`RunAtLoad`, `KeepAlive`), run as
+  `tmux -D -S <sock> -f <root>/tmux.conf`. Service and shells get a stripped
+  env (`terminalEnvironment()`: no Bakin-injected provider secrets; PATH
+  prepends `$BAKIN_HOME/bin`). Programs start via `/usr/bin/env -i …`.
+- **Config** is `tmuxConfig()` in `lib/tmux-config.ts`, the ONE source:
+  `window-size manual`, `remain-on-exit on`, `exit-empty off`,
+  `history-limit 50000`, `mouse off`, `status off`, `scroll-on-clear off`,
+  `allow-passthrough off`, `extended-keys`, Ghostty terminal-features,
+  `set-clipboard on`, titles from `@bakin_title`, a `client-resized` hook
+  setting `@bakin_client` to `<pid> <w>x<h>`, and a minimal native-only
+  prefix table (`C-b`: `d` detach, `C-b` send-prefix, `[` copy-mode, `]`
+  paste, `?` help; everything else unbound — one pane per session is an
+  invariant). It ends with `set -g @bakin_config <CONFIG_STAMP>`.
+- **Fingerprint** = pin version + extracted sha + config + canonical plist
+  without its env dict. Recorded in `<root>/service.json` only after the
+  restarted daemon reports `VERIFIED_OPTIONS` (`@bakin_config`,
+  `scroll-on-clear`). Mismatch → `updateRequired()` → "Terminal service update
+  available" (Health: `setup-service` repair when nothing is live, otherwise a
+  human incident pointing at Terminal's Apply update dialog, which ends exactly
+  the sessions the operator was shown — `applyServiceUpdate`). Setup drains
+  pending commands, rejects new ones, refuses any live pane or unknown pane
+  state. Never patch the running daemon piecemeal; a config change is a
+  service update.
 
-Focused tests cover credentials/MCP policy/session binding, OpenClaw provisioning,
-runtime tools, SDK testing, Git worktrees, and plugin remove/unlink lifecycle.
-Terminal unit and opt-in real process/browser tests live in Bits. Use isolated
-homes and private tmux/launchd jobs; never test against the live user's sessions.
-The session index uses `Page` plus `DataTable` with SDK router row activation
-and session-title links; each session uses
-`WorkspacePage` / `ImmersiveCanvas` with a compact Back link. There is no session
-rail or navigation select. Agent assignment and paths live in the kit Popover;
-session controls are right-aligned in the full and compact title rows, with
-New terminal available only on the index. Flexible table cells wrap to use the
-available width; explicit column constraints still permit local scrolling when
-needed. Each index row has a kit menu for taking control, completing an exited
-session, terminating, and deleting completed output. Confirmations retain the
-target session ID and show its title, and API errors remain in the dialog for
-retry. Deleting output does not delete metadata or retained worktrees.
-Completion/deletion actions live in DropdownMenu, alongside Reconnect terminal
-and the explicit Capture Tab checkbox. Reconnect only reattaches the
-output stream; it does not restart the process. Connection and ownership status
-share the title header, with no separate output toolbar. The terminal has a kit
-16px inset, and xterm's theme plus unused viewport match its canvas background.
-Terminal icon tools have
-explanatory kit tooltips, including focusable disabled controls. The xterm surface
-always fills the pane; its cell grid automatically fits on mount, resize, font
-readiness, and reconnect when this browser owns input. There is no Fit control.
-Read-only viewers never resize an agent-controlled PTY. Agent assignment uses
-the full-width kit `AgentSelect` with registered display names, portraits, and
-accent colors; terminal access policy still determines disabled choices.
-The approved public workspace extension adds `viewport="visual"` and the
-`WorkspacePageBody inputAccessory` slot. Its contract is exercised by
-`pages/workspace-page.stories.tsx — KeyboardAwareInput` and
-`recipes/terminal-input.stories.tsx — BarAndSheet` (the v2 key row and
-More keys sheet, updated with the B5 redesign). No design exception
-or new public export is needed. Existing workspaces retain host sizing.
+## Output path (D13) — the only path
 
-## Mobile input and rendering
+There is **no bridge/PTY stream** any more: T38b deleted the per-viewer PTY
+attach, its server Screen, the shadow comparison, the `output`/`cursors`/
+`sizes`/`session_marks` tables and the SSE/POST write/resize routes. Don't
+reintroduce a second Bakin client on a session.
 
-Terminal loads the matching xterm WebGL addon after opening the terminal.
-Plain-text URLs are links through `@xterm/addon-web-links` 0.12.0; they and
-OSC 8 hyperlinks open through one link handler: confirmed, in a new window
-with no opener, http/https/mailto only (R1's profile owns the same
-allowlist, `isAllowedLink`).
-Inconsistent physical pixel measurements (including Chromium device emulation)
-switch back to the DOM renderer, preventing a scaled GPU viewport from clipping
-the terminal output.
-Unavailable GPU contexts and context loss dispose the addon and restore the
-normal renderer. Each terminal mount owns its renderer and event cleanup.
+1. **Control client** (`lib/control.ts`): one `tmux -C attach-session -f
+   ignore-size` per session, attached once (`Sessions.attached` set; a lost
+   one is detached first). Carries `send-keys -H` input (bypasses key tables;
+   copy-mode is cancelled first), `resize-window`, queries, `refresh-client -B`
+   subscriptions (`bakin-client`, `bakin-dead` = `#{pane_dead}`,
+   `bakin-attention`, `bakin-bell`) and `%output`. Replies are framed by
+   `%begin/%end` number. `%exit` means the control client ended, not the
+   program. `Processes.connected(id)` is input health.
+2. **OutputLog** (`lib/output-log.ts`): ordered events (output, layout,
+   geometry, seeds), bounded 8 MiB / 4096 queued; overflow or a lost
+   connection invalidates → recovery.
+3. **Replica** (`lib/replica.ts`): one `@xterm/headless` per session, profile
+   from `lib/terminal-profile.ts` (scrollback 10,000; queries swallowed — tmux
+   is the only responder; OSC 52 → offers ≤256 KiB; OSC 8 http/https/mailto;
+   Unicode 15 graphemes corrected by the generated `lib/tmux-width-table.ts`;
+   side effects live only, never on replay). Holds a base checkpoint
+   (`lib/checkpoint.ts`, Bakin's own serializer, accepted only when a restore
+   reproduces full state; sliced, never blocks input) plus a tail (4 MiB /
+   4096 events). `state()/cut()/subscribe()` give immutable cuts.
+   **Overload:** tmux floods faster than xterm parses; at 4 MiB backlog the
+   replica skips output and rebuilds from tmux (lossy seed, ≤1/s while the
+   flood lasts). Rebuild causes are recorded in `fidelity` (quiet — no banner;
+   the pane only gets `data-recoveries`). Overload seeds are screen-only;
+   after `HISTORY_QUIET_MS` (1 s) of quiet with the log drained, one full seed
+   restores retained history (`restoreHistory`). Log overflow still
+   invalidates the replica → recovery.
+4. **Width changes** are not rebuilds: a `geometry` event (tmux's reflowed
+   lines/cursor/region/tabs) is installed into the live emulator by
+   `lib/geometry.ts installGeometry`, keeping parser/pen/modes. A refused
+   install is a `width` rebuild. Row-only changes are plain `layout` events.
+5. **RawDisplay** (`lib/raw-display.ts`): per viewer — `join`/`rebase` header,
+   checkpoint text, tail, `barrier { epoch, throughSeq }`, then live binary
+   output, `layout`, `geometry`, `rebuilding`, `digest-point`. One ordered
+   sender; a replay is never cancelled, overflow/rebuild during it becomes one
+   pending replacement from the latest cut.
+6. **Browser** `components/raw-picture.ts` queues writes into a fresh xterm per
+   picture; side state via `lib/side-state.ts` (the browser never imports the
+   headless serializer).
 
-On coarse-pointer devices the key bar (spec D9 item 9, v2) follows an
-editing session (idle / typing / sheet) rather than measuring the keyboard:
-it shows while the operator is typing, in the always-mounted input
-accessory slot. One row of iOS-style keycaps — kit Buttons drawn by the
-plugin's scoped CSS — holds esc, ⇥, ⌃, ⌥, the arrow joystick (drag to
-repeat, tap an edge for one step), ••• (abc while the sheet is open) and
-Hide keyboard, which works even while sending is disabled. ⌃ and ⌥ are each
-off, on for the next key, or locked (from the sheet's lock toggles); one
-delivered key takes them and consumes a one-shot one, other text ends a
-one-shot one, a paste is sent exactly, and disconnection, ownership or
-session change and backgrounding clear everything, locks included. ••• puts
-the keyboard down and opens a bounded sheet with the remaining keys, the
-Control shortcuts with plain labels, and the lock toggles; keyboard users
-get focus moved into it and Escape closes it. The sheet's Compose opens
-the compose sheet (a fourth editing state): a kit Textarea for dictation,
-IME and longer edits, with Paste (back to typing) and Paste + Enter (the
-keyboard goes away). The page owns each session's draft (guarded
-localStorage up to 64 KB, the input bound; longer ones live only while the
-page is open, and the sheet says so) and clears it only when the server
-accepts the paste's envelope (named by connection and sequence: sequences
-restart with each connection, and a connection that ends retires its
-entries) and the draft is still the revision that was sent — a refused or
-uncertain one keeps it. Paste + Enter is one envelope (`paste` + `enter`):
-the server sends the Return only once the paste went.
-Bracketed paste is decided by tmux, not the viewer (tmux knows the pane's
-mode). So a paste is explicit input — the socket's `input`
-frame carries `paste: true` (xterm's own paste events and compose; each
-travels alone in its envelope; only the data a paste event announced is
-marked, never a key typed after it) — and the server strips any markers and
-hands it to tmux as a paste (`load-buffer` from a private 0600 file, then
-`paste-buffer -p -r -S -d`: tmux brackets it only if the program enabled
-bracketed paste, `-r -S` keep every byte). Plain input is never
-reinterpreted. Paste files and buffers are cleaned up independently of the
-control connection, and leftovers from a crash go at the next process's
-first paste. Cursor sequences follow
-xterm's current normal/application mode. Every action uses the existing
-ordered input queue and generation/ownership checks.
+**Socket protocol** (`lib/socket.ts` header comment is canonical): client
+`hello { clientId }` first (a browser WS can't set headers), `input
+{ generation, viewerSeq, data, paste?, enter?, uploads? }`, `claim`, `resize
+{ epoch }`, `restore-size { epoch }`, `retired { bytes }`, `replay-applied
+{ epoch }`, `digest`, `pong`. Server: display frames, `session`, `presence
+{ sizeFrozen, nativeClients }`, `result { viewerSeq, accepted|rejected|
+uncertain }`, `size-refused`, `ping`, `error`. Credit: sending pauses once
+unretired bytes reach `ACK_WINDOW` (256 KiB; the last frame may overshoot by
+one frame), per connection, never reset by a rebase; paused >10 s → close.
+Heartbeat 15 s, 30 s silence closes. Close codes: 4000 resync, 4001
+superseded, 4002 silent, 4003 protocol, 4004 not found, 4005 unavailable
+(ended, reason `not-saved|evicted|unreadable`; final, the page shows a
+SystemState). Input is refused until the first `replay-applied`, never
+re-gated by a rebase; the server assigns `inputSequence` inside the queue;
+input is never replayed (`uncertain` = "May have been delivered").
 
-The kit measures the intersection of the host pane and VisualViewport, keeps
-the accessory above the keyboard, and owns bottom safe-area clearance. It does
-not resize the host or alter global document styles. A collapsed opted-in
-workspace exposes only its compact header to assistive technology and keyboard
-navigation. The full header becomes available again when scrolled into view.
-The canvas has no fixed minimum height; human-owned PTYs can fit down to one
-row. Read-only viewers never resize the shared PTY.
+**Pastes** are explicit input: `paste: true` → `load-buffer` from a private
+0600 file + `paste-buffer -p -r -S -d`, so tmux brackets only if the program
+enabled bracketed paste. `enter` sends Return only after the paste went.
 
-Implementation and verification: `.claude/specs/terminal-mobile-rendering-evidence.md`.
-Physical iPhone Safari and Android Chrome keyboard verification remains
-outstanding; automated Chromium/WebKit checks are not a native-phone result.
+**Safety net:** `lib/digest.ts screenDigest` shared by replica and browser; a
+mismatch closes 4000; the third in 10 min escalates `Sessions.diverged` →
+replica rebuild. `TmuxProcesses.watchCursor` compares the replica cursor with
+tmux at quiet points. Logs carry positions/counts, never contents.
 
-## Output path (spec D13)
+**Recovery:** `Sessions.ensureReplica` before every join (instant when live;
+otherwise reattach in the queue, bounded by the join deadline).
 
-One path since T38b (2026-10-29), which deleted the bridge (the per-viewer
-PTY attach, its server Screen, the shadow comparison, stored output and the
-sync/ack protocol): one control client per session (`tmux -C`) → its
-`OutputLog` → the `Replica` → each viewer's `RawDisplay` → the browser's
-`RawPicture`. `Processes.connected(id)` is that control client's health;
-`Sessions` keeps an `attached` set so a second attach never opens a second
-control client. Agents read the replica too: `readScreen` (the visible pane,
-503 until the replica is seeded) and `outputText` (the tool's `output`:
-history then screen as plain lines, `lines` keeps the last; an ended
-session's bundle replayed into a profile terminal by `lib/bundle-text.ts`).
+## Sizing (D2/D3, `lib/sizing.ts`)
 
-- **Server:** `lib/replica.ts` holds the session's emulator, base
-  checkpoint and tail; `state()`/`cut()`/`subscribe()` give a viewer an
-  immutable cut and every committed event after it. `lib/raw-display.ts`
-  is one viewer's picture: `join`/`rebase` header (checkpoint side state,
-  exact UTF-8 `bytes`), the checkpoint text, the tail, `barrier`, then live
-  output and `layout` frames, all through one ordered sender. Credit is per
-  connection (`retired` from the client counts applied and discarded
-  display bytes); a replay in progress is never cancelled, an overflow or
-  rebuild during it is one pending replacement from the latest cut (at most
-  once a second). Input is refused until the client's first
-  `replay-applied` and never re-gated by a rebase (decision 3). Input
-  health is the control client alone (`connected`).
-- **Browser:** `components/raw-picture.ts` is the ordered queue (writes
-  pipelined into xterm; the side state, layouts and the barrier after the
-  writes before them; a new header retires every frame of the old picture
-  once). The canvas mounts a fresh terminal per picture and sizes it only
-  from the picture and its layouts; `restoreSideState` lives in
-  `lib/side-state.ts` so the browser never imports the headless serializer.
-- **Width changes (T34a):** not a rebuild. A width `layout` resizes the
-  replica and asks tmux for its reflowed picture; it lands as an ordered
-  `geometry` log event (cols, rows, generation, seed bytes) that
-  `lib/geometry.ts installGeometry` installs into the live emulator —
-  lines, cursor, region and tabs from tmux, everything else (parser, pen,
-  modes, saved slots by their screen row) kept, except that under a 1049
-  alternate screen the normal cursor and its return slot are tmux's. Viewers get a `geometry` header plus binary
-  frames, parse them into an unopened scratch terminal and install the
-  same way; a refused install reconnects (server side: a `width`
-  rebuild). `readScreen` reads screen, size and `sizeRevision` from
-  the replica in one step; the revision counts applied dimension changes
-  and `TmuxProcesses` carries it across a reattachment. Testing: after a
-  width change compare with tmux's `capture-pane` (`-J -S - -E -` for
-  history); a discriminating case keeps the cursor inside a wrapped line
-  (tmux reflows it, bare xterm does not).
-- **Safety net (T37):** `lib/digest.ts screenDigest` is shared by the
-  replica and the browser (visible cells, cursor, modes, mouse; pinned
-  6.0.0 internals for what the public API lacks). The socket places
-  `digest-point` frames (RawDisplay.digestPoint, after their event);
-  RawPicture answers with `digest`; a mismatch closes 4000 to rejoin, the
-  third in 10 min escalates `Sessions.diverged` → `Replica.diverged()` (a
-  `divergence` rebuild). `TmuxProcesses.watchCursor` compares the replica
-  with tmux at quiet points (`compareCursor`, the position taken in the
-  control reply's `onReply`). Testing: the fuzz corpus checks digest
-  equality wherever full state is equal; `TEST_WIDTH_ENTRIES` injects a
-  width difference for the tmux check.
-- **Final output (T35b):** an ending session (terminate, the program's
-  exit via tmux's `pane_dead` subscription, maintenance) saves a bundle —
-  the replica's last cut after `drainFinal` (lib/processes.ts) — through
-  `Store.saveBundle` (lib/store.ts: header + parts, sliced writes, one
-  commit with the session's flag, a 250 MiB whole-bundle budget). The store
-  owns `outputSaved`/`outputEvicted` once a row exists; it is the only
-  table besides `sessions` (T38b drops the legacy `output`, `cursors`,
-  `sizes` and `session_marks` tables on open). The save runs outside the
-  manager queue with the session reserved; shutdown drains every lifecycle
-  operation before closing. Every exit registers its save before it is
-  published (`Sessions.publishExit`; a session found dead at setup is
-  attached to its retained pane first), so an ended join waits for a save in
-  flight (`finalSaved`, within the join deadline, else 4000) and never says
-  not saved while it runs. Ended sessions join their bundle (lib/socket.ts
-  `joinEnded`) or close 4005 with why; the page shows a SystemState.
-  **Rollback below T38b is destructive:** an R3-era store finds no
-  `session_marks`, treats every session as written elsewhere and deletes
-  every bundle (verified 2026-10-29); re-upgrading does not bring them back.
-  T38b ships behind a drained maintenance step (end every session first).
-- **Recovery (T35a):** attachment health is the replica and its control
-  client. A join calls
-  `Sessions.ensureReplica` first (instant for a live replica; a lost one is
-  reattached under the manager queue, bounded for the viewer by the join
-  deadline). A replacement replica's first seed counts `recoveries` in the
-  session's fidelity. Recoveries are quiet (the persistent notice was removed
-  at acceptance, 2026-10-29): the canvas only sets `data-recoveries` on the
-  pane, which the browser tests wait on. `lib/unavailable-notice.ts` is what an
-  ended session without saved output shows.
-- **Scrolling and gestures (T36):** `components/scroll-route.ts`
-  (pure) routes a vertical scroll to xterm's history first, then the pane
-  pan (D10). The canvas takes wheels in the capture phase so xterm never
-  scrolls its own viewport or sends alternate-screen arrows — except for a
-  full-screen program that asked for the mouse (VT200/DRAG/ANY, SGR;
-  `programScrolls()`), which gets the wheel exactly as xterm reports it
-  (one report per event, as VS Code; never per row — Claude Code overshoots
-  and lags), after the pane's pan room. A one-finger drag's owner is fixed
-  on its first move: vertical with history → ours (fling); a program that
-  scrolls itself → native while the grid can pan that way, else `program`
-  (pixel-mode synthetic wheels to xterm, with a fling); otherwise the native
-  pan. Touch-made mouse events never reach a mouse-reporting program (a
-  desktop mouse still does). The pause
-  latches whenever the view is in history (`term.onScroll`, xterm's
-  scrollbar included); only ↓ Live or focusing to type resume, and both end
-  any gesture and clear a selection. Focus that bounces away and back in
-  one synchronous turn through a removed element (the kit copy fallback's
-  hidden textarea) is not a return.
-- **Clipboard offers (T36b):** the profile's
-  `clipboardOffer` effect fires only live, so replays never offer; the
-  canvas keeps the latest as `{ text, rev }` and shows a code Panel with
-  the kit `CopyButton size="touch"` in the corner (it wraps below the
-  buttons on narrow phones). The clipboard is written only by that tap; a
-  copied offer clears after the kit's 1.5 s check if its `rev` is still
-  current. Testing: the browser tests stub `navigator.clipboard`
-  (`RECORDING_CLIPBOARD`) on both engines — refuse, hold and fallback modes.
-- **Gates:** `tests/viewer.browser.test.ts` (against the preview; the
-  overload and width-change tests also need
-  `TERMINAL_PREVIEW_TMUX` and `TERMINAL_PREVIEW_ROOT`, both printed by the
-  preview). Echo latency must
-  be measured in the page and with keys spaced more than a second apart:
-  xterm throttles its accessibility rows to one refresh a second.
+- One real grid per session, one **size authority** `{ viewer, kind:
+  'browser'|'native', device? }`. Claims: creating the session (browser
+  `POST /sessions size`, or `bakin terminal new`), **Fit to this device**,
+  and native admission. Each claim bumps `sizeEpoch`; `resize` is accepted
+  only from the authority at the current epoch (else 409); each applied
+  dimension change bumps `sizeRevision`. Independent of ownership
+  `generation`: Take/Return never resize.
+- The authority follows its pane (rows at once, cols after 100 ms) or its
+  terminal window (`@bakin_client` subscription → `reconcileClients`). When
+  it disconnects the size is **frozen** (`presence.sizeFrozen`, snowflake
+  icon); the authority persists, so fitting resumes when that viewer
+  reconnects (same `clientId` — a module-level per-page id, so a reload is a
+  new screen) or another screen claims. Floor 40×10, max 400×150 (`clampSize`); smaller panes pan.
+- `claimSize` remembers `previousSize { cols, rows, authority }`;
+  `restoreSize(epoch)` ("Back to desktop/phone/terminal app") is a toggle and
+  refuses a stale epoch.
+- tmux `resize-window` first, then the record; if they can't agree the
+  attachment is dropped and the next one adopts tmux's window.
+- Non-authorities render the real grid: font fitted to width, clamped to a
+  per-device minimum (`MIN_FONTS` 8/10/12/14, default 10 touch / 8 fine,
+  chooser in the size popover), native two-axis pan, pinch / Ctrl-wheel zoom
+  remembered in localStorage, Reset view. "Agent" is never an authority.
+- Agents never size. Agent-created sessions start at `defaultCols`×
+  `defaultRows` (200×60); the session menu's **Use this size as the default**
+  writes both (`operation: 'default-size'`).
+
+## Native terminal handoff (D5–D7, `lib/cli.ts`)
+
+- `bakin terminal new|attach <ref>|ls --as human` → `/cli/new`, `/cli/attach`,
+  `/cli/ls`. `operator()` requires `operator-declared` provenance and refuses
+  agent contexts (the core CLI also refuses TTY-less, `$TMUX`, agent shells,
+  remote `BAKIN_URL`). `new`: cwd, `shell` by default, `checkout: existing`
+  unless `--worktree` (any program), title = cwd basename, `--agent` assigns
+  without handing control, starts at the caller's size; on attach failure the
+  session is kept and a `recovery` line names the attach command. `<ref>`:
+  full id, or unique ≥8-char id prefix or exact title among running sessions.
+- `reserveAttach` (human-owned sessions only: "Take control first") mints a
+  single-use token bound to session + generation, 15 s TTL, and returns
+  `attachArgs`: `attach-session -f read-only` chained with a 5 s
+  `display-message` hint. The CLI spawns tmux and posts the pid to
+  `/cli/confirm`.
+- `reconcileClients` (runs on every client attach/resize/detach signal):
+  a client with a confirmed reservation stays read-only until its claim +
+  resize succeed, then becomes writable; while a confirm is pending other
+  terminal clients are held read-only; everything else — including a
+  hand-typed `tmux attach` and any foreign `tmux -C` — is detached.
+  Take/Return/assign drop reservations; Return detaches all native clients
+  before the agent drives. Admission is in memory: a Bakin restart detaches
+  apps.
+
+## Mobile and viewer UI
+
+- Session page: `WorkspacePage mode="immersive" viewport="visual"`; the
+  `WorkspacePageBody inputAccessory` slot stays mounted for any live session
+  (toggling it remounts the terminal). Index: `Page` + `DataTable`, views
+  `?view=active|review|completed|all` (Active = not completed; Needs review
+  only while some session has `cleanupReason`), sortable columns via
+  `?sort=` (default `activity:desc`); row menu Drive / Mark ended /
+  Terminate / Delete session / Delete output only.
+- **Ownership in the page** (`terminal-page.tsx`): human ownership is the
+  operator, not the tab (`authorize()` in `lib/contracts.ts`) — every human
+  client may type while the human owns it. Typing while watching an agent
+  prompts "Take over" (`handleClaim`; confirmation remembered 15 min in
+  localStorage). While the human drives a session with an assigned agent,
+  the page hands back after 2 idle minutes + a 20 s "Keep driving" warning,
+  and on navigating away/unmount.
+- **Reopen** (ended sessions): `POST /sessions` with the same cwd, program,
+  agent, task and project and `checkout: 'existing'` — a new process, never a
+  second worktree.
+- **Key bar v2** (coarse pointer only; `key-bar.tsx`, `editing-session.ts`
+  idle → typing → sheet/compose, `joystick.ts`, `modifier-input.ts`: ⌃/⌥
+  off/one-shot/locked, one delivered key takes them, text/paste untouched,
+  cleared on disconnect/ownership change/backgrounding).
+- **Compose sheet** (`compose-sheet.tsx`): Paste / Paste + Enter; per-session
+  drafts in guarded localStorage ≤64 KB (`compose-drafts.ts`), cleared only
+  when the server accepts the paste and the draft is still the sent revision.
+  Storage failure leaves text in memory only. Draft images live in page
+  memory (survive closing the sheet, not a reload); each accepted paste's
+  parts leave the draft individually (`delivered()`), the rest stay.
+  Desktop opens it when an image is dropped/pasted on the terminal or via
+  Session actions › Compose…; Escape closes and keeps the draft.
+- **Scroll routing** (`components/scroll-route.ts`, pure): vertical scroll goes
+  to xterm history first, then pans. Wheels are taken in capture phase except
+  for a full-screen program that enabled SGR mouse tracking
+  (`programScrolls()`), which gets xterm's own one-report-per-event wheel after
+  the pane's pan room. Touch never produces mouse clicks. Following pauses in
+  history/pan/selection; only ↓ Live or focusing to type resumes.
+- **Copy text…** (`copy-text-sheet.tsx`, `lib/copy-text.ts`): shows the
+  newest text within 2,000 lines and 400,000 UTF-16 units; Copy all copies the
+  whole snapshot (replica history ≤10,000 rows; tmux itself keeps 50,000). **OSC 52 offers** appear live only, with kit
+  `CopyButton size="touch"`; only that tap writes the clipboard. **Full
+  screen** is the host's `useFullscreen()` (`@makinbakin/sdk/hooks`).
+- WebGL with DOM fallback (`terminal-renderer.ts`); plain URLs and OSC 8 open
+  through one confirmed, no-opener, http/https/mailto handler.
+
+## Attention (`lib/attention.ts`, `components/attention*.ts(x)`)
+
+- States `needs-you | turn-finished | working`, or unset (= unknown). Set by
+  the program's own hooks as pane option `@bakin_attention`, read through the
+  control client's `bakin-attention` subscription. Shells have none.
+- **Claude Code:** `--settings <root>/attention/claude-settings.json` (merges
+  with user/project/plugin hooks). **Codex:** `-c hooks.<Event>=…` overrides;
+  Codex runs them only after the operator trusts them once in Codex's review
+  screen — Bakin never bypasses hook trust; until then the state stays
+  unknown. `~/.claude` / `~/.codex` are never touched.
+- Every hook runs `<root>/attention/bakin-terminal-attention <state> <scope>`
+  (`HELPER_SCRIPT`, prints `{}`), targeting the session through env vars
+  `BAKIN_TERMINAL_TMUX`/`_SOCKET`/`_SESSION` so the hook command line is
+  identical in every session (Codex trusts by definition hash). Scopes:
+  `always`, `main` (ignored when the hook input has a top-level `agent_id` —
+  subagents), `stale` (clears only `working`/`needs-you`; Claude's idle prompt).
+- Each new state is a numbered **occurrence** (`attentionSeq`);
+  `acknowledge { occurrence }` marks only the one shown.
+- **Bells:** a per-session `alert-bell` hook (set at create and on attach, not
+  in the config — no service update) increments `@bakin_bell`; the session
+  persists `bellCount` so any different count rang; `bellAt` at most once per
+  30 s.
+- **Activity:** active (output in the last 5 s) / quiet / exited, from real
+  `%output` only.
+- **Delivery:** server emits `terminal.attention { sessionId }` only.
+  `TerminalAttentionProvider` (in `nav-badge-providers`) re-reads
+  `GET /attention` on the event, on `bakin.reconcile`, and every 60 s (newest
+  read wins) and derives announcements from the diff (`announcements()`), so a
+  change missed while disconnected is told on the next read. Nav badge counts
+  unacknowledged needs-you/turn-finished. Toast only in visible tabs; one OS
+  notification across tabs of the same browser via an IndexedDB transaction
+  (`claimOnce` — Web Locks need a secure origin; Bakin is often plain HTTP on
+  a tailnet; without IndexedDB it fails open, every tab sends its own) and
+  none while another Bakin tab has focus; the host's notification permission
+  and focus rules still apply. Per-tab localStorage keys
+  (`bakin-terminal-watching:<tab>`, `bakin-terminal-focused:<tab>`) suppress
+  announcements for a session open and focused on this device; that tab
+  acknowledges instead.
+
+## Uploads / image paste (`lib/uploads.ts`)
+
+- `POST /upload?id=&generation=` with raw bytes; PNG/JPEG/WebP by header
+  sniffing (`sniffImage`, lengths checked), ≤10 MB (body read capped), ≤40 MP
+  from the header (never decoded), ≤100 MB per session, ≤4 bodies read at
+  once. Stored at `<root>/uploads/<sessionId>/<uuid>.<ext>` (0700/0600),
+  recorded in the store. Ownership + generation checked before and again in
+  the queue after the body arrives; `remove-upload` is generation-checked too.
+- Sends (`composePastes` / `PasteSequence`): Claude/Codex get each image path
+  as its own literal paste (they attach a path only when it is the whole
+  paste), then the text; a shell gets one paste of text + shell-quoted paths.
+  Pastes go strictly one after another; a paste names its uploads and they're
+  marked sent once it went. ≤20 images per send.
+- Retention: deleted with the session or its history; never-sent uploads (and
+  orphan files) swept after 24 h; a draft naming a swept image is refused.
+- Thumbnails use the SDK's `ComposerAttachmentTray`
+  (`@makinbakin/sdk/conversation`) with a copy-path item action.
+
+## Agent tool
+
+`bakin_exec_terminal_session` (`requiresVerifiedAgent`): `list`, `create`,
+`screen`, `output`, `write`, `interrupt`, `complete`, `terminate`. Agents see
+only sessions assigned to them while in `enabledAgents` (default `['main']`;
+empty = off). `write` needs `generation` and `sequence = inputSequence + 1`
+(≤64 KiB; never retry). `screen` reads the replica (503 until seeded) and
+returns `cols`/`rows`/`sizeRevision` from one step; `output` is history then
+screen as plain lines (`lines` keeps the last N; an ended session's comes from
+its bundle). No resize operation.
+
+## Lifecycle and retention
+
+- Ending a session (terminate, program exit via `pane_dead`, maintenance)
+  saves a **final bundle**: the replica's last cut after `drainFinal`
+  (bounded by `FINAL_CUT_MS` 3 s) via `Store.saveBundle` (sliced parts, one
+  commit with the session flag, 250 MiB whole-bundle budget, oldest evicted).
+  The save runs outside the queue with the session reserved (input refused);
+  `Sessions.publishExit` registers it before the exit is visible, so an ended
+  join waits (`finalSaved`) rather than showing "not saved". Best effort: a
+  failed or timed-out save sets `outputSaved: false` (maintenance retries it),
+  and the ended view says not saved / removed / unreadable
+  (`lib/unavailable-notice.ts`). Shutdown drains accepted lifecycle work.
+- **Maintenance** (`sweep()`, at activation, hourly, and on
+  `tasks.statusChanged → done`): retry failed final saves first; sweep
+  abandoned uploads; an exited session idle `idleDays` (default 30) is
+  completed (pane killed); completed sessions get worktree `clean()`
+  (otherwise `cleanupReason` → Health "worktrees need review"); history
+  (bundle + uploads) is deleted 30 days after completion (hardcoded).
+- Caps: `maxSessions` 10 live, `maxWorktrees` 10 retained.
+- Health check `terminal.service`: service unavailable, maintenance failure,
+  retention, service update, memory (>640 MB retained, structure-based
+  estimate from `lib/memory.ts`, clears below 600 MB).
+- **Rollback below T38b is destructive:** an older version opening the store
+  deletes every bundle. T38b required a drained cutover.
+
+## Testing
+
+- Unit tests, from the Bits repo root:
+  `FUZZ_SHARD=skip bun test --isolate --preload ./test/setup-dom.ts plugins/terminal/tests`
+  (`FUZZ_SHARD=skip` leaves the checkpoint fuzz matrix to CI's shards;
+  `FUZZ_SHARD=k/n` runs one shard; unset runs it all — slow).
+- Real-tmux process tests (`*.integration.test.ts`, skipped otherwise):
+  `TERMINAL_PROCESS_TEST=1 TERMINAL_TMUX=$HOME/.bakin/bin/tmux` + the same
+  command. `TERMINAL_CLI_TEST=1` also starts installed Claude Code/Codex
+  (no prompts submitted); `TERMINAL_MEMORY_TEST` gates the memory
+  measurements. launchd survival probe: `bun probes/session-survival.ts`.
+- Live preview: `bun plugins/terminal/tests/dev-server.ts` (Bits root;
+  `TERMINAL_TMUX` or PATH tmux, `TERMINAL_PREVIEW_PORT` optional). Disposable
+  root, own tmux server, only `patch` enabled, no Git hooks (use Existing
+  checkout). It prints the URL, `tmux` and `root`.
+- Browser tests (`tests/*.browser.test.ts`, `browser.integration.test.ts`),
+  from the plugin dir: `TERMINAL_PREVIEW_URL=<url>`; handoff, attention,
+  images and viewer overload/width tests also need `TERMINAL_PREVIEW_TMUX`
+  (and `TERMINAL_PREVIEW_ROOT` where used); `TERMINAL_BROWSER=webkit` repeats on
+  WebKit. Stop the preview to stop its shells.
+- `bun run ui:conformance` (Bits root, `scripts/verify-plugin-ui.ts`) installs
+  the real assembled SDK and runs the plugin's typecheck and tests against it
+  (`verification: 'installed-package'`), plus the UI fixtures
+  (`bun run test:ui` → `test-results/bakin-ui/index.html`). The root test run
+  uses the ambient test SDK, so a green unit run is not SDK conformance.
+- Never test against the live user's sessions; isolated roots only.
+
+## Gotchas
+
+- xterm is pinned at 6.0.0 on both sides (`tests/xterm-pin.test.ts`);
+  `lib/xterm-fixes.ts` patches 6.0.0 internals, each with a test that fails
+  once upstream fixes it. Bump replica and browser together.
+- After a width change, compare with tmux's `capture-pane -J -S - -E -`; a
+  discriminating case keeps the cursor inside a wrapped line.
+- Echo latency must be measured in the page with keys >1 s apart: xterm
+  throttles its accessibility rows to one refresh a second.
+- Browser client ids use `crypto.getRandomValues` (HTTP LAN/Tailscale
+  origins), never `randomUUID`. Browser HTTP routes require same origin and
+  `X-Bakin-Terminal-Client` (`lib/http.ts human()`); the WebSocket (same
+  origin enforced by the host upgrade handler) supplies `clientId` in its
+  first `hello` instead.
+- Viewers never answer terminal queries; tmux does. Don't let an emulator's
+  generated reply leave a viewer.
+- A request failure never implies the service needs installation.
+- Physical iPhone/Android keyboard behavior is not proven by Chromium/WebKit
+  emulation.
+
+## Where the spec and code disagree
+
+- D2 names the native size option `@bakin_client_size`; code (and D7) use
+  `@bakin_client`, and detach is observed via `%client-detached` →
+  `reconcileClients`, not a separate freeze rule.
+- D9 item 5 lists an `unknown` attention value; code has three states and
+  treats unset as unknown.
+- D3 calls the setting `defaultSize`; the settings are `defaultCols`/
+  `defaultRows`, mapped to `defaultSize` in `terminalSettings()`.
+- The spec describes 30-day idleness as making work "cleanup-eligible";
+  code auto-completes an exited session idle `idleDays` and deletes its
+  history 30 days after completion (fixed, not `idleDays`).
+- Session delete force-removes a retained worktree (`teardown: true`), unlike
+  the no-force maintenance release.

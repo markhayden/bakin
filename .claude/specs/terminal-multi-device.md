@@ -11,6 +11,24 @@ Implementation plan: `terminal-multi-device-plan.md`.
 Amended 2026-10-27 after the first live test (Mark): D9 item 3 (inline
 scrollback replaces the History sheet), D9 item 9 (key bar), D10 controls.
 Predecessors: `terminal-plugin.md` (D1–D10), `terminal-mobile-rendering.md`.
+Build status (2026-11-01): every Bits task through B6 is built and checkpointed
+(`tmd/cp8`, terminal 0.4.0-dev.30); remaining are T24b (canonical CSS + SDK
+repin, needs a push), T25 (final gates on pushed stacks) and the cutover and
+release with Mark (T26/T27). Evidence: `terminal-multi-device-evidence.md`.
+Decided 2026-11-01 (Claude, Mark's call delegated): the host still reads up to
+100 MB of a plugin request body before the plugin's own 10 MB image limit; a
+per-route body limit would be a new host contract, not worth adding for a
+single-user host — revisit if uploads are ever exposed more widely.
+Where the decisions below name things differently from the build, the build
+wins (T24, 2026-11-01): the native size mark is `@bakin_client` (D2's
+`@bakin_client_size`), and an app leaving is handled by `%client-detached` and
+client reconciliation; attention has three states and unset means unknown (D9
+item 5's `unknown` value is not stored); the default grid settings are
+`defaultCols`/`defaultRows`, read as `defaultSize`; maintenance completes an
+exited session after `idleDays` and deletes its history a fixed 30 days after
+completion; deleting a session force-removes its retained worktree (the branch
+stays), while maintenance never forces. `.claude/knowledge/terminal-plugin.md`
+describes the build.
 
 ## Objective
 
