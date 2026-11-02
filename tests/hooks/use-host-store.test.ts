@@ -19,11 +19,13 @@ afterEach(() => {
 })
 
 describe('useHostStore — shape', () => {
-  it('holds only host state: connection, debug, activity', () => {
+  it('holds only host state: connection, debug, activity, full screen', () => {
     const state = useHostStore.getState()
     expect(Object.keys(state).sort()).toEqual([
-      'activityEvents', 'appendActivityEvent', 'connected', 'debug', 'refreshActivity', 'setConnected', 'setDebug', 'toggleDebug',
+      'activityEvents', 'appendActivityEvent', 'connected', 'debug', 'fullscreen', 'refreshActivity', 'setConnected', 'setDebug', 'setFullscreen', 'toggleDebug',
     ])
+    // Full screen starts unheld; `useFullscreen` is the only writer.
+    expect(state.fullscreen).toBeNull()
   })
 })
 
