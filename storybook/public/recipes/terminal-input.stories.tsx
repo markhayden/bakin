@@ -18,6 +18,8 @@ type Story = StoryObj<typeof meta>
 /** Long enough for React to apply an update an event caused (a negative assertion needs it). */
 const settle = () => new Promise(resolve => setTimeout(resolve, 50))
 
+// The play's waits allow 5 s: the canonical visual image runs emulated and can take longer than the
+// default second to open the sheet.
 export const BarAndSheet = {
   play: async ({ canvas, canvasElement, userEvent }) => {
     const editor = canvas.getByRole('textbox', { name: 'Example input' })
@@ -73,14 +75,14 @@ export const BarAndSheet = {
     await settle()
     await expect(canvas.getByRole('button', { name: 'Option, on for the next key' })).toBeVisible()
     fireEvent.compositionEnd(editor, { data: 'あ' })
-    await waitFor(() => expect(canvas.getByRole('button', { name: 'Option' })).toHaveAttribute('aria-pressed', 'false'))
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Option' })).toHaveAttribute('aria-pressed', 'false'), { timeout: 5000 })
     // Committed text outside a composition (dictation, autocorrect) ends a one-shot modifier too.
     await userEvent.click(canvas.getByRole('button', { name: 'Option' }))
     fireEvent.input(editor)
-    await waitFor(() => expect(canvas.getByRole('button', { name: 'Option' })).toHaveAttribute('aria-pressed', 'false'))
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Option' })).toHaveAttribute('aria-pressed', 'false'), { timeout: 5000 })
     // Opened with a pointer, the sheet takes focus from the editor (on the next frame).
     await userEvent.click(canvas.getByRole('button', { name: 'More keys' }))
-    await waitFor(() => expect(canvas.getByRole('region', { name: 'More keys' })).toHaveFocus())
+    await waitFor(() => expect(canvas.getByRole('region', { name: 'More keys' })).toHaveFocus(), { timeout: 5000 })
     await expect(editor).not.toHaveFocus()
     // While it is open the sheet owns Escape, wherever focus is: it closes, and the editor never
     // sees it (with Control armed, an Escape reaching the editor would send Ctrl+Esc).
