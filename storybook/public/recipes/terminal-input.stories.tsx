@@ -18,8 +18,6 @@ type Story = StoryObj<typeof meta>
 /** Long enough for React to apply an update an event caused (a negative assertion needs it). */
 const settle = () => new Promise(resolve => setTimeout(resolve, 50))
 
-// The play's waits allow 5 s: the canonical visual image runs emulated and can take longer than the
-// default second to open the sheet.
 export const BarAndSheet = {
   play: async ({ canvas, canvasElement, userEvent }) => {
     const editor = canvas.getByRole('textbox', { name: 'Example input' })
@@ -75,14 +73,14 @@ export const BarAndSheet = {
     await settle()
     await expect(canvas.getByRole('button', { name: 'Option, on for the next key' })).toBeVisible()
     fireEvent.compositionEnd(editor, { data: 'あ' })
-    await waitFor(() => expect(canvas.getByRole('button', { name: 'Option' })).toHaveAttribute('aria-pressed', 'false'), { timeout: 5000 })
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Option' })).toHaveAttribute('aria-pressed', 'false'))
     // Committed text outside a composition (dictation, autocorrect) ends a one-shot modifier too.
     await userEvent.click(canvas.getByRole('button', { name: 'Option' }))
     fireEvent.input(editor)
-    await waitFor(() => expect(canvas.getByRole('button', { name: 'Option' })).toHaveAttribute('aria-pressed', 'false'), { timeout: 5000 })
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Option' })).toHaveAttribute('aria-pressed', 'false'))
     // Opened with a pointer, the sheet takes focus from the editor (on the next frame).
     await userEvent.click(canvas.getByRole('button', { name: 'More keys' }))
-    await waitFor(() => expect(canvas.getByRole('region', { name: 'More keys' })).toHaveFocus(), { timeout: 5000 })
+    await waitFor(() => expect(canvas.getByRole('region', { name: 'More keys' })).toHaveFocus())
     await expect(editor).not.toHaveFocus()
     // While it is open the sheet owns Escape, wherever focus is: it closes, and the editor never
     // sees it (with Control armed, an Escape reaching the editor would send Ctrl+Esc).
@@ -118,6 +116,19 @@ export const BarAndSheet = {
     await userEvent.click(canvas.getByRole('button', { name: 'Hide keyboard' }))
     await expect(status).toHaveTextContent('Keyboard hidden')
     await userEvent.click(canvas.getByRole('button', { name: 'Enable keys' }))
+    canvasElement.setAttribute('data-story-ready', 'true')
+  },
+} satisfies Story
+
+/**
+ * The same bar for visual capture: no interaction script (BarAndSheet's play is
+ * the behavior coverage, run by the story and browser suites); the visual spec
+ * drives what it needs itself, from the bar's first render.
+ */
+export const VisualCapture = {
+  parameters: { docs: { disable: true } },
+  play: async ({ canvas, canvasElement }) => {
+    await expect(canvas.getByRole('group', { name: 'Terminal keys' })).toBeVisible()
     canvasElement.setAttribute('data-story-ready', 'true')
   },
 } satisfies Story
