@@ -723,6 +723,18 @@ test('public conversation composer attachment states visual baseline', async ({ 
   })
 })
 
+test('public conversation attachment tray visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=components-conversation-attachment-tray--states-and-item-action&viewMode=story')
+  await expect(page.getByRole('alert')).toContainText('Images are at most 10 MB')
+  await expect(page.getByRole('button', { name: 'Copy the path of layout.png' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-attachment-tray.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
 test('public embedded conversation panel visual baseline', async ({ page }) => {
   await page.goto('/iframe.html?id=components-conversation-panel-and-tool-detail--product-panel&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Coordinate an embedded release review' })).toBeVisible()

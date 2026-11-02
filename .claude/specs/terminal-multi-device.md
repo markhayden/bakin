@@ -498,6 +498,18 @@ research item in D9 was selected by Mark.
      codex.
    - Images are deleted with session or history deletion, or at retention
      expiry. Abandoned uploads are swept.
+   - **As built (T23a/T23b, 2026-11-01):** each image is its own paste for
+     Claude Code and Codex — both turn a pasted image path into an attached
+     image only when the paste is the path alone (verified on Claude Code
+     2.1.316 and Codex 0.160, which also settles the readability check: they
+     read the file when it is pasted) — then the text; a shell gets one paste
+     of the text and the quoted paths. A paste names the images it carries,
+     and they are marked sent once it went. **Desktop** (Mark, 2026-11-01):
+     the same compose sheet opens in the page's input accessory when an image
+     is dropped or pasted on the terminal, or from the session menu; Escape
+     closes it and keeps the draft; text pastes stay the terminal's. The
+     thumbnails are the SDK's `ComposerAttachmentTray` (Composer's own tray,
+     made public for this; approved system extension, Mark 2026-11-01).
    - Build-time check: Claude and Codex can read the upload directory under
      their sandboxes.
    - HEIC is deferred.

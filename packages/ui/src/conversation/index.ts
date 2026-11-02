@@ -59,6 +59,7 @@ export { ConversationEmptyState } from './conversation-empty-state'
 export type { ConversationEmptyStateProps } from './conversation-empty-state'
 
 export { Composer, writeComposerDraft } from './composer'
+export { ComposerAttachmentTray, type ComposerAttachmentTrayProps } from './attachment-tray'
 export type {
   ComposerAttachmentItem,
   ComposerAttachments,

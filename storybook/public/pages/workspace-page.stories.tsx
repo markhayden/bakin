@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { useState } from 'react'
 import { expect, waitFor } from 'storybook/test'
 
 import {
@@ -10,7 +11,6 @@ import {
   WorkspacePageMetrics,
 } from '@makinbakin/sdk/patterns'
 import { Badge, Button, DropdownMenuItem } from '@makinbakin/sdk/ui'
-import { useContentStore, useFullscreen } from '@makinbakin/sdk/hooks'
 
 import './workspace-page.stories.css'
 import { WorkspaceInputFixture } from '../../support/workspace-input-fixture'
@@ -220,7 +220,9 @@ export const ImmersiveCanvas = {
 
 /**
  * Full screen for a page that is the point of the visit (a terminal, a
- * canvas): `useFullscreen()` from `@makinbakin/sdk/hooks`. The host hides its
+ * canvas): pair the action with `useFullscreen()` from `@makinbakin/sdk/hooks`
+ * (this catalog shows only the visual contract, so the story keeps its own
+ * state; the hook's behavior is pinned by its own tests). The host hides its
  * header, sidebar and activity rail and, where the browser can, puts the whole
  * document in full screen — overlays render in the document, so menus, dialogs,
  * sheets and toasts keep working. Call `enter` from the user's click; it ends
@@ -228,7 +230,8 @@ export const ImmersiveCanvas = {
  * request full screen on one element (its overlays would be hidden).
  */
 function FullScreenActionStory() {
-  const fullscreen = useFullscreen()
+  const [active, setActive] = useState(false)
+  const fullscreen = { active, toggle: () => setActive((value) => !value) }
   return (
     <WorkspacePage mode="immersive" className="bakin-workspace-story" data-testid="fullscreen-workspace">
       <WorkspacePageCompactHeader
@@ -249,11 +252,11 @@ function FullScreenActionStory() {
 export const FullScreenAction = {
   render: () => <FullScreenActionStory />,
   play: async ({ canvas, userEvent }) => {
-    // The host state is what the shell reads; the browser's own full screen is best effort (a test browser may refuse it).
+    // The action is a toggle that says its state (aria-pressed and its label).
     await userEvent.click(canvas.getByRole('button', { name: 'Full screen' }))
-    await waitFor(() => expect(useContentStore.getState().fullscreen).not.toBeNull())
+    await expect(canvas.getByRole('button', { name: 'Exit full screen' })).toHaveAttribute('aria-pressed', 'true')
     await userEvent.click(canvas.getByRole('button', { name: 'Exit full screen' }))
-    await waitFor(() => expect(useContentStore.getState().fullscreen).toBeNull())
+    await expect(canvas.getByRole('button', { name: 'Full screen' })).toHaveAttribute('aria-pressed', 'false')
   },
 } satisfies Story
 
