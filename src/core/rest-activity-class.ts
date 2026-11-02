@@ -17,12 +17,11 @@ export interface ResolvedRequestActivity {
 const HOST_ROUTINE_GET_PATHS = new Set([
   '/api/activity',
   '/api/agent-packages',
-  '/api/agents/health',
+  '/api/agents/avatar',
   '/api/context-report',
   '/api/dispatch',
   '/api/plugins/manifest',
   '/api/settings',
-  '/api/state',
   '/api/updates',
   '/api/version',
 ])

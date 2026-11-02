@@ -51,6 +51,7 @@ import {
 import './exec-tools/tools/log-progress'
 import './exec-tools/tools/post-channel'
 import './exec-tools/tools/get-paths'
+import './exec-tools/tools/ask-user'
 import './exec-tools/tools/heartbeat'
 import './exec-tools/tools/search-tools'
 import './exec-tools/tools/pdf'

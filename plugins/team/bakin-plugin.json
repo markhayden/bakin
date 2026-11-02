@@ -45,11 +45,6 @@
         "summary": "Read the most recent session JSONL parsed into a message stream"
       },
       {
-        "method": "GET",
-        "path": "/:agentId/avatar",
-        "summary": "Serve agent avatar image"
-      },
-      {
         "method": "POST",
         "path": "/:agentId/avatar",
         "summary": "Upload agent avatar image"

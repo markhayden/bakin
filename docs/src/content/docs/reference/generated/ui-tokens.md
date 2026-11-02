@@ -5,7 +5,7 @@ description: Generated public semantic token contract for Bakin product and plug
 
 This reference is generated from the DTCG token source. Use the namespaced CSS properties through [`@makinbakin/sdk/styles.css`](/docs/extending/ui/overview/); internal reference values, component aliases, and Tailwind mappings are not plugin-author contracts.
 
-The approved foundation contains **66 public tokens** across **8 semantic families**. Contrast ratios are calculated during generation. A declared WCAG role below its threshold fails generation and CI.
+The approved foundation contains **70 public tokens** across **8 semantic families**. Contrast ratios are calculated during generation. A declared WCAG role below its threshold fails generation and CI.
 
 ## Color
 
@@ -58,6 +58,10 @@ The approved foundation contains **66 public tokens** across **8 semantic famili
 | `semantic.layout.gap.page` | Canonical separation and inset for major Product Character page regions. | `2rem` | `--bakin-layout-gap-page` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/gap/page` |
 | `semantic.layout.gap.section` | Canonical separation between distinct sections within a page. | `1.5rem` | `--bakin-layout-gap-section` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/gap/section` |
 | `semantic.layout.size.control` | Canonical minimum height for standard interactive controls. | `2.25rem` | `--bakin-layout-size-control` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/size/control` |
+| `semantic.layout.size.railConversation` | Expanded width of a docked conversation rail; fits a question card and composer. | `22.5rem` | `--bakin-layout-size-rail-conversation` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/size/railConversation` |
+| `semantic.layout.size.railNav` | Expanded width of an app-navigation rail. | `13rem` | `--bakin-layout-size-rail-nav` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/size/railNav` |
+| `semantic.layout.size.railSession` | Expanded width of a session-manager list rail. | `18rem` | `--bakin-layout-size-rail-session` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/size/railSession` |
+| `semantic.layout.size.railStrip` | Collapsed width of a collapsible edge rail: the kit strip with its expand control. | `3.25rem` | `--bakin-layout-size-rail-strip` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/size/railStrip` |
 | `semantic.layout.size.row` | Canonical minimum height for ordinary repeated object rows. | `3rem` | `--bakin-layout-size-row` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/size/row` |
 | `semantic.layout.size.rowDense` | Minimum height for explicitly dense tables and operational rows; not a global density mode. | `2.5rem` | `--bakin-layout-size-row-dense` | Public semantic | Not applicable | [semantic.tokens.json](https://github.com/markhayden/bakin/blob/main/packages/ui/tokens/semantic.tokens.json) `#/semantic/layout/size/rowDense` |
 

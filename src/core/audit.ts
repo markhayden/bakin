@@ -23,7 +23,12 @@ export interface AuditEvent {
  *
  * Time-windowed queries (sinceMs) use a reverse chunked tail read that stops
  * at the first entry older than the cutoff — a 24h health check no longer
- * pays for the entire unbounded file. Unwindowed queries keep the full read.
+ * pays for the entire unbounded file. Unwindowed queries with a `limit` use
+ * the same tail read with no cutoff and stop at `limit` matches (a feed asking
+ * for the newest 50 reads a chunk or two, not the whole log). Only unwindowed,
+ * unlimited queries read the full file.
+ *
+ * `limit` must be a positive integer when given.
  */
 export function queryAuditEvents(
   contentDir: string,
@@ -44,10 +49,14 @@ export function queryAuditEvents(
   const auditFile = join(contentDir, 'audit.jsonl')
   if (!existsSync(auditFile)) return []
 
+  if (opts.limit !== undefined && !(Number.isInteger(opts.limit) && opts.limit > 0)) {
+    throw new RangeError(`queryAuditEvents: limit must be a positive integer (got ${opts.limit})`)
+  }
+
   const kinds = opts.kinds ? new Set(opts.kinds) : null
   const cutoff = opts.sinceMs !== undefined ? Date.now() - opts.sinceMs : null
 
-  if (cutoff !== null) {
+  if (cutoff !== null || opts.limit !== undefined) {
     return queryAuditEventsTail(auditFile, cutoff, kinds, opts.limit, opts.agent, opts.match)
   }
 
@@ -69,7 +78,7 @@ export function queryAuditEvents(
     results.push(entry)
   }
 
-  return opts.limit !== undefined ? results.slice(-opts.limit) : results
+  return results
 }
 
 const TAIL_CHUNK_BYTES = 64 * 1024
@@ -88,7 +97,10 @@ function parseAuditLine(line: string): AuditEvent | null {
 }
 
 /**
- * Reverse chunked read from EOF, parsing newest→oldest. The scan stops after
+ * Reverse chunked read from EOF, parsing newest→oldest. With no cutoff the
+ * scan runs until `limit` matches are collected (or the start of the file) and
+ * keeps entries whose `ts` does not parse — the full read keeps them too; only
+ * a cutoff excludes them. With a cutoff, the scan also stops after
  * a whole chunk yields no entry inside the window — the file is append-only
  * with (near-)monotonic timestamps, so once 64KB of consecutive entries are
  * all older than the cutoff, everything earlier is too. Chunk-level (rather
@@ -104,7 +116,7 @@ function parseAuditLine(line: string): AuditEvent | null {
  */
 function queryAuditEventsTail(
   auditFile: string,
-  cutoffMs: number,
+  cutoffMs: number | null,
   kinds: Set<string> | null,
   limit?: number,
   agent?: string,
@@ -144,11 +156,13 @@ function queryAuditEventsTail(
       for (let i = lines.length - 1; i >= 0; i--) {
         const entry = parseAuditLine(lines[i].toString('utf-8'))
         if (!entry) continue
-        const tsMs = Date.parse(entry.ts)
-        if (Number.isNaN(tsMs)) continue // matches full-read: excluded under a cutoff
-        sawValidEntry = true
-        if (tsMs < cutoffMs) continue
-        sawInWindow = true
+        if (cutoffMs !== null) {
+          const tsMs = Date.parse(entry.ts)
+          if (Number.isNaN(tsMs)) continue // matches full-read: excluded under a cutoff
+          sawValidEntry = true
+          if (tsMs < cutoffMs) continue
+          sawInWindow = true
+        }
         if (kinds && !kinds.has(entry.event)) continue
         if (agent !== undefined && entry.agent !== agent) continue
         if (match && !match(entry)) continue

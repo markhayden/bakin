@@ -20,7 +20,6 @@ function makeContext() {
     write: mock(),
     append: mock(),
     exists: mock(() => false),
-    readAll: mock(() => ({})),
   }
   const events = {
     emit: mock(),

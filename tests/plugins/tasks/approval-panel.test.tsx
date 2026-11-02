@@ -44,6 +44,18 @@ const navigate: TaskApproval = {
   request: { title: 'OpenAI auth expired', body: 'Renew the key.', options: [{ id: 'dismiss', label: 'Dismiss', variant: 'neutral' }] },
 }
 
+const pluginGate = (requireRejectReason?: boolean): TaskApproval => ({
+  ...base,
+  approvalId: 'projects:launch:complete:project:1',
+  owner: { kind: 'plugin-gate', taskId: 't-1', pluginId: 'projects', gateKind: 'complete', entityId: 'launch' },
+  request: {
+    title: 'Sign off: Launch the docs site',
+    body: 'All 6 steps are done. Approve to complete the project.',
+    options: [{ id: 'approve', label: 'Approve', variant: 'primary' }, { id: 'reject', label: 'Reject', variant: 'destructive' }],
+    ...(requireRejectReason === undefined ? {} : { context: { requireRejectReason } }),
+  },
+})
+
 function renderPanel(overrides: Partial<ApprovalPanelProps> = {}) {
   const props: ApprovalPanelProps = {
     approvals: [], loading: false, failed: false, busyApprovalId: null, error: null,
@@ -108,6 +120,45 @@ describe('ApprovalPanel', () => {
     expect(screen.getByRole('link', { name: /Open/ }).getAttribute('href')).toBe('/settings?tab=integrations')
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(props.onResolve).toHaveBeenCalledWith(navigate, 'dismiss')
+  })
+
+  it('plugin gate: title, summary and options come from the record; the primary option trails; approve resolves it', () => {
+    const approval = pluginGate(true)
+    const props = renderPanel({ approvals: [approval] })
+    expect(screen.getByText('Sign off: Launch the docs site')).toBeTruthy()
+    expect(screen.getByText('All 6 steps are done. Approve to complete the project.')).toBeTruthy()
+    const buttons = screen.getAllByRole('button').map((b) => b.textContent?.trim())
+    expect(buttons).toEqual(['Reject', 'Approve'])
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    expect(props.onResolve).toHaveBeenCalledWith(approval, 'approve')
+  })
+
+  it('plugin gate: reject opens the reason step — required when the record says so, optional otherwise', async () => {
+    const required = pluginGate(true)
+    const props = renderPanel({ approvals: [required] })
+    fireEvent.click(screen.getByRole('button', { name: /Reject/ }))
+    const confirm = screen.getAllByRole('button', { name: /Reject/ }).at(-1)!
+    expect((confirm as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'The changelog is missing' } })
+    fireEvent.click(confirm)
+    expect(props.onResolve).toHaveBeenCalledWith(required, 'reject', 'The changelog is missing')
+    document.body.replaceChildren()
+
+    const optional = pluginGate()
+    const second = renderPanel({ approvals: [optional] })
+    fireEvent.click(screen.getByRole('button', { name: /Reject/ }))
+    expect(screen.getByText('Rejection reason').parentElement?.textContent).toMatch(/optional/i)
+    fireEvent.click(screen.getAllByRole('button', { name: /Reject/ }).at(-1)!)
+    expect(second.onResolve).toHaveBeenCalledWith(optional, 'reject', undefined)
+  })
+
+  it('plugin gate: the pressed option shows busy, the others are disabled', () => {
+    const approval = pluginGate(true)
+    const { rerender } = render(<ApprovalPanel approvals={[approval]} loading={false} failed={false} busyApprovalId={null} error={null} onResolve={mock()} onRetry={mock()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    rerender(<ApprovalPanel approvals={[approval]} loading={false} failed={false} busyApprovalId={approval.approvalId} error={null} onResolve={mock()} onRetry={mock()} />)
+    expect(screen.getByRole('button', { name: 'Approve' }).getAttribute('aria-busy')).toBe('true')
+    expect((screen.getByRole('button', { name: /Reject/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('busy disables the decision being applied; an error shows inline on that approval only', () => {

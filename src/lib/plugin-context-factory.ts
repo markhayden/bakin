@@ -30,6 +30,12 @@ import { buildSearchAPI } from '../core/search-registry'
 import { createConversationTurnService, type ConversationTurnServiceConfig } from '@bakin/core/conversation/turns'
 import { getOperationRegistry } from '../core/operations'
 import { toPluginOperationInput } from '@bakin/core/operations'
+import { createPluginApprovalsAPI, getApprovalRecord, listApprovalRecords } from '@bakin/core/approvals'
+import { cancelApproval, requestApproval } from '../core/approvals/service'
+import { getSettings } from '../core/settings'
+import { registerPluginGate } from '../core/approvals/plugin-gates'
+import { taskUrl } from '../core/approvals/links'
+import { ApprovalResolveError } from '../core/approvals/errors'
 import { wrapPluginContextPermissions } from './plugin-permissions'
 import {
   createPluginAssetsAPI,
@@ -210,6 +216,26 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
         >
       },
     },
+    // Gates register into core's plugin-gate dispatcher (swept on deactivate
+    // and hot reload); requests go through the one approvals service.
+    approvals: createPluginApprovalsAPI(pluginId, {
+      // The one reject-reason setting rides the record like a workflow
+      // gate's, so the board and channel cards know whether to demand one.
+      request: (input) => requestApproval({
+        ...input,
+        request: {
+          ...input.request,
+          // The board link is every channel card's fallback (custom options
+          // may render without native buttons on some runtimes).
+          context: { ...input.request.context, requireRejectReason: getSettings().approvals.requireRejectReason, approvalUrl: taskUrl(input.owner.taskId) },
+        },
+      }),
+      get: (approvalId) => getApprovalRecord(approvalId),
+      listPending: () => listApprovalRecords({ status: 'pending', kind: 'plugin-gate' }),
+      cancel: (approvalId, reason) => cancelApproval(approvalId, reason),
+      registerGate: registerPluginGate,
+      refusal: (message, status) => new ApprovalResolveError(message, status),
+    }),
     hooks: {
       register: (name, handler, metadata) =>
         getHookRegistry().register(name, handler as (data: unknown) => unknown, { pluginId, metadata }),

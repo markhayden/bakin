@@ -29,6 +29,8 @@ export interface Task {
   projectId?: string
   /** Brand link (#419) — resolved lazily at dispatch, mirrors projectId. */
   brandId?: string
+  /** Free-form labels; a matching models routing tag override picks this task's model. */
+  tags?: string[]
   availableAt?: string
   dueAt?: string
   source?: TaskSource
@@ -77,6 +79,7 @@ export interface TaskCreateInput {
   workflowId?: string
   projectId?: string
   brandId?: string
+  tags?: string[]
   parentId?: string | null
   availableAt?: string
   dueAt?: string
@@ -98,6 +101,8 @@ export interface TaskUpdateInput {
   scheduleJobId?: string
   projectId?: string
   brandId?: string
+  /** Replaces the task's tags; `[]` clears them. */
+  tags?: string[]
   parentId?: string | null
   availableAt?: string | null
   dueAt?: string | null

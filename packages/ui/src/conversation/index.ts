@@ -1,5 +1,8 @@
-export { foldConversation } from './fold'
+export { foldConversation, formatQuestionAnswer } from './fold'
 export type {
+  BakinQuestion,
+  QuestionAnswer,
+  QuestionState,
   ConversationChunk,
   ConversationMessage,
   ConversationTextFormat,

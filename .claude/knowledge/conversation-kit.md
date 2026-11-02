@@ -7,6 +7,8 @@
 after mounting to inspect restored draft text; storage keys stay private to the
 composer. `isEmpty` describes text, not consumer-owned attachments. Consumers
 must also consider their attachment state when deciding to collapse a panel.
+The attach button is the control; its native file input is `aria-hidden` and
+out of tab order, so enabling attachments passes the plugin keyboard check.
 Hidden-but-preserved disclosures retain the panel mount and remove hidden controls
 from keyboard traversal. Give each panel a distinct title: contained history uses
 that title for its accessible region name. Standalone `Conversation` accepts
@@ -53,15 +55,110 @@ compact single-turn composition for task and workflow embeds.
 `foldConversation(messages: ConversationMessage[], {liveChunks, liveAgentId}?) → ConversationTurn[]` — pure, exhaustively tested (`tests/sdk/conversation-fold.test.ts`). Agent turns expose their `turnId` (#733 — the per-turn usage join key; undefined on legacy adjacency-grouped rows and live turns). Usage display helpers (`ConversationTurnUsage`, `formatTokenCount`, `formatUsageCost`, `usageFooterParts`, `usageFooterLines` — the #737 billed-first two-line builder; AgentTurn derives the ~request count from the turn's own activity items) live in `turn-usage.ts`, SDK-exported.
 
 - `ConversationMessage` — the storable row union (`user ± attachments | assistant | tool | error | aborted | done`, agent rows carry `turnId` + optional `agentId`). Chat's transcript v2 IS this shape; embedded surfaces map their storage onto it. `done` rows (#735 terminal markers) are INVISIBLE: the fold skips them with an early continue BEFORE the builder/turnId-split logic — they never split a turn or open a phantom empty one. Engine↔SDK row-union drift is compile-pinned by `tests/core/conversation-row-parity.test.ts`; the engine→chat schema direction rides the round-trip test in `tests/plugins/chat/sweep.test.ts`.
-- Item ORDER inside a turn is preserved (text/activity interleave in arrival order); consecutive tool chunks group into ONE activity item; call/result pairing by `callId` works ACROSS group boundaries; callId-less results close the most recent running same-tool call; orphan results settle standalone.
+- Item ORDER inside a turn is preserved (text/activity/question interleave in arrival order); consecutive tool chunks group into ONE activity item; call/result pairing by `callId` works ACROSS group boundaries; callId-less results close the most recent running same-tool call; orphan results settle standalone.
 - Turn status: `streaming | complete | error | aborted` + `statusLabel` (latest runtime status while streaming). The stream itself never signals abort (clean `done` per the runtime contract) — `aborted` comes from persisted rows.
+
+## Structured questions (projects revamp P1)
+
+An agent in a live conversation asks ONE question as an answerable card via
+the core exec tool `bakin_exec_ask_user({ question, options[2–5]{label,
+description?}, recommended?, allowOther? })` (`src/core/exec-tools/tools/ask-user.ts`).
+Spec: `.claude/specs/projects-revamp.md` D1–D6a.
+
+- **Why a side channel.** Neither runtime transport carries structured tool
+  output: Pi emits only a redacted one-line `summary`; OpenClaw clips previews
+  at 500 chars. So the tool validates (`packages/core/src/conversation/questions.ts`
+  — zod schema with field caps AND a 2 KB serialized cap measured on the
+  minted envelope, so an accepted input always parses), parks the question
+  in the in-process `questionRegistry` (10-min TTL, 256-entry cap evicting
+  the oldest orphan), and returns a SHORT
+  message LED by the token `bakin-question:<id>`.
+- **Engine enrichment.** The turn engine runs every runtime chunk through
+  `enrichQuestionChunk` BEFORE tap/emit/record: a `bakin_exec_ask_user`
+  result carrying the token gets `data.metadata.bakinQuestion` (full validated question) on the
+  live chunk event AND the persisted row (the recorder keeps `metadata`
+  unclipped). Proven through the REAL adapter mappings
+  (`tests/core/conversation-question-enrichment.test.ts`: Pi
+  `sessionEventChunks`, OpenClaw `OpenClawTurnChunkMachine`). Outside a
+  conversation turn (dispatch runs) nothing enriches → an ordinary tool row,
+  never a broken card. Enrichment CONSUMES the token (`registry.take`): a
+  replayed frame, or another tool reading a transcript/log that quotes the
+  token, never reopens an answered question. A turn that ENDS on a question previews
+  `Asked: <question>` on its done event (attention toasts/OS).
+- **Fold.** A tool row/chunk whose `metadata.bakinQuestion` passes the
+  structural guard (every rendered field type-checked against
+  `QUESTION_RENDER_LIMITS`, compile-pinned to core `QUESTION_LIMITS`) becomes a `{ type: 'question' }` turn item (live: the
+  running call is swapped out). State is DERIVED, never stored: the next user
+  turn answers it when it starts with the `formatQuestionAnswer` prefix
+  (`**<question>** → `), otherwise skips it; only the newest open card is
+  `answerable`. State derivation is one backward pass — linear in history.
+- **Card.** `QuestionCard` (kit-internal; AgentTurn renders it) composes
+  RadioGroup/Input/Badge/Button: recommendation LABELLED, never preselected;
+  "Something else…" (when allowed), "Not sure — help me choose", optional
+  note, explicit Answer (arrows select, Enter submits — handled explicitly
+  because Base UI radios swallow Enter); read-only while its turn streams,
+  while the thread is `busy` (surfaces pass their in-flight flag: a remount
+  mid-turn folds the persisted rows as settled), or when not answerable; answered/skipped collapse. The form is deliberately UNNAMED (a
+  named form is a landmark — a transcript of cards would duplicate them); the
+  radiogroup carries the question. Answers leave through
+  `Conversation.onAnswerQuestion` (ConversationPanel routes it to `onSend`) as
+  an ordinary readable user message. Story: Components/Conversation/Turns and
+  messages — `QuestionCards`.
+- **Type homes.** `BakinQuestion` lives in THREE sanctioned files — SDK
+  canonical (`packages/sdk/src/types/conversation.ts`), core zod
+  (`questions.ts`), ui structural (`fold.ts`) — pinned by the SDK's private
+  message-contract module and `tests/architecture/type-single-home.test.ts`.
+  Plugin servers validate with `parseBakinQuestion` from `@makinbakin/sdk/utils`.
+- **Out-of-turn rows.** `useConversationThread` takes `events.appended`
+  (idle thread refetches; a streaming thread waits for its settle refetch —
+  `settle` flips the streaming ref synchronously, because out-of-turn rows
+  flush AFTER the done event and an `appended` landing before the next render
+  must still refetch;
+  overlapping loads apply in START order: a response older than the one on
+  screen is dropped, and a failed newer load never blocks an older success) and
+  `useConversationAttention` takes `events.appended` (a payload `notice:
+  { agentId, preview }` announces through the same path as a finished reply).
+  Chat counts a question row as an unread reply (`plugins/chat/lib/store.ts`).
+- **Server side: `appendExternal(ctx, key, rows, notice?)`** (projects revamp
+  P3a, spec D24a) shares the engine's admission state and resolves
+  `{ status, written }`. Idle slot → rows append in order, then
+  `events.appended` fires `{ ...payload(key), notice? }` (`status:
+  'appended'`; a failed write THROWS and announces nothing). Turn in flight →
+  `status: 'queued'` at once (never awaits the live turn, so a tool call
+  inside that turn cannot deadlock — and must not await `written`, which
+  settles only when the rows are durable and rejects on a failed write). Each
+  batch is announced only when all its rows persisted; a failed batch is
+  rejected, never announced. Queued rows flush at slot release BEFORE the next
+  admission: the flush reserves its guard BEFORE any writer or listener runs
+  (a synchronous `appended` listener or re-entrant appendRow joins it, never
+  starts a second flush) and only the owning flush clears it; every release
+  (turn settle, a failed user-row write at admission, a flush's own teardown —
+  which re-checks for batches that arrived after its last loop check) goes
+  through `releaseSlot` (flush first, else drain);
+  a running flush OCCUPIES the slot like a turn — an append made while it
+  writes (from a listener, or an appendRow that awaits a nested append)
+  returns `queued` at once and joins the loop, never awaits the flush it is
+  inside; `start()` waits out any running flush before its synchronous busy check;
+  Accepted rows and notice are SNAPSHOTTED (structuredClone) before the call
+  returns — a caller reusing its buffer after `queued` changes nothing.
+  `waitFor()` covers the flush AND an in-progress admission (the reserved
+  entry's promise settles to the launched turn, or to the release flush when
+  the user-row write fails). Every settle shape (done/error/abort) flushes —
+  pinned in the settle-shape matrix of `tests/core/conversation-turns.test.ts`
+  (plus a microtask-delay sweep for the flush-tail window). Rows carry their own
+  `turnId` + `agentId` (both optional fields on assistant/tool rows) so the
+  fold renders a separate agent turn. `events.appended` joins the
+  user-plugin namespace guard. Reference consumer: Bits Projects' steward
+  tools (`bakin_exec_projects_checkin` / `_request_input`, README § Check-ins)
+  — rows on a `steward:<taskId>` turn attributed to the check-in's frozen
+  assignee, `written` never awaited from a tool call.
 
 ## Components
 
 | Export | Role |
 |---|---|
-| `Conversation` | Scroll container: stick-to-bottom, jump pill, day separators, hover timestamps; `turnUsage` (turnId → `ConversationTurnUsage`) plumbs opt-in usage footers (#733) |
-| `AgentTurn` | Avatar ALWAYS present (incl. thinking), name header, items in order, error footer + `onRetry` (`Conversation` passes it ONLY to the final turn — retry re-sends the newest user message, so a mid-transcript button would resend the wrong one; #735), aborted notice, copy; opt-in `usage` prop → muted footer (`14.2k in / 890 out · $0.03 · model-tail`; costUsd is server-gated to metered lanes, absent = no footer, never while streaming) |
+| `Conversation` | Scroll container: stick-to-bottom, jump pill, day separators, hover timestamps; `turnUsage` (turnId → `ConversationTurnUsage`) plumbs opt-in usage footers (#733); `onAnswerQuestion` sends question-card answers (omit = read-only cards) |
+| `AgentTurn` | Avatar ALWAYS present (incl. thinking), name header, items in order, error footer + `onRetry` (`Conversation` passes it ONLY to the final turn — retry re-sends the newest user message, so a mid-transcript button would resend the wrong one; #735), aborted notice, question cards (`onAnswerQuestion`), copy; opt-in `usage` prop → muted footer (`14.2k in / 890 out · $0.03 · model-tail`; costUsd is server-gated to metered lanes, absent = no footer, never while streaming) |
 | `UserMessage` | Right-aligned contrast-safe bubble, attachment thumbnails (images) + download chips (files, `data-conv-file-chip`), copy |
 | `ActivityGroup` | Collapsed header (`humanizeActivity`: 'Searched the web · 3 calls · 12s', spinner live, failed marker) → inline rows → `onOpenCall` |
 | `ToolCallDrawer` | Drawer: status/duration/callId + pretty-printed copyable input/output/metadata (+ honest truncated marker) |
@@ -69,9 +166,9 @@ compact single-turn composition for task and workflow embeds.
 | `QueuedMessageList` | Queued follow-up bubbles (Queued badge, remove ×) rendered by consumers BETWEEN Conversation and Composer — never via foldConversation (queued items belong below the live turn); `onRemove(item)` hands the whole item back so the surface restores its text into an EMPTY composer (spec D8) |
 | `ContextMeter` | The compaction bar (#737): slim fill + reading (`45.3k / 272k (17%)`, amber ≥70%/red ≥90%, threshold tick when the runtime reports one), number-only when the window is unknown, `context — (compacted 2m ago)` during a post-compaction gap, NOTHING when nothing is honest; fill clamps at 100%. Feed it `RuntimeSessionContextStats`-shaped data from `sessions.contextStats` ONLY — never billing aggregates |
 | `ConversationPanel` | The embedded mode (above) |
-| `ThinkingIndicator` / `ConversationEmptyState` | Standalone avatar+shimmer; designed empty state with suggestion chips |
-| `useConversationThread` | THE client hook for engine consumers (#703): synchronous optimistic user echo, bus-event streaming with text-delta coalescing, active-thread guards, settle-by-refetch, optional server-seeded `streaming` rehydration, chat's failed-send semantics (state rollback, optimistic row stays, `sendError`). Queue opt-in (#732): `queue: { enabled, queuedEvent?, startedEvent?, remove? }` — streaming sends POST instead of refusing, a `{ queued: { id } }` post result records an optimistic queued row (server id — nothing optimistic before the 202), `load()`'s `queued[]` hydrates, queued/started events refetch queue state (drain-race coverage), `removeQueued(id)` returns the removed item for composer restore. Default stays the strict refusal |
-| `useConversationAttention` | Provider building block for `nav-badge-providers` slots: green unread-only `badgeFor` nav dot, retained-state reconnect/resume recovery, optional `(N)` title prefix, toast/chime/OS fanout via the pure rules |
+| `ThinkingIndicator` / `ConversationEmptyState` | Standalone avatar+shimmer; designed empty state with suggestion chips (`headingLevel` 2–4, default 3 — match the page outline: directly under a page `h1` it is 2) |
+| `useConversationThread` | THE client hook for engine consumers (#703): synchronous optimistic user echo, bus-event streaming with text-delta coalescing, active-thread guards, settle-by-refetch, optional server-seeded `streaming` rehydration, chat's failed-send semantics (state rollback, optimistic row stays, `sendError`). Queue opt-in (#732): `queue: { enabled, queuedEvent?, startedEvent?, remove? }` — streaming sends POST instead of refusing, a `{ queued: { id } }` post result records an optimistic queued row (server id — nothing optimistic before the 202), `load()`'s `queued[]` hydrates, queued/started events refetch queue state (drain-race coverage), `removeQueued(id)` returns the removed item for composer restore. Default stays the strict refusal. `events.appended` refetches out-of-turn rows while idle |
+| `useConversationAttention` | Provider building block for `nav-badge-providers` slots: green unread-only `badgeFor` nav dot, retained-state reconnect/resume recovery, optional `(N)` title prefix, toast/chime/OS fanout via the pure rules; `events.appended` notices announce like replies |
 | `attentionForDone` / `badgeFor` / `withUnreadPrefix` / `visibleIdFromLocation` / `playReplyChime` | Pure attention rules + the reply chime (generalized from chat's S6 matrix; chat's `attention.ts` is a facade over these) |
 
 Server helpers (`@makinbakin/sdk/utils`, re-exported from `@bakin/core/conversation/{thread-id,turn-recorder}`; the recorder emits the canonical `ConversationMessage` rows of `@makinbakin/sdk/types`, of which the dependency-free ui package keeps a structural copy pinned by a private contract module): `conversationThreadId(scope, entityId, agentId)` and `createTurnRecorder({turnId, agentId?})` — chunks → persistable rows (`ingest`/`drain`/`finish`; drain enables crash-safe incremental persistence; previews clipped at 2000/500 chars with `metadata.truncated`). Chat's stream bridge and the bits plugins' routes share these — ONE implementation of "what survives a turn".
@@ -84,5 +181,5 @@ Server helpers (`@makinbakin/sdk/utils`, re-exported from `@bakin/core/conversat
 
 - `MarkdownContent` (used by text items): rehype-highlight (lowlight common subset) with language label + copy button, lazy images + lightbox portal, `<video>` for video URLs, safe external links.
 - Media prep for attachments: `@bakin/core/media/downscale` (`prepareImageAttachment` — the ONE pre-send seam shared with assets enrichment; 2 MB inline cap, rasterizes non-raster images, typed `ImageNotSendableError`, `owned` temp files); raster lane eligibility is `isVisionRasterMime` from `@bakin/core/media/image-format` (the engine's `isRasterAttachment` uses it); loader `@bakin/core/media/sharp-loader`.
-- Consumers: chat plugin (`.claude/knowledge/chat-plugin.md`), bits messaging/projects (external repo), task step viewer + workflow step drawer (via `TurnOutputView` wrapper).
+- Consumers: chat plugin (`.claude/knowledge/chat-plugin.md`), bits messaging/projects (external repo), task step viewer + workflow step drawer (via `TurnOutputView` wrapper). Bits Projects is the docked-panel reference: ONE `ConversationPanel` mounted either full width on its Conversation tab or inside the `PageAside width="conversation" side="end"` dock (shared `storageKey` carries the draft across the remount), `busy`/`onAnswerQuestion` question cards for its shaping posture, and composer `attachments` that attach to the project rather than the message.
 - Testing: kit component suites under `tests/components/` (`conversation-kit`, `activity-group-drawer`, `composer`, `conversation-panel`), fold/stream units under `tests/sdk/`.

@@ -76,6 +76,7 @@ import workflowsPlugin from '../../../plugins/workflows'
 import { clearSourceRegistry, registerPluginDefinition } from '@bakin/core/workflows/source-registry'
 import { resetWorkflowAvailabilityCache, setWorkflowDisabled } from '../../../plugins/workflows/lib/availability'
 import { createConversationTurnService } from '../../../packages/core/src/conversation/turns'
+import { createMemoryApprovalsBackend, createPluginApprovalsAPI } from '../../../packages/core/src/approvals/plugin-api'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -110,6 +111,7 @@ function makeCtx(): CapturedCtx {
       start: async () => { throw new Error('ctx.operations is not used by this test') },
       await: async () => { throw new Error('ctx.operations is not used by this test') },
     },
+    approvals: createPluginApprovalsAPI('workflows', createMemoryApprovalsBackend()),
     conversations: {
       createTurnService: (config) => createConversationTurnService(config as unknown as Parameters<typeof createConversationTurnService>[0]) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
     },

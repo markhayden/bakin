@@ -11,7 +11,7 @@
 
 export interface ApprovalPendingPayload {
   approvalId: string
-  kind: 'workflow-gate' | 'health-repair' | 'health-navigate' | string
+  kind: 'workflow-gate' | 'health-repair' | 'health-navigate' | 'plugin-gate' | string
   taskId: string
   title?: string
 }
@@ -38,6 +38,7 @@ const KIND_TITLES: Record<string, string> = {
   'workflow-gate': 'Approval needed',
   'health-repair': 'Repair needs your approval',
   'health-navigate': 'Health needs your attention',
+  'plugin-gate': 'Sign-off needed',
 }
 
 export function attentionForApproval(

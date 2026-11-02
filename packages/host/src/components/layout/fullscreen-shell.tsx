@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Outlet } from '@tanstack/react-router'
-import { useContentStore, useFullscreen, usePathname } from '@makinbakin/sdk/hooks'
+import { useHostStore, useFullscreen, usePathname } from '@makinbakin/sdk/hooks'
 import { Header } from './header'
 import { AppSidebar } from './app-sidebar'
 import { LayoutShell } from './layout-shell'
@@ -12,12 +12,12 @@ import { LayoutShell } from './layout-shell'
  */
 export function FullscreenShell() {
   const { active, exit } = useFullscreen()
-  const holder = useContentStore((state) => state.fullscreen)
+  const holder = useHostStore((state) => state.fullscreen)
   const pathname = usePathname()
   useEffect(() => { if (holder !== null && holder !== pathname) exit() }, [holder, pathname, exit])
   useEffect(() => {
     // Esc held, F11, the system: the browser left full screen, so the shell does too.
-    const changed = () => { if (!document.fullscreenElement && useContentStore.getState().fullscreen !== null) exit() }
+    const changed = () => { if (!document.fullscreenElement && useHostStore.getState().fullscreen !== null) exit() }
     document.addEventListener('fullscreenchange', changed)
     return () => document.removeEventListener('fullscreenchange', changed)
   }, [exit])

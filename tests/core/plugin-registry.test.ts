@@ -183,7 +183,7 @@ describe('PluginRegistryImpl', () => {
   // Helpers
 
   function mockStorage() {
-    return { read: mock(), write: mock(), append: mock(), exists: mock(), readAll: mock() }
+    return { read: mock(), write: mock(), append: mock(), exists: mock() }
   }
 
   function mockEvents() {
@@ -546,6 +546,22 @@ describe('PluginRegistryImpl', () => {
       // Uninstall is the destructive path: the table registration is retired.
       await pluginRegistry.deactivatePlugin('things', { callShutdown: true, removeState: true })
       expect(tableStatus(logical)).toBeNull()
+    })
+
+    it('ctx.approvals gates are swept by suspend (disable / hot reload) and by deactivate (spec D26)', async () => {
+      const { hasPluginGate } = await import('@/core/approvals/plugin-gates')
+      const activate = `ctx.approvals.registerGate('complete', { ownerState: () => 'live', onResolve: () => {} })`
+      const pluginDir = writeUserPlugin('gated', { activate })
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+      expect(hasPluginGate('gated', 'complete')).toBe(true)
+
+      expect(await pluginRegistry.suspendPlugin('gated')).toBe(true)
+      expect(hasPluginGate('gated', 'complete')).toBe(false)
+
+      await pluginRegistry.activateUserPluginFromDir(pluginDir, { cacheBust: true })
+      expect(hasPluginGate('gated', 'complete')).toBe(true)
+      await pluginRegistry.deactivatePlugin('gated', { callShutdown: false })
+      expect(hasPluginGate('gated', 'complete')).toBe(false)
     })
 
     it('registerWorkflow cross-plugin id collision THROWS and fails activation (R18)', async () => {

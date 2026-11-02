@@ -145,6 +145,8 @@ export interface BakinTaskStoreEvent {
   type: 'created' | 'updated' | 'deleted'
   taskId: string
   task?: BakinTask
+  /** Set on an `updated` event only when the write moved the task to a different column. */
+  previousColumn?: string
 }
 
 export interface BakinTaskStore {
@@ -347,12 +349,17 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
     return task
   }
 
-  function writeUpdated(task: BakinTask, eventType: BakinTaskStoreEvent['type'] = 'updated'): BakinTask {
+  function writeUpdated(task: BakinTask, previousColumn?: string): BakinTask {
     // Single write chokepoint — every mutation bumps the optimistic
     // concurrency counter alongside updatedAt.
     const next = { ...task, updatedAt: new Date().toISOString(), version: (task.version ?? 0) + 1 }
     writeTask(next)
-    emit({ type: eventType, taskId: next.id, task: next })
+    emit({
+      type: 'updated',
+      taskId: next.id,
+      task: next,
+      ...(previousColumn !== undefined && previousColumn !== next.column ? { previousColumn } : {}),
+    })
     return next
   }
 
@@ -492,7 +499,7 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
       const order = patch.column !== undefined && patch.column !== current.column && patch.order === undefined
         ? { order: store.nextOrderSync(patch.column) }
         : {}
-      return writeUpdated({ ...current, ...patch, ...order })
+      return writeUpdated({ ...current, ...patch, ...order }, current.column)
     },
 
     removeSync(id) {

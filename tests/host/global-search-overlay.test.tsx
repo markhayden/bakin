@@ -229,8 +229,8 @@ describe('GlobalSearchOverlay', () => {
 
     // require() (not a top-level import) so the store loads through the same
     // already-initialized module graph as the component under test.
-    const { useContentStore } = require('../../packages/sdk/src/hooks/use-content-store')
-    act(() => { useContentStore.setState({ debug: false }) })
+    const { useHostStore } = require('../../packages/sdk/src/hooks/use-host-store')
+    act(() => { useHostStore.setState({ debug: false }) })
     await act(async () => {
       render(<GlobalSearchOverlay />)
     })
@@ -241,9 +241,9 @@ describe('GlobalSearchOverlay', () => {
     expect(screen.queryAllByTestId('score-overlay').length).toBe(0)
 
     // flip debug on — badges appear without a re-search
-    act(() => { useContentStore.setState({ debug: true }) })
+    act(() => { useHostStore.setState({ debug: true }) })
     await waitFor(() => expect(screen.queryAllByTestId('score-overlay').length).toBeGreaterThan(0))
-    act(() => { useContentStore.setState({ debug: false }) })
+    act(() => { useHostStore.setState({ debug: false }) })
     await settleReact()
   })
 

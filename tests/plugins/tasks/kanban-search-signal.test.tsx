@@ -165,12 +165,6 @@ mock.module('../../../plugins/tasks/hooks/use-live-activity', () => ({
   useLiveActivity: () => ({}),
 }))
 
-let contentLoading = false
-
-mock.module('../../../packages/sdk/src/hooks/use-content-store', () => ({
-  useContentStore: () => contentLoading,
-}))
-
 mock.module('../../../packages/sdk/src/hooks/use-toast', () => ({
   toast: mock(),
   useToastStore: Object.assign(mock(() => []), { getState: () => ({ add: mock(), clear: mock() }) }),
@@ -246,7 +240,6 @@ function stubFetch(searchImpl: () => Response, board = BOARD) {
 }
 
 beforeEach(() => {
-  contentLoading = false
   for (const key of Object.keys(queryStateDefaults)) delete queryStateDefaults[key]
 })
 
@@ -291,8 +284,11 @@ describe('KanbanBoard — search signals', () => {
   })
 
   it('keeps the page identity visible while only the result region is loading', async () => {
-    contentLoading = true
-    stubFetch(() => json({ results: [], aggregations: {} }))
+    // The board's own fetch is the only thing it waits on — hold it open.
+    vi.stubGlobal('fetch', mock((url: string | URL) => {
+      if (String(url).includes('/search')) return Promise.resolve(json({ results: [], aggregations: {} }))
+      return new Promise<Response>(() => {})
+    }))
 
     await act(async () => {
       render(<KanbanBoard />)

@@ -37,6 +37,10 @@
   --bakin-layout-gap-page: 2rem;
   --bakin-layout-gap-section: 1.5rem;
   --bakin-layout-size-control: 2.25rem;
+  --bakin-layout-size-rail-conversation: 22.5rem;
+  --bakin-layout-size-rail-nav: 13rem;
+  --bakin-layout-size-rail-session: 18rem;
+  --bakin-layout-size-rail-strip: 3.25rem;
   --bakin-layout-size-row: 3rem;
   --bakin-layout-size-row-dense: 2.5rem;
   --bakin-layout-space-0: 0px;

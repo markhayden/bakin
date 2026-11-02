@@ -68,7 +68,8 @@ export function locateExtractedPlugin(marker: string): string | undefined {
 function walkFiles(dir: string): string[] {
   const files: string[] = []
   for (const file of walkFileTree(dir, { skipDirs: ['node_modules', 'dist', '.astro'] })) {
-    if (/\.(ts|tsx)$/.test(file.name)) files.push(file.path)
+    // Tests register hooks and tools against harness contexts — never the documented surface.
+    if (/\.(ts|tsx)$/.test(file.name) && !/\.test\.tsx?$/.test(file.name)) files.push(file.path)
   }
   return files
 }

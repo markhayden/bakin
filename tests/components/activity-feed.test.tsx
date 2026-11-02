@@ -22,7 +22,7 @@ import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
   ...realSdkHooks,
   useAgent: (agent: string) => ({ id: agent, name: 'Patch' }),
-  useContentStore: (selector: (state: { activityEvents: ActivityEvent[]; debug: boolean }) => unknown) => selector({ activityEvents, debug: false }),
+  useHostStore: (selector: (state: { activityEvents: ActivityEvent[]; debug: boolean }) => unknown) => selector({ activityEvents, debug: false }),
 }))
 
 mock.module('@/components/agent-avatar', () => ({

@@ -362,6 +362,40 @@ describe('extractReplyText', () => {
     expect(extractReplyText([{ kind: 'user', ts: '1', content: 'q' }])).toBe('')
   })
 
+  const asked = {
+    v: 1, id: 'q_0123456789abcdef', question: 'Which inbox are we cleaning?',
+    options: [{ label: 'Personal Gmail', description: 'Fastest win.' }, { label: 'Personal and work' }],
+    recommended: 0, allowOther: true,
+  }
+  const askedText = [
+    '**Which inbox are we cleaning?**',
+    '1. Personal Gmail (recommended) — Fastest win.',
+    '2. Personal and work',
+    'Reply with a number, your own answer, or "not sure".',
+  ].join('\n')
+
+  it('a turn that ends on a question relays the question as text', () => {
+    expect(extractReplyText([
+      { kind: 'user', ts: '1', content: 'help me clean my inbox' },
+      { kind: 'tool', ts: '2', toolName: 'bakin_exec_ask_user', status: 'completed', metadata: { bakinQuestion: asked } },
+    ])).toBe(askedText)
+  })
+
+  it('text and a question keep transcript order', () => {
+    expect(extractReplyText([
+      { kind: 'user', ts: '1', content: 'help me clean my inbox' },
+      { kind: 'assistant', ts: '2', content: 'Scope first.' },
+      { kind: 'tool', ts: '3', toolName: 'bakin_exec_ask_user', status: 'completed', metadata: { bakinQuestion: asked } },
+    ])).toBe(`Scope first.\n\n${askedText}`)
+  })
+
+  it('a malformed question stays out of the reply', () => {
+    expect(extractReplyText([
+      { kind: 'user', ts: '1', content: 'q' },
+      { kind: 'tool', ts: '2', toolName: 'bakin_exec_ask_user', status: 'completed', metadata: { bakinQuestion: { v: 1, question: 'no id' } } },
+    ])).toBe('')
+  })
+
   it('handles drained combined turns (consecutive user rows before the reply)', () => {
     expect(extractReplyText([
       { kind: 'user', ts: '1', content: 'first queued' },

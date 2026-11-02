@@ -21,6 +21,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 import { act, renderHook, waitFor } from '@testing-library/react'
 import '../rtl-settle'
+import { waitUntil } from '../helpers/wait'
 
 import { useConversationThread, type ConversationMessage } from '@makinbakin/sdk/conversation'
 import { emitPluginEvent } from '@makinbakin/sdk/hooks'
@@ -410,5 +411,89 @@ describe('review-hardening guards (#703)', () => {
     // Thread A's transcript must never render under thread "gone".
     expect(result.current.messages).toEqual([])
     expect(result.current.meta).toBeNull()
+  })
+})
+
+describe('appended rows (projects revamp D24a)', () => {
+  it('an appended event for the idle active thread refetches the transcript', async () => {
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', { events: { ...EVENTS, appended: 'probe.appended' } })
+    await waitFor(() => expect(store.loads).toEqual(['a']))
+    store.transcripts.set('a', [{ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 'steward:t1', content: 'Checked in.' }])
+    await act(async () => { emitPluginEvent({ event: 'probe.appended', threadKey: 'a' }) })
+    await waitFor(() => expect(result.current.messages).toHaveLength(1))
+    // Other threads are ignored.
+    await act(async () => { emitPluginEvent({ event: 'probe.appended', threadKey: 'b' }) })
+    expect(store.loads).toEqual(['a', 'a'])
+  })
+
+  it('an appended event mid-stream never settles or refetches over the live turn', async () => {
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', { events: { ...EVENTS, appended: 'probe.appended' } })
+    await waitFor(() => expect(store.loads).toEqual(['a']))
+    await act(async () => { emitPluginEvent({ event: 'probe.chunk', threadKey: 'a', chunk: { type: 'text', content: 'working' } }) })
+    expect(result.current.streaming).toBe(true)
+    await act(async () => { emitPluginEvent({ event: 'probe.appended', threadKey: 'a' }) })
+    expect(result.current.streaming).toBe(true)
+    expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'working' }])
+    expect(store.loads).toEqual(['a'])
+  })
+
+  it('done then appended in the SAME tick (before a render) still refetches — the flush lands after the settle load', async () => {
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', { events: { ...EVENTS, appended: 'probe.appended' } })
+    await waitFor(() => expect(store.loads).toEqual(['a']))
+    await act(async () => { emitPluginEvent({ event: 'probe.chunk', threadKey: 'a', chunk: { type: 'text', content: 'reply' } }) })
+    expect(result.current.streaming).toBe(true)
+    await act(async () => {
+      // The settle load reads storage BEFORE the out-of-turn rows flush…
+      store.transcripts.set('a', [{ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 't1', content: 'reply' }])
+      emitPluginEvent({ event: 'probe.done', threadKey: 'a' })
+      // …then the flush writes them and announces, before any re-render.
+      store.transcripts.set('a', [
+        { kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 't1', content: 'reply' },
+        { kind: 'assistant', ts: '2026-07-20T00:00:02Z', turnId: 'steward:t2', content: 'question' },
+      ])
+      emitPluginEvent({ event: 'probe.appended', threadKey: 'a' })
+    })
+    await waitFor(() => expect(result.current.messages.map((m) => (m as { content: string }).content)).toEqual(['reply', 'question']))
+    expect(store.loads).toEqual(['a', 'a', 'a'])
+  })
+
+  it('overlapping loads apply in start order — an older response never erases a newer one', async () => {
+    const row = (content: string): ConversationMessage => ({ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 't', content })
+    // Each load parks on a deferred the test resolves out of order.
+    const pending: Array<(messages: ConversationMessage[]) => void> = []
+    const load = (_k: string) => new Promise<{ messages: ConversationMessage[] }>((resolve) => {
+      pending.push(messages => resolve({ messages }))
+    })
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', { events: { ...EVENTS, appended: 'probe.appended' }, load })
+    await waitUntil(() => pending.length === 1, { label: 'mount load started' })
+    await act(async () => { emitPluginEvent({ event: 'probe.appended', threadKey: 'a' }) })
+    await act(async () => { emitPluginEvent({ event: 'probe.appended', threadKey: 'a' }) })
+    expect(pending).toHaveLength(3)
+
+    // Newest first: it shows both rows.
+    await act(async () => { pending[2]!([row('first'), row('question')]) })
+    expect(result.current.messages.map(m => (m as { content: string }).content)).toEqual(['first', 'question'])
+    // The older snapshots land late and are dropped.
+    await act(async () => { pending[1]!([row('first')]) })
+    await act(async () => { pending[0]!([]) })
+    expect(result.current.messages).toHaveLength(2)
+  })
+
+  it('a failed newer load never blocks an older success', async () => {
+    const pending: Array<{ resolve: (messages: ConversationMessage[]) => void; reject: (error: Error) => void }> = []
+    const load = (_k: string) => new Promise<{ messages: ConversationMessage[] }>((resolve, reject) => {
+      pending.push({ resolve: messages => resolve({ messages }), reject })
+    })
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', { events: { ...EVENTS, appended: 'probe.appended' }, load })
+    await waitUntil(() => pending.length === 1, { label: 'mount load started' })
+    await act(async () => { emitPluginEvent({ event: 'probe.appended', threadKey: 'a' }) })
+    await act(async () => { pending[1]!.reject(new Error('server restarting')) })
+    await act(async () => { pending[0]!.resolve([{ kind: 'user', ts: '2026-07-20T00:00:00Z', content: 'hi' }]) })
+    expect(result.current.messages).toHaveLength(1)
   })
 })

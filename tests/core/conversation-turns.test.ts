@@ -123,6 +123,19 @@ describe('conversation turn service', () => {
     expect(h.events.map((e) => e.event)).toEqual(['test.started', 'test.chunk', 'test.done'])
   })
 
+  test('a throwing started emit never strands the slot: the turn still runs and settles', async () => {
+    const h = makeHarness()
+    const service = makeService(h, {
+      events: { chunk: 'test.chunk', done: 'test.done', error: 'test.error', started: 'test.started' },
+      payload: () => { throw new Error('payload exploded') },
+    })
+    // payload() also feeds chunk/done; the done emit is already guarded.
+    expect(await service.start(h.ctx, 't-throw', 'hello')).toBe('accepted')
+    await service.waitFor('t-throw')
+    expect(service.isInFlight('t-throw')).toBe(false)
+    expect((h.rows.get('t-throw') ?? []).map((r) => r.kind)).toContain('user')
+  })
+
   test('no started event configured → none emitted (optional wire contract)', async () => {
     const h = makeHarness()
     const service = makeService(h)
@@ -1159,5 +1172,343 @@ describe('conversation turn service — terminal marker rows (#735)', () => {
     const rows = h.rows.get('m6') ?? []
     expect(rows.some((r) => r.kind === 'done')).toBe(false)
     expect(rows[rows.length - 1]?.kind).toBe('assistant')
+  })
+})
+
+describe('conversation turn service — out-of-turn appends (appendExternal)', () => {
+  const APPENDED_EVENTS = { chunk: 'test.chunk', done: 'test.done', error: 'test.error', appended: 'test.appended' }
+
+  function externalRows(tag: string): ConversationTurnRow[] {
+    return [
+      { kind: 'assistant', ts: new Date().toISOString(), turnId: `ext-${tag}`, agentId: 'lead', content: `check-in ${tag}` },
+      { kind: 'tool', ts: new Date().toISOString(), turnId: `ext-${tag}`, agentId: 'lead', toolName: 'bakin_exec_ask_user', status: 'completed' },
+    ]
+  }
+
+  function contents(rows: ConversationTurnRow[] | undefined): string[] {
+    return (rows ?? []).map((r) => ('content' in r ? `${r.kind}:${r.content}` : r.kind))
+  }
+
+  function gated(h: Harness, chunks: ChatChunk[], end: ChatChunk = { type: 'done' } as ChatChunk) {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    h.setStream(async function* () {
+      for (const c of chunks) yield c
+      await gate
+      yield end
+    })
+    return () => release()
+  }
+
+  test('idle slot: rows land now, appended fires once with the notice', async () => {
+    const h = makeHarness()
+    const service = makeService(h, { events: APPENDED_EVENTS })
+    const notice = { agentId: 'lead', preview: 'Which launch date?' }
+
+    expect(await service.appendExternal(h.ctx, 'x1', externalRows('a'), notice)).toMatchObject({ status: 'appended' })
+
+    expect(contents(h.rows.get('x1'))).toEqual(['assistant:check-in a', 'tool'])
+    expect(h.events).toEqual([{ event: 'test.appended', data: { threadKey: 'x1', notice } }])
+  })
+
+  test('no appended event configured: rows still land, nothing is emitted', async () => {
+    const h = makeHarness()
+    const service = makeService(h)
+    expect(await service.appendExternal(h.ctx, 'x2', externalRows('a'))).toMatchObject({ status: 'appended' })
+    expect(contents(h.rows.get('x2'))).toEqual(['assistant:check-in a', 'tool'])
+    expect(h.events).toEqual([])
+  })
+
+  for (const shape of ['done', 'error', 'abort'] as const) {
+    test(`turn in flight (${shape} settle): queued immediately, flushed after the turn's rows, appended after its terminal event`, async () => {
+      const h = makeHarness()
+      const end = shape === 'error'
+        ? ({ type: 'error', content: 'boom' } as ChatChunk)
+        : ({ type: 'done' } as ChatChunk)
+      const release = gated(h, [{ type: 'text', content: 'thinking' } as ChatChunk], end)
+      const service = makeService(h, { events: APPENDED_EVENTS })
+      expect(await service.start(h.ctx, 'x3', 'hello')).toBe('accepted')
+      await waitUntil(() => service.inflightPreview('x3') === 'thinking', { label: 'turn streaming' })
+
+      // Never waits on the live turn — it resolves while the stream is gated.
+      expect(await service.appendExternal(h.ctx, 'x3', externalRows('q'))).toMatchObject({ status: 'queued' })
+      expect(contents(h.rows.get('x3'))).not.toContain('assistant:check-in q')
+
+      if (shape === 'abort') service.abort('x3')
+      release()
+      await service.waitFor('x3')
+
+      const rows = contents(h.rows.get('x3'))
+      expect(rows.slice(-2)).toEqual(['assistant:check-in q', 'tool'])
+      expect(rows.indexOf('assistant:check-in q')).toBeGreaterThan(rows.indexOf('user:hello'))
+      const names = h.events.map((e) => e.event)
+      const terminal = shape === 'error' ? 'test.error' : 'test.done'
+      expect(names).toContain(terminal)
+      expect(names.filter((n) => n === 'test.appended')).toHaveLength(1)
+      expect(names.indexOf('test.appended')).toBeGreaterThan(names.lastIndexOf(terminal))
+    })
+  }
+
+  test('flush precedes the next admission: queued send drains BEHIND the external rows', async () => {
+    const h = makeHarness()
+    const scripts: Array<() => AsyncIterable<ChatChunk>> = []
+    h.setStream(() => (scripts.shift() ?? (async function* () { yield { type: 'done' } as ChatChunk }))())
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    scripts.push(async function* () {
+      await gate
+      yield { type: 'text', content: 'first reply' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    const service = makeService(h, { events: APPENDED_EVENTS, queue: {} })
+
+    expect(await service.start(h.ctx, 'x4', 'first')).toBe('accepted')
+    expect(await service.appendExternal(h.ctx, 'x4', externalRows('q'))).toMatchObject({ status: 'queued' })
+    expect(await service.start(h.ctx, 'x4', 'follow-up', { queueIfBusy: true })).toMatchObject({ queued: true })
+
+    release()
+    await waitUntil(() => contents(h.rows.get('x4')).includes('user:follow-up') && !service.isInFlight('x4'), { label: 'drained turn settled' })
+    expect(contents(h.rows.get('x4'))).toEqual([
+      'user:first', 'assistant:first reply',
+      'assistant:check-in q', 'tool',
+      'user:follow-up',
+    ])
+    expect(h.seenArgs).toHaveLength(2)
+  })
+
+  test('a start() racing a slow idle flush lands its user row after the external rows', async () => {
+    const h = makeHarness()
+    let releaseWrite!: () => void
+    const writeGate = new Promise<void>((r) => { releaseWrite = r })
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: async (key, row) => {
+        if ('turnId' in row && row.turnId === 'ext-slow') await writeGate
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+      },
+    })
+
+    const appended = service.appendExternal(h.ctx, 'x5', externalRows('slow'))
+    const started = service.start(h.ctx, 'x5', 'hello')
+    await settleFor(20, 'start() must wait out the parked flush, not reserve around it')
+    expect(service.isInFlight('x5')).toBe(false)
+
+    releaseWrite()
+    expect(await appended).toMatchObject({ status: 'appended' })
+    expect(await started).toBe('accepted')
+    await service.waitFor('x5')
+    expect(contents(h.rows.get('x5')).slice(0, 3)).toEqual(['assistant:check-in slow', 'tool', 'user:hello'])
+  })
+
+  test('a failed queued write rejects ITS `written` and announces nothing; other batches still land and announce', async () => {
+    const h = makeHarness()
+    const release = gated(h, [])
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: (key, row) => {
+        if (row.kind === 'tool' && 'turnId' in row && row.turnId === 'ext-q') throw new Error('disk full')
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+      },
+    })
+    expect(await service.start(h.ctx, 'x6', 'hello')).toBe('accepted')
+    const failing = await service.appendExternal(h.ctx, 'x6', externalRows('q'))
+    const ok = await service.appendExternal(h.ctx, 'x6', externalRows('r'))
+    expect(failing.status).toBe('queued')
+    release()
+    await expect(failing.written).rejects.toThrow('disk full')
+    await ok.written
+    await service.waitFor('x6')
+
+    expect(h.events.filter((e) => e.event === 'test.appended')).toHaveLength(1)
+    expect(contents(h.rows.get('x6')).slice(-2)).toEqual(['assistant:check-in r', 'tool'])
+  })
+
+  test('idle write failure throws to the caller and announces nothing', async () => {
+    const h = makeHarness()
+    const service = makeService(h, { events: APPENDED_EVENTS, appendRow: () => { throw new Error('disk full') } })
+    await expect(service.appendExternal(h.ctx, 'x7', externalRows('a'))).rejects.toThrow('disk full')
+    expect(h.events).toEqual([])
+  })
+
+  test('a batch appended from an `appended` listener at any microtask delay is never stranded and never lands inside a turn', async () => {
+    // The listener's append can arrive after the flush loop's last check but
+    // before its teardown (the stranding window); sweep the delay so one of
+    // them hits it. Later arrivals legitimately queue behind the next turn.
+    for (const followUp of [false, true]) for (let hops = 0; hops <= 8; hops++) {
+      const key = `x8-${followUp}-${hops}`
+      const h = makeHarness()
+      const scripts: Array<() => AsyncIterable<ChatChunk>> = []
+      h.setStream(() => (scripts.shift() ?? (async function* () { yield { type: 'done' } as ChatChunk }))())
+      let release!: () => void
+      const gate = new Promise<void>((r) => { release = r })
+      scripts.push(async function* () { await gate; yield { type: 'done' } as ChatChunk })
+      scripts.push(async function* () {
+        yield { type: 'text', content: 'second reply' } as ChatChunk
+        yield { type: 'done' } as ChatChunk
+      })
+      let chained: Promise<{ written: Promise<void> }> | null = null
+      const ctx = {
+        ...h.ctx,
+        events: {
+          ...h.ctx.events,
+          emit: (event: string, data?: Record<string, unknown>) => {
+            h.events.push({ event, data: data ?? {} })
+            if (event !== 'test.appended' || chained) return
+            let p: Promise<void> = Promise.resolve()
+            for (let i = 0; i < hops; i++) p = p.then(() => {})
+            chained = p.then(() => service.appendExternal(ctx, key, externalRows('b')))
+          },
+        },
+      } as TurnContext
+      // Read lazily by the listener above, which only runs after this line.
+      const service = makeService(h, { events: APPENDED_EVENTS, queue: {} })
+
+      expect(await service.start(ctx, key, 'first')).toBe('accepted')
+      await service.appendExternal(ctx, key, externalRows('a'))
+      if (followUp) expect(await service.start(ctx, key, 'follow-up', { queueIfBusy: true })).toMatchObject({ queued: true })
+      release()
+      // No later turn to rescue it: a stranded batch is never written.
+      await waitUntil(() => contents(h.rows.get(key)).includes('assistant:check-in b'), { label: `batch b written (followUp ${followUp}, hops ${hops})` })
+      if (!followUp) continue
+      await waitUntil(() => contents(h.rows.get(key)).includes('assistant:second reply') && !service.isInFlight(key), { label: `drained turn settled (hops ${hops})` })
+
+      const rows = contents(h.rows.get(key))
+      const b = rows.indexOf('assistant:check-in b')
+      const inside = b > rows.indexOf('user:follow-up') && b < rows.indexOf('assistant:second reply')
+      expect({ hops, inside }).toEqual({ hops, inside: false })
+    }
+  })
+
+  test('a SYNCHRONOUS `appended` listener that appends again joins the running flush — no turn admitted while it writes', async () => {
+    const h = makeHarness()
+    let releaseWrite!: () => void
+    const slowWrite = new Promise<void>((r) => { releaseWrite = r })
+    let reentered: Promise<{ written: Promise<void> }> | null = null
+    const ctx = {
+      ...h.ctx,
+      events: {
+        ...h.ctx.events,
+        emit: (event: string, data?: Record<string, unknown>) => {
+          h.events.push({ event, data: data ?? {} })
+          if (event === 'test.appended' && !reentered) reentered = service.appendExternal(ctx, 'x10', externalRows('slow'))
+        },
+      },
+    } as TurnContext
+    // Read lazily by the listener above, which only runs after this line.
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: async (key, row) => {
+        if ('turnId' in row && row.turnId === 'ext-slow') await slowWrite
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+      },
+    })
+
+    // An empty batch announces synchronously inside the flush's first segment.
+    const first = service.appendExternal(ctx, 'x10', [])
+    const started = service.start(ctx, 'x10', 'question')
+    await settleFor(20, 'the re-entrant slow batch is still writing — no turn may be admitted')
+    expect(service.isInFlight('x10')).toBe(false)
+    releaseWrite()
+    await first
+    await (await reentered!).written
+    expect(await started).toBe('accepted')
+    await service.waitFor('x10')
+    expect(contents(h.rows.get('x10')).slice(0, 3)).toEqual(['assistant:check-in slow', 'tool', 'user:question'])
+  })
+
+  test('an appendRow that AWAITS a nested appendExternal does not deadlock — the nested batch queues behind it', async () => {
+    const h = makeHarness()
+    let nested: { status: string; written: Promise<void> } | null = null
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: async (key, row) => {
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+        if (!nested && 'turnId' in row && row.turnId === 'ext-a' && row.kind === 'assistant') {
+          nested = await service.appendExternal(h.ctx, key, externalRows('b'))
+        }
+      },
+    })
+    const outer = await service.appendExternal(h.ctx, 'x11', externalRows('a'))
+    expect(outer.status).toBe('appended')
+    expect(nested!.status).toBe('queued')
+    await nested!.written
+    expect(contents(h.rows.get('x11'))).toEqual(['assistant:check-in a', 'tool', 'assistant:check-in b', 'tool'])
+    expect(await service.start(h.ctx, 'x11', 'next')).toBe('accepted')
+  })
+
+  test('waitFor() during admission (user row still writing) covers the turn AND rows queued meanwhile', async () => {
+    const h = makeHarness()
+    let releaseUser!: () => void
+    const userGate = new Promise<void>((r) => { releaseUser = r })
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: async (key, row) => {
+        if (row.kind === 'user') await userGate
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+      },
+    })
+    const started = service.start(h.ctx, 'x12', 'hello')
+    await waitUntil(() => service.isInFlight('x12'), { label: 'slot reserved' })
+    const queued = await service.appendExternal(h.ctx, 'x12', externalRows('q'))
+    expect(queued.status).toBe('queued')
+    let waited = false
+    const waiting = service.waitFor('x12').then(() => { waited = true })
+    await settleFor(20, 'waitFor must not return while the admission write is parked')
+    expect(waited).toBe(false)
+    releaseUser()
+    expect(await started).toBe('accepted')
+    await waiting
+    expect(service.isInFlight('x12')).toBe(false)
+    expect(contents(h.rows.get('x12'))).toContain('assistant:check-in q')
+  })
+
+  test('a queued batch is a snapshot — reusing the caller\'s buffer after `queued` changes nothing', async () => {
+    const h = makeHarness()
+    const release = gated(h, [])
+    const service = makeService(h, { events: APPENDED_EVENTS })
+    expect(await service.start(h.ctx, 'x13', 'hello')).toBe('accepted')
+    const buffer = externalRows('q')
+    const notice = { agentId: 'lead', preview: 'Which date?' }
+    const queued = await service.appendExternal(h.ctx, 'x13', buffer, notice)
+    expect(queued.status).toBe('queued')
+    buffer.length = 0
+    notice.preview = 'mutated'
+    release()
+    await queued.written
+    await service.waitFor('x13')
+    expect(contents(h.rows.get('x13')).slice(-2)).toEqual(['assistant:check-in q', 'tool'])
+    expect(h.events.find((e) => e.event === 'test.appended')?.data.notice).toEqual({ agentId: 'lead', preview: 'Which date?' })
+  })
+
+  test('a failed user-row write at admission still flushes rows accepted while the slot was held', async () => {
+    const h = makeHarness()
+    let failUser!: (err: Error) => void
+    const service = makeService(h, {
+      events: APPENDED_EVENTS,
+      appendRow: async (key, row) => {
+        if (row.kind === 'user') await new Promise<void>((_, reject) => { failUser = reject })
+        const list = h.rows.get(key) ?? []
+        list.push(row)
+        h.rows.set(key, list)
+      },
+    })
+    const started = service.start(h.ctx, 'x9', 'hello')
+    await waitUntil(() => service.isInFlight('x9'), { label: 'slot reserved' })
+    const queued = await service.appendExternal(h.ctx, 'x9', externalRows('q'))
+    expect(queued.status).toBe('queued')
+    failUser(new Error('thread gone'))
+    expect(await started).toBe('not_found')
+    await queued.written
+    expect(contents(h.rows.get('x9'))).toEqual(['assistant:check-in q', 'tool'])
   })
 })
