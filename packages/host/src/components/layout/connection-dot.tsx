@@ -1,9 +1,9 @@
-import { useContentStore } from '@makinbakin/sdk/hooks'
+import { useHostStore } from '@makinbakin/sdk/hooks'
 import { StatusMarker } from '@makinbakin/sdk/patterns'
 import { Text } from '@makinbakin/sdk/ui'
 
 export function ConnectionDot() {
-  const connected = useContentStore((s) => s.connected)
+  const connected = useHostStore((s) => s.connected)
 
   return (
     <div

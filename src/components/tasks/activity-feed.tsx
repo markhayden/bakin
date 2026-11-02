@@ -2,7 +2,7 @@
 
 import { useEffect, useReducer } from 'react'
 import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug } from 'lucide-react'
-import { useAgent, useContentStore } from '@makinbakin/sdk/hooks'
+import { useAgent, useHostStore } from '@makinbakin/sdk/hooks'
 import { DisclosurePanel } from '@makinbakin/sdk/layout'
 import { KeyValue, ListRow, ListRows } from '@makinbakin/sdk/patterns'
 import { Avatar, AvatarFallback, Button, SystemState, Text } from '@makinbakin/sdk/ui'
@@ -87,8 +87,8 @@ function DispatchFailureDebug({ data }: { data?: Record<string, unknown> }) {
 
 export function ActivityFeed() {
   const { open, toggle } = useActivityContext()
-  const events = useContentStore((s) => s.activityEvents)
-  const debug = useContentStore((s) => s.debug)
+  const events = useHostStore((s) => s.activityEvents)
+  const debug = useHostStore((s) => s.debug)
   // Re-render every 30s to keep relative timestamps fresh: the reducer idiom
   // for a render tick nobody reads.
   const [, rerender] = useReducer((n: number) => n + 1, 0)

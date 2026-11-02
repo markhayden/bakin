@@ -155,7 +155,7 @@ describe('plugin golden path (scaffold → install → activate → use)', () =>
     pluginRegistry = reg.pluginRegistry
     pluginRegistry._resetForTests()
     reg.registerCorePlugins({})
-    const storage = { read: mock(), write: mock(), append: mock(), exists: mock(), readAll: mock() }
+    const storage = { read: mock(), write: mock(), append: mock(), exists: mock() }
     const events = { emit: mock(), on: mock(), once: mock() }
     await pluginRegistry.initialize({ plugins: [] }, storage, events)
 

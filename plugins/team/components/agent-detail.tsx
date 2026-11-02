@@ -230,7 +230,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   }
 
   const avatarUrl = profile.headshot || avatarKey
-    ? `/api/plugins/team/${agentId}/avatar${avatarKey ? `?t=${avatarKey}` : ''}`
+    ? `/api/agents/avatar?id=${encodeURIComponent(agentId)}${avatarKey ? `&t=${avatarKey}` : ''}`
     : undefined
 
   return (

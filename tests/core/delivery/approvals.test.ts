@@ -124,6 +124,23 @@ describe('discord approval surface', () => {
     expect(auditEvents.some(e => e.event === 'delivery.approval_rendered')).toBe(true)
   })
 
+  it('splits buttons into Discord-valid action rows of at most 5 — five options plus the board link is two rows', async () => {
+    const deps = makeDeps()
+    await deps.surface.createApproval({
+      approvalId: APPROVAL_ID,
+      channels: ['discord:channel:777'],
+      request: {
+        title: 'Pick a scope',
+        body: 'Five choices',
+        options: ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, label: id.toUpperCase() })),
+        context: { approvalUrl: 'http://localhost:3737/tasks?taskId=task-1' },
+      },
+    })
+    const rows = deps.posted[0].payload.components as Array<{ components: Array<Record<string, unknown>> }>
+    expect(rows.map((row) => row.components.length)).toEqual([5, 1])
+    expect(rows[1].components[0].url).toBe('http://localhost:3737/tasks?taskId=task-1')
+  })
+
   it('denies unauthorized clickers ephemerally, audits, and never emits', async () => {
     const deps = makeDeps({ approvers: ['owner-1'] })
     await deps.surface.handleInteraction(buttonInteraction('bkap:approve:', 'stranger-2', cardMessage()))

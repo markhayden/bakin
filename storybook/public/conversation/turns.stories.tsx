@@ -1,11 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
-import { expect } from 'storybook/test'
+import { expect, within } from 'storybook/test'
 
 import {
   AgentTurn,
   ThinkingIndicator,
   UserMessage,
+  foldConversation,
+  formatQuestionAnswer,
+  type BakinQuestion,
+  type ConversationMessage,
   type ConversationTurn,
 } from '@makinbakin/sdk/conversation'
 import { PageShell, Stack } from '@makinbakin/sdk/layout'
@@ -50,6 +54,7 @@ export const CanonicalUsage = {
     agent: { control: false },
     onRetry: { control: false },
     onOpenCall: { control: false },
+    onAnswerQuestion: { control: false },
   },
   render: (args) => (
     <>
@@ -185,5 +190,121 @@ export const CompleteAndLifecycleStates = {
     // Named on purpose: a replayed error row is a polite status region too,
     // so a bare role query would match both.
     await expect(canvas.getByRole('status', { name: 'Selection outcome' })).toHaveTextContent('Retry requested')
+  },
+} satisfies Story
+
+const askedQuestion: BakinQuestion = {
+  v: 1,
+  id: 'q_story00000000001',
+  question: 'Which inbox are we cleaning?',
+  options: [
+    { label: 'Just my personal Gmail', description: 'Fastest win; work mail has retention rules to check first.' },
+    { label: 'Personal and work', description: 'Bigger payoff, two sets of rules.' },
+    { label: 'A shared team inbox' },
+  ],
+  recommended: 0,
+  allowOther: true,
+}
+
+const questionRow = (id: string, turnId: string): ConversationMessage => ({
+  kind: 'tool',
+  ts: '2026-07-20T12:00:05.000Z',
+  turnId,
+  callId: `call-${id}`,
+  toolName: 'bakin_exec_ask_user',
+  status: 'completed',
+  metadata: { bakinQuestion: { ...askedQuestion, id } },
+})
+
+function agentTurnsOf(rows: ConversationMessage[], live?: ConversationMessage): Extract<ConversationTurn, { kind: 'agent' }>[] {
+  const liveChunks = live && live.kind === 'tool'
+    ? [{ type: 'tool' as const, data: { phase: 'result' as const, callId: live.callId, toolName: live.toolName, status: 'completed', metadata: live.metadata } }]
+    : undefined
+  return foldConversation(rows, liveChunks ? { liveChunks } : undefined)
+    .filter((turn): turn is Extract<ConversationTurn, { kind: 'agent' }> => turn.kind === 'agent')
+}
+
+function QuestionCardStates() {
+  const [sent, setSent] = useState('Nothing sent yet')
+  const open = agentTurnsOf([questionRow('q_story00000000002', 'open')])[0]!
+  const answered = agentTurnsOf([
+    questionRow('q_story00000000003', 'answered'),
+    { kind: 'user', ts: '2026-07-20T12:00:09.000Z', content: formatQuestionAnswer(askedQuestion, { kind: 'option', index: 0 }) },
+  ])[0]!
+  const skipped = agentTurnsOf([
+    questionRow('q_story00000000004', 'skipped'),
+    { kind: 'user', ts: '2026-07-20T12:00:09.000Z', content: 'Let us talk about the budget first.' },
+  ])[0]!
+  const streaming = agentTurnsOf([], questionRow('q_story00000000005', 'live'))[0]!
+
+  return (
+    <main className="bakin-conversation-story">
+      <PageShell width="content">
+        <Stack gap="section">
+          <header className="bakin-conversation-story__intro">
+            <p>Conversation / questions</p>
+            <h1>One question, an honest recommendation</h1>
+            <p>An agent asks through bakin_exec_ask_user; the card labels its recommendation without choosing for you, and the answer is an ordinary readable message.</p>
+          </header>
+
+          <section aria-labelledby="question-open-heading" className="bakin-conversation-story__section">
+            <header>
+              <h2 id="question-open-heading">Open and answerable</h2>
+              <p>Nothing is preselected. Something else and Not sure are always available; the note is optional.</p>
+            </header>
+            <div className="bakin-conversation-story__transcript">
+              <AgentTurn agent={mainAgent} turn={open} onAnswerQuestion={setSent} />
+              <p role="status" aria-label="Sent answer" className="bakin-conversation-story__selection">{sent}</p>
+            </div>
+          </section>
+
+          <section aria-labelledby="question-settled-heading" className="bakin-conversation-story__section">
+            <header>
+              <h2 id="question-settled-heading">Settled and in-flight</h2>
+              <p>The transcript decides the state: an answer collapses the card, any other reply marks it skipped, and a still-streaming turn holds input.</p>
+            </header>
+            <div className="bakin-conversation-story__transcript">
+              <AgentTurn agent={mainAgent} turn={answered} />
+              <AgentTurn agent={mainAgent} turn={skipped} />
+              <AgentTurn agent={mainAgent} turn={streaming} onAnswerQuestion={setSent} />
+            </div>
+          </section>
+
+          <section aria-labelledby="question-narrow-heading" className="bakin-conversation-story__section">
+            <header>
+              <h2 id="question-narrow-heading">Narrow docked panel</h2>
+              <p>At dock widths the note and Answer stack instead of squeezing the options.</p>
+            </header>
+            <div style={{ inlineSize: '320px' }}>
+              <AgentTurn agent={mainAgent} turn={agentTurnsOf([questionRow('q_story00000000006', 'narrow')])[0]!} />
+            </div>
+          </section>
+        </Stack>
+      </PageShell>
+    </main>
+  )
+}
+
+export const QuestionCards = {
+  args: { turn: canonicalTurn, agent: canonicalAgent },
+  render: () => <QuestionCardStates />,
+  play: async ({ canvas, userEvent }) => {
+    const group = canvas.getAllByRole('radiogroup', { name: askedQuestion.question })[0]!
+    for (const radio of within(group).getAllByRole('radio')) await expect(radio).toHaveAttribute('aria-checked', 'false')
+    await expect(canvas.getAllByText('Recommended').length).toBeGreaterThan(0)
+    await userEvent.click(within(group).getByRole('radio', { name: /Personal and work/ }))
+    const form = group.closest('form')!
+    await userEvent.type(within(form).getByRole('textbox', { name: 'Add a note (optional)' }), 'last year only')
+    await userEvent.click(within(form).getByRole('button', { name: 'Answer' }))
+    await expect(canvas.getByRole('status', { name: 'Sent answer' }))
+      .toHaveTextContent('**Which inbox are we cleaning?** → Personal and work last year only')
+    // Keyboard: arrows move the selection, Enter submits from the group.
+    await userEvent.click(within(group).getByRole('radio', { name: /Personal and work/ }))
+    await userEvent.keyboard('{ArrowUp}')
+    await expect(within(group).getByRole('radio', { name: new RegExp(askedQuestion.options[0]!.label) })).toHaveAttribute('aria-checked', 'true')
+    await userEvent.keyboard('{Enter}')
+    await expect(canvas.getByRole('status', { name: 'Sent answer' }))
+      .toHaveTextContent(`→ ${askedQuestion.options[0]!.label}`)
+    await expect(canvas.getByText('Skipped')).toBeVisible()
   },
 } satisfies Story

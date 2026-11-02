@@ -8,6 +8,7 @@
  */
 
 import { createServer } from 'http'
+import { networkInterfaces } from 'os'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 
@@ -25,6 +26,7 @@ import config from './bakin.config'
 registerCorePlugins(CORE_PLUGIN_IMPORTS)
 
 import { createLogger } from './src/core/logger'
+import { findCgnatIPv4 } from './src/core/network-address'
 import { getContentDir, getBakinPaths } from './src/core/content-dir'
 import { broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
@@ -287,7 +289,8 @@ const eventBus = new BakinEventBus(broadcast)
   server.listen(port, '0.0.0.0', () => {
     markServing()
     log.info(`Bakin ready on http://localhost:${port}`)
-    log.info(`Listening on 0.0.0.0:${port} (Tailscale: http://100.91.112.69:${port})`)
+    const networkAddress = findCgnatIPv4(networkInterfaces())
+    log.info(`Listening on 0.0.0.0:${port}${networkAddress ? ` (network: http://${networkAddress}:${port})` : ''}`)
     if (process.env.BAKIN_DEV === '1') {
       const logPath = join(getBakinPaths().logs, 'server.log')
       log.info(`Full logs: ${logPath}`, { path: logPath })

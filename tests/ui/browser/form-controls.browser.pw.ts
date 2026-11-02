@@ -97,12 +97,10 @@ test('field focus and invalid boundaries survive forced colors and reduced motio
   await page.goto('/iframe.html?id=components-primitives-input--surface-contexts&viewMode=story')
   const ghost = page.getByRole('textbox', { name: 'Canvas ghost' })
   await expect(ghost).toBeFocused()
-  const focus = await ghost.evaluate(el => {
-    const style = getComputedStyle(el)
-    return { outline: style.outlineStyle, width: parseFloat(style.outlineWidth) }
-  })
-  expect(focus.outline).toBe('solid')
-  expect(focus.width).toBeGreaterThanOrEqual(2)
+  // Poll the computed ring: Firefox applies the :focus-visible styles a frame
+  // after focus lands, so a single read right after toBeFocused() can race it.
+  await expect.poll(() => ghost.evaluate(el => getComputedStyle(el).outlineStyle)).toBe('solid')
+  expect(await ghost.evaluate(el => parseFloat(getComputedStyle(el).outlineWidth))).toBeGreaterThanOrEqual(2)
   for (const variant of ['outlined', 'filled', 'ghost']) {
     const invalid = page.getByRole('textbox', { name: `${variant} invalid` })
     await expect(invalid).toHaveAttribute('aria-invalid', 'true')

@@ -6,7 +6,11 @@
  */
 /** Fold persisted rows and live chunks into ordered render-ready turns. */
 export { foldConversation } from '@bakin/ui/conversation'
+/** The user message a question-card answer sends (and the fold recognises). */
+export { formatQuestionAnswer } from '@bakin/ui/conversation'
 export type {
+  QuestionAnswer,
+  QuestionState,
   ConversationChunk,
   ConversationTextFormat,
   ConversationToolActivity,
@@ -17,7 +21,7 @@ export type {
   TurnStatus,
 } from '@bakin/ui/conversation'
 /** The canonical row types live in `@makinbakin/sdk/types`; ui keeps a pinned structural copy (message-contract.ts). */
-export type { ConversationMessage, DisplayAttachment } from '../types/conversation'
+export type { BakinQuestion, ConversationMessage, DisplayAttachment } from '../types/conversation'
 
 /** Compact single-turn output for task and workflow embeds. */
 export { TurnOutputView, TurnToolChip, foldTurnChunks } from '@bakin/ui/conversation'

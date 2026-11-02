@@ -18,16 +18,16 @@
     ]
   },
   "summary": {
-    "total": 101,
+    "total": 100,
     "byKind": {
       "host-route": 27,
-      "plugin-route": 12,
+      "plugin-route": 11,
       "plugin-slot": 32,
       "plugin-template": 2,
       "shared-component": 28,
       "sdk-ui-export": 0
     },
-    "nonVisualAliases": 3
+    "nonVisualAliases": 2
   },
   "entries": [
     {
@@ -919,36 +919,6 @@
       ]
     },
     {
-      "id": "plugin-route:projects:/projects/[id]/edit",
-      "kind": "plugin-route",
-      "owner": {
-        "repository": "bakin-bits-official",
-        "area": "plugin",
-        "pluginId": "projects"
-      },
-      "identity": {
-        "route": "/projects/[id]/edit"
-      },
-      "sourcePath": "bakin-bits-official/plugins/projects/client.tsx",
-      "symbols": [
-        "ProjectDetailRoute"
-      ],
-      "exportStatus": "not-applicable",
-      "classification": "visual-surface",
-      "evidence": [
-        {
-          "type": "manifest-route",
-          "path": "bakin-bits-official/plugins/projects/bakin-plugin.json",
-          "detail": "contributes.routes[3].path"
-        },
-        {
-          "type": "client-registration",
-          "path": "bakin-bits-official/plugins/projects/client.tsx",
-          "detail": "registerPlugin routes \"/projects/[id]/edit\" -> ProjectDetailRoute"
-        }
-      ]
-    },
-    {
       "id": "plugin-route:projects:/projects/new",
       "kind": "plugin-route",
       "owner": {
@@ -964,7 +934,7 @@
         "ProjectsNewRoute"
       ],
       "exportStatus": "not-applicable",
-      "classification": "non-visual-alias",
+      "classification": "visual-surface",
       "evidence": [
         {
           "type": "manifest-route",

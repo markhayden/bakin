@@ -126,6 +126,7 @@ Use `@makinbakin/sdk/patterns` once a page is more specific than a general layou
 | Keep query controls available | `PageControls` | Requires an accessible region name; the default section mode names a wrapping search/filter region without owning its values, while `as="toolbar"` takes the ARIA toolbar contract for command rows |
 | Bound page content and replacement states | `PageBody` | The single busy/feedback/replacement-state content slot; `state` replaces only this region while page identity and navigation stay mounted, `feedback` can remain beside stale usable content, and `gap` selects the content, section, or page rhythm |
 | Compose a supporting rail | `PageBody layout="aside"` with `PageAside` | The one primary-column-plus-rail composition; the named aside moves below the primary content when its container is narrow |
+| Dock a collapsible edge rail | `PageAside collapsible` | Full-height rail that collapses to the kit strip; `width` is `nav`, `session`, or `conversation` (a docked chat thread) and `side="end"` docks it after the content. Pair with `useCollapsedAside` for persisted state |
 
 ```tsx
 import { useQueryState } from '@makinbakin/sdk/navigation'

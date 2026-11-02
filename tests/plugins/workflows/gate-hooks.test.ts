@@ -82,6 +82,7 @@ import {
 import { getApprovalRecord, listApprovalRecords } from '@bakin/core/approvals'
 import { runAsAgentInvocation } from '../../../src/core/agent-invocation'
 import { createConversationTurnService } from '../../../packages/core/src/conversation/turns'
+import { createMemoryApprovalsBackend, createPluginApprovalsAPI } from '../../../packages/core/src/approvals/plugin-api'
 
 const gateWorkflow = `name: Gate Hook Test
 description: Workflow used by gate hook tests
@@ -125,6 +126,7 @@ function makeCtx() {
       start: async () => { throw new Error('ctx.operations is not used by this test') },
       await: async () => { throw new Error('ctx.operations is not used by this test') },
     },
+    approvals: createPluginApprovalsAPI('workflows', createMemoryApprovalsBackend()),
     conversations: {
       createTurnService: (config) => createConversationTurnService(config as unknown as Parameters<typeof createConversationTurnService>[0]) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
     },

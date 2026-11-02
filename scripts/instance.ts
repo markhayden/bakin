@@ -271,7 +271,7 @@ async function main(argv: string[]): Promise<number> {
         }
         // pi host modes: no containers — report local instance state.
         const authed = existsSync(piAuthFile(paths.piHome))
-        const server = await deps.runner.run(['curl', '-sf', 'http://localhost:3737/api/agents/health'])
+        const server = await deps.runner.run(['curl', '-sf', 'http://localhost:3737/api/operations'])
         console.log(`pi-home:   ${paths.piHome}`)
         console.log(`pi auth:   ${authed ? 'authed' : 'missing (run `instance up --runtime pi`)'}`)
         console.log(`server:    ${server.code === 0 ? 'running → http://localhost:3737' : 'not running (instance dev --runtime pi)'}`)

@@ -69,6 +69,7 @@
     "./execution/ledger": "./src/execution/ledger.ts",
     "./execution/token-evidence": "./src/execution/token-evidence.ts",
     "./events": "./src/events/event-bus.ts",
+    "./events/activity-id": "./src/events/activity-id.ts",
     "./events/audit-message": "./src/events/audit-message.ts",
     "./install-core/self-update-verify": "./src/install-core/self-update-verify.ts",
     "./workflows/*": "./src/workflows/*.ts",

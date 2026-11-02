@@ -22,6 +22,8 @@ function MessageIcon() {
 export interface ConversationEmptyStateProps {
   icon?: ReactNode
   title: string
+  /** Heading level for the title — match the surrounding outline (default 3). */
+  headingLevel?: 2 | 3 | 4
   description?: string
   suggestions?: readonly string[]
   /** Suggestions render as actions only when their effect is provided. */
@@ -33,12 +35,14 @@ export interface ConversationEmptyStateProps {
 export function ConversationEmptyState({
   icon,
   title,
+  headingLevel = 3,
   description,
   suggestions,
   onSuggestion,
   className,
 }: ConversationEmptyStateProps) {
   const actionableSuggestions = onSuggestion ? suggestions : undefined
+  const Heading = `h${headingLevel}` as const
 
   return (
     <section
@@ -54,9 +58,9 @@ export function ConversationEmptyState({
         {icon ?? <MessageIcon />}
       </div>
       <div className="grid gap-bakin-1">
-        <h3 className="text-[length:var(--bakin-typography-size-title)] font-bakin-typography-weight-semibold text-bakin-text-primary">
+        <Heading className="text-[length:var(--bakin-typography-size-title)] font-bakin-typography-weight-semibold text-bakin-text-primary">
           {title}
-        </h3>
+        </Heading>
         {description ? <p className="leading-relaxed text-bakin-text-muted">{description}</p> : null}
       </div>
       {actionableSuggestions?.length ? (

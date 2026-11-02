@@ -29,6 +29,7 @@ import type {
   HealthOwner,
   HealthRepairActionDefinition,
   PluginLogger,
+  PluginApprovalsAPI,
   PluginOperationsAPI,
   SearchAPI,
   TaskLogEntry,
@@ -56,7 +57,6 @@ export interface StorageAdapter {
   write(path: string, content: string): void
   append(path: string, content: string): void
   exists(path: string): boolean
-  readAll(): Record<string, string>
   list(path?: string): string[]
   remove(path: string): void
   rename(from: string, to: string): void
@@ -482,6 +482,8 @@ export interface PluginContext {
   conversations: ConversationTurnsAPI
   /** Staged, cancellable, boot-aware progress for long-running work (#895) */
   operations: PluginOperationsAPI
+  /** This plugin's sign-off gates on the one approval primitive (spec D26) */
+  approvals: PluginApprovalsAPI
 }
 
 // ---------------------------------------------------------------------------
@@ -514,6 +516,7 @@ export interface PluginTask {
   scheduleJobId?: string
   projectId?: string
   brandId?: string
+  tags?: string[]
   availableAt?: string
   dueAt?: string
   source?: PluginTaskSource
@@ -544,6 +547,7 @@ export interface PluginTaskCreateInput {
   workflowId?: string
   projectId?: string
   brandId?: string
+  tags?: string[]
   parentId?: string | null
   availableAt?: string
   dueAt?: string
@@ -564,6 +568,7 @@ export interface PluginTaskUpdateInput {
   scheduleJobId?: string
   projectId?: string
   brandId?: string
+  tags?: string[]
   parentId?: string | null
   availableAt?: string | null
   dueAt?: string | null

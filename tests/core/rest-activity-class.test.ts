@@ -25,7 +25,6 @@ function resolve(
 
 describe('REST activity classification', () => {
   it('marks host monitoring and shell snapshot reads as routine', () => {
-    expect(classify('/api/agents/health')).toBe('routine')
     expect(classify('/api/updates')).toBe('routine')
     expect(classify('/api/dispatch')).toBe('routine')
     expect(classify('/api/plugins/manifest')).toBe('routine')
@@ -34,13 +33,12 @@ describe('REST activity classification', () => {
     expect(classify('/api/activity')).toBe('routine')
     expect(classify('/api/context-report')).toBe('routine')
     expect(classify('/api/settings')).toBe('routine')
-    expect(classify('/api/state')).toBe('routine')
     expect(classify('/api/version')).toBe('routine')
     expect(classify('/api/agent-packages')).toBe('routine')
     expect(classify('/api/plugins/health/assets/client.js')).toBe('routine')
     expect(classify('/api/plugin-settings/chat')).toBe('routine')
 
-    expect(classify('/api/agents/avatar')).toBe('user')
+    expect(classify('/api/agents/avatar')).toBe('routine')
     expect(classify('/api/agents/settings')).toBe('user')
     expect(classify('/api/agents/pixel', 'POST')).toBe('user')
     expect(classify('/api/dispatch', 'POST')).toBe('user')
@@ -108,13 +106,12 @@ describe('REST activity classification', () => {
 
   it('publishes routine metadata on host-owned cadence route declarations', () => {
     for (const path of [
-      '/api/agents/health',
       '/api/agents/:id',
       '/api/agents/:id/status',
+      '/api/agents/avatar',
       '/api/dispatch',
       '/api/activity',
       '/api/settings',
-      '/api/state',
       '/api/version',
       '/api/agent-packages',
       '/api/plugins/manifest',

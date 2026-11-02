@@ -1,12 +1,6 @@
-// Host state the SSE content store publishes (`useContentStore` on
-// `@makinbakin/sdk/hooks`): the activity feed rows, the per-agent heartbeat
-// and the connected/files/heartbeats snapshot. Public because the store is.
-
-export interface Heartbeat {
-  status: 'working' | 'idle' | 'down'
-  currentTask?: string
-  timestamp: string
-}
+// Host state the browser host store publishes (`useHostStore` on
+// `@makinbakin/sdk/hooks`): the live-connection flag, the debug toggle and the
+// activity feed rows. Public because the store is.
 
 export interface ActivityEvent {
   id: string
@@ -21,8 +15,8 @@ export interface ActivityEvent {
   data?: Record<string, unknown>
 }
 
-export interface ContentState {
-  files: Record<string, string>
-  heartbeats: Record<string, Heartbeat>
+export interface HostState {
   connected: boolean
+  debug: boolean
+  activityEvents: ActivityEvent[]
 }

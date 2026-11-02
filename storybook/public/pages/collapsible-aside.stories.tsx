@@ -19,7 +19,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'PageAside with `collapsible` is the one collapsible-rail treatment: a full-height edge column (session lists, app navigation) that collapses to the kit strip. `strip` mode replaces content with the kit expand affordance; `content` mode keeps children mounted at the collapsed width for icon-mode navs. Pair with `useCollapsedAside` for persisted state — never hand-roll a strip or rail widths.',
+          'PageAside with `collapsible` is the one collapsible-rail treatment: a full-height edge column (session lists, app navigation, a docked conversation) that collapses to the kit strip. `width` picks nav, session or conversation (360px); `side="end"` docks the rail after the content and mirrors its edge and expand affordance. `strip` mode replaces content with the kit expand affordance; `content` mode keeps children mounted at the collapsed width for icon-mode navs. Pair with `useCollapsedAside` for persisted state — never hand-roll a strip or rail widths.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'keyboard', 'non-color', 'reduced-motion', 'collapsed', 'landmark'],
@@ -57,7 +57,8 @@ export const CanonicalUsage = {
     children: rows,
   },
   argTypes: {
-    width: { control: 'select', options: ['nav', 'session'] },
+    width: { control: 'select', options: ['nav', 'session', 'conversation'] },
+    side: { control: 'select', options: ['start', 'end'] },
     label: { control: 'text' },
     collapsible: { control: false },
     children: { control: false },
@@ -151,5 +152,60 @@ export const ContentModeNav = {
     // Content mode: children render at the collapsed width — no kit strip.
     await expect(canvasElement.querySelector('[data-slot=page-aside-strip]')).toBeNull()
     await expect(canvas.getByRole('button', { name: 'Tasks' })).toBeVisible()
+  },
+} satisfies Story
+
+/** A trailing conversation dock beside page content — the docked-chat recipe. */
+function ConversationDockRail() {
+  const [collapsed, setCollapsed] = useCollapsedAside('storybook-conversation-dock')
+  return (
+    <div className="flex" style={{ blockSize: '22rem', inlineSize: '44rem' }}>
+      <div className="min-w-0 flex-1 p-bakin-4">
+        <p className="text-bakin-typography-size-body">Plan</p>
+        <p className="text-bakin-typography-size-meta text-bakin-text-muted">Content keeps the space the dock gives back when it collapses.</p>
+      </div>
+      <PageAside
+        label="Project conversation"
+        width="conversation"
+        side="end"
+        collapsible={{ collapsed, onCollapsedChange: setCollapsed, expandLabel: 'Expand project conversation' }}
+      >
+        <div className="flex items-center justify-between p-bakin-2">
+          <span className="text-bakin-typography-size-meta text-bakin-text-muted">Roscoe</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Collapse project conversation"
+            aria-expanded
+            onClick={() => setCollapsed(true)}
+            className="text-bakin-text-muted"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="size-bakin-4 -scale-x-100 fill-none stroke-current stroke-2">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M9 4v16" strokeLinecap="round" />
+              <path d="m17 9-3 3 3 3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Button>
+        </div>
+        <p className="p-bakin-3 text-bakin-typography-size-body">Got it — added that to Scope. Who runs the one-week check?</p>
+      </PageAside>
+    </div>
+  )
+}
+
+export const ConversationDock = {
+  args: { label: 'Project conversation' },
+  render: () => <ConversationDockRail />,
+  play: async ({ canvas, canvasElement, userEvent }) => {
+    const aside = canvasElement.querySelector('[data-slot=page-aside]')
+    await expect(aside?.getAttribute('data-side')).toBe('end')
+    await expect(canvas.getByRole('complementary', { name: 'Project conversation' })).toBeVisible()
+    await userEvent.click(canvas.getByRole('button', { name: 'Collapse project conversation' }))
+    await expect(aside?.hasAttribute('data-collapsed')).toBe(true)
+    const expand = canvas.getByRole('button', { name: 'Expand project conversation' })
+    await expect(expand).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(expand)
+    await expect(canvas.getByText('Got it — added that to Scope. Who runs the one-week check?')).toBeVisible()
   },
 } satisfies Story
