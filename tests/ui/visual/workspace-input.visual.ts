@@ -2,7 +2,7 @@ import { expect, test } from 'playwright/test'
 
 for (const expanded of [false, true]) {
   test(`terminal input ${expanded ? 'expanded' : 'compact'}`, async ({ page }, testInfo) => {
-    await page.goto('/iframe.html?id=recipes-terminalinput--bar-and-sheet&viewMode=story', { waitUntil: 'networkidle' })
+    await page.goto('/iframe.html?id=recipes-terminalinput--visual-capture&viewMode=story', { waitUntil: 'networkidle' })
     await expect(page.locator('#storybook-root')).toHaveAttribute('data-story-ready', 'true', { timeout: 20_000 })
     await expect(page.getByRole('region', { name: 'More keys' })).toHaveCount(0)
     // Expanded: the sheet open, a one-shot Control and a locked Option showing their states.
