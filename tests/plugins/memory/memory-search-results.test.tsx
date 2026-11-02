@@ -274,13 +274,23 @@ describe('MemorySearchResults', () => {
     it('gives Title a width share and the metadata columns their own widths; Snippet is the only flexible column', () => {
       renderRows()
       const header = (name: string) => cells().getByRole('columnheader', { name: new RegExp(`^${name}`) })
-      expect(header('Title').className).toContain(MEMORY_COLUMN_WIDTHS.title)
-      expect(header('Tier').className).toContain(MEMORY_COLUMN_WIDTHS.tier)
-      expect(header('Agent').className).toContain(MEMORY_COLUMN_WIDTHS.agent)
-      expect(header('Updated').className).toContain(MEMORY_COLUMN_WIDTHS.updated)
+      expect(header('Title').className).toContain(MEMORY_COLUMN_WIDTHS.standard.title)
+      expect(header('Tier').className).toContain(MEMORY_COLUMN_WIDTHS.standard.tier)
+      expect(header('Agent').className).toContain(MEMORY_COLUMN_WIDTHS.standard.agent)
+      expect(header('Updated').className).toContain(MEMORY_COLUMN_WIDTHS.standard.updated)
       expect(header('Snippet').className).not.toMatch(/\bw-/)
-      // A percentage share, not a pixel width: Title scales with the table.
-      expect(MEMORY_COLUMN_WIDTHS.title).toMatch(/^w-\[\d+%\]$/)
+      // Fraction shares, not pixel widths or literal arbitrary sizes: every
+      // column scales with the table, and the legacy-style ratchet stays flat.
+      for (const budget of Object.values(MEMORY_COLUMN_WIDTHS)) {
+        for (const width of Object.values(budget)) expect(width).toMatch(/^w-\d+\/\d+$/)
+      }
+      // Title owns the largest share; the metadata shares leave Snippet room at the narrowest table.
+      const share = (width: string) => { const [n, d] = width.slice(2).split('/').map(Number); return n! / d! }
+      const standard = MEMORY_COLUMN_WIDTHS.standard
+      expect(share(standard.title)).toBeCloseTo(0.36, 5)
+      expect(1 - share(standard.title) - share(standard.tier) - share(standard.agent) - share(standard.updated)).toBeGreaterThanOrEqual(0.1)
+      const beside = MEMORY_COLUMN_WIDTHS.besideScore
+      expect(1 - share(beside.title) - share(beside.tier) - share(beside.agent) - share(beside.updated) - share(beside.score)).toBeGreaterThanOrEqual(0.1)
     })
 
     it('clamps Title to two lines, breaks inside a word only as a last resort, and keeps the full title reachable', () => {
@@ -315,9 +325,12 @@ describe('MemorySearchResults', () => {
         </DebugOn>,
       )
       const header = (name: string) => cells().getByRole('columnheader', { name: new RegExp(`^${name}`) })
-      expect(header('Score').className).toContain(MEMORY_COLUMN_WIDTHS.score)
-      expect(header('Title').className).toContain(MEMORY_COLUMN_WIDTHS.titleBesideScore)
-      expect(header('Title').className).not.toContain(MEMORY_COLUMN_WIDTHS.title)
+      expect(header('Score').className).toContain(MEMORY_COLUMN_WIDTHS.besideScore.score)
+      expect(header('Title').className).toContain(MEMORY_COLUMN_WIDTHS.besideScore.title)
+      expect(header('Title').className).not.toContain(MEMORY_COLUMN_WIDTHS.standard.title)
+      expect(header('Tier').className).toContain(MEMORY_COLUMN_WIDTHS.besideScore.tier)
+      expect(header('Agent').className).toContain(MEMORY_COLUMN_WIDTHS.besideScore.agent)
+      expect(header('Updated').className).toContain(MEMORY_COLUMN_WIDTHS.besideScore.updated)
       const tableMode = screen.getByRole('table', { name: 'Memory results' }).closest('[data-slot="data-table-table"]')
       expect(tableMode?.className).toContain('@3xl/data-table:block')
       expect(tableMode?.className).not.toContain('@2xl/data-table:block')

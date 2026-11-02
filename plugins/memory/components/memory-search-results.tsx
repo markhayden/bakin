@@ -17,8 +17,12 @@
  * every title, so Title collapsed to a few characters and broke mid-word
  * while Snippet took the rest of the row. The table is therefore
  * `table-fixed`: Title owns a share of the width, the metadata columns own
- * the widths their content needs, and Snippet is the one flexible column
- * that absorbs whatever remains — it can shrink, Title cannot.
+ * shares sized to their content at the narrowest table, and Snippet is the
+ * one flexible column that absorbs whatever remains — it can shrink, Title
+ * cannot. Every share is a fraction of the table (`w-9/25`), the form the
+ * design system supports for DataTable column widths (the explore and
+ * workflows tables size theirs the same way); raw spacing-scale widths and
+ * literal percentage or pixel sizes are legacy style debt.
  */
 import { useMemo } from 'react'
 import { Bug } from 'lucide-react'
@@ -87,25 +91,35 @@ function summarizeSnippet(value: string, title: string): string {
 }
 
 /**
- * Column widths under `table-layout: fixed` — a percentage share for Title,
- * content-sized widths for the taxonomy metadata, and the un-sized Snippet
- * column takes the remainder. Sized so Snippet keeps room at the narrowest
- * table the page renders (a 672px container, below which the list render
- * takes over): 36% + 368px of metadata leaves it ~65px there. The debug-only
- * Score column (global debug + an active query) adds a sixth column the
- * standard budget has no room for, so beside it Title cedes a little share,
- * Score takes a share of its own (the overlay stacks its legs — a share
- * keeps it from wrapping into a tall row on a wide screen) and the table
- * hands off to the list one step earlier (768px). Exported so the layout
- * tests pin the contract.
+ * Column widths under `table-layout: fixed`, as fraction shares of the table:
+ * Title's share, content-sized shares for the taxonomy metadata, and the
+ * un-sized Snippet column takes the remainder. The metadata shares are sized
+ * at the narrowest table each layout renders (below it the list render takes
+ * over): the ordinary table's 672px container gives Tier / Agent / Updated
+ * 112 / 134 / 112px (a tier badge, an avatar + truncating name, a nowrap
+ * "Nov 2, 2026") and leaves Snippet ~72px; wider tables scale every column.
+ * The debug-only Score column (global debug + an active query) adds a sixth
+ * column the standard budget has no room for, so beside it Title and the
+ * metadata each cede a little share, Score takes a share of its own (the
+ * overlay stacks its legs — a share keeps it from wrapping into a tall row
+ * on a wide screen) and the table hands off to the list one step earlier
+ * (a 768px container, where the metadata get 110 / 128 / 110px and Snippet
+ * ~83px). Exported so the layout tests pin the contract.
  */
 export const MEMORY_COLUMN_WIDTHS = {
-  title: 'w-[36%]',
-  titleBesideScore: 'w-[32%]',
-  tier: 'w-28',
-  agent: 'w-36',
-  updated: 'w-28',
-  score: 'w-[12%]',
+  standard: {
+    title: 'w-9/25',
+    tier: 'w-1/6',
+    agent: 'w-1/5',
+    updated: 'w-1/6',
+  },
+  besideScore: {
+    title: 'w-8/25',
+    tier: 'w-1/7',
+    agent: 'w-1/6',
+    updated: 'w-1/7',
+    score: 'w-3/25',
+  },
 } as const
 
 /** `updated_at` is epoch ms on the wire; missing values sort last. */
@@ -156,13 +170,14 @@ export function MemorySearchResults({
   const showScoreBreakdown = debug && searching
 
   const columns = useMemo<ReadonlyArray<DataTableColumn<SearchResult, MemorySortField>>>(() => {
+    const widths = showScoreBreakdown ? MEMORY_COLUMN_WIDTHS.besideScore : MEMORY_COLUMN_WIDTHS.standard
     const base: Array<DataTableColumn<SearchResult, MemorySortField>> = [
       {
         key: 'title',
         header: 'Title',
         sortable: true,
         narrow: 'primary',
-        headClassName: showScoreBreakdown ? MEMORY_COLUMN_WIDTHS.titleBesideScore : MEMORY_COLUMN_WIDTHS.title,
+        headClassName: widths.title,
         // Words wrap at spaces first and break inside a word only when that
         // word alone is wider than the column (long audit identifiers), two
         // lines at most; the full title stays reachable on the native
@@ -206,7 +221,7 @@ export function MemorySearchResults({
         header: 'Tier',
         sortable: true,
         narrow: 'meta',
-        headClassName: MEMORY_COLUMN_WIDTHS.tier,
+        headClassName: widths.tier,
         cell: (result) => (
           <StatusBadge tone="neutral" variant="soft" size="xs">
             {tierDisplayName(str(result.fields.tier))}
@@ -218,7 +233,7 @@ export function MemorySearchResults({
         header: 'Agent',
         sortable: true,
         narrow: 'label',
-        headClassName: MEMORY_COLUMN_WIDTHS.agent,
+        headClassName: widths.agent,
         cell: (result) => {
           const agent = str(result.fields.agent)
           if (!agent) return null
@@ -239,7 +254,7 @@ export function MemorySearchResults({
         sortable: true,
         narrow: 'label',
         align: 'end',
-        headClassName: MEMORY_COLUMN_WIDTHS.updated,
+        headClassName: widths.updated,
         cellClassName: 'whitespace-nowrap',
         cell: (result) => (
           <Text size="meta" tone="muted" className="tabular-nums">
@@ -255,7 +270,7 @@ export function MemorySearchResults({
         header: 'Score',
         narrow: 'label',
         align: 'end',
-        headClassName: MEMORY_COLUMN_WIDTHS.score,
+        headClassName: MEMORY_COLUMN_WIDTHS.besideScore.score,
         cellClassName: 'whitespace-normal',
         cell: (result) => (
           <ScoreOverlay
