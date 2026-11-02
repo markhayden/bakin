@@ -33,8 +33,8 @@
       },
       "approvedBy": "Mark Hayden",
       "approvedOn": "2026-07-31",
-      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved converting the documented assets media-scrim and viewport-cap keeps into formal exceptions.",
-      "reviewBy": "2026-10-30",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved converting the documented assets media-scrim and viewport-cap keeps into formal exceptions. Renewed unchanged 2026-11-01: on review-date expiry the user approved renewing every expired exception (\"approved on whatever\").",
+      "reviewBy": "2027-01-31",
       "removalCondition": "Remove when the layout kit ships a supported media-fit/lightbox pattern with viewport sizing and a neutral scrim, and the asset surfaces migrate to it."
     },
     {
@@ -71,8 +71,8 @@
       },
       "approvedBy": "Mark Hayden",
       "approvedOn": "2026-07-31",
-      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the global-search-overlay and activity-feed viewport-cap keeps as formal exceptions.",
-      "reviewBy": "2026-10-30",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the global-search-overlay and activity-feed viewport-cap keeps as formal exceptions. Renewed unchanged 2026-11-01: on review-date expiry the user approved renewing every expired exception (\"approved on whatever\").",
+      "reviewBy": "2027-01-31",
       "removalCondition": "Remove when overlay archetypes gain supported viewport-cap sizing options and both components migrate to them."
     },
     {
@@ -137,8 +137,8 @@
       },
       "approvedBy": "Mark Hayden",
       "approvedOn": "2026-07-31",
-      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the data-driven colors and inline-style keeps (brand swatches, chart swatch, agent identity colors with the #a1a1aa fallback, meters, drawer width variable, React Flow edge-label transform) as formal exceptions; decision D kept the agent-* seed variables as data-driven.",
-      "reviewBy": "2026-10-30",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the data-driven colors and inline-style keeps (brand swatches, chart swatch, agent identity colors with the #a1a1aa fallback, meters, drawer width variable, React Flow edge-label transform) as formal exceptions; decision D kept the agent-* seed variables as data-driven. Renewed unchanged 2026-11-01: on review-date expiry the user approved renewing every expired exception (\"approved on whatever\").",
+      "reviewBy": "2027-01-31",
       "removalCondition": "Remove per-site as supported data-driven primitives (swatch, identity color, resizable panel) land in the kit and each site migrates."
     },
     {
@@ -179,8 +179,8 @@
       },
       "approvedBy": "Mark Hayden",
       "approvedOn": "2026-07-31",
-      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the enumerated semantic raw-control keeps (reply-toast, slots error-boundary retry, provider-keys chip dismiss, workflow-card stretched links and tooltip trigger, canvas drop-target, gate-toast, sidebar disclosure, runtime roster card, brand-builder hidden file inputs) as formal exceptions.",
-      "reviewBy": "2026-10-30",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the enumerated semantic raw-control keeps (reply-toast, slots error-boundary retry, provider-keys chip dismiss, workflow-card stretched links and tooltip trigger, canvas drop-target, gate-toast, sidebar disclosure, runtime roster card, brand-builder hidden file inputs) as formal exceptions. Renewed unchanged 2026-11-01: on review-date expiry the user approved renewing every expired exception (\"approved on whatever\").",
+      "reviewBy": "2027-01-31",
       "removalCondition": "Remove per-site as the kit ships unstyled control primitives (ghost pressable, stretched-link card, hidden-file-input picker) and each site migrates."
     },
     {
@@ -209,8 +209,8 @@
       },
       "approvedBy": "Mark Hayden",
       "approvedOn": "2026-07-31",
-      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the legacy pill-tab geometry keep as a formal exception.",
-      "reviewBy": "2026-10-30",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the legacy pill-tab geometry keep as a formal exception. Renewed unchanged 2026-11-01: on review-date expiry the user approved renewing every expired exception (\"approved on whatever\").",
+      "reviewBy": "2027-01-31",
       "removalCondition": "Remove when the last pill-variant consumer migrates to the underline variant and the frozen geometry is deleted."
     },
     {
@@ -239,8 +239,8 @@
       },
       "approvedBy": "Mark Hayden",
       "approvedOn": "2026-07-31",
-      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the brands hex-literal user-facing copy and color-input fallback keep as a formal exception.",
-      "reviewBy": "2026-10-30",
+      "approvalEvidence": "Storybook-refit T7.2 final-sweep decision E: user explicitly approved the brands hex-literal user-facing copy and color-input fallback keep as a formal exception. Renewed unchanged 2026-11-01: on review-date expiry the user approved renewing every expired exception (\"approved on whatever\").",
+      "reviewBy": "2027-01-31",
       "removalCondition": "Remove if the color editor moves example/fallback values into data files or the scanner learns to distinguish content literals from styling literals."
     },
     {
