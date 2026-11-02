@@ -11,6 +11,14 @@
  * Sort is controlled by the shell, which holds the full result set and slices
  * it into pages — sorting here would reorder only the visible page while the
  * table announced a global sort.
+ *
+ * Column widths are declared, not negotiated (#1040). Under the browser's
+ * automatic table layout the snippet's long single line of text out-weighed
+ * every title, so Title collapsed to a few characters and broke mid-word
+ * while Snippet took the rest of the row. The table is therefore
+ * `table-fixed`: Title owns a share of the width, the metadata columns own
+ * the widths their content needs, and Snippet is the one flexible column
+ * that absorbs whatever remains — it can shrink, Title cannot.
  */
 import { useMemo } from 'react'
 import { Bug } from 'lucide-react'
@@ -78,6 +86,28 @@ function summarizeSnippet(value: string, title: string): string {
   return summary.slice(title.length).replace(/^[\s:–—-]+/, '').trim()
 }
 
+/**
+ * Column widths under `table-layout: fixed` — a percentage share for Title,
+ * content-sized widths for the taxonomy metadata, and the un-sized Snippet
+ * column takes the remainder. Sized so Snippet keeps room at the narrowest
+ * table the page renders (a 672px container, below which the list render
+ * takes over): 36% + 368px of metadata leaves it ~65px there. The debug-only
+ * Score column (global debug + an active query) adds a sixth column the
+ * standard budget has no room for, so beside it Title cedes a little share,
+ * Score takes a share of its own (the overlay stacks its legs — a share
+ * keeps it from wrapping into a tall row on a wide screen) and the table
+ * hands off to the list one step earlier (768px). Exported so the layout
+ * tests pin the contract.
+ */
+export const MEMORY_COLUMN_WIDTHS = {
+  title: 'w-[36%]',
+  titleBesideScore: 'w-[32%]',
+  tier: 'w-28',
+  agent: 'w-36',
+  updated: 'w-28',
+  score: 'w-[12%]',
+} as const
+
 /** `updated_at` is epoch ms on the wire; missing values sort last. */
 function updatedMs(result: SearchResult): number | null {
   // `updated_at` is epoch milliseconds (lib/types.ts: `updatedAt: z.number()`),
@@ -132,25 +162,39 @@ export function MemorySearchResults({
         header: 'Title',
         sortable: true,
         narrow: 'primary',
-        cellClassName: 'whitespace-normal',
-        cell: (result) => (
-          <span className="min-w-0 [overflow-wrap:anywhere] font-bakin-typography-weight-semibold leading-snug text-bakin-text-primary">
-            {titleOf(result)}
-          </span>
-        ),
+        headClassName: showScoreBreakdown ? MEMORY_COLUMN_WIDTHS.titleBesideScore : MEMORY_COLUMN_WIDTHS.title,
+        // Words wrap at spaces first and break inside a word only when that
+        // word alone is wider than the column (long audit identifiers), two
+        // lines at most; the full title stays reachable on the native
+        // tooltip and in the record drawer the row opens.
+        cellClassName: 'whitespace-normal wrap-break-word',
+        cell: (result) => {
+          const title = titleOf(result)
+          return (
+            <span
+              data-memory-title=""
+              title={title}
+              className="line-clamp-2 min-w-0 font-bakin-typography-weight-semibold leading-snug text-bakin-text-primary"
+            >
+              {title}
+            </span>
+          )
+        },
       },
       {
         key: 'snippet',
         header: 'Snippet',
         narrow: 'meta',
-        cellClassName: 'whitespace-normal',
+        // The one un-sized column: it takes whatever Title and the metadata
+        // leave over, and only ever shows a single clamped line.
+        cellClassName: 'whitespace-normal wrap-break-word',
         cell: (result) => {
           const snippet = summarizeSnippet(str(result.fields.snippet), titleOf(result))
           if (!snippet) return null
           return (
             <span
               data-memory-summary=""
-              className="line-clamp-1 min-w-0 [overflow-wrap:anywhere] leading-relaxed text-bakin-text-muted"
+              className="line-clamp-1 min-w-0 leading-relaxed text-bakin-text-muted"
             >
               {snippet}
             </span>
@@ -162,6 +206,7 @@ export function MemorySearchResults({
         header: 'Tier',
         sortable: true,
         narrow: 'meta',
+        headClassName: MEMORY_COLUMN_WIDTHS.tier,
         cell: (result) => (
           <StatusBadge tone="neutral" variant="soft" size="xs">
             {tierDisplayName(str(result.fields.tier))}
@@ -173,6 +218,7 @@ export function MemorySearchResults({
         header: 'Agent',
         sortable: true,
         narrow: 'label',
+        headClassName: MEMORY_COLUMN_WIDTHS.agent,
         cell: (result) => {
           const agent = str(result.fields.agent)
           if (!agent) return null
@@ -193,6 +239,8 @@ export function MemorySearchResults({
         sortable: true,
         narrow: 'label',
         align: 'end',
+        headClassName: MEMORY_COLUMN_WIDTHS.updated,
+        cellClassName: 'whitespace-nowrap',
         cell: (result) => (
           <Text size="meta" tone="muted" className="tabular-nums">
             {formatUpdated(result)}
@@ -207,6 +255,7 @@ export function MemorySearchResults({
         header: 'Score',
         narrow: 'label',
         align: 'end',
+        headClassName: MEMORY_COLUMN_WIDTHS.score,
         cellClassName: 'whitespace-normal',
         cell: (result) => (
           <ScoreOverlay
@@ -286,12 +335,13 @@ export function MemorySearchResults({
   return (
     <DataTable
       label="Memory results"
-      collapseBelow="2xl"
+      collapseBelow={showScoreBreakdown ? '3xl' : '2xl'}
       listVariant="separated"
       columns={columns}
       rows={results}
       rowKey={(result) => result.id}
       rowProps={() => ({ 'data-memory-result': '' })}
+      tableProps={{ className: 'table-fixed' }}
       onRowActivate={onSelect ? (result) => onSelect(result) : undefined}
       rowActivateLabel={(result) => `Open ${titleOf(result)}`}
       sort={sort ?? undefined}

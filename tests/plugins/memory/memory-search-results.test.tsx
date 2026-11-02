@@ -10,6 +10,7 @@
  * but the callback fires with the full SearchResult when provided.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { useEffect, type ReactNode } from 'react'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import '../../rtl-settle'
 
@@ -41,8 +42,9 @@ mock.module('../../../packages/core/src/content-dir', () => {
   }
 })
 
-import { MemorySearchResults } from '../../../plugins/memory/components/memory-search-results'
+import { MEMORY_COLUMN_WIDTHS, MemorySearchResults } from '../../../plugins/memory/components/memory-search-results'
 import type { SearchResult } from '../../../packages/sdk/src/hooks/use-search'
+import { useDebug } from '../../../packages/sdk/src/hooks/use-debug'
 
 function row(overrides: Partial<SearchResult> & { tier?: string; agent?: string; title?: string }): SearchResult {
   const { tier = 'session', agent = 'explorer', title = 'A result', ...rest } = overrides
@@ -239,6 +241,93 @@ describe('MemorySearchResults', () => {
     )
     expect(screen.queryByRole('button', { name: /open read only/i })).toBeNull()
     expect(document.querySelector('[data-memory-result]')?.tagName).toBe('TR')
+  })
+
+  // #1040 — under automatic table layout the snippet's long single line
+  // out-weighed every title, so Title collapsed to a few characters and broke
+  // mid-word while Snippet took the row. The layout is declared instead:
+  // fixed table layout, a width share for Title, content widths for the
+  // metadata, Snippet as the one flexible column. The real-browser geometry
+  // lives in memory-table-layout.browser.test.ts; this pins the contract.
+  describe('column widths (#1040)', () => {
+    const longTitle = 'exec:bakin_exec_assets_save:launch-hero-v3-final-approved-render-2026-01-15'
+    const renderRows = () => render(
+      <MemorySearchResults
+        results={[
+          row({ id: 'session:dotted', title: 'assets.asset.saved' }),
+          row({ id: 'session:exec', title: longTitle, fields: {
+            tier: 'session', agent: 'explorer', title: longTitle,
+            snippet: 'A snippet long enough to claim the whole row under automatic table layout. '.repeat(4),
+          } }),
+        ]}
+        loading={false}
+        error={null}
+        query=""
+      />,
+    )
+
+    it('declares a fixed table layout so content can never redistribute the columns', () => {
+      renderRows()
+      expect(screen.getByRole('table', { name: 'Memory results' }).className).toContain('table-fixed')
+    })
+
+    it('gives Title a width share and the metadata columns their own widths; Snippet is the only flexible column', () => {
+      renderRows()
+      const header = (name: string) => cells().getByRole('columnheader', { name: new RegExp(`^${name}`) })
+      expect(header('Title').className).toContain(MEMORY_COLUMN_WIDTHS.title)
+      expect(header('Tier').className).toContain(MEMORY_COLUMN_WIDTHS.tier)
+      expect(header('Agent').className).toContain(MEMORY_COLUMN_WIDTHS.agent)
+      expect(header('Updated').className).toContain(MEMORY_COLUMN_WIDTHS.updated)
+      expect(header('Snippet').className).not.toMatch(/\bw-/)
+      // A percentage share, not a pixel width: Title scales with the table.
+      expect(MEMORY_COLUMN_WIDTHS.title).toMatch(/^w-\[\d+%\]$/)
+    })
+
+    it('clamps Title to two lines, breaks inside a word only as a last resort, and keeps the full title reachable', () => {
+      renderRows()
+      // Both renders mount (the list is container-query hidden); measure the table's.
+      const titles = Array.from(screen.getByRole('table', { name: 'Memory results' }).querySelectorAll<HTMLElement>('[data-memory-title]'))
+      expect(titles.map((node) => node.textContent)).toEqual(['assets.asset.saved', longTitle])
+      for (const node of titles) {
+        expect(node.className).toContain('line-clamp-2')
+        // overflow-wrap: anywhere let the browser shrink Title to one
+        // character per line; break-word only splits a word wider than the column.
+        expect(node.className).not.toContain('anywhere')
+        expect(node.closest('td')?.className).toContain('wrap-break-word')
+        expect(node.closest('td')?.className).not.toContain('wrap-anywhere')
+        expect(node.getAttribute('title')).toBe(node.textContent)
+      }
+      const snippet = screen.getByRole('table', { name: 'Memory results' }).querySelector<HTMLElement>('[data-memory-summary]')
+      expect(snippet?.className).toContain('line-clamp-1')
+      expect(snippet?.className).not.toContain('anywhere')
+    })
+
+    it('beside the debug Score column, Title cedes a little share and the table hands off to the list one step earlier', () => {
+      // Global debug + an active query is the only way the Score column appears.
+      function DebugOn({ children }: { children: ReactNode }) {
+        const [debug, toggleDebug] = useDebug()
+        useEffect(() => { if (!debug) toggleDebug() }, [debug, toggleDebug])
+        return debug ? children : null
+      }
+      render(
+        <DebugOn>
+          <MemorySearchResults results={[row({ id: 'session:a', title: 'Scored' })]} loading={false} error={null} query="scored" />
+        </DebugOn>,
+      )
+      const header = (name: string) => cells().getByRole('columnheader', { name: new RegExp(`^${name}`) })
+      expect(header('Score').className).toContain(MEMORY_COLUMN_WIDTHS.score)
+      expect(header('Title').className).toContain(MEMORY_COLUMN_WIDTHS.titleBesideScore)
+      expect(header('Title').className).not.toContain(MEMORY_COLUMN_WIDTHS.title)
+      const tableMode = screen.getByRole('table', { name: 'Memory results' }).closest('[data-slot="data-table-table"]')
+      expect(tableMode?.className).toContain('@3xl/data-table:block')
+      expect(tableMode?.className).not.toContain('@2xl/data-table:block')
+    })
+
+    it('keeps the date on one line', () => {
+      renderRows()
+      const updated = cells().getAllByText('Apr 17, 2026')[0]?.closest('td')
+      expect(updated?.className).toContain('whitespace-nowrap')
+    })
   })
 
   it('falls back gracefully when fields are missing', () => {
