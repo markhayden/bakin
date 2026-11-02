@@ -257,7 +257,7 @@ URL state via `useQueryState('tab', 'overview')`. Unknown values fall back to `o
 
 ### Header Contract
 
-The header contains: back arrow, avatar (clickable for upload), name, role, gateway-restart banner (when dirty), delete button (suppressed on the main agent). It used to host the model picker, team selector, and subagent perms badge — all moved to OverviewTab so the header stays informational.
+The header contains: back arrow, avatar (clickable for upload — `POST /:agentId/avatar`; it renders from the host `GET /api/agents/avatar?id=` route with a `&t=` cache-bust after an upload, and agent `headshot` URLs point at the same host route — the plugin has no avatar GET), name, role, gateway-restart banner (when dirty), delete button (suppressed on the main agent). It used to host the model picker, team selector, and subagent perms badge — all moved to OverviewTab so the header stays informational.
 
 ### OverviewTab Composition
 

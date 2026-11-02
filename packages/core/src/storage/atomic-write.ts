@@ -17,10 +17,15 @@ export interface AtomicWriteOptions {
 
 /** Atomically write `text` to `path` (temp file + rename), creating parent dirs. */
 export function atomicWriteText(path: string, text: string): void {
+  atomicWriteBytes(path, Buffer.from(text, 'utf-8'))
+}
+
+/** Atomically write raw bytes to `path` (temp file + rename), creating parent dirs. */
+export function atomicWriteBytes(path: string, data: Uint8Array): void {
   mkdirSync(dirname(path), { recursive: true })
   const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`
   try {
-    writeFileSync(tmpPath, text, 'utf-8')
+    writeFileSync(tmpPath, data)
     renameSync(tmpPath, path)
   } catch (err) {
     if (existsSync(tmpPath)) {

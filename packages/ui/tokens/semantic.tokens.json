@@ -404,6 +404,22 @@
         "rowDense": {
           "$description": "Minimum height for explicitly dense tables and operational rows; not a global density mode.",
           "$value": "{reference.size.rowDense}"
+        },
+        "railStrip": {
+          "$description": "Collapsed width of a collapsible edge rail: the kit strip with its expand control.",
+          "$value": "{reference.size.railStrip}"
+        },
+        "railNav": {
+          "$description": "Expanded width of an app-navigation rail.",
+          "$value": "{reference.size.railNav}"
+        },
+        "railSession": {
+          "$description": "Expanded width of a session-manager list rail.",
+          "$value": "{reference.size.railSession}"
+        },
+        "railConversation": {
+          "$description": "Expanded width of a docked conversation rail; fits a question card and composer.",
+          "$value": "{reference.size.railConversation}"
         }
       }
     },

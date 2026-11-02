@@ -38,3 +38,20 @@ export type ConversationMessage =
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
   | { kind: 'done'; ts: string; turnId?: string }
+
+/**
+ * One structured question an agent asks through `bakin_exec_ask_user`
+ * (rides `metadata.bakinQuestion` on the tool row). Canonical home; the core
+ * zod schema (`@bakin/core/conversation/questions`) and the ui structural
+ * copy are pinned to it by the SDK's private message-contract module.
+ */
+export interface BakinQuestion {
+  v: 1
+  id: string
+  question: string
+  options: { label: string; description?: string }[]
+  /** Index into `options` of the agent's recommended answer. */
+  recommended?: number
+  /** Whether "Something else…" free text is offered. */
+  allowOther: boolean
+}

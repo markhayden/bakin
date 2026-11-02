@@ -9,10 +9,6 @@ import { getContentDir } from '../core/content-dir'
 const CONTENT_DIR = getContentDir()
 const adapter = new MarkdownStorageAdapter(CONTENT_DIR)
 
-export function readAllContent(): Record<string, string> {
-  return adapter.readAll()
-}
-
 export function readContentFile(relativePath: string): string | null {
   return adapter.read(relativePath)
 }

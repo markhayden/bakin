@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useContentStore } from './use-content-store'
+import { useHostStore } from './use-host-store'
 
 type KeyboardLock = { lock?(keys?: string[]): Promise<void>; unlock?(): void }
 const keyboard = () => (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard
@@ -33,8 +33,8 @@ export interface FullscreenControls {
  * browser leaving full screen, or `exit` ends it (the host owns that).
  */
 export function useFullscreen(): FullscreenControls {
-  const active = useContentStore((state) => state.fullscreen !== null)
-  const setFullscreen = useContentStore((state) => state.setFullscreen)
+  const active = useHostStore((state) => state.fullscreen !== null)
+  const setFullscreen = useHostStore((state) => state.setFullscreen)
   const browser = typeof document !== 'undefined' && Boolean(document.fullscreenEnabled)
   const enter = useCallback(() => {
     // Held by this page: the host ends it when the page changes.
@@ -47,8 +47,8 @@ export function useFullscreen(): FullscreenControls {
         // A stale grant (an exit, or a newer enter, came while the browser was still granting it) never
         // locks Esc. It is undone only when nobody holds full screen now: a newer owner keeps it (and locks
         // Esc from its own grant).
-        if (mine !== request || useContentStore.getState().fullscreen === null) {
-          if (useContentStore.getState().fullscreen === null && document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+        if (mine !== request || useHostStore.getState().fullscreen === null) {
+          if (useHostStore.getState().fullscreen === null && document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
           return
         }
         void keyboard()?.lock?.(['Escape']).catch(() => undefined)
@@ -61,6 +61,6 @@ export function useFullscreen(): FullscreenControls {
     keyboard()?.unlock?.()
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
   }, [setFullscreen])
-  const toggle = useCallback(() => { if (useContentStore.getState().fullscreen !== null) exit(); else enter() }, [enter, exit])
+  const toggle = useCallback(() => { if (useHostStore.getState().fullscreen !== null) exit(); else enter() }, [enter, exit])
   return { active, browser, enter, exit, toggle }
 }

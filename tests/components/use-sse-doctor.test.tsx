@@ -18,7 +18,7 @@ import { act, render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { useSSE } from '../../packages/sdk/src/hooks/use-sse'
 import { usePluginEvent } from '../../packages/sdk/src/hooks/use-plugin-event'
-import { useContentStore } from '../../packages/sdk/src/hooks/use-content-store'
+import { useHostStore } from '../../packages/sdk/src/hooks/use-host-store'
 
 let doctorRuns = 0
 let reconciles = 0
@@ -111,7 +111,7 @@ describe('useSSE — doctor.run event wiring', () => {
       retryable: true,
     }, 'main')
 
-    const [event] = useContentStore.getState().activityEvents
+    const [event] = useHostStore.getState().activityEvents
     expect(event.message).toBe('Dispatch failed: model provider unavailable')
     expect(event.data).toMatchObject({
       reasonCode: 'provider_cooldown',

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { actRender } from '../rtl-settle'
-import { useContentStore } from '../../packages/sdk/src/hooks/use-content-store'
+import { useHostStore } from '../../packages/sdk/src/hooks/use-host-store'
 import { useFullscreen } from '../../packages/sdk/src/hooks/use-fullscreen'
 
 type FullscreenDocument = { fullscreenEnabled: boolean; fullscreenElement: Element | null; exitFullscreen(): Promise<void> }
@@ -20,7 +20,7 @@ function browser(enabled: boolean) {
 
 afterEach(() => {
   cleanup()
-  useContentStore.setState({ fullscreen: null })
+  useHostStore.setState({ fullscreen: null })
 })
 
 describe('useFullscreen (host full screen for a page that is the point of the visit)', () => {
@@ -31,7 +31,7 @@ describe('useFullscreen (host full screen for a page that is the point of the vi
     expect(view.result.current.browser).toBe(true)
     await act(async () => { view.result.current.enter() })
     expect(view.result.current.active).toBe(true)
-    expect(useContentStore.getState().fullscreen).toBe(window.location.pathname)
+    expect(useHostStore.getState().fullscreen).toBe(window.location.pathname)
     expect(requested).toHaveBeenCalledTimes(1)
     doc.fullscreenElement = document.documentElement
     await act(async () => { view.result.current.toggle() })
@@ -77,7 +77,7 @@ describe('useFullscreen (host full screen for a page that is the point of the vi
       expect(exited).not.toHaveBeenCalled()
       expect(locked).toHaveBeenCalledTimes(1)
       cleanup()
-      useContentStore.setState({ fullscreen: null })
+      useHostStore.setState({ fullscreen: null })
     }
   })
 })

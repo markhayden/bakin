@@ -49,7 +49,7 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 
 | Hook | Description |
 | --- | --- |
-| `useContentStore` | Access the global Zustand store for SSE-driven content state. |
+| `useHostStore` | Host-wide browser state: live connection, debug toggle, activity feed. |
 | `useScheduleJobs` | List scheduled jobs with live updates. |
 | `useRunHistory` | Fetch run history for a scheduled job. |
 | `ScheduleJob` | — |
@@ -363,6 +363,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `NodeCardTone` | — |
 | `PageAsideCollapsible` | — |
 | `PageAsideProps` | — |
+| `PageAsideSide` | — |
 | `PageAsideWidth` | — |
 | `PageBodyGap` | — |
 | `PageBodyLayout` | — |
@@ -478,6 +479,9 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | Export | Description |
 | --- | --- |
 | `foldConversation` | Fold persisted rows and live chunks into ordered render-ready turns. |
+| `formatQuestionAnswer` | The user message a question-card answer sends (and the fold recognises). |
+| `QuestionAnswer` | — |
+| `QuestionState` | — |
 | `ConversationChunk` | — |
 | `ConversationTextFormat` | — |
 | `ConversationToolActivity` | — |
@@ -486,6 +490,7 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `FoldOptions` | — |
 | `TurnItem` | — |
 | `TurnStatus` | — |
+| `BakinQuestion` | The canonical row types live in `@makinbakin/sdk/types`; ui keeps a pinned structural copy (message-contract.ts). |
 | `ConversationMessage` | The canonical row types live in `@makinbakin/sdk/types`; ui keeps a pinned structural copy (message-contract.ts). |
 | `DisplayAttachment` | The canonical row types live in `@makinbakin/sdk/types`; ui keeps a pinned structural copy (message-contract.ts). |
 | `TurnOutputView` | Compact single-turn output for task and workflow embeds. |
@@ -559,6 +564,8 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `ComposerAttachmentStatus` | — |
 | `ComposerHandle` | — |
 | `ComposerProps` | — |
+| `ComposerAttachmentTray` | A draft's attachment thumbnails, as Composer shows them, for any composer (a terminal's compose sheet). |
+| `ComposerAttachmentTrayProps` | — |
 | `QueuedMessageList` | Accepted follow-ups waiting behind an active turn. |
 | `QueuedMessageListProps` | — |
 
@@ -716,6 +723,9 @@ Source: `packages/sdk/src/utils/index.ts`.
 | `SUMMARY_MAX_CHARS` | Record one streamed turn's chunks into persistable ConversationMessage rows. |
 | `PREVIEW_MAX_CHARS` | Record one streamed turn's chunks into persistable ConversationMessage rows. |
 | `TurnRecorder` | — |
+| `parseBakinQuestion` | Validate structured questions (`bakin_exec_ask_user` envelopes) at a plugin's server boundary. |
+| `validateBakinQuestionInput` | Validate structured questions (`bakin_exec_ask_user` envelopes) at a plugin's server boundary. |
+| `QUESTION_LIMITS` | Validate structured questions (`bakin_exec_ask_user` envelopes) at a plugin's server boundary. |
 | `humanizeKey` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `formatStructured` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `summarizeStructured` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
@@ -784,5 +794,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 29, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 1, 2026 · Bakin 0.0.0-dev</span>
 </aside>

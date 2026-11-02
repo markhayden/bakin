@@ -9,7 +9,7 @@ const agentsDir = join(testDir, 'agents')
 
 const contentDirMock = {
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ home: testDir, agents: agentsDir }),
+  getBakinPaths: () => ({ home: testDir, agents: agentsDir, cache: join(testDir, '.cache'), media: join(testDir, 'media') }),
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
   initBakinHome: () => {},
@@ -93,9 +93,9 @@ describe('resolveAgentAvatar', () => {
 describe('serveAvatar', () => {
   const bare = new Request('http://x/avatar')
 
-  it('serves bytes with the right Content-Type + validators', () => {
+  it('serves bytes with the right Content-Type + validators', async () => {
     writeAvatar('serve-webp', 'webp', WEBP)
-    const res = serveAvatar(bare, 'serve-webp')
+    const res = await serveAvatar(bare, 'serve-webp')
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toBe('image/webp')
     expect(res.headers.get('ETag')).toBeTruthy()
@@ -103,21 +103,21 @@ describe('serveAvatar', () => {
     expect(res.headers.get('Cache-Control')).toContain('max-age')
   })
 
-  it('returns 404 when the avatar is missing', () => {
-    expect(serveAvatar(bare, 'serve-missing').status).toBe(404)
+  it('returns 404 when the avatar is missing', async () => {
+    expect((await serveAvatar(bare, 'serve-missing')).status).toBe(404)
   })
 
-  it('returns 304 on matching If-None-Match', () => {
+  it('returns 304 on matching If-None-Match', async () => {
     writeAvatar('serve-inm', 'png', PNG)
-    const etag = serveAvatar(bare, 'serve-inm').headers.get('ETag')!
-    const res = serveAvatar(new Request('http://x/avatar', { headers: { 'If-None-Match': etag } }), 'serve-inm')
+    const etag = (await serveAvatar(bare, 'serve-inm')).headers.get('ETag')!
+    const res = await serveAvatar(new Request('http://x/avatar', { headers: { 'If-None-Match': etag } }), 'serve-inm')
     expect(res.status).toBe(304)
   })
 
-  it('returns 304 on a satisfying If-Modified-Since', () => {
+  it('returns 304 on a satisfying If-Modified-Since', async () => {
     writeAvatar('serve-ims', 'png', PNG)
-    const lm = serveAvatar(bare, 'serve-ims').headers.get('Last-Modified')!
-    const res = serveAvatar(new Request('http://x/avatar', { headers: { 'If-Modified-Since': lm } }), 'serve-ims')
+    const lm = (await serveAvatar(bare, 'serve-ims')).headers.get('Last-Modified')!
+    const res = await serveAvatar(new Request('http://x/avatar', { headers: { 'If-Modified-Since': lm } }), 'serve-ims')
     expect(res.status).toBe(304)
   })
 })

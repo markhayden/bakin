@@ -624,3 +624,32 @@ describe('ChatView', () => {
     cleanup()
   })
 })
+
+describe('ChatView question cards (projects revamp T9)', () => {
+  it('an ask_user question renders as a card and answering posts the formatted message', async () => {
+    mockFetch({
+      [`/chats/${CHAT_A}/messages`]: { ok: true },
+      [`/chats/${CHAT_A}/seen`]: {},
+      [`/chats/${CHAT_A}`]: {
+        chat: summary(),
+        messages: [
+          { kind: 'user', ts: '2026-07-11T10:00:00.000Z', content: 'help me clean my inbox' },
+          {
+            kind: 'tool', ts: '2026-07-11T10:00:01.000Z', turnId: 't1', callId: 'c1', toolName: 'bakin_exec_ask_user', status: 'completed',
+            metadata: { bakinQuestion: { v: 1, id: 'q_0123456789abcdef', question: 'Which inbox?', options: [{ label: 'Personal' }, { label: 'Work' }], recommended: 0, allowOther: true } },
+          },
+        ],
+      },
+    })
+    let view!: ReturnType<typeof render>
+    await act(async () => { view = render(<ChatView chatId={CHAT_A} onChanged={() => {}} />) })
+    await waitFor(() => expect(view.container.querySelector('[data-conv-question]')).not.toBeNull())
+    const card = view.container.querySelector('[data-conv-question]') as HTMLElement
+    await act(async () => { fireEvent.click(Array.from(card.querySelectorAll('[role="radio"]'))[1]!) })
+    await act(async () => { fireEvent.click(card.querySelector('button[type="submit"]')!) })
+    await settleReact()
+    const post = fetchCalls.find((c) => c.url.includes(`/chats/${CHAT_A}/messages`) && c.init?.method === 'POST')
+    expect(JSON.parse(String(post?.init?.body)).content).toBe('**Which inbox?** → Work')
+    cleanup()
+  })
+})

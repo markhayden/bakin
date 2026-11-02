@@ -1,9 +1,9 @@
 'use client'
 
-import { useContentStore } from './use-content-store'
+import { useHostStore } from './use-host-store'
 
 export function useDebug(): [debug: boolean, toggleDebug: () => void] {
-  const debug = useContentStore((s) => s.debug)
-  const toggleDebug = useContentStore((s) => s.toggleDebug)
+  const debug = useHostStore((s) => s.debug)
+  const toggleDebug = useHostStore((s) => s.toggleDebug)
   return [debug, toggleDebug]
 }

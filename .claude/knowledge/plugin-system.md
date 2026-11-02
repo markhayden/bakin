@@ -729,6 +729,8 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
    - `unregisterPluginNodeTypes`, `unregisterPluginNotificationChannels`,
      `unregisterPluginHealthChecks` — the Health sweep removes the owner's
      checks, repair actions, and cached snapshots
+   - `unregisterPluginGates` — the plugin's `ctx.approvals` gates (its
+     pending records stay; resolving one answers 503 until a gate returns)
    - `purgeContentType(table)` for every content type the plugin
      registered — atomic Antfly `dropTable`
 6. Filesystem deletes — skill dirs (per plan),
@@ -933,7 +935,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `events: EventBus` | Pub/sub with pattern matching |
 | `pluginId: string` | This plugin's ID |
 | `runtime: AgentRuntimeAdapter` | Adapter-backed runtime surface for agents, messaging, channels, cron, workspace files, skills, sessions, memory, models, image generation, and execution status. Plugins never import runtime provider packages directly. |
-| `tasks: BakinTaskStore` | Bakin-owned task metadata store under `~/.bakin/tasks/`. Runtime execution ids are delivery refs only. |
+| `tasks: BakinTaskStore` | Bakin-owned task metadata store under `~/.bakin/tasks/`. Runtime execution ids are delivery refs only. `create`/`update` carry `tags` (update replaces, `[]` clears) — a models `tagOverrides` entry routes the task's dispatch (D30); every column change fires `tasks.statusChanged` exactly once from the store write (D21). |
 | `registerNav(items)` | Add sidebar navigation items (server-side) |
 | `registerRoute(route)` | Add HTTP API route at `/api/plugins/{id}/{path}` |
 | `registerSlot(reg)` | Register React component for a named UI slot (server-side) |
@@ -958,6 +960,8 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `search.remove(key)` | Remove a document from the index |
 | `search.transform(key, ops)` | Atomic metadata update without re-embedding |
 | `search.query(params)` | Search this plugin's content type |
+| `conversations.createTurnService(config)` | The shared turn engine (#703); the service's `appendExternal(ctx, key, rows, notice?)` writes rows outside a turn (idle → now + `events.appended`; in flight → queued, flushed before the next admission). Deep ref: `.claude/knowledge/conversation-kit.md`. |
+| `approvals.registerGate(gateKind, { ownerState, onResolve })` / `request({ approvalId, gateKind, entityId, taskId, title, summary, options? })` / `cancel` / `get` / `listPending({ entityId?, gateKind? })` / `refusal(message, status)` | The plugin's own sign-off gates on the ONE approval primitive (`plugin-gate` owner, spec D26). Ids must start with `<pluginId>:`; a plugin only ever sees its own records; gates are swept with the plugin. Deep ref: `.claude/knowledge/approvals.md`. |
 
 Both `search.registerContentType` and `search.registerFileBackedContentType`
 auto-register a `GET /search` route on the plugin's router so callers can
@@ -1236,14 +1240,23 @@ Mechanics (`packages/sdk/src/hooks/use-plugin-event.ts`, exported like `useSSE`)
   `bakin.reconcile` (after a reconnect or a tab wake), `turn-activity`, and
   `search.rebuild.start|progress|complete` (from the per-table rebuild
   frames). There is no other `EventSource` — architecture-test pinned. Adding a new event name = one `emit`
-  line here; no content-store change.
+  line here; no host-store change.
 
 This replaced two older patterns: the assets plugin's 3 raw
-`EventSource`s and the content store's hardcoded per-plugin counters
+`EventSource`s and the old content store's hardcoded per-plugin counters
 (`taskboardVersion`/`doctorVersion`/`reindexProgress`). Consumers now
-hold their own local state and subscribe to the relevant event. The
-content store is back to file/audit/activity/heartbeat state only —
-it no longer knows which plugin cares about which event.
+hold their own local state and subscribe to the relevant event.
+
+The host store (`useHostStore`, `@makinbakin/sdk/hooks`) holds ONLY host-wide
+browser state: `connected`, `debug` (hydrated from `localStorage` at creation),
+and the activity feed. It fetches exactly one thing — `GET /api/activity`,
+once per successful SSE connection (first open and every reconnect) — and
+merges that snapshot with the live events it already holds (one row per id
+from the shared `@bakin/core/events/activity-id` derivation, newest first,
+capped at 100; a stale response is discarded). It holds no file contents,
+heartbeats or audit backlog: the old content store fetched a whole-home
+`/api/state` snapshot (155 MB on a lived-in install) on mount and every
+reconnect, and the task board waited on it (Margo perf, 2026-10-26).
 
 ## Slot System
 
@@ -1343,7 +1356,7 @@ a no-op (no snapshot rebuild, no subscriber notification).
 The refresh signal is per-plugin — the hook doesn't prescribe one. The
 adopters subscribe to named server events via `usePluginEvent` (see
 § Client SSE fan-out below) — no per-plugin `EventSource`, no
-content-store counters:
+host-store counters:
 - **tasks** (blocked→`error` / review→`attention`, winning-severity) —
   `usePluginEvent('taskboard', refresh)`, the same signal the Kanban
   board uses.
@@ -1388,7 +1401,10 @@ state and agent activity alone do not produce indicators.
 Providers subscribe to `bakin.reconcile` for connection/resume recovery in addition
 to their domain events. Retain successful snapshots on errors, retry failed reads,
 and reject superseded results. `bakin.file.changed` carries file invalidations on
-the same shell stream. Snapshot recovery never replays historical fanfare.
+the same shell stream — `{ file, change }` only: watcher SSE frames are
+`{ file, event, timestamp }` with NO content (the event bus and sync hooks still
+receive content server-side), so a large file change never rides every
+browser's stream or the SSE replay buffer. Snapshot recovery never replays historical fanfare.
 
 ### Lifecycle
 
@@ -1681,7 +1697,6 @@ S-B (runtime skills, on disk). See
 | `write(path, content)` | Write file, creates directories as needed |
 | `append(path, content)` | Append to file |
 | `exists(path)` | Check file existence |
-| `readAll()` | Read all files in content dir (flat) |
 
 All paths relative to `~/.bakin/` (resolved via `getContentDir()`).
 
@@ -1754,6 +1769,7 @@ runReloadPipeline:
             unregisterPluginNodeTypes,
             unregisterPluginNotificationChannels,
             unregisterPluginHealthChecks (checks + repair actions + snapshots),
+            unregisterPluginGates (ctx.approvals gates; records stay),
             unregisterContentTypesByPlugin (preserve search tables),
             removePluginSkillsByPlugin
   4. Clear state arrays (routes/slots/navItems/etc.)

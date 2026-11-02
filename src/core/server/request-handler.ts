@@ -32,7 +32,6 @@ import type { buildOpenApiDocument } from '../../../packages/host/src/api/docs-r
 import { dispatchWebHandler } from '../../../packages/host/src/api/_adapter'
 import * as activityRoute from '../../../packages/host/src/api/activity'
 import * as agentsAvatarRoute from '../../../packages/host/src/api/agents/avatar'
-import * as agentsHealthRoute from '../../../packages/host/src/api/agents/health'
 import * as agentsSettingsRoute from '../../../packages/host/src/api/agents/settings'
 import * as secretsRoute from '../../../packages/host/src/api/secrets'
 import * as channelsRoute from '../../../packages/host/src/api/channels'
@@ -63,9 +62,7 @@ import * as packagesInstallRoute from '../../../packages/host/src/api/packages/i
 import * as skillsRoute from '../../../packages/host/src/api/skills'
 import * as packagesDynamicRoute from '../../../packages/host/src/api/packages/dynamic'
 import * as packagesCapabilitiesRoute from '../../../packages/host/src/api/packages/capabilities'
-import * as pluginsMemoryAuditRoute from '../../../packages/host/src/api/plugins/memory/audit'
 import * as pluginsMemoryWorkspaceRoute from '../../../packages/host/src/api/plugins/memory/workspace'
-import * as stateRoute from '../../../packages/host/src/api/state'
 import * as assetsRoute from '../../../packages/host/src/api/assets/[...path]'
 import * as pluginCatchAllRoute from '../../../packages/host/src/api/plugins/[pluginId]/[[...path]]'
 import * as pluginsManifestRoute from '../../../packages/host/src/api/plugins/manifest'
@@ -529,12 +526,6 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
-    // Migrated: /api/agents/health (must be before agent catch-all)
-    if (url.pathname === '/api/agents/health' && req.method === 'GET') {
-      dispatchWebHandler(req, res, agentsHealthRoute.get)
-      return
-    }
-
     // Migrated: /api/agents/settings (must be before agent catch-all)
     if (url.pathname === '/api/agents/settings') {
       if (req.method === 'GET') {
@@ -623,20 +614,10 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
-    // /api/plugins/memory/{audit,workspace} — former standalone
-    // routes now served directly (they shadow the plugin catch-all).
-    if (url.pathname === '/api/plugins/memory/audit' && req.method === 'GET') {
-      dispatchWebHandler(req, res, pluginsMemoryAuditRoute.get)
-      return
-    }
-
+    // /api/plugins/memory/workspace — former standalone route now served
+    // directly (it shadows the plugin catch-all).
     if (url.pathname === '/api/plugins/memory/workspace' && req.method === 'GET') {
       dispatchWebHandler(req, res, pluginsMemoryWorkspaceRoute.get)
-      return
-    }
-
-    if (url.pathname === '/api/state' && req.method === 'GET') {
-      dispatchWebHandler(req, res, stateRoute.get)
       return
     }
 

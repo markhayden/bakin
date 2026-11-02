@@ -84,6 +84,7 @@ const ownerSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('workflow-gate'), taskId: z.string(), workflowId: z.string(), runId: z.string(), stepId: z.string() }),
   z.object({ kind: z.literal('health-repair'), taskId: z.string(), requestId: z.string(), incidentIds: z.array(z.string()), proposal: repairProposalSchema }),
   z.object({ kind: z.literal('health-navigate'), taskId: z.string(), requestId: z.string(), incidentIds: z.array(z.string()), href: z.string() }),
+  z.object({ kind: z.literal('plugin-gate'), taskId: z.string().min(1), pluginId: z.string().min(1), gateKind: z.string().min(1), entityId: z.string().min(1) }),
 ])
 
 export const approvalRecordSchema = z.object({

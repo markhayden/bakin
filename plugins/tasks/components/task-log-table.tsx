@@ -21,9 +21,10 @@ import type { ColumnId, Task } from '../types'
 import { Inline } from '@makinbakin/sdk/layout'
 import { TaskActionsMenu } from './task-actions-menu'
 
+/** One raw audit record from `GET /api/plugins/tasks/history` (oldest first). */
 interface AuditEntry {
-  type: string
-  timestamp: string
+  ts: string
+  event: string
   agent?: string
   data?: {
     id?: string
@@ -104,6 +105,13 @@ interface TaskLogTableProps {
   statusFilter: string[]
   /** When true, preserve search relevance order instead of manual sort */
   isSearching?: boolean
+  /**
+   * The parent narrowed `currentTasks` (search, agent or brand). Audit-only
+   * history rows cannot honor those filters — the audit agent is whoever
+   * acted, not the assignee, and audit records carry no brand — so they are
+   * left out rather than shown unfiltered.
+   */
+  narrowed?: boolean
   /** Per-task search score info, keyed by task id. Only set when debug + active search. */
   scoreMap?: Map<string, TaskScoreInfo>
   /** Opens the canonical task detail drawer for current and historical rows. */
@@ -113,7 +121,7 @@ interface TaskLogTableProps {
   onTaskDelete?: (task: Task) => void
 }
 
-export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap, onTaskOpen, onTaskEdit, onTaskDuplicate, onTaskDelete }: TaskLogTableProps) {
+export function TaskLogTable({ currentTasks, statusFilter, isSearching, narrowed, scoreMap, onTaskOpen, onTaskEdit, onTaskDuplicate, onTaskDelete }: TaskLogTableProps) {
   const [auditTasks, setAuditTasks] = useState<HistoricalTask[]>([])
   const [loading, setLoading] = useState(true)
   const [sortQuery, setSortQuery] = useQueryState('logSort', 'completedAt:desc')
@@ -126,15 +134,15 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
         // Dev rebuilds and engine hiccups can strand a response forever; a hung
         // request must degrade to the current-tasks-only view, not an eternal
         // loading state.
-        const res = await fetch('/api/plugins/memory/audit', { signal: AbortSignal.timeout(15_000) })
+        const res = await fetch('/api/plugins/tasks/history', { signal: AbortSignal.timeout(15_000) })
         if (!res.ok) return
         const { entries } = await res.json() as { entries: AuditEntry[] }
 
+        // Oldest first, so a later transition overwrites an earlier one.
         const taskMap = new Map<string, HistoricalTask>()
-        const sorted = [...entries].reverse()
-        for (const entry of sorted) {
+        for (const entry of entries) {
           const id = entry.data?.id
-          if (!id || !entry.type.startsWith('task.')) continue
+          if (!id) continue
 
           const existing = taskMap.get(id) ?? {
             id,
@@ -143,15 +151,18 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
             status: 'todo' as ColumnId,
           }
 
-          if (entry.type === 'task.created') {
-            existing.createdAt = entry.timestamp
+          if (entry.event === 'task.created') {
+            existing.createdAt = entry.ts
             if (entry.data?.title) existing.title = entry.data.title
           }
-          if (entry.type === 'task.moved' && entry.data?.to) {
-            existing.status = entry.data.to as ColumnId
-            if (entry.data.to === 'done' || entry.data.to === 'archived') {
-              existing.completedAt = entry.timestamp
-            }
+          if (entry.event === 'task.moved' && entry.data?.to) {
+            const to = entry.data.to as ColumnId
+            existing.status = to
+            // Completion is the move to done; archiving keeps that date (or
+            // supplies one when no done move was retained); reopening clears it.
+            if (to === 'done') existing.completedAt = entry.ts
+            else if (to === 'archived') existing.completedAt ??= entry.ts
+            else existing.completedAt = undefined
           }
           if (entry.agent) existing.agent = entry.agent
           taskMap.set(id, existing)
@@ -169,14 +180,15 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
 
   // Merge current board tasks with audit history (current takes priority)
   const allTasks = useMemo(() => {
-    // The parent supplies ranked search matches. Unfiltered audit history
-    // must not introduce unrelated rows or reorder those matches.
-    if (isSearching) return currentTasks
+    // Under search, agent or brand filters the parent's rows are the answer;
+    // unfilterable audit history must not add unrelated rows (or reorder
+    // ranked search matches).
+    if (isSearching || narrowed) return currentTasks
     const merged = new Map<string, FlatTask | HistoricalTask>()
     for (const t of auditTasks) merged.set(t.id, t)
     for (const t of currentTasks) merged.set(t.id, t)
     return Array.from(merged.values())
-  }, [currentTasks, auditTasks, isSearching])
+  }, [currentTasks, auditTasks, isSearching, narrowed])
 
   // Status filter from parent facet
   const filtered = useMemo(() => {
