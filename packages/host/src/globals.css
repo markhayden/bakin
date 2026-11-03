@@ -11,7 +11,10 @@
  * previous contents fed back into the next build (a stale artifact once
  * resurrected a deleted class's theme variable), plus tests/scripts/docs
  * whose class-shaped strings injected junk. Hermetic inputs are what make
- * the buildSdkPackage byte-identity check hold on every machine.
+ * the buildSdkPackage byte-identity check hold on every machine. Test files
+ * inside the plugin and example globs are excluded for the same reason:
+ * their class-shaped strings ('tab-2', 'row-2500') are not UI, and they made
+ * the canonical artifact depend on which tests an official plugin carries.
  *
  * Paths are resolved relative to this file (packages/host/src/globals.css).
  */
@@ -23,6 +26,9 @@
 @source "../../../storybook/**/*.{ts,tsx}";
 @source "../../../examples/**/*.{ts,tsx}";
 @source "../../../../bakin-bits-official/plugins/**/*.{ts,tsx}";
+@source not "../../../plugins/**/*.test.{ts,tsx}";
+@source not "../../../examples/**/*.test.{ts,tsx}";
+@source not "../../../../bakin-bits-official/plugins/**/*.test.{ts,tsx}";
 
 @custom-variant dark (&:is(.dark *));
 
