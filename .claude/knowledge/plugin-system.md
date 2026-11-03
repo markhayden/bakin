@@ -1249,7 +1249,9 @@ hold their own local state and subscribe to the relevant event.
 
 The host store (`useHostStore`, `@makinbakin/sdk/hooks`) holds ONLY host-wide
 browser state: `connected`, `debug` (hydrated from `localStorage` at creation),
-and the activity feed. It fetches exactly one thing — `GET /api/activity`,
+`fullscreen` (the path of the page holding the host's full screen, written only
+by `useFullscreen`; the host hides its chrome while it is set) and the activity
+feed. It fetches exactly one thing — `GET /api/activity`,
 once per successful SSE connection (first open and every reconnect) — and
 merges that snapshot with the live events it already holds (one row per id
 from the shared `@bakin/core/events/activity-id` derivation, newest first,

@@ -24,6 +24,8 @@ describe('useHostStore — shape', () => {
     expect(Object.keys(state).sort()).toEqual([
       'activityEvents', 'appendActivityEvent', 'connected', 'debug', 'fullscreen', 'refreshActivity', 'setConnected', 'setDebug', 'setFullscreen', 'toggleDebug',
     ])
+    // Full screen starts unheld; `useFullscreen` is the only writer.
+    expect(state.fullscreen).toBeNull()
   })
 })
 
