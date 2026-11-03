@@ -1,3 +1,5 @@
+import type { UpdateRecord } from '@makinbakin/sdk/types'
+
 /** Lightweight agent info for badges, dropdowns, selectors */
 export interface AgentMeta {
   id: string
@@ -92,15 +94,8 @@ export interface PackageStateRow {
     version?: string
     dependencies?: string[]
   }
-  updateStatus?: {
-    currentVersion: string
-    latestVersion: string | null
-    currentCommitSha: string
-    latestCommitSha: string | null
-    upgradeAvailable: boolean
-    checkedAt: string
-    error?: string
-  }
+  /** The updates engine's record for the installed package (#1007) — absent until the engine has one. */
+  update?: UpdateRecord
 }
 
 /**

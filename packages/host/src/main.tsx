@@ -8,7 +8,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { toNavigationOptions } from '@makinbakin/sdk/hooks'
 import { router } from './router'
 import { registerShellReact } from './lib/react-identity'
-import { setNotificationNavigator } from '@/lib/browser-notify'
+import { setNotificationNavigator } from '@makinbakin/sdk/internal'
 
 // Register the shell's React instance for plugin-load-time identity checks
 // (Phase F uses `assertReactInstance` on every dynamically loaded plugin).

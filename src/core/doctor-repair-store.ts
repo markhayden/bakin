@@ -1,8 +1,8 @@
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
-import { repairProposalSchema, type RepairProposal } from '@bakin/core/approvals'
+import { repairFailureSchema, repairProposalSchema, type RepairFailure, type RepairProposal } from '@bakin/core/approvals'
 import type { HealthRepairPlan } from '../../packages/core/src/plugin-types'
 import { createLogger } from './logger'
 
@@ -24,7 +24,12 @@ export class DoctorRepairRequestNotFoundError extends Error {
  *   approval-navigate — a review task holding a `health-navigate` approval
  *                       (operator-only action; Dismiss is the one decision)
  */
-export type DoctorRepairRequestKind = 'delegate' | 'approval-repair' | 'approval-navigate'
+/**
+ * `operator-review` (#896 D3.4): a repair-type incident whose safe repair
+ * failed, could not be planned, or settled without a report — ONE review
+ * task for the operator, no approval (nothing to apply), never an agent.
+ */
+export type DoctorRepairRequestKind = 'delegate' | 'approval-repair' | 'approval-navigate' | 'operator-review'
 
 /**
  * planned → sent → (applying →) completed | verified | failed | dismissed.
@@ -59,6 +64,8 @@ export interface DoctorRepairRequest {
   approvalId?: string
   /** approval-repair: the frozen proposal the approval was granted for (R1). */
   proposal?: RepairProposal
+  /** operator-review / approval-repair: the failed attempt that led here. */
+  failure?: RepairFailure
   events: DoctorRepairRequestEvent[]
 }
 
@@ -82,6 +89,52 @@ export function legacyRepairRequestArchiveRoot(contentDir: string): string {
   return join(contentDir, 'doctor', 'repair-requests')
 }
 
+/**
+ * Where records the CURRENT schema refuses are moved at boot — bytes an
+ * earlier release wrote (pre-#942 rows without `checkIds`, pre-cutover
+ * proposals with `safety` instead of `effects`/`mode`). Immutable like the
+ * v1 archive: never listed, never parsed, never deleted.
+ */
+export function refusedRepairRequestArchiveRoot(contentDir: string): string {
+  return join(contentDir, 'doctor', 'repair-requests-v2-archive')
+}
+
+/**
+ * ONE pass at boot (startup recovery): every v2 record the current schema
+ * refuses is moved — shard preserved — into the refused archive, so the
+ * listers (escalation cover, auto-close, interrupted-apply recovery) stop
+ * logging a warning per stale file on every doctor pass (68 of them on the
+ * operator's box after the three-outcomes cutover, 2026-10-24). Unreadable
+ * JSON moves too. Returns what moved; the caller logs once.
+ */
+export function archiveRefusedRepairRequests(contentDir: string): { archived: string[]; archiveRoot: string } {
+  const root = repairRequestV2Root(contentDir)
+  const archiveRoot = refusedRepairRequestArchiveRoot(contentDir)
+  const archived: string[] = []
+  if (!existsSync(root)) return { archived, archiveRoot }
+  for (const shard of readdirSync(root)) {
+    const dir = join(root, shard)
+    if (!existsSync(dir)) continue
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith('.json')) continue
+      const path = join(dir, file)
+      let refused = false
+      try {
+        refused = !doctorRepairRequestSchema.safeParse(JSON.parse(readFileSync(path, 'utf-8'))).success
+      } catch {
+        refused = true
+      }
+      if (!refused) continue
+      const target = join(archiveRoot, shard)
+      mkdirSync(target, { recursive: true })
+      renameSync(path, join(target, file))
+      archived.push(`${shard}/${file}`)
+    }
+  }
+  if (archived.length > 0) log.info('Archived doctor repair requests the current schema refuses', { count: archived.length, archiveRoot })
+  return { archived, archiveRoot }
+}
+
 function requestPath(contentDir: string, request: Pick<DoctorRepairRequest, 'id' | 'createdAt'>): string {
   return join(repairRequestV2Root(contentDir), monthShard(request.createdAt), `${request.id}.json`)
 }
@@ -96,20 +149,19 @@ const isoTime = z.string().refine((value) => Number.isFinite(Date.parse(value)),
 const doctorRepairRequestSchema = z.object({
   version: z.literal(2),
   id: z.string().min(1),
-  // Requests written before approvals lived in core carry neither
-  // `kind` nor `checkIds` (margo still holds some — retire with #945).
-  kind: z.enum(['delegate', 'approval-repair', 'approval-navigate']).default('delegate'),
+  kind: z.enum(['delegate', 'approval-repair', 'approval-navigate', 'operator-review']),
   status: z.enum(['planned', 'sent', 'applying', 'completed', 'verified', 'failed', 'dismissed']),
   createdAt: isoTime,
   updatedAt: isoTime,
   plan: z.custom<HealthRepairPlan>((value) => typeof value === 'object' && value !== null && typeof (value as { planId?: unknown }).planId === 'string').optional(),
   incidentIds: z.array(z.string()),
   observationIds: z.array(z.string()),
-  checkIds: z.array(z.string()).default([]),
+  checkIds: z.array(z.string()),
   taskId: z.string().optional(),
   agentId: z.string().optional(),
   approvalId: z.string().optional(),
   proposal: repairProposalSchema.optional(),
+  failure: repairFailureSchema.optional(),
   events: z.array(z.object({
     ts: z.string(),
     type: z.string(),
@@ -149,6 +201,7 @@ const CREATED_MESSAGE: Record<DoctorRepairRequestKind, string> = {
   delegate: 'Delegated Health repair request planned.',
   'approval-repair': 'Health repair proposal awaiting approval.',
   'approval-navigate': 'Health incident awaiting operator action.',
+  'operator-review': 'Health repair could not be automated — review task for the operator.',
 }
 
 export function createDoctorRepairRequest(
@@ -161,6 +214,7 @@ export function createDoctorRepairRequest(
     checkIds?: string[]
     proposal?: RepairProposal
     events?: DoctorRepairRequestEvent[]
+    failure?: RepairFailure
   },
 ): DoctorRepairRequest {
   const ts = nowIso()
@@ -177,6 +231,7 @@ export function createDoctorRepairRequest(
     observationIds: [...new Set(input.observationIds)].sort(),
     checkIds: [...new Set(input.checkIds ?? [])].sort(),
     ...(input.proposal ? { proposal: structuredClone(input.proposal) } : {}),
+    ...(input.failure ? { failure: { ...input.failure } } : {}),
     events: input.events ?? [{ ts, type: 'created', message: CREATED_MESSAGE[kind] }],
   }
   atomicWriteJson(requestPath(contentDir, request), request)

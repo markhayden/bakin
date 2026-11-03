@@ -55,7 +55,15 @@ export const searchComponent: InstallableComponent = {
   resources: ['search-engine'],
   check: async () => {
     const current = setup()
-    const result = await current.setup.dependency.check()
+    let result: Awaited<ReturnType<typeof current.setup.dependency.check>>
+    try {
+      result = await current.setup.dependency.check()
+    } catch (err) {
+      // An interrupted probe (the engine binary hung past its deadline) did
+      // not answer: that is an error, never a version verdict (#1007 review).
+      const detail = err instanceof Error ? err.message : String(err)
+      return { name: 'search', status: 'error', message: `The search engine check did not finish: ${detail}`, remediation: 'Run `bakin check search` again; a binary that keeps hanging needs `bakin install search`.', applicable: true }
+    }
     return { ...result, name: 'search', ...(current.legacy && result.status === 'ok' ? { status: 'broken' as const, message: 'Search URL needs correction during installation.' } : {}) }
   },
   identity: () => setup().settings,

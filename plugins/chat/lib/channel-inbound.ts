@@ -23,6 +23,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import type { InboundChannelMessage } from '@bakin/core/adapters/runtime'
 import { isVisionRasterMime } from '@bakin/core/media/image-format'
 import { sniffVisionRasterMime } from '@bakin/core/media/raster-sniff'
+import { parseBakinQuestion, type BakinQuestion } from '@bakin/core/conversation/questions'
 import { createLogger } from '../../../src/core/logger'
 import { getSettings } from '../../../src/core/settings'
 import type { ChatAttachment, ChatTranscriptRow } from '../types'
@@ -52,7 +53,27 @@ function inboundAgentId(): string {
   return getSettings().integrations.discord.inbound.agentId || 'main'
 }
 
-/** Assistant text of the just-finished turn: rows after the last user row. */
+/**
+ * A structured question as channel text — channels have no card, so the
+ * options become a numbered list the user answers in their own words.
+ */
+function questionText(question: BakinQuestion): string {
+  const options = question.options.map((option, index) => {
+    const recommended = question.recommended === index ? ' (recommended)' : ''
+    const description = option.description ? ` — ${option.description}` : ''
+    return `${index + 1}. ${option.label}${recommended}${description}`
+  })
+  const close = question.allowOther
+    ? 'Reply with a number, your own answer, or "not sure".'
+    : 'Reply with a number, or "not sure".'
+  return [`**${question.question}**`, ...options, close].join('\n')
+}
+
+/**
+ * Reply text of the just-finished turn: rows after the last user row —
+ * assistant text plus any question the agent asked, in transcript order. A
+ * turn that ends on a question must still reach the channel.
+ */
 export function extractReplyText(rows: ChatTranscriptRow[]): string {
   let lastUser = -1
   for (let i = rows.length - 1; i >= 0; i--) {
@@ -60,8 +81,11 @@ export function extractReplyText(rows: ChatTranscriptRow[]): string {
   }
   return rows
     .slice(lastUser + 1)
-    .filter((row): row is Extract<ChatTranscriptRow, { kind: 'assistant' }> => row.kind === 'assistant')
-    .map(row => row.content)
+    .flatMap((row) => {
+      if (row.kind === 'assistant') return [row.content]
+      const question = row.kind === 'tool' ? parseBakinQuestion(row.metadata?.bakinQuestion) : null
+      return question ? [questionText(question)] : []
+    })
     .join('\n\n')
     .trim()
 }

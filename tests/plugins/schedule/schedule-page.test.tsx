@@ -16,6 +16,8 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
+import * as realDrawerModule from '../../../packages/ui/src/patterns/drawer'
+import * as realButtonModule from '../../../packages/ui/src/primitives/button'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -69,7 +71,7 @@ afterAll(() => {
 
 const queryStateRefs: Record<string, string> = {}
 
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => {
     if (!(key in queryStateRefs)) queryStateRefs[key] = defaultValue
     const setter = (v: string) => { queryStateRefs[key] = v }
@@ -96,7 +98,7 @@ const searchHookState: SearchHookState = {
   clear: mock(),
 }
 
-mock.module('@/hooks/use-search', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-search', () => ({
   useSearch: () => ({
     results: searchHookState.results,
     aggregations: {},
@@ -147,7 +149,7 @@ const scheduleActions = {
   duplicateJob: mock(),
 }
 
-mock.module('@/hooks/use-schedule', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-schedule', () => ({
   useScheduleJobs: () => ({
     jobs: scheduleState.jobs,
     allJobs: scheduleState.allJobs ?? scheduleState.jobs,
@@ -171,11 +173,17 @@ mock.module('@/components/agent-avatar', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
 }))
 
-mock.module('@/components/drawer', () => ({
+// The Drawer and Button implementations live in packages/ui now; the stubs
+// spread the real modules so every other export those files carry keeps
+// working for the rest of the render tree (a narrow mock of a kit module is
+// an ESM link error for its other importers).
+mock.module('../../../packages/ui/src/patterns/drawer', () => ({
+  ...realDrawerModule,
   Drawer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }))
 
-mock.module('@/components/ui/button', () => ({
+mock.module('../../../packages/ui/src/primitives/button', () => ({
+  ...realButtonModule,
   Button: ({ children, onClick }: { children?: React.ReactNode; onClick?: () => void }) => (
     <button onClick={onClick}>{children}</button>
   ),

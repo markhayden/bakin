@@ -1,4 +1,4 @@
-import { useState, useEffect, createElement } from 'react'
+import { useState, createElement } from 'react'
 import { Bell, BellOff } from 'lucide-react'
 import { toast } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
@@ -7,16 +7,13 @@ import {
   isNotificationsEnabled,
   requestNotificationPermission,
   toggleNotifications,
-} from '@/lib/browser-notify'
+} from '@makinbakin/sdk/internal'
 
 export function NotificationToggle() {
-  const [enabled, setEnabled] = useState(false)
-  const [supported, setSupported] = useState(false)
-
-  useEffect(() => {
-    setSupported(isNotificationsSupported())
-    setEnabled(isNotificationsEnabled())
-  }, [])
+  // Read once at mount in the initializers (issue 966b): the browser's support and
+  // the stored preference are facts of this document, not a server frame.
+  const [enabled, setEnabled] = useState(() => isNotificationsEnabled())
+  const [supported] = useState(() => isNotificationsSupported())
 
   async function handleClick() {
     if (!supported) {

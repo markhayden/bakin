@@ -168,6 +168,25 @@ export function dispatchPaused(contentDir: string): boolean {
   return paused
 }
 
+// Per-agent pause audit latch: one `dispatch.agent_paused` row per activation per agent.
+const agentPauseAudited = new Set<string>()
+
+/**
+ * Per-agent containment (settings.dispatch.pausedAgents, self-healing 1.4b
+ * row 50): holds Bakin-initiated dispatch for ONE agent while the others
+ * run on — the runaway-usage card's "Pause dispatch for this agent". Health
+ * probes and the operator's own chats are not dispatch and stay allowed.
+ */
+export function agentDispatchPaused(agentId: string, contentDir: string): boolean {
+  const paused = (getSettings().dispatch.pausedAgents ?? []).includes(agentId)
+  if (paused && !agentPauseAudited.has(agentId)) {
+    agentPauseAudited.add(agentId)
+    appendAudit(contentDir, 'dispatch.agent_paused', agentId, { reason: 'agent_paused', agentId })
+  }
+  if (!paused) agentPauseAudited.delete(agentId)
+  return paused
+}
+
 /**
  * Per-cycle memo for the spend engine: the facets are identical for every
  * task evaluated in one dispatch cycle (costs are only recorded on settle,
@@ -438,6 +457,7 @@ function recordBudgetBreach(
 /** Why a turn was held before the claim (D31). */
 export type PreDispatchHold =
   | { reason: 'kill_switch' }
+  | { reason: 'agent_paused'; agentId: string }
   | { reason: 'budget'; decision: BudgetDecision }
   | { reason: 'model_not_eligible'; ref: string; model: string; code: IneligibleReason; detail: string; /** Same model id under a credentialed provider, when one exists (the #907 fix). */ proposal: string | null }
 
@@ -566,6 +586,7 @@ export async function preDispatchGate(
   prospect: PreDispatchProspect = {},
 ): Promise<PreDispatchHold | null> {
   if (dispatchPaused(contentDir)) return { reason: 'kill_switch' }
+  if (agentDispatchPaused(agentId, contentDir)) return { reason: 'agent_paused', agentId }
   const modelHold = await modelHoldFor(agentId, prospect)
   if (modelHold && modelHold.reason === 'model_not_eligible') {
     const key = `${prospect.taskId ?? agentId}:${modelHold.model}`

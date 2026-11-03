@@ -10,6 +10,7 @@ import type {
   LiveNowData,
 } from '../types'
 import { buildHealthOverviewViewModel } from '../lib/health-view-model'
+import type { UpdatesData } from '../lib/updates-route-schema'
 import {
   isContextSettingsData,
   isContextSummaryData,
@@ -68,7 +69,7 @@ function firstError(errors: Array<string | null>): string | null {
  * of truth; a newer Search projection triggers a cached report read before it
  * is allowed to replace the report's embedded Search state.
  */
-export function useOverviewData(): UseOverviewDataResult {
+export function useOverviewData({ updates = null }: { updates?: UpdatesData | null } = {}): UseOverviewDataResult {
   const report = useHealthReport()
   const summary = useHealthResource<HealthSummary>('/api/plugins/health/summary', {
     intervalMs: LIVE_FACTS_REFRESH_MS,
@@ -136,7 +137,8 @@ export function useOverviewData(): UseOverviewDataResult {
     searchReadiness: matchingSearch,
     summary: summary.data,
     liveNow: liveNow.data,
-  }), [liveNow.data, matchingSearch, report.data, summary.data])
+    updates: updates?.records ?? null,
+  }), [liveNow.data, matchingSearch, report.data, summary.data, updates])
 
   const refresh = useCallback(async () => {
     await Promise.all([

@@ -13,7 +13,7 @@ From the plugin's source directory:
 bakin plugins publish ./my-plugin --build --out ./release
 ```
 
-`--build` compiles the plugin first through the shared build backend (system `bun`): declared dependencies install with `bun install --ignore-scripts`, the client bundle externalizes React and the SDK (the host's import map provides the singletons), and the server bundle inlines the SDK so `dist/index.js` activates without any local SDK install. Without `--build`, publish requires an existing `dist/`.
+`--build` compiles the plugin first through the shared build backend (system `bun`): declared dependencies install with `bun install --ignore-scripts`, the client bundle externalizes React, the SDK and zod (the host's import map provides the singletons), and the server bundle inlines the SDK so `dist/index.js` activates without any local SDK install. Without `--build`, publish requires an existing `dist/`.
 
 Publish then assembles the artifact and its release metadata:
 
@@ -35,7 +35,7 @@ bakin plugins install github:owner/repo#plugins/my-plugin
 
 For a `#subpath` GitHub source, install prefers a published artifact: it reads `whiskit-artifacts.json` from the release's `releases/latest/download/` redirect (or `releases/download/<tag>/` when the source pins `@<tag>`), downloads the artifact, verifies the checksum, safely extracts it, and checks that the host supports the artifact's externals contract. Contract versions are additive within one family, so newer hosts can load artifacts built against an earlier compatible version. Only when no published artifact exists does install fall back to git clone + local build.
 
-The current contract family is `react19-sdk-focused-v1`. It removes the retired `@makinbakin/sdk/metadata` entrypoint. Artifacts built against the previous `react19-sdk-makinbakin` family must be rebuilt and republished with the current SDK and Bakin build tools; they are refused at install or marked `needs-update` by the host. Older hosts also refuse artifacts from the new family. There is no compatibility export for the retired path.
+The current contract is `react19-sdk-focused-v2`. The focused family removed the retired `@makinbakin/sdk/metadata` entrypoint; v2 added `zod` to the host-provided set, so an artifact built against v1 (carrying its own zod) still runs on a v2 host, while a v2 artifact needs a v2 host. Artifacts built against the previous `react19-sdk-makinbakin` family must be rebuilt and republished with the current SDK and Bakin build tools; they are refused at install or marked `needs-update` by the host. Older hosts also refuse artifacts from the new family. There is no compatibility export for the retired path.
 
 ## Check and Upgrade
 

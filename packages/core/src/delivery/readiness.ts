@@ -85,6 +85,12 @@ export interface GuildReadiness {
   joined: boolean | null
   channelCount: number | null
   error?: DeliveryErrorSummary
+  /**
+   * The provider's bot-authorize link for a server the bot has NOT joined
+   * (one guild, the permissions Verify probes for). Built by the delivery
+   * bridge — the one sanctioned Discord client — never by a UI.
+   */
+  inviteUrl?: string
 }
 
 /** What the bridge itself knows — no settings, no runtime. */

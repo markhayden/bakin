@@ -16,7 +16,7 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { useJsonFetch } from '../../src/hooks/use-json-fetch'
+import { useJsonFetch } from '../../packages/sdk/src/hooks/use-json-fetch'
 
 const originalFetch = globalThis.fetch
 

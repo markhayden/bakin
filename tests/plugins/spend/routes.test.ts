@@ -147,8 +147,8 @@ describe('activation', () => {
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map((c: unknown[]) => c[0])
     expect(hookNames.sort()).toEqual(['spend.getBudgetPolicy', 'spend.listBillingOverrides', 'spend.priceImage', 'spend.priceTurn', 'spend.resolveBilling', 'spend.updateBudgetPolicy'])
     expect(activated.routes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([
-      'GET /coverage', 'GET /incidents', 'GET /limits', 'GET /spend', 'GET /status',
-      'POST /incidents/:id/resolve', 'POST /milestones/:id/ack', 'PUT /billing/overrides', 'PUT /limits',
+      'GET /coverage', 'GET /incidents', 'GET /limits', 'GET /recover', 'GET /spend', 'GET /status',
+      'POST /incidents/:id/resolve', 'POST /milestones/:id/ack', 'POST /recover/reset', 'PUT /billing/overrides', 'PUT /limits', 'PUT /recover',
     ])
     expect(activated.routes.find((route) => route.path === '/status')?.activityClass).toBe('routine')
   })
@@ -485,6 +485,31 @@ describe('GET /coverage', () => {
     expect(body.suggestion).toEqual({ status: 'insufficient_history', coveredDays: 0, daysNeeded: 14 })
     // Spend recorded on unobserved days is reported, never blended into a rate.
     expect((body.uncovered as { window: { global: { meteredUsdMicros: number } } }).window.global.meteredUsdMicros).toBe(150_000)
+  })
+})
+
+describe('POST /incidents/:id/resolve — the Health card choices (rows 163/167)', () => {
+  it('every request choice the check emits is accepted by the resolve route; resume on a rule-less incident resolves resumed', async () => {
+    const { incidentDecisionChoices, capReachedResolution } = await import('@bakin/spend/lib/health-checks')
+    const incident = { id: 41, scope: 'provider', scopeId: 'google', lane: 'metered' as const, window: 'daily' as const, kind: 'cap', status: 'open', atCap: 'defer' }
+    incidentsList = [incident]
+    const route = findRoute(activated.routes, 'POST', '/incidents/:id/resolve')!
+    const requests = [
+      ...incidentDecisionChoices(incident as never),
+      ...(capReachedResolution({ id: 'rule-1', scope: 'provider', scopeId: 'google', lane: 'metered', dailyCap: 5 } as never, [incident as never]).choices ?? []),
+    ].filter((choice): choice is Extract<typeof choice, { kind: 'request' }> => choice.kind === 'request')
+    expect(requests.map((c) => [c.key, c.body])).toEqual([['ack', { action: 'ack' }], ['resume', { action: 'resume' }], ['ack', { action: 'ack' }]])
+    for (const choice of requests) {
+      expect(choice.url).toBe('/api/plugins/spend/incidents/41/resolve')
+      const { status } = await callRoute(route, activated.ctx, { searchParams: { id: '41' }, body: choice.body })
+      expect(status).toBe(200)
+    }
+    expect(incidentResolves.slice(-3)).toEqual([
+      { id: 41, status: 'acknowledged', resolution: 'acknowledged' },
+      { id: 41, status: 'resolved', resolution: 'resumed' },
+      { id: 41, status: 'acknowledged', resolution: 'acknowledged' },
+    ])
+    incidentsList = []
   })
 })
 

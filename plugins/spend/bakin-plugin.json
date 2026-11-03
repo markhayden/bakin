@@ -9,7 +9,8 @@
   "dependencies": [],
   "permissions": [
     "storage.read",
-    "storage.write"
+    "storage.write",
+    "runtime.agents"
   ],
   "contributes": {
     "apiRoutes": [

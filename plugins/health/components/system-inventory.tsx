@@ -1,7 +1,7 @@
 'use client'
 
-import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
-import type { HealthCheckState, HealthReport } from '@makinbakin/sdk/types'
+import { useImperativeHandle, useMemo, useRef, type Ref } from 'react'
+import type { HealthCheckState, HealthReport, UpdateRecord } from '@makinbakin/sdk/types'
 import { DisclosurePanel, Grid, Panel } from '@makinbakin/sdk/layout'
 import {
   DataTable,
@@ -76,6 +76,8 @@ export interface SystemInventoryProps {
   live: HealthSummary | null
   registry: SystemRegistryData | null
   manifest: SystemPluginManifestData | null
+  /** The updates engine's records — the plugin rows' update verdicts (#1007). */
+  updates?: readonly UpdateRecord[] | null
   loading?: boolean
   checkingUpdates?: boolean
   error?: string | null
@@ -110,11 +112,13 @@ function revealDisclosure(disclosure: HTMLDetailsElement | null): void {
   if (summary) focusSystemElement(summary)
 }
 
-export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventoryProps>(function SystemInventory({
+export function SystemInventory({
+  ref,
   report,
   live,
   registry,
   manifest,
+  updates = null,
   loading = false,
   checkingUpdates = false,
   error = null,
@@ -125,13 +129,13 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
   onPluginSearchChange,
   onCheckUpdates,
   onUpgrade,
-}, ref) {
+}: SystemInventoryProps & { ref?: Ref<SystemInventoryHandle> }) {
   const pluginsDisclosureRef = useRef<HTMLDetailsElement>(null)
   const hostDisclosureRef = useRef<HTMLDetailsElement>(null)
   const checksDisclosureRef = useRef<HTMLDetailsElement>(null)
   const pluginTableRef = useRef<HTMLDivElement>(null)
   const checkGroupRefs = useRef(new Map<string, HTMLDetailsElement>())
-  const plugins = useMemo(() => mergeSystemPlugins(registry, manifest), [manifest, registry])
+  const plugins = useMemo(() => mergeSystemPlugins(registry, manifest, updates), [manifest, registry, updates])
   const filteredPlugins = useMemo(() => {
     const query = pluginSearch.trim().toLowerCase()
     if (!query) return plugins
@@ -470,4 +474,4 @@ export const SystemInventory = forwardRef<SystemInventoryHandle, SystemInventory
       </DisclosurePanel>
     </div>
   )
-})
+}

@@ -29,7 +29,7 @@ import { recordModelRejection, resolveModelRejection } from '../../../src/core/e
 import { fetchAvailableModels, getModelsCache, resetModelsCache, setModelsCache } from '../../../plugins/models/lib/available-models'
 import { clearPersistedCache } from '../../../plugins/models/lib/models-cache'
 import { resetEligibilityMemo } from '../../../src/core/model-eligibility'
-import { toModelSelectOptions } from '../../../src/hooks/use-available-models'
+import { toModelSelectOptions } from '../../../packages/sdk/src/hooks/use-available-models'
 import type { AvailableModel } from '../../../plugins/models/types'
 
 afterAll(() => {

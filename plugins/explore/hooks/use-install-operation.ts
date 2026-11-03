@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { OperationStartResponse } from '@makinbakin/sdk/types'
 import { startOperation, useOperation } from '@makinbakin/sdk/hooks'
 
@@ -9,11 +9,35 @@ import { startOperation, useOperation } from '@makinbakin/sdk/hooks'
  * follow its operation live (#895). The body the route used to answer arrives
  * as `result` once the operation settles — no request deadline, no guess.
  */
-export function useInstallOperation<B = Record<string, unknown>>() {
+export type InstallOperationSettle<B> =
+  | { result: { httpStatus: number; body: B | undefined }; error?: undefined }
+  | { error: string; result?: undefined }
+
+export interface UseInstallOperationOptions<B> {
+  /**
+   * Called once per start: with the settled operation's result (the body the
+   * route used to answer), or with the reason the start itself failed. The
+   * settle is the operation's event — consumers record outcomes here, never
+   * in an effect watching `result` (issue 966b).
+   */
+  onSettle?: (settle: InstallOperationSettle<B>) => void
+}
+
+export function useInstallOperation<B = Record<string, unknown>>(opts: UseInstallOperationOptions<B> = {}) {
   const [started, setStarted] = useState<OperationStartResponse | null>(null)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const followed = useOperation<B>(started?.operationId ?? null, started ? { bootId: started.bootId } : {})
+  // The latest callback, read by the start path (an async handler) and by the
+  // followed operation's settle; written from an effect, never during render.
+  const optsRef = useRef(opts)
+  useEffect(() => { optsRef.current = opts })
+  const followed = useOperation<B>(started?.operationId ?? null, {
+    ...(started ? { bootId: started.bootId } : {}),
+    onSettle: (view) => {
+      const settled = view && view.status !== 'running' && view.status !== 'cancelling' ? view.result ?? null : null
+      if (settled) optsRef.current.onSettle?.({ result: settled as { httpStatus: number; body: B | undefined } })
+    },
+  })
   // A reset (the subject changed, the dialog closed) makes any start still in
   // flight obsolete: its answer must never attach to the new subject.
   const generation = useRef(0)
@@ -30,7 +54,9 @@ export function useInstallOperation<B = Record<string, unknown>>() {
       return true
     } catch (caught) {
       if (mine !== generation.current) return false
-      setError(caught instanceof Error ? caught.message : String(caught))
+      const message = caught instanceof Error ? caught.message : String(caught)
+      setError(message)
+      optsRef.current.onSettle?.({ error: message })
       return false
     } finally {
       if (mine === generation.current) setStarting(false)

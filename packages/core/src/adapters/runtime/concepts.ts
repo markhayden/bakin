@@ -318,6 +318,16 @@ export interface RuntimeSessionContextStats {
   model?: string
 }
 
+/** What a session-store prune removed, kept and skipped (`sessions.pruneStore`). */
+export interface RuntimeSessionPruneResult {
+  agentId: string
+  removedFiles: number
+  freedBytes: number
+  /** Files kept because a turn on their thread was in flight. */
+  skippedInFlight: number
+  remainingFiles: number
+}
+
 export interface RuntimeSessionStoreStats {
   agentId: string
   /** Live entries in the runtime's session store for this agent. */
@@ -426,6 +436,15 @@ export interface RuntimeToolAccess {
    * this and refuse rather than degrade fail-open.
    */
   perTurnExecToolFiltering?: boolean
+  /**
+   * Whether this runtime ENFORCES `MessageArgs.toolsMode` per turn — i.e.
+   * `toolsMode: 'none'` really withholds every tool for that one turn.
+   * In-process runtimes do (Pi runs the turn with no tool bridge); OpenClaw
+   * cannot since 2026.9.5 closed its agent RPC schema with no tool-policy
+   * property (#883) — it drops the field with a warning. Callers needing a
+   * text-only turn feature-detect this and refuse rather than degrade.
+   */
+  perTurnToolsMode: boolean
 }
 
 /**
@@ -599,6 +618,14 @@ export interface ProviderCredentialInventory {
   detail?: string
 }
 
+/** The runtime's roster file and how it names the entry at a position (`agents.registryLocation`). */
+export interface RuntimeRegistryLocation {
+  /** Absolute path of the registry file. */
+  path: string
+  /** The key of the entry at `index` in the file's own notation, e.g. `agents.list[2]`. */
+  entryKey: (index: number) => string
+}
+
 /** Kinds of Bakin-initiated config change an adapter may need a restart to apply. */
 export type RuntimeConfigChangeKind = 'model-config' | 'roster' | 'routing-policy'
 
@@ -613,6 +640,19 @@ export interface RestartAdvice {
   title?: string
   body?: string
   action?: { label: string; kind: 'restart-runtime' }
+}
+
+/**
+ * Whether the runtime process Bakin talks to satisfies the adapter's floor
+ * (#1007, D7.10). `required` is the adapter's own floor (an OpenClaw gateway
+ * protocol number); `observed` is what the LAST recorded handshake reported
+ * — never inferred from a CLI version. `unknown` until a handshake happened.
+ */
+export interface RuntimeCompatibility {
+  required: string
+  observed?: string
+  observedAt?: string
+  state: 'ok' | 'below-floor' | 'unknown'
 }
 
 export type RuntimeImageOutputFormat = 'png' | 'jpeg' | 'jpg' | 'webp'
@@ -834,6 +874,15 @@ export interface AgentRuntimeAdapter {
    * (`runtime.restartAdvice?.(kind)`).
    */
   restartAdvice?(change: RuntimeConfigChangeKind): RestartAdvice | undefined
+  /**
+   * OPTIONAL (#1007 D7.10): the runtime's compatibility with Bakin's floor
+   * from cached handshake evidence. SYNC, never a live probe. Adapters with
+   * no external process to be compatible with (Pi, in-process) omit the
+   * member; absence is member omission, never a throwing stub
+   * (conformance-pinned). The Updates engine lists a `gateway` subject only
+   * when the member exists.
+   */
+  compatibility?(): RuntimeCompatibility
 
   /**
    * CRUD error contract (R28): `get` returns `null` for a missing agent —
@@ -875,6 +924,17 @@ export interface AgentRuntimeAdapter {
      * workspace omit it.
      */
     workspaces?(): Promise<Array<{ agentId: string; path: string }>>
+    /**
+     * Where the runtime keeps its agent roster, for the ONE case the id-keyed
+     * contract cannot address: a roster entry WITHOUT an id (Health row 106).
+     * Read-only — the file and the key of the entry at a roster position, in
+     * the runtime's own notation (`agents[3]`, `agents.list[3]`), so a human
+     * handoff can name exactly what to edit. `null` when the roster is not a
+     * file this process can name. Optional: runtimes without a file-backed
+     * roster omit it; consumers feature-detect and fall back to naming the
+     * position.
+     */
+    registryLocation?(): Promise<RuntimeRegistryLocation | null>
     /**
      * The SUBAGENT-DISPATCH allowlist: the patch strings are AGENT IDS this
      * agent may dispatch subtasks to (P5.3 live incident: these were once fed
@@ -924,6 +984,16 @@ export interface AgentRuntimeAdapter {
      * as "stats unavailable" — skip, never error.
      */
     storeStats?(): Promise<RuntimeSessionStoreStats[]>
+    /**
+     * Shrink one agent's session store the way the runtime itself documents
+     * (self-healing row 14): delete session artifacts older than
+     * `olderThanMs` (default 30 days) that no in-flight turn uses. Optional:
+     * a runtime without a file-backed store, or without a safe cleanup,
+     * omits it and Health keeps rendering `remediation` text instead.
+     * `dryRun` counts without deleting. Deletes USER content — every caller
+     * routes it through an operator decision.
+     */
+    pruneStore?(agentId: string, opts?: { olderThanMs?: number; dryRun?: boolean }): Promise<RuntimeSessionPruneResult>
     /**
      * Context stats for one Bakin thread's session (#737), read AT REST —
      * no gateway calls, no turn, no session mutation, no thread locks.

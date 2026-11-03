@@ -1,14 +1,15 @@
 /**
  * Health approval kinds (spec D6/D7, plan review R1/R4).
  *
- *   health-repair   — a NON-SAFE repair proposal frozen at escalation time.
+ *   health-repair   — a ONE-CLICK repair proposal frozen at escalation time.
  *                     Apply re-plans against fresh evidence and mutates only
  *                     when the fresh change set equals the frozen one; a
  *                     differing set cancels the approval (`plan-changed`) and
  *                     posts a fresh one. `applying` is written before any
  *                     mutation so a crash mid-apply is recoverable.
- *   health-navigate — an operator-only incident (resolution type navigate).
- *                     The one decision is Dismiss.
+ *   health-navigate — a human incident (resolution type human: a credential,
+ *                     a payment, a decision, an external install). The one
+ *                     decision is Dismiss.
  *
  * Dismiss = snooze 7 d on action_required incidents (the ack store refuses a
  * permanent ack on that tier), ack on lower tiers; the task completes.
@@ -18,10 +19,11 @@
  * Task-service/task-store are imported lazily (same as escalation) to keep
  * this module out of their import cycles.
  */
-import { describeApprovalProvenance, findPendingApproval, getApprovalRecord, type ApprovalRecord, type RepairProposal } from '@bakin/core/approvals'
+import { describeApprovalProvenance, findPendingApproval, getApprovalRecord, type ApprovalRecord, type RepairFailure, type RepairProposal } from '@bakin/core/approvals'
 import type {
   HealthIncident,
   HealthRepairChange,
+  HealthRepairEffects,
   HealthRepairPlan,
   HealthRepairPlanItem,
   HealthReport,
@@ -96,7 +98,8 @@ export function freezeProposal(report: HealthReport, items: readonly HealthRepai
     items: items.map((item) => ({
       actionId: item.actionId,
       itemId: item.id,
-      safety: item.safety,
+      effects: { ...item.effects },
+      mode: item.mode,
       changes: item.changes.map((change) => ({ ...change })),
     })),
   }
@@ -108,9 +111,19 @@ export function checkIdsForObservations(report: HealthReport, observationIds: re
   return [...new Set(report.observations.filter((row) => wanted.has(row.id)).map((row) => row.checkId))].sort()
 }
 
+/** The effects in words — the reason this proposal waits for a click. */
+export function describeEffects(effects: HealthRepairEffects): string {
+  const parts: string[] = []
+  if (effects.deletesUserContent) parts.push('deletes content')
+  if (effects.spendsMoney) parts.push('spends money')
+  if (effects.widensAuthorization) parts.push('widens access')
+  if (effects.restartsService) parts.push(`restarts ${effects.restartsService}`)
+  return parts.length > 0 ? parts.join(', ') : 'no side effects'
+}
+
 export function describeProposedChanges(proposal: RepairProposal): string[] {
   return proposal.items.flatMap((item) =>
-    item.changes.map((change) => `- [${item.safety}] ${change.action} ${change.kind} \`${change.target}\` — ${change.description}`))
+    item.changes.map((change) => `- [${describeEffects(item.effects)}] ${change.action} ${change.kind} \`${change.target}\` — ${change.description}`))
 }
 
 function summarizeIncidents(incidents: readonly HealthIncident[]): string {
@@ -160,6 +173,12 @@ function repairApprovalId(requestId: string, generation: number): string {
   return generation === 0 ? `health-repair:${requestId}` : `health-repair:${requestId}:${generation}`
 }
 
+/** The failed attempt that led to this ask — the operator sees WHY before deciding. */
+function failureLines(failure: RepairFailure | undefined): string[] {
+  if (!failure) return []
+  return ['', `The automatic repair already failed at ${failure.stage}: ${failure.error} (operation ${failure.operationId}, ${failure.at}).`]
+}
+
 function repairApprovalBody(incidents: readonly HealthIncident[], proposal: RepairProposal): string {
   return [
     'Bakin Health proposes a repair that changes state and needs your approval before it runs.',
@@ -168,6 +187,7 @@ function repairApprovalBody(incidents: readonly HealthIncident[], proposal: Repa
     '',
     'Proposed changes:',
     ...describeProposedChanges(proposal),
+    ...failureLines(proposal.failure),
     '',
     'Apply runs exactly these changes after re-checking that nothing moved; Dismiss snoozes the incidents for 7 days.',
   ].join('\n')
@@ -190,8 +210,8 @@ function requestRepairApprovalRecord(request: DoctorRepairRequest, taskId: strin
 }
 
 /**
- * ONE review task + ONE `health-repair` approval for a set of non-safe plan
- * items. The task has no assignee: it is never dispatched (dispatch pulls
+ * ONE review task + ONE `health-repair` approval for a set of one-click plan
+ * items (and self-heal items the authorization gate handed to the operator). The task has no assignee: it is never dispatched (dispatch pulls
  * from todo only) and never stranded (restart recovery/watchdog read
  * inProgress only).
  */
@@ -201,8 +221,10 @@ export async function openRepairApproval(input: {
   incidents: readonly HealthIncident[]
   items: readonly HealthRepairPlanItem[]
   plan: HealthRepairPlan
+  /** The safe attempt that already failed for these incidents (#896 D3.4) — frozen into the proposal. */
+  failure?: RepairFailure
 }): Promise<OpenedApproval> {
-  const proposal = freezeProposal(input.report, input.items)
+  const proposal = { ...freezeProposal(input.report, input.items), ...(input.failure ? { failure: input.failure } : {}) }
   const request = createDoctorRepairRequest(input.contentDir, {
     kind: 'approval-repair',
     plan: input.plan,
@@ -229,14 +251,64 @@ export async function openRepairApproval(input: {
   return { request: sent, approval, taskId: task.id }
 }
 
-/** ONE review task + ONE `health-navigate` approval per operator-only incident. */
+/**
+ * ONE review task — no approval, nothing to apply — for repair-type
+ * incidents the doctor could not fix on its own (#896 D3.4): the safe
+ * repair failed, planning threw, or the apply settled without a report.
+ * Covered like every other open request; resurfaced with its own copy;
+ * auto-closed when the originating checks verify healthy.
+ */
+export async function openOperatorReview(input: {
+  contentDir: string
+  report: HealthReport
+  incidents: readonly HealthIncident[]
+  /** Why it needs the operator: the failed attempt, or the planner's error. */
+  reason: { failure: RepairFailure } | { plannerError: string }
+}): Promise<{ request: DoctorRepairRequest; taskId: string }> {
+  const observationIds = [...new Set(input.incidents.flatMap((incident) => incident.observationIds))]
+  const request = createDoctorRepairRequest(input.contentDir, {
+    kind: 'operator-review',
+    incidentIds: input.incidents.map((incident) => incident.id),
+    observationIds,
+    checkIds: checkIdsForObservations(input.report, observationIds),
+    ...('failure' in input.reason ? { failure: input.reason.failure } : {}),
+  })
+  const absoluteHref = new URL('/health', bakinBaseUrl()).toString()
+  const why = 'failure' in input.reason
+    ? `The automatic repair already failed at ${input.reason.failure.stage}: ${input.reason.failure.error} (operation ${input.reason.failure.operationId}, ${input.reason.failure.at}).`
+    : `Health could not plan a repair: ${input.reason.plannerError}`
+  const description = [
+    summarizeIncidents(input.incidents),
+    ...incidentLines(input.incidents),
+    '',
+    why,
+    `This is not something an agent can fix by re-running the installer — it needs you: ${absoluteHref}`,
+    '',
+    'The task closes on its own once Health verifies the fix.',
+  ].join('\n')
+  const { createTaskWithEffects } = await import('./task-service')
+  const task = await createTaskWithEffects({
+    title: `Health: needs you — ${summarizeIncidents(input.incidents)}`,
+    column: 'review',
+    description,
+    createdBy: 'system',
+    source: { pluginId: 'health', entityType: 'doctor-repair', entityId: request.id, purpose: 'operator-review' },
+    channel: 'system',
+  })
+  const sent = appendEvents(input.contentDir, request.id, [
+    event('task-created', `Created review task ${task.id}.`, { taskId: task.id, reason: 'failure' in input.reason ? 'repair-failed' : 'unplannable' }),
+  ], { status: 'sent', taskId: task.id })
+  return { request: sent, taskId: task.id }
+}
+
+/** ONE review task + ONE `health-navigate` approval per human incident. */
 export async function openNavigateApproval(input: {
   contentDir: string
   report: HealthReport
   incident: HealthIncident
 }): Promise<OpenedApproval> {
   const { incident } = input
-  const href = incident.resolution.type === 'navigate' ? incident.resolution.href : '/health'
+  const href = incident.resolution.type === 'human' ? incident.resolution.href : '/health'
   const absoluteHref = new URL(href, bakinBaseUrl()).toString()
   const request = createDoctorRepairRequest(input.contentDir, {
     kind: 'approval-navigate',
@@ -248,7 +320,8 @@ export async function openNavigateApproval(input: {
     `${incident.title}`,
     `Impact: ${incident.impact}`,
     '',
-    `This needs you: ${incident.resolution.label} — ${absoluteHref}`,
+    `This needs you (${incident.resolution.type === 'human' ? incident.resolution.needs : 'decision'}): ${incident.resolution.label} — ${absoluteHref}`,
+    ...(incident.resolution.type === 'human' && incident.resolution.handoff ? [`Run: ${incident.resolution.handoff.command}${incident.resolution.handoff.cwd ? ` (in ${incident.resolution.handoff.cwd})` : ''}`] : []),
     '',
     'Dismiss snoozes the incident for 7 days; it closes on its own once Health verifies the fix.',
   ].join('\n')

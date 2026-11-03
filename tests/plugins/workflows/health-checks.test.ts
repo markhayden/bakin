@@ -90,6 +90,16 @@ import {
   workflowSkillDriftRepair,
 } from '../../../plugins/workflows/lib/health-checks'
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
+import { repairMode } from '@bakin/core/health/repair-mode'
+import type { HealthRepairActionDefinition, HealthRepairPlanItem, HealthRepairPlanItemInput } from '@makinbakin/sdk'
+
+/** Core stamps `effects` (defaulting to the action's) and `mode` on plan items before apply sees them. */
+function canonical(action: HealthRepairActionDefinition, items: HealthRepairPlanItemInput[]): HealthRepairPlanItem[] {
+  return items.map((item) => {
+    const effects = item.effects ?? action.effects
+    return { ...item, localId: item.id, effects, mode: repairMode(effects) }
+  })
+}
 import {
   hashWorkflowSkillContent,
   writeWorkflowSkillInstallMarker,
@@ -102,7 +112,7 @@ const repairTarget = { type: 'all_actionable' as const, reportId: 'test-report' 
 
 function observations<T extends { outcome: string }>(result: T) {
   if (result.outcome !== 'observed') throw new Error(`Expected observed workflow health, got ${result.outcome}`)
-  return (result as T & { observations: Array<{ key: string; status: string; summary: string; incident?: { resolution: { type: string } } }> }).observations
+  return (result as T & { observations: Array<{ key: string; status: string; summary: string; incident?: { declarationId?: string; required?: boolean; disposition?: string; resolution: { type: string; href?: string } } }> }).observations
 }
 
 beforeAll(() => {
@@ -125,38 +135,57 @@ beforeEach(() => {
 })
 
 describe('checkWorkflowSkills', () => {
-  it('returns an ok result when the skills directory is empty', () => {
-    const results = observations(checkWorkflowSkills(testDir))
+  it('returns an ok result when the skills directory is empty', async () => {
+    const results = observations(await checkWorkflowSkills(testDir))
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('healthy')
   })
 
-  it('flags a skill missing YAML frontmatter', () => {
+  it('flags a skill missing YAML frontmatter', async () => {
     writeFileSync(join(skillsDir, 'bad.md'), 'just some content, no frontmatter')
-    const results = observations(checkWorkflowSkills(testDir))
+    const results = observations(await checkWorkflowSkills(testDir))
     expect(results.some(r => r.status === 'warning' && r.summary.includes('no YAML frontmatter'))).toBe(true)
+    // The skill's recover view is the control (self-healing 1.4b, row 127).
+    // Not referenced by any definition → advisory, not required (row 127).
+    expect(results.find(r => r.summary.includes('no YAML frontmatter'))?.incident).toMatchObject({ declarationId: 'frontmatter', required: false, disposition: 'advisory', resolution: { type: 'human', needs: 'decision', href: '/workflows?recover=1&skill=bad.md' } })
   })
 
-  it('flags a skill missing output_schema', () => {
+  it('flags a skill missing output_schema', async () => {
     writeFileSync(
       join(skillsDir, 'no-schema.md'),
       '---\nname: no-schema\ndescription: test\n---\nbody',
     )
-    const results = observations(checkWorkflowSkills(testDir))
+    const results = observations(await checkWorkflowSkills(testDir))
     expect(results.some(r => r.status === 'warning' && r.summary.includes('no output_schema'))).toBe(true)
   })
 
-  it('returns ok when all skills have output_schema', () => {
+  it('malformed frontmatter YAML is the frontmatter family even when the body mentions output_schema; a prose-only or list output_schema is the schema family (Codex r2 #11)', async () => {
+    writeFileSync(join(skillsDir, 'torn.md'), '---\nname: [\n---\nRemember the output_schema.\n')
+    writeFileSync(join(skillsDir, 'prose.md'), '---\nname: prose\n---\nThe output_schema is described here in words.\n')
+    writeFileSync(join(skillsDir, 'listy.md'), '---\nname: listy\noutput_schema: [a, b]\n---\nbody\n')
+    const results = observations(await checkWorkflowSkills(testDir))
+    const byKey = new Map(results.map((r) => [r.key, r]))
+    expect(byKey.get('frontmatter-torn.md')).toMatchObject({ status: 'warning', evidence: { section: 'frontmatter', problem: 'frontmatter-invalid-yaml' } })
+    expect(byKey.get('frontmatter-torn.md')!.summary).toMatch(/frontmatter the engine cannot read: The frontmatter is not valid YAML/)
+    expect(byKey.get('frontmatter-torn.md')!.incident).toMatchObject({ declarationId: 'frontmatter' })
+    expect(byKey.has('output-schema-torn.md')).toBe(false) // one finding per file: the frontmatter comes first
+    expect(byKey.get('output-schema-prose.md')).toMatchObject({ evidence: { section: 'output_schema', problem: 'output-schema-missing' } })
+    expect(byKey.get('output-schema-prose.md')!.incident).toMatchObject({ declarationId: 'output-schema' })
+    expect(byKey.get('output-schema-listy.md')).toMatchObject({ evidence: { problem: 'output-schema-not-mapping' } })
+    expect(byKey.get('output-schema-listy.md')!.summary).toMatch(/output_schema the engine cannot use/)
+  })
+
+  it('returns ok when all skills have output_schema', async () => {
     writeFileSync(
       join(skillsDir, 'good.md'),
       '---\nname: good\noutput_schema: { foo: string }\n---\nbody',
     )
-    const results = observations(checkWorkflowSkills(testDir))
+    const results = observations(await checkWorkflowSkills(testDir))
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('healthy')
   })
 
-  it('flags stale local skills that shadow managed plugin skills', () => {
+  it('flags stale local skills that shadow managed plugin skills', async () => {
     const sourcePath = join(testDir, 'managed-generate-image.md')
     writeFileSync(
       sourcePath,
@@ -189,11 +218,12 @@ Return image_filename and promptAssetFilename after savePromptPacket.
 `,
     )
 
-    const results = observations(checkWorkflowSkills(testDir))
+    const results = observations(await checkWorkflowSkills(testDir))
 
     const stale = results.find(result => result.summary.includes('appears stale'))
     expect(stale?.status).toBe('warning')
-    expect(stale?.incident?.resolution.type).toBe('navigate')
+    // Row 132: an unmarked local file is not repairable — an observation, no card.
+    expect(stale?.incident).toBeUndefined()
   })
 
   it('plans and applies safe repair for managed stale skills', async () => {
@@ -235,7 +265,7 @@ Return image_filename and promptAssetFilename after savePromptPacket.
 
     const repair = workflowSkillDriftRepair(testDir)
     const plan = await repair.plan(repairTarget)
-    const run = await runRepairContract(repair, plan)
+    const run = await runRepairContract(repair, canonical(repair, plan))
     expectRepairContract(repair, run)
     const applied = run.results
     expect(run.view.stages[0]!.items).toEqual([expect.objectContaining({ label: 'generate-image', status: 'done' })])
@@ -243,7 +273,7 @@ Return image_filename and promptAssetFilename after savePromptPacket.
     expect(plan).toHaveLength(1)
     expect(plan[0].title).toContain('generate-image')
     expect(applied[0].status).toBe('applied')
-    expect(observations(checkWorkflowSkills(testDir))[0].status).toBe('healthy')
+    expect(observations(await checkWorkflowSkills(testDir))[0].status).toBe('healthy')
   })
 })
 
@@ -531,7 +561,7 @@ describe('checkStaleWorkflowInstances', () => {
     const repair = staleWorkflowInstancesRepair(testDir)
     const plan = await repair.plan(repairTarget)
     expect(plan).toHaveLength(1)
-    const run = await runRepairContract(repair, plan)
+    const run = await runRepairContract(repair, canonical(repair, plan))
     expectRepairContract(repair, run)
     expect(run.calls).toEqual(['stage:scan', 'stage:remove', `item:remove:${orphanedId}`])
     const applied = run.results

@@ -20,12 +20,13 @@ provider and one place to decide: the task the approval belongs to.
 | kind | owner fields | opened by |
 |---|---|---|
 | `workflow-gate` | `taskId, workflowId, runId, stepId` | the workflow engine, every gate (`requestGateApproval`) |
-| `health-repair` | `taskId, requestId, incidentIds, proposal` (frozen `{reportId, observationIds, items[{actionId,itemId,safety,changes[]}]}`, plan review R1) | escalation, for non-safe repair items |
+| `health-repair` | `taskId, requestId, incidentIds, proposal` (frozen `{reportId, observationIds, items[{actionId,itemId,safety,changes[]}], failure?}`, plan review R1; `failure` = the safe attempt that already failed, #896) | escalation, for non-safe repair items |
 | `health-navigate` | `taskId, requestId, incidentIds, href` | escalation, for operator-only incidents |
+| `plugin-gate` | `taskId, pluginId, gateKind, entityId` (all required, non-empty; `taskId` is the board anchor) | a plugin's own sign-off via `ctx.approvals` (spec D26 — Projects' `complete`/`signoff`) |
 
 Store verbs (`store.ts`): `createApprovalRecord` (idempotent — a pending record
 is refreshed, a resolved one is returned untouched so a replay never reopens
-a decision), `importApprovalRecord`, `getApprovalRecord`,
+a decision), `getApprovalRecord`,
 `listApprovalRecords({status, taskIds, kind})`, `updateApprovalDeliveries`,
 `resolveApprovalRecord` (**compare-and-set** on `pending`; `approve|apply` →
 `approved`, `reject|dismiss` → `rejected`; throws `ApprovalNotFoundError` /
@@ -54,6 +55,18 @@ read.
   `channels.resolveApproval`, `approval.resolved`. `cancelApproval(id,
   reason)` (idempotent) tells the channel and publishes `approval.resolved`
   with `status: 'cancelled'`.
+- `plugin-gates.ts` — core's OWN kind (`plugin-gate`, spec D26): one handler
+  that fans each decision out to the gate registered for
+  `(owner.pluginId, owner.gateKind)` via `registerPluginGate(pluginId,
+  gateKind, { ownerState, onResolve })` (returns an unregister that removes
+  only that registration — a hot reload's stale teardown never drops the
+  fresh gate) / `unregisterPluginGates(pluginId)` (deactivate). No gate loaded
+  ⇒ `ApprovalKindUnavailableError`: resolve answers 503 with the record still
+  pending, and rehydration counts it `skipped` (ownerState throws) — an
+  absent or not-yet-activated plugin never gets its sign-offs cancelled.
+  Provenance and the one decision path are untouched (agents are refused
+  before the gate runs). `bootApprovals` registers the kind idempotently, so
+  a plugin-gate record is never an "unknown kind".
 - `rehydration.ts` — prune resolved records older than 30 days; per record
   ask the kind's `ownerState`; re-render delivery-less live records when
   channel alerts are on. Unknown kinds are left untouched and logged.
@@ -69,6 +82,56 @@ Boot order (`src/core/server/startup-recovery.ts`): plugins activate (kinds)
 → `doctor.start` → `registerDoctorApprovalKinds` → `recoverInterruptedApplies`
 → `bootApprovals`. Kinds must exist before rehydration or their records are
 "unknown kind" for that boot.
+
+## `ctx.approvals` — plugin sign-off gates (spec D26)
+
+ONE implementation, `packages/core/src/approvals/plugin-api.ts`
+(`createPluginApprovalsAPI(pluginId, backend)`), shared by the host
+(`src/lib/plugin-context-factory.ts` — backend = the real service +
+`registerPluginGate`) and the SDK harness (`createMemoryApprovalsBackend()`;
+`harness.resolveApproval(id, option, comment?)` plays the operator). Rules:
+the owner's `pluginId` is the context's; `approvalId` must start with
+`<pluginId>:` and is caller-chosen + deterministic; an EXISTING id — pending
+or decided — is returned untouched, never rewritten (a refresh could swap the
+subject under a resolver mid-decision; a changed request is a new
+generation id); `request`/`get`/`cancel`/`listPending` refuse or hide every
+record that is not this plugin's `plugin-gate` (the core store refreshes a
+pending record's owner on create, so an unchecked id could take over another
+owner's approval). Default options Approve (primary) /
+Reject (destructive). The host stamps `request.context.requireRejectReason`
+from settings and `approvalUrl` (`taskUrl(taskId)` — every channel card's
+board fallback); options are snapshotted in the shared API before reaching either backend
+(channel rendering never sees the caller's objects) and the memory backend
+also snapshots each request (structuredClone); the core dispatcher enforces it like workflow gates (typed
+reject without a reason → 400; Discord/runtime buttons exempt) through the
+ONE predicate `rejectReasonMissing` that the memory backend also applies
+(`createMemoryApprovalsBackend({ requireRejectReason })`, default on). Gates see a
+plugin view (`PluginApproval`) and a decision with `decidedBy`
+(`describeApprovalProvenance`) — never raw provenance. `refusal(message,
+status)` is the error a gate throws to refuse (host: `ApprovalResolveError`).
+Options are validated at request time — ids `^[A-Za-z0-9_-]{1,64}$` (every
+decision transport round-trips them: Discord custom ids split on `:`, the
+decision endpoint caps at 64), unique, labelled, at most 10 per sign-off
+(the Discord renderer splits buttons into action rows of ≤ 5 — options plus
+the board link). An option the record never
+offered is refused (400) in the shared gate wrapper before plugin code runs. The memory backend keeps the host's resolve
+guards (one resolver at a time; the decision lands only on a record still
+pending after the gate ran — a gate that cancels its own approval keeps it
+cancelled), so harness tests cannot pass what the host would refuse.
+The board renders it with the explicit `plugin-gate` renderer in
+`plugins/tasks/components/approval-panel.tsx` (record title/summary/options,
+primary trailing, reject → shared `RejectReasonForm`); attention titles it
+"Sign-off needed".
+
+**Reference consumer — Bits Projects' steward** (`../bakin-bits-official/plugins/projects/lib/steward/gates.ts`,
+README § Check-ins): deterministic ids
+`projects:<projectId>:<gateKind>:<subject>:<generation>` mirrored in the
+project frontmatter (`gates[<gateKind>:<subject>]`), a re-request after a
+rejection bumps the generation, `ownerState` is `live` only while the project
+is active AND the record is the current generation, and completion cleanup
+cancels every OTHER pending sign-off — never the approval resolving (core
+runs `onResolve` before its compare-and-set; cancelling it would fail the
+decision).
 
 ## Settings
 
@@ -243,22 +306,33 @@ is a false positive in the safe direction.
   boot: fresh targeted checks → verified or failed+blocked; the pending record
   is withdrawn (`interrupted`).
 
-## One-shot upgrades (delete after margo has booted PR 2 once)
+### Legacy retirement (self-healing 1.6 — unactivated until the 1.7 cutover)
 
-`src/core/approvals/settings-upgrade.ts` moves `approvalChannelAlerts` /
-`approvalChannel` / `requireRejectReason` from `plugin-settings/workflows.json`
-into `settings.approvals`, drops `notifyOnGate`, and rewrites
-`doctor.escalation` strings (`off`→false, `notify|task`→true) with a
-`workflows.json.pre-approvals.bak` backup. `records-upgrade.ts` moves
-`~/.bakin/workflows/approvals/*.json` into the core store as
-`workflow-gate` records with deliveries intact (live Discord cards keep
-resolving). Both run in `server.ts` after `createAppServices()`, before
-plugin init; `normalizeDoctorSettings` coerces the legacy strings on every
-load until the files are deleted.
+`src/core/approvals/legacy-retire.ts` retires the pending `health-repair` /
+`health-navigate` approvals the OLD escalation raised, which the three-outcomes
+engine cannot resolve: it reads `~/.bakin/approvals/*.json` RAW (no schema —
+a record rc.42 wrote that today's schema refuses is still retired, never
+skipped), selects `status: 'pending'` records of those kinds WITHOUT the
+`schemaVersion: 2` marker the adapted engine stamps, and for each one writes
+the intent receipt `{ approvalId, channelId, messageId, state: 'retiring' }`
+to `~/.bakin/health/retirement-receipts.jsonl` BEFORE anything changes, then
+cancels (through `cancelApprovalRecord` when the record parses, else a raw
+write adding `retiredBy: 'legacy-retire'` and the reason), then edits the
+Discord card through `channels.cancelApproval`, then appends `done` — or
+`edit-failed` with `lastError` + `attempts` when the bridge is down or
+refuses. `resumeRetirementReceipts` (every boot and bridge reconnect, once
+1.7 wires it) carries every receipt that is not `done` forward REGARDLESS of
+the record's status (re-cancels a still-pending record, retries the edit);
+`openRetirementReceipts` is what the PR5 notification outbox imports. One
+`approvals.legacy_retired` audit row carries the counts whenever a pass did
+anything; a quiet pass writes nothing — idempotent. Pinned by
+`tests/core/approvals/legacy-retire.test.ts` (rc.42-shaped fixtures, the
+edit-failed → reconnect → done path, crashes after the intent and after the
+cancel).
 
 ## Tests
 
-`tests/core/approvals/{store,service,rehydration,channel-wiring,settings-upgrade,records-upgrade}.test.ts`,
+`tests/core/approvals/{store,service,rehydration,channel-wiring,plugin-gates,plugin-api}.test.ts`, `tests/sdk-testing/approvals.test.ts`,
 `tests/host/{approvals-api,approvals-attention}.test.*`,
 `tests/plugins/workflows/{approval-kind,notifications,gate-decision-page,gate-hooks}.test.ts`,
 `tests/core/{doctor-approvals,doctor-escalation,doctor-autoclose}.test.ts`,

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Download, ShieldAlert, ShieldCheck, Trash } from 'lucide-react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
+import { PluginLink, useQueryState } from '@makinbakin/sdk/navigation'
 import {
   ConfirmDialog,
   KeyValue,
@@ -63,9 +64,60 @@ interface SkillPreviewWire {
   consentToken: string
 }
 
+type InstalledSkillRow = { skillName: string; packageId: string; version: string; source: string; hub: boolean; capability?: string }
+
 interface SkillsListResponse {
-  managed: Array<{ skillName: string; packageId: string; version: string; source: string; hub: boolean; capability?: string }>
+  managed: InstalledSkillRow[]
   unmanaged: Array<{ name: string; scope: string }>
+}
+
+/** `GET /api/packages/capabilities` — the ONE readiness engine's verdict per installed pack (legs + remediation lines). */
+interface CapabilityReadinessWire {
+  capability: string
+  packageId: string
+  version: string
+  name: string
+  ready: boolean
+  missing: string[]
+  secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string; status: 'env' | 'store' | 'missing' }>
+  prereqs: Array<{ name: string; kind: 'binary' | 'app'; help: string; optional: boolean; status: 'ok' | 'missing' }>
+}
+
+/** The readiness row for an installed skill: same pack id (bare or `id@version`) or the same capability slug. */
+function readinessFor(row: InstalledSkillRow, capabilities: CapabilityReadinessWire[] | undefined): CapabilityReadinessWire | undefined {
+  return capabilities?.find((cap) =>
+    cap.packageId === row.packageId
+    || `${cap.packageId}@${cap.version}` === row.packageId
+    || (row.capability !== undefined && cap.capability === row.capability))
+}
+
+/** `?capability=` names the slug (the health incident's href) — a pack id also lands, for hand-typed links. */
+function rowHighlighted(row: InstalledSkillRow, readiness: CapabilityReadinessWire | undefined, highlight: string): boolean {
+  if (highlight === '') return false
+  return readiness?.capability === highlight || row.capability === highlight || row.packageId === highlight || row.packageId.startsWith(`${highlight}@`)
+}
+
+/**
+ * The not-ready legs under an installed row: the engine's remediation
+ * lines verbatim, plus the one link a human can act on from here (keys live
+ * in Settings → Integrations & Keys). Prereq help rides the lines already.
+ */
+function CapabilityLegs({ readiness }: { readiness: CapabilityReadinessWire }) {
+  if (readiness.ready) return <StatusBadge size="xs" tone="success" variant="soft">Ready</StatusBadge>
+  const needsKey = readiness.secrets.some((secret) => secret.required && secret.status === 'missing')
+  return (
+    <div className="grid gap-bakin-1" data-testid={`capability-legs-${readiness.capability}`}>
+      <div><StatusBadge size="xs" tone="attention" variant="soft">Not ready</StatusBadge></div>
+      <ul className="m-0 list-disc pl-bakin-4 text-bakin-typography-size-meta text-bakin-text-muted">
+        {readiness.missing.map((line) => <li key={line}>{line}</li>)}
+      </ul>
+      {needsKey && (
+        <PluginLink to="/settings?tab=integrations" className="text-bakin-typography-size-meta">
+          Add the key in Settings → Integrations & Keys
+        </PluginLink>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -283,6 +335,18 @@ function PreviewDrawerBody({
 
 export function HubSkillsSection() {
   const { data, error, refresh } = useJsonFetch<SkillsListResponse>('/api/skills', { timeoutMs: LIST_TIMEOUT_MS })
+  // Readiness legs come from the ONE readiness engine; `?capability=` (the
+  // health capability incident's deep link) highlights that pack's row and
+  // scrolls it into view (self-healing 1.4c-2).
+  const readinessFetch = useJsonFetch<{ capabilities: CapabilityReadinessWire[] }>('/api/packages/capabilities', { timeoutMs: LIST_TIMEOUT_MS })
+  const [highlightCapability] = useQueryState('capability', '')
+  const readinessRows = readinessFetch.data?.capabilities
+  useEffect(() => {
+    if (highlightCapability === '') return
+    const row = document.querySelector<HTMLElement>('[data-capability-row][data-highlighted="true"]')
+    row?.focus({ preventScroll: true })
+    row?.scrollIntoView?.({ block: 'center' })
+  }, [highlightCapability, data, readinessRows])
   const [ref, setRef] = useState('')
   const [preview, setPreview] = useState<SkillPreviewWire | null>(null)
   const [drift, setDrift] = useState(false)
@@ -291,15 +355,68 @@ export function HubSkillsSection() {
   // no request deadlines: a slow hub or a large download shows its progress.
   type PreviewBody = { ok: boolean; refused?: boolean; error?: string; preview?: SkillPreviewWire }
   type InstallBody = { ok: boolean; refused?: boolean; drift?: boolean; error?: string; warnings?: string[]; preview?: SkillPreviewWire }
-  const previewOp = useInstallOperation<PreviewBody>()
-  const installOp = useInstallOperation<InstallBody>()
+  // Each outcome is handled in the operation's settle callback (issue 966b) — the
+  // hook calls back once per start with the route's answer or the start error.
+  const previewOp = useInstallOperation<PreviewBody>({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) { setBoxError(settle.error); return }
+      const body = settle.result.body
+      if (!body?.ok || !body.preview) {
+        setBoxError(body?.refused ? `Refused: ${body.error}` : body?.error ?? `HTTP ${settle.result.httpStatus}`)
+      } else {
+        setDrift(false)
+        setPreview(body.preview)
+      }
+      previewOp.reset()
+    },
+  })
+  const installOp = useInstallOperation<InstallBody>({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) { setDrawerError(settle.error); return }
+      const body = settle.result.body
+      const p = installing
+      installOp.reset()
+      if (body?.ok && p) {
+        const needsKey = p.requirements.secrets.some((s) => s.required)
+        toast(
+          needsKey
+            ? `${p.skillName} installed — add its key in Settings → Integrations & Keys to make it ready.`
+            : `${p.skillName} installed.`,
+          'success',
+        )
+        closeDrawer()
+        setRef('')
+        refresh()
+        return
+      }
+      if (body?.drift && body.preview) {
+        setPreview(body.preview)
+        setDrift(true)
+        return
+      }
+      setDrawerError(body?.refused ? `Refused: ${body.error}` : body?.error ?? `HTTP ${settle.result.httpStatus}`)
+    },
+  })
   const previewBusy = previewOp.busy
   const installBusy = installOp.busy
   const [installing, setInstalling] = useState<SkillPreviewWire | null>(null)
   const [boxError, setBoxError] = useState<string | null>(null)
   const [removing, setRemoving] = useState<{ skillName: string; packageId: string } | null>(null)
   // Removal is a remove operation (#895); the confirm stays busy until it settles.
-  const removeOp = useInstallOperation<{ ok?: boolean; error?: string }>()
+  const removeOp = useInstallOperation<{ ok?: boolean; error?: string }>({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) {
+        toast(settle.error, 'error')
+      } else if (settle.result.httpStatus >= 400 || settle.result.body?.ok === false) {
+        toast(`Remove failed: ${settle.result.body?.error ?? `HTTP ${settle.result.httpStatus}`}`, 'error')
+      } else {
+        toast(`${removing?.skillName ?? 'Skill'} removed.`, 'success')
+      }
+      setRemoving(null)
+      removeOp.reset()
+      refresh()
+    },
+  })
   const removeBusy = removeOp.busy
 
   const closeDrawer = () => {
@@ -320,24 +437,6 @@ export function HubSkillsSection() {
     }))
   }
 
-  const previewResult = previewOp.result
-  const previewError = previewOp.error
-  const resetPreview = previewOp.reset
-  useEffect(() => {
-    if (previewError) setBoxError(previewError)
-  }, [previewError])
-  useEffect(() => {
-    if (!previewResult) return
-    const body = previewResult.body
-    if (!body?.ok || !body.preview) {
-      setBoxError(body?.refused ? `Refused: ${body.error}` : body?.error ?? `HTTP ${previewResult.httpStatus}`)
-    } else {
-      setDrift(false)
-      setPreview(body.preview)
-    }
-    resetPreview()
-  }, [previewResult, resetPreview])
-
   const runInstall = async (p: SkillPreviewWire) => {
     setDrawerError(null)
     setInstalling(p)
@@ -348,61 +447,10 @@ export function HubSkillsSection() {
     }))
   }
 
-  const installResult = installOp.result
-  const installError = installOp.error
-  const resetInstall = installOp.reset
-  useEffect(() => {
-    if (installError) setDrawerError(installError)
-  }, [installError])
-  useEffect(() => {
-    if (!installResult) return
-    const body = installResult.body
-    const p = installing
-    resetInstall()
-    if (body?.ok && p) {
-      const needsKey = p.requirements.secrets.some((s) => s.required)
-      toast(
-        needsKey
-          ? `${p.skillName} installed — add its key in Settings → Integrations & Keys to make it ready.`
-          : `${p.skillName} installed.`,
-        'success',
-      )
-      closeDrawer()
-      setRef('')
-      refresh()
-      return
-    }
-    if (body?.drift && body.preview) {
-      setPreview(body.preview)
-      setDrift(true)
-      return
-    }
-    setDrawerError(body?.refused ? `Refused: ${body.error}` : body?.error ?? `HTTP ${installResult.httpStatus}`)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per settled install
-  }, [installResult])
-
   const runRemove = async () => {
     if (!removing) return
     await removeOp.start(() => fetch(`/api/packages/${encodeURIComponent(removing.packageId)}`, { method: 'DELETE' }))
   }
-
-  const removeResult = removeOp.result
-  const removeError = removeOp.error
-  const resetRemove = removeOp.reset
-  useEffect(() => {
-    if (!removeResult && !removeError) return
-    if (removeError) {
-      toast(removeError, 'error')
-    } else if (removeResult && (removeResult.httpStatus >= 400 || removeResult.body?.ok === false)) {
-      toast(`Remove failed: ${removeResult.body?.error ?? `HTTP ${removeResult.httpStatus}`}`, 'error')
-    } else {
-      toast(`${removing?.skillName ?? 'Skill'} removed.`, 'success')
-    }
-    setRemoving(null)
-    resetRemove()
-    refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per settled removal
-  }, [removeResult, removeError])
 
   const installed = data?.managed ?? []
 
@@ -415,9 +463,18 @@ export function HubSkillsSection() {
         <div className="grid gap-bakin-2">
           <h3>Installed</h3>
           <ListRows variant="separated" size="sm" aria-label="Installed capabilities">
-            {installed.map((row) => (
-              <ListRow key={row.packageId + row.skillName} className="flex items-center gap-bakin-2">
-                <div className="min-w-0 flex-1">
+            {installed.map((row) => {
+              const readiness = readinessFor(row, readinessRows)
+              const highlighted = rowHighlighted(row, readiness, highlightCapability)
+              return (
+              <ListRow
+                key={row.packageId + row.skillName}
+                className={highlighted ? 'flex items-center gap-bakin-2 rounded-bakin-surface outline outline-2 outline-offset-2 outline-bakin-signal-highlight' : 'flex items-center gap-bakin-2'}
+                data-capability-row={row.packageId}
+                data-highlighted={highlighted ? 'true' : undefined}
+                tabIndex={highlighted ? -1 : undefined}
+              >
+                <div className="min-w-0 flex-1 grid gap-bakin-1">
                   <div className="flex flex-wrap items-center gap-bakin-2 break-words text-bakin-typography-size-body font-bakin-typography-weight-medium text-bakin-text-primary">
                     {row.skillName} <Text size="meta" tone="muted">v{row.version}</Text>
                     <Badge tone="neutral" variant="soft" size="xs">{sourceChip(row.source, row.hub)}</Badge>
@@ -433,6 +490,7 @@ export function HubSkillsSection() {
                     </TooltipTrigger>
                     <TooltipContent>{row.source}</TooltipContent>
                   </Tooltip>
+                  {readiness && <CapabilityLegs readiness={readiness} />}
                 </div>
                 <ListRowActions>
                   <Button
@@ -445,7 +503,8 @@ export function HubSkillsSection() {
                   </Button>
                 </ListRowActions>
               </ListRow>
-            ))}
+              )
+            })}
           </ListRows>
         </div>
       )}

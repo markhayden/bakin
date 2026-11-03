@@ -12,6 +12,6 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   exit 0
 fi
 
-docker compose -f dev/docker/docker-compose.yml down 2>/dev/null
+bash scripts/dev/compose.sh down 2>/dev/null
 rm -rf dev/openclaw-home
 bash dev/docker/setup.sh

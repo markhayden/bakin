@@ -27,6 +27,7 @@ import type {
 import { registerPluginDefinition, unregisterPluginDefinitions } from '@bakin/core/workflows/source-registry'
 import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
 import { registerPluginNodeType, unregisterPluginNodeTypes } from '@bakin/core/workflows/node-type-registry'
+import { unregisterPluginGates } from './approvals/plugin-gates'
 import {
   registerPluginNotificationChannel,
   unregisterPluginNotificationChannels,
@@ -54,21 +55,23 @@ import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkills
 import { getContentTypes, purgeContentType, unregisterContentTypesByPlugin } from './search-registry'
 import { loadPluginSkillFiles } from '../lib/plugin-skill-loader'
 import { listPluginDefaultFilesWithExtension } from './plugin-resources'
-import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
+import { setCorePluginCheck, readPluginLockfile, isPluginDisabled } from '../../packages/core/src/plugins/lockfile'
 import {
   PluginManifestError,
   readPluginManifestJson,
 } from '../../packages/core/src/plugins/manifest'
 import { checkBakinRangeCompatibility, IncompatibleHostError } from '../../packages/core/src/plugins/compat'
 import { getAppServices } from './app-services'
-import type { PluginManifest as PublicPluginManifest } from '@makinbakin/sdk/types'
+import type { PluginManifest as PublicPluginManifest, SocketRoute } from '@makinbakin/sdk/types'
 import { buildPluginContext, type PluginContextRegistrars } from '../lib/plugin-context-factory'
 import { startStartupSpan } from './startup-diagnostics'
 import type {
   CorePluginRegistration,
   PluginState,
+  PluginDisabledState,
   PluginFailureState,
   PluginLoadEntry,
+  TrackedSocket,
 } from './plugin-registry-types'
 import { withCapturedPluginConsole, createPluginScopedLogger } from './plugin-console-capture'
 import { logPluginActivation } from './plugin-activation-audit'
@@ -181,8 +184,18 @@ export { getPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/
 let userPluginImportCounter = 0
 
 class PluginRegistryImpl {
+  /** Set by shutdownAll: no socket route admits or tracks after it. */
+  private socketsShutDown = false
+  /**
+   * Registry-wide source of socket generations: every plugin state and every
+   * sweep takes a fresh one, so a replacement instance (disable → enable,
+   * reinstall) never matches an admission pending against the old one.
+   */
+  private nextSocketGeneration = 1
   private plugins = new Map<string, PluginState>()
   private failedPlugins = new Map<string, PluginFailureState>()
+  /** User plugins the lock ledger marks `disabled` — present on disk, never activated (row 98 containment). */
+  private disabledPlugins = new Map<string, PluginDisabledState>()
   private initialized = false
   private runtime: { storage: StorageAdapter; events: EventBus; services: AppServices } | null = null
 
@@ -304,6 +317,22 @@ class PluginRegistryImpl {
     )
   }
 
+  /** Record a user plugin as disabled (skipped at boot, or deactivated live by the disable route). */
+  markPluginDisabled(state: PluginDisabledState): void {
+    this.plugins.delete(state.id)
+    this.failedPlugins.delete(state.id)
+    this.disabledPlugins.set(state.id, state)
+  }
+
+  /** Forget a disabled mark (the enable route, before it activates the directory again). */
+  clearPluginDisabled(pluginId: string): boolean {
+    return this.disabledPlugins.delete(pluginId)
+  }
+
+  isPluginDisabled(pluginId: string): boolean {
+    return this.disabledPlugins.has(pluginId)
+  }
+
   private markPluginFailed(failure: PluginFailureState): void {
     this.plugins.delete(failure.id)
     corePluginIds.delete(failure.id)
@@ -316,6 +345,12 @@ class PluginRegistryImpl {
 
   private clearStateArrays(state: PluginState): void {
     state.routes.length = 0
+    state.socketRoutes.length = 0
+    // A swept plugin's live sockets belong to the old module: end them so
+    // clients reconnect to the re-activated (or absent) plugin, and fence
+    // off admissions still in flight against the old routes.
+    state.socketGeneration = this.nextSocketGeneration++
+    this.closeSockets(state, 1012, 'Plugin restarting')
     state.slots.length = 0
     state.navItems.length = 0
     state.watchPatterns.length = 0
@@ -353,6 +388,9 @@ class PluginRegistryImpl {
     try { unregisterPluginHealthChecks(pluginId) } catch (err) {
       log.warn('sweep: unregisterPluginHealthChecks failed', { pluginId, err: String(err) })
     }
+    try { unregisterPluginGates(pluginId) } catch (err) {
+      log.warn('sweep: unregisterPluginGates failed', { pluginId, err: String(err) })
+    }
     try { removePluginSkillsByPlugin(pluginId) } catch (err) {
       log.warn('sweep: removePluginSkillsByPlugin failed', { pluginId, err: String(err) })
     }
@@ -368,6 +406,31 @@ class PluginRegistryImpl {
     }
     const state = this.plugins.get(pluginId)
     if (state) this.clearStateArrays(state)
+  }
+
+  /**
+   * Suspend a plugin WITHOUT destroying its data (the disable route, row 98
+   * containment): `onShutdown`, the non-destructive sweep (hooks, exec tools,
+   * node types, channels, health checks, skills, workflow ids, search RUNTIME
+   * wiring, route docs) and the state entry go — the plugin's search tables,
+   * their registrations and any undelivered outbox rows STAY, so enabling it
+   * again re-registers its content types over the data it had. Uninstall
+   * (`deactivatePlugin`) owns the destructive teardown.
+   */
+  async suspendPlugin(pluginId: string, opts: { callShutdown?: boolean } = {}): Promise<boolean> {
+    const state = this.plugins.get(pluginId)
+    if (!state) return false
+    if (opts.callShutdown !== false) {
+      try {
+        await state.plugin.onShutdown?.()
+      } catch (err) {
+        log.warn('onShutdown failed during plugin suspend', { pluginId, err: String(err) })
+      }
+    }
+    this.sweepPluginRegistrations(pluginId)
+    this.plugins.delete(pluginId)
+    corePluginIds.delete(pluginId)
+    return true
   }
 
   async deactivatePlugin(pluginId: string, opts: { callShutdown?: boolean; removeState?: boolean } = {}): Promise<{
@@ -402,6 +465,9 @@ class PluginRegistryImpl {
     }
     try { unregisterPluginHealthChecks(pluginId) } catch (err) {
       log.warn('deactivate: unregisterPluginHealthChecks failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginGates(pluginId) } catch (err) {
+      log.warn('deactivate: unregisterPluginGates failed', { pluginId, err: String(err) })
     }
     // Plugin-owned workflow definitions: with cross-plugin id collisions now
     // THROWING (R18), a removed plugin's stale ids would make its workflow
@@ -541,7 +607,31 @@ class PluginRegistryImpl {
     this.registerDeclarativeRoutes(plugin, state)
   }
 
+  private closeSockets(state: PluginState, code: number, reason: string): void {
+    const sockets = [...state.sockets]
+    state.sockets.clear()
+    for (const socket of sockets) {
+      try {
+        socket.close(code, reason)
+      } catch (err) {
+        log.warn('closing a plugin socket failed', { pluginId: state.plugin.id, err: String(err) })
+      }
+    }
+  }
+
   private registerDeclarativeRoutes(plugin: BakinPlugin, state: PluginState): void {
+    for (const route of plugin.socketRoutes ?? []) {
+      if (state.source === 'user' && !(state.manifest?.contributes?.socketRoutes ?? []).some((item) => item.path === route.path)) {
+        throw new Error(
+          `Plugin "${plugin.id}" registered undeclared socket route ${route.path}. ` +
+          `Declare it in bakin-plugin.json contributes.socketRoutes.`,
+        )
+      }
+      if (state.socketRoutes.some((existing) => existing.path === route.path)) {
+        throw new Error(`Plugin "${plugin.id}" declares socket route ${route.path} twice.`)
+      }
+      state.socketRoutes.push(route)
+    }
     const declarative = plugin.routes ?? []
     if (declarative.length === 0) return
     for (const route of declarative) {
@@ -882,6 +972,9 @@ class PluginRegistryImpl {
         channelIds: [],
         healthCheckIds: [],
         healthRepairActionIds: [],
+        socketRoutes: [],
+        sockets: new Set(),
+        socketGeneration: this.nextSocketGeneration++,
       }
 
       const skillResult = await this.finalizeActivation(plugin, state, pluginPath, storage, events, services, {
@@ -994,6 +1087,9 @@ class PluginRegistryImpl {
       channelIds: [],
       healthCheckIds: [],
       healthRepairActionIds: [],
+      socketRoutes: [],
+      sockets: new Set(),
+      socketGeneration: this.nextSocketGeneration++,
     }
 
     let skillResult: ReturnType<typeof loadPluginSkillFiles>
@@ -1041,6 +1137,17 @@ class PluginRegistryImpl {
       log.warn('Recovered interrupted plugin operations at boot', { plugins: recovery.recovered })
     }
 
+    // The ledger's `disabled` marks: a disabled plugin is discovered (so the
+    // manifest can show it) but never activated. An unreadable ledger
+    // disables nothing — the loader keeps loading what is on disk.
+    let disabledIds = new Set<string>()
+    try {
+      const lock = readPluginLockfile()
+      disabledIds = new Set(Object.entries(lock.plugins).filter(([, entry]) => isPluginDisabled(entry)).map(([id]) => id))
+    } catch (err) {
+      log.warn('Plugin lockfile unreadable while discovering user plugins — no plugin is treated as disabled', { err: err instanceof Error ? err.message : String(err) })
+    }
+
     try {
       const dirEntries = readdirSync(userPluginsDir, { withFileTypes: true })
       const entries: PluginLoadEntry[] = []
@@ -1052,6 +1159,11 @@ class PluginRegistryImpl {
 
         try {
           const manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'))
+          if (disabledIds.has(manifest.id) || disabledIds.has(entry.name)) {
+            this.markPluginDisabled({ id: manifest.id, name: manifest.name ?? manifest.id, version: manifest.version ?? '0.0.0', description: manifest.description ?? '' })
+            log.info(`Plugin "${manifest.id}" is disabled — not activated`)
+            continue
+          }
           entries.push({
             path: join(userPluginsDir, entry.name),
             id: manifest.id,
@@ -1151,6 +1263,31 @@ class PluginRegistryImpl {
     ) || null
   }
 
+  /** A live socket route plus the generation an admission must still match. */
+  findSocketRoute(pluginId: string, path: string): { route: SocketRoute; generation: number } | null {
+    if (this.socketsShutDown) return null
+    const state = this.plugins.get(pluginId)
+    const route = state?.socketRoutes.find((candidate) => candidate.path === path)
+    return state && route ? { route, generation: state.socketGeneration } : null
+  }
+
+  /** Whether an admission taken at `generation` may still open. */
+  isCurrent(pluginId: string, generation: number): boolean {
+    return !this.socketsShutDown && this.plugins.get(pluginId)?.socketGeneration === generation
+  }
+
+  /**
+   * Track an open connection admitted at `generation`. Returns the untrack
+   * function, or null when the plugin was swept/removed or the server is
+   * shutting down since (the caller must close the connection).
+   */
+  trackSocket(pluginId: string, generation: number, socket: TrackedSocket): (() => void) | null {
+    const state = this.plugins.get(pluginId)
+    if (!state || !this.isCurrent(pluginId, generation)) return null
+    state.sockets.add(socket)
+    return () => { state.sockets.delete(socket) }
+  }
+
   getSlotComponents(slotName: string): UISlotRegistration[] {
     const registrations: UISlotRegistration[] = []
     for (const state of this.plugins.values()) {
@@ -1207,7 +1344,7 @@ class PluginRegistryImpl {
     description: string
     contributes?: PublicPluginManifest['contributes']
     source: 'built-in' | 'user'
-    status: 'active' | 'failed'
+    status: 'active' | 'failed' | 'disabled'
     errorCode?: PluginFailureState['errorCode']
     errorMessage?: string
     missingDependencies?: string[]
@@ -1248,7 +1385,16 @@ class PluginRegistryImpl {
       missingDependencies: failure.missingDependencies,
       routes: 0,
     }))
-    return [...active, ...failed]
+    const disabled = [...this.disabledPlugins.values()].map(state => ({
+      id: state.id,
+      name: state.name,
+      version: installedUserPluginVersions[state.id] ?? state.version,
+      description: state.description,
+      source: 'user' as const,
+      status: 'disabled' as const,
+      routes: 0,
+    }))
+    return [...active, ...failed, ...disabled]
   }
 
   // ---------------------------------------------------------------------------
@@ -1286,6 +1432,8 @@ class PluginRegistryImpl {
 
   /** Call onShutdown() on all plugins in reverse activation order. */
   async shutdownAll(): Promise<void> {
+    this.socketsShutDown = true
+    for (const state of this.plugins.values()) this.closeSockets(state, 1001, 'Server shutting down')
     const ids = [...this.plugins.keys()].reverse()
     for (const id of ids) {
       const state = this.plugins.get(id)
@@ -1331,6 +1479,7 @@ class PluginRegistryImpl {
   _resetForTests(): void {
     this.plugins.clear()
     this.failedPlugins.clear()
+    this.disabledPlugins.clear()
     corePluginTable = {}
     corePluginIds.clear()
     clearPluginSkills()

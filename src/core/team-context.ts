@@ -34,7 +34,7 @@ import { getContentDir } from './content-dir'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { createLogger } from './logger'
 import { ROLE_DEFAULTS } from './team-context-defaults'
-import { renderToolAccessInstructions } from './tool-access'
+import { renderToolAccessInstructions } from '@bakin/core/tool-access'
 // Leaf accessor (P1.0) — safe from team-context without an import cycle.
 import { maybeGetAppServices } from './app-services-store'
 

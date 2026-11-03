@@ -95,6 +95,8 @@ declare namespace Bun {
     stderr?: 'inherit' | 'pipe' | 'ignore'
     cwd?: string
     env?: Record<string, string | undefined>
+    /** Run the child on a new pseudo-terminal (stdin/stdout/stderr become the PTY). */
+    terminal?: { cols?: number; rows?: number; data?: (terminal: unknown, data: Uint8Array) => void }
   }
 
   function spawn(cmd: string[], options?: SpawnOptions): Subprocess

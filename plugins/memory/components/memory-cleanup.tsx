@@ -82,7 +82,7 @@ export function MemoryCleanup() {
   const [instruction, setInstruction] = useState('')
 
   const [find, setFind] = useState<FindResponse | null>(null)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [dispatch, setDispatch] = useState<DispatchResponse | null>(null)
   const [verify, setVerify] = useState<VerifyResponse | null>(null)
 

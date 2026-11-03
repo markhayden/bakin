@@ -76,8 +76,8 @@ import { materializeArtifact } from '../../../src/core/whiskit/consumer-install'
 import { addPlugin, writePluginLockfile } from '../../../packages/core/src/plugins/lockfile'
 import { parseManifestPermissions } from '../../../packages/core/src/plugins/permissions'
 import { httpIndexResolver } from '../../../src/core/whiskit/resolver'
-import { computeUpgradeAvailable, readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
-import { isArtifactInstall, runChecks, upgradePlugin as upgradePluginUnowned } from '../../../src/core/plugins/upgrade'
+import { getPluginLockfilePath, readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
+import { isArtifactInstall, upgradePlugin as upgradePluginUnowned } from '../../../src/core/plugins/upgrade'
 import { owned } from '../../helpers/owning'
 
 // The core install writers assert install-state ownership (#895): call them as an owner.
@@ -163,52 +163,6 @@ async function installVersion(v: string): Promise<string> {
   return installDir
 }
 
-describe('artifact-lane check (runChecks)', () => {
-  it('reports the latest published version instead of probing git', async () => {
-    await publishVersion('0.1.0')
-    const installDir = await installVersion('0.1.0')
-    expect(isArtifactInstall(installDir)).toBe(true)
-
-    // Same version published — no upgrade.
-    let results = await runChecks(['messaging'])
-    expect(results[0].error).toBeUndefined()
-    expect(results[0].upgradeAvailable).toBe(false)
-    expect(results[0].remoteArtifactVersion).toBe('0.1.0')
-
-    // New version published — upgrade available, marker persisted.
-    await publishVersion('0.2.0')
-    results = await runChecks(['messaging'])
-    expect(results[0].upgradeAvailable).toBe(true)
-    expect(results[0].remoteArtifactVersion).toBe('0.2.0')
-
-    const entry = readPluginLockfile().plugins['messaging']
-    expect(entry.remoteArtifactVersion).toBe('0.2.0')
-    expect(entry.lastChecked).toBeDefined()
-  })
-
-  it('a definitive "nothing runs on this Bakin" replaces an earlier positive check (never a stale upgrade marker)', async () => {
-    await publishVersion('0.1.0')
-    await installVersion('0.1.0')
-    await publishVersion('0.2.0')
-    expect((await runChecks(['messaging']))[0].upgradeAvailable).toBe(true)
-
-    // Every published release now targets another host contract family.
-    const indexPath = join(releaseDir, INDEX_FILENAME)
-    const index = readArtifactsIndex(indexPath)
-    for (const version of Object.values(index.plugins.messaging!.versions)) {
-      for (const artifact of Object.values(version.platforms)) artifact.externalsContract = 'react20-some-other-family-v1'
-    }
-    writeArtifactsIndex(indexPath, index)
-
-    const [result] = await runChecks(['messaging'])
-    expect(result).toMatchObject({ upgradeAvailable: false, notice: expect.stringContaining('runs on this Bakin yet') })
-    expect(result.error).toBeUndefined()
-    const entry = readPluginLockfile().plugins['messaging']
-    expect(entry.remoteArtifactVersion).toBe('0.1.0')
-    expect(computeUpgradeAvailable(entry)).toBe(false)
-  })
-})
-
 describe('artifact-lane upgrade (upgradePlugin)', () => {
   it('refetches the latest artifact and atomically replaces the install', async () => {
     await publishVersion('0.1.0')
@@ -231,11 +185,14 @@ describe('artifact-lane upgrade (upgradePlugin)', () => {
     expect(readFileSync(join(installDir, 'dist', 'index.js'), 'utf-8')).toContain("version: '0.2.0'")
     expect(isArtifactInstall(installDir)).toBe(true)
 
-    // Lockfile updated.
+    // Lockfile updated — installed provenance only; the lane writes no check marker (the updates engine owns "is there something newer", #1007 B).
     const entry = readPluginLockfile().plugins['messaging']
     expect(entry.version).toBe('0.2.0')
     expect(entry.upgradedAt).toBeDefined()
-    expect(entry.remoteArtifactVersion).toBe('0.2.0')
+    const rawRow = (JSON.parse(readFileSync(getPluginLockfilePath(), 'utf-8')) as { plugins: Record<string, Record<string, unknown>> }).plugins['messaging']!
+    expect(Object.keys(rawRow)).not.toContain('remoteArtifactVersion')
+    expect(Object.keys(rawRow)).not.toContain('remoteArtifactRebuild')
+    expect(Object.keys(rawRow)).not.toContain('lastChecked')
   })
 
   it('S14: a failure after the new tree landed restores the previous artifact install byte for byte', async () => {
@@ -269,6 +226,28 @@ describe('artifact-lane upgrade (upgradePlugin)', () => {
     const result = await upgradePlugin('messaging')
     expect(result.noop).toBe(true)
     expect(result.after.version).toBe('0.1.0')
+  })
+
+  it('reinstall (self-healing 1.3b): re-fetches the INSTALLED version — never the newer release — and replaces the tree even when nothing is newer', async () => {
+    await publishVersion('0.1.0')
+    const installDir = await installVersion('0.1.0')
+    await publishVersion('0.2.0')
+    // Damage the install the way a half-applied upgrade or a stray edit would.
+    writeFileSync(join(installDir, 'dist', 'index.js'), 'garbage')
+    rmSync(join(installDir, 'bakin-plugin.json'))
+
+    // A preview carries the recorded identity (version + artifact digest) for the approval to freeze.
+    const preview = await upgradePlugin('messaging', { previewOnly: true, reinstall: true })
+    expect(preview.noop).toBe(false)
+    expect(preview.identity?.version).toBe('0.1.0')
+    expect(preview.identity?.digest).toMatch(/^[0-9a-f]{64}$/)
+    expect(existsSync(join(installDir, 'bakin-plugin.json'))).toBe(false) // a preview holds nothing
+
+    const result = await upgradePlugin('messaging', { reinstall: true, accepted: preview.consent, expected: { version: '0.1.0', digest: preview.identity!.digest } })
+    expect(result.noop).toBe(false)
+    expect(result.after.version).toBe('0.1.0')
+    expect(readFileSync(join(installDir, 'dist', 'index.js'), 'utf-8')).toContain("version: '0.1.0'")
+    expect(readPluginLockfile().plugins['messaging']?.version).toBe('0.1.0')
   })
 
   it('gates widened permissions behind consent without touching disk', async () => {

@@ -21,7 +21,7 @@ mock.module('@/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-import { reorderBySearchResults, type SearchResult } from '@/hooks/use-search'
+import { reorderBySearchResults, type SearchResult } from '../../packages/sdk/src/hooks/use-search'
 
 interface Item {
   id: string

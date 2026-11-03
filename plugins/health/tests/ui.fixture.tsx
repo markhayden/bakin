@@ -18,7 +18,7 @@ const registry: SystemRegistryData = { plugins: [
 ] }
 const manifest: SystemPluginManifestData = { plugins: registry.plugins.map(plugin => ({
   id: plugin.id, name: plugin.name, version: plugin.version, source: 'local', status: plugin.status,
-  installed: { version: plugin.version }, upgradeAvailable: plugin.id === 'editorial', latestVersion: '1.1.0', staleHintDays: null,
+  installed: { version: plugin.version }, upgradeAvailable: plugin.id === 'editorial', latestVersion: '1.1.0',
 })) }
 const search: SearchHealthData = { enabled: true, engineReachable: true, tables: [
   { logical: 'bakin_editorial_publication_history', physical: 'bakin_editorial_publication_history_v3_fp123', pluginId: 'editorial', schemaVersion: 3, state: 'migrating', phase: 'parked', healthy: false, docCount: 142, journalPending: 7, lastIndexedAt: 1768474800000, lastRebuildAt: null, legs: [{ name: 'embedding', totalIndexed: 120, rebuilding: true, pending: 22, error: 'Embedding provider temporarily unavailable' }] },
@@ -31,12 +31,9 @@ function SystemFixture() {
   useEffect(() => {
     inventory.current?.revealPlugins()
     inventory.current?.revealChecks()
-    // Capture the existing disclosures with a long ownership path and no command.
-    document.querySelectorAll<HTMLButtonElement>('[data-incident-id="search-ownership"] button[aria-expanded="false"]')
-      .forEach(button => button.click())
   }, [])
   return <Page><PageHeader title="Health" description="System inventories" /><PageBody>
-    <OverviewAlerts model={buildHealthOverviewViewModel({ report: collectionReport })} onRerun={() => {}} />
+    <OverviewAlerts model={buildHealthOverviewViewModel({ report: collectionReport })} />
     <SystemSearchSection readiness={null} status={search} telemetry={null} mutation={idle} onReindex={() => {}} technicalDetailsOpen />
     <SystemInventory ref={inventory} report={collectionReport} live={null} registry={registry} manifest={manifest}
       pluginInventoryCurrent pluginMutation={idle} pluginSearch={query} onPluginSearchChange={setQuery}

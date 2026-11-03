@@ -27,6 +27,7 @@ modules that import each other directly (never through the barrel):
 | `dispatch-single.ts` | Immediate single-task dispatch (kick / subtask / continuation / recovery) |
 | `dispatch-workflow.ts` | Workflow-step dispatch + workflow prompt builder |
 | `dispatch-session-death.ts` | Session-death recovery ladder + dispatch-rejection reconciliation |
+- **Per-agent pause (self-healing PR1 slice 1.4b, row 50):** `settings.dispatch.pausedAgents: string[]` holds ONE agent's Bakin-initiated dispatch — `preDispatchGate` returns `{ reason: 'agent_paused', agentId }` right after the kill switch, audited once per activation per agent (`dispatch.agent_paused`); other agents run on, in-flight turns finish. Written by the agent's Diagnostics tab (`plugins/team/components/agent-dispatch-pause.tsx`, "Pause dispatch for this agent" / Resume through ConfirmDialog, `POST /api/settings` — arrays replace on merge) and reruns `health.usage.agent-burn`; the runaway-usage incident links to that tab.
 
 ## Execution claims (the correctness mechanism)
 
@@ -385,7 +386,7 @@ what production sends — see `.claude/knowledge/startup-context.md` (#357).
 dispatch carrying the taskId-templated `assets_save` command) and
 `sharedExecutionToolDocs()` (taskId-templated invocations — intentional
 differences are parameters, so the builders can't drift). Every tool-call
-line renders through `renderToolCall` (`src/core/tool-access.ts`) per the
+line renders through `renderToolCall` (`@bakin/core/tool-access`) per the
 ACTIVE runtime's `describeToolAccess()` — bare calls on Pi (in-process),
 `bakin-<agent>.`-prefixed native MCP calls on OpenClaw — the same primitive
 the AGENTS.md tool-access section uses, so prompt and projection bytes can

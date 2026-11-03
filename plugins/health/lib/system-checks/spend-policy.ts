@@ -6,11 +6,17 @@
  * board and in the doctor.
  */
 import { healthError, healthHealthy, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration } from '@makinbakin/sdk'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 
 const HOOK = 'spend.getBudgetPolicy'
 const ANSWER_BUDGET_MS = 2_000
+
+/** Row 39: an absent plugin is the fallback lane's; row 40: the operator fixes the file; row 41: an observation. */
+export const SPEND_POLICY_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'policy-unavailable', subjectKind: 'plugin', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+  { id: 'policy-invalid', subjectKind: 'record', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+]
 
 export async function checkSpendPolicyAvailable(): Promise<HealthCheckRunInput> {
   const registry = getHookRegistry()
@@ -24,15 +30,12 @@ export async function checkSpendPolicyAvailable(): Promise<HealthCheckRunInput> 
         key: 'policy-unavailable',
         title: 'Spend limits policy is unavailable',
         class: 'service_failure',
-        impact: 'Task dispatch and billed media calls are deferring until the spend plugin answers.',
+        impact: 'Task dispatch and billed media calls are deferring until the spend plugin answers (its activation error is in the server log).',
         disposition: 'action_required',
+        subject: { kind: 'plugin', id: 'spend', label: 'Spend plugin' },
+        declarationId: 'policy-unavailable',
         resources: [{ kind: 'plugin', id: 'spend', label: 'Spend plugin' }],
-        resolution: {
-          key: 'inspect-spend-plugin',
-          type: 'instructions',
-          label: 'Inspect the spend plugin',
-          steps: ['Check the server log for the spend plugin activation error, then restart Bakin and rerun Health.'],
-        },
+        resolution: { key: 'inspect-spend-plugin', type: 'repair', label: 'Investigate the spend plugin', actionId: 'core.diagnose' },
       },
     })])
   }
@@ -64,33 +67,19 @@ export async function checkSpendPolicyAvailable(): Promise<HealthCheckRunInput> 
           class: 'service_failure',
           impact: 'Task dispatch and billed media calls defer until spend.json is a valid policy again. Your limits are still in the file — nothing has overwritten it.',
           disposition: 'action_required',
+          subject: { kind: 'record', id: 'spend.json', label: 'spend.json' },
+          declarationId: 'policy-invalid',
           resources: [{ kind: 'plugin', id: 'spend', label: 'Spend plugin' }],
-          resolution: {
-            key: 'fix-spend-settings',
-            type: 'instructions',
-            label: 'Fix spend.json',
-            steps: [
-              `Open ${invalid.file ?? '~/.bakin/plugin-settings/spend.json'} and fix the listed issues (or remove the file to start with no limits), then rerun Health.`,
-              ...(invalid.issues ?? []).map((issue) => `Issue: ${issue}`),
-            ],
-          },
+          resolution: { key: 'recover-spend-policy', type: 'human', needs: 'decision', label: 'Fix spend.json', href: '/spend?recover=1' },
         },
       })])
     }
+    // Row 41: an unanswered read is an observation; the check's maxAgeMs re-runs it.
     return healthObserved([healthUnknown({
       key: 'hook',
       summary: 'The spend limits policy did not answer — dispatch is failing closed.',
       detail: err instanceof Error ? err.message : String(err),
       evidence: { hook: HOOK, registered: true },
-      incident: {
-        key: 'policy-unanswered',
-        title: 'Spend limits policy is not answering',
-        class: 'service_failure',
-        impact: 'Task dispatch and billed media calls defer until the policy read succeeds.',
-        disposition: 'watch',
-        resources: [{ kind: 'plugin', id: 'spend', label: 'Spend plugin' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
     })])
   }
 }

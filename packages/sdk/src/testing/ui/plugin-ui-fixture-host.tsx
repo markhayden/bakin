@@ -9,16 +9,7 @@ import {
   createRouter,
   useLocation,
 } from '@tanstack/react-router'
-import {
-  Component,
-  createContext,
-  useContext,
-  useLayoutEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from 'react'
+import { Component, createContext, use, useLayoutEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import { Button, SystemState, ToastRegion, TooltipProvider } from '@bakin/ui'
 import type { SystemStateKind } from '@bakin/ui'
 
@@ -79,16 +70,23 @@ interface FixtureContextValue {
 const FixtureContext = createContext<FixtureContextValue | null>(null)
 
 function useFixtureContext(): FixtureContextValue {
-  const value = useContext(FixtureContext)
+  const value = use(FixtureContext)
   if (!value) throw new Error('Plugin UI fixture route rendered outside PluginUiFixtureHost')
   return value
 }
 
 class PluginFixturePageBoundary extends Component<
   { pluginId: string; pathname: string; children: ReactNode },
-  { error: Error | null }
+  { error: Error | null; pathname: string }
 > {
-  state: { error: Error | null } = { error: null }
+  state: { error: Error | null; pathname: string } = { error: null, pathname: this.props.pathname }
+
+  // Navigating away resets the boundary so the next page renders fresh —
+  // derived from props, never a setState in componentDidUpdate.
+  static getDerivedStateFromProps(props: { pathname: string }, state: { error: Error | null; pathname: string }): { error: Error | null; pathname: string } | null {
+    if (props.pathname === state.pathname) return null
+    return { error: null, pathname: props.pathname }
+  }
 
   static getDerivedStateFromError(error: Error): { error: Error } {
     return { error }
@@ -99,12 +97,6 @@ class PluginFixturePageBoundary extends Component<
       `[bakin] plugin UI fixture page "${this.props.pluginId}" crashed at ${this.props.pathname}:`,
       error,
     )
-  }
-
-  componentDidUpdate(previous: { pathname: string }): void {
-    if (previous.pathname !== this.props.pathname && this.state.error) {
-      this.setState({ error: null })
-    }
   }
 
   render(): ReactNode {
@@ -146,6 +138,9 @@ function FixtureSystemState({ kind, onAction }: {
   }
   return <SystemState kind={kind} scope="section" />
 }
+
+/** Registration arrays this host has installed into the client registry (see PluginUiFixtureHost). */
+const installedRegistrations = new WeakSet<readonly PluginRegistration[]>()
 
 function RegisteredPluginPage() {
   useSyncExternalStore(subscribeRegistry, getRegistryVersion, getRegistryVersion)
@@ -237,20 +232,23 @@ export function PluginUiFixtureHost({
   className,
 }: PluginUiFixtureHostProps) {
   const route = normalizePluginUiFixtureRoute(fixture.route)
-  const [registrationsReady, setRegistrationsReady] = useState(false)
-
   useLayoutEffect(() => installPluginUiFixture(fixture), [fixture])
   useLayoutEffect(() => {
-    setRegistrationsReady(false)
+    // Marked installed BEFORE registering so the registry notification the
+    // registrations raise is what flips the subscribed read below.
+    installedRegistrations.add(registrations)
     for (const registration of registrations) {
       unregisterPlugin(registration.id)
       registerPlugin(registration)
     }
-    setRegistrationsReady(true)
     return () => {
+      installedRegistrations.delete(registrations)
       for (const registration of registrations) unregisterPlugin(registration.id)
     }
   }, [registrations])
+  // Readiness is read from the registry (an external store), never set from
+  // the effect (issue 966b): the pages render once this host's registrations are in.
+  const registrationsReady = useSyncExternalStore(subscribeRegistry, () => installedRegistrations.has(registrations))
 
   const context = useMemo<FixtureContextValue>(() => ({
     slots,
@@ -258,7 +256,7 @@ export function PluginUiFixtureHost({
     onStateAction,
   }), [slots, surfaceState, onStateAction])
   return (
-    <FixtureContext.Provider value={context}>
+    <FixtureContext value={context}>
       <TooltipProvider>
         <main
           className={className}
@@ -272,6 +270,6 @@ export function PluginUiFixtureHost({
         </main>
         <ToastRegion label="Plugin fixture notifications" data-bakin-plugin-fixture-overlay-root />
       </TooltipProvider>
-    </FixtureContext.Provider>
+    </FixtureContext>
   )
 }

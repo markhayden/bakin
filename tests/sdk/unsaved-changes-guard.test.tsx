@@ -54,6 +54,39 @@ afterEach(async () => {
   currentRouter = router
 })
 
+describe('useUnsavedChangesGuard — isSameLocation (Codex r3 #7)', () => {
+  const at = (pathname: string, search: Record<string, unknown>) => ({ pathname, search, searchStr: Object.keys(search).length ? `?${new URLSearchParams(search as Record<string, string>).toString()}` : '' })
+  it('by default a same-pathname move never prompts; with isSameLocation a query change the surface keys on blocks like any departure', async () => {
+    const { unmount } = await renderGuard()
+    let value = track(Promise.resolve(true))
+    await act(async () => { value = track(blockers[0]!({ currentLocation: at('/workflows', { recover: '1', skill: 'review.md' }), nextLocation: at('/workflows', {}) } as never)) })
+    await settleReact()
+    expect(value.value).toBe(false) // default: staying on /workflows
+    unmount()
+    blockers = []
+
+    const keyed = await actRender(() => renderHook(() => useUnsavedChangesGuard({
+      hasUnsavedChanges: true,
+      saving: false,
+      isSameLocation: (current, next) => current.pathname === next.pathname && current.search.recover === next.search.recover && current.search.skill === next.search.skill,
+      onCancel: () => {},
+      onSaveAndExit: async () => true,
+      onDiscardAndExit: () => {},
+    })))
+    let same = track(Promise.resolve(true))
+    let departure = track(Promise.resolve(true))
+    await act(async () => { same = track(blockers[0]!({ currentLocation: at('/workflows', { recover: '1', skill: 'review.md' }), nextLocation: at('/workflows', { recover: '1', skill: 'review.md', page: '2' }) } as never)) })
+    await settleReact()
+    expect(same.value).toBe(false) // another query key: still here
+    await act(async () => { departure = track(blockers[0]!({ currentLocation: at('/workflows', { recover: '1', skill: 'review.md' }), nextLocation: at('/workflows', {}) } as never)) })
+    await settleReact()
+    expect(departure.value).toBe('pending') // Back to /workflows: the decision is pending
+    await act(async () => { keyed.result.current.reset() })
+    await settleReact()
+    expect(departure.value).toBe(true)
+  })
+})
+
 describe('useUnsavedChangesGuard route blockers', () => {
   it('a second navigation settles the first as blocked; the decision is about the second', async () => {
     const { result } = await renderGuard()

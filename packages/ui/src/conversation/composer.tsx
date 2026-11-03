@@ -18,7 +18,10 @@ import { usePersistedLeadingEdgeResize } from '../behaviors/use-persisted-leadin
 import { Button } from '../primitives/button'
 import { InputGroup, InputGroupTextarea } from '../primitives/input-group'
 import { cn } from '../utils'
-import { RemoveIcon, SpinnerIcon } from './glyphs'
+import { SpinnerIcon } from './glyphs'
+import { ComposerAttachmentTray, type ComposerAttachmentItem } from './attachment-tray'
+
+export type { ComposerAttachmentItem, ComposerAttachmentStatus } from './attachment-tray'
 import { ResizeHandle } from '../behaviors/resize-handle'
 
 const HISTORY_LIMIT = 50
@@ -128,18 +131,6 @@ function StopSquareIcon() {
   )
 }
 
-export type ComposerAttachmentStatus = 'uploading' | 'ready' | 'error'
-
-/** Presentation state for one consumer-owned attachment upload. */
-export interface ComposerAttachmentItem {
-  id: string
-  name: string
-  previewUrl?: string
-  status?: ComposerAttachmentStatus
-  /** Visible failure copy when status is `error`. */
-  errorMessage?: string
-}
-
 /** Capability and callbacks for consumer-owned attachment selection and upload. */
 export interface ComposerAttachments {
   enabled: boolean
@@ -210,7 +201,15 @@ export function Composer({
   maxHeight = DEFAULT_MAX_HEIGHT,
   className,
 }: ComposerProps) {
+  // One draft per storage key (issue 966b): switching conversations swaps the
+  // value in the same render. Inlined rather than useKeyedState so the
+  // conversation entry's reachable graph stays what it was.
   const [value, setValue] = useState(() => readDraft(storageKey))
+  const [draftFor, setDraftFor] = useState(storageKey)
+  if (draftFor !== storageKey) {
+    setDraftFor(storageKey)
+    setValue(readDraft(storageKey))
+  }
   const [dropActive, setDropActive] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const composingRef = useRef(false)
@@ -233,7 +232,6 @@ export function Composer({
   })
 
   useEffect(() => {
-    setValue(readDraft(storageKey))
     historyPositionRef.current = null
     if (autoFocus) textareaRef.current?.focus()
   }, [storageKey, autoFocus])
@@ -251,7 +249,7 @@ export function Composer({
   const setDraft = useCallback((next: string) => {
     setValue(next)
     writeStorage(draftKey(storageKey), next)
-  }, [storageKey])
+  }, [storageKey, setValue])
 
   const valueRef = useRef(value)
   valueRef.current = value
@@ -393,55 +391,7 @@ export function Composer({
           )}
         >
           {attachments?.items.length ? (
-            <div className="flex min-w-0 flex-wrap gap-bakin-2 px-bakin-3 pt-bakin-3" data-composer-attachments="">
-              {attachments.items.map((item) => {
-                const status = item.status ?? 'ready'
-                return (
-                  <div key={item.id} className="relative min-w-0">
-                    {status === 'uploading' ? (
-                      <div
-                        role="status"
-                        aria-label={`Uploading ${item.name}`}
-                        className="flex size-20 items-center justify-center rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default text-bakin-text-muted"
-                      >
-                        <SpinnerIcon size="md" />
-                        <span className="sr-only">Uploading {item.name}</span>
-                      </div>
-                    ) : status === 'error' ? (
-                      <div
-                        role="alert"
-                        className="flex size-20 flex-col items-center justify-center gap-bakin-1 rounded-bakin-surface border border-bakin-signal-danger bg-bakin-signal-danger/10 p-bakin-2 text-center text-[length:var(--bakin-typography-size-meta)] text-bakin-text-primary"
-                      >
-                        <span className="line-clamp-2 font-bakin-typography-weight-semibold">{item.name}</span>
-                        <span className="line-clamp-2 text-bakin-signal-danger">{item.errorMessage ?? 'Upload failed'}</span>
-                      </div>
-                    ) : item.previewUrl ? (
-                      <img
-                        src={item.previewUrl}
-                        alt={item.name}
-                        className="size-20 rounded-bakin-surface border border-bakin-border-subtle object-cover"
-                      />
-                    ) : (
-                      <div className="flex size-20 items-center justify-center rounded-bakin-surface border border-bakin-border-subtle bg-bakin-surface-default p-bakin-2 text-center text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
-                        <span className="line-clamp-3 break-all">{item.name}</span>
-                      </div>
-                    )}
-                    <Button
-                      type="button"
-                      data-composer-attach-remove=""
-                      variant="secondary"
-                      size="icon-xs"
-                      disabled={disabled}
-                      aria-label={`Remove ${item.name}`}
-                      onClick={() => attachments.onRemove(item.id)}
-                      className="absolute -right-bakin-1 -top-bakin-1 rounded-bakin-pill shadow-md"
-                    >
-                      <RemoveIcon />
-                    </Button>
-                  </div>
-                )
-              })}
-            </div>
+            <ComposerAttachmentTray items={attachments.items} disabled={disabled} onRemove={attachments.onRemove} className="px-bakin-3 pt-bakin-3" />
           ) : null}
 
           <InputGroupTextarea
@@ -495,10 +445,12 @@ export function Composer({
                       {attachments.disabledReason ?? 'Attachments unavailable'}
                     </span>
                   ) : null}
+                  {/* The visible add button is the control; this input is
+                      its implementation, so it stays out of the a11y tree. */}
                   <input
                     ref={fileRef}
                     type="file"
-                    aria-label={`${addLabel} file picker`}
+                    aria-hidden="true"
                     accept={acceptedTypes.join(',')}
                     multiple={attachments.multiple !== false}
                     disabled={!attachments.enabled || disabled}

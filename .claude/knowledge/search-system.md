@@ -99,6 +99,23 @@ one-shot probe failed every restart of a live engine. launchd SIGKILLs a
 process after its 20-second exit timeout, and the wait outlasts that. A
 child stop has already reaped its process, so its probe stays instant: a
 port still bound after a child stop belongs to some other listener.
+**Commit order and rollback boundary (#890):** inside the lock, after the stop,
+`share/` swaps ASIDE first (the live directory renames to `share.previous`, the
+extracted one renames in — two renames, never rm-then-rename), then the binary
+commits through the shared `commitFileAtomic`. The successful binary commit is
+the rollback boundary: before it, any failure removes the half-committed
+`share/`, renames `share.previous` back and restarts the previous engine if
+there was one (a failed fresh install restores absence); after it, the new
+binary + assets pair IS the installation and a failed derived-data clear or
+restart is reported as `failed` with the pair kept and the step named — never
+old assets beside a new binary. `share.previous` is deleted only once the new
+engine is running. A pre-existing `share.previous` (an interrupted install) is
+refused BEFORE the service is touched, with the rule in the message: if
+`<binary> --version` reports the pinned version the new install is complete —
+delete it; otherwise restore it over `share/` and reinstall. Every version
+probe takes the operation's signal, so a cancel interrupts it instead of
+waiting out its deadline. Tests inject failures through the installer's
+`installerFs` option (rename / commit), never through chmod.
 Units use atomic writes. Supervisor failures propagate; readiness from another
 listener cannot turn a failed operation into success. Upgrades clear only the
 target home's derived data when its installed engine version changes.
@@ -397,7 +414,7 @@ misrouting.
 | `src/core/search-adapter-factory.ts` | The ONLY production importer of `@bakin/adapter-antfly` |
 | `src/core/api-search-handler.ts` | Cross-plugin `/api/search` request handler |
 | `packages/adapter-antfly/src/` | The default adapter implementation (see below) |
-| `src/hooks/use-search.ts` | Client-side `useSearch` hook + `reorderBySearchResults` (re-exported via the SDK hooks surface) |
+| `packages/sdk/src/hooks/use-search.ts` | Client-side `useSearch` hook + `reorderBySearchResults` (`@makinbakin/sdk/hooks`) |
 
 ### The antfly adapter package
 
@@ -412,7 +429,7 @@ misrouting.
 | `service.ts` | launchd/systemd/child/guest lifecycle (above) |
 | `defaults.ts` | `AntflySettings` + `mergeSettings` (deep-merge with per-embedder dimension preservation) |
 | `pin.ts` | Pinned release version + per-platform SHA256 checksums |
-| `installer.ts` | Direct-download verify-then-commit binary install; upgrade = stop → swap → start |
+| `installer.ts` | Download/extract on the shared primitive, verify, then under the lock: stop → `share/` aside → `commitFileAtomic` → start (rollback boundary = the binary commit; #890) |
 | `models.ts` | Inference-model prefetch (`antfly inference pull`) + presence checks |
 | `setup.ts` | Onboarding composition (`bakin install search` / `search-models` components) |
 | `paths.ts` | `~/.antfly` binary/model path helpers |

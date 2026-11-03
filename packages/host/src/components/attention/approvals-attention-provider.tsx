@@ -7,10 +7,9 @@
  * elsewhere (rules in approval-attention.ts). The durable record stays the
  * authority — clicking through lands on the task detail where it is decided.
  */
-import { usePluginEvent, useRouter, toast, useToastStore } from '@makinbakin/sdk/hooks'
+import { usePluginEvent, useRouter, sendBrowserNotification, toast, useToastStore } from '@makinbakin/sdk/hooks'
 import { Button, Text } from '@makinbakin/sdk/ui'
 
-import { sendBrowserNotification } from '@/lib/browser-notify'
 import { attentionForApproval, type ApprovalPendingPayload } from './approval-attention'
 
 function ApprovalToast({ url, title, body, onNavigate }: { url: string; title: string; body: string; onNavigate?: () => void }) {

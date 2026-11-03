@@ -7,7 +7,7 @@ import { definePlugin } from '@bakin/core/routing'
 import { readMergedJobs } from './lib/jobs-reader'
 import { pauseUnrunnableJobs, readSidecar, resumeDuePauses } from './lib/sidecar'
 import { runStartupCatchUp } from './lib/scheduler'
-import { checkScheduleCutover, scheduleCutoverRepair, checkScheduleSync, scheduleSyncRepair, checkSchedulePrompts, scheduleUnrunnableJobsRepair } from './lib/health-checks'
+import { SCHEDULE_CUTOVER_INCIDENTS, SCHEDULE_PROMPTS_INCIDENTS, SCHEDULE_SYNC_INCIDENTS, checkScheduleCutover, scheduleCutoverRepair, checkScheduleSync, scheduleSyncRepair, checkSchedulePrompts, scheduleUnrunnableJobsRepair } from './lib/health-checks'
 import { setPluginCtx, getPluginCtx } from './lib/plugin-context'
 import {
   MISSED_WINDOW_REASON,
@@ -28,6 +28,7 @@ import {
 import {
   ensureBakinJob,
   indexJob,
+  scheduledWorkflowIds,
   readMergedRuntimeJobs,
   jobToSearchDoc,
 } from './lib/job-service'
@@ -71,6 +72,12 @@ const schedulePlugin: BakinPlugin = definePlugin({
       hookKind: 'rpc',
       label: 'Ensure Bakin schedule',
       summary: 'Create or update a Bakin-owned schedule keyed by the caller\'s logical id and return its job id. The effective prompt (taskPrompt, else command) must be a task prompt — a sentence an agent can act on, never a bare marker token (spec D5).',
+    })
+
+    ctx.hooks.register('schedule.workflowsScheduled', () => scheduledWorkflowIds(), {
+      hookKind: 'rpc',
+      label: 'Scheduled workflows',
+      summary: 'Workflow ids an enabled Bakin schedule targets — the "scheduled" half of the workflows health checks\' in-use fact (re-homing rows 133–137). A paused job still counts; a disabled or completed one does not.',
     })
 
     ctx.hooks.register('schedule.adoptCronJobs', (data: unknown) => adoptCronJobs(ctx, data as AdoptCronJobsInput), {
@@ -142,6 +149,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
       description: 'Checks that Bakin-owned schedules no longer retain duplicate runtime cron fire paths.',
       group: scheduleGroup,
       maxAgeMs: 2 * 60_000,
+      incidents: SCHEDULE_CUTOVER_INCIDENTS,
       run: async () => checkScheduleCutover(
         ctx.runtime.cron,
         () => Object.values(readSidecar().jobs).filter(j => j.isBakinJob).map(j => j.jobId),
@@ -154,18 +162,20 @@ const schedulePlugin: BakinPlugin = definePlugin({
     // read-only and the repair only records requireTriage sidecar entries —
     // it NEVER writes runtime cron state, so it cannot reintroduce the
     // pre-#473 double-fire the legacy sync check was removed for.
+    // The repair registers on every runtime: the schedule-sync catalog names
+    // it (the registry refuses a dangling action), and without native cron it
+    // plans nothing — the check itself is not_applicable there.
     const syncCron = ctx.runtime.cron
-    if (syncCron) {
-      ctx.registerHealthRepairAction(
-        scheduleSyncRepair(syncCron, () => getRuntimeMainAgentId(ctx.runtime)),
-      )
-    }
+    ctx.registerHealthRepairAction(
+      scheduleSyncRepair(syncCron, () => getRuntimeMainAgentId(ctx.runtime)),
+    )
     ctx.registerHealthCheck({
       id: 'schedule-sync',
       name: 'Runtime cron jobs tracked in Bakin sidecar',
       description: 'Checks that native runtime cron jobs with a task prompt are visible in Bakin schedule ownership; runtime-internal markers stay native.',
       group: scheduleGroup,
       maxAgeMs: 2 * 60_000,
+      incidents: SCHEDULE_SYNC_INCIDENTS,
       run: async () => checkScheduleSync(syncCron),
     })
 
@@ -183,6 +193,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
       description: 'Flags Bakin-owned schedules whose task prompt is empty or a bare marker token — they fail on every fire — with a scoped Remove-job repair.',
       group: scheduleGroup,
       maxAgeMs: 2 * 60_000,
+      incidents: SCHEDULE_PROMPTS_INCIDENTS,
       run: async () => checkSchedulePrompts(),
     })
 

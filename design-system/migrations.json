@@ -23,10 +23,10 @@
     "paths": 161,
     "totals": {
       "raw-palette": 4,
-      "arbitrary-size": 77,
-      "raw-scale": 422,
+      "arbitrary-size": 76,
+      "raw-scale": 417,
       "raw-control": 17,
-      "inline-style": 33,
+      "inline-style": 32,
       "generic-token": 72,
       "unscoped-css": 0,
       "private-import": 0
@@ -163,9 +163,7 @@
       "target": "official Projects list/detail/form archetypes and supported SDK UI",
       "status": "legacy-allowed",
       "allowances": {
-        "arbitrary-size": 1,
-        "raw-scale": 6,
-        "inline-style": 1
+        "raw-scale": 3
       }
     },
     {
@@ -182,6 +180,22 @@
       "status": "legacy-allowed",
       "allowances": {
         "arbitrary-size": 1
+      }
+    },
+    {
+      "path": "bakin-bits-official/plugins/projects/components/tabs/files-tab.tsx",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "projects"
+      },
+      "censusEntryId": "plugin-route:projects:/projects",
+      "migrationTask": "T69-T70",
+      "archetype": "detail",
+      "target": "official Projects list/detail/form archetypes and supported SDK UI",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 2
       }
     },
     {
@@ -640,6 +654,21 @@
       }
     },
     {
+      "path": "packages/ui/src/conversation/attachment-tray.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 4
+      }
+    },
+    {
       "path": "packages/ui/src/conversation/composer.tsx",
       "owner": {
         "repository": "bakin",
@@ -651,7 +680,7 @@
       "target": "canonical conversation patterns and focused SDK entrypoint",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 5,
+        "raw-scale": 1,
         "raw-control": 1
       }
     },
@@ -730,6 +759,21 @@
       "allowances": {
         "arbitrary-size": 1,
         "raw-scale": 1
+      }
+    },
+    {
+      "path": "packages/ui/src/conversation/reply-toast-body.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 4
       }
     },
     {
@@ -995,21 +1039,6 @@
       }
     },
     {
-      "path": "packages/ui/src/patterns/page-aside.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "host-route:__root",
-      "migrationTask": "T47",
-      "archetype": "shell",
-      "target": "supported host UI and namespaced semantic tokens",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 3
-      }
-    },
-    {
       "path": "packages/ui/src/patterns/page-header.tsx",
       "owner": {
         "repository": "bakin",
@@ -1031,9 +1060,9 @@
         "area": "sdk"
       },
       "censusEntryId": "host-route:__root",
-      "migrationTask": "T21-T35",
-      "archetype": "shared-ui",
-      "target": "focused SDK primitive/pattern and namespaced semantic tokens",
+      "migrationTask": "T47",
+      "archetype": "shell",
+      "target": "supported host UI and namespaced semantic tokens",
       "status": "legacy-allowed",
       "allowances": {
         "raw-scale": 1
@@ -1865,22 +1894,6 @@
       }
     },
     {
-      "path": "plugins/health/components/overview-alerts.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "plugin",
-        "pluginId": "health"
-      },
-      "censusEntryId": "plugin-slot:health:page:/health",
-      "migrationTask": "T61-T62",
-      "archetype": "dashboard-overview",
-      "target": "diagnostic dashboard archetypes and semantic data visualization",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 1
-      }
-    },
-    {
       "path": "plugins/health/components/overview-context-traffic.tsx",
       "owner": {
         "repository": "bakin",
@@ -2506,21 +2519,6 @@
       "status": "legacy-allowed",
       "allowances": {
         "raw-scale": 1
-      }
-    },
-    {
-      "path": "src/components/conversation/reply-toast.tsx",
-      "owner": {
-        "repository": "bakin",
-        "area": "sdk"
-      },
-      "censusEntryId": "shared-component:src/components/conversation/reply-toast",
-      "migrationTask": "T34",
-      "archetype": "conversation",
-      "target": "canonical conversation patterns and focused SDK entrypoint",
-      "status": "legacy-allowed",
-      "allowances": {
-        "raw-scale": 4
       }
     },
     {

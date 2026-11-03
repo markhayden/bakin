@@ -113,6 +113,13 @@ export interface BakinSettings {
      * In-flight turns finish; nothing new fires until unpaused.
      */
     paused: boolean
+    /**
+     * Per-agent containment (self-healing 1.4b, row 50): agents whose
+     * Bakin-initiated dispatch is held (typed reason `agent_paused`). The
+     * runaway-usage card's "Pause dispatch for this agent" writes it; the
+     * agent's Diagnostics tab shows and clears it. Other agents run on.
+     */
+    pausedAgents: string[]
     intervalMs: number
     /** Cooldown after a structural failure (4xx/5xx from the runtime). */
     failureCooldownMs: number
@@ -254,11 +261,11 @@ export interface BakinSettings {
     /**
      * Health sensitivity (#690): 'developer' shows raw dispositions
      * everywhere; 'standard' (default) demotes expected-noise incident
-     * classes to advisory in the central report projection; 'quiet'
-     * additionally badges/escalates only action_required. Applied at
-     * projection time — flipping it needs no restart.
+     * classes to advisory in the central report projection. Applied at
+     * projection time — flipping it needs no restart. A file still saying
+     * the retired 'quiet' (#1007) falls back to the default.
      */
-    sensitivity: 'developer' | 'standard' | 'quiet'
+    sensitivity: 'developer' | 'standard'
     /**
      * When true, `runDiagnostics()` refuses to run its normal checks and
      * returns a single `onboarded: error` result until `~/.bakin/.onboarded`
@@ -276,9 +283,7 @@ export interface BakinSettings {
      * task is open — blocked/review cover indefinitely, todo/in-progress
      * until escalationStaleAfterMs — and rate-limited by
      * escalationCooldownMs). false keeps the dashboard-only behavior.
-     * Manual `bakin doctor` runs are never affected. The old string modes
-     * ('off' | 'notify' | 'task') are coerced on load: 'off' → false, else
-     * true (the one-shot upgrade rewrites the file).
+     * Manual `bakin doctor` runs are never affected.
      */
     escalation: boolean
     /** Minimum gap before re-escalating the SAME error set as a new task. */
@@ -320,13 +325,24 @@ export interface BakinSettings {
    * repairs. `channelAlerts` renders approval cards on the runtime channel
    * (`channel` = channel id or notifications.channelAliases alias);
    * `requireRejectReason` makes the Bakin UI and fallback page demand a
-   * typed reason (channel button rejects record a default one). Moved here
-   * from the workflows plugin's settings by the one-shot approvals upgrade.
+   * typed reason (channel button rejects record a default one).
    */
   approvals: {
     channelAlerts: boolean
     channel: string
     requireRejectReason: boolean
+  }
+  /**
+   * Update checks (#1007): the core engine re-checks every subject
+   * (Bakin release, plugins, packages, hub skills, search engine/models,
+   * gateway floor) on its own timer. `enabled` false schedules nothing (a
+   * running subject finishes); explicit "Check now" still works.
+   * `intervalMs` is the re-check interval after a successful observation,
+   * clamped to [15 min, 7 d]; failures back off on their own.
+   */
+  updates: {
+    enabled: boolean
+    intervalMs: number
   }
   integrations: {
     discord: DiscordIntegrationSettings
@@ -413,6 +429,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
   },
   dispatch: {
     paused: false,
+    pausedAgents: [],
     intervalMs: 5 * 60 * 1000,
     failureCooldownMs: 30 * 60 * 1000,
     transientCooldownMs: 60 * 1000,
@@ -497,6 +514,10 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     channel: 'general',
     requireRejectReason: true,
   },
+  updates: {
+    enabled: true,
+    intervalMs: 6 * 60 * 60 * 1000, // 6 hours
+  },
   integrations: {
     discord: {
       enabled: false,
@@ -575,14 +596,29 @@ function normalizeDiagnosticsSettings(input: unknown): BakinSettings['diagnostic
 }
 
 function normalizeDoctorSettings(input: BakinSettings['doctor']): BakinSettings['doctor'] {
-  const sensitivity = input.sensitivity === 'developer' || input.sensitivity === 'standard' || input.sensitivity === 'quiet'
+  const sensitivity = input.sensitivity === 'developer' || input.sensitivity === 'standard'
     ? input.sensitivity
     : DEFAULT_SETTINGS.doctor.sensitivity
-  // Legacy string modes coerce until the one-shot approvals upgrade has
-  // rewritten the file: 'off' → false, 'notify' | 'task' → true.
   const raw: unknown = input.escalation
-  const escalation = typeof raw === 'boolean' ? raw : raw === 'off' ? false : raw === 'notify' || raw === 'task' ? true : DEFAULT_SETTINGS.doctor.escalation
+  const escalation = typeof raw === 'boolean' ? raw : DEFAULT_SETTINGS.doctor.escalation
   return { ...input, sensitivity, escalation }
+}
+
+export const UPDATES_INTERVAL_MIN_MS = 15 * 60 * 1000
+export const UPDATES_INTERVAL_MAX_MS = 7 * 24 * 60 * 60 * 1000
+
+/** Strict boolean; a finite interval clamped to [15 min, 7 d]; anything else is the default. */
+export function normalizeUpdatesSettings(input: Partial<BakinSettings['updates']> | undefined): BakinSettings['updates'] {
+  const defaults = DEFAULT_SETTINGS.updates
+  const rawEnabled: unknown = input?.enabled
+  const rawInterval: unknown = input?.intervalMs
+  const intervalMs = typeof rawInterval === 'number' && Number.isFinite(rawInterval)
+    ? Math.min(UPDATES_INTERVAL_MAX_MS, Math.max(UPDATES_INTERVAL_MIN_MS, Math.round(rawInterval)))
+    : defaults.intervalMs
+  return {
+    enabled: typeof rawEnabled === 'boolean' ? rawEnabled : defaults.enabled,
+    intervalMs,
+  }
 }
 
 function normalizeApprovalsSettings(input: BakinSettings['approvals'] | undefined): BakinSettings['approvals'] {
@@ -645,6 +681,7 @@ function normalizeSettings(settings: BakinSettings): BakinSettings {
     diagnostics: normalizeDiagnosticsSettings(settings.diagnostics),
     doctor: normalizeDoctorSettings(settings.doctor),
     approvals: normalizeApprovalsSettings(settings.approvals),
+    updates: normalizeUpdatesSettings(settings.updates),
     integrations: normalizeIntegrationsSettings(settings.integrations),
     plugins: normalizePluginSettings(settings.plugins),
   }

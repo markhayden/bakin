@@ -16,8 +16,8 @@ import { modelsRoutes } from './lib/routes'
 import { registerModelsHooks } from './lib/register-hooks'
 import { registerModelsExecTools } from './lib/exec-tools'
 import { isLegacyRouting, migrateLegacyRouting } from '../../src/core/routing-migration'
-import { buildRoutingHealthDeps, checkModelRouting, recommendedRoutesRepair } from './lib/health-checks'
-import { checkDeadSelections, deadSelectionRepair } from './lib/dead-selections'
+import { MODELS_ROUTING_INCIDENTS, buildRoutingHealthDeps, checkModelRouting, recommendedRoutesRepair } from './lib/health-checks'
+import { MODELS_DEAD_SELECTIONS_INCIDENTS, checkDeadSelections, deadSelectionRepair } from './lib/dead-selections'
 import { applySelections, describeSelections, getSelectionMutator, readRoutingSettings } from './lib/selections'
 import { currentPlan } from './lib/plan'
 import { listRunCostsSince } from '../../src/core/execution-ledger'
@@ -69,6 +69,13 @@ const modelsPlugin: BakinPlugin = definePlugin({
       // ONE mutation under the batch's shared revision (every proposal of a plan carries the same one), through applySelections so the post-write side effects run.
       apply: (proposals: Array<{ ref: string; to: string | null; revision: string }>) =>
         applySelections(ctx, { revision: proposals[0]!.revision, ops: proposals.map((p) => ({ ref: p.ref, set: { model: p.to } })) }),
+      // The usage fact for tag overrides (rows 158/159 "AR while in use"): the tags open tasks carry.
+      // A dynamic import keeps the task-store graph out of the plugin's static imports.
+      openTaskTags: async () => {
+        const { getSharedBakinTaskStore } = await import('../../src/core/task-store')
+        const open = getSharedBakinTaskStore().listSync().filter((task) => task.column !== 'done' && task.column !== 'archived')
+        return new Set(open.flatMap((task) => task.tags ?? []))
+      },
     }
     ctx.registerHealthRepairAction(deadSelectionRepair(deadDeps))
     ctx.registerHealthCheck({
@@ -77,6 +84,7 @@ const modelsPlugin: BakinPlugin = definePlugin({
       description: 'Every persisted model selection (agent pins, work-class routes, tag overrides, runtime defaults) whose model has no credentials, was rejected by the account, or is gone from the catalog — each with a proposed repair.',
       group: { key: 'models', label: 'Models' },
       maxAgeMs: 60_000,
+      incidents: MODELS_DEAD_SELECTIONS_INCIDENTS,
       run: () => checkDeadSelections(deadDeps),
     })
 
@@ -86,6 +94,7 @@ const modelsPlugin: BakinPlugin = definePlugin({
       description: 'Flags unrouted system classes, clamping thinking levels, and premium models on cheap work. (Routes to models that cannot run are the dead-selections check.)',
       group: { key: 'models', label: 'Models' },
       maxAgeMs: 60_000,
+      incidents: MODELS_ROUTING_INCIDENTS,
       run: () => checkModelRouting(routingDeps),
     })
   },

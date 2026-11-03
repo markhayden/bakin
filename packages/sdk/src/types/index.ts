@@ -30,8 +30,12 @@ export * from './health'
 export * from './registration'
 export * from './context'
 export * from './conversation-turns'
+export * from './approvals'
+export * from './conversation'
 export * from './scheduled-events'
 export * from './operations'
+export * from './updates'
+export * from './host-state'
 
 // The ONE public route type (declarative-generic) + its pure companions —
 // DECLARED here (api-route.ts is a leaf; reaching through ../routing pulled
@@ -39,3 +43,4 @@ export * from './operations'
 // `C = unknown`; the contextful default rides `@makinbakin/sdk/routing`,
 // which also re-exports the tier-bound `PluginContextLite`.
 export * from './api-route'
+export * from './socket-route'

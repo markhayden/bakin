@@ -22,15 +22,16 @@ const entry = (over: Partial<ExploreCatalogEntry> = {}): ExploreCatalogEntry => 
   category: 'Creative', tags: [], runtimes: ['*'], useCases: ['Generate on-brand social images'],
   source: 'github:markhayden/bakin-bits-official#agents/pixel', ref: null, trust: 'official',
   builtin: false, dependencies: [], defaultSelected: false, screenshots: [],
-  installed: false, updateAvailable: null, installedVersion: null, ...over,
+  installed: false, updateAvailable: null, updateOutcome: null, installedVersion: null, ...over,
 })
 afterEach(cleanup)
 
 describe('catalog status precedence', () => {
   it('keeps builtin, update, installed and available distinct', () => {
-    expect(entryStatusBadge(entry({ builtin: true, installed: true, updateAvailable: true }))?.label).toBe('Built in')
-    expect(entryStatusBadge(entry({ installed: true, updateAvailable: true }))?.label).toBe('Update available')
-    expect(entryStatusBadge(entry({ installed: true, updateAvailable: false }))?.label).toBe('Installed')
+    expect(entryStatusBadge(entry({ builtin: true, installed: true, updateAvailable: true, updateOutcome: 'update-available' }))?.label).toBe('Built in')
+    expect(entryStatusBadge(entry({ installed: true, updateAvailable: true, updateOutcome: 'update-available' }))?.label).toBe('Update available')
+    expect(entryStatusBadge(entry({ installed: true, updateAvailable: false, updateOutcome: 'current' }))?.label).toBe('Installed')
+    expect(entryStatusBadge(entry({ installed: true, updateAvailable: false, updateOutcome: 'blocked', updateReason: 'no remote ref: release-1' }))?.label).toBe('Update blocked')
     expect(entryStatusBadge(entry())).toBeNull()
   })
 })

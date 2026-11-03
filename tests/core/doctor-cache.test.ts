@@ -48,10 +48,19 @@ function register(run: () => Promise<any>, localId = 'probe', name = 'Cache prob
     description: 'Exercises canonical Health cache replacement.',
     group: { key: 'runtime', label: 'Runtime' },
     maxAgeMs: 60_000,
+    // Two families cover every fixture: a watch-tier one and the action-required breach.
+    incidents: [
+      { id: 'watch', subjectKind: 'runtime', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'never' },
+      { id: 'breach', subjectKind: 'setting', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+    ],
     run,
   }, 'Cache Test')
   return getHealthCheck(id)!
 }
+
+const DIAGNOSE = { key: 'diagnose', type: 'repair' as const, label: 'Investigate', actionId: 'core.diagnose' }
+/** The watch-family stamp every fixture incident carries. */
+const WATCH = { subject: { kind: 'runtime' as const, id: 'pi' }, declarationId: 'watch', resolution: DIAGNOSE }
 
 async function apply(def: ReturnType<typeof register>, time: string, execution = 'execution-1') {
   const values = [new Date(time), new Date(time)]
@@ -69,7 +78,7 @@ describe('per-check Health cache', () => {
         key: 'latency', summary: 'Slow.',
         incident: {
           key: 'latency', title: 'Runtime is slow', impact: 'Turns take longer.', disposition: 'watch',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH,
         },
       }),
     ] : [healthHealthy({ key: 'ready', summary: 'Ready.' })]))
@@ -170,7 +179,7 @@ describe('per-check Health cache', () => {
         key: 'first', summary: 'First producer saw the shared condition.',
         incident: {
           key: 'shared', title: 'First shared title', impact: 'Shared impact.', disposition: 'watch',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH,
         },
       }),
     ]), 'probe-a', 'First cache probe')
@@ -179,7 +188,7 @@ describe('per-check Health cache', () => {
         key: 'second', summary: 'Second producer saw the shared condition.',
         incident: {
           key: 'shared', title: 'Conflicting shared title', impact: 'Shared impact.', disposition: 'watch',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH,
         },
       }),
     ]), 'probe-b', 'Second cache probe')
@@ -205,14 +214,14 @@ describe('per-check Health cache', () => {
         key: 'shared-a', summary: 'Shared producer saw the first condition.',
         incident: {
           key: 'shared-a', title: 'First shared title', impact: 'Shared impact.', disposition: 'watch',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH,
         },
       }),
       healthWarning({
         key: 'shared-b', summary: 'Shared producer saw the second condition.',
         incident: {
           key: 'shared-b', title: 'Second shared title', impact: 'Shared impact.', disposition: 'watch',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH,
         },
       }),
     ]), 'shared-probe', 'Shared cache probe')
@@ -221,7 +230,7 @@ describe('per-check Health cache', () => {
         key: 'first-conflict', summary: 'First conflict producer disagreed.',
         incident: {
           key: 'shared-a', title: 'Conflicting first title', impact: 'Shared impact.', disposition: 'watch',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH,
         },
       }),
     ]), 'probe-a', 'First conflict probe')
@@ -230,7 +239,7 @@ describe('per-check Health cache', () => {
         key: 'second-conflict', summary: 'Second conflict producer disagreed.',
         incident: {
           key: 'shared-b', title: 'Conflicting second title', impact: 'Shared impact.', disposition: 'watch',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH,
         },
       }),
     ]), 'probe-b', 'Second conflict probe')
@@ -300,7 +309,7 @@ describe('sensitivity projection in the published report (#690)', () => {
         impact: 'The system protected a boundary — review only if it repeats.',
         class: 'policy_denial',
         disposition: 'watch',
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+        ...WATCH,
       },
     })]))
     await apply(def, '2026-07-13T12:00:00.000Z')
@@ -343,7 +352,7 @@ describe('incident ack projection (health trust overhaul, 2026-07-24)', () => {
           key: 'latency', title: 'Runtime is slow', impact: 'Turns take longer.',
           disposition,
           resources: [{ kind: 'agent', id: 'relay', label: 'relay' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH,
         },
       }),
     ]), 'ack-probe', 'Ack probe')
@@ -379,7 +388,7 @@ describe('incident ack projection (health trust overhaul, 2026-07-24)', () => {
           key: 'breach', title: 'Spending cap reached', impact: 'Dispatch defers.',
           disposition: 'action_required',
           resources: [{ kind: 'budget_rule', id: 'global', label: 'global' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH, subject: { kind: 'setting', id: 'spend.budget' }, declarationId: 'breach',
         },
       }),
     ]), 'ar-probe', 'AR probe')
@@ -409,7 +418,7 @@ describe('incident ack projection (health trust overhaul, 2026-07-24)', () => {
         key: 'latency', summary: 'Slow.',
         incident: {
           key: 'latency', title: 'Runtime is slow', impact: 'Turns take longer.', disposition: 'watch',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH,
         },
       }),
     ]), 'corrupt-probe', 'Corrupt probe')
@@ -433,7 +442,7 @@ describe('forged ack records (#898)', () => {
           key: 'breach', title: 'Spending cap reached', impact: 'Dispatch defers.',
           disposition: 'action_required',
           resources: [{ kind: 'budget_rule', id: 'global', label: 'global' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH, subject: { kind: 'setting', id: 'spend.budget' }, declarationId: 'breach',
         },
       }),
     ]), 'forged-probe', 'Forged probe')
@@ -463,7 +472,7 @@ describe('forged ack records (#898)', () => {
         key: 'latency', summary: 'Slow.',
         incident: {
           key: 'latency', title: 'Runtime is slow', impact: 'Turns take longer.', disposition: 'watch',
-          resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+          ...WATCH,
         },
       }),
     ]), 'misfiled-probe', 'Misfiled probe')
@@ -498,7 +507,7 @@ describe('vanished-incident ack pruning (review finding)', () => {
           key: 'flap', summary: 'Flapping.',
           incident: {
             key: 'flap', title: 'Flapping thing', impact: 'Wobbles.', disposition: 'watch',
-            resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+            ...WATCH,
           },
         })]), 'prune-probe', 'Prune probe')
 

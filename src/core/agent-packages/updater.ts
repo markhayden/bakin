@@ -29,7 +29,8 @@ import {
   type ProjectionEntry,
 } from '../../../packages/core/src/agent-packages/lockfile'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
-import { fetchSourceAsync, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
+import { computeDirSha } from '../../../packages/core/src/agent-packages/markers'
+import { fetchSourceAsync, sourceSpecPinnedTo, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
 import { projectPackage, unprojectPackage } from './projector'
 import { installManifestRequirements, modelDest, npmPayloadDir } from './requirements-installer'
 import { withoutSharedArtifacts } from './uninstaller'
@@ -49,6 +50,22 @@ export interface UpdateOptions {
    * without entering it.
    */
   op?: OperationContext
+  /**
+   * Fetch exactly this commit (self-healing 1.2): the branch may have moved
+   * on, the caller reviewed or recorded THIS sha. The fetch is pinned to it,
+   * bypasses the checkout cache, and a resolution to any other sha — or an
+   * unavailable commit — refuses before anything on disk changes. The lock
+   * keeps the branch `ref` the operator installed from; a pin never becomes
+   * permanent.
+   */
+  expected?: { sha: string }
+  /**
+   * Re-stage from upstream even when the commit has not moved — the repair
+   * for an installed copy whose manifest no longer parses while upstream
+   * still ships valid bytes at the recorded commit. The staged manifest is
+   * what gets parsed and projected; the installed one is never read.
+   */
+  reinstall?: boolean
 }
 
 export interface UpdateResult {
@@ -84,13 +101,34 @@ async function updatePackageByIdLocked(options: UpdateOptions): Promise<UpdateRe
     // Re-fetch using the same source + ref the lockfile recorded.
     // Async path — clawhub: sources are network-fetched (#687).
     op?.stage(SYNC_STAGES.fetch, entry.source)
-    fetched = await fetchSourceAsync(sourceSpecWithRef(entry.source, entry.ref))
+    // A reinstall re-stages the RECORDED immutable identity (plan task 1.2):
+    // the caller's explicit `expected.sha` wins; otherwise the lockfile's own
+    // commit pins the fetch, so a moved branch head is never installed as a
+    // "reinstall". Local sources carry no commit — they re-project in place.
+    const pinned = options.expected?.sha ?? (options.reinstall && entry.commitSha ? entry.commitSha : undefined)
+    if (pinned) {
+      try {
+        fetched = await fetchSourceAsync(sourceSpecPinnedTo(entry.source, pinned), { fresh: true })
+      } catch (err) {
+        throw new Error(
+          `Commit ${pinned} of "${options.packageId}" is not available upstream (${err instanceof Error ? err.message : String(err)}) — nothing was changed.`,
+        )
+      }
+      // A local source has no commit: its immutable identity is the tree digest.
+      const fetchedIdentity = fetched.kind === 'local' ? computeDirSha(fetched.stagingDir) : fetched.commitSha
+      if (fetchedIdentity !== pinned) {
+        throw new Error(`Refusing to update "${options.packageId}": fetched ${fetchedIdentity} but ${pinned} was requested — nothing was changed.`)
+      }
+    } else {
+      fetched = await fetchSourceAsync(sourceSpecWithRef(entry.source, entry.ref))
+    }
     op?.throwIfCancelled()
 
     // No-op when the commit SHA hasn't moved. Local sources have empty
     // commitSha — for those we always re-project (the user just ran
-    // update, presumably because something changed locally).
-    if (entry.commitSha && fetched.commitSha === entry.commitSha) {
+    // update, presumably because something changed locally). A reinstall
+    // re-stages regardless (the installed copy may be the broken part).
+    if (!options.reinstall && entry.commitSha && fetched.commitSha === entry.commitSha) {
       log.info('Update no-op — commit SHA unchanged', {
         packageId: options.packageId,
         commitSha: entry.commitSha,
@@ -216,7 +254,8 @@ async function updatePackageByIdLocked(options: UpdateOptions): Promise<UpdateRe
     const nextEntry: PackageEntry = {
       ...entry,
       version: manifest.version,
-      ref: fetched.ref,
+      // A pinned fetch keeps the ref the operator installed from (the branch); only an ordinary fetch may move it.
+      ref: pinned ? entry.ref : fetched.ref,
       commitSha: fetched.commitSha,
       installedAt, // unchanged — original install timestamp
       projections: projectionResult.projections,

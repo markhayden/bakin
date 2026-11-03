@@ -56,7 +56,7 @@ const setTabSpy = mock((v: string) => { queryState.tab = v })
 // clears are assertable.
 const setParamSpy = mock((key: string, v: string) => { queryState[key] = v })
 
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => {
     // Mirror the real hook's shape: [value, setValue, pushValue].  The
     // component uses setTabParam (the replace variant) to switch tabs.
@@ -65,7 +65,7 @@ mock.module('@/hooks/use-query-state', () => ({
   },
 }))
 
-mock.module('@/hooks/use-runtime-status', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
 }))
 

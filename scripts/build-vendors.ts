@@ -10,6 +10,8 @@
  *
  * ## Layout
  *
+ * - zod: one bundle (`zod.js`) — the SDK routing entry and plugin clients
+ *   import it bare and share this single copy (#948).
  * - React family + tanstack-router: one bundle per specifier, built from
  *   generated wrapper entries (see below).
  * - @makinbakin/sdk/*: all browser subpath entries built in a SINGLE
@@ -47,6 +49,7 @@ import { rmSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'nod
 import { join, resolve } from 'node:path'
 
 import { jsxDevRuntimeEntrySource } from './vendor-entrypoints'
+import { REACT_EXTERNALS, ZOD_EXTERNALS } from '../src/core/whiskit/externals'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const VENDOR_DIR = join(REPO_ROOT, 'packages/host/public/vendor')
@@ -94,6 +97,45 @@ function patchNamespaceImports(dir: string): void {
 }
 
 /**
+ * Build the zod vendor bundle (#948). zod 4 is native ESM with a default
+ * export (`z`), so the wrapper re-exports both the namespace and the default.
+ * Exported for the vendor-bundle tests, which run it against a temp outDir.
+ */
+export async function buildZodVendorBundle(opts: { outDir: string; production: boolean }): Promise<void> {
+  const tmpDir = join(opts.outDir, '.tmp-zod-entry')
+  mkdirSync(tmpDir, { recursive: true })
+  try {
+    const entry = join(tmpDir, 'zod.ts')
+    const zodAbs = Bun.resolveSync('zod', REPO_ROOT)
+    writeFileSync(entry, [
+      '// GENERATED — see scripts/build-vendors.ts. The one zod the browser gets:',
+      '// the import map sends every bare `zod` import (SDK routing, plugin',
+      '// clients) here, so schema classes and `z` are a single instance.',
+      `export * from '${zodAbs}'`,
+      `export { default } from '${zodAbs}'`,
+      '',
+    ].join('\n'))
+    const proc = Bun.spawn([
+      'bun', 'build',
+      entry,
+      '--outdir', opts.outDir,
+      '--target', 'browser',
+      '--format', 'esm',
+      '--entry-naming', 'zod.[ext]',
+      ...(opts.production ? ['--production'] : []),
+    ], { cwd: REPO_ROOT, stdout: 'pipe', stderr: 'pipe' })
+    if ((await proc.exited) !== 0) {
+      console.error('Failed to build the zod vendor bundle:')
+      console.error(await new Response(proc.stderr).text())
+      throw new Error('zod vendor build failed')
+    }
+  } finally {
+    // The entry must not survive — generate-embedded-assets walks outDir.
+    rmSync(tmpDir, { recursive: true, force: true })
+  }
+}
+
+/**
  * Build all @makinbakin/sdk/* vendor bundles in one splitting build.
  * Exported for the vendor-bundle tests, which run it against a temp outDir.
  */
@@ -118,9 +160,10 @@ export async function buildSdkVendorBundles(opts: { outDir: string; production: 
       '--entry-naming', '[name].[ext]',
       '--chunk-naming', 'sdk-shared-[hash].[ext]',
       ...(opts.production ? ['--production'] : []),
-      '--external', 'react',
-      '--external', 'react-dom',
-      '--external', '@tanstack/react-router',
+      // The shared contract (src/core/whiskit/externals.ts) minus the SDK
+      // itself: React family + router + zod stay bare so the browser resolves
+      // each through the import map to its one vendor bundle.
+      ...[...REACT_EXTERNALS, ...ZOD_EXTERNALS].flatMap((s) => ['--external', s]),
     ], { cwd: REPO_ROOT, stdout: 'pipe', stderr: 'pipe' })
 
     if ((await proc.exited) !== 0) {
@@ -244,15 +287,15 @@ export * from '${TANSTACK_ROUTER_ABS}'
     { specifier: '@tanstack/react-router', name: 'tanstack-router', entrypoint: tanstackRouterEntry },
   ]
 
+  // The singletons every react-family bundle keeps bare (resolved through the
+  // import map) — except its own specifier, which it IS. `react` covers the
+  // react/* sub-specifiers by prefix match; react-dom/client is inlined into
+  // the react-dom bundle on purpose (one shared internal state). Externalizing
+  // tanstack-router keeps the shell's <RouterProvider> and every consumer on
+  // one context instance; zod rides along from the shared contract (#948).
+  const HOST_SINGLETONS = ['react', '@tanstack/react-router', ...ZOD_EXTERNALS]
   function externalsFor(target: VendorTarget): string[] {
-    // Every non-react bundle externalizes `react` so the browser ends up
-    // with exactly one React instance resolved through the import map.
-    const react = target.specifier === 'react' ? [] : ['react']
-    // Every bundle except the tanstack-router bundle itself externalizes
-    // tanstack-router so the shell's <RouterProvider> and every consumer
-    // read from the single context instance.
-    const tanstack = target.specifier === '@tanstack/react-router' ? [] : ['@tanstack/react-router']
-    return [...react, ...tanstack].flatMap((s) => ['--external', s])
+    return HOST_SINGLETONS.filter((s) => s !== target.specifier).flatMap((s) => ['--external', s])
   }
 
   // Use subprocess per target — Bun.build() in-process state has trouble
@@ -279,6 +322,9 @@ export * from '${TANSTACK_ROUTER_ABS}'
       process.exit(1)
     }
   }
+
+  console.log('  building zod → zod.js')
+  await buildZodVendorBundle({ outDir: VENDOR_DIR, production: PRODUCTION })
 
   console.log(`  building @makinbakin/sdk/* → ${SDK_VENDOR_TARGETS.length} bundles + shared chunks (splitting)`)
   await buildSdkVendorBundles({ outDir: VENDOR_DIR, production: PRODUCTION })

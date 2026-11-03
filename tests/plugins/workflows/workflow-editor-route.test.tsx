@@ -92,7 +92,8 @@ mock.module('@makinbakin/sdk/slots', () => ({
 
 import { Route } from '../../../packages/host/src/routes/workflows.$id.edit'
 
-;(Route as unknown as { useParams: () => { id: string } }).useParams = () => currentParams
+;// eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix -- overriding TanStack's Route.useParams for the test; the name is the router's, not ours
+(Route as unknown as { useParams: () => { id: string } }).useParams = () => currentParams
 
 function getWorkflowEditRouteComponent(): ComponentType {
   const component = (Route as unknown as {

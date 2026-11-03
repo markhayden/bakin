@@ -6,7 +6,7 @@ Internal navigation ALWAYS goes through the SPA router; a hard navigation re-boo
 
 - **Links:** `PluginLink` from `@makinbakin/sdk/navigation` (plugins + shared browser UI) or TanStack `Link` (host internals). Both keep real-anchor semantics (copy, cmd/middle-click) while routing primary clicks client-side. Raw internal `<a href="/…">` is banned; `<a href="/api/…">` (real server resources: downloads, exports) is exempt.
 - **Programmatic:** `useRouter().push/replace` from `@makinbakin/sdk/navigation` — never `window.location.assign/replace/href`.
-- **Outside React (OS notification clicks):** `navigateToUrl()` in `src/lib/browser-notify.ts` routes through the `globalThis.__bakinNavigate` bridge the host registers at boot (`packages/host/src/main.tsx`); falls back to a hard load only when the shell isn't booted. globalThis because plugin bundles inline their own copy of that module.
+- **Outside React (OS notification clicks):** `navigateToUrl()` in `packages/sdk/src/internal/browser-notify.ts` (`@makinbakin/sdk/internal`) routes through the `globalThis.__bakinNavigate` bridge the host registers at boot (`packages/host/src/main.tsx`); falls back to a hard load only when the shell isn't booted. Plugins reach only `sendBrowserNotification` (`@makinbakin/sdk/hooks`).
 - **Toast click-throughs** navigate via `useRouter().push` and dismiss themselves with the id `toast()` returns (see chat's `ReplyToast` / workflows' `GateToast`).
 
 `@makinbakin/sdk/navigation` is the focused browser boundary. It owns
@@ -148,7 +148,7 @@ Exported from `@makinbakin/sdk/patterns` (implementation: `packages/ui/src/patte
 
 ## useSearch Hook
 
-Located at `src/hooks/use-search.ts`. Provides Antfly-powered search alongside existing client-side filtering. Pass `plugin: <pluginId>` to hit the plugin's auto-registered `/api/plugins/{plugin}/search` route, or omit `plugin` to fall back to the cross-plugin `/api/search` endpoint.
+Located at `packages/sdk/src/hooks/use-search.ts` (`useSearch` on `@makinbakin/sdk/hooks`). Provides Antfly-powered search alongside existing client-side filtering. Pass `plugin: <pluginId>` to hit the plugin's auto-registered `/api/plugins/{plugin}/search` route, or omit `plugin` to fall back to the cross-plugin `/api/search` endpoint.
 
 ```tsx
 const search = useSearch({ plugin: 'tasks', facets: ['status', 'agent'], debounce: 300 })

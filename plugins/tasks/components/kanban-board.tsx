@@ -6,7 +6,6 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider, type DragDropEventHandlers } from '@dnd-kit/react'
 import {
   toast,
-  useContentStore,
   useDebug,
   useJsonFetch,
   usePluginEvent,
@@ -179,7 +178,6 @@ export function KanbanBoard() {
   const [boardRefreshing, setBoardRefreshing] = useState(false)
   const [boardFailed, setBoardFailed] = useState(false)
   const boardLoadedRef = useRef(false)
-  const loading = useContentStore((s) => s.loading)
 
   const fetchBoard = useCallback(async () => {
     setBoardRefreshing(true)
@@ -239,6 +237,8 @@ export function KanbanBoard() {
   // `?taskId=` is the drawer's open state: opening PUSHES it (Back closes the
   // drawer), closing REPLACES it away, refresh reopens it.
   const [taskIdParam, setTaskIdParam, pushTaskId] = useQueryState('taskId', '')
+  // `?field=assignee` (a Health deep link, self-healing 1.4b): open the drawer editing, with that field focused.
+  const [fieldParam, setFieldParam] = useQueryState('field', '')
   const hasBoardFilters = Boolean(search) || agentFilter !== 'all' || brandFilter.length > 0
 
   const { filteredColumns, allTasksFlat, aggregations, searchResults, searchStatus, searchMeta } = useTaskFilters(displayColumns, {
@@ -444,19 +444,20 @@ export function KanbanBoard() {
   // landed (resolving against the empty initial board ate deep links on fresh
   // loads). The drawer shows a SNAPSHOT taken once per id: the detail form
   // re-initializes on task identity, so re-deriving on every board refresh
-  // would reset an in-progress edit.
-  useEffect(() => {
-    if (!taskIdParam || !boardLoaded || detailTask?.task.id === taskIdParam) return
+  // would reset an in-progress edit. Adjusted during render (issue 966b): the
+  // snapshot lands in the same pass as the id, and a task that only appears
+  // on a later refresh is picked up then.
+  if (taskIdParam && boardLoaded && detailTask?.task.id !== taskIdParam) {
+    let next: { task: Task; columnId: ColumnId } | null = null
     for (const [colId, colTasks] of Object.entries(boardData.columns) as [ColumnId, Task[]][]) {
       const match = colTasks.find(t => t.id === taskIdParam)
-      if (match) {
-        setDetailTask({ task: match, columnId: colId })
-        setEditing(false)
-        return
-      }
+      if (match) { next = { task: match, columnId: colId }; break }
     }
-    setDetailTask(null)
-  }, [taskIdParam, boardLoaded, boardData.columns, detailTask])
+    if ((next?.task.id ?? null) !== (detailTask?.task.id ?? null)) {
+      setDetailTask(next)
+      setEditing(false)
+    }
+  }
   // The URL is the open state; the snapshot only counts while it matches the
   // URL, so Back/Forward never shows a stale task under a new id.
   const drawerTask = detailTask !== null && detailTask.task.id === taskIdParam ? detailTask : null
@@ -468,6 +469,8 @@ export function KanbanBoard() {
   // A stale link (task deleted since it was created) is page feedback — never a
   // toast that also rewrites the URL out from under the user.
   const taskNotFound = Boolean(taskIdParam) && boardLoaded && !boardFailed && !taskExists
+  // A deep link with a field opens the drawer editing; cancelling or closing clears the field (derived, never set in an effect).
+  const deepLinkEditing = Boolean(fieldParam) && Boolean(taskIdParam) && taskExists
 
   const openTask = useCallback((task: Task, columnId: ColumnId) => {
     setDetailTask({ task, columnId })
@@ -476,9 +479,10 @@ export function KanbanBoard() {
   }, [pushTaskId])
   const closeTask = useCallback(() => {
     setTaskIdParam('')
+    setFieldParam('')
     setDetailTask(null)
     setEditing(false)
-  }, [setTaskIdParam])
+  }, [setTaskIdParam, setFieldParam])
   const editTask = useCallback((task: Task, columnId: ColumnId) => {
     setDetailTask({ task, columnId })
     setEditing(true)
@@ -538,7 +542,7 @@ export function KanbanBoard() {
     || brandFilter.length > 0
     || (view === 'table' && statusFilter.length > 0)
     || (view === 'kanban' && !showScheduled)
-  const initialLoading = !boardFailed && (Boolean(loading) || !boardLoaded)
+  const initialLoading = !boardFailed && !boardLoaded
   const searchSettled = !search.trim() || searchStatus !== 'loading'
 
   const searchFeedback = search.trim() && (searchStatus === 'unavailable' || searchMeta?.partial) ? (
@@ -765,6 +769,7 @@ export function KanbanBoard() {
                 currentTasks={allTasksFlat}
                 statusFilter={statusFilter}
                 isSearching={Boolean(search)}
+                narrowed={hasBoardFilters}
                 scoreMap={scoreMap}
                 onTaskOpen={openTask}
                 onTaskEdit={editTask}
@@ -781,10 +786,11 @@ export function KanbanBoard() {
         task={drawerTask?.task ?? null}
         columnId={drawerTask?.columnId ?? null}
         open={editing || drawerTask !== null}
-        editing={editing}
+        editing={editing || deepLinkEditing}
         onClose={closeTask}
         onEdit={() => setEditing(true)}
-        onCancelEdit={() => setEditing(false)}
+        focusField={fieldParam || undefined}
+        onCancelEdit={() => { setEditing(false); setFieldParam('') }}
         onDelete={(task) => {
           closeTask()
           setDeleteTarget({ id: task.id, title: task.title })

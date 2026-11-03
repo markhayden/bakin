@@ -26,6 +26,8 @@ export interface IsolatedServerOptions {
   /** Vars to REMOVE from the server env (e.g. DISCORD_BOT_TOKEN inherited from the shell). */
   unsetEnv?: string[]
   bootTimeoutMs?: number
+  /** Seed the temp home (fixture plugins, ledgers) before the server boots. */
+  prepareHome?: (home: string) => void
 }
 
 export interface IsolatedServer {
@@ -76,6 +78,7 @@ export async function startIsolatedServer(options: IsolatedServerOptions = {}): 
   mkdirSync(join(home, 'pi'), { recursive: true })
   const settings = { search: { settings: { url: 'http://127.0.0.1:39999' } }, runtime: { adapter: 'pi' }, ...(options.settings ?? {}) }
   writeFileSync(join(home, 'settings.json'), JSON.stringify(settings, null, 2))
+  options.prepareHome?.(home)
   const port = await freePort()
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value

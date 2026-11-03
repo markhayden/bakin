@@ -34,7 +34,10 @@ const fakeStore = {
 }
 /** The operator pressed the toast's own close control: the store drops it, nobody untracked it. */
 const userCloses = (id: string) => fakeStore.getState().dismiss(id)
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useNavBadge,
   toast,
   emitPluginEvent: (payload: Record<string, unknown>) => { emitted.push(payload) },
@@ -49,7 +52,10 @@ mock.module('@makinbakin/sdk/navigation', () => ({
   },
 }))
 const notifications: Array<[string, string, string | undefined]> = []
-mock.module('../../../plugins/spend/lib/browser-notify', () => ({
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's internal entry re-exports the host verbs from this module, so the mock spreads the real one.
+import * as realBrowserNotify from '../../../packages/sdk/src/internal/browser-notify'
+mock.module('../../../packages/sdk/src/internal/browser-notify', () => ({
+  ...realBrowserNotify,
   sendBrowserNotification: (title: string, body: string, url?: string) => { notifications.push([title, body, url]) },
 }))
 

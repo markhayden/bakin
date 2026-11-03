@@ -119,7 +119,7 @@ Pi needs none of this — dispatch is an in-process call.
 ```bash
 bun run instance down            # stop containers, keep state
 bun run instance reset           # stop + wipe state (next up is fresh + re-auths)
-docker compose -f dev/docker/docker-compose.yml --profile sandbox down --rmi local  # remove images too
+bash scripts/dev/compose.sh --profile sandbox down --rmi local  # remove images too (every compose call derives BUN_VERSION from .bun-version)
 ```
 
 > **Credentials at rest:** `up` writes resolved secrets (Brave/Discord) into

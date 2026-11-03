@@ -46,6 +46,7 @@ describe('read-only CLI TTY commands — plugins', () => {
               usage: 'bakin demo run <target>',
               summary: 'Run demo command.',
               dispatch: { type: 'apiRoute', method: 'POST', path: '/run' },
+              args: [{ name: 'target', type: 'string', positional: true, required: true }, { name: 'loud', type: 'boolean' }],
             }],
           },
         }],
@@ -63,7 +64,7 @@ describe('read-only CLI TTY commands — plugins', () => {
       `${process.env.BAKIN_URL}/api/plugins/demo/run`,
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ loud: true, target: 'smoke' }),
+        body: JSON.stringify({ target: 'smoke', loud: true }),
       }),
     )
     expect(output()).toContain("┃ 🐷 Bakin'")
@@ -86,6 +87,7 @@ describe('read-only CLI TTY commands — plugins', () => {
               usage: 'bakin demo json <target> [--json]',
               summary: 'Show JSON command.',
               dispatch: { type: 'apiRoute', method: 'GET', path: '/json' },
+              args: [{ name: 'target', type: 'string', positional: true, required: true }],
             }],
           },
         }],
@@ -116,6 +118,7 @@ describe('read-only CLI TTY commands — plugins', () => {
               usage: 'bakin demo show <target>',
               summary: 'Show demo command.',
               dispatch: { type: 'apiRoute', method: 'GET', path: '/show' },
+              args: [{ name: 'target', type: 'string', positional: true, required: true }],
             }],
           },
         }],
@@ -222,6 +225,20 @@ describe('read-only CLI TTY commands — plugins', () => {
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'unlink', 'local-tools']
     await main()
     expect(output()).toContain('Unlinked "local-tools" and deactivated it.')
+
+    // Row 98 containment: disable / enable ride the bounded host routes and print the server's sentence.
+    harness.log.mockClear()
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, id: 'messaging', disabled: true, changed: true, live: true, message: 'Disabled "messaging".' }), { status: 200 }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'disable', 'messaging']
+    await main()
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('/api/plugins/disable')
+    expect(output()).toContain('Disabled "messaging".')
+    harness.log.mockClear()
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, id: 'messaging', disabled: false, changed: true, live: false, liveError: 'The plugin registry is not running — the change applies at the next server start.', message: 'Enabled "messaging" (takes effect at the next restart: The plugin registry is not running — the change applies at the next server start.).' }), { status: 200 }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'enable', 'messaging']
+    await main()
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('/api/plugins/enable')
+    expect(output()).toContain('takes effect at the next restart')
 
     harness.log.mockClear()
     queueOperation('op-upgrade-preview', { ok: true, ready: true, awaitingConsent: false, id: 'messaging', consentToken: 'tok-ready' })

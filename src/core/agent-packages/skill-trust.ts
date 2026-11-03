@@ -358,10 +358,39 @@ function forgetSupersededEntries(keys: string[], keepKey: string): void {
  * Content drift bounces to a FRESH preview so stale consent never installs
  * changed content.
  */
-export async function confirmSkillInstall(input: string, token: string, op?: OperationContext): Promise<ConfirmResult> {
+export interface ConfirmSkillInstallOptions {
+  /**
+   * The source the lock entry keeps tracking (#1007 D7.12 R8′): an update of
+   * an unpinned skill downloads `clawhub:<slug>@<target>` but stays
+   * `clawhub:<slug>`. Must name the same skill as the install ref.
+   */
+  trackingSource?: string
+}
+
+/** Two refs name the same skill when they differ only by version (clawhub) or ref (github), or are the same string. */
+function sameSkill(a: string, b: string): boolean {
+  if (a === b) return true
+  if (a.startsWith('clawhub:') && b.startsWith('clawhub:')) {
+    const x = parseClawhubRef(a)
+    const y = parseClawhubRef(b)
+    return x.slug === y.slug && (x.owner ?? '') === (y.owner ?? '')
+  }
+  if (a.startsWith('github:') && b.startsWith('github:')) {
+    const strip = (ref: string) => ref.replace(/@[^#]*/, '')
+    return strip(a) === strip(b)
+  }
+  return false
+}
+
+export async function confirmSkillInstall(input: string, token: string, op?: OperationContext, options: ConfirmSkillInstallOptions = {}): Promise<ConfirmResult> {
   const normalized = normalizeSkillRef(input)
   if (!normalized.ok) return { status: 'error', error: normalized.error }
   const ref = normalized.ref
+  const trackingSource = options.trackingSource === undefined ? undefined : normalizeSkillRef(options.trackingSource)
+  if (trackingSource && !trackingSource.ok) return { status: 'error', error: `tracking source: ${trackingSource.error}` }
+  if (trackingSource?.ok && !sameSkill(ref, trackingSource.ref)) {
+    return { status: 'error', error: `tracking source "${options.trackingSource}" does not name the skill being installed (${ref})` }
+  }
 
   const payload = verifyConsentToken(token)
   if (!payload) return { status: 'invalid-token', error: 'consent token is invalid or expired — re-run preview' }
@@ -391,6 +420,7 @@ export async function confirmSkillInstall(input: string, token: string, op?: Ope
     const priorKeys = existingSkillPackKeys(staged.preview.packageId)
     const result = await installPackage({
       source: ref,
+      ...(trackingSource?.ok ? { trackingSource: trackingSource.ref } : {}),
       prefetched: staged.fetched,
       ...(priorKeys.length > 0 ? { replace: true } : {}),
       op,

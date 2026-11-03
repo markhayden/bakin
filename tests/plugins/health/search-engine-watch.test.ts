@@ -30,10 +30,15 @@ mock.module('../../../src/core/settings', () => ({
 }))
 
 import type { SearchEngineStatus } from '../../../packages/core/src/adapters/search'
-import type { HealthCheckRunInput, HealthRepairTarget } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthRepairActionDefinition, HealthRepairPlanItem, HealthRepairPlanItemInput, HealthRepairTarget } from '@makinbakin/sdk'
+import { repairMode } from '@bakin/core/health/repair-mode'
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
 import { noopOp } from '../../helpers/operation-harness'
+
+/** Core stamps `effects` + `mode` on planned items before apply (the ONE mode policy); tests mirror that. */
+const canonical = (action: HealthRepairActionDefinition, items: HealthRepairPlanItemInput[]): HealthRepairPlanItem[] =>
+  items.map((item) => ({ ...item, localId: item.id, effects: item.effects ?? action.effects, mode: repairMode(item.effects ?? action.effects) }))
 
 // Mutable fixtures the mocked services read on every call.
 let searchAvailable = true
@@ -144,8 +149,10 @@ describe('checkSearchCanary', () => {
 
     expect(result.status).toBe('unknown')
     expect(result.summary).toContain('watch history could not be verified')
+    // Self-healing 1.3a: the recipe became a repair — the check still never overwrites the evidence itself.
     expect(result.incident?.resolution).toMatchObject({
-      type: 'instructions',
+      type: 'repair',
+      actionId: 'search-engine-watch-reset',
       label: 'Restore watch history',
     })
     expect(readFileSync(path, 'utf-8')).toBe('{not-json')
@@ -267,7 +274,9 @@ describe('checkSearchEngineBurn', () => {
     await checkSearchEngineBurn()
     const [second] = observed(await checkSearchEngineBurn())
     expect(second.status).toBe('warning')
-    expect(second.incident?.disposition).toBe('watch')
+    // Row 88: a plain observation — listed under the check, never a card.
+    expect(second.incident).toBeUndefined()
+    expect(second.detail).toContain('bakin search:stats')
   })
 
   it('healthy engine → ok with the measured rate', async () => {
@@ -291,7 +300,9 @@ describe('engine restart repair', () => {
   it('plans a non-destructive restart for the canonical target', async () => {
     const plan = await searchCanaryRepair().plan(repairTarget)
     expect(plan).toHaveLength(1)
-    expect(plan[0].safety).toBe('safe')
+    // Row 81: a supervised restart — no effects beyond the bounce; self-heal.
+    expect(searchCanaryRepair().effects).toMatchObject({ restartsService: 'search-engine', deletesUserContent: false, spendsMoney: false, widensAuthorization: false })
+    expect(repairMode(searchCanaryRepair().effects)).toBe('self-heal')
     expect(plan[0].actionId).toBe('search-canary-restart')
     expect(plan[0].observationIds).toEqual(repairTarget.ids)
   })
@@ -301,7 +312,7 @@ describe('engine restart repair', () => {
     restartEngine = async () => { restarted = true }
     canaryTables = [t(), t()] // post-restart probe answers clean
     const plan = await searchCanaryRepair().plan(repairTarget)
-    const [result] = await searchCanaryRepair().apply(plan, noopOp())
+    const [result] = await searchCanaryRepair().apply(canonical(searchCanaryRepair(), plan), noopOp())
     expect(restarted).toBe(true)
     expect(result.status).toBe('applied')
   })
@@ -311,13 +322,13 @@ describe('engine restart repair', () => {
     restartEngine = async () => { restarts++ }
     canaryTables = [t()]
     const canaryPlan = await searchCanaryRepair().plan(repairTarget)
-    await searchCanaryRepair().apply(canaryPlan, noopOp())
+    await searchCanaryRepair().apply(canonical(searchCanaryRepair(), canaryPlan), noopOp())
     const burnPlan = await searchEngineBurnRepair().plan({
       type: 'observations',
       reportId: 'report-test',
       ids: ['health.search-engine-burn:engine.burn'],
     })
-    const [second] = await searchEngineBurnRepair().apply(burnPlan, noopOp())
+    const [second] = await searchEngineBurnRepair().apply(canonical(searchEngineBurnRepair(), burnPlan), noopOp())
     expect(restarts).toBe(1) // one bounce serves both detections
     expect(second.status).toBe('applied')
     expect(second.message).toContain('skipped a duplicate bounce')
@@ -327,7 +338,7 @@ describe('engine restart repair', () => {
     restartEngine = async () => {}
     canaryTables = [t()]
     const repair = searchCanaryRepair()
-    const run = await runRepairContract(repair, await repair.plan(repairTarget))
+    const run = await runRepairContract(repair, canonical(repair, await repair.plan(repairTarget)))
     expectRepairContract(repair, run)
     expect(run.view.resources).toEqual(['search-engine'])
     expect(run.calls.slice(0, 3)).toEqual(['stage:restart', 'stage:verify', 'output'])
@@ -335,14 +346,14 @@ describe('engine restart repair', () => {
 
     // Inside the debounce window both stages are skipped, with the reason.
     const burn = searchEngineBurnRepair()
-    const debounced = await runRepairContract(burn, await burn.plan(repairTarget))
+    const debounced = await runRepairContract(burn, canonical(burn, await burn.plan(repairTarget)))
     expectRepairContract(burn, debounced)
     expect(debounced.calls).toEqual(['skip:restart', 'skip:verify'])
   })
 
   it('fails honestly when the adapter cannot restart the engine', async () => {
     const plan = await searchCanaryRepair().plan(repairTarget)
-    const [result] = await searchCanaryRepair().apply(plan, noopOp())
+    const [result] = await searchCanaryRepair().apply(canonical(searchCanaryRepair(), plan), noopOp())
     expect(result.status).toBe('failed')
     expect(result.message).toContain('does not support')
   })

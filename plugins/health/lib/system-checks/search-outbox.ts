@@ -40,6 +40,8 @@ export async function checkSearchOutboxObservations({ accessRefused = false } = 
         title: 'Search writes were repeatedly rejected',
         impact: 'Quarantined changes are not reflected in Search indexes.',
         disposition: 'action_required',
+        subject: { kind: 'service', id: 'search-engine', label: 'Search engine' },
+        declarationId: 'quarantined-writes',
         resources: sampleTables.slice(0, 50).map((table) => ({
           kind: 'search_table' as const,
           id: stableKeyPart(table),
@@ -68,13 +70,13 @@ export async function checkSearchOutboxObservations({ accessRefused = false } = 
         title: 'Search write journal is not draining',
         impact: 'Recent source changes may not appear in Search until the engine and journal pump recover.',
         disposition: 'watch',
+        // Row 68: a symptom of the engine's failure — folded under the engine
+        // subject, resolved by its restart (the journal drains on recovery).
+        subject: { kind: 'service', id: 'search-engine', label: 'Search engine' },
+        declarationId: 'stale-backlog',
+        dependsOn: { subject: { kind: 'service', id: 'search-engine', label: 'Search engine' }, resolvedBy: 'health.search-engine-restart' },
         resources: [{ kind: 'system', id: 'search-journal', label: 'Search write journal' }],
-        resolution: {
-          key: 'inspect-engine',
-          type: 'instructions',
-          label: 'Inspect Search availability',
-          steps: ['Restore the Search engine if it is unavailable; queued writes will then drain automatically.'],
-        },
+        resolution: { key: 'inspect-engine', type: 'repair', label: 'Restore the Search engine', actionId: 'search-engine-restart' },
       },
     }))
   }
@@ -95,6 +97,9 @@ export function searchOutboxRepair(): HealthRepairActionDefinition {
   return {
     id: 'search-outbox-revive',
     name: 'Retry quarantined Search writes',
+    // Row 67: reviving rows deletes nothing and spends nothing — self-heal (was manual).
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({
       stages: [{ id: 'revive', kind: 'committing', label: 'Revive quarantined writes' }],
       pointOfNoReturn: 'revive',
@@ -105,7 +110,6 @@ export function searchOutboxRepair(): HealthRepairActionDefinition {
         actionId: 'search-outbox-revive',
         title: 'Retry quarantined search writes',
         reason: 'Previously rejected writes may succeed after an engine upgrade or source-shape correction.',
-        safety: 'manual',
         ...repairTargetSelection(target),
         changes: [{
           kind: 'other',

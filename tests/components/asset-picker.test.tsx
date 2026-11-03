@@ -96,4 +96,18 @@ describe('AssetLibraryPicker', () => {
     await waitFor(() => expect(screen.getByText('No assets yet')).toBeDefined())
     await settleReact()
   })
+
+  it('each opening starts fresh: the query clears and the library reloads (#966b)', async () => {
+    const view = render(<AssetLibraryPicker open onOpenChange={() => {}} onPick={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Primary logo')).toBeDefined())
+    fireEvent.change(document.querySelector('[data-asset-picker-search]')!, { target: { value: 'billing' } })
+    expect(screen.queryByText('Primary logo')).toBeNull()
+    const loadsBefore = fetchMock.mock.calls.filter((c) => String(c[0]).includes('/api/plugins/assets/versioned')).length
+    view.rerender(<AssetLibraryPicker open={false} onOpenChange={() => {}} onPick={() => {}} />)
+    view.rerender(<AssetLibraryPicker open onOpenChange={() => {}} onPick={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Primary logo')).toBeDefined())
+    expect((document.querySelector('[data-asset-picker-search]') as HTMLInputElement).value).toBe('')
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes('/api/plugins/assets/versioned')).length).toBe(loadsBefore + 1)
+    await settleReact()
+  })
 })

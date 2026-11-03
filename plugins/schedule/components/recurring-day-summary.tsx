@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import type { Ref } from 'react'
 import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 
 import { Repeat, TriangleAlert } from 'lucide-react'
@@ -24,10 +24,8 @@ export interface RecurringDaySummaryProps
  * A thin CalendarItem binding: consumers own occurrence grouping, exact
  * disposition counts, and navigation.
  */
-export const RecurringDaySummary = forwardRef<HTMLButtonElement, RecurringDaySummaryProps>(
-  function RecurringDaySummary(
-    { title, detail, leading, tone = 'neutral', ...props },
-    ref,
+export function RecurringDaySummary(
+    { ref, title, detail, leading, tone = 'neutral', ...props }: RecurringDaySummaryProps & { ref?: Ref<HTMLButtonElement> },
   ) {
     return (
       <CalendarItem
@@ -54,5 +52,4 @@ export const RecurringDaySummary = forwardRef<HTMLButtonElement, RecurringDaySum
         }
       />
     )
-  },
-)
+}

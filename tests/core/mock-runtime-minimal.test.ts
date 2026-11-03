@@ -79,7 +79,7 @@ describe('createMockRuntimeAdapter minimal default (R24)', () => {
     const runtime = createMockRuntimeAdapter({
       channels: mockChannels(),
       capabilities: async () => ({
-        toolCalling: { mode: 'native' as const, access: { style: 'in-process' as const } },
+        toolCalling: { mode: 'native' as const, access: { style: 'in-process' as const, perTurnToolsMode: true } },
         delivery: { mode: 'unavailable' as const },
         imageGen: { mode: 'unavailable' as const },
         memory: { mode: 'unavailable' as const },

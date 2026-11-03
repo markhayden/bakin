@@ -17,8 +17,11 @@ mock.module('../../packages/core/src/content-dir', () => ({
 
 // The hook refetches on each 'doctor.run' plugin event. Expose the real
 // usePluginEvent through the SDK barrel so the test can drive it via emit.
-import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
-mock.module('@makinbakin/sdk/hooks', () => ({ usePluginEvent }))
+import { usePluginEvent, emitPluginEvent } from '../../packages/sdk/src/hooks/use-plugin-event'
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
+mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks, usePluginEvent }))
 
 import { act, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
@@ -39,10 +42,10 @@ beforeEach(() => {
 })
 
 function summaryResponse(body: unknown) {
-  const value = body as { sensitivity?: 'standard' | 'quiet' | 'developer'; incidents: Array<Record<string, unknown>> }
+  const value = body as { sensitivity?: 'standard' | 'developer'; incidents: Array<Record<string, unknown>> }
   const full = makeTeamHealthReport({ sensitivity: value.sensitivity ?? 'standard', incidents: value.incidents.map((item) => ({
     status: 'warning', disposition: 'watch', title: 'Finding', impact: 'Review this finding',
-    resources: [], resolution: { key: 'rerun', type: 'rerun', label: 'Run checks' }, observationIds: [],
+    subject: { kind: 'system', id: 'fixture' }, declarationId: 'fixture', required: false, resources: [], resolution: { key: 'diagnose-check-failure', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' }, observationIds: [],
     observedAt: '2026-07-13T12:00:00.000Z', staleAt: '2099-07-13T12:00:00.000Z', stale: false, ...item,
   })) as unknown as ReturnType<typeof makeTeamHealthReport>['incidents'] })
   full.observations = full.incidents.map((incident) => ({
@@ -125,8 +128,8 @@ describe('useHealthSummary', () => {
     expect(screen.getByTestId('count').textContent).toBe('null')
   })
 
-  it('quiet mode badges only action_required — watch stays silent (D10)', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'quiet', incidents: [
+  it('the badge counts action_required only — watch stays silent in every mode (D10)', async () => {
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'standard', incidents: [
       { id: 'watch', effectiveDisposition: 'watch' },
       { id: 'another-watch', effectiveDisposition: 'watch' },
     ] }))
@@ -134,8 +137,8 @@ describe('useHealthSummary', () => {
     await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('0:error'))
   })
 
-  it('quiet mode still pages for action_required', async () => {
-    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'quiet', incidents: [
+  it('developer mode counts action_required the same way', async () => {
+    fetchMock.mockResolvedValue(summaryResponse({ sensitivity: 'developer', incidents: [
       { id: 'runaway', effectiveDisposition: 'action_required' },
       { id: 'watch', effectiveDisposition: 'watch' },
     ] }))

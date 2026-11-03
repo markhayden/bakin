@@ -37,7 +37,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({}),
 }))
 
-import { SDK_VENDOR_TARGETS, buildSdkVendorBundles } from '../../scripts/build-vendors'
+import { SDK_VENDOR_TARGETS, buildSdkVendorBundles, buildZodVendorBundle } from '../../scripts/build-vendors'
 
 /**
  * A literal from the shadcn form/label primitives. Shared by multiple
@@ -53,12 +53,16 @@ const SHARED_MARKER = 'peer-disabled:cursor-not-allowed'
 // what must never happen is the SAME module landing in two chunks.
 const BASE_UI_MODULE_MARKERS = ['data-base-ui-portal', 'data-base-ui-focus-guard', 'data-base-ui-tooltip-trigger']
 const BUNDLED_REACT_DOM_MARKER = '__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE'
+// zod 4's schema internals: present in exactly one bundle — the zod vendor
+// bundle — and in no SDK entry or shared chunk (#948).
+const BUNDLED_ZOD_MARKER = '_zod.def'
 
 setDefaultTimeout(60_000)
 
 beforeAll(async () => {
   mkdirSync(outDir, { recursive: true })
   await buildSdkVendorBundles({ outDir, production: true })
+  await buildZodVendorBundle({ outDir, production: true })
   // The bundles externalize `react` and `@tanstack/react-router` (the
   // browser resolves them via the import map). For the dynamic-import
   // contract test below, give the temp dir the repo's node_modules so
@@ -95,6 +99,25 @@ describe('split SDK vendor build', () => {
     }
     expect(sources.filter(({ source }) => source.includes(BUNDLED_REACT_DOM_MARKER))).toEqual([])
     expect(sources.some(({ source }) => /from\s*["']react-dom["']/.test(source))).toBe(true)
+  })
+
+  it('zod lives once, in its own vendor bundle, and the SDK bundles import it bare (#948)', async () => {
+    const files = readdirSync(outDir).filter((f) => f.endsWith('.js'))
+    const sources = files.map((file) => ({ file, source: readFileSync(join(outDir, file), 'utf-8') }))
+    const carriers = sources.filter(({ source }) => source.includes(BUNDLED_ZOD_MARKER)).map(({ file }) => file)
+    expect(carriers).toEqual(['zod.js'])
+    // The routing entry (search-route / dispatcher schemas) still needs zod —
+    // as a bare import the browser resolves through the import map.
+    expect(sources.some(({ file, source }) => file !== 'zod.js' && /from\s*["']zod["']/.test(source))).toBe(true)
+
+    const zod = await import(join(outDir, 'zod.js'))
+    expect(typeof zod.z?.object).toBe('function')
+    expect(zod.default).toBe(zod.z)
+    expect(typeof zod.object).toBe('function')
+
+    // The routing entry loads with zod resolved through the symlinked store.
+    const routing = await import(join(outDir, 'sdk-routing.js'))
+    expect(typeof routing.defineRoute).toBe('function')
   })
 
   it('keeps the representative exports of every import-map specifier', async () => {

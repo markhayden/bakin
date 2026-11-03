@@ -132,4 +132,15 @@ describe('destructive and dirty-state patterns', () => {
     expect(screen.getByRole('button', { name: 'Discard changes' }).hasAttribute('disabled')).toBe(true)
     expect(screen.getByRole('button', { name: 'Cancel' }).hasAttribute('disabled')).toBe(true)
   })
+
+  it('the typed confirmation belongs to one opening: reopening starts empty and blocked again (#966b)', () => {
+    const props = { title: 'Delete archived workflow?', description: 'This cannot be undone.', confirmLabel: 'Delete workflow', confirmValue: 'launch-publishing', onConfirm: mock(), onCancel: mock() }
+    const view = render(<ConfirmDialog open {...props} />)
+    fireEvent.change(screen.getByLabelText(/Type launch-publishing to confirm/), { target: { value: 'launch-publishing' } })
+    expect(screen.getByRole('button', { name: 'Delete workflow' }).hasAttribute('disabled')).toBe(false)
+    view.rerender(<ConfirmDialog open={false} {...props} />)
+    view.rerender(<ConfirmDialog open {...props} />)
+    expect((screen.getByLabelText(/Type launch-publishing to confirm/) as HTMLInputElement).value).toBe('')
+    expect(screen.getByRole('button', { name: 'Delete workflow' }).hasAttribute('disabled')).toBe(true)
+  })
 })

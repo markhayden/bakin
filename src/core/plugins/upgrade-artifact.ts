@@ -36,8 +36,7 @@ import {
   installUpgradedPluginAssets,
   manifestVersion,
   readManifest,
-  sweepDroppedBins,
-} from './upgrade-gate'
+  sweepDroppedBins, assertUpgradeTarget } from './upgrade-gate'
 
 const log = createLogger('plugin-upgrade-artifact')
 
@@ -82,6 +81,30 @@ export async function publishedVersions(source: string, transfer: TransferOption
 }
 
 /**
+ * The version an UPGRADE installs: the newest release THIS host can run, not
+ * the index's `latest` (which may target a newer or different host contract);
+ * null when the installed artifact already is it. A reinstall never asks —
+ * it re-fetches the recorded version and lets the materialized provenance
+ * say whether it still runs here.
+ */
+async function artifactUpgradeVersion(id: string, entry: PluginLockEntry, pluginDir: string, baseUrl: string): Promise<string | null> {
+  const { latest: newest, compatible } = await publishedVersions(entry.source)
+  if (!newest) {
+    throw new UpgradeRefusedError(
+      `${id}: no published artifact found at ${baseUrl}. Remove and reinstall.`,
+    )
+  }
+  if (!compatible) {
+    auditUpgradeRejected('externals_contract_incompatible', id, { artifactVersion: newest })
+    throw new UpgradeRefusedError(
+      `${id}: no published release runs on this Bakin yet (newest is ${newest}). ` +
+      'The plugin author has to publish one for this version of Bakin; until then the installed version stays.',
+    )
+  }
+  return artifactUpgradeTarget(entry.version, installedArtifactRuns(pluginDir), compatible)
+}
+
+/**
  * Upgrade an artifact-installed plugin by refetching the latest published
  * artifact: resolve the immutable index → compare versions → consent-gate
  * the new manifest's permissions → checksum-verify + safe-extract → check
@@ -96,22 +119,7 @@ export async function upgradeArtifact(
   before: { version: string; commitSha: string },
 ): Promise<UpgradeResult> {
   const gh = githubArtifactSource(entry.source)
-  const { latest: newest, compatible } = await publishedVersions(entry.source)
-  if (!newest) {
-    throw new UpgradeRefusedError(
-      `${id}: no published artifact found at ${gh.baseUrl}. Remove and reinstall.`,
-    )
-  }
-  if (!compatible) {
-    auditUpgradeRejected('externals_contract_incompatible', id, { artifactVersion: newest })
-    throw new UpgradeRefusedError(
-      `${id}: no published release runs on this Bakin yet (newest is ${newest}). ` +
-      'The plugin author has to publish one for this version of Bakin; until then the installed version stays.',
-    )
-  }
-  // The target is the newest release THIS host can run, not the index's
-  // `latest` (which may target a newer or different host contract).
-  const target = artifactUpgradeTarget(entry.version, installedArtifactRuns(pluginDir), compatible)
+  const target = opts.reinstall ? entry.version : await artifactUpgradeVersion(id, entry, pluginDir, gh.baseUrl)
   if (!target) {
     return {
       id,
@@ -136,7 +144,11 @@ export async function upgradeArtifact(
     assertManifestSignaturePolicy(manifest, id)
     const newVersion = manifestVersion(manifest, latest)
     const newCommitSha = materialized.provenance.sourceCommitSha || ''
-    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: newCommitSha } })
+    // The published tarball's sha256 is the artifact's identity: a rebuild under
+    // the same version is a different artifact (review r4 #2 freezes it in approvals).
+    const identity = { version: newVersion, digest: materialized.sha256 }
+    assertUpgradeTarget(id, opts.expected, identity)
+    const gate = gateUpgradeConsent({ id, entry, manifest, manifestSha, opts, before, after: { version: newVersion, commitSha: newCommitSha }, identity })
     if (!gate.proceed) return gate.result
 
     // The host must still provide the externals the new artifact was
@@ -169,9 +181,7 @@ export async function upgradeArtifact(
         writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
           upgradedAt: new Date().toISOString(),
           version: newVersion,
-        commitSha: newCommitSha,
-        remoteArtifactVersion: latest,
-          remoteArtifactRebuild: false,
+          commitSha: newCommitSha,
           manifestSha,
           permissions: gate.newPerms,
           installedSkills: assets.installedSkills,
@@ -186,6 +196,7 @@ export async function upgradeArtifact(
       before,
       after: { version: newVersion, commitSha: newCommitSha },
       noop: false,
+      identity,
       declaredPermissions: gate.newPerms,
       declaredBins: gate.declaredBins,
       awaitingConsent: false,

@@ -31,6 +31,8 @@ export interface MaterializedArtifact {
   /** Isolated dir holding the extracted artifact: bakin-plugin.json, dist/, .whiskit/. */
   stagingDir: string
   provenance: WhiskitBuildProvenance
+  /** The verified tarball digest — the artifact's identity. */
+  sha256: string
   /** Remove the materialization work dir (call after publishing or on failure). */
   cleanup: () => void
 }
@@ -73,7 +75,7 @@ export async function materializeArtifact(
     await safeExtractArtifact(tarball, stagingDir)
 
     const provenance = readProvenance(join(stagingDir, '.whiskit', PROVENANCE_FILENAME))
-    return { stagingDir, provenance, cleanup }
+    return { stagingDir, provenance, sha256: location.sha256, cleanup }
   } catch (err) {
     cleanup()
     throw err

@@ -43,6 +43,7 @@ import {
   Switch,
   SystemState,
   Text,
+  buttonVariants,
 } from '@makinbakin/sdk/ui'
 import { IdListEditor } from './channels/id-list-editor'
 import { SecretSlotField, type SecretSlotRow } from './secret-slot-field'
@@ -67,7 +68,7 @@ export interface ChannelReadinessPayload {
   owner: 'runtime' | 'bridge' | 'none'
   enabled: boolean
   token: { present: boolean; source: 'env' | 'store' | null }
-  guilds: Array<{ id: string; name?: string; joined: boolean | null; channelCount: number | null; error?: ErrorSummary }>
+  guilds: Array<{ id: string; name?: string; joined: boolean | null; channelCount: number | null; error?: ErrorSummary; inviteUrl?: string }>
   connection: { state: ReadinessState; since: string; lastError: ErrorSummary | null; botUser?: { id: string; name: string }; attempt?: { generation: number; startedAt: string } }
   channels: { items: ChannelItem[]; source: 'bridge' | 'runtime' | 'none'; collectedAt: string | null; error?: ErrorSummary }
   routing: { alertChannel: RoutingTarget; approvalsChannel: RoutingTarget; approvalsEnabled: boolean; aliases: RoutingTarget[] }
@@ -134,6 +135,7 @@ export function fieldIdFor(setting: string | undefined): string | null {
   return FIELD_IDS[setting] ?? null
 }
 
+
 async function postJson(url: string, method: string, body?: unknown): Promise<Response> {
   return fetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
 }
@@ -165,9 +167,9 @@ export function ChannelsTab({ highlightKey }: { highlightKey?: string }) {
 
   // A settings/token save flips the bridge to `connecting`; show
   // "reconnecting…" until the SSE-fed snapshot settles.
-  useEffect(() => {
-    if (settlingSince && state && state !== 'connecting') setSettlingSince(null)
-  }, [settlingSince, state])
+  // Adjusted during render (issue 966b): the settling marker clears in the same
+  // pass the snapshot leaves `connecting`, never a frame later.
+  if (settlingSince && state && state !== 'connecting') setSettlingSince(null)
 
   // `?field=` focuses the owning control (the kit focus ring is the
   // highlight). The owning control may render after the snapshot (settings
@@ -537,6 +539,18 @@ function ServersAndChannels({ readiness }: { readiness: ChannelReadinessPayload 
                   <Inline gap="dense" align="center">
                     {guild.channelCount !== null && <Text size="meta" tone="muted">{guild.channelCount} channel{guild.channelCount === 1 ? '' : 's'}</Text>}
                     <StatusBadge size="xs" tone={joined.tone} variant="solid">{joined.label}</StatusBadge>
+                    {/* The bridge supplies the authorize link for a server the bot has not joined (self-healing 1.4c, row 26). */}
+                    {guild.inviteUrl && (
+                      <a
+                        href={guild.inviteUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={buttonVariants({ size: 'xs', variant: 'link' })}
+                        aria-label={`Invite ${readiness.connection.botUser?.name ?? 'the bot'} to ${guild.name ?? guild.id}`}
+                      >
+                        Invite the bot
+                      </a>
+                    )}
                   </Inline>
                 </Inline>
                 {guild.error && <Text size="meta" tone="muted" as="p">{guild.error.kind}: {guild.error.message}</Text>}

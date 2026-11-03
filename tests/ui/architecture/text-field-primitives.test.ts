@@ -29,24 +29,22 @@ describe('text-field primitive ownership', () => {
 
     // P-final: the legacy `src/components/ui/*` text-field shims were deleted
     // with the frozen barrel — reintroducing one is a regression, except the
-    // `input` shim which host code still reaches via `@/components/ui/input`.
+    // `input` shim too (#809).
     for (const primitive of ['label', 'textarea', 'input-group']) {
       expect(existsSync(join(REPO_ROOT, `src/components/ui/${primitive}.tsx`))).toBe(false)
     }
-    const inputShim = readRepoFile('src/components/ui/input.tsx')
-    expect(inputShim).toContain("from '../../../packages/host/src/ui/text-fields'")
-    expect(inputShim).not.toContain('@base-ui/react')
+    expect(existsSync(join(REPO_ROOT, 'src/components/ui/input.tsx'))).toBe(false) // #809
 
-    const [privateUi, publicUi, legacyInput] = await Promise.all([
+    const [privateUi, publicUi, hostBridgeModule] = await Promise.all([
       import('@bakin/ui'),
       import('@makinbakin/sdk/ui'),
-      import('../../../src/components/ui/input'),
+      import('../../../packages/host/src/ui/text-fields'),
     ])
 
     expect(publicUi.Label).toBe(privateUi.Label)
     expect(publicUi.Input).toBe(privateUi.Input)
     expect(publicUi.Textarea).toBe(privateUi.Textarea)
     expect(publicUi.InputGroup).toBe(privateUi.InputGroup)
-    expect(legacyInput.Input).toBe(privateUi.Input)
+    expect(hostBridgeModule.Input).toBe(privateUi.Input)
   })
 })

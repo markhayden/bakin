@@ -9,11 +9,16 @@ Canonical reference (the originating spec shipped and was retired).
 - RC tag: `vMAJOR.MINOR.PATCH-rc.N`, npm dist-tag `next`, GitHub prerelease.
 - Workspace package versions stay non-publishable (`0.0.0-workspace`); root stays `0.0.0-dev`.
 - `packages/core/src/generated-version.ts` is stamped at build time.
-- Browser self-update checks call `/api/update/status`, which looks up the
-  latest GitHub release and compares it to `/api/version`. The route refuses
-  source/dev/Bun runtimes so the UI banner only appears for compiled `bakin`
-  binaries where `POST /api/update/apply` can safely invoke the existing
-  self-update path.
+- The updates engine's `bakin` source (`src/core/updates/sources/bakin.ts`,
+  #1007) looks up the latest GitHub release with a conditional request and
+  records it as the `bakin:bakin` record; source/dev/Bun runtimes get
+  `unsupported` with a manual pointer, so the header banner, Health → Updates
+  and `bakin update` only offer a release where the compiled binary can be
+  replaced. Applying is the self-update OPERATION (download → verify →
+  prepare-restart → swap → restarting) started by `POST
+  /api/updates/bakin:bakin/apply`; the old process ends it and the client
+  verifies the new boot explicitly. Runbook: `.claude/knowledge/updates.md`
+  § Self-update.
 
 ## Maintainer Commands
 
@@ -177,3 +182,28 @@ Fallback installer:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | bash
 ```
+
+## macOS entitlements (hardened runtime)
+
+`scripts/release/bakin.entitlements` is applied by `scripts/sign-macos-binary.ts`
+(`codesign --options runtime --entitlements …`). It carries two groups:
+
+- `com.apple.security.cs.disable-library-validation` — the media store dlopens
+  sharp's npm-signed native prebuild (margo, rc.33).
+- `com.apple.security.cs.allow-jit`, `allow-unsigned-executable-memory`,
+  `disable-executable-page-protection` — operation resource locks are held
+  with flock(2) through `bun:ffi`, and Bun's FFI generates executable call
+  trampolines at dlopen time that the hardened runtime refuses without these
+  (Bun's documented set for compiled executables; #896 D3.5).
+
+The signing job then runs the SIGNED binary against a throwaway home
+(`bakin mkdir` + `bakin version`): the `mkdir` component declares
+`resources: ['install-state']` (creating the home is an install-state write),
+so in-process it takes the flock before `initBakinHome` runs — a hardened
+binary that cannot load libc through FFI fails the operation (non-zero exit)
+there, never on an operator's box. The step also asserts `install.lock` is
+gone afterwards (released locks are unlinked). Keep `mkdir` owning
+`install-state`: it is the one lock the smoke relies on. Locally compiled macOS binaries
+are linker-signed by Bun and cannot be re-signed (`codesign` refuses strict
+validation), which is why this smoke lives in the release job — the darwin
+binary is cross-compiled on the Linux build job and signed on macOS.

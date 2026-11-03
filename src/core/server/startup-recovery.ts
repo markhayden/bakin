@@ -81,6 +81,20 @@ export async function runStartupRecovery(contentDir: string, port: number): Prom
     doctor.start(contentDir, process.cwd())
   }
 
+  // Update checks (#1007): the engine reconciles its persisted records
+  // against the current inventory and the timer picks up overdue subjects
+  // ~60 s from now. Sources registered earlier in boot; a failure here
+  // leaves Health → Updates empty, never blocks the server.
+  try {
+    const { registerCoreUpdateSources } = await import('../updates/sources')
+    const { startUpdates } = await import('../updates/service')
+    const { getAppServices } = await import('../app-services')
+    registerCoreUpdateSources({ runtime: () => getAppServices().runtime })
+    startUpdates(contentDir)
+  } catch (err) {
+    log.error('Updates engine failed to start', err)
+  }
+
   // Approvals (spec D6): every kind handler is registered by now (plugins at
   // activation, the doctor at start) — rehydrate pending records and open the
   // ONE runtime-channel decision subscription. Board-only until the next boot
@@ -88,6 +102,11 @@ export async function runStartupRecovery(contentDir: string, port: number): Prom
   try {
     const { registerDoctorApprovalKinds, recoverInterruptedApplies } = await import('../doctor-approvals')
     registerDoctorApprovalKinds({ contentDir, projectRoot: process.cwd() })
+    // Pending Health approvals the pre-cutover engine raised cannot be
+    // resolved by this one: retire them raw (receipt first, card edited,
+    // resumed on every boot) BEFORE recovery or rehydration reads them.
+    const { retireLegacyHealthApprovals } = await import('../approvals/legacy-retire')
+    await retireLegacyHealthApprovals({ contentDir })
     // A repair interrupted mid-apply by the previous process is verified or
     // failed honestly BEFORE rehydration looks at its (still pending) record.
     await recoverInterruptedApplies(contentDir)

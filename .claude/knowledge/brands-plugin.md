@@ -80,6 +80,7 @@ selection anywhere.
 
 - `/brands` list: `q`. `/brands/$brandId`: `tab` (`overview` default), `draftTask`.
 - `/brands/$brandId/docs/$kind/$name` doc editor: **`mode`** — Edit vs Preview (`edit` default, omitted; only `?mode=preview` appears), replace-mode; same shape as the team shared-context editor. `create=1` still marks create mode. The unsaved-changes guard ignores same-pathname navigations, so a mode toggle while dirty never prompts. Spec `.claude/specs/settings-url-state.md` Phase 2.
+- `?recover=1` (self-healing PR1 slice 1.4a) renders the brand's **recover page** (`components/brand-recover.tsx`): the dangling asset references from `GET /:brandId/integrity` with where each is used, and Detach / Detach all → `POST /:brandId/recover/detach { assetIds }` (`lib/integrity.ts` `detachDanglingRefs`; a still-resolving id is refused — that is an edit, not a repair), then the `brands.integrity` check reruns. The integrity incident links here when exactly one brand is affected.
 
 ## Builder modes
 

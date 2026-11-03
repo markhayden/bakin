@@ -115,7 +115,7 @@ checks. That's architecture.
 
 ## Tech Stack
 
-Unchanged: Bun ≥1.2.0 (pinned 1.3.13), TypeScript strict, Zod at boundaries.
+Unchanged: Bun ≥1.2.0 (pinned 1.4.3), TypeScript strict, Zod at boundaries.
 Antfly v0.2.0 (zig runtime) as an OS-supervised service on `127.0.0.1:3738`,
 raw-fetch HTTP client, pinned + SHA256-verified direct download from
 `https://releases.antfly.io/antfly/v0.2.0/` (checksums verified live:

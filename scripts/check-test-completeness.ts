@@ -61,7 +61,7 @@ function discoverTestFiles(): string[] {
 }
 
 /** Distinct file attributes across every <testsuite> in a junit report. */
-function filesInJunit(xml: string): Set<string> {
+export function filesInJunit(xml: string): Set<string> {
   const files = new Set<string>()
   for (const m of xml.matchAll(/<testsuite\b[^>]*\bfile="([^"]+)"/g)) {
     files.add(normalize(m[1]!))
@@ -72,10 +72,15 @@ function filesInJunit(xml: string): Set<string> {
 /**
  * File headers from bun's console output — `tests/foo/bar.test.ts:` on its own
  * line. This is the only source that names a file whose tests were all skipped.
+ * Under GITHUB_ACTIONS bun 1.4 wraps the header in a log-grouping annotation
+ * (`::group::tests/foo/bar.test.ts:`); 1.3 printed it bare. Both forms count —
+ * on 1.4.3 the bare regex alone reported the two all-skipped antfly suites as
+ * "never dispatched" on CI while every file with a <testsuite> was covered by
+ * the junit source (#965).
  */
-function filesInLog(text: string): Set<string> {
+export function filesInLog(text: string): Set<string> {
   const files = new Set<string>()
-  for (const m of text.matchAll(/^(\S+\.test\.(?:ts|tsx|js|jsx|mjs)):\s*$/gm)) {
+  for (const m of text.matchAll(/^(?:::group::)?(\S+\.test\.(?:ts|tsx|js|jsx|mjs)):\s*$/gm)) {
     files.add(normalize(m[1]!))
   }
   return files
@@ -129,4 +134,4 @@ function main(): void {
   console.log('\n✓ every discovered test file ran')
 }
 
-main()
+if (import.meta.main) main()

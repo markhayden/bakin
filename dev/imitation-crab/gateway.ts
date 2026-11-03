@@ -31,6 +31,7 @@
  *    alongside `aborted`; the mock's payload has only `{aborted, runIds}`.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
+import { validateAgentParams } from './agent-params-schema'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { join } from 'path'
@@ -354,6 +355,10 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
   }
 
   if (method === 'agent') {
+    // 2026.9.5 mirror (#883): the real gateway validates the CLOSED param
+    // schema before anything else — an unknown key never reaches a run.
+    const rejected = validateAgentParams(params)
+    if (rejected) return rejected
     const agentId = typeof params.agentId === 'string' && params.agentId.length > 0 ? params.agentId : 'unknown'
     const agentName = AGENT_NAMES[agentId] || agentId
     const userMessage = typeof params.message === 'string' ? params.message : ''

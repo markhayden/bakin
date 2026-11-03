@@ -3,5 +3,6 @@ import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformanc
 export default definePluginUiConformance({
   pluginId: 'health',
   fixtureEntry: './tests/ui.fixture.tsx',
-  readySelector: '[data-incident-id="search-ownership"] button[data-variant="outline"][aria-expanded="true"]',
+  // The ownership refusal is a human decision: its card lands on the control (two outcomes, self-healing 1.7).
+  readySelector: '[data-incident-id="search-ownership"] a[href*="tab=search"]',
 })

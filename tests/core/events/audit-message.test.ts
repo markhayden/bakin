@@ -1,0 +1,209 @@
+import { describe, it, expect } from 'bun:test'
+import { mapAuditMessage, humanizeExecName, isNoisyEvent } from '../../../packages/core/src/events/audit-message'
+import type { ActivityEvent } from '../../../packages/sdk/src/types'
+
+describe('mapAuditMessage', () => {
+  // Existing domain events should still work
+  it('maps task.created to human-readable text', () => {
+    expect(mapAuditMessage('task.created', { title: 'Fix bug' })).toBe('Created task: Fix bug')
+  })
+
+  it('maps task.moved with title and target', () => {
+    expect(mapAuditMessage('task.moved', { title: 'Fix bug', to: 'done' })).toBe('Moved "Fix bug" → done')
+  })
+
+  it('maps workflow.gate_reached', () => {
+    expect(mapAuditMessage('workflow.gate_reached', { label: 'Review' })).toBe('Awaiting approval: Review')
+  })
+
+  it('maps system.init', () => {
+    expect(mapAuditMessage('system.init', {})).toBe('Bakin started')
+  })
+
+  // Internal ledger events fire exactly when the user is most confused —
+  // they must explain themselves instead of rendering raw event names.
+  it('explains task.completion_suppressed using the first-completion data', () => {
+    expect(mapAuditMessage('task.completion_suppressed', {
+      id: 'd1b213a5', title: 'Create reference-style gray cat image',
+      firstAgent: 'pixel', firstChannel: 'mcp', firstCompletedAt: 1781063978406,
+    })).toBe('Ignored a duplicate completion of "Create reference-style gray cat image" — pixel had already completed this task via mcp.')
+  })
+
+  it('explains task.completion_suppressed without optional fields', () => {
+    expect(mapAuditMessage('task.completion_suppressed', {
+      id: 'd1b213a5', firstAgent: 'pixel', firstChannel: null,
+    })).toBe('Ignored a duplicate completion — pixel had already completed this task.')
+  })
+
+  it('explains team.message_blocked — the duplicate-worker save must not render raw', () => {
+    expect(mapAuditMessage('team.message_blocked', {
+      agentId: 'pixel', taskId: 'd1b213a5', runId: 'task:d1b213a5:d1',
+    })).toBe('Blocked a message to pixel — they are already running task d1b213a5.')
+  })
+
+  it('explains task.dispatch_failure_ignored as a non-event', () => {
+    expect(mapAuditMessage('task.dispatch_failure_ignored', {
+      id: 'd1b213a5', title: 'Create reference-style gray cat image', column: 'done',
+      error: 'OpenClaw session error before reporting completion (completion: 0KB)',
+    })).toBe('A session error arrived after "Create reference-style gray cat image" had already moved to done — no action needed.')
+  })
+
+  it('maps model provider dispatch failures to a compact readable message', () => {
+    expect(mapAuditMessage('task.dispatch_failed', {
+      category: 'model_provider_unavailable',
+      reasonCode: 'provider_cooldown',
+      summary: 'Dispatch failed: model provider unavailable',
+    })).toBe('Dispatch failed: model provider unavailable')
+  })
+
+  it('maps non-provider dispatch failures from the sanitized summary', () => {
+    expect(mapAuditMessage('task.dispatch_failed', {
+      summary: 'Dispatch failed: runtime transport unavailable',
+    })).toBe('Dispatch failed: runtime transport unavailable')
+  })
+
+  // Exec tool events with label in data
+  it('uses data.label for exec.*.ok events', () => {
+    expect(mapAuditMessage('exec.bakin_exec_tasks_create.ok', { label: 'Created a task' }))
+      .toBe('Created a task')
+  })
+
+  it('appends (failed) for exec.*.fail events', () => {
+    expect(mapAuditMessage('exec.bakin_exec_tasks_create.fail', { label: 'Created a task', error: 'oops' }))
+      .toBe('Created a task (failed)')
+  })
+
+  it('appends (error) for exec.*.error events', () => {
+    expect(mapAuditMessage('exec.bakin_exec_health_doctor.error', { label: 'Ran diagnostics', error: 'timeout' }))
+      .toBe('Ran diagnostics (error)')
+  })
+
+  // Exec tool events without label — fallback to humanized name
+  it('humanizes exec tool name when no label present', () => {
+    expect(mapAuditMessage('exec.bakin_exec_tasks_list.ok', {}))
+      .toBe('Tasks list')
+  })
+
+  it('humanizes and appends (failed) for exec.*.fail without label', () => {
+    expect(mapAuditMessage('exec.bakin_exec_schedule_create.fail', {}))
+      .toBe('Schedule create (failed)')
+  })
+
+  // Unknown events pass through
+  it('returns raw event name for unknown events', () => {
+    expect(mapAuditMessage('some.unknown.event', {})).toBe('some.unknown.event')
+  })
+
+  it('honors a plugin-provided data.message for unknown events (assets enrichment feed)', () => {
+    expect(mapAuditMessage('assets.asset.enriched', { message: 'Enriched 2026-foo — “two horses”', assetId: '2026-foo' }))
+      .toBe('Enriched 2026-foo — “two horses”')
+    // blank messages fall back to the raw event name
+    expect(mapAuditMessage('assets.asset.enriched', { message: '   ' })).toBe('assets.asset.enriched')
+  })
+})
+
+describe('humanizeExecName', () => {
+  it('strips bakin_exec_ prefix and capitalizes', () => {
+    expect(humanizeExecName('bakin_exec_tasks_list')).toBe('Tasks list')
+  })
+
+  it('handles multi-word tool names', () => {
+    expect(humanizeExecName('bakin_exec_workflows_complete_step')).toBe('Workflows complete step')
+  })
+
+  it('handles names without bakin_exec_ prefix', () => {
+    expect(humanizeExecName('custom_tool')).toBe('Custom tool')
+  })
+
+  it('handles single word after prefix', () => {
+    expect(humanizeExecName('bakin_exec_heartbeat')).toBe('Heartbeat')
+  })
+
+  it('returns input unchanged for empty string', () => {
+    expect(humanizeExecName('')).toBe('')
+  })
+})
+
+describe('mapAuditMessage — exec edge cases', () => {
+  it('handles exec event with no suffix (bare exec.tool_name)', () => {
+    // No .ok/.fail/.error suffix — should still use label or humanize
+    expect(mapAuditMessage('exec.bakin_exec_tasks_list', { label: 'Listed tasks' }))
+      .toBe('Listed tasks')
+  })
+
+  it('humanizes bare exec event without label', () => {
+    expect(mapAuditMessage('exec.bakin_exec_tasks_list', {}))
+      .toBe('Tasks list')
+  })
+
+  it('label takes precedence over humanized name for .ok events', () => {
+    expect(mapAuditMessage('exec.bakin_exec_assets_save.ok', { label: 'Saved an asset' }))
+      .toBe('Saved an asset')
+  })
+
+  it('preserves label text exactly (no trimming or transformation)', () => {
+    expect(mapAuditMessage('exec.bakin_exec_health_doctor.ok', { label: 'Ran diagnostics' }))
+      .toBe('Ran diagnostics')
+  })
+})
+
+describe('isNoisyEvent', () => {
+  function makeEvent(overrides: Partial<ActivityEvent>): ActivityEvent {
+    return {
+      id: 'test-1',
+      ts: '2026-04-10T00:00:00Z',
+      type: 'audit',
+      agent: 'system',
+      message: 'test',
+      ...overrides,
+    }
+  }
+
+  it('flags system dispatch errors as noisy', () => {
+    expect(isNoisyEvent(makeEvent({ agent: 'system', message: 'Dispatch failed: timeout' }))).toBe(true)
+  })
+
+  it('does not flag normal system events as noisy', () => {
+    expect(isNoisyEvent(makeEvent({ agent: 'system', message: 'Bakin started' }))).toBe(false)
+  })
+
+  it('does not flag agent events as noisy', () => {
+    expect(isNoisyEvent(makeEvent({ agent: 'pixel', message: 'Dispatch failed: something' }))).toBe(false)
+  })
+
+  it('does not flag duplicate events as noisy (separate concern)', () => {
+    expect(isNoisyEvent(makeEvent({ agent: 'system', message: 'Created a task', duplicate: true }))).toBe(false)
+  })
+
+  it('flags successful read-only exec tool events as noisy', () => {
+    expect(isNoisyEvent(makeEvent({
+      agent: 'main',
+      message: 'Listed content deliverables',
+      eventName: 'exec.bakin_exec_messaging_deliverable_list.ok',
+    }))).toBe(true)
+    expect(isNoisyEvent(makeEvent({
+      agent: 'main',
+      message: 'Resolved paths',
+      eventName: 'exec.bakin_exec_get_paths.ok',
+    }))).toBe(true)
+  })
+
+  it('keeps write exec events and failed reads visible', () => {
+    expect(isNoisyEvent(makeEvent({
+      agent: 'main',
+      message: 'Created a task',
+      eventName: 'exec.bakin_exec_tasks_create.ok',
+    }))).toBe(false)
+    expect(isNoisyEvent(makeEvent({
+      agent: 'main',
+      message: 'Read task details (failed)',
+      eventName: 'exec.bakin_exec_tasks_get.fail',
+    }))).toBe(false)
+  })
+
+  it('renders an approval decision with how Bakin knows who decided (#898)', () => {
+    expect(mapAuditMessage('approval.resolved', { option: 'approve', decidedBy: 'Declared in UI' })).toBe('Approved — Declared in UI')
+    expect(mapAuditMessage('approval.resolved', { option: 'reject', decidedBy: 'Discord @mark' })).toBe('Rejected — Discord @mark')
+    expect(mapAuditMessage('approval.resolved', { option: 'dismiss', decidedBy: 'CLI --as human' })).toBe('Dismissed — CLI --as human')
+  })
+})

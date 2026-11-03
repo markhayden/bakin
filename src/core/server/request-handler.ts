@@ -32,7 +32,6 @@ import type { buildOpenApiDocument } from '../../../packages/host/src/api/docs-r
 import { dispatchWebHandler } from '../../../packages/host/src/api/_adapter'
 import * as activityRoute from '../../../packages/host/src/api/activity'
 import * as agentsAvatarRoute from '../../../packages/host/src/api/agents/avatar'
-import * as agentsHealthRoute from '../../../packages/host/src/api/agents/health'
 import * as agentsSettingsRoute from '../../../packages/host/src/api/agents/settings'
 import * as secretsRoute from '../../../packages/host/src/api/secrets'
 import * as channelsRoute from '../../../packages/host/src/api/channels'
@@ -51,6 +50,8 @@ import * as pluginsRestoreRoute from '../../../packages/host/src/api/plugins/res
 import * as pluginsUpgradeRoute from '../../../packages/host/src/api/plugins/upgrade'
 import * as pluginsLinkRoute from '../../../packages/host/src/api/plugins/link'
 import * as pluginsUnlinkRoute from '../../../packages/host/src/api/plugins/unlink'
+import * as pluginsDisableRoute from '../../../packages/host/src/api/plugins/disable'
+import * as pluginsEnableRoute from '../../../packages/host/src/api/plugins/enable'
 import * as agentPackagesListRoute from '../../../packages/host/src/api/agent-packages/list'
 import * as agentPackagesInstallRoute from '../../../packages/host/src/api/agent-packages/install'
 import * as agentPackagesDynamicRoute from '../../../packages/host/src/api/agent-packages/dynamic'
@@ -61,9 +62,7 @@ import * as packagesInstallRoute from '../../../packages/host/src/api/packages/i
 import * as skillsRoute from '../../../packages/host/src/api/skills'
 import * as packagesDynamicRoute from '../../../packages/host/src/api/packages/dynamic'
 import * as packagesCapabilitiesRoute from '../../../packages/host/src/api/packages/capabilities'
-import * as pluginsMemoryAuditRoute from '../../../packages/host/src/api/plugins/memory/audit'
 import * as pluginsMemoryWorkspaceRoute from '../../../packages/host/src/api/plugins/memory/workspace'
-import * as stateRoute from '../../../packages/host/src/api/state'
 import * as assetsRoute from '../../../packages/host/src/api/assets/[...path]'
 import * as pluginCatchAllRoute from '../../../packages/host/src/api/plugins/[pluginId]/[[...path]]'
 import * as pluginsManifestRoute from '../../../packages/host/src/api/plugins/manifest'
@@ -71,8 +70,7 @@ import * as pluginsAssetsRoute from '../../../packages/host/src/api/plugins/asse
 import * as versionRoute from '../../../packages/host/src/api/version'
 import * as serverShutdownRoute from '../../../packages/host/src/api/server/shutdown'
 import * as docsRoute from '../../../packages/host/src/api/docs'
-import * as updateStatusRoute from '../../../packages/host/src/api/update/status'
-import * as updateApplyRoute from '../../../packages/host/src/api/update/apply'
+import * as updatesRoute from '../../../packages/host/src/api/updates'
 import { handleDevSse } from '../../../packages/host/src/api/dev/events'
 import * as devNotifyRoute from '../../../packages/host/src/api/dev/notify'
 import { serveHostClient } from '../../../packages/host/src/api/_static'
@@ -139,12 +137,26 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
-    if (url.pathname === '/api/update/status' && req.method === 'GET') {
-      dispatchWebHandler(req, res, updateStatusRoute.get)
+    // Updates engine (#1007): read, check now, skip. The apply surface is
+    // registered beside these once it exists (operations-routes inventory).
+    if (url.pathname === '/api/updates' && req.method === 'GET') {
+      dispatchWebHandler(req, res, updatesRoute.list)
       return
     }
-    if (url.pathname === '/api/update/apply' && req.method === 'POST') {
-      dispatchWebHandler(req, res, updateApplyRoute.post)
+    if (url.pathname === '/api/updates/check' && req.method === 'POST') {
+      dispatchWebHandler(req, res, updatesRoute.check)
+      return
+    }
+    if (req.method === 'POST' && updatesRoute.skipUpdateIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, updatesRoute.skip)
+      return
+    }
+    if (req.method === 'GET' && updatesRoute.applyPreviewIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, updatesRoute.applyPreview)
+      return
+    }
+    if (req.method === 'POST' && updatesRoute.applyIdFromPath(url.pathname)) {
+      dispatchWebHandler(req, res, updatesRoute.apply)
       return
     }
 
@@ -436,6 +448,16 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
+    // Row 98 containment: disable / enable an installed user plugin (bounded, install-state held).
+    if (url.pathname === '/api/plugins/disable' && req.method === 'POST') {
+      dispatchWebHandler(req, res, pluginsDisableRoute.post)
+      return
+    }
+    if (url.pathname === '/api/plugins/enable' && req.method === 'POST') {
+      dispatchWebHandler(req, res, pluginsEnableRoute.post)
+      return
+    }
+
     // ─── Agent-package routes (install / list / remove / update / lessons) ──
     // Distinct from the runtime /api/agents/* surface below — see
     // packages/host/src/api/agent-packages/dynamic.ts for the rationale.
@@ -501,12 +523,6 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     // Agent avatar route (must be before the agent catch-all; migrated — see Phase B block below)
     if (url.pathname === '/api/agents/avatar' && req.method === 'GET') {
       dispatchWebHandler(req, res, agentsAvatarRoute.get)
-      return
-    }
-
-    // Migrated: /api/agents/health (must be before agent catch-all)
-    if (url.pathname === '/api/agents/health' && req.method === 'GET') {
-      dispatchWebHandler(req, res, agentsHealthRoute.get)
       return
     }
 
@@ -598,20 +614,10 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
-    // /api/plugins/memory/{audit,workspace} — former standalone
-    // routes now served directly (they shadow the plugin catch-all).
-    if (url.pathname === '/api/plugins/memory/audit' && req.method === 'GET') {
-      dispatchWebHandler(req, res, pluginsMemoryAuditRoute.get)
-      return
-    }
-
+    // /api/plugins/memory/workspace — former standalone route now served
+    // directly (it shadows the plugin catch-all).
     if (url.pathname === '/api/plugins/memory/workspace' && req.method === 'GET') {
       dispatchWebHandler(req, res, pluginsMemoryWorkspaceRoute.get)
-      return
-    }
-
-    if (url.pathname === '/api/state' && req.method === 'GET') {
-      dispatchWebHandler(req, res, stateRoute.get)
       return
     }
 
@@ -660,7 +666,9 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       url.pathname !== '/api/plugins/remove' &&
       url.pathname !== '/api/plugins/upgrade' &&
       url.pathname !== '/api/plugins/link' &&
-      url.pathname !== '/api/plugins/unlink'
+      url.pathname !== '/api/plugins/unlink' &&
+      url.pathname !== '/api/plugins/disable' &&
+      url.pathname !== '/api/plugins/enable'
     ) {
       const method = req.method?.toLowerCase() ?? 'get'
       const handler = pluginCatchAllRoute[method === 'delete' ? 'del' : method as 'get' | 'post' | 'put' | 'patch' | 'del']

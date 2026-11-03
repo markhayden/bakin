@@ -1,4 +1,4 @@
-import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import type { AgentRuntimeAdapter, RuntimeCompatibility } from '@bakin/core/adapters/runtime'
 import type { HealthCheckRegistrationInput } from '@bakin/core/plugin-types'
 import { createOpenClawHealthChecks, createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
 import { createPiHealthChecks, createPiRuntimeAdapter } from '@bakin/adapter-pi'
@@ -50,19 +50,24 @@ export function createRuntimeAdapterHealthChecks(
   switch (name) {
     case 'pi':
       return createPiHealthChecks(getRuntimeSettings)
-    case 'openclaw':
-      return adapter
-        ? createOpenClawHealthChecks({
-            routingSupport: () => adapter.models.routingSupport(),
-            // Adapter-specific evidence accessor (duck-typed through the
-            // availability Proxy — not a contract member; false = the
-            // check reports unknown, never healthy, pre-connect).
-            scopesVerified: () => {
-              const probe = adapter as unknown as { gatewayScopesVerified?: () => boolean }
-              return probe.gatewayScopesVerified?.() ?? false
-            },
-          })
-        : []
+    case 'openclaw': {
+      // Without the adapter instance (read-only CLI composition) there is nothing to observe — no stub checks.
+      if (!adapter) return []
+      // Adapter-specific evidence accessors (duck-typed through the
+      // availability Proxy — not contract members): scopesVerified false =
+      // the check reports unknown, never healthy, pre-connect; the probe is
+      // a bounded fresh handshake for a rerun whose cached verdict is not ok.
+      const evidence = adapter as unknown as { gatewayScopesVerified?: () => boolean; probeGatewayCompatibility?: () => Promise<RuntimeCompatibility> }
+      const probe = evidence.probeGatewayCompatibility
+      // Status-only inventory (optional contract member) for the provider-configuration check.
+      const credentials = adapter.credentials
+      return createOpenClawHealthChecks({
+        routingSupport: () => adapter.models.routingSupport(),
+        scopesVerified: () => evidence.gatewayScopesVerified?.() ?? false,
+        ...(probe ? { probeCompatibility: () => probe.call(adapter) } : {}),
+        ...(credentials ? { credentials: () => credentials.providers() } : {}),
+      })
+    }
     default:
       throw new Error(`Unknown runtime adapter: ${name}`)
   }

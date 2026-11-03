@@ -1,13 +1,16 @@
-import type {
-  HealthCheckState,
-  HealthIncident,
-  HealthObservation,
-  HealthReport,
-  HealthReportStatus,
-  SearchReadiness,
-  SearchReadinessStage,
-  SearchReadinessStageKey,
-  SearchStageStatus,
+import {
+  isUpdateSkipped,
+  type HealthCheckState,
+  type HealthIncident,
+  type HealthObservation,
+  type HealthReport,
+  type HealthReportStatus,
+  type HealthResource,
+  type SearchReadiness,
+  type SearchReadinessStage,
+  type SearchReadinessStageKey,
+  type SearchStageStatus,
+  type UpdateRecord,
 } from '@makinbakin/sdk/types'
 import type { HealthSummary, LiveNowData } from '../types'
 
@@ -20,6 +23,8 @@ export interface OverviewIncident {
   oldestEvidenceAt: string
   freshness: EvidenceFreshness
   verificationFailure: boolean
+  /** The Updates row that would resolve this incident (#1007 D7.7), when the engine offers one. */
+  updateId?: string
 }
 
 export interface OverviewSearchStage {
@@ -85,6 +90,8 @@ export interface BuildHealthOverviewViewModelInput {
   searchReadiness?: SearchReadiness | null
   summary?: HealthSummary | null
   liveNow?: LiveNowData | null
+  /** The updates engine's records; absent/null means no row can be linked. */
+  updates?: readonly UpdateRecord[] | null
   now?: number
 }
 
@@ -314,11 +321,40 @@ function connectedSessions(summary: HealthSummary | null | undefined): number | 
   return sessions ? sessions.reduce((total, session) => total + session.sessions, 0) : null
 }
 
+/**
+ * The update subject an incident's resources name — by stable resource identity,
+ * never by copy: a plugin resource is its `plugin:<id>` record, the search-engine
+ * service is the engine record, the embedder setting the models record, the
+ * active runtime the gateway record. Only an update that is offered (available
+ * and not skipped, or required and unmet) is linked.
+ */
+export function updateRecordForIncident(incident: HealthIncident, records: readonly UpdateRecord[]): string | null {
+  const offered = (record: UpdateRecord): boolean =>
+    (record.outcome === 'update-available' && !isUpdateSkipped(record))
+    || (record.group === 'required' && record.outcome !== 'current')
+  for (const resource of incident.resources) {
+    const match = records.find((record) => offered(record) && resourceNamesSubject(resource, record))
+    if (match) return match.id
+  }
+  return null
+}
+
+function resourceNamesSubject(resource: HealthResource, record: UpdateRecord): boolean {
+  switch (resource.kind) {
+    case 'plugin': return record.subject.kind === 'plugin' && record.subject.id === resource.id
+    case 'service': return resource.id === 'search-engine' && record.subject.kind === 'search-engine'
+    case 'setting': return resource.id === 'search.settings.embedders' && record.subject.kind === 'search-models'
+    case 'runtime': return resource.id === 'active' && record.subject.kind === 'gateway'
+    default: return false
+  }
+}
+
 export function buildHealthOverviewViewModel({
   report,
   searchReadiness,
   summary,
   liveNow,
+  updates,
   now = Date.now(),
 }: BuildHealthOverviewViewModelInput): HealthOverviewViewModel {
   const observationById = new Map(report?.observations.map((row) => [row.id, row]) ?? [])
@@ -331,6 +367,8 @@ export function buildHealthOverviewViewModel({
 
   for (const incident of report?.incidents ?? []) {
     const row = incidentModel(incident, observationById, checkById, now)
+    const updateId = updateRecordForIncident(incident, updates ?? [])
+    if (updateId) row.updateId = updateId
     if (incident.ackState !== undefined) {
       acknowledged.push(row)
     } else if (incident.effectiveDisposition === 'action_required') {

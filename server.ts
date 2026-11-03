@@ -8,6 +8,7 @@
  */
 
 import { createServer } from 'http'
+import { networkInterfaces } from 'os'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 
@@ -25,18 +26,23 @@ import config from './bakin.config'
 registerCorePlugins(CORE_PLUGIN_IMPORTS)
 
 import { createLogger } from './src/core/logger'
+import { findCgnatIPv4 } from './src/core/network-address'
 import { getContentDir, getBakinPaths } from './src/core/content-dir'
 import { broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
+import { archiveRefusedRepairRequests } from './src/core/doctor-repair-store'
 import { createAppServices } from './src/core/app-services'
 import { reconcileDeliveryBridge } from './src/core/delivery'
 import { startChannelReadiness } from './src/core/delivery/readiness'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import * as watcher from './src/core/watcher'
 import { runStartupRecovery } from './src/core/server/startup-recovery'
+import { ensureCoreRepairActions } from './src/core/doctor'
 import { createRequestHandler } from './src/core/server/request-handler'
+import { createUpgradeHandler } from './src/core/server/upgrade-handler'
 import { getBootId } from './src/core/boot-id'
-import { acquireServerLock, formatBindFailureHelp } from './src/core/server-lock'
+import { formatBindFailureHelp } from './src/core/server-lock'
+import { publishServerLockUnderInstallState, ServerStartBlockedError } from './src/core/server-boot-lock'
 import { STATIC_ENV_SECRET_MAPPINGS, collectPackSecretMappings, ensureBinDirsOnPath, injectIntegrationEnv, injectPackModelEnv } from './src/core/secret-env'
 import { markServing, registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
 import { generateDocs } from './src/core/api-docs'
@@ -72,8 +78,20 @@ const CONTENT_DIR = getContentDir()
 // Singleton lock BEFORE any side effect (dirs, plugins, watcher, antfly,
 // dispatch). Two server processes against one content dir each ran their
 // own dispatch loop — half-dead overlapping generations doubled work (#459).
+// Published under a momentary install-state hold (#1007 D7.11): an
+// in-process `bakin update` owns that resource from its liveness check
+// through the binary swap, so startup can never slip in between.
 {
-  const lock = acquireServerLock(port, getBootId())
+  let lock: Awaited<ReturnType<typeof publishServerLockUnderInstallState>>
+  try {
+    lock = await publishServerLockUnderInstallState({ port, bootId: getBootId() })
+  } catch (err) {
+    if (err instanceof ServerStartBlockedError) {
+      log.error(`Refusing to start: ${err.message}`)
+      process.exit(1)
+    }
+    throw err
+  }
   if (!lock.acquired) {
     log.error(
       `Another Bakin server is already running (pid ${lock.holder.pid}, port ${lock.holder.port}). `
@@ -110,20 +128,17 @@ const storage = new MarkdownStorageAdapter(CONTENT_DIR)
 const eventBus = new BakinEventBus(broadcast)
 
 ;(async () => {
+  // Repair-request records an earlier release wrote and this schema refuses
+  // move to the immutable refused archive BEFORE anything lists the store —
+  // app-services initialization already reads it (the first boot after the
+  // cutover warned per stale file at that moment, 2026-10-24).
+  const refusedRequests = archiveRefusedRepairRequests(CONTENT_DIR)
+  if (refusedRequests.archived.length > 0) {
+    appendAudit(CONTENT_DIR, 'doctor.repair_requests_archived', 'system', { count: refusedRequests.archived.length, archiveRoot: refusedRequests.archiveRoot })
+  }
+
   // Initialize the adapter/task service spine before plugin activation.
   const appServices = await createAppServices()
-  // One-shot approvals upgrades (spec D8, plan review R5): workflows plugin
-  // approval settings → settings.approvals (+ doctor.escalation boolean) and
-  // legacy gate records → the core store. Before plugin init so workflows
-  // activates against the new keys and records. Never block boot.
-  try {
-    const { upgradeApprovalSettings } = await import('./src/core/approvals/settings-upgrade')
-    const { upgradeApprovalRecords } = await import('./src/core/approvals/records-upgrade')
-    upgradeApprovalSettings()
-    upgradeApprovalRecords()
-  } catch (err) {
-    log.error('Approvals upgrade failed at boot — continuing without it', err)
-  }
 
   // Provision the runtime's tool-access wiring (OpenClaw writes per-agent MCP
   // server entries; Pi is a no-op). This is a config WRITE, so it lives here
@@ -170,7 +185,10 @@ const eventBus = new BakinEventBus(broadcast)
   const userPluginsDir = join(CONTENT_DIR, 'plugins')
   await buildAllUserPlugins(userPluginsDir, log)
 
-  // Initialize plugin registry
+  // Initialize plugin registry. The engine-owned repair actions
+  // (`core.diagnose`, `core.onboard`) exist first so every owner's incident
+  // catalog can reference them at registration (self-healing 1.5).
+  ensureCoreRepairActions()
   log.info('Loading plugins...')
   await pluginRegistry.initialize(config, storage, eventBus, appServices)
 
@@ -225,6 +243,9 @@ const eventBus = new BakinEventBus(broadcast)
   })
 
   const server = createServer(createRequestHandler({ port, CONTENT_DIR, collectOpenApiSources }))
+  // Plugin socket routes (definePlugin({ socketRoutes })): admitted and
+  // tracked per plugin; the registry closes them on sweep/disable/shutdown.
+  server.on('upgrade', createUpgradeHandler(pluginRegistry))
 
   // Start file watching before the server loops. Dispatch/watchdog wait until
   // restart recovery has taken the first look at stale in-progress tasks.
@@ -272,7 +293,8 @@ const eventBus = new BakinEventBus(broadcast)
   server.listen(port, '0.0.0.0', () => {
     markServing()
     log.info(`Bakin ready on http://localhost:${port}`)
-    log.info(`Listening on 0.0.0.0:${port} (Tailscale: http://100.91.112.69:${port})`)
+    const networkAddress = findCgnatIPv4(networkInterfaces())
+    log.info(`Listening on 0.0.0.0:${port}${networkAddress ? ` (network: http://${networkAddress}:${port})` : ''}`)
     if (process.env.BAKIN_DEV === '1') {
       const logPath = join(getBakinPaths().logs, 'server.log')
       log.info(`Full logs: ${logPath}`, { path: logPath })

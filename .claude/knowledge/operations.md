@@ -33,7 +33,7 @@ the local-operation wrappers and the private progress streams are gone
 | CLI follow + renderer + targeting | `src/cli/http.ts` (`followOperation`, `resolveCliTarget`, `cliFetch`), `src/cli/operation-renderer.ts` |
 | Health repair as an operation | `src/core/doctor-repair.ts` (`startDoctorRepair`, `awaitDoctorRepair`, `REPAIR_PARENT_PLAN`) |
 | Converted-route start schema | `packages/core/src/operations/schema.ts` (`operationStartResponseSchema`) |
-| Browser follow hook + start helper | `src/hooks/use-operation.ts` → `@makinbakin/sdk/hooks` (`useOperation`, `startOperation`, `OperationStartError`) |
+| Browser follow hook + start helper | `packages/sdk/src/hooks/use-operation.ts` → `@makinbakin/sdk/hooks` (`useOperation`, `startOperation`, `OperationStartError`) |
 | Progress pattern | `packages/sdk/src/patterns/operation-progress.tsx` → `@makinbakin/sdk/patterns` (story `Components/Feedback/OperationProgress`) |
 | Header tray + live list | `packages/host/src/components/operations/{operations-tray.tsx,operations-list.ts}` |
 | Attention (toast + OS notification) | `packages/host/src/components/attention/{operation-attention.ts,operations-attention-provider.tsx}` |
@@ -115,11 +115,19 @@ skills share `~/.bakin/bin`), **`media-store`** and **`search-engine`**
 (`<pluginId>:<name>`) live under `~/.bakin/locks/<pluginId>/` and sort after
 the core ones. Adding a fourth core resource is an approval checkpoint.
 
-- O_EXCL lock files with holder metadata `{ pid, bootId, operationId,
-  title, acquiredAt }`; old readers only look at `pid`/`acquiredAt`.
-- Stale = dead pid, or this pid with no live holder here (a crashed
-  in-process holder). Stale files are reclaimed and the reclaim is logged on
-  the waiting operation.
+- Lock files held by **flock(2)** on an open descriptor (`bun:ffi` → libc)
+  with holder metadata `{ pid, bootId, operationId, title, acquiredAt }`
+  written only AFTER the lock is held; the kernel lock is the truth, the
+  JSON is informational (`waitingFor`, logs).
+- A holder that dies has its lock released by the kernel at once; a waiter
+  never judges, moves or unlinks another process's file. Acquisition pins
+  the inode the path names (a release between open and lock retries);
+  release unlinks the path and THEN closes the descriptor, so a waiter that
+  opened the old inode sees the path move on and retries on the fresh file
+  — never two holders on two inodes. A file whose recorded holder is dead
+  is simply free; taking it is logged as a takeover on the waiting
+  operation (#896 D3.5 — this replaced O_EXCL create + pid-stale reclaim,
+  whose unlink-based reclaim always left a two-contender window).
 - `acquireResources` waits abortably (a lease obtained after an abort is
   released at once); `tryAcquireResources` never waits — for background work
   (the search migration pump and boot resumption take `search-engine` this

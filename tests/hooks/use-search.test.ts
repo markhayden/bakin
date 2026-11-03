@@ -29,7 +29,7 @@ mock.module('@/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-import { useSearch } from '@/hooks/use-search'
+import { useSearch } from '../../packages/sdk/src/hooks/use-search'
 import { settleFor } from '../helpers/wait'
 
 // --- fetch helpers --------------------------------------------------------

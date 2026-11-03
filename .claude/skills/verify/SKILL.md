@@ -14,8 +14,18 @@ VHOME=$(mktemp -d /tmp/bakin-verify-XXXXXX)
 # refuse a temporary/default-home boot without touching the shared service
 # or sending it HTTP; search would remain unavailable. A different origin
 # is guest mode, so Bakin never manages that endpoint's service or files.
-echo '{"search":{"settings":{"url":"http://127.0.0.1:39999"}}}' > "$VHOME/settings.json"
-BAKIN_HOME=$VHOME BAKIN_SKIP_ONBOARDING_CHECK=1 PORT=3799 BAKIN_DISABLE_FILE_LOG=1 \
+# Pin the runtime to Pi inside the throwaway home AND pause dispatch. A bare
+# home defaults to the OpenClaw adapter, which reaches the REAL gateway on
+# 18789: on 2026-10-20 a verify boot provisioned tool access into the real
+# ~/.openclaw/openclaw.json (MCP URLs repointed at :3799), rewrote nine real
+# workspace AGENTS.md managed blocks, and the doctor's escalation dispatched a
+# "Health repair" task to the main agent as a real LLM turn. Pi + PI_HOME keeps
+# every runtime write under $VHOME; the throwaway OPENCLAW_HOME is belt and
+# braces (no gateway token there); dispatch.paused stops the dispatcher from
+# ever sending a turn (the doctor still creates its review tasks, which is fine).
+echo '{"search":{"settings":{"url":"http://127.0.0.1:39999"}},"runtime":{"adapter":"pi"},"dispatch":{"paused":true}}' > "$VHOME/settings.json"
+BAKIN_HOME=$VHOME PI_HOME=$VHOME/pi OPENCLAW_HOME=$VHOME/openclaw \
+  BAKIN_SKIP_ONBOARDING_CHECK=1 PORT=3799 BAKIN_DISABLE_FILE_LOG=1 \
   nohup bun run server.ts serve > /tmp/bakin-verify-server.log 2>&1 &
 sleep 4 && curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3799/api/plugins/manifest
 ```
@@ -26,6 +36,13 @@ Gotchas (learned the hard way — see memory files):
   hardcoded (18789) and whatever owns it (production gateway / dockerized rig)
   will reject or, worse, execute them. Use `bun run instance dev --mode isolated`
   for live-turn e2e; this recipe is for REST/UI surface verification.
+- Never drop the `runtime`/`dispatch` keys or the `PI_HOME`/`OPENCLAW_HOME`
+  env from the recipe. Boot is not read-only: the active adapter provisions
+  tool access into ITS home at startup, the doctor auto-applies safe repairs
+  (agent sync writes workspace managed blocks), and escalation dispatches
+  review tasks. With a real adapter home those writes land in production
+  (the 2026-10-20 incident above). After a boot, `grep -l 3799
+  ~/.openclaw/openclaw.json ~/.openclaw/workspaces/*/AGENTS.md` must print nothing.
 - `server.ts` needs the literal `serve` argument; bare `bun run server.ts` prints help and exits 0.
 - `BAKIN_SKIP_ONBOARDING_CHECK=1` is required; a marker file alone won't pass the gate.
 - If plugin dists are stale, run `bun run build:plugins && bun run build:assets-manifest` first —

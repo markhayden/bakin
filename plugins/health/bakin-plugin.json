@@ -132,6 +132,26 @@
         "method": "POST",
         "path": "/doctor/repair/:requestId/verify",
         "summary": "Verify a delegated repair request"
+      },
+      {
+        "method": "GET",
+        "path": "/search/unclaimed-tables/kept",
+        "summary": "List the unclaimed Search tables the operator chose to keep"
+      },
+      {
+        "method": "POST",
+        "path": "/search/unclaimed-tables/keep",
+        "summary": "Keep named unclaimed Search tables (a recorded decision; the check skips them)"
+      },
+      {
+        "method": "POST",
+        "path": "/search/unclaimed-tables/forget",
+        "summary": "Forget kept unclaimed Search tables so the check raises them again"
+      },
+      {
+        "method": "POST",
+        "path": "/plugin-assets/keep-edit",
+        "summary": "Accept the shipped version of user-edited plugin skills (keep my edit)"
       }
     ],
     "execTools": [

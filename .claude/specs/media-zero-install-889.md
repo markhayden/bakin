@@ -1,7 +1,7 @@
 # Spec: Zero-Install Image Processing for Compiled Binaries (#889)
 
 Issue: https://github.com/markhayden/bakin/issues/889
-Status: DRAFT — pending approval
+Status: SHIPPED (#889, rc.3x); the antfly-installer follow-up (#890) landed 2026-10-22 — its transfer/extraction moved to the primitive with #895 and its commit to `commitFileAtomic` with #890, so "touching the antfly installer is ask-first" below is retired.
 Spike: full chain proven 2026-09-20 in a compiled fixture (in-binary `Bun.build`
 bundle of sharp's JS from a disk store → native `.node` via sharp's relative
 candidate + libvips rpath → disk import → real metadata/resize/JPEG encode).

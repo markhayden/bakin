@@ -36,7 +36,7 @@ describe('Settings', () => {
     expect(settings.dispatch.maxBrandContextBytes).toBe(12288)
   })
 
-  it('doctor.sensitivity defaults to standard and coerces invalid values (#690)', () => {
+  it('doctor.sensitivity defaults to standard and coerces invalid values (#690) — the retired quiet included (#1007)', () => {
     expect(getSettings().doctor.sensitivity).toBe('standard')
 
     resetSettingsCache()
@@ -47,12 +47,59 @@ describe('Settings', () => {
     )
     expect(getSettings().doctor.sensitivity).toBe('standard')
 
+    // 'quiet' was identical to standard and is gone (D7.13): a file still saying it is an unknown value now.
     resetSettingsCache()
     fs.writeFileSync(
       path.join(TEST_CONTENT_DIR, 'settings.json'),
       JSON.stringify({ doctor: { sensitivity: 'quiet' } }),
     )
-    expect(getSettings().doctor.sensitivity).toBe('quiet')
+    expect(getSettings().doctor.sensitivity).toBe('standard')
+
+    resetSettingsCache()
+    fs.writeFileSync(
+      path.join(TEST_CONTENT_DIR, 'settings.json'),
+      JSON.stringify({ doctor: { sensitivity: 'developer' } }),
+    )
+    expect(getSettings().doctor.sensitivity).toBe('developer')
+  })
+
+  it('updates.enabled is a strict boolean and updates.intervalMs a finite number clamped to [15 min, 7 d] (#1007)', () => {
+    expect(getSettings().updates).toEqual({ enabled: true, intervalMs: 6 * 60 * 60 * 1000 })
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ updates: { enabled: false, intervalMs: 60 * 60 * 1000 } }))
+    resetSettingsCache()
+    expect(getSettings().updates).toEqual({ enabled: false, intervalMs: 60 * 60 * 1000 })
+    for (const [enabled, intervalMs] of [['no', 1000], [1, 1e12], [null, 'soon'], [undefined, Number.NaN], ['true', Number.POSITIVE_INFINITY]] as const) {
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ updates: { enabled, intervalMs } }))
+      resetSettingsCache()
+      const updates = getSettings().updates
+      expect(updates.enabled).toBe(true)
+      expect(updates.intervalMs).toBe(
+        typeof intervalMs === 'number' && Number.isFinite(intervalMs)
+          ? Math.min(7 * 24 * 60 * 60 * 1000, Math.max(15 * 60 * 1000, intervalMs))
+          : 6 * 60 * 60 * 1000,
+      )
+    }
+    // Writes round-trip through the same normalization.
+    fs.writeFileSync(SETTINGS_FILE, '{}')
+    resetSettingsCache()
+    updateSettings({ updates: { enabled: false, intervalMs: 5 * 60 * 1000 } } as never)
+    expect(getSettings().updates).toEqual({ enabled: false, intervalMs: 15 * 60 * 1000 })
+  })
+
+  it('doctor.escalation is a plain boolean — anything else falls back to the default (#945)', () => {
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ doctor: { escalation: false } }))
+    resetSettingsCache()
+    expect(getSettings().doctor.escalation).toBe(false)
+
+    // The retired string modes are not coerced any more: 'off' used to mean
+    // false; now it is just an invalid value and the default (true) wins.
+    for (const junk of ['off', 'notify', 'task', null, 0, 'false']) {
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ doctor: { escalation: junk } }))
+      resetSettingsCache()
+      expect(getSettings().doctor.escalation).toBe(true)
+    }
   })
 
   it('returns doctor defaults including requireOnboard', () => {

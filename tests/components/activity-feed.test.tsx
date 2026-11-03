@@ -2,7 +2,7 @@
 import { describe, expect, it, mock } from 'bun:test'
 import { render, screen } from '@testing-library/react'
 import { ActivityContext } from '@/context/activity-context'
-import type { ActivityEvent } from '@/types'
+import type { ActivityEvent } from '@makinbakin/sdk/types'
 
 const activityEvents: ActivityEvent[] = [
   {
@@ -17,9 +17,12 @@ const activityEvents: ActivityEvent[] = [
   },
 ]
 
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useAgent: (agent: string) => ({ id: agent, name: 'Patch' }),
-  useContentStore: (selector: (state: { activityEvents: ActivityEvent[]; debug: boolean }) => unknown) => selector({ activityEvents, debug: false }),
+  useHostStore: (selector: (state: { activityEvents: ActivityEvent[]; debug: boolean }) => unknown) => selector({ activityEvents, debug: false }),
 }))
 
 mock.module('@/components/agent-avatar', () => ({
@@ -31,9 +34,9 @@ import { ActivityFeed } from '@/components/tasks/activity-feed'
 describe('ActivityFeed typography', () => {
   it('renders Live Activity body text with the existing compact Text meta size', () => {
     render(
-      <ActivityContext.Provider value={{ open: true, toggle: mock(), close: mock() }}>
+      <ActivityContext value={{ open: true, toggle: mock(), close: mock() }}>
         <ActivityFeed />
-      </ActivityContext.Provider>,
+      </ActivityContext>,
     )
 
     const body = screen.getByText('This body copy should render at the compact metadata size.')

@@ -8,7 +8,7 @@
  * action-required incident with the resolver's evidence, instead of a
  * Workflows page that is simply empty.
  */
-import type { HealthCheckRunInput, HealthObservationInput } from '@bakin/core/plugin-types'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput } from '@bakin/core/plugin-types'
 import { healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import { describePluginDefaults, type ShippedWorkflowFile } from '../../../src/core/plugin-resources'
 import type { LoadDefaultsResult } from './load-defaults'
@@ -35,20 +35,24 @@ export function getShippedDefaultsReceipt(): ShippedDefaultsReceipt | null {
 }
 
 const RESOURCE = { kind: 'plugin', id: 'workflows', label: 'Workflows' } as const
+const DEFAULTS_SUBJECT = { kind: 'system', id: 'workflow-defaults', label: 'Shipped workflow defaults' } as const
+
+/**
+ * Rows 142–144: only "the build cannot locate its defaults" is an incident —
+ * a Bakin build defect the fallback lane investigates; it folds under the
+ * Bakin subject once an update/convergence can resolve it (`dependsOn`).
+ */
+export const SHIPPED_DEFAULTS_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'shipped-defaults-missing', subjectKind: 'system', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+]
 
 export function checkShippedDefaults(): HealthCheckRunInput {
   if (!receipt) {
+    // Row 142: a "could not see yet" observation.
     return healthObserved([healthUnknown({
       key: 'shipped-defaults',
       summary: 'Shipped workflow defaults have not been loaded yet.',
-      incident: {
-        key: 'shipped-defaults-pending',
-        title: 'Shipped workflow defaults not loaded yet',
-        impact: 'The plugin has not activated in this process, so nothing can be verified.',
-        disposition: 'watch',
-        resources: [RESOURCE],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun check' },
-      },
+      detail: 'The plugin has not activated in this process, so nothing can be verified.',
     })])
   }
 
@@ -74,26 +78,25 @@ export function checkShippedDefaults(): HealthCheckRunInput {
           ? 'The binary carries no embedded copy of the plugin defaults, so the default workflows and their step skills never register. This is a build defect — upgrade to a release whose embedded-assets manifest includes plugin defaults.'
           : 'The plugin directory exists but has no defaults/workflows/ entries, so no default workflows register.',
         disposition: 'action_required',
+        subject: DEFAULTS_SUBJECT,
+        declarationId: 'shipped-defaults-missing',
+        // Row 143: a symptom of the Bakin build — folds under the Bakin subject
+        // when its update/convergence repair declares it resolves this key.
+        dependsOn: { subject: { kind: 'system', id: 'bakin', label: 'Bakin' }, resolvedBy: 'core.self-update' },
         resources: [RESOURCE],
-        resolution: { key: 'review-workflows', type: 'navigate', label: 'Review Workflows', href: '/workflows' },
+        resolution: { key: 'diagnose', type: 'repair', label: 'Investigate the missing defaults', actionId: 'core.diagnose' },
       },
     })])
   }
 
   const observations: HealthObservationInput[] = []
   for (const skipped of receipt.skipped) {
+    // Row 144: an observation.
     observations.push(healthWarning({
       key: `shipped-default-${skipped.id}`,
       summary: `Shipped workflow ${skipped.id} did not register: ${skipped.errors.join('; ')}`.slice(0, 500),
+      detail: 'The workflow is unavailable until the shipped definition validates.',
       evidence: { id: skipped.id, errors: skipped.errors.join('; ').slice(0, 500) },
-      incident: {
-        key: `shipped-default-${skipped.id}`,
-        title: `Shipped workflow ${skipped.id} did not register`,
-        impact: 'The workflow is unavailable until the shipped definition validates.',
-        disposition: 'watch',
-        resources: [{ kind: 'workflow', id: skipped.id, label: skipped.id }],
-        resolution: { key: 'review-workflows', type: 'navigate', label: 'Review Workflows', href: '/workflows' },
-      },
     }))
   }
   if (observations.length === 0) {

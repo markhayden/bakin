@@ -134,7 +134,7 @@ The signature covers canonical JSON for `bakin-plugin.json` with the top-level `
 | `apiRoutes[]` | `method`, plugin-relative `path`, `summary` |
 | `clientRoutes[]` | app `path`, `summary` |
 | `execTools[]` | `name`, `summary` |
-| `cliCommands[]` | `name`, `usage`, `summary`, `dispatch` |
+| `cliCommands[]` | `name`, `usage`, `summary`, `dispatch`, `args` (required with `dispatch`) |
 | `settings[]` | `key`, `summary` |
 | `docs` | `slug` |
 | `nav[]` | NavItem JSON: `id`, `label` (plus `icon`, `href`, `order`, `section`, `children`, ...) |
@@ -147,6 +147,58 @@ The signature covers canonical JSON for `bakin-plugin.json` with the top-level `
 API route paths are plugin-relative. A route declared as `/hello` is exposed under `/api/plugins/{pluginId}/hello`. Do not declare `/api/...` paths in a plugin manifest.
 
 `apiRoutes` and `execTools` are enforced at activation — a user plugin that registers an undeclared route or exec tool fails to load. Keep them in sync automatically with `bakin plugins sync-manifest` (`--check` for a non-writing CI drift gate); it regenerates both sections from the plugin's actual code while preserving author-written summaries on kept entries. Client sections (`nav`, `clientRoutes`, `routes`, `slots`) are author-maintained.
+
+### CLI commands
+
+A `cliCommands` entry with `dispatch` becomes a real `bakin` command. Its `args` array declares the **complete** argument surface:
+- Positionals bind in order and must match the `<name>` words in `usage`.
+- Every flag must be declared. Unknown flags and extra arguments are rejected before anything is sent.
+
+```json
+{
+  "name": "projects:create",
+  "usage": "bakin projects create <title>",
+  "summary": "Create a project",
+  "dispatch": { "type": "execTool", "name": "bakin_exec_projects_create" },
+  "args": [
+    { "name": "title", "type": "string", "positional": true, "required": true },
+    { "name": "tasks", "type": "string[]", "summary": "Repeat --tasks once per task" },
+    { "name": "status", "type": "string", "values": ["draft", "active"] }
+  ]
+}
+```
+
+| `type` | CLI form | Parsed as |
+|---|---|---|
+| `string` | `--name value` / `--name=value` | literal text (optionally limited to `values`) |
+| `number` | `--n 2` | finite number |
+| `boolean` | `--flag`, `--flag=false`; positional `true`/`false` | boolean |
+| `string[]` | `--tag a --tag b` | array in order (never positional) |
+
+String values are never coerced: commas, JSON-looking text, and `true` stay text. `--json` and `--as` are global CLI flags and cannot be declared. `apiRoute` dispatch resolves under the contributing plugin's id (`/api/plugins/{pluginId}{path}`), with GET arguments sent as query parameters. `bakin --help` lists the declared flags.
+
+#### Interactive commands (`launch`)
+
+A command that should take over the operator's terminal, such as attaching to a session, declares `launch` on a POST `apiRoute` dispatch:
+
+```json
+{ "dispatch": { "type": "apiRoute", "method": "POST", "path": "/cli/attach", "launch": { "bin": "tmux", "refuseEnv": ["TMUX"] } } }
+```
+
+- `bin` must be one of the plugin's own `requires.bins`. The CLI runs only that managed binary from Bakin's bin dir, never a path or command taken from a response.
+- **Before the preparation POST**, the CLI refuses to run unless all of these hold:
+  - stdin and stdout are a TTY;
+  - the target is this home's own running server (not `BAKIN_URL`);
+  - the caller passes `--as human`;
+  - the CLI is not running in a detected agent context;
+  - none of the optional `refuseEnv` variables is set. Use these for the binary's own nesting marker, such as tmux's `TMUX`.
+- Your route receives `{ "params": {...}, "caller": { "cwd": string, "cols": number, "rows": number } }`. `params` holds the declared arguments; `caller` is the directory the command ran in and the terminal's size. It prepares the work and answers `{ "args": string[], "confirm"?: { "path": string, "token": string }, "recovery"?: string }`. Set `recovery` when the route already did work (such as creating a session): the CLI prints it if the launch then fails.
+- The CLI spawns `bin` with those args, with no shell and with inherited stdio and environment (including `TERMINFO`).
+- When `confirm` is present, the CLI immediately POSTs `{ token, pid }` to `confirm.path`. If that is refused, the CLI kills the child.
+- The child's exit code becomes the command's exit code.
+- Routes check the caller with `approvalProvenanceFromRequest(request)` from `@makinbakin/sdk/routing`. Require `actor.kind === 'operator-declared'` and refuse agents.
+
+This is trusted installed-plugin execution, not a sandbox. Keep the argument contract small.
 
 ### Declarative client metadata (lazy loading)
 

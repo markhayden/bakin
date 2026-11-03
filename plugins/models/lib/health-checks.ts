@@ -8,7 +8,7 @@
  * the same list. A class the plan cannot carry is skipped WITH a reason —
  * never proposed blind.
  */
-import type { HealthCheckRunInput, HealthRepairActionDefinition } from '@bakin/core/plugin-types'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition } from '@bakin/core/plugin-types'
 import {
   healthHealthy,
   healthObserved,
@@ -43,6 +43,17 @@ export interface RoutingHealthDeps {
 
 export type { RouteProposal, RouteSkip }
 
+/**
+ * models.routing incident families (re-homing rows 151–156): clamps and
+ * on-purpose/unprovable premium routes are observations; the two routable
+ * findings carry the one-click routes repair (a routing change widens what
+ * the operator authorized — never unattended).
+ */
+export const MODELS_ROUTING_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'unrouted-system-classes', subjectKind: 'setting', resolution: { type: 'repair', actionId: 'apply-recommended-routes' }, required: 'never' },
+  { id: 'premium-on-cheap', subjectKind: 'setting', resolution: { type: 'repair', actionId: 'apply-recommended-routes' }, required: 'never' },
+]
+
 /** Route proposals for the UNROUTED chores classes, derived from the plan. */
 export async function recommendRoutes(deps: RoutingHealthDeps): Promise<{ proposals: RouteProposal[]; skipped: RouteSkip[] }> {
   return routeProposals(await deps.recommendPlan(), deps.getRoutingConfig())
@@ -67,36 +78,24 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
   // counting only routes under-reported real standing clamps (review finding).
   const modelTagOverrides = config.tagOverrides.filter((t) => t.model)
   if ((modelRoutes.length > 0 || modelTagOverrides.length > 0) && !deps.supportsPerTurnModel()) {
+    // Row 151: an observation — the per-turn receipts carry the story; review at /models?ref=route:relay.
     observations.push(healthWarning({
       key: 'routes-model-clamped',
       summary: `The active runtime refuses per-turn model overrides — ${modelRoutes.length + modelTagOverrides.length} model route(s)/override(s) are clamped to agent defaults.`,
+      detail: 'Routed turns run on each agent\'s default model (with clamp receipts) — spend and quality follow defaults, not your routes. Review routing at /models?ref=route:relay.',
       evidence: { workClasses: modelRoutes.map((r) => r.workClass), tags: modelTagOverrides.map((t) => t.tag), perTurnModel: false },
-      incident: {
-        key: 'routes-model-clamped',
-        title: 'Work-class model routes are clamped by the runtime',
-        impact: 'Routed turns run on each agent\'s default model (with clamp receipts) — spend and quality follow defaults, not your routes.',
-        disposition: 'watch',
-        resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
-        resolution: { key: 'authorize-overrides', type: 'navigate', label: 'Review routing', href: '/models?ref=route:relay' },
-      },
     }))
   }
 
   // 2. Standing clamps — a route asks for a thinking level this runtime clamps.
   const clamping = config.routes.filter((r) => r.thinking && r.thinking !== 'inherit' && !supported.includes(r.thinking))
   for (const r of clamping) {
+    // Row 152: an observation — turns run at a lower level with audit evidence; adjust at /models?ref=route:<wc>.
     observations.push(healthWarning({
       key: `route-thinking-clamped-${r.workClass}`,
       summary: `Route '${r.workClass}' requests thinking '${r.thinking}', which the active runtime clamps — pick a supported level.`,
+      detail: `Turns run at a lower thinking level than configured (clamped with audit evidence). Adjust the level at /models?ref=route:${r.workClass}.`,
       evidence: { workClass: r.workClass, requested: r.thinking ?? null, supported: [...supported] },
-      incident: {
-        key: `route-thinking-clamped-${r.workClass}`,
-        title: `Routing thinking level clamps on this runtime (${r.workClass})`,
-        impact: 'Turns run at a lower thinking level than configured (clamped with audit evidence).',
-        disposition: 'watch',
-        resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
-        resolution: { key: 'fix-thinking', type: 'navigate', label: 'Adjust level', href: `/models?ref=route:${r.workClass}` },
-      },
     }))
   }
 
@@ -127,6 +126,8 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
         title: 'System work classes are unrouted',
         impact: 'Titles, relays, and other background sends bill at each agent\'s default model instead of a cheap one.',
         disposition: 'advisory',
+        subject: { kind: 'setting', id: 'models.routes', label: 'Models → Routing' },
+        declarationId: 'unrouted-system-classes',
         resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
         resolution: { key: 'apply-recommended-routes', type: 'repair', actionId: 'apply-recommended-routes', label: 'Apply recommended routes' },
       },
@@ -164,31 +165,41 @@ export async function checkModelRouting(deps: RoutingHealthDeps): Promise<Health
       : routedTo
         ? `. It is routed to ${routedTo} on purpose — change that route to a cheaper model if this is not intended.`
         : '. No cheaper model has been seen running here yet; run a task on one or probe it, and Health can route this.'
-    observations.push(healthWarning({
-      key: `premium-on-cheap-${workClass}`,
-      summary: `${cell.runs} '${workClass}' turn(s) ran on premium-tier model(s) in the last 7 days (${[...cell.models].join(', ')}).`,
-      evidence: {
-        workClass,
-        runs: cell.runs,
-        models: [...cell.models],
-        knownUsdMicros: cell.usdMicros,
-        unpricedRuns: cell.unpricedRuns,
-      },
-      incident: {
+    const impact = escalated
+      ? `Cheap background work billed $${(cell.usdMicros / 1_000_000).toFixed(2)} at premium rates this week${cheaper}`
+      : `Cheap background work is billing at premium rates${cheaper}`
+    const evidence = {
+      workClass,
+      runs: cell.runs,
+      models: [...cell.models],
+      knownUsdMicros: cell.usdMicros,
+      unpricedRuns: cell.unpricedRuns,
+    }
+    // Row 154: routable → the one-click routes repair. Rows 155/156: an
+    // explicit route or no proven cheaper model → an observation whose detail
+    // says where to look; never a card nobody can act on.
+    observations.push(routable
+      ? healthWarning({
         key: `premium-on-cheap-${workClass}`,
-        title: `Premium model on cheap work (${workClass})`,
-        impact: escalated
-          ? `Cheap background work billed $${(cell.usdMicros / 1_000_000).toFixed(2)} at premium rates this week${cheaper}`
-          : `Cheap background work is billing at premium rates${cheaper}`,
-        disposition: escalated ? 'watch' : 'advisory',
-        resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
-        resolution: routable
-          ? { key: 'route-cheaper', type: 'repair', label: 'Apply recommended routes', actionId: 'apply-recommended-routes' }
-          : routedTo
-            ? { key: 'change-route', type: 'navigate', label: 'Change the route', href: `/models?ref=route:${workClass}` }
-            : { key: 'prove-cheaper-model', type: 'navigate', label: 'Open Models', href: '/models' },
-      },
-    }))
+        summary: `${cell.runs} '${workClass}' turn(s) ran on premium-tier model(s) in the last 7 days (${[...cell.models].join(', ')}).`,
+        evidence,
+        incident: {
+          key: `premium-on-cheap-${workClass}`,
+          title: `Premium model on cheap work (${workClass})`,
+          impact,
+          disposition: escalated ? 'watch' : 'advisory',
+          subject: { kind: 'setting', id: `models.route.${workClass}`, label: `Route ${workClass}` },
+          declarationId: 'premium-on-cheap',
+          resources: [{ kind: 'setting', id: 'models.routing', label: 'Models → Routing' }],
+          resolution: { key: 'route-cheaper', type: 'repair', label: 'Apply recommended routes', actionId: 'apply-recommended-routes' },
+        },
+      })
+      : healthWarning({
+        key: `premium-on-cheap-${workClass}`,
+        summary: `${cell.runs} '${workClass}' turn(s) ran on premium-tier model(s) in the last 7 days (${[...cell.models].join(', ')}).`,
+        detail: `${impact} ${routedTo ? `Change the route at /models?ref=route:${workClass}.` : 'Open /models to probe or run a cheaper model.'}`,
+        evidence,
+      }))
   }
 
   if (observations.length === 0) {
@@ -233,6 +244,9 @@ export function recommendedRoutesRepair(
   return {
     id: 'apply-recommended-routes',
     name: 'Apply recommended work-class routes',
+    // Rows 153/154: a routing change widens what the operator authorized — one-click, a policy write.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: true },
+    mutation: 'policy',
     operationPlan: () => ({
       stages: [
         { id: 'recommend', kind: 'preparing', label: 'Compute the recommended routes' },
@@ -248,7 +262,6 @@ export function recommendedRoutesRepair(
         actionId: 'apply-recommended-routes',
         title: `Route ${proposals.length} system class(es) to cheap models`,
         reason: 'Unrouted system classes bill at each agent\'s default model.',
-        safety: 'safe',
         incidentIds: [],
         observationIds: [],
         preconditions: [],

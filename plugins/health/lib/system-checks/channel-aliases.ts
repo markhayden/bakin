@@ -7,10 +7,15 @@
  */
 import { CHANNELS_SETTINGS_HREF, DELIVERABLE_STATES } from '@bakin/core/delivery'
 import { healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration } from '@makinbakin/sdk'
 import { getSettings } from '../../../../src/core/settings'
 import { readConfiguredChannelAliases, resolveChannelRef } from '../../../../src/core/channel-aliases'
 import { getChannelReadiness } from '../../../../src/core/delivery/readiness'
+
+/** Row 20: a decision on the aliases editor; required only while the alert channel itself rides a broken alias. Row 19 is an observation. */
+export const CHANNEL_ALIASES_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'invalid-aliases', subjectKind: 'setting', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+]
 
 function targetDriver(target: string): string {
   return target.split(':')[0]
@@ -37,15 +42,6 @@ export async function checkChannelAliases(): Promise<HealthCheckRunInput> {
       key: 'validation',
       summary: 'Channel aliases could not be verified.',
       detail: readiness.channels.error?.message ?? 'The channel list has not been collected yet.',
-      incident: {
-        key: 'inspection-failed',
-        title: 'Channel alias status is unknown',
-        class: 'evidence_gap',
-        impact: 'Health cannot confirm whether configured aliases resolve to available runtime channels.',
-        disposition: 'watch',
-        resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
     })])
   }
 
@@ -62,6 +58,8 @@ export async function checkChannelAliases(): Promise<HealthCheckRunInput> {
   const settings = getSettings()
   const configuredAlertChannel = settings.notifications.channel.trim()
   const failures: string[] = []
+  // The alert channel addressing a broken alias is what makes this REQUIRED (row 20).
+  let alertChannelBroken = false
 
   for (const alias of Object.keys(aliases)) {
     try {
@@ -78,6 +76,7 @@ export async function checkChannelAliases(): Promise<HealthCheckRunInput> {
     try {
       resolveChannelRef(configuredAlertChannel, { aliases, knownChannelIds })
     } catch (err) {
+      alertChannelBroken = true
       failures.push(`Alert channel ${configuredAlertChannel}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
@@ -92,13 +91,19 @@ export async function checkChannelAliases(): Promise<HealthCheckRunInput> {
         key: 'invalid-aliases',
         title: 'Channel aliases need attention',
         impact: 'Alerts or workflow messages addressed through invalid aliases may not reach their destination.',
-        disposition: 'action_required',
+        disposition: alertChannelBroken ? 'action_required' : 'advisory',
+        subject: { kind: 'setting', id: 'notifications.channelAliases', label: 'Channel aliases' },
+        declarationId: 'invalid-aliases',
+        required: alertChannelBroken,
         resources: [{ kind: 'setting', id: 'channel-aliases', label: 'Channel aliases' }],
         resolution: {
           key: 'open-channels',
-          type: 'navigate',
+          type: 'human',
+          needs: 'decision',
           label: 'Review channel routing',
-          href: CHANNELS_SETTINGS_HREF,
+          // `field=` is a SETTING key; the Channels tab maps the alias prefix to its editor (self-healing 1.4c, row 20).
+          href: `${CHANNELS_SETTINGS_HREF}&field=notifications.channelAliases.aliases`,
+          field: 'channels-field-aliases',
         },
       },
     })])

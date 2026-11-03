@@ -3,24 +3,139 @@
  * plain language), and whether setup is healthy. Every non-native state
  * says what happens instead — the reader never has to decode an enum.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Wrench } from 'lucide-react'
 import { startOperation, toast, useJsonFetch, useOperation, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Section, Stack } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
-import { ConfirmDialog, OperationProgress, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
-import { isOperationFinished, type OperationStartResponse } from '@makinbakin/sdk/types'
+import { ConfirmDialog, HandoffCard, OperationProgress, StatGroup, StatTile, type DataTableColumn } from '@makinbakin/sdk/patterns'
+import { type HealthIncident, type HealthReport, type OperationStartResponse } from '@makinbakin/sdk/types'
 import { RuntimeTable } from './runtime-table'
 import { Badge, Button, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { capabilityRows } from '../../lib/runtime-report'
+import { armCredentialReturn, useCredentialReturn } from './credential-return'
 import { ModeBadge, MODE_LEGEND, CheckStatusBadge, capabilityStateCopy, deliveryReadinessCopy, type CapabilityMode } from './shared'
 import type { CapabilityReport, OnboardingComponentStatus } from './types'
 
-function CredentialTiles({ report }: { report: CapabilityReport }) {
+/**
+ * The runtime's own sign-in, read from the canonical Health report (the
+ * adapter's credential incident on `runtime:<adapter>` carries the exact
+ * command — Pi's `/login` inside its TUI, row 198). The runtime page never
+ * invents a command: with no such incident it names the gap and where the
+ * runtime's own tooling lives. Copy-only on purpose — the Terminal session
+ * handoff is the Health card's; this page re-reads credentials when it
+ * mounts again after the operator comes back.
+ */
+const HEALTH_REPORT_FETCH_OPTIONS = { timeoutMs: 10_000 }
+const HEALTH_RUN_URL = '/api/plugins/health/doctor/run'
+/** The ONE family that means "sign in to a model provider" — Pi and OpenClaw both declare it under this id. */
+export const PROVIDER_CREDENTIAL_FAMILY = 'provider-configuration'
+
+type HumanCredentialHandoff = Extract<HealthIncident['resolution'], { type: 'human' }> & { handoff: NonNullable<Extract<HealthIncident['resolution'], { type: 'human' }>['handoff']> }
+
+export interface CredentialHandoffSelection {
+  resolution: HumanCredentialHandoff
+  /** The check(s) that raised the incident — what return verification reruns. */
+  checkIds: string[]
+}
+
+/** `<checkId>:<key>` — a check id never contains a colon, so the first one splits them. */
+function checkIdOfObservation(observationId: string): string {
+  const colon = observationId.indexOf(':')
+  return colon === -1 ? observationId : observationId.slice(0, colon)
+}
+
+/**
+ * The runtime's PROVIDER sign-in handoff from the report (Codex r3 R3-4):
+ * selected by the family's identity, never "the first credential need" —
+ * OpenClaw also raises `override-authorization` (a device-scope grant),
+ * which authenticates no provider. The originating check ids ride along
+ * so return verification reruns exactly those.
+ */
+export function credentialHandoffFor(report: Pick<HealthReport, 'incidents'> & Partial<Pick<HealthReport, 'observations'>> | null | undefined, adapter: string): CredentialHandoffSelection | null {
+  for (const incident of report?.incidents ?? []) {
+    const { resolution, subject } = incident
+    if (subject.kind !== 'runtime' || subject.id !== adapter) continue
+    if (incident.declarationId !== PROVIDER_CREDENTIAL_FAMILY) continue
+    if (resolution.type !== 'human' || resolution.needs !== 'credential' || !resolution.handoff) continue
+    const observations = report?.observations ?? []
+    const checkIds = [...new Set(incident.observationIds.map((id) => observations.find((row) => row.id === id)?.checkId ?? checkIdOfObservation(id)))]
+    return { resolution: resolution as HumanCredentialHandoff, checkIds }
+  }
+  return null
+}
+
+function CredentialHandoff({ adapter, refreshToken }: { adapter: string; refreshToken: number }) {
+  const health = useJsonFetch<Pick<HealthReport, 'incidents' | 'observations'>>('/api/plugins/health/doctor', HEALTH_REPORT_FETCH_OPTIONS)
+  const refreshHealth = health.refresh
+  // The group re-reads the Health report after a return verification (the token bumps).
+  useEffect(() => {
+    if (refreshToken > 0) void refreshHealth()
+  }, [refreshHealth, refreshToken])
+  if (health.loading) return null
+  const selected = credentialHandoffFor(health.data, adapter)
+  const handoff = selected?.resolution
+  if (!selected || !handoff) {
+    return (
+      <Text as="p" tone="muted" size="meta" data-testid="runtime-credential-gap">
+        No model provider is signed in for {adapter}, and this runtime published no sign-in command. Sign in with the runtime's own tooling, then reload this page.
+      </Text>
+    )
+  }
+  return (
+    <HandoffCard
+      title={handoff.label}
+      description="Bakin cannot sign you in to a provider. Copy the command, run it in your terminal, then come back — this page re-reads credentials when you return."
+      command={handoff.handoff.command}
+      cwd={handoff.handoff.cwd}
+      onCopied={() => armCredentialReturn(selected.checkIds)}
+    />
+  )
+}
+
+/**
+ * `?field=credentials` (the health runtime-credentials incident's deep link)
+ * lands on this group: it takes focus and the kit highlight outline, the
+ * same treatment a deep-linked spend incident gets. With no provider signed
+ * in, the group IS the control: the runtime's sign-in handoff sits under the
+ * tiles (Codex r1 #9 — a highlighted statistic is not a control).
+ */
+function CredentialTiles({ report, highlighted, onRefreshReport }: { report: CapabilityReport; highlighted: boolean; onRefreshReport?: () => void }) {
+  // Return verification (Codex r3 R3-5 / r4 R4-1) lives on the ALWAYS-mounted
+  // group, not on the sign-in card: a sign-in that succeeded removes the card
+  // from the next render, and the armed targeted recheck must still fire.
+  const [healthRefreshToken, setHealthRefreshToken] = useState(0)
+  const onReturn = useCallback((checkIds: string[]) => {
+    void (async () => {
+      try {
+        await fetch(HEALTH_RUN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ checkIds }) })
+      } catch {
+        // The re-reads below still show the honest last-known state.
+      }
+      setHealthRefreshToken((token) => token + 1)
+      onRefreshReport?.()
+    })()
+  }, [onRefreshReport])
+  useCredentialReturn(onReturn)
   const creds = report.credentialStatus
   const providers = creds?.llmProviders ?? []
   const kinds = new Map((creds?.llmCredentials ?? []).map((c) => [c.provider, c.kind]))
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!highlighted) return
+    ref.current?.focus({ preventScroll: true })
+    ref.current?.scrollIntoView?.({ block: 'center' })
+  }, [highlighted])
   return (
+    <div
+      ref={ref}
+      id="runtime-field-credentials"
+      data-testid="runtime-field-credentials"
+      tabIndex={highlighted ? -1 : undefined}
+      data-highlighted={highlighted ? 'true' : undefined}
+      className={highlighted ? 'rounded-bakin-surface outline outline-2 outline-offset-2 outline-bakin-signal-highlight' : undefined}
+    >
+    <Stack gap="item">
     <StatGroup label="Runtime and credentials">
       <StatTile
         variant="surface"
@@ -51,11 +166,25 @@ function CredentialTiles({ report }: { report: CapabilityReport }) {
         value={report.toolAccess.ok ? 'Healthy' : 'Needs attention'}
         valueTone={report.toolAccess.ok ? 'neutral' : 'attention'}
         sub={report.toolAccess.ok
-          ? capabilityStateCopy('toolCalling', 'native', report.adapter, report.toolAccess.style)
+          ? `${capabilityStateCopy('toolCalling', 'native', report.adapter, report.toolAccess.style)}${toolPolicyCopy(report.capabilities.toolCalling?.access?.perTurnToolsMode)}`
           : report.toolAccess.issues.join('; ')}
       />
     </StatGroup>
+    {providers.length === 0 ? <CredentialHandoff adapter={report.adapter} refreshToken={healthRefreshToken} /> : null}
+    </Stack>
+    </div>
   )
+}
+
+/**
+ * #883 honesty on the Tool access tile: whether a text-only turn
+ * (`toolsMode: 'none'`) really runs without tools on this runtime. An older
+ * server that never declared it says nothing.
+ */
+function toolPolicyCopy(perTurnToolsMode: boolean | undefined): string {
+  if (perTurnToolsMode === true) return ' Per-turn tool policy is enforced: a text-only turn runs without tools.'
+  if (perTurnToolsMode === false) return ' Per-turn tool policy is not enforced: a text-only turn keeps its tools (the request is dropped with a warning).'
+  return ''
 }
 
 interface CapabilityGridRow {
@@ -178,7 +307,30 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
   // Busy from the moment the request is sent, so a second click (or closing
   // the dialog) can't race the first repair's acceptance.
   const [starting, setStarting] = useState(false)
-  const followed = useOperation<ComponentInstallBody>(repair?.start.operationId ?? null, repair ? { bootId: repair.start.bootId } : {})
+  // The settle is the operation's event (issue 966b): the hook calls back once
+  // when the followed repair finishes, expires or outlives a restart.
+  const followed = useOperation<ComponentInstallBody>(repair?.start.operationId ?? null, {
+    ...(repair ? { bootId: repair.start.bootId } : {}),
+    onSettle: (settled, settledPhase) => {
+      if (!repair) return
+      if (settledPhase === 'restarted' || settledPhase === 'expired') {
+        setRepair(null)
+        setRepairError('Bakin restarted or lost track of the repair. The checks below were re-run — confirm the result there.')
+        onRescan()
+        return
+      }
+      if (!settled) return
+      setRepair(null)
+      const message = settled.result?.body?.result?.message
+      if (settled.status === 'succeeded') {
+        toast(`Repaired ${repair.name}${message ? ` — ${message}` : ''}`, 'success')
+        setConfirmTarget(null)
+      } else {
+        setRepairError(settled.status === 'cancelled' ? 'The repair was cancelled before anything changed.' : message ?? settled.outcome?.message ?? `The repair ${settled.status}.`)
+      }
+      onRescan()
+    },
+  })
   const repairing = repair !== null || starting
   // The closing dialog keeps rendering during its exit animation — hold the
   // last target so it never flashes "Repair undefined?".
@@ -208,27 +360,9 @@ function SetupSection({ onboarding, onRescan }: { onboarding: OnboardingComponen
     }
   }
 
+
   const view = followed.operation
   const phase = followed.phase
-  useEffect(() => {
-    if (!repair) return
-    if (phase === 'restarted' || phase === 'expired') {
-      setRepair(null)
-      setRepairError('Bakin restarted or lost track of the repair. The checks below were re-run — confirm the result there.')
-      onRescan()
-      return
-    }
-    if (!view || !isOperationFinished(view.status)) return
-    setRepair(null)
-    const message = view.result?.body?.result?.message
-    if (view.status === 'succeeded') {
-      toast(`Repaired ${repair.name}${message ? ` — ${message}` : ''}`, 'success')
-      setConfirmTarget(null)
-    } else {
-      setRepairError(view.status === 'cancelled' ? 'The repair was cancelled before anything changed.' : message ?? view.outcome?.message ?? `The repair ${view.status}.`)
-    }
-    onRescan()
-  }, [repair, view, phase, onRescan])
 
   const columns: ReadonlyArray<DataTableColumn<OnboardingComponentStatus>> = [
     {
@@ -358,14 +492,20 @@ export function OverviewTab({
   report,
   onboarding,
   onRefreshOnboarding,
+  onRefreshReport,
+  highlightField = '',
 }: {
   report: CapabilityReport
   onboarding: OnboardingComponentStatus[] | null | undefined
   onRefreshOnboarding: () => void
+  /** Re-reads the capability report — the credential handoff's return verification calls it once per taken handoff. */
+  onRefreshReport?: () => void
+  /** `?field=` from the route — only `credentials` has an owner on this tab. */
+  highlightField?: string
 }) {
   return (
     <Stack gap="section" data-testid="runtime-summary">
-      <CredentialTiles report={report} />
+      <CredentialTiles report={report} highlighted={highlightField === 'credentials'} onRefreshReport={onRefreshReport} />
       <CapabilityGrid report={report} />
       <SetupSection onboarding={onboarding} onRescan={onRefreshOnboarding} />
     </Stack>

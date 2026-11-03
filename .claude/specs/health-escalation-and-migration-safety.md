@@ -1,6 +1,6 @@
 # Spec: Health Escalation, Task Liveness & Runtime-Migration Safety
 
-Status: Approved 2026-10-01 (plan rev 2, after Mark's source-based plan review)
+Status: Approved 2026-10-01 (plan rev 2, after Mark's source-based plan review). D8 / R5 one-shot upgrades delivered and DELETED 2026-10-19 (#945, after margo booted on them).
 Companion plan: `.claude/specs/health-escalation-and-migration-safety-plan.md`
 
 ## Objective

@@ -14,6 +14,10 @@ import {
   checkTaskPositionIntegrity,
   taskConsistencyRepair,
   taskOrderRepair,
+  ORDER_INTEGRITY_INCIDENTS,
+  SESSION_DEATH_INCIDENTS,
+  TASK_CONSISTENCY_INCIDENTS,
+  TASKBOARD_INCIDENTS,
 } from './lib/health-checks'
 import { queryAuditEvents } from '../../src/core/audit'
 import type { Task, ColumnId } from './types'
@@ -120,6 +124,7 @@ const tasksPlugin: BakinPlugin = definePlugin({
       description: 'Verifies that Bakin-owned task data is readable.',
       group: { key: 'tasks', label: 'Tasks' },
       maxAgeMs: 5 * 60_000,
+      incidents: TASKBOARD_INCIDENTS,
       run: () => Promise.resolve(checkTaskboard()),
     })
     ctx.registerHealthCheck({
@@ -128,6 +133,7 @@ const tasksPlugin: BakinPlugin = definePlugin({
       description: 'Finds stale assignments, missing progress, overloaded agents, and completed-task dependencies.',
       group: { key: 'tasks', label: 'Tasks' },
       maxAgeMs: 5 * 60_000,
+      incidents: TASK_CONSISTENCY_INCIDENTS,
       run: () => checkTaskConsistency(ctx.runtime.agents),
     })
     ctx.registerHealthCheck({
@@ -136,6 +142,7 @@ const tasksPlugin: BakinPlugin = definePlugin({
       description: 'Checks that every task has a unique numeric order within its column.',
       group: { key: 'tasks', label: 'Tasks' },
       maxAgeMs: 5 * 60_000,
+      incidents: ORDER_INTEGRITY_INCIDENTS,
       run: () => Promise.resolve(checkTaskPositionIntegrity()),
     })
     ctx.registerHealthCheck({
@@ -144,6 +151,7 @@ const tasksPlugin: BakinPlugin = definePlugin({
       description: 'Surfaces agent turns that died during execution in the last 24 hours.',
       group: { key: 'activity', label: 'Activity' },
       maxAgeMs: 2 * 60_000,
+      incidents: SESSION_DEATH_INCIDENTS,
       run: () => Promise.resolve(checkSessionDeathIncidents(getContentDir(), queryAuditEvents)),
     })
   },

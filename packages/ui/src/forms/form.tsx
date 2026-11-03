@@ -1,7 +1,7 @@
 'use client'
 
 import { Form as FormPrimitive } from '@base-ui/react/form'
-import { createContext, useContext, type ComponentProps, type ReactNode, type Ref } from 'react'
+import { createContext, use, type ComponentProps, type ReactNode, type Ref } from 'react'
 
 import { Button, type ButtonProps } from '../primitives/button'
 import { cn, mergeClassName } from '../utils'
@@ -24,7 +24,7 @@ export function Form<FormValues extends Record<string, unknown> = Record<string,
   const ariaBusy = busy || ariaBusyProp === true || ariaBusyProp === 'true'
 
   return (
-    <FormBusyContext.Provider value={busy}>
+    <FormBusyContext value={busy}>
       <FormPrimitive
         {...props}
         data-slot="form"
@@ -32,7 +32,7 @@ export function Form<FormValues extends Record<string, unknown> = Record<string,
         aria-busy={ariaBusy || undefined}
         className={mergeClassName('@container/form grid min-w-0 gap-bakin-6', className)}
       />
-    </FormBusyContext.Provider>
+    </FormBusyContext>
   )
 }
 
@@ -75,7 +75,7 @@ export function SubmitButton({
   disabled,
   ...props
 }: SubmitButtonProps) {
-  const formBusy = useContext(FormBusyContext)
+  const formBusy = use(FormBusyContext)
   const busy = Boolean(busyProp || formBusy)
 
   return (

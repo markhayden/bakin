@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -30,25 +30,23 @@ describe('modal primitive ownership', () => {
     expect(sdkSource).toContain("from '@bakin/ui'")
     expect(hostBridge).toContain("from '@bakin/ui'")
 
+    // #809: the src/components/ui shims are gone; the host bridge is the one legacy path.
     for (const primitive of PRIMITIVES) {
-      const shim = readRepoFile(`src/components/ui/${primitive}.tsx`)
-      expect(shim).toContain("from '../../../packages/host/src/ui/modals'")
-      expect(shim).not.toContain('@base-ui/react')
+      expect(existsSync(join(REPO_ROOT, `src/components/ui/${primitive}.tsx`))).toBe(false)
     }
 
-    const [privateUi, publicUi, legacyDialog, legacySheet] = await Promise.all([
+    const [privateUi, publicUi, hostBridgeModule] = await Promise.all([
       import('@bakin/ui'),
       import('@makinbakin/sdk/ui'),
-      import('../../../src/components/ui/dialog'),
-      import('../../../src/components/ui/sheet'),
+      import('../../../packages/host/src/ui/modals'),
     ])
 
     expect(publicUi.Dialog).toBe(privateUi.Dialog)
     expect(publicUi.DialogContent).toBe(privateUi.DialogContent)
     expect(publicUi.Sheet).toBe(privateUi.Sheet)
     expect(publicUi.SheetContent).toBe(privateUi.SheetContent)
-    expect(legacyDialog.DialogTitle).toBe(privateUi.DialogTitle)
-    expect(legacySheet.SheetDescription).toBe(privateUi.SheetDescription)
+    expect(hostBridgeModule.DialogTitle).toBe(privateUi.DialogTitle)
+    expect(hostBridgeModule.SheetDescription).toBe(privateUi.SheetDescription)
   })
 
   it('keeps shared modal state private and keeps Drawer on canonical primitives', () => {
@@ -57,12 +55,16 @@ describe('modal primitive ownership', () => {
     expect(privateIndex).not.toContain("from './primitives/modal-context'")
     expect(sdkSource).not.toContain('ModalBusyProvider')
 
-    const drawer = readRepoFile('src/components/drawer.tsx')
-    expect(drawer).toContain("from '@/components/ui/sheet'")
+    // #809: the Drawer is a kit pattern on the kit's own primitives, published
+    // through the SDK ui entrypoint from @bakin/ui.
+    const drawer = readRepoFile('packages/ui/src/patterns/drawer.tsx')
+    expect(drawer).toContain("from '../primitives/sheet'")
     // The dirty-exit decision is the kit pattern, not a hand-built Dialog.
     expect(drawer).toContain('UnsavedChangesDialog')
-    expect(drawer).toContain("from '@/components/ui/dialog'")
-    expect(drawer).not.toMatch(/from '@bakin\/ui/)
+    expect(drawer).toContain("from './unsaved-changes-dialog'")
+    expect(drawer).not.toMatch(/from '@\/|from '@makinbakin\/sdk|from '@bakin\/core/)
     expect(drawer).not.toContain('<button')
+    expect(sdkSource).toContain("export { Drawer } from '@bakin/ui'")
+    expect(existsSync(join(REPO_ROOT, 'src/components/drawer.tsx'))).toBe(false)
   })
 })

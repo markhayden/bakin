@@ -4,16 +4,16 @@
  * and packs. Discovery only — lifecycle management stays in Team/Health.
  */
 import { z } from 'zod'
+import type { UpdateRecord } from '@makinbakin/sdk/types'
 import { getSettings } from '../../src/core/settings'
 import type { BakinPlugin } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
-import { runChecks } from '../../src/core/plugins/upgrade-check'
-import { checkPackageUpdateAsync } from '../../src/core/agent-packages/checker'
+import { getUpdatesEngine } from '../../src/core/updates/service'
 import { mergedCatalog } from './lib/catalog'
-import { gatherInstallSources, joinInstallState } from './lib/install-state'
+import { gatherInstallSources, joinInstallState, NO_UPDATE_RECORDS, type UpdateRecordMap } from './lib/install-state'
 import { refreshRemoteCatalog } from './lib/refresh'
-import type { ExploreCatalogEntry, ExploreCatalogResponse } from './types'
+import type { ExploreCatalogResponse } from './types'
 
 const log = createLogger('explore')
 
@@ -36,6 +36,8 @@ const catalogEntryResponse = z.object({
   screenshots: z.array(z.string()),
   installed: z.boolean(),
   updateAvailable: z.boolean().nullable(),
+  updateOutcome: z.enum(['current', 'update-available', 'skipped', 'blocked', 'unsupported']).nullable(),
+  updateReason: z.string().optional(),
   installedVersion: z.string().nullable(),
 })
 
@@ -45,89 +47,29 @@ const catalogResponse = z.object({
   updatedAt: z.string(),
   remoteUpdatedAt: z.string().nullable(),
   entries: z.array(catalogEntryResponse),
-  probeErrors: z.number().optional(),
 })
 
-interface ProbeOutcome {
-  /** agentId → definitive update state. Failed probes are NOT included — unknown stays unknown. */
-  agentUpdates: Map<string, boolean>
-  /** Probes that could not reach/interpret their source (offline, bad remote, …). */
-  probeErrors: number
-}
-
 /**
- * Probe update state for installed user plugins (persists lockfile markers)
- * and managed agents (probe-only — results are returned, never persisted
- * upstream). Failed probes are counted and left UNKNOWN — a probe that
- * couldn't reach the source must never report "up to date". All fetches run
- * async and in parallel so a slow remote can't stall the event loop or
- * serialize the sweep.
+ * The updates engine's records by id (#1007). The catalog never probes a
+ * source itself: "Check for updates" is `POST /api/updates/check`, and the
+ * page re-reads the catalog (and follows `updates.changed`) afterwards.
+ * Without a running engine every installed entry is honestly unknown.
  */
-async function runUpdateProbes(sources: ReturnType<typeof gatherInstallSources>): Promise<ProbeOutcome> {
-  const outcome: ProbeOutcome = { agentUpdates: new Map(), probeErrors: 0 }
-
-  const userPluginIds = Object.keys(sources.pluginLock.plugins)
-  const pluginSweep = userPluginIds.length === 0
-    ? Promise.resolve()
-    : runChecks(userPluginIds)
-        .then((results) => {
-          for (const result of results) {
-            if (result.error) {
-              outcome.probeErrors += 1
-              log.warn('plugin update probe failed', { pluginId: result.id, error: result.error })
-            }
-          }
-        })
-        .catch((err) => {
-          outcome.probeErrors += userPluginIds.length
-          log.warn('plugin update sweep failed', { error: err instanceof Error ? err.message : String(err) })
-        })
-
-  const agentEntries = Object.entries(sources.packageLock.packages)
-    .filter(([, entry]) => entry.kind === 'agent' && entry.agentId)
-  const agentSweep = Promise.all(agentEntries.map(async ([key, entry]) => {
-    try {
-      const status = await checkPackageUpdateAsync(key)
-      if (status.error) {
-        outcome.probeErrors += 1
-        log.warn('agent update probe failed', { packageId: key, error: status.error })
-        return
-      }
-      outcome.agentUpdates.set(entry.agentId!, status.upgradeAvailable)
-    } catch (err) {
-      outcome.probeErrors += 1
-      log.warn('agent update probe failed', { packageId: key, error: err instanceof Error ? err.message : String(err) })
-    }
-  }))
-
-  await Promise.all([pluginSweep, agentSweep])
-  return outcome
+async function updateRecords(): Promise<UpdateRecordMap> {
+  const engine = getUpdatesEngine()
+  if (!engine) return NO_UPDATE_RECORDS
+  const snapshot = await engine.snapshot()
+  return new Map(snapshot.records.map((record): [string, UpdateRecord] => [record.id, record]))
 }
 
-async function buildCatalogResponse(check: boolean): Promise<ExploreCatalogResponse> {
-  const catalog = await mergedCatalog()
-  let sources = gatherInstallSources()
-  let probes: ProbeOutcome | null = null
-
-  if (check) {
-    probes = await runUpdateProbes(sources)
-    // Re-read: runChecks persisted fresh plugin markers into the lockfile.
-    sources = gatherInstallSources()
-  }
-
-  const entries: ExploreCatalogEntry[] = joinInstallState(catalog.entries, sources).map((entry) =>
-    entry.kind === 'agent' && probes?.agentUpdates.has(entry.id)
-      ? { ...entry, updateAvailable: probes.agentUpdates.get(entry.id)! }
-      : entry,
-  )
-
+async function buildCatalogResponse(): Promise<ExploreCatalogResponse> {
+  const [catalog, records] = await Promise.all([mergedCatalog(), updateRecords()])
   return {
     ok: true,
     updatedAt: catalog.updatedAt,
     remoteUpdatedAt: catalog.remoteUpdatedAt,
-    entries,
+    entries: joinInstallState(catalog.entries, gatherInstallSources(), records),
     activeAdapter: getSettings().runtime.adapter,
-    ...(probes ? { probeErrors: probes.probeErrors } : {}),
   }
 }
 
@@ -137,13 +79,12 @@ const routes = [
     method: 'GET',
     summary: 'Merged curated catalog with install state',
     description:
-      'Embedded catalog merged with the cached remote catalog, joined against local lockfiles. ' +
-      'Offline by default; ?check=1 runs explicit update probes (plugin markers persist, agent results are per-response).',
+      'Embedded catalog merged with the cached remote catalog, joined against local lockfiles and the updates engine\'s records. ' +
+      'Offline: it never probes a source — run POST /api/updates/check to observe.',
     responses: { 200: catalogResponse },
-    handler: async (req) => {
-      const check = new URL(req.url).searchParams.get('check') === '1'
+    handler: async () => {
       try {
-        return Response.json(await buildCatalogResponse(check))
+        return Response.json(await buildCatalogResponse())
       } catch (err) {
         log.error('catalog route failed', err instanceof Error ? err : new Error(String(err)))
         return Response.json(
@@ -171,7 +112,7 @@ const routes = [
             { status: result.reason === 'no-remote-catalog' ? 404 : 502 },
           )
         }
-        return Response.json(await buildCatalogResponse(false))
+        return Response.json(await buildCatalogResponse())
       } catch (err) {
         log.error('catalog refresh failed', err instanceof Error ? err : new Error(String(err)))
         return Response.json(

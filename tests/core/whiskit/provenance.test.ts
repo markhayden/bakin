@@ -108,13 +108,18 @@ describe('whiskit provenance', () => {
   })
 
   it('reports externals-contract compatibility', () => {
-    expect(EXTERNALS_CONTRACT).toBe('react19-sdk-focused-v1')
+    // v2 (#948): zod joined the host-provided set. Same family — a v1 artifact
+    // carries its own zod and still loads on this host; a v3 artifact does not.
+    expect(EXTERNALS_CONTRACT).toBe('react19-sdk-focused-v2')
     expect(isExternalsContractCompatible(validProvenance())).toBe(true)
+    expect(isExternalsContractCompatible({ ...validProvenance(), externalsContract: 'react19-sdk-focused-v1' })).toBe(true)
     for (const retired of ['react19-sdk-makinbakin-v1', 'react19-sdk-makinbakin-v2']) {
       expect(isExternalsContractCompatible({ ...validProvenance(), externalsContract: retired })).toBe(false)
       expect(supportsExternalsContract(EXTERNALS_CONTRACT, retired)).toBe(false)
     }
-    expect(supportsExternalsContract('react19-sdk-focused-v2')).toBe(false)
+    expect(supportsExternalsContract('react19-sdk-focused-v3')).toBe(false)
+    expect(supportsExternalsContract('react19-sdk-focused-v1')).toBe(true)
+    expect(supportsExternalsContract('react19-sdk-focused-v2', 'react19-sdk-focused-v1')).toBe(false)
     expect(supportsExternalsContract('react19-sdk-focused-v1', 'react19-sdk-focused-v2')).toBe(true)
     expect(supportsExternalsContract('react18-old')).toBe(false)
     expect(supportsExternalsContract('malformed', EXTERNALS_CONTRACT)).toBe(false)

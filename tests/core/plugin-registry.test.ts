@@ -183,7 +183,7 @@ describe('PluginRegistryImpl', () => {
   // Helpers
 
   function mockStorage() {
-    return { read: mock(), write: mock(), append: mock(), exists: mock(), readAll: mock() }
+    return { read: mock(), write: mock(), append: mock(), exists: mock() }
   }
 
   function mockEvents() {
@@ -257,6 +257,8 @@ describe('PluginRegistryImpl', () => {
       root?: string
       /** JS source for a declarative `routes` array on the plugin object. */
       routes?: string
+      /** JS source for a declarative `socketRoutes` array on the plugin object. */
+      socketRoutes?: string
     } = {},
   ): string {
     const pluginDir = join(opts.root ?? join(tempDir, 'plugins'), id)
@@ -282,6 +284,7 @@ describe('PluginRegistryImpl', () => {
         version: '1.0.0',
         settingsSchema: ${opts.settingsSchema || 'undefined'},
         routes: ${opts.routes || 'undefined'},
+        socketRoutes: ${opts.socketRoutes || 'undefined'},
         activate: function(ctx) { ${opts.activate || ''} },
         onReady: ${opts.onReady || 'undefined'},
       }
@@ -507,6 +510,58 @@ describe('PluginRegistryImpl', () => {
       await pluginRegistry.deactivatePlugin('alpha', { callShutdown: false })
       // Stale id must not be activation-fatal for the next claimant.
       expect(() => registerPluginDefinition('bravo', 'shared-flow', { id: 'shared-flow', name: 'Claimed', steps: [] } as any)).not.toThrow()
+    })
+
+    it('suspendPlugin (the disable route, row 98 / Codex r2 N1) sweeps the runtime surfaces but keeps the durable search table; deactivatePlugin is the one that purges', async () => {
+      const activate = `
+        ctx.hooks.register('things.ping', () => 'pong')
+        ctx.search.registerContentType({ table: 'things', schemaVersion: 1, schema: { title: { type: 'text' } } })
+      `
+      // A content type wires GET /search — declared, with the permission the search API asks for.
+      const pluginDir = writeUserPlugin('things', { activate, manifest: { permissions: ['search.write'], contributes: { apiRoutes: [{ method: 'GET', path: '/search', summary: 'Search things' }] } } })
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+      const { getContentTypes, fullTableName, ensurePluginSearchReady } = await import('@/core/search-registry')
+      const { tableStatus } = await import('@bakin/core/search/tables')
+      const logical = fullTableName('things')
+      expect(getHookRegistry().has('things.ping')).toBe(true)
+      expect(getContentTypes().has(logical)).toBe(true)
+      // The durable registration is written when the table is ensured (live activation does this; boot does it in its own pass).
+      await ensurePluginSearchReady('things')
+      expect(tableStatus(logical)).not.toBeNull()
+
+      // Suspend: hooks, exec tools and the search RUNTIME wiring go; the plugin state is gone; the durable table registration stays.
+      expect(await pluginRegistry.suspendPlugin('things')).toBe(true)
+      expect(getHookRegistry().has('things.ping')).toBe(false)
+      expect(getContentTypes().has(logical)).toBe(false)
+      expect(pluginRegistry.getPluginState('things')).toBeUndefined()
+      expect(tableStatus(logical)).not.toBeNull()
+      expect(await pluginRegistry.suspendPlugin('things')).toBe(false) // idempotent on an absent plugin
+
+      // Enable = activate the directory again: the content type re-registers over the data it kept.
+      await pluginRegistry.activateUserPluginFromDir(pluginDir, { cacheBust: true })
+      expect(getHookRegistry().has('things.ping')).toBe(true)
+      expect(getContentTypes().has(logical)).toBe(true)
+      expect(tableStatus(logical)).not.toBeNull()
+
+      // Uninstall is the destructive path: the table registration is retired.
+      await pluginRegistry.deactivatePlugin('things', { callShutdown: true, removeState: true })
+      expect(tableStatus(logical)).toBeNull()
+    })
+
+    it('ctx.approvals gates are swept by suspend (disable / hot reload) and by deactivate (spec D26)', async () => {
+      const { hasPluginGate } = await import('@/core/approvals/plugin-gates')
+      const activate = `ctx.approvals.registerGate('complete', { ownerState: () => 'live', onResolve: () => {} })`
+      const pluginDir = writeUserPlugin('gated', { activate })
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+      expect(hasPluginGate('gated', 'complete')).toBe(true)
+
+      expect(await pluginRegistry.suspendPlugin('gated')).toBe(true)
+      expect(hasPluginGate('gated', 'complete')).toBe(false)
+
+      await pluginRegistry.activateUserPluginFromDir(pluginDir, { cacheBust: true })
+      expect(hasPluginGate('gated', 'complete')).toBe(true)
+      await pluginRegistry.deactivatePlugin('gated', { callShutdown: false })
+      expect(hasPluginGate('gated', 'complete')).toBe(false)
     })
 
     it('registerWorkflow cross-plugin id collision THROWS and fails activation (R18)', async () => {
@@ -791,6 +846,35 @@ describe('PluginRegistryImpl', () => {
       })
     })
 
+    it('skips a user plugin the lock ledger marks disabled and lists it as disabled (row 98 containment)', async () => {
+      const pluginDir = writeUserPlugin('contained-user', {
+        activate: `global.__contained = (global.__contained || 0) + 1`,
+      })
+      const contentDir = await import('../../packages/core/src/content-dir')
+      contentDir.resetContentDir()
+      const { getPluginLockfilePath } = await import('../../packages/core/src/plugins/lockfile')
+      const lockPath = getPluginLockfilePath()
+      mkdirSync(dirname(lockPath), { recursive: true })
+      writeFileSync(lockPath, JSON.stringify({
+        version: 1,
+        plugins: {
+          'contained-user': {
+            source: pluginDir, type: 'local', ref: '', commitSha: '',
+            installedAt: '2026-05-25T02:57:29.278Z', version: '3.1.0', permissions: [], manifestSha: 'sha256:test',
+            disabled: true,
+          },
+        },
+      }))
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect((globalThis as any).__contained).toBeUndefined()
+      expect(pluginRegistry.getPluginIds()).not.toContain('contained-user')
+      expect(pluginRegistry.isPluginDisabled('contained-user')).toBe(true)
+      const listed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'contained-user')
+      expect(listed).toMatchObject({ status: 'disabled', source: 'user', version: '3.1.0', routes: 0 })
+    })
+
     it('reports a clear failure when a user plugin is not built', async () => {
       const pluginDir = writeUserPlugin('unbuilt-user')
       rmSync(join(pluginDir, 'dist'), { recursive: true, force: true })
@@ -982,6 +1066,57 @@ describe('PluginRegistryImpl', () => {
       })
       expect(failed.errorMessage).toContain('undeclared API route')
       expect(pluginRegistry.findRoute('undeclared-route', '/data', 'GET')).toBeNull()
+    })
+
+    it('registers declared socket routes and fails undeclared ones', async () => {
+      const route = `[{ path: '/live', summary: 'Live', open: function() {} }]`
+      writeUserPlugin('declared-socket', { socketRoutes: route, manifest: { contributes: { socketRoutes: [{ path: '/live', summary: 'Live' }] } } })
+      writeUserPlugin('undeclared-socket', { socketRoutes: route })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect(pluginRegistry.findSocketRoute('declared-socket', '/live')?.route.summary).toBe('Live')
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'undeclared-socket')
+      expect(failed).toMatchObject({ status: 'failed', errorCode: 'activation_failed' })
+      expect(failed.errorMessage).toContain('undeclared socket route /live')
+    })
+
+    it('fails a plugin that declares the same socket path twice', async () => {
+      const twice = `[{ path: '/live', summary: 'A', open: function() {} }, { path: '/live', summary: 'B', open: function() {} }]`
+      writeUserPlugin('twice-socket', { socketRoutes: twice, manifest: { contributes: { socketRoutes: [{ path: '/live', summary: 'Live' }] } } })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'twice-socket')
+      expect(failed.errorMessage).toContain('declares socket route /live twice')
+    })
+
+    it('closes tracked sockets when a plugin is swept and when the server shuts down', async () => {
+      const route = `[{ path: '/live', summary: 'Live', open: function() {} }]`
+      writeUserPlugin('socket-a', { socketRoutes: route, manifest: { contributes: { socketRoutes: [{ path: '/live', summary: 'Live' }] } } })
+      writeUserPlugin('socket-b', { socketRoutes: route, manifest: { contributes: { socketRoutes: [{ path: '/live', summary: 'Live' }] } } })
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+      const closes: string[] = []
+      const a = pluginRegistry.findSocketRoute('socket-a', '/live')!
+      const b = pluginRegistry.findSocketRoute('socket-b', '/live')!
+      // Generations are registry-wide tokens: a replacement plugin state can
+      // never reuse one an in-flight admission still holds.
+      expect(a.generation).not.toBe(b.generation)
+      pluginRegistry.trackSocket('socket-a', a.generation, { close: (code: number, reason: string) => { closes.push(`a:${code}:${reason}`) } })
+      const untrack = pluginRegistry.trackSocket('socket-b', b.generation, { close: (code: number) => { closes.push(`b:${code}`) } })
+      pluginRegistry.trackSocket('socket-b', b.generation, { close: (code: number) => { closes.push(`b2:${code}`) } })
+      untrack?.()
+
+      await pluginRegistry.suspendPlugin('socket-a', { callShutdown: false })
+      expect(closes).toEqual(['a:1012:Plugin restarting'])
+      expect(pluginRegistry.trackSocket('socket-a', a.generation, { close: () => {} })).toBeNull()
+      expect(pluginRegistry.isCurrent('socket-a', a.generation)).toBe(false)
+
+      await pluginRegistry.shutdownAll()
+      expect(closes).toEqual(['a:1012:Plugin restarting', 'b2:1001'])
+      // After shutdown no route admits and no socket can be tracked.
+      expect(pluginRegistry.findSocketRoute('socket-b', '/live')).toBeNull()
+      expect(pluginRegistry.trackSocket('socket-b', b.generation, { close: () => {} })).toBeNull()
     })
 
     it('fails user plugins with undeclared DECLARATIVE routes (T16 symmetric enforcement)', async () => {

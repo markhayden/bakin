@@ -22,6 +22,7 @@ const overlayClassName =
 
 export function interactiveOverlay(interactive: InteractiveAction): React.ReactElement {
   if (interactive.render) {
+    // eslint-disable-next-line @eslint-react/no-clone-element -- the caller's own overlay element (a router Link) must become the surface overlay; this is the one composition point for that, not a pattern to copy
     return React.cloneElement(interactive.render, {
       ...{ 'data-slot': 'surface-overlay', 'aria-label': interactive.label },
       className: cn(overlayClassName, interactive.render.props.className),

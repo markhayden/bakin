@@ -29,6 +29,7 @@ import type {
   HealthOwner,
   HealthRepairActionDefinition,
   PluginLogger,
+  PluginApprovalsAPI,
   PluginOperationsAPI,
   SearchAPI,
   TaskLogEntry,
@@ -56,7 +57,6 @@ export interface StorageAdapter {
   write(path: string, content: string): void
   append(path: string, content: string): void
   exists(path: string): boolean
-  readAll(): Record<string, string>
   list(path?: string): string[]
   remove(path: string): void
   rename(from: string, to: string): void
@@ -352,10 +352,18 @@ export type {
   HealthDisposition,
   HealthFullSweep,
   HealthGroup,
+  HealthDecisionChoice,
+  HealthHumanHandoff,
+  HealthHumanNeed,
+  HealthHumanResolution,
   HealthIncident,
+  HealthIncidentDeclaration,
+  HealthIncidentDeclarationResolution,
   HealthIncidentInput,
-  HealthInstructionsResolution,
-  HealthNavigateResolution,
+  HealthIncidentRequirement,
+  HealthMutationKind,
+  HealthMutationRefusalReason,
+  HealthRepairMutation,
   HealthNonEmptyArray,
   HealthObservation,
   HealthObservationInput,
@@ -365,9 +373,11 @@ export type {
   HealthRepairActionDefinition,
   HealthRepairApplyRequest,
   HealthRepairApplyResult,
-  HealthRepairSafety,
+  HealthRepairEffects,
+  HealthRepairMode,
   HealthRepairChange,
   HealthRepairPlanItem,
+  HealthRepairPlanItemInput,
   HealthRepairPlan,
   HealthRepairPrecondition,
   HealthRepairResolution,
@@ -378,7 +388,8 @@ export type {
   HealthResolution,
   HealthResource,
   HealthResourceKind,
-  HealthRerunResolution,
+  HealthSubject,
+  HealthSubjectKind,
   HealthyObservationInput,
   JsonObject,
   JsonValue,
@@ -471,6 +482,8 @@ export interface PluginContext {
   conversations: ConversationTurnsAPI
   /** Staged, cancellable, boot-aware progress for long-running work (#895) */
   operations: PluginOperationsAPI
+  /** This plugin's sign-off gates on the one approval primitive (spec D26) */
+  approvals: PluginApprovalsAPI
 }
 
 // ---------------------------------------------------------------------------
@@ -503,6 +516,7 @@ export interface PluginTask {
   scheduleJobId?: string
   projectId?: string
   brandId?: string
+  tags?: string[]
   availableAt?: string
   dueAt?: string
   source?: PluginTaskSource
@@ -533,6 +547,7 @@ export interface PluginTaskCreateInput {
   workflowId?: string
   projectId?: string
   brandId?: string
+  tags?: string[]
   parentId?: string | null
   availableAt?: string
   dueAt?: string
@@ -553,6 +568,7 @@ export interface PluginTaskUpdateInput {
   scheduleJobId?: string
   projectId?: string
   brandId?: string
+  tags?: string[]
   parentId?: string | null
   availableAt?: string | null
   dueAt?: string | null
@@ -860,6 +876,8 @@ export interface BakinPlugin {
    *
    */
   routes?: ReadonlyArray<DeclarativeAPIRoute<PluginContextLite, any, any, any>>
+  /** Declarative WebSocket routes, registered before `activate()` like `routes`. */
+  socketRoutes?: ReadonlyArray<import('@makinbakin/sdk/types').SocketRoute>
 }
 
 // ---------------------------------------------------------------------------

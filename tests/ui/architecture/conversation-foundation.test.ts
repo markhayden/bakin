@@ -37,7 +37,6 @@ describe('focused conversation foundation', () => {
     expect(sources).not.toMatch(
       /@\/|@makinbakin\/sdk|@bakin\/core|\b(?:window|document)\b|from ['"]react['"]/
     )
-    expect(read('src/components/conversation/fold.ts')).toContain("@makinbakin/sdk/conversation")
     // P-final: the barrel-era relative-time adapter stays deleted.
     expect(existsSync(resolve(ROOT, 'src/components/conversation/relative-time.ts'))).toBe(false)
   })

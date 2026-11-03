@@ -31,7 +31,7 @@ const fetchMock = mock((url: string | URL, init?: RequestInit) =>
 )
 globalThis.fetch = fetchMock as unknown as typeof fetch
 
-const { useTaskRunHistory } = await import('../../src/hooks/use-task-run-history')
+const { useTaskRunHistory } = await import('../../packages/sdk/src/hooks/use-task-run-history')
 
 const RUN = {
   runId: 'task:t1:d1', taskId: 't1', seq: 1, agent: 'pixel',

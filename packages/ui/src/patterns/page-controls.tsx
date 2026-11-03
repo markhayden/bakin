@@ -50,7 +50,7 @@ export function PageControls({
   const isToolbar = as === 'toolbar'
   const showDivider = divider ?? isToolbar
   const Component = isToolbar ? 'div' : 'section'
-  const parentOwnsIndicator = React.useContext(FilterIndicatorContext)
+  const parentOwnsIndicator = React.use(FilterIndicatorContext)
   const ownsIndicator = variant === 'filters' && !parentOwnsIndicator
   const controls = (
     <div data-slot="page-controls-set" className="flex min-w-0 flex-1 flex-wrap items-center gap-bakin-3">
@@ -79,7 +79,7 @@ export function PageControls({
         className,
       )}
     >
-      <FilterIndicatorContext.Provider value={parentOwnsIndicator || ownsIndicator}>
+      <FilterIndicatorContext value={parentOwnsIndicator || ownsIndicator}>
         {ownsIndicator ? (
           <div data-slot="page-controls-filters" className="flex min-w-0 flex-1 items-start gap-bakin-3">
             <span className="inline-flex h-[var(--bakin-layout-size-control)] shrink-0 items-center">
@@ -99,7 +99,7 @@ export function PageControls({
             {actions}
           </div>
         ) : null}
-      </FilterIndicatorContext.Provider>
+      </FilterIndicatorContext>
     </Component>
   )
 }

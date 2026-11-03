@@ -3,7 +3,7 @@ import { join } from 'path'
 
 import type { AgentRuntimeAdapter, RuntimeToolAccess } from '@bakin/core/adapters/runtime'
 import { readEmbeddedBakinSkillTemplate } from './bakin-skill-template'
-import { renderToolAccessInstructions } from './tool-access'
+import { renderToolAccessInstructions } from '@bakin/core/tool-access'
 import { maybeGetAppServices } from './app-services-store'
 import { createLogger } from './logger'
 
@@ -12,7 +12,7 @@ const log = createLogger('bakin-skill')
 // The bakin skill is one shared document (not per-agent), so it renders the
 // tool-access section with a generic `<agent>` placeholder. Conservative
 // out-of-process `mcp` default when app services aren't up.
-const DEFAULT_TOOL_ACCESS: RuntimeToolAccess = { style: 'mcp', mcpServerTemplate: 'bakin-<agent>' }
+const DEFAULT_TOOL_ACCESS: RuntimeToolAccess = { style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnToolsMode: false }
 
 function activeToolAccess(): RuntimeToolAccess {
   try {

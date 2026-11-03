@@ -38,7 +38,6 @@ import { activatePlugin, findRoute, callRoute } from '../test-helpers'
 import type { ExploreCatalogEntry } from '../../../plugins/explore/types'
 
 const SHA_A = 'a'.repeat(40)
-const SHA_B = 'b'.repeat(40)
 
 let activated: ActivatedPlugin
 
@@ -59,7 +58,6 @@ beforeAll(async () => {
         permissions: [],
         manifestSha: 'sha',
         installedAt: '2026-07-01T00:00:00Z',
-        remoteHeadSha: SHA_B,
       },
     },
   }))
@@ -108,10 +106,10 @@ describe('GET /api/plugins/explore/catalog', () => {
     })
     // Absent agent
     expect(byKey(entries, 'agent', 'rolo')).toMatchObject({ installed: false })
-    // Installed plugin with persisted stale-head marker
+    // Installed plugin: no updates engine in this harness, so unknown — never "up to date"
     expect(byKey(entries, 'plugin', 'messaging')).toMatchObject({
       installed: true,
-      updateAvailable: true,
+      updateAvailable: null,
       installedVersion: '1.0.0',
     })
     // Absent installable plugin

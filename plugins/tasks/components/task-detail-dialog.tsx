@@ -14,9 +14,11 @@ interface TaskDetailDrawerProps {
   onCancelEdit: () => void
   onDelete?: (task: Task) => void
   onDuplicate?: (task: Task) => void
+  /** A deep link's field to focus once the edit form is open (`assignee`). */
+  focusField?: string
 }
 
-export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdit, onCancelEdit, onDelete, onDuplicate }: TaskDetailDrawerProps) {
+export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdit, onCancelEdit, onDelete, onDuplicate, focusField }: TaskDetailDrawerProps) {
   // Single hook sequence for every render path (create / edit / detail) — all
   // interlocking state lives in useTaskDetail so the mode branch below never
   // changes hook order.
@@ -32,6 +34,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
         open={open}
         onClose={onClose}
         onCancelEdit={onCancelEdit}
+        focusField={focusField}
       />
     )
   }

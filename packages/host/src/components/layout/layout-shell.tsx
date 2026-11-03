@@ -20,9 +20,12 @@ export function shouldAutoCollapseActivityForViewport(viewportWidth: number): bo
 export function LayoutShell({
   sidebar,
   children,
+  fullscreen = false,
 }: {
   sidebar: React.ReactNode
   children: React.ReactNode
+  /** useFullscreen: the page alone — no sidebar, no activity rail, no header offset. */
+  fullscreen?: boolean
 }) {
   const { collapsed, toggle } = useSidebarContext()
   const { open: activityOpen, close: closeActivity } = useActivityContext()
@@ -41,10 +44,10 @@ export function LayoutShell({
     <>
       {/* One flex row: the kit rail's width drives content reflow — no
           hand-synced left offsets. */}
-      <div className={cn('fixed', SHELL_TOP_CLASS, 'inset-x-0 bottom-0 flex')}>
+      <div className={cn('fixed', fullscreen ? 'top-0' : SHELL_TOP_CLASS, 'inset-x-0 bottom-0 flex')}>
         {/* Desktop sidebar — the kit collapsible rail in content mode: the
             nav owns its icon-mode rendering, the header owns the toggle. */}
-        <div className="hidden min-h-0 md:flex">
+        <div className={cn('hidden min-h-0', !fullscreen && 'md:flex')}>
           <PageAside
             label="App sidebar"
             width="nav"
@@ -73,7 +76,7 @@ export function LayoutShell({
             every toggle). The mobile scrim is therefore a real, named
             dismiss control — reachable by keyboard and assistive tech —
             rather than a hidden click target. */}
-        {activityOpen ? (
+        {activityOpen && !fullscreen ? (
           <Button
             type="button"
             variant="ghost"
@@ -88,6 +91,7 @@ export function LayoutShell({
         <aside
           aria-label="Live Activity"
           data-slot="activity-panel"
+          hidden={fullscreen}
           className={cn('fixed bottom-0 right-0', SHELL_TOP_CLASS, 'z-50 max-w-full shrink-0 bg-bakin-canvas-default transition-[width] duration-150 ease-in-out md:static md:z-auto', activityOpen
               ? 'w-90 overflow-hidden border-l border-bakin-border-subtle'
               : 'w-0 overflow-visible border-l border-transparent')}

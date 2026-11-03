@@ -81,7 +81,7 @@ import {
   canonicalChangeSet,
   healthRepairApprovalKind,
   openNavigateApproval,
-  openRepairApproval,
+  openOperatorReview, openRepairApproval,
   pendingRepairApprovalFor,
   recoverInterruptedApplies,
   registerDoctorApprovalKinds,
@@ -118,11 +118,13 @@ async function seed() {
   registerPluginHealthRepairAction('approvals-test', {
     id: 'rebuild-index',
     name: 'Rebuild search index',
+    effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false },
+    mutation: 'none',
     operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
     plan: async () => {
       if (planRefreshesHealth) await refresh()
       return [{
-      id: 'rebuild', actionId: 'rebuild-index', title: 'Rebuild search index', reason: 'The index is corrupt.', safety: 'destructive',
+      id: 'rebuild', actionId: 'rebuild-index', title: 'Rebuild search index', reason: 'The index is corrupt.',
       incidentIds: [], observationIds: [], preconditions: [],
       changes: [{ kind: 'file', target: planTarget, action: 'delete', description: 'Drop and rebuild the search index.' }],
     }]
@@ -131,24 +133,53 @@ async function seed() {
   })
   registerPluginHealthCheck('approvals-test', {
     id: 'search', name: 'Search index', description: 'Checks the search index.', group: { key: 'search', label: 'Search' },
+    incidents: [
+      { id: 'corrupt', subjectKind: 'table', resolution: { type: 'repair', actionId: 'rebuild-index' }, required: 'always' },
+      { id: 'unreadable', subjectKind: 'table', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'never' },
+    ],
     run: async () => {
       if (postApplyMode === 'throw') throw new Error('engine timed out')
-      if (postApplyMode === 'unknown') return healthObserved([healthUnknown({ key: 'index', summary: 'Cannot read the index.', incident: { key: 'unreadable', title: 'Search index state unknown', impact: 'Unknown.', disposition: 'watch', resolution: { key: 'rerun', type: 'rerun', label: 'Re-run' } } })])
+      if (postApplyMode === 'unknown') return healthObserved([healthUnknown({ key: 'index', summary: 'Cannot read the index.', incident: { key: 'unreadable', title: 'Search index state unknown', impact: 'Unknown.', disposition: 'watch', subject: { kind: 'table', id: 'bakin_tasks' }, declarationId: 'unreadable', resolution: { key: 'diagnose', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' } } })])
       return healthObserved(unhealthy ? [healthError({
       key: 'index', summary: 'Search index is corrupt.',
-      incident: { key: 'corrupt', title: 'Search index is corrupt', impact: 'Search returns nothing.', disposition: 'action_required', resolution: { key: 'rebuild', type: 'repair', label: 'Rebuild', actionId: 'rebuild-index' } },
+      incident: { key: 'corrupt', title: 'Search index is corrupt', impact: 'Search returns nothing.', disposition: 'action_required', subject: { kind: 'table', id: 'bakin_tasks' }, declarationId: 'corrupt', resolution: { key: 'rebuild', type: 'repair', label: 'Rebuild', actionId: 'rebuild-index' } },
     })] : [healthHealthy({ key: 'index', summary: 'Search index is ready.' })])
     },
   }, 'Approvals Test')
   registerPluginHealthCheck('approvals-test', {
     id: 'auth', name: 'Provider auth', description: 'Checks provider credentials.', group: { key: 'runtime', label: 'Runtime' },
+    incidents: [{ id: 'expired', subjectKind: 'runtime', resolution: { type: 'human', needs: 'credential' }, required: 'always' }],
     run: async () => healthObserved(navigateUnhealthy ? [healthError({
       key: 'openai', summary: 'OpenAI auth expired.',
-      incident: { key: 'expired', title: 'OpenAI auth expired', impact: 'Turns on OpenAI models fail.', disposition: 'action_required', resolution: { key: 'login', type: 'navigate', label: 'Renew the key', href: '/settings?tab=integrations' } },
+      incident: { key: 'expired', title: 'OpenAI auth expired', impact: 'Turns on OpenAI models fail.', disposition: 'action_required', subject: { kind: 'runtime', id: 'pi' }, declarationId: 'expired', resolution: { key: 'login', type: 'human', needs: 'credential', label: 'Renew the key', href: '/settings?tab=integrations' } },
     })] : [healthHealthy({ key: 'openai', summary: 'OpenAI auth is valid.' })]),
   }, 'Approvals Test')
   await refresh('exec-1')
 }
+
+describe('openOperatorReview (#896 D3.4)', () => {
+  it('opens ONE review task with the failure receipt and no approval', async () => {
+    const report = getHealthReport()
+    const incident = report.incidents.find((row) => row.id.includes('corrupt'))!
+    const failure = { operationId: 'op-7', stage: 'installing', error: 'download stalled', at: '2026-10-20T00:00:00.000Z' }
+    const opened = await openOperatorReview({ contentDir: testDir, report, incidents: [incident], reason: { failure } })
+    expect(opened.request).toMatchObject({ kind: 'operator-review', status: 'sent', taskId: opened.taskId, failure, incidentIds: [incident.id] })
+    expect(opened.request.approvalId).toBeUndefined()
+    expect(createTaskWithEffects.mock.calls.at(-1)?.[0]).toMatchObject({
+      column: 'review', createdBy: 'system',
+      source: { pluginId: 'health', entityId: opened.request.id, purpose: 'operator-review' },
+      description: expect.stringContaining('already failed at installing: download stalled'),
+    })
+  })
+
+  it('names the planner error when nothing could be planned', async () => {
+    const report = getHealthReport()
+    const incident = report.incidents.find((row) => row.id.includes('corrupt'))!
+    const opened = await openOperatorReview({ contentDir: testDir, report, incidents: [incident], reason: { plannerError: 'action unregistered' } })
+    expect(opened.request.failure).toBeUndefined()
+    expect(createTaskWithEffects.mock.calls.at(-1)?.[0]).toMatchObject({ description: expect.stringContaining('could not plan a repair: action unregistered') })
+  })
+})
 
 async function openRepair() {
   const report = getHealthReport()
@@ -206,7 +237,7 @@ describe('opening approvals', () => {
     expect(createTaskWithEffects.mock.calls[0]?.[0]).toMatchObject({ column: 'review', createdBy: 'system', source: { pluginId: 'health', entityId: opened.request.id, purpose: 'approval-repair' } })
     expect((createTaskWithEffects.mock.calls[0]?.[0] as { assignee?: string }).assignee).toBeUndefined()
     expect(opened.request).toMatchObject({ kind: 'approval-repair', status: 'sent', taskId: 'task-1', approvalId: `health-repair:${opened.request.id}`, checkIds: ['approvals-test.search'] })
-    expect(opened.request.proposal).toMatchObject({ observationIds: ['approvals-test.search:index'], items: [{ actionId: 'approvals-test.rebuild-index', safety: 'destructive', changes: [{ kind: 'file', target: 'search-index', action: 'delete' }] }] })
+    expect(opened.request.proposal).toMatchObject({ observationIds: ['approvals-test.search:index'], items: [{ actionId: 'approvals-test.rebuild-index', effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false }, mode: 'one-click', changes: [{ kind: 'file', target: 'search-index', action: 'delete' }] }] })
     expect(opened.approval.status).toBe('pending')
     expect(opened.approval.owner).toMatchObject({ kind: 'health-repair', taskId: 'task-1', requestId: opened.request.id, incidentIds: [opened.incident.id] })
     expect(opened.approval.request.options.map((o) => o.id)).toEqual(['apply', 'dismiss'])

@@ -35,6 +35,7 @@ export { useHistoryBack } from './history-back'
 export { useUnsavedChangesGuard } from './unsaved-changes-guard'
 /** Inputs and result contract for complete unsaved-change protection. */
 export type {
+  UnsavedChangesGuardLocation,
   UnsavedChangesGuardOptions,
   UnsavedChangesGuardResult,
 } from './unsaved-changes-guard'

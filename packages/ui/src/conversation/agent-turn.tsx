@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '../primitives/alert'
 import { Button } from '../primitives/button'
 import { cn } from '../utils'
 import { ActivityGroup } from './activity-group'
+import { QuestionCard } from './question-card'
 import type {
   ConversationTextFormat,
   ConversationToolCall,
@@ -103,6 +104,10 @@ export interface AgentTurnProps {
   turn: Extract<ConversationTurn, { kind: 'agent' }>
   agent: ConversationAgent
   onRetry?: () => void
+  /** Sends a question card's formatted answer as the user's next message. */
+  onAnswerQuestion?: (text: string) => void
+  /** The thread has a turn in flight; question cards hold input. */
+  busy?: boolean
   onOpenCall?: (call: ConversationToolCall) => void
   renderAvatar?: ConversationAvatarRenderer
   /** Render text formats; markdown falls back to safe pre-wrapped text. */
@@ -123,6 +128,8 @@ export function AgentTurn({
   turn,
   agent,
   onRetry,
+  onAnswerQuestion,
+  busy = false,
   onOpenCall,
   renderAvatar,
   renderText,
@@ -186,6 +193,16 @@ export function AgentTurn({
                 calls={item.calls}
                 onOpenCall={onOpenCall}
                 formatSummary={formatToolSummary}
+              />
+            )
+          }
+          if (item.type === 'question') {
+            return (
+              <QuestionCard
+                key={item.question.id}
+                item={item}
+                onAnswer={onAnswerQuestion}
+                busy={busy || turn.status === 'streaming'}
               />
             )
           }

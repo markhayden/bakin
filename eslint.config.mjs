@@ -2,6 +2,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
+import eslintReact from "@eslint-react/eslint-plugin";
 import noPluginTopLevelSideEffects from "./scripts/eslint-rules/no-plugin-top-level-side-effects.mjs";
 
 // Bakin runs across Bun server code, browser UI code, CLI scripts, and tests.
@@ -107,6 +108,29 @@ const eslintConfig = defineConfig([
         destructuredArrayIgnorePattern: "^_",
         varsIgnorePattern: "^_",
       }],
+    },
+  },
+  // React rules (#966): @eslint-react's recommended-typescript preset on
+  // every .tsx file. eslint-plugin-react-hooks stays the ONE hooks
+  // authority (rules-of-hooks / exhaustive-deps above), so the preset's
+  // duplicate exhaustive-deps is off. The lint gate is zero-warning
+  // (`--max-warnings 0`): a rule is either on and clean, off with a reason,
+  // or excepted on one line with a reason.
+  {
+    files: ["**/*.tsx"],
+    ...eslintReact.configs["recommended-typescript"],
+    rules: {
+      ...eslintReact.configs["recommended-typescript"].rules,
+      // Duplicates of react-hooks/rules-of-hooks + exhaustive-deps — react-hooks owns hooks.
+      "@eslint-react/rules-of-hooks": "off",
+      "@eslint-react/exhaustive-deps": "off",
+      // Off by decision (spec D4.4): index keys are correct for the static
+      // lists this flags; the `Ref` name suffix is a style never adopted.
+      "@eslint-react/no-array-index-key": "off",
+      "@eslint-react/naming-convention-ref-name": "off",
+      // Everything else runs at the preset's severity (#966 fixed every
+      // finding — set-state-in-effect last, 164 sites; the gate is
+      // zero-warning, so warn and error both block).
     },
   },
   globalIgnores([
@@ -229,13 +253,9 @@ const eslintConfig = defineConfig([
               "@/components/plugin-settings-renderer",
               "@/components/sortable-head",
               "@/components/underline-tabs",
-              "@/hooks/*",
-              "@/types",
               "@/lib/utils",
               "@/lib/format",
               "../../src/components/**",
-              "../../src/hooks/**",
-              "../../src/types",
             ],
             message: "Plugins must import via @makinbakin/sdk/{ui,hooks,components,slots,types,utils}.",
           },
@@ -254,7 +274,6 @@ const eslintConfig = defineConfig([
       "packages/sdk/src/**/*.{ts,tsx}",
       "plugins/**/*.{ts,tsx}",
       "src/components/**/*.{ts,tsx}",
-      "src/hooks/**/*.{ts,tsx}",
       "src/lib/**/*.{ts,tsx}",
       "src/context/**/*.{ts,tsx}",
     ],
@@ -264,11 +283,11 @@ const eslintConfig = defineConfig([
       "packages/host/src/dev-client/**",
       // Deliberate full reloads, reasons in the arch test:
       "packages/sdk/src/navigation/unsaved-changes-guard.tsx",
-      "src/lib/browser-notify.ts",
+      "packages/sdk/src/internal/browser-notify.ts",
       "packages/host/src/components/layout/header.tsx",
       "packages/host/src/plugin-host/PluginHost.tsx",
       "packages/sdk/src/navigation/router.ts",
-      "src/hooks/use-sse.ts",
+      "packages/sdk/src/hooks/use-sse.ts",
     ],
     rules: {
       "no-restricted-syntax": ["error",

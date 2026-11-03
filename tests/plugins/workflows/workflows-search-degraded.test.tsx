@@ -76,7 +76,7 @@ afterAll(() => {
 // ─── Stubbed dep web (per workflows-page.test.tsx) ──────────────────────────
 
 // useQueryState backed by React state so typing in the search input works.
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => {
     const React = require('react') as typeof import('react')
     return React.useState(defaultValue)

@@ -1,6 +1,6 @@
 # Implementation Plan: Health Escalation, Task Liveness & Runtime-Migration Safety
 
-Spec: `health-escalation-and-migration-safety.md` (same directory). Revision 2 (after Mark's source-based plan review, 2026-10-01). Approved 2026-10-01.
+Spec: `health-escalation-and-migration-safety.md` (same directory). Revision 2 (after Mark's source-based plan review, 2026-10-01). Approved 2026-10-01. The one-shot upgrade code (PR 2 T2 / R5) was deleted 2026-10-19 (#945).
 
 ## Context
 

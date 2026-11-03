@@ -14,7 +14,7 @@
  * logic lives entirely inside the node component.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -121,6 +121,21 @@ describe('AgentCardNode — package state badge wiring', () => {
     primeState({ pixel: { agentId: 'pixel', state: 'update-available' } })
     renderCard()
     expect(screen.getByLabelText(/Package state: update available/)).toBeDefined()
+  })
+
+  it('review r2 #8: a managed row whose engine record offers an unskipped update shows the update badge; a skipped offer does not', () => {
+    const offer = {
+      id: 'package:pixel', group: 'available' as const, subject: { kind: 'package' as const, id: 'pixel', label: 'pixel' },
+      installed: { version: '1.0.0', display: '1.0.0' }, available: { version: '1.1.0', sha: 'b'.repeat(40), display: '1.1.0' },
+      reason: 'newer-version' as const, outcome: 'update-available' as const, source: { kind: 'git-ref', endpoint: 'github:x/pixel' }, fingerprint: 'fp',
+    }
+    primeState({ pixel: { agentId: 'pixel', state: 'managed', update: offer } })
+    renderCard()
+    expect(screen.getByLabelText(/Package state: update available/)).toBeDefined()
+    cleanup()
+    primeState({ pixel: { agentId: 'pixel', state: 'managed', update: { ...offer, skipped: { version: '1.1.0', sha: 'b'.repeat(40) } } } })
+    renderCard()
+    expect(screen.queryByLabelText(/Package state/)).toBeNull()
   })
 
   it('compact badge has no visible text label (compact mode dropped the label)', () => {

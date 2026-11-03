@@ -1,7 +1,8 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
+import { PluginLink, useQueryState, useRouter } from '@makinbakin/sdk/navigation'
+import { RosterRecoverPanel } from './roster-recover-panel'
 import { Plus, Settings2, ScrollText } from 'lucide-react'
 import {
   ReactFlow,
@@ -55,6 +56,7 @@ import { buildGraph } from '../lib/build-graph'
 import { AgentForm, type AgentFormData } from './agent-form'
 import { TeamManager } from './team-manager'
 import { PackageStateBadge, type PackageState } from './package-state-badge'
+import { packageDisplayState } from '../lib/package-display-state'
 import type { AgentWithStatus } from '../types'
 import './team-graph.css'
 
@@ -89,7 +91,8 @@ interface AgentNodeData extends Record<string, unknown> {
 export function AgentCardNode({ data }: NodeProps) {
   const { agent } = data as AgentNodeData
   const pkgState = usePackageState(agent.id)
-  const showBadge = pkgState && ATTENTION_STATES.includes(pkgState.state)
+  const displayState = pkgState ? packageDisplayState(pkgState) : undefined
+  const showBadge = displayState !== undefined && ATTENTION_STATES.includes(displayState)
 
   const statusLabel =
     agent.status === 'working' ? 'working' :
@@ -139,8 +142,8 @@ export function AgentCardNode({ data }: NodeProps) {
       <div className="flex min-h-20 flex-1 flex-col items-center gap-bakin-1 p-bakin-3 text-center">
         <div className="flex w-full items-center justify-center gap-bakin-2 leading-tight">
           <span className="truncate font-bakin-typography-weight-semibold text-bakin-text-primary">{agent.name}</span>
-          {showBadge && pkgState && (
-            <PackageStateBadge state={pkgState.state} compact />
+          {showBadge && displayState && (
+            <PackageStateBadge state={displayState} compact />
           )}
         </div>
         {/* Clipped text: a tooltip is the affordance, not a native title —
@@ -213,6 +216,8 @@ const nodeTypes: NodeTypes = {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function TeamGrid() {
+  // `?recover=1`: Health's roster findings, named on the page (self-healing 1.4b).
+  const [recoverParam, setRecoverParam] = useQueryState('recover', '')
   const router = useRouter()
   const agentsWithStatus = useAgentStore((s) => s.agentsWithStatus)
   const teams = useAgentStore((s) => s.teams)
@@ -373,7 +378,10 @@ export function TeamGrid() {
           <PageBody
             gap="content"
             className="h-full min-h-0 flex-1"
-            feedback={runtimeStatus.pending ? (
+            feedback={runtimeStatus.pending || recoverParam === '1' ? (
+              <>
+              {recoverParam === '1' ? <RosterRecoverPanel onDismiss={() => setRecoverParam('')} onChanged={() => { void reload() }} /> : null}
+              {runtimeStatus.pending ? (
               <Alert tone="attention">
                 <AlertTitle>{runtimeStatus.advice.title ?? 'Runtime config changed'}</AlertTitle>
                 <AlertDescription>
@@ -393,6 +401,8 @@ export function TeamGrid() {
                   </AlertAction>
                 ) : null}
               </Alert>
+              ) : null}
+              </>
             ) : undefined}
           >
             <PageCanvas

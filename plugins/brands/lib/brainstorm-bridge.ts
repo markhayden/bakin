@@ -15,8 +15,8 @@
 import { randomUUID } from 'crypto'
 
 
-import { conversationThreadId } from '../../../src/components/conversation/thread-id'
-import { createConversationTurnService } from '../../../src/core/conversation-turns'
+import { conversationThreadId } from '@bakin/core/conversation/thread-id'
+import { createConversationTurnService } from '@bakin/core/conversation/turns'
 import { createChatMeterHook } from '../../../src/core/conversation-metering'
 import { createLogger } from '../../../src/core/logger'
 import { appendDocBrainstormRow, getBrand, listDocBrainstormKeys, readDocBrainstorm, type BrandDocKind } from './store'

@@ -50,7 +50,7 @@ const repairOwner: ApprovalOwner = {
   proposal: {
     reportId: 'health-report-1',
     observationIds: ['health.search:engine'],
-    items: [{ actionId: 'search-rebuild', itemId: 'search-rebuild:bakin_tasks', safety: 'destructive', changes: [{ kind: 'search', target: 'bakin_tasks', action: 'rebuild', description: 'Drop and rebuild the table' }] }],
+    items: [{ actionId: 'search-rebuild', itemId: 'search-rebuild:bakin_tasks', effects: { deletesUserContent: true, spendsMoney: false, widensAuthorization: false }, mode: 'one-click', changes: [{ kind: 'search', target: 'bakin_tasks', action: 'rebuild', description: 'Drop and rebuild the table' }] }],
   },
 }
 const navigateOwner: ApprovalOwner = { kind: 'health-navigate', taskId: 't-3', requestId: 'repair-2', incidentIds: ['tasks:tasks:order-invalid'], href: '/tasks' }

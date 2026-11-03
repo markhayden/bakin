@@ -6,18 +6,22 @@
  */
 /** Fold persisted rows and live chunks into ordered render-ready turns. */
 export { foldConversation } from '@bakin/ui/conversation'
+/** The user message a question-card answer sends (and the fold recognises). */
+export { formatQuestionAnswer } from '@bakin/ui/conversation'
 export type {
+  QuestionAnswer,
+  QuestionState,
   ConversationChunk,
-  ConversationMessage,
   ConversationTextFormat,
   ConversationToolActivity,
   ConversationToolCall,
   ConversationTurn,
-  DisplayAttachment,
   FoldOptions,
   TurnItem,
   TurnStatus,
 } from '@bakin/ui/conversation'
+/** The canonical row types live in `@makinbakin/sdk/types`; ui keeps a pinned structural copy (message-contract.ts). */
+export type { BakinQuestion, ConversationMessage, DisplayAttachment } from '../types/conversation'
 
 /** Compact single-turn output for task and workflow embeds. */
 export { TurnOutputView, TurnToolChip, foldTurnChunks } from '@bakin/ui/conversation'
@@ -57,19 +61,19 @@ export {
   badgeFor,
   visibleIdFromLocation,
   withUnreadPrefix,
-} from '@/components/conversation/attention'
+} from '@bakin/ui/conversation'
 export type {
   AttentionActions,
   ConversationAttentionContext,
   ConversationDonePayload,
-} from '@/components/conversation/attention'
-export { playReplyChime } from '@/components/conversation/notification-sound'
-export { ConversationReplyToast } from '@/components/conversation/reply-toast'
-export { useConversationAttention } from '@/components/conversation/use-conversation-attention'
+} from '@bakin/ui/conversation'
+export { playReplyChime } from '@bakin/ui/conversation'
+export { ConversationReplyToast } from './reply-toast'
+export { useConversationAttention } from './use-conversation-attention'
 export type {
   ConversationAttentionConfig,
   ConversationAttentionTotals,
-} from '@/components/conversation/use-conversation-attention'
+} from './use-conversation-attention'
 
 /** Stable compact, absolute, and calendar-day timestamp helpers. */
 export {
@@ -129,6 +133,9 @@ export type {
   ComposerHandle,
   ComposerProps,
 } from '@bakin/ui/conversation'
+/** A draft's attachment thumbnails, as Composer shows them, for any composer (a terminal's compose sheet). */
+export { ComposerAttachmentTray } from '@bakin/ui/conversation'
+export type { ComposerAttachmentTrayProps } from '@bakin/ui/conversation'
 
 /** Accepted follow-ups waiting behind an active turn. */
 export { QueuedMessageList } from '@bakin/ui/conversation'

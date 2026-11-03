@@ -22,6 +22,7 @@ import type {
   RuntimeCredentialStatus,
   ProviderCredentialInventory,
   RestartAdvice,
+  RuntimeCompatibility,
   RuntimeConfigChangeKind,
   RuntimeRoutingPolicy,
   RuntimeRoutingSupport,
@@ -71,7 +72,7 @@ import {
 import { getOpenClawPath } from './home'
 import type { OpenClawRuntimeAdapterOptions } from './index'
 import { OpenClawApprovalGatewayClient } from './approval-gateway'
-import { OpenClawGatewayRpcClient, type OpenClawGatewayAcceptedAck } from './gateway-rpc'
+import { OpenClawGatewayRpcClient, gatewayCompatibility, type OpenClawGatewayAcceptedAck } from './gateway-rpc'
 import {
   CANONICAL_DURABLE_FILES,
   getOpenClawMemoryEntry,
@@ -190,7 +191,6 @@ interface OpenClawAgentTurnOptions {
   sessionKey?: string
   attachments?: MessageArgs['attachments']
   ephemeral?: boolean
-  toolsMode?: MessageArgs['toolsMode']
   /** Per-turn model override (`provider/model`); omit to use the agent default. */
   model?: string
   /** Per-turn thinking level; omit to use the runtime default. */
@@ -459,6 +459,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       walk(root, '')
       return out.sort()
     },
+    // Row 106: the roster lives in openclaw.json — the legacy `agents.list`
+    // ARRAY is the only shape where an entry can lack an id (the keyed
+    // `agents.entries` map carries the id in the key), so the key names the
+    // list position when a list exists and the entries map otherwise.
+    registryLocation: async () => {
+      const config = readOpenClawConfig()
+      const legacyList = Array.isArray(config?.agents?.list) && config!.agents!.list!.length > 0
+      return {
+        path: getOpenClawPath('openclaw.json'),
+        entryKey: (index: number) => (legacyList ? `agents.list[${index}]` : `agents.entries[<id>] (entry ${index + 1})`),
+      }
+    },
     workspaces: async (): Promise<Array<{ agentId: string; path: string }>> => {
       // ONE strict snapshot for the roster, the main identity and every path:
       // an unreadable openclaw.json throws here, where the lenient reads
@@ -561,7 +573,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         operation: 'send',
       })
       try {
-        warnUnenforceableToolPolicy(args, this.logger)
+        warnUnenforceableToolPolicy(args, this.logger, this.warnedUnenforceableToolPolicy)
         const toolActivityTap = this.createToolActivityTap(
           args.agentId,
           args.threadId,
@@ -580,8 +592,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           sessionKey: args.threadId,
           attachments: args.attachments,
           ephemeral: args.ephemeral,
-          toolsMode: args.toolsMode,
-          model: args.model,
+            model: args.model,
           thinking: args.thinking,
           oversizedOutputBytes: args.oversizedOutputBytes,
           signal: args.signal,
@@ -618,7 +629,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
     },
     stream: (args: MessageArgs): AsyncIterable<ChatChunk> => {
-      warnUnenforceableToolPolicy(args, this.logger)
+      warnUnenforceableToolPolicy(args, this.logger, this.warnedUnenforceableToolPolicy)
       const runtimeOutcome: { status?: 'completed' | 'failed' | 'aborted' } = {}
       const stream = this.streamChat({
         agentId: args.agentId,
@@ -626,7 +637,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         sessionKey: args.threadId,
         attachments: args.attachments,
         ephemeral: args.ephemeral,
-        toolsMode: args.toolsMode,
         model: args.model,
         thinking: args.thinking,
         oversizedOutputBytes: args.oversizedOutputBytes,
@@ -1142,7 +1152,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   /** OpenClaw agents reach Bakin exec tools via their native MCP client (verified: Phase-0 spike). */
   // perTurnExecToolFiltering false: exec tools ride session-static per-agent
   // MCP servers — toolsAllow/toolsDeny are unenforceable per turn here.
-  describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: false })
+  // perTurnToolsMode false: the 2026.9.5 agent RPC accepts no per-turn tool
+  // policy at all (#883) — toolsMode is dropped with a warning.
+  describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: false, perTurnToolsMode: false })
+  /** `<agentId>:<policy kind>` keys already warned about (warnUnenforceableToolPolicy). */
+  private readonly warnedUnenforceableToolPolicy = new Set<string>()
 
   /**
    * Presence-only credential report (P2.2): provider names from the agent's
@@ -1225,6 +1239,25 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       body: 'Agents reach Bakin tools through per-agent MCP servers that attach when the gateway starts. New or removed agents take effect after a restart.',
       action: { label: 'Restart gateway', kind: 'restart-runtime' },
     }
+  }
+
+  /**
+   * The gateway's protocol vs Bakin's floor, from the last recorded
+   * handshake (#1007 D7.10) — the same evidence `protocolFloorError` judged
+   * at connect. Never a live probe, never inferred from the CLI version.
+   */
+  compatibility = (): RuntimeCompatibility => gatewayCompatibility()
+
+  /**
+   * Adapter-private (duck-typed by the health composition, like
+   * `gatewayScopesVerified`): a FRESH floor verdict for a targeted rerun —
+   * dials the gateway when the connection is down (bounded by the connect
+   * timeout) so an `openclaw update` the operator just ran is seen, then
+   * answers from the handshake that connection recorded.
+   */
+  probeGatewayCompatibility = async (): Promise<RuntimeCompatibility> => {
+    await this.openClawChatGateway().probeHandshake()
+    return gatewayCompatibility()
   }
 
   private async runtimeAgentIds(): Promise<string[]> {
@@ -1903,7 +1936,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       timeout: OPENCLAW_AGENT_TIMEOUT_SECONDS,
       idempotencyKey,
     }
-    applyRuntimeMessageToolPolicy(params, opts)
     // BOTH sessionId and its canonical sessionKey: sessionId alone leaves
     // the run unregistered in the gateway's chat-abort registry (server-side
     // abort silently fails — the 2026-07-09 delete-didn't-abort incident;
@@ -2250,30 +2282,36 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 }
 
 /**
- * Per-turn tool policy → gateway params: toolsMode ONLY. The contract's
+ * Per-turn tool policy is NEVER forwarded to the gateway. The contract's
  * toolsAllow/toolsDeny name Bakin exec tools — OpenClaw's exec tools ride
  * session-static per-agent MCP servers, so per-turn filtering is not
  * enforceable here, and forwarding the fields as gateway-native tool policy
  * misapplied them to native tools (audit M3: `toolsAllow: ['read']`
- * restricted natives on OpenClaw while Pi filtered exec tools). The fields
- * are ignored with a loud warning (warnUnenforceableToolPolicy).
+ * restricted natives on OpenClaw while Pi filtered exec tools). `toolsMode`
+ * used to be forwarded as the native on/off knob until OpenClaw 2026.9.5
+ * closed the `agent` RPC schema with no tool-policy property at all (#883:
+ * "unexpected property 'toolsMode'; code=INVALID_REQUEST"). Every field is
+ * ignored with a loud warning, deduped once per agent and policy kind — a
+ * caller that adopts the fields would otherwise log every single turn.
+ * Callers needing a RESTRICTED turn feature-detect via
+ * describeToolAccess() (perTurnExecToolFiltering / perTurnToolsMode) and
+ * refuse instead of degrading.
  */
-function applyRuntimeMessageToolPolicy(params: Record<string, unknown>, opts: OpenClawAgentTurnOptions): void {
-  if (opts.toolsMode === 'none' || opts.toolsMode === 'auto') params.toolsMode = opts.toolsMode
-}
-
-/**
- * Loud honesty: callers supplying exec-tool filters must know OpenClaw cannot
- * enforce them per-turn. Deduped once per agent — a caller that adopts the
- * fields would otherwise log every single turn. (Callers can feature-detect
- * via describeToolAccess().perTurnExecToolFiltering === false and refuse
- * instead of degrading.)
- */
-const warnedUnenforceableToolPolicyAgents = new Set<string>()
-function warnUnenforceableToolPolicy(args: MessageArgs, logger: AdapterLogger): void {
+function warnUnenforceableToolPolicy(args: MessageArgs, logger: AdapterLogger, warned: Set<string>): void {
+  if (args.toolsMode !== undefined) {
+    const key = `${args.agentId}:toolsMode`
+    if (!warned.has(key)) {
+      warned.add(key)
+      logger.warn('toolsMode ignored: OpenClaw 2026.9.5+ accepts no per-turn tool policy on the agent RPC — tools stay as the agent is configured (#883)', {
+        agentId: args.agentId,
+        toolsMode: args.toolsMode,
+      })
+    }
+  }
   if (!args.toolsAllow?.length && !args.toolsDeny?.length) return
-  if (warnedUnenforceableToolPolicyAgents.has(args.agentId)) return
-  warnedUnenforceableToolPolicyAgents.add(args.agentId)
+  const key = `${args.agentId}:filters`
+  if (warned.has(key)) return
+  warned.add(key)
   logger.warn('toolsAllow/toolsDeny ignored: OpenClaw exec tools ride session-static MCP servers — per-turn exec-tool filtering is unenforceable on this runtime (fields are never applied to native tools)', {
     agentId: args.agentId,
     toolsAllow: args.toolsAllow?.length ?? 0,

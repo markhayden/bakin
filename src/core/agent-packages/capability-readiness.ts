@@ -86,6 +86,8 @@ export interface CapabilityReadiness {
   secrets: CapabilitySecretStatus[]
   /** False when the pack declares `platforms` and this box isn't one of them. */
   platformSupported: boolean
+  /** False when the installed manifest is missing, unreadable or no longer valid — nothing in it is trusted. */
+  manifestValid: boolean
   ready: boolean
   /** Human remediation lines for every non-ok leg (empty when ready). */
   missing: string[]
@@ -131,10 +133,16 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
   const binDir = getBakinPaths().bin
   const platform = binPlatformKey()
   const out: CapabilityReadiness[] = []
+  // A lockfile can carry a stale key beside the live one (`ocr@0.1.0` and `ocr@0.1.1`, both version 0.1.1 — seen on
+  // the operator's box after an upgrade): the SAME installed manifest is judged once, never twice.
+  const seen = new Set<string>()
 
   for (const [key, entry] of Object.entries(lock.packages)) {
     if (entry.kind !== 'skill-pack') continue
     const id = key.includes('@') ? key.slice(0, key.lastIndexOf('@')) : key
+    const identity = `${id}@${entry.version}`
+    if (seen.has(identity)) continue
+    seen.add(identity)
     const installed = readInstalledManifest(entry.kind, id, entry.version)
     if (!installed) continue
     if (!installed.ok) {
@@ -152,6 +160,7 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
         description: typeof raw?.description === 'string' ? raw.description : '',
         skills: [], bins: [], npm: [], models: [], prereqs: [], secrets: [],
         platformSupported: true,
+        manifestValid: false,
         ready: false,
         missing: [`${installed.reason} — reinstall: bakin packages install ${id}`],
       })
@@ -270,6 +279,7 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       prereqs,
       secrets,
       platformSupported,
+      manifestValid: true,
       ready: missing.length === 0,
       missing,
     })

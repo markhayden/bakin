@@ -140,6 +140,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 
 import {
   findRestartRecoveryCandidates,
+  recoverStrandedTasks,
   runRestartRecovery,
 } from '../../src/core/restart-recovery'
 import { checkRestartRecovery } from '../../plugins/health/lib/system-checks/restart-recovery'
@@ -605,6 +606,27 @@ describe('restart recovery', () => {
     expect(mockAddTaskLog).not.toHaveBeenCalledWith('task-r6', 'system', expect.anything(), expect.anything())
     expect(result.recovered).toBe(1)
     expect(result.skipped).toBe(1)
+  })
+
+  it('recoverStrandedTasks (self-healing 1.3c/1.3d): settles exactly the named tasks under the same engine and reports each outcome', async () => {
+    setColumns({
+      inProgress: [
+        { id: 'task-r', title: 'Recoverable', agent: 'pixel' },
+        { id: 'task-x', title: 'Exhausted', agent: 'pixel', recoveries: 3 },
+        { id: 'task-live', title: 'Live', agent: 'pixel' },
+      ],
+    })
+    liveRun('task-live')
+    const outcomes = await recoverStrandedTasks(tempDir, ['task-r', 'task-x', 'task-live', 'ghost'])
+    expect(outcomes).toEqual([
+      { id: 'task-r', outcome: 'recovered' },
+      { id: 'task-x', outcome: 'blocked', reason: expect.stringContaining('limit') },
+      { id: 'task-live', outcome: 'skipped', reason: expect.stringContaining('live run') },
+      { id: 'ghost', outcome: 'skipped', reason: expect.stringContaining('not stranded') },
+    ])
+    expect(mockRecoverTask).toHaveBeenCalledTimes(1)
+    expect(mockRecoverTask).toHaveBeenCalledWith('task-r')
+    expect(mockBlockTask).toHaveBeenCalledTimes(1)
   })
 
   it('does not mutate candidates when restart recovery is disabled', async () => {

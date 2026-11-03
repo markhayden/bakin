@@ -22,7 +22,7 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-import type { ConversationTurnRow as CoreRow } from '../../src/core/conversation-turns'
+import type { ConversationTurnRow as CoreRow } from '../../packages/core/src/conversation/turns'
 import type { ConversationTurnRow as SdkRow } from '../../packages/sdk/src/types/conversation-turns'
 
 // Non-distributive mutual assignability: [A] extends [B] AND [B] extends [A].

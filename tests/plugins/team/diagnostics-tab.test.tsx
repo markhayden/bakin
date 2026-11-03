@@ -318,12 +318,14 @@ describe('DiagnosticsTab', () => {
     expect(await screen.findByText('Configured budget unavailable.')).toBeDefined()
     expect(screen.queryByText(/of 64\.0 KiB budget/)).toBeNull()
 
+    // The Dispatch containment panel reads /api/settings too; the pin is the context panel's ONE retry.
+    const attemptsBeforeRetry = settingsAttempts
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry context budget' })) })
     await waitFor(() => {
       const progress = screen.getByRole('progressbar', { name: 'Estimated per-dispatch context' })
       expect(progress.getAttribute('aria-valuemax')).toBe('65536')
     })
-    expect(settingsAttempts).toBe(2)
+    expect(settingsAttempts).toBe(attemptsBeforeRetry + 1)
   })
 
   it('turns a hung context report into a retryable timeout', async () => {

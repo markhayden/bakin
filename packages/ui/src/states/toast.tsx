@@ -59,7 +59,7 @@ export type ToastActionProps = React.ComponentPropsWithoutRef<'button'>
  * link. Reads its tone from the surrounding Toast.
  */
 export function ToastAction({ className, type = 'button', ...props }: ToastActionProps) {
-  const tone = React.useContext(ToastToneContext)
+  const tone = React.use(ToastToneContext)
   return (
     <button
       {...props}
@@ -161,7 +161,7 @@ export function Toast({
       ) : <span aria-hidden="true" />}
       {action ? (
         <div data-slot="toast-actions" className="col-start-2 flex min-w-0 flex-wrap items-center gap-bakin-2">
-          <ToastToneContext.Provider value={tone}>{action}</ToastToneContext.Provider>
+          <ToastToneContext value={tone}>{action}</ToastToneContext>
         </div>
       ) : null}
     </div>

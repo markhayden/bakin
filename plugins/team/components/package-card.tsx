@@ -6,10 +6,11 @@
  * import — overview-tab.tsx needs PackageCardBody, and
  * agent-detail.tsx already needs OverviewTab.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Info, RefreshCw, Trash } from 'lucide-react'
 import {
   Alert,
+  AlertAction,
   AlertDescription,
   AlertTitle,
   Badge,
@@ -27,7 +28,9 @@ import { useRouter } from '@makinbakin/sdk/navigation'
 import { Inline, Panel } from '@makinbakin/sdk/layout'
 import { ConfirmDialog, CopyButton, KeyValue, OperationProgress, StatusBadge, type KeyValueItem } from '@makinbakin/sdk/patterns'
 import { toast, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
+import { isUpdateOffered } from '@makinbakin/sdk/types'
 import { PackageStateBadge } from './package-state-badge'
+import { packageDisplayState } from '../lib/package-display-state'
 import { AdoptDialog } from './adopt-dialog'
 import { usePackageOperation } from '../hooks/use-package-operation'
 import type { PackageStateRow } from '../types'
@@ -94,6 +97,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const router = useRouter()
   const isMain = agentId === mainAgentId
   const refreshPackageStates = useAgentStore((s) => s.refreshPackageStates)
+  const packageStatesError = useAgentStore((s) => s.packageStatesError)
+  // Read only while there is something to say: `packageStatesAt` moves on every successful read, and this card must not re-render for it.
+  const packageStatesAt = useAgentStore((s) => (s.packageStatesError ? s.packageStatesAt : null))
   const loadAgents = useAgentStore((s) => s.load)
   const [adoptOpen, setAdoptOpen] = useState(false)
   const [updateOpen, setUpdateOpen] = useState(false)
@@ -102,14 +108,88 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const hasPackage = Boolean(packageState?.entry && (state === 'managed' || state === 'update-available'))
-  const updateAvailable = Boolean(packageState?.updateStatus?.upgradeAvailable || state === 'update-available')
-  const displayState = updateAvailable ? 'update-available' : state
+  const update = packageState?.update
+  // ONE derivation with the grid badge; the `updates.changed` re-read lives
+  // with the roster (the host's AgentThemeProvider), so a scheduled engine
+  // pass lands on every Team surface, not only while this card is mounted.
+  const displayState = packageState ? packageDisplayState(packageState) : state
+  const updateAvailable = displayState === 'update-available'
+  const [retrying, setRetrying] = useState(false)
+  const retryPackageRead = async (): Promise<void> => {
+    setRetrying(true)
+    try { await refreshPackageStates() } finally { setRetrying(false) }
+  }
 
   // Sync and remove run as operations (#895): the dialog follows them live and
   // the route's old answer arrives as the operation result.
-  const syncOp = usePackageOperation()
-  const removeOp = usePackageOperation()
   const removeDeletesAgent = useRef(false)
+  const syncOp = usePackageOperation({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) { setActionError(settle.error); return }
+      const settled = settle.result
+      const body = (settled.body ?? {}) as Record<string, unknown>
+      if (settled.httpStatus === 409 && body.migrationRequired) {
+        setActionError('One-time block migration required — run `bakin agents sync` and confirm, or use the Health page Repair flow.')
+        return
+      }
+      if (settled.httpStatus !== 200 || body.ok === false) {
+        setActionError(typeof body.error === 'string' ? body.error : 'Agent sync failed.')
+        return
+      }
+      const receipt = (body.receipt ?? {}) as {
+        blocks?: Array<{ action: string; file: string }>
+        skipped?: unknown[]
+        package?: { changed?: boolean; versionBefore?: string; versionAfter?: string }
+        verification?: { status?: string }
+      }
+      const recomposed = (receipt.blocks ?? []).filter((b) => b.action === 'recomposed').map((b) => b.file)
+      const skipped = receipt.skipped ?? []
+      const parts = [
+        receipt.package?.changed
+          ? `Updated ${receipt.package.versionBefore} → ${receipt.package.versionAfter}.`
+          : 'Already at the latest source.',
+        recomposed.length > 0 ? `Recomposed: ${recomposed.join(', ')}.` : 'All blocks current.',
+        skipped.length > 0 ? `${skipped.length} user-edited file(s) preserved (reclaim to overwrite).` : null,
+        `Verification: ${receipt.verification?.status ?? 'unknown'}.`,
+      ].filter(Boolean)
+      void refreshPackageStates()
+      // Sync succeeded: surface the receipt as a toast and auto-close the
+      // dialog. Errors keep the dialog open (actionError is shown inline).
+      toast(parts.join(' '), 'success')
+      setUpdateOpen(false)
+      syncOp.reset()
+    },
+  })
+  const removeOp = usePackageOperation({
+    onSettle: (settle) => {
+      if (settle.error !== undefined) { setActionError(settle.error); return }
+      const settled = settle.result
+      const deleteAgent = removeDeletesAgent.current
+      const body = (settled.body ?? {}) as Record<string, unknown>
+      if (settled.httpStatus !== 200 || body.ok === false) {
+        setActionError(typeof body.error === 'string' ? body.error : 'Agent package removal failed.')
+        return
+      }
+      const result = body.result && typeof body.result === 'object'
+        ? body.result as { deletedAgent?: boolean; deleteAgentError?: string }
+        : null
+      if (deleteAgent && result?.deletedAgent !== true) {
+        const detail = result?.deleteAgentError ? ` ${result.deleteAgentError}` : ''
+        setActionError(`Agent package was orphaned, but the OpenClaw agent was not deleted.${detail}`)
+        void refreshPackageStates()
+        void loadAgents()
+        return
+      }
+      if (deleteAgent) {
+        void loadAgents()
+        setRemoveOpen(false)
+        router.push('/team')
+      } else {
+        setActionMessage('Agent orphaned.')
+        void refreshPackageStates()
+      }
+    },
+  })
   const actionBusy = syncOp.busy || removeOp.busy
 
   function syncPackage() {
@@ -133,80 +213,20 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
     }))
   }
 
-  useEffect(() => {
-    if (syncOp.error) setActionError(syncOp.error)
-  }, [syncOp.error])
 
-  const syncResult = syncOp.result
-  const resetSync = syncOp.reset
-  useEffect(() => {
-    const settled = syncResult
-    if (!settled) return
-    const body = (settled.body ?? {}) as Record<string, unknown>
-    if (settled.httpStatus === 409 && body.migrationRequired) {
-      setActionError('One-time block migration required — run `bakin agents sync` and confirm, or use the Health page Repair flow.')
-      return
-    }
-    if (settled.httpStatus !== 200 || body.ok === false) {
-      setActionError(typeof body.error === 'string' ? body.error : 'Agent sync failed.')
-      return
-    }
-    const receipt = (body.receipt ?? {}) as {
-      blocks?: Array<{ action: string; file: string }>
-      skipped?: unknown[]
-      package?: { changed?: boolean; versionBefore?: string; versionAfter?: string }
-      verification?: { status?: string }
-    }
-    const recomposed = (receipt.blocks ?? []).filter((b) => b.action === 'recomposed').map((b) => b.file)
-    const skipped = receipt.skipped ?? []
-    const parts = [
-      receipt.package?.changed
-        ? `Updated ${receipt.package.versionBefore} → ${receipt.package.versionAfter}.`
-        : 'Already at the latest source.',
-      recomposed.length > 0 ? `Recomposed: ${recomposed.join(', ')}.` : 'All blocks current.',
-      skipped.length > 0 ? `${skipped.length} user-edited file(s) preserved (reclaim to overwrite).` : null,
-      `Verification: ${receipt.verification?.status ?? 'unknown'}.`,
-    ].filter(Boolean)
-    void refreshPackageStates()
-    // Sync succeeded: surface the receipt as a toast and auto-close the
-    // dialog. Errors keep the dialog open (actionError is shown inline).
-    toast(parts.join(' '), 'success')
-    setUpdateOpen(false)
-    resetSync()
-  }, [syncResult, resetSync, refreshPackageStates])
-
-  useEffect(() => {
-    if (removeOp.error) setActionError(removeOp.error)
-  }, [removeOp.error])
-
-  useEffect(() => {
-    const settled = removeOp.result
-    if (!settled) return
-    const deleteAgent = removeDeletesAgent.current
-    const body = (settled.body ?? {}) as Record<string, unknown>
-    if (settled.httpStatus !== 200 || body.ok === false) {
-      setActionError(typeof body.error === 'string' ? body.error : 'Agent package removal failed.')
-      return
-    }
-    const result = body.result && typeof body.result === 'object'
-      ? body.result as { deletedAgent?: boolean; deleteAgentError?: string }
-      : null
-    if (deleteAgent && result?.deletedAgent !== true) {
-      const detail = result?.deleteAgentError ? ` ${result.deleteAgentError}` : ''
-      setActionError(`Agent package was orphaned, but the OpenClaw agent was not deleted.${detail}`)
-      void refreshPackageStates()
-      void loadAgents()
-      return
-    }
-    if (deleteAgent) {
-      void loadAgents()
-      setRemoveOpen(false)
-      router.push('/team')
-    } else {
-      setActionMessage('Agent orphaned.')
-      void refreshPackageStates()
-    }
-  }, [removeOp.result, refreshPackageStates, loadAgents, router])
+  // No successful package read yet (review r7 #5): nothing is KNOWN about
+  // this agent's package — never a default "unmanaged" with an Adopt button,
+  // for the main agent too. The defined recovery composition (Alert
+  // WithAction): title, description, one local action.
+  if (packageStatesError !== null && packageStatesAt === null) {
+    return (
+      <Alert tone="attention" data-testid="package-state-unavailable">
+        <AlertTitle>Package state unavailable</AlertTitle>
+        <AlertDescription>{packageStatesError} Nothing is known about this agent's package yet.</AlertDescription>
+        <AlertAction><Button size="xs" variant="outline" busy={retrying} onClick={() => { void retryPackageRead() }}>Retry</Button></AlertAction>
+      </Alert>
+    )
+  }
 
   // Main agent is the user's persona — adopting/replacing it doesn't make
   // sense. Show a different framing instead of the Adopt button.
@@ -226,6 +246,14 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
 
   return (
     <div className="grid gap-bakin-3">
+      {packageStatesError && packageStatesAt && (
+        // The rows below are LAST KNOWN (review r6 #3): the latest read failed, and the badge/actions describe that earlier state.
+        <Alert tone="attention" data-testid="package-state-stale">
+          <AlertTitle>Package state is from an earlier read</AlertTitle>
+          <AlertDescription>{packageStatesError} Last read {new Date(packageStatesAt).toLocaleString()}.</AlertDescription>
+          <AlertAction><Button size="xs" variant="outline" busy={retrying} onClick={() => { void retryPackageRead() }}>Retry</Button></AlertAction>
+        </Alert>
+      )}
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-bakin-2">
         <PackageStateBadge state={displayState} packageId={packageState?.packageId} />
         <Inline gap="dense">
@@ -283,14 +311,14 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
             packageId={packageState.packageId}
             version={packageState.version}
           />
-          {packageState.updateStatus?.upgradeAvailable && (
+          {update && isUpdateOffered(update) && (
             <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-accent">
-              Latest version {packageState.updateStatus.latestVersion ?? 'available'} is available.
+              Latest version {update.available?.display ?? 'available'} is available.
             </p>
           )}
-          {packageState.updateStatus?.error && (
+          {update?.attempt?.error !== undefined && (
             <p className="m-0 text-bakin-typography-size-meta text-bakin-signal-danger">
-              Update check failed: {packageState.updateStatus.error}
+              Last update check failed: {update.attempt.error}
             </p>
           )}
         </div>
@@ -325,7 +353,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
               Bakin pulls the latest package source for {agentId}, recomposes the managed blocks (context layers + template + lessons), re-projects skills and assets, verifies the result, and writes a receipt. Content outside the managed blocks is never touched; `.userEdited` skills/assets are skipped with a reclaim hint.
             </DialogDescription>
           </DialogHeader>
-          {packageState?.updateStatus && (
+          {update && (
             <div className="border-y border-bakin-border-subtle py-bakin-4">
               <div className="grid min-w-0 gap-bakin-4 sm:grid-cols-2">
                 <div>
@@ -333,10 +361,10 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                     Current version
                   </Overline>
                   <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-text-primary">
-                    {packageState.updateStatus.currentVersion || packageState.version || packageState.entry?.version || 'unknown'}
+                    {update.installed?.display || packageState?.version || packageState?.entry?.version || 'unknown'}
                   </p>
                   <Text size="meta" tone="muted" mono as="p" className="mt-bakin-1">
-                    commit {packageState.updateStatus.currentCommitSha?.slice(0, 7) || packageState.entry?.commitSha?.slice(0, 7) || 'unknown'}
+                    commit {update.installed?.sha?.slice(0, 7) || packageState?.entry?.commitSha?.slice(0, 7) || 'unknown'}
                   </Text>
                 </div>
                 <div>
@@ -344,10 +372,10 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
                     Available version
                   </Overline>
                   <p className="m-0 mt-bakin-1 font-bakin-typography-family-mono text-bakin-typography-size-title font-bakin-typography-weight-semibold text-bakin-signal-accent">
-                    {packageState.updateStatus.latestVersion ?? 'latest'}
+                    {update.available?.display ?? (update.outcome === 'current' ? 'up to date' : 'unknown')}
                   </p>
                   <Text size="meta" tone="muted" mono as="p" className="mt-bakin-1">
-                    commit {packageState.updateStatus.latestCommitSha?.slice(0, 7) || 'unknown'}
+                    commit {update.available?.sha?.slice(0, 7) || 'unknown'}
                   </Text>
                 </div>
               </div>

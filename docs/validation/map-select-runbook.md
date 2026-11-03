@@ -41,9 +41,9 @@ gate-discord runbook config:
 The `discord:channel:` prefix on the approvals alias is REQUIRED — bare ids
 fall back to approver DMs (`.claude/knowledge/workflow-approvals.md`).
 
-`plugin-settings/workflows.json`:
+`settings.json` (Settings → Channels / System & Alerts):
 ```json
-{ "approvalChannelAlerts": true, "approvalChannel": "approvals", "requireRejectReason": true }
+{ "approvals": { "channelAlerts": true, "channel": "approvals", "requireRejectReason": true } }
 ```
 
 **Restart `bun run instance dev` after writing these files directly** — the
@@ -92,7 +92,7 @@ variants per run, and the prompt gate blocks generation until you approve.
 1. `happy` — full journey; proves fan-out ids/context, ordered join,
    consolidation end state (1 asset / 3 versions / winner current / losers
    trashed), both Discord gates (selection approval must record
-   `source: 'channel'`).
+   provider provenance: `channel` is `discord` or `runtime`, `actor.kind` is `channel-user`, `evidence` is `provider`).
 2. `reject-prompt` — spend guard: rejection rewinds with ZERO children spawned.
 3. `retry-child` — per-child cancel via route → join blocks → retry reuses the
    childTaskId → join completes ordered.

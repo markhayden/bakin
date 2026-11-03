@@ -1,7 +1,7 @@
 # Spec: OpenClaw 2026.9.5 Override-Scope Gate (#880)
 
 **Issue:** https://github.com/markhayden/bakin/issues/880
-**Status:** approved 2026-09-20 (interview complete)
+**Status:** approved 2026-09-20 (interview complete). Sibling drift #883 (`toolsMode` rejected by the same 9.5 schema) closed 2026-10-19 with the same honesty pattern — the adapter drops the field with a warning and declares `perTurnToolsMode: false`.
 **Sibling breakage:** #873 (agents.entries). **Related filed, out of scope:** #881 (search
 honesty gaps), #855 (SVG enrichment).
 

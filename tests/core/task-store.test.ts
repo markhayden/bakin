@@ -756,14 +756,15 @@ describe('escalateTaskToReview (Health hand-over, spec D-G3)', () => {
     expect(getSharedBakinTaskStore().getSync(t.id)!).toMatchObject({ column: 'review', order: before })
   })
 
-  it('a BLOCKED task stays blocked with its reason — the operator needs that context', async () => {
+  it('a BLOCKED task moves to Review with its reason carried onto the log line (#896 review r6)', async () => {
     const t = await createTask('blocked repair')
     await moveTask(t.id, 'inProgress')
     await blockTask(t.id, 'installer hung at 40%')
-    expect(escalateTaskToReview(t.id, 'Health: not fixed after 12h — handed back to you.')).toBeNull()
+    expect(escalateTaskToReview(t.id, 'Health: not fixed after 12h — handed back to you.')).toBe('blocked')
     const stored = getSharedBakinTaskStore().getSync(t.id)!
-    expect(stored).toMatchObject({ column: 'blocked', blockedReason: 'installer hung at 40%' })
-    expect(stored.log.at(-1)).toMatchObject({ author: 'health', message: expect.stringContaining('not fixed after 12h') })
+    expect(stored.column).toBe('review')
+    expect(stored.blockedReason).toBeUndefined()
+    expect(stored.log.at(-1)).toMatchObject({ author: 'health', message: 'Health: not fixed after 12h — handed back to you. (was blocked: installer hung at 40%)' })
   })
 })
 

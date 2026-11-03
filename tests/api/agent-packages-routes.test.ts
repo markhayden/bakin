@@ -81,8 +81,21 @@ function installRuntimeMock(): void {
   ;(globalThis as TestGlobal).__bakinAppServices = { runtime: appRuntime }
 }
 
+let observeMode: 'real' | 'throw' | 'blocked' = 'real'
+import * as realObserve from '../../src/core/updates/observe'
+mock.module('../../src/core/updates/observe', () => ({
+  ...realObserve,
+  observeInstalledPackage: async (key: string) => {
+    if (observeMode === 'throw') throw new Error('ls-remote: offline')
+    if (observeMode === 'blocked') return { installed: { version: '0.1.0', display: '0.1.0' }, outcome: 'blocked', blockedReason: 'no remote ref: release-1' }
+    return realObserve.observeInstalledPackage(key)
+  },
+}))
+
 import * as installRoute from '../../packages/host/src/api/agent-packages/install'
 import * as listRoute from '../../packages/host/src/api/agent-packages/list'
+import { joinPackageUpdates } from '../../packages/host/src/api/agent-packages/list'
+import type { UpdateRecord } from '../../packages/sdk/src/types/updates'
 import * as dynamicRoute from '../../packages/host/src/api/agent-packages/dynamic'
 import * as packagesListRoute from '../../packages/host/src/api/packages/list'
 import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
@@ -192,7 +205,7 @@ describe('GET /api/agent-packages', () => {
     await settleRoute(installRoute.post(instReq))
 
     const { req, url } = makeRequest('GET', '/api/agent-packages')
-    const res = await listRoute.get(req, url)
+    const res = await listRoute.get(req)
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.ok).toBe(true)
@@ -229,7 +242,7 @@ describe('GET /api/agent-packages', () => {
     expect((await rRes.json()).receipt.agentId).toBe('pixel')
 
     const { req, url } = makeRequest('GET', '/api/agent-packages')
-    const res = await listRoute.get(req, url)
+    const res = await listRoute.get(req)
     expect(res.status).toBe(200)
     const body = await res.json()
     const pixelEntry = body.agents.find((a: { agentId: string }) => a.agentId === 'pixel')
@@ -274,30 +287,99 @@ describe('GET /api/agent-packages', () => {
     expect(againRes.status).toBe(200)
   })
 
-  it('enriches package rows with update status when check=1 without mutating installed version', async () => {
+  it('review r6 #1/#4: a --check whose upstream question went unanswered FAILS the operation (502, ok:false, the receipt attached); a blocked verdict is a 200 that says blocked, never "unchanged"', async () => {
     const src = seedAgentPackage()
     {
-      const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
+      const { req } = makeRequest('POST', '/api/agent-packages/install', { source: src })
+      await settleRoute(installRoute.post(req))
+    }
+    observeMode = 'throw'
+    try {
+      const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/sync', { check: true })
+      const res = await settleRoute(dynamicRoute.handler(req, url))
+      expect(res.status).toBe(502)
+      const body = await res.json()
+      expect(body.ok).toBe(false)
+      expect(body.error).toBe('ls-remote: offline')
+      expect(body.receipt.package.checkError).toBe('ls-remote: offline')
+      expect(body.receipt.package.changed).toBe(false)
+    } finally {
+      observeMode = 'real'
+    }
+    observeMode = 'blocked'
+    try {
+      const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/sync', { check: true })
+      const res = await settleRoute(dynamicRoute.handler(req, url))
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.ok).toBe(true)
+      expect(body.receipt.package).toMatchObject({ changed: false, checkOutcome: 'blocked', checkReason: 'no remote ref: release-1' })
+      expect(body.receipt.package.checkError).toBeUndefined()
+    } finally {
+      observeMode = 'real'
+    }
+  })
+
+  it('carries no update record without a running updates engine — the route never probes a source', async () => {
+    const src = seedAgentPackage()
+    {
+      const { req } = makeRequest('POST', '/api/agent-packages/install', { source: src })
       await settleRoute(installRoute.post(req))
     }
 
-    const manifestPath = join(src, 'bakin-package.json')
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
-    writeFileSync(manifestPath, JSON.stringify({ ...manifest, version: '0.2.0' }))
-
-    const { req, url } = makeRequest('GET', '/api/agent-packages?check=1')
-    const res = await listRoute.get(req, url)
+    const { req } = makeRequest('GET', '/api/agent-packages')
+    const res = await listRoute.get(req)
 
     expect(res.status).toBe(200)
     const body = await res.json()
     const pixelEntry = body.agents.find((a: { agentId: string }) => a.agentId === 'pixel')
     expect(pixelEntry?.version).toBe('0.1.0')
-    expect(pixelEntry?.entry?.version).toBe('0.1.0')
-    expect(pixelEntry?.updateStatus).toMatchObject({
-      currentVersion: '0.1.0',
-      latestVersion: '0.2.0',
-      upgradeAvailable: true,
+    expect(pixelEntry?.update).toBeUndefined()
+  })
+
+  it('joins the engine record of each managed package by its lockfile key id', () => {
+    const record = (id: string, outcome: UpdateRecord['outcome']): UpdateRecord => ({
+      id,
+      group: 'available',
+      subject: { kind: 'package', id: id.slice('package:'.length), label: id },
+      outcome,
+      source: { kind: 'git-ref', endpoint: 'github:examples/pixel' },
+      fingerprint: 'fp',
     })
+    const records = new Map([
+      ['package:examples/pixel', record('package:examples/pixel', 'update-available')],
+      ['package:orca', record('package:orca', 'current')],
+    ])
+    const lockEntry = (version: string, commitSha = '') => ({ kind: 'agent' as const, version, source: 'github:examples/pixel', ref: 'main', commitSha, installedAt: '2026-10-01T00:00:00.000Z' })
+    const rows = joinPackageUpdates([
+      { agentId: 'pixel', state: 'managed', packageId: 'examples/pixel@0.1.0', entry: lockEntry('0.1.0') },
+      { agentId: 'orca', state: 'managed', packageId: 'orca', entry: lockEntry('1.0.0') },
+      { agentId: 'ghost', state: 'managed', packageId: 'ghost@1.0.0', entry: lockEntry('1.0.0') },
+      { agentId: 'free', state: 'unmanaged' },
+    ], records)
+
+    expect(rows[0]?.update?.id).toBe('package:examples/pixel')
+    expect(rows[1]?.update?.outcome).toBe('current')
+    expect(rows[2]?.update).toBeUndefined()
+    expect(rows[3]?.update).toBeUndefined()
+  })
+
+  it('review r2 #3: a record observed for ANOTHER installed identity (a reinstall the engine has not reconciled yet) is never attached — it would offer the version just installed', () => {
+    const offer: UpdateRecord = {
+      id: 'package:pixel', group: 'available', subject: { kind: 'package', id: 'pixel', label: 'pixel' },
+      installed: { version: '0.1.0', sha: 'a'.repeat(40), display: '0.1.0' }, available: { version: '0.2.0', sha: 'b'.repeat(40), display: '0.2.0' },
+      reason: 'newer-version', outcome: 'update-available', source: { kind: 'git-ref', endpoint: 'github:examples/pixel' }, fingerprint: 'fp',
+    }
+    const records = new Map([['package:pixel', offer]])
+    const lockEntry = (version: string, commitSha: string) => ({ kind: 'agent' as const, version, source: 'github:examples/pixel', ref: 'main', commitSha, installedAt: '2026-10-01T00:00:00.000Z' })
+    const [stillOld, justUpdated, sameVersionOtherCommit] = joinPackageUpdates([
+      { agentId: 'pixel', state: 'managed', packageId: 'pixel@0.1.0', entry: lockEntry('0.1.0', 'a'.repeat(40)) },
+      { agentId: 'pixel', state: 'managed', packageId: 'pixel@0.2.0', entry: lockEntry('0.2.0', 'b'.repeat(40)) },
+      { agentId: 'pixel', state: 'managed', packageId: 'pixel@0.1.0', entry: lockEntry('0.1.0', 'c'.repeat(40)) },
+    ], records)
+    expect(stillOld?.update?.outcome).toBe('update-available')
+    expect(justUpdated?.update).toBeUndefined()
+    expect(sameVersionOtherCommit?.update).toBeUndefined()
   })
 })
 

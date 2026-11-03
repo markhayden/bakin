@@ -74,7 +74,7 @@ function assertPreconditions(item: HealthRepairPlanItem, report: HealthReport): 
     const observation = report.observations.find((row) => row.id === precondition.observationId)
     if (!observation || observation.status === 'healthy') throw new DoctorRepairStalePlanError()
     if (observation.status !== precondition.status) throw new DoctorRepairStalePlanError()
-    if (observation.incident.resolution.key !== precondition.resolutionKey) {
+    if (observation.incident?.resolution.key !== precondition.resolutionKey) {
       throw new DoctorRepairStalePlanError()
     }
     if (executionIdForObservation(report, observation.id) !== precondition.executionId) {
@@ -113,7 +113,7 @@ export function validateRepairApplication(input: {
   const items = selected as HealthRepairPlanItem[]
   const confirmed = new Set(input.confirmedItemIds)
   const missingConfirmation = items
-    .filter((item) => item.safety !== 'safe' && !confirmed.has(item.id))
+    .filter((item) => item.mode === 'one-click' && !confirmed.has(item.id))
     .map((item) => item.id)
   if (missingConfirmation.length > 0) throw new DoctorRepairConfirmationError(missingConfirmation)
 

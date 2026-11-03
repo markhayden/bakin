@@ -126,11 +126,10 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       key: 'doctor.sensitivity',
       type: 'select',
       label: 'Health sensitivity',
-      description: 'How loudly Health findings surface. Developer shows raw severities everywhere; Standard (default) calms expected noise (housekeeping, guardrail denials, usage anomalies, unsupported surfaces) to advisory; Quiet additionally notifies only for action-required findings — watch items stay visible on the Health page but silent. Takes effect on the next doctor cycle, no restart.',
+      description: 'How loudly Health findings surface. Developer shows raw severities everywhere; Standard (default) calms expected noise (housekeeping, guardrail denials, usage anomalies, unsupported surfaces) to advisory. The navigation badge and the board escalation act on action-required findings only, in either mode. Takes effect on the next doctor cycle, no restart.',
       options: [
         { value: 'developer', label: 'Developer — show everything at raw severity' },
         { value: 'standard', label: 'Standard — calm expected noise (default)' },
-        { value: 'quiet', label: 'Quiet — notify only for action-required' },
       ],
       default: 'standard',
     },
@@ -140,6 +139,21 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       label: 'Escalate Health incidents to the board',
       description: 'Every doctor cycle: apply safe repairs directly, turn destructive repairs and operator-only findings into approval tasks in the review column, and delegate what is left to the main agent as one repair task. Off keeps Health dashboard-only. Default on.',
       default: true,
+    },
+    // ── Update checks (#1007) ─────────────────────────────────────────
+    {
+      key: 'updates.enabled',
+      type: 'boolean',
+      label: 'Check for updates automatically',
+      description: 'Bakin re-checks every subject on Health → Updates (Bakin release, plugins, agent packages, hub skills, search engine and models, runtime floor) on its own schedule. Off schedules nothing — a running check finishes, and "Check now" still works. Default on.',
+      default: true,
+    },
+    {
+      key: 'updates.intervalMs',
+      type: 'number',
+      label: 'Update check interval (ms)',
+      description: 'How long after a successful check a subject is checked again. Clamped to 15 minutes – 7 days; failed checks back off on their own (15 min doubling to 24 h). Default 21600000 (6 h).',
+      default: 21600000,
     },
     // ── Agent token burn (#385) ───────────────────────────────────────
     {
@@ -219,6 +233,14 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       label: 'Startup context warn budget (bytes)',
       description: 'Doctor warn threshold for estimated Bakin-injected per-dispatch context per agent (static prompt sections + configured caps). Warn-only — dispatch is never blocked. Default 65536.',
       default: 65536,
+    },
+    // ── Search endpoint (re-homing row 54: "Use that engine as a guest") ──
+    {
+      key: 'search.settings.url',
+      type: 'string',
+      label: 'Search engine URL',
+      description: 'Where Bakin sends search requests. The default (http://127.0.0.1:3738) is the engine this home supervises. Any other origin is GUEST mode: Bakin uses that engine as-is and never installs, claims, restarts or wipes it. Takes effect on the next server restart.',
+      default: 'http://127.0.0.1:3738',
     },
   ],
 }

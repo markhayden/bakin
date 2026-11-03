@@ -28,18 +28,16 @@ describe('surface and content primitive ownership', () => {
     expect(hostBridge).toContain("from '@bakin/ui'")
 
     // P-final: the legacy shims were deleted with the frozen barrel, except
-    // `skeleton`, which host code still reaches via `@/components/ui/skeleton`.
+    // `skeleton` too (#809).
     for (const primitive of ['avatar', 'card', 'separator', 'collapsible']) {
       expect(existsSync(join(REPO_ROOT, `src/components/ui/${primitive}.tsx`))).toBe(false)
     }
-    const skeletonShim = readRepoFile('src/components/ui/skeleton.tsx')
-    expect(skeletonShim).toContain("from '../../../packages/host/src/ui/surface-content'")
-    expect(skeletonShim).not.toContain('@base-ui/react')
+    expect(existsSync(join(REPO_ROOT, 'src/components/ui/skeleton.tsx'))).toBe(false) // #809
 
-    const [privateUi, publicUi, legacySkeleton] = await Promise.all([
+    const [privateUi, publicUi, hostBridgeModule] = await Promise.all([
       import('@bakin/ui'),
       import('@makinbakin/sdk/ui'),
-      import('../../../src/components/ui/skeleton'),
+      import('../../../packages/host/src/ui/surface-content'),
     ])
 
     expect(publicUi.Avatar).toBe(privateUi.Avatar)
@@ -47,6 +45,6 @@ describe('surface and content primitive ownership', () => {
     expect(publicUi.Separator).toBe(privateUi.Separator)
     expect(publicUi.Skeleton).toBe(privateUi.Skeleton)
     expect(publicUi.Collapsible).toBe(privateUi.Collapsible)
-    expect(legacySkeleton.Skeleton).toBe(privateUi.Skeleton)
+    expect(hostBridgeModule.Skeleton).toBe(privateUi.Skeleton)
   })
 })

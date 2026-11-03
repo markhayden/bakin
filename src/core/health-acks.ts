@@ -60,7 +60,7 @@ const TIER_ORDER: Record<HealthAckTier, number> = {
   action_required: 2,
 }
 
-function acksPath(): string {
+export function acksPath(): string {
   return join(getBakinPaths().home, 'health', 'acks.json')
 }
 

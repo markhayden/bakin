@@ -2,6 +2,7 @@
  * `bakin doctor [--full] [--fix] [--delegate] [repair ...]` — canonical
  * Health reports, targeted deterministic repair, and delegated repair.
  */
+import { z } from 'zod'
 import type {
   HealthCheckState,
   HealthIncident,
@@ -10,12 +11,13 @@ import type {
   HealthObservationStatus,
   HealthRepairApplyResult,
   HealthRepairPlan,
+  HealthRepairPlanItem,
   HealthRepairTarget,
   HealthReport,
   HealthReportStatus,
   SearchReadinessStage,
 } from '@makinbakin/sdk/types'
-import { apiGet, apiPost, type OperationFollowResult } from '../http'
+import { apiGet, apiPost, type OperationFollowResult, apiPostExpecting } from '../http'
 import { describeResult, followAndRender, operationExitCode, silentOperationRenderer } from '../operation-renderer'
 import { print } from '../output'
 import { exitUsage, exitUnknownSubcommand, promptYesNo } from '../help'
@@ -34,11 +36,14 @@ interface CliDoctorRepairApply {
   report: HealthReport
 }
 
-interface CliDoctorDelegateReport {
-  status: 'confirmation_required' | 'sent' | 'no_unresolved' | 'already_delegated'
-  request: Record<string, unknown>
-  incidents: HealthIncident[]
-}
+type CliDoctorDelegateReport =
+  | {
+    status: 'confirmation_required' | 'sent' | 'no_unresolved' | 'already_delegated'
+    request: Record<string, unknown>
+    incidents: HealthIncident[]
+  }
+  /** 409 from the server: a repair or another delegation holds these incidents (#896). */
+  | { status: 'repair_in_flight'; incidents: HealthIncident[]; overlapping: string[]; heldBy: string }
 
 interface OfflineCheckResult {
   name: string
@@ -69,16 +74,23 @@ function offlineIncident(
   remediation?: string,
 ): HealthIncidentInput {
   const id = stablePart(name)
+  // Offline reports have no server, no catalog and no repair engine: the
+  // remediation rides the impact copy and the resolution is the human's
+  // decision on the Health page once Bakin runs.
   const base = {
     key: 'attention',
     title: `${name} needs attention`,
-    impact: 'Local setup may be incomplete or inconsistent.',
+    impact: `Local setup may be incomplete or inconsistent. ${remediation ?? `Run the ${name} onboarding step again.`}`,
+    subject: { kind: 'system' as const, id, label: name },
+    declarationId: 'attention',
+    required: status === 'error',
     resources: [{ kind: 'system' as const, id, label: name }],
     resolution: {
       key: 'review-setup',
-      type: 'instructions' as const,
+      type: 'human' as const,
+      needs: 'decision' as const,
       label: 'Review local setup',
-      steps: [remediation ?? `Run the ${name} onboarding step again.`] as [string],
+      href: '/health',
     },
   }
   return status === 'error'
@@ -142,10 +154,13 @@ function unknownObservation(
     incident: {
       key: `${id}-unverified`,
       title: `${name} could not be verified`,
-      impact: 'Offline diagnostics could not establish current evidence for this source.',
+      impact: 'Offline diagnostics could not establish current evidence for this source. Run `bakin doctor --full` against a running server.',
       disposition: 'watch',
+      subject: { kind: 'system', id, label: name },
+      declarationId: 'unverified',
+      required: false,
       resources,
-      resolution: { key: 'rerun-full', type: 'rerun', label: 'Run full diagnostics' },
+      resolution: { key: 'diagnose-check-failure', type: 'repair', label: 'Investigate the unverified check', actionId: 'core.diagnose' },
     },
   }
 }
@@ -189,7 +204,7 @@ function failedCheckState(observation: HealthObservation, generatedAt: string, c
 
 function canonicalIncidents(observations: readonly HealthObservation[], generatedAt: string): HealthIncident[] {
   return observations.flatMap((observation): HealthIncident[] => {
-    if (observation.status === 'healthy') return []
+    if (observation.status === 'healthy' || !observation.incident || !observation.incidentId) return []
     return [{
       id: observation.incidentId,
       status: observation.status,
@@ -198,8 +213,11 @@ function canonicalIncidents(observations: readonly HealthObservation[], generate
       effectiveDisposition: observation.incident.disposition,
       title: observation.incident.title,
       impact: observation.incident.impact,
+      subject: observation.incident.subject,
       resources: observation.incident.resources ?? [],
       resolution: observation.incident.resolution,
+      declarationId: observation.incident.declarationId,
+      required: observation.incident.required === true,
       observationIds: [observation.id],
       observedAt: observation.observedAt,
       staleAt: observation.staleAt,
@@ -409,8 +427,29 @@ async function runDoctorDelegateApply(report: HealthReport, incidents: [HealthIn
     reportId: report.id,
     ids: incidents.map(incident => incident.id) as [string, ...string[]],
   }
-  return await apiPost('/api/plugins/health/doctor/delegate', { accepted: true, target }) as CliDoctorDelegateReport
+  const { body } = await apiPostExpecting<CliDoctorDelegateReport>(
+    '/api/plugins/health/doctor/delegate',
+    { accepted: true, target },
+    { 409: repairInFlightSchema },
+  )
+  return body
 }
+
+/** Every field the plain, JSON and TTY delegate renderers read from an incident; the rest passes through. */
+const renderedIncidentSchema = z.looseObject({
+  id: z.string().min(1),
+  title: z.string(),
+  impact: z.string(),
+  status: z.string(),
+})
+
+/** The ONE 409 the delegate command renders; any other 409 is a thrown, formatted error. */
+const repairInFlightSchema = z.object({
+  status: z.literal('repair_in_flight'),
+  incidents: z.array(renderedIncidentSchema.transform((incident) => incident as unknown as HealthIncident)),
+  overlapping: z.array(z.string()).min(1),
+  heldBy: z.string().min(1),
+})
 
 function repairApplyExitCode(report: CliDoctorRepairApply): DoctorExitCode {
   if (report.results.some(result => result.status === 'failed')) return 1
@@ -432,18 +471,27 @@ function printDoctorCommandJson(
   }, null, 2))
 }
 
+/** The effects in words — why an item waits for a click (`doctor --fix` applies self-heal items only). */
+function describeItemEffects(item: HealthRepairPlanItem): string {
+  const parts: string[] = []
+  if (item.effects.deletesUserContent) parts.push('deletes content')
+  if (item.effects.spendsMoney) parts.push('spends money')
+  if (item.effects.widensAuthorization) parts.push('widens access')
+  if (item.effects.restartsService) parts.push(`restarts ${item.effects.restartsService}`)
+  return parts.length > 0 ? parts.join(', ') : 'no side effects'
+}
+
 function printDoctorRepairPlan(plan: HealthRepairPlan): void {
-  const safe = plan.items.filter(item => item.safety === 'safe').length
-  const manual = plan.items.filter(item => item.safety === 'manual').length
-  const destructive = plan.items.filter(item => item.safety === 'destructive').length
+  const selfHeal = plan.items.filter(item => item.mode === 'self-heal').length
+  const oneClick = plan.items.filter(item => item.mode === 'one-click').length
   console.log('Doctor repair plan')
-  console.log(`${safe} safe, ${manual} manual, ${destructive} destructive`)
+  console.log(`${selfHeal} automatic, ${oneClick} need your confirmation`)
   if (plan.items.length === 0) {
     console.log('No deterministic repairs available.')
     return
   }
   for (const item of plan.items) {
-    console.log(`\n[${item.safety.toUpperCase()}] ${item.title}`)
+    console.log(`\n[${item.mode === 'self-heal' ? 'AUTOMATIC' : 'CONFIRM'}] ${item.title} (${describeItemEffects(item)})`)
     console.log(`  id: ${item.id}`)
     console.log(`  action: ${item.actionId}`)
     console.log(`  reason: ${item.reason}`)
@@ -478,6 +526,12 @@ function printDoctorDelegatePreview(incidents: readonly HealthIncident[]): void 
 }
 
 function printDoctorDelegateResult(report: CliDoctorDelegateReport): void {
+  if (report.status === 'repair_in_flight') {
+    console.log(`Not delegated: a repair is already working these incidents (held by ${report.heldBy}).`)
+    for (const id of report.overlapping) console.log(`  ${id}`)
+    console.log('Wait for it to settle — Health re-judges them on its next cycle.')
+    return
+  }
   if (report.status === 'no_unresolved') {
     console.log('No action-required incidents need delegated repair.')
     return
@@ -541,7 +595,7 @@ async function confirmDoctorDelegate(count: number): Promise<boolean> {
 async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
   const current = await runFullDoctor()
   const plan = await runDoctorRepairPlan(current)
-  const safeItemIds = plan.items.filter(item => item.safety === 'safe').map(item => item.id)
+  const safeItemIds = plan.items.filter(item => item.mode === 'self-heal').map(item => item.id)
   if (safeItemIds.length === 0) {
     if (options.json) {
       printDoctorCommandJson('doctor --fix', { status: 'no_safe_repairs', plan }, 0)
@@ -655,8 +709,12 @@ async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: 
   }
 
   const report = await runDoctorDelegateApply(current, incidents as [HealthIncident, ...HealthIncident[]])
+  const refused = report.status === 'repair_in_flight'
   if (options.json) {
-    printDoctorCommandJson('doctor --delegate', report, 0)
+    printDoctorCommandJson('doctor --delegate', report, refused ? 1 : 0, refused
+      ? { code: 'REPAIR_IN_FLIGHT', message: `A repair is already working ${report.overlapping.join(', ')} (held by ${report.heldBy}); nothing was delegated.` }
+      : null)
+    if (refused) process.exit(1)
     return
   }
   if (options.isTTY) {
@@ -665,6 +723,7 @@ async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: 
   } else {
     printDoctorDelegateResult(report)
   }
+  if (refused) process.exit(1)
 }
 
 function doctorRepairRecord(value: unknown): Record<string, unknown> | null {

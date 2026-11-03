@@ -15,8 +15,8 @@ mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () =>
 
 import { act, renderHook, waitFor } from '@testing-library/react'
 import '../rtl-settle'
-import { emitPluginEvent } from '@/hooks/use-plugin-event'
-import { useOccurrences, useScheduleJobs } from '@/hooks/use-schedule'
+import { emitPluginEvent } from '../../packages/sdk/src/hooks/use-plugin-event'
+import { useOccurrences, useScheduleJobs } from '../../packages/sdk/src/hooks/use-schedule'
 import { settleFor } from '../helpers/wait'
 
 const realFetch = globalThis.fetch

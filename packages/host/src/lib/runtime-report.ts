@@ -10,6 +10,8 @@ export interface CapabilityRow {
   /** 'native' | 'shimmed' | 'unavailable' (+ the tool-access style detail). */
   mode: string
   detail?: string
+  /** toolCalling only: whether a toolsMode:'none' turn really runs without tools (#883). */
+  perTurnToolPolicy?: boolean
 }
 
 const CAPABILITY_LABELS: Record<string, string> = {
@@ -22,7 +24,7 @@ const CAPABILITY_LABELS: Record<string, string> = {
 }
 
 export interface CapabilitiesPayload {
-  toolCalling?: { mode?: string; access?: { style?: string } }
+  toolCalling?: { mode?: string; access?: { style?: string; perTurnToolsMode?: boolean } }
   input?: { imageInput?: boolean; audioInput?: boolean }
   [key: string]: unknown
 }
@@ -39,6 +41,8 @@ export function capabilityRows(capabilities: CapabilitiesPayload | null | undefi
       label: CAPABILITY_LABELS.toolCalling,
       mode: toolCalling.mode ?? 'native',
       detail: toolCalling.access?.style,
+      // #883 honesty: an older server that never declared it stays undefined.
+      ...(typeof toolCalling.access?.perTurnToolsMode === 'boolean' ? { perTurnToolPolicy: toolCalling.access.perTurnToolsMode } : {}),
     })
   }
 

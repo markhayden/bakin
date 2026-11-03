@@ -82,7 +82,37 @@ describe('NodeConfigDrawer', () => {
     expect(screen.getByPlaceholderText('Write a concise post caption for the approved brief.')).toBeDefined()
   })
 
+/**
+ * A map_workflow / workflow step renders the workflow picker, whose options
+ * load through useJsonFetch. Unstubbed, that request fails against happy-dom's
+ * fetch and its error state lands whenever the socket gives up — on a slow
+ * runner (linux/amd64 under emulation on bun 1.4.3) that is AFTER the test
+ * ends, which the act gate rejects as work in flight. Stub it, and wait for
+ * the load before interacting, so nothing is pending when the test returns.
+ */
+function stubWorkflowDefinitions(): ReturnType<typeof mock> {
+  const fetchMock = mock(() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ templates: [{ filename: 'child-wf', name: 'Child workflow' }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ),
+  )
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+async function waitForWorkflowDefinitions(fetchMock: ReturnType<typeof mock>): Promise<void> {
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith('/api/plugins/workflows/definitions?includeDisabled=1', expect.anything())
+  })
+  // The response is parsed on a later turn than the call; let it land inside act.
+  await act(async () => {})
+}
+
   it('renders map_workflow fields purely from registry metadata (no special-casing)', async () => {
+    const fetchMock = stubWorkflowDefinitions()
     await act(async () => {
       render(
         <NodeConfigDrawer
@@ -95,6 +125,7 @@ describe('NodeConfigDrawer', () => {
         />,
       )
     })
+    await waitForWorkflowDefinitions(fetchMock)
     expect(screen.getByText('Map fan-out')).toBeDefined()
     expect(screen.getByDisplayValue('seg.items')).toBeDefined()
     expect(screen.getByDisplayValue('child-wf')).toBeDefined()
@@ -104,6 +135,7 @@ describe('NodeConfigDrawer', () => {
 
   it('applies edited map_workflow fields as a typed patch', async () => {
     const onApply = mock()
+    const fetchMock = stubWorkflowDefinitions()
     await act(async () => {
       render(
         <NodeConfigDrawer
@@ -113,10 +145,13 @@ describe('NodeConfigDrawer', () => {
         />,
       )
     })
+    await waitForWorkflowDefinitions(fetchMock)
     // workflow_id renders the workflow-picker Select (shared with nested
     // steps); the plain string field `source` proves the patch round-trip.
-    fireEvent.change(screen.getByDisplayValue('seg.items'), { target: { value: 'seg.clips' } })
-    fireEvent.click(screen.getByRole('button', { name: /apply/i }))
+    await act(async () => {
+      fireEvent.change(screen.getByDisplayValue('seg.items'), { target: { value: 'seg.clips' } })
+      fireEvent.click(screen.getByRole('button', { name: /apply/i }))
+    })
     expect(onApply).toHaveBeenCalled()
     const patch = onApply.mock.calls[0][0] as Record<string, unknown>
     expect(patch.type).toBe('map_workflow')

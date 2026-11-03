@@ -613,6 +613,82 @@ export const brandRoutes = [
   }),
 
   defineRoute({
+    path: '/:brandId/recover',
+    method: 'GET',
+    summary: "A brand's recovery facts",
+    description: "The recover page's facts (self-healing PR1, row 189): manifest status (with the raw bytes when unreadable), dangling references, and the open tasks that use the brand.",
+    params: brandIdParams,
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const { brandId } = parsed.params
+      const read = getBrand(brandId)
+      const { readRawBrandManifest, brandDirectoryExists } = await import('./store')
+      // A directory WITHOUT brand.json is still a record (Codex r2 #8): the scanner lists it as
+      // invalid, and Recreate/Delete apply to it. Only an absent directory is "not found".
+      if (read.status === 'missing' && !brandDirectoryExists(brandId)) return Response.json({ error: 'brand not found' }, { status: 404 })
+      const raw = readRawBrandManifest(brandId)
+      const { scanBrandIntegrity } = await import('./integrity')
+      const integrity = await scanBrandIntegrity(async (assetId) => (await ctx.assets.getAsset(assetId)) !== null, brandId)
+      // The ONE usage fact (lib/usage.ts): every open task whose EFFECTIVE brand is this one.
+      const { collectBrandUsage } = await import('./usage')
+      const usage = await collectBrandUsage(ctx)
+      const tasks = (usage.byBrand.get(brandId) ?? []).map((entry) => ({ taskId: entry.taskId, title: entry.title, column: entry.column, source: entry.source }))
+      return Response.json({
+        brandId,
+        status: read.status === 'missing' ? 'no-manifest' : read.status,
+        name: read.status === 'ok' ? read.manifest.name : brandId,
+        ...(read.status === 'invalid' ? { error: read.error, raw } : {}),
+        ...(read.status === 'missing' ? { error: 'brand.json is missing from the brand directory', raw: null } : {}),
+        dangling: integrity.findings.find((f) => f.brandId === brandId)?.dangling ?? [],
+        tasks,
+        tasksKnown: usage.known,
+      })
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/recover/recreate',
+    method: 'POST',
+    summary: 'Recreate an unreadable brand manifest',
+    description: 'A fresh valid brand.json keeping the id, name, description, draft flag and createdAt the old file still says; palette, logos, groups and references start empty. Refused while the manifest reads.',
+    params: brandIdParams,
+    body: { contentType: 'none' as const },
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      try {
+        const { recreateBrandManifest } = await import('./store')
+        const result = recreateBrandManifest(parsed.params.brandId)
+        emitChanged(ctx, parsed.params.brandId, 'brand.updated')
+        return Response.json({ ok: true, ...result })
+      } catch (err) {
+        const code = (err as { code?: string }).code
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: code === 'missing' ? 404 : 400 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/recover/detach',
+    method: 'POST',
+    summary: 'Detach dangling asset references from a brand',
+    description: "The recover page's one control (self-healing 1.4a): drop asset ids that no longer resolve from logos, groups and default references. A live reference is refused.",
+    params: brandIdParams,
+    body: z.object({ assetIds: z.array(z.string().min(1)).min(1).max(100) }),
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const read = getBrand(parsed.params.brandId)
+      if (read.status === 'missing') return Response.json({ error: 'brand not found' }, { status: 404 })
+      try {
+        const { detachDanglingRefs } = await import('./integrity')
+        const result = await detachDanglingRefs(parsed.params.brandId, parsed.body.assetIds, async (assetId) => (await ctx.assets.getAsset(assetId)) !== null)
+        return Response.json(result)
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+      }
+    },
+  }),
+
+  defineRoute({
     path: '/:brandId/card-preview',
     method: 'GET',
     summary: 'Render the exact dispatch card this brand would inject right now',

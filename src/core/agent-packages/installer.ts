@@ -31,6 +31,7 @@ import { existsSync, rmSync, statSync } from 'fs'
 import type { OperationContext } from '@makinbakin/sdk/types'
 import { commitStaging } from '../install-core/transaction'
 import { createLogger } from '../logger'
+import { announceAgentPackagesChanged } from './change-events'
 import { SkillRefusalError } from './errors'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
@@ -50,8 +51,7 @@ import {
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import {
   type FetchedSource,
-  fetchSourceAsync,
-} from './source-fetcher'
+  fetchSourceAsync, isGithubSource, parseGithubSpec } from './source-fetcher'
 import {
   resolveDependenciesAsync,
   type ResolvedDep,
@@ -80,6 +80,13 @@ const log = createLogger('agent-pkg:install')
 export interface InstallOptions {
   /** Source spec — local path or `github:user/repo[@ref][#subpath]`. */
   source: string
+  /**
+   * What the lock entry records as `source` when it differs from the fetch
+   * ref (#1007 D7.12 R8′): an update re-installs `clawhub:<slug>@<target>`
+   * (the consent-bound download target) while the skill stays tracked as
+   * `clawhub:<slug>` — the tracking policy never changes with an update.
+   */
+  trackingSource?: string
   /**
    * The install operation (#895): reports on PACKAGE_INSTALL_PLAN. Everything
    * before `install` (fetch, manifest and conflict checks) is cancellable and
@@ -314,6 +321,19 @@ function manifestToCreateAgent(manifest: Manifest): AdapterCreateAgentInput {
 }
 
 // ─── Main install function ───────────────────────────────────────────────────
+
+/**
+ * The lock `ref` is the TRACKING ref, never the fetched identity (review r2
+ * #7): a re-install that fetched `github:acme/skills@<sha>#tools` while
+ * tracking `github:acme/skills#tools` records an empty ref (the default
+ * branch), and one tracking `@v2` records `v2` — the updates engine derives
+ * github tracking from this ref, the commit from `commitSha`. Without a
+ * tracking source (or for clawhub/local tracking) the fetched ref stands.
+ */
+export function trackingRefOf(trackingSource: string | undefined, fetchedRef: string): string {
+  if (!trackingSource || !isGithubSource(trackingSource)) return fetchedRef
+  return parseGithubSpec(trackingSource).ref ?? ''
+}
 
 export async function installPackage(options: InstallOptions): Promise<InstallResult> {
   // The caller owns install-state — an install operation, or a local one
@@ -577,6 +597,8 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
         ref: dep.spec.ref,
         commitSha: dep.fetched.commitSha,
         installedAt: existing?.installedAt ?? installedAt,
+        // Hub provenance is a ledger fact for dependencies too (review r7 #2).
+        ...(dep.manifest.kind === 'skill-pack' && dep.manifest.upstream ? { hub: true } : {}),
         projections: projectedFor?.result.projections ?? [],
         refCount: existing?.refCount ?? 0,
         dependents: existing?.dependents ?? [],
@@ -599,13 +621,15 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     const parentEntry: PackageEntry = {
       kind: manifest.kind,
       version: manifest.version,
-      source: options.source,
-      ref: topFetched.ref,
+      source: options.trackingSource ?? options.source,
+      ref: trackingRefOf(options.trackingSource, topFetched.ref),
       commitSha: topFetched.commitSha,
       installedAt,
       projections: parentResult.projections,
       dependencies: resolved.map((r) => `${r.resolvedId}@${r.manifest.version}`),
     }
+    // Hub provenance is a ledger fact (r6 #2): ownership of the `hub-skill:` subject never hinges on re-reading the manifest.
+    if (manifest.kind === 'skill-pack' && manifest.upstream) parentEntry.hub = true
     if (manifest.kind === 'agent' && agentId) {
       parentEntry.state = 'managed'
       parentEntry.agentId = agentId
@@ -649,8 +673,9 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
       packageId: resolvedTopId,
       kind: manifest.kind,
       version: manifest.version,
-      source: options.source,
-      ref: topFetched.ref,
+      source: options.trackingSource ?? options.source,
+      ...(options.trackingSource ? { fetchedFrom: options.source } : {}),
+      ref: trackingRefOf(options.trackingSource, topFetched.ref),
       commitSha: topFetched.commitSha,
       ...(agentId ? { agentId, state: parentEntry.state } : {}),
       ...(adopted ? { adopted: true } : {}),
@@ -658,6 +683,9 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
       lessonsEnabled: parentEntry.lessonsEnabled ?? [],
       dependencies: resolved.map((r) => `${r.resolvedId}@${r.manifest.version}`),
     }, 'cli')
+
+    // The install is final (staging committed, projections written, audited): only now is the lockfile's new row a fact worth reconciling against (review r3 #4).
+    announceAgentPackagesChanged('installed', agentId)
 
     return {
       packageId: resolvedTopId,
@@ -719,6 +747,8 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     if (originalLock) {
       try {
         writeLockfile(originalLock)
+        // The provisional row was visible between the write and the failure: whoever reconciled against it reconciles again.
+        announceAgentPackagesChanged('restored', agentId)
       } catch (rollbackErr) {
         log.warn('Lockfile rollback during install failure threw', {
           error: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),

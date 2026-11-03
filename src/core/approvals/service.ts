@@ -228,11 +228,18 @@ export async function resolveApprovalWithResult(approvalId: string, decision: Ap
 }
 
 /** Withdraw a pending approval (owner moved on, plan changed, incidents resolved). Idempotent. */
-export async function cancelApproval(approvalId: string, reason: string): Promise<ApprovalRecord | null> {
-  const before = getApprovalRecord(approvalId)
-  const cancelled = cancelApprovalRecord(approvalId, reason)
+export interface CancelApprovalOptions {
+  /** `false` when the caller owns the channel card edit itself (legacy retirement tracks it per delivery in its receipts). Default true. */
+  notifyChannel?: boolean
+  contentDir?: string
+}
+
+export async function cancelApproval(approvalId: string, reason: string, options: CancelApprovalOptions = {}): Promise<ApprovalRecord | null> {
+  const contentDir = options.contentDir ?? getContentDir()
+  const before = getApprovalRecord(approvalId, contentDir)
+  const cancelled = cancelApprovalRecord(approvalId, reason, contentDir)
   if (!cancelled || !before || before.status !== 'pending') return cancelled
-  const channels = runtimeChannels()
+  const channels = options.notifyChannel === false ? undefined : runtimeChannels()
   if (channels && cancelled.deliveries.length > 0) {
     try {
       await channels.cancelApproval({ approvalId, deliveries: cancelled.deliveries, reason })

@@ -35,7 +35,7 @@ const log = createLogger('search-operations')
  * minute on its own — so the default building row (30s/120s) would call a
  * healthy rebuild stuck.
  */
-const REINDEX_STAGE: OperationStagePlan = {
+export const REINDEX_STAGE: OperationStagePlan = {
   id: 'reindex',
   kind: 'building',
   label: 'Rebuild search tables',
@@ -73,7 +73,7 @@ function describeUnconverged(report: ReindexReport): string {
   return `${parts.join(', ')} of ${report.tables.length} tables — queries keep answering from the current tables; \`bakin doctor\` resumes parked work`
 }
 
-async function runReindex(op: OperationContext, table: string | undefined, force: boolean): Promise<ReindexReport> {
+export async function runReindex(op: OperationContext, table: string | undefined, force: boolean): Promise<ReindexReport> {
   op.stage('reindex')
   return summarizeReindex(await rebuildRegisteredTables(table, { force }, { op, stageId: 'reindex' }))
 }

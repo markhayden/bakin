@@ -99,8 +99,10 @@ Store layout:
 
 Key modules: `packages/core/src/media/{pin,pin-data,store,installer,sharp-import,sharp-loader}.ts`.
 The download/extract/verify/commit legs ride the shared primitive
-`packages/core/src/net/download.ts` (also under `bin-installer` and
-`requirements-installer`; the antfly installer refit is ticketed separately).
+`packages/core/src/net/download.ts` (also under `bin-installer`,
+`requirements-installer`, whiskit's managed bun and the antfly installer — the
+last refit landed in two steps: #895 moved its transfer and extraction onto the
+primitive, #890 its binary commit onto `commitFileAtomic`).
 
 ## Surfaces
 
@@ -109,8 +111,8 @@ The download/extract/verify/commit legs ride the shared primitive
   warn/skip on unsupported platforms. `ONBOARDING_VERSION` bumped 3→4.
 - **CLI:** `bakin check media`, `bakin install media`.
 - **Doctor:** `media.sharp` (health plugin, System group). Missing store on a
-  binary = **unclassified** incident (never demoted by sensitivity — visible
-  in quiet mode), `action_required`, one-click repair `media-install-store`
+  binary = **unclassified** incident (never demoted by sensitivity — the
+  same in either mode), `action_required`, one-click repair `media-install-store`
   (runs the installer in-process as a child operation; no restart needed).
   Unsupported platform = advisory `unsupported_surface` warning.
 - **As an operation (#895):** `installMediaStore(op, options)` reports
@@ -206,7 +208,11 @@ bodies. The incident is replayed in `tests/core/media/installer.test.ts`: a
 registry stream that stalls is visible (warn log, attempt 2 of 2 `stalled`)
 and recovers on a fresh request; one that stalls on every attempt fails the
 item, the stage and the install and commits nothing. Cross-process
-single-flight is the `media-store` operation resource (`~/.bakin/locks/`).
+single-flight is the `media-store` operation resource (`~/.bakin/locks/`;
+#896 part 1 — delivered by #895, with the single-winner stale-lock reclaim
+from #896 D3.5). The `Bun.write(dest, Response)` abort bug has a minimal
+reproduction + issue text in `tasks/bun-write-abort-repro/`; TODO(#896):
+link the upstream oven-sh/bun issue here once it is filed.
 
 ## macOS code signing (rc.33 lesson)
 

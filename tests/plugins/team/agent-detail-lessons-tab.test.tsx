@@ -41,10 +41,10 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
 const queryState: { tab: string } = { tab: 'profile' }
 const setTabSpy = mock((v: string) => { queryState.tab = v })
 
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => [queryState.tab || defaultValue, setTabSpy, mock()],
 }))
-mock.module('@/hooks/use-runtime-status', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
 }))
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))

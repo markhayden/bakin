@@ -205,6 +205,7 @@ never sit at rest in a card — surface on hover or behind the detail view.
   asset library; takes effect when you save").
 - Irreversible entity deletion = `DangerZone`: red-bordered, consequences
   spelled out, type-the-id-to-confirm, at the very BOTTOM of Settings.
+- A step only the operator can run (install a runtime, sign in to a provider, grant a scope) = `HandoffCard`: the exact command in a copyable `CodeBlock`, an optional "Open in Terminal" the host wires to the Terminal plugin (prefilled, never executed), an error line that never hides the copy block. Bakin never runs it for you; Health reruns the check when the tab regains focus.
 - Light confirms for high-consequence flips (publish/unpublish) that name
   what changes.
 
@@ -283,6 +284,15 @@ never sit at rest in a card — surface on hover or behind the detail view.
   text restoration and focus. Preserve its mount when a disclosure must retain
   a draft/turn/scroll position; do not inspect private localStorage keys. Contained
   history is keyboard-focusable; give panels distinct titles on multi-panel pages.
+- Collapsible edge rails are ONE treatment: `PageAside collapsible` with a
+  `width` preset — `nav`, `session`, or `conversation` (a docked chat thread,
+  sized for a question card + composer) — and `side="end"` for a rail docked
+  after the content. Rail widths are the `layout.size.rail*` tokens
+  (`--bakin-layout-size-rail-{strip,nav,session,conversation}`); never write
+  raw rail widths. Story: Components/Pages/Collapsible aside — ConversationDock.
+- Agents ask the user structured questions through `bakin_exec_ask_user`; the
+  kit renders the card. Never hand-roll an option picker inside a transcript —
+  see `conversation-kit.md` § Structured questions.
 
 - One engine per domain; components are thin. Chat-like surfaces compose the
   conversation kit; embedded agent help = `ConversationPanel` +
@@ -419,4 +429,52 @@ popup; Base UI's closed-popup Escape shortcut clears the selection.
 
 Use `WorkspacePage viewport="visual"` and `WorkspacePageBody inputAccessory` for persistent input controls above a software keyboard. The kit owns visible-viewport measurement, listener cleanup, host intersection, and safe-area padding. Default host geometry and flow pages keep their existing behavior. The editor owns its internal scroll.
 
-Public references: `pages/workspace-page.stories.tsx — KeyboardAwareInput` and `recipes/terminal-input.stories.tsx — CompactAndExpanded`. Compose `/ui` Button, `/layout` Inline/Stack/Panel, and `/patterns` WorkspacePage; terminal byte encoding and ownership stay in the plugin. Keep 44px compact key targets, normal keyboard traversal, one click per action, and pointer focus preservation. Expanded keys use a bounded scrollable Panel above the compact groups. Do not set global viewport/body styles or overlay the editor with controls.
+Public references: `pages/workspace-page.stories.tsx — KeyboardAwareInput` and `recipes/terminal-input.stories.tsx — BarAndSheet`. Compose `/ui` Button, `/layout` Inline/Stack/Panel, and `/patterns` WorkspacePage; terminal byte encoding and ownership stay in the plugin. Keep one row of 44px key targets (Esc, Tab, the Control and Option modifiers, then More keys and Hide keyboard at the end; Hide keyboard is always enabled), normal keyboard traversal, one click per action, and pointer focus preservation. A modifier is off, on for the next key, or locked, said in its accessible name and shown by shape as well as colour. More keys opens a bounded scrollable Panel in the same accessory with labelled groups and lock toggles; abc or Escape returns to the keyboard. While the sheet is open it owns Escape wherever focus is (capture it so the editor never sees it; leave alone an Escape inside an open dialog, inside a composition, or already claimed). The next delivered key takes an armed modifier; committed text ends a one-shot one (not a composition in progress or cancelled). A plugin may restyle the keys as keycaps with CSS scoped to its root, on kit tokens. Do not set global viewport/body styles or overlay the editor with controls.
+
+## React lint contract (#966)
+
+`eslint.config.mjs` runs `@eslint-react/eslint-plugin`'s `recommended-typescript`
+preset on every `.tsx` file next to `eslint-plugin-react-hooks` (the ONE hooks
+authority — the preset's duplicate `exhaustive-deps` is off). The gate is
+zero-warning (`bun run lint` passes `--max-warnings 0`): a rule is on and
+clean, off with a reason in the config, or excepted on one line with a
+reason. The two reasoned offs are `no-array-index-key` (index keys are
+correct for the static lists it flags) and `naming-convention-ref-name` (a
+suffix style never adopted). `set-state-in-effect` is ON (#966b rewrote the
+164 effect-synced states).
+
+What the preset settled, so new code starts there:
+
+- **React 19 APIs:** `use(Ctx)` not `useContext`, `<Ctx value>` not
+  `<Ctx.Provider>`, `ref` as a plain prop (no `forwardRef`). Context objects
+  carry the `Context` suffix; `useId` results are named `id`.
+- **Pure render:** no `new Date()` / `Date.now()` in render — a view that
+  depends on the clock takes it from `useNow()` (`@makinbakin/sdk/hooks`: the
+  instant at mount, refreshed every minute, so "today", countdowns and
+  "resets in …" roll over while the view stays open) or from a prop; event
+  handlers read `new Date()` at the event. No components created during
+  render (resolve a component once, outside the render, or in a
+  module-level map).
+- **Effects:** an effect-scoped `fetch` owns an `AbortController` and aborts
+  it on cleanup; state is written only while the controller is live.
+- **State:** `useState` destructures to `[x, setX]`; expensive initial values
+  take a lazy initializer; a render tick nobody reads is
+  `const [, rerender] = useReducer((n: number) => n + 1, 0)`.
+- **Class boundaries** reset from props with `getDerivedStateFromProps`, never
+  a `setState` in `componentDidUpdate`.
+- **No `setState` in an effect** (`set-state-in-effect`, including through a
+  helper the effect calls). The allowed shapes, in order of preference:
+  `useKeyedState(key, init)` (`@makinbakin/sdk/hooks`) for state that belongs
+  to one subject — a draft per conversation, a form per opening, a snapshot
+  per id — it re-seeds in the same render the key changes; adjusting state
+  during render for a prop change (`const [seen, setSeen] = useState(prop);
+  if (seen !== prop) { setSeen(prop); … }`); the operation's own settle
+  event (`useOperation` / `useInstallOperation` / `usePackageOperation`
+  `onSettle`) for recording an outcome; `useSyncExternalStore` for a value
+  the browser or a registry owns (`useMediaQuery`, the fixture host's
+  readiness); a lazy initializer for anything readable at mount. An effect
+  keeps only the side effect — the fetch, the focus, the listener, the
+  callback to an owner — and its promise callbacks may set state.
+- **Markup:** `<style>{css}</style>`, never `dangerouslySetInnerHTML`;
+  `cloneElement` only at the interactive-surface overlay (the one excepted
+  composition point).

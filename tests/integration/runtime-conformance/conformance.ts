@@ -6,7 +6,9 @@
  * pinned here must hold for every conforming runtime, never provider quirks.
  *
  * Scope: messaging pins (T25) + stream/tap/capability/provisioning pins
- * (T26) + mock-default honesty (T27) + ping-serveability (T29). toolsAllow
+ * (T26) + mock-default honesty (T27) + ping-serveability (T29) + tool-policy
+ * honesty (#883: `toolsMode: 'none'` is accepted by every runtime and
+ * enforced by those that declare `perTurnToolsMode: true`). toolsAllow
  * exec-scope and oversizedOutputBytes threading are unit-pinned per adapter
  * (T29) — their observable effects are adapter-mechanism-specific.
  *
@@ -64,6 +66,23 @@ export interface RuntimeConformanceTarget {
    * provider script). Drives the stream taxonomy and onActivity-tap pins.
    */
   prepareToolTurn(): string | Promise<string>
+  /**
+   * Content for a `toolsMode: 'none'` turn on a runtime that ENFORCES it
+   * (perTurnToolsMode true). Optional: defaults to `prepareToolTurn()`, i.e.
+   * the same prompt that normally makes the agent call a tool — the turn must
+   * then stream NO tool chunk. A runner driving a scripted provider seeds a
+   * tool-free reply here (offered no tools, a real model cannot call one; the
+   * empty tool list is pinned per adapter).
+   */
+  prepareToolsModeNoneTurn?(): string | Promise<string>
+  /**
+   * Runner-side evidence for the enforcement leg, called after the
+   * `toolsMode: 'none'` stream settles: a runner that can see what the model
+   * was actually offered (a scripted provider's captured request) throws
+   * here when tools were offered. The stream alone cannot distinguish "no
+   * tools were offered" from "the scripted model happened not to call one".
+   */
+  assertToolsModeNoneEnforced?(): void | Promise<void>
   /**
    * A stream that must end in TERMINAL FAILURE (typed `error` chunk, no
    * `done`, iterator never throws). The target owns the recipe AND any env
@@ -152,12 +171,26 @@ export interface RuntimeConformanceSuiteOptions {
    */
   restartAdvice?: 'present' | 'absent'
   /**
+   * compatibility() optional-member declaration (#1007 D7.10). 'present'
+   * pins the member to exist and to answer a well-formed verdict from cached
+   * evidence (sync); 'absent' pins true omission (no external process).
+   */
+  compatibility?: 'present' | 'absent'
+  /**
    * models.resolveId() optional-member declaration (#907 review). 'present'
    * pins the member to exist AND to be honest: a listed catalog id resolves
    * to itself and an unknown reference resolves to null; 'absent' pins true
    * omission (the runtime runs exactly what its catalog lists).
    */
   resolveId?: 'present' | 'absent'
+  /**
+   * agents.registryLocation() optional-member declaration (self-healing PR1,
+   * Health row 106). 'present' pins the member to exist and to answer either
+   * null or a location whose `path` is non-empty and whose `entryKey(n)` is
+   * a non-empty string naming the entry at position n; 'absent' pins true
+   * omission (a roster that is not a file this process can name).
+   */
+  registryLocation?: 'present' | 'absent'
 }
 
 /** Field names a status-only credential inventory may carry — anything else is a leak vector. */
@@ -273,6 +306,27 @@ export const runtimeConformanceChecks = {
   },
 
   /**
+   * compatibility optional-member honesty (#1007 D7.10): presence is the
+   * contract — absence must be member omission, never a throwing stub; a
+   * present member answers synchronously with a well-formed verdict.
+   */
+  async compatibilityMemberMatchesDeclaration(target: RuntimeConformanceTarget, options?: RuntimeConformanceSuiteOptions): Promise<void> {
+    if (options?.compatibility === undefined) return
+    const member = target.runtime.compatibility
+    if (options.compatibility === 'absent') {
+      if (member !== undefined) fail('compatibility declared absent but the adapter exposes the member — absence must be member omission')
+      return
+    }
+    if (member === undefined) fail('compatibility declared present but the adapter omits the member')
+    const verdict = member.call(target.runtime)
+    if (!verdict || typeof verdict !== 'object') fail('compatibility() must return an object')
+    if (typeof verdict.required !== 'string' || verdict.required.length === 0) fail('compatibility().required must be a non-empty string')
+    if (!['ok', 'below-floor', 'unknown'].includes(verdict.state)) fail(`compatibility().state must be ok | below-floor | unknown, got ${String(verdict.state)}`)
+    if (verdict.observed !== undefined && typeof verdict.observed !== 'string') fail('compatibility().observed must be a string when present')
+    if (verdict.state !== 'unknown' && verdict.observed === undefined) fail('a judged compatibility() must carry the observed value it judged')
+  },
+
+  /**
    * models.resolveId optional-member honesty (#907 review): presence is the
    * contract — absence must be member omission, never a throwing stub.
    */
@@ -285,6 +339,28 @@ export const runtimeConformanceChecks = {
     if (options.resolveId === 'present' && member === undefined) {
       fail('models.resolveId declared present but the adapter omits the member')
     }
+  },
+
+  /**
+   * agents.registryLocation optional-member honesty (self-healing PR1):
+   * presence is the contract — absence must be member omission, never a
+   * throwing stub; a present member answers null or a well-formed location.
+   */
+  async registryLocationMemberMatchesDeclaration(target: RuntimeConformanceTarget, options?: RuntimeConformanceSuiteOptions): Promise<void> {
+    if (options?.registryLocation === undefined) return
+    const member = target.runtime.agents.registryLocation
+    if (options.registryLocation === 'absent') {
+      if (member !== undefined) fail('agents.registryLocation declared absent but the adapter exposes the member — absence must be member omission')
+      return
+    }
+    if (member === undefined) fail('agents.registryLocation declared present but the adapter omits the member')
+    const location = await member.call(target.runtime.agents)
+    if (location === null) return
+    if (!location || typeof location !== 'object') fail('agents.registryLocation() must return null or an object')
+    if (typeof location.path !== 'string' || location.path.length === 0) fail('agents.registryLocation().path must be a non-empty string')
+    if (typeof location.entryKey !== 'function') fail('agents.registryLocation().entryKey must be a function')
+    const key = location.entryKey(0)
+    if (typeof key !== 'string' || key.length === 0) fail('agents.registryLocation().entryKey(0) must name the entry (non-empty string)')
   },
 
   /**
@@ -627,6 +703,55 @@ export const runtimeConformanceChecks = {
       })
     } catch (err) {
       fail(`declared perTurnModel=true but a turn carrying model '${model}' failed (${String(err)}) — honor per-turn overrides or report perTurnModel=false`)
+    }
+  },
+
+  /**
+   * Tool-policy honesty (#883): every runtime must ACCEPT a turn carrying
+   * `toolsMode: 'none'` — a runtime that cannot enforce it drops the field
+   * (with a warning) and declares `perTurnToolsMode: false`; it never
+   * rejects the turn (OpenClaw 2026.9.5 refused the forwarded param with
+   * INVALID_REQUEST until the adapter stopped sending it). A runtime that
+   * declares `perTurnToolsMode: true` must really withhold tools: the
+   * tool-using prompt streams no tool chunk under `toolsMode: 'none'`.
+   */
+  async toolPolicyHonesty(target: RuntimeConformanceTarget): Promise<void> {
+    const access = target.runtime.describeToolAccess()
+    if (typeof access.perTurnToolsMode !== 'boolean') {
+      fail('describeToolAccess() must declare perTurnToolsMode (#883) — true when toolsMode is enforced per turn')
+    }
+    await target.prepareOkTurn?.()
+    try {
+      await target.runtime.messaging.send({
+        agentId: target.agentId,
+        content: 'conformance: text-only turn',
+        threadId: target.newThreadId(),
+        toolsMode: 'none',
+      })
+    } catch (err) {
+      fail(`a turn carrying toolsMode:'none' was rejected (${String(err)}) — drop an unenforceable field with a warning, never forward it to a transport that refuses it`)
+    }
+    if (access.perTurnToolsMode === false) return // honest: tools stay as configured
+    const content = await (target.prepareToolsModeNoneTurn?.() ?? target.prepareToolTurn())
+    const chunks: ChatChunk[] = []
+    for await (const chunk of target.runtime.messaging.stream({
+      agentId: target.agentId,
+      content,
+      threadId: target.newThreadId(),
+      toolsMode: 'none',
+    })) {
+      chunks.push(chunk)
+    }
+    const tools = chunks.filter((c) => c.type === 'tool')
+    if (tools.length > 0) {
+      fail(`declared perTurnToolsMode=true but a toolsMode:'none' turn streamed ${tools.length} tool chunk(s) — enforce it or report perTurnToolsMode=false`)
+    }
+    if (chunks.some((c) => c.type === 'error')) fail("toolsMode:'none' turn streamed an error chunk")
+    assertDoneExactlyOnceAndLast(chunks)
+    try {
+      await target.assertToolsModeNoneEnforced?.()
+    } catch (err) {
+      fail(`declared perTurnToolsMode=true but the runner's enforcement evidence says tools were offered under toolsMode:'none' (${err instanceof Error ? err.message : String(err)})`)
     }
   },
 
@@ -1034,6 +1159,10 @@ export function runRuntimeConformanceSuite(
       await runtimeConformanceChecks.perTurnModelHonesty(getTarget())
     })
 
+    it("toolsMode:'none' is accepted everywhere and enforced where declared (#883 tool-policy honesty)", async () => {
+      await runtimeConformanceChecks.toolPolicyHonesty(getTarget())
+    })
+
     it('tool turns stream classified, structured chunks', async () => {
       await runtimeConformanceChecks.toolTurnStreamsClassifiedStructuredChunks(getTarget())
     })
@@ -1094,8 +1223,16 @@ export function runRuntimeConformanceSuite(
       await runtimeConformanceChecks.restartAdviceIsWellFormed(getTarget())
     })
 
+    it('compatibility member matches its declaration and answers a well-formed verdict (#1007)', async () => {
+      await runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(getTarget(), options)
+    })
+
     it('models.resolveId member matches its declaration (presence is the contract)', async () => {
       await runtimeConformanceChecks.resolveIdMemberMatchesDeclaration(getTarget(), options)
+    })
+
+    it('agents.registryLocation member matches its declaration and answers null or a well-formed location (Health row 106)', async () => {
+      await runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(getTarget(), options)
     })
 
     it('models.resolveId is honest: a listed id resolves verbatim, an unknown reference to null (when the member exists)', async () => {

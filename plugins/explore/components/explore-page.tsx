@@ -15,7 +15,10 @@ import {
   Badge,
   Banner,
   Button,
+  Field,
+  FieldLabel,
   Skeleton,
+  Switch,
   SystemState,
   Tabs,
   TabsList,
@@ -25,8 +28,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
-import { toast, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
-import { pluginFetch } from '@makinbakin/sdk/utils'
+import { toast, usePluginEvent, usePluginJsonFetch, useKeyedState } from '@makinbakin/sdk/hooks'
+import type { UpdateRecord } from '@makinbakin/sdk/types'
+import { OPERATOR_DECLARATION_HEADERS, pluginFetch } from '@makinbakin/sdk/utils'
 import { CatalogSortControl, CatalogTable } from './catalog-table'
 import { DetailDrawer } from './detail-drawer'
 import { HubSkillsSection } from './hub-skills-section'
@@ -88,6 +92,42 @@ const TAB_INTROS: Record<string, { title: string; blurb: string }> = {
  */
 const CATALOG_TIMEOUT_MS = 15_000
 const REMOTE_ACTION_TIMEOUT_MS = 60_000
+/** A waited engine pass checks every subject (20 s each, two at a time) — give it room. */
+const UPDATE_CHECK_TIMEOUT_MS = 120_000
+
+/** The engine's subject kinds this catalog lists. */
+const CATALOG_SUBJECT_KINDS: ReadonlySet<string> = new Set(['plugin', 'package', 'hub-skill'])
+
+/**
+ * Run the updates engine's check pass and wait for it (#1007). Returns the
+ * catalog subjects whose attempt failed while an EARLIER observation still
+ * stands — their rows keep that verdict instead of turning unknown, so the
+ * re-read catalog alone cannot count them as "couldn't be checked".
+ */
+async function runUpdateCheck(signal: AbortSignal): Promise<{ failedWithObservation: number }> {
+  const res = await fetch('/api/updates/check?wait=1', { method: 'POST', headers: OPERATOR_DECLARATION_HEADERS, signal })
+  const body = (await res.json().catch(() => null)) as { records?: UpdateRecord[]; error?: string; message?: string } | null
+  if (!res.ok) throw new Error(body?.message ?? body?.error ?? `HTTP ${res.status}`)
+  const records = Array.isArray(body?.records) ? body.records : []
+  const failedWithObservation = records.filter((record) => (
+    CATALOG_SUBJECT_KINDS.has(record.subject.kind) && record.attempt?.error !== undefined && record.observedAt !== undefined
+  )).length
+  return { failedWithObservation }
+}
+
+/**
+ * Installed, non-builtin entries the pass left unknown: no engine record
+ * (a pre-lockfile plugin directory, an entry installed a moment ago) or no
+ * successful observation. Unknown is never "up to date".
+ */
+function unknownInstalledCount(entries: readonly ExploreCatalogEntry[]): number {
+  return entries.filter((entry) => entry.installed && !entry.builtin && entry.updateAvailable === null).length
+}
+
+/** Installed entries the engine observed as blocked or unsupported — not an update, not "up to date" either (review r5 #7). */
+function blockedInstalled(entries: readonly ExploreCatalogEntry[]): ExploreCatalogEntry[] {
+  return entries.filter((entry) => entry.installed && !entry.builtin && (entry.updateOutcome === 'blocked' || entry.updateOutcome === 'unsupported'))
+}
 
 /** Deadline rejections arrive as DOMExceptions — surface them as a real error. */
 
@@ -104,15 +144,15 @@ function ExplorePageInner() {
   // Filtering reads the local draft for instant feedback; only the URL
   // write is debounced (same reason PluginHeader's search debounces —
   // the param is for deep-linking, keystrokes aren't).
-  const [searchDraft, setSearchDraft] = useState(query)
+  // The draft is keyed by the URL param (issue 966b): when it changes underneath
+  // us (sidebar re-click clears ?q=, back/forward, shared links) the draft
+  // resyncs in the same render — otherwise the grid stays filtered by text
+  // the URL no longer claims. A pending debounced commit converges to the
+  // same value, so this never fights typing; the effect only drops the timer.
+  const [searchDraft, setSearchDraft] = useKeyedState(query, () => query)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current) }, [])
-  // Resync the draft when the URL param changes underneath us (sidebar
-  // re-click clears ?q=, back/forward, shared links) — otherwise the grid
-  // stays filtered by text the URL no longer claims. A pending debounced
-  // commit converges to the same value, so this never fights typing.
   useEffect(() => {
-    setSearchDraft(query)
     if (searchTimer.current) clearTimeout(searchTimer.current)
   }, [query])
   const onSearchChange = (value: string) => {
@@ -122,24 +162,31 @@ function ExplorePageInner() {
   }
   const [installOpen, setInstallOpen] = useState(false)
   const [installEntry, setInstallEntry] = useState<ExploreCatalogEntry | null>(null)
-  // Probe/refresh responses carry state the base GET can't reproduce
-  // (agent update probes are never persisted) — they override until the
-  // next base refetch delivers, then the fresher base data wins.
-  const [override, setOverride] = useState<ExploreCatalogResponse | null>(null)
-  useEffect(() => {
-    setOverride(null)
-  }, [data])
+  // Check/refresh answers arrive ahead of the base read — they override
+  // until the next base refetch delivers, then the fresher base data wins.
+  const [override, setOverride] = useKeyedState<ExploreCatalogResponse | null>(data, () => null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<'check' | 'refresh' | null>(null)
+
+  // Scheduled engine passes land here too: a changed catalog subject re-reads the join.
+  usePluginEvent('updates.changed', (payload) => {
+    const ids = (payload as { ids?: unknown }).ids
+    if (!Array.isArray(ids) || !ids.some((id) => typeof id === 'string' && CATALOG_SUBJECT_KINDS.has(id.slice(0, id.indexOf(':'))))) return
+    refresh()
+  })
 
   const runAction = async (action: 'check' | 'refresh') => {
     setBusyAction(action)
     setActionError(null)
     try {
-      const signal = AbortSignal.timeout(REMOTE_ACTION_TIMEOUT_MS)
-      const res = action === 'check'
-        ? await pluginFetch('explore', 'catalog?check=1', { signal })
-        : await pluginFetch('explore', 'catalog/refresh', { method: 'POST', signal })
+      let failedWithObservation = 0
+      let res: Response
+      if (action === 'check') {
+        failedWithObservation = (await runUpdateCheck(AbortSignal.timeout(UPDATE_CHECK_TIMEOUT_MS))).failedWithObservation
+        res = await pluginFetch('explore', 'catalog', { signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS) })
+      } else {
+        res = await pluginFetch('explore', 'catalog/refresh', { method: 'POST', signal: AbortSignal.timeout(REMOTE_ACTION_TIMEOUT_MS) })
+      }
       const body = (await res.json()) as ExploreCatalogResponse & { ok: boolean; error?: string; reason?: string }
       if (!res.ok || !body.ok) {
         setActionError(body.error ?? `HTTP ${res.status}`)
@@ -148,12 +195,18 @@ function ExplorePageInner() {
       setOverride(body)
       if (action === 'check') {
         const updates = body.entries.filter((entry) => entry.updateAvailable === true)
-        const failed = body.probeErrors ?? 0
+        // "Couldn't be checked" = rows still unknown after the pass + rows whose fresh attempt failed over an earlier verdict.
+        const failed = unknownInstalledCount(body.entries) + failedWithObservation
+        const blocked = blockedInstalled(body.entries)
+        const caveats = [
+          failed > 0 ? `${failed} couldn't be checked` : null,
+          blocked.length > 0 ? `${blocked.length} blocked: ${blocked.map((entry) => `${entry.name}${entry.updateReason ? ` (${entry.updateReason})` : ''}`).join(', ')}` : null,
+        ].filter((part): part is string => part !== null)
         if (updates.length > 0) {
-          const suffix = failed > 0 ? ` (${failed} couldn't be checked)` : ''
+          const suffix = caveats.length > 0 ? ` (${caveats.join('; ')})` : ''
           toast(`${updates.length} update${updates.length === 1 ? '' : 's'} available: ${updates.map((u) => u.name).join(', ')}${suffix}`, 'success')
-        } else if (failed > 0) {
-          toast(`Couldn't check ${failed} item${failed === 1 ? '' : 's'} — network or source unreachable. Everything that could be checked is up to date.`, 'error')
+        } else if (caveats.length > 0) {
+          toast(`${caveats.join('; ')} — see Health → Updates. Everything that could be checked is up to date.`, 'error')
         } else {
           toast('Everything is up to date.', 'success')
         }
@@ -235,6 +288,29 @@ function ExplorePageInner() {
     [entries],
   )
   const catalogState = override ?? data
+  // Row 98 containment: an installed user plugin can be disabled (stays on
+  // disk, never activated) or enabled again — the ONE place that writes it is
+  // the host route; the catalog re-read shows the ledger's answer.
+  const [togglingPlugin, setTogglingPlugin] = useState<string | null>(null)
+  const setPluginEnabled = async (pluginId: string, enabled: boolean) => {
+    setTogglingPlugin(pluginId)
+    try {
+      const res = await fetch(`/api/plugins/${enabled ? 'enable' : 'disable'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...OPERATOR_DECLARATION_HEADERS },
+        body: JSON.stringify({ pluginId }),
+      })
+      const body = await res.json().catch(() => ({})) as { ok?: boolean; message?: string; error?: string; live?: boolean }
+      if (!res.ok || body.ok !== true) throw new Error(body.message ?? body.error ?? `HTTP ${res.status}`)
+      toast(body.message ?? `${enabled ? 'Enabled' : 'Disabled'} ${pluginId}`, body.live === false ? 'info' : 'success')
+      setOverride(null)
+      refresh()
+    } catch (err) {
+      toast(`Could not ${enabled ? 'enable' : 'disable'} ${pluginId}: ${err instanceof Error ? err.message : String(err)}`, 'error')
+    } finally {
+      setTogglingPlugin(null)
+    }
+  }
   const filtered = searchDraft.trim().length > 0 || activeCategories.length > 0
   const clearFilters = () => {
     onSearchChange('')
@@ -276,7 +352,7 @@ function ExplorePageInner() {
           <Sparkles />
           {busyAction === 'check' ? 'Checking…' : 'Check for updates'}
         </TooltipTrigger>
-        <TooltipContent>Probe installed plugins and agents for available updates</TooltipContent>
+        <TooltipContent>Check installed plugins, agents and packs for available updates</TooltipContent>
       </Tooltip>
     </>
   )
@@ -453,15 +529,28 @@ function ExplorePageInner() {
           selected && !selected.builtin
             ? selected.installed
               ? (
-                  <Button
-                    data-testid="drawer-installed"
-                    size="xs"
-                    variant="primary"
-                    disabled
-                  >
-                    <Check />
-                    Installed
-                  </Button>
+                  <span className="flex min-w-0 flex-wrap items-center gap-bakin-3">
+                    {selected.kind === 'plugin' && (
+                      <Field orientation="horizontal" data-testid="drawer-plugin-enabled">
+                        <Switch
+                          checked={selected.disabled !== true}
+                          disabled={togglingPlugin !== null}
+                          aria-label={`${selected.name} enabled`}
+                          onCheckedChange={(checked) => { void setPluginEnabled(selected.id, checked) }}
+                        />
+                        <FieldLabel className="m-0">{selected.disabled ? 'Disabled' : 'Enabled'}</FieldLabel>
+                      </Field>
+                    )}
+                    <Button
+                      data-testid="drawer-installed"
+                      size="xs"
+                      variant="primary"
+                      disabled
+                    >
+                      <Check />
+                      Installed
+                    </Button>
+                  </span>
                 )
               : (
                   <Button

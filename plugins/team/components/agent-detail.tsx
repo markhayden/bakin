@@ -41,6 +41,7 @@ import {
   usePackageState,
   useQueryState,
   useRuntimeStatus,
+  useKeyedState,
 } from '@makinbakin/sdk/hooks'
 import { ActiveContextTab } from './active-context-tab'
 import { DiagnosticsTab } from './diagnostics-tab'
@@ -95,7 +96,8 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     setSkillParam('')
     setFileParam('')
   }
-  const [loading, setLoading] = useState(true)
+  // Per agent (issue 966b): another agent starts loading in the same render; the effect only reads.
+  const [loading, setLoading] = useKeyedState(agentId, () => true)
   const [avatarKey, setAvatarKey] = useState(0)
   const avatarInputRef = useRef<FileInputHandle>(null)
   // This agent's picker: verdicts under ITS credentials (#907 review).
@@ -109,13 +111,14 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
-    setLoading(true)
-    fetch(`/api/plugins/team/${agentId}`)
+    const controller = new AbortController()
+    fetch(`/api/plugins/team/${agentId}`, { signal: controller.signal })
       .then((response) => response.json())
-      .then((data) => setProfile(data))
-      .catch(() => setProfile(null))
-      .finally(() => setLoading(false))
-  }, [agentId])
+      .then((data) => { if (!controller.signal.aborted) setProfile(data) })
+      .catch(() => { if (!controller.signal.aborted) setProfile(null) })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [agentId, setLoading])
 
   const handleModelChange = async (modelId: string) => {
     if (!profile) return
@@ -227,7 +230,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   }
 
   const avatarUrl = profile.headshot || avatarKey
-    ? `/api/plugins/team/${agentId}/avatar${avatarKey ? `?t=${avatarKey}` : ''}`
+    ? `/api/agents/avatar?id=${encodeURIComponent(agentId)}${avatarKey ? `&t=${avatarKey}` : ''}`
     : undefined
 
   return (
@@ -468,26 +471,29 @@ export function SkillsTab({ agentId }: { agentId: string }) {
   // from the URL) and a stale id shows the first skill without rewriting it.
   const [skillParam, setSkillParam] = useQueryState('skill', '')
   const selectedSkill = skills.some((skill) => skill.id === skillParam) ? skillParam : (skills[0]?.id ?? null)
-  const [skillContent, setSkillContent] = useState<string | null>(null)
+  // The content belongs to one (agent, skill) (issue 966b): another pick starts unloaded in the same render.
+  const [skillContent, setSkillContent] = useKeyedState<string | null>(`${agentId}\u0000${selectedSkill ?? ''}`, () => null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/plugins/team/${agentId}/skills`)
+    const controller = new AbortController()
+    fetch(`/api/plugins/team/${agentId}/skills`, { signal: controller.signal })
       .then((response) => response.json())
-      .then((data) => setSkills(data.skills ?? []))
-      .finally(() => setLoading(false))
+      .then((data) => { if (!controller.signal.aborted) setSkills(data.skills ?? []) })
+      .catch(() => {})
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
   }, [agentId])
 
   useEffect(() => {
-    if (!selectedSkill) {
-      setSkillContent(null)
-      return
-    }
-    setSkillContent(null)
-    fetch(`/api/plugins/team/${agentId}/skills/${selectedSkill}`)
+    if (!selectedSkill) return
+    const controller = new AbortController()
+    fetch(`/api/plugins/team/${agentId}/skills/${selectedSkill}`, { signal: controller.signal })
       .then((response) => response.json())
-      .then((data) => setSkillContent(data.content ?? null))
-  }, [agentId, selectedSkill])
+      .then((data) => { if (!controller.signal.aborted) setSkillContent(data.content ?? null) })
+      .catch(() => {})
+    return () => controller.abort()
+  }, [agentId, selectedSkill, setSkillContent])
 
   if (loading) {
     return (
@@ -553,26 +559,29 @@ export function MemoryTab({ agentId }: { agentId: string }) {
   // `?file=<name>` is the selection; same default/stale rules as the Skills tab.
   const [fileParam, setFileParam] = useQueryState('file', '')
   const selectedFile = files.includes(fileParam) ? fileParam : (files[0] ?? null)
-  const [content, setContent] = useState<string | null>(null)
+  // The content belongs to one (agent, file) (issue 966b).
+  const [content, setContent] = useKeyedState<string | null>(`${agentId}\u0000${selectedFile ?? ''}`, () => null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/plugins/team/${agentId}/memory`)
+    const controller = new AbortController()
+    fetch(`/api/plugins/team/${agentId}/memory`, { signal: controller.signal })
       .then((response) => response.json())
-      .then((data) => setFiles(data.files ?? []))
-      .finally(() => setLoading(false))
+      .then((data) => { if (!controller.signal.aborted) setFiles(data.files ?? []) })
+      .catch(() => {})
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
   }, [agentId])
 
   useEffect(() => {
-    if (!selectedFile) {
-      setContent(null)
-      return
-    }
-    setContent(null)
-    fetch(`/api/plugins/team/${agentId}/memory/${selectedFile}`)
+    if (!selectedFile) return
+    const controller = new AbortController()
+    fetch(`/api/plugins/team/${agentId}/memory/${selectedFile}`, { signal: controller.signal })
       .then((response) => response.json())
-      .then((data) => setContent(data.content ?? null))
-  }, [agentId, selectedFile])
+      .then((data) => { if (!controller.signal.aborted) setContent(data.content ?? null) })
+      .catch(() => {})
+    return () => controller.abort()
+  }, [agentId, selectedFile, setContent])
 
   if (loading) {
     return (

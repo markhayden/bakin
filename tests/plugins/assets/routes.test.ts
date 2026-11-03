@@ -72,12 +72,14 @@ afterAll(() => {
 // ===========================================================================
 
 describe('route registration', () => {
-  it('registers all 23 routes', () => {
-    expect(plugin.routes.length).toBe(23)
+  it('registers all 29 routes', () => {
+    expect(plugin.routes.length).toBe(29)
   })
 
   it.each([
     ['GET', '/import/scan'],
+    ['POST', '/versioned/:assetId/recover/detach-references'],
+    ['POST', '/recover/store-location'],
     ['GET', '/import/summary'],
     ['POST', '/import'],
     ['POST', '/upload'],

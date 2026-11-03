@@ -514,6 +514,18 @@ describe('models.probe (#852)', () => {
 })
 
 describe('messaging.stream', () => {
+  test("toolsMode none on the STREAM path offers no tools to the model; the same stream without it does (positive control)", async () => {
+    const fake = seedProvider([
+      { steps: [{ text: 'text only' }] },
+      { steps: [{ text: 'tools offered' }] },
+    ])
+    for await (const _chunk of adapter.messaging.stream({ agentId: 'main', content: 'plan', threadId: 'chat:toolsmode-none', toolsMode: 'none' })) { /* drain */ }
+    for await (const _chunk of adapter.messaging.stream({ agentId: 'main', content: 'plan', threadId: 'chat:toolsmode-default' })) { /* drain */ }
+    const [restricted, open] = fake.requests as Array<{ tools?: unknown[] }>
+    expect(restricted!.tools ?? []).toHaveLength(0)
+    expect((open!.tools ?? []).length).toBeGreaterThan(0)
+  })
+
   test.each([
     ['completed', 'main', undefined],
     ['failed', 'ghost', undefined],

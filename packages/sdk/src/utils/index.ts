@@ -42,10 +42,12 @@ export { isStale } from '@bakin/core/format'
 // Conversation kit server-side helpers (the brainstorm helpers they
 // superseded were deleted with IntegratedBrainstorm, 2026-07).
 /** Canonical thread id for embedded conversation surfaces (scope:entity:agent). */
-export { conversationThreadId } from '../../../../src/components/conversation/thread-id'
+export { conversationThreadId } from '@bakin/core/conversation/thread-id'
 /** Record one streamed turn's chunks into persistable ConversationMessage rows. */
-export { createTurnRecorder, SUMMARY_MAX_CHARS, PREVIEW_MAX_CHARS } from '../../../../src/components/conversation/turn-recorder'
-export type { TurnRecorder } from '../../../../src/components/conversation/turn-recorder'
+export { createTurnRecorder, SUMMARY_MAX_CHARS, PREVIEW_MAX_CHARS } from '@bakin/core/conversation/turn-recorder'
+export type { TurnRecorder } from '@bakin/core/conversation/turn-recorder'
+/** Validate structured questions (`bakin_exec_ask_user` envelopes) at a plugin's server boundary. */
+export { parseBakinQuestion, validateBakinQuestionInput, QUESTION_LIMITS } from '@bakin/core/conversation/questions'
 
 /** Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. */
 export { humanizeKey, formatStructured, summarizeStructured, unwrapToolResult, type FormatStructuredOptions } from '@bakin/core/format'

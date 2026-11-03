@@ -13,6 +13,7 @@
 import { existsSync, rmSync } from 'fs'
 import type { OperationContext } from '@makinbakin/sdk/types'
 import { createLogger } from '../logger'
+import { announceAgentPackagesChanged } from './change-events'
 import { getBakinPaths, getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
 import {
@@ -207,6 +208,7 @@ async function removePackageByIdLocked(options: RemoveOptions): Promise<RemoveRe
 
     op?.stage(REMOVE_STAGES.record)
     writeLockfile(lock)
+    announceAgentPackagesChanged('removed')
 
     // 4. Optionally delete the runtime agent for kind:"agent"
     let deletedAgent = false

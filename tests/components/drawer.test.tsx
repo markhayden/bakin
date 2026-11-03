@@ -11,7 +11,7 @@ import {
   MAX_WIDTH,
   MIN_WIDTH,
   getDrawerWidthStorageKey,
-} from '@/components/drawer'
+} from '../../packages/ui/src/patterns/drawer'
 import { DrawerSection } from '@makinbakin/sdk/ui'
 
 mock.module('@bakin/core/main-agent', () => ({
@@ -187,5 +187,14 @@ describe('Drawer', () => {
     if (stored !== null) window.localStorage.setItem(getDrawerWidthStorageKey(key), stored)
     render(<Drawer open onOpenChange={() => {}} storageKey={key} defaultWidth={defaultWidth}><div>Body</div></Drawer>)
     expect(screen.getByRole('separator', { name: 'Resize panel' }).getAttribute('aria-valuenow')).toBe(String(expected))
+  })
+
+  it('a pending dirty prompt belongs to one opening: closing the drawer drops it (#966b)', () => {
+    const view = render(<Drawer open dirty onOpenChange={() => {}}><div>Body</div></Drawer>)
+    fireEvent.click(screen.getByRole('button', { name: /close/i }))
+    expect(screen.getByRole('dialog', { name: /unsaved/i })).toBeTruthy()
+    view.rerender(<Drawer open={false} dirty onOpenChange={() => {}}><div>Body</div></Drawer>)
+    view.rerender(<Drawer open dirty onOpenChange={() => {}}><div>Body</div></Drawer>)
+    expect(screen.queryByRole('dialog', { name: /unsaved/i })).toBeNull()
   })
 })

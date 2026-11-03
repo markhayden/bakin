@@ -8,6 +8,7 @@
  */
 import { apiGet, apiPost, apiDelete } from '../http'
 import { exitOnFailure, operationBody, startAndFollow } from '../operation-command'
+import { currentOperationMode } from '../operation-mode'
 import { print, printTable } from '../output'
 import { exitUsage, exitUnknownSubcommand, confirmPrompt } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
@@ -288,7 +289,60 @@ async function cmdAgentPackagesDelete(agentId: string, flags: AgentsCmdFlags): P
   await cmdAgentPackagesRemove(agentId, { ...flags, deleteAgent: true })
 }
 
+/**
+ * `--check` with no server runs in-process (review r2 #9): the read-only
+ * `checkAgent` (the route's check) — report-only, nothing written, no
+ * resource held, the upstream question asked of the updates observer with
+ * nothing persisted. A sync that WRITES still needs the server's operation.
+ */
+async function checkAgentPackagesInProcess(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
+  const [{ checkAgent }, { listAllAgentStates }, { createReadOnlyAppServices, maybeGetAppServices }] = await Promise.all([
+    import('../../core/agent-packages/sync'),
+    import('../../core/agent-packages/agent-state'),
+    import('../../core/app-services'),
+  ])
+  const checkOne = async (id: string): Promise<Record<string, unknown>> => {
+    try {
+      const receipt = await checkAgent(id, { trigger: 'cli' })
+      // An unanswered upstream question is a failed check, never a quiet "nothing newer" (review r5 #1).
+      return receipt.package?.checkError ? { ok: false, error: receipt.package.checkError, receipt } : { ok: true, receipt }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+  // `--json` is ONE document: the runtime's console logs stay off stdout (review r4 #6).
+  const results = await withSilentLogsIf(Boolean(flags.json), async () => {
+    // READ-ONLY services (review r3 #1): the runtime for roster/workspace reads, no search provisioning, no migrations.
+    if (!maybeGetAppServices()) await createReadOnlyAppServices()
+    const targets = agentId ? [agentId] : (await listAllAgentStates()).filter((a) => a.state !== 'absent').map((a) => a.agentId)
+    const out: Array<{ id: string; result: Record<string, unknown> }> = []
+    for (const id of targets) out.push({ id, result: await checkOne(id) })
+    return out
+  })
+  const anyFailed = results.some(({ result }) => result.ok === false)
+  if (flags.json) {
+    // ONE document (review r5 #3): the single result for one agent, an aggregate for the roster (an empty roster is an empty list).
+    print(agentId ? results[0]!.result : { ok: !anyFailed, agents: results.map(({ id, result }) => ({ agentId: id, ...result })) })
+  } else if (process.stdout.isTTY) {
+    await printPackageActionTui(results.map(({ id, result }) => ({ action: 'checked', scope: 'agent', target: id, result })))
+  } else {
+    for (const { id, result } of results) {
+      if (!agentId) console.log(`${id}:`)
+      print(result)
+    }
+  }
+  if (anyFailed) process.exit(1)
+}
+
+/** Run `fn` with the logger's console transport off when JSON output was asked for — the document is the whole of stdout. */
+export async function withSilentLogsIf<T>(json: boolean, fn: () => Promise<T>): Promise<T> {
+  if (!json) return fn()
+  const { withSilentConsoleLogs } = await import('../../core/logger')
+  return withSilentConsoleLogs(fn)
+}
+
 async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
+  if (flags.check && currentOperationMode().kind === 'local') { await checkAgentPackagesInProcess(agentId, flags); return }
   const body: Record<string, unknown> = {}
   if (flags.check) body.check = true
   if (flags.reclaimAll) body.reclaim = 'all'
@@ -338,13 +392,15 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
     agents: Array<{ agentId: string; state: string }>
   }
   const actions: PackageActionData[] = []
+  const documents: Array<Record<string, unknown>> = []
   let anyFailed = false
   for (const a of list.agents) {
     if (a.state === 'absent') continue
     try {
       const result = await syncOne(a.agentId)
       if (isFailure(result)) anyFailed = true
-      if (!flags.json && process.stdout.isTTY) {
+      if (flags.json) { documents.push({ agentId: a.agentId, ...(jsonObject(result) ?? { result }) }); continue }
+      if (process.stdout.isTTY) {
         actions.push({ action, scope: 'agent', target: a.agentId, result })
         continue
       }
@@ -352,22 +408,23 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
       print(result)
     } catch (err) {
       anyFailed = true
-      if (!flags.json && process.stdout.isTTY) {
-        actions.push({
-          action,
-          scope: 'agent',
-          target: a.agentId,
-          result: { ok: false, error: err instanceof Error ? err.message : String(err) },
-        })
+      const error = err instanceof Error ? err.message : String(err)
+      if (flags.json) { documents.push({ agentId: a.agentId, ok: false, error }); continue }
+      if (process.stdout.isTTY) {
+        actions.push({ action, scope: 'agent', target: a.agentId, result: { ok: false, error } })
         continue
       }
-      console.error(`${a.agentId}: ${err instanceof Error ? err.message : String(err)}`)
+      console.error(`${a.agentId}: ${error}`)
     }
   }
-  if (!flags.json && process.stdout.isTTY) {
-    await printPackageActionTui(actions)
-  }
+  // `--json` is ONE document for the whole roster (review r5 #3).
+  if (flags.json) print({ ok: !anyFailed, agents: documents })
+  else if (process.stdout.isTTY) await printPackageActionTui(actions)
   if (anyFailed) process.exit(1)
+}
+
+function jsonObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
 
 async function cmdAgentPackagesLessonsList(agentId: string): Promise<void> {

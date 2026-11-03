@@ -62,6 +62,10 @@ describe('buildSdkPackage', () => {
       playwright: '^1.60.0',
       react: '^19.0.0',
       'react-dom': '^19.0.0',
+      // zod 4 brands schema types with the literal minor, and the host serves
+      // one copy behind the import map (#948): a tilde peer keeps the consumer's
+      // zod on the host's line instead of a second copy inside the package.
+      zod: '~4.6.5',
     })
     expect(pkg.peerDependenciesMeta).toEqual({
       'axe-core': { optional: true },
@@ -76,7 +80,7 @@ describe('buildSdkPackage', () => {
     })
     expect(cliHelp.status).toBe(0)
     expect(cliHelp.stdout).toContain('Usage: bakin-plugin-test-ui')
-    expect(pkg.dependencies.zod).toBeDefined()
+    expect(pkg.dependencies.zod).toBeUndefined()
     expect(pkg.dependencies['@base-ui/react']).toBeDefined()
     expect(pkg.dependencies['@types/mdast']).toBe('4.0.4')
     expect(pkg.dependencies.mdast).toBeUndefined()

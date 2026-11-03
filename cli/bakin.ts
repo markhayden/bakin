@@ -160,6 +160,10 @@ export async function main(): Promise<void> {
         await (await import('../src/cli/commands/models')).run(args)
         break
 
+      case 'updates':
+        await (await import('../src/cli/commands/updates')).run(args)
+        break
+
       default: {
         let pluginLookupError: string | undefined
         if (!BINARY_ONLY_COMMANDS.has(cmd)) {

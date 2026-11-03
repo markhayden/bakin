@@ -11,11 +11,10 @@
  * twice.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavBadge, usePluginEvent, useRouter, toast, useToastStore } from '@makinbakin/sdk/hooks'
+import { useNavBadge, usePluginEvent, useRouter, sendBrowserNotification, toast, useToastStore } from '@makinbakin/sdk/hooks'
 import { pluginFetchJson } from '@makinbakin/sdk/utils'
 import { Button, Text } from '@makinbakin/sdk/ui'
 
-import { sendBrowserNotification } from '../lib/browser-notify'
 import {
   milestoneNotifies,
   milestoneToast,

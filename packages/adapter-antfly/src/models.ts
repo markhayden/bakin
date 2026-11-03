@@ -2,11 +2,12 @@ import { spawn } from 'child_process'
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'fs'
 import { basename, dirname, join } from 'path'
 import type { OperationPlan } from '@makinbakin/sdk/types'
-import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
+import type { SearchAdapterModelCheck, SearchAdapterSetupCheckOptions, SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import type { AntflySettings } from './defaults'
-import { MODEL_PULL_VARIANTS, isPinnedModel, isSafeModelName, modelDir, modelStructurallyComplete, modelVariantMismatch, pinMismatches, pulledVariantDir } from './model-pins'
+import { MODEL_PINS, MODEL_PULL_VARIANTS, isPinnedModel, isSafeModelName, modelDir, modelStructurallyComplete, modelVariantMismatch, pinMismatches, pulledVariantDir } from './model-pins'
 import { modelLoadVerdict, probeModelLoad } from './model-load'
+import { directoryFacts, identityOf } from './identity'
 import { inferenceModelsRoot } from './paths'
 import { ANTFLY_PIN } from './pin'
 import { acquireModelsLock, createPullTracker, pullStagingDir, pullStagingRoot, variantPullStagingDir } from './pull-progress'
@@ -124,7 +125,32 @@ export function describeMissingModels(missing: InferenceModel[]): { impact: stri
   }
 }
 
-export async function checkInferenceModels(models: InferenceModel[]) {
+/** The pinned requirement's identity: the pin set + the pull variant — what a pin bump changes without any file moving (R5′). */
+function requiredModelIdentity(model: string): string {
+  return identityOf({ model, pins: MODEL_PINS[model] ?? null, variant: MODEL_PULL_VARIANTS[model] ?? null })
+}
+
+/**
+ * The installed model's STRUCTURAL identity (R5″): every file's name, size
+ * and mtime under the model dir (two levels), the manifest, the recorded
+ * variant and the cached load verdict — hashed together, never contents.
+ * Undefined when nothing of the model is on disk.
+ */
+function installedModelIdentity(model: string): { identity: string } | undefined {
+  const dir = modelDir(model)
+  if (!existsSync(dir)) return undefined
+  const verdict = modelLoadVerdict(model)
+  return {
+    identity: identityOf({
+      files: directoryFacts(dir),
+      variantMismatch: modelVariantMismatch(model),
+      verdict: verdict ? { loadable: verdict.loadable, reason: verdict.reason ?? null, probedAt: verdict.probedAt } : null,
+    }),
+  }
+}
+
+export async function checkInferenceModels(models: InferenceModel[], opts: SearchAdapterSetupCheckOptions = {}) {
+  if (opts.signal?.aborted) throw opts.signal.reason instanceof Error ? opts.signal.reason : new Error('models check aborted')
   const unsafe = models.filter((m) => !isSafeModelName(m.model))
   if (unsafe.length > 0) {
     return {
@@ -133,6 +159,10 @@ export async function checkInferenceModels(models: InferenceModel[]) {
       message: `Invalid search model id${unsafe.length === 1 ? '' : 's'} ${unsafe.map((m) => `"${m.model}"`).join(', ')} — expected owner/name`,
       remediation: 'Fix the search model ids in the search settings.',
       details: { root: inferenceModelsRoot(), invalid: unsafe.map((m) => m.model) },
+      applicable: true,
+      models: models.map((m): SearchAdapterModelCheck => (isSafeModelName(m.model)
+        ? { id: m.model, label: m.label, required: { identity: requiredModelIdentity(m.model) }, state: 'unsupported', remediation: 'change-config', reason: 'not judged — another configured model id is invalid' }
+        : { id: m.model, label: m.label, required: { identity: identityOf({ invalid: m.model }) }, state: 'unsupported', remediation: 'change-config', reason: 'invalid model id — expected owner/name' })),
     }
   }
   // Three independent findings, so none hides another (a missing reranker
@@ -165,6 +195,23 @@ export async function checkInferenceModels(models: InferenceModel[]) {
   const verb = (list: unknown[], one: string, many: string) => (list.length === 1 ? one : many)
   const root = inferenceModelsRoot()
 
+  // The per-model verdicts core reads structurally (D7.9): the same three
+  // findings as the prose below, classified once here.
+  const rows: SearchAdapterModelCheck[] = models.map((m) => {
+    const base = { id: m.model, label: m.label, required: { identity: requiredModelIdentity(m.model) }, installed: installedModelIdentity(m.model) }
+    const missingEntry = missing.find((e) => e.model === m)
+    if (missingEntry) return { ...base, state: 'missing', remediation: 'install', reason: missingEntry.reason }
+    const staleEntry = stale.find((s) => s.model === m)
+    const unloadableEntry = unloadable.find((u) => u.model === m)
+    if (staleEntry) return { ...base, state: unloadableEntry ? 'unloadable' : 'variant-mismatch', remediation: 'replace-variant', reason: unloadableEntry ? `${staleEntry.why}; ${unloadableEntry.reason}` : staleEntry.why }
+    if (unloadableEntry) {
+      return isPinnedModel(m.model)
+        ? { ...base, state: 'unloadable', remediation: 'install', reason: unloadableEntry.reason }
+        : { ...base, state: 'unsupported', remediation: 'change-config', reason: unloadableEntry.reason }
+    }
+    return { ...base, state: 'ok' }
+  })
+
   if (missing.length === 0 && stale.length === 0 && unloadable.length === 0) {
     // Structural verification only — pinned file NAMES and sizes, which is
     // what catches the wrong-distribution crash-loop class. sha256 hashing
@@ -179,6 +226,8 @@ export async function checkInferenceModels(models: InferenceModel[]) {
         ? `All ${models.length} search models present at ${root} (files present — integrity is hash-checked at install/repair)`
         : `All ${models.length} search models present at ${root} (files present — pinned models are hash-checked at install/repair; custom models are checked structurally only)`,
       details: { root, models: models.map((m) => m.model) },
+      applicable: true,
+      models: rows,
     }
   }
 
@@ -206,7 +255,7 @@ export async function checkInferenceModels(models: InferenceModel[]) {
   // `missing` / `broken` = install work (onboarding installs, the wizard
   // asks); `warn` = only can't-load, where an install at most re-checks.
   if (missingImpact) {
-    return { name: 'models', status: 'missing' as const, message, remediation: missingImpact.remediation, details }
+    return { name: 'models', status: 'missing' as const, message, remediation: missingImpact.remediation, details, applicable: true, models: rows }
   }
   if (stale.length > 0) {
     return {
@@ -215,6 +264,8 @@ export async function checkInferenceModels(models: InferenceModel[]) {
       message,
       remediation: 'Run `bakin install search-models`: it re-downloads the model in the pinned form and replaces the old install.',
       details,
+      applicable: true,
+      models: rows,
     }
   }
   return {
@@ -225,6 +276,8 @@ export async function checkInferenceModels(models: InferenceModel[]) {
       ? 'Run `bakin install search-models`: it hash-checks the pinned files and re-downloads damaged ones. If they are intact, the engine cannot run this model here — point that embedder at a model that loads on this platform.'
       : 'Nothing to install: these files are complete, the engine just cannot run this model here. Point that embedder at a model that loads on this platform, or run Bakin on macOS for it.',
     details,
+    applicable: true,
+    models: rows,
   }
 }
 

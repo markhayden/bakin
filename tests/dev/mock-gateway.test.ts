@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'bun:test'
 import { handleGatewayRequest, handleGatewayRpcRequest } from '../../dev/imitation-crab/gateway'
 
+// Every agent RPC needs a non-empty idempotencyKey (2026.9.5 closed schema, #883).
+let agentKeySeq = 0
+
 describe('mock gateway request handling', () => {
   it('GET /health returns ok with mock flag', async () => {
     const res = await handleGatewayRequest({ method: 'GET', url: '/health' })
@@ -12,9 +15,9 @@ describe('mock gateway request handling', () => {
 
   it('RPC agent returns canned Gateway agent payloads', async () => {
     const res = await handleGatewayRpcRequest('agent', {
+      idempotencyKey: `k-${++agentKeySeq}`,
       agentId: 'pixel',
       message: 'Generate a thumbnail',
-      expectFinal: true,
     })
 
     expect(res.ok).toBe(true)
@@ -24,7 +27,7 @@ describe('mock gateway request handling', () => {
   })
 
   it('RPC agent handles missing agent IDs', async () => {
-    const res = await handleGatewayRpcRequest('agent', { message: 'test' })
+    const res = await handleGatewayRpcRequest('agent', { idempotencyKey: `k-${++agentKeySeq}`, message: 'test'  })
 
     expect(res.ok).toBe(true)
     expect(JSON.stringify(res.payload)).toContain('mock:unknown')

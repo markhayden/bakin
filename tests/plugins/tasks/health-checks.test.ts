@@ -183,6 +183,16 @@ import {
 } from '../../../plugins/tasks/lib/health-checks'
 import { expectRepairContract, runRepairContract } from '../../helpers/repair-contract'
 import { noopOp } from '../../helpers/operation-harness'
+import { repairMode } from '@bakin/core/health/repair-mode'
+import type { HealthRepairActionDefinition, HealthRepairPlanItem, HealthRepairPlanItemInput } from '@makinbakin/sdk'
+
+/** Core stamps `effects` (defaulting to the action's) and `mode` on plan items before apply sees them. */
+function canonical(action: HealthRepairActionDefinition, items: HealthRepairPlanItemInput[]): HealthRepairPlanItem[] {
+  return items.map((item) => {
+    const effects = item.effects ?? action.effects
+    return { ...item, localId: item.id, effects, mode: repairMode(effects) }
+  })
+}
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -242,14 +252,19 @@ describe('checkTaskConsistency', () => {
 
     const results = await checkTaskConsistency()
     if (results.outcome !== 'observed') throw new Error('expected observations')
-    expect(results.observations.some(r => r.status === 'warning' && r.summary.includes('unknown agent “ghost”'))).toBe(true)
+    const row = results.observations.find(r => r.status === 'warning' && r.summary.includes('unknown agent “ghost”'))
+    expect(row).toBeDefined()
+    // Row 118: the human's decision on the task's assignee field, required while the task is open.
+    expect(row?.incident).toMatchObject({ declarationId: 'unknown-agent', required: true, subject: { kind: 'task', id: 't1' }, resolution: { type: 'human', needs: 'decision', href: '/tasks?taskId=t1&field=assignee', field: 'task-assignee' } })
   })
 
   it('flags an in-progress task with zero log entries', async () => {
     storeBoard.columns.inProgress.push({ id: 't3', title: 'No logs', agent: 'patch', log: [] })
     const results = await checkTaskConsistency()
     if (results.outcome !== 'observed') throw new Error('expected observations')
-    expect(results.observations.some(r => r.status === 'warning' && r.key === 'progress-missing:t3')).toBe(true)
+    const row = results.observations.find(r => r.status === 'warning' && r.key === 'progress-missing:t3')
+    expect(row).toBeDefined()
+    expect(row?.incident).toBeUndefined() // row 119: an observation, never a card
   })
 
   it('flags an agent overloaded with > 3 concurrent in-progress tasks', async () => {
@@ -258,7 +273,9 @@ describe('checkTaskConsistency', () => {
     })))
     const results = await checkTaskConsistency()
     if (results.outcome !== 'observed') throw new Error('expected observations')
-    expect(results.observations.some(r => r.status === 'warning' && r.key === 'overloaded:patch')).toBe(true)
+    const row = results.observations.find(r => r.status === 'warning' && r.key === 'overloaded:patch')
+    expect(row).toBeDefined()
+    expect(row?.incident).toBeUndefined() // row 120: an observation
   })
 
   it('offers an explicit repair for orphaned dependsOn on a done task', async () => {
@@ -285,7 +302,7 @@ describe('checkTaskConsistency', () => {
     expect(plan).toHaveLength(1)
     expect(plan[0].id).toBe('clear-completed-task-dependencies')
 
-    const applied = await repair.apply(plan, noopOp())
+    const applied = await repair.apply(canonical(repair, plan), noopOp())
     expect(applied[0].status).toBe('applied')
     expect(applied[0].actionId).toBe('clear-done-depends-on')
     expect(clearedDependencies).toContain('d2')
@@ -358,7 +375,7 @@ describe('checkTaskPositionIntegrity', () => {
     const repair = taskOrderRepair()
     const plan = await repair.plan({ type: 'all_actionable', reportId: 'report-1' })
     expect(plan).toHaveLength(1)
-    const applied = await repair.apply(plan, noopOp())
+    const applied = await repair.apply(canonical(repair, plan), noopOp())
     expect(applied[0].status).toBe('applied')
     expect(renumberedColumns.sort()).toEqual(Object.keys(storeBoard.columns).sort())
   })
@@ -370,7 +387,7 @@ describe('repair runtime contract (#895 D10)', () => {
   it('clear-done-depends-on reports one item per cleared task', async () => {
     storeBoard.columns.done.push({ id: 'd2', title: 'Repair clear', dependsOn: 'orphan' })
     const repair = taskConsistencyRepair()
-    const run = await runRepairContract(repair, await repair.plan(target))
+    const run = await runRepairContract(repair, canonical(repair, await repair.plan(target)))
     expectRepairContract(repair, run)
     expect(run.view.stages[0]!.items).toEqual([{ id: 'd2', label: 'Repair clear', status: 'done' }])
   })
@@ -378,7 +395,7 @@ describe('repair runtime contract (#895 D10)', () => {
   it('reorder-columns reports one item per column', async () => {
     storeBoard.columns.todo.push({ id: 'a', title: 'A', updatedAt: 100 })
     const repair = taskOrderRepair()
-    const run = await runRepairContract(repair, await repair.plan(target))
+    const run = await runRepairContract(repair, canonical(repair, await repair.plan(target)))
     expectRepairContract(repair, run)
     expect(run.view.stages[0]!.items!.every((i) => i.status === 'done')).toBe(true)
     expect(run.view.stages[0]!.items!.map((i) => i.id)).toContain('todo')

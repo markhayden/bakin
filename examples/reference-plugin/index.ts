@@ -230,6 +230,12 @@ const plugin = definePlugin({
       description: 'Checks that bookmark storage is readable and has capacity for new bookmarks.',
       group: { key: 'reference-bookmarks', label: 'Reference Bookmarks' },
       maxAgeMs: 5 * 60_000,
+      // Every incident this check may raise, as a finite family: the
+      // registry refuses a dangling action or a human need without `needs`.
+      incidents: [
+        { id: 'capacity', subjectKind: 'plugin', resolution: { type: 'human', needs: 'decision' }, required: 'never' },
+        { id: 'readability', subjectKind: 'record', resolution: { type: 'human', needs: 'decision' }, required: 'always' },
+      ],
       run: async () => {
         const { maxBookmarks } = settingsOf(ctx)
         try {
@@ -245,8 +251,10 @@ const plugin = definePlugin({
                   title: 'Bookmark storage is approaching its limit',
                   impact: 'New bookmarks will be rejected after the configured limit is reached.',
                   disposition: 'advisory',
+                  subject: { kind: 'plugin', id: PLUGIN_ID, label: 'Reference Bookmarks' },
+                  declarationId: 'capacity',
                   resources: [{ kind: 'plugin', id: PLUGIN_ID, label: 'Reference Bookmarks' }],
-                  resolution: { key: 'review-bookmarks', type: 'navigate', label: 'Review bookmarks', href: '/reference-bookmarks' },
+                  resolution: { key: 'review-bookmarks', type: 'human', needs: 'decision', label: 'Review bookmarks', href: '/reference-bookmarks' },
                 },
               })
             : healthHealthy({
@@ -263,12 +271,15 @@ const plugin = definePlugin({
               title: 'Bookmark storage is unreadable',
               impact: 'Bookmarks cannot be listed, created, or removed until storage is restored.',
               disposition: 'action_required',
+              subject: { kind: 'record', id: 'bookmarks.json', label: 'bookmarks.json' },
+              declarationId: 'readability',
               resources: [{ kind: 'file', id: 'bookmarks.json', label: 'bookmarks.json' }],
               resolution: {
                 key: 'restore-storage',
-                type: 'instructions',
+                type: 'human',
+                needs: 'decision',
                 label: 'Restore bookmark storage',
-                steps: ['Check the plugin storage directory permissions and repair or restore bookmarks.json, then rerun Health.'],
+                href: '/reference-bookmarks',
               },
             },
           })])

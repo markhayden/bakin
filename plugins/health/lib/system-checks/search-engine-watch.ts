@@ -27,9 +27,27 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthRepairActionDefinition, HealthRepairPlanItem } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthRepairActionDefinition, HealthRepairPlanItem, HealthSubject } from '@makinbakin/sdk'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
 import { createLogger } from '../../../../src/core/logger'
+
+const SEARCH_ENGINE_SUBJECT: HealthSubject = { kind: 'service', id: 'search-engine', label: 'Search engine' }
+const WATCH_HISTORY_SUBJECT: HealthSubject = { kind: 'record', id: 'search/engine-watch.json', label: 'Search engine watch history' }
+
+/** Row 85: both watch checks share the persisted history and its reset repair. */
+const WATCH_STATE_FAMILY: HealthIncidentDeclaration = { id: 'engine-watch-state-unknown', subjectKind: 'record', resolution: { type: 'repair', actionId: 'search-engine-watch-reset' }, required: 'never' }
+
+/** Rows 81–85: dark twice = restart; first sample, degraded coverage and unknowns are observations. */
+export const SEARCH_CANARY_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'search-dark', subjectKind: 'service', resolution: { type: 'repair', actionId: 'search-canary-restart' }, required: 'always' },
+  WATCH_STATE_FAMILY,
+]
+
+/** Rows 85–89: wedged twice = restart; first sample, sustained CPU and unknowns are observations. */
+export const SEARCH_ENGINE_BURN_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'engine-wedged', subjectKind: 'service', resolution: { type: 'repair', actionId: 'search-engine-burn-restart' }, required: 'always' },
+  WATCH_STATE_FAMILY,
+]
 
 const log = createLogger('health-search-engine-watch')
 
@@ -155,6 +173,11 @@ export async function resetEngineWatchStateForTests(): Promise<void> {
   lastEngineRestartAt = 0
 }
 
+/** Production reset used by the `search-engine-watch-reset` repair after the unreadable file was moved aside. */
+export async function resetEngineWatchStreaks(): Promise<void> {
+  await resetStreaks()
+}
+
 // ── Checks ─────────────────────────────────────────────────────────────────
 
 export async function checkSearchCanary(): Promise<HealthCheckRunInput> {
@@ -219,6 +242,8 @@ async function checkSearchCanaryWithState(): Promise<HealthCheckRunInput> {
         class: 'service_failure',
         impact: 'Production searches return no indexed contribution from any table.',
         disposition: 'action_required',
+        subject: SEARCH_ENGINE_SUBJECT,
+        declarationId: 'search-dark',
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
         resolution: {
           key: 'restart-engine',
@@ -233,16 +258,8 @@ async function checkSearchCanaryWithState(): Promise<HealthCheckRunInput> {
     return healthObserved([healthWarning({
       key: 'queries.canary',
       summary: 'Canary query received no contribution from any table.',
-      detail: 'The engine may be busy or wedged; a second consecutive dark result becomes actionable.',
+      detail: 'The engine may be busy or wedged; a second consecutive dark result becomes actionable. Real queries may be returning no indexed results under the current engine load.',
       evidence: { verdict, tableCount: tables.length, darkStreak },
-      incident: {
-        key: 'search-dark-first-sample',
-        title: 'Search canary needs another sample',
-        impact: 'Real queries may be returning no indexed results under the current engine load.',
-        disposition: 'watch',
-        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Run the canary again' },
-      },
     })])
   }
   if (verdict === 'partial') {
@@ -251,23 +268,10 @@ async function checkSearchCanaryWithState(): Promise<HealthCheckRunInput> {
     return healthObserved([healthWarning({
       key: 'queries.canary',
       summary: 'Canary query completed with degraded coverage.',
-      detail: `${omitted} of ${tables.length} tables were omitted and ${degraded} used keyword-only search.`,
+      // Row 83: an observation with the stats snapshot attached — the
+      // engine stays available; `bakin search:stats` shows the backlog.
+      detail: `${omitted} of ${tables.length} tables were omitted and ${degraded} used keyword-only search. Results may omit tables or semantic matches under load; inspect \`bakin search:stats\` if this persists.`,
       evidence: { verdict, tableCount: tables.length, omitted, degraded, tookMs: response.meta.took_ms },
-      incident: {
-        key: 'query-degraded',
-        title: 'Search query coverage is degraded',
-        class: 'service_failure',
-        impact: 'Search remains available, but results may omit tables or semantic matches under load.',
-        disposition: 'watch',
-        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        resolution: {
-          key: 'inspect-stats',
-          type: 'instructions',
-          label: 'Inspect Search load',
-          steps: ['Inspect Search statistics and backlog if degraded coverage persists.'],
-          command: 'bakin search:stats',
-        },
-      },
     })])
   }
   return healthObserved([healthHealthy({
@@ -344,6 +348,8 @@ async function checkSearchEngineBurnWithState(): Promise<HealthCheckRunInput> {
         class: 'service_failure',
         impact: 'The engine can consume sustained CPU while indexed queries remain starved.',
         disposition: 'action_required',
+        subject: SEARCH_ENGINE_SUBJECT,
+        declarationId: 'engine-wedged',
         resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
         resolution: {
           key: 'restart-engine',
@@ -360,40 +366,15 @@ async function checkSearchEngineBurnWithState(): Promise<HealthCheckRunInput> {
       summary: 'Search engine emitted a possible wedge signature.',
       detail: `${status.wedgeSignals.join(', ')}. A second consecutive sample becomes actionable; this sample may be legitimate post-crash catch-up.`,
       evidence: { wedgeSignals: status.wedgeSignals, wedgeStreak, busyStreak, pid: status.pid ?? null, cpuUtilization: status.cpuUtilization },
-      incident: {
-        key: 'wedge-first-sample',
-        title: 'Search engine wedge needs another sample',
-        impact: 'A persistent zero-progress signature can consume CPU while Search remains unresponsive.',
-        disposition: 'watch',
-        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Measure engine burn again' },
-      },
     })])
   }
   if (busyStreak >= 2) {
     return healthObserved([healthWarning({
       key: 'engine.burn',
       summary: 'Search engine CPU use is sustained.',
-      detail: `About ${Math.round((status.cpuUtilization ?? 0) * 100)}% of one core across ${busyStreak} consecutive Health runs, with no wedge signature. This can be normal during backfills and enrichment.`,
+      // Row 88: an observation — sustained CPU is the known precursor of the #319 spin, so it stays listed; `bakin search:stats` confirms whether active work explains it.
+      detail: `About ${Math.round((status.cpuUtilization ?? 0) * 100)}% of one core across ${busyStreak} consecutive Health runs, with no wedge signature. This can be normal during backfills and enrichment; inspect \`bakin search:stats\` to confirm active work explains the load.`,
       evidence: { wedgeSignals: [], wedgeStreak, busyStreak, pid: status.pid ?? null, cpuUtilization: status.cpuUtilization },
-      incident: {
-        key: 'sustained-cpu',
-        title: 'Search engine load needs watching',
-        // service_failure, not usage_anomaly: sustained engine CPU is the
-        // known precursor of the #319 zero-progress spin — demoting it to a
-        // silent advisory would hide real degradation until queries fail.
-        class: 'service_failure',
-        impact: 'Sustained engine load can slow queries, though active index work may explain it.',
-        disposition: 'watch',
-        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-        resolution: {
-          key: 'inspect-stats',
-          type: 'instructions',
-          label: 'Inspect Search workload',
-          steps: ['Inspect Search statistics and backlog to confirm active work explains the load.'],
-          command: 'bakin search:stats',
-        },
-      },
     })])
   }
   return healthObserved([healthHealthy({
@@ -418,13 +399,18 @@ async function checkSearchEngineBurnWithState(): Promise<HealthCheckRunInput> {
  * honestly during the bounce (D11).
  */
 function engineRestartRepair(
-  actionId: 'search-canary-restart' | 'search-engine-burn-restart' | 'search-consistency-restart',
-  checkId: 'search-canary' | 'search-engine-burn' | 'search-consistency',
+  actionId: 'search-engine-restart' | 'search-canary-restart' | 'search-engine-burn-restart' | 'search-consistency-restart',
+  checkId: 'search' | 'search-canary' | 'search-engine-burn' | 'search-consistency',
   title: string,
 ): HealthRepairActionDefinition {
   return {
     id: actionId,
     name: title,
+    // Rows 57/72/81/86: a supervised restart — no effects beyond the service
+    // bounce the maintenance coordinator schedules; the journal (row 68)
+    // drains on recovery, so the engine's own restart resolves it.
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false, restartsService: 'search-engine', ...(actionId === 'search-engine-restart' ? { resolves: ['stale-backlog'] } : {}) },
+    mutation: 'restart',
     resources: ['search-engine'],
     operationPlan: () => ({
       stages: [
@@ -439,7 +425,6 @@ function engineRestartRepair(
         actionId,
         title,
         reason: 'The engine is running but production query or process telemetry shows a persistent wedge.',
-        safety: 'safe',
         ...repairTargetSelection(target),
         changes: [{
           kind: 'other',
@@ -496,6 +481,16 @@ function engineRestartRepair(
   }
 }
 
+/**
+ * The engine restart as the Search check's own repair (self-healing 1.3a,
+ * row 57): the first attempt for an unreachable engine; the canary, burn
+ * and consistency variants below share this implementation (their ids stay
+ * registered — each incident names the repair its check owns).
+ */
+export function searchEngineRestartRepair(): HealthRepairActionDefinition {
+  return engineRestartRepair('search-engine-restart', 'search', 'Restart the Search engine')
+}
+
 export function searchCanaryRepair(): HealthRepairActionDefinition {
   return engineRestartRepair('search-canary-restart', 'search-canary', 'Restart the Search engine (queries are dark)')
 }
@@ -526,16 +521,10 @@ function engineWatchStateUnknown(error: EngineWatchStateError) {
       class: 'evidence_gap',
       impact: 'Health cannot safely decide whether Search symptoms repeated across consecutive checks.',
       disposition: 'watch',
+      subject: WATCH_HISTORY_SUBJECT,
+      declarationId: 'engine-watch-state-unknown',
       resources: [{ kind: 'file', id: 'engine-watch-state', label: 'Search engine watch history' }],
-      resolution: {
-        key: 'restore-watch-history',
-        type: 'instructions',
-        label: 'Restore watch history',
-        steps: [
-          'Check plugin-data/health/engine-watch.json for invalid JSON or unreadable file permissions.',
-          'Move an invalid file aside, then rerun Health to start a fresh observation streak.',
-        ],
-      },
+      resolution: { key: 'restore-watch-history', type: 'repair', label: 'Restore watch history', actionId: 'search-engine-watch-reset' },
     },
   })
 }
@@ -544,16 +533,7 @@ function canaryUnknown(error: unknown) {
   return healthUnknown({
     key: 'queries.canary',
     summary: 'Production Search query behavior could not be verified.',
-    detail: error instanceof Error ? error.message : String(error),
-    incident: {
-      key: 'canary-unknown',
-      title: 'Search query canary is unknown',
-      class: 'evidence_gap',
-      impact: 'Health cannot confirm that the engine serves real indexed queries.',
-      disposition: 'watch',
-      resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-      resolution: { key: 'rerun', type: 'rerun', label: 'Rerun the canary' },
-    },
+    detail: `${error instanceof Error ? error.message : String(error)} Health cannot confirm that the engine serves real indexed queries.`,
   })
 }
 
@@ -561,16 +541,7 @@ function engineBurnUnknown(error: unknown) {
   return healthUnknown({
     key: 'engine.burn',
     summary: 'Search engine process telemetry could not be verified.',
-    detail: error instanceof Error ? error.message : String(error),
-    incident: {
-      key: 'engine-burn-unknown',
-      title: 'Search engine burn status is unknown',
-      class: 'evidence_gap',
-      impact: 'Health cannot detect sustained CPU use or known zero-progress signatures.',
-      disposition: 'watch',
-      resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-      resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-    },
+    detail: `${error instanceof Error ? error.message : String(error)} Health cannot detect sustained CPU use or known zero-progress signatures.`,
   })
 }
 

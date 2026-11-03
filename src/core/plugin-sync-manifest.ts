@@ -44,7 +44,7 @@ import { pathToFileURL } from 'url'
 
 import type { HttpMethod } from '@makinbakin/sdk/types'
 
-import { validateCapturedApiRoute } from '../../packages/core/src/plugins/manifest'
+import { validateCapturedApiRoute, validateCapturedSocketRoute } from '../../packages/core/src/plugins/manifest'
 import { createLogger } from '@/core/logger'
 
 const log = createLogger('plugin-sync-manifest')
@@ -84,6 +84,7 @@ interface CapturedTool {
 export interface SyncManifestDiff {
   apiRoutes: { added: string[]; removed: string[]; kept: number }
   execTools: { added: string[]; removed: string[]; kept: number }
+  socketRoutes: { added: string[]; removed: string[]; kept: number }
 }
 
 export interface SyncManifestResult {
@@ -101,7 +102,7 @@ export interface SyncManifestResult {
 }
 
 const V1_NOTE =
-  'sync-manifest derives server sections only (contributes.apiRoutes, contributes.execTools); ' +
+  'sync-manifest derives server sections only (contributes.apiRoutes, contributes.execTools, contributes.socketRoutes); ' +
   'client sections (nav, clientRoutes) are author-maintained.'
 
 /** Deep no-op proxy: any property access yields a callable that returns
@@ -222,7 +223,7 @@ export async function syncPluginManifest(
     }
   }
 
-  let plugin: { routes?: unknown[]; activate?: (ctx: unknown) => unknown }
+  let plugin: { routes?: unknown[]; socketRoutes?: unknown[]; activate?: (ctx: unknown) => unknown }
   try {
     // CLI-only assumption: no cache-busting on this import. A one-shot CLI
     // process never re-imports a stale dist; if this engine is ever wired
@@ -242,6 +243,11 @@ export async function syncPluginManifest(
 
   const routes: CapturedRoute[] = []
   const tools: CapturedTool[] = []
+  const sockets: Array<{ path: string; summary?: string }> = []
+  for (const route of plugin.socketRoutes ?? []) {
+    const r = route as { path?: unknown; summary?: unknown }
+    if (r && typeof r.path === 'string') sockets.push({ path: r.path, summary: typeof r.summary === 'string' ? r.summary : undefined })
+  }
 
   for (const route of plugin.routes ?? []) {
     const r = route as CapturedRoute
@@ -273,6 +279,13 @@ export async function syncPluginManifest(
     const problem = validateCapturedApiRoute(r.method, r.path)
     if (problem) violations.push(`route ${r.method} ${r.path}: ${problem}`)
   }
+  const seenSocketPaths = new Set<string>()
+  for (const socket of sockets) {
+    const problem = validateCapturedSocketRoute(socket.path)
+    if (problem) violations.push(`socket route ${socket.path}: ${problem}`)
+    if (seenSocketPaths.has(socket.path)) violations.push(`socket route ${socket.path}: declared more than once`)
+    seenSocketPaths.add(socket.path)
+  }
   const expectedToolPrefix = `bakin_exec_${pluginId}_`
   for (const t of tools) {
     if (!t.name.startsWith(expectedToolPrefix)) {
@@ -295,6 +308,12 @@ export async function syncPluginManifest(
   const contributes = (rawManifest.contributes ?? {}) as Record<string, unknown>
   const existingRoutes = Array.isArray(contributes.apiRoutes) ? (contributes.apiRoutes as Record<string, unknown>[]) : []
   const existingTools = Array.isArray(contributes.execTools) ? (contributes.execTools as Record<string, unknown>[]) : []
+  const existingSockets = Array.isArray(contributes.socketRoutes) ? (contributes.socketRoutes as Record<string, unknown>[]) : []
+  const existingSocketByPath = new Map(
+    existingSockets.filter((r) => typeof r.path === 'string').map((r) => [r.path as string, r] as const),
+  )
+  const nextSockets = sockets.map((socket) => existingSocketByPath.get(socket.path) ?? { path: socket.path, summary: socket.summary ?? `Socket ${socket.path}` })
+  const capturedSocketPaths = new Set(sockets.map((socket) => socket.path))
 
   const existingRouteByKey = new Map(
     existingRoutes
@@ -327,12 +346,19 @@ export async function syncPluginManifest(
       removed: [...existingToolByName.keys()].filter((name) => !capturedToolNames.has(name)),
       kept: nextTools.length - tools.filter((t) => !existingToolByName.has(t.name)).length,
     },
+    socketRoutes: {
+      added: sockets.filter((socket) => !existingSocketByPath.has(socket.path)).map((socket) => socket.path),
+      removed: [...existingSocketByPath.keys()].filter((path) => !capturedSocketPaths.has(path)),
+      kept: sockets.filter((socket) => existingSocketByPath.has(socket.path)).length,
+    },
   }
   const changed =
     diff.apiRoutes.added.length > 0 ||
     diff.apiRoutes.removed.length > 0 ||
     diff.execTools.added.length > 0 ||
-    diff.execTools.removed.length > 0
+    diff.execTools.removed.length > 0 ||
+    diff.socketRoutes.added.length > 0 ||
+    diff.socketRoutes.removed.length > 0
 
   if (changed && !opts.check) {
     const nextContributes: Record<string, unknown> = { ...contributes }
@@ -340,6 +366,8 @@ export async function syncPluginManifest(
     else delete nextContributes.apiRoutes
     if (nextTools.length > 0) nextContributes.execTools = nextTools
     else delete nextContributes.execTools
+    if (nextSockets.length > 0) nextContributes.socketRoutes = nextSockets
+    else delete nextContributes.socketRoutes
 
     // Preserve top-level key order; only the contributes value changes.
     const out: Record<string, unknown> = {}
@@ -352,7 +380,7 @@ export async function syncPluginManifest(
         out[key] = value
       }
     }
-    if (!placed && (nextRoutes.length > 0 || nextTools.length > 0)) out.contributes = nextContributes
+    if (!placed && (nextRoutes.length > 0 || nextTools.length > 0 || nextSockets.length > 0)) out.contributes = nextContributes
     writeFileSync(manifestPath, `${JSON.stringify(out, null, 2)}\n`)
     log.info(`sync-manifest wrote ${manifestPath}`, { pluginId, diff })
   }

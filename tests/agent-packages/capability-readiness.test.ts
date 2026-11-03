@@ -10,7 +10,7 @@ const testDir = pathJoin(tmpdir(), `bakin-test-cap-readiness-${Date.now()}-${ran
 process.env.BAKIN_HOME = testDir
 
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 mock.module('@/core/content-dir', () => ({
@@ -108,6 +108,16 @@ afterAll(() => {
 describe('listCapabilities', () => {
   it('returns nothing with no installed capability packs', async () => {
     expect(await listCapabilities()).toEqual([])
+  })
+
+  it('a stale lockfile key beside the live one (ocr@0.1.0 and ocr@0.1.1, both 0.1.1 — the operator\'s box after an upgrade) judges the installed pack ONCE (live incident 2026-10-24)', async () => {
+    seedInstalledPack({ withBin: false })
+    const lockPath = join(testDir, 'packages', 'lock.json')
+    const lock = JSON.parse(readFileSync(lockPath, 'utf-8')) as { packages: Record<string, unknown> }
+    lock.packages['web-search-brave@0.9.0'] = lock.packages['web-search-brave@1.0.0'] // stale key, same recorded version + install dir
+    writeFileSync(lockPath, JSON.stringify(lock))
+    const caps = await listCapabilities()
+    expect(caps.map((cap) => `${cap.packageId}@${cap.version}`)).toEqual(['web-search-brave@1.0.0'])
   })
 
   it('walks the readiness ladder: content missing → bin missing → key missing → ready', async () => {

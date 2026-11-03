@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { FileText, Image, Video, Music, Map, Database, Package, Clock } from 'lucide-react'
-import { useAgent } from '@makinbakin/sdk/hooks'
+import { useAgent, useKeyedState } from '@makinbakin/sdk/hooks'
 import { AgentAvatar } from '@makinbakin/sdk/patterns'
 import { Badge, Text } from '@makinbakin/sdk/ui'
 import { formatAge } from '@makinbakin/sdk/utils'
@@ -38,9 +38,8 @@ export function AssetThumb({ assetId, type, version, hasThumb, className }: {
     if (hasThumb !== false) return version != null ? assetThumbUrl(assetId, version) : assetThumbUrl(assetId)
     return version != null ? assetVersionUrl(assetId, version) : assetCurrentUrl(assetId)
   }, [assetId, hasThumb, type, version])
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => { setFailed(false) }, [imageSrc])
+  // A failed load belongs to one source (issue 966b): a new source gets a fresh try.
+  const [failed, setFailed] = useKeyedState(imageSrc, () => false)
 
   if (imageSrc && !failed) {
     return (

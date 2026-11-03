@@ -8,6 +8,7 @@ Two registries make plugin- and package-shipped workflows possible without break
 
 - **Source registry** (`lib/source-registry.ts`) — in-memory index of every workflow definition the system knows about, keyed by id, with provenance (`plugin`, `agent-package`, or `user`). Resolution order is `user > agent-package > plugin`.
 - **Node-type registry** (`lib/node-type-registry.ts`) — single source of truth for the 5 builtin step types. The same Zod schemas drive both YAML parsing and the form editor — they cannot drift.
+- **Recover views (self-healing PR1 slice 1.4b):** `/workflows/<id>?recover=1` shows `WorkflowRecoverBanner` — Health's findings for THAT record read from the cached report (`GET /api/plugins/health/doctor`, filtered by the `workflow` resource; `stableKey` = the check's `stablePart`) with Open editor and Dismiss; `&step=<id>` still opens the step drawer. `/workflows?recover=1&skill=<file>` does the same for a skill file (`file` resource) and names the path on disk, since skills have no in-app editor. The definitions/skills incidents link to those views.
 
 ## Two Skill Systems (Don't Conflate)
 

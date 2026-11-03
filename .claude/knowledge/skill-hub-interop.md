@@ -112,7 +112,12 @@ authed/unavailable). An arch-pin test keeps client imports + raw API URLs inside
   drift re-prompts once), `list` (managed `[hub|pack]` + unmanaged runtime skills),
   `remove <name>` (bare names, D19 — lockfile keys stay `hub-<name>@<ver>`),
   `map <name> [--yes]`. **No update verb** — re-running `install <ref>` re-runs the
-  gate and re-pins.
+  gate and re-pins. Whether an update EXISTS is the updates engine's answer
+  (`hub-skill` subjects, `.claude/knowledge/updates.md` § Packages and hub
+  skills): the lock entry's original `source` is the tracking policy
+  (`clawhub:<slug>` tracks latest, `clawhub:<slug>@<v>` is pinned), and a
+  re-install driven by an update passes `trackingSource` so the policy
+  survives it (#1007 D7.12 R8′).
 - REST `packages/host/src/api/skills.ts`: `GET /api/skills`,
   `POST /api/skills/{preview,install,map/preview,map/apply}`. Removal rides
   `DELETE /api/packages/{lockKey}`. Preview, install and map-preview are

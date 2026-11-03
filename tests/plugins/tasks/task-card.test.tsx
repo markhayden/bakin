@@ -15,7 +15,10 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useAgent: (agentId: string) => agentId ? { name: 'Reviewer' } : undefined,
   useAgentDisplayName: () => undefined,
   useAgentColor: () => 'var(--bakin-color-signal-accent)',

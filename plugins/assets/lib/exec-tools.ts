@@ -351,7 +351,7 @@ export function registerAssetsExecTools(ctx: PluginContext): void {
     description: 'Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files.',
     parameters: {},
     handler: async () => {
-      const health = checkAssets(getContentDir())
+      const health = await checkAssets(getContentDir())
       const results = health.outcome === 'observed' ? health.observations : []
       return { ok: true, count: results.length, results }
     },

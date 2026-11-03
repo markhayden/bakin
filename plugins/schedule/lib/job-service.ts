@@ -427,3 +427,18 @@ export function indexJob(jobId: string): void {
     log.warn('Failed to index job', { jobId, error: err instanceof Error ? err.message : String(err) })
   })
 }
+
+/**
+ * Workflow ids an enabled Bakin schedule targets — the "scheduled" half of
+ * the workflows checks' in-use fact (re-homing rows 133–137, served through
+ * the `schedule.workflowsScheduled` hook). A paused job still counts: it
+ * resumes and fires; a completed one-shot or a disabled job does not.
+ */
+export function scheduledWorkflowIds(): { workflowIds: string[] } {
+  const ids = new Set<string>()
+  for (const job of Object.values(readSidecar().jobs)) {
+    if (!job.isBakinJob || job.enabled === false || job.completedAt || !job.workflowId) continue
+    ids.add(job.workflowId)
+  }
+  return { workflowIds: [...ids].sort() }
+}

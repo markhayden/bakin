@@ -14,6 +14,9 @@ export { defineRoute } from '@bakin/core/routing'
 export { defineCoreRoute } from '@bakin/core/routing'
 /** Compose a plugin's routes into a single definition for the server. */
 export { definePlugin } from '@bakin/core/routing'
+/** Define a plugin WebSocket route (served at `/api/plugins/{pluginId}{path}`). */
+export { defineSocketRoute } from '@bakin/core/routing'
+export type { PluginSocket, SocketRoute } from '../types/socket-route'
 
 /** Provenance of an approval decision on a plugin route, from its transport only — pass it to the gate hooks (#898). */
 export { approvalProvenanceFromRequest } from '@bakin/core/approvals/provenance'

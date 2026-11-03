@@ -6,7 +6,7 @@ import { ListRows, Pagination, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Text } from '@makinbakin/sdk/ui'
 import { cn } from '@makinbakin/sdk/utils'
 import { CircleAlert, ChevronDown } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { InteractionCoverage, UsageEntry, UsageFailureGroup, UsageFailureGroupPage, UsageFeedData } from '../types'
 import type { ActivityFailureSelection } from './activity-breakdown'
 import { ActivityFailureTrend } from './activity-failure-trend'
@@ -318,6 +318,7 @@ export function ActivityFailureGroups({
   onPageChange,
   initiallyExpanded = false,
   pageFocusRequestId,
+  onPageFocusRestored,
   onDetailsExpandedChange,
   failureRequest,
 }: {
@@ -332,6 +333,8 @@ export function ActivityFailureGroups({
   onPageChange?: (offset: number, options?: ActivityFailurePageChangeOptions) => void
   initiallyExpanded?: boolean
   pageFocusRequestId?: number
+  /** The page-focus request landed on the first pattern (the owner drops the request). */
+  onPageFocusRestored?: (requestId: number) => void
   onDetailsExpandedChange?: (expanded: boolean) => void
   failureRequest?: ActivityFailureRequest | null
 }) {
@@ -355,10 +358,14 @@ export function ActivityFailureGroups({
   const matchingGroupElementId = matchingGroup ? failureGroupElementId(matchingGroup) : null
   const requestId = failureRequest?.requestId
 
-  useEffect(() => {
-    if (requestId === undefined) return
-    setDetailsExpanded(true)
-  }, [requestId])
+  // A deep-link request opens the details in the same render it arrives —
+  // including the render this component mounts with (an exact-target fetch
+  // remounts it while the request is pending) (issue 966b).
+  const [expandedForRequest, setExpandedForRequest] = useState<number | undefined>(undefined)
+  if (expandedForRequest !== requestId) {
+    setExpandedForRequest(requestId)
+    if (requestId !== undefined) setDetailsExpanded(true)
+  }
 
   useEffect(() => {
     if (requestId === undefined || !detailsExpanded) return
@@ -369,14 +376,22 @@ export function ActivityFailureGroups({
     focusActivityElement(target, { block: matchingGroupElementId ? 'center' : 'start' })
   }, [detailsExpanded, matchingGroupElementId, requestId])
 
+  // Attempted once per request; the landed focus event reports completion.
+  const pageFocusAttempted = useRef<number | null>(null)
   useEffect(() => {
     if (pageFocusRequestId === undefined || !detailsExpanded) return
+    if (pageFocusAttempted.current === pageFocusRequestId) return
     const firstGroup = groups[0]
     if (!firstGroup) return
     const target = document.getElementById(failureGroupElementId(firstGroup))
     if (!target) return
+    pageFocusAttempted.current = pageFocusRequestId
+    const requestId = pageFocusRequestId
+    const onRestoredFocus = () => onPageFocusRestored?.(requestId)
+    target.addEventListener('focus', onRestoredFocus, { once: true })
     focusActivityElement(target, { block: 'center' })
-  }, [detailsExpanded, groups, pageFocusRequestId])
+    return () => target.removeEventListener('focus', onRestoredFocus)
+  }, [detailsExpanded, groups, pageFocusRequestId, onPageFocusRestored])
 
   if (totalFailures === 0 && totalUnverified === 0) return null
 

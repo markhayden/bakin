@@ -43,8 +43,9 @@ mock.module('@bakin/core/plugins/lockfile', () => ({
   readPluginLockfile: () => ({ version: 1, plugins: {} }),
 }))
 
-mock.module('@/core/plugins/upgrade', () => ({
-  runChecks: async () => [],
+mock.module('@/core/updates/service', () => ({
+  getUpdatesEngine: () => null,
+  getUpdatesTimer: () => null,
 }))
 
 mock.module('@/core/plugin-registry', () => ({

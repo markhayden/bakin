@@ -62,6 +62,23 @@ describe('artifact transfers ride the one primitive', () => {
     expect(BUFFERED_OR_RAW.filter(({ re }) => re.test(code)).map(({ name }) => name)).toEqual([])
   })
 
+  // A file promotion rides the ONE verify-then-commit helper. Directory
+  // promotions (the media and requirements installers' staging dirs) are a
+  // different operation and stay as renames — this pins the files only.
+  const FILE_COMMITTERS = [
+    'packages/adapter-antfly/src/installer.ts',
+    'src/core/agent-packages/bin-installer.ts',
+    'src/core/agent-packages/requirements-installer.ts',
+    'src/core/whiskit/managed-bun.ts',
+  ]
+  it.each(FILE_COMMITTERS)('%s commits its file through commitFileAtomic', (file) => {
+    expect(codeOf(file)).toMatch(/\bcommitFileAtomic\b/)
+  })
+
+  it('the antfly installer never bare-renames the staged binary into place (#890)', () => {
+    expect(codeOf('packages/adapter-antfly/src/installer.ts')).not.toMatch(/renameSync\(extractedBinary/)
+  })
+
   it('the Whiskit download copy is gone and nothing imports it', () => {
     expect(existsSync(join(ROOT, 'src/core/whiskit/download.ts'))).toBe(false)
     const self = 'tests/architecture/operations-transfers.test.ts'

@@ -2,10 +2,11 @@ import { spawn } from 'child_process'
 import { chmodSync, existsSync, mkdirSync, renameSync, rmdirSync, rmSync } from 'fs'
 import { dirname, join } from 'path'
 import type { OperationContext, OperationPlan } from '@makinbakin/sdk/types'
-import type { SearchAdapterSetupOptions, SearchAdapterSetupCheckResult } from '@bakin/core/adapters/search'
+import type { SearchAdapterSetupCheckOptions, SearchAdapterSetupOptions, SearchAdapterSetupCheckResult } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
-import { DownloadChecksumError, downloadToFile, extractTarball, opTransfer } from '@bakin/core/net/download'
+import { commitFileAtomic, DownloadChecksumError, downloadToFile, extractTarball, opTransfer } from '@bakin/core/net/download'
 import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
+import { fileFact, identityOf } from './identity'
 import { antflyBinaryPath, antflyHome } from './paths'
 import { ANTFLY_PIN, antflyDownloadUrl, antflyPlatformKey, type AntflyPin } from './pin'
 import { defaultServiceIo, getServiceAccess, withServiceOperation, findAntflyBinary, servicePaths, stopService, startService, type ServiceIo } from './service'
@@ -47,32 +48,88 @@ export const ANTFLY_ENGINE_PLAN: OperationPlan = {
   pointOfNoReturn: 'commit',
 }
 
-function runCommand(
+/** How long `antfly --version` may take before the probe gives up (and kills the child). */
+export const VERSION_PROBE_TIMEOUT_MS = 15_000
+const KILL_GRACE_MS = 2_000
+
+export interface RunCommandOptions {
+  signal?: AbortSignal
+  timeoutMs?: number
+}
+
+/**
+ * Run a child to completion. On the deadline or an abort the child is
+ * killed (SIGTERM, then SIGKILL after a grace) and REAPED — the promise
+ * settles only once `close` fired, so a hung executable never outlives the
+ * caller's slot (#1007, D7.5/R6).
+ */
+/** The child was killed by the deadline or the caller's signal: the probe did not finish — it did not answer. */
+export class CommandInterruptedError extends Error {
+  constructor(message: string, readonly reason: 'timeout' | 'abort') {
+    super(message)
+    this.name = 'CommandInterruptedError'
+  }
+}
+
+export function runCommand(
   cmd: string,
   args: string[],
+  opts: RunCommandOptions = {},
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
+    let killedBy: Error | null = null
+    let killTimer: ReturnType<typeof setTimeout> | null = null
+    let forceTimer: ReturnType<typeof setTimeout> | null = null
+    const cleanup = (): void => {
+      if (killTimer) clearTimeout(killTimer)
+      if (forceTimer) clearTimeout(forceTimer)
+      opts.signal?.removeEventListener('abort', onAbort)
+    }
+    const kill = (reason: Error): void => {
+      if (killedBy) return
+      killedBy = reason
+      child.kill('SIGTERM')
+      forceTimer = setTimeout(() => { try { child.kill('SIGKILL') } catch { /* already gone */ } }, KILL_GRACE_MS)
+      forceTimer.unref?.()
+    }
+    const onAbort = (): void => {
+      const reason = opts.signal?.reason
+      kill(new CommandInterruptedError(reason instanceof Error ? reason.message : typeof reason === 'string' ? reason : `${cmd} ${args.join(' ')} aborted`, 'abort'))
+    }
+    if (opts.signal?.aborted) onAbort()
+    else opts.signal?.addEventListener('abort', onAbort, { once: true })
+    if (opts.timeoutMs !== undefined) {
+      killTimer = setTimeout(() => kill(new CommandInterruptedError(`${cmd} ${args.join(' ')} did not finish within ${Math.round(opts.timeoutMs! / 1000)}s`, 'timeout')), opts.timeoutMs)
+      killTimer.unref?.()
+    }
     child.stdout?.on('data', (chunk) => { stdout += chunk.toString() })
     child.stderr?.on('data', (chunk) => { stderr += chunk.toString() })
-    child.on('error', (err) => reject(err))
-    child.on('close', (code) => resolve({ code, stdout, stderr }))
+    child.on('error', (err) => { cleanup(); reject(err) })
+    child.on('close', (code) => {
+      cleanup()
+      if (killedBy) reject(killedBy)
+      else resolve({ code, stdout, stderr })
+    })
   })
 }
 
 /**
  * Run `antfly --version` and extract the semver-ish token. Returns null when
- * the binary can't be executed or prints nothing recognizable.
+ * the binary ran and printed nothing recognizable (or failed to start). A
+ * probe the deadline or the caller's signal INTERRUPTED throws instead: it
+ * did not answer, and "did not answer" must never read as "wrong version".
  */
-export async function antflyBinaryVersion(binary: string): Promise<string | null> {
+export async function antflyBinaryVersion(binary: string, opts: SearchAdapterSetupCheckOptions = {}): Promise<string | null> {
   try {
-    const { code, stdout, stderr } = await runCommand(binary, ['--version'])
+    const { code, stdout, stderr } = await runCommand(binary, ['--version'], { signal: opts.signal, timeoutMs: VERSION_PROBE_TIMEOUT_MS })
     if (code !== 0) return null
     const match = `${stdout}\n${stderr}`.match(/\d+\.\d+\.\d+[-.\w]*/)
     return match ? match[0] : null
-  } catch {
+  } catch (err) {
+    if (err instanceof CommandInterruptedError) throw err
     return null
   }
 }
@@ -140,37 +197,83 @@ export async function resetAntflyEngineData(
   }
 }
 
+/**
+ * The engine's installed identity (D7.9, R5′): the version it reports plus
+ * the binary's path, size and mtime — the installer publishes by rename, so
+ * there is no receipt and these stat facts ARE the identity. Opaque to core.
+ */
+function engineIdentity(binary: string, version: string | null): SearchAdapterSetupCheckResult['installed'] {
+  const fact = fileFact(binary)
+  return {
+    ...(version ? { version } : {}),
+    identity: identityOf({ version, binary, size: fact?.size ?? null, mtimeMs: fact?.mtimeMs ?? null }),
+  }
+}
+
 export async function checkAntflyDependency(
   pin: AntflyPin = ANTFLY_PIN,
   settings: AntflySettings = DEFAULT_SETTINGS,
   io: ServiceIo = defaultServiceIo(),
+  opts: SearchAdapterSetupCheckOptions = {},
 ): Promise<SearchAdapterSetupCheckResult> {
   const access = getServiceAccess(settings, io)
-  if (access.mode === 'guest') return { name: 'antfly', status: 'ok', message: access.detail }
+  const required = { version: pin.version }
+  if (access.mode === 'guest') return { name: 'antfly', status: 'ok', message: access.detail, applicable: false }
   if (!access.allowed && access.reason !== 'unclaimed-home') {
-    return { name: 'antfly', status: 'warn', message: access.detail, remediation: access.detail }
+    return { name: 'antfly', status: 'warn', message: access.detail, remediation: access.detail, applicable: false }
   }
   const binary = findAntflyBinary()
-  if (!binary) return { name: 'antfly', status: 'missing', message: 'Antfly binary not found', remediation: 'Run `bakin install search` to download the pinned Antfly release.' }
-  const version = await antflyBinaryVersion(binary)
+  if (!binary) return { name: 'antfly', status: 'missing', message: 'Antfly binary not found', remediation: 'Run `bakin install search` to download the pinned Antfly release.', applicable: true, required }
+  const version = await antflyBinaryVersion(binary, opts)
   const details = { binary, version }
-  if (binary !== antflyBinaryPath()) return { name: 'antfly', status: 'error', message: `ANTFLY_PATH points at ${binary}, but the service launches ${antflyBinaryPath()}. Unset ANTFLY_PATH for managed search.`, details }
+  const installed = engineIdentity(binary, version)
+  const base = { applicable: true as const, installed, required }
+  if (binary !== antflyBinaryPath()) return { name: 'antfly', status: 'error', message: `ANTFLY_PATH points at ${binary}, but the service launches ${antflyBinaryPath()}. Unset ANTFLY_PATH for managed search.`, details, ...base }
   if (version !== pin.version) return {
-    name: 'antfly', status: 'broken', details,
+    name: 'antfly', status: 'broken', details, ...base,
     message: version ? `Antfly at ${binary} is v${version}, but Bakin needs v${pin.version}` : `Antfly at ${binary} did not report a recognizable version`,
     remediation: 'Run `bakin install search` to download the pinned Antfly release.',
   }
-  if (!access.allowed) return { name: 'antfly', status: 'missing', message: access.detail, remediation: access.detail, details }
-  return { name: 'antfly', status: 'ok', message: `Antfly v${version} is installed at ${binary}`, details }
+  if (!access.allowed) return { name: 'antfly', status: 'missing', message: access.detail, remediation: access.detail, details, ...base }
+  return { name: 'antfly', status: 'ok', message: `Antfly v${version} is installed at ${binary}`, details, ...base }
 }
+
+/**
+ * The two filesystem steps of the commit, injectable so a test can make one
+ * of them fail deterministically (no chmod tricks — those cannot fail as
+ * root). Defaults: fs.renameSync and the shared commitFileAtomic.
+ */
+export interface InstallerFs {
+  renameDirectory?: (from: string, to: string) => void
+  /** Best-effort removal of an aside directory (recursive, force). */
+  removeDirectory?: (path: string) => void
+  commitFile?: typeof commitFileAtomic
+}
+
+/**
+ * A leftover `share.previous` is the only copy of the previous assets after an
+ * interrupted install — refused, never deleted, and BEFORE the service is
+ * touched on either path (upgrade or already-at-pin). The operator decides
+ * with the version rule: a binary that reports the pin means the new install
+ * is complete and the aside can go; otherwise restore it and reinstall.
+ */
+function refuseLeftoverAside(shareAside: string, shareTarget: string, targetPath: string, pinVersion: string): void {
+  if (!existsSync(shareAside)) return
+  throw new Error(
+    `${shareAside} exists from an interrupted install. If \`${targetPath} --version\` reports v${pinVersion} the new install is complete — delete ${shareAside}; otherwise restore it over ${shareTarget} and reinstall.`,
+  )
+}
+
+const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 export async function installAntflyDependency(
   opts: SearchAdapterSetupOptions,
   logger: AdapterLogger = noopLogger,
   pin: AntflyPin = ANTFLY_PIN,
-  timings: { readyBudgetMs?: number; pollMs?: number; io?: ServiceIo } = {},
+  timings: { readyBudgetMs?: number; pollMs?: number; io?: ServiceIo; installerFs?: InstallerFs } = {},
   settings: AntflySettings = DEFAULT_SETTINGS,
 ) {
+  const fsOps: Required<InstallerFs> = { renameDirectory: renameSync, removeDirectory: (path) => rmSync(path, { recursive: true, force: true }), commitFile: commitFileAtomic, ...timings.installerFs }
   // Fresh boots wipe + preload models; 60s covers the slowest observed
   // cold start with headroom. Tests inject tiny budgets.
   const readyBudgetMs = timings.readyBudgetMs ?? 60_000
@@ -217,14 +320,15 @@ export async function installAntflyDependency(
   }
 
   const existing = findAntflyBinary()
-  const existingVersion = existing ? await antflyBinaryVersion(existing) : null
+  const existingVersion = existing ? await antflyBinaryVersion(existing, { signal: op.signal }) : null
   // Discovery overrides must not make a different launch target appear healthy.
   if (existing && existing !== targetPath) return failed(`ANTFLY_PATH points at ${existing}; managed search launches ${targetPath}. Unset ANTFLY_PATH before installing.`)
   if (existing && existingVersion === pin.version) {
     try {
       skip(STAGING, `already at v${pin.version}`)
       return await withServiceOperation(settings, io, intent, async () => {
-        if (await antflyBinaryVersion(targetPath) !== pin.version) throw new Error('The shared engine binary changed during installation. Retry bakin install search.')
+        if (await antflyBinaryVersion(targetPath, { signal: op.signal }) !== pin.version) throw new Error('The shared engine binary changed during installation. Retry bakin install search.')
+        refuseLeftoverAside(`${join(antflyHome(), 'share')}.previous`, join(antflyHome(), 'share'), targetPath, pin.version)
         op.stage('commit', 'Restart the service')
         await stopService(settings, io, intent)
         op.skip('cleanup', 'engine version unchanged')
@@ -318,7 +422,7 @@ export async function installAntflyDependency(
     // leaves the existing install (binary + share/) untouched.
     op.stage('version')
     chmodSync(extractedBinary, 0o755)
-    const installedVersion = await antflyBinaryVersion(extractedBinary)
+    const installedVersion = await antflyBinaryVersion(extractedBinary, { signal: op.signal })
     // A cancel accepted during the probe wins over whatever it reported.
     op.throwIfCancelled()
     if (installedVersion !== pin.version) {
@@ -333,20 +437,90 @@ export async function installAntflyDependency(
     return await withServiceOperation(settings, io, intent, async () => {
       op.stage('commit')
       // Staging did not hold the lock: another home may have installed meanwhile.
-      const previousVersion = existsSync(targetPath) ? await antflyBinaryVersion(targetPath) : null
+      const previousVersion = existsSync(targetPath) ? await antflyBinaryVersion(targetPath, { signal: op.signal }) : null
       const hadBinary = existsSync(targetPath)
+      const shareTarget = join(antflyHome(), 'share')
+      const shareAside = `${shareTarget}.previous`
+      refuseLeftoverAside(shareAside, shareTarget, targetPath, pin.version)
       // Stop even an unready engine before shared mutations.
       await stopService(settings, io, intent)
+      // Commit order, with the successful binary commit as the rollback
+      // boundary: (1) share/ swaps ASIDE (rename, never rm-then-rename — a
+      // crash between the two renames leaves share.previous beside a missing
+      // share/, and the next install refuses until the operator decides);
+      // (2) the binary commits atomically. Before (2) succeeds any failure
+      // puts the previous installation back and restarts it if there was
+      // one; after it, the new pair is the installation and what did not
+      // complete (clear, restart) is reported as such.
       const extractedShare = join(tmpDir, 'share')
-      if (existsSync(extractedShare)) {
-        const shareTarget = join(antflyHome(), 'share')
-        rmSync(shareTarget, { recursive: true, force: true })
-        mkdirSync(dirname(shareTarget), { recursive: true })
-        renameSync(extractedShare, shareTarget)
+      let shareMovedAside = false
+      let shareSwappedIn = false
+      try {
+        if (existsSync(extractedShare)) {
+          mkdirSync(dirname(shareTarget), { recursive: true })
+          if (existsSync(shareTarget)) {
+            fsOps.renameDirectory(shareTarget, shareAside)
+            shareMovedAside = true
+          }
+          fsOps.renameDirectory(extractedShare, shareTarget)
+          shareSwappedIn = true
+        }
+        mkdirSync(dirname(targetPath), { recursive: true })
+        await fsOps.commitFile(extractedBinary, targetPath, { mode: 0o755 })
+      } catch (err) {
+        // Recovery: the half-committed assets move ASIDE (never rm — they may
+        // be the only intact copy if the restore below fails), the previous
+        // assets come back, and only a fully restored installation restarts.
+        // Every recovery failure is reported beside the original error and
+        // leaves its artifacts in place for the operator.
+        const failedAside = `${shareTarget}.failed`
+        const recovery: string[] = []
+        let movedToFailed = false
+        if (shareSwappedIn) {
+          try {
+            if (existsSync(failedAside)) fsOps.removeDirectory(failedAside)
+            fsOps.renameDirectory(shareTarget, failedAside)
+            movedToFailed = true
+          } catch (moveErr) {
+            recovery.push(`could not move the half-committed ${shareTarget} aside to ${failedAside}: ${errorText(moveErr)}`)
+          }
+        }
+        if (shareMovedAside && recovery.length === 0) {
+          try {
+            fsOps.renameDirectory(shareAside, shareTarget)
+          } catch (restoreErr) {
+            recovery.push(`could not restore ${shareAside} over ${shareTarget}: ${errorText(restoreErr)}`)
+          }
+        }
+        if (recovery.length > 0) {
+          // Name only what is actually on disk: the half-committed assets sit
+          // where the failed step left them, and share.previous exists only
+          // when there was a previous installation to move aside.
+          const where = [
+            shareSwappedIn ? `the half-committed assets are at ${movedToFailed ? failedAside : shareTarget}` : null,
+            shareMovedAside ? `the previous assets are at ${shareAside}` : null,
+          ].filter((part): part is string => part !== null).join(', ')
+          const text = `${errorText(err)} — and recovery failed: ${recovery.join('; ')}. The engine is stopped; ${where}. Restore ${shareTarget} by hand, then run \`bakin install search\`.`
+          op.log(text, 'warn')
+          throw new Error(text)
+        }
+        if (movedToFailed) {
+          try {
+            fsOps.removeDirectory(failedAside)
+          } catch (cleanupErr) {
+            const text = `Could not remove the aside half-committed assets at ${failedAside} after a successful restore: ${errorText(cleanupErr)}. Delete it by hand; it is not used.`
+            logger.warn(text); op.log(text, 'warn')
+          }
+        }
+        if (hadBinary) {
+          try {
+            await finish()
+          } catch (restartErr) {
+            throw new Error(`${errorText(err)} — the previous installation was restored but did not restart: ${errorText(restartErr)}. Run \`bakin install search\` to start it.`)
+          }
+        }
+        throw err
       }
-
-      mkdirSync(dirname(targetPath), { recursive: true })
-      renameSync(extractedBinary, targetPath)
 
       // Engine version change = a deliberate REBUILD event (2026-07-21: the
       // rc.18→rc.21 in-place upgrade silently migrated table files one-way,
@@ -364,13 +538,32 @@ export async function installAntflyDependency(
             to: pin.version,
             dataDir,
           })
-          rmSync(dataDir, { recursive: true, force: true })
+          try {
+            rmSync(dataDir, { recursive: true, force: true })
+          } catch (err) {
+            throw new Error(`Installed Antfly v${installedVersion} to ${targetPath} (checksum verified), but clearing the derived engine data at ${dataDir} failed: ${errorText(err)}. The new engine and its assets are in place and the engine is STOPPED (it must not start against the old data). Recover in order: remove ${dataDir}; delete ${shareAside} (the new install is complete); run \`bakin install search\` to start the engine; then \`bakin reindex\`.`)
+          }
           dataCleared = true
         }
       }
       if (!dataCleared) op.skip('cleanup', 'no engine data to clear')
 
-      await finish()
+      try {
+        await finish()
+      } catch (err) {
+        throw new Error(
+          `Installed Antfly v${installedVersion} to ${targetPath} (checksum verified), but the service did not restart: ${errorText(err)}. The new engine and its assets are in place${shareMovedAside ? ` and ${shareAside} is kept` : ''}. Recover in order: confirm \`${targetPath} --version\` reports v${pin.version}${shareMovedAside ? `; delete ${shareAside}` : ''}; run \`bakin install search\` to start the engine${dataCleared ? '; then run `bakin reindex` — the derived data was cleared for the version change' : ''}.`,
+        )
+      }
+      // Only a running new engine retires the previous assets.
+      if (shareMovedAside) {
+        try {
+          fsOps.removeDirectory(shareAside)
+        } catch (err) {
+          const text = `Installed and running, but ${shareAside} could not be removed: ${errorText(err)}. Delete it by hand — the next install refuses while it exists.`
+          logger.warn(text); op.log(text, 'warn')
+        }
+      }
       const durationMs = Date.now() - start
       logger.info('Antfly installed', { binary: targetPath, version: installedVersion, durationMs })
       return {

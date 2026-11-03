@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import type { HealthCheckState, HealthObservation, HealthReport, OperationView } from '@makinbakin/sdk/types'
+import type { HealthCheckState, HealthObservation, HealthReport, OperationView, UpdateRecord } from '@makinbakin/sdk/types'
 import type { UseHealthResourceResult } from '../../../plugins/health/hooks/use-health-resource'
 import type {
   SystemPluginManifestData,
@@ -14,12 +14,11 @@ import type {
 import '../../rtl-settle'
 import { SystemTabView } from '../../../plugins/health/components/system-tab'
 import {
-  interpretPluginUpgrade,
   interpretSearchReindex,
   startPluginUpgrade,
   startSearchReindex,
-  SystemMutationOutcomeUnknownError,
 } from '../../../plugins/health/hooks/use-system-data'
+import { interpretPluginUpgrade, SystemMutationOutcomeUnknownError } from '../../../plugins/health/lib/plugin-upgrade-result'
 
 const originalFetch = globalThis.fetch
 const OBSERVED_AT = '2026-07-13T11:55:00.000Z'
@@ -115,6 +114,19 @@ function report(): HealthReport {
   }
 }
 
+/** The engine's plugin record (#1007): the System row's update verdict comes from HERE, never the manifest. */
+function pluginUpdate(id: string, over: Partial<UpdateRecord> = {}): UpdateRecord {
+  return {
+    id: `plugin:${id}`, group: 'available', subject: { kind: 'plugin', id, label: id },
+    installed: { version: '1.0.0', display: '1.0.0' }, available: { version: '1.1.0', display: '1.1.0' },
+    reason: 'newer-version', outcome: 'update-available',
+    source: { kind: 'artifact-index', endpoint: 'https://example.test/index.json' },
+    observedAt: OBSERVED_AT, attempt: { at: OBSERVED_AT }, fingerprint: 'fp',
+    action: { kind: 'operation', start: { route: `/api/updates/plugin%3A${id}/apply` }, impact: ['download'] },
+    ...over,
+  }
+}
+
 function systemData(): UseSystemDataResult {
   const canonical = report()
   const reportResource = resource(canonical)
@@ -169,22 +181,24 @@ function systemData(): UseSystemDataResult {
     pluginManifest: resource({ plugins: [
       {
         id: 'broken', name: 'Broken connector', version: '1.0.0', source: 'local',
-        installed: { version: '1.0.0' }, upgradeAvailable: false, staleHintDays: null,
+        installed: { version: '1.0.0' }, upgradeAvailable: false,
         status: 'failed', errorCode: 'MISSING_DEPENDENCY',
         errorMessage: 'Activation stopped before routes were registered.', missingDependencies: ['calendar-api'],
       },
       {
         id: 'assets', name: 'Assets', version: '1.2.0', source: 'core',
-        installed: null, upgradeAvailable: false, staleHintDays: null, status: 'active',
+        installed: null, upgradeAvailable: false, status: 'active',
       },
       {
         id: 'notes', name: 'Notes', version: '1.0.0', latestVersion: '1.1.0', source: 'github',
-        installed: { version: '1.0.0' }, upgradeAvailable: true, staleHintDays: null, status: 'active',
+        installed: { version: '1.0.0' }, upgradeAvailable: true, status: 'active',
       },
     ] }),
+    updates: resource({ records: [pluginUpdate('notes')], generatedAt: OBSERVED_AT, running: false }),
     searchMutation: { status: 'idle', message: null, target: null },
     pluginMutation: { status: 'idle', message: null, target: null },
     reindexSearch: mock(async () => {}),
+    checkingUpdates: false,
     checkPluginUpdates: mock(async () => null),
     upgradePlugin: mock(async () => {}),
     refreshSystemDetails: mock(async () => {}),
@@ -623,13 +637,53 @@ describe('SystemTabView', () => {
     expect(screen.queryByText('Nothing needs review')).toBeNull()
   })
 
+  it('the plugin row\'s update verdict is the engine\'s record, never the manifest marker (#1007 P10′)', () => {
+    const data = systemData()
+    // The manifest still says "upgradeAvailable" for notes; the engine says current (or skipped).
+    data.updates = resource({ records: [pluginUpdate('notes', { outcome: 'current', available: undefined, reason: undefined, action: undefined })], generatedAt: OBSERVED_AT, running: false })
+    render(<SystemTabView data={data} />)
+    fireEvent.click(screen.getByTestId('installed-features-details').querySelector('summary')!)
+    expect(screen.queryByRole('button', { name: 'Update Notes' })).toBeNull()
+    expect(screen.getByTestId('system-platform-pulse').textContent).not.toContain('update')
+    cleanup()
+
+    const skipped = systemData()
+    skipped.updates = resource({ records: [pluginUpdate('notes', { skipped: { version: '1.1.0' } })], generatedAt: OBSERVED_AT, running: false })
+    render(<SystemTabView data={skipped} />)
+    fireEvent.click(screen.getByTestId('installed-features-details').querySelector('summary')!)
+    expect(screen.queryByRole('button', { name: 'Update Notes' })).toBeNull()
+    cleanup()
+
+    const offered = systemData()
+    offered.pluginManifest = resource<SystemPluginManifestData>({ plugins: offered.pluginManifest.data!.plugins.map((plugin) => ({ ...plugin, upgradeAvailable: false, latestVersion: null })) })
+    render(<SystemTabView data={offered} />)
+    fireEvent.click(screen.getByTestId('installed-features-details').querySelector('summary')!)
+    expect(screen.getAllByRole('button', { name: 'Update Notes' }).length).toBeGreaterThan(0)
+    expect(screen.getByTestId('system-watch-list').textContent).toContain('Version 1.1.0 is available; 1.0.0 is installed.')
+  })
+
+  it('"Check for updates" runs the engine\'s plugin pass and shows that it is checking', () => {
+    const data = systemData()
+    render(<SystemTabView data={data} />)
+    fireEvent.click(screen.getByTestId('installed-features-details').querySelector('summary')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
+    expect(data.checkPluginUpdates).toHaveBeenCalledTimes(1)
+    cleanup()
+
+    const checking = systemData()
+    checking.checkingUpdates = true
+    render(<SystemTabView data={checking} />)
+    fireEvent.click(screen.getByTestId('installed-features-details').querySelector('summary')!)
+    expect((screen.getByRole('button', { name: 'Checking…' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('treats a manifest-only plugin as installed with unknown activation', () => {
     const data = systemData()
     data.registry = resource<SystemRegistryData>({ plugins: [] })
     data.pluginManifest = resource<SystemPluginManifestData>({ plugins: [
       {
         id: 'notes', name: 'Notes', version: '1.0.0', latestVersion: '1.1.0', source: 'github',
-        installed: { version: '1.0.0' }, upgradeAvailable: true, staleHintDays: null, status: 'active',
+        installed: { version: '1.0.0' }, upgradeAvailable: true, status: 'active',
       },
     ] })
 
@@ -670,7 +724,7 @@ describe('SystemTabView', () => {
     }] })
     data.pluginManifest = resource<SystemPluginManifestData>({ plugins: [{
       id: 'notes', name: 'Notes', version: '1.0.0', source: 'github', installed: { version: '1.0.0' },
-      upgradeAvailable: false, staleHintDays: null, status: 'failed', errorMessage: 'Activation failed.',
+      upgradeAvailable: false, status: 'failed', errorMessage: 'Activation failed.',
     }] })
 
     render(<SystemTabView data={data} />)

@@ -176,7 +176,7 @@ archived   → done, todo
 | `plugins/tasks/components/delete-task-dialog.tsx` | Confirmation dialog for task deletion |
 | `plugins/tasks/components/task-filters.tsx` | Agent avatar filter bar + status facet filter |
 | `plugins/tasks/components/task-metrics.tsx` | Summary metrics row (counts by column) |
-| `plugins/tasks/components/task-log-table.tsx` | Table view of tasks (alternative to kanban) |
+| `plugins/tasks/components/task-log-table.tsx` | Table view of tasks (alternative to kanban); rows for tasks no longer on the board are folded (oldest first, later transitions win) from `GET /history`'s raw `{ ts, event, agent, data }` audit records |
 
 ### Drag-and-Drop (dnd-kit)
 
@@ -226,11 +226,13 @@ The core store is synchronous and file-backed. The plugin service functions keep
 
 ## API Routes
 
-All routes are registered at `/api/plugins/tasks/{path}` via the plugin route system. 12 RESTful routes:
+All routes are registered at `/api/plugins/tasks/{path}` via the plugin route system. The RESTful routes:
 
 | Method | Path | Handler |
 |--------|------|---------|
 | GET | `/` | List all tasks (taskboard) |
+| GET | `/summary` | Blocked/review counts (nav badge) |
+| GET | `/history` | Newest 500 `task.created`/`task.moved` audit records, oldest first — bounded `queryAuditEvents` tail read; the task log table's history source |
 | GET | `/:taskId` | Get single task details |
 | POST | `/` | Create task |
 | PUT | `/:taskId` | Update task |
@@ -322,7 +324,8 @@ When `autoArchiveDays > 0`, the plugin moves old Done tasks to Archived. `archiv
 
 ### Projects Plugin
 - Tasks can carry plugin-owned metadata such as `projectId`
-- When a task status changes, core emits `tasks.statusChanged`; installed plugins can react to it without Bakin core naming that plugin
+- `tags` ride every task layer (D30): plugin `ctx.tasks.create/update` (update REPLACES, `[]` clears) → `createTaskWithEffects` → the store → `PluginTask.tags` readback → the board `Task` view the dispatcher reads (omitted when empty), so a models `tagOverrides` entry routes a plugin's tasks (e.g. Projects' `project-steward` check-ins to a cheaper model). Before this every layer but the store dropped them and tag overrides never matched a dispatched task (pinned by `tests/core/task-tags-routing.test.ts`)
+- When a task changes column, core emits `tasks.statusChanged` `{ taskId, title, from, to, task }` (store column ids; `task` is the written task); installed plugins can react to it without Bakin core naming that plugin. ONE emitter: the shared store's column write (`updateSync` flags `previousColumn` on its event; `getSharedBakinTaskStore()` turns it into the hook after the write) — so effects-based moves, blocks, recoveries and plugin `ctx.tasks.update/move` each fire it exactly once, and reason/title/log writes never do. Never add a per-path emission (pinned by `tests/core/task-status-hook.test.ts`). The event → payload mapping is ONE pure function (`packages/core/src/tasks/status-change.ts`, `taskStatusChangedPayload`) shared with the SDK testing harness, whose mock store reports `previousColumn` too — plugin authors' tests see the same events (`tests/sdk-testing/task-status-hook.test.ts`). The public task shape is likewise ONE module both ways, `packages/core/src/tasks/public-task.ts` — `toPluginTask` (derived `checked`) and `taskPatchFromPublic` (`checked` → column, nullable clears) — used by the host plugin task service and the harness (which projects every task it returns)
 
 ### Dispatch Engine
 - `src/core/dispatch.ts` reads todo tasks through `src/core/task-store.ts` and assigns them to available runtime agents

@@ -21,6 +21,7 @@ import {
   getChannelReadiness,
   refreshChannelReadiness,
   rebuildChannelReadiness,
+  reconnectDeliveryBridge,
   verifyChannels,
 } from '@/core/delivery/readiness'
 import { createLogger } from '@/core/logger'
@@ -58,18 +59,15 @@ export async function reconnect(_req: Request, url: URL): Promise<Response> {
   if (current.owner === 'runtime') {
     return json({ error: 'owner_is_runtime', readiness: current, message: 'The active runtime delivers natively; the Bakin bridge is idle by design.' }, 409)
   }
-  const settled = getDeliveryBridge().reconcile('operator')
-  settled.catch((err) => { log.warn('Operator reconcile failed', err) })
-  // Let the loop publish `connecting` before we snapshot.
-  await Promise.resolve()
   if (url.searchParams.get('wait') !== '1') {
+    const settled = getDeliveryBridge().reconcile('operator')
+    settled.catch((err) => { log.warn('Operator reconcile failed', err) })
+    // Let the loop publish `connecting` before we snapshot.
+    await Promise.resolve()
     return json({ readiness: rebuildChannelReadiness() }, 202)
   }
-  const outcome = await Promise.race([
-    settled.then(() => 'settled' as const, () => 'settled' as const),
-    new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), RECONNECT_WAIT_MS)),
-  ])
-  const readiness = await refreshChannelReadiness('reconnect')
+  // The ONE operator reconnect (Health's `discord-bridge-reconnect` runs the same helper).
+  const { outcome, readiness } = await reconnectDeliveryBridge({ waitMs: RECONNECT_WAIT_MS })
   if (outcome === 'timeout' && !DELIVERABLE_STATES.includes(readiness.connection.state) && readiness.connection.state === 'connecting') {
     return json({ readiness }, 202)
   }

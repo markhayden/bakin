@@ -20,14 +20,17 @@ mock.module('../../packages/core/src/content-dir', () => ({
 }))
 
 const notifications: Array<{ title: string; body: string }> = []
-mock.module('@/lib/browser-notify', () => ({
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's internal entry re-exports the host verbs from this module, so the mock spreads the real one.
+import * as realBrowserNotify from '../../packages/sdk/src/internal/browser-notify'
+mock.module('../../packages/sdk/src/internal/browser-notify', () => ({
+  ...realBrowserNotify,
   sendBrowserNotification: (title: string, body: string) => { notifications.push({ title, body }) },
 }))
 
 import { render, waitFor } from '@testing-library/react'
 import '../rtl-settle'
-import { useSSE } from '@/hooks/use-sse'
-import { useContentStore } from '@/hooks/use-content-store'
+import { useSSE } from '../../packages/sdk/src/hooks/use-sse'
+import { useHostStore } from '../../packages/sdk/src/hooks/use-host-store'
 
 interface MockEventSource {
   onmessage: ((e: { data: string }) => void) | null
@@ -76,7 +79,7 @@ describe('useSSE — budget incident wiring', () => {
     expect(notifications[0].title).toBe('Budget alert')
     expect(notifications[0].body).toContain('$11.00 of $10.00')
 
-    const entry = useContentStore.getState().activityEvents.find((e) => e.eventName === 'budget.incident_opened')
+    const entry = useHostStore.getState().activityEvents.find((e) => e.eventName === 'budget.incident_opened')
     expect(entry).toBeDefined()
     expect(entry?.data).toMatchObject({ incidentId: 3, scope: 'global', lane: 'metered' })
   })

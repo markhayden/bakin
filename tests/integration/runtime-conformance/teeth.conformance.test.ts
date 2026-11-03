@@ -67,7 +67,7 @@ function createBrokenAdapter() {
     // their own per-lie adapters below.
     capabilities: async () => ({
       ...(await base.capabilities()),
-      toolCalling: { mode: 'native' as const, access: { style: 'in-process' as const } },
+      toolCalling: { mode: 'native' as const, access: { style: 'in-process' as const, perTurnToolsMode: true } },
     }),
   }
   return broken
@@ -217,6 +217,50 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
     }
     await expect(runtimeConformanceChecks.restartAdviceIsWellFormed(quietTarget(malformed)))
       .rejects.toThrow(/needed must be a boolean/)
+  })
+
+  it('fails the compatibility declaration check on a throwing stub, on omission, and on a malformed verdict (#1007)', async () => {
+    const base = createMockRuntimeAdapter()
+    const stubbed = { ...base, compatibility: () => { throw new Error('unsupported') } }
+    await expect(
+      runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(quietTarget(stubbed), { compatibility: 'absent' }),
+    ).rejects.toThrow(/member omission/)
+    await expect(
+      runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(quietTarget(base), { compatibility: 'present' }),
+    ).rejects.toThrow(/omits the member/)
+    const malformed = { ...base, compatibility: () => ({ required: '4', state: 'fine' as unknown as 'ok' }) }
+    await expect(
+      runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(quietTarget(malformed), { compatibility: 'present' }),
+    ).rejects.toThrow(/state must be/)
+    const judgedWithoutEvidence = { ...base, compatibility: () => ({ required: '4', state: 'below-floor' as const }) }
+    await expect(
+      runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(quietTarget(judgedWithoutEvidence), { compatibility: 'present' }),
+    ).rejects.toThrow(/observed value it judged/)
+    const honest = { ...base, compatibility: () => ({ required: '4', observed: '3', observedAt: new Date().toISOString(), state: 'below-floor' as const }) }
+    await runtimeConformanceChecks.compatibilityMemberMatchesDeclaration(quietTarget(honest), { compatibility: 'present' })
+  })
+
+  it('fails the agents.registryLocation declaration check on a throwing stub, on omission, and on a malformed location (row 106)', async () => {
+    const base = createMockRuntimeAdapter()
+    const stubbed = { ...base, agents: { ...base.agents, registryLocation: async () => { throw new Error('unsupported') } } }
+    await expect(
+      runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(stubbed), { registryLocation: 'absent' }),
+    ).rejects.toThrow(/member omission/)
+    await expect(
+      runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(base), { registryLocation: 'present' }),
+    ).rejects.toThrow(/omits the member/)
+    const malformed = { ...base, agents: { ...base.agents, registryLocation: async () => ({ path: '', entryKey: () => 'agents[0]' }) } }
+    await expect(
+      runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(malformed), { registryLocation: 'present' }),
+    ).rejects.toThrow(/path must be a non-empty string/)
+    const nameless = { ...base, agents: { ...base.agents, registryLocation: async () => ({ path: '/tmp/roster.json', entryKey: () => '' }) } }
+    await expect(
+      runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(nameless), { registryLocation: 'present' }),
+    ).rejects.toThrow(/must name the entry/)
+    const honest = { ...base, agents: { ...base.agents, registryLocation: async () => ({ path: '/tmp/roster.json', entryKey: (index: number) => `agents[${index}]` }) } }
+    await runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(honest), { registryLocation: 'present' })
+    const fileless = { ...base, agents: { ...base.agents, registryLocation: async () => null } }
+    await runtimeConformanceChecks.registryLocationMemberMatchesDeclaration(quietTarget(fileless), { registryLocation: 'present' })
   })
 
   it('fails the threaded-sessionId check', async () => {
@@ -394,6 +438,51 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
     }
     const target = { ...honestTargetShell(runtime) }
     await runtimeConformanceChecks.perTurnModelHonesty(target) // resolves = skip-with-reason
+  })
+
+  it("fails tool-policy honesty when a declared-true runtime still streams tool chunks under toolsMode:'none' (#883)", async () => {
+    const runtime = createMockRuntimeAdapter()
+    // Lie: claim enforcement, but the [[tool]] turn still "uses" its tool.
+    runtime.describeToolAccess = () => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: true, perTurnToolsMode: true })
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.toolPolicyHonesty(target))
+      .rejects.toThrow(/conformance violation: declared perTurnToolsMode=true but a toolsMode:'none' turn streamed/)
+  })
+
+  it("fails tool-policy honesty when the runner's provider evidence says tools were offered under toolsMode:'none' (#883)", async () => {
+    const runtime = createMockRuntimeAdapter()
+    runtime.describeToolAccess = () => ({ style: 'in-process', perTurnExecToolFiltering: true, perTurnToolsMode: true })
+    const target: RuntimeConformanceTarget = {
+      ...honestTargetShell(runtime),
+      // The stream looks clean (no [[tool]] marker) — only the evidence hook can tell.
+      prepareToolsModeNoneTurn: () => 'teeth: plain text',
+      assertToolsModeNoneEnforced: () => { throw new Error('2 tool(s) were offered to the model') },
+    }
+    await expect(runtimeConformanceChecks.toolPolicyHonesty(target))
+      .rejects.toThrow(/conformance violation: declared perTurnToolsMode=true but the runner's enforcement evidence says tools were offered/)
+  })
+
+  it("fails tool-policy honesty when a runtime REJECTS a toolsMode:'none' turn instead of dropping the field (#883)", async () => {
+    const runtime = createMockRuntimeAdapter()
+    // The OpenClaw-2026.9.5 class: the transport refuses the forwarded param.
+    const realSend = runtime.messaging.send.bind(runtime.messaging)
+    runtime.messaging.send = async (args) => {
+      if (args.toolsMode !== undefined) throw new Error("invalid agent params: at root: unexpected property 'toolsMode'")
+      return realSend(args)
+    }
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.toolPolicyHonesty(target))
+      .rejects.toThrow(/conformance violation: a turn carrying toolsMode:'none' was rejected/)
+  })
+
+  it('skips the enforcement leg for an HONEST perTurnToolsMode=false runtime, but still requires acceptance (#883)', async () => {
+    const runtime = createMockRuntimeAdapter() // mock default: perTurnToolsMode false
+    let streamed = 0
+    const realStream = runtime.messaging.stream.bind(runtime.messaging)
+    runtime.messaging.stream = (args) => { streamed += 1; return realStream(args) }
+    const target = { ...honestTargetShell(runtime) }
+    await runtimeConformanceChecks.toolPolicyHonesty(target) // resolves = accepted + skipped
+    expect(streamed).toBe(0)
   })
 
   it('fails the ping check when an unserveable runtime reports true', async () => {

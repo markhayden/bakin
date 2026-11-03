@@ -68,10 +68,8 @@ describe('acks check', () => {
       { key: 'forged', reason: 'action_required incidents cannot be permanently acknowledged — snooze only' },
       { key: 'future', reason: 'at is in the future' },
     ] })
-    const resolution = observation.incident?.resolution
-    expect(resolution?.type === 'instructions' ? resolution.steps : []).toEqual(expect.arrayContaining([
-      'bakin doctor unack forged', 'bakin doctor unack future',
-    ]))
+    // The prune repair removes exactly these records (self-healing 1.3c); the evidence still names them.
+    expect(observation.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'health-acks-prune' })
   })
 
   it('an unreadable file is a warning, never a crash', async () => {
@@ -80,5 +78,6 @@ describe('acks check', () => {
     const observation = await observe(NOW)
     expect(observation.status).toBe('warning')
     expect(observation.incident?.key).toBe('store-unreadable')
+    expect(observation.incident?.resolution).toMatchObject({ type: 'repair', actionId: 'health-acks-reset' })
   })
 })

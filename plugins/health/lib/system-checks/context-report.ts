@@ -18,9 +18,12 @@ import { getRuntimeMainAgentId } from '../../../../packages/core/src/adapters/ru
 import { stableKeyPart } from './key'
 import type { AgentRuntimeAdapter } from '../../../../packages/core/src/adapters/runtime'
 import { healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput } from '@makinbakin/sdk'
 
 const DEFAULT_BUDGET_BYTES = 64 * 1024
+
+/** Rows 36–38: a cost guardrail — every finding is an observation, never a card. */
+export const CONTEXT_REPORT_INCIDENTS: HealthIncidentDeclaration[] = []
 
 export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Promise<HealthCheckRunInput> {
   const configured = getSettings().dispatch?.contextBudgetBytes
@@ -36,15 +39,7 @@ export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Pro
     return healthObserved([healthUnknown({
       key: 'roster',
       summary: 'Startup-context size could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'runtime-unavailable',
-        title: 'Startup-context size is unknown',
-        impact: 'Health cannot estimate how much context each agent receives at dispatch.',
-        disposition: 'watch',
-        resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun after runtime recovery' },
-      },
+      detail: `${err instanceof Error ? err.message : String(err)} (re-checked once the runtime answers again)`,
     })])
   }
   if (agents.length === 0) {
@@ -58,15 +53,7 @@ export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Pro
     return healthObserved([healthUnknown({
       key: 'main-agent',
       summary: 'Startup-context size could not be verified.',
-      detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'main-agent-unavailable',
-        title: 'Main agent identity is unknown',
-        impact: 'Health cannot calculate accurate per-agent startup context without the main-agent relationship.',
-        disposition: 'watch',
-        resources: [{ kind: 'runtime', id: 'active', label: 'Active runtime' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
+      detail: `${err instanceof Error ? err.message : String(err)} (the main-agent identity is needed for per-agent estimates)`,
     })])
   }
   const observations: HealthObservationInput[] = []
@@ -82,25 +69,13 @@ export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Pro
       observations.push(healthWarning({
         key: `agent:${stableKeyPart(agent.id)}`,
         summary: `${agentLabel}'s startup context exceeds its budget.`,
-        detail: `Estimated ${est.totalBytes} bytes against a ${budget}-byte budget. Largest components: ${top}. Dispatch remains enabled.`,
+        // Row 38: an observation; the diagnostics page is named in the detail.
+        detail: `Estimated ${est.totalBytes} bytes against a ${budget}-byte budget. Largest components: ${top}. Dispatch remains enabled. Review /team/${encodeURIComponent(agent.id.slice(0, 1_000))}?tab=diagnostics.`,
         evidence: {
           agentId: agent.id.slice(0, 500),
           totalBytes: est.totalBytes,
           budgetBytes: budget,
           components: est.components.map(({ source, bytes }) => ({ source, bytes })),
-        },
-        incident: {
-          key: `over-budget:${stableKeyPart(agent.id)}`,
-          title: 'Startup context exceeds the configured budget',
-          impact: 'Large injected context increases token use and may crowd out task-relevant information, but does not block dispatch.',
-          disposition: 'watch',
-          resources: [{ kind: 'agent', id: stableKeyPart(agent.id), label: agentLabel }],
-          resolution: {
-            key: 'open-agent-diagnostics',
-            type: 'navigate',
-            label: 'Review agent diagnostics',
-            href: `/team/${encodeURIComponent(agent.id.slice(0, 1_000))}?tab=diagnostics`,
-          },
         },
       }))
     }

@@ -396,7 +396,30 @@ describe('media exclusion (#895 SC6)', () => {
     const lockPath = resourceLockPath('media-store')
     mkdirSync(join(lockPath, '..'), { recursive: true })
     // Another process (alive, not us) holds the store install.
-    writeFileSync(lockPath, JSON.stringify({ pid: process.ppid, acquiredAt: new Date().toISOString(), title: 'bakin install media (another process)' }))
+    // "Another process" really holds the kernel lock (resource locks are
+    // flock-held, #896 D3.5): a child flocks the file and writes its holder
+    // metadata; killing it is that process dying mid-install.
+    const other = Bun.spawn(['bun', '-e', `
+      import { dlopen, FFIType } from 'bun:ffi'
+      import { openSync, writeSync } from 'node:fs'
+      const libc = dlopen(process.platform === 'darwin' ? 'libSystem.B.dylib' : 'libc.so.6', { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } })
+      const fd = openSync(${JSON.stringify(lockPath)}, 'a+')
+      if (libc.symbols.flock(fd, 2 | 4) !== 0) throw new Error('other process could not lock')
+      writeSync(fd, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString(), title: 'bakin install media (another process)' }))
+      console.log('HELD')
+      setInterval(() => {}, 1000)
+    `], { stdout: 'pipe', stderr: 'pipe' })
+    await (async () => {
+      const reader = other.stdout.getReader()
+      let out = ''
+      const deadline = Date.now() + 20_000
+      while (!out.includes('HELD') && Date.now() < deadline) {
+        const { value, done } = await reader.read()
+        if (done) break
+        out += new TextDecoder().decode(value)
+      }
+      if (!out.includes('HELD')) throw new Error(`the other process never held the lock: ${out}`)
+    })()
     tarballRequests.length = 0
     const repairRegistry = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0, resourcePollMs: { initial: 10, max: 20 } })
     try {
@@ -416,7 +439,8 @@ describe('media exclusion (#895 SC6)', () => {
       await waitUntil(() => getOperationRegistry().list().some((op) => op.waitingFor !== undefined), { label: 'local install waits visibly' })
       expect(tarballRequests).toEqual([])
 
-      rmSync(lockPath)
+      other.kill('SIGKILL') // the other process dies — the kernel releases its lock
+      await other.exited
       const [repairView, localResult] = await Promise.all([repairRegistry.await(repair.operationId), local])
       expect(repairView.status).toBe('succeeded')
       // Exactly one of them downloaded; the other found the store installed.
@@ -428,6 +452,7 @@ describe('media exclusion (#895 SC6)', () => {
       globalThis.fetch = originalFetch
       repairRegistry.dispose()
       _resetOperationRegistryForTests()
+      other.kill('SIGKILL')
       if (existsSync(lockPath)) rmSync(lockPath)
     }
   })

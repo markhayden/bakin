@@ -114,7 +114,7 @@ The cron→task **bridge webhook** + shared secret, the **reconcile-poll** (`rec
 - `plugins/schedule/lib/{cron-eval,scheduler,cutover,prompt-guard,sidecar,jobs-reader,health-checks}.ts`
 - `plugins/schedule/index.ts` — routes, exec tools, `activate()` wiring, read-only guards
 - Ledger: `packages/core/src/execution/ledger.ts` (`cron_fires` + `skip_reason`, `listCronFires`), facade `src/core/execution-ledger.ts`
-- Run history: `plugins/schedule/lib/runs-reader.ts` (ownership routing), `components/run-history.tsx`, client type `src/hooks/use-schedule.ts` (`RunEntry`)
+- Run history: `plugins/schedule/lib/runs-reader.ts` (ownership routing), `components/run-history.tsx`, client type `packages/sdk/src/hooks/use-schedule.ts` (`RunEntry`, `@makinbakin/sdk/hooks`)
 - Tests: `tests/plugins/schedule/*` (engine + catch-up are fake-clock; cutover/health/routes are mocked)
 
 ## Cron parity stance + switch-time adoption (pi-parity D5, 2026-07-13)

@@ -34,14 +34,18 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: () => {},
 }))
 const queryState: Record<string, string> = { tab: '' }
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) => [queryState[key] || defaultValue, (v: string) => { queryState[key] = v }, mock()],
 }))
-mock.module('@/hooks/use-runtime-status', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-runtime-status', () => ({
   useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock(), refresh: mock(async () => {}), pending: false, advice: { needed: false }, lastError: null }),
 }))
 mock.module('../../../plugins/team/hooks/use-agent-store', () => ({
-  useAgentStore: (selector: (s: unknown) => unknown) => selector({ teams: [], displaySettings: {}, load: mock() }),
+  // The store's real package-state shape: a successful (empty) read, so the card has nothing to recover from.
+  useAgentStore: (selector: (s: unknown) => unknown) => selector({
+    teams: [], displaySettings: {}, load: mock(),
+    packageStates: {}, packageStatesAt: '2026-10-20T00:00:00.000Z', packageStatesError: null, refreshPackageStates: mock(async () => {}),
+  }),
   useAgentColor: () => '#888',
   useMainAgentId: () => 'main',
 }))
@@ -72,6 +76,8 @@ beforeEach(() => {
     if (u.includes('/api/plugins/team/') && !u.includes('/avatar')) {
       return json({ id: 'explorer', name: 'Explorer', role: 'Researcher', model: 'opus', soul: '', rules: '', tools: '' })
     }
+    // The roster's package read answers like the real route (an empty inventory) — a `{}` body is a FAILED read and the card says so.
+    if (u === '/api/agent-packages') return json({ ok: true, agents: [] })
     return json({})
   }) as unknown as typeof fetch
 })
@@ -97,7 +103,9 @@ describe('AgentDetail — model picker writes through the tri-state selections p
   it('a write the runtime has not confirmed says so — and clears again on the next successful save', async () => {
     mutationResult = { applied: [], failed: [], pending: [{ ref: 'agent:explorer:model', intended: 'anthropic/claude-haiku-4-5' }], warnings: [], revision: 'rev-1' }
     await pickHaiku()
-    expect((await screen.findByRole('status')).textContent).toContain('waiting for the runtime to confirm')
+    // The NOTICE, not whichever role=status is first in the tree (the page's own loading state can be, mid-reload).
+    const notice = await screen.findByText(/waiting for the runtime to confirm/)
+    expect(notice.closest('[role="status"]')).not.toBeNull()
     expect(screen.queryByText(/refused/)).toBeNull()
   })
 

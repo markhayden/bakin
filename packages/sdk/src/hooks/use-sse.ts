@@ -1,0 +1,297 @@
+'use client'
+
+import { useEffect, useRef } from 'react'
+import { useHostStore } from './use-host-store'
+import { emitPluginEvent } from './use-plugin-event'
+import { mapAuditMessage } from '@bakin/core/events/audit-message'
+import { auditActivityId, taskLogActivityId } from '@bakin/core/events/activity-id'
+import { sendBrowserNotification } from '../internal/browser-notify'
+
+const BASE_DELAY = 1000
+const MAX_DELAY = 30000
+/** Cap-incident episodes already notified in this browser (at-least-once delivery ⇒ replays). */
+const seenCapEventIds = new Set<string>()
+
+function isDevPluginHotReloadActive(): boolean {
+  return typeof document !== 'undefined' && !!document.querySelector('script[src="/__bakin-dev/client.js"]')
+}
+
+export function useSSE() {
+  const setConnected = useHostStore((s) => s.setConnected)
+  const refreshActivity = useHostStore((s) => s.refreshActivity)
+  const appendActivityEvent = useHostStore((s) => s.appendActivityEvent)
+  const esRef = useRef<EventSource | null>(null)
+  const retryRef = useRef(0)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    let disposed = false
+    let reconcileQueued = false
+    function reconcile() {
+      if (reconcileQueued || disposed) return
+      reconcileQueued = true
+      queueMicrotask(() => {
+        reconcileQueued = false
+        if (!disposed) emitPluginEvent({ event: 'bakin.reconcile' })
+      })
+    }
+    function resume() {
+      if (document.visibilityState === 'hidden') return
+      if (!esRef.current || esRef.current.readyState === EventSource.CLOSED) {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+        retryRef.current = 0
+        connect()
+      }
+      reconcile()
+    }
+    document.addEventListener('visibilitychange', resume)
+    window.addEventListener('pageshow', resume)
+    window.addEventListener('online', resume)
+
+    function connect() {
+      if (disposed) return
+      // Clean up any prior connection
+      if (esRef.current) {
+        esRef.current.close()
+        esRef.current = null
+      }
+
+      const es = new EventSource('/api/events')
+      esRef.current = es
+
+      es.onopen = () => {
+        setConnected(true)
+        retryRef.current = 0 // Reset backoff on successful connect
+        // One activity snapshot per successful connection (first open and every
+        // reconnect) — it fills whatever the feed missed while disconnected.
+        void refreshActivity()
+        reconcile()
+      }
+
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data)
+          // Fan every plugin-event payload out to usePluginEvent subscribers
+          // over this single connection (plugins no longer open their own).
+          if (data.type === 'plugin-event') {
+            emitPluginEvent(data)
+          }
+          // Taskboard changed (SQLite mutation) — notify subscribers via the
+          // same fan-out (the tasks board + nav badge subscribe to 'taskboard').
+          if (data.type === 'taskboard') {
+            emitPluginEvent({ event: 'taskboard' })
+            return
+          }
+
+          // Live turn activity (ephemeral, never persisted): tool/status
+          // chips for in-flight dispatch turns. Board cards + team timeline
+          // subscribe to 'turn-activity'; no activity-feed entry (the agent's
+          // own progress logs remain the durable record).
+          if (data.type === 'turn-activity') {
+            emitPluginEvent({ ...data, event: 'turn-activity' })
+            return
+          }
+
+          // Installed/removed user plugins change the runtime manifest.
+          // Dev tabs handle this through the dev hot-swap client; normal
+          // tabs need a page reload so PluginHost re-fetches the manifest.
+          if (data.type === 'plugin:manifest-changed') {
+            if (!isDevPluginHotReloadActive()) {
+              window.location.reload()
+            }
+            return
+          }
+
+          // Agent activity logs (from task log broadcasts via SSE)
+          if (data.type === 'activity') {
+            appendActivityEvent({
+              id: taskLogActivityId(data.taskId, data.ts, data.agent, data.message),
+              ts: data.ts,
+              type: 'log',
+              agent: data.agent || 'system',
+              message: data.message,
+              taskId: data.taskId,
+            })
+            return
+          }
+
+          // Audit events from audit.jsonl broadcasts
+          if (data.type === 'audit' && data.entry) {
+            const entry = data.entry
+            const entryData = entry.data || {}
+            // Every audit entry reaches usePluginEvent subscribers over this one
+            // connection (surfaces that refresh on a domain's audit events, like
+            // the schedule calendars, filter on `entry.event`).
+            emitPluginEvent({ event: 'bakin.audit', entry })
+            // A doctor run just refreshed the health-check cache — notify the
+            // Health nav badge / summary (they subscribe to 'doctor.run').
+            if (entry.event === 'doctor.run') emitPluginEvent({ event: 'doctor.run' })
+            appendActivityEvent({
+              id: auditActivityId(entry),
+              ts: entry.ts,
+              type: 'audit',
+              agent: entry.agent || 'system',
+              message: mapAuditMessage(entry.event, entryData),
+              taskId: entryData.taskId as string | undefined,
+              taskTitle: entryData.title as string | undefined,
+              eventName: entry.event,
+              ...(entryData.duplicate ? { duplicate: true } : {}),
+              data: entryData,
+            })
+          }
+
+          // Workflow plugin events → unified activity feed (task surfaces
+          // refresh from the same events through usePluginEvent).
+          if (data.type === 'plugin-event' && typeof data.event === 'string' && data.event.startsWith('workflow.')) {
+            appendActivityEvent({
+              id: `${data.timestamp || new Date().toISOString()}-${data.event}-workflow`,
+              ts: data.timestamp || new Date().toISOString(),
+              type: 'audit',
+              agent: 'workflow',
+              message: mapAuditMessage(data.event, data),
+              taskId: data.taskId,
+              eventName: data.event,
+            })
+          }
+
+          // Budget incidents (cost-control v2): browser notification (same
+          // bell toggle as workflow gates) + an activity entry. Resolutions
+          // ride emitPluginEvent (line above) for surface refreshes only.
+          if (data.type === 'plugin-event' && data.event === 'budget.incident_opened') {
+            // At-least-once delivery: the same episode (eventId) can be
+            // re-sent after a crash between send and mark — notify once per
+            // episode, and never miss a genuinely new one.
+            const capEventId = typeof data.eventId === 'string' ? data.eventId : null
+            if (capEventId && seenCapEventIds.has(capEventId)) return
+            if (capEventId) seenCapEventIds.add(capEventId)
+            sendBrowserNotification(
+              'Budget alert',
+              data.message || 'A budget cap was reached — dispatch may be deferred',
+              '/spend',
+            )
+            appendActivityEvent({
+              id: `budget-incident-${data.incidentId}-${capEventId ?? data.timestamp ?? new Date().toISOString()}`,
+              ts: data.timestamp || new Date().toISOString(),
+              type: 'alert',
+              agent: 'system',
+              message: data.message || 'Budget incident opened',
+              eventName: 'budget.incident_opened',
+              data: { incidentId: data.incidentId, scope: data.scope, scopeId: data.scopeId, lane: data.lane, window: data.window },
+            })
+          }
+
+          // Brand-blocked tasks (#419): a linked brand vanished — scheduled
+          // marketing must reach the operator, not wait to be found. Click
+          // lands on the board pre-filtered to the affected brand.
+          if (data.type === 'plugin-event' && data.event === 'brand.dispatch_blocked') {
+            sendBrowserNotification(
+              'Brand unavailable',
+              data.message || `A task is waiting on brand '${data.brandId}'`,
+              `/tasks?brand=${encodeURIComponent(data.brandId || '')}`,
+            )
+            appendActivityEvent({
+              id: `${data.timestamp || new Date().toISOString()}-brand-blocked-${data.taskId}`,
+              ts: data.timestamp || new Date().toISOString(),
+              type: 'alert',
+              agent: 'system',
+              message: data.message || 'Task blocked on a missing brand',
+              eventName: 'brand.dispatch_blocked',
+              data: { taskId: data.taskId, brandId: data.brandId },
+            })
+          }
+
+          // Watchdog alerts
+          if (data.type === 'alert') {
+            appendActivityEvent({
+              id: `${data.timestamp || new Date().toISOString()}-alert-system`,
+              ts: data.timestamp || new Date().toISOString(),
+              type: 'alert',
+              agent: 'system',
+              message: data.message || 'Watchdog alert',
+            })
+          }
+
+          // Per-table reindex events drive the Health page tiles only —
+          // they don't write to the activity feed (which would be one
+          // entry per table per reindex). The aggregate batch_* events
+          // below give the activity feed a single start/pulse/complete
+          // pair instead.
+          if (data.type === 'search.rebuild.start') {
+            emitPluginEvent({ event: 'search.rebuild.start', table: data.table })
+          }
+          if (data.type === 'search.rebuild.progress') {
+            emitPluginEvent({ event: 'search.rebuild.progress', table: data.table, indexed: data.indexed ?? 0 })
+          }
+          if (data.type === 'search.rebuild.complete') {
+            emitPluginEvent({ event: 'search.rebuild.complete', table: data.table, indexed: data.indexed ?? 0 })
+          }
+
+          // Aggregate reindex events for the activity feed — one entry
+          // for the whole batch instead of one per table. batch_pulse
+          // fires at most every 60s while a long reindex is in flight.
+          if (data.type === 'reindex.batch_start') {
+            appendActivityEvent({
+              id: `${Date.now()}-reindex-batch-start`,
+              ts: new Date().toISOString(),
+              type: 'log',
+              agent: 'system',
+              message: `Starting full re-index (${data.tables} table${data.tables === 1 ? '' : 's'})`,
+            })
+          }
+          if (data.type === 'reindex.batch_pulse') {
+            const pct = data.tables_total
+              ? Math.floor((data.tables_done / data.tables_total) * 100)
+              : 0
+            appendActivityEvent({
+              id: `${Date.now()}-reindex-batch-pulse`,
+              ts: new Date().toISOString(),
+              type: 'log',
+              agent: 'system',
+              message: `Re-indexing… ${data.tables_done}/${data.tables_total} tables (${pct}%), ${data.indexed} documents so far`,
+            })
+          }
+          if (data.type === 'reindex.batch_complete') {
+            const seconds = Math.max(1, Math.round((data.elapsed_ms ?? 0) / 1000))
+            appendActivityEvent({
+              id: `${Date.now()}-reindex-batch-complete`,
+              ts: new Date().toISOString(),
+              type: 'log',
+              agent: 'system',
+              message: `Completed full re-index — ${data.indexed} documents across ${data.tables} table${data.tables === 1 ? '' : 's'} in ${seconds}s`,
+            })
+          }
+
+          if (typeof data.file === 'string') {
+            emitPluginEvent({ ...data, event: 'bakin.file.changed', change: data.event })
+          }
+        } catch {
+          // keep-alive or invalid
+        }
+      }
+
+      es.onerror = () => {
+        if (disposed || esRef.current !== es) return
+        setConnected(false)
+        es.close()
+        esRef.current = null
+
+        // A long server outage must not permanently strand an open tab.
+        const delay = Math.min(BASE_DELAY * Math.pow(2, retryRef.current), MAX_DELAY)
+        retryRef.current = Math.min(retryRef.current + 1, 5)
+        timeoutRef.current = setTimeout(connect, delay)
+      }
+    }
+
+    connect()
+
+    return () => {
+      disposed = true
+      document.removeEventListener('visibilitychange', resume)
+      window.removeEventListener('pageshow', resume)
+      window.removeEventListener('online', resume)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      esRef.current?.close()
+      esRef.current = null
+    }
+  }, [setConnected, refreshActivity, appendActivityEvent])
+}

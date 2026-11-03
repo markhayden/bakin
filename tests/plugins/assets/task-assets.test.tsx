@@ -5,7 +5,10 @@ import type { ReactNode } from 'react'
 import '../../rtl-settle'
 
 mock.module('@makinbakin/sdk/navigation', () => ({ PluginLink: ({ to, children, ...props }: { to: string; children?: ReactNode }) => <a href={to} {...props}>{children}</a> }))
-mock.module('@makinbakin/sdk/hooks', () => ({ usePluginEvent: () => {} }))
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
+mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks, usePluginEvent: () => {} }))
 import { TaskAssets } from '../../../plugins/assets/components/task-assets'
 
 const originalFetch = globalThis.fetch

@@ -1,15 +1,15 @@
 'use client'
 
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, use, type ReactNode } from 'react'
 
 const ModalBusyContext = createContext(false)
 
 export function ModalBusyProvider({ busy, children }: { busy: boolean; children: ReactNode }) {
-  return <ModalBusyContext.Provider value={busy}>{children}</ModalBusyContext.Provider>
+  return <ModalBusyContext value={busy}>{children}</ModalBusyContext>
 }
 
 export function useModalBusy(): boolean {
-  return useContext(ModalBusyContext)
+  return use(ModalBusyContext)
 }
 
 export const modalBackdropClasses = [

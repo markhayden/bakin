@@ -24,6 +24,8 @@ export interface CodeBlockProps extends Omit<React.ComponentPropsWithoutRef<'div
   label?: string
   /** Adds a copy action for the exact source. */
   copyable?: boolean
+  /** With `copyable`: runs after the source actually reached the clipboard. */
+  onCopied?: () => void
   /** Wraps long lines instead of scrolling horizontally. */
   wrap?: boolean
 }
@@ -94,6 +96,7 @@ export function CodeBlock({
   copyable = false,
   label,
   language = 'text',
+  onCopied,
   wrap = false,
   ...props
 }: CodeBlockProps) {
@@ -117,6 +120,7 @@ export function CodeBlock({
           text={code}
           label={label ? `Copy ${label}` : 'Copy code'}
           className="absolute end-bakin-2 top-bakin-2"
+          onCopied={onCopied}
         />
       ) : null}
       {/* A bare <pre> maps to ARIA `generic`, where naming is prohibited — an

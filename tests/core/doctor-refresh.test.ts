@@ -76,4 +76,9 @@ it('invalidates owning diagnostics for durable events and ignores streaming/repo
   expect(healthChecksAffectedByEvent({ type: 'search.rebuild.complete' }, checks)).toEqual(['health.search'])
   expect(healthChecksAffectedByEvent({ event: 'health.report.changed' }, checks)).toEqual([])
   expect(healthChecksAffectedByEvent({ type: 'search.rebuild.progress' }, checks)).toEqual([])
+  // An update observation re-runs the checks that consume engine records (#1007 C7).
+  const updateChecks = [...checks, { id: 'health.plugin-artifacts', localId: 'plugin-artifacts', owner: { id: 'health', kind: 'plugin' } }]
+  expect(healthChecksAffectedByEvent({ type: 'updates.changed', ids: ['plugin:projects'] }, updateChecks)).toEqual(['health.plugin-artifacts'])
+  expect(healthChecksAffectedByEvent({ type: 'updates.changed', ids: ['search-engine:antfly', 'bakin:bakin'] }, updateChecks)).toEqual(['health.search'])
+  expect(healthChecksAffectedByEvent({ type: 'updates.changed', ids: ['bakin:bakin'] }, updateChecks)).toEqual([])
 })

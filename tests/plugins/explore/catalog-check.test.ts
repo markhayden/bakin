@@ -1,12 +1,14 @@
 /**
- * GET /api/plugins/explore/catalog?check=1 — update probes are module-
- * mocked (the real ones hit git/network); plugin markers re-read from the
- * lockfile, agent probe results folded into the response only.
+ * GET /api/plugins/explore/catalog — install state is joined with the updates
+ * engine's records (#1007): the route never probes a source. The engine is
+ * module-mocked with a scripted snapshot; lockfiles are real files under the
+ * temp home.
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import type { UpdateRecord } from '@makinbakin/sdk/types'
 import type { ActivatedPlugin } from '../test-helpers'
 
 const testDir = join(tmpdir(), `bakin-test-explore-check-${Date.now()}`)
@@ -33,31 +35,19 @@ mock.module('../../../src/core/logger', () => ({
 const SHA_A = 'a'.repeat(40)
 const SHA_B = 'b'.repeat(40)
 
-const runChecksMock = mock(async (ids: readonly string[]) => {
-  // Simulate the real behavior: persist a fresh remote marker for messaging.
-  expect(ids).toEqual(['messaging'])
-  const lockPath = join(testDir, 'plugins', 'lock.json')
-  const lock = JSON.parse(require('fs').readFileSync(lockPath, 'utf-8'))
-  lock.plugins.messaging.remoteHeadSha = SHA_B
-  writeFileSync(lockPath, JSON.stringify(lock))
-  return []
+const record = (over: Partial<UpdateRecord> & Pick<UpdateRecord, 'id' | 'outcome'>): UpdateRecord => ({
+  group: 'available',
+  subject: { kind: over.id.slice(0, over.id.indexOf(':')) as UpdateRecord['subject']['kind'], id: over.id.slice(over.id.indexOf(':') + 1), label: over.id },
+  source: { kind: 'fixture', endpoint: 'fixture' },
+  fingerprint: 'fp',
+  ...over,
 })
-mock.module('../../../src/core/plugins/upgrade-check', () => ({
-  runChecks: runChecksMock,
-}))
 
-const checkPackageUpdateMock = mock(async (packageId: string) => {
-  if (packageId === 'pixel@1.2.0') {
-    return { currentVersion: '1.2.0', latestVersion: '2.0.0', currentCommitSha: SHA_A, latestCommitSha: SHA_B, upgradeAvailable: true, checkedAt: 'now' }
-  }
-  if (packageId === 'ghost@0.1.0') {
-    // Unreachable source: the checker reports the failure in-band.
-    return { currentVersion: '0.1.0', latestVersion: null, currentCommitSha: SHA_A, latestCommitSha: null, upgradeAvailable: false, checkedAt: 'now', error: 'clone failed: offline' }
-  }
-  throw new Error(`unexpected probe for ${packageId}`)
-})
-mock.module('../../../src/core/agent-packages/checker', () => ({
-  checkPackageUpdateAsync: checkPackageUpdateMock,
+let records: UpdateRecord[] = []
+let engineUp = true
+mock.module('../../../src/core/updates/service', () => ({
+  getUpdatesEngine: () => (engineUp ? { snapshot: async () => ({ records, generatedAt: 'now', running: false }) } : null),
+  getUpdatesTimer: () => null,
 }))
 
 import explorePlugin from '../../../plugins/explore'
@@ -69,7 +59,6 @@ let activated: ActivatedPlugin
 beforeAll(async () => {
   mkdirSync(join(testDir, 'plugins'), { recursive: true })
   mkdirSync(join(testDir, 'packages'), { recursive: true })
-
   writeFileSync(join(testDir, 'plugins', 'lock.json'), JSON.stringify({
     version: 1,
     plugins: {
@@ -82,11 +71,9 @@ beforeAll(async () => {
         permissions: [],
         manifestSha: 'sha',
         installedAt: '2026-07-01T00:00:00Z',
-        // No probe markers yet — base GET reports no update.
       },
     },
   }))
-
   writeFileSync(join(testDir, 'packages', 'lock.json'), JSON.stringify({
     version: 1,
     packages: {
@@ -100,14 +87,14 @@ beforeAll(async () => {
         agentId: 'pixel',
         state: 'managed',
       },
-      'ghost@0.1.0': {
+      'jessica@1.0.0': {
         kind: 'agent',
-        version: '0.1.0',
-        source: 'github:markhayden/bakin-bits-official#agents/ghost',
+        version: '1.0.0',
+        source: 'github:markhayden/bakin-bits-official#agents/jessica',
         ref: 'main',
         commitSha: SHA_A,
         installedAt: '2026-07-01T00:00:00Z',
-        agentId: 'ghost',
+        agentId: 'jessica',
         state: 'managed',
       },
     },
@@ -122,31 +109,56 @@ function byKey(entries: ExploreCatalogEntry[], kind: string, id: string): Explor
   return entries.find((entry) => entry.kind === kind && entry.id === id)
 }
 
-describe('GET /catalog?check=1', () => {
-  it('base GET runs no probes and reports unknown/none', async () => {
-    const route = findRoute(activated.routes, 'GET', '/catalog')
-    const { body } = await callRoute(route!, activated.ctx)
-    const entries = body.entries as ExploreCatalogEntry[]
-    expect(byKey(entries, 'plugin', 'messaging')?.updateAvailable).toBe(false)
-    expect(byKey(entries, 'agent', 'pixel')?.updateAvailable).toBeNull()
-    expect(runChecksMock).not.toHaveBeenCalled()
-    expect(checkPackageUpdateMock).not.toHaveBeenCalled()
+async function catalog(): Promise<ExploreCatalogEntry[]> {
+  const route = findRoute(activated.routes, 'GET', '/catalog')
+  const { status, body } = await callRoute(route!, activated.ctx)
+  expect(status).toBe(200)
+  return body.entries as ExploreCatalogEntry[]
+}
+
+describe('GET /catalog with the updates engine', () => {
+  it('projects each installed entry from its engine record', async () => {
+    records = [
+      record({ id: 'plugin:messaging', outcome: 'update-available', installed: { version: '1.0.0', display: '1.0.0' }, available: { version: '1.1.0', sha: SHA_B, display: '1.1.0' }, observedAt: 'now' }),
+      record({ id: 'package:pixel', outcome: 'current', installed: { version: '1.2.0', display: '1.2.0' }, observedAt: 'now' }),
+      record({ id: 'package:jessica', outcome: 'unknown', attempt: { at: 'now', error: 'ls-remote: offline' } }),
+    ]
+    const entries = await catalog()
+    expect(byKey(entries, 'plugin', 'messaging')?.updateAvailable).toBe(true)
+    expect(byKey(entries, 'agent', 'pixel')?.updateAvailable).toBe(false)
+    // A failed observation stays unknown — never "up to date".
+    expect(byKey(entries, 'agent', 'jessica')?.updateAvailable).toBeNull()
   })
 
-  it('check=1 probes plugins (persisted) and agents (response-only)', async () => {
+  it('a skipped offer is not an update', async () => {
+    records = [
+      record({ id: 'plugin:messaging', outcome: 'update-available', available: { version: '1.1.0', sha: SHA_B, display: '1.1.0' }, skipped: { version: '1.1.0', sha: SHA_B }, observedAt: 'now' }),
+    ]
+    const entries = await catalog()
+    expect(byKey(entries, 'plugin', 'messaging')?.updateAvailable).toBe(false)
+  })
+
+  it('without a record (or a running engine) every installed entry is unknown, uninstalled ones too', async () => {
+    records = []
+    let entries = await catalog()
+    expect(byKey(entries, 'plugin', 'messaging')?.updateAvailable).toBeNull()
+    expect(byKey(entries, 'agent', 'pixel')?.updateAvailable).toBeNull()
+
+    engineUp = false
+    try {
+      entries = await catalog()
+      expect(byKey(entries, 'plugin', 'messaging')?.updateAvailable).toBeNull()
+      expect(byKey(entries, 'agent', 'pixel')?.installed).toBe(true)
+    } finally {
+      engineUp = true
+    }
+  })
+
+  it('no response carries a probe-error count or honours ?check=1 — checks are POST /api/updates/check', async () => {
+    records = []
     const route = findRoute(activated.routes, 'GET', '/catalog')
     const { status, body } = await callRoute(route!, activated.ctx, { searchParams: { check: '1' } })
     expect(status).toBe(200)
-    const entries = body.entries as ExploreCatalogEntry[]
-
-    expect(runChecksMock).toHaveBeenCalled()
-    expect(checkPackageUpdateMock).toHaveBeenCalledWith('pixel@1.2.0')
-    // Plugin marker was persisted by the (mocked) probe and re-read
-    expect(byKey(entries, 'plugin', 'messaging')?.updateAvailable).toBe(true)
-    // Agent probe result folded into the response
-    expect(byKey(entries, 'agent', 'pixel')?.updateAvailable).toBe(true)
-    // Failed probes stay UNKNOWN and are counted — never reported as current
-    expect(byKey(entries, 'agent', 'ghost')).toBeUndefined() // not in catalog — but its failure still counts
-    expect(body.probeErrors).toBe(1)
+    expect(body.probeErrors).toBeUndefined()
   })
 })

@@ -23,17 +23,27 @@ Bakin's plugin system is three things working in concert:
    `packages/sdk/src/slots/registry.ts` precisely so the barrel stays
    react-free — guard: `assertServerBundleExternalsClean` in
    `src/core/whiskit/build.ts`, #267 residual).
-3. A **shared runtime identity** — plugins mark `react` and
-   `@makinbakin/sdk/*` as externals. The browser import map
+3. A **shared runtime identity** — plugins mark `react`,
+   `@makinbakin/sdk/*` and `zod` as externals. The browser import map
    (`packages/host/public/index.html` + `scripts/build-vendors.ts`)
    points those specifiers at singleton vendor bundles, so every
-   plugin shares one React and one SDK with the shell.
+   plugin shares one React, one SDK and one zod with the shell (zod
+   joined in #948 — before that the SDK's routing chunk, health and
+   workflows each carried ~400 KB of their own). zod is browser-provided
+   only: a plugin still DECLARES it, because its server bundle runs
+   under `--packages external` and needs it installed, and the import
+   scan (`src/core/whiskit/import-scan.ts`) deliberately builds its
+   host-provided set from React + SDK, not from `PLUGIN_CLIENT_EXTERNALS`.
 
-Published artifacts record the externals family `react19-sdk-focused-v1` in
-their provenance. Retiring the metadata entrypoint required this new family:
+Published artifacts record the externals contract `react19-sdk-focused-v2` in
+their provenance. The focused family retired the metadata entrypoint:
 previous-family artifacts need a rebuild and are refused at install or marked
-`needs-update` by the host. Versions remain additive within a family; neither
-old hosts nor new hosts accept artifacts from a different family.
+`needs-update` by the host. Versions are additive within a family — v2 added
+zod to the provided set, so a v1 artifact (its own zod inside) still loads on
+a v2 host, while a v2 artifact on a v1 host is refused (it would 404 on
+`zod`); neither old hosts nor new hosts accept artifacts from a different
+family. The release guard (`scripts/check-plugin-contract.ts`) only gates
+FAMILY changes, so v1 → v2 shipped guard-free.
 
 A family change is therefore a fleet event, and two things keep it from
 stranding users (rc.41 left projects + terminal dark on margo until Bits
@@ -49,11 +59,14 @@ published):
 - **Compatible upgrades** — `src/core/whiskit/compatible-version.ts`
   (`newestCompatibleVersion`) is the ONE answer to "which published version
   can THIS host run" (contract + `bakinRange`, newest first, platform then
-  neutral). The artifact upgrade lane, `bakin plugins list --check`
-  (`remoteArtifactVersion` / "upgrade available") and Health all use it — never
+  neutral). The artifact upgrade lane, the updates engine's `plugin` source (what
+  `bakin plugins list --check` and Health read, #1007) all use it — never
   the index's `latest`, which may target another host. Health's
-  `plugin-artifacts` check offers the one-click `upgrade-plugin-artifact`
-  repair when a stranded plugin's source has a compatible release (any — a
+  `plugin-artifacts` check offers the one-click `plugin-upgrade`
+  repair (renamed from `upgrade-plugin-artifact` in the self-healing
+  initiative; `plugin-reinstall` is the fallback that re-stages the RECORDED
+  install through `upgradePlugin({ reinstall: true })` — every lane honours
+  it, a reinstall never upgrades) when a stranded plugin's source has a compatible release (any — a
   rebuild published under the installed version counts, because the
   installed artifact does not run): `plan()` previews and puts the IDENTITY in
   the change targets (`plugin:<id>@<version>#<manifestSha>`,
@@ -64,13 +77,13 @@ published):
   was approved, then activates — and `gateUpgradeConsent` validates a
   supplied consent EVERY time (manifest, permissions, binaries), not only
   when something new needed consent, so a republish between preview and
-  commit bounces. Index reads are bounded (8 s, no retries), concurrent
-  across plugins and cached per source (10 min; failures 1 min), so a slow
-  release host never costs the check its local verdict. A compatible rebuild
-  under the installed version persists as `remoteArtifactRebuild` so
-  `computeUpgradeAvailable` keeps reporting it. No compatible release yet ⇒ the incident
-  says so (`await-compatible-release`) instead of pointing at an upgrade that
-  would refuse. `artifactUpgradeTarget` is the one upgrade decision (a working
+  commit bounces. What the source offers is the updates engine's `plugin:<id>`
+  record (#1007) — the check never reads an index itself, so a slow release
+  host never costs it its local verdict; a compatible rebuild under the
+  installed version is the record's `compatible-rebuild` offer. No compatible
+  release yet ⇒ the incident says so (`await-compatible-release`, the
+  record's `blocked` reason) instead of pointing at an upgrade that would
+  refuse. `artifactUpgradeTarget` is the one upgrade decision (a working
   install only moves forward; a stranded one takes any compatible release;
   "runs" includes the installed artifact's `bakinRange`), shared by the
   upgrade lane and `--check`, so availability never names a release the
@@ -260,10 +273,10 @@ PluginLockEntry {
   version        // from bakin-plugin.json
   permissions    // string[], strict against PermissionSchema enum
   manifestSha    // sha256 of bakin-plugin.json
-  lastChecked?   // ISO 8601, set by `plugins list --check`
-  remoteHeadSha? // last seen remote sha (github only)
-  sourceTreeSha? // install/upgrade time tree sha (local only)
-  lastSourceTreeSha? // --check time tree sha (local only)
+  sourceTreeSha? // install/upgrade time tree sha (local only) — installed
+                  // provenance; "is there something newer" is the updates
+                  // engine's record (#1007), never a lockfile marker
+  sourceTreeShaAlgo? // which hasher produced sourceTreeSha (absent = legacy 1)
   installedSkills? // runtime skill names this plugin shipped — the
                   // authoritative allowlist for uninstall (defeats fake
                   // .installedBy markers per #119 hardening)
@@ -655,27 +668,33 @@ Committed upgrades return a `pluginAssets` report with installed,
 unchanged, and `.userEdited`-skipped runtime skills, plus `droppedBins`.
 No-op and awaiting-consent responses do not project assets.
 
-### Upgrade-available detection — `bakin plugins list --check`
+### Upgrade-available detection — `bakin plugins list [--check]`
 
-Plain `list` reads markers from the lockfile only — no network, no
-fs walk. `--check` runs per-plugin probes in parallel:
-
-- **github**: `git ls-remote <source> <ref>` → record `remoteHeadSha`
-  + `lastChecked`. `upgradeAvailable = remoteHeadSha !== commitSha`.
-- **local**: walk source dir, compute tree sha → record
-  `lastSourceTreeSha` + `lastChecked`.
-  `upgradeAvailable = lastSourceTreeSha !== sourceTreeSha` (split
-  fields so `--check` doesn't clobber the install/upgrade-time value).
-
-Plain `list` shows a 7-day staleness hint when `lastChecked` is older
-than the threshold.
+Plain `list` reads `GET /api/plugins/manifest`, whose `upgradeAvailable` /
+`updateObservedAt` are projected from the updates engine's `plugin:<id>`
+record (#1007; the engine's plugin source observes the artifact index,
+`git ls-remote` or the local source tree on its schedule — no network on
+the request path). `--check` asks for `?check=1`, which runs the engine's
+plugin pass (waited) and answers with the refreshed projection; nothing is
+written to the lockfile. Plain `list` shows a 7-day staleness hint when
+`updateObservedAt` (the last SUCCESSFUL observation) is older than the
+threshold. Lifecycle-checklist rows that mention `lastChecked` /
+`remoteHeadSha` describe the pre-#1007 design and are historical.
 
 Health System's Installed plugins inventory merges
 `/api/plugins/health/registry` with `/api/plugins/manifest`. Initial and
 background reads use cached manifest state; the explicit **Check for updates**
-action adds `check=1`. Core/built-in plugin versions stay sourced from bundled
-plugin exports; user plugin versions and upgrade availability come from the
-plugin lockfile manifest rows. Exceptions (activation failures and available
+action runs the updates engine's plugin pass (`POST /api/updates/check?source=plugin`),
+and the manifest's own `?check=1` runs that same pass server-side (waited)
+before answering. Core/built-in plugin versions stay sourced from bundled
+plugin exports; user plugin versions come from the lockfile rows, while
+`upgradeAvailable` / `updateObservedAt` are projected from the updates engine's
+records (an unskipped `update-available` record — `isUpdateOffered`; its last
+successful `observedAt`). The lockfile holds installed provenance only: the
+pre-#1007 check markers (`lastChecked`, `remoteHeadSha`,
+`remoteArtifactVersion`, `remoteArtifactRebuild`, `lastSourceTreeSha`) and
+`computeUpgradeAvailable` are gone — a legacy row's markers strip on read,
+never rewritten. Exceptions (activation failures and available
 updates) render before the full inventory. The in-list Update action calls the same
 `POST /api/plugins/upgrade` endpoint as CLI upgrade and handles
 `awaitingConsent` before mutating disk.
@@ -710,6 +729,8 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
    - `unregisterPluginNodeTypes`, `unregisterPluginNotificationChannels`,
      `unregisterPluginHealthChecks` — the Health sweep removes the owner's
      checks, repair actions, and cached snapshots
+   - `unregisterPluginGates` — the plugin's `ctx.approvals` gates (its
+     pending records stay; resolving one answers 503 until a gate returns)
    - `purgeContentType(table)` for every content type the plugin
      registered — atomic Antfly `dropTable`
 6. Filesystem deletes — skill dirs (per plan),
@@ -914,7 +935,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `events: EventBus` | Pub/sub with pattern matching |
 | `pluginId: string` | This plugin's ID |
 | `runtime: AgentRuntimeAdapter` | Adapter-backed runtime surface for agents, messaging, channels, cron, workspace files, skills, sessions, memory, models, image generation, and execution status. Plugins never import runtime provider packages directly. |
-| `tasks: BakinTaskStore` | Bakin-owned task metadata store under `~/.bakin/tasks/`. Runtime execution ids are delivery refs only. |
+| `tasks: BakinTaskStore` | Bakin-owned task metadata store under `~/.bakin/tasks/`. Runtime execution ids are delivery refs only. `create`/`update` carry `tags` (update replaces, `[]` clears) — a models `tagOverrides` entry routes the task's dispatch (D30); every column change fires `tasks.statusChanged` exactly once from the store write (D21). |
 | `registerNav(items)` | Add sidebar navigation items (server-side) |
 | `registerRoute(route)` | Add HTTP API route at `/api/plugins/{id}/{path}` |
 | `registerSlot(reg)` | Register React component for a named UI slot (server-side) |
@@ -939,6 +960,8 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `search.remove(key)` | Remove a document from the index |
 | `search.transform(key, ops)` | Atomic metadata update without re-embedding |
 | `search.query(params)` | Search this plugin's content type |
+| `conversations.createTurnService(config)` | The shared turn engine (#703); the service's `appendExternal(ctx, key, rows, notice?)` writes rows outside a turn (idle → now + `events.appended`; in flight → queued, flushed before the next admission). Deep ref: `.claude/knowledge/conversation-kit.md`. |
+| `approvals.registerGate(gateKind, { ownerState, onResolve })` / `request({ approvalId, gateKind, entityId, taskId, title, summary, options? })` / `cancel` / `get` / `listPending({ entityId?, gateKind? })` / `refusal(message, status)` | The plugin's own sign-off gates on the ONE approval primitive (`plugin-gate` owner, spec D26). Ids must start with `<pluginId>:`; a plugin only ever sees its own records; gates are swept with the plugin. Deep ref: `.claude/knowledge/approvals.md`. |
 
 Both `search.registerContentType` and `search.registerFileBackedContentType`
 auto-register a `GET /search` route on the plugin's router so callers can
@@ -1092,11 +1115,18 @@ bun build plugins/<id>/client.tsx    (if it exists)
   --entry-naming client.[ext]
   --external react --external react-dom ...
   --external @makinbakin/sdk --external @makinbakin/sdk/ui ...
+  --external zod
 ```
 
-Client entries only externalize react + sdk; everything else (lucide
+Client entries only externalize react + sdk + zod; everything else (lucide
 icons, zustand, shadcn primitives) bundles in so the plugin is
-self-contained from the browser's POV. The externals list is the shared
+self-contained from the browser's POV. Bun's `--external <pkg>` matches
+every sub-path of the package, so a client that imports `zod/v4`,
+`react-dom/server` or an SDK path that is not a published entry (directly or
+through a dependency) would come out with a bare import the import map
+cannot resolve — `assertClientBundleExternalsResolvable` (whiskit
+`build.ts`, via `unprovidedHostSubpath` in `externals.ts`) scans the emitted
+`client.js`, names every offender and removes the bundle. The externals list is the shared
 contract in `src/core/whiskit/externals.ts` (`PLUGIN_CLIENT_EXTERNALS`).
 
 ### User plugins — `buildUserPlugin()`
@@ -1124,9 +1154,10 @@ Produces the bundles that the browser import map points at:
 packages/host/public/vendor/
   react.js, react-dom.js
   jsx-runtime.js, jsx-dev-runtime.js, tanstack-router.js
+  zod.js                 ← the one zod (#948): `export *` + default of zod 4
   sdk-index.js, sdk-ui.js, sdk-layout.js, sdk-patterns.js,
   sdk-charts.js, sdk-conversation.js, sdk-content.js,
-  sdk-navigation.js, sdk-hooks.js, sdk-components.js,
+  sdk-navigation.js, sdk-hooks.js,
   sdk-slots.js, sdk-types.js, sdk-utils.js,
   sdk-routing.js, sdk-internal.js
   sdk-shared-<hash>.js   ← code-split chunks shared by the SDK bundles
@@ -1140,10 +1171,13 @@ filenames are stable (#422, guarded by
 `tests/scripts/sdk-vendor-bundles.test.ts`).
 
 The `<script type="importmap">` in `packages/host/public/index.html`
-maps `react`, `react-dom`, `@makinbakin/sdk`, `@makinbakin/sdk/ui`, etc. to those
-files. Changes to either file must happen in lockstep — the
+maps `react`, `react-dom`, `@makinbakin/sdk`, `@makinbakin/sdk/ui`, etc. and
+`zod` to those files. Changes to either file must happen in lockstep — the
 specifier list is duplicated because the map is static HTML and the
-build script is the generator.
+build script is the generator. A vendor file the checkout serves from disk
+but the tracked embedded manifest does not name is a 404 only inside the
+compiled binary — `tests/integration/host/compiled-vendor-assets.test.ts`
+compiles the real server and fetches every import-map target out of it.
 
 ## @makinbakin/sdk Surface
 
@@ -1171,13 +1205,13 @@ The audit consolidated copy-pasted client patterns into the SDK; reach for these
 
 Published to npm as `@makinbakin/sdk`. `scripts/publish-sdk.ts` pushes on the
 release workflow. Lint rules block direct imports from `@/components/*`,
-`@/hooks/*`, `@/lib/*`, and other plugins — the SDK is the only
-surface plugin authors should see.
+`@/lib/*`, `@bakin/ui`, and other plugins — the SDK is the only
+surface plugin authors should see (the hooks live in the SDK itself since #809b).
 
 ## Client SSE fan-out — `usePluginEvent`
 
 The shell owns exactly ONE browser `EventSource('/api/events')`
-(`src/hooks/use-sse.ts`). Plugins must NOT open their own — a per-plugin
+(`packages/sdk/src/hooks/use-sse.ts`). Plugins must NOT open their own — a per-plugin
 `EventSource` is a second connection with no shared reconnect/backoff and
 its own teardown bugs. Instead they subscribe to named server events
 through `usePluginEvent`:
@@ -1188,7 +1222,7 @@ import { usePluginEvent } from '@makinbakin/sdk/hooks'
 usePluginEvent('asset.changed', (payload) => { /* refetch, etc. */ })
 ```
 
-Mechanics (`src/hooks/use-plugin-event.ts`, SDK-re-exported like `useSSE`):
+Mechanics (`packages/sdk/src/hooks/use-plugin-event.ts`, exported like `useSSE`):
 - A dependency-free `globalThis`-backed `Map<eventName, Set<handler>>`
   (`__bakinPluginEventSubs`) holds subscribers. `emitPluginEvent(payload)`
   dispatches to the set for `payload.event`; a throwing handler is
@@ -1206,14 +1240,25 @@ Mechanics (`src/hooks/use-plugin-event.ts`, SDK-re-exported like `useSSE`):
   `bakin.reconcile` (after a reconnect or a tab wake), `turn-activity`, and
   `search.rebuild.start|progress|complete` (from the per-table rebuild
   frames). There is no other `EventSource` — architecture-test pinned. Adding a new event name = one `emit`
-  line here; no content-store change.
+  line here; no host-store change.
 
 This replaced two older patterns: the assets plugin's 3 raw
-`EventSource`s and the content store's hardcoded per-plugin counters
+`EventSource`s and the old content store's hardcoded per-plugin counters
 (`taskboardVersion`/`doctorVersion`/`reindexProgress`). Consumers now
-hold their own local state and subscribe to the relevant event. The
-content store is back to file/audit/activity/heartbeat state only —
-it no longer knows which plugin cares about which event.
+hold their own local state and subscribe to the relevant event.
+
+The host store (`useHostStore`, `@makinbakin/sdk/hooks`) holds ONLY host-wide
+browser state: `connected`, `debug` (hydrated from `localStorage` at creation),
+`fullscreen` (the path of the page holding the host's full screen, written only
+by `useFullscreen`; the host hides its chrome while it is set) and the activity
+feed. It fetches exactly one thing — `GET /api/activity`,
+once per successful SSE connection (first open and every reconnect) — and
+merges that snapshot with the live events it already holds (one row per id
+from the shared `@bakin/core/events/activity-id` derivation, newest first,
+capped at 100; a stale response is discarded). It holds no file contents,
+heartbeats or audit backlog: the old content store fetched a whole-home
+`/api/state` snapshot (155 MB on a lived-in install) on mount and every
+reconnect, and the task board waited on it (Margo perf, 2026-10-26).
 
 ## Slot System
 
@@ -1313,7 +1358,7 @@ a no-op (no snapshot rebuild, no subscriber notification).
 The refresh signal is per-plugin — the hook doesn't prescribe one. The
 adopters subscribe to named server events via `usePluginEvent` (see
 § Client SSE fan-out below) — no per-plugin `EventSource`, no
-content-store counters:
+host-store counters:
 - **tasks** (blocked→`error` / review→`attention`, winning-severity) —
   `usePluginEvent('taskboard', refresh)`, the same signal the Kanban
   board uses.
@@ -1358,7 +1403,10 @@ state and agent activity alone do not produce indicators.
 Providers subscribe to `bakin.reconcile` for connection/resume recovery in addition
 to their domain events. Retain successful snapshots on errors, retry failed reads,
 and reject superseded results. `bakin.file.changed` carries file invalidations on
-the same shell stream. Snapshot recovery never replays historical fanfare.
+the same shell stream — `{ file, change }` only: watcher SSE frames are
+`{ file, event, timestamp }` with NO content (the event bus and sync hooks still
+receive content server-side), so a large file change never rides every
+browser's stream or the SSE replay buffer. Snapshot recovery never replays historical fanfare.
 
 ### Lifecycle
 
@@ -1550,6 +1598,73 @@ Request to `/api/plugins/workflows/definitions/my-workflow` → extracts
 `pluginId=workflows`, `path=/definitions/my-workflow` → matches route
 `/definitions/:name` → injects `name=my-workflow` into searchParams.
 
+## Socket Routes (plugin WebSockets)
+
+A plugin declares WebSocket routes with `defineSocketRoute({ path, summary, admit?, open })` in `definePlugin({ socketRoutes })`. User plugins also list them in `contributes.socketRoutes`, which the registry enforces at activation and `sync-manifest` regenerates.
+
+Server side:
+- `server.ts` wires `server.on('upgrade', createUpgradeHandler(pluginRegistry))`. The handler lives in `src/core/server/upgrade-handler.ts`.
+- **Admission order:** path → live route (404), then Origin host must equal the Host header (403), then the route's `admit(request)` (any `Response` refuses). No custom headers reach browsers' WebSockets, so plugins bind identity in the first message or the query.
+- Connections run over the ONE `createPluginSocket` (`packages/core/src/routing/socket.ts`).
+- Registry (`findSocketRoute` → `{ route, generation }`, `isCurrent`, `trackSocket(id, generation, socket)`):
+  - `clearStateArrays` (reload/suspend/deactivate) bumps `socketGeneration` and closes sockets with 1012.
+  - An admission whose `admit` finished after a sweep is refused with 503 before the handshake.
+  - `shutdownAll` sets `socketsShutDown` (nothing admits or tracks after it) and closes sockets with 1001.
+  - Duplicate code paths fail activation.
+- Close codes: `open` throws → 1011; a message listener throws → 1011; a close listener throws → logged, the other listeners still run.
+- Frames: an incoming frame over 1 MiB → 1009, enforced by the handler because Bun's built-in ignores `maxPayload`. A malformed target → 400, never a throw.
+- The SDK harness returns the client before `open` settles; `client.opened` reports the result.
+
+`ws` resolves to **Bun's built-in implementation**, in source and in the compiled binary. Bun refuses every npm `ws` subpath, so the host declares only `@types/ws`.
+
+**No host send bound or drain.** Measured on Bun 1.4.3 against a client that stops reading:
+- `bufferedAmount` reads 0 for ~18 MiB, then grows;
+- it stays stale after the client has read everything;
+- send callbacks run immediately.
+
+So the host promises nothing about backlog. Protocols that stream acknowledge at the application level (Terminal's output windows).
+
+Tests:
+- `tests/core/routing/plugin-socket.test.ts`
+- `tests/core/server/upgrade-handler.test.ts` (real node:http + ws, origin teeth)
+- `tests/integration/sockets/plugin-sockets.test.ts` (booted server: frames, refusals, disable → 1012, shutdown → 1001)
+- `tests/sdk-testing/socket-routes.test.ts` (the published harness `connectTestSocket`)
+
+## CLI Commands (manifest `cliCommands`)
+
+A dispatched command (`dispatch: execTool | apiRoute`) must declare `args`. That array is its complete argument surface.
+- `packages/core/src/plugins/manifest.ts` `parseCliArgs` validates it:
+  - positionals must equal the `usage` `<placeholders>`, in order;
+  - names are unique;
+  - `--json` and `--as` are reserved;
+  - `string[]` is flag-only;
+  - `values` applies to strings only.
+- `src/cli/plugin-args.ts` `matchCliCommand` is the ONE parser:
+  - it matches the literal usage words, binds positionals and declared flags, and parses values by type;
+  - it never coerces a string: no comma-splitting, no JSON, no `"true"` → boolean;
+  - it rejects unknown flags, surplus positionals, repeated scalars and missing required args, all before any request.
+- `src/cli/commands/plugin-dispatch.ts`:
+  - strips the global flags (`stripActorFlag` plus `--json`) first;
+  - resolves `apiRoute` paths under the **contributing plugin's id** (never the typed command word);
+  - sends GET args as query parameters.
+- Help renders the declared flags (`usageWithFlags` in `src/cli/help.ts`).
+- Older cores drop the unknown `args` key, so declaring args is additive for Bits manifests.
+
+**Interactive launch** (`dispatch.launch: { bin, refuseEnv? }`) is for POST `apiRoute` commands that hand the operator's terminal to a managed binary (Terminal's `bakin terminal attach`).
+- The manifest parser requires `bin` to be in the plugin's `requires.bins`.
+- `src/cli/launch.ts` `runLaunch` refuses before the preparation POST when:
+  - stdin/stdout is not a TTY;
+  - the target is not this home's server (`CLI_TARGET.source !== 'lock'`);
+  - the CLI runs in an agent context;
+  - `--as human` is absent;
+  - a `refuseEnv` variable is set (tmux's `TMUX`: the caller is already inside the binary).
+- It then POSTs `{ params, caller: { cwd, cols, rows } }` and zod-validates `{ args, confirm?, recovery? }`.
+- It spawns `<binDir>/<bin> ...args` with inherited stdio/env and no shell (`spawnInherited`).
+- It reports `{ token, pid }` to `confirm.path` (failure kills the child) and propagates the exit code.
+- `recovery` (the work the route already did and how to pick it up) is added to a spawn or confirm failure and printed on a non-zero exit.
+- Routes check provenance with `approvalProvenanceFromRequest`.
+- The PTY test in `tests/cli/launch.test.ts` proves TTY inheritance and has teeth.
+
 ## Plugin `defaults/` Conventions
 
 A plugin may ship three sibling directories under `defaults/`. The
@@ -1584,7 +1699,6 @@ S-B (runtime skills, on disk). See
 | `write(path, content)` | Write file, creates directories as needed |
 | `append(path, content)` | Append to file |
 | `exists(path)` | Check file existence |
-| `readAll()` | Read all files in content dir (flat) |
 
 All paths relative to `~/.bakin/` (resolved via `getContentDir()`).
 
@@ -1657,6 +1771,7 @@ runReloadPipeline:
             unregisterPluginNodeTypes,
             unregisterPluginNotificationChannels,
             unregisterPluginHealthChecks (checks + repair actions + snapshots),
+            unregisterPluginGates (ctx.approvals gates; records stay),
             unregisterContentTypesByPlugin (preserve search tables),
             removePluginSkillsByPlugin
   4. Clear state arrays (routes/slots/navItems/etc.)

@@ -87,6 +87,11 @@ packages/core/src/
 │                             source, notification-channel, agent-package skills,
 │                             load-defaults, validate-definition)
 ├── tasks/                  ← Bakin task store
+├── conversation/           ← the ONE turn engine (turns.ts), the turn recorder and
+│                             conversationThreadId (#809 — published via
+│                             @makinbakin/sdk/utils; ctx.conversations is the author surface)
+├── tool-access.ts          ← the ONE tool-invocation renderer (renderToolCall /
+│                             renderToolAccessInstructions) per the active runtime
 ├── plugin-types.ts         ← BakinPlugin, PluginContext, StorageAdapter, EventBus
 ├── logger.ts               ← createLogger()
 ├── format.ts               ← formatAge(), isStale()
@@ -94,7 +99,10 @@ packages/core/src/
 ├── hooks/hook-registry.ts  ← cross-plugin hook RPC
 ├── storage/                ← MarkdownStorageAdapter + db.ts (keyed multi-db
 │                             SQLite core, openNamedDb — SOLE bun:sqlite importer)
-└── events/                 ← BakinEventBus
+├── install-core/           ← atomic-write/source-guards + the self-update verifier the
+│                             CLI twin and the browser hook share (#809b)
+└── events/                 ← BakinEventBus + audit-message.ts (audit event → activity
+                              copy, shared by the activity route, team timeline and SSE hook)
 ```
 
 ### `packages/sdk/` — `@makinbakin/sdk`
@@ -113,13 +121,18 @@ packages/sdk/src/
 ├── ui/                     ← focused exports of private UI primitives and forms
 ├── layout/                 ← focused exports of private layout primitives
 ├── patterns/               ← private kit re-exports plus schema/data-aware SDK adapters
-├── hooks/                  ← useAgent, useSSE, useSearch, useQueryState, ...
+├── hooks/                  ← the Bakin-wide hooks (use-sse, use-search, use-operation,
+│                             use-toast, …) as SDK files (#809b) + the barrel that re-exports
+│                             the team/workflows plugin hooks (P2 #5)
+├── internal/               ← host-shell plumbing (@makinbakin/sdk/internal: registry
+│                             readers, lazy plugin loader, browser-notify host verbs)
 ├── slots/                  ← Slot, registerSlot primitive
 ├── routing/                ← typed route contracts (defineRoute, re-exported
 │                             from @bakin/core/routing)
 ├── types/                  ← CANONICAL contract types, self-contained, split into
-│                             primitives/manifest/runtime/services/registration/context
-│                             behind an index.ts barrel (see the two-tier note below)
+│                             primitives/manifest/runtime/services/registration/context/
+│                             host-state (the browser host store's shapes) behind an
+│                             index.ts barrel (see the two-tier note below)
 └── utils/                  ← cn, formatAge, formatSize, isStale
 ```
 
@@ -279,10 +292,11 @@ packages/host/
 | Hook registry | cli.ts (binary CLI dispatcher) |
 | Search outbox + blue/green core (packages/core/src/search/) | search-registry-core.ts / search-plugin-api.ts / search-query.ts / search-reindex.ts (globalThis registry, ctx.search, cross-table search, health) |
 | Search adapter contract + typed errors (adapters/search/) | search-outbox.ts (drain pump), search-startup.ts (boot ensure/resume), search-orphan-sweep.ts (doctor sweep), search-file-patterns.ts |
-|  | tool-access.ts (the ONE tool-invocation renderer) + runtime-switch.ts (switch orchestrator) + roster-reconcile.ts (cross-runtime carry seam) |
+| Tool-access renderer (tool-access.ts) + conversation turn engine/recorder (conversation/) | runtime-switch.ts (switch orchestrator) + roster-reconcile.ts (cross-runtime carry seam) |
 |  | exec-tools/ (registry.ts + self-registering built-in tools under tools/) |
 |  | server/ (request-handler.ts router factory + startup-recovery.ts) |
-|  | plugin-scaffold.ts, self-update.ts |
+|  | plugin-scaffold.ts, self-update.ts + server-restart.ts (the swap/restart primitives the self-update operation composes) |
+|  | updates/ (the updates engine: engine, timer, store, sources/, apply, self-update operation + CLI — `.claude/knowledge/updates.md`) |
 |  | onboarding/ (16 components in COMPONENT_ORDER) |
 
 **Rule of thumb:** If a module has external side effects (writes files,
@@ -498,7 +512,7 @@ Created by `bakin onboard` or `initBakinHome()`.
 |---|---|---|
 | HTTP server | `server.ts` | `bakin start` (binary) or `bun run dev` |
 | Binary CLI | `src/core/cli.ts` | argv parsed in `server.ts` before boot; dispatches `start/stop/status/version/update/plugins/...`; unknown commands delegate (dynamic import, both directions stay lazy) to `cli/bakin.ts` |
-| HTTP-client CLI | `cli/bakin.ts` | ~210-line router (npm bin entry, `main()` + `import.meta.main`): one lazy `import('src/cli/commands/<group>')` per switch case; shared plumbing in `src/cli/{http,output,help,actor}.ts` (`actor.ts` = the ONE `--as=<agent|human>` / run-dir sidecar / roster-main resolver for every attributing command); each command module owns its heavy imports (whiskit, import-export, settings) so the entry graph stays light; plugin-contributed commands (manifest `contributes.cliCommands`) dispatch via `src/cli/commands/plugin-dispatch.ts` and appear in help |
+| HTTP-client CLI | `cli/bakin.ts` | ~210-line router (npm bin entry, `main()` + `import.meta.main`): one lazy `import('src/cli/commands/<group>')` per switch case; shared plumbing in `src/cli/{http,output,help,actor}.ts` (`actor.ts` = the ONE `--as=<agent|human>` / run-dir sidecar / roster-main resolver for every attributing command); each command module owns its heavy imports (whiskit, import-export, settings) so the entry graph stays light; plugin-contributed commands (manifest `contributes.cliCommands`) dispatch via `src/cli/commands/plugin-dispatch.ts` (strict declared `args` parsed by `src/cli/plugin-args.ts`) and appear in help |
 | Core plugin config | `bakin.config.ts` | Imported by `server.ts` + `registerCorePlugins` |
 | Plugin loading | `src/core/plugin-registry.ts` | `registerCorePlugins(CORE_PLUGIN_IMPORTS)` + `pluginRegistry` called by `server.ts` during startup |
 | HTTP router | `src/core/server/request-handler.ts` | `createRequestHandler({...})` factory passed to `http.createServer` by `server.ts` |

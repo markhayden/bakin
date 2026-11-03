@@ -16,6 +16,7 @@ import {
   type TaskSource,
 } from '@bakin/core/tasks/store'
 import { generateTaskId } from '@bakin/core/ids'
+import { taskStatusChangedPayload, type TaskStatusChangedPayload } from '@bakin/core/tasks/status-change'
 import { join } from 'path'
 import { getBakinPaths, getContentDir } from './content-dir'
 import { purgeTaskRows } from './execution-ledger'
@@ -49,6 +50,8 @@ export interface Task {
   /** Brand link (#419) — resolved lazily at dispatch, mirrors projectId. */
   brandId?: string
   repoPath?: string
+  /** Routing labels — dispatch hands them to the models tag overrides. */
+  tags?: string[]
   availableAt?: string
   dueAt?: string
   source?: TaskSource
@@ -96,10 +99,29 @@ export function getSharedBakinTaskStore(): SyncBakinTaskStore {
   let store = g.__bakinTaskStores.get(root)
   if (!store) {
     store = createFileBakinTaskStore(root)
-    store.subscribe(() => broadcastChange())
+    store.subscribe((event) => {
+      broadcastChange()
+      const statusChanged = taskStatusChangedPayload(event)
+      if (statusChanged) emitStatusChanged(statusChanged)
+    })
     g.__bakinTaskStores.set(root, store)
   }
   return store
+}
+
+/**
+ * The ONE `tasks.statusChanged` emission (spec D21): every column write —
+ * effects-based moves, blocks, recoveries, plugin `ctx.tasks.update/move` —
+ * lands in the store's `updateSync`, which flags a real column change on its
+ * event. Fired after the write returns so handlers always read the new state.
+ */
+function emitStatusChanged(payload: TaskStatusChangedPayload): void {
+  void (async () => {
+    const { getHookRegistry } = await import('@bakin/core/hooks/hook-registry-singleton')
+    await getHookRegistry().callAll('tasks.statusChanged', payload)
+  })().catch((err) => {
+    log.debug('Task status extension hook failed', { taskId: payload.taskId, err: err instanceof Error ? err.message : String(err) })
+  })
 }
 
 function broadcastChange(): void {
@@ -154,6 +176,7 @@ function taskToView(task: BakinTask): Task {
     projectId: task.projectId,
     brandId: task.brandId,
     repoPath: task.repoPath,
+    tags: task.tags?.length ? task.tags : undefined,
     availableAt: task.availableAt,
     dueAt: task.dueAt,
     source: task.source,
@@ -292,6 +315,7 @@ export function createTask(
     brandId?: string
     /** Repo binding override (same-agent-concurrency D6). */
     repoPath?: string
+    tags?: string[]
   },
 ): Promise<Task> {
   try {
@@ -312,6 +336,7 @@ export function createTask(
       projectId,
       brandId: options?.brandId,
       repoPath: options?.repoPath,
+      tags: options?.tags,
       scheduleJobId: options?.scheduleJobId,
       dependsOn: options?.dependsOn,
       availableAt: options?.availableAt,
@@ -459,10 +484,14 @@ export async function deleteTask(identifier: string): Promise<string> {
   return task.id
 }
 
-export function addTaskLog(identifier: string, author: string, message: string, data?: Record<string, unknown>): Promise<void> {
+/**
+ * Append one entry to a task's log. `timestamp` lets a caller that already
+ * broadcast the entry persist it under the same instant (one activity identity).
+ */
+export function addTaskLog(identifier: string, author: string, message: string, data?: Record<string, unknown>, timestamp?: string): Promise<void> {
   try {
     const task = requireTask(identifier)
-    getSharedBakinTaskStore().appendLogSync(task.id, { timestamp: new Date().toISOString(), author, message, ...(data ? { data } : {}) })
+    getSharedBakinTaskStore().appendLogSync(task.id, { timestamp: timestamp ?? new Date().toISOString(), author, message, ...(data ? { data } : {}) })
     return Promise.resolve()
   } catch (err) {
     return Promise.reject(err)
@@ -475,8 +504,10 @@ export function addTaskLog(identifier: string, author: string, message: string, 
  * table refuses. This is the ONE documented exception, used only by Health's
  * resurfacing of a repair that sat past its window or was closed while its
  * incident still fails; it never runs for an agent or a turn. A task already
- * in Review or Blocked stays put (its blocked reason is context the operator
- * needs). The reason always goes on the task log so the hand-off explains
+ * in Review just gets the log line. A Blocked task moves too — handed back
+ * means the operator's to take, and admission reads the column (#896) — with
+ * its blocked reason carried onto the log line so that context survives the
+ * move. The reason always goes on the task log so the hand-off explains
  * itself. Synchronous on purpose: Health's resurface re-judges and mutates in
  * one uninterrupted block. Returns the column the task LEFT, or null.
  */
@@ -484,9 +515,10 @@ export function escalateTaskToReview(identifier: string, reason: string): string
   const task = requireTask(identifier)
   const store = getSharedBakinTaskStore()
   const from = asColumnId(task)
-  const moves = from !== 'review' && from !== 'blocked'
+  const moves = from !== 'review'
   if (moves) store.updateSync(task.id, columnPatch('review'))
-  store.appendLogSync(task.id, { timestamp: new Date().toISOString(), author: 'health', message: reason })
+  const message = from === 'blocked' && task.blockedReason ? `${reason} (was blocked: ${task.blockedReason})` : reason
+  store.appendLogSync(task.id, { timestamp: new Date().toISOString(), author: 'health', message })
   return moves ? from : null
 }
 

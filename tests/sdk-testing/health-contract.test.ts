@@ -24,13 +24,16 @@ import { createTestContext, type PluginTestContext } from '@makinbakin/sdk/testi
 
 const watchIncident: WatchIncidentInput = {
   key: 'readiness',
+  declarationId: 'readiness',
   title: 'Search is degraded',
   impact: 'Results may be incomplete.',
   disposition: 'watch',
+  subject: { kind: 'service', id: 'search', label: 'Search' },
   resources: [{ kind: 'service', id: 'search', label: 'Search' }],
   resolution: {
     key: 'review-search',
-    type: 'navigate',
+    type: 'human',
+    needs: 'decision',
     label: 'Review Search',
     href: '/health?tab=system&section=search',
   },
@@ -38,9 +41,11 @@ const watchIncident: WatchIncidentInput = {
 
 const actionIncident: ActionIncidentInput = {
   key: 'availability',
+  declarationId: 'availability',
   title: 'Search is unavailable',
   impact: 'Search requests cannot complete.',
   disposition: 'action_required',
+  subject: { kind: 'service', id: 'search', label: 'Search' },
   resolution: {
     key: 'restart-search',
     type: 'repair',
@@ -81,6 +86,14 @@ describe('canonical Health helper constructors', () => {
     expect(run.observations[1].incident?.resolution.key).toBe('review-search')
   })
 
+  it('a warning or unknown without an incident is a plain observation, never a card', () => {
+    const run = healthObserved([
+      healthWarning({ key: 'warming', summary: 'The index is warming up after a restart.' }),
+      healthUnknown({ key: 'journal.unseen', summary: 'The journal could not be read this sweep.' }),
+    ])
+    expect(run.observations.map((observation) => observation.incident)).toEqual([undefined, undefined])
+  })
+
   it('builds an explicit not-applicable result', () => {
     expect(healthNotApplicable('Search is disabled by configuration.')).toEqual({
       outcome: 'not_applicable',
@@ -102,6 +115,11 @@ describe('@makinbakin/sdk/testing Health capture', () => {
       name: 'Search readiness',
       description: 'Checks the production Search path.',
       group: { key: 'search', label: 'Search' },
+      // The finite families this check may raise (one repair, one human need).
+      incidents: [
+        { id: 'availability', subjectKind: 'service', resolution: { type: 'repair', actionId: 'restart-search' }, required: 'always' },
+        { id: 'readiness', subjectKind: 'service', resolution: { type: 'human', needs: 'decision' }, required: 'never' },
+      ],
       run: async () => healthObserved([
         healthHealthy({ key: 'available', summary: 'Search is ready.' }),
       ]),
@@ -109,6 +127,8 @@ describe('@makinbakin/sdk/testing Health capture', () => {
     const action: HealthRepairActionDefinition = {
       id: 'restart-search',
       name: 'Restart Search',
+      effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false, restartsService: 'search-engine' },
+      mutation: 'restart',
       operationPlan: () => ({ stages: [{ id: 'apply', kind: 'installing' as const, label: 'Apply' }], pointOfNoReturn: 'apply' }),
       plan: async () => [],
       apply: async () => [],
@@ -139,6 +159,19 @@ function assertInvalidStatesStayUnrepresentable(): void {
     incident: watchIncident,
   }
 
+  // @ts-expect-error — an error is always an incident; it cannot be a plain observation
+  const errorWithoutIncident: HealthObservationInput = {
+    key: 'bad.error.plain',
+    status: 'error',
+    summary: 'Invalid',
+  }
+
+  const instructionsResolution: ActionIncidentInput = {
+    ...actionIncident,
+    // @ts-expect-error — the two outcomes: there is no `instructions` resolution
+    resolution: { key: 'steps', type: 'instructions', label: 'Do it', steps: ['step'] },
+  }
+
   // @ts-expect-error — Unknown is verification state and requires watch
   const unknownAsAction: HealthObservationInput = {
     key: 'bad.unknown',
@@ -152,6 +185,8 @@ function assertInvalidStatesStayUnrepresentable(): void {
 
   void healthyWithIncident
   void errorWithoutAction
+  void errorWithoutIncident
+  void instructionsResolution
   void unknownAsAction
 }
 

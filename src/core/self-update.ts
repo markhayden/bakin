@@ -18,18 +18,20 @@
  *
  * Exit codes: 0 success, 1 on any failure.
  */
-import { createWriteStream, existsSync, renameSync, unlinkSync, chmodSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, renameSync, unlinkSync, chmodSync, readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { Readable } from 'node:stream'
-import { finished } from 'node:stream/promises'
-import type { ReadableStream as WebReadableStream } from 'node:stream/web'
 import { basename } from 'node:path'
+import { downloadToFile } from '@bakin/core/net/download'
 
 import { extractBakinFromTarGz, releaseArchiveNameForTriple } from './release-archive'
 
-const LATEST_RELEASE_API = 'https://api.github.com/repos/markhayden/bakin/releases/latest'
-const RELEASES_API = 'https://api.github.com/repos/markhayden/bakin/releases?per_page=20'
-const GITHUB_HEADERS = { 'User-Agent': 'bakin-self-update', Accept: 'application/vnd.github+json' }
+export const LATEST_RELEASE_API = 'https://api.github.com/repos/markhayden/bakin/releases/latest'
+export const RELEASES_API = 'https://api.github.com/repos/markhayden/bakin/releases?per_page=20'
+export const GITHUB_HEADERS = { 'User-Agent': 'bakin-self-update', Accept: 'application/vnd.github+json' }
+/** A release-metadata request that takes longer than this is a dead endpoint, not a slow one. */
+export const RELEASE_FETCH_TIMEOUT_MS = 30_000
+/** One whole archive transfer (headers + body); the shared primitive also fails a body that stalls for 30 s. */
+export const RELEASE_DOWNLOAD_TIMEOUT_MS = 10 * 60_000
 
 export interface GithubAsset {
   name: string
@@ -41,6 +43,8 @@ export interface GithubRelease {
   draft?: boolean
   prerelease?: boolean
   assets: GithubAsset[]
+  /** The release page — the Updates row's notes link. */
+  html_url?: string
 }
 
 export interface SelfUpdateReporter {
@@ -77,36 +81,78 @@ export interface SelfUpdateStatusOptions {
   now?: () => Date
 }
 
+export type SelfUpdateStage = 'download' | 'verify' | 'extract' | 'replace'
+
 export interface SelfUpdateOptions {
   execPath?: string
   platform?: string
   arch?: string
-  fetchRelease?: (reporter: Pick<SelfUpdateReporter, 'log'>) => Promise<GithubRelease>
-  downloadTo?: (url: string, dest: string) => Promise<void>
+  fetchRelease?: (reporter: Pick<SelfUpdateReporter, 'log'>, signal?: AbortSignal) => Promise<GithubRelease>
+  downloadTo?: (url: string, dest: string, opts: { signal?: AbortSignal }) => Promise<void>
+  /**
+   * Cancels the update while it is still reversible (review r4 #4): the
+   * release fetch and both transfers abort, staging is removed, the running
+   * binary is untouched. Checked again before the extract and the swap.
+   */
+  signal?: AbortSignal
+  /**
+   * Staging files live at `<exec>.<suffix>.*` (#1007 D7.11): the operation
+   * keys this by its id so no two attempts ever share a path. Default `new`.
+   */
+  stagingSuffix?: string
+  /** Progress for an operation wrapper; never affects the outcome. */
+  onStage?: (stage: SelfUpdateStage) => void
+  /**
+   * Runs after the new binary is verified and extracted, BEFORE the swap —
+   * the operation proves the restart path here. A throw aborts the update
+   * with the staged files cleaned up and the running binary untouched.
+   */
+  beforeReplace?: (staged: { release: GithubRelease; newPath: string }) => Promise<void>
+  /**
+   * The release the operator approved (#1007 review): the update refuses to
+   * install anything else — a newer release published since the preview is
+   * reported, never silently installed.
+   */
+  expectedVersion?: string
 }
 
-async function fetchGithubJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: GITHUB_HEADERS })
-  if (!res.ok) throw new ReleaseFetchError(res.status, url)
-  return (await res.json()) as T
+/** The caller's signal joined with a request deadline — neither the headers nor the body read can outlive it. */
+function boundedSignal(signal: AbortSignal | undefined, timeoutMs: number): { signal: AbortSignal; release: () => void } {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(new Error(`timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs)
+  const forward = () => controller.abort(signal?.reason)
+  if (signal?.aborted) forward()
+  else signal?.addEventListener('abort', forward, { once: true })
+  return { signal: controller.signal, release: () => { clearTimeout(timer); signal?.removeEventListener('abort', forward) } }
 }
 
-export async function fetchLatestRelease(reporter: Pick<SelfUpdateReporter, 'log'>): Promise<GithubRelease> {
+async function fetchGithubJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const bounded = boundedSignal(signal, RELEASE_FETCH_TIMEOUT_MS)
+  try {
+    const res = await fetch(url, { headers: GITHUB_HEADERS, signal: bounded.signal })
+    if (!res.ok) throw new ReleaseFetchError(res.status, url)
+    return (await res.json()) as T
+  } finally {
+    bounded.release()
+  }
+}
+
+export async function fetchLatestRelease(reporter: Pick<SelfUpdateReporter, 'log'>, signal?: AbortSignal): Promise<GithubRelease> {
   reporter.log(`Fetching latest release from ${LATEST_RELEASE_API}`)
   try {
-    return await fetchGithubJson<GithubRelease>(LATEST_RELEASE_API)
+    return await fetchGithubJson<GithubRelease>(LATEST_RELEASE_API, signal)
   } catch (err) {
     if (!(err instanceof ReleaseFetchError) || err.status !== 404) throw err
   }
 
   reporter.log(`No stable release found; checking releases from ${RELEASES_API}`)
-  const releases = await fetchGithubJson<GithubRelease[]>(RELEASES_API)
+  const releases = await fetchGithubJson<GithubRelease[]>(RELEASES_API, signal)
   const release = releases.find(candidate => !candidate.draft)
   if (!release) throw new Error('HTTP 404; no published releases found')
   return release
 }
 
-function normalizeVersion(value: string): string {
+export function normalizeVersion(value: string): string {
   return value.trim().replace(/^v/i, '')
 }
 
@@ -121,7 +167,7 @@ function parseVersion(value: string): { major: number; minor: number; patch: num
   }
 }
 
-function compareVersions(a: string, b: string): number {
+export function compareVersions(a: string, b: string): number {
   const left = parseVersion(a)
   const right = parseVersion(b)
   if (!left || !right) return 0
@@ -135,7 +181,7 @@ function compareVersions(a: string, b: string): number {
   return left.prerelease.localeCompare(right.prerelease)
 }
 
-function selfUpdateSupport(currentVersion: string, execPath: string): { supported: true } | { supported: false; reason: string } {
+export function selfUpdateSupport(currentVersion: string, execPath: string): { supported: true } | { supported: false; reason: string } {
   const executable = basename(execPath)
   if (currentVersion.includes('dev') || executable === 'bun' || executable.startsWith('bun-')) {
     return { supported: false, reason: 'source/dev runtime' }
@@ -186,7 +232,7 @@ export async function getSelfUpdateStatus(options: SelfUpdateStatusOptions): Pro
   }
 }
 
-function currentTriple(platform: string = process.platform, arch: string = process.arch): string | null {
+export function currentTriple(platform: string = process.platform, arch: string = process.arch): string | null {
   const plat = platform
   if (plat === 'darwin' && arch === 'arm64') return 'darwin-arm64'
   if (plat === 'linux' && arch === 'x64') return 'linux-x64'
@@ -201,15 +247,9 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest('hex')
 }
 
-async function downloadTo(url: string, dest: string): Promise<void> {
-  const res = await fetch(url)
-  if (!res.ok || !res.body) {
-    throw new Error(`download failed for ${url} (HTTP ${res.status})`)
-  }
-  const nodeStream = Readable.fromWeb(res.body as unknown as WebReadableStream<Uint8Array>)
-  const out = createWriteStream(dest)
-  nodeStream.pipe(out)
-  await finished(out)
+/** The ONE transfer primitive (stall window, attempt deadline, abort — never a raw fetch piped to disk). */
+async function downloadTo(url: string, dest: string, opts: { signal?: AbortSignal }): Promise<void> {
+  await downloadToFile(url, dest, { signal: opts.signal, timeoutMs: RELEASE_DOWNLOAD_TIMEOUT_MS, label: `Release asset ${basename(dest)}` })
 }
 
 function parseChecksums(text: string): Map<string, string> {
@@ -246,11 +286,21 @@ export async function selfUpdate(
     return 1
   }
 
+  const signal = options.signal
+  const cancelled = (): boolean => signal?.aborted === true
+  const CANCELLED = 'Update cancelled; the running binary was left untouched.'
+
   let release: GithubRelease
   try {
-    release = await (options.fetchRelease ?? fetchLatestRelease)(reporter)
+    release = await (options.fetchRelease ?? fetchLatestRelease)(reporter, signal)
   } catch (err) {
-    reporter.error(`Could not fetch release info: ${err instanceof Error ? err.message : String(err)}`)
+    reporter.error(cancelled() ? CANCELLED : `Could not fetch release info: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
+  if (cancelled()) { reporter.error(CANCELLED); return 1 }
+
+  if (options.expectedVersion !== undefined && normalizeVersion(release.tag_name) !== normalizeVersion(options.expectedVersion)) {
+    reporter.error(`Release changed: ${release.tag_name} is now the latest, but this update was approved for v${normalizeVersion(options.expectedVersion)}. Check for updates and apply again.`)
     return 1
   }
 
@@ -267,22 +317,26 @@ export async function selfUpdate(
   }
 
   const currentPath = options.execPath ?? process.execPath
-  const newPath = `${currentPath}.new`
-  const archivePath = `${currentPath}.${archiveName}`
-  const sumsPath = `${currentPath}.checksums.txt`
+  const suffix = options.stagingSuffix ?? 'new'
+  const newPath = `${currentPath}.${suffix}`
+  const archivePath = `${currentPath}.${suffix}.${archiveName}`
+  const sumsPath = `${currentPath}.${suffix}.checksums.txt`
   const tempPaths = [newPath, archivePath, sumsPath]
   const download = options.downloadTo ?? downloadTo
 
   try {
+    options.onStage?.('download')
     reporter.log(`Downloading ${archiveAsset.name} (${release.tag_name})...`)
-    await download(archiveAsset.browser_download_url, archivePath)
-    await download(sumAsset.browser_download_url, sumsPath)
+    await download(archiveAsset.browser_download_url, archivePath, { signal })
+    await download(sumAsset.browser_download_url, sumsPath, { signal })
   } catch (err) {
     cleanupFiles(tempPaths)
-    reporter.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`)
+    reporter.error(cancelled() ? CANCELLED : `Download failed: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
+  if (cancelled()) { cleanupFiles(tempPaths); reporter.error(CANCELLED); return 1 }
 
+  options.onStage?.('verify')
   let sums: Map<string, string>
   try {
     sums = parseChecksums(readFileSync(sumsPath, 'utf-8'))
@@ -316,6 +370,8 @@ export async function selfUpdate(
     return 1
   }
 
+  if (cancelled()) { cleanupFiles(tempPaths); reporter.error(CANCELLED); return 1 }
+  options.onStage?.('extract')
   try {
     writeFileSync(newPath, extractBakinFromTarGz(readFileSync(archivePath)))
   } catch (err) {
@@ -324,6 +380,18 @@ export async function selfUpdate(
     return 1
   }
 
+  if (options.beforeReplace) {
+    try {
+      await options.beforeReplace({ release, newPath })
+    } catch (err) {
+      cleanupFiles(tempPaths)
+      reporter.error(`Not replacing the binary: ${err instanceof Error ? err.message : String(err)}`)
+      return 1
+    }
+  }
+  // The last reversible moment: after this the swap is the point of no return.
+  if (cancelled()) { cleanupFiles(tempPaths); reporter.error(CANCELLED); return 1 }
+  options.onStage?.('replace')
   try {
     chmodSync(newPath, 0o755)
     renameSync(newPath, currentPath)

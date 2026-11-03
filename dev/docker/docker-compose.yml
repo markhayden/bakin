@@ -1,7 +1,8 @@
 # OpenClaw containerized dev environment for Bakin.
-# Usage:
-#   docker compose up -d openclaw-gateway   # Start gateway
-#   docker compose down                     # Stop everything
+# Usage (every entrypoint derives BUN_VERSION from .bun-version for the image build):
+#   bun run docker:up          # Start gateway   (scripts/dev/compose.sh up -d --build openclaw-gateway)
+#   bun run docker:down        # Stop everything (scripts/dev/compose.sh down)
+#   bun run instance …         # the dev rig
 #
 # CLI commands via the shim:
 #   ./dev/docker/openclaw-shim.sh cron list --all --json
@@ -12,6 +13,10 @@ x-bakin-build: &bakin-build
   dockerfile: Dockerfile
   args:
     OPENCLAW_IMAGE_TAG: ${OPENCLAW_IMAGE_TAG:-2026.6.11}
+    # Interpolated on EVERY compose parse (down included): derived from the repo's
+    # .bun-version by scripts/dev/compose.sh, `bun run instance`, and the CLI shim —
+    # fail loudly rather than float when a caller forgets it.
+    BUN_VERSION: ${BUN_VERSION:?set from .bun-version — use `bun run docker:up|down`, `bun run instance`, or dev/docker/openclaw-shim.sh}
 
 services:
   openclaw-gateway:

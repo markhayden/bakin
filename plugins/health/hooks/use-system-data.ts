@@ -5,6 +5,9 @@ import type { ZodType } from 'zod'
 import { isOperationFinished, type OperationStartResponse, type OperationView } from '@makinbakin/sdk/types'
 import { startOperation, useOperation } from '@makinbakin/sdk/hooks'
 import type { HealthSummary, SearchHealthData, SearchTelemetryData } from '../types'
+import { interpretPluginUpgrade, SystemMutationOutcomeUnknownError, type PluginUpgradeBin, type PluginUpgradeResult } from '../lib/plugin-upgrade-result'
+import type { UpdatesData } from '../lib/updates-route-schema'
+import { checkUpdates } from './use-updates'
 import { useHealthReport, type UseHealthReportResult } from './use-health-report'
 import {
   useHealthResource,
@@ -35,14 +38,6 @@ export const SYSTEM_REQUEST_TIMEOUT_MS = 15_000
 
 export type SystemMutationStatus = 'idle' | 'pending' | 'success' | 'error' | 'confirmation' | 'outcome-unknown'
 
-/** A binary download an upgrade asks consent for (name, version, pinned sha, size hint). */
-export interface PluginUpgradeBin {
-  name: string
-  version: string
-  sha256: string
-  sizeBytes?: number
-}
-
 export interface SystemMutationState {
   status: SystemMutationStatus
   message: string | null
@@ -53,24 +48,6 @@ export interface SystemMutationState {
   consentToken?: string
   /** The running upgrade (preview or commit), followed live — render it while pending. */
   operation?: OperationView
-}
-
-export interface PluginUpgradeResult {
-  message: string
-  awaitingConsent: boolean
-  permissions: string[]
-  bins: PluginUpgradeBin[]
-  consentToken?: string
-  noop: boolean
-  /** A preview with nothing new to consent to: commit with `consentToken` to apply it. */
-  ready?: boolean
-}
-
-export class SystemMutationOutcomeUnknownError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'SystemMutationOutcomeUnknownError'
-  }
 }
 
 const IDLE_MUTATION: SystemMutationState = { status: 'idle', message: null, target: null }
@@ -118,19 +95,8 @@ const requestSearchTelemetry = (url: string, context: HealthResourceRequestConte
 const requestRegistry = (url: string, context: HealthResourceRequestContext) =>
   requestValidated(url, context, 'Plugin registry', systemRegistryResponseSchema)
 
-async function requestPluginManifest(
-  url: string,
-  context: HealthResourceRequestContext,
-): Promise<SystemPluginManifestData> {
-  const shouldCheck = context.reason === 'explicit'
-  const requestUrl = shouldCheck ? `${url}${url.includes('?') ? '&' : '?'}check=1` : url
-  return await requestValidated(
-    requestUrl,
-    context,
-    'Plugin manifest',
-    systemPluginManifestClientSchema,
-  )
-}
+const requestPluginManifest = (url: string, context: HealthResourceRequestContext) =>
+  requestValidated(url, context, 'Plugin manifest', systemPluginManifestClientSchema)
 
 /** Start a search reindex operation (#895): all tables, or one with `table`. Not cancellable. */
 export async function startSearchReindex(table?: string): Promise<OperationStartResponse> {
@@ -151,10 +117,6 @@ export function interpretSearchReindex(target: string, view: OperationView): { o
   return { ok: false, message: view.outcome?.message ? `Reindex failed: ${view.outcome.message}` : `Reindex ${view.status}.` }
 }
 
-function isUpgradeBin(value: unknown): value is PluginUpgradeBin {
-  return isRecord(value) && typeof value.name === 'string' && typeof value.version === 'string' && typeof value.sha256 === 'string'
-}
-
 /**
  * Start a plugin upgrade operation (#895). Two-phase (spec
  * plugin-managed-binaries S17): without a token this is the PREVIEW — it ends
@@ -170,60 +132,6 @@ export async function startPluginUpgrade(pluginId: string, consentToken?: string
   }))
 }
 
-/** What a settled upgrade operation means — from the body the route answers (its result). */
-export function interpretPluginUpgrade(
-  pluginId: string,
-  result: { httpStatus: number; body: unknown } | undefined,
-): PluginUpgradeResult {
-  const body = result?.body
-  if (isRecord(body) && typeof body.consentToken === 'string' && (body.awaitingConsent === true || body.ready === true)) {
-    const permissions = Array.isArray(body.declaredPermissions) ? body.declaredPermissions.filter((p): p is string => typeof p === 'string') : []
-    const bins = Array.isArray(body.declaredBins) ? body.declaredBins.filter(isUpgradeBin) : []
-    if (body.ready === true) {
-      return { awaitingConsent: false, ready: true, permissions, bins, consentToken: body.consentToken, noop: false, message: `Updating ${pluginId}…` }
-    }
-    return {
-      awaitingConsent: true,
-      permissions,
-      bins,
-      consentToken: body.consentToken,
-      noop: false,
-      message: body.manifestChanged === true
-        ? 'This update changed since you previewed it. Review it again.'
-        : bins.length > 0 && permissions.length === 0
-          ? 'This update downloads binaries.'
-          : bins.length > 0
-            ? 'This update requests permissions and downloads binaries.'
-            : 'This update requests permissions.',
-    }
-  }
-  if (!result || result.httpStatus >= 400 || (isRecord(body) && body.ok === false)) {
-    const message = isRecord(body) && typeof body.error === 'string' && body.error.length > 0
-      ? body.error
-      : `Plugin update failed (${result?.httpStatus ?? 'no result'})`
-    throw new Error(message)
-  }
-  if (!isRecord(body)
-    || body.ok !== true
-    || typeof body.noop !== 'boolean'
-    || !Array.isArray(body.declaredPermissions)
-    || !body.declaredPermissions.every((permission) => typeof permission === 'string')) {
-    throw new SystemMutationOutcomeUnknownError(
-      'The plugin update finished, but Bakin could not confirm the result. Refresh live data before trying again.',
-    )
-  }
-  const noop = body.noop
-  return {
-    awaitingConsent: false,
-    permissions: body.declaredPermissions,
-    bins: [],
-    noop,
-    message: noop
-      ? `${pluginId} is already current.`
-      : `${pluginId} was updated and reactivated.`,
-  }
-}
-
 export interface UseSystemDataResult {
   report: UseHealthReportResult
   live: UseHealthResourceResult<HealthSummary>
@@ -231,16 +139,21 @@ export interface UseSystemDataResult {
   searchTelemetry: UseHealthResourceResult<SearchTelemetryData>
   registry: UseHealthResourceResult<SystemRegistryData>
   pluginManifest: UseHealthResourceResult<SystemPluginManifestData>
+  /** The updates engine's records (read once by the Health page, #1007). */
+  updates: UseHealthResourceResult<UpdatesData>
   searchMutation: SystemMutationState
   pluginMutation: SystemMutationState
   reindexSearch: (table?: string) => Promise<void>
-  checkPluginUpdates: () => Promise<SystemPluginManifestData | null>
+  /** True while an explicit plugin update check runs. */
+  checkingUpdates: boolean
+  /** Run the engine's plugin check pass now (`POST /api/updates/check?source=plugin`) and re-read the records. */
+  checkPluginUpdates: () => Promise<UpdatesData | null>
   upgradePlugin: (pluginId: string, consentToken?: string) => Promise<void>
   refreshSystemDetails: () => Promise<void>
 }
 
 /** Source-aware resources used only while the System tab is mounted. */
-export function useSystemData(): UseSystemDataResult {
+export function useSystemData(updates: UseHealthResourceResult<UpdatesData>): UseSystemDataResult {
   const report = useHealthReport()
   const live = useHealthResource<HealthSummary>('/api/plugins/health/summary', {
     intervalMs: SYSTEM_REFRESH_MS,
@@ -271,6 +184,8 @@ export function useSystemData(): UseSystemDataResult {
   })
   const [searchMutation, setSearchMutation] = useState<SystemMutationState>(IDLE_MUTATION)
   const [pluginMutation, setPluginMutation] = useState<SystemMutationState>(IDLE_MUTATION)
+  const [checkingUpdates, setCheckingUpdates] = useState(false)
+  const updatesRefresh = updates.refresh
   const reportRefresh = report.refresh
   const liveRefresh = live.refresh
   const searchStatusRefresh = searchStatus.refresh
@@ -334,7 +249,22 @@ export function useSystemData(): UseSystemDataResult {
     )
   }, [reindex, reindexView, reindexPhase, refreshCanonicalSearchReadiness])
 
-  const checkPluginUpdates = useCallback(() => pluginManifestRefresh('explicit'), [pluginManifestRefresh])
+  // The explicit "Check for updates" is the engine's plugin pass (#1007 P10′):
+  // the row and its refresh read the same records; a failed check surfaces
+  // as the plugin mutation's error, never as a stale "nothing new".
+  const checkPluginUpdates = useCallback(async (): Promise<UpdatesData | null> => {
+    setCheckingUpdates(true)
+    try {
+      await checkUpdates('plugin')
+      const [refreshed] = await Promise.all([updatesRefresh('background'), pluginManifestRefresh('background')])
+      return refreshed
+    } catch (error) {
+      setPluginMutation({ status: 'error', message: `Could not check for plugin updates: ${error instanceof Error ? error.message : String(error)}`, target: null })
+      return null
+    } finally {
+      setCheckingUpdates(false)
+    }
+  }, [pluginManifestRefresh, updatesRefresh])
 
   // Plugin upgrades are operations (#895), followed live: the preview, then
   // (on approval, or at once when it is `ready`) the commit.
@@ -404,9 +334,10 @@ export function useSystemData(): UseSystemDataResult {
     void Promise.all([
       registryRefresh('explicit'),
       pluginManifestRefresh('explicit'),
+      updatesRefresh('background'),
       reportRefresh('background'),
     ]).finally(() => setPluginMutation({ status: 'success', message: result.message, target: pluginId }))
-  }, [upgrade, upgradeView, upgradePhase, upgradePlugin, pluginManifestRefresh, registryRefresh, reportRefresh])
+  }, [upgrade, upgradeView, upgradePhase, upgradePlugin, pluginManifestRefresh, registryRefresh, reportRefresh, updatesRefresh])
 
   const refreshSystemDetails = useCallback(async () => {
     const results = await Promise.all([
@@ -416,6 +347,7 @@ export function useSystemData(): UseSystemDataResult {
       registryRefresh('reconcile'),
       pluginManifestRefresh('reconcile'),
       reportRefresh('background'),
+      updatesRefresh('background'),
     ])
     const searchReconciled = results[1] !== null && results[2] !== null
     const pluginsReconciled = results[3] !== null && results[4] !== null
@@ -425,7 +357,7 @@ export function useSystemData(): UseSystemDataResult {
     if (pluginsReconciled) {
       setPluginMutation((state) => state.status === 'outcome-unknown' ? IDLE_MUTATION : state)
     }
-  }, [liveRefresh, pluginManifestRefresh, registryRefresh, reportRefresh, searchStatusRefresh, searchTelemetryRefresh])
+  }, [liveRefresh, pluginManifestRefresh, registryRefresh, reportRefresh, searchStatusRefresh, searchTelemetryRefresh, updatesRefresh])
 
   return {
     report,
@@ -434,9 +366,11 @@ export function useSystemData(): UseSystemDataResult {
     searchTelemetry,
     registry,
     pluginManifest,
+    updates,
     searchMutation,
     pluginMutation,
     reindexSearch,
+    checkingUpdates,
     checkPluginUpdates,
     upgradePlugin,
     refreshSystemDetails,

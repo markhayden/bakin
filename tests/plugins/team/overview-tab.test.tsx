@@ -80,13 +80,15 @@ afterAll(() => {
 })
 
 beforeEach(() => {
-  useAgentStore.setState({
-    agents: [], agentIds: [], agentMap: {}, agentsWithStatus: [],
-    displaySettings: { pixel: { teamId: 'team-design' } as never },
-    teams: [{ id: 'team-design', label: 'Design', leaderId: '', reportsTo: null }],
-    packageStates: {},
-    mainAgentId: 'main', loaded: true,
-  } as never)
+  act(() => {
+    useAgentStore.setState({
+      agents: [], agentIds: [], agentMap: {}, agentsWithStatus: [],
+      displaySettings: { pixel: { teamId: 'team-design' } as never },
+      teams: [{ id: 'team-design', label: 'Design', leaderId: '', reportsTo: null }],
+      packageStates: {}, packageStatesAt: null, packageStatesError: null,
+      mainAgentId: 'main', loaded: true,
+    } as never)
+  })
   setupFetch({})
 })
 
@@ -268,6 +270,8 @@ describe('OverviewTab', () => {
       const teamWrites = teamRoutes.filter((c) => c.url === '/api/plugins/team/pixel/team' && c.init?.method === 'PUT')
       expect(teamWrites.length).toBeGreaterThan(0)
     })
+    // The write triggers a roster reload: let it settle inside act so no store update lands on the next test's card.
+    await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 0) }) })
   })
 
   it('renders the embedded PackageCard for the agent (delegating to its own surface)', async () => {

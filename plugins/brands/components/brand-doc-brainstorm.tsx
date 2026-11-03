@@ -64,15 +64,16 @@ export function DocBrainstormPanel({
     if (thread.sendError) toast(thread.sendError, 'error')
   }, [thread.sendError])
 
+  const sendTurn = thread.send
   const send = useCallback(
     async (content: string) => {
       if (!effectiveAgent) {
         toast('Pick an agent first', 'error')
         return
       }
-      await thread.send(content)
+      await sendTurn(content)
     },
-    [effectiveAgent, thread.send],
+    [effectiveAgent, sendTurn],
   )
 
   const abort = useCallback(() => {

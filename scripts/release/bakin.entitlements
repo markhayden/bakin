@@ -20,5 +20,19 @@
   -->
   <key>com.apple.security.cs.disable-library-validation</key>
   <true/>
+  <!--
+    Operation resource locks are held with flock(2) through bun:ffi (#896
+    D3.5). Bun's FFI generates executable call trampolines at dlopen time,
+    which the hardened runtime refuses without JIT / unsigned-executable
+    memory entitlements (the standard set Bun documents for compiled
+    executables). Without them the signed release binary cannot take a
+    single install lock.
+  -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-executable-page-protection</key>
+  <true/>
 </dict>
 </plist>

@@ -57,6 +57,7 @@ import {
   lockfileNeedsMigration,
   syncAgent as syncAgentUnowned,
   syncAllAgents as syncAllAgentsUnowned,
+  syncPack,
 } from '../../src/core/agent-packages/sync'
 import { setLessonEnabled } from '../../src/core/agent-packages/lesson-toggle'
 import { readReceipt, receiptPath } from '../../src/core/agent-packages/receipts'
@@ -314,6 +315,24 @@ describe('syncAgent — --check mutates nothing', () => {
     expect(readFileSync(wsPath('pixel', 'AGENTS.md'), 'utf-8')).toBe(agentsBefore)
     expect(readFileSync(join(testDir, 'packages', 'lock.json'), 'utf-8')).toBe(lockBefore)
     expect(readFileSync(receiptPath('pixel'), 'utf-8')).toBe(receiptBefore)
+  })
+})
+
+describe('syncAgent / syncPack — the check verdict rides the receipt (PR 8 review r6 #4)', () => {
+  it('a vanished local source is `blocked` with its reason on the agent receipt — never "unchanged"', async () => {
+    await seedSyncedBaseline()
+    writeLockfile({ version: 1, packages: { pixel: lockEntry({ source: join(testDir, 'gone-source') }) } })
+    const receipt = await syncAgent('pixel', { check: true })
+    expect(receipt.checkOnly).toBe(true)
+    expect(receipt.package).toMatchObject({ changed: false, checkOutcome: 'blocked', checkReason: expect.stringContaining('source path missing') })
+    expect(receipt.package?.checkError).toBeUndefined()
+  })
+
+  it('a pack check carries the same verdict', async () => {
+    seedContextFiles()
+    writeLockfile({ version: 1, packages: { 'editorial@1.0.0': { kind: 'skill-pack', version: '1.0.0', source: join(testDir, 'gone-pack'), ref: '', commitSha: '', installedAt: '2026-06-01T00:00:00Z', projections: [], refCount: 0, dependents: [] } } })
+    const receipt = await syncPack('editorial@1.0.0', { check: true })
+    expect(receipt).toMatchObject({ checkOnly: true, changed: false, checkOutcome: 'blocked', checkReason: expect.stringContaining('source path missing') })
   })
 })
 

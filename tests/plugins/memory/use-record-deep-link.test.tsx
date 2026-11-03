@@ -30,7 +30,7 @@ const setRecordId = mock((v: string) => { queryState.recordId = v })
 // Distinct push-mode spy: opening a drawer must use the push variant so the
 // back button closes it (third tuple element of useQueryState).
 const pushRecordId = mock((v: string) => { queryState.recordId = v })
-mock.module('@/hooks/use-query-state', () => ({
+mock.module('../../../packages/sdk/src/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) =>
     key === 'recordId' ? [queryState.recordId || defaultValue, setRecordId, pushRecordId] : [defaultValue, mock(), mock()],
   useQueryArrayState: () => [[], mock()],

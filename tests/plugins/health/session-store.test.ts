@@ -79,21 +79,17 @@ describe('session-store system check', () => {
     expect(results[0]?.status).toBe('warning')
     expect(results[0]?.summary).toContain('main')
     // Adapter-owned guidance flows through untouched (R29) — the check has
-    // no provider strings of its own.
-    expect(results[0]?.incident?.resolution).toMatchObject({
-      type: 'instructions',
-      steps: ['Run `fake-runtime gc --now`.'],
-    })
+    // no provider strings of its own. Row 15: growth is an observation.
+    expect(results[0]?.incident).toBeUndefined()
+    expect(results[0]?.detail).toContain('Run `fake-runtime gc --now`.')
   })
 
   it('falls back to neutral remediation when the adapter offers none', async () => {
     const results = observed(await checkSessionStore(
       runtimeWith([{ agentId: 'main', storeEntries: 50, fileCount: 80, diskBytes: SESSION_STORE_WARN_BYTES + 1 }]),
     ))
-    expect(results[0]?.incident?.resolution).toMatchObject({
-      type: 'instructions',
-      steps: [expect.stringContaining("Run the runtime's session cleanup")],
-    })
+    expect(results[0]?.incident).toBeUndefined()
+    expect(results[0]?.detail).toContain("Run the runtime's session cleanup")
   })
 
   it('errors when an agent dir exceeds the error byte threshold', async () => {

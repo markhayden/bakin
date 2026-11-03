@@ -16,8 +16,8 @@ mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () =>
 import { act, renderHook, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { actRender } from '../rtl-settle'
-import { useAvailableModels } from '../../src/hooks/use-available-models'
-import { emitPluginEvent } from '../../src/hooks/use-plugin-event'
+import { useAvailableModels } from '../../packages/sdk/src/hooks/use-available-models'
+import { emitPluginEvent } from '../../packages/sdk/src/hooks/use-plugin-event'
 
 let catalog: Array<{ id: string; name: string; provider: string; tier: string }> = []
 let fetches = 0

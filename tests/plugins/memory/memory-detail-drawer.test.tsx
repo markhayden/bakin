@@ -4,7 +4,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
 
 import '../../rtl-settle'
-import type { SearchResult } from '../../../src/hooks/use-search'
+import type { SearchResult } from '../../../packages/sdk/src/hooks/use-search'
 import { MemoryDetailDrawer } from '../../../plugins/memory/components/memory-detail-drawer'
 
 const durableResult: SearchResult = {

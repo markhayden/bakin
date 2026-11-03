@@ -25,7 +25,9 @@ const incidentBase = {
   key: 'search.unavailable',
   title: 'Search is unavailable',
   impact: 'Search-backed discovery is unavailable.',
-  resolution: { key: 'restart-search', type: 'rerun' as const, label: 'Rerun Search checks' },
+  subject: { kind: 'service' as const, id: 'search-engine', label: 'Search engine' },
+  declarationId: 'unavailable',
+  resolution: { key: 'restart-search', type: 'repair' as const, label: 'Investigate', actionId: 'core.diagnose' },
 }
 
 describe('canonical Health HTTP observation schema', () => {
@@ -62,6 +64,14 @@ describe('canonical Health HTTP observation schema', () => {
 
     expect(result.success).toBe(true)
   })
+
+  it('accepts a plain warning/unknown observation without an incident, and refuses a half-stamped one (self-healing 1.7)', () => {
+    const { incidentId: _id, incident: _incident, ...plain } = { ...observationBase, incidentId: 'x', incident: incidentBase }
+    expect(canonicalHealthObservationSchema.safeParse({ ...plain, status: 'warning' }).success).toBe(true)
+    expect(canonicalHealthObservationSchema.safeParse({ ...plain, status: 'unknown' }).success).toBe(true)
+    expect(canonicalHealthObservationSchema.safeParse({ ...plain, status: 'warning', incidentId: 'dangling' }).success).toBe(false)
+    expect(canonicalHealthObservationSchema.safeParse({ ...plain, status: 'error' }).success).toBe(false)
+  })
 })
 
 function canonicalReport() {
@@ -71,7 +81,9 @@ function canonicalReport() {
     impact: 'Some search results may be delayed.',
     disposition: 'watch' as const,
     resources: [{ kind: 'service' as const, id: 'search', label: 'Search' }],
-    resolution: { key: 'rerun-search', type: 'rerun' as const, label: 'Check again' },
+    subject: { kind: 'service' as const, id: 'search-engine', label: 'Search engine' },
+    declarationId: 'degraded',
+    resolution: { key: 'rerun-search', type: 'repair' as const, label: 'Investigate', actionId: 'core.diagnose' },
   }
 
   return {
@@ -119,7 +131,10 @@ function canonicalReport() {
       title: incident.title,
       impact: incident.impact,
       resources: incident.resources,
+      subject: incident.subject,
       resolution: incident.resolution,
+      declarationId: incident.declarationId,
+      required: false,
       observationIds: ['health.search:availability'],
       observedAt,
       staleAt: '2026-07-13T20:01:00.000Z',
@@ -241,7 +256,10 @@ describe('incident ackState wire mirror (health trust overhaul)', () => {
       title: 'Premium model on cheap work',
       impact: 'Costs more than needed.',
       resources: [{ kind: 'agent', id: 'relay', label: 'relay' }],
-      resolution: { key: 'rerun', type: 'rerun', label: 'Check again' },
+      subject: { kind: 'service', id: 'search-engine', label: 'Search engine' },
+      declarationId: 'unavailable',
+      required: false,
+      resolution: { key: 'rerun', type: 'repair', label: 'Investigate', actionId: 'core.diagnose' },
       observationIds: ['obs-1'],
       observedAt: '2026-07-24T12:00:00.000Z',
       staleAt: '2026-07-24T13:00:00.000Z',

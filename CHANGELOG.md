@@ -6,6 +6,117 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.46] - 2026-10-27
+
+Bakin loads fast again on a lived-in home: the page no longer downloads a snapshot of everything under `~/.bakin`, and avatars, activity and live file events stay small.
+
+### Changed
+- **No more full-home snapshot (#1038).** `GET /api/state` and `StorageAdapter.readAll` are gone. On Margo the snapshot was 155 MB (run workspaces, npm `node_modules`, the audit log), fetched on every load and every reconnect, and nothing read it. A cold board load is now ~0.5 MB.
+- **The host store holds only host state.** `useContentStore` is now `useHostStore` (`connected`, `debug`, `activityEvents`). The SSE connection refreshes activity once per successful connect.
+- **Activity and audit reads are bounded.** `/api/activity` reads the tail of the audit log, the task log's history rows come from `GET /api/plugins/tasks/history`, and `bakin logs` tails too. An architecture test refuses new whole-file audit reads.
+- **Live file events carry no file contents**, only `{ file, event, timestamp }`.
+- **One avatar route.** `/api/agents/avatar?id=` serves every avatar; the team plugin's duplicate GET is gone. Sources over 64 KiB get a cached ≤256 px WebP (1.9 MB → 8 KB on Margo); the original file is never touched.
+- The boot log names this machine's own Tailscale address instead of a hardcoded one.
+
+### Removed
+- `/api/agents/health`, the host memory `/audit` override, and the `storage.readAll` plugin permission.
+
+### Fixed
+- Activity entries logged in the same instant no longer collide, and live events land in timestamp order.
+- `bakin_log_progress` on an unknown task fails before writing anything.
+- A reopened task's log no longer keeps its old completion date, and history rows respect the board's agent and brand filters.
+
+### Upgrade notes
+- Official Bits is pinned to the release without `readAll`. Plugins that called `storage.readAll()` must list or read what they need.
+
+## [0.0.1-rc.45] - 2026-10-27
+
+Agents can ask you a real question, and Projects become a conversation with a lead that keeps the work moving: it checks in when something changes and asks when a decision or a sign-off is yours.
+
+### Added
+- **Structured agent questions (#1031).** `bakin_exec_ask_user` lets an agent in a live conversation ask ONE question with 2-5 options and a recommendation. The turn engine attaches it to the tool row and every conversation surface renders an answerable card (pick, write your own, or "Not sure — help me choose"); answers are ordinary user messages. `parseBakinQuestion` / `validateBakinQuestionInput` / `QUESTION_LIMITS` are on `@makinbakin/sdk/utils`.
+- **Docked conversation rail** in the conversation kit, for pages that keep the thread beside other tabs.
+- **Plugin sign-offs (#1035).** A `plugin-gate` approval kind: plugins register gates through `ctx.approvals` and core fans each decision out to them; with the plugin absent the record stays pending (503), never cancelled.
+- **Out-of-turn conversation rows (#1035).** `appendExternal` on the turn service and `ctx.conversations` writes rows outside a turn; with a turn running they queue and land right after it, never inside it.
+- **Task tags through `ctx.tasks` (#1035)**, onto the board view the dispatcher reads, so models tag routes match plugin-created tasks.
+
+### Changed
+- **`tasks.statusChanged` fires from one place (#1035):** the task store's column write, exactly once per real column change. Blocks, recoveries and plugin moves used to change columns silently.
+- **Official Bits pinned to Projects 0.13.0**, the steward loop (check-ins, questions, sign-offs). The Projects guide covers check-ins. Projects 0.13.0 requires this release.
+
+### Fixed
+- Conversation empty states use the right heading level, and the composer's file input is hidden from assistive tech (#1032).
+- The docs generator no longer reads hook and tool registrations from test files.
+
+## [0.0.1-rc.44] - 2026-10-25
+
+Health → Updates stops listing agent packages that did not change, and the Updates tab count reads clearly.
+
+### Fixed
+- **Agent packages are only behind when their own folder changed (#1027).** Packages installed from a monorepo source (official Bits) track the repo's branch, so any commit anywhere in the repo flagged every installed pack as an update with the same version on both sides. The check now compares the fetched package folder with the installed one.
+- **Updates tab count** is a solid badge, and underline tabs space a badge or icon from their label.
+
+## [0.0.1-rc.43] - 2026-10-25
+
+Every Health finding is now one of two things — a repair Bakin runs, or a human need that lands on a working control — and the retired approval engine's leftovers are cleaned up at boot.
+
+### Added
+- **Three outcomes for Health (#1026, self-healing PR 1 of 8).** Every incident resolves as `repair { actionId }` or `human { needs, href, field?, handoff? }`; the `instructions`, `rerun` and `navigate` shapes and the `safety` tiers are gone. Every check registers a finite `incidents` catalog validated at activation; every incident names its `subject` and `declarationId`, and an owner-decides family carries a `required` verdict derived from an owner FACT (running or scheduled workflows, capability packs an agent declares, asset/brand references, live plugin consumers, spend holds, model selections in use) — advisory, never red on a guess.
+- **Repairs through ONE policy and ONE gate.** Actions declare `effects` + `mutation`; `repairMode` stamps self-heal vs one-click; `authorizeMutation` runs in every apply path (one-click items are never applied unattended). `core.diagnose` is the shared fallback lane with the one brief builder.
+- **Named decision choices on cards.** Claim / use as guest, Drop / Keep (a recorded decision), Restore shipped / Keep my edit, Disable plugin, spend raise / acknowledge / resume — bound to the owner's own route and confirmed when consequential. Advisory and watch findings get a calm Notices surface.
+- **Human controls that work:** recover editors for assets (rebuild manifest, detach references, move a bad store location aside), brands (per-brand incidents, manifest-less directories, effective-brand usage), workflows (raw YAML/skill editors at the failing key, real frontmatter validation, guarded drafts), the roster (entry-addressed panel; registry handoff through the new optional `agents.registryLocation()` runtime member), spend (choices on the card), runtime (provider sign-in handoff selected by family, the verified `openclaw devices list` grant flow, a `gateway-below-floor` handoff). `HandoffCard` + Terminal session prefill with return verification that reruns exactly the originating checks.
+- **Plugin disable.** `bakin plugins disable|enable <id>`, `POST /api/plugins/{disable,enable}`, an Explore switch; suspend is non-destructive (tables and outbox rows stay) and the one activation boundary honours the mark through upgrades.
+
+### Changed
+- **Plugin health checks must declare their incident catalog** — a check without `incidents` fails its plugin's activation. Official companion: Terminal 0.3.5.
+- The legacy `health-repair` / `health-navigate` approvals and the old engine's review tasks are retired at boot (receipt first, Discord cards edited, resumed on every boot until done); settled records move to `approvals/legacy-archive/`, and repair-request records the current schema refuses move to `doctor/repair-requests-v2-archive/` before anything reads the store.
+- A Health check that emits two observations with one key reads `invalid` instead of poisoning the report; the capability readiness engine judges an installed pack once even when the lockfile carries a stale key.
+
+### Fixed
+- Agent-package reinstalls pin to the RECORDED commit (local sources by tree digest); the asset store repair is two items (directories self-heal, the trash purge is one click with frozen targets).
+- The spend plugin declares the roster permission its cap-hold fact reads.
+
+### Upgrade notes
+- **Install Terminal 0.3.5 before or with this release** (`bakin plugins upgrade terminal`): older Terminal artifacts register a health check without a catalog and fail to activate here.
+- First boot retires pending legacy Health approvals and completes their review tasks; one `approvals.legacy_retired` audit row carries the counts.
+
+## [0.0.1-rc.42] - 2026-10-23
+
+Bakin now knows what is newer across everything it installs, every long-running step runs as an operation end to end, and the plugin toolchain is honest about what runs where.
+
+### Added
+- **Updates engine (#1007).** One record for every tracked subject — Bakin itself, plugins, agent packages, hub skills, the search engine and its models — observed on a schedule with backoff and conditional requests, persisted with two clocks (last success, last attempt — a failed check never overwrites a good observation), and read by Health → Updates, the header banner, Explore, Team and the CLI. Nothing probes a source from a consumer. Apply is one service for plugins (preview → consent → commit), the search engine and its models (reinstalls as operations) and Bakin itself (the self-update as an operation whose last stage is the restart, verified by the client once the new process answers); package and hub-skill updates are observed and reported with their sync or reinstall command. `bakin updates [--check] | skip | apply`; `bakin update` goes through the running server. Skips are identities that return when the source moves.
+- **Onboarding components and the runtime switch are operations (#895).** Every `bakin install …` component runs as an operation on the server, or in-process when no server runs, with a declared plan, resources and cancellation before the point of no return; the runtime switch reports its phases as stages. Service claims need the per-boot CLI secret the server writes into `server.lock`.
+- **Archive binaries are pinned by their extracted member (#1004).** A `requires.bins` archive download must declare `archive.extractedSha256`; Bakin checks the extracted file against it before installing or running the binary, and the bytes on disk in every readiness and Health scan. A manifest without the pin is a visible finding, never "no bins".
+- **A release guard for the plugin contract (#999).** A Bakin release that changes the plugin externals-contract family cannot ship until every official plugin has published for it, so an upgrade never strands installed plugins.
+- **Health → Updates** lists required and available updates with the whole apply flow in one dialog; the System row and Explore show the same records.
+
+### Changed
+- **zod is host-provided in the browser (#948).** One `/vendor/zod.js` behind the import map; plugin clients externalize it (artifact contract `react19-sdk-focused-v2`). The change is additive: artifacts built for `-v1` keep running.
+- **SDK boundary (#809).** The conversation turn engine, recorder, thread id and tool-access rendering live in `@bakin/core`; the conversation UI lives in the UI package behind `@makinbakin/sdk/conversation`; the Bakin-wide hooks, the host-state types and browser notifications are SDK files (`@makinbakin/sdk/hooks`, `/types`, `/internal`). No SDK entry imports app code any more; the tolerated-cycle list is gone.
+- **Health sensitivity has two modes (#1007).** `quiet` is retired; a saved `quiet` behaves as `standard`.
+- **Search engine installs commit atomically (#890).** The download rides the shared download primitive with cancellation through every probe; the binary commit is the rollback boundary: a failure before it restores what was there (binary, `share/`, service unit); a failure after it keeps the new binary and reports what is left to do.
+- **Plugin upgrade consent never trusts the lock file (#1001):** what you approve is the manifest fetched from the source. **Every shell and plugin asset URL is versioned (#997),** so an upgrade never serves a stale SDK from a browser cache.
+- **The models plan proposes only models proven to run here (#1000):** usage history or a passing probe in the last 7 days, never a model merely listed.
+- **OpenClaw adapter (#883):** `toolsMode` is gone; per-turn tool policy is declared honestly and the config mirrors OpenClaw 9.5's closed schema.
+- **Toolchain:** Bun 1.4.3 (#965); the React lint contract (`@eslint-react`, zero warnings) is enforced across every component (#966).
+- The one-shot approvals and settings upgrades that rc.41 ran at boot are removed (#945).
+
+### Fixed
+- **Tasks:** order stays unique on every write path and the repair keeps the board (#994). **Schedule:** unrunnable schedules are paused instead of firing doomed tasks, fires never clobber a concurrent edit (#998), and schedule hooks ride the shell's one event stream (#990).
+- **Health:** bounded repair coverage resurfaces the existing review task instead of opening another (#1002); incident reservations, operator-review requests and resource locks are flock-held and crash-safe (#896).
+- **Search:** a model the engine cannot load never takes search down (#993); model files are hashed before any install is skipped (#1006); `bakin install search-models` never skips a model it was asked for (#1009).
+- **Packages:** npm payloads prove their dependencies resolve before the pack is marked ready (#1005).
+- **CLI:** `bakin stop` and `bakin restart` act only on this home's proven server (#898).
+- A plugin linked with `bakin plugins link` is no longer offered an update it refuses; the engine reports it as a dev install that follows its source.
+
+### Upgrade notes
+- **Install the companions Messaging 0.12.2 and Terminal 0.3.4 after upgrading.** Both are built for the host-provided zod contract; older artifacts keep running on this release, and a source install of either needs this release or later.
+- **Reinstall anything that ships an archive binary** — Terminal (`bakin plugins upgrade terminal`), and the OCR and Transcribe packs (`bakin packages sync <id>@<version>`): manifests without the extracted pin show as invalid on this release by design.
+- Release mechanics: the release workflow builds host assets before its test shards and validates the tag against full `main` history; the runbook describes prep + dispatch and retrying without moving the tag.
+- Boxes still on a release before rc.41 should boot rc.41 once first: the one-shot approvals migration it ran is removed here.
+- `settings.doctor.sensitivity: "quiet"` now behaves as `standard`; nothing rewrites the file.
+
 ## [0.0.1-rc.41] - 2026-10-18
 
 Long-running work now shows real progress everywhere, approvals are one system that records honestly who decided, and Health stops trusting files an agent could write.
@@ -789,5 +900,15 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.40]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.40
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.41...HEAD
 [0.0.1-rc.41]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.41
+
+[0.0.1-rc.42]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.42
+
+[0.0.1-rc.43]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.43
+
+[0.0.1-rc.44]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.44
+
+[0.0.1-rc.45]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.45
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.46...HEAD
+[0.0.1-rc.46]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.46

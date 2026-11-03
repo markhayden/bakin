@@ -13,9 +13,14 @@
  * is a thin adapter over the health snapshot.
  */
 import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput, HealthRepairActionDefinition, OperationContext } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput, HealthRepairActionDefinition, OperationContext } from '@makinbakin/sdk'
 import { stableKeyPart } from './key'
 import { repairTargetSelection } from '@bakin/core/health/repair-support'
+
+/** Rows 79–80: one family (the spinning tables), one observation (could not measure). */
+export const SEARCH_SPIN_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'backfill-spin', subjectKind: 'table', resolution: { type: 'repair', actionId: 'search-spin-rebuild' }, required: 'always' },
+]
 
 /** Zero progress across this window while "building" = spinning. */
 const SPIN_WINDOW_MS = 10 * 60 * 1000
@@ -163,6 +168,9 @@ export async function checkSearchSpin(): Promise<HealthCheckRunInput> {
       class: 'service_failure',
       impact: 'The engine can consume sustained CPU without advancing the affected indexes.',
       disposition: 'action_required',
+      // One incident covers every spinning table; the first names the subject, the rest are resources.
+      subject: { kind: 'table', id: tables[0]!, label: tables.length === 1 ? tables[0]!.slice(0, 120) : `${tables[0]!.slice(0, 100)} +${tables.length - 1}` },
+      declarationId: 'backfill-spin',
       resources: tables.slice(0, 50).map((table) => ({ kind: 'search_table' as const, id: stableKeyPart(table), label: table.slice(0, 120) })),
       resolution: {
         key: 'rebuild-spinning-tables',
@@ -186,6 +194,9 @@ export function searchSpinRepair(): HealthRepairActionDefinition {
   return {
     id: 'search-spin-rebuild',
     name: 'Rebuild spinning Search indexes',
+    // Row 79: blue/green keeps content — no effects, self-heal (was destructive).
+    effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+    mutation: 'rebuild',
     resources: ['search-engine'],
     operationPlan: () => REBUILD_PLAN,
     async plan(target) {
@@ -195,7 +206,6 @@ export function searchSpinRepair(): HealthRepairActionDefinition {
         actionId: 'search-spin-rebuild',
         title: 'Rebuild spinning search tables (blue/green)',
         reason: 'One or more building index legs made no progress for a full watchdog window with no queued writes.',
-        safety: 'destructive',
         ...repairTargetSelection(target),
         changes: tables.map((table) => ({
           kind: 'other' as const,
@@ -273,14 +283,6 @@ function spinUnknown(error: unknown) {
   return healthUnknown({
     key: 'indexes.spin',
     summary: 'Search index-leg progress could not be verified.',
-    detail: error instanceof Error ? error.message : String(error),
-    incident: {
-      key: 'spin-status-unknown',
-      title: 'Search index spin status is unknown',
-      impact: 'Health cannot confirm whether active index builds are making progress.',
-      disposition: 'watch',
-      resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
-      resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-    },
+    detail: `${error instanceof Error ? error.message : String(error)} Health cannot confirm whether active index builds are making progress.`,
   })
 }

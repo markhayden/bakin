@@ -24,7 +24,7 @@ import type {
   WorkspaceFileStat,
 } from '@bakin/core/adapters/runtime'
 import { RuntimeError } from '@bakin/core/adapters/runtime'
-import { getAgentWorkspaceDir } from './home'
+import { getAgentWorkspaceDir, getPiRegistryPath } from './home'
 import {
   assertValidAgentId,
   mutateRegistry,
@@ -182,6 +182,11 @@ export function createAgentsSurface(): AgentRuntimeAdapter['agents'] {
     // readRegistry throws on a corrupt roster — never an empty list for a failure.
     async workspaces(): Promise<Array<{ agentId: string; path: string }>> {
       return readRegistry().agents.map((record) => ({ agentId: record.id, path: getAgentWorkspaceDir(record.id) }))
+    },
+
+    // Row 106: the registry is ONE JSON file; an entry is `agents[<n>]`.
+    async registryLocation() {
+      return { path: getPiRegistryPath(), entryKey: (index: number) => `agents[${index}]` }
     },
 
     async workspaceFileStats(agentId: string): Promise<WorkspaceFileStat[] | null> {

@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, use, type ReactNode } from 'react'
 
 const PluginPortalOwnershipContext = createContext<string | null>(null)
 
@@ -15,15 +15,15 @@ export function PluginPortalOwnershipProvider({
   children,
 }: PluginPortalOwnershipProviderProps) {
   return (
-    <PluginPortalOwnershipContext.Provider value={pluginId}>
+    <PluginPortalOwnershipContext value={pluginId}>
       {children}
-    </PluginPortalOwnershipContext.Provider>
+    </PluginPortalOwnershipContext>
   )
 }
 
 /** Transparent DOM ownership boundary for content rendered outside its page root. */
 export function PluginPortalBoundary({ children }: { children: ReactNode }) {
-  const pluginId = useContext(PluginPortalOwnershipContext)
+  const pluginId = use(PluginPortalOwnershipContext)
   if (!pluginId) return children
 
   return (

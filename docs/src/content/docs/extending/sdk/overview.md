@@ -166,6 +166,20 @@ runtime thread id; and `metering: { workClass: 'chat', runId }`. Send routes cal
 for `not_found`. The turn continues if the browser navigates away or the HTTP
 request ends.
 
+To write rows outside a turn, such as an agent check-in that asks the user a
+question, call `service.appendExternal(ctx, key, rows, notice?)` and configure
+an `appended` event. On an idle thread the rows land immediately and `appended`
+fires (`status: 'appended'`). The call throws if a write fails. While a turn
+is running the call returns `status: 'queued'` right away, and the rows are
+written when the turn settles, before the next turn starts, so they never
+interleave with a live reply. `written` resolves once they are saved and
+rejects if a write failed. Never await it from inside that same
+conversation's turn. Give the rows their own `turnId` and
+`agentId` so they render as a separate agent turn. Pass a
+`notice: { agentId, preview }` when the rows should alert the user like a reply
+does. Pass the same `appended` event name to `useConversationThread` and
+`useConversationAttention`.
+
 Server services can use the matching utilities from `@makinbakin/sdk/utils`:
 
 ```ts

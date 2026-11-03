@@ -1,15 +1,7 @@
 'use client'
 
 import { Fieldset as FieldsetPrimitive } from '@base-ui/react/fieldset'
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useId,
-  useState,
-  type ComponentProps,
-} from 'react'
+import { createContext, use, useCallback, useEffect, useId, useState, type ComponentProps } from 'react'
 
 import { cn, mergeClassName } from '../utils'
 
@@ -28,7 +20,7 @@ export function Fieldset({ className, 'aria-describedby': describedByProp, ...pr
   const describedBy = [describedByProp, ...descriptionIds].filter(Boolean).join(' ') || undefined
 
   return (
-    <FieldsetDescriptionContext.Provider value={registerDescription}>
+    <FieldsetDescriptionContext value={registerDescription}>
       <FieldsetPrimitive.Root
         data-slot="fieldset"
         aria-describedby={describedBy}
@@ -38,7 +30,7 @@ export function Fieldset({ className, 'aria-describedby': describedByProp, ...pr
         )}
         {...props}
       />
-    </FieldsetDescriptionContext.Provider>
+    </FieldsetDescriptionContext>
   )
 }
 
@@ -62,7 +54,7 @@ export type FieldsetDescriptionProps = ComponentProps<'p'>
 export function FieldsetDescription({ className, id: idProp, ...props }: FieldsetDescriptionProps) {
   const generatedId = useId()
   const id = idProp ?? generatedId
-  const registerDescription = useContext(FieldsetDescriptionContext)
+  const registerDescription = use(FieldsetDescriptionContext)
 
   useEffect(() => registerDescription?.(id), [id, registerDescription])
 

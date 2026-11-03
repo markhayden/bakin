@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { useKeyedState } from '@makinbakin/sdk/hooks'
 import { useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
 import { AgentSelect, type AgentSelectOption } from '@makinbakin/sdk/patterns'
 import {
@@ -60,36 +61,28 @@ function deriveTeamId(label: string): string {
  * go through the kit's unsaved-changes guard.
  */
 export function TeamFormDialog({ open, mode, agents, mainAgentId, triggerRef, onClose, onSaved }: TeamFormDialogProps) {
-  const [baseline, setBaseline] = useState<Draft | null>(null)
-  const [draft, setDraft] = useState<Draft | null>(null)
-  const [idTouched, setIdTouched] = useState(false)
-  const [missingReportsTo, setMissingReportsTo] = useState<string | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const labelRef = useRef<HTMLInputElement | null>(null)
-
   // Capture the baseline once per opening. `agents`/`mainAgentId` are read at
   // open time on purpose: a roster refresh mid-edit must not reset the form.
+  // The form is keyed by the opening (issue 966b): a create starts from its
+  // initial draft in the same render it opens; an edit starts empty and the
+  // effect below reads the raw team record.
   const openedFor = mode.kind === 'edit' ? `edit:${mode.teamId}` : 'create'
+  const openingKey = `${open}\u0000${openedFor}`
+  const createInitial = (): Draft | null => (open && mode.kind === 'create' ? { label: '', id: '', reportsTo: mainAgentId ?? '' } : null)
+  const [baseline, setBaseline] = useKeyedState<Draft | null>(openingKey, createInitial)
+  const [draft, setDraft] = useKeyedState<Draft | null>(openingKey, createInitial)
+  const [idTouched, setIdTouched] = useKeyedState(openingKey, () => false)
+  const [missingReportsTo, setMissingReportsTo] = useKeyedState<string | null>(openingKey, () => null)
+  const [loadError, setLoadError] = useKeyedState<string | null>(openingKey, () => null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useKeyedState<string | null>(openingKey, () => null)
+  const labelRef = useRef<HTMLInputElement | null>(null)
   const rosterRef = useRef({ agents, mainAgentId })
   rosterRef.current = { agents, mainAgentId }
   useEffect(() => {
-    if (!open) return
+    if (!open || mode.kind !== 'edit') return
     let cancelled = false
-    setSaveError(null)
-    setLoadError(null)
-    setIdTouched(false)
-    setMissingReportsTo(null)
     const { agents: roster, mainAgentId: main } = rosterRef.current
-    if (mode.kind === 'create') {
-      const initial = { label: '', id: '', reportsTo: main ?? '' }
-      setBaseline(initial)
-      setDraft(initial)
-      return
-    }
-    setBaseline(null)
-    setDraft(null)
     // The RAW team record: the roster route maps a missing reports-to agent
     // to null (main), which would hide that it must be re-picked.
     void pluginFetch('team', 'teams')

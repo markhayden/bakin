@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import {
   AgentSelect,
@@ -30,7 +30,7 @@ import {
   SubmitButton,
   Textarea,
 } from '@makinbakin/sdk/ui'
-import { useAgentList, useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
+import { useAgentList, useAgentStore, useMainAgentId, useKeyedState } from '@makinbakin/sdk/hooks'
 import { ScheduleInput } from './schedule-input'
 import { checkSchedulePrompt, isTaskPrompt } from '../lib/prompt-guard'
 
@@ -78,39 +78,31 @@ export function JobForm({
     color: team.color,
   })), [registeredTeams])
 
-  const [name, setName] = useState(initial?.name ?? '')
-  const [schedule, setSchedule] = useState(initial?.schedule ?? '')
-  const [agentId, setAgentId] = useState<string>(
-    initial?.agentId ?? (initial?.teamId ? `${TEAM_VALUE_PREFIX}${initial.teamId}` : ''),
-  )
-  const [prompt, setPrompt] = useState(initial?.taskPrompt ?? '')
-  const [workflowId, setWorkflowId] = useState(initial?.workflowId ?? '')
-  const [taskTitle, setTaskTitle] = useState(initial?.taskTitle ?? '')
-  const [owner, setOwner] = useState(initial?.owner ?? mainAgentId ?? '')
-  const [requireTriage, setRequireTriage] = useState(initial?.requireTriage ?? false)
-  const [allowOverlap, setAllowOverlap] = useState(initial?.allowOverlap ?? false)
-  const [maxFailures, setMaxFailures] = useState(initial?.maxFailures ?? 3)
-  const [parsedOk, setParsedOk] = useState(mode === 'edit' || mode === 'adopt')
+  // The fields are seeded per (initial, mode) — a drawer that shows another
+  // job re-seeds in the same render the job changes (issue 966b). Callers pass a
+  // stable `initial`; a fresh object every render would reset the form.
+  const seed = useMemo(() => ({ initial, mode }), [initial, mode])
+  const [name, setName] = useKeyedState(seed, () => initial?.name ?? '')
+  const [schedule, setSchedule] = useKeyedState(seed, () => initial?.schedule ?? '')
+  const [agentId, setAgentId] = useKeyedState<string>(seed, () =>
+    initial?.agentId ?? (initial?.teamId ? `${TEAM_VALUE_PREFIX}${initial.teamId}` : ''))
+  const [prompt, setPrompt] = useKeyedState(seed, () => initial?.taskPrompt ?? '')
+  const [workflowId, setWorkflowId] = useKeyedState(seed, () => initial?.workflowId ?? '')
+  const [taskTitle, setTaskTitle] = useKeyedState(seed, () => initial?.taskTitle ?? '')
+  const [owner, setOwner] = useKeyedState(seed, () => initial?.owner ?? mainAgentId ?? '')
+  const [requireTriage, setRequireTriage] = useKeyedState(seed, () => initial?.requireTriage ?? false)
+  const [allowOverlap, setAllowOverlap] = useKeyedState(seed, () => initial?.allowOverlap ?? false)
+  const [maxFailures, setMaxFailures] = useKeyedState(seed, () => initial?.maxFailures ?? 3)
+  const [parsedOk, setParsedOk] = useKeyedState(seed, () => mode === 'edit' || mode === 'adopt')
 
-  useEffect(() => {
-    if (!initial) return
-    setName(initial.name ?? '')
-    setSchedule(initial.schedule ?? '')
-    setAgentId(initial.agentId ?? (initial.teamId ? `${TEAM_VALUE_PREFIX}${initial.teamId}` : ''))
-    setPrompt(initial.taskPrompt ?? '')
-    setWorkflowId(initial.workflowId ?? '')
-    setTaskTitle(initial.taskTitle ?? '')
-    setOwner(initial.owner ?? '')
-    setRequireTriage(initial.requireTriage ?? false)
-    setAllowOverlap(initial.allowOverlap ?? false)
-    setMaxFailures(initial.maxFailures ?? 3)
-    setParsedOk(mode === 'edit' || mode === 'adopt')
-  }, [initial, mode])
-
-  useEffect(() => {
-    if (initial?.owner || !mainAgentId) return
-    setOwner((previous) => previous || mainAgentId)
-  }, [initial, mainAgentId])
+  // The owner defaults to the main agent once the roster names one (it can
+  // arrive after mount); a value the operator cleared on purpose is kept —
+  // the default is applied when the main agent CHANGES, adjusted during render.
+  const [defaultedOwnerFor, setDefaultedOwnerFor] = useState(mainAgentId)
+  if (defaultedOwnerFor !== mainAgentId) {
+    setDefaultedOwnerFor(mainAgentId)
+    if (!initial?.owner && mainAgentId && !owner) setOwner(mainAgentId)
+  }
 
   // A schedule fires a task: the prompt must be something an agent can act on
   // (spec D5) — the server refuses anything else, so the form never offers it.

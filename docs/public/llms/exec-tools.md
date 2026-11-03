@@ -1425,8 +1425,7 @@ Purpose: Apply a confirmed project plan update in one operation. Use this after 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `projectId` | string | yes | Project ID |
-| `title` | string | no | Optional new project title |
-| `status` | choice | no | Optional new status |
+| `title` | string | no | Optional new project title (refused when the user named the project) |
 | `body` | string | no | Replacement markdown body for the project plan |
 | `appendBody` | string | no | Markdown to append to the existing project body; cannot be combined with body |
 | `owner` | string | no | Optional new owner |
@@ -1438,7 +1437,6 @@ Example:
 bakin_exec_projects_apply_plan {
   "projectId": "value",
   "title": "value",
-  "status": "value",
   "body": "value",
   "appendBody": "value",
   "owner": "value",
@@ -1490,6 +1488,31 @@ bakin_exec_projects_attach_asset {
 }
 ```
 
+### bakin_exec_projects_checkin
+
+Label: Checked in on a project
+Purpose: Report what this check-in did, in the project conversation. Call once at the end of a project check-in task with the taskId from that task.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `projectId` | string | yes | Project ID |
+| `taskId` | string | yes | Your check-in task id (from the task description) |
+| `summary` | string | yes | One line: what you did or found |
+| `actions` | array | no | Short list of the actions you took (sent steps to the board, reassigned a task, …) |
+
+Example:
+
+```sh
+bakin_exec_projects_checkin {
+  "projectId": "value",
+  "taskId": "value",
+  "summary": "value",
+  "actions": [
+    "value"
+  ]
+}
+```
+
 ### bakin_exec_projects_create
 
 Label: Created a project
@@ -1512,23 +1535,6 @@ bakin_exec_projects_create {
   "tasks": [
     "value"
   ]
-}
-```
-
-### bakin_exec_projects_delete
-
-Label: Deleted a project
-Purpose: Delete a project by ID.
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `projectId` | string | yes | Project ID |
-
-Example:
-
-```sh
-bakin_exec_projects_delete {
-  "projectId": "value"
 }
 ```
 
@@ -1609,7 +1615,7 @@ bakin_exec_projects_list {
 ### bakin_exec_projects_mark_item
 
 Label: Marked project item
-Purpose: Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage.
+Purpose: Mark a standalone checklist item as checked (done) or unchecked. Steps linked to a board task complete from that task and are refused (linked_step). Returns updated progress percentage.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1671,29 +1677,70 @@ bakin_exec_projects_relink_asset {
 }
 ```
 
-### bakin_exec_projects_remove_item
+### bakin_exec_projects_request_input
 
-Label: Removed project item
-Purpose: Remove a checklist item from a project.
+Label: Asked the user about a project
+Purpose: Ask the user ONE decision you cannot make yourself (scope, dropping steps, spend) during a project check-in. It appears as an answerable card in the project conversation; check-ins pause until they reply. Use the taskId from your check-in task, then finish the check-in.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `projectId` | string | yes | Project ID |
-| `taskItemId` | string | yes | Checklist item ID to remove |
+| `taskId` | string | yes | Your check-in task id (from the task description) |
+| `question` | string | yes | The question (max ${QUESTION_LIMITS.question} chars) |
+| `options` | array | yes |  |
+| `label` | string | yes | Short answer (max ${QUESTION_LIMITS.label} chars) |
+| `description` | string | no | What it means (max ${QUESTION_LIMITS.description} chars) |
+| `recommended` | number | no | Index of the option you recommend |
+| `allowOther` | boolean | no | Offer a free-text answer (default true) |
+| `context` | string | no | Why you are asking — replayed to you with their reply (max 1 KB) |
 
 Example:
 
 ```sh
-bakin_exec_projects_remove_item {
+bakin_exec_projects_request_input {
   "projectId": "value",
-  "taskItemId": "value"
+  "taskId": "value",
+  "question": "value",
+  "options": [
+    "value"
+  ],
+  "label": "value",
+  "description": "value",
+  "recommended": 20,
+  "allowOther": true,
+  "context": "value"
+}
+```
+
+### bakin_exec_projects_request_signoff
+
+Label: Requested a project sign-off
+Purpose: Ask the user to sign off during a project check-in: gateKind "complete" when every step is done (the user decides whether the project is complete), or "signoff" with subjectTaskId when a deliverable needs their approval. Only the user can decide; finish the check-in after asking.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `projectId` | string | yes | Project ID |
+| `taskId` | string | yes | Your check-in task id (from the task description) |
+| `gateKind` | choice | yes | "complete" for the whole project, "signoff" for one deliverable |
+| `subjectTaskId` | string | no | The deliverable's board task id (required for "signoff") |
+| `summary` | string | yes | What the user is approving, and why it is ready |
+
+Example:
+
+```sh
+bakin_exec_projects_request_signoff {
+  "projectId": "value",
+  "taskId": "value",
+  "gateKind": "value",
+  "subjectTaskId": "value",
+  "summary": "value"
 }
 ```
 
 ### bakin_exec_projects_toggle_item
 
 Label: Toggled project item
-Purpose: Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage.
+Purpose: Toggle a standalone checklist item checked/unchecked by item ID. Steps linked to a board task complete from that task and are refused (linked_step). Returns updated progress percentage.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1714,13 +1761,12 @@ bakin_exec_projects_toggle_item {
 ### bakin_exec_projects_update
 
 Label: Updated a project
-Purpose: Update a project's title, status, body, or owner. Lifecycle status is independent of checklist completion; completed may contain unchecked work.
+Purpose: Update a project's title, body, or owner. Lifecycle status (start, complete, archive) is the user's decision and cannot be changed by agents. A title the user typed cannot be overwritten.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `projectId` | string | yes | Project ID |
-| `title` | string | no | New title |
-| `status` | choice | no | New status |
+| `title` | string | no | New title (refused when the user named the project) |
 | `body` | string | no | New markdown body |
 | `owner` | string | no | New owner |
 
@@ -1730,7 +1776,6 @@ Example:
 bakin_exec_projects_update {
   "projectId": "value",
   "title": "value",
-  "status": "value",
   "body": "value",
   "owner": "value"
 }
@@ -2638,20 +2683,18 @@ Label: Terminal Session.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `operation` | choice | yes | list: your sessions. create: start one. screen: read the visible pane (start here). output: read raw output after a cursor. write: type input. interrupt: send Ctrl-C. resize: set cols/rows. complete: finish an exited session. terminate: stop a running process then finish. |
+| `operation` | choice | yes | list: your sessions. create: start one. screen: read the visible pane and its size (start here). output: read its text, history then screen (the last `lines` when given; also after it ended). write: type input. interrupt: send Ctrl-C. complete: finish an exited session. terminate: stop a running process then finish. |
 | `input` | object | yes |  |
-| `id` | string | no | Session id. Required for screen, output, write, resize, interrupt, complete, terminate. |
+| `id` | string | no | Session id. Required for screen, output, write, interrupt, complete, terminate. |
 | `title` | string | no | create: a short human-readable name for the session. |
 | `cwd` | string | no | create: absolute working directory. |
 | `program` | choice | no | create: program to launch (default shell). |
-| `checkout` | choice | no | create (coding programs): new isolated git worktree (default) or the existing checkout at cwd. |
+| `checkout` | choice | no | create: a new isolated git worktree or the existing checkout at cwd (default: isolated for coding programs, existing for a shell). |
 | `taskId` | string | no | create: link the session to a Bakin task id. |
-| `generation` | number | no | write, resize, interrupt: the `generation` from your latest response for this session. |
+| `generation` | number | no | write, interrupt: the `generation` from your latest response for this session. |
 | `sequence` | number | no | write: the latest `inputSequence` + 1. Consumed once — never reuse or guess it. |
 | `data` | string | no | write: the exact keystrokes to send. End a command with a carriage return "\\r" to run it. |
-| `cursor` | number | no | output: return output produced after this cursor (0 for all retained output). |
-| `cols` | number | no | resize: terminal columns. |
-| `rows` | number | no | resize: terminal rows. |
+| `lines` | number | no | output: only the last this many lines. |
 
 Example:
 
@@ -2670,9 +2713,7 @@ bakin_exec_terminal_session {
   "generation": 20,
   "sequence": 20,
   "data": "value",
-  "cursor": 20,
-  "cols": 20,
-  "rows": 20
+  "lines": 20
 }
 ```
 

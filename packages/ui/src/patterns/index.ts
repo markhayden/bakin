@@ -48,7 +48,7 @@ export { PageControls } from './page-controls'
 export type { PageControlsAs, PageControlsProps } from './page-controls'
 
 export { PageAside, useCollapsedAside } from './page-aside'
-export type { PageAsideCollapsible, PageAsideProps, PageAsideWidth } from './page-aside'
+export type { PageAsideCollapsible, PageAsideProps, PageAsideSide, PageAsideWidth } from './page-aside'
 
 export { PageCanvas } from './page-canvas'
 export type { PageCanvasOrientation, PageCanvasProps } from './page-canvas'
@@ -168,6 +168,12 @@ export type {
   DangerZoneHeadingLevel,
   DangerZoneProps,
 } from './danger-zone'
+
+export { HandoffCard } from './handoff-card'
+export type {
+  HandoffCardHeadingLevel,
+  HandoffCardProps,
+} from './handoff-card'
 
 export { UnsavedChangesDialog } from './unsaved-changes-dialog'
 export type { UnsavedChangesDialogProps } from './unsaved-changes-dialog'

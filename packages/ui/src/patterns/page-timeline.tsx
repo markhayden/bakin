@@ -29,7 +29,7 @@ export function PageTimeline({
   live = 'polite',
   ...props
 }: PageTimelineProps) {
-  const scroll = React.useContext(PageScrollContext)
+  const scroll = React.use(PageScrollContext)
   return (
     <div
       data-slot="page-timeline"

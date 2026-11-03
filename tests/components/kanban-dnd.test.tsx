@@ -241,11 +241,7 @@ mock.module('@makinbakin/sdk/navigation', () => ({
   },
 }))
 
-mock.module('@/hooks/use-content-store', () => ({
-  useContentStore: () => 0,
-}))
-
-mock.module('@/hooks/use-toast', () => ({
+mock.module('../../packages/sdk/src/hooks/use-toast', () => ({
   toast: mock(),
   useToastStore: Object.assign(mock(() => []), { getState: () => ({ add: mock(), clear: mock() }) }),
 }))

@@ -33,11 +33,14 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { BakinEventBus } from '@bakin/core/events'
 import { MarkdownStorageAdapter } from '@bakin/core/storage'
-import { dispatchRoute } from '@bakin/core/routing'
-import { createConversationTurnService } from '../../../../src/core/conversation-turns'
+import { createPluginSocket, dispatchRoute } from '@bakin/core/routing'
+import { createConversationTurnService } from '@bakin/core/conversation/turns'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
+import { taskStatusChangedPayload } from '@bakin/core/tasks/status-change'
+import { taskPatchFromPublic, toPluginTask } from '@bakin/core/tasks/public-task'
 import { assertPluginResources, createMemoryResourceAcquirer, createOperationRegistry, toPluginOperationInput } from '@bakin/core/operations'
+import { createMemoryApprovalsBackend, createPluginApprovalsAPI, toPluginApproval } from '@bakin/core/approvals/plugin-api'
 import type {
   BakinPlugin,
   ExecToolDefinition,
@@ -48,6 +51,7 @@ import type {
   HealthRepairPlanItem,
   NavItem,
   OperationView,
+  PluginApproval,
   PluginContext,
   PluginNodeTypeInput,
   PluginNotificationChannelInput,
@@ -55,6 +59,7 @@ import type {
   SearchResponse,
   SearchResult,
   SkillDefinition,
+  SocketRoute,
   UISlotRegistration,
   WorkflowDefinitionInput,
 } from '../types'
@@ -85,6 +90,8 @@ export interface PluginTestContext {
   ctx: PluginContext
   /** All routes: declarative `plugin.routes` + the auto-wired search route. */
   routes: APIRoute[]
+  /** Declarative `plugin.socketRoutes` — connect with `connectTestSocket`. */
+  socketRoutes: SocketRoute[]
   /** Exec tools registered via `ctx.registerExecTool`. */
   execTools: ExecToolDefinition[]
   /** Nav items registered via `ctx.registerNav`. */
@@ -125,6 +132,12 @@ export interface PluginTestContext {
    * returned rows and on `operation.stages` to prove the action reports.
    */
   applyHealthRepair(actionId: string, items: HealthRepairPlanItem[]): Promise<{ results: HealthRepairApplyResult[]; operation: OperationView }>
+  /**
+   * Decide one of the plugin's pending `ctx.approvals` requests as the
+   * operator would: runs its registered gate (a `ctx.approvals.refusal`
+   * rejects and leaves it pending), then records the decision.
+   */
+  resolveApproval(approvalId: string, option: string, comment?: string): Promise<PluginApproval>
   /** Delete the temp directory. Call from `afterAll`. Safe to call twice. */
   dispose(): void
 }
@@ -158,6 +171,7 @@ export function createTestContext(
   const dir = options.dir ?? mkdtempSync(join(tmpdir(), `bakin-${pluginId}-test-`))
 
   const routes: APIRoute[] = []
+  const socketRoutes: SocketRoute[] = []
   const execTools: ExecToolDefinition[] = []
   const navItems: NavItem[] = []
   const slots: UISlotRegistration[] = []
@@ -215,6 +229,14 @@ export function createTestContext(
     acquireResources: createMemoryResourceAcquirer(),
   })
 
+  // Column changes fire tasks.statusChanged through the plugin's own hooks,
+  // with the host's mapping — one event per real column change, after the write.
+  const taskStore = createMockBakinTaskStore()
+
+  // ctx.approvals runs the host's own rules (namespaced ids, owner checks)
+  // over an in-memory store; resolveApproval plays the operator.
+  const approvalsBackend = createMemoryApprovalsBackend()
+
   const capture = (level: CapturedLog['level']) =>
     (message: string, data?: unknown) => {
       logs.push({ level, message, data })
@@ -230,7 +252,22 @@ export function createTestContext(
     // and MUST typecheck via `satisfies` so a type change can't silently
     // desync the mocks.
     runtime: createMockRuntimeAdapter() as unknown as PluginContext['runtime'],
-    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    // The PUBLIC task shape both ways, through the host's own translation:
+    // updates take the public patch (checked → column) and every returned
+    // task is projected (derived `checked`), so plugins see production's
+    // shapes and status events.
+    tasks: {
+      ...taskStore,
+      create: async (input: Parameters<typeof taskStore.create>[0]) => toPluginTask(await taskStore.create(input)),
+      get: async (id: string) => {
+        const task = await taskStore.get(id)
+        return task ? toPluginTask(task) : null
+      },
+      list: async (filter?: Parameters<typeof taskStore.list>[0]) => (await taskStore.list(filter)).map(toPluginTask),
+      update: async (id: string, patch: Parameters<PluginContext['tasks']['update']>[1]) =>
+        toPluginTask(await taskStore.update(id, taskPatchFromPublic(patch as Parameters<typeof taskPatchFromPublic>[0]))),
+      move: async (id: string, column: string, order?: number) => toPluginTask(await taskStore.move(id, column, order)),
+    } as unknown as PluginContext['tasks'],
     // The REAL turn engine (host implementation) — external-author tests
     // exercise genuine turn lifecycle against the mock runtime. Same
     // documented cross-tier cast as runtime/tasks above.
@@ -238,6 +275,7 @@ export function createTestContext(
       start: async (input) => operations.start(toPluginOperationInput(pluginId, options.core ?? false, input)),
       await: (operationId) => operations.await(operationId),
     },
+    approvals: createPluginApprovalsAPI(pluginId, approvalsBackend),
     conversations: {
       createTurnService: (config) =>
         createConversationTurnService(
@@ -339,10 +377,19 @@ export function createTestContext(
     } satisfies PluginContext['search'],
   }
 
+  taskStore.subscribe((event) => {
+    const payload = taskStatusChangedPayload(event)
+    if (!payload) return
+    void Promise.resolve()
+      .then(() => ctx.hooks.callAll('tasks.statusChanged', payload))
+      .catch((err: unknown) => { logs.push({ level: 'error', message: 'tasks.statusChanged handler failed', data: err }) })
+  })
+
   let disposed = false
   return {
     ctx,
     routes,
+    socketRoutes,
     execTools,
     navItems,
     slots,
@@ -383,6 +430,11 @@ export function createTestContext(
       const operation = await operations.await(operationId)
       return { results, operation }
     },
+    resolveApproval: async (approvalId, option, comment) => {
+      const record = await approvalsBackend.resolve(approvalId, option, comment)
+      if (record.owner.kind !== 'plugin-gate') throw new Error(`"${approvalId}" is not a plugin approval`)
+      return toPluginApproval(record as Parameters<typeof toPluginApproval>[0])
+    },
     toolContext: (invocation) => ({
       invocation,
       storage: ctx.storage,
@@ -420,6 +472,7 @@ export async function activatePlugin(
   const harness = createTestContext(plugin.id, options)
   const declarative = (plugin as { routes?: APIRoute[] }).routes
   if (declarative) harness.routes.push(...declarative)
+  if (plugin.socketRoutes) harness.socketRoutes.push(...plugin.socketRoutes)
   try {
     await plugin.activate(harness.ctx)
   } catch (err) {
@@ -434,6 +487,72 @@ export async function activatePlugin(
 /** Find a route by method and declared path (`'GET', '/items/:id'`). */
 export function findRoute(routes: APIRoute[], method: string, path: string): APIRoute | undefined {
   return routes.find((r) => r.method === method && r.path === path)
+}
+
+/** Find a socket route by its declared path. */
+export function findSocketRoute(routes: SocketRoute[], path: string): SocketRoute | undefined {
+  return routes.find((route) => route.path === path)
+}
+
+/** The client end of a `connectTestSocket` connection. */
+export interface TestSocketClient {
+  /** Frames the plugin sent, in order. */
+  readonly received: Array<string | Uint8Array>
+  /** Set once either side closed. */
+  readonly closed: { code: number; reason: string } | null
+  /** Send a frame to the plugin. */
+  send(data: string | Uint8Array): void
+  /** Close from the client side. */
+  close(code?: number, reason?: string): void
+  /**
+   * Settles when the route's `open` does; rejects with its error (the socket
+   * is then closed 1011). Like the host, the client is usable while `open`
+   * is still pending, e.g. awaiting a first-message handshake.
+   */
+  readonly opened: Promise<void>
+}
+
+export type TestSocketConnection = { ok: true; client: TestSocketClient } | { ok: false; response: Response }
+
+/**
+ * Connect to a socket route in-memory: runs `admit`, then `open`, over the
+ * host's own PluginSocket implementation. The client is returned without
+ * waiting for `open` to finish; await `client.opened` for that.
+ */
+export async function connectTestSocket(
+  route: SocketRoute,
+  request: Request = new Request('http://localhost/'),
+): Promise<TestSocketConnection> {
+  const refused = await route.admit?.(request)
+  if (refused) return { ok: false, response: refused }
+  const received: Array<string | Uint8Array> = []
+  let closed: { code: number; reason: string } | null = null
+  const end = (code: number, reason: string) => {
+    closed ??= { code, reason }
+    handle.closed(code, reason)
+  }
+  const handle = createPluginSocket({ send: (data) => { received.push(data) }, close: end })
+  const opened = Promise.resolve()
+    .then(() => route.open(handle.socket, request))
+    .catch((err: unknown) => {
+      // The host closes the connection with 1011; a test sees the real error.
+      end(1011, 'Socket route open failed')
+      throw err
+    })
+  // Handled here so an unawaited failure is not an unhandled rejection;
+  // `client.opened` still rejects for the test that awaits it.
+  opened.catch(() => {})
+  const client: TestSocketClient = {
+    received,
+    get closed() { return closed },
+    send(data) { handle.deliver(data) },
+    close(code = 1000, reason = '') { end(code, reason) },
+    opened,
+  }
+  // Let a synchronous open (and the first microtasks of an async one) run, as
+  // the host does before the first frame can arrive.
+  await Promise.resolve()
+  return { ok: true, client }
 }
 
 /** Find an exec tool by name. */

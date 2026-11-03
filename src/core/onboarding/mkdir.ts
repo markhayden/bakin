@@ -85,7 +85,10 @@ async function install(_opts: ComponentInstallOptions, op: OperationContext): Pr
 
 export const mkdirComponent: InstallableComponent = {
   plan: { stages: [{ id: 'create', kind: 'installing', label: 'Create the Bakin home' }], pointOfNoReturn: 'start' },
-  resources: [],
+  // Creating the home IS an install-state write, and it is the first lock
+  // a fresh binary ever takes: the release smoke runs `bakin mkdir` against
+  // a throwaway home to prove the signed, hardened binary can flock(2).
+  resources: ['install-state'],
   name: 'mkdir',
   check,
   install,

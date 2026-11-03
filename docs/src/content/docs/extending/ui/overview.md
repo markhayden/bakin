@@ -126,6 +126,7 @@ Use `@makinbakin/sdk/patterns` once a page is more specific than a general layou
 | Keep query controls available | `PageControls` | Requires an accessible region name; the default section mode names a wrapping search/filter region without owning its values, while `as="toolbar"` takes the ARIA toolbar contract for command rows |
 | Bound page content and replacement states | `PageBody` | The single busy/feedback/replacement-state content slot; `state` replaces only this region while page identity and navigation stay mounted, `feedback` can remain beside stale usable content, and `gap` selects the content, section, or page rhythm |
 | Compose a supporting rail | `PageBody layout="aside"` with `PageAside` | The one primary-column-plus-rail composition; the named aside moves below the primary content when its container is narrow |
+| Dock a collapsible edge rail | `PageAside collapsible` | Full-height rail that collapses to the kit strip; `width` is `nav`, `session`, or `conversation` (a docked chat thread) and `side="end"` docks it after the content. Pair with `useCollapsedAside` for persisted state |
 
 ```tsx
 import { useQueryState } from '@makinbakin/sdk/navigation'
@@ -453,9 +454,11 @@ Use `mode="immersive"` for canvas-heavy detail and edit routes on every viewport
 
 For a bounded editor that must remain usable above the software keyboard, opt in to `WorkspacePage viewport="visual"` (default: `"host"`). The workspace measures its visible intersection with the host pane, including viewport panning and zoom, without changing the host or document geometry. `flow` workspaces retain host sizing. Missing VisualViewport falls back to the host bounds.
 
+When the page is the point of the visit (a terminal, a canvas), offer full screen with `useFullscreen()` from `@makinbakin/sdk/hooks`: call `enter()` from the user's click. The host hides its own chrome — header, sidebar, activity rail — and, where the browser can, puts the whole document in full screen, so menus, dialogs, sheets and toasts keep working. Escape stays the page's where the browser allows it (Keyboard Lock; holding Esc still leaves). Full screen ends when the page changes, the browser leaves full screen, or you call `exit()`. On an iPhone's Safari there is no browser full screen; the host still hides its chrome (`browser` is false). Never request full screen on a single element: overlays render in the document and would be hidden.
+
 Pass persistent input controls through `WorkspacePageBody inputAccessory`. The body reserves a trailing slot, keeps the canvas flexible, and owns safe-area clearance once. The child editor owns its scrolling. The default body composition remains unchanged when no accessory is supplied. Reference `Components/Pages/WorkspacePage → KeyboardAwareInput`.
 
-For terminal-like keys, follow `Recipes/TerminalInput → CompactAndExpanded`: `Button size="lg"` and `size="icon-lg"` supply 44px targets, wrapping `Inline` groups keep compact keys reachable at 320px, and a bounded `Panel scroll` above them holds expanded actions. Use ordinary named groups and normal Tab order. Preserve editor focus by preventing the pointer's mouse-focus default; submit each action once from `onClick`. Do not force focus when the software keyboard is closed. Consumers own key encoding, transport, availability, and one-shot modifier state, including resets on paste, composition, loss of ownership, disconnection, or leaving the interaction. Narrow and coarse-pointer devices can retain the strip alongside a physical keyboard.
+For terminal-like keys, follow `Recipes/TerminalInput → BarAndSheet`: one row of `Button size="icon-lg"` keys (44px; six fit a 320px screen, and the row wraps at enlarged text) holds Esc, Tab, the Control and Option modifiers, then More keys and Hide keyboard at the end; Hide keyboard stays enabled while sending is disabled. A modifier is off, on for the next key, or locked; say the state in its accessible name and show a lock by shape too. More keys opens a bounded `Panel scroll` in the same input accessory — the software keyboard goes down — with labelled groups (keys, Control shortcuts with plain labels, lock toggles); abc or Escape returns to the keyboard, and keyboard users get focus moved into it. While the sheet is open it owns Escape wherever focus is: handle it in the capture phase so the editor never sees it, and leave alone an Escape inside an open dialog (the dialog's), inside a composition, or one another owner already claimed. The next delivered key takes an armed modifier; committed text (IME, dictation) is sent as typed and ends a one-shot one — not a composition still in progress or cancelled. Use ordinary named groups and normal Tab order. Preserve editor focus by preventing the pointer's mouse-focus default; submit each action once from `onClick`. Consumers own key encoding, transport, availability, and modifier state, including resets on loss of ownership, disconnection, or leaving the interaction. A plugin may restyle the keys as keycaps with CSS scoped to its root, on kit tokens. Coarse-pointer devices can retain the row alongside a physical keyboard.
 
 `WorkspacePage` does not own domain state, routing, transport, selection, pan or zoom, message rendering, or a document-level scroller. The consumer must give each necessary internal scroller a finite parent and an accessible name. On narrow screens, hide an inapplicable workspace header by hiding `WorkspacePageHeader` itself so its padding does not leave an empty strip; otherwise prefer immersive mode when the full identity should scroll away but route context and actions must remain.
 
@@ -506,6 +509,7 @@ Use the focused patterns entrypoint for consequential actions and staged drafts:
 | --- | --- | --- |
 | Confirm one consequential action | `ConfirmDialog` | Caller owns open, busy, error, retry, and mutation state; use `confirmValue` only when an exact typed value is warranted |
 | Keep a staged draft actionable | `SaveBar` | Caller owns dirty comparison, persistence, and discard; the pattern supplies dirty, saving, retryable error, and brief saved presentation |
+| Hand a command to the operator | `HandoffCard` | Show the exact command (copyable); offer "Open in Terminal" only when the host can prefill it; never run it yourself |
 | Separate irreversible settings | `DangerZone` | Place after routine settings, state the consequence in words, and route through the same typed `ConfirmDialog` engine |
 | Resolve navigation with a dirty draft | `UnsavedChangesDialog` | Presentation-only save, discard, and stay decision; a router-aware consumer decides when it opens and what continuation means |
 
@@ -1690,6 +1694,13 @@ decorative icons, described units, announced loading, readonly `CopyButton` from
 and SubmitButton. Counts use UTF-16 code units to match native `maxLength`.
 Keep copy feedback tied to the actual clipboard result; never display optimistic
 success. Loading need not disable typing; readonly still permits copying.
+
+`CopyButton` is the one copy action. Its default size is the compact 24px
+action beside inline text; `size="touch"` is a 44px target for a coarse
+pointer where copying is the point of the surface, such as a tap-to-copy
+prompt after a browser refused a programmatic clipboard write (the tap is a
+fresh user gesture). Either size confirms through the swapped icon and the
+accessible name, only once the write happened.
 
 
 SelectTrigger accepts `size="sm|md|lg"`, `variant="outlined|filled|ghost"`, and

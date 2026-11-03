@@ -11,10 +11,12 @@ mock.module('../../src/core/logger', () => ({
 // Imported after the logger mock so the store's module-level logger is the mock.
 const {
   DoctorRepairRequestNotFoundError,
+  archiveRefusedRepairRequests,
   createDoctorRepairRequest,
   getDoctorRepairRequest,
   legacyRepairRequestArchiveRoot,
   listDoctorRepairRequests,
+  refusedRepairRequestArchiveRoot,
   openRepairWorkByIncident,
   repairRequestV2Root,
   updateDoctorRepairRequest,
@@ -65,6 +67,27 @@ describe('versioned doctor repair request records', () => {
   })
 })
 
+describe('operator-review requests carry the failed attempt (#896 D3.4)', () => {
+  it('round-trips kind operator-review with a failure receipt, and a proposal\'s failure', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-repair-store-'))
+    try {
+      const failure = { operationId: 'op-1', stage: 'installing', error: 'download stalled', at: '2026-10-20T00:00:00.000Z' }
+      const created = createDoctorRepairRequest(dir, {
+        kind: 'operator-review', incidentIds: ['health:media:store-missing'], observationIds: ['health.media:sharp'], checkIds: ['media.sharp'], failure,
+      })
+      expect(getDoctorRepairRequest(dir, created.id)).toMatchObject({ kind: 'operator-review', failure })
+      const proposal = { reportId: 'health-report-1', observationIds: ['health.media:sharp'], items: [], failure }
+      const withProposal = createDoctorRepairRequest(dir, {
+        kind: 'approval-repair', incidentIds: ['health:media:store-missing'], observationIds: ['health.media:sharp'], proposal,
+      })
+      expect(getDoctorRepairRequest(dir, withProposal.id)?.proposal?.failure).toEqual(failure)
+      expect(listDoctorRepairRequests(dir).map((request) => request.kind).sort()).toEqual(['approval-repair', 'operator-review'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('request files are validated on read (#898)', () => {
   function withDir(run: (dir: string, shard: string) => void): void {
     const dir = mkdtempSync(join(tmpdir(), 'bakin-repair-store-'))
@@ -92,7 +115,7 @@ describe('request files are validated on read (#898)', () => {
     })
   })
 
-  it('a pre-approvals request without kind or checkIds still reads with the legacy defaults', () => {
+  it('a pre-#942 request without kind or checkIds is invalid — logged and ignored, never defaulted (#945)', () => {
     withDir((dir, shard) => {
       const legacy = {
         version: 2, id: 'repair-legacy', status: 'sent',
@@ -100,7 +123,38 @@ describe('request files are validated on read (#898)', () => {
         plan: plan(), incidentIds: ['health:search:down'], observationIds: [], taskId: 'task-1', events: [],
       }
       writeFileSync(join(shard, 'repair-legacy.json'), JSON.stringify(legacy))
-      expect(getDoctorRepairRequest(dir, 'repair-legacy')).toEqual({ ...legacy, kind: 'delegate', checkIds: [] } as never)
+      // Each retired default on its own: a file missing ONLY checkIds, and one
+      // missing ONLY kind, are both invalid — restoring either default would
+      // let its fixture read again.
+      writeFileSync(join(shard, 'repair-no-checkids.json'), JSON.stringify({ ...legacy, id: 'repair-no-checkids', kind: 'delegate' }))
+      writeFileSync(join(shard, 'repair-no-kind.json'), JSON.stringify({ ...legacy, id: 'repair-no-kind', checkIds: [] }))
+      warn.mockClear()
+      expect(getDoctorRepairRequest(dir, 'repair-legacy')).toBeNull()
+      expect(getDoctorRepairRequest(dir, 'repair-no-checkids')).toBeNull()
+      expect(getDoctorRepairRequest(dir, 'repair-no-kind')).toBeNull()
+      expect(listDoctorRepairRequests(dir)).toEqual([])
+      expect(warn.mock.calls.map((call) => String(call[0]))).toContain('Skipping invalid doctor repair request')
+    })
+  })
+
+  it('boot archives every record the schema refuses ONCE into the immutable refused archive — valid rows stay, listing goes quiet, a second pass moves nothing (live incident 2026-10-24)', () => {
+    withDir((dir, shard) => {
+      const good = createDoctorRepairRequest(dir, { plan: plan(), incidentIds: ['health:search:down'], observationIds: ['health.search:engine'] })
+      const legacy = { version: 2, id: 'repair-legacy', kind: 'delegate', status: 'sent', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z', plan: plan(), incidentIds: ['x'], observationIds: [], taskId: 'task-1', events: [] }
+      writeFileSync(join(shard, 'repair-legacy.json'), JSON.stringify(legacy)) // pre-#942: no checkIds
+      writeFileSync(join(shard, 'repair-old-proposal.json'), JSON.stringify({ ...good, id: 'repair-old-proposal', kind: 'approval-repair', proposal: { reportId: 'r', observationIds: [], items: [{ actionId: 'a', itemId: 'a:x', safety: 'destructive', changes: [] }] } })) // pre-cutover proposal shape
+      writeFileSync(join(shard, 'not-json.json'), '{ nope')
+      const older = join(repairRequestV2Root(dir), '2026-08')
+      mkdirSync(older, { recursive: true })
+      writeFileSync(join(older, 'repair-older.json'), JSON.stringify({ ...legacy, id: 'repair-older' }))
+
+      const first = archiveRefusedRepairRequests(dir)
+      expect(first.archived.sort()).toEqual(['2026-08/repair-older.json', '2026-10/not-json.json', '2026-10/repair-legacy.json', '2026-10/repair-old-proposal.json'])
+      expect(readFileSync(join(refusedRepairRequestArchiveRoot(dir), '2026-10', 'repair-legacy.json'), 'utf-8')).toBe(JSON.stringify(legacy)) // bytes preserved
+      warn.mockClear()
+      expect(listDoctorRepairRequests(dir).map((request) => request.id)).toEqual([good.id])
+      expect(warn).not.toHaveBeenCalled() // the store is quiet afterwards
+      expect(archiveRefusedRepairRequests(dir).archived).toEqual([])
     })
   })
 })

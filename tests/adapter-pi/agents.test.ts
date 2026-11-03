@@ -22,7 +22,7 @@ mock.module('../../src/core/logger', () => ({
 }))
 
 import { createPiRuntimeAdapter } from '../../packages/adapter-pi/src/index'
-import { getPiHome, getAgentWorkspaceDir, resetPiHome } from '../../packages/adapter-pi/src/home'
+import { getPiHome, getAgentWorkspaceDir, getPiRegistryPath, resetPiHome } from '../../packages/adapter-pi/src/home'
 import { selectRuntimeMainAgent } from '../../packages/core/src/adapters/runtime/helpers'
 import { RuntimeError } from '@bakin/core/adapters/runtime'
 
@@ -55,6 +55,14 @@ describe('registry + agents surface', () => {
     expect(main?.role).toBe('orchestrator')
     expect(String(main?.metadata?.workspace)).toBe(getAgentWorkspaceDir('main'))
     expect(existsSync(getAgentWorkspaceDir('main'))).toBe(true)
+  })
+
+  test('registryLocation names the ONE registry file and the entry at a position (Health row 106)', async () => {
+    const location = await adapter.agents.registryLocation!()
+    expect(location).not.toBeNull()
+    expect(location!.path).toBe(getPiRegistryPath())
+    expect(location!.entryKey(0)).toBe('agents[0]')
+    expect(location!.entryKey(3)).toBe('agents[3]')
   })
 
   test('second provision does not re-seed', async () => {

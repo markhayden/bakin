@@ -3,5 +3,5 @@ import { definePluginUiConformance } from '@makinbakin/sdk/testing/ui/conformanc
 export default definePluginUiConformance({
   pluginId: 'workflows',
   fixtureEntry: './tests/ui.fixture.tsx',
-  readySelector: '[data-testid="row-editorial-launch"]',
+  readySelector: 'section[aria-label="Definition recovery"] [data-testid="workflow-recover-editor"]',
 })

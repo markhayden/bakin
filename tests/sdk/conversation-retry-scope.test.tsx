@@ -18,7 +18,10 @@ mock.module('@/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 // AgentTurn/AgentAvatar resolve authors via SDK hooks (live fetch-backed
 // stores) — stub them so the render stays data-free.
+// Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
+import * as realSdkHooks from '@makinbakin/sdk/hooks'
 mock.module('@makinbakin/sdk/hooks', () => ({
+  ...realSdkHooks,
   useAgent: () => null,
   useAgentColor: () => undefined,
 }))

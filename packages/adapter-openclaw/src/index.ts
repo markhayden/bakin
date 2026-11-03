@@ -2,6 +2,7 @@ import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { OpenClawRuntimeAdapter } from './runtime'
 
 export { createOpenClawHealthChecks, type OpenClawHealthDeps } from './health-checks'
+export { gatewayCompatibility } from './gateway-rpc'
 
 export interface OpenClawRuntimeAdapterOptions {
   settings?: Record<string, unknown>

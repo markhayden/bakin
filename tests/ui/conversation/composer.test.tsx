@@ -145,4 +145,16 @@ describe('focused conversation composer', () => {
     fireEvent.change(textarea(container), { target: { value: '123456789' } })
     expect(container.querySelector('[data-composer-count]')?.textContent).toContain('9 / 10')
   })
+
+  it('switching the storage key swaps the draft in the same render and brings it back (#966b)', () => {
+    const view = render(<Composer storageKey="thread-a" onSend={() => {}} />)
+    fireEvent.change(textarea(view.container), { target: { value: 'draft for a' } })
+    view.rerender(<Composer storageKey="thread-b" onSend={() => {}} />)
+    expect(textarea(view.container).value).toBe('')
+    fireEvent.change(textarea(view.container), { target: { value: 'draft for b' } })
+    view.rerender(<Composer storageKey="thread-a" onSend={() => {}} />)
+    expect(textarea(view.container).value).toBe('draft for a')
+    view.rerender(<Composer storageKey="thread-b" onSend={() => {}} />)
+    expect(textarea(view.container).value).toBe('draft for b')
+  })
 })

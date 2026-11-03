@@ -41,6 +41,17 @@ export interface SyncReceipt {
     commitAfter: string
     /** Whether the upstream source was fetched during this sync. */
     fetched: boolean
+    /**
+     * `--check` only: the upstream question could not be answered (the
+     * observer threw — offline, a superseded install, a manifest mismatch).
+     * The versions above are the INSTALLED ones, not an answer; `changed` is
+     * false because nothing is known, not because nothing is newer.
+     */
+    checkError?: string
+    /** `--check` only: what the observer concluded — `blocked`/`unsupported` are not updates and not "unchanged" either. */
+    checkOutcome?: 'current' | 'update-available' | 'blocked' | 'unsupported' | 'unknown'
+    /** Why `checkOutcome` is `blocked` or `unsupported`, for people. */
+    checkReason?: string
     /** Whether the installed source actually changed. */
     changed: boolean
   }

@@ -103,11 +103,14 @@ describe('followLocalAndRender', () => {
 
   it('a second Ctrl-C force-exits with 130 and says the next start checks interrupted installs', async () => {
     const { operationId } = await startDownload('download')
-    const { renderer, notes } = recordingRenderer()
+    const { renderer, updates, notes } = recordingRenderer()
     const sig = signals()
     const exits: number[] = []
     const following = followLocalAndRender(operationId, { renderer, signals: sig, exit: ((code: number) => { exits.push(code) }) as never })
-    await waitUntil(() => getOperationRegistry().get(operationId)?.stages[0]?.status === 'active', { label: 'running' })
+    // The follower attaches its SIGINT listener only after a lazy import of the
+    // operations module settles (a macrotask on bun 1.4); polling the registry
+    // raced that. Its first rendered update is the signal that it is listening.
+    await waitUntil(() => updates.some((v) => v.stages[0]?.status === 'active'), { label: 'the follower renders the running download' })
     sig.press()
     sig.press()
     expect(exits).toEqual([130])

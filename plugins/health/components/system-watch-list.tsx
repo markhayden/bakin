@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import type { HealthReport } from '@makinbakin/sdk/types'
+import type { HealthReport, UpdateRecord } from '@makinbakin/sdk/types'
 import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Banner, Button, Overline, Text } from '@makinbakin/sdk/ui'
 import { ChevronDown, Puzzle, ShieldCheck } from 'lucide-react'
@@ -15,6 +15,7 @@ export function SystemWatchList({
   report,
   registry,
   manifest,
+  updates,
   evidenceState,
   reportCurrent,
   pluginInventoryCurrent,
@@ -23,6 +24,7 @@ export function SystemWatchList({
   report: HealthReport | null
   registry: SystemRegistryData | null
   manifest: SystemPluginManifestData | null
+  updates: readonly UpdateRecord[] | null
   evidenceState: 'current' | 'checking' | 'incomplete'
   reportCurrent: boolean
   pluginInventoryCurrent: boolean
@@ -30,8 +32,8 @@ export function SystemWatchList({
 }) {
   const [expanded, setExpanded] = useState(false)
   const findings = useMemo(
-    () => buildSystemFindings(report, registry, manifest, { reportCurrent, pluginInventoryCurrent }),
-    [manifest, pluginInventoryCurrent, registry, report, reportCurrent],
+    () => buildSystemFindings(report, registry, manifest, { reportCurrent, pluginInventoryCurrent, updates }),
+    [manifest, pluginInventoryCurrent, registry, report, reportCurrent, updates],
   )
   const visibleFindings = expanded ? findings : findings.slice(0, DEFAULT_VISIBLE_FINDINGS)
   const hiddenCount = Math.max(0, findings.length - DEFAULT_VISIBLE_FINDINGS)

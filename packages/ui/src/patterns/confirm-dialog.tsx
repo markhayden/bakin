@@ -80,11 +80,16 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const inputId = React.useId()
+  // The typed confirmation belongs to one opening of one prompt (issue 966b):
+  // adjusted during render when either changes. Inlined rather than
+  // useKeyedState so the `ui` entry's reachable graph stays what it was.
   const [typed, setTyped] = React.useState('')
-
-  React.useEffect(() => {
+  const promptKey = `${open}\u0000${confirmValue ?? ''}`
+  const [typedFor, setTypedFor] = React.useState(promptKey)
+  if (typedFor !== promptKey) {
+    setTypedFor(promptKey)
     setTyped('')
-  }, [open, confirmValue])
+  }
 
   const confirmBlocked = confirmValue !== undefined && typed !== confirmValue
 

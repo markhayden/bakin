@@ -9,7 +9,7 @@
  * graph (execution ledger + its native SQLite driver) must never enter
  * that package's declaration dependency graph.
  */
-import type { ConversationTurnServiceConfig } from './conversation-turns'
+import type { ConversationTurnServiceConfig } from '@bakin/core/conversation/turns'
 import { createLogger } from './logger'
 
 const log = createLogger('conversation-metering')

@@ -54,13 +54,28 @@ const proposedChangeSchema = z.object({
   description: z.string(),
 })
 
+export const repairFailureSchema = z.object({
+  operationId: z.string(),
+  stage: z.string(),
+  error: z.string(),
+  at: z.string(),
+})
+
 export const repairProposalSchema = z.object({
   reportId: z.string(),
   observationIds: z.array(z.string()),
+  failure: repairFailureSchema.optional(),
   items: z.array(z.object({
     actionId: z.string(),
     itemId: z.string(),
-    safety: z.enum(['safe', 'manual', 'destructive']),
+    effects: z.object({
+      deletesUserContent: z.boolean(),
+      spendsMoney: z.boolean(),
+      widensAuthorization: z.boolean(),
+      restartsService: z.enum(['search-engine', 'bakin', 'runtime']).optional(),
+      resolves: z.array(z.string()).optional(),
+    }),
+    mode: z.enum(['self-heal', 'one-click']),
     changes: z.array(proposedChangeSchema),
   })),
 })
@@ -69,10 +84,12 @@ const ownerSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('workflow-gate'), taskId: z.string(), workflowId: z.string(), runId: z.string(), stepId: z.string() }),
   z.object({ kind: z.literal('health-repair'), taskId: z.string(), requestId: z.string(), incidentIds: z.array(z.string()), proposal: repairProposalSchema }),
   z.object({ kind: z.literal('health-navigate'), taskId: z.string(), requestId: z.string(), incidentIds: z.array(z.string()), href: z.string() }),
+  z.object({ kind: z.literal('plugin-gate'), taskId: z.string().min(1), pluginId: z.string().min(1), gateKind: z.string().min(1), entityId: z.string().min(1) }),
 ])
 
 export const approvalRecordSchema = z.object({
   approvalId: z.string().min(1),
+  schemaVersion: z.number().int().optional(),
   owner: ownerSchema,
   status: z.enum(['pending', 'approved', 'rejected', 'cancelled', 'expired']),
   request: z.object({

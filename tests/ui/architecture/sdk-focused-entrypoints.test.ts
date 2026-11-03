@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'bun:test'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 import { SDK_EXPORTS } from '../../../scripts/build-sdk-package'
 import { SDK_VENDOR_TARGETS } from '../../../scripts/build-vendors'
 import { SDK_SUBPATHS } from '../../../src/core/whiskit/build'
+import { collectImportSpecifiers } from '../../../src/core/whiskit/import-scan'
 import {
   PLUGIN_CLIENT_EXTERNALS,
   REACT_EXTERNALS,
   SDK_EXTERNALS,
+  ZOD_EXTERNALS,
+  unprovidedHostSubpath,
 } from '../../../src/core/whiskit/externals'
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..')
@@ -89,13 +92,15 @@ describe('focused public SDK entrypoint contract', () => {
     const ui = readJson('packages/ui/package.json')
     const importMap = browserImportMap()
 
-    expect(PLUGIN_CLIENT_EXTERNALS).toEqual([...REACT_EXTERNALS, ...SDK_EXTERNALS])
+    expect(PLUGIN_CLIENT_EXTERNALS).toEqual([...REACT_EXTERNALS, ...SDK_EXTERNALS, ...ZOD_EXTERNALS])
     expect(new Set(PLUGIN_CLIENT_EXTERNALS).size).toBe(PLUGIN_CLIENT_EXTERNALS.length)
     expect(importMap['react-dom']).toBe('/vendor/react-dom.js')
     expect(importMap['react-dom/client']).toBe('/vendor/react-dom.js')
     expect(sdk.peerDependencies).toMatchObject({ react: '^19.0.0', 'react-dom': '^19.0.0' })
     expect(sdk.peerDependencies).toMatchObject({ '@tanstack/react-router': '^1.168.23' })
+    expect(sdk.peerDependencies).toMatchObject({ zod: '~4.6.5' })
     expect(sdk.dependencies?.['@tanstack/react-router']).toBeUndefined()
+    expect(sdk.dependencies?.zod).toBeUndefined()
     expect(sdk.dependencies?.react).toBeUndefined()
     expect(sdk.dependencies?.['react-dom']).toBeUndefined()
     expect(ui.peerDependencies).toMatchObject({ react: '^19.0.0', 'react-dom': '^19.0.0' })
@@ -103,5 +108,49 @@ describe('focused public SDK entrypoint contract', () => {
     expect(ui.dependencies?.['react-dom']).toBeUndefined()
     expect(html.match(/<link rel="stylesheet" href="\/globals\.css"/g)).toHaveLength(1)
     expect(Object.keys(importMap).filter((specifier) => specifier.endsWith('.css'))).toEqual([])
+  })
+
+  it('zod is host-provided in the browser: one vendor bundle behind the import map (#948)', () => {
+    const importMap = browserImportMap()
+
+    expect(ZOD_EXTERNALS).toEqual(['zod'])
+    expect(PLUGIN_CLIENT_EXTERNALS).toContain('zod')
+    expect(importMap['zod']).toBe('/vendor/zod.js')
+    // Only the bare specifier is provided; every zod import in the tree is bare
+    // (no zod/v4, zod/mini), so no sub-path needs a map entry — and none gets one.
+    expect(Object.keys(importMap).filter((specifier) => specifier.startsWith('zod/'))).toEqual([])
+  })
+
+  it('a sub-path of a host-provided package that the import map does not list is unprovided — bun externalizes by prefix', () => {
+    expect(unprovidedHostSubpath('zod/v4')).toBe('zod')
+    expect(unprovidedHostSubpath('zod/mini')).toBe('zod')
+    expect(unprovidedHostSubpath('@makinbakin/sdk/not-an-entry')).toBe('@makinbakin/sdk')
+    expect(unprovidedHostSubpath('react-dom/server')).toBe('react-dom')
+    expect(unprovidedHostSubpath('@tanstack/react-router/ssr')).toBe('@tanstack/react-router')
+    for (const provided of PLUGIN_CLIENT_EXTERNALS) expect(unprovidedHostSubpath(provided)).toBeNull()
+    expect(unprovidedHostSubpath('zodiac')).toBeNull()
+    expect(unprovidedHostSubpath('react-hook-form')).toBeNull()
+    expect(unprovidedHostSubpath('./zod/local')).toBeNull()
+  })
+
+  it('every zod import in the SOURCE tree is bare — a sub-path would escape every client bundle unresolved', () => {
+    const roots = ['packages', 'plugins', 'src', 'storybook', 'examples']
+    // Source only: built output (plugin dist/, the host's public/ vendor +
+    // dev bundles, storybook builds) is generated checkout state.
+    const generated = new Set(['node_modules', 'dist', 'public', 'storybook-static', 'test-results'])
+    const offenders: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (generated.has(entry.name) || entry.name.startsWith('.')) continue
+        const path = join(dir, entry.name)
+        if (entry.isDirectory()) { walk(path); continue }
+        if (!/\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(entry.name)) continue
+        // Parsed (import, dynamic import, require, export-from) — not pattern-matched.
+        const specifiers = collectImportSpecifiers(path, readFileSync(path, 'utf8'))
+        if (specifiers.some((specifier) => specifier.startsWith('zod/'))) offenders.push(path.slice(REPO_ROOT.length + 1))
+      }
+    }
+    for (const root of roots) if (existsSync(join(REPO_ROOT, root))) walk(join(REPO_ROOT, root))
+    expect(offenders).toEqual([])
   })
 })

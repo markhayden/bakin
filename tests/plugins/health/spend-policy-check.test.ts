@@ -48,10 +48,11 @@ describe('spend.policy-available', () => {
     expect(JSON.stringify(row)).toContain('dailyCap')
   })
 
-  it('is unknown (watch) when the hook throws — never healthy on a failed read', async () => {
+  it('is an unknown observation when the hook throws — never healthy on a failed read, never a card (row 41)', async () => {
     registry.register('spend.getBudgetPolicy', () => { throw new Error('settings unreadable') }, { pluginId: 'test-spend' } as never)
     const [row] = observations(await checkSpendPolicyAvailable())
     expect(row.status).toBe('unknown')
-    expect(row.incident).toMatchObject({ key: 'policy-unanswered', disposition: 'watch' })
+    expect(row.incident).toBeUndefined()
+    expect(row.summary).toContain('did not answer')
   })
 })

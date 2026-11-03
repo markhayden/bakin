@@ -6,7 +6,10 @@
  */
 import { getContentDir } from '../../../../packages/core/src/content-dir'
 import { healthHealthy, healthObserved } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration } from '@makinbakin/sdk'
+
+/** This check only ever reports where the home resolved to. */
+export const CONTENT_DIR_INCIDENTS: HealthIncidentDeclaration[] = []
 
 export async function checkContentDir(): Promise<HealthCheckRunInput> {
   const contentDir = getContentDir()

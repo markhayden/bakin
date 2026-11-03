@@ -14,7 +14,7 @@ describe('SDK public surface cleanup', () => {
   })
 
   it.each(['use-form-guard', 'use-file-drop', 'use-vertical-resize'])('deletes the unused %s implementation', (name) => {
-    expect(existsSync(resolve(import.meta.dir, `../../src/hooks/${name}.ts`))).toBe(false)
+    expect(existsSync(resolve(import.meta.dir, `../../packages/sdk/src/hooks/${name}.ts`))).toBe(false)
   })
 
   it('retains horizontal resize and the navigation dirty-exit contract', () => {

@@ -21,8 +21,14 @@ import {
   isUsageHistoryScanInFlight,
 } from '../../../../src/core/usage-history-timer'
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
-import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
+import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput } from '@makinbakin/sdk'
 import { stableKeyPart } from './key'
+
+/** Row 44: an unreachable usage ledger is the fallback lane's; row 50: a running runaway is the operator's decision (Pause agent dispatch on the diagnostics tab); every other row is an observation. */
+export const AGENT_BURN_INCIDENTS: HealthIncidentDeclaration[] = [
+  { id: 'ledger-unavailable', subjectKind: 'system', resolution: { type: 'repair', actionId: 'core.diagnose' }, required: 'always' },
+  { id: 'runaway-usage', subjectKind: 'agent', resolution: { type: 'human', needs: 'decision' }, required: 'owner-decides' },
+]
 
 function incompleteMeteringObservation(
   reports: Array<{
@@ -53,15 +59,6 @@ function incompleteMeteringObservation(
       tokenMeteredRuns: meteredRunCount,
       unrepresentableAggregateAgents: unrepresentableAgents,
     },
-    incident: {
-      key: 'token-metering-incomplete',
-      title: 'Agent token metering is incomplete',
-      class: 'evidence_gap',
-      impact: 'Health cannot calculate agent burn, efficiency, or unattributed usage from partial token-bearing call totals.',
-      disposition: 'watch',
-      resources: [{ kind: 'system', id: 'execution-ledger', label: 'Execution ledger' }],
-      resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-    },
   })
 }
 
@@ -77,15 +74,6 @@ function unrepresentableCostObservation(
     evidence: {
       agents: affected.map((report) => report.agent),
       costedRuns: costedRunCount,
-    },
-    incident: {
-      key: 'cost-aggregate-unrepresentable',
-      title: 'Agent cost aggregate is too large to report safely',
-      class: 'evidence_gap',
-      impact: 'Health cannot publish a trustworthy combined agent cost until the selected window changes.',
-      disposition: 'watch',
-      resources: [{ kind: 'system', id: 'execution-ledger', label: 'Execution ledger' }],
-      resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
     },
   })
 }
@@ -131,15 +119,12 @@ export async function checkAgentBurnWith(
           key: 'ledger-unavailable',
           title: 'Usage ledger is unavailable',
           class: 'service_failure',
-          impact: 'Health cannot detect unusually expensive agent activity without usage records.',
+          impact: 'Health cannot detect unusually expensive agent activity without usage records (the ledger storage path or permissions are the usual cause).',
           disposition: 'action_required',
+          subject: { kind: 'system', id: 'usage-ledger', label: 'Usage ledger' },
+          declarationId: 'ledger-unavailable',
           resources: [{ kind: 'system', id: 'execution-ledger', label: 'Execution ledger' }],
-          resolution: {
-            key: 'restore-ledger',
-            type: 'instructions',
-            label: 'Restore usage records',
-            steps: ['Check the execution-ledger storage path and permissions, then rerun Health.'],
-          },
+          resolution: { key: 'restore-ledger', type: 'repair', label: 'Investigate the usage ledger', actionId: 'core.diagnose' },
         },
       })])
     }
@@ -147,15 +132,6 @@ export async function checkAgentBurnWith(
       key: 'usage',
       summary: 'Agent token burn could not be verified.',
       detail: err instanceof Error ? err.message : String(err),
-      incident: {
-        key: 'evaluation-failed',
-        title: 'Agent token burn is unknown',
-        class: 'evidence_gap',
-        impact: 'Health cannot determine whether agents are using tokens unusually quickly.',
-        disposition: 'watch',
-        resources: [{ kind: 'system', id: 'usage', label: 'Usage telemetry' }],
-        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
-      },
     })])
   }
 
@@ -194,30 +170,16 @@ export async function checkAgentBurnWith(
         // token totals — its sessions may not expose usage.
         complete: 'Transcripts scanned clean, but at least one agent reports no observable token totals — its runtime sessions may not expose usage data.',
       }
+      // Row 46: an observation — the reason text says whether it resolves itself or the scanner is stuck.
       const transcriptUnknown = healthUnknown({
         key: 'usage',
         summary: 'Agent token burn could not be verified.',
-        detail: 'Runtime transcript coverage is incomplete, so zero observed usage cannot be confirmed.',
+        detail: `Runtime transcript coverage is incomplete, so zero observed usage cannot be confirmed. ${coverageReasonText[coverageReason] ?? `Coverage gap: ${coverageReason}.`}`,
         evidence: {
           coverage: scanFresh ? lastScan?.report.coverage.status ?? 'unavailable' : 'unavailable',
           reason: coverageReason,
           scanAgeMs,
           staleAfterMs,
-        },
-        incident: {
-          key: 'transcript-coverage-incomplete',
-          title: 'Agent usage coverage is incomplete',
-          class: 'evidence_gap',
-          impact: `Health cannot confirm total or unattributed agent token use until runtime transcripts are fully scanned. ${coverageReasonText[coverageReason] ?? `Coverage gap: ${coverageReason}.`}`,
-          // Warming states (scan running / first scan since boot pending)
-          // SELF-RESOLVE within minutes — advisory keeps them out of the
-          // "Fix first" banner that lit up after every restart. A stale
-          // scan means the scanner may be stuck: that one earns watch.
-          disposition: coverageReason === 'scan_in_progress' || coverageReason === 'scan_not_run'
-            ? 'advisory'
-            : 'watch',
-          resources: [{ kind: 'system', id: 'usage-history', label: 'Usage history' }],
-          resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
         },
       })
       return healthObserved([
@@ -251,49 +213,28 @@ export async function checkAgentBurnWith(
     const agentLabel = report.agent.slice(0, 120)
     const keyPart = stableKeyPart(report.agent)
     const agentResource = { kind: 'agent' as const, id: keyPart, label: agentLabel }
-    const diagnosticsResolution = {
-      key: 'open-agent-diagnostics',
-      type: 'navigate' as const,
-      label: 'Review agent diagnostics',
-      href: `/team/${encodeURIComponent(report.agent.slice(0, 1_000))}?tab=diagnostics`,
-    }
+    const diagnosticsHref = `/team/${encodeURIComponent(report.agent.slice(0, 1_000))}?tab=diagnostics`
     const legacyFlags: BurnFlag[] = []
     for (const flag of report.flags) {
       if (flag.kind === 'interactive') {
+        // Row 47: an observation (normal use).
         observations.push(healthWarning({
           key: `interactive:${keyPart}`,
           summary: `${agentLabel} has interactive session usage.`,
-          detail: flag.message.slice(0, 4_000),
+          detail: `${flag.message} Direct chats and TUI sessions consume tokens outside the task ledger — normal use; review ${diagnosticsHref} only if unexpected.`.slice(0, 4_000),
           evidence: { agents: [report.agent.slice(0, 500)], kinds: ['interactive'], tokens: flag.tokens },
-          incident: {
-            key: `interactive-usage:${keyPart}`,
-            title: 'Interactive agent chat usage',
-            class: 'usage_anomaly',
-            impact: 'Direct chats and TUI sessions consume tokens outside the task ledger. This is normal use — review only if unexpected.',
-            disposition: 'advisory',
-            resources: [agentResource],
-            resolution: diagnosticsResolution,
-          },
         }))
       } else if (flag.kind === 'unexplained') {
+        // Row 48: an observation; the diagnostics page is named in the detail.
         observations.push(healthWarning({
           key: `unexplained:${keyPart}`,
           summary: `${agentLabel} has unexplained token usage.`,
-          detail: flag.message.slice(0, 4_000),
+          detail: `${flag.message} Review ${diagnosticsHref}.`.slice(0, 4_000),
           evidence: {
             agents: [report.agent.slice(0, 500)],
             kinds: ['unexplained'],
             tokens: flag.tokens,
             spikeConcurrent: flag.spikeConcurrent,
-          },
-          incident: {
-            key: `unexplained-usage:${keyPart}`,
-            title: 'Unexplained agent token usage',
-            class: 'unattributed_usage',
-            impact: 'Tokens Bakin could not attribute to tasks, system sends, or interactive sessions may indicate untracked runtime activity.',
-            disposition: 'watch',
-            resources: [agentResource],
-            resolution: diagnosticsResolution,
           },
         }))
       } else if (flag.kind === 'runaway') {
@@ -305,21 +246,14 @@ export async function checkAgentBurnWith(
           downgraded: flag.downgraded,
         }
         observations.push(flag.downgraded
+          // Row 49: the scheduled-jobs downgrade is an observation.
           ? healthWarning({
               key: `runaway:${keyPart}`,
               summary: `${agentLabel} has high autonomous usage.`,
-              detail: flag.message.slice(0, 4_000),
+              detail: `${flag.message} This runtime has scheduled jobs that may explain it — review ${diagnosticsHref} if unexpected.`.slice(0, 4_000),
               evidence,
-              incident: {
-                key: `runaway-usage:${keyPart}`,
-                title: 'High autonomous usage (scheduled jobs present)',
-                class: 'runaway_usage',
-                impact: 'Autonomous token accumulation matched the runaway pattern, but this runtime has scheduled jobs that may explain it — review if unexpected.',
-                disposition: 'watch',
-                resources: [agentResource],
-                resolution: diagnosticsResolution,
-              },
             })
+          // Row 50: a decision while it still burns — pause the agent's dispatch on its diagnostics tab.
           : healthError({
               key: `runaway:${keyPart}`,
               summary: `${agentLabel} shows possible runaway usage.`,
@@ -331,8 +265,11 @@ export async function checkAgentBurnWith(
                 class: 'runaway_usage',
                 impact: 'Autonomous token accumulation with no user interaction is actively consuming quota — investigate immediately.',
                 disposition: 'action_required',
+                subject: agentResource,
+                declarationId: 'runaway-usage',
+                required: true,
                 resources: [agentResource],
-                resolution: diagnosticsResolution,
+                resolution: { key: 'open-agent-diagnostics', type: 'human', needs: 'decision', label: 'Review and pause the agent', href: diagnosticsHref },
               },
             }))
       } else {
@@ -340,22 +277,14 @@ export async function checkAgentBurnWith(
       }
     }
     if (legacyFlags.length > 0) {
+      // Row 51: an observation; the diagnostics page is named in the detail.
       observations.push(healthWarning({
         key: `agent:${keyPart}`,
         summary: `${agentLabel} has unusual token burn.`,
-        detail: legacyFlags.slice(0, 20).map((flag) => flag.message).join(' | ').slice(0, 4_000),
+        detail: `${legacyFlags.slice(0, 20).map((flag) => flag.message).join(' | ')} Review ${diagnosticsHref}.`.slice(0, 4_000),
         evidence: {
           agents: [report.agent.slice(0, 500)],
           kinds: legacyFlags.slice(0, 50).map((flag) => flag.kind.slice(0, 500)),
-        },
-        incident: {
-          key: `unusual-burn:${keyPart}`,
-          title: 'Agent token burn needs review',
-          class: 'usage_anomaly',
-          impact: 'High or spiking usage may increase cost without corresponding completed work.',
-          disposition: 'watch',
-          resources: [agentResource],
-          resolution: diagnosticsResolution,
         },
       }))
     }

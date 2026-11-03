@@ -2,9 +2,10 @@
  * Store-extension tests for `useAgentStore` package-state plumbing.
  *
  * Covers:
- *   - load() fetches /api/plugins/team/ and /api/agent-packages?check=1 in parallel
+ *   - load() fetches /api/plugins/team/ and /api/agent-packages in parallel —
+ *     never a probe (`?check=1` is gone: the updates engine observes, #1007)
  *   - merge: packageStates becomes a map keyed by agentId
- *   - failed /api/agent-packages?check=1 → packageStates: {}, agents still load
+ *   - failed /api/agent-packages → packageStates: {}, agents still load
  *   - refreshPackageStates() re-fetches only the package endpoint
  *   - usePackageState(id) selector returns the right row (or undefined)
  *
@@ -86,7 +87,7 @@ function makeFetchSpy(opts: {
         json: () => Promise.resolve(opts.rosterBody ?? ROSTER_OK),
       } as Response)
     }
-    if (u === '/api/agent-packages?check=1') {
+    if (u === '/api/agent-packages') {
       if (opts.pkgRejects) return Promise.reject(new Error('network down'))
       return Promise.resolve({
         ok: (opts.pkgStatus ?? 200) < 400,
@@ -101,7 +102,7 @@ beforeEach(() => {
   // Reset store between tests so cross-test state doesn't leak.
   useAgentStore.setState({
     agents: [], agentIds: [], agentMap: {}, agentsWithStatus: [],
-    displaySettings: {}, teams: [], packageStates: {},
+    displaySettings: {}, teams: [], packageStates: {}, packageStatesAt: null, packageStatesError: null,
     mainAgentId: null, loaded: false,
   })
 })
@@ -115,7 +116,7 @@ describe('useAgentStore — package state plumbing', () => {
       const u = String(url)
       calls.push(u)
       if (u === '/api/plugins/team/') return roster.promise
-      if (u === '/api/agent-packages?check=1') return packages.promise
+      if (u === '/api/agent-packages') return packages.promise
       return Promise.reject(new Error(`unexpected fetch: ${u}`))
     }) as unknown as typeof global.fetch
 
@@ -123,7 +124,7 @@ describe('useAgentStore — package state plumbing', () => {
     await Promise.resolve()
 
     expect(calls.sort()).toEqual(
-      ['/api/agent-packages?check=1', '/api/plugins/team/'],
+      ['/api/agent-packages', '/api/plugins/team/'],
     )
 
     roster.resolve(response(ROSTER_OK))
@@ -149,7 +150,7 @@ describe('useAgentStore — package state plumbing', () => {
     expect(packageStates['nonexistent']).toBeUndefined()
   })
 
-  it('survives a failed /api/agent-packages?check=1 — agents still load, packageStates empty', async () => {
+  it('survives a failed /api/agent-packages — agents still load, packageStates empty', async () => {
     global.fetch = makeFetchSpy({ pkgRejects: true }) as unknown as typeof global.fetch
 
     await useAgentStore.getState().load()
@@ -160,7 +161,7 @@ describe('useAgentStore — package state plumbing', () => {
     expect(state.packageStates).toEqual({})
   })
 
-  it('survives a non-ok /api/agent-packages?check=1 response (500) — packageStates empty', async () => {
+  it('survives a non-ok /api/agent-packages response (500) — packageStates empty', async () => {
     global.fetch = makeFetchSpy({ pkgStatus: 500, pkgBody: { ok: false, error: 'boom' } }) as unknown as typeof global.fetch
 
     await useAgentStore.getState().load()
@@ -169,7 +170,7 @@ describe('useAgentStore — package state plumbing', () => {
     expect(useAgentStore.getState().packageStates).toEqual({})
   })
 
-  it('survives a malformed /api/agent-packages?check=1 payload — packageStates empty', async () => {
+  it('survives a malformed /api/agent-packages payload — packageStates empty', async () => {
     global.fetch = makeFetchSpy({ pkgBody: { ok: true, agents: 'not-an-array' } }) as unknown as typeof global.fetch
 
     await useAgentStore.getState().load()
@@ -186,7 +187,7 @@ describe('useAgentStore — package state plumbing', () => {
 
     await useAgentStore.getState().refreshPackageStates()
 
-    expect(calls).toEqual(['/api/agent-packages?check=1'])
+    expect(calls).toEqual(['/api/agent-packages'])
   })
 
   it('refreshPackageStates() picks up a new state value', async () => {
@@ -196,7 +197,7 @@ describe('useAgentStore — package state plumbing', () => {
       if (u === '/api/plugins/team/') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(ROSTER_OK) } as Response)
       }
-      if (u === '/api/agent-packages?check=1') {
+      if (u === '/api/agent-packages') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(pkgVariant) } as Response)
       }
       return Promise.reject(new Error('unexpected'))
@@ -218,7 +219,70 @@ describe('useAgentStore — package state plumbing', () => {
     expect(useAgentStore.getState().packageStates['orca']?.version).toBe('0.2.0')
   })
 
-  it('roster fetch failure short-circuits before package merge', async () => {
+  it('review r3 #6: a package read that answers AFTER a newer one never lands — overlapping refreshes keep the newest answer', async () => {
+    const first = deferred<Response>()
+    const second = deferred<Response>()
+    let reads = 0
+    global.fetch = mock((url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u === '/api/plugins/team/') return Promise.resolve(response(ROSTER_OK))
+      if (u === '/api/agent-packages') { reads += 1; return reads === 1 ? first.promise : second.promise }
+      return Promise.reject(new Error(`unexpected fetch: ${u}`))
+    }) as unknown as typeof global.fetch
+    const stale: PkgResponse = { ok: true, agents: [{ agentId: 'orca', state: 'managed', version: '0.1.0' }] }
+    const fresh: PkgResponse = { ok: true, agents: [{ agentId: 'orca', state: 'unmanaged' }] }
+
+    const older = useAgentStore.getState().refreshPackageStates()
+    const newer = useAgentStore.getState().refreshPackageStates()
+    second.resolve(response(fresh))
+    await newer
+    expect(useAgentStore.getState().packageStates['orca']?.state).toBe('unmanaged')
+    first.resolve(response(stale))
+    await older
+    expect(useAgentStore.getState().packageStates['orca']?.state).toBe('unmanaged')
+
+    // The initial load's package read is a generation too: a refresh started after it wins.
+    reads = 0
+    const loadPkg = deferred<Response>()
+    const refreshPkg = deferred<Response>()
+    global.fetch = mock((url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u === '/api/plugins/team/') return Promise.resolve(response(ROSTER_OK))
+      if (u === '/api/agent-packages') { reads += 1; return reads === 1 ? loadPkg.promise : refreshPkg.promise }
+      return Promise.reject(new Error(`unexpected fetch: ${u}`))
+    }) as unknown as typeof global.fetch
+    const loading = useAgentStore.getState().load()
+    const refreshing = useAgentStore.getState().refreshPackageStates()
+    refreshPkg.resolve(response(fresh))
+    await refreshing
+    loadPkg.resolve(response(stale))
+    await loading
+    expect(useAgentStore.getState().loaded).toBe(true)
+    expect(useAgentStore.getState().packageStates['orca']?.state).toBe('unmanaged')
+  })
+
+  it('review r5 #2: a FAILED package read never erases the rows already known — a managed agent is not shown as unmanaged because the network blinked', async () => {
+    global.fetch = makeFetchSpy({}) as unknown as typeof global.fetch
+    await useAgentStore.getState().load()
+    expect(useAgentStore.getState().packageStates['pixel']?.state).toBe('managed')
+
+    global.fetch = makeFetchSpy({ rosterStatus: 500, pkgRejects: true }) as unknown as typeof global.fetch
+    await useAgentStore.getState().load()
+    expect(useAgentStore.getState().packageStates['pixel']?.state).toBe('managed')
+    global.fetch = makeFetchSpy({ pkgStatus: 500, pkgBody: { ok: false } }) as unknown as typeof global.fetch
+    await useAgentStore.getState().refreshPackageStates()
+    expect(useAgentStore.getState().packageStates['pixel']?.state).toBe('managed')
+    // …and says so (review r6 #3): the rows are LAST KNOWN until a read succeeds again.
+    expect(useAgentStore.getState().packageStatesError).toContain('read failed')
+    expect(useAgentStore.getState().packageStatesAt).toEqual(expect.any(String))
+    // A SUCCESSFUL empty inventory does replace them and clears the signal.
+    global.fetch = makeFetchSpy({ pkgBody: { ok: true, agents: [] } }) as unknown as typeof global.fetch
+    await useAgentStore.getState().refreshPackageStates()
+    expect(useAgentStore.getState().packageStates).toEqual({})
+    expect(useAgentStore.getState().packageStatesError).toBeNull()
+  })
+
+  it('roster fetch failure still publishes the package answer it fetched beside it (r4 #5)', async () => {
     global.fetch = makeFetchSpy({ rosterStatus: 500 }) as unknown as typeof global.fetch
 
     await useAgentStore.getState().load()
@@ -226,8 +290,24 @@ describe('useAgentStore — package state plumbing', () => {
     const state = useAgentStore.getState()
     expect(state.loaded).toBe(true)
     expect(state.agents).toHaveLength(0)
-    // packageStates stays at its previous value ({}) since we never call set on it
-    expect(state.packageStates).toEqual({})
+    expect(state.packageStates['pixel']?.state).toBe('managed')
+  })
+
+  it('review r4 #5: a refresh started BEFORE a load whose roster fails never lands its (older) answer after the load\'s package answer', async () => {
+    const olderPkg = deferred<Response>()
+    let reads = 0
+    global.fetch = mock((url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u === '/api/plugins/team/') return Promise.resolve(response({ ok: false }, 500))
+      if (u === '/api/agent-packages') { reads += 1; return reads === 1 ? olderPkg.promise : Promise.resolve(response(PKG_OK)) }
+      return Promise.reject(new Error(`unexpected fetch: ${u}`))
+    }) as unknown as typeof global.fetch
+    const older = useAgentStore.getState().refreshPackageStates()
+    await useAgentStore.getState().load()
+    expect(useAgentStore.getState().packageStates['orca']?.state).toBe('unmanaged')
+    olderPkg.resolve(response({ ok: true, agents: [{ agentId: 'orca', state: 'managed', version: '0.0.1' }] }))
+    await older
+    expect(useAgentStore.getState().packageStates['orca']?.state).toBe('unmanaged')
   })
 })
 

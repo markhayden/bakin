@@ -4,10 +4,10 @@
  * redirects; service commands never throw (the controller reads `ok`).
  */
 import { execFileSync, spawn } from 'child_process'
-import { existsSync, readFileSync, realpathSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'
-import { join, resolve } from 'path'
-import { getContentDir } from '../core/content-dir'
+import { join } from 'path'
+import { canonicalHome } from '../core/service-setup'
 import { readServerLock } from '../core/server-lock'
 import { SERVICE_LABEL, type LifecycleIo, type ProcessInfo } from './lifecycle-control'
 
@@ -15,14 +15,7 @@ import { SERVICE_LABEL, type LifecycleIo, type ProcessInfo } from './lifecycle-c
 /** A stuck service manager must never hang the CLI past its own deadlines. */
 const SERVICE_COMMAND_TIMEOUT_MS = 10_000
 
-export function canonicalHome(): string {
-  const home = resolve(getContentDir())
-  try {
-    return realpathSync(home)
-  } catch {
-    return home // not created yet: the resolved absolute path is the identity
-  }
-}
+export { canonicalHome } from '../core/service-setup'
 
 export async function realLifecycleIo(launch: () => Promise<{ programArgs: string[]; workingDir: string }>): Promise<LifecycleIo> {
   const home = canonicalHome()

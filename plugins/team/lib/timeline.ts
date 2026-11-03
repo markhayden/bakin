@@ -10,7 +10,7 @@
  */
 import type { RunWithCostRow } from '../../../src/core/execution-ledger'
 import type { AuditEvent } from '../../../src/core/audit'
-import { mapAuditMessage } from '../../../src/lib/map-audit-message'
+import { mapAuditMessage } from '@bakin/core/events/audit-message'
 import type { TaskLogEntry } from '@makinbakin/sdk/types'
 
 /** Audit kinds worth interleaving into the timeline. */

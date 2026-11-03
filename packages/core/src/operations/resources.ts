@@ -23,7 +23,8 @@
  *   with `holdNow`, never waiting.
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { closeSync, existsSync, fstatSync, ftruncateSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { dlopen, FFIType } from 'bun:ffi'
 import { dirname, join } from 'node:path'
 
 import { CORE_RESOURCES } from '@makinbakin/sdk/types'
@@ -71,9 +72,8 @@ export interface AcquireResourcesOptions {
 }
 
 const PLUGIN_RESOURCE_RE = /^([a-z0-9][a-z0-9-]*):([a-z0-9][a-z0-9-]*)$/
-/** A lock file younger than this with no parseable holder is mid-write, not stale. */
-const UNPARSEABLE_GRACE_MS = 2_000
-const RECLAIM_ATTEMPTS = 3
+/** Attempts to pin the inode the path names (a release between our open and our lock retries). */
+const ACQUIRE_ATTEMPTS = 3
 
 const isCoreResource = (resource: string): boolean => (CORE_RESOURCES as readonly string[]).includes(resource)
 
@@ -133,8 +133,42 @@ export function runHolding<T>(resources: Iterable<string>, fn: () => T): T {
 }
 
 // ---------------------------------------------------------------------------
-// Lock files
+// Lock files — held by flock(2) on an open descriptor
+//
+// The lock IS the kernel's exclusion: a holder keeps its descriptor open and
+// locked for the lease's lifetime; a holder that dies (any signal, any
+// crash) has its lock released by the kernel; a waiter never judges, moves
+// or unlinks another process's file. The JSON inside is purely informational
+// (who holds it — for `waitingFor` and logs) and is written only AFTER the
+// lock is held, so a contender can never read a half-written holder. This
+// replaced the O_EXCL-create + stale-pid-reclaim scheme (#896 D3.5 review):
+// every unlink-based reclaim had a window in which two contenders could both
+// pass the staleness check and the second would delete the first's fresh lock.
 // ---------------------------------------------------------------------------
+
+const LOCK_EX = 2
+const LOCK_NB = 4
+
+type LibcFlock = { symbols: { flock: (fd: number, operation: number) => number } }
+let libc: LibcFlock | null = null
+function flock(fd: number, operation: number): number {
+  if (!libc) {
+    const candidates = process.platform === 'darwin'
+      ? ['libSystem.B.dylib']
+      : ['libc.so.6', 'libc.musl-x86_64.so.1', 'libc.musl-aarch64.so.1', 'libc.so']
+    let lastError: unknown
+    for (const name of candidates) {
+      try {
+        libc = dlopen(name, { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } }) as unknown as LibcFlock
+        break
+      } catch (err) {
+        lastError = err
+      }
+    }
+    if (!libc) throw new Error(`operation locks need flock(2) from libc: ${lastError instanceof Error ? lastError.message : String(lastError)}`)
+  }
+  return libc.symbols.flock(fd, operation)
+}
 
 function isProcessAlive(pid: number): boolean {
   try {
@@ -165,90 +199,113 @@ export function readResourceHolder(resource: string): ResourceHolder | null {
   return readHolderAt(resourceLockPath(resource))
 }
 
-/** True when some live process holds `resource` (this one or another). */
+/** True when some live process holds `resource` (this one or another): the kernel lock is taken. */
 export function isResourceHeld(resource: string): boolean {
   const path = resourceLockPath(resource)
   if (!existsSync(path)) return false
-  const holder = readHolderAt(path)
-  return holder ? isProcessAlive(holder.pid) : true
-}
-
-function isStale(resource: string, path: string, holder: ResourceHolder | null): boolean {
-  if (!holder) {
-    try {
-      return Date.now() - statSync(path).mtimeMs > UNPARSEABLE_GRACE_MS
-    } catch {
-      return false
-    }
-  }
-  if (!isProcessAlive(holder.pid)) return true
-  return holder.pid === process.pid && !heldHere.has(resource)
-}
-
-function tryCreate(path: string, identity: ResourceHolderIdentity): boolean {
   let fd: number
   try {
-    fd = openSync(path, 'wx')
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false
-    throw err
+    fd = openSync(path, 'r')
+  } catch {
+    return false
   }
   try {
-    const holder: ResourceHolder = {
-      pid: process.pid,
-      ...(identity.bootId ? { bootId: identity.bootId } : {}),
-      ...(identity.operationId ? { operationId: identity.operationId } : {}),
-      title: identity.title,
-      acquiredAt: new Date().toISOString(),
-    }
-    writeSync(fd, JSON.stringify(holder, null, 2))
+    return flock(fd, LOCK_EX | LOCK_NB) !== 0
   } finally {
-    closeSync(fd)
+    closeSync(fd) // closing drops the probe lock if the probe took it
   }
-  return true
+}
+
+/** Descriptors this process holds locks on, by resource (closed on release). */
+const heldFds = new Map<string, number>()
+
+function writeHolder(fd: number, identity: ResourceHolderIdentity): void {
+  const holder: ResourceHolder = {
+    pid: process.pid,
+    ...(identity.bootId ? { bootId: identity.bootId } : {}),
+    ...(identity.operationId ? { operationId: identity.operationId } : {}),
+    title: identity.title,
+    acquiredAt: new Date().toISOString(),
+  }
+  ftruncateSync(fd, 0)
+  writeSync(fd, JSON.stringify(holder, null, 2), 0)
 }
 
 type TryOne = { ok: true } | { ok: false; holder: ResourceHolder }
 
-/** One non-blocking attempt, reclaiming stale holders. */
+/** One non-blocking attempt: take the kernel lock on the inode the path names. */
 function tryAcquireOne(resource: string, identity: ResourceHolderIdentity, onReclaim?: (wait: ResourceWait) => void): TryOne {
   const path = resourceLockPath(resource)
   mkdirSync(dirname(path), { recursive: true })
-  for (let attempt = 0; attempt < RECLAIM_ATTEMPTS; attempt++) {
-    if (tryCreate(path, identity)) {
-      heldHere.set(resource, identity)
-      return { ok: true }
-    }
-    const holder = readHolderAt(path)
-    if (!isStale(resource, path, holder)) {
-      return { ok: false, holder: holder ?? { pid: -1, acquiredAt: '', title: 'Another operation' } }
-    }
-    log.warn('Reclaiming a stale operation lock', { resource, path, stalePid: holder?.pid ?? 'unparseable', staleOperation: holder?.operationId })
+  for (let attempt = 0; attempt < ACQUIRE_ATTEMPTS; attempt++) {
+    const fd = openSync(path, 'a+') // creates when absent; never truncates another holder's metadata
+    // The descriptor is ours until ownership is recorded in `heldFds`: every
+    // exit before that — a refused lock, a stale inode, libc failing to load
+    // on the first flock (review r4), a metadata write on a full disk — must
+    // close it, or the open file (and any kernel lock on it) outlives the
+    // attempt until the process exits.
+    let transferred = false
     try {
-      unlinkSync(path)
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      if (flock(fd, LOCK_EX | LOCK_NB) !== 0) {
+        const holder = readHolderAt(path)
+        return { ok: false, holder: holder ?? { pid: -1, acquiredAt: '', title: 'Another operation' } }
+      }
+      // A holder may have released (unlinked) between our open and our lock: we
+      // would then hold an orphaned inode while a newcomer locks a fresh file.
+      // Hold only the inode the path names right now; otherwise retry.
+      let namesOurInode = false
+      try {
+        namesOurInode = fstatSync(fd).ino === statSync(path).ino
+      } catch {
+        namesOurInode = false
+      }
+      if (!namesOurInode) continue
+      const previous = readHolderAt(path)
+      writeHolder(fd, identity)
+      heldHere.set(resource, identity)
+      heldFds.set(resource, fd)
+      transferred = true
+      if (previous && (previous.pid === process.pid || !isProcessAlive(previous.pid))) {
+        // The file still named a holder that is gone: the kernel had already
+        // released its lock; this is the (informational) reclaim report.
+        log.warn('Took over an operation lock whose holder died', { resource, path, stalePid: previous.pid, staleOperation: previous.operationId })
+        try {
+          onReclaim?.({ resource, holder: previous })
+        } catch (err) {
+          releaseResource(resource)
+          throw err
+        }
+      }
+      return { ok: true }
+    } finally {
+      if (!transferred) closeSync(fd)
     }
-    onReclaim?.({ resource, holder: holder ?? { pid: -1, acquiredAt: '' } })
   }
   const holder = readHolderAt(path)
   return { ok: false, holder: holder ?? { pid: -1, acquiredAt: '', title: 'Another operation' } }
 }
 
-/** Releases one resource this process holds. Never removes a live foreign holder's file. */
+/** Releases one resource this process holds: unlink the path, then drop the kernel lock. */
 export function releaseResource(resource: string): void {
-  const path = resourceLockPath(resource)
+  const fd = heldFds.get(resource)
   heldHere.delete(resource)
-  if (!existsSync(path)) return
-  const holder = readHolderAt(path)
-  if (holder && holder.pid !== process.pid && isProcessAlive(holder.pid)) {
-    log.warn('Refusing to release a lock held by another live process', { resource, holderPid: holder.pid, path })
-    return
-  }
+  heldFds.delete(resource)
+  if (fd === undefined) return
+  const path = resourceLockPath(resource)
+  // Unlink BEFORE closing: a waiter that already opened this inode gets the
+  // lock when we close, sees the path no longer names its inode, and retries
+  // on the fresh file — never two holders on two inodes.
   try {
     unlinkSync(path)
   } catch (err) {
-    log.warn('Failed to release an operation lock', { resource, path, error: err instanceof Error ? err.message : String(err) })
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.warn('Failed to remove an operation lock file', { resource, path, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+  try {
+    closeSync(fd)
+  } catch (err) {
+    log.warn('Failed to close an operation lock descriptor', { resource, path, error: err instanceof Error ? err.message : String(err) })
   }
 }
 
@@ -333,13 +390,18 @@ export async function acquireResources(resources: Iterable<string>, opts: Acquir
 export function tryAcquireResources(resources: Iterable<string>, identity: ResourceHolderIdentity): ResourceLease | { busy: ResourceWait } {
   const wanted = sortResources(resources).filter((r) => !heldInContext(r))
   const taken: string[] = []
-  for (const resource of wanted) {
-    const attempt = tryAcquireOne(resource, identity)
-    if (!attempt.ok) {
-      lease(taken).release()
-      return { busy: { resource, holder: attempt.holder } }
+  try {
+    for (const resource of wanted) {
+      const attempt = tryAcquireOne(resource, identity)
+      if (!attempt.ok) {
+        lease(taken).release()
+        return { busy: { resource, holder: attempt.holder } }
+      }
+      taken.push(resource)
     }
-    taken.push(resource)
+  } catch (err) {
+    lease(taken).release() // a later acquisition threw: nothing stays held
+    throw err
   }
   return lease(taken)
 }

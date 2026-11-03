@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 
+import { useNow } from '../behaviors/use-now'
 import { BoundedOverflow } from '../layout/bounded-overflow'
 import { cn, focusRingInset } from '../utils'
 
@@ -291,11 +292,14 @@ export function CalendarGrid<T extends CalendarGridItem>({
   className,
 }: CalendarGridProps<T>) {
   const paged = scroll === 'page'
-  const currentInstant = now ?? new Date()
+  // Pure render (#966): without a `now` prop the grid follows the minute clock,
+  // so today / the current hour / past-day dimming roll over while it is open.
+  const tick = useNow()
+  const currentInstant = now ?? tick
   const todayKey = localDayKey(currentInstant)
   const todayStart = startOfLocalDay(currentInstant).getTime()
 
-  const [expandedDays, setExpandedDays] = React.useState<ReadonlySet<string>>(new Set())
+  const [expandedDays, setExpandedDays] = React.useState<ReadonlySet<string>>(() => new Set())
   const toggleDay = (dayKey: string): void => {
     setExpandedDays((previous) => {
       const next = new Set(previous)
