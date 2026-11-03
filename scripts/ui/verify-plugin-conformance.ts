@@ -286,18 +286,23 @@ async function main(): Promise<number> {
       console.log(`— ${entry.id}: server-only — ${entry.reason}`)
     }
   }
-  // Runner-behavior teeth that need a real browser stay env-gated in the
-  // plain suite; this script is where they actually execute.
-  const browserTeeth = await runIsolated(
-    ['bun', 'test', 'tests/ui/conformance/focusable-disabled.browser.test.ts', '--isolate'],
-    { env: { BAKIN_UI_BROWSER_TEST: '1' } },
-  )
-  if (browserTeeth.status === 'timeout') {
-    console.error('✗ runner browser teeth: no verdict before the deadline — process killed')
-    failed = true
-  } else if (browserTeeth.code !== 0) {
-    console.error('✗ runner browser teeth: focusable-disabled behavior check failed')
-    failed = true
+  // Runner-behavior teeth and plugin layout checks that need a real browser
+  // stay env-gated in the plain suite; this script is where they execute.
+  for (const browserCheck of [
+    { name: 'runner browser teeth', file: 'tests/ui/conformance/focusable-disabled.browser.test.ts', summary: 'focusable-disabled behavior check failed' },
+    { name: 'memory table layout', file: 'tests/plugins/memory/memory-table-layout.browser.test.ts', summary: 'Memory results table geometry check failed (#1040)' },
+  ]) {
+    const outcome = await runIsolated(
+      ['bun', 'test', browserCheck.file, '--isolate'],
+      { env: { BAKIN_UI_BROWSER_TEST: '1' } },
+    )
+    if (outcome.status === 'timeout') {
+      console.error(`✗ ${browserCheck.name}: no verdict before the deadline — process killed`)
+      failed = true
+    } else if (outcome.code !== 0) {
+      console.error(`✗ ${browserCheck.name}: ${browserCheck.summary}`)
+      failed = true
+    }
   }
 
   if (failed) return 1

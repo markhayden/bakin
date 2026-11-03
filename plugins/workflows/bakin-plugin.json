@@ -156,20 +156,12 @@
       {
         "name": "workflows list",
         "usage": "bakin workflows list",
-        "summary": "List workflow definitions.",
-        "dispatch": {
-          "type": "execTool",
-          "name": "bakin_exec_workflows_list"
-        }
+        "summary": "List workflow definitions."
       },
       {
         "name": "workflows start",
         "usage": "bakin workflows start <taskId> <workflowId>",
-        "summary": "Start a workflow.",
-        "dispatch": {
-          "type": "execTool",
-          "name": "bakin_exec_workflows_start"
-        }
+        "summary": "Start a workflow."
       },
       {
         "name": "workflows step",

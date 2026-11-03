@@ -723,6 +723,18 @@ test('public conversation composer attachment states visual baseline', async ({ 
   })
 })
 
+test('public conversation attachment tray visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=components-conversation-attachment-tray--states-and-item-action&viewMode=story')
+  await expect(page.getByRole('alert')).toContainText('Images are at most 10 MB')
+  await expect(page.getByRole('button', { name: 'Copy the path of layout.png' })).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-attachment-tray.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
 test('public embedded conversation panel visual baseline', async ({ page }) => {
   await page.goto('/iframe.html?id=components-conversation-panel-and-tool-detail--product-panel&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Coordinate an embedded release review' })).toBeVisible()
@@ -809,6 +821,7 @@ const PRIMITIVES_BASELINES = [
   { url: '/iframe.html?id=components-lists-keyvalue--layouts-and-value-kinds&viewMode=story', png: 'lists-key-value-layouts.png', text: 'One pair contract, three densities' },
   { url: '/iframe.html?id=components-content-codeblock--canonical-usage&viewMode=story', png: 'content-code-block.png', text: '"type"' },
   { url: '/iframe.html?id=components-primitives-copybutton--canonical-usage&viewMode=story', png: 'primitives-copy-button.png', role: 'button' as const, name: 'Copy command' },
+  { url: '/iframe.html?id=components-primitives-copybutton--touch-size&viewMode=story', png: 'primitives-copy-button-touch.png', role: 'button' as const, name: 'Copy selection' },
   { url: '/iframe.html?id=components-navigation-navlist--selection-and-keyboard&viewMode=story', png: 'navigation-nav-list.png', role: 'navigation' as const, name: 'Plugin settings' },
   { url: '/iframe.html?id=components-agents-agentavatar--sizes-and-presence&viewMode=story', png: 'agents-agent-avatar.png', text: 'Keep identity recognizable at every density' },
   { url: '/iframe.html?id=components-agents-agentstatus--presence-language&viewMode=story', png: 'agents-agent-status.png', text: 'Say the state in words, not color' },

@@ -56,6 +56,7 @@ cannot move cleanly is deferred with an issue (§3).
 | `@types/bun` ↔ `.bun-version` ↔ `MANAGED_BUN_VERSION` | same minor line as the pinned runtime (1.4.3 today); `tests/architecture/bun-pin.test.ts` checks the LOCK's resolved `@types/bun`/`bun-types` and the managed-bun pin against `.bun-version`; Bits pins the same file — companion PR with its lock regenerated |
 | `typescript` <6.1 ↔ `typescript-eslint` 8.x | TS 7 blocked (see §3) |
 | `@happy-dom/global-registrator` ↔ `happy-dom` core ↔ Base UI | registrator pulls core by caret; core ≥20.12 ships `getAnimations`, which flips Base UI closes to async — the suite runs with `globalThis.BASE_UI_ANIMATIONS_DISABLED = true` (`tests/setup.ts`) and a teeth test pins it; bisect the core with `overrides` + `rm -rf node_modules` per probe (`test-suite-health.md § Toolchain`) |
+| `@types/ws` ↔ Bun's built-in `ws` | the host imports `ws` but Bun always resolves it to its own implementation (npm subpaths are refused), so there is NO `ws` runtime dependency to bump — only the types. Never add the npm package back expecting it to load; `bufferedAmount`/send callbacks follow Bun's shim (see `plugin-system.md` § Socket Routes) |
 | browser deps ↔ `packages/host/src/api/_embedded-assets-static.ts` | vendor chunk hashes change → regenerate (`build:host` + `build:assets-manifest`) and commit in the same PR |
 
 ## 3. Peer-blocked / deferred ledger

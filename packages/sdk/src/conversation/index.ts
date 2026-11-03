@@ -133,6 +133,9 @@ export type {
   ComposerHandle,
   ComposerProps,
 } from '@bakin/ui/conversation'
+/** A draft's attachment thumbnails, as Composer shows them, for any composer (a terminal's compose sheet). */
+export { ComposerAttachmentTray } from '@bakin/ui/conversation'
+export type { ComposerAttachmentTrayProps } from '@bakin/ui/conversation'
 
 /** Accepted follow-ups waiting behind an active turn. */
 export { QueuedMessageList } from '@bakin/ui/conversation'

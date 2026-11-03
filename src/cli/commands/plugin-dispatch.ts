@@ -1,144 +1,88 @@
 /**
  * Plugin-contributed CLI commands — matches `bakin <cmd> ...` against the
  * cliCommands each installed plugin declares in its manifest and dispatches
- * to the exec tool or API route it names. Relocated verbatim from
- * cli/bakin.ts (B5.3 command-module split); the router's default case
- * lazy-imports dispatchPluginCliCommand.
+ * to the exec tool or API route it names. Arguments are parsed strictly
+ * against each command's declared `args` (src/cli/plugin-args.ts); API routes
+ * resolve under the contributing plugin's id.
  */
-import { api, apiGet, apiPost } from '../http'
+import type { CliCommandContribution } from '../../../packages/sdk/src/types/manifest'
+import { CLI_TARGET, api, apiGet, apiPost, cliIdentity } from '../http'
 import { invocationCommand } from '../output'
-import { printPluginCliCommandResult } from '../help'
-
-interface PluginCliCommand {
-  name: string
-  usage: string
-  summary: string
-  aliases?: string[]
-  dispatch?: {
-    type: 'execTool'
-    name: string
-  } | {
-    type: 'apiRoute'
-    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-    path: string
-  }
-}
+import { exitCommandIssue, printPluginCliCommandResult } from '../help'
+import { stripActorFlag } from '../identity'
+import { matchCliCommand } from '../plugin-args'
 
 interface PluginManifestRow {
   id: string
   contributes?: {
-    cliCommands?: PluginCliCommand[]
+    cliCommands?: CliCommandContribution[]
   }
 }
 
-function parsePluginCliValue(value: string): unknown {
-  if (value === 'true') return true
-  if (value === 'false') return false
-  if (value === 'null') return null
-  if (value.startsWith('[') || value.startsWith('{')) {
-    try { return JSON.parse(value) } catch { return value }
-  }
-  if (value.includes(',') && !value.includes(' ')) {
-    return value.split(',').filter(Boolean)
-  }
-  return value
-}
-
-function parsePluginCliArgs(args: string[]): { flags: Record<string, unknown>; positionals: string[] } {
-  const flags: Record<string, unknown> = {}
-  const positionals: string[] = []
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]
-    if (!arg.startsWith('--')) {
-      positionals.push(arg)
-      continue
-    }
-    const raw = arg.slice(2)
-    const eq = raw.indexOf('=')
-    if (eq >= 0) {
-      flags[raw.slice(0, eq)] = parsePluginCliValue(raw.slice(eq + 1))
-      continue
-    }
-    const next = args[i + 1]
-    if (next && !next.startsWith('--')) {
-      flags[raw] = parsePluginCliValue(next)
-      i++
-    } else {
-      flags[raw] = true
-    }
-  }
-  return { flags, positionals }
-}
-
-function commandWords(command: PluginCliCommand): string[] {
-  const words = command.usage.trim().split(/\s+/)
-  return words[0] === 'bakin' ? words.slice(1) : words
-}
-
-function isPlaceholder(word: string): boolean {
-  return /^<[^>]+>$/.test(word)
-}
-
-function placeholderName(word: string): string {
-  return word.slice(1, -1).replace(/\?$/, '')
-}
-
-function matchPluginCliCommand(command: PluginCliCommand, cmd: string, rawArgs: string[]): Record<string, unknown> | null {
-  const usage = commandWords(command)
-  const parsed = parsePluginCliArgs(rawArgs)
-  const provided = [cmd, ...parsed.positionals]
-  let providedIndex = 0
-
-  for (let usageIndex = 0; usageIndex < usage.length; usageIndex++) {
-    const word = usage[usageIndex]
-    if (word.startsWith('[')) continue
-    if (isPlaceholder(word)) break
-
-    const actual = provided[providedIndex]
-    if (actual === undefined) {
-      if (word === 'list' && providedIndex === 1 && command.name.endsWith(':list')) continue
-      return null
-    }
-    if (actual !== word) return null
-    providedIndex++
-  }
-
-  const params: Record<string, unknown> = { ...parsed.flags }
-  const placeholders = usage.filter(isPlaceholder)
-  for (const placeholder of placeholders) {
-    const value = provided[providedIndex]
-    if (value === undefined) return null
-    params[placeholderName(placeholder)] = parsePluginCliValue(value)
-    providedIndex++
-  }
-
-  return params
+/**
+ * Global flags the CLI consumes itself (`--as`, `--json`) never reach command
+ * params; everything after `--` is the command's own text.
+ */
+function withoutGlobalFlags(args: string[]): { rest: string[]; invalid?: string } {
+  const actor = stripActorFlag(args)
+  const end = actor.rest.indexOf('--')
+  const options = end === -1 ? actor.rest : actor.rest.slice(0, end)
+  return { rest: [...options.filter((arg) => arg !== '--json'), ...(end === -1 ? [] : actor.rest.slice(end))], invalid: actor.invalid }
 }
 
 export async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<boolean> {
   const manifest = await apiGet('/api/plugins/manifest') as { plugins: PluginManifestRow[] }
-  const commands = manifest.plugins.flatMap(plugin => plugin.contributes?.cliCommands ?? [])
-  for (const command of commands) {
-    if (!command.dispatch) continue
-    const params = matchPluginCliCommand(command, cmd, args)
-    if (!params) continue
-    const invocation = invocationCommand([cmd, ...args])
+  const global = withoutGlobalFlags(args)
+  const words = [cmd, ...global.rest]
+  for (const plugin of manifest.plugins) {
+    for (const command of plugin.contributes?.cliCommands ?? []) {
+      if (!command.dispatch) continue
+      const match = matchCliCommand(command, words)
+      if (!match) continue
+      if (global.invalid) await exitCommandIssue(global.invalid, { usage: command.usage })
+      if (!match.ok) await exitCommandIssue(match.error, { usage: command.usage })
+      const params = match.ok ? match.params : {}
+      const invocation = invocationCommand([cmd, ...args])
 
-    if (command.dispatch.type === 'execTool') {
-      const result = await apiPost(`/api/exec-tools/${encodeURIComponent(command.dispatch.name)}`, {
-        params,
-        agent: 'cli',
+      if (command.dispatch.type === 'execTool') {
+        const result = await apiPost(`/api/exec-tools/${encodeURIComponent(command.dispatch.name)}`, { params, agent: 'cli' })
+        await printPluginCliCommandResult(invocation, args, result)
+        return true
+      }
+
+      if (command.dispatch.launch) {
+        const { LaunchError, runLaunch, spawnInherited } = await import('../launch')
+        const { getBakinPaths } = await import('../../core/content-dir')
+        try {
+          const code = await runLaunch({ pluginId: plugin.id, path: command.dispatch.path, ...command.dispatch.launch }, params, {
+            interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+            localServer: CLI_TARGET.source === 'lock',
+            binDir: getBakinPaths().bin,
+            cwd: process.cwd(),
+            size: { cols: process.stdout.columns ?? 80, rows: process.stdout.rows ?? 24 },
+            env: process.env,
+            warn: (message) => { console.error(message) },
+            identity: cliIdentity,
+            post: apiPost,
+            spawn: spawnInherited,
+          })
+          process.exit(code)
+        } catch (err) {
+          if (!(err instanceof LaunchError)) throw err
+          await exitCommandIssue(err.message, { usage: command.usage })
+        }
+        return true
+      }
+
+      const query = command.dispatch.method === 'GET' ? new URLSearchParams(Object.entries(params).flatMap(([key, value]) =>
+        Array.isArray(value) ? value.map((item) => [key, String(item)]) : [[key, String(value)]])).toString() : ''
+      const result = await api(`/api/plugins/${plugin.id}${command.dispatch.path}${query ? `?${query}` : ''}`, {
+        method: command.dispatch.method,
+        body: command.dispatch.method === 'GET' ? undefined : JSON.stringify(params),
       })
       await printPluginCliCommandResult(invocation, args, result)
       return true
     }
-
-    const result = await api(`/api/plugins/${cmd}${command.dispatch.path}`, {
-      method: command.dispatch.method,
-      body: command.dispatch.method === 'GET' ? undefined : JSON.stringify(params),
-    })
-    await printPluginCliCommandResult(invocation, args, result)
-    return true
   }
   return false
 }

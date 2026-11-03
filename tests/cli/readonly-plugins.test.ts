@@ -46,6 +46,7 @@ describe('read-only CLI TTY commands — plugins', () => {
               usage: 'bakin demo run <target>',
               summary: 'Run demo command.',
               dispatch: { type: 'apiRoute', method: 'POST', path: '/run' },
+              args: [{ name: 'target', type: 'string', positional: true, required: true }, { name: 'loud', type: 'boolean' }],
             }],
           },
         }],
@@ -63,7 +64,7 @@ describe('read-only CLI TTY commands — plugins', () => {
       `${process.env.BAKIN_URL}/api/plugins/demo/run`,
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ loud: true, target: 'smoke' }),
+        body: JSON.stringify({ target: 'smoke', loud: true }),
       }),
     )
     expect(output()).toContain("┃ 🐷 Bakin'")
@@ -86,6 +87,7 @@ describe('read-only CLI TTY commands — plugins', () => {
               usage: 'bakin demo json <target> [--json]',
               summary: 'Show JSON command.',
               dispatch: { type: 'apiRoute', method: 'GET', path: '/json' },
+              args: [{ name: 'target', type: 'string', positional: true, required: true }],
             }],
           },
         }],
@@ -116,6 +118,7 @@ describe('read-only CLI TTY commands — plugins', () => {
               usage: 'bakin demo show <target>',
               summary: 'Show demo command.',
               dispatch: { type: 'apiRoute', method: 'GET', path: '/show' },
+              args: [{ name: 'target', type: 'string', positional: true, required: true }],
             }],
           },
         }],

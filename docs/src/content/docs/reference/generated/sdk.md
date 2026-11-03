@@ -26,6 +26,9 @@ The main entry. Re-exports the plugin contract types (`./types`) plus the high-t
 | `defineRoute` | Define a plugin HTTP route with typed input/output schemas. |
 | `defineCoreRoute` | Define a core (non-plugin) HTTP route. |
 | `definePlugin` | Compose a plugin's routes into a single definition for the server. |
+| `defineSocketRoute` | Define a plugin WebSocket route. |
+| `PluginSocket` | — |
+| `SocketRoute` | — |
 | `HttpStatus` | — |
 | `RouteContext` | — |
 | `PluginContextLite` | — |
@@ -117,6 +120,8 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | Hook | Description |
 | --- | --- |
 | `useNavBadge` | Sync a nav item's badge to a derived value; the recommended provider glue. |
+| `useFullscreen` | Host full screen for a page that is the point of the visit: the host hides its chrome; the browser goes full screen where it can. |
+| `FullscreenControls` | Host full screen for a page that is the point of the visit: the host hides its chrome; the browser goes full screen where it can. |
 | `useJsonFetch` | Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. |
 | `usePluginJsonFetch` | Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. |
 | `UseJsonFetchOptions` | — |
@@ -559,6 +564,8 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `ComposerAttachmentStatus` | — |
 | `ComposerHandle` | — |
 | `ComposerProps` | — |
+| `ComposerAttachmentTray` | A draft's attachment thumbnails, as Composer shows them, for any composer (a terminal's compose sheet). |
+| `ComposerAttachmentTrayProps` | — |
 | `QueuedMessageList` | Accepted follow-ups waiting behind an active turn. |
 | `QueuedMessageListProps` | — |
 
@@ -738,6 +745,9 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `defineRoute` | Define a plugin HTTP route with typed input/output and handler. |
 | `defineCoreRoute` | Define a core (non-plugin) HTTP route. |
 | `definePlugin` | Compose a plugin's routes into a single definition for the server. |
+| `defineSocketRoute` | Define a plugin WebSocket route (served at `/api/plugins/{pluginId}{path}`). |
+| `PluginSocket` | — |
+| `SocketRoute` | — |
 | `approvalProvenanceFromRequest` | Provenance of an approval decision on a plugin route, from its transport only — pass it to the gate hooks (#898). |
 | `ApprovalProvenance` | Who decided an approval and how Bakin knows: channel, declared/provider-vouched actor, evidence (#898). |
 | `HttpMethod` | — |
@@ -784,5 +794,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 26, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 2, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -19,6 +19,7 @@ import type {
   NavItem,
   PluginSettingsSchema,
 } from '../plugin-types'
+import type { SocketRoute } from '@makinbakin/sdk/types'
 
 /**
  * Declare a plugin route. Handler `ctx` is bound to `PluginContextLite`. The
@@ -34,6 +35,17 @@ export function defineRoute<
   route: APIRoute<PluginContextLite, P, Q, B>,
 ): APIRoute<PluginContextLite, P, Q, B> {
   assertValidBodySpec(route.body, `${route.method} ${route.path}`)
+  return route
+}
+
+/**
+ * Declare a plugin WebSocket route. Returns the input unchanged; the path is
+ * validated here so a malformed one fails at definition time.
+ */
+export function defineSocketRoute(route: SocketRoute): SocketRoute {
+  if (!/^\/[A-Za-z0-9/_-]*$/.test(route.path) || route.path.includes('//')) {
+    throw new Error(`Socket route path "${route.path}" must be a plain plugin-relative path`)
+  }
   return route
 }
 
@@ -63,6 +75,7 @@ export interface DefinePluginInput {
   name: string
   version: string
   routes?: ReadonlyArray<APIRoute<PluginContextLite, any, any, any>>
+  socketRoutes?: ReadonlyArray<SocketRoute>
   // `ctx` is `any` here because authors annotate it with THEIR tier's
   // PluginContext (`@makinbakin/sdk` for external plugins, `@bakin/core`
   // in-repo) and the two context types are deliberately non-identical

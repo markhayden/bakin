@@ -8,12 +8,10 @@
  * equivalent plugin today; explicit route modules keep the stack portable
  * and make every registration grep-able.
  */
-import { createRootRoute, Outlet } from '@tanstack/react-router'
+import { createRootRoute } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { Providers } from '../providers/Providers'
-import { Header } from '../components/layout/header'
-import { AppSidebar } from '../components/layout/app-sidebar'
-import { LayoutShell } from '../components/layout/layout-shell'
+import { FullscreenShell } from '../components/layout/fullscreen-shell'
 import { PluginHost } from '../plugin-host/PluginHost'
 import { GlobalSearchOverlay } from '../components/search/global-search-overlay'
 import config from '../../../../bakin.config'
@@ -37,10 +35,7 @@ function RootComponent() {
       <PluginHost>
         {/* Inside PluginHost: the hit-renderer registry must be live. */}
         <GlobalSearchOverlay />
-        <Header />
-        <LayoutShell sidebar={<AppSidebar />}>
-          <Outlet />
-        </LayoutShell>
+        <FullscreenShell />
       </PluginHost>
     </Providers>
   )

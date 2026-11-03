@@ -19,12 +19,12 @@ import { ActivityContext } from '@/context/activity-context'
 import { SidebarContext } from '@/context/sidebar-context'
 import { LayoutShell } from '../../packages/host/src/components/layout/layout-shell'
 
-function renderShell({ collapsed = false } = {}) {
+function renderShell({ collapsed = false, fullscreen = false } = {}) {
   const toggle = mock()
   const view = render(
     <SidebarContext value={{ collapsed, toggle }}>
       <ActivityContext value={{ open: false, toggle: mock(), close: mock() }}>
-        <LayoutShell sidebar={<div data-testid="nav-content" />}>
+        <LayoutShell sidebar={<div data-testid="nav-content" />} fullscreen={fullscreen}>
           <div data-testid="page-content" />
         </LayoutShell>
       </ActivityContext>
@@ -62,5 +62,14 @@ describe('LayoutShell (Phase 4 kit rail)', () => {
     expect(container.querySelector('[data-scroll-restoration-id=bakin-main]')).not.toBeNull()
     expect(container.querySelector('[data-slot=activity-panel]')).not.toBeNull()
     expect(container.querySelector('main')).not.toBeNull()
+  })
+
+  it('full screen (useFullscreen): the page alone — no sidebar, no activity rail, no header offset', () => {
+    const { container } = renderShell({ fullscreen: true })
+    const rail = container.querySelector('[data-slot=page-aside]')!.parentElement!
+    expect(rail.className).not.toContain('md:flex')
+    expect(container.querySelector('[data-slot=activity-panel]')?.hasAttribute('hidden')).toBe(true)
+    expect((container.firstElementChild as HTMLElement).className).toContain('top-0')
+    expect(container.querySelector('[data-testid=page-content]')).not.toBeNull()
   })
 })

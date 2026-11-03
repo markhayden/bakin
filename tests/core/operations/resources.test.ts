@@ -342,18 +342,35 @@ describe('two processes', () => {
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, JSON.stringify({ pid: 2 ** 22 + 7, acquiredAt: '2026-01-01T00:00:00.000Z', title: 'dead' }))
     const go = join(testDir, 'go')
+    const holding = join(testDir, 'holding')
     // Both children inspect the stale lock as close to simultaneously as the
     // OS allows: each reports READY, then busy-waits on the barrier file.
+    // Two independent proofs that the holds are disjoint. (1) A sentinel a
+    // holder creates on acquire with O_EXCL (flag 'wx' — one atomic syscall,
+    // no exists-then-write window) and removes before it releases, after
+    // checking it still carries its own name: an EEXIST, or someone else's
+    // name, prints OVERLAP and exits 2 — no clock involved. (2) The
+    // timestamps, stamped on the inside of each hold: ACQUIRED after the lock
+    // returned, RELEASED immediately BEFORE the kernel lock is dropped.
+    // Stamping after the release let the other child acquire and stamp in the
+    // window before the stamp was read — one ms earlier on CI.
     const script = (name: string) => `
-      import { existsSync } from 'node:fs'
+      import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
       import { acquireResources } from ${JSON.stringify(join(REPO_ROOT, 'packages/core/src/operations/resources.ts'))}
+      const overlap = (why) => { console.log('OVERLAP ' + ${JSON.stringify(name)} + ' ' + why); process.exit(2) }
       console.log('READY')
       while (!existsSync(${JSON.stringify(go)})) Bun.sleepSync(1)
       const lease = await acquireResources(['media-store'], { identity: { title: ${JSON.stringify(name)}, operationId: ${JSON.stringify(name)} }, pollMs: { initial: 2, max: 10 } })
-      console.log('ACQUIRED ' + ${JSON.stringify(name)} + ' ' + Date.now())
+      const acquiredAt = Date.now()
+      try { writeFileSync(${JSON.stringify(holding)}, ${JSON.stringify(name)}, { flag: 'wx' }) } catch (error) { overlap(error.code ?? String(error)) }
+      console.log('ACQUIRED ' + ${JSON.stringify(name)} + ' ' + acquiredAt)
       await new Promise((resolve) => setTimeout(resolve, 600))
+      const owner = readFileSync(${JSON.stringify(holding)}, 'utf8')
+      if (owner !== ${JSON.stringify(name)}) overlap('sentinel owned by ' + owner)
+      unlinkSync(${JSON.stringify(holding)})
+      const releasedAt = Date.now()
       lease.release()
-      console.log('RELEASED ' + ${JSON.stringify(name)} + ' ' + Date.now())
+      console.log('RELEASED ' + ${JSON.stringify(name)} + ' ' + releasedAt)
     `
     const spawn = (name: string) => Bun.spawn(['bun', '-e', script(name)], {
       cwd: REPO_ROOT,
@@ -376,7 +393,10 @@ describe('two processes', () => {
       await Promise.all([readUntil(0, 'READY'), readUntil(1, 'READY')])
       writeFileSync(go, '')
       await Promise.all([readUntil(0, 'RELEASED'), readUntil(1, 'RELEASED')])
-      await Promise.all(children.map((child) => child.exited))
+      const exits = await Promise.all(children.map((child) => child.exited))
+      // An OVERLAP exits 2 (and closes stdout, so the reads above return early) — named here, not as a NaN later.
+      expect(outputs.filter((out) => out.includes('OVERLAP'))).toEqual([])
+      expect(exits).toEqual([0, 0])
       const intervals = outputs.map((out) => ({
         acquired: Number(/ACQUIRED \S+ (\d+)/.exec(out)?.[1]),
         released: Number(/RELEASED \S+ (\d+)/.exec(out)?.[1]),
@@ -384,6 +404,7 @@ describe('two processes', () => {
       expect(intervals.every((i) => Number.isFinite(i.acquired) && Number.isFinite(i.released))).toBe(true)
       // Disjoint holds: the second acquisition happens only after the first release.
       expect(intervals[1]!.acquired).toBeGreaterThanOrEqual(intervals[0]!.released)
+      expect(existsSync(holding)).toBe(false)
       expect(existsSync(path)).toBe(false)
     } finally {
       for (const child of children) child.kill('SIGKILL')

@@ -1249,7 +1249,9 @@ hold their own local state and subscribe to the relevant event.
 
 The host store (`useHostStore`, `@makinbakin/sdk/hooks`) holds ONLY host-wide
 browser state: `connected`, `debug` (hydrated from `localStorage` at creation),
-and the activity feed. It fetches exactly one thing — `GET /api/activity`,
+`fullscreen` (the path of the page holding the host's full screen, written only
+by `useFullscreen`; the host hides its chrome while it is set) and the activity
+feed. It fetches exactly one thing — `GET /api/activity`,
 once per successful SSE connection (first open and every reconnect) — and
 merges that snapshot with the live events it already holds (one row per id
 from the shared `@bakin/core/events/activity-id` derivation, newest first,
@@ -1595,6 +1597,73 @@ segment-by-segment `:param` matching.
 Request to `/api/plugins/workflows/definitions/my-workflow` → extracts
 `pluginId=workflows`, `path=/definitions/my-workflow` → matches route
 `/definitions/:name` → injects `name=my-workflow` into searchParams.
+
+## Socket Routes (plugin WebSockets)
+
+A plugin declares WebSocket routes with `defineSocketRoute({ path, summary, admit?, open })` in `definePlugin({ socketRoutes })`. User plugins also list them in `contributes.socketRoutes`, which the registry enforces at activation and `sync-manifest` regenerates.
+
+Server side:
+- `server.ts` wires `server.on('upgrade', createUpgradeHandler(pluginRegistry))`. The handler lives in `src/core/server/upgrade-handler.ts`.
+- **Admission order:** path → live route (404), then Origin host must equal the Host header (403), then the route's `admit(request)` (any `Response` refuses). No custom headers reach browsers' WebSockets, so plugins bind identity in the first message or the query.
+- Connections run over the ONE `createPluginSocket` (`packages/core/src/routing/socket.ts`).
+- Registry (`findSocketRoute` → `{ route, generation }`, `isCurrent`, `trackSocket(id, generation, socket)`):
+  - `clearStateArrays` (reload/suspend/deactivate) bumps `socketGeneration` and closes sockets with 1012.
+  - An admission whose `admit` finished after a sweep is refused with 503 before the handshake.
+  - `shutdownAll` sets `socketsShutDown` (nothing admits or tracks after it) and closes sockets with 1001.
+  - Duplicate code paths fail activation.
+- Close codes: `open` throws → 1011; a message listener throws → 1011; a close listener throws → logged, the other listeners still run.
+- Frames: an incoming frame over 1 MiB → 1009, enforced by the handler because Bun's built-in ignores `maxPayload`. A malformed target → 400, never a throw.
+- The SDK harness returns the client before `open` settles; `client.opened` reports the result.
+
+`ws` resolves to **Bun's built-in implementation**, in source and in the compiled binary. Bun refuses every npm `ws` subpath, so the host declares only `@types/ws`.
+
+**No host send bound or drain.** Measured on Bun 1.4.3 against a client that stops reading:
+- `bufferedAmount` reads 0 for ~18 MiB, then grows;
+- it stays stale after the client has read everything;
+- send callbacks run immediately.
+
+So the host promises nothing about backlog. Protocols that stream acknowledge at the application level (Terminal's output windows).
+
+Tests:
+- `tests/core/routing/plugin-socket.test.ts`
+- `tests/core/server/upgrade-handler.test.ts` (real node:http + ws, origin teeth)
+- `tests/integration/sockets/plugin-sockets.test.ts` (booted server: frames, refusals, disable → 1012, shutdown → 1001)
+- `tests/sdk-testing/socket-routes.test.ts` (the published harness `connectTestSocket`)
+
+## CLI Commands (manifest `cliCommands`)
+
+A dispatched command (`dispatch: execTool | apiRoute`) must declare `args`. That array is its complete argument surface.
+- `packages/core/src/plugins/manifest.ts` `parseCliArgs` validates it:
+  - positionals must equal the `usage` `<placeholders>`, in order;
+  - names are unique;
+  - `--json` and `--as` are reserved;
+  - `string[]` is flag-only;
+  - `values` applies to strings only.
+- `src/cli/plugin-args.ts` `matchCliCommand` is the ONE parser:
+  - it matches the literal usage words, binds positionals and declared flags, and parses values by type;
+  - it never coerces a string: no comma-splitting, no JSON, no `"true"` → boolean;
+  - it rejects unknown flags, surplus positionals, repeated scalars and missing required args, all before any request.
+- `src/cli/commands/plugin-dispatch.ts`:
+  - strips the global flags (`stripActorFlag` plus `--json`) first;
+  - resolves `apiRoute` paths under the **contributing plugin's id** (never the typed command word);
+  - sends GET args as query parameters.
+- Help renders the declared flags (`usageWithFlags` in `src/cli/help.ts`).
+- Older cores drop the unknown `args` key, so declaring args is additive for Bits manifests.
+
+**Interactive launch** (`dispatch.launch: { bin, refuseEnv? }`) is for POST `apiRoute` commands that hand the operator's terminal to a managed binary (Terminal's `bakin terminal attach`).
+- The manifest parser requires `bin` to be in the plugin's `requires.bins`.
+- `src/cli/launch.ts` `runLaunch` refuses before the preparation POST when:
+  - stdin/stdout is not a TTY;
+  - the target is not this home's server (`CLI_TARGET.source !== 'lock'`);
+  - the CLI runs in an agent context;
+  - `--as human` is absent;
+  - a `refuseEnv` variable is set (tmux's `TMUX`: the caller is already inside the binary).
+- It then POSTs `{ params, caller: { cwd, cols, rows } }` and zod-validates `{ args, confirm?, recovery? }`.
+- It spawns `<binDir>/<bin> ...args` with inherited stdio/env and no shell (`spawnInherited`).
+- It reports `{ token, pid }` to `confirm.path` (failure kills the child) and propagates the exit code.
+- `recovery` (the work the route already did and how to pick it up) is added to a spawn or confirm failure and printed on a non-zero exit.
+- Routes check provenance with `approvalProvenanceFromRequest`.
+- The PTY test in `tests/cli/launch.test.ts` proves TTY inheritance and has teeth.
 
 ## Plugin `defaults/` Conventions
 

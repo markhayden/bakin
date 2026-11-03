@@ -20,7 +20,7 @@
     "private-import"
   ],
   "summary": {
-    "paths": 160,
+    "paths": 161,
     "totals": {
       "raw-palette": 4,
       "arbitrary-size": 76,
@@ -654,6 +654,21 @@
       }
     },
     {
+      "path": "packages/ui/src/conversation/attachment-tray.tsx",
+      "owner": {
+        "repository": "bakin",
+        "area": "sdk"
+      },
+      "censusEntryId": "host-route:__root",
+      "migrationTask": "T34",
+      "archetype": "conversation",
+      "target": "canonical conversation patterns and focused SDK entrypoint",
+      "status": "legacy-allowed",
+      "allowances": {
+        "raw-scale": 4
+      }
+    },
+    {
       "path": "packages/ui/src/conversation/composer.tsx",
       "owner": {
         "repository": "bakin",
@@ -665,7 +680,7 @@
       "target": "canonical conversation patterns and focused SDK entrypoint",
       "status": "legacy-allowed",
       "allowances": {
-        "raw-scale": 5,
+        "raw-scale": 1,
         "raw-control": 1
       }
     },

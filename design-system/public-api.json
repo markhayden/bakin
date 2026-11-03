@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 320,
-    "typeExports": 435
+    "valueExports": 321,
+    "typeExports": 436
   },
   "entrypoints": [
     {
@@ -714,6 +714,7 @@
         "attentionForDone",
         "badgeFor",
         "Composer",
+        "ComposerAttachmentTray",
         "ContextMeter",
         "contextMeterHasContent",
         "Conversation",
@@ -755,6 +756,7 @@
         "ComposerAttachmentItem",
         "ComposerAttachments",
         "ComposerAttachmentStatus",
+        "ComposerAttachmentTrayProps",
         "ComposerHandle",
         "ComposerProps",
         "ContextMeterStats",
