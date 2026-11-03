@@ -18,11 +18,11 @@
     ]
   },
   "summary": {
-    "total": 101,
+    "total": 102,
     "byKind": {
       "host-route": 27,
       "plugin-route": 11,
-      "plugin-slot": 32,
+      "plugin-slot": 33,
       "plugin-template": 2,
       "shared-component": 29,
       "sdk-ui-export": 0
@@ -1863,6 +1863,36 @@
           "type": "client-registration",
           "path": "plugins/team/client.tsx",
           "detail": "registerPlugin slots \"page:/team/teams/[teamId]\" -> TeamDetail"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:terminal:nav-badge-providers",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin-bits-official",
+        "area": "plugin",
+        "pluginId": "terminal"
+      },
+      "identity": {
+        "slot": "nav-badge-providers"
+      },
+      "sourcePath": "bakin-bits-official/plugins/terminal/client-registration.tsx",
+      "symbols": [
+        "TerminalAttentionProvider"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "embedded-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "bakin-bits-official/plugins/terminal/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "bakin-bits-official/plugins/terminal/client-registration.tsx",
+          "detail": "registerPlugin slots \"nav-badge-providers\" -> TerminalAttentionProvider"
         }
       ]
     },

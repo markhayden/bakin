@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 193255,
+    "canonicalBytes": 193367,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -19,7 +19,7 @@
   },
   "hostInitialJs": {
     "path": "packages/host/dist/main.js",
-    "bytes": 184377
+    "bytes": 185017
   },
   "sdkUiBundles": [
     {
@@ -32,13 +32,13 @@
       "name": "sdk-content",
       "path": "packages/host/public/vendor/sdk-content.js",
       "bytes": 350410,
-      "reachableBytes": 481069
+      "reachableBytes": 481349
     },
     {
       "name": "sdk-conversation",
       "path": "packages/host/public/vendor/sdk-conversation.js",
-      "bytes": 59160,
-      "reachableBytes": 353651
+      "bytes": 59482,
+      "reachableBytes": 354253
     },
     {
       "name": "sdk-layout",
@@ -56,13 +56,13 @@
       "name": "sdk-patterns",
       "path": "packages/host/public/vendor/sdk-patterns.js",
       "bytes": 124028,
-      "reachableBytes": 537465
+      "reachableBytes": 537745
     },
     {
       "name": "sdk-ui",
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 74257,
-      "reachableBytes": 490790
+      "bytes": 74245,
+      "reachableBytes": 490778
     }
   ],
   "vendorChunks": [
@@ -92,15 +92,15 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-conversation.js",
-      "bytes": 59160
+      "bytes": 59482
     },
     {
       "path": "packages/host/public/vendor/sdk-hooks.js",
-      "bytes": 31660
+      "bytes": 31742
     },
     {
       "path": "packages/host/public/vendor/sdk-index.js",
-      "bytes": 1039
+      "bytes": 1066
     },
     {
       "path": "packages/host/public/vendor/sdk-internal.js",
@@ -120,123 +120,123 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-routing.js",
-      "bytes": 192
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-0hf2r5nv.js",
-      "bytes": 6714
+      "bytes": 219
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-0txwdx2b.js",
       "bytes": 2983
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-3fgnx4b2.js",
-      "bytes": 1180
+      "path": "packages/host/public/vendor/sdk-shared-15dsrqj1.js",
+      "bytes": 7934
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-2t2mhyz3.js",
+      "bytes": 5145
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-36npsxpt.js",
+      "bytes": 17552
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-45f47xth.js",
       "bytes": 3464
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-4dm5qkbz.js",
-      "bytes": 2927
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-61ny73yb.js",
-      "bytes": 524
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-67yjrbty.js",
-      "bytes": 1723
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-816zgt4a.js",
-      "bytes": 6517
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-9pmnj5gt.js",
-      "bytes": 134654
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-an6gfqxv.js",
-      "bytes": 5145
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-c2w9nkwm.js",
-      "bytes": 135390
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-dhggnpsr.js",
-      "bytes": 11623
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-e55gjm12.js",
-      "bytes": 1302
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-fmbjx2f3.js",
-      "bytes": 338
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-fsnqcw0s.js",
+      "path": "packages/host/public/vendor/sdk-shared-50tsh4a8.js",
       "bytes": 391
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-h8v4yr36.js",
+      "path": "packages/host/public/vendor/sdk-shared-9vtg5eka.js",
+      "bytes": 583
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-a58kxhs3.js",
+      "bytes": 2927
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-a9b2r9rj.js",
+      "bytes": 11840
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-d85dgmdf.js",
+      "bytes": 82246
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-ddky1b0r.js",
+      "bytes": 28381
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-fvmnkr4e.js",
+      "bytes": 807
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-gp2wdx08.js",
+      "bytes": 338
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-h7rc11hk.js",
+      "bytes": 524
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-k50k4gj7.js",
       "bytes": 512
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-hzcdjzwc.js",
-      "bytes": 3536
+      "path": "packages/host/public/vendor/sdk-shared-kbwkc6xk.js",
+      "bytes": 5530
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-ke11nbx9.js",
-      "bytes": 1142
+      "path": "packages/host/public/vendor/sdk-shared-mbn074c6.js",
+      "bytes": 3816
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-n1zqb881.js",
-      "bytes": 999
+      "path": "packages/host/public/vendor/sdk-shared-mt2b4eea.js",
+      "bytes": 134654
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-n78zz4b7.js",
       "bytes": 0
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-nt4c3ewa.js",
-      "bytes": 17552
+      "path": "packages/host/public/vendor/sdk-shared-n9616y5z.js",
+      "bytes": 6517
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-rnygntkj.js",
-      "bytes": 7934
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-rtkrejch.js",
-      "bytes": 5530
+      "path": "packages/host/public/vendor/sdk-shared-q1vssk3f.js",
+      "bytes": 1142
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-s9hdzc7k.js",
       "bytes": 0
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-ty9sz4g5.js",
-      "bytes": 583
+      "path": "packages/host/public/vendor/sdk-shared-sws7jyqq.js",
+      "bytes": 135390
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-v8a2en40.js",
+      "path": "packages/host/public/vendor/sdk-shared-vfw26xyn.js",
+      "bytes": 1302
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-w479xh30.js",
+      "bytes": 1180
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-w7p9rrr2.js",
+      "bytes": 1723
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-xrp8mvhr.js",
+      "bytes": 6714
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-yz51ay6a.js",
+      "bytes": 999
+    },
+    {
+      "path": "packages/host/public/vendor/sdk-shared-zy4ae94p.js",
       "bytes": 1871
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-vz1wp564.js",
-      "bytes": 28381
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-xrppwajx.js",
-      "bytes": 82246
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-zsb84272.js",
-      "bytes": 807
     },
     {
       "path": "packages/host/public/vendor/sdk-slots.js",
@@ -248,7 +248,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-ui.js",
-      "bytes": 74257
+      "bytes": 74245
     },
     {
       "path": "packages/host/public/vendor/sdk-utils.js",
@@ -286,7 +286,7 @@
       "repository": "bakin-bits-official",
       "pluginId": "terminal",
       "path": "bakin-bits-official/plugins/terminal/dist/client.js",
-      "bytes": 692027
+      "bytes": 908621
     },
     {
       "repository": "bakin",
@@ -346,13 +346,13 @@
       "repository": "bakin",
       "pluginId": "tasks",
       "path": "plugins/tasks/dist/client.js",
-      "bytes": 215743
+      "bytes": 215686
     },
     {
       "repository": "bakin",
       "pluginId": "team",
       "path": "plugins/team/dist/client.js",
-      "bytes": 305726
+      "bytes": 305746
     },
     {
       "repository": "bakin",

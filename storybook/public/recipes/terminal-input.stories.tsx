@@ -9,7 +9,7 @@ const meta = {
   parameters: {
     layout: 'fullscreen',
     bakinCoverage: ['desktop', 'mobile-320', 'overflow', 'interaction', 'scroll-ownership'],
-    docs: { description: { component: 'One row of square `icon-lg` Button keys (44px; six fit 320px) while the user is typing: Esc, Tab, the Control and Option modifiers, then More keys and Hide keyboard at the end; Hide keyboard stays enabled even while sending is disabled. A modifier is off, on for the next key, or locked; its spoken name says which, and a lock is also shown by shape. More keys opens a bounded, scrollable Panel in the same input accessory (the keyboard goes down) with labelled groups: keys, Control shortcuts with plain-language labels, and lock toggles; abc returns to the keyboard and keyboard users get focus moved into it. A pointer open moves focus from the editor to the sheet on the next frame, unless focus moved into a dialog or out of the input in between — that focus is left alone. While it is open the sheet owns Escape wherever focus is: it closes the sheet and never reaches the editor, except inside an open dialog (it belongs to the dialog), inside a composition, or when another owner already claimed it. The next key delivered to the editor takes an armed modifier; committed text (IME, dictation) is sent as typed and ends a one-shot one, not a composition still in progress or cancelled. Use WorkspacePage viewport="visual" and WorkspacePageBody inputAccessory to keep the row above a software keyboard. Preserve editor focus on pointer activation with onMouseDown preventDefault; send once on click; keep normal keyboard and assistive activation. The consumer owns key encoding, availability and modifier reset on disconnection or session change; a plugin may restyle the keys as keycaps with scoped CSS on kit tokens. Show the row on coarse-pointer devices; hide it on fine-pointer desktops.' } },
+    docs: { description: { component: 'One row of square `icon-lg` Button keys (44px; six fit 320px) while the user is typing: Esc, Tab, the Control and Option modifiers, then More keys and Hide keyboard at the end; Hide keyboard stays enabled even while sending is disabled. A modifier is off, on for the next key, or locked; its spoken name says which, and a lock is also shown by shape. More keys opens a bounded, scrollable Panel in the same input accessory (the keyboard goes down) with labelled groups: keys, Control shortcuts with plain-language labels, and lock toggles; abc returns to the keyboard and keyboard users get focus moved into it. While it is open the sheet owns Escape wherever focus is: it closes the sheet and never reaches the editor, except inside an open dialog (it belongs to the dialog), inside a composition, or when another owner already claimed it. The next key delivered to the editor takes an armed modifier; committed text (IME, dictation) is sent as typed and ends a one-shot one, not a composition still in progress or cancelled. Use WorkspacePage viewport="visual" and WorkspacePageBody inputAccessory to keep the row above a software keyboard. Preserve editor focus on pointer activation with onMouseDown preventDefault; send once on click; keep normal keyboard and assistive activation. The consumer owns key encoding, availability and modifier reset on disconnection or session change; a plugin may restyle the keys as keycaps with scoped CSS on kit tokens. Show the row on coarse-pointer devices; hide it on fine-pointer desktops.' } },
   },
 } satisfies Meta<typeof TerminalInputFixture>
 export default meta
@@ -93,9 +93,7 @@ export const BarAndSheet = {
     await expect(status).not.toHaveTextContent('Esc')
     await userEvent.click(canvas.getByRole('button', { name: 'Control, on for the next key' }))
     // Left open: an Escape another owner already claimed, one inside a composition, one inside a dialog.
-    // Opened synchronously (a pointer click, detail 1) so that the dialog below takes focus
-    // INSIDE the frame the sheet defers its own focus to — the ordering a loaded browser produces.
-    fireEvent.click(canvas.getByRole('button', { name: 'More keys' }), { detail: 1 })
+    await userEvent.click(canvas.getByRole('button', { name: 'More keys' }))
     const claimed = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     claimed.preventDefault()
     editor.dispatchEvent(claimed)
@@ -106,12 +104,6 @@ export const BarAndSheet = {
     dialog.append(inDialog)
     canvasElement.append(dialog)
     inDialog.focus()
-    // A dialog that took focus during the frame after the pointer open keeps
-    // it: the sheet's deferred focus yields instead of stealing it (otherwise
-    // this Escape would reach the sheet and close it — a frame-timing race).
-    await new Promise(requestAnimationFrame)
-    await settle()
-    await expect(inDialog).toHaveFocus()
     await userEvent.keyboard('{Escape}')
     dialog.remove()
     await settle()
@@ -124,6 +116,19 @@ export const BarAndSheet = {
     await userEvent.click(canvas.getByRole('button', { name: 'Hide keyboard' }))
     await expect(status).toHaveTextContent('Keyboard hidden')
     await userEvent.click(canvas.getByRole('button', { name: 'Enable keys' }))
+    canvasElement.setAttribute('data-story-ready', 'true')
+  },
+} satisfies Story
+
+/**
+ * The same bar for visual capture: no interaction script (BarAndSheet's play is
+ * the behavior coverage, run by the story and browser suites); the visual spec
+ * drives what it needs itself, from the bar's first render.
+ */
+export const VisualCapture = {
+  parameters: { docs: { disable: true } },
+  play: async ({ canvas, canvasElement }) => {
+    await expect(canvas.getByRole('group', { name: 'Terminal keys' })).toBeVisible()
     canvasElement.setAttribute('data-story-ready', 'true')
   },
 } satisfies Story

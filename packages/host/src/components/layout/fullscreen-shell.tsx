@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Outlet } from '@tanstack/react-router'
-import { useHostStore, useFullscreen, usePathname } from '@makinbakin/sdk/hooks'
+import { useFullscreen, useHostStore, usePathname } from '@makinbakin/sdk/hooks'
 import { Header } from './header'
 import { AppSidebar } from './app-sidebar'
 import { LayoutShell } from './layout-shell'

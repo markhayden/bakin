@@ -10,8 +10,6 @@ interface HostStore extends HostState {
   setDebug: (debug: boolean) => void
   toggleDebug: () => void
   appendActivityEvent: (event: ActivityEvent) => void
-  /** Full screen (useFullscreen): the path of the page holding it, or null. The host hides its chrome while it is set. */
-  fullscreen: string | null
   setFullscreen: (fullscreen: string | null) => void
   /**
    * Fetch the activity snapshot and merge it with the live events already
@@ -48,7 +46,8 @@ let latestActivityRequest = 0
 
 /**
  * Host-wide browser state: the live-connection flag, the debug toggle, the
- * activity feed and which page holds full screen. Nothing else lives here — domain data belongs to its plugin.
+ * activity feed and full screen. Nothing else lives here — domain data belongs
+ * to its plugin.
  */
 export const useHostStore = create<HostStore>((set, get) => ({
   connected: false,

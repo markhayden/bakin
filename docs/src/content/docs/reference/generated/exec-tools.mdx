@@ -1281,7 +1281,7 @@ bakin_exec_team_update_identity {
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="terminal-session" name="bakin_exec_terminal_session" label="Terminal Session." source="bakin-bits-official/plugins/terminal/index.ts:124" parameters={[{"name":"operation","type":"choice","required":true,"description":"list: your sessions. create: start one. screen: read the visible pane (start here). output: read raw output after a cursor. write: type input. interrupt: send Ctrl-C. resize: set cols/rows. complete: finish an exited session. terminate: stop a running process then finish."},{"name":"input","type":"object","required":true},{"name":"id","type":"string","required":false,"description":"Session id. Required for screen, output, write, resize, interrupt, complete, terminate."},{"name":"title","type":"string","required":false,"description":"create: a short human-readable name for the session."},{"name":"cwd","type":"string","required":false,"description":"create: absolute working directory."},{"name":"program","type":"choice","required":false,"description":"create: program to launch (default shell)."},{"name":"checkout","type":"choice","required":false,"description":"create (coding programs): new isolated git worktree (default) or the existing checkout at cwd."},{"name":"taskId","type":"string","required":false,"description":"create: link the session to a Bakin task id."},{"name":"generation","type":"number","required":false,"description":"write, resize, interrupt: the `generation` from your latest response for this session."},{"name":"sequence","type":"number","required":false,"description":"write: the latest `inputSequence` + 1. Consumed once — never reuse or guess it."},{"name":"data","type":"string","required":false,"description":"write: the exact keystrokes to send. End a command with a carriage return \"\\\\r\" to run it."},{"name":"cursor","type":"number","required":false,"description":"output: return output produced after this cursor (0 for all retained output)."},{"name":"cols","type":"number","required":false,"description":"resize: terminal columns."},{"name":"rows","type":"number","required":false,"description":"resize: terminal rows."}]}>
+<McpToolCard id="terminal-session" name="bakin_exec_terminal_session" label="Terminal Session." source="bakin-bits-official/plugins/terminal/index.ts:269" parameters={[{"name":"operation","type":"choice","required":true,"description":"list: your sessions. create: start one. screen: read the visible pane and its size (start here). output: read its text, history then screen (the last `lines` when given; also after it ended). write: type input. interrupt: send Ctrl-C. complete: finish an exited session. terminate: stop a running process then finish."},{"name":"input","type":"object","required":true},{"name":"id","type":"string","required":false,"description":"Session id. Required for screen, output, write, interrupt, complete, terminate."},{"name":"title","type":"string","required":false,"description":"create: a short human-readable name for the session."},{"name":"cwd","type":"string","required":false,"description":"create: absolute working directory."},{"name":"program","type":"choice","required":false,"description":"create: program to launch (default shell)."},{"name":"checkout","type":"choice","required":false,"description":"create: a new isolated git worktree or the existing checkout at cwd (default: isolated for coding programs, existing for a shell)."},{"name":"taskId","type":"string","required":false,"description":"create: link the session to a Bakin task id."},{"name":"generation","type":"number","required":false,"description":"write, interrupt: the `generation` from your latest response for this session."},{"name":"sequence","type":"number","required":false,"description":"write: the latest `inputSequence` + 1. Consumed once — never reuse or guess it."},{"name":"data","type":"string","required":false,"description":"write: the exact keystrokes to send. End a command with a carriage return \"\\\\r\" to run it."},{"name":"lines","type":"number","required":false,"description":"output: only the last this many lines."}]}>
 ```sh frame="terminal"
 bakin_exec_terminal_session {
   "operation": "value",
@@ -1297,9 +1297,7 @@ bakin_exec_terminal_session {
   "generation": 20,
   "sequence": 20,
   "data": "value",
-  "cursor": 20,
-  "cols": 20,
-  "rows": 20
+  "lines": 20
 }
 ```
 </McpToolCard>
@@ -1384,5 +1382,5 @@ bakin_exec_workflows_start {
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 26, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 1, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -539,7 +539,7 @@ await ctx.hooks.callAll(
 
 Label: tasks.statusChanged
 Kind: rpc
-Source: bakin-bits-official/plugins/terminal/index.ts:119
+Source: bakin-bits-official/plugins/terminal/index.ts:264
 
 Example:
 

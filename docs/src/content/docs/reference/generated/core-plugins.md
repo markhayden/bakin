@@ -121,7 +121,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Terminal<br/><span>Persistent shared terminals with per-agent access and retained coding worktrees.</span></td>
       <td><code>terminal</code></td>
       <td>Official</td>
-      <td><code>0.3.5</code></td>
+      <td><code>0.4.0-dev.30</code></td>
       <td><code>git</code></td>
     </tr>
     <tr>
@@ -135,5 +135,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Oct 26, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 1, 2026 · Bakin 0.0.0-dev</span>
 </aside>

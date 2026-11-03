@@ -2683,20 +2683,18 @@ Label: Terminal Session.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `operation` | choice | yes | list: your sessions. create: start one. screen: read the visible pane (start here). output: read raw output after a cursor. write: type input. interrupt: send Ctrl-C. resize: set cols/rows. complete: finish an exited session. terminate: stop a running process then finish. |
+| `operation` | choice | yes | list: your sessions. create: start one. screen: read the visible pane and its size (start here). output: read its text, history then screen (the last `lines` when given; also after it ended). write: type input. interrupt: send Ctrl-C. complete: finish an exited session. terminate: stop a running process then finish. |
 | `input` | object | yes |  |
-| `id` | string | no | Session id. Required for screen, output, write, resize, interrupt, complete, terminate. |
+| `id` | string | no | Session id. Required for screen, output, write, interrupt, complete, terminate. |
 | `title` | string | no | create: a short human-readable name for the session. |
 | `cwd` | string | no | create: absolute working directory. |
 | `program` | choice | no | create: program to launch (default shell). |
-| `checkout` | choice | no | create (coding programs): new isolated git worktree (default) or the existing checkout at cwd. |
+| `checkout` | choice | no | create: a new isolated git worktree or the existing checkout at cwd (default: isolated for coding programs, existing for a shell). |
 | `taskId` | string | no | create: link the session to a Bakin task id. |
-| `generation` | number | no | write, resize, interrupt: the `generation` from your latest response for this session. |
+| `generation` | number | no | write, interrupt: the `generation` from your latest response for this session. |
 | `sequence` | number | no | write: the latest `inputSequence` + 1. Consumed once — never reuse or guess it. |
 | `data` | string | no | write: the exact keystrokes to send. End a command with a carriage return "\\r" to run it. |
-| `cursor` | number | no | output: return output produced after this cursor (0 for all retained output). |
-| `cols` | number | no | resize: terminal columns. |
-| `rows` | number | no | resize: terminal rows. |
+| `lines` | number | no | output: only the last this many lines. |
 
 Example:
 
@@ -2715,9 +2713,7 @@ bakin_exec_terminal_session {
   "generation": 20,
   "sequence": 20,
   "data": "value",
-  "cursor": 20,
-  "cols": 20,
-  "rows": 20
+  "lines": 20
 }
 ```
 

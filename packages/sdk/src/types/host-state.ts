@@ -1,6 +1,6 @@
 // Host state the browser host store publishes (`useHostStore` on
-// `@makinbakin/sdk/hooks`): the live-connection flag, the debug toggle and the
-// activity feed rows. Public because the store is.
+// `@makinbakin/sdk/hooks`): the live-connection flag, the debug toggle, the
+// activity feed rows and full screen. Public because the store is.
 
 export interface ActivityEvent {
   id: string
@@ -19,4 +19,6 @@ export interface HostState {
   connected: boolean
   debug: boolean
   activityEvents: ActivityEvent[]
+  /** Full screen (useFullscreen): the path of the page holding it, or null. The host hides its chrome while it is set. */
+  fullscreen: string | null
 }

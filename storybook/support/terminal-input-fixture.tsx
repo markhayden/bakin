@@ -26,7 +26,6 @@ export function TerminalInputFixture() {
   const [modifiers, setModifiers] = useState<Record<Modifier, ModifierState>>({ ctrl: 'off', alt: 'off' })
   const [disabled, setDisabled] = useState(false)
   const [lastKey, setLastKey] = useState('No key sent')
-  const root = useRef<HTMLDivElement>(null)
   const editor = useRef<HTMLTextAreaElement>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
   // One key takes the modifiers (a Control shortcut adds Control once) and consumes a one-shot one; a lock stays.
@@ -75,18 +74,7 @@ export function TerminalInputFixture() {
     // The sheet stands in for the software keyboard, which goes down: focus
     // leaves the editor for the sheet (not an input, so no keyboard), where
     // Escape closes it. Opened from a keyboard, focus goes to its first key.
-    // Deferred a frame (the sheet mounts first), so focus may have moved in
-    // between — into a dialog, or out of this input altogether. That focus
-    // is not the sheet's to take: taking it would also hand the sheet the
-    // dialog's Escape, which then closed the sheet instead (a timing race
-    // seen on a loaded browser). Focus still on the editor, or nowhere (the
-    // keyboard-activated More keys button unmounted), moves as intended.
-    requestAnimationFrame(() => {
-      const active = document.activeElement
-      if (active instanceof HTMLElement && active !== document.body
-        && (!root.current?.contains(active) || active.closest('[role="dialog"], [role="alertdialog"]'))) return
-      ;(event.detail === 0 && sheetRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)') || sheetRef.current)?.focus()
-    })
+    requestAnimationFrame(() => (event.detail === 0 && sheetRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)') || sheetRef.current)?.focus())
   }
   // Prevent the mouse focus default (also synthesized after a touch tap),
   // while leaving touch scrolling, click activation and keyboard focus alone.
@@ -98,7 +86,7 @@ export function TerminalInputFixture() {
     aria-pressed={modifiers[name] !== 'off'} disabled={disabled} onMouseDown={preserveFocus} onClick={() => tap(name)}>
     {FACES[name]}{modifiers[name] === 'locked' && <Lock aria-hidden="true" className="size-bakin-3" />}
   </Button>
-  return <div ref={root} className="h-dvh">
+  return <div className="h-dvh">
     <WorkspacePage viewport="visual">
       <WorkspacePageBody inputAccessory={
         <Stack gap="dense" className="border-t border-bakin-border-subtle bg-bakin-canvas-default px-bakin-2 py-bakin-3">
