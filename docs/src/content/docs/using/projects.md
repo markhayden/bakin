@@ -9,7 +9,7 @@ Some work needs more than a task can hold. A project is a conversation with a le
 
 Hit `New project` and Bakin asks one thing: what kind of project is on your mind? Pick a starter ("Clean up my email", "Plan a trip", …) — each is a complete prompt you can send as-is or edit — or just type. A rough idea is enough; the lead's questions draw out the rest. Choose a lead agent beside the box if you don't want your main agent on it.
 
-Nothing exists until you send. Enter opens the project right away; the lead's first reply starts on its own a moment later. If Bakin doesn't answer within ten seconds, the start screen says so and keeps your text; a retry never makes a second project. On the project page, "Starting the conversation…" sits where the composer will be until the lead's turn is under way. If that start fails, or takes longer than it should, the page says "The conversation hasn't started yet" with a **Retry** button, and Bakin itself retries a few times in the background.
+Nothing exists until you send. Enter opens the project right away; the lead's first reply starts on its own a moment later. If Bakin doesn't answer within ten seconds, the start screen says so and keeps your text; a retry never makes a second project, and if you reload while that first send is still unconfirmed the page says so and sending again retries it. On the project page, "Starting the conversation…" sits where the composer will be until the lead's turn is under way. If that start fails, or takes longer than it should, the page says "The conversation hasn't started yet" with a **Retry** button, and Bakin itself retries a few times in the background.
 
 ## Shaping it with the lead
 

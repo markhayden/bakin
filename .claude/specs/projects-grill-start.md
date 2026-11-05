@@ -309,8 +309,12 @@ Success for the user:
   throw before the request leaves surfaces as an error with the text kept
   (bits ff23f8f + ce203a8 + 0419caa + c20b361; reproduction tests with
   `randomUUID` removed and throwing). The reload-retry contract (D8) now also
-  keeps the LEAD: the pending record carries the owner, a reload mid-create
-  shows the message and lead again, and the retry sends the recorded owner.
+  keeps the LEAD and the EDIT: the pending record carries the owner and any
+  newer text typed before a retry, a reload mid-create shows the latest text
+  and the lead again under a visible "your first send hasn't been confirmed
+  yet" notice (a draft the composer saved itself wins, the notice stays
+  until a create succeeds), and the retry sends the recorded owner and the
+  original message with the edit kept as the project's draft.
   Rule for every bits/host client: never call a secure-context-only API
   (`crypto.randomUUID`, `crypto.subtle`, clipboard) on a path the page
   depends on.
