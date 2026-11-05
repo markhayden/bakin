@@ -1,6 +1,7 @@
 # Spec: Projects — instant start + the "grill me" interview
 
-Status: DRAFT rev 6 (2026-11-04, after Codex review rounds 1–5). Owner: Mark.
+Status: FINAL rev 7 (2026-11-04; Codex-approved at rev 6 after six review
+rounds; rev 7 records the as-built notes below). Owner: Mark.
 Builds on `projects-revamp.md` (D7–D18 start screen + staged posture). Code
 lives in the external `bakin-bits-official` repo, `plugins/projects`
 (0.13.1 → 0.14.0); no Bakin host code changes are expected (see Assumptions).
@@ -277,6 +278,30 @@ Success for the user:
   omission marker — so a long brief never crowds the actionable plan out of
   a check-in. Active/completed/archived postures are otherwise unchanged.
   Relayed (`live: false`) asks keep plain-text questions, no card tool.
+
+## As built (rev 7 notes)
+
+- **D1e composition.** The kit's `ConversationPanel` exposes no composer
+  `disabled` pass-through, so the starting state composes the panel's own
+  read-only state: `readOnly` while the receipt is pending, with the status
+  (`StatusMarker` + `Text` + ghost `Button` Retry) as the `readOnlyNotice` in
+  the composer's slot. No composer is mounted until the turn is admitted;
+  `/ask` is refused server-side meanwhile (409). A kickoff receipt change
+  (`projects.changed { action: 'kickoff' }`) refetches the project AND the
+  conversation thread, so the user's first message and the working state
+  appear the moment the turn is admitted.
+- **Receipt fields.** `attempts` is optional on the type (absent reads as 0)
+  so a settled receipt keeps only its dedupe identity, as before.
+- **Brief module.** The skeleton and the parser live together in
+  `lib/brief.ts`; the steward's plan-first excerpt is `planFirst()` in
+  `lib/steward/prompt.ts`.
+- **Interview prompt.** The draft stage uses its own ask line (at most one,
+  always with a recommendation and why); the active stage keeps the previous
+  ask line byte for byte, pinned by test.
+- **Timers.** `kickoffTiming` (context build 15 s, pump 30 s, min age 10 s,
+  three attempts) is an exported mutable object tests shorten; the page's
+  stale window is a `kickoffStaleMs` prop (default 20 s); the start screen's
+  timeout is a `createTimeoutMs` prop (default 10 s).
 
 ## Assumptions (correct me before build)
 

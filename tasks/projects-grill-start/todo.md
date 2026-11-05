@@ -4,18 +4,18 @@ Branch (bits): `feat/projects-grill-start` · Branch (bakin): `docs/projects-gri
 Spec: `.claude/specs/projects-grill-start.md` · Plan: `tasks/projects-grill-start/plan.md`
 
 ## Phase 1 — instant start
-- [ ] T1 lock bodies synchronous (NotPromise + asset lookups before the lock) — commit
-- [ ] T2a receipt fields + fenced receipt helpers — commit
-- [ ] T2b fenced `startKickoff` + create answers after write + `/ask` 409 — commit
-- [ ] T3 `POST /:projectId/kickoff` + pump + independent boot dispatch — commit
-- [ ] T4 start screen timeout/retry, complete chips, dead hook deleted — commit
-- [ ] T5 project page starting state (notice, disabled composer, Retry, 20 s) — commit
-- [ ] Checkpoint 1: gates green; reinstall on 3737; chip → Enter live; sha recorded
+- [x] T1 lock bodies synchronous (NotPromise + asset lookups before the lock) — 014d5d1
+- [x] T2a receipt fields + fenced receipt helpers — 4caf5db
+- [x] T2b fenced `startKickoff` + create answers after write + `/ask` 409 — f2a6499
+- [x] T3 `POST /:projectId/kickoff` + pump + independent boot dispatch — 01f02ff
+- [x] T4 start screen timeout/retry, complete chips, dead hook deleted — 873b1ab
+- [x] T5 project page starting state (read-only panel + notice, Retry, 20 s) — b2a2669
+- [x] Checkpoint 1 (2026-11-04 23:38 MST): gates green; installed on 3737; chip → Enter opened the page at once, reply streamed, Stop settled clean — known-good sha b2a2669
 
 ## Phase 2 — interview
-- [ ] T6 brief skeleton + `briefOpenQuestions` + detail `brief` — commit
-- [ ] T7 shaping interview prompt + stopping rule; steward excerpt Plan-first — commit
-- [ ] T8 Start advisory + "Continue shaping" — commit
+- [x] T6 brief skeleton + `briefOpenQuestions` + detail `brief` — 06ea742
+- [x] T7 shaping interview prompt + stopping rule; steward excerpt Plan-first — 1cc6759
+- [x] T8 Start advisory + "Continue shaping" — 8ce217b
 - [ ] Checkpoint 2: gates + browser fixtures + live interview acceptance; sha recorded
 
 ## Phase 3 — docs, review, coverage
