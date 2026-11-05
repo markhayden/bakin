@@ -298,6 +298,17 @@ Success for the user:
 - **Interview prompt.** The draft stage uses its own ask line (at most one,
   always with a recommendation and why); the active stage keeps the previous
   ask line byte for byte, pinned by test.
+- **Plain-http origin (the real "spins forever").** Mark reaches 3737 over
+  Tailscale at `http://<host>:3737`, which is not a secure context, and
+  `crypto.randomUUID` does not exist there. The start screen minted its
+  request id with it before the try block: the send threw, no request ever
+  left the browser, and the composer stayed on "Sending…" — the reported
+  symptom, invisible from localhost. `newRequestId()` (`lib/start.ts`) falls
+  back to a `getRandomValues` v4 and the mint sits inside the try, so a throw
+  surfaces as an error (bits ff23f8f; reproduction test with `randomUUID`
+  removed). Rule for every bits/host client: never call a secure-context-only
+  API (`crypto.randomUUID`, `crypto.subtle`, clipboard) on a path the page
+  depends on.
 - **Retry is atomic (Codex code review round 1).** The route checks
   ownership and `pending` and dispatches in one synchronous block; the
   attempt resets the count and drops `lastError` inside lock section A
