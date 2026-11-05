@@ -307,7 +307,7 @@ Success for the user:
   the helper at every client mint — create, checklist, upload chips) falls
   back to a `getRandomValues` v4, and the mint sits inside the try, so a
   throw before the request leaves surfaces as an error with the text kept
-  (bits ff23f8f + ce203a8 + 0419caa + c20b361; reproduction tests with
+  (bits ff23f8f + ce203a8 + 0419caa + c20b361 + 68313e1; reproduction tests with
   `randomUUID` removed and throwing). The reload-retry contract (D8) now also
   keeps the LEAD and the EDIT: the pending record carries the owner and any
   newer text typed before a retry, a reload mid-create shows the latest text
