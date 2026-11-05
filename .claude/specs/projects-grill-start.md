@@ -298,6 +298,16 @@ Success for the user:
 - **Interview prompt.** The draft stage uses its own ask line (at most one,
   always with a recommendation and why); the active stage keeps the previous
   ask line byte for byte, pinned by test.
+- **Retry is atomic (Codex code review round 1).** The route checks
+  ownership and `pending` and dispatches in one synchronous block; the
+  attempt resets the count and drops `lastError` inside lock section A
+  (`beginKickoffAttempt(id, { reset: true })`), so two Retries at once launch
+  one attempt and the other answers `in-flight`. The boot sweep skips a
+  pending receipt at three attempts — a restart is not a Retry.
+- **Assume, don't ask (live acceptance).** The interviewed lead asked for the
+  travel year, exact dates and which days count as travel days; the prompt
+  now prefers a labelled assumption to a question whenever the plan would
+  have the same shape either way.
 - **Timers.** `kickoffTiming` (context build 15 s, pump 30 s, min age 10 s,
   three attempts) is an exported mutable object tests shorten; the page's
   stale window is a `kickoffStaleMs` prop (default 20 s); the start screen's
