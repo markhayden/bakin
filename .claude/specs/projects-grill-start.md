@@ -303,12 +303,16 @@ Success for the user:
   `crypto.randomUUID` does not exist there. The start screen minted its
   request id with it before the try block: the send threw, no request ever
   left the browser, and the composer stayed on "Sending…" — the reported
-  symptom, invisible from localhost. `newRequestId()` (`lib/start.ts`) falls
-  back to a `getRandomValues` v4 and the mint sits inside the try, so a throw
-  surfaces as an error with the text kept (bits ff23f8f + ce203a8 + 0419caa, the
-  helper in `lib/request-id.ts` at every client mint — create, checklist,
-  upload chips; reproduction tests with `randomUUID` removed and throwing). Rule for every bits/host client: never call a secure-context-only
-  API (`crypto.randomUUID`, `crypto.subtle`, clipboard) on a path the page
+  symptom, invisible from localhost. `newRequestId()` (`lib/request-id.ts`,
+  the helper at every client mint — create, checklist, upload chips) falls
+  back to a `getRandomValues` v4, and the mint sits inside the try, so a
+  throw before the request leaves surfaces as an error with the text kept
+  (bits ff23f8f + ce203a8 + 0419caa + c20b361; reproduction tests with
+  `randomUUID` removed and throwing). The reload-retry contract (D8) now also
+  keeps the LEAD: the pending record carries the owner, a reload mid-create
+  shows the message and lead again, and the retry sends the recorded owner.
+  Rule for every bits/host client: never call a secure-context-only API
+  (`crypto.randomUUID`, `crypto.subtle`, clipboard) on a path the page
   depends on.
 - **Retry is atomic (Codex code review round 1).** The route checks
   ownership and `pending` and dispatches in one synchronous block; the
