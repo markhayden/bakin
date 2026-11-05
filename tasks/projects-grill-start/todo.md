@@ -16,11 +16,11 @@ Spec: `.claude/specs/projects-grill-start.md` · Plan: `tasks/projects-grill-sta
 - [x] T6 brief skeleton + `briefOpenQuestions` + detail `brief` — 06ea742
 - [x] T7 shaping interview prompt + stopping rule; steward excerpt Plan-first — 1cc6759
 - [x] T8 Start advisory + "Continue shaping" — 8ce217b
-- [ ] Checkpoint 2: gates + browser fixtures + live interview acceptance; sha recorded
+- [x] Checkpoint 2 (2026-11-05 00:02 MST): gates green; bits browser conformance green (all projects fixtures + 6 detail scenarios); live on 3737: S1 vague idea → 7 cards with recommendations, brief filled, title set (over-asked details → assume-don't-ask rule added); S2 'just write it' second message → draft + 4 steps + labelled assumptions + open questions kept; S3 first message 'just write it' → immediate draft, no card; S4 fully specified → first run asked one card; after the assume + draft-in-the-same-turn rules (b738acf, +1) it drafted with four steps and no card; S5 Start dialog → advisory + Continue shaping → Conversation tab — known-good sha 8ce217b (+ fixes 1a5e146, b738acf)
 
 ## Phase 3 — docs, review, coverage
-- [ ] T9 README / UI-AUDIT / CHANGELOG / 0.14.0 / bakin docs / spec FINAL — commits
-- [ ] T10 /agent-skills:test coverage pass; full suite — commits
-- [ ] T11 Codex review round 1 → fixes → round 2 (→ until clean)
+- [x] T9 README / UI-AUDIT / CHANGELOG / 0.14.0 / bakin docs / spec FINAL — f5dbe30, 6768040 (bits); 8d0631d4a, bc1be3575, 246f241fa (bakin)
+- [x] T10 coverage pass — a0af459; full suite green (1563 pass)
+- [ ] T11 Codex review round 1 (2 findings → 1a5e146) → round 2 (2 findings → cap-in-protocol fix) → round 3 pending
 - [ ] Checkpoint 3: handoff to Mark for the live test; no push/merge until asked
 - [ ] T12 ship: push, PRs, file the D1g host follow-up issue

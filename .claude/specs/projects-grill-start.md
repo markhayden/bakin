@@ -307,7 +307,15 @@ Success for the user:
 - **Assume, don't ask (live acceptance).** The interviewed lead asked for the
   travel year, exact dates and which days count as travel days; the prompt
   now prefers a labelled assumption to a question whenever the plan would
-  have the same shape either way.
+  have the same shape either way, and a first message that already covers
+  the four blocking areas drafts in that same turn (a feasibility risk goes
+  into the draft as an open question). Verified live: the fully specified
+  first message then produced a draft with four steps and no card.
+- **The cap lives in the protocol (Codex code review round 2).** The
+  three-attempt cap is checked inside `startKickoff` after the transcript
+  repair, so a capped receipt whose turn ran is still repaired, and a
+  replayed create, the pump and the boot sweep all stop at the cap; only
+  Retry (`reset`) passes it.
 - **Timers.** `kickoffTiming` (context build 15 s, pump 30 s, min age 10 s,
   three attempts) is an exported mutable object tests shorten; the page's
   stale window is a `kickoffStaleMs` prop (default 20 s); the start screen's
