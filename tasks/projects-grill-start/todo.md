@@ -28,5 +28,6 @@ Spec: `.claude/specs/projects-grill-start.md` · Plan: `tasks/projects-grill-sta
 - [x] T11e Codex round 3 on 0419caa: 2 findings on the reload-retry contract (empty composer hid the pending retry; pending had no owner) → c20b361 (owner in the pending record, message + lead restored on mount, retry sends the recorded owner; 2 tests); gates green (1575 pass); installed on 3737 (client v9)
 - [x] T11f Codex round 4 on c20b361: 2 findings (an edit before a retry lost on reload; a saved composer draft hid the pending send) → pending record carries `edited`, the composer shows the latest text after a reload, and an "unconfirmed send" notice stays until a create succeeds; test composer restores saved drafts; 2 tests; gates green (1577 pass)
 - [x] T11g Codex round 5 on 68313e1: 1 finding (notice hidden behind a retry error; set only on remount) → fa74f32 (notice renders on its own below the error; `unconfirmed` follows the pending record after every attempt; 2 tests); gates green (1579 pass); installed on 3737 (client v11)
-- [ ] Checkpoint 3: handed to Mark 2026-11-05 — branch tip fa74f32 installed on 3737 (client v11); no push/merge until asked
+- [x] T11h Codex round 6 on fa74f32: APPROVE, no findings (2026-11-05 14:40 MST)
+- [ ] Checkpoint 3: handed to Mark 2026-11-05 14:40 MST — branch tip fa74f32 (Codex-approved) installed on 3737 (client v11); Mark re-tests on the Tailscale origin; no push/merge until asked
 - [ ] T12 ship: push, PRs, file the D1g host follow-up issue
