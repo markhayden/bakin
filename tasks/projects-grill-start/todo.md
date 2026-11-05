@@ -23,5 +23,6 @@ Spec: `.claude/specs/projects-grill-start.md` · Plan: `tasks/projects-grill-sta
 - [x] T10 coverage pass — a0af459; full suite green (1563 pass)
 - [x] T11 Codex review: round 1 (2 findings → 1a5e146), round 2 (2 findings → 56e73f1), round 3 APPROVE (2026-11-05 00:12 MST)
 - [x] T11b Mark's live test (2026-11-05 14:00 MST): submit sat on "Sending…" — root cause `crypto.randomUUID` undefined on the plain-http Tailscale origin (reproduced in Playwright against http://100.91.112.69:3737: TypeError before fetch); fixed with `newRequestId()` + mint inside the try, reproduction test — ff23f8f; gates green (1567 pass); installed on 3737 (client v6); chip → Enter on the Tailscale origin opened the project and the lead asked its first card
-- [ ] Checkpoint 3: handed to Mark 2026-11-05 — branch tip ff23f8f installed on 3737; no push/merge until asked
+- [x] T11c Codex round 1 on ff23f8f: 3 findings (hooks still used randomUUID; pre-request throw lost the text; throw path untested) → ce203a8 (one `lib/request-id.ts` helper at all four mints, unconditional restore before the request leaves, throw-path + hook + deterministic-byte tests); gates green (1572 pass); installed on 3737 (client v7)
+- [ ] Checkpoint 3: handed to Mark 2026-11-05 — branch tip ce203a8 installed on 3737; no push/merge until asked
 - [ ] T12 ship: push, PRs, file the D1g host follow-up issue
