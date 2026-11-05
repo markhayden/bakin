@@ -21,6 +21,6 @@ Spec: `.claude/specs/projects-grill-start.md` · Plan: `tasks/projects-grill-sta
 ## Phase 3 — docs, review, coverage
 - [x] T9 README / UI-AUDIT / CHANGELOG / 0.14.0 / bakin docs / spec FINAL — f5dbe30, 6768040 (bits); 8d0631d4a, bc1be3575, 246f241fa (bakin)
 - [x] T10 coverage pass — a0af459; full suite green (1563 pass)
-- [ ] T11 Codex review round 1 (2 findings → 1a5e146) → round 2 (2 findings → cap-in-protocol fix) → round 3 pending
-- [ ] Checkpoint 3: handoff to Mark for the live test; no push/merge until asked
+- [x] T11 Codex review: round 1 (2 findings → 1a5e146), round 2 (2 findings → 56e73f1), round 3 APPROVE (2026-11-05 00:12 MST)
+- [ ] Checkpoint 3: handed to Mark 2026-11-05 — branch tip 56e73f1 installed on 3737; no push/merge until asked
 - [ ] T12 ship: push, PRs, file the D1g host follow-up issue
