@@ -305,7 +305,7 @@ Success for the user:
   left the browser, and the composer stayed on "Sending…" — the reported
   symptom, invisible from localhost. `newRequestId()` (`lib/start.ts`) falls
   back to a `getRandomValues` v4 and the mint sits inside the try, so a throw
-  surfaces as an error with the text kept (bits ff23f8f + ce203a8, the
+  surfaces as an error with the text kept (bits ff23f8f + ce203a8 + 0419caa, the
   helper in `lib/request-id.ts` at every client mint — create, checklist,
   upload chips; reproduction tests with `randomUUID` removed and throwing). Rule for every bits/host client: never call a secure-context-only
   API (`crypto.randomUUID`, `crypto.subtle`, clipboard) on a path the page
