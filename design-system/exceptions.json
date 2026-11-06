@@ -86,6 +86,7 @@
         "src/components/tasks/activity-feed.tsx",
         "packages/ui/src/patterns/picker-patterns.tsx",
         "packages/ui/src/patterns/drawer.tsx",
+        "packages/ui/src/patterns/page-aside.tsx",
         "plugins/workflows/components/workflow-canvas-editor.tsx",
         "packages/host/src/providers/AgentThemeProvider.tsx",
         "packages/host/src/globals.css"
@@ -112,6 +113,9 @@
         "packages/ui/src/patterns/drawer.tsx": {
           "inline-style": 1
         },
+        "packages/ui/src/patterns/page-aside.tsx": {
+          "inline-style": 1
+        },
         "plugins/workflows/components/workflow-canvas-editor.tsx": {
           "inline-style": 1
         },
@@ -126,7 +130,7 @@
         "storyPath": "storybook/public/tokens/tokens.generated.stories.tsx",
         "storyExport": "Catalog"
       },
-      "mismatch": "These sites render values that only exist at runtime in user data: brand palette swatches and strips, per-series chart swatches, per-agent identity colors (including the #a1a1aa neutral fallback seeded in AgentThemeProvider and the --agent-* variables in globals.css), the data-driven agent color in the activity feed, the computed color-row cap in picker patterns, the user-resizable drawer width variable, and the React Flow edge-label transform. Semantic tokens are a fixed vocabulary and cannot name colors or geometry that arrive from data.",
+      "mismatch": "These sites render values that only exist at runtime in user data: brand palette swatches and strips, per-series chart swatches, per-agent identity colors (including the #a1a1aa neutral fallback seeded in AgentThemeProvider and the --agent-* variables in globals.css), the data-driven agent color in the activity feed, the computed color-row cap in picker patterns, the user-resizable drawer and collapsible-rail width variables (PageAside `resizable`, 2026-11-05), and the React Flow edge-label transform. Semantic tokens are a fixed vocabulary and cannot name colors or geometry that arrive from data.",
       "compositionLimit": "Class utilities cannot carry runtime values; the only mechanisms are inline style properties or runtime-written CSS custom properties, both of which are exactly what these sites use, each fed by validated data.",
       "alternative": "Keep one inline style (or runtime CSS variable seed) per data-driven value, scoped to the component that owns the data; every static color around them uses bakin-* semantic tokens.",
       "safeguards": {

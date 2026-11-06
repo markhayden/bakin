@@ -14,8 +14,12 @@ const RESIZE_STEP_LARGE = 64
 
 type ResizeAxis = 'x' | 'y'
 
+/** Which edge the grab bar sits on: `leading` (default — a drawer or end rail resized from its left/top edge) or `trailing` (a start rail resized from its right/bottom edge). */
+export type ResizeEdge = 'leading' | 'trailing'
+
 interface PersistedResizeOptions {
   axis: ResizeAxis
+  edge?: ResizeEdge
   defaultSize: number
   minSize: number
   maxSize: number
@@ -63,9 +67,10 @@ function persistSize(storageKey: string | undefined, value: number) {
   }
 }
 
-/** Private shared mechanics for a pane resized from its leading edge. */
+/** Private shared mechanics for a pane resized from one edge (leading by default). */
 export function usePersistedLeadingEdgeResize({
   axis,
+  edge = 'leading',
   defaultSize,
   minSize,
   maxSize,
@@ -113,6 +118,9 @@ export function usePersistedLeadingEdgeResize({
   }, [disabled, finish])
 
   const position = (event: PointerEvent<HTMLDivElement>) => axis === 'x' ? event.clientX : event.clientY
+  // Dragging a leading edge away from the pane (toward smaller coordinates)
+  // grows it; a trailing edge grows toward larger coordinates.
+  const direction = edge === 'leading' ? 1 : -1
 
   const begin = (event: PointerEvent<HTMLDivElement>) => {
     if (disabled || pointerRef.current !== null || event.button !== 0) return
@@ -132,7 +140,7 @@ export function usePersistedLeadingEdgeResize({
 
   const move = (event: PointerEvent<HTMLDivElement>) => {
     if (pointerRef.current !== event.pointerId) return
-    const delta = startRef.current.position - position(event)
+    const delta = (startRef.current.position - position(event)) * direction
     setSize(startRef.current.size + delta, false)
   }
 
@@ -142,8 +150,9 @@ export function usePersistedLeadingEdgeResize({
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const growKey = axis === 'x' ? 'ArrowLeft' : 'ArrowUp'
-    const shrinkKey = axis === 'x' ? 'ArrowRight' : 'ArrowDown'
+    const [awayKey, towardKey] = axis === 'x' ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown']
+    const growKey = edge === 'leading' ? awayKey : towardKey
+    const shrinkKey = edge === 'leading' ? towardKey : awayKey
     let next: number | undefined
     if (event.key === growKey) next = sizeRef.current + (event.shiftKey ? RESIZE_STEP_LARGE : RESIZE_STEP)
     if (event.key === shrinkKey) next = sizeRef.current - (event.shiftKey ? RESIZE_STEP_LARGE : RESIZE_STEP)

@@ -181,6 +181,7 @@ export type {
   NodeCardTone,
   PageAsideCollapsible,
   PageAsideProps,
+  PageAsideResizable,
   PageAsideSide,
   PageAsideWidth,
   PageBodyGap,
