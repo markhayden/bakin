@@ -332,6 +332,19 @@ Success for the user:
   Enter test bypassed Enter) fixed with RED tests; round 2 APPROVE. Verified
   live on the Tailscale origin with real clicks and keys. Rule: an input the
   user cannot name from its label is a bug — one field, one job.
+- **Resizable dock + one Files empty state (2026-11-05, Mark's next two
+  live notes: "i should be able to drag this chat window", "we have double
+  empty states here").** bakin a9bfcb5bb: `PageAside resizable` — the kit grab
+  bar (Drawer's mechanism) on the rail's page-facing edge, width persisted,
+  never more than half the measured row (aria, CSS variable and rendered
+  width agree; the preference survives for a wider screen); public-API
+  freeze, canonical stylesheet and embedded manifest regenerated; the inline
+  CSS-variable style rides the approved inline-geometry exception. bits
+  f984bc8: ChatDock passes `resizable` (280px minimum); the Files tab shows
+  ONE "No files yet" state with the attach action when nothing is produced
+  or attached, picker/dialogs at a stable position so a layout switch never
+  remounts them. Codex 5 rounds (4 findings, each fixed red-first), round 5
+  APPROVE; live pointer drags at 1565px and 1024px on the Tailscale origin.
 - **Retry is atomic (Codex code review round 1).** The route checks
   ownership and `pending` and dispatches in one synchronous block; the
   attempt resets the count and drops `lastError` inside lock section A

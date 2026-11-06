@@ -36,3 +36,6 @@ Spec: `.claude/specs/projects-grill-start.md` · Plan: `tasks/projects-grill-sta
   `fix/question-card-one-field`, bits e578691): Codex 2 rounds (r1 two
   findings fixed, r2 APPROVE); live on 3737 (vendor rebuilt, projects
   client v12); the `ask_user` description change needs a server restart.
+- [x] T11j — resizable conversation dock + one Files empty state (bakin
+  a9bfcb5bb, bits f984bc8): Codex 5 rounds, round 5 APPROVE; live on 3737
+  (vendors rebuilt, projects client v14).
