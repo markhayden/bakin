@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+### Changed
+- **Question cards have one text field.** A structured question (`bakin_exec_ask_user`) used to stack three inputs with the composer: a "Something else…" radio that opened a bare input, a separate "Add a note (optional)" field, and the chat box below. The card now has the agent's options, "Not sure — help me choose", and ONE labelled field: with nothing picked the text is your own answer (when the agent allows one), with an option picked it goes along as a note, and "Clear choice" hands the text its answer role back. Enter in the field answers. The tool description tells agents the card adds "Not sure" and the own-answer field itself, so a lead no longer offers its own duplicate "Help me choose" option.
+
 ## [0.0.1-rc.46] - 2026-10-27
 
 Bakin loads fast again on a lived-in home: the page no longer downloads a snapshot of everything under `~/.bakin`, and avatars, activity and live file events stay small.

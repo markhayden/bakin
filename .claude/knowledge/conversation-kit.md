@@ -93,10 +93,13 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   (`**<question>** → `), otherwise skips it; only the newest open card is
   `answerable`. State derivation is one backward pass — linear in history.
 - **Card.** `QuestionCard` (kit-internal; AgentTurn renders it) composes
-  RadioGroup/Input/Badge/Button: recommendation LABELLED, never preselected;
-  "Something else…" (when allowed), "Not sure — help me choose", optional
-  note, explicit Answer (arrows select, Enter submits — handled explicitly
-  because Base UI radios swallow Enter); read-only while its turn streams,
+  RadioGroup/Input/Label/Badge/Button: recommendation LABELLED, never preselected;
+  "Not sure — help me choose"; ONE text field (the user's own answer when
+  nothing is picked and `allowOther`, otherwise a note on the choice — the
+  earlier "Something else…" radio + bare input + separate note field stacked
+  three inputs on screen with the composer, 2026-11-05) with a "Clear choice"
+  button while an option is picked; explicit Answer (arrows select, Enter
+  submits — handled explicitly because Base UI radios swallow Enter); read-only while its turn streams,
   while the thread is `busy` (surfaces pass their in-flight flag: a remount
   mid-turn folds the persisted rows as settled), or when not answerable; answered/skipped collapse. The form is deliberately UNNAMED (a
   named form is a landmark — a transcript of cards would duplicate them); the

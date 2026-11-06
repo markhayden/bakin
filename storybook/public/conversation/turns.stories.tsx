@@ -250,7 +250,7 @@ function QuestionCardStates() {
           <section aria-labelledby="question-open-heading" className="bakin-conversation-story__section">
             <header>
               <h2 id="question-open-heading">Open and answerable</h2>
-              <p>Nothing is preselected. Something else and Not sure are always available; the note is optional.</p>
+              <p>Nothing is preselected. Not sure is always available, and the one text field is the user's own answer with nothing picked or a note on the choice they picked.</p>
             </header>
             <div className="bakin-conversation-story__transcript">
               <AgentTurn agent={mainAgent} turn={open} onAnswerQuestion={setSent} />
@@ -273,7 +273,7 @@ function QuestionCardStates() {
           <section aria-labelledby="question-narrow-heading" className="bakin-conversation-story__section">
             <header>
               <h2 id="question-narrow-heading">Narrow docked panel</h2>
-              <p>At dock widths the note and Answer stack instead of squeezing the options.</p>
+              <p>At dock widths the text field and Answer stack instead of squeezing the options.</p>
             </header>
             <div style={{ inlineSize: '320px' }}>
               <AgentTurn agent={mainAgent} turn={agentTurnsOf([questionRow('q_story00000000006', 'narrow')])[0]!} />
@@ -294,7 +294,7 @@ export const QuestionCards = {
     await expect(canvas.getAllByText('Recommended').length).toBeGreaterThan(0)
     await userEvent.click(within(group).getByRole('radio', { name: /Personal and work/ }))
     const form = group.closest('form')!
-    await userEvent.type(within(form).getByRole('textbox', { name: 'Add a note (optional)' }), 'last year only')
+    await userEvent.type(within(form).getByRole('textbox', { name: 'Write your own answer, or add a note to your choice' }), 'last year only')
     await userEvent.click(within(form).getByRole('button', { name: 'Answer' }))
     await expect(canvas.getByRole('status', { name: 'Sent answer' }))
       .toHaveTextContent('**Which inbox are we cleaning?** → Personal and work last year only')

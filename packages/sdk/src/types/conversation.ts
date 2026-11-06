@@ -52,6 +52,6 @@ export interface BakinQuestion {
   options: { label: string; description?: string }[]
   /** Index into `options` of the agent's recommended answer. */
   recommended?: number
-  /** Whether "Something else…" free text is offered. */
+  /** Whether the card accepts the user's own typed answer in place of an option. */
   allowOther: boolean
 }
