@@ -318,6 +318,20 @@ Success for the user:
   Rule for every bits/host client: never call a secure-context-only API
   (`crypto.randomUUID`, `crypto.subtle`, clipboard) on a path the page
   depends on.
+- **One text field on the question card (2026-11-05, Mark's live feedback
+  after the plain-http fix).** The kit card stacked three inputs with the
+  composer: "Something else…" opened a bare input, "Add a note (optional)"
+  sat beside it, and the chat box sat below. bakin `fix/question-card-one-field`
+  (9ce2604aa): options + "Not sure" + ONE labelled field (own answer with
+  nothing picked when `allowOther`, note otherwise), "Clear choice" refocuses
+  the field, Enter in the field submits once; the `ask_user` description tells
+  agents the card adds Not sure + the own-answer field itself. bits e578691:
+  both ask lines in the lead prompt say never to offer a "help me choose" /
+  "other" option (the lead had shown "Help me choose (Recommended)" next to
+  the card's own "Not sure — help me choose"). Codex: round 1 (focus loss,
+  Enter test bypassed Enter) fixed with RED tests; round 2 APPROVE. Verified
+  live on the Tailscale origin with real clicks and keys. Rule: an input the
+  user cannot name from its label is a bug — one field, one job.
 - **Retry is atomic (Codex code review round 1).** The route checks
   ownership and `pending` and dispatches in one synchronous block; the
   attempt resets the count and drops `lastError` inside lock section A

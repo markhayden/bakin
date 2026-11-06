@@ -31,3 +31,8 @@ Spec: `.claude/specs/projects-grill-start.md` · Plan: `tasks/projects-grill-sta
 - [x] T11h Codex round 6 on fa74f32: APPROVE, no findings (2026-11-05 14:40 MST)
 - [ ] Checkpoint 3: handed to Mark 2026-11-05 14:40 MST — branch tip fa74f32 (Codex-approved) installed on 3737 (client v11); Mark re-tests on the Tailscale origin; no push/merge until asked
 - [ ] T12 ship: push, PRs, file the D1g host follow-up issue
+
+- [x] T11i — one text field on the question card (bakin 9ce2604aa on
+  `fix/question-card-one-field`, bits e578691): Codex 2 rounds (r1 two
+  findings fixed, r2 APPROVE); live on 3737 (vendor rebuilt, projects
+  client v12); the `ask_user` description change needs a server restart.
