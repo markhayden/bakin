@@ -407,8 +407,9 @@ async function runComponent(
 /**
  * The first requirement of `component` that did not finish, if any.
  *
- * Satisfied: the required component ended `ok` or `warn`, or does not
- * apply to the active runtime. Under `--check` a required component that
+ * Satisfied: the required component ended `ok` or `warn` (`ok` only for a
+ * requirement listed in `requiresOk`), or does not apply to the active
+ * runtime. Under `--check` a required component that
  * declares `usableWhenMissing` also satisfies its dependents when its
  * check merely found it `missing`.
  */
@@ -421,7 +422,8 @@ function unmetRequirement(
     const required = outcomes.find((o) => o.name === name)
     // Not run yet means the order is wrong; the requirements test pins that.
     if (!required) continue
-    if (required.finalStatus === 'ok' || required.finalStatus === 'warn') continue
+    if (required.finalStatus === 'ok') continue
+    if (required.finalStatus === 'warn' && !component.requiresOk?.includes(name)) continue
     if (required.finalStatus === 'skipped' && required.reason === 'not_applicable') continue
     if (
       opts.checkOnly
@@ -554,8 +556,8 @@ export async function runOnboard(
         finalStatus: 'skipped',
         reason: 'requires',
         requires: unmet.name,
-        check: { name: component.name, status: 'missing', message: `Skipped: needs ${unmet.name}, which did not finish` },
-        message: `Skipped: needs ${unmet.name}, which did not finish`,
+        check: { name: component.name, status: 'missing', message: `Skipped: needs ${unmet.name}, which is not ready` },
+        message: `Skipped: needs ${unmet.name}, which is not ready`,
         remediation: unmet.remediation,
         durationMs: 0,
       }

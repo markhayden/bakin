@@ -44,13 +44,14 @@ const REQUIRES: Record<(typeof COMPONENT_NAMES)[number], readonly string[]> = {
   budget: ['settings'], channels: ['runtime'], 'recommended-plugins': ['runtime'], 'recommended-agents': ['runtime'], capabilities: ['runtime'],
 }
 const USABLE_WHEN_MISSING = new Set<string>(['mkdir', 'settings'])
+const REQUIRES_OK: Partial<Record<(typeof COMPONENT_NAMES)[number], readonly string[]>> = { 'search-models': ['search'] }
 
 function makeMock(name: (typeof COMPONENT_NAMES)[number]): OnboardingComponent {
   const check = async () => {
     scripts[name].checkCalls++
     return scripts[name].check
   }
-  const needs = { requires: REQUIRES[name], ...(USABLE_WHEN_MISSING.has(name) ? { usableWhenMissing: true } : {}) }
+  const needs = { requires: REQUIRES[name], ...(USABLE_WHEN_MISSING.has(name) ? { usableWhenMissing: true } : {}), ...(REQUIRES_OK[name] ? { requiresOk: REQUIRES_OK[name] } : {}) }
   if (CHECK_ONLY.has(name)) return { name, ...needs, manualSetup: `Set up ${name} outside Bakin.`, check }
   return {
     name,
@@ -759,11 +760,23 @@ describe('runOnboard orchestrator', () => {
       expect(scripts.llm.checkCalls).toBe(1)
     })
 
-    it('a search that only warns still satisfies search-models', async () => {
-      scripts.search.check = { name: 'search', status: 'warn', message: 'search degraded' }
+    it('a search that only warns does NOT satisfy search-models: it is an engine this home does not run', async () => {
+      scripts.search.check = { name: 'search', status: 'warn', message: 'Temporary home cannot manage the shared search service.' }
+      // Left to run, the models check would report the missing engine as an error.
+      scripts['search-models'].check = { name: 'search-models', status: 'error', message: 'engine binary not found' }
       const result = await runOnboard(opts)
-      expect(scripts['search-models'].checkCalls).toBe(1)
-      expect(result.outcomes.find((o) => o.name === 'search-models')?.finalStatus).toBe('ok')
+      expect(scripts['search-models'].checkCalls).toBe(0)
+      expect(result.outcomes.find((o) => o.name === 'search-models')).toMatchObject({ finalStatus: 'skipped', reason: 'requires', requires: 'search' })
+      // A warning upstream never turns into a failed onboarding.
+      expect(result.exitCode).toBe(2)
+      expect(result.markerWritten).toBe(true)
+    })
+
+    it('a warning satisfies an ordinary requirement', async () => {
+      scripts.settings.check = { name: 'settings', status: 'warn', message: 'settings has a caveat' }
+      const result = await runOnboard(opts)
+      expect(scripts.runtime.checkCalls).toBe(1)
+      expect(result.outcomes.filter((o) => o.reason === 'requires')).toEqual([])
     })
 
     it('a declined search skips search-models without failing the run', async () => {

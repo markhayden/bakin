@@ -115,6 +115,13 @@ interface ComponentBase {
    */
   readonly requires: readonly string[]
   /**
+   * The subset of `requires` that must have finished `ok`: a `warn` there
+   * does NOT satisfy this component. For a requirement whose warning means
+   * "this home does not run it" rather than "it works with a caveat" — the
+   * search engine's models need an engine this home actually manages.
+   */
+  readonly requiresOk?: readonly string[]
+  /**
    * Under `--check` nothing is installed, so a component that only reports
    * `missing` would block everything after it. Set this when the built-in
    * defaults make its dependents checkable before it exists (the home

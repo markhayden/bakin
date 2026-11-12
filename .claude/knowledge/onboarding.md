@@ -176,6 +176,12 @@ what it was waiting for, and is never checked or installed.
 | budget | settings |
 | llm, openclaw-integration, plugin-assets, agent-sync, models, channels, recommended-plugins, recommended-agents, capabilities | runtime |
 
+One requirement is strict (`requiresOk`): `search-models` needs `search`
+to be fully `ok`. A search step that only warns is an engine this home does
+not run (a temporary home, a service another home owns), so there is
+nothing to pull models with; left to run, the models check would report the
+missing engine as an error and fail the whole run.
+
 So a runtime that cannot be reached skips only the steps that need one;
 search, its models, media and the spend check still run. There are no
 hand-written cascades left.

@@ -53,6 +53,14 @@ describe('onboarding component requirements', () => {
     })
   })
 
+  test('only the search models insist on a requirement that is fully ok, and it is one they declare', () => {
+    const strict = COMPONENT_ORDER.filter((component) => component.requiresOk?.length).map((component) => [component.name, [...component.requiresOk!]])
+    expect(strict).toEqual([['search-models', ['search']]])
+    for (const component of COMPONENT_ORDER) {
+      for (const name of component.requiresOk ?? []) expect(component.requires).toContain(name)
+    }
+  })
+
   test('only the home and the settings file are usable before they exist', () => {
     expect(COMPONENT_ORDER.filter((component) => component.usableWhenMissing).map((component) => component.name)).toEqual(['mkdir', 'settings'])
   })
