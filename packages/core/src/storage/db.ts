@@ -16,7 +16,7 @@
  *     outbox, which is deliberately NOT in the coordination db so the
  *     ledger's coordination-facts-only contract holds.
  */
-import { Database } from 'bun:sqlite'
+import { Database, constants } from 'bun:sqlite'
 import { existsSync, mkdirSync, statSync } from 'fs'
 import { dirname } from 'path'
 import { createLogger } from '../logger'
@@ -150,8 +150,11 @@ function openReadOnly(name: string, path: string): Database {
     const walPath = `${path}-wal`
     const hasPendingLog = existsSync(walPath) && statSync(walPath).size > 0
     if (hasPendingLog) return new Database(path, { readonly: true })
+    // URI filenames must be asked for explicitly: Bun's bundled SQLite
+    // (Linux) does not enable them by default, unlike the system library
+    // on macOS — without the flag `file:…` is taken as a literal path.
     const uri = `file:${path.split('/').map(encodeURIComponent).join('/')}?immutable=1`
-    return new Database(uri, { readonly: true })
+    return new Database(uri, constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_URI)
   } catch (err) {
     throw new StorageUnavailableError(`cannot open ${name} db read-only at ${path}`, err)
   }
