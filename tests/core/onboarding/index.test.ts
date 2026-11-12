@@ -407,6 +407,21 @@ describe('runOnboard orchestrator', () => {
       expect(result.markerWritten).toBe(true)
     })
 
+    it('every skip carries a typed reason: an unexplained install skip is declined, an explained one keeps its reason and code', async () => {
+      scripts['plugin-assets'].check = { name: 'plugin-assets', status: 'missing', message: 'plugin-assets missing' }
+      scripts['plugin-assets'].install = { name: 'plugin-assets', status: 'skipped', message: 'not approved', durationMs: 0 }
+      scripts.models.check = { name: 'models', status: 'missing', message: 'no plan' }
+      scripts.models.install = { name: 'models', status: 'skipped', reason: 'unavailable', code: 'no_runnable_model', message: 'nothing can run', durationMs: 0 }
+      const result = await runOnboard({ ...opts, json: true })
+      const pluginAssets = result.outcomes.find((o) => o.name === 'plugin-assets')
+      const models = result.outcomes.find((o) => o.name === 'models')
+      expect([pluginAssets?.reason, pluginAssets?.code]).toEqual(['declined', undefined])
+      expect([models?.reason, models?.code]).toEqual(['unavailable', 'no_runnable_model'])
+      // The reason and code are on the JSON line; consumers never parse the message.
+      const line = stdoutLines.map((l) => JSON.parse(l) as Record<string, unknown>).find((l) => l.component === 'models')
+      expect(line).toMatchObject({ status: 'skipped', reason: 'unavailable', code: 'no_runnable_model' })
+    })
+
     it('a warning the install could not fix survives it — rechecked, never reported as a bare ok', async () => {
       const broken = { name: 'search-models', status: 'broken' as const, message: 'visual embedder is not the pinned download.' }
       const remaining = { name: 'search-models', status: 'warn' as const, message: "custom embedder can't load on this machine.", remediation: 'Nothing to install.' }
@@ -449,10 +464,36 @@ describe('runOnboard orchestrator', () => {
       expect(scripts.search.installCalls).toBe(0)
       expect(scripts['plugin-assets'].installCalls).toBe(0)
       expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('skipped')
+      expect(result.outcomes.find((o) => o.name === 'search')?.reason).toBe('check_only')
       expect(result.outcomes.find((o) => o.name === 'plugin-assets')?.finalStatus).toBe('skipped')
-      // check-only is non-destructive → marker still written iff no errors
       expect(result.exitCode).toBe(2)
-      expect(result.markerWritten).toBe(true)
+    })
+
+    it('never writes the marker: a check proves nothing was set up', async () => {
+      const allOk = await runOnboard({ ...opts, checkOnly: true })
+      expect(allOk.exitCode).toBe(0)
+      expect(allOk.markerWritten).toBe(false)
+      expect(saveStateCalls).toHaveLength(0)
+    })
+
+    it('never clears the marker, even when force is also set', async () => {
+      await runOnboard({ ...opts, checkOnly: true, force: true })
+      expect(clearMarkerCalls).toBe(0)
+    })
+
+    it('never provisions an empty roster: the runtime is reported as not set up yet, not as an error', async () => {
+      provisionSeedCalls = 0
+      scripts.runtime.check = {
+        name: 'runtime',
+        status: 'broken',
+        message: 'Runtime adapter returned no agents',
+        details: { emptyRoster: true },
+      }
+      const result = await runOnboard({ ...opts, checkOnly: true })
+      expect(provisionSeedCalls).toBe(0)
+      expect(scripts.runtime.checkCalls).toBe(1)
+      expect(result.outcomes.find((o) => o.name === 'runtime')).toMatchObject({ finalStatus: 'skipped', reason: 'check_only' })
+      expect(result.outcomes.some((o) => o.finalStatus === 'error')).toBe(false)
     })
   })
 
@@ -512,6 +553,7 @@ describe('runOnboard orchestrator', () => {
       expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('error')
       expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('skipped')
       expect(result.outcomes.find((o) => o.name === 'channels')?.finalStatus).toBe('skipped')
+      expect(result.outcomes.find((o) => o.name === 'channels')).toMatchObject({ reason: 'requires', requires: 'runtime' })
       // Per spec: runtime missing is a hard stop - exit 1, no marker
       expect(result.exitCode).toBe(1)
       expect(result.markerWritten).toBe(false)
@@ -589,6 +631,7 @@ describe('runOnboard orchestrator', () => {
       // search-models never even has check() called; it is pre-skipped.
       expect(scripts['search-models'].checkCalls).toBe(0)
       expect(result.outcomes.find((o) => o.name === 'search-models')?.finalStatus).toBe('skipped')
+      expect(result.outcomes.find((o) => o.name === 'search-models')).toMatchObject({ reason: 'requires', requires: 'search' })
       expect(result.outcomes.find((o) => o.name === 'search-models')?.message).toContain('search adapter binary is required')
       // plugin-assets and credentials still run; they do not depend on search.
       expect(scripts['plugin-assets'].checkCalls).toBe(1)
@@ -639,6 +682,17 @@ describe('runOnboard orchestrator', () => {
       await runOnboard({ ...opts, json: true })
       // Should emit every component: those before runtime plus downstream cascade-skips.
       expect(stdoutLines).toHaveLength(COMPONENT_NAMES.length)
+    })
+
+    it('emits a line for a component that does not apply to the runtime, with its typed reason', async () => {
+      // openclaw-integration declares supportedAdapters; the test runtime is not one of them.
+      const result = await runOnboard({ ...opts, json: true })
+      const skipped = result.outcomes.filter((o) => o.reason === 'not_applicable')
+      const lines = stdoutLines.map((l) => JSON.parse(l) as Record<string, unknown>)
+      expect(lines).toHaveLength(COMPONENT_NAMES.length)
+      for (const outcome of skipped) {
+        expect(lines.find((l) => l.component === outcome.name)).toMatchObject({ status: 'skipped', reason: 'not_applicable' })
+      }
     })
 
     it('does not emit JSON when json flag is false', async () => {

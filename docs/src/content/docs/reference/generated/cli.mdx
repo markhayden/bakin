@@ -320,7 +320,7 @@ bakin mkdir [--json]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="check" name="check" summary="Run onboarding checks." description="Runs one or all first-run readiness checks. `check channels` speaks from the running server's readiness snapshot when one is reachable and says so when it is not (configuration-only). Pass --json for the structured result.">
+<CliCommandCard id="check" name="check" summary="Run onboarding checks." description="Runs one or all first-run readiness checks. A check changes nothing: it creates no files, runs no migration and provisions nothing. `check channels` speaks from the running server's readiness snapshot when one is reachable and says so when it is not (configuration-only). Pass --json for the structured result.">
 ```sh frame="terminal"
 bakin check <runtime|search|search-models|media|llm|models|channels|plugin-assets|agent-sync|recommended-plugins|recommended-agents|all> [--json]
 ```
@@ -343,7 +343,7 @@ bakin install <search|search-models|media|plugin-assets|agent-sync|recommended-p
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="onboard" name="onboard" summary="Run first-time onboarding." description="Runs the full first-run setup flow. By default it hides raw service logs and shows a structured setup report; use --verbose for underlying logs.">
+<CliCommandCard id="onboard" name="onboard" summary="Run first-time onboarding." description="Runs the full first-run setup flow. By default it hides raw service logs and shows a structured setup report; use --verbose for underlying logs. --check reports what a run would do and changes nothing (no files, no marker, no provisioning); it cannot be combined with --force, which replays setup on an onboarded home.">
 ```sh frame="terminal"
 bakin onboard [--check] [--yes] [--json] [--force] [--verbose]
 ```
@@ -1185,5 +1185,5 @@ bakin brands remove <id> [--yes]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Nov 1, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 11, 2026 · Bakin 0.0.0-dev</span>
 </aside>

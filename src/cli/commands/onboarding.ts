@@ -112,6 +112,17 @@ export async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}
   await installAndReport('settings', { autoApprove: true, allowServiceClaim: false }, { json: options.json === true })
 }
 
+/**
+ * A check changes nothing: compose the check-only services (read-only
+ * stores, no secret creation or migration, no provisioning) before any
+ * component can reach for the normal ones. This process only checks, so
+ * the mode is never switched back.
+ */
+async function composeForCheck(): Promise<void> {
+  const { createCheckAppServices } = await import('../../core/app-services')
+  await createCheckAppServices()
+}
+
 async function cmdOnboardingCheckSingle(
   target: 'runtime' | 'search' | 'search-models' | 'media' | 'llm' | 'models' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents' | 'capabilities',
   options: { verbose?: boolean; json?: boolean } = {},
@@ -132,6 +143,7 @@ async function cmdOnboardingCheckSingle(
   }
   const isTTY = Boolean(process.stdout.isTTY)
   const result = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
+    await composeForCheck()
     const component = await componentMap[target]()
     return await component.check()
   })
@@ -150,6 +162,7 @@ async function cmdOnboardingCheckSingle(
 async function cmdOnboardingCheckAll(options: { verbose?: boolean; json?: boolean } = {}): Promise<void> {
   const isTTY = Boolean(process.stdout.isTTY)
   const results = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
+    await composeForCheck()
     const { checkAll } = await import('../../core/onboarding/index')
     return await checkAll()
   })
@@ -216,7 +229,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
     process.exit(1)
   }
   const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER, OnboardingInterruptedError } = await import('../../core/onboarding/index')
-  const { collectOnboardingSelections } = await import('../../core/cli/onboarding-interactive')
+  const { collectOnboardingSelections, OnboardingCancelledError } = await import('../../core/cli/onboarding-interactive')
   const { OnboardingAlreadyCompleteReport, OnboardingBusy, OnboardingSummary } = await import('../../core/cli/ui/onboarding')
   const { render } = await import('ink')
   const { renderToString } = await import('../../core/cli/ui/render-to-string')
@@ -227,6 +240,13 @@ async function cmdOnboard(args: string[]): Promise<void> {
   const force = args.includes('--force')
   const verbose = args.includes('--verbose')
   const isTTY = Boolean(process.stdout.isTTY)
+
+  // --check changes nothing and --force clears the marker: there is no run
+  // that does both.
+  if (checkOnly && force) {
+    console.error('bakin onboard: --check and --force cannot be combined. --check reports without changing anything; --force replays setup. Run one or the other.')
+    process.exit(1)
+  }
 
   // Early exit for already-onboarded machines unless --force or --check
   if (!force && !checkOnly && isOnboarded()) {
@@ -256,7 +276,17 @@ async function cmdOnboard(args: string[]): Promise<void> {
     force,
   }
   try {
-    const selections = await collectOnboardingSelections(baseOpts)
+    if (checkOnly) await composeForCheck()
+    let selections: Awaited<ReturnType<typeof collectOnboardingSelections>>
+    try {
+      selections = await collectOnboardingSelections(baseOpts)
+    } catch (err) {
+      if (!(err instanceof OnboardingCancelledError)) throw err
+      // Ctrl-C in the wizard: say so and exit like any interrupted command,
+      // never 0 — nothing was set up and no marker was written.
+      console.error('Onboarding cancelled before setup ran. Run `bakin onboard` again when you are ready.')
+      process.exit(130)
+    }
     const opts = { autoApprove: baseOpts.autoApprove, json, checkOnly, force, ...selections }
     const busyShowsBrand = !selections.renderedWizardScreens
 
@@ -351,6 +381,12 @@ async function cmdOnboard(args: string[]): Promise<void> {
       process.exit(130)
     }
     if (!result) return
+
+    if (json) {
+      // Always the last line: what the run came to.
+      const { runSummary } = await import('../../core/onboarding/summary')
+      console.log(JSON.stringify(runSummary(result)))
+    }
 
     if (!json) {
       if (isTTY) {

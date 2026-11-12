@@ -24,7 +24,7 @@ import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { createLogger } from '../logger'
 import { getBakinPaths } from '../content-dir'
-import { applyMigrations, getDb, withTx, StorageUnavailableError, type Db } from '../storage/db'
+import { applyMigrations, emptyWhenAbsent, getDb, withTx, StorageUnavailableError, type Db } from '../storage/db'
 import { normalizeRunCostUsdMicros, normalizeRunTokenEvidence, type RunUsageKind } from './token-evidence'
 
 const log = createLogger('execution-ledger')
@@ -1710,16 +1710,24 @@ export function recordModelProbeSuccess(input: { model: string; at?: number }): 
 
 /** Models whose last passing probe is at or after `sinceMs`. */
 export function listModelProbeSuccessesSince(sinceMs: number): string[] {
-  return guard('listModelProbeSuccessesSince', () =>
+  // Evidence read: a ledger that does not exist yet (read-only mode never
+  // creates one) holds no probe successes.
+  return emptyWhenAbsent(() => guard('listModelProbeSuccessesSince', () =>
     ledger()
       .prepare<{ model: string }, [number]>('SELECT model FROM model_probe_successes WHERE last_ok_at >= ? ORDER BY model')
       .all(sinceMs)
       .map((row) => row.model),
-  )
+  ), [])
 }
 
 /** Rejections, most recently seen first. `openOnly` = live rows. */
 export function listModelRejections(opts: { openOnly?: boolean } = {}): ModelRejectionRow[] {
+  // Evidence read: a ledger that does not exist yet (read-only mode never
+  // creates one) has recorded no rejection.
+  return emptyWhenAbsent(() => readModelRejections(opts), [])
+}
+
+function readModelRejections(opts: { openOnly?: boolean }): ModelRejectionRow[] {
   return guard('listModelRejections', () => {
     const where = opts.openOnly ? `WHERE status = 'open'` : ''
     return ledger()

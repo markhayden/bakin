@@ -71,11 +71,11 @@ async function install(opts: ComponentInstallOptions, op: OperationContext): Pro
   }
   if (current.status === 'warn') {
     skipAll('no prebuilds for this platform')
-    return { name: 'media', status: 'skipped', message: current.message, durationMs: Date.now() - started }
+    return { name: 'media', status: 'skipped', reason: 'unavailable', code: 'no_prebuilds', message: current.message, durationMs: Date.now() - started }
   }
   if (!opts.autoApprove && opts.approvedComponents?.includes('media') !== true) {
     skipAll('not approved')
-    return { name: 'media', status: 'skipped', message: `sharp ${SHARP_PIN.version} prebuilds (~8 MB) not approved — image resize/thumbnails stay degraded`, durationMs: Date.now() - started }
+    return { name: 'media', status: 'skipped', reason: 'declined', message: `sharp ${SHARP_PIN.version} prebuilds (~8 MB) not approved — image resize/thumbnails stay degraded`, durationMs: Date.now() - started }
   }
 
   try {

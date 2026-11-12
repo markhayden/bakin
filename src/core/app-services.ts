@@ -5,7 +5,7 @@ import {
   resolveAntflyPassword,
 } from '@bakin/core/media'
 import { appendAudit } from './audit'
-import { getMcpCredential } from './mcp-credentials'
+import { getMcpCredential, readMcpCredential } from './mcp-credentials'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { createRuntimeExecToolProvider } from './exec-tools/provider'
@@ -164,6 +164,53 @@ export async function createReadOnlyAppServices(): Promise<AppServices> {
   }
   setAppServices(services)
   log.info('Read-only app services ready', { runtime: `${services.runtime.name}@${services.runtime.version}` })
+  return services
+}
+
+/**
+ * Services for a process that only CHECKS (`bakin onboard --check`,
+ * `bakin check <x>`): everything a check needs to answer honestly, and
+ * nothing that can change a home.
+ *
+ *  - The runtime adapter IS initialized (a reachability check is
+ *    meaningless on a bare adapter, and `initialize()` is write-free by
+ *    conformance pin), with a credential reader that never creates the MCP
+ *    secret.
+ *  - Search is constructed and never initialized (initializing provisions
+ *    the engine).
+ *  - Every store in the process is read-only: absent ones read as nothing
+ *    recorded, existing ones are never migrated or written.
+ *  - No secret migration, no health registration, no delivery bridge, no
+ *    tool or turn recorders.
+ *
+ * Normal composition (`createAppServices`) is unchanged: the server and
+ * every install keep migrating and provisioning as before. Never use this
+ * for a server, an install or a turn.
+ */
+export async function createCheckAppServices(): Promise<AppServices> {
+  const { setStorageReadOnly } = await import('@bakin/core/storage/db')
+  setStorageReadOnly(true)
+  const settings = getSettings()
+  const { getSharedBakinTaskStore } = await import('./task-store')
+  const runtime = createRuntimeAdapter(settings.runtime.adapter)
+  await runtime.initialize({
+    contentDir: getContentDir(),
+    logger: log,
+    // A check has nothing to audit and must not append to the trail.
+    audit: () => {},
+    settings: settings.runtime.settings,
+    getLiveSettings: () => getSettings().runtime.settings,
+    bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
+    getMcpCredential: readMcpCredential,
+    readOnly: true,
+  })
+  const services: AppServices = {
+    runtime,
+    search: createSearchAdapter(settings.search.adapter),
+    tasks: getSharedBakinTaskStore(),
+  }
+  setAppServices(services)
+  log.info('Check-only app services ready', { runtime: `${runtime.name}@${runtime.version}` })
   return services
 }
 

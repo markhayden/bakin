@@ -1,5 +1,5 @@
 import { render, Box } from "ink";
-import { useState } from "react";
+import { useState, type ReactElement } from "react";
 import {
   MultiSelect,
   createMultiSelectState,
@@ -140,6 +140,37 @@ function MultiSelectPrompt({
   );
 }
 
+/** The operator left the wizard (Ctrl-C) before answering. Nothing after it runs. */
+export class OnboardingCancelledError extends Error {
+  constructor() {
+    super("Onboarding cancelled before setup ran.");
+    this.name = "OnboardingCancelledError";
+  }
+}
+
+/**
+ * Show one wizard screen and wait for its answer. Ink unmounts the screen
+ * on Ctrl-C without calling anything; left alone, the answer never arrives,
+ * the event loop drains and the process exits 0 as if onboarding had
+ * finished. An exit without an answer is a cancellation.
+ */
+function ask<T>(screen: (answer: (value: T) => void) => ReactElement): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let answered = false;
+    const app = render(
+      screen((value) => {
+        answered = true;
+        app.unmount();
+        resolve(value);
+      }),
+    );
+    const cancelled = () => {
+      if (!answered) reject(new OnboardingCancelledError());
+    };
+    void app.waitUntilExit().then(cancelled, cancelled);
+  });
+}
+
 export async function promptMultiSelect(
   title: string,
   items: MultiSelectItem[],
@@ -147,20 +178,9 @@ export async function promptMultiSelect(
 ): Promise<string[]> {
   if (items.filter((item) => !item.disabled).length === 0) return [];
 
-  return await new Promise((resolve) => {
-    let app: ReturnType<typeof render> | null = null;
-    app = render(
-      <MultiSelectPrompt
-        title={title}
-        items={items}
-        showBrand={opts.showBrand}
-        onSubmit={(ids) => {
-          app?.unmount();
-          resolve(ids);
-        }}
-      />,
-    );
-  });
+  return await ask<string[]>((answer) => (
+    <MultiSelectPrompt title={title} items={items} showBrand={opts.showBrand} onSubmit={answer} />
+  ));
 }
 
 async function promptConfirm(
@@ -169,21 +189,15 @@ async function promptConfirm(
   defaultChoice: "confirm" | "cancel" = "confirm",
   opts: { showBrand?: boolean } = {},
 ): Promise<boolean> {
-  return await new Promise((resolve) => {
-    let app: ReturnType<typeof render> | null = null;
-    app = render(
-      <OnboardingDecisionPrompt
-        title={title}
-        description={description}
-        defaultChoice={defaultChoice}
-        showBrand={opts.showBrand}
-        onSubmit={(approved) => {
-          app?.unmount();
-          resolve(approved);
-        }}
-      />,
-    );
-  });
+  return await ask<boolean>((answer) => (
+    <OnboardingDecisionPrompt
+      title={title}
+      description={description}
+      defaultChoice={defaultChoice}
+      showBrand={opts.showBrand}
+      onSubmit={answer}
+    />
+  ));
 }
 
 export async function collectOnboardingSelections(

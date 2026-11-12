@@ -7,6 +7,70 @@ and `src/core/cli/ui/onboarding.tsx` (the terminal wizard). Spec and plan for
 the current hardening work: `.claude/specs/onboarding-hardening.md`,
 `.claude/specs/onboarding-hardening-plan.md`.
 
+## Outcomes
+
+Every component ends as `ok`, `warn`, `skipped` or `error`. A skip always
+carries a typed `reason`; consumers read it (and `code`), never the message:
+
+| `reason` | Meaning |
+|---|---|
+| `not_applicable` | The step does not exist on the active runtime |
+| `declined` | Not approved (the operator said no, or there was no `--yes`) |
+| `requires` | A step it needs did not finish; `requires` names it |
+| `check_only` | `--check` found work and did not do it |
+| `unavailable` | Nothing the step can do right now and nobody refused it; `code` says what is missing (`no_runnable_model`, `no_proven_model`, `existing_plan`, `no_prebuilds`) |
+
+Under `--json` every component prints exactly one line, including one that
+does not apply (`not_applicable`), and the last line is
+`{"summary":{"exitCode":…,"markerWritten":…,"runtime":{"adapter":…,"source":…}}}`
+(`src/core/onboarding/summary.ts`; `source` is `env`, `existing` or
+`default`).
+
+Exit code (`exitCodeFor` in `index.ts`): 1 when any step is `error`; else 2
+when any step is `warn` or skipped for a reason other than `not_applicable`;
+else 0. A `requires` skip never decides the code by itself: its cause is
+upstream. The marker is written when the code is not 1 and the run is not
+`--check`.
+
+An install returns `reason` (`declined` or `unavailable`) with its skip; one
+that gives none is treated as `declined`. An install that fails for a reason
+a caller must tell apart sets `code`, and the operation settles with it
+(`result.code ?? component.failureCode ?? 'component_failed'`).
+
+## Checks change nothing
+
+`bakin onboard --check` and `bakin check <x>` create no file, run no
+migration, write no marker and provision nothing. `--check --force` is a
+usage error. The harness proves it by snapshotting the Bakin, Pi and
+OpenClaw homes and `HOME` around a check on five home shapes
+(`scenarios/check-readonly.test.ts`).
+
+How it holds:
+
+- The CLI composes `createCheckAppServices()` (`src/core/app-services.ts`)
+  before any component runs. Components reuse whatever services exist, so
+  none of them reaches for the normal composition, which migrates a legacy
+  search password and provisions search.
+- That composition puts every SQLite store in the process into read-only
+  mode (`setStorageReadOnly`, `packages/core/src/storage/db.ts`). An absent
+  store raises `StorageAbsentError`; evidence readers that mean "nothing
+  recorded yet" wrap themselves in `emptyWhenAbsent` (usage history, probe
+  successes, model rejections). An existing store is opened immutable when
+  it has no pending write-ahead log, and read through the log otherwise
+  (SQLite then maintains the `-shm` index; the database and log are never
+  written). A reader nobody listed shows up as a check error, not a write.
+- The runtime adapter is initialized with `readOnly: true`
+  (`AdapterInitOpts`). Pi uses a stand-in catalog store, because the SDK's
+  file-backed one creates `models-store.json` on first read.
+- OpenClaw tool access is verified with `readMcpCredential`, which never
+  creates `mcp-secret`. With no secret, tool access reads as not provisioned.
+- The orchestrator never writes or clears the marker under `checkOnly`, and
+  an empty roster is reported as `skipped` / `check_only`, not provisioned.
+
+The server never uses the check composition: read-only storage is a
+process-wide switch, and health checks inside a server run on the normal
+services.
+
 ## Testing onboarding
 
 Onboarding is tested by running the real CLI in a child process against a

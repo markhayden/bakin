@@ -24,10 +24,29 @@ export interface CheckResult {
   details?: Record<string, unknown>
 }
 
+/**
+ * Why a step was skipped. Consumers read this, never the message text.
+ *  - `not_applicable`: the step does not exist on the active runtime
+ *  - `declined`: the operator (or the absence of `--yes`) did not approve it
+ *  - `requires`: a step it needs did not finish (`requires` names it)
+ *  - `check_only`: `--check` found work and, by design, did not do it
+ *  - `unavailable`: there is nothing the step can do right now and nobody
+ *    refused it (`code` says what is missing); counts like a warning
+ */
+export type SkipReason = 'not_applicable' | 'declined' | 'requires' | 'check_only' | 'unavailable'
+
 export interface InstallResult {
   name: string
   status: InstallStatus
   message: string
+  /** Set when `status` is `skipped`; an install only ever declines or is unavailable. */
+  reason?: Extract<SkipReason, 'declined' | 'unavailable'>
+  /**
+   * A typed detail: what is missing when `reason` is `unavailable`
+   * (`no_runnable_model`), or the operation's outcome code when the install
+   * `failed` for a reason a caller must tell apart.
+   */
+  code?: string
   error?: unknown
   durationMs: number
 }

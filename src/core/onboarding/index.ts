@@ -61,7 +61,7 @@ import { recommendedCapabilitiesComponent } from './recommended-capabilities'
 import { saveState, clearMarker } from './state'
 import type { OnboardingInstallOptions } from './install-request'
 import { isInstallable } from './types'
-import type { CheckResult, InstallableComponent, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { CheckResult, InstallableComponent, InstallResult, OnboardingComponent, OnboardingOptions, SkipReason } from './types'
 import type { ComponentStatus } from './state'
 
 const log = createLogger('onboarding:orchestrator')
@@ -81,7 +81,7 @@ function componentApplies(component: OnboardingComponent): boolean {
 }
 
 export { isOnboarded, loadState, saveState, clearMarker, ONBOARDING_VERSION } from './state'
-export type { CheckResult, InstallResult, OnboardingOptions, OnboardingComponent, InstallableComponent, CheckOnlyComponent, CheckStatus, InstallStatus } from './types'
+export type { CheckResult, InstallResult, OnboardingOptions, OnboardingComponent, InstallableComponent, CheckOnlyComponent, CheckStatus, InstallStatus, SkipReason } from './types'
 export { isInstallable } from './types'
 
 /**
@@ -143,6 +143,12 @@ export interface ComponentOutcome {
   check: CheckResult
   /** The final message to print/return to the user. */
   message: string
+  /** Why, when finalStatus is 'skipped'. Consumers read this, never the message. */
+  reason?: SkipReason
+  /** The component that was not satisfied, when reason is 'requires'. */
+  requires?: string
+  /** A typed detail when reason is 'unavailable' (e.g. `no_runnable_model`). */
+  code?: string
   /** Remediation text, populated when finalStatus is 'warn' or 'error'. */
   remediation?: string
   /** Extra details for --json output. */
@@ -176,6 +182,9 @@ function emitJson(outcome: ComponentOutcome): void {
   const line = {
     component: outcome.name,
     status: outcome.finalStatus,
+    ...(outcome.reason ? { reason: outcome.reason } : {}),
+    ...(outcome.requires ? { requires: outcome.requires } : {}),
+    ...(outcome.code ? { code: outcome.code } : {}),
     message: outcome.message,
     ...(outcome.remediation ? { remediation: outcome.remediation } : {}),
     ...(outcome.details ? { details: outcome.details } : {}),
@@ -262,6 +271,7 @@ async function runComponent(
     return {
       name: component.name,
       finalStatus: 'skipped',
+      reason: 'check_only',
       check,
       message: `${check.message} (check-only mode, not installing)`,
       remediation: check.remediation,
@@ -327,6 +337,9 @@ async function runComponent(
         return {
           name: component.name,
           finalStatus: 'skipped',
+          // An install that skips without saying why was not approved.
+          reason: install.reason ?? 'declined',
+          ...(install.code ? { code: install.code } : {}),
           check,
           message: install.message,
           remediation: check.remediation,
@@ -365,11 +378,25 @@ async function runComponent(
  * components a runtime that is not ok blocks everything after it. So we
  * translate any non-ok status into an error the orchestrator cascades on.
  */
-async function runRuntimeInline(component: OnboardingComponent): Promise<ComponentOutcome> {
+async function runRuntimeInline(component: OnboardingComponent, opts: OnboardingOptions): Promise<ComponentOutcome> {
   const start = Date.now()
   let check: CheckResult
   try {
     check = await component.check()
+    if (check.status === 'broken' && check.details?.emptyRoster === true && opts.checkOnly) {
+      // A check never provisions. The runtime is there and simply has not
+      // been set up by Bakin yet: that is work for a real run, not an error.
+      return {
+        name: component.name,
+        finalStatus: 'skipped',
+        reason: 'check_only',
+        check,
+        message: `${check.message} — onboarding provisions the runtime (check-only mode, not provisioning)`,
+        remediation: check.remediation,
+        details: check.details,
+        durationMs: Date.now() - start,
+      }
+    }
     if (check.status === 'broken' && check.details?.emptyRoster === true) {
       // First-run state: the roster is empty because initialize() is
       // write-free and nothing has provisioned yet. Onboarding IS a
@@ -419,6 +446,22 @@ async function runRuntimeInline(component: OnboardingComponent): Promise<Compone
 }
 
 /**
+ * The run's exit code, from statuses and typed reasons alone:
+ *  - 1 when any step ended in `error`. A step skipped because it `requires`
+ *    another never decides this on its own: its cause is upstream, and only
+ *    an upstream error makes the run a failure.
+ *  - 2 when the run is as complete as it was allowed to be but not whole:
+ *    a warning, or a step skipped for any reason except `not_applicable`.
+ *  - 0 otherwise. A step that does not exist on this runtime is not
+ *    unfinished work and never affects the code.
+ */
+export function exitCodeFor(outcomes: ReadonlyArray<Pick<ComponentOutcome, 'finalStatus' | 'reason'>>): 0 | 1 | 2 {
+  if (outcomes.some((o) => o.finalStatus === 'error')) return 1
+  const unfinished = outcomes.some((o) => o.finalStatus === 'warn' || (o.finalStatus === 'skipped' && o.reason !== 'not_applicable'))
+  return unfinished ? 2 : 0
+}
+
+/**
  * Run every component's `check()` in dependency order and return the
  * results. Never touches install() — safe for doctor or CI auditing.
  */
@@ -454,8 +497,9 @@ export async function checkAll(): Promise<CheckResult[]> {
 /** Throws `OnboardingInterruptedError` when the installer reports the operator stopped an install. */
 export async function runOnboard(opts: OnboardingOptions, installComponent: ComponentInstaller): Promise<RunOnboardResult> {
   // Clear the marker upfront if --force was passed. The user wants to
-  // replay the whole flow regardless of prior state.
-  if (opts.force) clearMarker()
+  // replay the whole flow regardless of prior state. Never under --check:
+  // a check changes nothing (the CLI refuses the combination outright).
+  if (opts.force && !opts.checkOnly) clearMarker()
 
   const outcomes: ComponentOutcome[] = []
 
@@ -468,12 +512,16 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
       const skip: ComponentOutcome = {
         name: component.name,
         finalStatus: 'skipped',
+        reason: 'not_applicable',
         check: { name: component.name, status: 'ok', message: 'not applicable to the configured runtime adapter' },
         message: 'not applicable to the configured runtime adapter (skipped)',
         durationMs: 0,
       }
       outcomes.push(skip)
       opts.onOutcome?.({ name: skip.name, finalStatus: 'skipped', message: skip.message })
+      // Every component gets a line, including one that does not apply: a
+      // consumer never has to infer a step from its absence.
+      if (opts.json) emitJson(skip)
       continue
     }
 
@@ -485,6 +533,8 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
         const skip: ComponentOutcome = {
           name: 'search-models',
           finalStatus: 'skipped',
+          reason: 'requires',
+          requires: 'search',
           check: {
             name: 'search-models',
             status: 'missing',
@@ -507,7 +557,7 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
     // only, derive the outcome from that, and cascade-skip downstream if
     // anything other than ok.
     if (component.name === 'runtime') {
-      const outcome = await runRuntimeInline(component)
+      const outcome = await runRuntimeInline(component, opts)
       outcomes.push(outcome)
       emitOutcome(opts, outcome)
       if (opts.json) emitJson(outcome)
@@ -518,6 +568,8 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
           const skip: ComponentOutcome = {
             name: remaining.name,
             finalStatus: 'skipped',
+            reason: 'requires',
+            requires: 'runtime',
             check: {
               name: remaining.name,
               status: 'missing',
@@ -542,14 +594,13 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
     if (opts.json) emitJson(outcome)
   }
 
-  // Aggregate exit code
-  const hasError = outcomes.some((o) => o.finalStatus === 'error')
-  const hasSkippedOrWarn = outcomes.some((o) => o.finalStatus === 'warn' || o.finalStatus === 'skipped')
-  const exitCode: 0 | 1 | 2 = hasError ? 1 : hasSkippedOrWarn ? 2 : 0
+  const exitCode = exitCodeFor(outcomes)
+  const hasError = exitCode === 1
 
-  // Marker: write iff no errors. Warn/skipped are valid end-states.
+  // Marker: write iff no errors and this was a real run. Warn/skipped are
+  // valid end-states; a check proves nothing was set up and writes nothing.
   let markerWritten = false
-  if (!hasError) {
+  if (!hasError && !opts.checkOnly) {
     const components: Record<string, ComponentStatus> = {}
     for (const o of outcomes) components[o.name] = o.finalStatus
     try {

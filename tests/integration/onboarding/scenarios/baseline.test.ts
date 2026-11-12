@@ -9,7 +9,7 @@ import { join } from 'path'
 
 import { seedOpenClaw, seedPi, storeAdapter, storedAdapter, type OpenClawFixture } from '../fixtures'
 import { diffTrees, isUnchanged, snapshotTree, trackHomes, type OnboardingHome } from '../harness'
-import { describe as describeRun, markerPath, onboard, outcomes, readMarker, statuses, TEST_TIMEOUT } from './kit'
+import { describe as describeRun, markerPath, onboard, outcomes, readMarker, statuses, summary, TEST_TIMEOUT } from './kit'
 
 const homes = trackHomes()
 const gateways: OpenClawFixture[] = []
@@ -49,6 +49,7 @@ describe('a stored runtime runs to a marker', () => {
     const marker = readMarker(home)
     expect(marker?.components.runtime).toBe('ok')
     expect(storedAdapter(home)).toBe('pi')
+    expect(summary(run)).toEqual({ exitCode: 2, markerWritten: true, runtime: { adapter: 'pi', source: 'existing' } })
   }, TEST_TIMEOUT)
 
   test('OpenClaw, gateway up', async () => {
@@ -168,6 +169,7 @@ describe('environment overrides', () => {
     const lines = outcomes(run)
     expect(lines.runtime?.status, describeRun(run)).toBe('ok')
     expect(lines.runtime?.message).toContain('pi')
+    expect(summary(run)?.runtime).toEqual({ adapter: 'pi', source: 'env' })
     expect(readMarker(home)).not.toBeNull()
     expect(storedAdapter(home)).toBeUndefined()
   }, TEST_TIMEOUT)

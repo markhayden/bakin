@@ -146,6 +146,7 @@ async function install(opts: ComponentInstallOptions, op: OperationContext): Pro
     return {
       name: 'recommended-plugins',
       status: 'skipped',
+      reason: 'declined',
       message: 'No recommended official plugins selected',
       durationMs: Date.now() - start,
     }
