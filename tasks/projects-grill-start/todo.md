@@ -56,7 +56,16 @@ Spec: `.claude/specs/projects-grill-start.md` · Plan: `tasks/projects-grill-sta
   threads, retained live turn scoped to one settle, one reply answers one card,
   QuestionCards story renders the folded exchange, actRender), r2 (4 findings →
   settle refetch owed + replacement load, optimistic rows reconciled, meter once,
-  the stale-load test rejects), r3 pending. Also ea4292b32: `max-w-1/2` for the
+  the stale-load test rejects), r3 (4 → de9fbc400 → bd785832f: ack-based retirement, baseline), r4 (3 → 0720de014: content matching
+  REMOVED — ack-only, owed settle waits for in-flight sends, queued answer on the plain
+  path), r5 (5 → eaa1c683d: settle deferred while a POST is unanswered, per-thread send
+  generations), r6 (3 → e438837d0: live-turn ownership generations, generation-checked
+  acks), r7 (2 → db41b7566: every settle retires the live generation), r8: both r7
+  findings confirmed fixed; the two remaining findings PREDATE the branch (mid-turn
+  remount seed discarded when a delta beats the initial load; chat's queued-event
+  refetch mid-turn renders persisted rows beside their live chunks) — out of scope,
+  noted on the PR. Lesson: content-matching optimistic rows is a hole factory; the
+  POST acknowledgment is the only durability signal. Also ea4292b32: `max-w-1/2` for the
   unmeasured aside cap (legacy ratchet) + two exception reviews renewed to
   2027-01-31 (dnd-card expired 2026-11-09, reactflow 2026-11-12 — main fails the
   quick gate without it).
