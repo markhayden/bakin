@@ -7,24 +7,12 @@
  */
 import { z } from 'zod'
 
-/** Components whose install changes something. Check-only components (credentials, channels, budget) have nothing to install. */
-export const INSTALLABLE_COMPONENTS = [
-  'mkdir',
-  'settings',
-  'runtime',
-  'search',
-  'search-models',
-  'media',
-  'openclaw-integration',
-  'plugin-assets',
-  'agent-sync',
-  'models',
-  'recommended-plugins',
-  'recommended-agents',
-  'capabilities',
-] as const
+import { INSTALLABLE_COMPONENT_NAMES } from './component-names'
 
-export type InstallableComponent = (typeof INSTALLABLE_COMPONENTS)[number]
+/** Components whose install changes something. Check-only components (credentials, channels, budget) have nothing to install. */
+export const INSTALLABLE_COMPONENTS = INSTALLABLE_COMPONENT_NAMES as [InstallableComponent, ...InstallableComponent[]]
+
+export type InstallableComponent = (typeof INSTALLABLE_COMPONENT_NAMES)[number]
 
 export const OnboardingInstallOptionsSchema = z.object({
   /** The caller already has the operator's consent (`--yes`, a confirmed prompt, a one-click fix). */

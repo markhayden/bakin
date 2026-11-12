@@ -70,6 +70,14 @@ mock.module('../../src/core/cli/onboarding-interactive', () => ({
   waitForCredentials: async () => ({ outcome: 'ready', asked: false }),
 }))
 
+// The checklist asks the readiness engines of this home; here it is given.
+mock.module('../../src/core/onboarding/setup-checklist', () => ({
+  getSetupChecklist: async () => ({
+    items: [{ id: 'login', title: 'Log in to Pi', state: 'todo', detail: 'Run `pi`. Type `/login`.' }],
+    notes: [{ id: 'start', title: 'Start Bakin', detail: 'Launch the server and open the dashboard.', command: 'bakin start' }],
+  }),
+}))
+
 // The runtime decision reads the machine (which runtimes are set up) and
 // this home's settings; here it has already been made.
 type Chosen = { kind: 'use'; adapter: string; source: string; persist: boolean; found: string[] } | { kind: 'refused'; code: string; message: string; found: string[] }
@@ -113,7 +121,11 @@ describe('CLI onboard command', () => {
     expect(output).toContain('Onboarding')
     expect(output).toContain('Machine setup complete')
     expect(output).toContain('PREREQUISITES')
-    expect(output).toContain('Run `bakin start` to launch Bakin.')
+    // The finish screen ends on the setup checklist: what is left, and how to start.
+    const words = output.replace(/\s+/g, ' ')
+    expect(words).toContain('SETUP CHECKLIST')
+    expect(words).toContain('Log in to Pi')
+    expect(words).toContain('Start Bakin: Launch the server and open the dashboard. Run `bakin start`.')
   })
 
   it('continues onboarding progress without replaying the brand after wizard screens', async () => {

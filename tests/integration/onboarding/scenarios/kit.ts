@@ -67,6 +67,7 @@ export interface RunSummary {
   exitCode?: number
   markerWritten?: boolean
   runtime?: { adapter?: string; source?: string; refused?: string; found?: string[] }
+  checklist?: unknown
   [key: string]: unknown
 }
 

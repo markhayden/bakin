@@ -385,12 +385,14 @@ export type TreeSnapshot = Record<string, string>
  * directory (value `dir`), so a created empty directory is a difference
  * too. `logs/` is excluded at any depth: log lines are not state.
  */
-export function snapshotTree(root: string): TreeSnapshot {
+export function snapshotTree(root: string, options: { includeLogs?: boolean } = {}): TreeSnapshot {
   const out: TreeSnapshot = {}
   if (!existsSync(root)) return out
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isDirectory() && entry.name === 'logs') continue
+      // Log lines are not state — except for a run that must write nothing
+      // at all, which asks for them (`includeLogs`).
+      if (!options.includeLogs && entry.isDirectory() && entry.name === 'logs') continue
       const full = join(dir, entry.name)
       const rel = relative(root, full)
       if (entry.isDirectory()) {

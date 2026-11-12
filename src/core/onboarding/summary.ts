@@ -6,6 +6,7 @@
 import { getSupportedRuntimeAdapterNames } from '../runtime-adapter-factory'
 import { getSettings, type RuntimeAdapterName } from '../settings'
 import { readStoredRuntimeAdapter } from './settings'
+import type { SetupChecklist } from './setup-checklist'
 
 /**
  * Where the active runtime adapter came from:
@@ -24,6 +25,8 @@ export interface RunSummary {
   exitCode: 0 | 1 | 2
   markerWritten: boolean
   runtime: SummaryRuntime
+  /** What is left to set up. Absent when the run was blocked: the blocker is the next step. */
+  checklist?: SetupChecklist
 }
 
 function isAdapter(value: unknown): value is RuntimeAdapterName {
@@ -50,10 +53,11 @@ export function runSummary(
   result: { exitCode: 0 | 1 | 2; markerWritten: boolean; outcomes?: ReadonlyArray<{ name: string; code?: string }> },
   decided?: { adapter: RuntimeAdapterName; source: RuntimeSource },
   found: RuntimeAdapterName[] = [],
+  checklist?: SetupChecklist,
 ): { summary: RunSummary } {
   const refused = result.outcomes?.find((outcome) => outcome.name === 'settings' && outcome.code !== undefined && COMMIT_REFUSALS.has(outcome.code))?.code
   const runtime: SummaryRuntime = refused ? { refused, found } : decided ?? activeRuntime()
-  return { summary: { exitCode: result.exitCode, markerWritten: result.markerWritten, runtime } }
+  return { summary: { exitCode: result.exitCode, markerWritten: result.markerWritten, runtime, ...(checklist ? { checklist } : {}) } }
 }
 
 /** The whole output of a run that was refused before anything ran. */

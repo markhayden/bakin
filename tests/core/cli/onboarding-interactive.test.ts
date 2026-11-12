@@ -59,8 +59,12 @@ mock.module('../../../src/core/onboarding/search', () => ({ searchComponent: { n
 mock.module('../../../src/core/onboarding/search-models', () => ({ searchModelsComponent: { name: 'search-models', check: async () => ok('search-models') } }))
 mock.module('../../../src/core/onboarding/media', () => ({ mediaComponent: { name: 'media', check: async () => mediaCheck } }))
 mock.module('../../../src/core/onboarding/models', () => ({ modelsComponent: { name: 'models', check: async () => ok('models') } }))
-mock.module('../../../src/core/onboarding/recommended-plugins', () => ({ recommendedPluginsComponent: { name: 'recommended-plugins', check: async () => ok('recommended-plugins') } }))
-mock.module('../../../src/core/onboarding/recommended-agents', () => ({ recommendedAgentsComponent: { name: 'recommended-agents', check: async () => ok('recommended-agents') } }))
+let pluginCheck: Check = ok('recommended-plugins')
+let agentCheck: Check = ok('recommended-agents')
+let pluginChecks = 0
+let agentChecks = 0
+mock.module('../../../src/core/onboarding/recommended-plugins', () => ({ recommendedPluginsComponent: { name: 'recommended-plugins', check: async () => { pluginChecks++; return pluginCheck } } }))
+mock.module('../../../src/core/onboarding/recommended-agents', () => ({ recommendedAgentsComponent: { name: 'recommended-agents', check: async () => { agentChecks++; return agentCheck } } }))
 
 import { collectOnboardingSelections, OnboardingCancelledError, waitForCredentials } from '../../../src/core/cli/onboarding-interactive'
 
@@ -69,6 +73,8 @@ const INTERACTIVE = { interactive: true, autoApprove: false, json: false, checkO
 const READY = { runtimeReady: true }
 
 beforeEach(() => {
+  pluginCheck = ok('recommended-plugins')
+  agentCheck = ok('recommended-agents')
   titles.length = 0
   screens.length = 0
   scriptedAnswers.length = 0
@@ -82,6 +88,25 @@ describe('collectOnboardingSelections', () => {
     const selections = await collectOnboardingSelections(INTERACTIVE, READY)
     expect(titles).toContain('Image processing')
     expect(selections.approvedComponents).toEqual(['media'])
+  })
+
+  it('a declined component is neither checked nor asked about (--no-recommended)', async () => {
+    pluginChecks = 0
+    agentChecks = 0
+    pluginCheck = { name: 'recommended-plugins', status: 'missing', message: 'missing', details: { missing: ['projects'], available: [{ id: 'projects', name: 'Projects', defaultSelected: true }] } }
+    agentCheck = { name: 'recommended-agents', status: 'missing', message: 'missing', details: { missing: ['enrich'], available: [{ id: 'enrich', name: 'Enrich', defaultSelected: true }] } }
+    const selections = await collectOnboardingSelections(INTERACTIVE, { ...READY, declined: ['recommended-plugins', 'recommended-agents', 'capabilities'] })
+    expect(titles).toEqual([])
+    expect([pluginChecks, agentChecks]).toEqual([0, 0])
+    expect(selections.selectedRecommendedPluginIds).toBeUndefined()
+    expect(selections.selectedRecommendedAgentIds).toBeUndefined()
+  })
+
+  it('without a decline the same home IS asked about both', async () => {
+    pluginCheck = { name: 'recommended-plugins', status: 'missing', message: 'missing', details: { missing: ['projects'], available: [{ id: 'projects', name: 'Projects', defaultSelected: true }] } }
+    agentCheck = { name: 'recommended-agents', status: 'missing', message: 'missing', details: { missing: ['enrich'], available: [{ id: 'enrich', name: 'Enrich', defaultSelected: true }] } }
+    await collectOnboardingSelections(INTERACTIVE, READY)
+    expect(titles).toEqual(['Install official plugins', 'Install official agents'])
   })
 
   it('leaving a screen with Ctrl-C is a cancellation, never a silent finish', async () => {
