@@ -13,7 +13,8 @@
 
 declare module 'bun:sqlite' {
   export class Database {
-    constructor(path: string, options?: { readonly?: boolean; create?: boolean })
+    /** `options` may also be a bitmask of `constants.SQLITE_OPEN_*` flags. */
+    constructor(path: string, options?: number | { readonly?: boolean; create?: boolean })
     prepare<Row = unknown, Params = unknown[]>(sql: string): Statement<Row, Params>
     exec(sql: string): void
     transaction<F extends (...args: unknown[]) => unknown>(fn: F): F
