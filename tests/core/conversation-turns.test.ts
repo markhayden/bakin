@@ -362,8 +362,9 @@ describe('conversation turn service', () => {
 
   test('two empty completions settle as an error turn with kind empty_reply — never a silent gap', async () => {
     const h = makeHarness()
-    h.setStream(async function* () { yield { type: 'done' } as ChatChunk })
-    const service = makeService(h)
+    h.setStream(async function* () { yield { type: 'done', usage: { input: 10, output: 4 } } as ChatChunk })
+    const metered: unknown[] = []
+    const service = makeService(h, { hooks: { meter: async (info) => { metered.push(info.usage) } } })
     expect(await service.start(h.ctx, 'e2', 'my answer')).toBe('accepted')
     await waitUntil(() => h.events.some((e) => e.event === 'test.error'), { label: 'error settled' })
     expect(h.seenArgs).toHaveLength(2)
@@ -371,6 +372,9 @@ describe('conversation turn service', () => {
     expect(last.kind).toBe('error')
     expect(last.errorKind).toBe('empty_reply')
     expect(h.events.find((e) => e.event === 'test.error')!.data).toMatchObject({ kind: 'empty_reply' })
+    // Both completions were billed by the provider — the failed turn still
+    // attributes them (summed), exactly as an aborted turn would.
+    expect(metered).toEqual([{ input: 20, output: 8 }])
   })
 
   test('a tool-only completion is not empty — no nudge', async () => {

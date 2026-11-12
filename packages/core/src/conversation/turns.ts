@@ -22,7 +22,8 @@
  * carry a visible placeholder; only text|tool|status chunks ride the chunk
  * event; typed error kinds survive to the durable row and the error event;
  * abort ends clean with an `aborted` marker row + done flag; metering runs
- * for success AND abort (never error), with whatever usage arrived; the
+ * for success AND abort with whatever usage arrived, and for an error only
+ * when a done chunk already billed (two empty completions); the
  * slot releases BEFORE onSettled chains (holding it 409'd quick
  * follow-ups); waitFor() called mid-turn also covers the onSettled tail.
  */
@@ -894,6 +895,16 @@ async function runTurn(
     await persist([
       { kind: 'error', ts: new Date().toISOString(), turnId, message, ...(kind ? { errorKind: kind } : {}) },
     ])
+    // A completion that was billed before the turn failed (an empty reply
+    // twice: two done chunks, then the error) is still spend — attribute
+    // it like an aborted turn's. No done arrived ⇒ nothing to attribute.
+    if (doneUsage) {
+      try {
+        await config.hooks?.meter?.({ key, agentId, turnId, usage: doneUsage })
+      } catch (meterErr) {
+        log.error(`[${config.name}] metering failed for ${key}`, meterErr as Error)
+      }
+    }
     try {
       ctx.events.emit(config.events.error, { ...config.payload(key), agentId, message, ...(kind ? { kind } : {}) })
     } catch (emitErr) {
