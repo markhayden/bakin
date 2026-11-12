@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect } from 'storybook/test'
+import { expect, waitFor } from 'storybook/test'
 
 import {
   ListRow,
@@ -212,7 +212,11 @@ export const ConversationDock = {
     // reports its width. Start from a known edge (End = max) so a width
     // persisted by an earlier replay cannot make the round trip ambiguous.
     const resizer = canvas.getByRole('separator', { name: 'Resize project conversation' })
-    const max = Number(resizer.getAttribute('aria-valuemax'))
+    // The cap is half the MEASURED row (44rem → 352px); before the observer's
+    // first measurement the rail still reports the 720px preset, and a slow
+    // runner reads that stale max (CI 2026-11-12: expected 720, got 352).
+    await waitFor(() => expect(resizer).toHaveAttribute('aria-valuemax', '352'))
+    const max = 352
     resizer.focus()
     await userEvent.keyboard('{End}')
     await expect(resizer).toHaveAttribute('aria-valuenow', String(max))
