@@ -54309,6 +54309,10 @@
                           "type": "string"
                         }
                       },
+                      "runtimeAdapter": {
+                        "type": "string",
+                        "minLength": 1
+                      },
                       "allowServiceClaim": {
                         "default": false,
                         "type": "boolean"

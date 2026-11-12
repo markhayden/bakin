@@ -36,6 +36,14 @@ export const OnboardingInstallOptionsSchema = z.object({
   /** Official agent ids picked in the wizard; absent means the component's defaults. */
   selectedRecommendedAgentIds: z.array(z.string()).optional(),
   /**
+   * `settings` only: the runtime a first run decided on, to be stored when
+   * this home stores none yet. The install commits it under `install-state`
+   * and refuses (`runtime_already_set`, `server_running_other_runtime`)
+   * rather than switch. Validated against the supported runtimes by the
+   * component — this schema stays free of provider names.
+   */
+  runtimeAdapter: z.string().min(1).optional(),
+  /**
    * Claim the search service for this home. A server honours it only with a
    * matching `X-Bakin-Cli-Secret` (the operator's CLI read this home's lock).
    */

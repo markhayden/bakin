@@ -3,11 +3,9 @@
  * object under a `summary` key, so it can never be mistaken for a
  * component line.
  */
-import { existsSync, readFileSync } from 'fs'
-
-import { getBakinPaths } from '../content-dir'
 import { getSupportedRuntimeAdapterNames } from '../runtime-adapter-factory'
 import { getSettings, type RuntimeAdapterName } from '../settings'
+import { readStoredRuntimeAdapter } from './settings'
 
 /**
  * Where the active runtime adapter came from:
@@ -25,18 +23,6 @@ export interface RunSummary {
 
 function isAdapter(value: unknown): value is RuntimeAdapterName {
   return (getSupportedRuntimeAdapterNames() as readonly unknown[]).includes(value)
-}
-
-/** The adapter stored in this home's settings file, if it names a supported one. */
-export function readStoredRuntimeAdapter(): RuntimeAdapterName | undefined {
-  const path = getBakinPaths().settings
-  if (!existsSync(path)) return undefined
-  try {
-    const stored = (JSON.parse(readFileSync(path, 'utf-8')) as { runtime?: { adapter?: unknown } } | null)?.runtime?.adapter
-    return isAdapter(stored) ? stored : undefined
-  } catch {
-    return undefined // an unreadable file stores nothing; the settings step reports it
-  }
 }
 
 export function activeRuntime(): RunSummary['runtime'] {

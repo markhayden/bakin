@@ -178,7 +178,7 @@ describe('an invalid or conflicting choice is refused before any write (pinned: 
   }), TEST_TIMEOUT)
 })
 
-describe('a settings file that says nothing or cannot be read (pinned: flipped by task 3.7)', () => {
+describe('a settings file that says nothing (pinned: flipped by task 3.7)', () => {
   // These homes have no settings scaffold, so the product runs on its real
   // default endpoints; the harness denies those without calling it a breach.
   test.each([
@@ -195,11 +195,15 @@ describe('a settings file that says nothing or cannot be read (pinned: flipped b
     expect(storedAdapter(home)).toBe('pi')
     expect(readMarker(home)).not.toBeNull()
   })(), TEST_TIMEOUT)
+})
 
+describe('a settings file that cannot be trusted', () => {
+  // No usable settings, so the product runs on its default endpoints; the
+  // harness denies those without calling it a breach.
   test.each([
     ['not JSON', '{ "runtime": '],
     ['an unsupported stored adapter', JSON.stringify({ runtime: { adapter: 'bogus' } })],
-  ])('settings %s: stops with an error and leaves the file alone', (_label, content) => gap(async () => {
+  ])('settings %s: stops with an error and leaves the file alone', async (_label, content) => {
     const home = await homes.create()
     home.blackholeProductDefaults()
     writeFileSync(home.settingsPath, content)
@@ -213,5 +217,5 @@ describe('a settings file that says nothing or cannot be read (pinned: flipped b
     // Nothing was decided or provisioned on top of a file nobody can trust.
     expect(diffTrees(piBefore, snapshotTree(home.piHome))).toEqual({ added: [], removed: [], changed: [] })
     expect(summary(run)?.markerWritten).toBe(false)
-  })(), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 })

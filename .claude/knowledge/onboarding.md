@@ -56,6 +56,28 @@ throw from the boundary (the operator left the wizard with Ctrl-C) stops
 onboarding there: nothing after the bootstrap runs, no marker is written,
 exit 130.
 
+## The settings step
+
+`settings.ts` gates everything that reads `getSettings()` and is where a
+first-run runtime choice is committed.
+
+- `inspectSettingsFile()` reads the file strictly (the file as it is, not
+  the merged defaults): `absent`, `empty` (zero bytes), `readable` (with the
+  supported runtime it stores, if any) or `untrustworthy` (unreadable, not
+  JSON, not an object, or naming a runtime Bakin does not support).
+- **It never writes over a file it cannot trust.** `untrustworthy` is a
+  check `error` and an install failure (`settings_untrustworthy`); the
+  bytes are left alone. Before this, an unparseable file was silently
+  reseeded. A zero-byte file is still reseeded.
+- **The runtime commit.** The install takes an optional `runtimeAdapter`
+  (part of the operation's identity) and owns `install-state`. Inside the
+  operation it re-reads what is stored: nothing stored → the proposal is
+  written; the same value → nothing to do; a different one → fails
+  `runtime_already_set`. In a server process it also compares the adapter
+  that server bound at boot and fails `server_running_other_runtime` when
+  they differ. So two runs deciding at once produce one winner and one
+  refusal, and onboarding never switches a runtime.
+
 ## Runtime and credentials are two facts
 
 - **`runtime`** (`runtime.ts`): the adapter initializes, is reachable, and
