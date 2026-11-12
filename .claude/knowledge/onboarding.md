@@ -25,6 +25,40 @@ that gives none is treated as `declined`. An install that fails for a reason
 a caller must tell apart sets `code`, and the operation settles with it
 (`result.code ?? component.failureCode ?? 'component_failed'`).
 
+## Checks change nothing
+
+`bakin onboard --check` and `bakin check <x>` create no file, run no
+migration, write no marker and provision nothing. `--check --force` is a
+usage error. The harness proves it by snapshotting the Bakin, Pi and
+OpenClaw homes and `HOME` around a check on five home shapes
+(`scenarios/check-readonly.test.ts`).
+
+How it holds:
+
+- The CLI composes `createCheckAppServices()` (`src/core/app-services.ts`)
+  before any component runs. Components reuse whatever services exist, so
+  none of them reaches for the normal composition, which migrates a legacy
+  search password and provisions search.
+- That composition puts every SQLite store in the process into read-only
+  mode (`setStorageReadOnly`, `packages/core/src/storage/db.ts`). An absent
+  store raises `StorageAbsentError`; evidence readers that mean "nothing
+  recorded yet" wrap themselves in `emptyWhenAbsent` (usage history, probe
+  successes, model rejections). An existing store is opened immutable when
+  it has no pending write-ahead log, and read through the log otherwise
+  (SQLite then maintains the `-shm` index; the database and log are never
+  written). A reader nobody listed shows up as a check error, not a write.
+- The runtime adapter is initialized with `readOnly: true`
+  (`AdapterInitOpts`). Pi uses a stand-in catalog store, because the SDK's
+  file-backed one creates `models-store.json` on first read.
+- OpenClaw tool access is verified with `readMcpCredential`, which never
+  creates `mcp-secret`. With no secret, tool access reads as not provisioned.
+- The orchestrator never writes or clears the marker under `checkOnly`, and
+  an empty roster is reported as `skipped` / `check_only`, not provisioned.
+
+The server never uses the check composition: read-only storage is a
+process-wide switch, and health checks inside a server run on the normal
+services.
+
 ## Testing onboarding
 
 Onboarding is tested by running the real CLI in a child process against a

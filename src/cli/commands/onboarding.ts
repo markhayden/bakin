@@ -112,6 +112,17 @@ export async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}
   await installAndReport('settings', { autoApprove: true, allowServiceClaim: false }, { json: options.json === true })
 }
 
+/**
+ * A check changes nothing: compose the check-only services (read-only
+ * stores, no secret creation or migration, no provisioning) before any
+ * component can reach for the normal ones. This process only checks, so
+ * the mode is never switched back.
+ */
+async function composeForCheck(): Promise<void> {
+  const { createCheckAppServices } = await import('../../core/app-services')
+  await createCheckAppServices()
+}
+
 async function cmdOnboardingCheckSingle(
   target: 'runtime' | 'search' | 'search-models' | 'media' | 'llm' | 'models' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents' | 'capabilities',
   options: { verbose?: boolean; json?: boolean } = {},
@@ -132,6 +143,7 @@ async function cmdOnboardingCheckSingle(
   }
   const isTTY = Boolean(process.stdout.isTTY)
   const result = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
+    await composeForCheck()
     const component = await componentMap[target]()
     return await component.check()
   })
@@ -150,6 +162,7 @@ async function cmdOnboardingCheckSingle(
 async function cmdOnboardingCheckAll(options: { verbose?: boolean; json?: boolean } = {}): Promise<void> {
   const isTTY = Boolean(process.stdout.isTTY)
   const results = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
+    await composeForCheck()
     const { checkAll } = await import('../../core/onboarding/index')
     return await checkAll()
   })
@@ -228,6 +241,13 @@ async function cmdOnboard(args: string[]): Promise<void> {
   const verbose = args.includes('--verbose')
   const isTTY = Boolean(process.stdout.isTTY)
 
+  // --check changes nothing and --force clears the marker: there is no run
+  // that does both.
+  if (checkOnly && force) {
+    console.error('bakin onboard: --check and --force cannot be combined. --check reports without changing anything; --force replays setup. Run one or the other.')
+    process.exit(1)
+  }
+
   // Early exit for already-onboarded machines unless --force or --check
   if (!force && !checkOnly && isOnboarded()) {
     const state = loadState()
@@ -256,6 +276,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
     force,
   }
   try {
+    if (checkOnly) await composeForCheck()
     const selections = await collectOnboardingSelections(baseOpts)
     const opts = { autoApprove: baseOpts.autoApprove, json, checkOnly, force, ...selections }
     const busyShowsBrand = !selections.renderedWizardScreens

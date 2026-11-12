@@ -17,7 +17,7 @@ import { listAuthCredentials } from './config'
 import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
 import { createMemorySurface } from './memory'
 import { createMessagingSurface, enforcePiOffline } from './messaging'
-import { capabilitiesForModel, createModelsSurface, getModelRegistry, listProviderCredentialStatus, resetModelRegistry } from './models'
+import { capabilitiesForModel, createModelsSurface, getModelRegistry, listProviderCredentialStatus, resetModelRegistry, setModelRegistryReadOnly } from './models'
 import { readRegistry } from './registry'
 import { createImagesSurface } from './images'
 import { createExtensionsSurface } from './extensions'
@@ -57,7 +57,9 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     enforcePiOffline()
     // Warm the ModelRuntime handle (0.85.x: async create) so the sync
     // snapshot readers (findPiModel / context-stats) see the catalog from
-    // boot. Read-only — initialize() stays write-free (conformance pin).
+    // boot. The SDK's catalog store creates models-store.json on first
+    // read; a read-only process gets a stand-in that never does.
+    setModelRegistryReadOnly(opts.readOnly === true)
     await getModelRegistry()
   }
 

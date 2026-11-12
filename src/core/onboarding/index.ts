@@ -378,11 +378,25 @@ async function runComponent(
  * components a runtime that is not ok blocks everything after it. So we
  * translate any non-ok status into an error the orchestrator cascades on.
  */
-async function runRuntimeInline(component: OnboardingComponent): Promise<ComponentOutcome> {
+async function runRuntimeInline(component: OnboardingComponent, opts: OnboardingOptions): Promise<ComponentOutcome> {
   const start = Date.now()
   let check: CheckResult
   try {
     check = await component.check()
+    if (check.status === 'broken' && check.details?.emptyRoster === true && opts.checkOnly) {
+      // A check never provisions. The runtime is there and simply has not
+      // been set up by Bakin yet: that is work for a real run, not an error.
+      return {
+        name: component.name,
+        finalStatus: 'skipped',
+        reason: 'check_only',
+        check,
+        message: `${check.message} — onboarding provisions the runtime (check-only mode, not provisioning)`,
+        remediation: check.remediation,
+        details: check.details,
+        durationMs: Date.now() - start,
+      }
+    }
     if (check.status === 'broken' && check.details?.emptyRoster === true) {
       // First-run state: the roster is empty because initialize() is
       // write-free and nothing has provisioned yet. Onboarding IS a
@@ -467,8 +481,9 @@ export async function checkAll(): Promise<CheckResult[]> {
 /** Throws `OnboardingInterruptedError` when the installer reports the operator stopped an install. */
 export async function runOnboard(opts: OnboardingOptions, installComponent: ComponentInstaller): Promise<RunOnboardResult> {
   // Clear the marker upfront if --force was passed. The user wants to
-  // replay the whole flow regardless of prior state.
-  if (opts.force) clearMarker()
+  // replay the whole flow regardless of prior state. Never under --check:
+  // a check changes nothing (the CLI refuses the combination outright).
+  if (opts.force && !opts.checkOnly) clearMarker()
 
   const outcomes: ComponentOutcome[] = []
 
@@ -523,7 +538,7 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
     // only, derive the outcome from that, and cascade-skip downstream if
     // anything other than ok.
     if (component.name === 'runtime') {
-      const outcome = await runRuntimeInline(component)
+      const outcome = await runRuntimeInline(component, opts)
       outcomes.push(outcome)
       emitOutcome(opts, outcome)
       if (opts.json) emitJson(outcome)
@@ -565,9 +580,10 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
   const hasSkippedOrWarn = outcomes.some((o) => o.finalStatus === 'warn' || o.finalStatus === 'skipped')
   const exitCode: 0 | 1 | 2 = hasError ? 1 : hasSkippedOrWarn ? 2 : 0
 
-  // Marker: write iff no errors. Warn/skipped are valid end-states.
+  // Marker: write iff no errors and this was a real run. Warn/skipped are
+  // valid end-states; a check proves nothing was set up and writes nothing.
   let markerWritten = false
-  if (!hasError) {
+  if (!hasError && !opts.checkOnly) {
     const components: Record<string, ComponentStatus> = {}
     for (const o of outcomes) components[o.name] = o.finalStatus
     try {

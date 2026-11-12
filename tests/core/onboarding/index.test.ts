@@ -466,9 +466,34 @@ describe('runOnboard orchestrator', () => {
       expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('skipped')
       expect(result.outcomes.find((o) => o.name === 'search')?.reason).toBe('check_only')
       expect(result.outcomes.find((o) => o.name === 'plugin-assets')?.finalStatus).toBe('skipped')
-      // check-only is non-destructive → marker still written iff no errors
       expect(result.exitCode).toBe(2)
-      expect(result.markerWritten).toBe(true)
+    })
+
+    it('never writes the marker: a check proves nothing was set up', async () => {
+      const allOk = await runOnboard({ ...opts, checkOnly: true })
+      expect(allOk.exitCode).toBe(0)
+      expect(allOk.markerWritten).toBe(false)
+      expect(saveStateCalls).toHaveLength(0)
+    })
+
+    it('never clears the marker, even when force is also set', async () => {
+      await runOnboard({ ...opts, checkOnly: true, force: true })
+      expect(clearMarkerCalls).toBe(0)
+    })
+
+    it('never provisions an empty roster: the runtime is reported as not set up yet, not as an error', async () => {
+      provisionSeedCalls = 0
+      scripts.runtime.check = {
+        name: 'runtime',
+        status: 'broken',
+        message: 'Runtime adapter returned no agents',
+        details: { emptyRoster: true },
+      }
+      const result = await runOnboard({ ...opts, checkOnly: true })
+      expect(provisionSeedCalls).toBe(0)
+      expect(scripts.runtime.checkCalls).toBe(1)
+      expect(result.outcomes.find((o) => o.name === 'runtime')).toMatchObject({ finalStatus: 'skipped', reason: 'check_only' })
+      expect(result.outcomes.some((o) => o.finalStatus === 'error')).toBe(false)
     })
   })
 

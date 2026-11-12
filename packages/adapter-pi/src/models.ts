@@ -6,6 +6,9 @@
  * tests and PI_HOME overrides behave. Model ids cross the boundary as
  * `provider/modelId` (matching Bakin's models-plugin convention).
  */
+import { existsSync, readFileSync } from 'node:fs'
+
+import type { ModelsStore, ModelsStoreEntry } from '@earendil-works/pi-ai'
 import { ModelRegistry, ModelRuntime } from '@earendil-works/pi-coding-agent'
 
 import type { AgentRuntimeAdapter, ProviderCredentialInventory, RuntimeAvailableModel, RuntimeCapabilities, RuntimeRoutingPolicy, RuntimeRoutingSupport } from '@bakin/core/adapters/runtime'
@@ -24,6 +27,41 @@ interface PiModelHandle {
 
 let handlePromise: Promise<PiModelHandle> | null = null
 let resolvedHandle: PiModelHandle | null = null
+let readOnly = false
+
+/**
+ * Read-only processes (`AdapterInitOpts.readOnly`): the SDK's own
+ * file-backed catalog store creates `models-store.json` the first time it
+ * is read, which a check must never do. This stand-in answers from the file
+ * when one exists and drops writes; nothing refreshes the catalog in a
+ * check anyway (no model network at create).
+ */
+function readOnlyModelsStore(path: string): ModelsStore {
+  const load = (): Record<string, ModelsStoreEntry> => {
+    if (!existsSync(path)) return {}
+    try {
+      const text = readFileSync(path, 'utf-8').replace(/^\uFEFF/, '')
+      return text ? JSON.parse(text) as Record<string, ModelsStoreEntry> : {}
+    } catch {
+      return {} // an unreadable cache is no cache
+    }
+  }
+  return {
+    read: async (providerId) => {
+      const entry = load()[providerId]
+      return entry ? structuredClone(entry) : undefined
+    },
+    write: async () => {},
+    delete: async () => {},
+  }
+}
+
+/** Set by the adapter's initialize(); rebuilds the registry when it changes. */
+export function setModelRegistryReadOnly(value: boolean): void {
+  if (readOnly === value) return
+  readOnly = value
+  resetModelRegistry()
+}
 
 export function getModelRegistry(): Promise<PiModelHandle> {
   if (!handlePromise) {
@@ -34,10 +72,11 @@ export function getModelRegistry(): Promise<PiModelHandle> {
     // (models-store.json) so retired/added provider models reach Bakin
     // without an SDK re-pin. allowModelNetwork stays default-false: no
     // network at create (initialize() is write-free by conformance pin).
+    const modelsStorePath = getPiPath('agent', 'models-store.json')
     handlePromise = ModelRuntime.create({
       authPath: getPiPath('agent', 'auth.json'),
       modelsPath: getPiPath('agent', 'models.json'),
-      modelsStorePath: getPiPath('agent', 'models-store.json'),
+      ...(readOnly ? { modelsStore: readOnlyModelsStore(modelsStorePath) } : { modelsStorePath }),
     }).then((runtime) => {
       resolvedHandle = { runtime, registry: new ModelRegistry(runtime) }
       return resolvedHandle

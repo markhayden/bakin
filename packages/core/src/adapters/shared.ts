@@ -165,6 +165,14 @@ export interface AdapterInitOpts {
   bakinMcpBaseUrl?: string
   /** Host-issued credential scoped to a single agent; never log this value. */
   getMcpCredential?: (agentId: string) => string
+  /**
+   * This process only CHECKS (`bakin onboard --check`, `bakin check <x>`):
+   * the adapter must create and write nothing under its own home, for its
+   * whole lifetime — including caches it would normally persist. Reads
+   * answer from what is already on disk. Never set for a server, an
+   * install or a turn.
+   */
+  readOnly?: boolean
 }
 
 export interface AdapterVersionInfo {
