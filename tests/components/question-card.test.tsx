@@ -226,26 +226,31 @@ describe('QuestionCard', () => {
     cleanup()
   })
 
-  it('collapses to "question → answer" once answered, and the answer bubble folds into the card', () => {
+  it('collapses to the question once answered; the bubble carries the answer without the question echo', () => {
     renderConversation([questionRow, { kind: 'user', ts: '2026-10-25T10:00:03.000Z', content: '**Which inbox are we cleaning?** → Personal Gmail' }])
     expect(within(card()).queryByRole('radiogroup')).toBeNull()
-    expect(card().textContent).toContain('Personal Gmail')
     expect(card().getAttribute('data-state')).toBe('answered')
-    // 2026-11-11 live: the card said "Q → A" and the bubble below said "**Q** → A" again.
-    expect(document.querySelector('[data-conv-turn-group][data-kind="user"]')).toBeNull()
-    expect(document.querySelector('[data-conv-question-note]')).toBeNull()
+    expect(card().textContent).toContain('Which inbox are we cleaning?')
+    expect(card().textContent).toContain('Answered')
+    // 2026-11-11 live: the card said "Q → A" and the bubble repeated "**Q** → A". The card
+    // keeps the question (the agent asked it); the user's bubble keeps the answer (they said it).
+    expect(card().textContent).not.toContain('Personal Gmail')
+    const bubble = document.querySelector('[data-conv-turn-group][data-kind="user"]')
+    expect(bubble?.textContent).toContain('Personal Gmail')
+    expect(bubble?.textContent).not.toContain('Which inbox')
     cleanup()
   })
 
-  it('shows the note under the answered card instead of a bubble', () => {
-    renderConversation([questionRow, { kind: 'user', ts: '2026-10-25T10:00:03.000Z', content: '**Which inbox are we cleaning?** → Personal Gmail\n\nlast year only\n\nand archive, not delete' }])
-    expect(card().textContent).toContain('Personal Gmail')
-    expect(document.querySelector('[data-conv-question-note]')?.textContent).toBe('last year only\n\nand archive, not delete')
-    expect(document.querySelector('[data-conv-turn-group][data-kind="user"]')).toBeNull()
+  it('the bubble keeps the note under the answer', () => {
+    renderConversation([questionRow, { kind: 'user', ts: '2026-10-25T10:00:03.000Z', content: '**Which inbox are we cleaning?** → Personal Gmail\n\nlast year only' }])
+    const bubble = document.querySelector('[data-conv-turn-group][data-kind="user"] [aria-label="Your message"]')
+    expect(bubble?.textContent).toContain('Personal Gmail')
+    expect(bubble?.textContent).toContain('last year only')
+    expect(bubble?.textContent).not.toContain('→')
     cleanup()
   })
 
-  it('a reply that is not a card answer keeps its bubble', () => {
+  it('a reply that is not a card answer keeps its full bubble', () => {
     renderConversation([questionRow, { kind: 'user', ts: '2026-10-25T10:00:03.000Z', content: 'let us talk budget first' }])
     expect(document.querySelector('[data-conv-turn-group][data-kind="user"]')?.textContent).toContain('let us talk budget first')
     cleanup()

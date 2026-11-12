@@ -46,13 +46,8 @@ export function QuestionCard({ item, onAnswer, busy = false }: QuestionCardProps
       >
         <span className="font-bakin-typography-weight-medium">{question.question}</span>
         <span className={cn(meta, 'ml-bakin-2')}>
-          {item.state === 'answered' ? `→ ${item.answer ?? ''}` : 'Skipped'}
+          {item.state === 'answered' ? 'Answered' : 'Skipped'}
         </span>
-        {item.note ? (
-          <p data-conv-question-note="" className="m-0 mt-bakin-1 whitespace-pre-wrap text-bakin-text-primary">
-            {item.note}
-          </p>
-        ) : null}
       </div>
     )
   }

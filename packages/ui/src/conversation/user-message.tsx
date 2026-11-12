@@ -61,6 +61,7 @@ export interface UserMessageProps {
 
 /** Right-aligned user message with exact time, copy, and typed attachments. */
 export function UserMessage({ turn, renderText, renderAttachment, className }: UserMessageProps) {
+  const shown = turn.displayContent ?? turn.content
   return (
     <article
       data-conv-user=""
@@ -89,12 +90,12 @@ export function UserMessage({ turn, renderText, renderAttachment, className }: U
             !renderText && 'whitespace-pre-wrap',
           )}
         >
-          {renderText ? renderText(turn.content, 'markdown') : turn.content}
+          {renderText ? renderText(shown, 'markdown') : shown}
         </div>
 
         <footer className="flex items-center justify-end gap-bakin-1">
           <TurnTimestamp ts={turn.ts} />
-          {turn.content ? <CopyButton text={turn.content} label="Copy message" /> : null}
+          {shown ? <CopyButton text={shown} label="Copy message" /> : null}
         </footer>
       </div>
     </article>

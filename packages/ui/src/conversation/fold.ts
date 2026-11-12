@@ -109,8 +109,6 @@ export type TurnItem =
       state: QuestionState
       /** The chosen answer's text, when answered. */
       answer?: string
-      /** The note the user added under their choice, when answered with one. */
-      note?: string
       /** True only for the newest open card in the conversation. */
       answerable: boolean
     }
@@ -186,10 +184,12 @@ export type ConversationTurn =
       content: string
       attachments?: DisplayAttachment[]
       /**
-       * Derived: this message answered the question card just above it. The
-       * card shows the answer, so the timeline renders no second bubble.
+       * Derived: this message answered the question card just above it, and
+       * this is what the bubble shows — the answer and note without the
+       * `**question** → ` echo the card already carries. `content` stays the
+       * sent text (copy, retry, the agent's view).
        */
-      answersQuestion?: boolean
+      displayContent?: string
     }
   | {
       kind: 'agent'
@@ -483,11 +483,9 @@ function deriveQuestionStates(turns: ConversationTurn[]): void {
       const prefix = answerPrefix(item.question)
       if (reply.content.startsWith(prefix)) {
         item.state = 'answered'
-        const [answer, ...noteParts] = reply.content.slice(prefix.length).split('\n\n')
-        item.answer = answer
-        const note = noteParts.join('\n\n').trim()
-        if (note) item.note = note
-        reply.answersQuestion = true
+        const response = reply.content.slice(prefix.length)
+        item.answer = response.split('\n\n')[0]
+        reply.displayContent = response
       } else {
         item.state = 'skipped'
       }
