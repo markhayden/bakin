@@ -39,6 +39,8 @@ bakin onboard
 bakin start
 ```
 
+You don't need a runtime installed first. Onboarding uses whichever of Pi or OpenClaw is already set up on the machine (it asks if it finds both) and falls back to Pi, which runs inside Bakin. It then tells you how to log in to a provider and finishes with a checklist of what's left. See [Initial Setup](https://makinbakin.com/docs/start/first-time-setup/).
+
 Onboarding works before Bakin is running — each install runs in the CLI with live progress. Once the server is up, `bakin install …` and `bakin onboard` run through it instead, so the same work shows in the app's operations tray.
 
 Open [http://localhost:3737](http://localhost:3737).

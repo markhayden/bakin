@@ -1,52 +1,88 @@
 ---
 title: Initial Setup
 description: Onboard your local Bakin instance and confirm it's healthy.
-lastUpdated: 2026-04-25
+lastUpdated: 2026-11-12
 ---
 
 import { Aside } from '@astrojs/starlight/components'
-
-<Aside type="note" title="Bakin needs a runtime">
-Bakin is the dashboard. The default runtime adapter talks to <a href="https://openclaw.ai/" target="_blank" rel="noopener noreferrer">OpenClaw</a>. Install and start the configured runtime before onboarding, otherwise the runtime check will fail.
-
-Runtime-owned files stay under the runtime's own home directory. With the default OpenClaw adapter, that is `~/.openclaw/`.
-</Aside>
 
 ```sh
 bakin onboard
 ```
 
-That's the whole setup for most folks. Want the full breakdown before you run it? [Here's what onboarding does.](#what-onboarding-actually-does)
+That's the whole setup for most folks. It picks your agent runtime, sets up Bakin's home, tells you how to log in if you haven't, and ends with a short list of what's left. Want the full breakdown before you run it? [Here's what onboarding does.](#what-onboarding-actually-does)
+
+<Aside type="note" title="You don't need to install a runtime first">
+Bakin runs agents through a runtime. <a href="https://pi.dev/" target="_blank" rel="noopener noreferrer">Pi</a> runs inside Bakin, so a machine with nothing else on it works out of the box. If you already use <a href="https://openclaw.ai/" target="_blank" rel="noopener noreferrer">OpenClaw</a>, Bakin can use that instead.
+</Aside>
+
+## Choosing a runtime
+
+The first time you onboard a home, Bakin looks for runtimes already set up on the machine.
+
+| What it finds | What happens |
+|---|---|
+| Nothing | Bakin uses Pi. No question asked. |
+| One runtime, or both | At a terminal, it asks which one, with the ones it found marked. |
+| One runtime, scripted run | It uses that one. |
+| Both, scripted run | It stops and asks you to say which: `bakin onboard --runtime pi` or `--runtime openclaw`. |
+
+The choice is stored once in `~/.bakin/settings.json`. Onboarding never switches a runtime that's already stored. To change it later, use `bakin runtime use <pi|openclaw>`.
+
+## Logging in
+
+A runtime needs a provider login before agents can run a turn. Bakin never handles that secret; you log in inside the runtime.
+
+If nobody is logged in, onboarding shows the steps and waits. Log in from another terminal, come back and press Enter. Or press `s` to finish without a login: Bakin starts fine and agents run once you log in.
+
+- **Pi:** run `pi`, type `/login`, and pick a provider. There is no `pi login` command.
+- **OpenClaw:** add a provider login in OpenClaw and make sure its gateway is running. See the [OpenClaw docs](https://openclaw.ai/docs/).
 
 ## Confirm it worked
 
+The last screen of `bakin onboard` is a setup checklist: what's still to do, how to do each, and what's already in place. See it again any time, without changing anything:
+
 ```sh
+bakin onboard --check
+```
+
+Then start Bakin and run every health check in one shot:
+
+```sh
+bakin start
 bakin doctor
 ```
 
-`bakin doctor` runs every health check in one shot. Green across the board means you're done.
+Green across the board means you're done.
 
-If something fails, run the specific check to narrow it down:
+If something fails, check one piece at a time. Every onboarding step can be checked by name:
 
 ```sh
-bakin check runtime        # configured runtime is installed, reachable, and parsable
-bakin check llm            # at least one LLM provider is configured
+bakin check runtime        # the runtime starts, can be reached, and has a usable roster
+bakin check llm            # a provider is logged in
+bakin check search         # the search engine
 bakin check channels       # messaging channels are wired up (when on)
-bakin check plugin-assets  # plugin defaults projected into ~/.bakin/
-bakin check agent-assets   # agent package files installed and current
+bakin check plugin-assets  # plugin defaults projected into the runtime
+bakin check agent-sync     # agent workspace files are current
+bakin check all            # everything
 ```
 
-Full command reference lives in the [CLI docs](/docs/reference/generated/cli/).
+A check never changes anything. Full command reference lives in the [CLI docs](/docs/reference/generated/cli/).
 
 ## What onboarding actually does
 
-- Creates `~/.bakin/`, your local data directory
-- Seeds default settings
-- Confirms the configured runtime is reachable
-- Confirms at least one LLM provider is configured
-- Confirms messaging channels if you've enabled messaging
+In order:
 
-If any check fails, onboarding tells you what's missing.
+1. Decides which runtime this home uses (see above) and stores it.
+2. Creates `~/.bakin/`, your local data directory, and seeds settings.
+3. Sets the runtime up for Bakin and confirms it can be reached.
+4. Checks for a provider login, and waits for one if you're at a terminal.
+5. Asks what you want installed: the search engine and its models, image processing, the recommended model plan, and the official plugins and agents.
+6. Runs those installs and shows the setup checklist.
+
+A step that can't run only holds back the steps that need it. If the runtime can't be reached, search and image processing still get set up, and onboarding tells you what to fix.
+
+Running it again is safe. A home that's already onboarded says so; `bakin onboard --force` replays the whole flow and only does work that's still missing.
 
 ## Where your data lives
 
@@ -56,12 +92,12 @@ Everything Bakin owns lives in `~/.bakin/` by default: settings, plugins, assets
 bakin paths
 ```
 
-Anything owned by the runtime (agent identity, skills, tools, workspace data) stays in the runtime home. With the default OpenClaw adapter, that is `~/.openclaw/`.
+Anything owned by the runtime (agent identity, skills, tools, workspace data, provider logins) stays in the runtime's own home: `~/.pi/` for Pi, `~/.openclaw/` for OpenClaw.
 
 For demos or disposable tests, point Bakin at a different directory with `BAKIN_HOME`:
 
 ```sh
-BAKIN_HOME="$PWD/.bakin-demo" bakin onboard --yes
+BAKIN_HOME="$PWD/.bakin-demo" bakin onboard --yes --no-recommended
 ```
 
 Resolution order: `BAKIN_HOME` → `~/.bakin/`.
@@ -73,3 +109,12 @@ For CI or scripted setup, skip prompts and emit JSON:
 ```sh
 bakin onboard --yes --json
 ```
+
+- `--yes` approves the default installs. With `--json` and no `--yes`, onboarding sets up Bakin itself and leaves the optional installs for later. (A piped run without `--json` approves them, as before.)
+- `--no-recommended` skips the recommended plugins, agents and capability packs, so nothing is fetched from outside.
+- `--runtime <pi|openclaw>` says which runtime to use. Required when both are set up on the machine.
+- `--json` prints one line per step, then a `summary` line with the exit code, the runtime and where that choice came from, and the setup checklist.
+
+Exit codes: `0` everything is in place, `2` finished with something left to do (a warning, or a step you skipped), `1` blocked by an error. A run that exits `1` leaves the home un-onboarded, so `bakin start` will send you back to fix it.
+
+Each skipped step says why in a `reason` field (`declined`, `requires`, `unavailable`, `not_applicable`, `check_only`), so scripts never need to read message text.
