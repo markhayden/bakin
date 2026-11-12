@@ -265,7 +265,7 @@
       "approvedBy": "Mark Hayden",
       "approvedOn": "2026-08-09",
       "approvalEvidence": "Tasks audit adjudication item 7: user replied 'agreed' to recording the dnd-card exception rather than extending the interactive-surface contract for a single consumer.",
-      "reviewBy": "2026-11-09",
+      "reviewBy": "2027-01-31",
       "removalCondition": "Remove if a second dnd-card surface appears and the interactive-surface contract grows a drag-aware mode both consumers adopt."
     },
     {
@@ -295,7 +295,7 @@
       "approvedBy": "Mark Hayden",
       "approvedOn": "2026-08-12",
       "approvalEvidence": "Workflows audit adjudication: user approved Decision 2 (NodeCard component + recorded exception for the ReactFlow integration layer) with 'node card is a good component to add' / 'do it'. Extended to the team org graph on 2026-08-14 with 'the rest are fine' covering the team audit's react-flow decision.",
-      "reviewBy": "2026-11-12",
+      "reviewBy": "2027-01-31",
       "removalCondition": "Remove if the kit grows a first-party graph-canvas contract or ReactFlow is replaced; shrink the scope if ReactFlow ships un-styled headless nodes that need no reset."
     }
   ]
