@@ -17,7 +17,7 @@
  *     ledger's coordination-facts-only contract holds.
  */
 import { Database } from 'bun:sqlite'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, statSync } from 'fs'
 import { dirname } from 'path'
 import { createLogger } from '../logger'
 import { getBakinPaths } from '../content-dir'
@@ -38,6 +38,19 @@ export class StorageUnavailableError extends Error {
     super(message)
     this.name = 'StorageUnavailableError'
     this.cause = cause
+  }
+}
+
+/**
+ * Read-only mode only: the store has nothing to read — its file does not
+ * exist, or it was never brought to the schema this code reads. A reader
+ * that treats "nothing recorded yet" as an answer catches exactly this
+ * (`emptyWhenAbsent`); every other storage failure stays a failure.
+ */
+export class StorageAbsentError extends StorageUnavailableError {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause)
+    this.name = 'StorageAbsentError'
   }
 }
 
@@ -72,7 +85,7 @@ interface StoreState {
 // __bakinBroadcast in src/core/sse.ts). Keyed by store name; each store
 // re-resolves its path per access so tests that remap getBakinPaths() (or a
 // named store's resolver target) get a fresh db transparently.
-const g = globalThis as { __bakinDbStores?: Map<string, StoreState> }
+const g = globalThis as { __bakinDbStores?: Map<string, StoreState>; __bakinDbReadOnly?: boolean }
 if (!g.__bakinDbStores) g.__bakinDbStores = new Map()
 const stores: Map<string, StoreState> = g.__bakinDbStores
 
@@ -83,6 +96,65 @@ function storeState(name: string): StoreState {
     stores.set(name, s)
   }
   return s
+}
+
+/**
+ * Put every store in this process into read-only mode (or back). In
+ * read-only mode nothing is created and nothing is written: a store whose
+ * file is absent, or whose schema is behind this code, raises
+ * `StorageAbsentError`; an existing store is opened without the WAL pragma,
+ * the migration ledger or any migration. A write through such a handle
+ * fails in SQLite rather than landing.
+ *
+ * This is how a check proves it cannot change a home (`bakin onboard
+ * --check`): it is a property of the process, not a promise each reader
+ * has to keep. Open handles are dropped on every switch.
+ */
+export function setStorageReadOnly(readOnly: boolean): void {
+  if ((g.__bakinDbReadOnly ?? false) === readOnly) return
+  closeAllDbs()
+  g.__bakinDbReadOnly = readOnly
+}
+
+export function isStorageReadOnly(): boolean {
+  return g.__bakinDbReadOnly ?? false
+}
+
+/**
+ * For a reader whose honest answer to "nothing has been recorded" is an
+ * empty result: returns `empty` when read-only mode finds no store to read.
+ * Outside read-only mode the store is created on first use, so this never
+ * triggers there.
+ */
+export function emptyWhenAbsent<T>(read: () => T, empty: T): T {
+  try {
+    return read()
+  } catch (err) {
+    if (err instanceof StorageAbsentError) return empty
+    throw err
+  }
+}
+
+/**
+ * Open an existing store without changing a byte of it where that is
+ * possible. A store with no pending write-ahead log is opened `immutable`:
+ * SQLite then touches nothing, not even the shared-memory index. A store
+ * WITH a non-empty log (a live server, or a process that exited without
+ * closing) must read through that log to be correct, which makes SQLite
+ * maintain the `-shm` index file; the database and its log are still never
+ * written.
+ */
+function openReadOnly(name: string, path: string): Database {
+  if (!existsSync(path)) throw new StorageAbsentError(`${name} db does not exist at ${path} (read-only mode)`)
+  try {
+    const walPath = `${path}-wal`
+    const hasPendingLog = existsSync(walPath) && statSync(walPath).size > 0
+    if (hasPendingLog) return new Database(path, { readonly: true })
+    const uri = `file:${path.split('/').map(encodeURIComponent).join('/')}?immutable=1`
+    return new Database(uri, { readonly: true })
+  } catch (err) {
+    throw new StorageUnavailableError(`cannot open ${name} db read-only at ${path}`, err)
+  }
 }
 
 function resolveHandle(name: string, path: string): Db {
@@ -99,6 +171,13 @@ function resolveHandle(name: string, path: string): Db {
     state.db = null
     state.path = null
     state.migratedModules.clear()
+  }
+
+  if (isStorageReadOnly()) {
+    const db = openReadOnly(name, path)
+    state.db = db
+    state.path = path
+    return db
   }
 
   try {
@@ -141,6 +220,27 @@ function applyStoreMigrations(name: string, resolvePath: () => string, module: s
   const state = storeState(name)
   if (state.migratedModules.has(module) && state.db && state.path === resolvePath()) return
   const db = resolveHandle(name, resolvePath())
+  if (isStorageReadOnly()) {
+    // Never migrate here. A store that is behind this module's schema has
+    // nothing this code can read yet — the same answer as an absent one.
+    let applied: Set<number>
+    try {
+      applied = new Set(
+        db
+          .prepare<{ version: number }, [string]>('SELECT version FROM schema_migrations WHERE module = ?')
+          .all(module)
+          .map((row) => row.version),
+      )
+    } catch (err) {
+      throw new StorageAbsentError(`${name} db has no migration ledger (read-only mode)`, err)
+    }
+    const pending = migrations.filter((migration) => !applied.has(migration.version))
+    if (pending.length > 0) {
+      throw new StorageAbsentError(`${name} db is behind module ${module} by ${pending.length} migration(s) (read-only mode)`)
+    }
+    state.migratedModules.add(module)
+    return
+  }
   const applied = new Set(
     db
       .prepare<{ version: number }, [string]>('SELECT version FROM schema_migrations WHERE module = ?')

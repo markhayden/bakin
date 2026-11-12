@@ -15,7 +15,7 @@
  */
 import { join } from 'path'
 
-import { openNamedDb, type Db } from '../storage/db'
+import { emptyWhenAbsent, openNamedDb, type Db } from '../storage/db'
 import { getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
 
@@ -511,7 +511,9 @@ function queryUsageByAgentModelDaySince(sinceDay: string): AgentModelDayUsageRol
  */
 export function readUsageByAgentModelDaySince(sinceDay: string): AgentModelDayUsageRollup[] {
   try {
-    return queryUsageByAgentModelDaySince(sinceDay)
+    // A usage store that does not exist yet (read-only mode never creates
+    // one) has observed nothing: that is zero usage, not a read failure.
+    return emptyWhenAbsent(() => queryUsageByAgentModelDaySince(sinceDay), [])
   } catch (err) {
     log.error('readUsageByAgentModelDaySince failed', err, { sinceDay })
     throw new UsageHistoryStoreReadError('Usage history store could not be read.', err)
