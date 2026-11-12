@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 
 import { cn, focusRing } from '../utils'
+import type { ConversationTextRenderer } from './agent-turn'
 import type { ConversationTurn, DisplayAttachment } from './fold'
 import { CopyButton, TurnTimestamp } from './turn-controls'
 
@@ -48,12 +49,18 @@ function DefaultAttachment({ attachment }: { attachment: DisplayAttachment }) {
 /** Props for one render-ready user message. */
 export interface UserMessageProps {
   turn: Extract<ConversationTurn, { kind: 'user' }>
+  /**
+   * The same text renderer the agent turns use, called with `'markdown'`:
+   * a pasted `**bold**` or list reads the same on both sides of the thread.
+   * Without one the message is safe pre-wrapped text.
+   */
+  renderText?: ConversationTextRenderer
   renderAttachment?: ConversationAttachmentRenderer
   className?: string
 }
 
 /** Right-aligned user message with exact time, copy, and typed attachments. */
-export function UserMessage({ turn, renderAttachment, className }: UserMessageProps) {
+export function UserMessage({ turn, renderText, renderAttachment, className }: UserMessageProps) {
   return (
     <article
       data-conv-user=""
@@ -76,8 +83,13 @@ export function UserMessage({ turn, renderAttachment, className }: UserMessagePr
           </div>
         ) : null}
 
-        <div className="max-w-full whitespace-pre-wrap break-words rounded-bakin-surface border border-bakin-signal-accent/30 bg-bakin-signal-accent/10 px-bakin-3 py-bakin-2 text-bakin-text-primary">
-          {turn.content}
+        <div
+          className={cn(
+            'max-w-full break-words rounded-bakin-surface border border-bakin-signal-accent/30 bg-bakin-signal-accent/10 px-bakin-3 py-bakin-2 text-bakin-text-primary',
+            !renderText && 'whitespace-pre-wrap',
+          )}
+        >
+          {renderText ? renderText(turn.content, 'markdown') : turn.content}
         </div>
 
         <footer className="flex items-center justify-end gap-bakin-1">

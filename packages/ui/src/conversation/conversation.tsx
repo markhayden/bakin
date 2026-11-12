@@ -193,7 +193,7 @@ export function Conversation({
                 >
                   {separator}
                   {turn.kind === 'user' ? (
-                    <UserMessage turn={turn} renderAttachment={renderAttachment} />
+                    <UserMessage turn={turn} renderText={renderText} renderAttachment={renderAttachment} />
                   ) : (
                     <AgentTurn
                       turn={turn}
