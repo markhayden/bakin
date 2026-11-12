@@ -39,3 +39,25 @@ Spec: `.claude/specs/projects-grill-start.md` · Plan: `tasks/projects-grill-sta
 - [x] T11j — resizable conversation dock + one Files empty state (bakin
   a9bfcb5bb, bits f984bc8): Codex 5 rounds, round 5 APPROVE; live on 3737
   (vendors rebuilt, projects client v14).
+- [x] T11k — live round 2 (2026-11-11, Mark: "only asked like 7 questions… turn all
+  stones"; raw markdown in user bubbles; "stuck… not triggering more questions";
+  question and answer duplicated; cards flash off and on at settle; "two turns in a
+  row its stuck"): bits c2f983b (depth prompt: six areas, every decision asked and
+  tested, 15–30 questions, a request for more questions re-opens the interview with
+  a card that turn; `renderText` → MarkdownContent) + bakin 0058b9f2d (UserMessage
+  renderText), f00ac334b/99abab358 (card keeps the question, bubble keeps the
+  answer via `displayContent`), c9f77bea8 (settle keeps the live turn until its
+  rows arrive; `agent-<n>` key), 51f09309b + e14df3323 (an empty completion is
+  nudged once inside the turn, twice → `empty_reply` error row; billed usage
+  metered on the error path — root cause: two empty model completions in the Pi
+  session, `stop=stop out=4`). Codex: bits r1 (4 findings → 3a0ba7c: the re-open
+  rule follows the transport, settled-decision rule, stub honours renderText), r2
+  APPROVE; bakin r1 (8 findings → 5d59a1284: nudge keeps its session on ephemeral
+  threads, retained live turn scoped to one settle, one reply answers one card,
+  QuestionCards story renders the folded exchange, actRender), r2 (4 findings →
+  settle refetch owed + replacement load, optimistic rows reconciled, meter once,
+  the stale-load test rejects), r3 pending. Also ea4292b32: `max-w-1/2` for the
+  unmeasured aside cap (legacy ratchet) + two exception reviews renewed to
+  2027-01-31 (dnd-card expired 2026-11-09, reactflow 2026-11-12 — main fails the
+  quick gate without it).
+
