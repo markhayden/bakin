@@ -37,7 +37,7 @@ const RAIL_STRIP_WIDTH = 'w-[var(--bakin-layout-size-rail-strip)]'
 const RAIL_DEFAULT_PX: Record<PageAsideWidth, number> = { nav: 208, session: 288, conversation: 360 }
 const RESIZABLE_WIDTH = 'w-[var(--bakin-aside-width)]'
 // Until the row is measured, the persisted width is only a preference: keep half the row for the page.
-const UNMEASURED_CAP = 'max-w-[50%]'
+const UNMEASURED_CAP = 'max-w-1/2'
 const RAIL_MIN_WIDTH = 200
 const RAIL_MAX_WIDTH = 720
 const ASIDE_WIDTH_STORAGE_KEY = 'bakin-aside-width'

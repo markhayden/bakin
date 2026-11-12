@@ -70,7 +70,7 @@ describe('PageAside collapsible rail', () => {
       localStorage.setItem(KEY, '720')
       rail({ width: 'conversation', side: 'end', resizable: { storageKey: 'test-dock' } })
       const aside = screen.getByRole('complementary', { name: 'Project conversation' })
-      expect(aside.className).toContain('max-w-[50%]')
+      expect(aside.className).toContain('max-w-1/2')
       expect(separator().getAttribute('aria-valuenow')).toBe('720')
     })
 
@@ -95,7 +95,7 @@ describe('PageAside collapsible rail', () => {
         expect(separator().getAttribute('aria-valuenow')).toBe('300')
         expect(aside.style.getPropertyValue('--bakin-aside-width')).toBe('300px')
         // Measured: the bounds govern alone; the pre-measurement CSS cap is gone.
-        expect(aside.className).not.toContain('max-w-[50%]')
+        expect(aside.className).not.toContain('max-w-1/2')
         // The preference is not rewritten by measurement — a wider screen gets it back.
         expect(localStorage.getItem(KEY)).toBe('720')
         // Interaction starts from the rendered width: one step in shrinks visibly.
