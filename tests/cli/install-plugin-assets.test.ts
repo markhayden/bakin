@@ -64,9 +64,13 @@ describe('CLI: bakin install/check plugin-assets', () => {
   it('the onboarding command module dispatches install plugin-assets to the onboarding component', () => {
     // B5.3: the install/check dispatch moved from cli/bakin.ts into the
     // onboarding command module (the router lazy-imports it).
+    // Targets are no longer listed by hand there: `plugin-assets` is
+    // accepted because it is an onboarding component with an install.
     const cli = readFileSync(join(process.cwd(), 'src', 'cli', 'commands', 'onboarding.ts'), 'utf-8')
-    expect(cli).toMatch(/sub === 'plugin-assets'/)
-    expect(cli).toMatch(/'plugin-assets':\s*async\s*\(\)\s*=>\s*\(await import\('\.\.\/\.\.\/core\/onboarding\/plugin-assets'\)\)\.pluginAssetsComponent/)
+    expect(cli).toContain('isInstallableComponentName(sub)')
+    expect(cli).toContain('isComponentName(sub)')
+    const names = readFileSync(join(process.cwd(), 'src', 'core', 'onboarding', 'component-names.ts'), 'utf-8')
+    expect(names).toContain("'plugin-assets'")
   })
 
   it('the onboarding component exposes the OnboardingComponent shape', async () => {

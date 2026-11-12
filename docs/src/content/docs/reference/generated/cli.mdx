@@ -322,24 +322,26 @@ bakin mkdir [--json]
 </CliCommandCard>
 <CliCommandCard id="check" name="check" summary="Run onboarding checks." description="Runs one or all first-run readiness checks. A check changes nothing: it creates no files, runs no migration and provisions nothing. `check channels` speaks from the running server's readiness snapshot when one is reachable and says so when it is not (configuration-only). Pass --json for the structured result.">
 ```sh frame="terminal"
-bakin check <runtime|search|search-models|media|llm|models|channels|plugin-assets|agent-sync|recommended-plugins|recommended-agents|all> [--json]
+bakin check <mkdir|settings|runtime|llm|search|search-models|media|openclaw-integration|plugin-assets|agent-sync|models|budget|channels|recommended-plugins|recommended-agents|capabilities|all> [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td><code>&lt;value&gt;</code><span class="cli-command__choices"><span>runtime</span><span>search</span><span>search-models</span><span>media</span><span>llm</span><span>models</span><span>channels</span><span>plugin-assets</span><span>agent-sync</span><span>recommended-plugins</span><span>recommended-agents</span><span>all</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>&lt;value&gt;</code><span class="cli-command__choices"><span>mkdir</span><span>settings</span><span>runtime</span><span>llm</span><span>search</span><span>search-models</span><span>media</span><span>openclaw-integration</span><span>plugin-assets</span><span>agent-sync</span><span>models</span><span>budget</span><span>channels</span><span>recommended-plugins</span><span>recommended-agents</span><span>capabilities</span><span>all</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
       <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="install" name="install" summary="Install onboarding components." description="Installs Bakin dependencies, plugin/agent assets, or official recommended plugins and agents.">
+<CliCommandCard id="install" name="install" summary="Install onboarding components." description="Runs one onboarding component's install: the Bakin home and settings, runtime provisioning, the search engine and its models, the media store, plugin and agent assets, the model plan, or the recommended plugins, agents and capability packs. A terminal asks before starting; nothing prompts inside an install.">
 ```sh frame="terminal"
-bakin install <search|search-models|media|plugin-assets|agent-sync|recommended-plugins|recommended-agents>
+bakin install <mkdir|settings|runtime|search|search-models|media|openclaw-integration|plugin-assets|agent-sync|models|recommended-plugins|recommended-agents|capabilities> [--yes] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td><code>&lt;value&gt;</code><span class="cli-command__choices"><span>search</span><span>search-models</span><span>media</span><span>plugin-assets</span><span>agent-sync</span><span>recommended-plugins</span><span>recommended-agents</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>&lt;value&gt;</code><span class="cli-command__choices"><span>mkdir</span><span>settings</span><span>runtime</span><span>search</span><span>search-models</span><span>media</span><span>openclaw-integration</span><span>plugin-assets</span><span>agent-sync</span><span>models</span><span>recommended-plugins</span><span>recommended-agents</span><span>capabilities</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -1187,5 +1189,5 @@ bakin brands remove <id> [--yes]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Nov 11, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 12, 2026 · Bakin 0.0.0-dev</span>
 </aside>

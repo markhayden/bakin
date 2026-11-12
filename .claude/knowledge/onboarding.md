@@ -228,6 +228,24 @@ not shown.
 `getSetupChecklist()` asks the engines. Adding an item means adding a
 source and a projection, not a probe.
 
+## CLI targets
+
+`bakin check <x>` accepts every onboarding component (and `all`);
+`bakin install <x>` every one that has an install. Both lists, their
+unknown-subcommand hints, the help text in `src/core/cli/registry.ts` and
+the install request schema derive from ONE leaf,
+`src/core/onboarding/component-names.ts` (`COMPONENT_NAMES`,
+`INSTALLABLE_COMPONENT_NAMES`). A unit test pins the leaf to
+`COMPONENT_ORDER`, and `tests/architecture/onboarding-cli-targets.test.ts`
+forbids a second list kept by hand in the command module or the registry.
+Adding a component means adding it to `COMPONENT_ORDER` and the leaf; the
+CLI follows.
+
+`bakin check <x>` goes through `checkComponent` (in `index.ts`): a
+component that does not apply to the active runtime says so instead of
+being checked. Under `--json`, `check` and `install` keep runtime logs off
+stdout so the output parses (`--verbose` keeps them).
+
 ## What stops what
 
 Each component declares `requires`: the components it cannot run without

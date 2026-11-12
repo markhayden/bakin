@@ -10,6 +10,7 @@
 import { apiGet } from '../http'
 import { print, statusIcon } from '../output'
 import { exitUnknownSubcommand } from '../help'
+import { COMPONENT_NAMES, INSTALLABLE_COMPONENT_NAMES, isComponentName, isInstallableComponentName, type ComponentName } from '../../core/onboarding/component-names'
 import { createOperationRenderer, describeResult, operationStatusLine, silentOperationRenderer, type OperationRenderer } from '../operation-renderer'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 import type { InstallableComponent as InstallableName, OnboardingInstallOptions } from '../../core/onboarding/install-request'
@@ -61,12 +62,18 @@ async function cmdPaths(key?: string, opts: { json?: boolean } = {}): Promise<vo
   }
 }
 
+/**
+ * Runtime logs go to stdout. They are kept off it when a person is reading
+ * a rendered report (a terminal) and when a program is reading the result
+ * (`--json`: the output must parse). `--verbose` and an explicit
+ * BAKIN_CONSOLE_FORMAT keep them.
+ */
 async function withTtyRuntimeLogsSilenced<T>(
-  options: { isTTY: boolean; verbose?: boolean },
+  options: { isTTY: boolean; verbose?: boolean; json?: boolean },
   run: () => Promise<T>,
 ): Promise<T> {
   const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
-  const shouldSilenceRuntimeLogs = options.isTTY && options.verbose !== true && previousConsoleFormat === undefined
+  const shouldSilenceRuntimeLogs = (options.isTTY || options.json === true) && options.verbose !== true && previousConsoleFormat === undefined
   try {
     if (shouldSilenceRuntimeLogs) process.env.BAKIN_CONSOLE_FORMAT = 'silent'
     return await run()
@@ -90,7 +97,7 @@ function singleInstallRenderer(json: boolean, isTTY: boolean): OperationRenderer
 async function installAndReport(name: InstallableName, options: OnboardingInstallOptions, flags: { json: boolean; verbose?: boolean }): Promise<void> {
   const isTTY = Boolean(process.stdout.isTTY)
   const { runComponentInstall } = await import('../component-install')
-  const run = await withTtyRuntimeLogsSilenced({ isTTY, verbose: flags.verbose }, () =>
+  const run = await withTtyRuntimeLogsSilenced({ isTTY, verbose: flags.verbose, json: flags.json }, () =>
     runComponentInstall(name, options, { renderer: singleInstallRenderer(flags.json, isTTY) }))
   const result: InstallResult = run.result ?? { name, status: 'failed', message: describeResult(run.follow), durationMs: 0 }
   if (flags.json) {
@@ -124,28 +131,14 @@ async function composeForCheck(): Promise<void> {
 }
 
 async function cmdOnboardingCheckSingle(
-  target: 'runtime' | 'search' | 'search-models' | 'media' | 'llm' | 'models' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents' | 'capabilities',
+  target: ComponentName,
   options: { verbose?: boolean; json?: boolean } = {},
 ): Promise<void> {
-  const componentMap: Record<string, () => Promise<{ check(): Promise<import('../../core/onboarding/types').CheckResult> }>> = {
-    runtime: async () => (await import('../../core/onboarding/runtime')).runtimeComponent,
-    search: async () => (await import('../../core/onboarding/search')).searchComponent,
-    'search-models': async () => (await import('../../core/onboarding/search-models')).searchModelsComponent,
-    media: async () => (await import('../../core/onboarding/media')).mediaComponent,
-    llm: async () => (await import('../../core/onboarding/credentials')).llmComponent,
-    models: async () => (await import('../../core/onboarding/models')).modelsComponent,
-    channels: async () => (await import('../../core/onboarding/credentials')).channelsComponent,
-    'plugin-assets': async () => (await import('../../core/onboarding/plugin-assets')).pluginAssetsComponent,
-    'agent-sync': async () => (await import('../../core/onboarding/agent-sync')).agentSyncComponent,
-    'recommended-plugins': async () => (await import('../../core/onboarding/recommended-plugins')).recommendedPluginsComponent,
-    'recommended-agents': async () => (await import('../../core/onboarding/recommended-agents')).recommendedAgentsComponent,
-    'capabilities': async () => (await import('../../core/onboarding/recommended-capabilities')).recommendedCapabilitiesComponent,
-  }
   const isTTY = Boolean(process.stdout.isTTY)
-  const result = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
+  const result = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose, json: options.json }, async () => {
     await composeForCheck()
-    const component = await componentMap[target]()
-    return await component.check()
+    const { checkComponent } = await import('../../core/onboarding/index')
+    return await checkComponent(target)
   })
   if (options.json) {
     console.log(JSON.stringify(result, null, 2))
@@ -161,7 +154,7 @@ async function cmdOnboardingCheckSingle(
 
 async function cmdOnboardingCheckAll(options: { verbose?: boolean; json?: boolean } = {}): Promise<void> {
   const isTTY = Boolean(process.stdout.isTTY)
-  const results = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
+  const results = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose, json: options.json }, async () => {
     await composeForCheck()
     const { checkAll } = await import('../../core/onboarding/index')
     return await checkAll()
@@ -542,18 +535,21 @@ export async function run(args: string[]): Promise<void> {
   } else if (cmd === 'mkdir') {
     await cmdOnboardingMkdir({ json: args.includes('--json') })
   } else if (cmd === 'check') {
-    if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'media' || sub === 'llm' || sub === 'models' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
+    // Every onboarding component can be checked by name; the list is the
+    // component list, never a second one kept by hand.
+    if (isComponentName(sub)) {
       await cmdOnboardingCheckSingle(sub, { verbose: args.includes('--verbose'), json: args.includes('--json') })
     } else if (sub === 'all') {
       await cmdOnboardingCheckAll({ verbose: args.includes('--verbose'), json: args.includes('--json') })
     } else {
-      await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'media', 'llm', 'models', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'capabilities', 'all'])
+      await exitUnknownSubcommand('check', sub, [...COMPONENT_NAMES, 'all'])
     }
   } else if (cmd === 'install') {
-    if (sub === 'search' || sub === 'search-models' || sub === 'media' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents' || sub === 'capabilities') {
+    // Every component that has an install can be installed by name.
+    if (isInstallableComponentName(sub)) {
       await cmdOnboardingInstallSingle(sub, args)
     } else {
-      await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'media', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents'])
+      await exitUnknownSubcommand('install', sub, [...INSTALLABLE_COMPONENT_NAMES])
     }
   } else {
     await cmdOnboard(args)

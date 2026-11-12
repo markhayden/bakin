@@ -453,6 +453,24 @@ export function exitCodeFor(outcomes: ReadonlyArray<Pick<ComponentOutcome, 'fina
 }
 
 /**
+ * One component's check, the way `bakin check <name>` reports it: a
+ * component that does not apply to the active runtime says so instead of
+ * being checked, and a check that throws is an error result.
+ */
+export async function checkComponent(name: string): Promise<CheckResult> {
+  const component = COMPONENT_ORDER.find((candidate) => candidate.name === name)
+  if (!component) throw new Error(`${name} is not an onboarding component`)
+  if (!componentApplies(component)) {
+    return { name: component.name, status: 'ok', message: 'not applicable to the configured runtime adapter (skipped)' }
+  }
+  try {
+    return await component.check()
+  } catch (err) {
+    return { name: component.name, status: 'error', message: `check() threw: ${err instanceof Error ? err.message : String(err)}` }
+  }
+}
+
+/**
  * Run every component's `check()` in dependency order and return the
  * results. Never touches install() — safe for doctor or CI auditing.
  */
