@@ -198,10 +198,22 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   // POST still running for the previous thread neither blocks this thread's
   // owed settle nor decrements its count when it finally answers.
   const sendGenRef = useRef(0)
-  // Whether a chunk arrived since the newest plain send began: the server was
-  // still replying (a drained follow-up), so a queued/failed answer to that
-  // send must not wipe the live turn it did not own.
-  const chunkSinceSendRef = useRef(false)
+  // Live-turn ownership. Every live turn that opens — a send's provisional
+  // one, a chunk arriving with none open, a mount seed — takes the next
+  // generation; a send may clear or initialise the live state only while the
+  // generation it opened is still current, and only while no chunk has
+  // reached that turn (chunks mean the server is replying — not ours to
+  // wipe). `liveOpenRef` is whether a live turn is open right now (false
+  // after a settle, even though its chunks stay retained on screen).
+  const liveGenRef = useRef(0)
+  const liveOpenRef = useRef(false)
+  const chunkSinceOpenRef = useRef(false)
+  const openLiveTurn = () => {
+    liveGenRef.current += 1
+    liveOpenRef.current = true
+    chunkSinceOpenRef.current = false
+    return liveGenRef.current
+  }
 
   const loadTranscriptRef = useRef<() => Promise<void>>(async () => {})
   const runOwedSettle = useCallback(() => {
@@ -278,6 +290,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     dropRetained()
     if (body.streaming) {
       setStreaming(true)
+      if (!liveOpenRef.current) openLiveTurn()
       const seed = body.streamingText
       setLiveChunks((prev) => prev ?? (seed ? [{ type: 'text', content: seed }] : []))
     }
@@ -296,6 +309,8 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     settleOwedRef.current = false
     sendGenRef.current += 1
     inFlightSendsRef.current = 0
+    liveGenRef.current += 1
+    liveOpenRef.current = false
     optimisticRowsRef.current = []
     setStreaming(false)
     setSendError(null)
@@ -319,9 +334,10 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     // A chunk after a settle belongs to the NEXT turn (a queued follow-up the
     // server started): it starts its own live turn instead of growing the
     // retained one, and the settled turn's refetch no longer owns the clear.
-    const fresh = retainedLiveFromLoadSeqRef.current !== null
+    const fresh = retainedLiveFromLoadSeqRef.current !== null || !liveOpenRef.current
     retainedLiveFromLoadSeqRef.current = null
-    chunkSinceSendRef.current = true
+    if (fresh) openLiveTurn()
+    chunkSinceOpenRef.current = true
     setLiveChunks((prev) => {
       const chunks = fresh ? [] : (prev ?? [])
       // Coalesce consecutive same-format text deltas so a long turn stays a
@@ -344,6 +360,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     // `appended` that lands before React re-renders must still refetch (the
     // settle load may have read storage before the flush).
     streamingRef.current = false
+    liveOpenRef.current = false
     // The live chunks stay until the settle refetch (the next load, or any
     // later one) applies — loadTranscript clears them in the same batch as
     // the rows.
@@ -407,6 +424,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
       setSendError(null)
       let result: Awaited<ReturnType<ConversationThreadOptions<Meta, Attachment>['post']>>
       const gen = sendGenRef.current
+      const liveGenAtSend = liveGenRef.current
       inFlightSendsRef.current += 1
       try {
         result = await optionsRef.current.post(key, content, attachments)
@@ -418,7 +436,9 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
       } finally {
         if (sendGenRef.current === gen) inFlightSendsRef.current -= 1
       }
-      if (activeKeyRef.current !== key) return
+      // A different visit of the same thread (A → B → A) is a different
+      // generation: a late answer to the old visit's POST mutates nothing.
+      if (activeKeyRef.current !== key || sendGenRef.current !== gen) return
       if (!result.ok) {
         setSendError(result.error ?? `send failed (${result.status ?? 'network'})`)
         if (inFlightSendsRef.current === 0) runOwedSettle()
@@ -437,9 +457,16 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
         // Acknowledged already (the POST answered): any load from here on carries it.
         addOptimisticRow(row).ackedLoadSeq = loadSeqRef.current + 1
         setMessages((current) => [...current, row])
-        setStreaming(true)
-        retainedLiveFromLoadSeqRef.current = null
-        setLiveChunks([])
+        // The server took the message as its next turn. If that turn's
+        // chunks — or its settle — already reached us, the live state is
+        // theirs; only when nothing has happened since the send does this
+        // open the provisional live turn.
+        if (liveGenRef.current === liveGenAtSend) {
+          setStreaming(true)
+          retainedLiveFromLoadSeqRef.current = null
+          openLiveTurn()
+          setLiveChunks((prev) => prev ?? [])
+        }
       }
       if (inFlightSendsRef.current === 0) runOwedSettle()
       return
@@ -457,8 +484,8 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     // This turn owns the live state now: a previous turn's settle refetch
     // landing (or failing) after this point must not clear it.
     retainedLiveFromLoadSeqRef.current = null
+    const liveGen = openLiveTurn()
     setLiveChunks([])
-    chunkSinceSendRef.current = false
     // Loads that start from here on raced this POST: if one applied (or is
     // still in flight) when the ack lands, one more load is owed to retire
     // the optimistic row — never a durable twin beside it for good.
@@ -475,11 +502,13 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     } finally {
       if (sendGenRef.current === gen) inFlightSendsRef.current -= 1
     }
-    if (activeKeyRef.current !== key) return
-    // The live turn this send opened is provisional; a reply the server was
-    // already streaming (chunks since the send) is not ours to wipe.
+    if (activeKeyRef.current !== key || sendGenRef.current !== gen) return
+    // The live turn this send opened is provisional: it is cleared only while
+    // this send still owns it (no later send or server turn took over) and
+    // no chunk reached it (the server was replying — not ours to wipe).
     const dropProvisionalLive = () => {
-      if (chunkSinceSendRef.current) return
+      if (liveGenRef.current !== liveGen || chunkSinceOpenRef.current) return
+      liveOpenRef.current = false
       setStreaming(false)
       setLiveChunks(null)
     }
