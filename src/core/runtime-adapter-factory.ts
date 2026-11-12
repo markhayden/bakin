@@ -1,21 +1,29 @@
 import type { AgentRuntimeAdapter, RuntimeCompatibility } from '@bakin/core/adapters/runtime'
 import type { HealthCheckRegistrationInput } from '@bakin/core/plugin-types'
-import { createOpenClawHealthChecks, createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
-import { createPiHealthChecks, createPiRuntimeAdapter } from '@bakin/adapter-pi'
+import { createOpenClawHealthChecks, createOpenClawRuntimeAdapter, isOpenClawPresent } from '@bakin/adapter-openclaw'
+import { createPiHealthChecks, createPiRuntimeAdapter, isPiPresent } from '@bakin/adapter-pi'
 import { withModelAvailabilityObservation } from './model-availability'
 import type { RuntimeAdapterName } from './settings'
 
 export interface RuntimeAdapterSupportInfo {
+  /** The runtime's name as people write it. */
+  label: string
+  /** One line on what choosing it means, for a first-run choice. */
+  summary: string
   setupUrl: string
   docsUrl: string
 }
 
 const RUNTIME_ADAPTER_SUPPORT: Record<RuntimeAdapterName, RuntimeAdapterSupportInfo> = {
   openclaw: {
+    label: 'OpenClaw',
+    summary: 'A separate gateway you install and run alongside Bakin.',
     setupUrl: 'https://makinbakin.com/docs/start/first-time-setup/',
     docsUrl: 'https://openclaw.ai/docs/',
   },
   pi: {
+    label: 'Pi',
+    summary: 'Runs inside Bakin; nothing else to install.',
     setupUrl: 'https://pi.dev/docs/latest/quickstart',
     docsUrl: 'https://pi.dev/docs/latest',
   },
@@ -80,6 +88,21 @@ export function getRuntimeAdapterSupport(name: RuntimeAdapterName): RuntimeAdapt
 }
 
 export const DEFAULT_RUNTIME_ADAPTER_SUPPORT = RUNTIME_ADAPTER_SUPPORT.openclaw
+
+/**
+ * Which supported runtimes are set up on this machine. Each adapter owns
+ * its own read-only presence probe (one stat inside its own home); this
+ * only composes them. The order is fixed, so a result is the same on every
+ * run and a message that lists what was found is stable.
+ */
+const RUNTIME_PRESENCE_PROBES: ReadonlyArray<readonly [RuntimeAdapterName, () => boolean]> = [
+  ['openclaw', isOpenClawPresent],
+  ['pi', isPiPresent],
+]
+
+export function detectRuntimes(): RuntimeAdapterName[] {
+  return RUNTIME_PRESENCE_PROBES.filter(([, present]) => present()).map(([name]) => name)
+}
 
 /** The one registry of adapter names — consumers derive, never duplicate. */
 export function getSupportedRuntimeAdapterNames(): RuntimeAdapterName[] {

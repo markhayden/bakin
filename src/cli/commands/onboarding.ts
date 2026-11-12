@@ -228,8 +228,8 @@ async function cmdOnboard(args: string[]): Promise<void> {
     console.error(`bakin onboard sets up this machine's Bakin home (${getContentDir()}), but BAKIN_URL points at ${process.env.BAKIN_URL}. Unset BAKIN_URL and run it again — it uses this home's own server when one is running.`)
     process.exit(1)
   }
-  const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER, OnboardingInterruptedError } = await import('../../core/onboarding/index')
-  const { collectOnboardingSelections, OnboardingCancelledError } = await import('../../core/cli/onboarding-interactive')
+  const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER, OnboardingInterruptedError, RECOMMENDED_COMPONENTS } = await import('../../core/onboarding/index')
+  const { collectOnboardingSelections, OnboardingCancelledError, promptRuntimeChoice } = await import('../../core/cli/onboarding-interactive')
   const { OnboardingAlreadyCompleteReport, OnboardingBusy, OnboardingSummary } = await import('../../core/cli/ui/onboarding')
   const { render } = await import('ink')
   const { renderToString } = await import('../../core/cli/ui/render-to-string')
@@ -247,6 +247,37 @@ async function cmdOnboard(args: string[]): Promise<void> {
     console.error('bakin onboard: --check and --force cannot be combined. --check reports without changing anything; --force replays setup. Run one or the other.')
     process.exit(1)
   }
+
+  // Which runtime this home uses is decided once, here, before anything
+  // else: a flag or an environment value that cannot be honoured is refused
+  // even on a home that is already onboarded, and before any write.
+  const interactive = isTTY && Boolean(process.stdin.isTTY) && !yes && !json && !checkOnly
+  const { chooseRuntime, readRuntimeFlag } = await import('../onboard-runtime')
+  const chosen = await chooseRuntime({ flag: readRuntimeFlag(args), interactive, promptRuntimeChoice })
+  if (chosen.kind === 'cancelled') {
+    console.error('Onboarding cancelled before setup ran. Run `bakin onboard` again when you are ready.')
+    process.exit(130)
+  }
+  if (chosen.kind === 'refused') {
+    if (json) {
+      const { refusalSummary } = await import('../../core/onboarding/summary')
+      console.log(JSON.stringify(refusalSummary(chosen.code, chosen.found)))
+    } else {
+      console.error(`bakin onboard: ${chosen.message}`)
+    }
+    process.exit(1)
+  }
+  // A choice that is not stored in this home (and not already the
+  // environment's) applies to this process: every check and install below
+  // composes the chosen runtime, the same way the environment override does.
+  // The settings step writes it down when the choice is to be kept.
+  if (chosen.kind === 'use' && chosen.source !== 'existing' && chosen.source !== 'env') {
+    process.env.BAKIN_RUNTIME_ADAPTER = chosen.adapter
+    const { resetSettingsCache } = await import('../../core/settings')
+    resetSettingsCache()
+  }
+  const decided = chosen.kind === 'use' ? { adapter: chosen.adapter, source: chosen.source } : undefined
+  const runtimeProposal = chosen.kind === 'use' && chosen.persist ? chosen.adapter : undefined
 
   // Early exit for already-onboarded machines unless --force or --check
   if (!force && !checkOnly && isOnboarded()) {
@@ -269,6 +300,8 @@ async function cmdOnboard(args: string[]): Promise<void> {
   }
 
   const baseOpts = {
+    // The wizard needs a terminal to draw on and a person who did not ask
+    // for a scripted run.
     interactive: isTTY && !json && !checkOnly,
     autoApprove: yes || (!isTTY && !json),
     json,
@@ -277,21 +310,19 @@ async function cmdOnboard(args: string[]): Promise<void> {
   }
   try {
     if (checkOnly) await composeForCheck()
-    let selections: Awaited<ReturnType<typeof collectOnboardingSelections>>
-    try {
-      selections = await collectOnboardingSelections(baseOpts)
-    } catch (err) {
-      if (!(err instanceof OnboardingCancelledError)) throw err
-      // Ctrl-C in the wizard: say so and exit like any interrupted command,
-      // never 0 — nothing was set up and no marker was written.
-      console.error('Onboarding cancelled before setup ran. Run `bakin onboard` again when you are ready.')
-      process.exit(130)
+    const opts = {
+      autoApprove: baseOpts.autoApprove,
+      json,
+      checkOnly,
+      force,
+      ...(runtimeProposal ? { runtimeProposal } : {}),
+      // --no-recommended: set up Bakin itself and nothing from outside.
+      ...(args.includes('--no-recommended') ? { declinedComponents: [...RECOMMENDED_COMPONENTS] } : {}),
     }
-    const opts = { autoApprove: baseOpts.autoApprove, json, checkOnly, force, ...selections }
-    const busyShowsBrand = !selections.renderedWizardScreens
 
     let busyFrame = 0
     let busyDetail: string | undefined
+    let busyShowsBrand = true
     const completedOutcomes: Array<{
       name: string
       status: 'complete' | 'warning' | 'skipped' | 'blocked'
@@ -312,30 +343,43 @@ async function cmdOnboard(args: string[]): Promise<void> {
       totalSteps: COMPONENT_ORDER.length,
       showBrand: busyShowsBrand,
     })
-    const busy = isTTY && !json
-      ? render(renderBusy())
-      : null
-    if (busy) {
+    // The busy view starts once the bootstrap phase is done and the wizard
+    // (if any) has had the terminal: the wizard's intro carries the brand,
+    // so the busy view must know whether to repeat it before it mounts.
+    // The bootstrap outcomes are already in the list when it appears.
+    let busy: ReturnType<typeof render> | null = null
+    let showedBusy = false
+    const startBusy = () => {
+      if (!isTTY || json || busy) return
+      busy = render(renderBusy())
+      showedBusy = true
+      const live = busy
       busyTimer = setInterval(() => {
         busyFrame += 1
-        busy.rerender(renderBusy())
+        live.rerender(renderBusy())
       }, 80)
+    }
+    const stopBusy = () => {
+      if (busyTimer) clearInterval(busyTimer)
+      busyTimer = undefined
+      busy?.unmount()
+      busy = null
     }
 
     // Each install is an operation (#895 D11): on this home's server when
     // one runs, in-process otherwise. The busy view shows its live line;
     // piped runs get plain milestones on stderr; --json stays one line per
     // component.
-    const renderer: OperationRenderer = busy
+    const renderer: OperationRenderer = isTTY && !json
       ? {
         update(view) {
           busyDetail = operationStatusLine(view)
           busyFrame += 1
-          busy.rerender(renderBusy())
+          busy?.rerender(renderBusy())
         },
         note(text) {
           busyDetail = text
-          busy.rerender(renderBusy())
+          busy?.rerender(renderBusy())
         },
         finish() {},
       }
@@ -352,10 +396,11 @@ async function cmdOnboard(args: string[]): Promise<void> {
 
     let result: Awaited<ReturnType<typeof runOnboard>> | undefined
     let interrupted: InstanceType<typeof OnboardingInterruptedError> | null = null
+    let cancelled = false
     try {
       result = await runOnboard({
         ...opts,
-        onOutcome: busy
+        onOutcome: isTTY && !json
           ? (outcome) => {
             completedOutcomes.push({
               name: outcome.name,
@@ -363,16 +408,38 @@ async function cmdOnboard(args: string[]): Promise<void> {
               message: outcome.message,
             })
             busyFrame += 1
-            busy.rerender(renderBusy())
+            busy?.rerender(renderBusy())
           }
           : undefined,
-      }, installComponent)
+      }, installComponent, {
+        // The home, the settings and the runtime are in place: now ask.
+        // The questions are answered from fresh checks, on a runtime that
+        // has already been provisioned by the bootstrap phase.
+        afterBootstrap: async (bootstrap) => {
+          if (!baseOpts.interactive) {
+            startBusy()
+            return undefined
+          }
+          const runtimeReady = bootstrap.find((outcome) => outcome.name === 'runtime')?.finalStatus === 'ok'
+          const selections = await collectOnboardingSelections(baseOpts, { runtimeReady })
+          if (selections.renderedWizardScreens) busyShowsBrand = false
+          startBusy()
+          const { selectedRecommendedPluginIds, selectedRecommendedAgentIds, approvedComponents } = selections
+          return { selectedRecommendedPluginIds, selectedRecommendedAgentIds, approvedComponents }
+        },
+      })
     } catch (err) {
-      if (!(err instanceof OnboardingInterruptedError)) throw err
-      interrupted = err
+      if (err instanceof OnboardingCancelledError) cancelled = true
+      else if (err instanceof OnboardingInterruptedError) interrupted = err
+      else throw err
     } finally {
-      if (busyTimer) clearInterval(busyTimer)
-      busy?.unmount()
+      stopBusy()
+    }
+    if (cancelled) {
+      // Ctrl-C in the wizard: say so and exit like any interrupted command,
+      // never 0 — setup did not finish and no marker was written.
+      console.error('Onboarding cancelled before setup finished. Run `bakin onboard` again when you are ready.')
+      process.exit(130)
     }
     if (interrupted) {
       const line = `Onboarding stopped at ${interrupted.component}: ${interrupted.message}. Nothing after it ran — rerun \`bakin onboard\` to continue.`
@@ -385,7 +452,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
     if (json) {
       // Always the last line: what the run came to.
       const { runSummary } = await import('../../core/onboarding/summary')
-      console.log(JSON.stringify(runSummary(result)))
+      console.log(JSON.stringify(runSummary(result, decided, chosen.found)))
     }
 
     if (!json) {
@@ -394,7 +461,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
         console.log(renderToString(createElement(OnboardingSummary, {
           outcomes: result.outcomes,
           exitCode: result.exitCode,
-          showBrand: !busy,
+          showBrand: !showedBusy,
         })))
       } else {
         console.log('')

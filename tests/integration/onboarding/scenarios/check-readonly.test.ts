@@ -44,8 +44,9 @@ async function piHome(): Promise<OnboardingHome> {
 }
 
 describe('--check writes nothing', () => {
-  test('on a fresh home whose runtime cannot be reached', async () => {
-    // Nothing stored and nothing seeded: the checks stop at the runtime.
+  test('on a fresh home with nothing set up', async () => {
+    // Nothing stored and nothing seeded: Pi is the default for this run,
+    // and not even an empty login file is created for it.
     const home = await homes.create()
     await expectCheckWritesNothing(home)
   }, TEST_TIMEOUT)

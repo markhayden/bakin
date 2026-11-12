@@ -216,6 +216,7 @@ export const recommendedAgentsComponent: InstallableComponent = {
   plan: { stages: [{ id: 'install', kind: 'installing', label: 'Install official agents' }], pointOfNoReturn: 'install' },
   resources: ['install-state'],
   name: 'recommended-agents',
+  requires: ['runtime'],
   check,
   install,
 }

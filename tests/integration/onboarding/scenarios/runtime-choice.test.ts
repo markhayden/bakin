@@ -1,13 +1,14 @@
 /**
- * Runtime choice on first run (spec §2). Every scenario here pins a gap in
- * today's code and is flipped to a plain test by the task named in its
- * title; until then `expectedGap` requires the body to fail.
+ * Runtime choice on first run (spec §2): a fresh home decides which
+ * runtime it uses from what is set up on the machine, `--runtime` and the
+ * environment, refuses what it cannot honour before writing anything, and
+ * never switches a runtime that is already stored.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { readFileSync, writeFileSync } from 'fs'
 
 import { seedOpenClaw, seedPi, storeAdapter, storedAdapter, type OpenClawFixture } from '../fixtures'
-import { diffTrees, expectedGap, snapshotTree, trackHomes, type OnboardingHome, type TreeSnapshot } from '../harness'
+import { diffTrees, snapshotTree, trackHomes, type OnboardingHome, type TreeSnapshot } from '../harness'
 import { describe as describeRun, onboard, outcomes, readMarker, summary, TEST_TIMEOUT } from './kit'
 
 const homes = trackHomes()
@@ -16,16 +17,6 @@ const gateways: OpenClawFixture[] = []
 afterEach(async () => {
   for (const gateway of gateways.splice(0)) await gateway.stop()
   await homes.finish()
-})
-
-const gap = (body: () => Promise<void>) => expectedGap(homes, async () => {
-  try {
-    await body()
-  } finally {
-    // The gateway stand-in lives in this process; stop it before the
-    // harness removes the home it serves.
-    for (const gateway of gateways.splice(0)) await gateway.stop()
-  }
 })
 
 async function withOpenClaw(home: OnboardingHome, options: Parameters<typeof seedOpenClaw>[1] = {}): Promise<OpenClawFixture> {
@@ -54,8 +45,8 @@ function expectRefusal(run: Awaited<ReturnType<typeof onboard>>, code: string): 
   expect(outcomes(run)).toEqual({})
 }
 
-describe('a fresh home decides its runtime (pinned: flipped by task 3.7)', () => {
-  test('nothing found: Pi by default, persisted, finishes with a credentials warning', gap(async () => {
+describe('a fresh home decides its runtime', () => {
+  test('nothing found: Pi by default, persisted, finishes with a credentials warning', async () => {
     const home = await homes.create()
     const run = await onboard(home)
     expect(summary(run)?.runtime, describeRun(run)).toEqual({ adapter: 'pi', source: 'default' })
@@ -65,9 +56,9 @@ describe('a fresh home decides its runtime (pinned: flipped by task 3.7)', () =>
     expect(lines.llm?.status).toBe('warn')
     expect(run.exitCode).toBe(2)
     expect(readMarker(home)).not.toBeNull()
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 
-  test('Pi found and logged in: detected and persisted', gap(async () => {
+  test('Pi found and logged in: detected and persisted', async () => {
     const home = await homes.create()
     seedPi(home, { auth: true })
     const run = await onboard(home)
@@ -75,9 +66,9 @@ describe('a fresh home decides its runtime (pinned: flipped by task 3.7)', () =>
     expect(storedAdapter(home)).toBe('pi')
     expect(outcomes(run).llm?.status).toBe('ok')
     expect(readMarker(home)).not.toBeNull()
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 
-  test('Pi found but logged out: detected, runtime ok, credentials warn', gap(async () => {
+  test('Pi found but logged out: detected, runtime ok, credentials warn', async () => {
     const home = await homes.create()
     seedPi(home, { auth: false })
     const run = await onboard(home)
@@ -85,9 +76,9 @@ describe('a fresh home decides its runtime (pinned: flipped by task 3.7)', () =>
     expect(outcomes(run).runtime?.status).toBe('ok')
     expect(outcomes(run).llm?.status).toBe('warn')
     expect(readMarker(home)).not.toBeNull()
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 
-  test('OpenClaw found with its gateway up: detected and persisted', gap(async () => {
+  test('OpenClaw found with its gateway up: detected and persisted', async () => {
     const home = await homes.create()
     await withOpenClaw(home)
     const run = await onboard(home)
@@ -95,9 +86,9 @@ describe('a fresh home decides its runtime (pinned: flipped by task 3.7)', () =>
     expect(storedAdapter(home)).toBe('openclaw')
     expect(outcomes(run).runtime?.status).toBe('ok')
     expect(readMarker(home)).not.toBeNull()
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 
-  test('both found, non-interactive: refuses as ambiguous and writes nothing', gap(async () => {
+  test('both found, non-interactive: refuses as ambiguous and writes nothing', async () => {
     const home = await homes.create()
     seedPi(home, { auth: true })
     await withOpenClaw(home)
@@ -106,9 +97,9 @@ describe('a fresh home decides its runtime (pinned: flipped by task 3.7)', () =>
     expectRefusal(run, 'ambiguous_runtime')
     expect(summary(run)?.runtime?.found).toEqual(['openclaw', 'pi'])
     expectHomesUntouched(home, before)
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 
-  test('both found, --runtime pi: the flag decides', gap(async () => {
+  test('both found, --runtime pi: the flag decides', async () => {
     const home = await homes.create()
     seedPi(home, { auth: true })
     await withOpenClaw(home)
@@ -116,29 +107,29 @@ describe('a fresh home decides its runtime (pinned: flipped by task 3.7)', () =>
     expect(summary(run)?.runtime, describeRun(run)).toEqual({ adapter: 'pi', source: 'flag' })
     expect(storedAdapter(home)).toBe('pi')
     expect(readMarker(home)).not.toBeNull()
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 })
 
-describe('an invalid or conflicting choice is refused before any write (pinned: flipped by task 3.7)', () => {
-  test('--runtime with an unsupported value', gap(async () => {
+describe('an invalid or conflicting choice is refused before any write', () => {
+  test('--runtime with an unsupported value', async () => {
     const home = await homes.create()
     seedPi(home, { auth: true })
     const before = snapshotHomes(home)
     const run = await onboard(home, ['--runtime', 'bogus'])
     expectRefusal(run, 'invalid_runtime')
     expectHomesUntouched(home, before)
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 
-  test('BAKIN_RUNTIME_ADAPTER with an unsupported value', gap(async () => {
+  test('BAKIN_RUNTIME_ADAPTER with an unsupported value', async () => {
     const home = await homes.create()
     seedPi(home, { auth: true })
     const before = snapshotHomes(home)
     const run = await onboard(home, [], { env: { BAKIN_RUNTIME_ADAPTER: 'bogus' } })
     expectRefusal(run, 'invalid_runtime')
     expectHomesUntouched(home, before)
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 
-  test('a stored adapter and a different --runtime, on a fresh home', gap(async () => {
+  test('a stored adapter and a different --runtime, on a fresh home', async () => {
     const home = await homes.create()
     seedPi(home, { auth: true })
     storeAdapter(home, 'pi')
@@ -147,9 +138,9 @@ describe('an invalid or conflicting choice is refused before any write (pinned: 
     expectRefusal(run, 'runtime_already_set')
     expectHomesUntouched(home, before)
     expect(storedAdapter(home)).toBe('pi')
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 
-  test('a stored adapter and a different --runtime, on an onboarded home', gap(async () => {
+  test('a stored adapter and a different --runtime, on an onboarded home', async () => {
     const home = await homes.create()
     seedPi(home, { auth: true })
     storeAdapter(home, 'pi')
@@ -160,9 +151,9 @@ describe('an invalid or conflicting choice is refused before any write (pinned: 
     const run = await onboard(home, ['--runtime', 'openclaw'])
     expectRefusal(run, 'runtime_already_set')
     expectHomesUntouched(home, before)
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 
-  test('two undecided runs at once with different --runtime: one wins, one is refused', gap(async () => {
+  test('two undecided runs at once with different --runtime: one wins, one is refused', async () => {
     const home = await homes.create()
     seedPi(home, { auth: true })
     await withOpenClaw(home)
@@ -175,17 +166,17 @@ describe('an invalid or conflicting choice is refused before any write (pinned: 
     expect(refused.length, `${describeRun(asPi)}\n${describeRun(asOpenClaw)}`).toBe(1)
     expect(won.length).toBe(1)
     expect(storedAdapter(home)).toBe(won[0] === asPi ? 'pi' : 'openclaw')
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 })
 
-describe('a settings file that says nothing or cannot be read (pinned: flipped by task 3.7)', () => {
+describe('a settings file that says nothing', () => {
   // These homes have no settings scaffold, so the product runs on its real
   // default endpoints; the harness denies those without calling it a breach.
   test.each([
     ['absent', null],
     ['an empty object', '{}'],
     ['zero bytes', ''],
-  ])('settings %s: undecided, so the choice is made and persisted', (_label, content) => gap(async () => {
+  ])('settings %s: undecided, so the choice is made and persisted', async (_label, content) => {
     const home = await homes.create({ bakinHome: content === null ? 'absent' : 'scaffold' })
     home.blackholeProductDefaults()
     if (content !== null) writeFileSync(home.settingsPath, content)
@@ -194,12 +185,16 @@ describe('a settings file that says nothing or cannot be read (pinned: flipped b
     expect(summary(run)?.runtime, describeRun(run)).toEqual({ adapter: 'pi', source: 'detected' })
     expect(storedAdapter(home)).toBe('pi')
     expect(readMarker(home)).not.toBeNull()
-  })(), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
+})
 
+describe('a settings file that cannot be trusted', () => {
+  // No usable settings, so the product runs on its default endpoints; the
+  // harness denies those without calling it a breach.
   test.each([
     ['not JSON', '{ "runtime": '],
     ['an unsupported stored adapter', JSON.stringify({ runtime: { adapter: 'bogus' } })],
-  ])('settings %s: stops with an error and leaves the file alone', (_label, content) => gap(async () => {
+  ])('settings %s: stops with an error and leaves the file alone', async (_label, content) => {
     const home = await homes.create()
     home.blackholeProductDefaults()
     writeFileSync(home.settingsPath, content)
@@ -213,5 +208,5 @@ describe('a settings file that says nothing or cannot be read (pinned: flipped b
     // Nothing was decided or provisioned on top of a file nobody can trust.
     expect(diffTrees(piBefore, snapshotTree(home.piHome))).toEqual({ added: [], removed: [], changed: [] })
     expect(summary(run)?.markerWritten).toBe(false)
-  })(), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 })

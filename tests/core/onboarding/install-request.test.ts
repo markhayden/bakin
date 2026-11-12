@@ -45,13 +45,13 @@ describe('OnboardingInstallRequestSchema', () => {
 
   it('rejects an unknown component, a check-only component and an unknown option', () => {
     expect(OnboardingInstallRequestSchema.safeParse({ component: 'nope' }).success).toBe(false)
-    expect(OnboardingInstallRequestSchema.safeParse({ component: 'runtime' }).success).toBe(false)
+    expect(OnboardingInstallRequestSchema.safeParse({ component: 'llm' }).success).toBe(false)
     expect(OnboardingInstallRequestSchema.safeParse({ component: 'media', options: { interactive: true } }).success).toBe(false)
   })
 
   it('names exactly the components that have an install', () => {
     expect(COMPONENT_ORDER.filter(isInstallable).map((c) => c.name).sort()).toEqual([...INSTALLABLE_COMPONENTS].sort())
-    expect(COMPONENT_ORDER.filter((c) => !isInstallable(c)).map((c) => c.name).sort()).toEqual(['budget', 'channels', 'llm', 'runtime'])
+    expect(COMPONENT_ORDER.filter((c) => !isInstallable(c)).map((c) => c.name).sort()).toEqual(['budget', 'channels', 'llm'])
   })
 })
 

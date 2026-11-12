@@ -73,6 +73,20 @@ export interface OnboardingOptions {
   selectedRecommendedAgentIds?: readonly string[]
   /** Component ids explicitly approved by the human onboarding TUI. */
   approvedComponents?: readonly string[]
+  /**
+   * Components the operator declined outright (`--no-recommended`). A
+   * declined component is neither checked nor installed — not even when
+   * `autoApprove` would otherwise select its defaults — and its outcome is
+   * `skipped` / `declined`.
+   */
+  declinedComponents?: readonly string[]
+  /**
+   * The runtime a first run decided on (`decideRuntime`, `persist: true`).
+   * The `settings` install commits it under `install-state` — and is run
+   * for it even when the settings check is already ok, because only that
+   * operation can tell whether another run stored a different one meanwhile.
+   */
+  runtimeProposal?: string
   /** Optional human UI completion callback. Never used for JSON output. */
   onOutcome?: (outcome: {
     name: string
@@ -92,6 +106,29 @@ interface ComponentBase {
    * integration component is meaningless on the in-process Pi runtime.
    */
   readonly supportedAdapters?: readonly RuntimeAdapterName[]
+  /**
+   * The components this one cannot run without, by name. Each must come
+   * earlier in COMPONENT_ORDER. A requirement is satisfied when that
+   * component finished `ok` or `warn`, or does not apply to the active
+   * runtime; otherwise this component is skipped with reason `requires`
+   * and never checked or installed.
+   */
+  readonly requires: readonly string[]
+  /**
+   * The subset of `requires` that must have finished `ok`: a `warn` there
+   * does NOT satisfy this component. For a requirement whose warning means
+   * "this home does not run it" rather than "it works with a caveat" — the
+   * search engine's models need an engine this home actually manages.
+   */
+  readonly requiresOk?: readonly string[]
+  /**
+   * Under `--check` nothing is installed, so a component that only reports
+   * `missing` would block everything after it. Set this when the built-in
+   * defaults make its dependents checkable before it exists (the home
+   * directory tree, the settings file): a `missing` check then satisfies
+   * dependents. A `broken` or failed one never does.
+   */
+  readonly usableWhenMissing?: boolean
   check(): Promise<CheckResult>
 }
 

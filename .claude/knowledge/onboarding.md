@@ -37,6 +37,160 @@ that gives none is treated as `declined`. An install that fails for a reason
 a caller must tell apart sets `code`, and the operation settles with it
 (`result.code ?? component.failureCode ?? 'component_failed'`).
 
+## Phases
+
+A run has two phases (`runOnboard` in `index.ts`):
+
+1. **Bootstrap**: `mkdir`, `settings`, `runtime` (`BOOTSTRAP_COMPONENTS`).
+   They need no answers from the operator. An empty roster is provisioned
+   here.
+2. **The rest**, in `COMPONENT_ORDER`.
+
+Between them the orchestrator calls `phases.afterBootstrap(outcomes)` once.
+The CLI uses it to run the wizard: the questions are asked from fresh
+checks, on a home that exists and a runtime that is already provisioned,
+and the answers (`OnboardingSelections`) apply to the rest of the run. The
+wizard never checks or provisions the runtime itself; when the bootstrap
+phase could not get one ready it asks nothing and the run reports why. A
+throw from the boundary (the operator left the wizard with Ctrl-C) stops
+onboarding there: nothing after the bootstrap runs, no marker is written,
+exit 130.
+
+## Choosing the runtime
+
+A home that stores no runtime decides one before anything else runs
+(`src/cli/onboard-runtime.ts` → `decideRuntime` in
+`src/core/onboarding/runtime-choice.ts`, a pure table over four facts):
+
+| # | Situation | Result |
+|---|---|---|
+| 1 | `--runtime` or `BAKIN_RUNTIME_ADAPTER` names an unsupported runtime | refuse `invalid_runtime` |
+| 2 | `BAKIN_RUNTIME_ADAPTER` set (flag absent or equal) | that runtime, source `env`, never stored |
+| 3 | `BAKIN_RUNTIME_ADAPTER` set, `--runtime` differs | refuse `runtime_conflict` |
+| 4 | A runtime is stored (flag absent or equal) | the stored one, source `existing` |
+| 5 | A runtime is stored, `--runtime` differs | refuse `runtime_already_set` |
+| 6 | `--runtime` given | that runtime, source `flag`, stored |
+| 7 | Nothing found on the machine | Pi, source `default`, stored |
+| 8 | A person is at the terminal and something was found | ask (source `asked`, stored) |
+| 9 | Scripted, exactly one found | that runtime, source `detected`, stored |
+| 10 | Scripted, more than one found | refuse `ambiguous_runtime` |
+
+- "Found" is each adapter's own read-only presence probe (Pi: its agent
+  directory exists; OpenClaw: its home holds a config file), composed by
+  `detectRuntimes()` in the factory, always in the order `openclaw`, `pi`.
+- "A person is at the terminal" means stdin and stdout are terminals and
+  none of `--yes`, `--json`, `--check` was given.
+- A refusal exits 1 before any write, and before the already-onboarded
+  shortcut. Under `--json` it prints only
+  `{"summary":{"exitCode":1,"markerWritten":false,"runtime":{"refused":"<code>","found":[…]}}}`.
+- A choice that is not already stored or in the environment is applied to
+  the process (the same mechanism as the environment override), so every
+  check and install composes the chosen runtime. When it is to be stored,
+  it is handed to the run as `runtimeProposal` and committed by the
+  settings step (below) — even when the settings check is already ok.
+- Nothing is chosen on top of a settings file that cannot be trusted; the
+  settings step reports the file and the run stops there.
+- Onboarding never switches a stored runtime. That is `bakin runtime use`.
+
+Upgrade note: a home onboarded before this stored no runtime and ran on
+the built-in default (OpenClaw). `bakin onboard` on it still answers
+"already onboarded". `bakin onboard --force` now decides like a first run,
+so on a machine with both runtimes set up a scripted `--force` needs
+`--runtime openclaw`.
+
+## The settings step
+
+`settings.ts` gates everything that reads `getSettings()` and is where a
+first-run runtime choice is committed.
+
+- `inspectSettingsFile()` reads the file strictly (the file as it is, not
+  the merged defaults): `absent`, `empty` (zero bytes), `readable` (with the
+  supported runtime it stores, if any) or `untrustworthy` (unreadable, not
+  JSON, not an object, or naming a runtime Bakin does not support).
+- **It never writes over a file it cannot trust.** `untrustworthy` is a
+  check `error` and an install failure (`settings_untrustworthy`); the
+  bytes are left alone. Before this, an unparseable file was silently
+  reseeded. A zero-byte file is still reseeded.
+- **The runtime commit.** The install takes an optional `runtimeAdapter`
+  (part of the operation's identity) and owns `install-state`. Inside the
+  operation it re-reads what is stored: nothing stored → the proposal is
+  written; the same value → nothing to do; a different one → fails
+  `runtime_already_set`. In a server process it also compares the adapter
+  that server bound at boot and fails `server_running_other_runtime` when
+  they differ. So two runs deciding at once produce one winner and one
+  refusal, and onboarding never switches a runtime.
+
+## Runtime and credentials are two facts
+
+- **`runtime`** (`runtime.ts`): the adapter initializes, is reachable, and
+  its roster passes integrity. Reachability follows how the runtime's
+  agents reach Bakin's tools (`describeToolAccess().style`): an in-process
+  runtime (Pi) is reachable once it initializes; any other (OpenClaw's
+  gateway) must answer `ping()`. Credentials play no part. So Pi without a
+  login is a working runtime, and a stopped gateway is a broken one with or
+  without credentials.
+- **`llm`** (`credentials.ts`): at least one provider has usable
+  credentials. Check-only, warn-only, requires `runtime`, and runs right
+  after it.
+
+`runtime` is installable. Its check reports `error` for everything the
+operator has to fix outside Bakin (cannot initialize, cannot be reached,
+roster unreadable or inconsistent) and `missing` for the one thing
+onboarding sets up: a runtime with no agents yet. The install provisions
+(adapter-owned: Pi seeds its main agent; OpenClaw only writes tool access,
+so an empty OpenClaw roster stays the operator's to fix), validates again,
+and fails if the roster is still empty or inconsistent. It owns
+`install-state` and settles `runtime_not_ready` on failure. Nothing else in
+onboarding provisions the runtime.
+
+A home with a reachable runtime and no login therefore finishes onboarding
+with a warning (exit 2, marker written) and `bakin start` works.
+
+## Declining the extras
+
+`bakin onboard --no-recommended` declines the three steps that fetch from
+outside (`RECOMMENDED_COMPONENTS`: recommended plugins, recommended agents,
+capability packs). The orchestrator applies a decline before it looks at
+the component: nothing is checked, fetched or installed, even under `--yes`
+and even when the component is already installed, and the outcome is
+`skipped` / `declined`. `bakin onboard --yes --no-recommended` is the
+scripted run that sets up Bakin itself and touches nothing external.
+
+## What stops what
+
+Each component declares `requires`: the components it cannot run without
+(`src/core/onboarding/types.ts`; the table is pinned by
+`tests/core/onboarding/requirements.test.ts`). A requirement is satisfied
+when that component ended `ok` or `warn`, or does not apply to the active
+runtime. Otherwise the dependent is skipped with reason `requires`, names
+what it was waiting for, and is never checked or installed.
+
+| Component | Requires |
+|---|---|
+| mkdir | — |
+| settings | mkdir |
+| runtime | settings |
+| search | settings |
+| search-models | search |
+| media | mkdir |
+| budget | settings |
+| llm, openclaw-integration, plugin-assets, agent-sync, models, channels, recommended-plugins, recommended-agents, capabilities | runtime |
+
+One requirement is strict (`requiresOk`): `search-models` needs `search`
+to be fully `ok`. A search step that only warns is an engine this home does
+not run (a temporary home, a service another home owns), so there is
+nothing to pull models with; left to run, the models check would report the
+missing engine as an error and fail the whole run.
+
+So a runtime that cannot be reached skips only the steps that need one;
+search, its models, media and the spend check still run. There are no
+hand-written cascades left.
+
+Under `--check` nothing is installed, so `mkdir` and `settings` also declare
+`usableWhenMissing`: a check that merely finds them `missing` does not block
+what comes after (built-in defaults make the rest checkable). A `broken`
+one still does.
+
 ## Checks change nothing
 
 `bakin onboard --check` and `bakin check <x>` create no file, run no
@@ -141,9 +295,11 @@ which wins.
 ### The local rig (`bun run onboard:rig`)
 
 Runs the real wizard in your terminal against a throwaway home built by the
-same harness. Flags: `--runtime none|pi|openclaw|both`, `--auth
-none|fake|copy`, `--stored <adapter>`, `--keep`, `--home <dir>`,
-`--network`; everything after `--` goes to `bakin onboard`. It prints what
+same harness. Flags: `--runtime none|pi|openclaw|both` (what is set up on
+the "machine"), `--auth none|fake|copy`, `--stored <adapter>` (a home that
+already decided), `--keep`, `--home <dir>`, `--network`; everything after
+`--` goes to `bakin onboard`. Try `--runtime none` (Pi by default, no
+question), `--runtime pi` and `--runtime both` (the runtime question). It prints what
 the run wrote, any refused supervisor call or denied request, and confirms
 that the real `~/.bakin`, `~/.pi`, `~/.openclaw`, `~/.antfly` and the search
 service unit are unchanged. `--auth copy` only reads `~/.pi/agent/auth.json`.

@@ -81,6 +81,7 @@ async function checkLlm(): Promise<CheckResult> {
 /** Credentials are runtime-managed: onboarding only says where to set them. */
 export const llmComponent: CheckOnlyComponent = {
   name: 'llm',
+  requires: ['runtime'],
   manualSetup: `LLM credentials must be configured via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
   check: checkLlm,
 }
@@ -246,6 +247,7 @@ async function checkChannels(): Promise<CheckResult> {
 export const channelsComponent: CheckOnlyComponent = {
   manualSetup: `Channel credentials must be configured via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
   name: 'channels',
+  requires: ['runtime'],
   check: checkChannels,
 }
 

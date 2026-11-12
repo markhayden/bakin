@@ -173,6 +173,7 @@ export const recommendedCapabilitiesComponent: InstallableComponent = {
   plan: { stages: [{ id: 'install', kind: 'installing', label: 'Install capability packs' }], pointOfNoReturn: 'install' },
   resources: ['install-state'],
   name: 'capabilities',
+  requires: ['runtime'],
   check,
   install,
 }

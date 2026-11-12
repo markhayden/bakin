@@ -34,6 +34,12 @@ function setup() {
 
 export const searchModelsComponent: InstallableComponent = {
   name: 'search-models',
+  requires: ['search'],
+  // A search step that only warns is an engine this home does not run (a
+  // temporary home, a service another home owns): there is nothing here to
+  // pull models with, and checking would report the missing engine as an
+  // error and fail the whole run.
+  requiresOk: ['search'],
   get plan() { return setup().models.plan },
   resources: ['search-engine'],
   check: () => setup().models.check().then((result) => ({ ...result, name: 'search-models' })),

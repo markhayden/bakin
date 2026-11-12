@@ -65,7 +65,7 @@ describe('imitation-crab onboarding contract', () => {
     }))
   })
 
-  it('reports a broken runtime check when the seeded roster loses main', async () => {
+  it('reports a runtime the operator has to fix when the seeded roster loses main', async () => {
     const { env } = await openHarness()
     const config = readRuntimeConfig(env.home) as {
       agents?: { entries?: Record<string, unknown> }
@@ -78,7 +78,8 @@ describe('imitation-crab onboarding contract', () => {
     writeRuntimeConfig(env.home, config as Record<string, unknown>)
 
     const result = await runtimeComponent.check()
-    expect(result.status).toBe('broken')
+    // An inconsistent roster is an error, never something onboarding provisions over.
+    expect(result.status).toBe('error')
     expect(result.message).toContain("id 'main'")
   })
 

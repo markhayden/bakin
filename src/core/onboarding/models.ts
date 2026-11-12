@@ -230,6 +230,7 @@ export const modelsComponent: InstallableComponent = {
   plan: { stages: [{ id: 'apply', kind: 'committing', label: 'Apply the recommended model plan' }], pointOfNoReturn: 'start' },
   resources: [],
   name: 'models',
+  requires: ['runtime'],
   check,
   install,
 }

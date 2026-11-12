@@ -194,6 +194,7 @@ export const agentSyncComponent: InstallableComponent = {
   plan: AGENT_SYNC_PLAN,
   resources: ['install-state'],
   name: 'agent-sync',
+  requires: ['runtime'],
   check,
   install,
 }

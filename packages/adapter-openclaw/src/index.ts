@@ -3,6 +3,7 @@ import { OpenClawRuntimeAdapter } from './runtime'
 
 export { createOpenClawHealthChecks, type OpenClawHealthDeps } from './health-checks'
 export { gatewayCompatibility } from './gateway-rpc'
+export { isOpenClawPresent } from './presence'
 
 export interface OpenClawRuntimeAdapterOptions {
   settings?: Record<string, unknown>

@@ -47,14 +47,8 @@ mock.module('ink', () => ({
 mock.module('../../../src/core/cli/ui/render-to-string', () => ({ renderToString: () => '' }))
 
 type Check = { name: string; status: string; message: string; details?: Record<string, unknown> }
-let runtimeChecks: Check[] = []
-const provisioned: number[] = []
 const ok = (name: string): Check => ({ name, status: 'ok', message: `${name} ok` })
 let mediaCheck: Check = ok('media')
-mock.module('../../../src/core/onboarding/runtime', () => ({
-  runtimeComponent: { name: 'runtime', manualSetup: 'set up', check: async () => runtimeChecks.shift() ?? ok('runtime') },
-  provisionRuntimeForOnboarding: async () => { provisioned.push(1) },
-}))
 mock.module('../../../src/core/onboarding/search', () => ({ searchComponent: { name: 'search', check: async () => ok('search') } }))
 mock.module('../../../src/core/onboarding/search-models', () => ({ searchModelsComponent: { name: 'search-models', check: async () => ok('search-models') } }))
 mock.module('../../../src/core/onboarding/media', () => ({ mediaComponent: { name: 'media', check: async () => mediaCheck } }))
@@ -65,11 +59,11 @@ mock.module('../../../src/core/onboarding/recommended-agents', () => ({ recommen
 import { collectOnboardingSelections, OnboardingCancelledError } from '../../../src/core/cli/onboarding-interactive'
 
 const INTERACTIVE = { interactive: true, autoApprove: false, json: false, checkOnly: false }
+/** The bootstrap phase finished with a runtime the wizard can ask about. */
+const READY = { runtimeReady: true }
 
 beforeEach(() => {
   titles.length = 0
-  provisioned.length = 0
-  runtimeChecks = []
   mediaCheck = ok('media')
 })
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
@@ -77,31 +71,30 @@ afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 describe('collectOnboardingSelections', () => {
   it('asks about image processing and records the approval for media', async () => {
     mediaCheck = { name: 'media', status: 'missing', message: 'no image processing.' }
-    const selections = await collectOnboardingSelections(INTERACTIVE)
+    const selections = await collectOnboardingSelections(INTERACTIVE, READY)
     expect(titles).toContain('Image processing')
-    expect(selections.approvedComponents).toEqual(['media'])
-  })
-
-  it('a fresh Pi home (empty roster) is seeded first, then the wizard asks', async () => {
-    runtimeChecks = [{ name: 'runtime', status: 'broken', message: 'no agents yet', details: { emptyRoster: true } }, ok('runtime')]
-    mediaCheck = { name: 'media', status: 'missing', message: 'no image processing' }
-    const selections = await collectOnboardingSelections(INTERACTIVE)
-    expect(provisioned).toEqual([1])
     expect(selections.approvedComponents).toEqual(['media'])
   })
 
   it('leaving a screen with Ctrl-C is a cancellation, never a silent finish', async () => {
     mediaCheck = { name: 'media', status: 'missing', message: 'no image processing.' }
     cancelNextScreen = true
-    await expect(collectOnboardingSelections(INTERACTIVE)).rejects.toBeInstanceOf(OnboardingCancelledError)
+    await expect(collectOnboardingSelections(INTERACTIVE, READY)).rejects.toBeInstanceOf(OnboardingCancelledError)
     // The wizard stopped at the screen that was left; nothing after it was asked.
     expect(titles).toHaveLength(1)
   })
 
-  it('a runtime that is genuinely not ready asks nothing (the orchestrator reports it)', async () => {
-    runtimeChecks = [{ name: 'runtime', status: 'missing', message: 'no runtime' }]
-    expect(await collectOnboardingSelections(INTERACTIVE)).toEqual({})
-    expect(provisioned).toEqual([])
+  it('a runtime the bootstrap phase could not get ready asks nothing (the run reports why)', async () => {
+    mediaCheck = { name: 'media', status: 'missing', message: 'no image processing.' }
+    expect(await collectOnboardingSelections(INTERACTIVE, { runtimeReady: false })).toEqual({})
+    expect(titles).toEqual([])
+  })
+
+  it('never asks in a scripted run, whatever the bootstrap phase came to', async () => {
+    mediaCheck = { name: 'media', status: 'missing', message: 'no image processing.' }
+    for (const scripted of [{ ...INTERACTIVE, interactive: false }, { ...INTERACTIVE, autoApprove: true }, { ...INTERACTIVE, json: true }, { ...INTERACTIVE, checkOnly: true }]) {
+      expect(await collectOnboardingSelections(scripted, READY)).toEqual({})
+    }
     expect(titles).toEqual([])
   })
 })

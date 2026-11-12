@@ -130,7 +130,7 @@ const reobserved: string[] = []
 const memoryRegistry = () => createOperationRegistry({ bootId: () => 'boot-test', publish: () => {}, audit: () => {} })
 let registry = memoryRegistry()
 const fakeComponent = (name: string, stages: Array<{ id: string; kind: 'downloading' | 'installing' | 'verifying'; label: string }>, install: InstallableComponent['install']): InstallableComponent => ({
-  name, plan: { stages, pointOfNoReturn: stages[0]!.id }, resources: ['search-engine'], check: async () => ({ name, status: 'ok', message: 'ok' }), install,
+  name, requires: [], plan: { stages, pointOfNoReturn: stages[0]!.id }, resources: ['search-engine'], check: async () => ({ name, status: 'ok', message: 'ok' }), install,
 })
 function deps(engine: UpdatesEngine, overrides: Partial<ApplyDeps> = {}): ApplyDeps {
   return {

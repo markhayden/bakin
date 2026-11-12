@@ -839,6 +839,7 @@ export const pluginAssetsComponent: InstallableComponent = {
   plan: PLUGIN_ASSETS_PLAN,
   resources: ['install-state'],
   name: 'plugin-assets',
+  requires: ['runtime'],
   check,
   install,
 }

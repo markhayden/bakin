@@ -1,23 +1,26 @@
 /**
- * runtime component - detects that the configured agent runtime is available.
+ * runtime component — the configured agent runtime is there, reachable and
+ * has a roster Bakin can work with.
  *
- * The runtime is a **hard prerequisite**, not something Bakin manages. This
- * component is check-only — it has no install; its `manualSetup` points at
- * the active runtime adapter setup path. The orchestrator is
- * responsible for using the `missing`/`error` status from `check()` to
- * abort the remaining onboarding steps: without a runtime there is no
- * agent runtime, and everything downstream of this point (LLM keys,
- * channel config, credential discovery) would be meaningless.
+ * `runtime` and `llm` are two facts. This one is about the runtime itself:
  *
- * Detection criteria (all must hold for status: ok):
- * 1. The configured runtime adapter initializes
- * 2. The runtime responds to ping()
- * 3. Runtime roster integrity checks pass
+ * 1. The configured adapter initializes.
+ * 2. It is REACHABLE, decided by how its agents reach Bakin's tools
+ *    (`describeToolAccess().style`, an existing contract fact): an
+ *    in-process runtime (Pi) is reachable once it initializes; any other
+ *    runtime (OpenClaw's gateway) has to answer `ping()`. Credentials play
+ *    no part — whether a provider is logged in is the `llm` component's
+ *    question, so Pi without a login is a working runtime and a stopped
+ *    gateway is a broken one with or without credentials.
+ * 3. The roster passes its integrity checks.
  *
- * If any one of those is missing we report `missing` (not `error`) and
- * leave the hard-stop decision to the orchestrator — a single `bakin check
- * runtime` invocation should still be able to surface the same result
- * without hard-exiting the process.
+ * Statuses: `error` for everything the operator has to fix outside Bakin
+ * (cannot initialize, cannot be reached, roster unreadable or inconsistent)
+ * and `missing` for the one thing onboarding sets up itself — a runtime
+ * that has never been provisioned and so has no agents. Its install
+ * provisions (adapter-owned: Pi seeds its main agent; OpenClaw writes tool
+ * access only, so an empty OpenClaw roster stays the operator's to fix) and
+ * validates again. `check()` never mutates anything.
  *
  * P2.5: integrity validates the runtime-neutral ROSTER (`agents.list()` — the
  * adapter resolves each agent's effective workspace into metadata), never raw
@@ -26,7 +29,8 @@
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { createAppServices, maybeGetAppServices } from '../app-services'
 import { DEFAULT_RUNTIME_ADAPTER_SUPPORT } from '../runtime-adapter-factory'
-import type { CheckOnlyComponent, CheckResult } from './types'
+import type { OperationContext } from '@bakin/core/operations'
+import type { CheckResult, ComponentInstallOptions, InstallableComponent, InstallResult } from './types'
 
 const SETUP_URL = DEFAULT_RUNTIME_ADAPTER_SUPPORT.setupUrl
 const SETUP_MESSAGE = `Bakin requires an active agent runtime such as OpenClaw. Review the prerequisites and setup guide, then rerun onboarding: ${SETUP_URL}`
@@ -114,6 +118,15 @@ export function validateRuntimeIntegrity(agents: RuntimeAgent[]): string[] {
   return issues
 }
 
+/**
+ * Reachability by tool-access style: an in-process runtime lives in this
+ * process and is reachable once initialized; anything else must answer.
+ */
+async function isReachable(runtime: AgentRuntimeAdapter): Promise<boolean> {
+  if (runtime.describeToolAccess().style === 'in-process') return true
+  return await runtime.ping().catch(() => false)
+}
+
 async function check(): Promise<CheckResult> {
   let runtime: AgentRuntimeAdapter
   try {
@@ -121,19 +134,18 @@ async function check(): Promise<CheckResult> {
   } catch (err) {
     return {
       name: 'runtime',
-      status: 'missing',
+      status: 'error',
       message: `Runtime adapter could not initialize: ${err instanceof Error ? err.message : String(err)}`,
       remediation: SETUP_MESSAGE,
       details: { installUrl: SETUP_URL },
     }
   }
 
-  const available = await runtime.ping().catch(() => false)
-  if (!available) {
+  if (!await isReachable(runtime)) {
     return {
       name: 'runtime',
-      status: 'missing',
-      message: `${runtime.name} runtime adapter cannot serve turns (gateway down or credentials missing)`,
+      status: 'error',
+      message: `${runtime.name} runtime cannot be reached (it did not answer)`,
       remediation: SETUP_MESSAGE,
       details: { runtime: runtime.name, installUrl: SETUP_URL },
     }
@@ -145,29 +157,24 @@ async function check(): Promise<CheckResult> {
   } catch (err) {
     return {
       name: 'runtime',
-      status: 'broken',
+      status: 'error',
       message: `Runtime agent roster could not be read: ${err instanceof Error ? err.message : String(err)}`,
       remediation: 'Fix the configured runtime adapter, then rerun onboarding.',
       details: { runtime: runtime.name, installUrl: SETUP_URL },
     }
   }
 
-  const mainAgent = selectRuntimeMainAgent(agents)
-  if (!mainAgent) {
+  if (!selectRuntimeMainAgent(agents)) {
     // A completely empty roster is the FIRST-RUN state, not user breakage:
-    // initialize() is write-free by conformance pin, so a runtime that has
-    // never been provisioned has no agents yet. The check stays read-only
-    // (`bakin check runtime` never mutates); the onboarding orchestrator
-    // keys on `emptyRoster` to provision — the sanctioned seeding path —
-    // and re-check. Integrity-broken rosters below never get this marker.
+    // initialize() is write-free, so a runtime that has never been
+    // provisioned has no agents yet. That is the one thing this
+    // component's install sets up; the check itself never mutates.
     return {
       name: 'runtime',
-      status: 'broken',
+      status: 'missing',
       message: 'Runtime adapter returned no agents',
-      remediation: agents.length === 0
-        ? 'Run `bakin onboard` (or start the server) to provision the runtime and seed its main agent.'
-        : 'Create at least one orchestrator agent, then rerun onboarding.',
-      details: { runtime: runtime.name, installUrl: SETUP_URL, ...(agents.length === 0 ? { emptyRoster: true } : {}) },
+      remediation: 'Run `bakin onboard` (or start the server) to provision the runtime and seed its main agent.',
+      details: { runtime: runtime.name, installUrl: SETUP_URL, emptyRoster: true },
     }
   }
 
@@ -175,7 +182,7 @@ async function check(): Promise<CheckResult> {
   if (integrityIssues.length > 0) {
     return {
       name: 'runtime',
-      status: 'broken',
+      status: 'error',
       message: `Runtime roster has ${integrityIssues.length} integrity issue${integrityIssues.length === 1 ? '' : 's'}:\n  - ${integrityIssues.join('\n  - ')}`,
       remediation: 'Fix the runtime\'s agent roster to resolve the listed issues, then rerun `bakin check runtime`. Bakin will not modify the runtime for you.',
       details: { runtime: runtime.name, integrityIssues },
@@ -186,26 +193,54 @@ async function check(): Promise<CheckResult> {
     name: 'runtime',
     status: 'ok',
     message: `${runtime.name} runtime adapter is available`,
-    details: { runtime: runtime.name, mainAgentId: mainAgent.id },
+    details: { runtime: runtime.name, mainAgentId: selectRuntimeMainAgent(agents)!.id },
   }
 }
 
 /**
- * Onboarding-only seeding hook: provisioning is adapter-owned and idempotent
- * (Pi seeds its main orchestrator here; OpenClaw writes MCP entries), and
- * onboarding is one of the sanctioned provisioning call sites (boot,
- * install, roster change). Never called from `bakin check`.
+ * Provision a runtime that has never been set up, then validate again.
+ * Provisioning is adapter-owned and idempotent, and onboarding is one of
+ * its sanctioned call sites (boot, install, roster change). Anything other
+ * than an empty roster is not this install's to fix: it fails with what
+ * the check found, and the operator fixes the runtime.
  */
-export async function provisionRuntimeForOnboarding(): Promise<void> {
-  const runtime = await getRuntimeForOnboarding()
-  await runtime.provisionToolAccess()
+async function install(_opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
+  const start = Date.now()
+  const done = (status: InstallResult['status'], message: string): InstallResult => ({ name: 'runtime', status, message, durationMs: Date.now() - start })
+  const before = await check()
+  if (before.status === 'ok') {
+    op.skip('provision', 'already provisioned')
+    return done('noop', before.message)
+  }
+  if (before.status !== 'missing') {
+    op.skip('provision', 'not something provisioning fixes')
+    return done('failed', before.message)
+  }
+  op.stage('provision')
+  try {
+    const runtime = await getRuntimeForOnboarding()
+    await runtime.provisionToolAccess()
+  } catch (err) {
+    return { ...done('failed', `Runtime provisioning failed: ${err instanceof Error ? err.message : String(err)}`), error: err }
+  }
+  const after = await check()
+  if (after.status === 'ok') return done('installed', `${after.message} (provisioned)`)
+  // Still empty (this runtime's provisioning creates no agents) or broken.
+  return done('failed', after.status === 'missing'
+    ? 'Runtime still has no agents after provisioning — create an orchestrator agent in the runtime, then rerun onboarding.'
+    : after.message)
 }
 
-export const runtimeComponent: CheckOnlyComponent = {
-  // The runtime is user-managed: Bakin detects it, never installs it.
+export const runtimeComponent: InstallableComponent = {
   name: 'runtime',
-  manualSetup: SETUP_MESSAGE,
+  requires: ['settings'],
+  plan: { stages: [{ id: 'provision', kind: 'installing', label: 'Provision the runtime' }], pointOfNoReturn: 'start' },
+  // Provisioning writes the runtime's Bakin registry and tool-access
+  // entries: an install-state write like every other setup step.
+  resources: ['install-state'],
+  failureCode: 'runtime_not_ready',
   check,
+  install,
 }
 
 export const RUNTIME_SETUP_URL = SETUP_URL

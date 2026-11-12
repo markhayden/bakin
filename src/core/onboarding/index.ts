@@ -1,11 +1,11 @@
 /**
  * Onboarding orchestrator — public API for `bakin onboard` and doctor.
  *
- * runOnboard() walks every component in a fixed dependency order:
- *
- *   mkdir -> settings -> runtime -> search -> search-models -> openclaw-integration -> plugin-assets -> agent-assets -> llm -> channels -> recommended-plugins -> recommended-agents
+ * runOnboard() walks every component in the fixed order of COMPONENT_ORDER.
  *
  * For each component:
+ *   0. If one of the components it declares in `requires` did not finish,
+ *      skip it (reason `requires`) without checking or installing it.
  *   1. Call `check()`. If it reports `ok` or `warn`, record and move on.
  *   2. If it reports `missing` or `broken`:
  *        - In --check mode: record as `skipped`, never install
@@ -20,21 +20,15 @@
  *        skipped           → 'skipped'
  *        failed            → 'error'
  *
- * Special cases baked into the flow:
- *   - Runtime missing/broken is a hard stop: the orchestrator records
- *     the runtime status, marks every downstream component as 'skipped'
- *     with a "runtime required" message, and returns without writing
- *     the marker. Exit code 1.
- *   - Search adapter missing that cascades into search-models: if search's
- *     post-install status is not 'ok', search-models is force-skipped with
- *     the reason "search adapter binary required." No point shelling to a binary that
- *     doesn't exist.
+ * What stops what is declared, never hard-coded: each component lists the
+ * components it `requires`. A requirement is satisfied by `ok`, `warn` or
+ * "does not apply to this runtime"; anything else skips the dependent. So
+ * a runtime that cannot be reached skips the steps that need a runtime and
+ * nothing else (search, media and the spend check still run), and a
+ * search engine that did not install skips only its models.
  *
- * Marker-write rule (matches the spec and Mark's sign-off):
- *   - exitCode 0 (all ok) → write marker
- *   - exitCode 2 (any warn/skipped, no errors) → write marker
- *   - exitCode 1 (any error/failed) → do NOT write marker. The user
- *     must fix the broken component and rerun.
+ * Exit code and marker: see `exitCodeFor`. The marker is written when the
+ * exit code is not 1 and the run is not `--check`.
  *
  * checkAll() is the read-only equivalent: it calls every component's
  * `check()` and returns the results, never running install. Used by
@@ -109,13 +103,14 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   mkdirComponent,
   settingsComponent,
   runtimeComponent,
+  // Credentials are a fact about the runtime: checked right after it.
+  llmComponent,
   searchComponent,
   searchModelsComponent,
   mediaComponent,
   openClawIntegrationComponent,
   pluginAssetsComponent,
   agentSyncComponent,
-  llmComponent,
   modelsComponent,
   budgetComponent,
   channelsComponent,
@@ -123,6 +118,35 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   recommendedAgentsComponent,
   recommendedCapabilitiesComponent,
 ] as const
+
+/** The recommended extras: optional, fetched from outside, and declinable as a group (`--no-recommended`). */
+export const RECOMMENDED_COMPONENTS: readonly string[] = ['recommended-plugins', 'recommended-agents', 'capabilities']
+
+/** Where to get a declined extra later. */
+const DECLINED_HINTS: Record<string, string> = {
+  'recommended-plugins': 'install plugins any time from Explore or with `bakin install recommended-plugins`',
+  'recommended-agents': 'install agents any time from Explore or with `bakin install recommended-agents`',
+  capabilities: 'install capability packs any time from Explore or with `bakin install capabilities`',
+}
+
+/**
+ * The bootstrap phase: the home, its settings and the runtime. They run
+ * first and need no answers from the operator; everything after them may.
+ */
+export const BOOTSTRAP_COMPONENTS: readonly string[] = ['mkdir', 'settings', 'runtime']
+
+/** What the operator chose for the steps after the bootstrap phase. */
+export type OnboardingSelections = Pick<OnboardingOptions, 'selectedRecommendedPluginIds' | 'selectedRecommendedAgentIds' | 'approvedComponents'>
+
+export interface OnboardingPhases {
+  /**
+   * Called once, after the bootstrap components finished and before any
+   * other component is looked at. The returned selections apply to the
+   * rest of the run. A throw stops onboarding there (nothing after the
+   * bootstrap phase runs, no marker is written).
+   */
+  afterBootstrap?: (bootstrap: readonly ComponentOutcome[]) => Promise<OnboardingSelections | undefined>
+}
 
 /** The installable component named `name` (the shared request schema already validated it). */
 export function installableComponent(name: string): InstallableComponent {
@@ -232,8 +256,13 @@ async function runComponent(
     }
   }
 
+  // A pending runtime proposal goes through the settings install even when
+  // the file checks ok: the commit, and the comparison with whatever another
+  // run stored in the meantime, happen inside that operation and nowhere else.
+  const commitsRuntime = component.name === 'settings' && opts.runtimeProposal !== undefined && !opts.checkOnly
+
   // ok / warn → no install, outcome matches check
-  if (check.status === 'ok') {
+  if (check.status === 'ok' && !commitsRuntime) {
     return {
       name: component.name,
       finalStatus: 'ok',
@@ -296,6 +325,7 @@ async function runComponent(
     const install = await installComponent(component, {
       autoApprove: opts.autoApprove,
       allowServiceClaim: false,
+      ...(commitsRuntime ? { runtimeAdapter: opts.runtimeProposal } : {}),
       ...(opts.approvedComponents ? { approvedComponents: [...opts.approvedComponents] } : {}),
       ...(opts.selectedRecommendedPluginIds ? { selectedRecommendedPluginIds: [...opts.selectedRecommendedPluginIds] } : {}),
       ...(opts.selectedRecommendedAgentIds ? { selectedRecommendedAgentIds: [...opts.selectedRecommendedAgentIds] } : {}),
@@ -350,6 +380,8 @@ async function runComponent(
         return {
           name: component.name,
           finalStatus: 'error',
+          // A failure a caller must tell apart (a refused runtime choice).
+          ...(install.code ? { code: install.code } : {}),
           check,
           message: install.message,
           remediation: check.remediation,
@@ -373,76 +405,35 @@ async function runComponent(
 }
 
 /**
- * Special-case handling for runtime. It is check-only — Bakin does not
- * manage the runtime, it only detects it — and unlike the other check-only
- * components a runtime that is not ok blocks everything after it. So we
- * translate any non-ok status into an error the orchestrator cascades on.
+ * The first requirement of `component` that did not finish, if any.
+ *
+ * Satisfied: the required component ended `ok` or `warn` (`ok` only for a
+ * requirement listed in `requiresOk`), or does not apply to the active
+ * runtime. Under `--check` a required component that
+ * declares `usableWhenMissing` also satisfies its dependents when its
+ * check merely found it `missing`.
  */
-async function runRuntimeInline(component: OnboardingComponent, opts: OnboardingOptions): Promise<ComponentOutcome> {
-  const start = Date.now()
-  let check: CheckResult
-  try {
-    check = await component.check()
-    if (check.status === 'broken' && check.details?.emptyRoster === true && opts.checkOnly) {
-      // A check never provisions. The runtime is there and simply has not
-      // been set up by Bakin yet: that is work for a real run, not an error.
-      return {
-        name: component.name,
-        finalStatus: 'skipped',
-        reason: 'check_only',
-        check,
-        message: `${check.message} — onboarding provisions the runtime (check-only mode, not provisioning)`,
-        remediation: check.remediation,
-        details: check.details,
-        durationMs: Date.now() - start,
-      }
-    }
-    if (check.status === 'broken' && check.details?.emptyRoster === true) {
-      // First-run state: the roster is empty because initialize() is
-      // write-free and nothing has provisioned yet. Onboarding IS a
-      // sanctioned provisioning call site — seed and re-check. Integrity
-      // breakage never carries the marker and is never auto-touched.
-      const { provisionRuntimeForOnboarding } = await import('./runtime')
-      await provisionRuntimeForOnboarding()
-      check = await component.check()
-    }
-  } catch (err) {
-    return {
-      name: component.name,
-      finalStatus: 'error',
-      check: {
-        name: component.name,
-        status: 'error',
-        message: `check() threw: ${err instanceof Error ? err.message : String(err)}`,
-      },
-      message: `check() threw: ${err instanceof Error ? err.message : String(err)}`,
-      durationMs: Date.now() - start,
-    }
+function unmetRequirement(
+  component: OnboardingComponent,
+  outcomes: readonly ComponentOutcome[],
+  opts: OnboardingOptions,
+): ComponentOutcome | null {
+  for (const name of component.requires) {
+    const required = outcomes.find((o) => o.name === name)
+    // Not run yet means the order is wrong; the requirements test pins that.
+    if (!required) continue
+    if (required.finalStatus === 'ok') continue
+    if (required.finalStatus === 'warn' && !component.requiresOk?.includes(name)) continue
+    if (required.finalStatus === 'skipped' && required.reason === 'not_applicable') continue
+    if (
+      opts.checkOnly
+      && required.reason === 'check_only'
+      && required.check.status === 'missing'
+      && COMPONENT_ORDER.find((c) => c.name === name)?.usableWhenMissing === true
+    ) continue
+    return required
   }
-
-  const base = {
-    name: component.name,
-    check,
-    message: check.message,
-    remediation: check.remediation,
-    details: check.details,
-    durationMs: Date.now() - start,
-  }
-
-  switch (check.status) {
-    case 'ok':
-      return { ...base, finalStatus: 'ok' }
-    case 'warn':
-      return { ...base, finalStatus: 'warn' }
-    case 'missing':
-      // A missing prerequisite isn't an "error" per se — we just can't
-      // proceed. Record as 'error' so the orchestrator writes no marker
-      // and the CLI exits 1. The remediation message is the key output.
-      return { ...base, finalStatus: 'error' }
-    case 'broken':
-    case 'error':
-      return { ...base, finalStatus: 'error' }
-  }
+  return null
 }
 
 /**
@@ -495,7 +486,13 @@ export async function checkAll(): Promise<CheckResult[]> {
  * when no component errored.
  */
 /** Throws `OnboardingInterruptedError` when the installer reports the operator stopped an install. */
-export async function runOnboard(opts: OnboardingOptions, installComponent: ComponentInstaller): Promise<RunOnboardResult> {
+export async function runOnboard(
+  requested: OnboardingOptions,
+  installComponent: ComponentInstaller,
+  phases: OnboardingPhases = {},
+): Promise<RunOnboardResult> {
+  let opts = requested
+  let bootstrapped = false
   // Clear the marker upfront if --force was passed. The user wants to
   // replay the whole flow regardless of prior state. Never under --check:
   // a check changes nothing (the CLI refuses the combination outright).
@@ -525,66 +522,48 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
       continue
     }
 
-    // Cascade skip: if search is not ok, search-models has nothing to pull with.
-    // Skip it before even calling check().
-    if (component.name === 'search-models') {
-      const search = outcomes.find((o) => o.name === 'search')
-      if (search && search.finalStatus !== 'ok') {
-        const skip: ComponentOutcome = {
-          name: 'search-models',
-          finalStatus: 'skipped',
-          reason: 'requires',
-          requires: 'search',
-          check: {
-            name: 'search-models',
-            status: 'missing',
-            message: 'Skipped: search adapter binary is required to pull Termite models',
-          },
-          message: 'Skipped: search adapter binary is required to pull Termite models',
-          remediation: 'Install the configured search adapter first via `bakin install search`, then rerun onboarding.',
-          durationMs: 0,
-        }
-        outcomes.push(skip)
-        emitOutcome(opts, skip)
-        if (opts.json) emitJson(skip)
-        continue
-      }
+    // Phase boundary: the bootstrap components are done. Whatever the
+    // caller decides now (the wizard's answers) applies to the rest.
+    if (!bootstrapped && !BOOTSTRAP_COMPONENTS.includes(component.name)) {
+      bootstrapped = true
+      const decided = await phases.afterBootstrap?.(outcomes)
+      if (decided) opts = { ...opts, ...decided }
     }
 
-    // Runtime setup is a user-managed prerequisite. The generic path
-    // records a check-only component's setup pointer as ok, which would
-    // mark a missing runtime as ready. Handle it inline: call check()
-    // only, derive the outcome from that, and cascade-skip downstream if
-    // anything other than ok.
-    if (component.name === 'runtime') {
-      const outcome = await runRuntimeInline(component, opts)
-      outcomes.push(outcome)
-      emitOutcome(opts, outcome)
-      if (opts.json) emitJson(outcome)
-      if (outcome.finalStatus !== 'ok') {
-        log.warn('Runtime is not ready; aborting remaining onboarding steps')
-        for (let j = i + 1; j < COMPONENT_ORDER.length; j++) {
-          const remaining = COMPONENT_ORDER[j]
-          const skip: ComponentOutcome = {
-            name: remaining.name,
-            finalStatus: 'skipped',
-            reason: 'requires',
-            requires: 'runtime',
-            check: {
-              name: remaining.name,
-              status: 'missing',
-              message: 'Skipped: runtime is a prerequisite and is not ready',
-            },
-            message: 'Skipped: runtime is a prerequisite and is not ready',
-            remediation: outcome.remediation,
-            durationMs: 0,
-          }
-          outcomes.push(skip)
-          emitOutcome(opts, skip)
-          if (opts.json) emitJson(skip)
-        }
-        break
+    // Declined outright: decided before the component is looked at, so
+    // nothing is checked, fetched or installed for it.
+    if (opts.declinedComponents?.includes(component.name)) {
+      const skip: ComponentOutcome = {
+        name: component.name,
+        finalStatus: 'skipped',
+        reason: 'declined',
+        check: { name: component.name, status: 'ok', message: 'Declined; not checked' },
+        message: `Declined — ${DECLINED_HINTS[component.name] ?? `run \`bakin install ${component.name}\` when you want it`}.`,
+        durationMs: 0,
       }
+      outcomes.push(skip)
+      emitOutcome(opts, skip)
+      if (opts.json) emitJson(skip)
+      continue
+    }
+
+    // Declared requirements: a component whose requirement did not finish
+    // is skipped before it is checked, and says which one.
+    const unmet = unmetRequirement(component, outcomes, opts)
+    if (unmet) {
+      const skip: ComponentOutcome = {
+        name: component.name,
+        finalStatus: 'skipped',
+        reason: 'requires',
+        requires: unmet.name,
+        check: { name: component.name, status: 'missing', message: `Skipped: needs ${unmet.name}, which is not ready` },
+        message: `Skipped: needs ${unmet.name}, which is not ready`,
+        remediation: unmet.remediation,
+        durationMs: 0,
+      }
+      outcomes.push(skip)
+      emitOutcome(opts, skip)
+      if (opts.json) emitJson(skip)
       continue
     }
 

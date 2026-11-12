@@ -204,6 +204,7 @@ export const recommendedPluginsComponent: InstallableComponent = {
   // Holds nothing: each plugin's own install operation owns install-state.
   resources: [],
   name: 'recommended-plugins',
+  requires: ['runtime'],
   check,
   install,
 }

@@ -39,12 +39,18 @@ let onboardingState: {
   components: Record<string, 'ok' | 'warn' | 'skipped' | 'error'>
 } | null = null
 
-const runOnboard = mock(async (opts: {
-  onProgress?: (message: string) => void
-  onOutcome?: (outcome: { name: string; finalStatus: 'ok'; message: string }) => void
-}) => {
+const runOnboard = mock(async (
+  opts: {
+    onProgress?: (message: string) => void
+    onOutcome?: (outcome: { name: string; finalStatus: 'ok'; message: string }) => void
+  },
+  _install: unknown,
+  phases?: { afterBootstrap?: (bootstrap: Array<{ name: string; finalStatus: 'ok' }>) => Promise<unknown> },
+) => {
   opts.onProgress?.('Checking mkdir')
   opts.onOutcome?.({ name: 'mkdir', finalStatus: 'ok', message: outcomes[0].message })
+  // The real run hands over once the home, settings and runtime are done.
+  await phases?.afterBootstrap?.([{ name: 'mkdir', finalStatus: 'ok' }, { name: 'settings', finalStatus: 'ok' }, { name: 'runtime', finalStatus: 'ok' }])
   return { outcomes, exitCode: 0, markerWritten: true }
 })
 
@@ -53,16 +59,33 @@ mock.module('../../src/core/onboarding/index', () => ({
   isOnboarded: () => onboarded,
   loadState: () => onboardingState,
   COMPONENT_ORDER: outcomes.map(outcome => ({ name: outcome.name })),
+  RECOMMENDED_COMPONENTS: ['recommended-plugins', 'recommended-agents', 'capabilities'],
 }))
 
+class OnboardingCancelledError extends Error {}
 mock.module('../../src/core/cli/onboarding-interactive', () => ({
   collectOnboardingSelections: async () => onboardingSelections,
+  OnboardingCancelledError,
+  promptRuntimeChoice: async () => 'pi',
+}))
+
+// The runtime decision reads the machine (which runtimes are set up) and
+// this home's settings; here it has already been made.
+type Chosen = { kind: 'use'; adapter: string; source: string; persist: boolean; found: string[] } | { kind: 'refused'; code: string; message: string; found: string[] }
+let chosenRuntime: Chosen = { kind: 'use', adapter: 'pi', source: 'existing', persist: false, found: ['pi'] }
+const chooseRuntime = mock(async () => chosenRuntime)
+mock.module('../../src/cli/onboard-runtime', () => ({
+  chooseRuntime,
+  readRuntimeFlag: (args: string[]) => {
+    const index = args.indexOf('--runtime')
+    return index === -1 ? undefined : args[index + 1]
+  },
 }))
 
 const harness = setupTtyCliHarness({
   mockFetch: false,
   spyStdoutWrite: true,
-  saveEnv: ['BAKIN_CONSOLE_FORMAT', 'BAKIN_URL'],
+  saveEnv: ['BAKIN_CONSOLE_FORMAT', 'BAKIN_URL', 'BAKIN_RUNTIME_ADAPTER'],
 })
 
 describe('CLI onboard command', () => {
@@ -72,6 +95,8 @@ describe('CLI onboard command', () => {
     onboarded = false
     onboardingSelections = {}
     onboardingState = null
+    chosenRuntime = { kind: 'use', adapter: 'pi', source: 'existing', persist: false, found: ['pi'] }
+    chooseRuntime.mockClear()
   })
 
   it('continues the shared onboarding summary without replaying the brand header', async () => {
@@ -134,5 +159,61 @@ describe('CLI onboard command', () => {
 
     expect(harness.errorOutput()).toContain('BAKIN_URL points at http://10.0.0.9:3737')
     expect(runOnboard).not.toHaveBeenCalled()
+  })
+
+  describe('the runtime decision comes first', () => {
+    it('a refusal prints why and exits 1 before anything runs', async () => {
+      chosenRuntime = { kind: 'refused', code: 'ambiguous_runtime', message: 'More than one runtime is set up here (openclaw, pi). Say which one with --runtime <openclaw|pi>.', found: ['openclaw', 'pi'] }
+      process.argv = ['bun', 'cli/bakin.ts', 'onboard', '--yes']
+
+      const { main } = await import('../../cli/bakin')
+      await expect(main()).rejects.toThrow('exit:1')
+
+      expect(harness.errorOutput()).toContain('More than one runtime is set up here (openclaw, pi)')
+      expect(runOnboard).not.toHaveBeenCalled()
+    })
+
+    it('a refusal under --json is the summary line and nothing else', async () => {
+      chosenRuntime = { kind: 'refused', code: 'invalid_runtime', message: '--runtime bogus is not a runtime Bakin supports (openclaw, pi).', found: ['pi'] }
+      process.argv = ['bun', 'cli/bakin.ts', 'onboard', '--json', '--runtime', 'bogus']
+
+      const { main } = await import('../../cli/bakin')
+      await expect(main()).rejects.toThrow('exit:1')
+
+      const lines = harness.output().split('\n').filter(Boolean)
+      expect(lines.map((line) => JSON.parse(line))).toEqual([{ summary: { exitCode: 1, markerWritten: false, runtime: { refused: 'invalid_runtime', found: ['pi'] } } }])
+      expect(runOnboard).not.toHaveBeenCalled()
+    })
+
+    it('a refusal wins over the already-onboarded shortcut', async () => {
+      onboarded = true
+      chosenRuntime = { kind: 'refused', code: 'runtime_already_set', message: 'This home already uses pi.', found: ['pi'] }
+      process.argv = ['bun', 'cli/bakin.ts', 'onboard', '--runtime', 'openclaw']
+
+      const { main } = await import('../../cli/bakin')
+      await expect(main()).rejects.toThrow('exit:1')
+      expect(harness.output()).not.toContain('already complete')
+    })
+
+    it('a scripted run (--yes) is never asked: the decision is told nobody can choose', async () => {
+      process.argv = ['bun', 'cli/bakin.ts', 'onboard', '--yes']
+      const { main } = await import('../../cli/bakin')
+      await main()
+      expect(chooseRuntime).toHaveBeenCalledTimes(1)
+      expect((chooseRuntime.mock.calls[0] as unknown as [{ interactive: boolean }])[0].interactive).toBe(false)
+    })
+
+    it('a choice to be kept is handed to the run as a proposal; one that is not, is not', async () => {
+      chosenRuntime = { kind: 'use', adapter: 'pi', source: 'detected', persist: true, found: ['pi'] }
+      process.argv = ['bun', 'cli/bakin.ts', 'onboard', '--force']
+      const { main } = await import('../../cli/bakin')
+      await main()
+      expect((runOnboard.mock.calls.at(-1) as unknown as [{ runtimeProposal?: string }])[0].runtimeProposal).toBe('pi')
+
+      runOnboard.mockClear()
+      chosenRuntime = { kind: 'use', adapter: 'pi', source: 'existing', persist: false, found: ['pi'] }
+      await main()
+      expect((runOnboard.mock.calls.at(-1) as unknown as [{ runtimeProposal?: string }])[0].runtimeProposal).toBeUndefined()
+    })
   })
 })

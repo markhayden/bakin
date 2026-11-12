@@ -4,7 +4,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 
-import { seedPi, storeAdapter } from '../fixtures'
+import { seedOpenClaw, seedPi, storeAdapter } from '../fixtures'
 import { trackHomes, type OnboardingHome } from '../harness'
 import { componentOrder, describe as describeRun, onboard, outcomes, readMarker, summary, TEST_TIMEOUT } from './kit'
 
@@ -89,5 +89,46 @@ describe('a model plan with nothing to run', () => {
     expect(models?.code).toBe('no_runnable_model')
     expect(run.exitCode).toBe(2)
     expect(readMarker(home)).not.toBeNull()
+  }, TEST_TIMEOUT)
+})
+
+describe('--yes --no-recommended', () => {
+  // The first scenario that passes --yes: everything is approved except the
+  // three extras that come from outside, so nothing is fetched.
+  test('sets up Bakin itself, declines the three extras, and fetches nothing', async () => {
+    const home = await piHome()
+    const run = await onboard(home, ['--yes', '--no-recommended'])
+    const lines = outcomes(run)
+    for (const name of ['recommended-plugins', 'recommended-agents', 'capabilities']) {
+      expect({ name, status: lines[name]?.status, reason: lines[name]?.reason }, describeRun(run)).toEqual({ name, status: 'skipped', reason: 'declined' })
+    }
+    expect(Object.values(lines).filter((line) => line.status === 'error')).toEqual([])
+    expect(run.exitCode).toBe(2)
+    expect(readMarker(home)).not.toBeNull()
+    expect(home.deniedRequests()).toEqual([])
+  }, TEST_TIMEOUT)
+
+  test('a second run on the same home declines them again without looking', async () => {
+    const home = await piHome()
+    await onboard(home, ['--yes', '--no-recommended'])
+    const replay = await onboard(home, ['--yes', '--no-recommended', '--force'])
+    for (const name of ['recommended-plugins', 'recommended-agents', 'capabilities']) {
+      expect(outcomes(replay)[name], describeRun(replay)).toMatchObject({ status: 'skipped', reason: 'declined' })
+    }
+    expect(home.deniedRequests()).toEqual([])
+  }, TEST_TIMEOUT)
+
+  test('on OpenClaw too', async () => {
+    const home = await homes.create()
+    const fixture = await seedOpenClaw(home)
+    try {
+      const run = await onboard(home, ['--yes', '--no-recommended'])
+      expect(summary(run)?.runtime, describeRun(run)).toEqual({ adapter: 'openclaw', source: 'detected' })
+      expect(Object.values(outcomes(run)).filter((line) => line.reason === 'declined').map((line) => line.component)).toEqual(['recommended-plugins', 'recommended-agents', 'capabilities'])
+      expect(Object.values(outcomes(run)).filter((line) => line.status === 'error')).toEqual([])
+      expect(home.deniedRequests()).toEqual([])
+    } finally {
+      await fixture.stop()
+    }
   }, TEST_TIMEOUT)
 })

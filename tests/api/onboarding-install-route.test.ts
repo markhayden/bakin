@@ -85,7 +85,7 @@ afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 describe('POST /api/runtime/onboarding/install', () => {
   it('answers 400 for an unknown or check-only component and for unknown options — nothing starts', async () => {
     expect((await post({ component: 'nope' })).status).toBe(400)
-    expect((await post({ component: 'runtime' })).status).toBe(400)
+    expect((await post({ component: 'llm' })).status).toBe(400)
     expect((await post({ component: 'media', options: { interactive: true } })).status).toBe(400)
     expect(getOperationRegistry().list()).toEqual([])
   })
