@@ -172,6 +172,31 @@ default-runtime copy anywhere onboarding can speak from, and no runtime
 name inside a string literal in those two components. Adding a runtime
 means adding its entry, not editing messages.
 
+## The guided credentials step
+
+Interactive runs only. After the bootstrap phase, when the runtime is ok
+and no provider is logged in, the wizard shows the active runtime's
+`loginSteps` and waits (`waitForCredentials` in
+`src/core/cli/onboarding-interactive.tsx`, screen
+`OnboardingCredentialsPrompt`):
+
+- **Enter** checks again. A login that appeared (made in another terminal)
+  ends the step; otherwise the screen says it is still not there.
+- **s** skips. The run finishes with the `llm` warning (exit 2, marker
+  written) and `bakin start` works without a login.
+- Ctrl-C cancels onboarding (exit 130).
+
+Bakin never handles the secret: the operator logs in inside the runtime.
+The wait sits at the phase boundary, so no operation is open and
+`install-state` is not held while the operator is away. Scripted runs
+(`--yes`, `--json`, no terminal) never wait: they warn and continue.
+
+Screens are tested two ways: `tests/cli/onboarding-ui.test.tsx` renders
+them to a string (what they say), and `tests/cli/onboarding-keys.test.tsx`
+presses real keys through Ink's input handling (what the keys do). Add a
+key test for any screen that takes input: the runtime screen once rendered
+correctly while Enter on its preselected entry did nothing.
+
 ## What stops what
 
 Each component declares `requires`: the components it cannot run without

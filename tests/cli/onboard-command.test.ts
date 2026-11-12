@@ -67,6 +67,7 @@ mock.module('../../src/core/cli/onboarding-interactive', () => ({
   collectOnboardingSelections: async () => onboardingSelections,
   OnboardingCancelledError,
   promptRuntimeChoice: async () => 'pi',
+  waitForCredentials: async () => ({ outcome: 'ready', asked: false }),
 }))
 
 // The runtime decision reads the machine (which runtimes are set up) and

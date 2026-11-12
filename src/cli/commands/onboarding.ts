@@ -229,7 +229,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
     process.exit(1)
   }
   const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER, OnboardingInterruptedError, RECOMMENDED_COMPONENTS } = await import('../../core/onboarding/index')
-  const { collectOnboardingSelections, OnboardingCancelledError, promptRuntimeChoice } = await import('../../core/cli/onboarding-interactive')
+  const { collectOnboardingSelections, OnboardingCancelledError, promptRuntimeChoice, waitForCredentials } = await import('../../core/cli/onboarding-interactive')
   const { OnboardingAlreadyCompleteReport, OnboardingBusy, OnboardingSummary } = await import('../../core/cli/ui/onboarding')
   const { render } = await import('ink')
   const { renderToString } = await import('../../core/cli/ui/render-to-string')
@@ -421,8 +421,27 @@ async function cmdOnboard(args: string[]): Promise<void> {
             return undefined
           }
           const runtimeReady = bootstrap.find((outcome) => outcome.name === 'runtime')?.finalStatus === 'ok'
+          // The runtime works: is anyone logged in? If not, say how and
+          // wait here — no operation is open and no lock is held, so the
+          // login can take as long as it takes. Skipping is fine: the run
+          // finishes with a warning and Bakin starts without a login.
+          let askedForLogin = false
+          if (runtimeReady) {
+            const { llmComponent } = await import('../../core/onboarding/credentials')
+            const { getRuntimeAdapterSupport } = await import('../../core/runtime-adapter-factory')
+            const { getSettings } = await import('../../core/settings')
+            const support = getRuntimeAdapterSupport(getSettings().runtime.adapter)
+            const waited = await waitForCredentials({
+              // A check that cannot be read is not a login; the step after this reports it.
+              loggedIn: async () => (await llmComponent.check().catch(() => null))?.status === 'ok',
+              runtimeLabel: support.label,
+              steps: support.loginSteps,
+              docsUrl: support.docsUrl,
+            })
+            askedForLogin = waited.asked
+          }
           const selections = await collectOnboardingSelections(baseOpts, { runtimeReady })
-          if (selections.renderedWizardScreens) busyShowsBrand = false
+          if (selections.renderedWizardScreens || askedForLogin) busyShowsBrand = false
           startBusy()
           const { selectedRecommendedPluginIds, selectedRecommendedAgentIds, approvedComponents } = selections
           return { selectedRecommendedPluginIds, selectedRecommendedAgentIds, approvedComponents }

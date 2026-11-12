@@ -621,6 +621,36 @@ describe('runOnboard orchestrator', () => {
       expect(seen).toEqual([{ names: ['mkdir', 'settings', 'runtime'], searchChecked: 0 }])
     })
 
+    it('nothing is in flight at the boundary: the wizard and the credentials wait hold no operation', async () => {
+      // The bootstrap phase installs things; by the time the caller is asked,
+      // every one of those installs has settled. The operator can take as
+      // long as a login takes without an operation left open behind them.
+      scripts.mkdir.check = { name: 'mkdir', status: 'missing', message: 'no home' }
+      scripts.mkdir.install = { name: 'mkdir', status: 'installed', message: 'created', durationMs: 1 }
+      scripts.runtime.check = { name: 'runtime', status: 'missing', message: 'no agents', details: { emptyRoster: true } }
+      scripts.runtime.install = { name: 'runtime', status: 'installed', message: 'provisioned', durationMs: 1 }
+      let inFlight = 0
+      let seenAtBoundary = -1
+      let installsBeforeBoundary = 0
+      await runOnboardWith(opts, async (component, options) => {
+        inFlight++
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          return await component.install(options, noopOp())
+        } finally {
+          inFlight--
+          installsBeforeBoundary++
+        }
+      }, {
+        afterBootstrap: async () => {
+          seenAtBoundary = inFlight
+          expect(installsBeforeBoundary).toBeGreaterThanOrEqual(2)
+          return undefined
+        },
+      })
+      expect(seenAtBoundary).toBe(0)
+    })
+
     it('the selections apply to the rest of the run', async () => {
       scripts.media.check = { name: 'media', status: 'missing', message: 'media missing' }
       await runOnboardWith({ ...opts, autoApprove: false }, (component, options) => {

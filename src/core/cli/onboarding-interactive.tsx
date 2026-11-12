@@ -13,6 +13,7 @@ import {
   SummaryStrip,
 } from "./ui/tui";
 import {
+  OnboardingCredentialsPrompt,
   OnboardingDecisionPrompt,
   OnboardingIntro,
   OnboardingRuntimePrompt,
@@ -170,6 +171,41 @@ function ask<T>(screen: (answer: (value: T) => void) => ReactElement): Promise<T
     };
     void app.waitUntilExit().then(cancelled, cancelled);
   });
+}
+
+/**
+ * The guided credentials step. Runs between the bootstrap phase and the
+ * wizard's questions — outside any operation, holding no lock, so the
+ * operator can take as long as a login takes (and log in from another
+ * terminal, which may itself need the runtime's files).
+ *
+ * `loggedIn` is asked first and again after every Enter; the step ends when
+ * it answers true (`ready`) or the operator presses `s` (`skipped`). Nothing
+ * is shown at all when a provider is already logged in.
+ */
+export async function waitForCredentials(input: {
+  loggedIn: () => Promise<boolean>
+  runtimeLabel: string
+  steps: readonly string[]
+  docsUrl: string
+  showBrand?: boolean
+}): Promise<{ outcome: "ready" | "skipped"; asked: boolean }> {
+  let attempts = 0
+  for (;;) {
+    if (await input.loggedIn()) return { outcome: "ready", asked: attempts > 0 }
+    const answer = await ask<"recheck" | "skip">((submit) => (
+      <OnboardingCredentialsPrompt
+        runtimeLabel={input.runtimeLabel}
+        steps={input.steps}
+        docsUrl={input.docsUrl}
+        attempts={attempts}
+        showBrand={(input.showBrand ?? true) && attempts === 0}
+        onSubmit={submit}
+      />
+    ))
+    attempts += 1
+    if (answer === "skip") return { outcome: "skipped", asked: true }
+  }
 }
 
 /** Ask which runtime this home should use. Resolves with the chosen adapter id. */

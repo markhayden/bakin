@@ -7,6 +7,7 @@ import {
   OnboardingCheckAllReport,
   OnboardingCheckReport,
   OnboardingAlreadyCompleteReport,
+  OnboardingCredentialsPrompt,
   OnboardingDecisionPrompt,
   OnboardingInstallReport,
   OnboardingIntro,
@@ -188,6 +189,45 @@ describe('onboarding CLI UI', () => {
     expect(rendered).toContain('Already onboarded on 2026-05-19.')
     expect(rendered).toContain('Run `bakin onboard --force`')
     expect(rendered).not.toContain('[OK]')
+  })
+
+  describe('credentials screen', () => {
+    const props = {
+      runtimeLabel: 'Pi',
+      steps: ['Open another terminal and run `pi`.', 'Type `/login` and pick a provider (there is no `pi login` command).', 'Finish the sign-in, then quit pi.'],
+      docsUrl: 'https://pi.dev/docs/latest',
+      onSubmit: () => {},
+    }
+    /** The screen wraps long lines to the terminal width; compare the words, not the line breaks. */
+    const text = (element: Parameters<typeof renderToString>[0]) => renderToString(element).replace(/\s+/g, ' ')
+
+    it('says the runtime works, how to log in in its own words, and what each key does', () => {
+      const rendered = text(<OnboardingCredentialsPrompt {...props} />)
+      expect(rendered).toContain('Log in to Pi')
+      expect(rendered).toContain('Pi is running, but no provider is logged in yet')
+      expect(rendered).toContain('1. Open another terminal and run `pi`.')
+      expect(rendered).toContain('2. Type `/login`')
+      expect(rendered).toContain('3. Finish the sign-in')
+      expect(rendered).toContain('https://pi.dev/docs/latest')
+      expect(rendered).toContain('Press Enter when you are logged in')
+      expect(rendered).toContain('to finish setup without a login')
+      // The promise the step rests on.
+      expect(rendered).toContain('Bakin never sees your credentials')
+    })
+
+    it('after a recheck that found nothing it says so instead of repeating the first message', () => {
+      const once = text(<OnboardingCredentialsPrompt {...props} attempts={1} />)
+      expect(once).toContain('Still no provider logged in to Pi')
+      expect(once).not.toContain('is running, but no provider is logged in yet')
+      const thrice = text(<OnboardingCredentialsPrompt {...props} attempts={3} />)
+      expect(thrice).toContain('checked 3 times')
+    })
+
+    it('carries no wording of another runtime: every word comes from the props', () => {
+      const rendered = text(<OnboardingCredentialsPrompt {...props} runtimeLabel="OpenClaw" steps={['Add a provider login in OpenClaw.']} docsUrl="https://openclaw.ai/docs/" />)
+      expect(rendered).toContain('Log in to OpenClaw')
+      expect(rendered).not.toMatch(/\bPi\b|\/login/)
+    })
   })
 
   describe('runtime selection screen', () => {

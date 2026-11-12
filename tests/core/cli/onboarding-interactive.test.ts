@@ -28,10 +28,15 @@ mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {
 const titles: string[] = []
 /** When set, the next screen is left with Ctrl-C instead of answered. */
 let cancelNextScreen = false
+/** Scripted answers for screens that are not yes/no or a selection, in order. */
+const scriptedAnswers: unknown[] = []
+/** The props of every screen shown, in order. */
+const screens: Array<Record<string, unknown>> = []
 mock.module('ink', () => ({
   Box: ({ children }: { children?: unknown }) => children ?? null,
   render: (element: { props: { title?: string; onSubmit: (value: unknown) => void; items?: unknown[] } }) => {
     titles.push(String(element.props.title))
+    screens.push(element.props as unknown as Record<string, unknown>)
     let exited: () => void = () => {}
     const exit = new Promise<void>((resolve) => { exited = resolve })
     if (cancelNextScreen) {
@@ -39,7 +44,8 @@ mock.module('ink', () => ({
       // Ink unmounts on Ctrl-C without calling the screen's onSubmit.
       queueMicrotask(exited)
     } else {
-      queueMicrotask(() => element.props.onSubmit(element.props.items ? [] : true))
+      const answer = scriptedAnswers.length > 0 ? scriptedAnswers.shift() : element.props.items ? [] : true
+      queueMicrotask(() => element.props.onSubmit(answer))
     }
     return { unmount() { exited() }, rerender() {}, waitUntilExit: () => exit }
   },
@@ -56,7 +62,7 @@ mock.module('../../../src/core/onboarding/models', () => ({ modelsComponent: { n
 mock.module('../../../src/core/onboarding/recommended-plugins', () => ({ recommendedPluginsComponent: { name: 'recommended-plugins', check: async () => ok('recommended-plugins') } }))
 mock.module('../../../src/core/onboarding/recommended-agents', () => ({ recommendedAgentsComponent: { name: 'recommended-agents', check: async () => ok('recommended-agents') } }))
 
-import { collectOnboardingSelections, OnboardingCancelledError } from '../../../src/core/cli/onboarding-interactive'
+import { collectOnboardingSelections, OnboardingCancelledError, waitForCredentials } from '../../../src/core/cli/onboarding-interactive'
 
 const INTERACTIVE = { interactive: true, autoApprove: false, json: false, checkOnly: false }
 /** The bootstrap phase finished with a runtime the wizard can ask about. */
@@ -64,6 +70,8 @@ const READY = { runtimeReady: true }
 
 beforeEach(() => {
   titles.length = 0
+  screens.length = 0
+  scriptedAnswers.length = 0
   mediaCheck = ok('media')
 })
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
@@ -96,5 +104,49 @@ describe('collectOnboardingSelections', () => {
       expect(await collectOnboardingSelections(scripted, READY)).toEqual({})
     }
     expect(titles).toEqual([])
+  })
+})
+
+describe('waitForCredentials', () => {
+  const PI = { runtimeLabel: 'Pi', steps: ['Open another terminal and run `pi`.', 'Type `/login`.'], docsUrl: 'https://pi.dev/docs/latest' }
+
+  it('shows nothing when a provider is already logged in', async () => {
+    const result = await waitForCredentials({ ...PI, loggedIn: async () => true })
+    expect(result).toEqual({ outcome: 'ready', asked: false })
+    expect(screens).toEqual([])
+  })
+
+  it('shows the runtime\'s own login steps and rechecks on Enter until a login appears', async () => {
+    const answers = [false, false, true]
+    let checks = 0
+    scriptedAnswers.push('recheck', 'recheck')
+    const result = await waitForCredentials({ ...PI, loggedIn: async () => { checks++; return answers.shift() ?? true } })
+    expect(result).toEqual({ outcome: 'ready', asked: true })
+    // Asked before the first screen and again after each Enter.
+    expect(checks).toBe(3)
+    expect(screens).toHaveLength(2)
+    expect(screens[0]).toMatchObject({ runtimeLabel: 'Pi', steps: PI.steps, docsUrl: PI.docsUrl, attempts: 0 })
+    // The second screen says the login still is not there.
+    expect(screens[1]).toMatchObject({ attempts: 1 })
+  })
+
+  it('s skips: the step ends without a login and does not check again', async () => {
+    let checks = 0
+    scriptedAnswers.push('skip')
+    const result = await waitForCredentials({ ...PI, loggedIn: async () => { checks++; return false } })
+    expect(result).toEqual({ outcome: 'skipped', asked: true })
+    expect(checks).toBe(1)
+    expect(screens).toHaveLength(1)
+  })
+
+  it('leaving the screen with Ctrl-C cancels onboarding', async () => {
+    cancelNextScreen = true
+    await expect(waitForCredentials({ ...PI, loggedIn: async () => false })).rejects.toBeInstanceOf(OnboardingCancelledError)
+  })
+
+  it('the brand is shown once: only on the first screen', async () => {
+    scriptedAnswers.push('recheck', 'skip')
+    await waitForCredentials({ ...PI, loggedIn: async () => false })
+    expect(screens.map((screen) => screen.showBrand)).toEqual([true, false])
   })
 })
