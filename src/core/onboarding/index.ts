@@ -122,6 +122,16 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
 /** The recommended extras: optional, fetched from outside, and declinable as a group (`--no-recommended`). */
 export const RECOMMENDED_COMPONENTS: readonly string[] = ['recommended-plugins', 'recommended-agents', 'capabilities']
 
+/**
+ * The recommended extras are optional: Bakin is fully set up without them.
+ * When one cannot be installed (no network, a plugin this host rejects) the
+ * run reports it as a warning and still completes — onboarding is never
+ * held hostage by something the operator can add later from Explore.
+ */
+function isOptionalExtra(component: OnboardingComponent): boolean {
+  return RECOMMENDED_COMPONENTS.includes(component.name)
+}
+
 /** Where to get a declined extra later. */
 const DECLINED_HINTS: Record<string, string> = {
   'recommended-plugins': 'install plugins any time from Explore or with `bakin install recommended-plugins`',
@@ -379,9 +389,12 @@ async function runComponent(
       case 'failed':
         return {
           name: component.name,
-          finalStatus: 'error',
+          // An optional extra that could not be installed is a warning: the
+          // home is set up and usable without it, so it must not leave the
+          // machine un-onboarded.
+          finalStatus: isOptionalExtra(component) ? 'warn' : 'error',
           // A failure a caller must tell apart (a refused runtime choice).
-          ...(install.code ? { code: install.code } : {}),
+          ...(install.code ? { code: install.code } : isOptionalExtra(component) ? { code: 'optional_install_failed' } : {}),
           check,
           message: install.message,
           remediation: check.remediation,
@@ -394,7 +407,8 @@ async function runComponent(
     log.error('Component install() threw', { component: component.name, error: String(err) })
     return {
       name: component.name,
-      finalStatus: 'error',
+      finalStatus: isOptionalExtra(component) ? 'warn' : 'error',
+      ...(isOptionalExtra(component) ? { code: 'optional_install_failed' } : {}),
       check,
       message: `install() threw: ${err instanceof Error ? err.message : String(err)}`,
       remediation: check.remediation,

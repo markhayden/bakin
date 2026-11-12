@@ -193,6 +193,13 @@ describe('onboarding CLI UI', () => {
     expect(rendered).not.toContain('[OK]')
   })
 
+  it('the wizard intro does not repeat the brand when an earlier screen already drew it', () => {
+    expect(renderToString(<OnboardingIntro />)).toContain("Bakin'")
+    const continued = renderToString(<OnboardingIntro showBrand={false} />)
+    expect(continued).not.toContain("Bakin'")
+    expect(continued).toContain('Initial setup wizard')
+  })
+
   describe('setup checklist', () => {
     const checklist = {
       items: [

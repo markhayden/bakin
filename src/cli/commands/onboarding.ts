@@ -445,7 +445,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
             })
             askedForLogin = waited.asked
           }
-          const selections = await collectOnboardingSelections(baseOpts, { runtimeReady })
+          const selections = await collectOnboardingSelections(baseOpts, { runtimeReady, brandShown: askedForLogin || decided?.source === 'asked' })
           if (selections.renderedWizardScreens || askedForLogin) busyShowsBrand = false
           startBusy()
           const { selectedRecommendedPluginIds, selectedRecommendedAgentIds, approvedComponents } = selections

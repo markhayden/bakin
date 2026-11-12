@@ -348,10 +348,10 @@ export function OnboardingProgress({ label, value }: { label: string; value: num
   )
 }
 
-export function OnboardingIntro() {
+export function OnboardingIntro({ showBrand = true }: { showBrand?: boolean } = {}) {
   return (
     <Box flexDirection="column">
-      <ScreenHeader title="Onboard" subtitle="Initial setup wizard" />
+      <ScreenHeader title="Onboard" subtitle="Initial setup wizard" showBrand={showBrand} />
       <SummaryStrip items={[
         { label: 'mode', value: 'interactive', status: 'ready' },
         { label: 'checks', value: 'prerequisites' },

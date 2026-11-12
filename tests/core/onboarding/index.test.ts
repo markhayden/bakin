@@ -684,6 +684,43 @@ describe('runOnboard orchestrator', () => {
     })
   })
 
+  describe('optional extras never block onboarding', () => {
+    const EXTRAS = ['recommended-plugins', 'recommended-agents', 'capabilities'] as const
+
+    it.each(EXTRAS)('%s failing to install is a warning: the run completes and the marker is written', async (name) => {
+      scripts[name].check = { name, status: 'missing', message: `${name} missing`, remediation: 'Install it later from Explore.' }
+      scripts[name].install = { name, status: 'failed', message: 'the plugin manifest was rejected', durationMs: 1 }
+      const result = await runOnboard(opts)
+      expect(result.outcomes.find((o) => o.name === name)).toMatchObject({
+        finalStatus: 'warn',
+        code: 'optional_install_failed',
+        message: 'the plugin manifest was rejected',
+        remediation: 'Install it later from Explore.',
+      })
+      expect(result.exitCode).toBe(2)
+      expect(result.markerWritten).toBe(true)
+    })
+
+    it('an install that throws is a warning too', async () => {
+      scripts['recommended-plugins'].check = { name: 'recommended-plugins', status: 'missing', message: 'missing' }
+      const result = await runOnboardWith(opts, async (component, options) => {
+        if (component.name === 'recommended-plugins') throw new Error('network unreachable')
+        return component.install(options, noopOp())
+      })
+      expect(result.outcomes.find((o) => o.name === 'recommended-plugins')).toMatchObject({ finalStatus: 'warn', code: 'optional_install_failed' })
+      expect(result.markerWritten).toBe(true)
+    })
+
+    it('a failed install of anything else is still an error', async () => {
+      scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
+      scripts.search.install = { name: 'search', status: 'failed', message: 'download failed', durationMs: 1 }
+      const result = await runOnboard(opts)
+      expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('error')
+      expect(result.exitCode).toBe(1)
+      expect(result.markerWritten).toBe(false)
+    })
+  })
+
   describe('declined components', () => {
     const DECLINED = ['recommended-plugins', 'recommended-agents', 'capabilities'] as const
 

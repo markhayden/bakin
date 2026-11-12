@@ -246,6 +246,18 @@ component that does not apply to the active runtime says so instead of
 being checked. Under `--json`, `check` and `install` keep runtime logs off
 stdout so the output parses (`--verbose` keeps them).
 
+## Optional extras never block onboarding
+
+`recommended-plugins`, `recommended-agents` and `capabilities`
+(`RECOMMENDED_COMPONENTS`) are optional: Bakin is fully set up without
+them. When the install of one fails or throws (no network, a plugin this
+host's manifest check rejects) its outcome is `warn` with code
+`optional_install_failed`, not `error`. The run still completes (exit 2,
+marker written) and the operator can add it later from Explore. A failed
+install of anything else is still an error. Found on the real-home pass:
+both recommended plugins were rejected, and that alone left a working home
+un-onboarded.
+
 ## What stops what
 
 Each component declares `requires`: the components it cannot run without

@@ -257,7 +257,11 @@ export async function collectOnboardingSelections(
    * runs after it and never checks or provisions the runtime itself: with
    * no runtime there is nothing to ask about, and the run reports why.
    */
-  bootstrap: { runtimeReady: boolean },
+  bootstrap: {
+    runtimeReady: boolean;
+    /** An earlier screen of this run (the runtime question, the login step) already drew the brand. */
+    brandShown?: boolean;
+  },
 ): Promise<OnboardingSelections> {
   if (!opts.interactive || opts.autoApprove || opts.json || opts.checkOnly)
     return {};
@@ -284,7 +288,7 @@ export async function collectOnboardingSelections(
     agentCheck,
   ].some((check) => check.status === "missing" || check.status === "broken");
   if (hasWizardSteps) {
-    console.log(renderToString(<OnboardingIntro />));
+    console.log(renderToString(<OnboardingIntro showBrand={bootstrap.brandShown !== true} />));
   }
 
   const approvedComponents: string[] = [];
