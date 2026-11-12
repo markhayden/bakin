@@ -3,7 +3,9 @@ import { renderToString } from 'ink'
 
 import { buildSelectionItems } from '../../src/core/cli/onboarding-interactive'
 import {
+  checklistLines,
   OnboardingBusy,
+  OnboardingChecklist,
   OnboardingCheckAllReport,
   OnboardingCheckReport,
   OnboardingAlreadyCompleteReport,
@@ -189,6 +191,76 @@ describe('onboarding CLI UI', () => {
     expect(rendered).toContain('Already onboarded on 2026-05-19.')
     expect(rendered).toContain('Run `bakin onboard --force`')
     expect(rendered).not.toContain('[OK]')
+  })
+
+  describe('setup checklist', () => {
+    const checklist = {
+      items: [
+        { id: 'login', title: 'Log in to Pi', state: 'todo' as const, detail: 'Run `pi`. Type `/login`.' },
+        { id: 'search', title: 'Search', state: 'done' as const, detail: 'Search engine is installed.' },
+        { id: 'channels', title: 'Channels', state: 'todo' as const, detail: 'Discord delivery is off.', href: '/settings?tab=channels' },
+        { id: 'capability-key:web-search', title: 'Web search key', state: 'unknown' as const, detail: 'Could not tell: lockfile unreadable' },
+        { id: 'model-plan', title: 'Model plan', state: 'todo' as const, detail: 'No model plan chosen yet.', command: 'bakin models plan --apply' },
+      ],
+      notes: [
+        { id: 'start', title: 'Start Bakin', detail: 'Launch the server and open the dashboard.', command: 'bakin start' },
+        { id: 'explore', title: 'Browse Explore', detail: 'Add agents, plugins and capabilities whenever you want them.', href: '/explore' },
+      ],
+    }
+    const text = (element: Parameters<typeof renderToString>[0]) => renderToString(element).replace(/\s+/g, ' ')
+
+    it('lists what is left before what is done, with how to do each', () => {
+      const rendered = text(<OnboardingChecklist checklist={checklist} />)
+      expect(rendered).toContain('SETUP CHECKLIST')
+      expect(rendered).toContain('TODO')
+      expect(rendered).toContain('DONE')
+      // To do and could-not-tell come before done.
+      expect(rendered.indexOf('Log in to Pi')).toBeLessThan(rendered.indexOf('Search engine is installed.'))
+      expect(rendered.indexOf('Model plan')).toBeLessThan(rendered.indexOf('Search engine is installed.'))
+      expect(rendered).toContain('Run `bakin models plan --apply`.')
+      expect(rendered).toContain('In the browser: /settings?tab=channels')
+      expect(rendered).toContain('Could not tell: lockfile unreadable')
+      expect(rendered).toContain('Start Bakin: Launch the server and open the dashboard. Run `bakin start`.')
+      expect(rendered).toContain('Browse Explore')
+    })
+
+    it('says so when nothing is left', () => {
+      const rendered = text(<OnboardingChecklist checklist={{ items: [], notes: checklist.notes }} />)
+      expect(rendered).toContain('Nothing else to set up.')
+    })
+
+    it('the finish screen shows the checklist in place of the generic next step', () => {
+      const outcome = { name: 'mkdir', finalStatus: 'ok' as const, check: { name: 'mkdir', status: 'ok' as const, message: 'ok' }, message: 'Home ready', durationMs: 1 }
+      const withChecklist = text(<OnboardingSummary outcomes={[outcome]} exitCode={2} checklist={checklist} />)
+      expect(withChecklist).toContain('SETUP CHECKLIST')
+      expect(withChecklist).not.toContain('then `bakin doctor` for details')
+      const without = text(<OnboardingSummary outcomes={[outcome]} exitCode={2} />)
+      expect(without).not.toContain('SETUP CHECKLIST')
+      expect(without).toContain('bakin start')
+    })
+
+    it('a blocked run shows its blocker, never a checklist', () => {
+      const blocked = { name: 'runtime', finalStatus: 'error' as const, check: { name: 'runtime', status: 'error' as const, message: 'unreachable' }, message: 'unreachable', remediation: 'Start the gateway.', durationMs: 1 }
+      const rendered = text(<OnboardingSummary outcomes={[blocked]} exitCode={1} checklist={checklist} />)
+      expect(rendered).not.toContain('SETUP CHECKLIST')
+      expect(rendered).toContain('Rerun `bakin onboard` after the blocker is resolved.')
+    })
+
+    it('plain lines carry the same items for output that is not a terminal', () => {
+      expect(checklistLines(checklist)).toEqual([
+        'Setup checklist:',
+        '  [ ] Log in to Pi — Run `pi`. Type `/login`.',
+        '  [x] Search — Search engine is installed.',
+        '  [ ] Channels — Discord delivery is off.',
+        '        In the browser: /settings?tab=channels',
+        '  [?] Web search key — Could not tell: lockfile unreadable',
+        '  [ ] Model plan — No model plan chosen yet.',
+        '        Run `bakin models plan --apply`.',
+        'Next:',
+        '  - Start Bakin: Launch the server and open the dashboard. Run `bakin start`.',
+        '  - Browse Explore: Add agents, plugins and capabilities whenever you want them. In the browser: /explore',
+      ])
+    })
   })
 
   describe('credentials screen', () => {

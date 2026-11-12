@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import { seedOpenClaw, seedPi, storeAdapter } from '../fixtures'
-import { trackHomes, type OnboardingHome } from '../harness'
+import { diffTrees, snapshotTree, startServer, trackHomes, type OnboardingHome } from '../harness'
 import { componentOrder, describe as describeRun, onboard, outcomes, readMarker, summary, TEST_TIMEOUT } from './kit'
 
 const homes = trackHomes()
@@ -129,6 +129,69 @@ describe('--yes --no-recommended', () => {
       expect(home.deniedRequests()).toEqual([])
     } finally {
       await fixture.stop()
+    }
+  }, TEST_TIMEOUT)
+})
+
+describe('the setup checklist', () => {
+  interface Item { id: string; state: string; detail: string; command?: string; href?: string }
+  const checklist = (run: Awaited<ReturnType<typeof onboard>>) => summary(run)?.checklist as { items: Item[]; notes: Array<{ id: string; command?: string }> } | undefined
+
+  test('a finished run reports what is left: a logged-in Pi home still has channels to turn on', async () => {
+    const home = await piHome()
+    const run = await onboard(home)
+    const list = checklist(run)
+    expect(list, describeRun(run)).toBeDefined()
+    expect(list!.items.find((item) => item.id === 'login')?.state).toBe('done')
+    expect(list!.items.find((item) => item.id === 'channels')).toMatchObject({ state: 'todo', href: '/settings?tab=channels' })
+    // Nothing on this machine to set up for an external search endpoint.
+    expect(list!.items.find((item) => item.id === 'search')).toBeUndefined()
+    // Nothing can run on the fake credential, so there is no plan to choose yet.
+    expect(list!.items.find((item) => item.id === 'model-plan')).toBeUndefined()
+    expect(list!.notes.map((note) => note.id)).toEqual(['start', 'explore'])
+  }, TEST_TIMEOUT)
+
+  test('with no login the first thing left is logging in, in the runtime\'s own steps', async () => {
+    const home = await homes.create()
+    seedPi(home, { auth: false })
+    const run = await onboard(home)
+    const first = checklist(run)?.items[0]
+    expect(first, describeRun(run)).toMatchObject({ id: 'login', state: 'todo' })
+    expect(first?.detail).toContain('/login')
+    expect(first?.detail).not.toMatch(/openclaw/i)
+  }, TEST_TIMEOUT)
+
+  test('--check reports the same list and still writes nothing', async () => {
+    const home = await piHome()
+    const real = await onboard(home)
+    const before = snapshotTree(home.root)
+    const checked = await onboard(home, ['--check'])
+    expect(checklist(checked)?.items, describeRun(checked)).toEqual(checklist(real)!.items)
+    const diff = diffTrees(before, snapshotTree(home.root))
+    // Only the harness's own record directory may differ.
+    expect({ ...diff, added: diff.added.filter((path) => !path.startsWith('harness-record')), changed: diff.changed.filter((path) => !path.startsWith('harness-record')) }).toEqual({ added: [], removed: [], changed: [] })
+  }, TEST_TIMEOUT)
+
+  test('a blocked run has no checklist: its blocker is the next step', async () => {
+    const home = await homes.create()
+    const fixture = await seedOpenClaw(home, { gateway: 'down' })
+    try {
+      const run = await onboard(home)
+      expect(run.exitCode, describeRun(run)).toBe(1)
+      expect(checklist(run)).toBeUndefined()
+    } finally {
+      await fixture.stop()
+    }
+  }, TEST_TIMEOUT)
+
+  test('once the server runs for the home, starting it is no longer suggested', async () => {
+    const home = await piHome()
+    const server = await startServer(home)
+    try {
+      const run = await onboard(home)
+      expect(checklist(run)?.notes.map((note) => note.id), describeRun(run)).toEqual(['explore'])
+    } finally {
+      await server.stop()
     }
   }, TEST_TIMEOUT)
 })

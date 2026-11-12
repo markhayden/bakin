@@ -216,6 +216,14 @@ Two notes carry no state: "Start Bakin" (only when no server runs for the
 home) and "Browse Explore". Spend limits and brands are never listed; both
 are opt-in.
 
+Where it shows: the finish screen (`OnboardingChecklist` inside
+`OnboardingSummary`, things to do before things done), plain lines for
+output that is not a terminal (`checklistLines`), and `checklist` on the
+`--json` summary line. `bakin onboard --check` shows the same list and still
+writes nothing. A blocked run (exit 1) shows its blocker and no checklist.
+If the checklist cannot be built the run's result stands and it is simply
+not shown.
+
 `buildSetupChecklist(sources)` is pure and unit-tested per item and state;
 `getSetupChecklist()` asks the engines. Adding an item means adding a
 source and a projection, not a probe.

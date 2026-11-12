@@ -88,7 +88,13 @@ function loginItem(sources: SetupChecklistSources): ChecklistItem {
   const result = answered(sources.llm)
   if ('why' in result) return unknown('login', title, result.why)
   if (result.check.status === 'ok') return { id: 'login', title, state: 'done', detail: result.check.message }
-  return { id: 'login', title, state: 'todo', detail: result.check.remediation ?? result.check.message }
+  // The runtime's own steps, as the check reports them; the title already
+  // says what they are for.
+  const steps = result.check.details?.loginSteps
+  const detail = Array.isArray(steps) && steps.every((step) => typeof step === 'string') && steps.length > 0
+    ? (steps as string[]).join(' ')
+    : result.check.remediation ?? result.check.message
+  return { id: 'login', title, state: 'todo', detail }
 }
 
 function searchItem(sources: SetupChecklistSources): ChecklistItem | null {

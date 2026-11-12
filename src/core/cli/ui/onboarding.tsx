@@ -7,6 +7,7 @@ import type {
   InstallResult,
   InstallStatus,
 } from '../../onboarding'
+import type { SetupChecklist } from '../../onboarding/setup-checklist'
 import type { OnboardingState } from '../../onboarding/state'
 import {
   FindingRows,
@@ -191,10 +192,60 @@ export function OnboardingInstallReport({ result, color = true }: {
   )
 }
 
-export function OnboardingSummary({ outcomes, exitCode, showBrand = true }: {
+const CHECKLIST_STATUS: Record<SetupChecklist['items'][number]['state'], TuiStatus> = { done: 'done', todo: 'todo', unknown: 'skip' }
+
+/** Where an item is done: the command that does it, or the page it is done on. */
+function checklistNext(entry: { command?: string; href?: string }): string | undefined {
+  if (entry.command) return `Run \`${entry.command}\`.`
+  if (entry.href) return `In the browser: ${entry.href}`
+  return undefined
+}
+
+/**
+ * The setup checklist as plain lines, for output that is not a terminal:
+ * `[x]` done, `[ ]` to do, `[?]` could not be told, then the next steps.
+ */
+export function checklistLines(checklist: SetupChecklist): string[] {
+  const mark = { done: '[x]', todo: '[ ]', unknown: '[?]' } as const
+  const lines = ['Setup checklist:']
+  for (const item of checklist.items) {
+    lines.push(`  ${mark[item.state]} ${item.title} — ${item.detail}`)
+    const next = item.state === 'done' ? undefined : checklistNext(item)
+    if (next) lines.push(`        ${next}`)
+  }
+  if (checklist.notes.length > 0) {
+    lines.push('Next:')
+    for (const note of checklist.notes) lines.push(`  - ${note.title}: ${note.detail}${checklistNext(note) ? ` ${checklistNext(note)}` : ''}`)
+  }
+  return lines
+}
+
+/** What is left to set up, and what is already in place. */
+export function OnboardingChecklist({ checklist }: { checklist: SetupChecklist }) {
+  const todo = checklist.items.filter((item) => item.state !== 'done')
+  const done = checklist.items.filter((item) => item.state === 'done')
+  return (
+    <Box flexDirection="column">
+      <Section title="Setup checklist">
+        {checklist.items.length === 0 ? <Text dimColor>Nothing else to set up.</Text> : null}
+        <FindingRows rows={[...todo, ...done].map((item) => ({
+          status: CHECKLIST_STATUS[item.state],
+          label: item.title,
+          message: item.detail,
+          ...(item.state !== 'done' && checklistNext(item) ? { next: checklistNext(item) } : {}),
+        }))} />
+      </Section>
+      <NextActions actions={checklist.notes.map((note) => `${note.title}: ${note.detail}${checklistNext(note) ? ` ${checklistNext(note)}` : ''}`)} />
+    </Box>
+  )
+}
+
+export function OnboardingSummary({ outcomes, exitCode, showBrand = true, checklist }: {
   outcomes: ComponentOutcome[]
   exitCode: 0 | 1 | 2
   showBrand?: boolean
+  /** What is left to set up. Shown instead of the generic next step when the run was not blocked. */
+  checklist?: SetupChecklist
 }) {
   const prerequisites = outcomes.filter(outcome => PREREQUISITE_COMPONENTS.has(outcome.name))
   const setup = outcomes.filter(outcome => !PREREQUISITE_COMPONENTS.has(outcome.name))
@@ -211,7 +262,9 @@ export function OnboardingSummary({ outcomes, exitCode, showBrand = true }: {
           <FindingRows rows={outcomeRows(setup)} />
         </Section>
       ) : null}
-      <OnboardingFinalStatus outcomes={outcomes} exitCode={exitCode} />
+      {checklist && exitCode !== 1
+        ? <OnboardingChecklist checklist={checklist} />
+        : <OnboardingFinalStatus outcomes={outcomes} exitCode={exitCode} />}
     </Box>
   )
 }

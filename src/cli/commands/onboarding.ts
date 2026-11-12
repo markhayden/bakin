@@ -468,10 +468,24 @@ async function cmdOnboard(args: string[]): Promise<void> {
     }
     if (!result) return
 
+    // What is left to set up, from the engines that already answer it. A
+    // blocked run has one next step, its blocker, so it gets no checklist.
+    // The checklist is a courtesy: if it cannot be built the run's result
+    // stands and it is simply not shown.
+    let checklist: import('../../core/onboarding/setup-checklist').SetupChecklist | undefined
+    if (result.exitCode !== 1) {
+      try {
+        const { getSetupChecklist } = await import('../../core/onboarding/setup-checklist')
+        checklist = await getSetupChecklist()
+      } catch (err) {
+        if (verbose) console.error(`Could not build the setup checklist: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+
     if (json) {
       // Always the last line: what the run came to.
       const { runSummary } = await import('../../core/onboarding/summary')
-      console.log(JSON.stringify(runSummary(result, decided, chosen.found)))
+      console.log(JSON.stringify(runSummary(result, decided, chosen.found, checklist)))
     }
 
     if (!json) {
@@ -481,6 +495,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
           outcomes: result.outcomes,
           exitCode: result.exitCode,
           showBrand: !showedBusy,
+          ...(checklist ? { checklist } : {}),
         })))
       } else {
         console.log('')
@@ -492,12 +507,18 @@ async function cmdOnboard(args: string[]): Promise<void> {
         }
         console.log('')
         if (result.exitCode === 0) {
-          console.log('Onboarding complete. Run `bakin start` to launch Bakin.')
+          console.log(checkOnly ? 'Everything onboarding sets up is in place.' : 'Onboarding complete.')
         } else if (result.exitCode === 2) {
-          console.log('Onboarding finished with warnings. Bakin will start but some features may be limited.')
-          console.log('Run `bakin start` to launch Bakin.')
+          console.log(checkOnly ? 'Some setup is not done yet; nothing was changed.' : 'Onboarding finished with warnings. Bakin will start but some features may be limited.')
         } else {
-          console.log('Onboarding failed. Fix the errors above and rerun `bakin onboard`.')
+          console.log(checkOnly ? 'Setup is blocked by the errors above.' : 'Onboarding failed. Fix the errors above and rerun `bakin onboard`.')
+        }
+        if (checklist) {
+          const { checklistLines } = await import('../../core/cli/ui/onboarding')
+          console.log('')
+          for (const line of checklistLines(checklist)) console.log(line)
+        } else if (result.exitCode !== 1) {
+          console.log('Run `bakin start` to launch Bakin.')
         }
       }
     }

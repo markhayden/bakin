@@ -63,6 +63,10 @@ describe('log in to the runtime', () => {
     const entry = item({ llm: answer(check('llm', 'warn', { remediation: 'Log in to Pi: run `pi`, type `/login`.' })) }, 'login')
     expect(entry).toMatchObject({ state: 'todo', detail: 'Log in to Pi: run `pi`, type `/login`.' })
   })
+  test('todo prefers the runtime\'s login steps, without repeating what the title says', () => {
+    const entry = item({ llm: answer(check('llm', 'warn', { remediation: 'Log in to Pi: Run `pi`. Type `/login`. Docs: https://pi.dev', details: { loginSteps: ['Run `pi`.', 'Type `/login`.'] } })) }, 'login')
+    expect(entry).toMatchObject({ title: 'Log in to Pi', state: 'todo', detail: 'Run `pi`. Type `/login`.' })
+  })
   test('unknown when the credential status cannot be read', () => {
     expect(item({ llm: threw('gateway closed the connection') }, 'login')).toMatchObject({ state: 'unknown', detail: 'Could not tell: gateway closed the connection' })
     expect(item({ llm: answer(check('llm', 'error', { message: 'check() threw' })) }, 'login')?.state).toBe('unknown')
