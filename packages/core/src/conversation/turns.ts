@@ -760,19 +760,22 @@ async function runTurn(
     // A turn that ends on a question previews the question, not the
     // reflection that led up to it (attention toasts read this preview).
     let pendingQuestion: string | undefined
+    let sawTool = false
+    const consume = async (turnContent: string, withAttachments: boolean) => {
     for await (const rawChunk of ctx.runtime.messaging.stream({
       agentId,
-      content: (runtimeContent ?? (config.framing ? `${content}\n\n${config.framing}` : content)) + noteSuffix,
+      content: turnContent,
       threadId: config.threadId(key, agentId),
       signal: controller.signal,
       ...(config.ephemeral ? { ephemeral: true } : {}),
-      ...(prepared.length
+      ...(withAttachments && prepared.length
         ? { attachments: prepared.map((a) => ({ path: a.path, mimeType: a.mimeType })) }
         : {}),
     })) {
       const chunk = enrichQuestionChunk(rawChunk)
       if (bakinQuestionOf(chunk)) pendingQuestion = bakinQuestionOf(chunk)!.question
       else if (chunk.type === 'text' && chunk.content.trim()) pendingQuestion = undefined
+      if (chunk.type === 'tool') sawTool = true
       tap(chunk)
       // Only liveness chunks ride the chunk event — done/error have the
       // dedicated done/error events, and consumer wire contracts (chat's
@@ -800,10 +803,23 @@ async function runTurn(
         const entry = inflightRef.get(key)
         if (entry) entry.livePreview = assistantText
       }
-      if (chunk.type === 'done') doneUsage = chunk.usage
+      if (chunk.type === 'done') doneUsage = mergeUsage(doneUsage, chunk.usage)
       recorder.ingest(chunk)
       // Persist rows as they settle so a crash keeps the partial turn.
       await persist(recorder.drain() as ConversationTurnRow[])
+    }
+    }
+    const empty = () => !controller.signal.aborted && !assistantText.trim() && !sawTool
+    await consume((runtimeContent ?? (config.framing ? `${content}\n\n${config.framing}` : content)) + noteSuffix, true)
+    if (empty()) {
+      // The model answered with nothing — no text, no tool call (seen live
+      // 2026-11-11: the lead "missed" two interview answers in a row until
+      // the user typed "you there?"). Nudge once inside the SAME turn, the
+      // way the user would; a second empty completion is an honest error
+      // row with a retry, never a silent gap.
+      log.warn(`[${config.name}] empty completion for ${key}; nudging once`, { agentId, turnId })
+      await consume(config.framing ? `${EMPTY_REPLY_NUDGE}\n\n${config.framing}` : EMPTY_REPLY_NUDGE, false)
+      if (empty()) throw new StreamTurnError('The agent returned an empty reply twice', 'empty_reply')
     }
 
     await persist(recorder.finish() as ConversationTurnRow[])
@@ -888,6 +904,25 @@ async function runTurn(
   } finally {
     for (const p of prepared) cleanupPrepared?.(p)
   }
+}
+
+/** Sent as the turn's second runtime message when the first completion carried nothing. */
+const EMPTY_REPLY_NUDGE =
+  'Your previous reply was empty — nothing reached the user. Reply now to their last message above, as you would have.'
+
+/** Two completions in one turn bill as one: token counts add, the model is the latest known. */
+function mergeUsage(a: MessageUsage | undefined, b: MessageUsage | undefined): MessageUsage | undefined {
+  if (!a) return b
+  if (!b) return a
+  const sum = (x?: number, y?: number) => (x === undefined && y === undefined ? undefined : (x ?? 0) + (y ?? 0))
+  const merged: MessageUsage = {}
+  for (const field of ['input', 'output', 'total', 'cacheRead', 'cacheWrite'] as const) {
+    const value = sum(a[field], b[field])
+    if (value !== undefined) merged[field] = value
+  }
+  const model = b.model ?? a.model
+  if (model) merged.model = model
+  return merged
 }
 
 /** The structured question an enriched tool chunk carries, if any. */
