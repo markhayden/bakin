@@ -629,6 +629,51 @@ describe('runOnboard orchestrator', () => {
   // Search -> search-models cascade: model downloads need the search adapter binary.
   // ---------------------------------------------------------------------------
 
+  describe('phases', () => {
+    it('asks for selections once, after the bootstrap components and before anything else is looked at', async () => {
+      const seen: Array<{ names: string[]; searchChecked: number }> = []
+      await runOnboardWith(opts, (component, options) => component.install(options, noopOp()), {
+        afterBootstrap: async (bootstrap) => {
+          seen.push({ names: bootstrap.map((o) => o.name), searchChecked: scripts.search.checkCalls })
+          return undefined
+        },
+      })
+      expect(seen).toEqual([{ names: ['mkdir', 'settings', 'runtime'], searchChecked: 0 }])
+    })
+
+    it('the selections apply to the rest of the run', async () => {
+      scripts.media.check = { name: 'media', status: 'missing', message: 'media missing' }
+      await runOnboardWith({ ...opts, autoApprove: false }, (component, options) => {
+        installOptions.push({ name: component.name, options })
+        return component.install(options, noopOp())
+      }, {
+        afterBootstrap: async () => ({ approvedComponents: ['media'], selectedRecommendedPluginIds: ['projects'] }),
+      })
+      expect(installOptions.find((entry) => entry.name === 'media')?.options).toMatchObject({ approvedComponents: ['media'], selectedRecommendedPluginIds: ['projects'] })
+    })
+
+    it('the bootstrap phase sees the runtime outcome it has to decide on', async () => {
+      scripts.runtime.check = { name: 'runtime', status: 'missing', message: 'no runtime' }
+      let runtimeStatus: string | undefined
+      await runOnboardWith(opts, (component, options) => component.install(options, noopOp()), {
+        afterBootstrap: async (bootstrap) => {
+          runtimeStatus = bootstrap.find((o) => o.name === 'runtime')?.finalStatus
+          return undefined
+        },
+      })
+      expect(runtimeStatus).toBe('error')
+    })
+
+    it('a throw from the phase boundary stops onboarding: nothing after the bootstrap runs, no marker', async () => {
+      const stop = new Error('the operator left the wizard')
+      await expect(runOnboardWith(opts, (component, options) => component.install(options, noopOp()), {
+        afterBootstrap: async () => { throw stop },
+      })).rejects.toBe(stop)
+      expect(scripts.search.checkCalls).toBe(0)
+      expect(saveStateCalls).toHaveLength(0)
+    })
+  })
+
   describe('declared requirements', () => {
     it('a step that does not apply to the runtime satisfies whatever requires it', async () => {
       // openclaw-integration never applies to the test runtime; nothing waits on it.

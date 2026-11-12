@@ -21,7 +21,6 @@ import { modelsComponent } from "../onboarding/models";
 import { recommendedAgentsComponent } from "../onboarding/recommended-agents";
 import { recommendedPluginsComponent } from "../onboarding/recommended-plugins";
 import { mediaComponent } from "../onboarding/media";
-import { provisionRuntimeForOnboarding, runtimeComponent } from "../onboarding/runtime";
 import { searchComponent } from "../onboarding/search";
 import { searchModelsComponent } from "../onboarding/search-models";
 import type { CheckResult, OnboardingOptions } from "../onboarding/types";
@@ -205,18 +204,16 @@ export async function collectOnboardingSelections(
     /** A terminal that can show the wizard. */
     interactive: boolean;
   },
+  /**
+   * What the bootstrap phase (home, settings, runtime) came to. The wizard
+   * runs after it and never checks or provisions the runtime itself: with
+   * no runtime there is nothing to ask about, and the run reports why.
+   */
+  bootstrap: { runtimeReady: boolean },
 ): Promise<OnboardingSelections> {
   if (!opts.interactive || opts.autoApprove || opts.json || opts.checkOnly)
     return {};
-
-  let runtime = await runtimeComponent.check();
-  if (runtime.status === "broken" && runtime.details?.emptyRoster === true) {
-    // First run: the roster is empty until provisioning seeds it (the
-    // orchestrator does the same) — seed now, so the wizard can ask.
-    await provisionRuntimeForOnboarding();
-    runtime = await runtimeComponent.check();
-  }
-  if (runtime.status !== "ok") return {};
+  if (!bootstrap.runtimeReady) return {};
 
   const searchCheck = await searchComponent.check();
   const searchModelsCheck = await searchModelsComponent.check();

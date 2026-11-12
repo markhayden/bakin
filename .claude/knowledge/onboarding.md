@@ -37,6 +37,25 @@ that gives none is treated as `declined`. An install that fails for a reason
 a caller must tell apart sets `code`, and the operation settles with it
 (`result.code ?? component.failureCode ?? 'component_failed'`).
 
+## Phases
+
+A run has two phases (`runOnboard` in `index.ts`):
+
+1. **Bootstrap**: `mkdir`, `settings`, `runtime` (`BOOTSTRAP_COMPONENTS`).
+   They need no answers from the operator. An empty roster is provisioned
+   here.
+2. **The rest**, in `COMPONENT_ORDER`.
+
+Between them the orchestrator calls `phases.afterBootstrap(outcomes)` once.
+The CLI uses it to run the wizard: the questions are asked from fresh
+checks, on a home that exists and a runtime that is already provisioned,
+and the answers (`OnboardingSelections`) apply to the rest of the run. The
+wizard never checks or provisions the runtime itself; when the bootstrap
+phase could not get one ready it asks nothing and the run reports why. A
+throw from the boundary (the operator left the wizard with Ctrl-C) stops
+onboarding there: nothing after the bootstrap runs, no marker is written,
+exit 130.
+
 ## What stops what
 
 Each component declares `requires`: the components it cannot run without

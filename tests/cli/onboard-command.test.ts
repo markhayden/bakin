@@ -39,12 +39,18 @@ let onboardingState: {
   components: Record<string, 'ok' | 'warn' | 'skipped' | 'error'>
 } | null = null
 
-const runOnboard = mock(async (opts: {
-  onProgress?: (message: string) => void
-  onOutcome?: (outcome: { name: string; finalStatus: 'ok'; message: string }) => void
-}) => {
+const runOnboard = mock(async (
+  opts: {
+    onProgress?: (message: string) => void
+    onOutcome?: (outcome: { name: string; finalStatus: 'ok'; message: string }) => void
+  },
+  _install: unknown,
+  phases?: { afterBootstrap?: (bootstrap: Array<{ name: string; finalStatus: 'ok' }>) => Promise<unknown> },
+) => {
   opts.onProgress?.('Checking mkdir')
   opts.onOutcome?.({ name: 'mkdir', finalStatus: 'ok', message: outcomes[0].message })
+  // The real run hands over once the home, settings and runtime are done.
+  await phases?.afterBootstrap?.([{ name: 'mkdir', finalStatus: 'ok' }, { name: 'settings', finalStatus: 'ok' }, { name: 'runtime', finalStatus: 'ok' }])
   return { outcomes, exitCode: 0, markerWritten: true }
 })
 
@@ -55,8 +61,10 @@ mock.module('../../src/core/onboarding/index', () => ({
   COMPONENT_ORDER: outcomes.map(outcome => ({ name: outcome.name })),
 }))
 
+class OnboardingCancelledError extends Error {}
 mock.module('../../src/core/cli/onboarding-interactive', () => ({
   collectOnboardingSelections: async () => onboardingSelections,
+  OnboardingCancelledError,
 }))
 
 const harness = setupTtyCliHarness({

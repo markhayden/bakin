@@ -122,6 +122,25 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   recommendedCapabilitiesComponent,
 ] as const
 
+/**
+ * The bootstrap phase: the home, its settings and the runtime. They run
+ * first and need no answers from the operator; everything after them may.
+ */
+export const BOOTSTRAP_COMPONENTS: readonly string[] = ['mkdir', 'settings', 'runtime']
+
+/** What the operator chose for the steps after the bootstrap phase. */
+export type OnboardingSelections = Pick<OnboardingOptions, 'selectedRecommendedPluginIds' | 'selectedRecommendedAgentIds' | 'approvedComponents'>
+
+export interface OnboardingPhases {
+  /**
+   * Called once, after the bootstrap components finished and before any
+   * other component is looked at. The returned selections apply to the
+   * rest of the run. A throw stops onboarding there (nothing after the
+   * bootstrap phase runs, no marker is written).
+   */
+  afterBootstrap?: (bootstrap: readonly ComponentOutcome[]) => Promise<OnboardingSelections | undefined>
+}
+
 /** The installable component named `name` (the shared request schema already validated it). */
 export function installableComponent(name: string): InstallableComponent {
   const component = COMPONENT_ORDER.find((c) => c.name === name)
@@ -523,7 +542,13 @@ export async function checkAll(): Promise<CheckResult[]> {
  * when no component errored.
  */
 /** Throws `OnboardingInterruptedError` when the installer reports the operator stopped an install. */
-export async function runOnboard(opts: OnboardingOptions, installComponent: ComponentInstaller): Promise<RunOnboardResult> {
+export async function runOnboard(
+  requested: OnboardingOptions,
+  installComponent: ComponentInstaller,
+  phases: OnboardingPhases = {},
+): Promise<RunOnboardResult> {
+  let opts = requested
+  let bootstrapped = false
   // Clear the marker upfront if --force was passed. The user wants to
   // replay the whole flow regardless of prior state. Never under --check:
   // a check changes nothing (the CLI refuses the combination outright).
@@ -551,6 +576,14 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
       // consumer never has to infer a step from its absence.
       if (opts.json) emitJson(skip)
       continue
+    }
+
+    // Phase boundary: the bootstrap components are done. Whatever the
+    // caller decides now (the wizard's answers) applies to the rest.
+    if (!bootstrapped && !BOOTSTRAP_COMPONENTS.includes(component.name)) {
+      bootstrapped = true
+      const decided = await phases.afterBootstrap?.(outcomes)
+      if (decided) opts = { ...opts, ...decided }
     }
 
     // Declared requirements: a component whose requirement did not finish
