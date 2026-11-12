@@ -81,13 +81,16 @@ capability-key:web-search todo, model-plan done` and notes `start, explore`.
 | 3 | Both recommended official plugins are rejected by `main`'s manifest check (`cliCommands[].args` required when `dispatch` is declared). | Plugin contract / Bits | Issue #1054. |
 | 4 | The recommended `enrich` agent was installed pointing at a model this home cannot run; the first Health page showed it as Critical. | Agent packages / model routing | Issue #1055. |
 | 5 | `bakin doctor` without `--full` reports offline results even while the server is running. Not a defect, but it reads like one after `bakin start`. | Doctor | Noted only. The setup guide tells people to run `bakin doctor`; consider whether it should say `--full`. |
+| 7 | Teardown raced the engine: `launchctl bootout` returned while the engine was still exiting, and it recreated `~/.bakin/antfly/` (98 files) just after `rm -rf ~/.bakin`. A check in the same second said the directory was gone; it was found again 23 minutes later and removed. | Search service lifecycle | Removed by hand. Added to issue #1049: a removal verb has to wait for the engine to exit before deleting its data directory. |
 | 6 | The model pull is the whole wait: 294 of 310 seconds, with no per-model progress in `--json` output. | Search setup | Noted only. |
 
 ## Verification of the boundaries
 
 - `~/.pi` and `~/.openclaw`: a fingerprint of every path's mtime and size
-  taken before the pass and after teardown is identical (1,088 paths).
-- After teardown: no `~/.bakin`, no `~/.antfly`, no
+  taken before the pass, after teardown, and again after the second
+  cleanup is identical (1,088 paths).
+- After teardown (and after removing what the exiting engine recreated,
+  finding 7): no `~/.bakin`, no `~/.antfly`, no
   `~/Library/LaunchAgents/io.bakin.antfly.plist`, `launchctl print` finds no
   such service, nothing listening on 3737 or 3738.
 - The copied `auth.json` existed only in the session scratchpad and was
