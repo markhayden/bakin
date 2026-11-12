@@ -8,8 +8,8 @@ import { existsSync, rmSync } from 'fs'
 import { join } from 'path'
 
 import { seedOpenClaw, seedPi, storeAdapter, type OpenClawFixture } from '../fixtures'
-import { diffTrees, snapshotTree, trackHomes, type OnboardingHome, type TreeSnapshot } from '../harness'
-import { describe as describeRun, onboard, outcomes, readMarker, TEST_TIMEOUT } from './kit'
+import { diffTrees, runBakin, snapshotTree, trackHomes, type OnboardingHome, type TreeSnapshot } from '../harness'
+import { CHILD_TIMEOUT, describe as describeRun, onboard, outcomes, readMarker, TEST_TIMEOUT } from './kit'
 
 const homes = trackHomes()
 const gateways: OpenClawFixture[] = []
@@ -21,8 +21,9 @@ afterEach(async () => {
 
 const WATCHED = ['bakinHome', 'piHome', 'openclawHome', 'userHome'] as const
 
+/** A check writes NOTHING, log lines included: `logs/` is part of the snapshot here. */
 function snapshotAll(home: OnboardingHome): Record<string, TreeSnapshot> {
-  return Object.fromEntries(WATCHED.map((key) => [key, snapshotTree(home[key])]))
+  return Object.fromEntries(WATCHED.map((key) => [key, snapshotTree(home[key], { includeLogs: true })]))
 }
 
 async function expectCheckWritesNothing(home: OnboardingHome): Promise<void> {
@@ -99,6 +100,32 @@ describe('--check writes nothing', () => {
     const marker = readMarker(onboarded)
     await onboard(onboarded, ['--check'])
     expect(readMarker(onboarded)).toEqual(marker)
+  }, TEST_TIMEOUT)
+})
+
+describe('--check on a machine with no Bakin home', () => {
+  // Found on a real machine: the file log lives in the home, so the first
+  // log line of a check created ~/.bakin/logs/server.log.
+  test.each([
+    [['onboard', '--check', '--json']],
+    [['check', 'all', '--json']],
+    [['check', 'runtime', '--json']],
+  ])('bakin %p does not create the home, not even for a log file', async (args) => {
+    const home = await homes.create({ bakinHome: 'absent' })
+    home.blackholeProductDefaults()
+    seedPi(home, { auth: true })
+    expect(existsSync(home.bakinHome)).toBe(false)
+    const run = await runBakin(home, args, { timeoutMs: CHILD_TIMEOUT })
+    expect(run.timedOut, describeRun(run)).toBe(false)
+    expect(existsSync(home.bakinHome)).toBe(false)
+  }, TEST_TIMEOUT)
+
+  test('teeth: a real run on the same machine does create the home', async () => {
+    const home = await homes.create({ bakinHome: 'absent' })
+    home.blackholeProductDefaults()
+    seedPi(home, { auth: true })
+    await onboard(home)
+    expect(existsSync(home.bakinHome)).toBe(true)
   }, TEST_TIMEOUT)
 })
 

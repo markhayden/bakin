@@ -1,4 +1,4 @@
-import { Box, Text } from 'ink'
+import { Box, Text, useInput } from 'ink'
 import { ConfirmInput, Select } from '@inkjs/ui'
 import type {
   CheckResult,
@@ -7,6 +7,7 @@ import type {
   InstallResult,
   InstallStatus,
 } from '../../onboarding'
+import type { SetupChecklist } from '../../onboarding/setup-checklist'
 import type { OnboardingState } from '../../onboarding/state'
 import {
   FindingRows,
@@ -191,10 +192,60 @@ export function OnboardingInstallReport({ result, color = true }: {
   )
 }
 
-export function OnboardingSummary({ outcomes, exitCode, showBrand = true }: {
+const CHECKLIST_STATUS: Record<SetupChecklist['items'][number]['state'], TuiStatus> = { done: 'done', todo: 'todo', unknown: 'skip' }
+
+/** Where an item is done: the command that does it, or the page it is done on. */
+function checklistNext(entry: { command?: string; href?: string }): string | undefined {
+  if (entry.command) return `Run \`${entry.command}\`.`
+  if (entry.href) return `In the browser: ${entry.href}`
+  return undefined
+}
+
+/**
+ * The setup checklist as plain lines, for output that is not a terminal:
+ * `[x]` done, `[ ]` to do, `[?]` could not be told, then the next steps.
+ */
+export function checklistLines(checklist: SetupChecklist): string[] {
+  const mark = { done: '[x]', todo: '[ ]', unknown: '[?]' } as const
+  const lines = ['Setup checklist:']
+  for (const item of checklist.items) {
+    lines.push(`  ${mark[item.state]} ${item.title} — ${item.detail}`)
+    const next = item.state === 'done' ? undefined : checklistNext(item)
+    if (next) lines.push(`        ${next}`)
+  }
+  if (checklist.notes.length > 0) {
+    lines.push('Next:')
+    for (const note of checklist.notes) lines.push(`  - ${note.title}: ${note.detail}${checklistNext(note) ? ` ${checklistNext(note)}` : ''}`)
+  }
+  return lines
+}
+
+/** What is left to set up, and what is already in place. */
+export function OnboardingChecklist({ checklist }: { checklist: SetupChecklist }) {
+  const todo = checklist.items.filter((item) => item.state !== 'done')
+  const done = checklist.items.filter((item) => item.state === 'done')
+  return (
+    <Box flexDirection="column">
+      <Section title="Setup checklist">
+        {checklist.items.length === 0 ? <Text dimColor>Nothing else to set up.</Text> : null}
+        <FindingRows rows={[...todo, ...done].map((item) => ({
+          status: CHECKLIST_STATUS[item.state],
+          label: item.title,
+          message: item.detail,
+          ...(item.state !== 'done' && checklistNext(item) ? { next: checklistNext(item) } : {}),
+        }))} />
+      </Section>
+      <NextActions actions={checklist.notes.map((note) => `${note.title}: ${note.detail}${checklistNext(note) ? ` ${checklistNext(note)}` : ''}`)} />
+    </Box>
+  )
+}
+
+export function OnboardingSummary({ outcomes, exitCode, showBrand = true, checklist }: {
   outcomes: ComponentOutcome[]
   exitCode: 0 | 1 | 2
   showBrand?: boolean
+  /** What is left to set up. Shown instead of the generic next step when the run was not blocked. */
+  checklist?: SetupChecklist
 }) {
   const prerequisites = outcomes.filter(outcome => PREREQUISITE_COMPONENTS.has(outcome.name))
   const setup = outcomes.filter(outcome => !PREREQUISITE_COMPONENTS.has(outcome.name))
@@ -211,7 +262,9 @@ export function OnboardingSummary({ outcomes, exitCode, showBrand = true }: {
           <FindingRows rows={outcomeRows(setup)} />
         </Section>
       ) : null}
-      <OnboardingFinalStatus outcomes={outcomes} exitCode={exitCode} />
+      {checklist && exitCode !== 1
+        ? <OnboardingChecklist checklist={checklist} />
+        : <OnboardingFinalStatus outcomes={outcomes} exitCode={exitCode} />}
     </Box>
   )
 }
@@ -295,10 +348,10 @@ export function OnboardingProgress({ label, value }: { label: string; value: num
   )
 }
 
-export function OnboardingIntro() {
+export function OnboardingIntro({ showBrand = true }: { showBrand?: boolean } = {}) {
   return (
     <Box flexDirection="column">
-      <ScreenHeader title="Onboard" subtitle="Initial setup wizard" />
+      <ScreenHeader title="Onboard" subtitle="Initial setup wizard" showBrand={showBrand} />
       <SummaryStrip items={[
         { label: 'mode', value: 'interactive', status: 'ready' },
         { label: 'checks', value: 'prerequisites' },
@@ -422,6 +475,59 @@ export function OnboardingDecisionPrompt({ title, description, defaultChoice, sh
   )
 }
 
+/**
+ * The runtime works but nobody is logged in to a provider. Bakin never
+ * handles that secret: this screen says how to log in, in the runtime's own
+ * words, and waits. Enter checks again; `s` goes on without a login.
+ */
+export function OnboardingCredentialsPrompt({ runtimeLabel, steps, docsUrl, attempts = 0, showBrand = true, onSubmit }: {
+  /** The runtime's name as people write it. */
+  runtimeLabel: string
+  /** The runtime's own login steps, in order. */
+  steps: readonly string[]
+  docsUrl: string
+  /** How many times the operator has asked to check again without a login appearing. */
+  attempts?: number
+  showBrand?: boolean
+  onSubmit: (answer: 'recheck' | 'skip') => void
+}) {
+  useInput((input, key) => {
+    if (key.return) onSubmit('recheck')
+    else if (input === 's' || input === 'S') onSubmit('skip')
+  })
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Onboard" subtitle={`Log in to ${runtimeLabel}`} meta="credentials" showBrand={showBrand} />
+      <SummaryStrip items={[
+        { label: 'runtime', value: runtimeLabel, status: 'ready' },
+        { label: 'logged in', value: 'no', status: 'warn' },
+      ]} />
+      <Section title="Log in">
+        <FindingRows rows={[{
+          status: 'warn',
+          label: 'credentials',
+          message: attempts === 0
+            ? `${runtimeLabel} is running, but no provider is logged in yet, so agents cannot run a turn.`
+            : `Still no provider logged in to ${runtimeLabel}${attempts > 1 ? ` (checked ${attempts} times)` : ''}.`,
+        }]} />
+        <Box marginTop={1} flexDirection="column">
+          {steps.map((step, index) => (
+            <Text key={step}>  {index + 1}. {step}</Text>
+          ))}
+          <Text dimColor>  Docs: {docsUrl}</Text>
+        </Box>
+        <Box marginTop={1}>
+          <Text bold>Press Enter when you are logged in</Text>
+          <Text>, or </Text>
+          <Text bold>s</Text>
+          <Text> to finish setup without a login.</Text>
+        </Box>
+        <Text dimColor>Bakin never sees your credentials. Without a login it starts and waits; agents run once you log in.</Text>
+      </Section>
+    </Box>
+  )
+}
+
 export interface RuntimeChoiceOption {
   /** The adapter's id (what is stored). */
   adapter: string
@@ -446,7 +552,9 @@ export function OnboardingRuntimePrompt({ options, preselected, showBrand = true
 }) {
   const found = options.filter((option) => option.found)
   // The list's pointer starts on its first entry and Enter picks whatever
-  // it points at, so the preselected runtime goes first.
+  // it points at, so the preselected runtime goes first. It is NOT passed
+  // as the list's default value: the list only reports a CHANGE, so Enter
+  // on an entry that is already its value would do nothing at all.
   const ordered = [...options.filter((option) => option.adapter === preselected), ...options.filter((option) => option.adapter !== preselected)]
   return (
     <Box flexDirection="column">
@@ -465,7 +573,6 @@ export function OnboardingRuntimePrompt({ options, preselected, showBrand = true
           <Text bold>Which runtime should this home use?</Text>
           <Select
             options={ordered.map((option) => ({ label: option.found ? `${option.label} (found)` : option.label, value: option.adapter }))}
-            defaultValue={preselected}
             onChange={onSubmit}
           />
         </Box>

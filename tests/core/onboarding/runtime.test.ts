@@ -93,7 +93,6 @@ mock.module('@/core/logger', () => ({
 
 describe('onboarding runtime component', () => {
   let runtimeComponent: typeof import('@/core/onboarding/runtime').runtimeComponent
-  let RUNTIME_SETUP_URL: string
 
   beforeEach(async () => {
     useExistingServices = true
@@ -109,7 +108,6 @@ describe('onboarding runtime component', () => {
     vi.resetModules()
     const mod = await import('@/core/onboarding/runtime')
     runtimeComponent = mod.runtimeComponent
-    RUNTIME_SETUP_URL = mod.RUNTIME_SETUP_URL
   })
 
   describe('check()', () => {
@@ -120,7 +118,7 @@ describe('onboarding runtime component', () => {
       const result = await runtimeComponent.check()
       expect(result.status).toBe('error')
       expect(result.message).toContain('could not initialize')
-      expect(result.remediation).toContain(RUNTIME_SETUP_URL)
+      expect(result.remediation).toContain('Setup guide: https://')
     })
 
     it('a runtime that has to answer and does not is an error', async () => {

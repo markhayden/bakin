@@ -25,14 +25,23 @@ import { SECRET_SLOT, resolveSecretSlotStatus } from '@bakin/core/secrets'
 import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
 import { getChannelReadiness, isChannelReadinessStarted } from '../delivery/readiness'
-import { DEFAULT_RUNTIME_ADAPTER_SUPPORT } from '../runtime-adapter-factory'
+import { getRuntimeAdapterSupport } from '../runtime-adapter-factory'
 import { liveServerBaseUrl } from '../server-lock'
 import { getSettings } from '../settings'
 import type { CheckOnlyComponent, CheckResult } from './types'
 
 const log = createLogger('onboarding:credentials')
 
-const RUNTIME_DOCS = DEFAULT_RUNTIME_ADAPTER_SUPPORT.docsUrl
+/** Copy for the ACTIVE runtime, read when it is needed — never the default adapter's. */
+function support() {
+  return getRuntimeAdapterSupport(getSettings().runtime.adapter)
+}
+
+/** How to log in to the active runtime, as one line: its own steps, then where its docs are. */
+export function loginInstructions(): string {
+  const { label, loginSteps, docsUrl } = support()
+  return `Log in to ${label}: ${loginSteps.join(' ')} Docs: ${docsUrl}`
+}
 
 async function getRuntimeForCredentials(): Promise<AgentRuntimeAdapter> {
   const existing = maybeGetAppServices()?.runtime
@@ -56,7 +65,7 @@ async function checkLlm(): Promise<CheckResult> {
       name: 'llm',
       status: 'warn',
       message: `Could not read runtime credential status: ${err instanceof Error ? err.message : String(err)}`,
-      remediation: `Fix or regenerate runtime credentials. Docs: ${RUNTIME_DOCS}`,
+      remediation: `Fix or regenerate the credentials in ${support().label}. Docs: ${support().docsUrl}`,
     }
   }
 
@@ -65,9 +74,9 @@ async function checkLlm(): Promise<CheckResult> {
     return {
       name: 'llm',
       status: 'warn',
-      message: 'No LLM provider with usable credentials is configured in the runtime',
-      remediation: `Configure at least one LLM provider via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
-      details: { installUrl: RUNTIME_DOCS },
+      message: `No LLM provider is logged in to ${support().label} yet, so agents cannot run a turn`,
+      remediation: loginInstructions(),
+      details: { installUrl: support().docsUrl, loginSteps: [...support().loginSteps] },
     }
   }
   return {
@@ -82,7 +91,7 @@ async function checkLlm(): Promise<CheckResult> {
 export const llmComponent: CheckOnlyComponent = {
   name: 'llm',
   requires: ['runtime'],
-  manualSetup: `LLM credentials must be configured via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
+  get manualSetup() { return loginInstructions() },
   check: checkLlm,
 }
 
@@ -160,7 +169,7 @@ async function nativeConfigurationOnlyResult(adapter: string, label: string, det
       name: 'channels',
       status: 'warn',
       message: `${label} Could not read the runtime's channel configuration: ${err instanceof Error ? err.message : String(err)}`,
-      remediation: `Fix or regenerate runtime credentials. Docs: ${RUNTIME_DOCS}`,
+      remediation: `Fix or regenerate the credentials in ${support().label}. Docs: ${support().docsUrl}`,
       details,
     }
   }
@@ -170,7 +179,7 @@ async function nativeConfigurationOnlyResult(adapter: string, label: string, det
       name: 'channels',
       status: 'warn',
       message: `${label} No messaging channel is configured in the runtime (${adapter}), which owns channel delivery.`,
-      remediation: `Configure at least one messaging channel via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
+      remediation: `Configure at least one messaging channel in ${support().label}. Docs: ${support().docsUrl}`,
       details: { ...details, channels },
     }
   }
@@ -245,10 +254,8 @@ async function checkChannels(): Promise<CheckResult> {
 }
 
 export const channelsComponent: CheckOnlyComponent = {
-  manualSetup: `Channel credentials must be configured via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
+  get manualSetup() { return `Channels are configured in ${support().label}. Docs: ${support().docsUrl}` },
   name: 'channels',
   requires: ['runtime'],
   check: checkChannels,
 }
-
-export const RUNTIME_DOCS_URL = RUNTIME_DOCS

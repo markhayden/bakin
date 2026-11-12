@@ -25,6 +25,8 @@ mock.module('../../src/core/onboarding/credentials', () => ({
 }))
 mock.module('../../src/core/onboarding/index', () => ({
   checkAll: async () => [{ name: 'runtime', status: 'ok', message: 'Runtime ready.' }, channelsResult],
+  // `bakin check <name>` asks the orchestrator for one component's check.
+  checkComponent: async (name: string) => name === 'channels' ? channelsResult : { name, status: 'ok', message: 'ok' },
 }))
 
 const harness = setupTtyCliHarness({ exitMode: 'always-throws', defaultIsTTY: false, mockFetch: false })

@@ -621,6 +621,36 @@ describe('runOnboard orchestrator', () => {
       expect(seen).toEqual([{ names: ['mkdir', 'settings', 'runtime'], searchChecked: 0 }])
     })
 
+    it('nothing is in flight at the boundary: the wizard and the credentials wait hold no operation', async () => {
+      // The bootstrap phase installs things; by the time the caller is asked,
+      // every one of those installs has settled. The operator can take as
+      // long as a login takes without an operation left open behind them.
+      scripts.mkdir.check = { name: 'mkdir', status: 'missing', message: 'no home' }
+      scripts.mkdir.install = { name: 'mkdir', status: 'installed', message: 'created', durationMs: 1 }
+      scripts.runtime.check = { name: 'runtime', status: 'missing', message: 'no agents', details: { emptyRoster: true } }
+      scripts.runtime.install = { name: 'runtime', status: 'installed', message: 'provisioned', durationMs: 1 }
+      let inFlight = 0
+      let seenAtBoundary = -1
+      let installsBeforeBoundary = 0
+      await runOnboardWith(opts, async (component, options) => {
+        inFlight++
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          return await component.install(options, noopOp())
+        } finally {
+          inFlight--
+          installsBeforeBoundary++
+        }
+      }, {
+        afterBootstrap: async () => {
+          seenAtBoundary = inFlight
+          expect(installsBeforeBoundary).toBeGreaterThanOrEqual(2)
+          return undefined
+        },
+      })
+      expect(seenAtBoundary).toBe(0)
+    })
+
     it('the selections apply to the rest of the run', async () => {
       scripts.media.check = { name: 'media', status: 'missing', message: 'media missing' }
       await runOnboardWith({ ...opts, autoApprove: false }, (component, options) => {
@@ -651,6 +681,43 @@ describe('runOnboard orchestrator', () => {
       })).rejects.toBe(stop)
       expect(scripts.search.checkCalls).toBe(0)
       expect(saveStateCalls).toHaveLength(0)
+    })
+  })
+
+  describe('optional extras never block onboarding', () => {
+    const EXTRAS = ['recommended-plugins', 'recommended-agents', 'capabilities'] as const
+
+    it.each(EXTRAS)('%s failing to install is a warning: the run completes and the marker is written', async (name) => {
+      scripts[name].check = { name, status: 'missing', message: `${name} missing`, remediation: 'Install it later from Explore.' }
+      scripts[name].install = { name, status: 'failed', message: 'the plugin manifest was rejected', durationMs: 1 }
+      const result = await runOnboard(opts)
+      expect(result.outcomes.find((o) => o.name === name)).toMatchObject({
+        finalStatus: 'warn',
+        code: 'optional_install_failed',
+        message: 'the plugin manifest was rejected',
+        remediation: 'Install it later from Explore.',
+      })
+      expect(result.exitCode).toBe(2)
+      expect(result.markerWritten).toBe(true)
+    })
+
+    it('an install that throws is a warning too', async () => {
+      scripts['recommended-plugins'].check = { name: 'recommended-plugins', status: 'missing', message: 'missing' }
+      const result = await runOnboardWith(opts, async (component, options) => {
+        if (component.name === 'recommended-plugins') throw new Error('network unreachable')
+        return component.install(options, noopOp())
+      })
+      expect(result.outcomes.find((o) => o.name === 'recommended-plugins')).toMatchObject({ finalStatus: 'warn', code: 'optional_install_failed' })
+      expect(result.markerWritten).toBe(true)
+    })
+
+    it('a failed install of anything else is still an error', async () => {
+      scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
+      scripts.search.install = { name: 'search', status: 'failed', message: 'download failed', durationMs: 1 }
+      const result = await runOnboard(opts)
+      expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('error')
+      expect(result.exitCode).toBe(1)
+      expect(result.markerWritten).toBe(false)
     })
   })
 

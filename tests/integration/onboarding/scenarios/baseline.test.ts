@@ -49,7 +49,7 @@ describe('a stored runtime runs to a marker', () => {
     const marker = readMarker(home)
     expect(marker?.components.runtime).toBe('ok')
     expect(storedAdapter(home)).toBe('pi')
-    expect(summary(run)).toEqual({ exitCode: 2, markerWritten: true, runtime: { adapter: 'pi', source: 'existing' } })
+    expect(summary(run)).toMatchObject({ exitCode: 2, markerWritten: true, runtime: { adapter: 'pi', source: 'existing' } })
   }, TEST_TIMEOUT)
 
   test('OpenClaw, gateway up', async () => {

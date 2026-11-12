@@ -156,6 +156,108 @@ and even when the component is already installed, and the outcome is
 `skipped` / `declined`. `bakin onboard --yes --no-recommended` is the
 scripted run that sets up Bakin itself and touches nothing external.
 
+## What onboarding says
+
+Every word about setting up or logging in to a runtime comes from the
+ACTIVE runtime's entry in `RUNTIME_ADAPTER_SUPPORT`
+(`src/core/runtime-adapter-factory.ts`): `label`, `summary`, `setupHint`,
+`setupUrl`, `docsUrl` and `loginSteps`. `runtime.ts` and `credentials.ts`
+read it when a message is built, never at module load, and there is no
+"default runtime" copy to reach for (the old
+`DEFAULT_RUNTIME_ADAPTER_SUPPORT` is gone). So a home on Pi is told to run
+`pi` and type `/login`, and a home on OpenClaw is pointed at OpenClaw.
+
+`tests/architecture/onboarding-runtime-copy.test.ts` keeps it that way: no
+default-runtime copy anywhere onboarding can speak from, and no runtime
+name inside a string literal in those two components. Adding a runtime
+means adding its entry, not editing messages.
+
+## The guided credentials step
+
+Interactive runs only. After the bootstrap phase, when the runtime is ok
+and no provider is logged in, the wizard shows the active runtime's
+`loginSteps` and waits (`waitForCredentials` in
+`src/core/cli/onboarding-interactive.tsx`, screen
+`OnboardingCredentialsPrompt`):
+
+- **Enter** checks again. A login that appeared (made in another terminal)
+  ends the step; otherwise the screen says it is still not there.
+- **s** skips. The run finishes with the `llm` warning (exit 2, marker
+  written) and `bakin start` works without a login.
+- Ctrl-C cancels onboarding (exit 130).
+
+Bakin never handles the secret: the operator logs in inside the runtime.
+The wait sits at the phase boundary, so no operation is open and
+`install-state` is not held while the operator is away. Scripted runs
+(`--yes`, `--json`, no terminal) never wait: they warn and continue.
+
+Screens are tested two ways: `tests/cli/onboarding-ui.test.tsx` renders
+them to a string (what they say), and `tests/cli/onboarding-keys.test.tsx`
+presses real keys through Ink's input handling (what the keys do). Add a
+key test for any screen that takes input: the runtime screen once rendered
+correctly while Enter on its preselected entry did nothing.
+
+## The setup checklist
+
+`src/core/onboarding/setup-checklist.ts`. What is still worth doing after
+onboarding, in the order someone would do it. It adds no probing of its
+own: every item projects something an existing engine already answers,
+never message text.
+
+| Item | Source | done | todo | unknown | left out |
+|---|---|---|---|---|---|
+| Log in to the runtime | `llm` check | a provider is logged in | none is (detail: the runtime's login steps) | the check throws or errors | never |
+| Search | `search` check and its `applicable` flag | check ok | missing, broken or warn (`bakin install search`) | throws or errors | nothing on this machine to set up (external endpoint, temporary home) |
+| Channels | `channels` check's reported state | connected, or configured and waiting for the server | disabled, missing token or guild, failed (Settings → Channels) | throws, errors, or reports no state | the runtime delivers natively |
+| `<capability>` key, one per installed capability | capability readiness, secrets | every required key present | a required key is missing (Settings → Integrations & Keys) | manifest invalid; readiness throws | no required key |
+| Model plan | `models` check | ok | no plan and something can run, or a plan that needs attention (`bakin models plan --apply`) | throws or errors | nothing can run yet (the login item covers it) |
+
+Two notes carry no state: "Start Bakin" (only when no server runs for the
+home) and "Browse Explore". Spend limits and brands are never listed; both
+are opt-in.
+
+Where it shows: the finish screen (`OnboardingChecklist` inside
+`OnboardingSummary`, things to do before things done), plain lines for
+output that is not a terminal (`checklistLines`), and `checklist` on the
+`--json` summary line. `bakin onboard --check` shows the same list and still
+writes nothing. A blocked run (exit 1) shows its blocker and no checklist.
+If the checklist cannot be built the run's result stands and it is simply
+not shown.
+
+`buildSetupChecklist(sources)` is pure and unit-tested per item and state;
+`getSetupChecklist()` asks the engines. Adding an item means adding a
+source and a projection, not a probe.
+
+## CLI targets
+
+`bakin check <x>` accepts every onboarding component (and `all`);
+`bakin install <x>` every one that has an install. Both lists, their
+unknown-subcommand hints, the help text in `src/core/cli/registry.ts` and
+the install request schema derive from ONE leaf,
+`src/core/onboarding/component-names.ts` (`COMPONENT_NAMES`,
+`INSTALLABLE_COMPONENT_NAMES`). A unit test pins the leaf to
+`COMPONENT_ORDER`, and `tests/architecture/onboarding-cli-targets.test.ts`
+forbids a second list kept by hand in the command module or the registry.
+Adding a component means adding it to `COMPONENT_ORDER` and the leaf; the
+CLI follows.
+
+`bakin check <x>` goes through `checkComponent` (in `index.ts`): a
+component that does not apply to the active runtime says so instead of
+being checked. Under `--json`, `check` and `install` keep runtime logs off
+stdout so the output parses (`--verbose` keeps them).
+
+## Optional extras never block onboarding
+
+`recommended-plugins`, `recommended-agents` and `capabilities`
+(`RECOMMENDED_COMPONENTS`) are optional: Bakin is fully set up without
+them. When the install of one fails or throws (no network, a plugin this
+host's manifest check rejects) its outcome is `warn` with code
+`optional_install_failed`, not `error`. The run still completes (exit 2,
+marker written) and the operator can add it later from Explore. A failed
+install of anything else is still an error. Found on the real-home pass:
+both recommended plugins were rejected, and that alone left a working home
+un-onboarded.
+
 ## What stops what
 
 Each component declares `requires`: the components it cannot run without
@@ -218,6 +320,10 @@ How it holds:
   file-backed one creates `models-store.json` on first read.
 - OpenClaw tool access is verified with `readMcpCredential`, which never
   creates `mcp-secret`. With no secret, tool access reads as not provisioned.
+- A check does not write the file log either (`BAKIN_DISABLE_FILE_LOG`, set
+  before anything can log): the log lives in the Bakin home, so one log
+  line used to create `~/.bakin/logs/` on a machine with no home yet. The
+  check scenarios snapshot `logs/` too (`snapshotTree(…, { includeLogs })`).
 - The orchestrator never writes or clears the marker under `checkOnly`, and
   an empty roster is reported as `skipped` / `check_only`, not provisioned.
 

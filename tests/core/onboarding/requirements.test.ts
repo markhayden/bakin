@@ -18,7 +18,21 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-import { COMPONENT_ORDER } from '../../../src/core/onboarding/index'
+import { COMPONENT_NAMES, INSTALLABLE_COMPONENT_NAMES } from '../../../src/core/onboarding/component-names'
+import { COMPONENT_ORDER, isInstallable } from '../../../src/core/onboarding/index'
+
+describe('onboarding component names', () => {
+  // The CLI's `check` and `install` targets, their help text and the install
+  // request schema all derive from the name lists; these pin the lists to
+  // what onboarding actually runs.
+  test('the name list is the component list, in run order', () => {
+    expect<string[]>([...COMPONENT_NAMES]).toEqual(COMPONENT_ORDER.map((component) => component.name))
+  })
+
+  test('the installable list is exactly the components that have an install', () => {
+    expect<string[]>([...INSTALLABLE_COMPONENT_NAMES]).toEqual(COMPONENT_ORDER.filter(isInstallable).map((component) => component.name))
+  })
+})
 
 describe('onboarding component requirements', () => {
   test('every requirement names a component that runs earlier', () => {

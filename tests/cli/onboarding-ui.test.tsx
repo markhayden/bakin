@@ -3,10 +3,13 @@ import { renderToString } from 'ink'
 
 import { buildSelectionItems } from '../../src/core/cli/onboarding-interactive'
 import {
+  checklistLines,
   OnboardingBusy,
+  OnboardingChecklist,
   OnboardingCheckAllReport,
   OnboardingCheckReport,
   OnboardingAlreadyCompleteReport,
+  OnboardingCredentialsPrompt,
   OnboardingDecisionPrompt,
   OnboardingInstallReport,
   OnboardingIntro,
@@ -188,6 +191,122 @@ describe('onboarding CLI UI', () => {
     expect(rendered).toContain('Already onboarded on 2026-05-19.')
     expect(rendered).toContain('Run `bakin onboard --force`')
     expect(rendered).not.toContain('[OK]')
+  })
+
+  it('the wizard intro does not repeat the brand when an earlier screen already drew it', () => {
+    expect(renderToString(<OnboardingIntro />)).toContain("Bakin'")
+    const continued = renderToString(<OnboardingIntro showBrand={false} />)
+    expect(continued).not.toContain("Bakin'")
+    expect(continued).toContain('Initial setup wizard')
+  })
+
+  describe('setup checklist', () => {
+    const checklist = {
+      items: [
+        { id: 'login', title: 'Log in to Pi', state: 'todo' as const, detail: 'Run `pi`. Type `/login`.' },
+        { id: 'search', title: 'Search', state: 'done' as const, detail: 'Search engine is installed.' },
+        { id: 'channels', title: 'Channels', state: 'todo' as const, detail: 'Discord delivery is off.', href: '/settings?tab=channels' },
+        { id: 'capability-key:web-search', title: 'Web search key', state: 'unknown' as const, detail: 'Could not tell: lockfile unreadable' },
+        { id: 'model-plan', title: 'Model plan', state: 'todo' as const, detail: 'No model plan chosen yet.', command: 'bakin models plan --apply' },
+      ],
+      notes: [
+        { id: 'start', title: 'Start Bakin', detail: 'Launch the server and open the dashboard.', command: 'bakin start' },
+        { id: 'explore', title: 'Browse Explore', detail: 'Add agents, plugins and capabilities whenever you want them.', href: '/explore' },
+      ],
+    }
+    const text = (element: Parameters<typeof renderToString>[0]) => renderToString(element).replace(/\s+/g, ' ')
+
+    it('lists what is left before what is done, with how to do each', () => {
+      const rendered = text(<OnboardingChecklist checklist={checklist} />)
+      expect(rendered).toContain('SETUP CHECKLIST')
+      expect(rendered).toContain('TODO')
+      expect(rendered).toContain('DONE')
+      // To do and could-not-tell come before done.
+      expect(rendered.indexOf('Log in to Pi')).toBeLessThan(rendered.indexOf('Search engine is installed.'))
+      expect(rendered.indexOf('Model plan')).toBeLessThan(rendered.indexOf('Search engine is installed.'))
+      expect(rendered).toContain('Run `bakin models plan --apply`.')
+      expect(rendered).toContain('In the browser: /settings?tab=channels')
+      expect(rendered).toContain('Could not tell: lockfile unreadable')
+      expect(rendered).toContain('Start Bakin: Launch the server and open the dashboard. Run `bakin start`.')
+      expect(rendered).toContain('Browse Explore')
+    })
+
+    it('says so when nothing is left', () => {
+      const rendered = text(<OnboardingChecklist checklist={{ items: [], notes: checklist.notes }} />)
+      expect(rendered).toContain('Nothing else to set up.')
+    })
+
+    it('the finish screen shows the checklist in place of the generic next step', () => {
+      const outcome = { name: 'mkdir', finalStatus: 'ok' as const, check: { name: 'mkdir', status: 'ok' as const, message: 'ok' }, message: 'Home ready', durationMs: 1 }
+      const withChecklist = text(<OnboardingSummary outcomes={[outcome]} exitCode={2} checklist={checklist} />)
+      expect(withChecklist).toContain('SETUP CHECKLIST')
+      expect(withChecklist).not.toContain('then `bakin doctor` for details')
+      const without = text(<OnboardingSummary outcomes={[outcome]} exitCode={2} />)
+      expect(without).not.toContain('SETUP CHECKLIST')
+      expect(without).toContain('bakin start')
+    })
+
+    it('a blocked run shows its blocker, never a checklist', () => {
+      const blocked = { name: 'runtime', finalStatus: 'error' as const, check: { name: 'runtime', status: 'error' as const, message: 'unreachable' }, message: 'unreachable', remediation: 'Start the gateway.', durationMs: 1 }
+      const rendered = text(<OnboardingSummary outcomes={[blocked]} exitCode={1} checklist={checklist} />)
+      expect(rendered).not.toContain('SETUP CHECKLIST')
+      expect(rendered).toContain('Rerun `bakin onboard` after the blocker is resolved.')
+    })
+
+    it('plain lines carry the same items for output that is not a terminal', () => {
+      expect(checklistLines(checklist)).toEqual([
+        'Setup checklist:',
+        '  [ ] Log in to Pi — Run `pi`. Type `/login`.',
+        '  [x] Search — Search engine is installed.',
+        '  [ ] Channels — Discord delivery is off.',
+        '        In the browser: /settings?tab=channels',
+        '  [?] Web search key — Could not tell: lockfile unreadable',
+        '  [ ] Model plan — No model plan chosen yet.',
+        '        Run `bakin models plan --apply`.',
+        'Next:',
+        '  - Start Bakin: Launch the server and open the dashboard. Run `bakin start`.',
+        '  - Browse Explore: Add agents, plugins and capabilities whenever you want them. In the browser: /explore',
+      ])
+    })
+  })
+
+  describe('credentials screen', () => {
+    const props = {
+      runtimeLabel: 'Pi',
+      steps: ['Open another terminal and run `pi`.', 'Type `/login` and pick a provider (there is no `pi login` command).', 'Finish the sign-in, then quit pi.'],
+      docsUrl: 'https://pi.dev/docs/latest',
+      onSubmit: () => {},
+    }
+    /** The screen wraps long lines to the terminal width; compare the words, not the line breaks. */
+    const text = (element: Parameters<typeof renderToString>[0]) => renderToString(element).replace(/\s+/g, ' ')
+
+    it('says the runtime works, how to log in in its own words, and what each key does', () => {
+      const rendered = text(<OnboardingCredentialsPrompt {...props} />)
+      expect(rendered).toContain('Log in to Pi')
+      expect(rendered).toContain('Pi is running, but no provider is logged in yet')
+      expect(rendered).toContain('1. Open another terminal and run `pi`.')
+      expect(rendered).toContain('2. Type `/login`')
+      expect(rendered).toContain('3. Finish the sign-in')
+      expect(rendered).toContain('https://pi.dev/docs/latest')
+      expect(rendered).toContain('Press Enter when you are logged in')
+      expect(rendered).toContain('to finish setup without a login')
+      // The promise the step rests on.
+      expect(rendered).toContain('Bakin never sees your credentials')
+    })
+
+    it('after a recheck that found nothing it says so instead of repeating the first message', () => {
+      const once = text(<OnboardingCredentialsPrompt {...props} attempts={1} />)
+      expect(once).toContain('Still no provider logged in to Pi')
+      expect(once).not.toContain('is running, but no provider is logged in yet')
+      const thrice = text(<OnboardingCredentialsPrompt {...props} attempts={3} />)
+      expect(thrice).toContain('checked 3 times')
+    })
+
+    it('carries no wording of another runtime: every word comes from the props', () => {
+      const rendered = text(<OnboardingCredentialsPrompt {...props} runtimeLabel="OpenClaw" steps={['Add a provider login in OpenClaw.']} docsUrl="https://openclaw.ai/docs/" />)
+      expect(rendered).toContain('Log in to OpenClaw')
+      expect(rendered).not.toMatch(/\bPi\b|\/login/)
+    })
   })
 
   describe('runtime selection screen', () => {

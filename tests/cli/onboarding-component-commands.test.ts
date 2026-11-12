@@ -65,6 +65,8 @@ const installables: Record<string, { name: string; plan: typeof PLAN; resources:
 mock.module('../../src/core/onboarding/index', () => ({
   checkAll,
   installableComponent: (name: string) => installables[name],
+  // `bakin check <name>` asks the orchestrator for one component's check.
+  checkComponent: async (name: string) => name === 'runtime' ? runtimeCheck() : installables[name]!.check(),
 }))
 
 mock.module('../../src/core/onboarding/plugin-assets', () => ({
