@@ -109,6 +109,8 @@ export type TurnItem =
       state: QuestionState
       /** The chosen answer's text, when answered. */
       answer?: string
+      /** The note the user added under their choice, when answered with one. */
+      note?: string
       /** True only for the newest open card in the conversation. */
       answerable: boolean
     }
@@ -177,7 +179,18 @@ export type TurnStatus = 'streaming' | 'complete' | 'error' | 'aborted'
 
 /** Render-ready user or agent turn produced by `foldConversation`. */
 export type ConversationTurn =
-  | { kind: 'user'; key: string; ts: string; content: string; attachments?: DisplayAttachment[] }
+  | {
+      kind: 'user'
+      key: string
+      ts: string
+      content: string
+      attachments?: DisplayAttachment[]
+      /**
+       * Derived: this message answered the question card just above it. The
+       * card shows the answer, so the timeline renders no second bubble.
+       */
+      answersQuestion?: boolean
+    }
   | {
       kind: 'agent'
       key: string
@@ -470,7 +483,11 @@ function deriveQuestionStates(turns: ConversationTurn[]): void {
       const prefix = answerPrefix(item.question)
       if (reply.content.startsWith(prefix)) {
         item.state = 'answered'
-        item.answer = reply.content.slice(prefix.length).split('\n\n')[0]
+        const [answer, ...noteParts] = reply.content.slice(prefix.length).split('\n\n')
+        item.answer = answer
+        const note = noteParts.join('\n\n').trim()
+        if (note) item.note = note
+        reply.answersQuestion = true
       } else {
         item.state = 'skipped'
       }

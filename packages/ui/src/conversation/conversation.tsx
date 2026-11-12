@@ -163,6 +163,9 @@ export function Conversation({
         ) : (
           <div className="grid min-w-0 gap-5 px-bakin-4 py-bakin-4">
             {turns.map((turn, index) => {
+              // A card answer lives on its card ("question → answer" + note);
+              // a second bubble would repeat both.
+              if (turn.kind === 'user' && turn.answersQuestion) return null
               const day = dayKey(turn.ts)
               const followsAgent = turn.kind === 'user' && turns[index - 1]?.kind === 'agent'
               const separator = day && day !== previousDay ? (

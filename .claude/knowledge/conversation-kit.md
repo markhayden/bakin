@@ -101,7 +101,12 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   button while an option is picked; explicit Answer (arrows select, Enter
   submits — handled explicitly because Base UI radios swallow Enter); read-only while its turn streams,
   while the thread is `busy` (surfaces pass their in-flight flag: a remount
-  mid-turn folds the persisted rows as settled), or when not answerable; answered/skipped collapse. The form is deliberately UNNAMED (a
+  mid-turn folds the persisted rows as settled), or when not answerable; answered/skipped collapse. The answer
+  message FOLDS INTO its card: the fold marks the matching user turn
+  `answersQuestion`, the card shows `question → answer` plus the note, and
+  `Conversation` renders no second bubble (the row still exists — the agent
+  reads it, retry re-sends it; 2026-11-11 the bubble repeated question and
+  answer under every card). The form is deliberately UNNAMED (a
   named form is a landmark — a transcript of cards would duplicate them); the
   radiogroup carries the question. Answers leave through
   `Conversation.onAnswerQuestion` (ConversationPanel routes it to `onSend`) as
