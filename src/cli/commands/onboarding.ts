@@ -229,7 +229,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
     process.exit(1)
   }
   const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER, OnboardingInterruptedError } = await import('../../core/onboarding/index')
-  const { collectOnboardingSelections } = await import('../../core/cli/onboarding-interactive')
+  const { collectOnboardingSelections, OnboardingCancelledError } = await import('../../core/cli/onboarding-interactive')
   const { OnboardingAlreadyCompleteReport, OnboardingBusy, OnboardingSummary } = await import('../../core/cli/ui/onboarding')
   const { render } = await import('ink')
   const { renderToString } = await import('../../core/cli/ui/render-to-string')
@@ -277,7 +277,16 @@ async function cmdOnboard(args: string[]): Promise<void> {
   }
   try {
     if (checkOnly) await composeForCheck()
-    const selections = await collectOnboardingSelections(baseOpts)
+    let selections: Awaited<ReturnType<typeof collectOnboardingSelections>>
+    try {
+      selections = await collectOnboardingSelections(baseOpts)
+    } catch (err) {
+      if (!(err instanceof OnboardingCancelledError)) throw err
+      // Ctrl-C in the wizard: say so and exit like any interrupted command,
+      // never 0 — nothing was set up and no marker was written.
+      console.error('Onboarding cancelled before setup ran. Run `bakin onboard` again when you are ready.')
+      process.exit(130)
+    }
     const opts = { autoApprove: baseOpts.autoApprove, json, checkOnly, force, ...selections }
     const busyShowsBrand = !selections.renderedWizardScreens
 

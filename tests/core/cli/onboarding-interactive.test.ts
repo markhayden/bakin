@@ -26,12 +26,22 @@ mock.module('../../../src/core/logger', () => ({ createLogger: () => ({ info() {
 // Every prompt answers yes (confirm) or "nothing selected" (multi-select),
 // and records its title.
 const titles: string[] = []
+/** When set, the next screen is left with Ctrl-C instead of answered. */
+let cancelNextScreen = false
 mock.module('ink', () => ({
   Box: ({ children }: { children?: unknown }) => children ?? null,
   render: (element: { props: { title?: string; onSubmit: (value: unknown) => void; items?: unknown[] } }) => {
     titles.push(String(element.props.title))
-    queueMicrotask(() => element.props.onSubmit(element.props.items ? [] : true))
-    return { unmount() {}, rerender() {} }
+    let exited: () => void = () => {}
+    const exit = new Promise<void>((resolve) => { exited = resolve })
+    if (cancelNextScreen) {
+      cancelNextScreen = false
+      // Ink unmounts on Ctrl-C without calling the screen's onSubmit.
+      queueMicrotask(exited)
+    } else {
+      queueMicrotask(() => element.props.onSubmit(element.props.items ? [] : true))
+    }
+    return { unmount() { exited() }, rerender() {}, waitUntilExit: () => exit }
   },
 }))
 mock.module('../../../src/core/cli/ui/render-to-string', () => ({ renderToString: () => '' }))
@@ -52,7 +62,7 @@ mock.module('../../../src/core/onboarding/models', () => ({ modelsComponent: { n
 mock.module('../../../src/core/onboarding/recommended-plugins', () => ({ recommendedPluginsComponent: { name: 'recommended-plugins', check: async () => ok('recommended-plugins') } }))
 mock.module('../../../src/core/onboarding/recommended-agents', () => ({ recommendedAgentsComponent: { name: 'recommended-agents', check: async () => ok('recommended-agents') } }))
 
-import { collectOnboardingSelections } from '../../../src/core/cli/onboarding-interactive'
+import { collectOnboardingSelections, OnboardingCancelledError } from '../../../src/core/cli/onboarding-interactive'
 
 const INTERACTIVE = { interactive: true, autoApprove: false, json: false, checkOnly: false }
 
@@ -78,6 +88,14 @@ describe('collectOnboardingSelections', () => {
     const selections = await collectOnboardingSelections(INTERACTIVE)
     expect(provisioned).toEqual([1])
     expect(selections.approvedComponents).toEqual(['media'])
+  })
+
+  it('leaving a screen with Ctrl-C is a cancellation, never a silent finish', async () => {
+    mediaCheck = { name: 'media', status: 'missing', message: 'no image processing.' }
+    cancelNextScreen = true
+    await expect(collectOnboardingSelections(INTERACTIVE)).rejects.toBeInstanceOf(OnboardingCancelledError)
+    // The wizard stopped at the screen that was left; nothing after it was asked.
+    expect(titles).toHaveLength(1)
   })
 
   it('a runtime that is genuinely not ready asks nothing (the orchestrator reports it)', async () => {
