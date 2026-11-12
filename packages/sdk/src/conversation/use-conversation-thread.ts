@@ -136,6 +136,11 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   // failed newer load never blocks an older success.
   const loadSeqRef = useRef(0)
   const appliedLoadSeqRef = useRef(0)
+  // A settled turn keeps its live chunks on screen until the refetch that
+  // carries its durable rows applies — clearing them first left one network
+  // round trip where the whole turn (and its question card) vanished, then
+  // remounted (2026-11-11 "the questions flash off and on").
+  const clearLiveOnLoadRef = useRef(false)
 
   const loadTranscript = useCallback(async () => {
     if (!threadKey) {
@@ -152,6 +157,12 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     } catch {
       // A throwing load (network blip, server restart) keeps the current
       // view; the next settle/switch retries. Never an unhandled rejection.
+      // A settled turn still stops looking live — stale text beats a turn
+      // that streams forever.
+      if (clearLiveOnLoadRef.current && activeKeyRef.current === threadKey) {
+        clearLiveOnLoadRef.current = false
+        setLiveChunks(null)
+      }
       return
     }
     // Re-check AFTER the load resolves too — a slow response for the
@@ -164,6 +175,12 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     setMeta(body.meta ?? null)
     setMessages(body.messages)
     setQueued(body.queued ?? [])
+    if (clearLiveOnLoadRef.current) {
+      // Same batch as the rows that replace it: the live turn is swapped for
+      // its durable twin in one render, never a frame without it.
+      clearLiveOnLoadRef.current = false
+      setLiveChunks(null)
+    }
     if (body.streaming) {
       setStreaming(true)
       const seed = body.streamingText
@@ -178,6 +195,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     setMessages([])
     setMeta(null)
     setLiveChunks(null)
+    clearLiveOnLoadRef.current = false
     setStreaming(false)
     setSendError(null)
     setQueued([])
@@ -219,7 +237,9 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     // `appended` that lands before React re-renders must still refetch (the
     // settle load may have read storage before the flush).
     streamingRef.current = false
-    setLiveChunks(null)
+    // The live chunks stay until the settle refetch applies (loadTranscript
+    // clears them in the same batch as the rows).
+    clearLiveOnLoadRef.current = true
     // The settle refetch IS the newest truth — bump the seq so it applies
     // even if an older send's guard would otherwise block a stale load.
     sendSeqRef.current += 1

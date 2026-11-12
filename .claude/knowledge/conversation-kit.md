@@ -184,7 +184,7 @@ Server helpers (`@makinbakin/sdk/utils`, re-exported from `@bakin/core/conversat
 
 ## Transports
 
-- **Plugin-event bus — the ONLY transport:** the turn engine emits consumer-named chunk/done/error plugin-events → global SSE bus → `useConversationThread`. Turns survive navigation because nothing is bound to the component or request; remounts refetch the durable transcript (incl. partial rows) and resume from the next chunk. Custom server-side events (messaging proposals) are emitted from the engine's `onChunk` hook. The per-request SSE path (`useConversationStream`/`readConversationSseStream`) was DELETED in #703 PR 3 — never reintroduce component-bound conversation streaming.
+- **Plugin-event bus — the ONLY transport:** the turn engine emits consumer-named chunk/done/error plugin-events → global SSE bus → `useConversationThread`. Turns survive navigation because nothing is bound to the component or request; remounts refetch the durable transcript (incl. partial rows) and resume from the next chunk. **Settle keeps the live turn on screen** until the refetch that carries its durable rows applies (`clearLiveOnLoadRef`; cleared in the same batch as `setMessages`, or on a failed load), and the live turn is keyed `agent-<n>` — the key its persisted twin gets — so the swap reconciles in place (2026-11-11: clearing live on `done` made every card flash off and on). Custom server-side events (messaging proposals) are emitted from the engine's `onChunk` hook. The per-request SSE path (`useConversationStream`/`readConversationSseStream`) was DELETED in #703 PR 3 — never reintroduce component-bound conversation streaming.
 
 ## Related
 

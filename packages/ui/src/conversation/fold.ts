@@ -448,7 +448,10 @@ export function foldConversation(
   if (opts?.liveChunks) {
     const live = foldLiveChunks(opts.liveChunks)
     if (opts.liveAgentId) live.agentId = opts.liveAgentId
-    turns.push(finishAgentTurn(live, `live-${agentTurnIndex}`))
+    // Keyed as the persisted turn it becomes: when the settle refetch swaps
+    // live chunks for durable rows, React updates the turn in place instead
+    // of unmounting it.
+    turns.push(finishAgentTurn(live, `agent-${agentTurnIndex}`))
   }
 
   deriveQuestionStates(turns)

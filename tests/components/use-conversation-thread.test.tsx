@@ -170,6 +170,53 @@ describe('useConversationThread', () => {
     expect(settled).toHaveLength(2)
   })
 
+  it('done keeps the live turn on screen until the settle refetch applies, then swaps both in one render', async () => {
+    // 2026-11-11 live: the card flashed off and on at the end of every turn — live chunks
+    // were cleared on `done`, one round trip before the durable rows arrived.
+    const pending: Array<(messages: ConversationMessage[]) => void> = []
+    const load = (_k: string) => new Promise<{ messages: ConversationMessage[] }>((resolve) => {
+      pending.push(messages => resolve({ messages }))
+    })
+    const store = makeStore()
+    const { result } = hookFor(store, 'a', { load })
+    await waitUntil(() => pending.length === 1, { label: 'mount load started' })
+    await act(async () => { pending[0]!([]) })
+    await act(async () => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'reply' } })
+    })
+    await act(async () => { emitPluginEvent({ event: EVENTS.done, threadKey: 'a' }) })
+    await waitUntil(() => pending.length === 2, { label: 'settle load started' })
+    // Settled, but the refetch is still in flight: the live turn is still there.
+    expect(result.current.streaming).toBe(false)
+    expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'reply' }])
+    expect(result.current.messages).toHaveLength(0)
+
+    await act(async () => {
+      pending[1]!([{ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 't1', content: 'reply' }])
+    })
+    expect(result.current.liveChunks).toBeNull()
+    expect(result.current.messages).toHaveLength(1)
+  })
+
+  it('a settle refetch that throws still clears the live turn', async () => {
+    const store = makeStore()
+    let fail = false
+    const { result } = hookFor(store, 'a', {
+      load: async (k: string) => {
+        if (fail) throw new Error('offline')
+        return { messages: store.transcripts.get(k) ?? [] }
+      },
+    })
+    await act(async () => {})
+    await act(async () => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'reply' } })
+    })
+    fail = true
+    await act(async () => { emitPluginEvent({ event: EVENTS.done, threadKey: 'a' }) })
+    await waitUntil(() => result.current.liveChunks === null, { label: 'live cleared after failed settle load' })
+    expect(result.current.streaming).toBe(false)
+  })
+
   it('thread switch resets state and ignores events for the previous thread', async () => {
     const store = makeStore()
     store.transcripts.set('a', [{ kind: 'user', ts: '2026-07-20T00:00:00Z', content: 'in-a' }])
