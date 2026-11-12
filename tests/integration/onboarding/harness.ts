@@ -19,10 +19,23 @@
  *    (18789) may belong to a real gateway on a developer machine. Fixtures
  *    that want a live gateway point this at their own health endpoint.
  *  It deliberately stores NO `runtime.adapter` — a fresh home is undecided.
+ *
+ * Two recorders watch every child, and a scenario FAILS when either holds
+ * anything, whatever the child's exit status (`assertIsolated`, run from an
+ * `afterEach`, and for a pinned gap from `expectedGap` — see there for why
+ * `test.failing` is never used here):
+ *  - command shims first on `PATH` stand in for `launchctl` / `systemctl`:
+ *    they record their arguments and exit non-zero, so the machine's
+ *    service supervisor is never reached;
+ *  - a recording deny proxy receives every HTTP(S) request the child makes
+ *    to anything but the scenario's own declared endpoints, logs it and
+ *    answers 403. Git is confined to local files, so ssh/git transports are
+ *    refused by git itself instead of slipping past the proxy.
  */
 import { spawn } from 'child_process'
 import { createHash } from 'crypto'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs'
+import { createServer, type Server } from 'http'
 import { tmpdir } from 'os'
 import { dirname, join, relative } from 'path'
 
@@ -47,12 +60,22 @@ export interface OnboardingHome {
   /** First on the child's `PATH` — command shims go here. */
   binDir: string
   settingsPath: string
+  /** The deny proxy's address (what the child's proxy variables hold). */
+  proxyUrl: string
+  /**
+   * Let the child reach one of the scenario's OWN local endpoints directly
+   * (a fixture gateway, a harness-booted server). `hostPort` is e.g.
+   * `127.0.0.1:4123`. Everything else still goes to the deny proxy.
+   */
+  allowEndpoint(hostPort: string): void
+  /** What the recorders hold: supervisor commands run and outside requests made. */
+  violations(): { commands: string[]; network: string[] }
   /** The complete environment a child gets. Mutate to add scenario vars. */
   env: Record<string, string>
   readSettings(): Record<string, unknown>
   writeSettings(settings: Record<string, unknown>): void
-  /** Remove the tree. Call only after every child has exited. */
-  cleanup(): void
+  /** Stop the proxy and remove the tree. Call only after every child has exited. */
+  cleanup(): Promise<void>
 }
 
 export interface CreateHomeOptions {
@@ -71,7 +94,53 @@ export function scaffoldSettings(): Record<string, unknown> {
   }
 }
 
-export function createOnboardingHome(options: CreateHomeOptions = {}): OnboardingHome {
+const SHIMMED_COMMANDS = ['launchctl', 'systemctl'] as const
+
+/** Stand-ins that record the call and refuse, so no real supervisor is reached. */
+function writeCommandShims(binDir: string, recordPath: string): void {
+  for (const name of SHIMMED_COMMANDS) {
+    const path = join(binDir, name)
+    writeFileSync(path, `#!/bin/sh\nprintf '%s %s\\n' '${name}' "$*" >> '${recordPath}'\nexit 1\n`)
+    chmodSync(path, 0o755)
+  }
+}
+
+interface DenyProxy {
+  url: string
+  records: string[]
+  stop(): Promise<void>
+}
+
+/** A local listener that logs every request or CONNECT and answers 403. */
+function startDenyProxy(): Promise<DenyProxy> {
+  const records: string[] = []
+  const server: Server = createServer((req, res) => {
+    records.push(`${req.method ?? 'GET'} ${req.url ?? ''}`)
+    res.writeHead(403, { 'content-type': 'text/plain', connection: 'close' })
+    res.end('denied by the onboarding harness\n')
+  })
+  server.on('connect', (req, socket) => {
+    records.push(`CONNECT ${req.url ?? ''}`)
+    socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+  })
+  return new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      const port = typeof address === 'object' && address ? address.port : 0
+      resolve({
+        url: `http://127.0.0.1:${port}`,
+        records,
+        stop: () => new Promise<void>((done) => {
+          server.closeAllConnections()
+          server.close(() => done())
+        }),
+      })
+    })
+  })
+}
+
+export async function createOnboardingHome(options: CreateHomeOptions = {}): Promise<OnboardingHome> {
   // realpath: macOS tmpdir is a symlink (/var → /private/var); containment
   // checks compare against what the child's resolvers actually return.
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'bakin-onboard-')))
@@ -82,11 +151,26 @@ export function createOnboardingHome(options: CreateHomeOptions = {}): Onboardin
   const userHome = join(root, 'home')
   const binDir = join(root, 'bin')
   const childTmp = join(root, 'tmp')
-  for (const dir of [userHome, binDir, childTmp]) mkdirSync(dir, { recursive: true })
+  const recordDir = join(root, 'harness-record')
+  for (const dir of [userHome, binDir, childTmp, recordDir]) mkdirSync(dir, { recursive: true })
   const settingsPath = join(bakinHome, 'settings.json')
+  const commandRecord = join(recordDir, 'commands.log')
+  writeCommandShims(binDir, commandRecord)
+  const proxy = await startDenyProxy()
+  const allowed: string[] = []
 
   const home: OnboardingHome = {
     root, bakinHome, piHome, openclawHome, searchHome, userHome, binDir, settingsPath,
+    proxyUrl: proxy.url,
+    allowEndpoint: (hostPort) => {
+      allowed.push(hostPort)
+      home.env.NO_PROXY = allowed.join(',')
+      home.env.no_proxy = home.env.NO_PROXY
+    },
+    violations: () => ({
+      commands: existsSync(commandRecord) ? readFileSync(commandRecord, 'utf-8').split('\n').filter(Boolean) : [],
+      network: [...proxy.records],
+    }),
     env: {
       // The allowlist. Nothing is inherited: no BAKIN_URL from the test
       // preload, no developer shell state, no proxy or token variables.
@@ -95,6 +179,9 @@ export function createOnboardingHome(options: CreateHomeOptions = {}): Onboardin
       TMPDIR: childTmp,
       BAKIN_HOME: bakinHome,
       PI_HOME: piHome,
+      // The Pi SDK's own home override; aligned with PI_HOME so the SDK and
+      // the adapter agree on one agent dir inside the tree.
+      PI_CODING_AGENT_DIR: join(piHome, 'agent'),
       OPENCLAW_HOME: openclawHome,
       ANTFLY_HOME: searchHome,
       LANG: 'en_US.UTF-8',
@@ -103,14 +190,37 @@ export function createOnboardingHome(options: CreateHomeOptions = {}): Onboardin
       // re-transpile the whole app in every child. One shared cache (code
       // only, keyed by content) keeps children fast and the tree clean.
       BUN_RUNTIME_TRANSPILER_CACHE_PATH: TRANSPILER_CACHE,
+      // Everything goes to the deny proxy. Both spellings: Bun's fetch reads
+      // either, git's HTTP transport reads only the lowercase http_proxy.
+      // There is deliberately no NO_PROXY until a scenario declares one of
+      // its own endpoints — a blanket localhost exemption would let a child
+      // reach unrelated services on this machine unrecorded.
+      HTTP_PROXY: proxy.url,
+      HTTPS_PROXY: proxy.url,
+      http_proxy: proxy.url,
+      https_proxy: proxy.url,
+      // Git may only read local files: ssh:// and git:// are refused by git
+      // itself (they would bypass an HTTP proxy), no user or system config
+      // can re-enable them, and nothing ever waits on a credential prompt.
+      GIT_ALLOW_PROTOCOL: 'file',
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_TERMINAL_PROMPT: '0',
     },
     readSettings: () => JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>,
     writeSettings: (settings) => {
       mkdirSync(bakinHome, { recursive: true })
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
     },
-    cleanup: () => rmSync(root, { recursive: true, force: true }),
+    cleanup: async () => {
+      await proxy.stop()
+      rmSync(root, { recursive: true, force: true })
+    },
   }
+  // The scaffold's two dead endpoints are the scenario's own: a connect to
+  // them is refused locally and is not an outside request.
+  home.allowEndpoint(new URL(DEAD_SEARCH_URL).host)
+  home.allowEndpoint(`127.0.0.1:${DEAD_GATEWAY_PORT}`)
   if ((options.bakinHome ?? 'scaffold') === 'scaffold') home.writeSettings(scaffoldSettings())
   return home
 }
@@ -173,14 +283,11 @@ function killGroup(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
-/**
- * Run any script under the harness's closed environment. `runBakin` is the
- * scenario entry; this exists so a probe can be spawned the same way.
- */
-export function runScript(home: OnboardingHome, script: string, args: string[], options: RunOptions = {}): Promise<ChildResult> {
+/** Run any executable under the harness's closed environment. */
+export function runCommand(home: OnboardingHome, command: string, args: string[], options: RunOptions = {}): Promise<ChildResult> {
   const timeoutMs = options.timeoutMs ?? 60_000
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [...(options.bunArgs ?? ['--no-env-file']), script, ...args], {
+    const child = spawn(command, args, {
       cwd: options.cwd ?? REPO_ROOT,
       env: { ...home.env, ...(options.env ?? {}) },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -216,6 +323,14 @@ export function runScript(home: OnboardingHome, script: string, args: string[], 
       resolve({ exitCode, signal, stdout, stderr, timedOut, jsonLines: parseJsonLines(stdout), json: parseWhole(stdout) })
     })
   })
+}
+
+/**
+ * Run a TypeScript file with Bun under the closed environment. `runBakin`
+ * is the scenario entry; this exists so a probe is spawned the same way.
+ */
+export function runScript(home: OnboardingHome, script: string, args: string[], options: RunOptions = {}): Promise<ChildResult> {
+  return runCommand(home, process.execPath, [...(options.bunArgs ?? ['--no-env-file']), script, ...args], options)
 }
 
 /** Run the real CLI: `bakin <args>` from source, in its own process. */
@@ -267,4 +382,83 @@ export function diffTrees(before: TreeSnapshot, after: TreeSnapshot): TreeDiff {
 
 export function isUnchanged(diff: TreeDiff): boolean {
   return diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0
+}
+
+/**
+ * The isolation verdict for one home: throws when a child ran a supervisor
+ * command or made a request outside the scenario's declared endpoints.
+ */
+export function assertIsolated(home: OnboardingHome): void {
+  const { commands, network } = home.violations()
+  if (commands.length === 0 && network.length === 0) return
+  throw new Error([
+    'onboarding harness: isolation breach',
+    ...commands.map((line) => `  supervisor command: ${line}`),
+    ...network.map((line) => `  outside request: ${line}`),
+  ].join('\n'))
+}
+
+export interface HomeTracker {
+  create(options?: CreateHomeOptions): Promise<OnboardingHome>
+  /** Assert isolation for every home made since the last call, then remove them. */
+  finish(): Promise<void>
+}
+
+/**
+ * Scenario files call `trackHomes()` once and `afterEach(() => homes.finish())`,
+ * so isolation is asserted after every test, outside its body.
+ */
+export function trackHomes(): HomeTracker {
+  const live: OnboardingHome[] = []
+  return {
+    create: async (options) => {
+      const home = await createOnboardingHome(options)
+      live.push(home)
+      return home
+    },
+    finish: async () => {
+      const homes = live.splice(0)
+      const breaches: string[] = []
+      for (const home of homes) {
+        try {
+          assertIsolated(home)
+        } catch (err) {
+          breaches.push(err instanceof Error ? err.message : String(err))
+        }
+        await home.cleanup()
+        if (existsSync(home.root)) breaches.push(`onboarding harness: ${home.root} was not removed`)
+      }
+      if (breaches.length > 0) throw new Error(breaches.join('\n'))
+    },
+  }
+}
+
+/**
+ * A scenario that pins a KNOWN gap: the body asserts the behaviour the spec
+ * wants and is expected to fail on today's code. Use it as the test
+ * function of a plain `test(...)`:
+ *
+ *   test('… (pinned: flipped by task 3.7)', expectedGap(homes, async () => { … }))
+ *
+ * `test.failing` is deliberately not used. Under bun 1.4.3 an `afterEach`
+ * that throws after a `test.failing` body is reported and then counted as a
+ * PASS — the expected failure absorbs it — so an isolation breach inside a
+ * pinned scenario would go green. Here the body's failure is caught, the
+ * isolation verdict runs outside that catch and fails the test for real,
+ * and a body that passes fails too (the gap is closed: make it a plain test
+ * in the commit that closed it).
+ */
+export function expectedGap(homes: HomeTracker, body: () => Promise<void>): () => Promise<void> {
+  return async () => {
+    let failed = false
+    try {
+      await body()
+    } catch {
+      failed = true
+    }
+    await homes.finish()
+    if (!failed) {
+      throw new Error('onboarding harness: this pinned gap now passes — turn it into a plain test in the commit that fixed it')
+    }
+  }
 }

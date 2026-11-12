@@ -96,8 +96,12 @@ tests, and a rig transcript pasted into the PR body.
 ## Matrix inventory (PR 1 partition)
 
 "Baseline" rows are expected to pass on today's code and land as plain
-tests. "Pinned" rows land as `test.failing` and are flipped by the named
-task. If a baseline row fails at build time it is a finding for task 2.5;
+tests. "Pinned" rows land as expected failures and are flipped by the named
+task. (Build note, task 1.2: pinned rows use the harness's `expectedGap`
+wrapper inside a plain `test`, not `test.failing`. Under bun 1.4.3 an
+`afterEach` that throws after a `test.failing` body is counted as a pass,
+which would let an isolation breach go green. Wherever this plan says
+`test.failing`, read `expectedGap`.) If a baseline row fails at build time it is a finding for task 2.5;
 if a pinned row unexpectedly passes it moves to baseline. Isolation
 assertions (shim record, proxy record, cleanup) run in an `afterEach`
 outside the test body, so an isolation breach can never be absorbed by an
