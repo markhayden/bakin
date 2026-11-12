@@ -46,6 +46,15 @@ function isSdkTestingFixture(p) {
     || /(^|\/)examples\/[^/]+\/tests\/.+\.test\.tsx?$/.test(p)
 }
 
+// tests/integration/onboarding/ drives the REAL CLI in a child process whose
+// environment is built from an allowlist (every home redirected into one
+// throwaway tree; see harness.ts). The test files import no app modules, so
+// there is nothing to mock — the closed child environment IS the isolation,
+// and harness.test.ts carries the teeth that prove it.
+function isOnboardingHarnessTest(p) {
+  return /(^|\/)tests\/integration\/onboarding\/.+\.test\.tsx?$/.test(p)
+}
+
 // Matches both `mock.module('...', ...)` (Bun) and `vi.mock('...', ...)` (Vitest).
 const MOCK_RE = /(?:vi\.mock|mock\.module)\(\s*['"]([^'"]+)['"]/g
 
@@ -169,7 +178,7 @@ function check(filePath) {
   }
 
   const missing = []
-  if (!isPureArchitectureTest(filePath) && !isSdkTestingFixture(filePath)) {
+  if (!isPureArchitectureTest(filePath) && !isSdkTestingFixture(filePath) && !isOnboardingHarnessTest(filePath)) {
     const mockSet = new Set(mockPaths)
     const unmockedImports = extractImportPaths(src).filter((p) => !mockSet.has(p))
     const ctx = { src, unmockedImports }
