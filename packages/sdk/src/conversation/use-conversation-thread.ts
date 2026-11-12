@@ -110,17 +110,8 @@ export interface ConversationThread<Meta = unknown, Attachment = unknown> {
 interface OptimisticEntry {
   row: ConversationMessage
   failed: boolean
-  /** Durable rows on screen when the send happened; matching looks past it. */
-  baseline: number
   /** Loads starting at or after this sequence read the row from storage. */
   ackedLoadSeq: number | null
-}
-
-function matchesOptimistic(durable: ConversationMessage, row: ConversationMessage): boolean {
-  if (durable.kind !== 'user' || row.kind !== 'user') return false
-  if (durable.content === row.content) return true
-  // Attachment-only sends: the engine persists a visible placeholder.
-  return !row.content.trim() && Boolean(row.attachments?.length) && Boolean(durable.attachments?.length)
 }
 
 export function useConversationThread<Meta = unknown, Attachment = unknown>(
@@ -169,38 +160,47 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   // Optimistic user rows not yet seen in a transcript load. A load re-appends
   // them after its rows, so a refetch that read storage before the POST
   // landed never hides the message the composer already let go of. A row is
-  // durable — retired — once a load that STARTED after its acknowledgment
-  // applies (the engine appends the user row before it answers), or, for a
-  // load racing the POST, when a user row past the send's baseline (the
-  // durable row count at send time — never history) matches it one-to-one.
-  // A FAILED send keeps its row until the next send or thread switch — the
-  // row is the user's only copy of the text.
+  // durable — retired — once a load that STARTED after its own
+  // acknowledgment applies (the engine appends the user row before it
+  // answers); nothing is ever matched by content, so identical text in
+  // history or a sibling send can never consume it. A load that raced the
+  // POST keeps the row beside its durable twin for one round trip at most
+  // (the owed settle load waits for in-flight sends, below, so that race is
+  // a consumer refresh, not the normal path). A FAILED send keeps its row
+  // until the next successful send or thread switch — the row is the user's
+  // only copy of the text.
   const optimisticRowsRef = useRef<OptimisticEntry[]>([])
-  const durableCountRef = useRef(0)
   const withOptimisticRows = useCallback((durable: ConversationMessage[], loadSeq: number): ConversationMessage[] => {
-    durableCountRef.current = durable.length
-    const pending = optimisticRowsRef.current
-    if (pending.length === 0) return durable
-    const consumed = new Set<number>()
-    const kept = pending.filter((o) => {
-      if (o.failed) return true
-      if (o.ackedLoadSeq !== null && loadSeq >= o.ackedLoadSeq) return false
-      for (let i = o.baseline; i < durable.length; i++) {
-        if (consumed.has(i) || !matchesOptimistic(durable[i]!, o.row)) continue
-        consumed.add(i)
-        return false
-      }
-      return true
-    })
+    const kept = optimisticRowsRef.current.filter((o) => o.failed || o.ackedLoadSeq === null || loadSeq < o.ackedLoadSeq)
     optimisticRowsRef.current = kept
     return kept.length ? [...durable, ...kept.map((o) => o.row)] : durable
   }, [])
+  // A successful send retires earlier FAILED rows (their text is back in the
+  // composer or abandoned) — from the tracking ref AND the screen.
+  const retireFailedRows = useCallback(() => {
+    const failed = optimisticRowsRef.current.filter((o) => o.failed)
+    if (failed.length === 0) return
+    optimisticRowsRef.current = optimisticRowsRef.current.filter((o) => !o.failed)
+    setMessages((current) => current.filter((m) => !failed.some((o) => o.row === m)))
+  }, [])
   const addOptimisticRow = useCallback((row: ConversationMessage): OptimisticEntry => {
-    // A new send retires earlier FAILED rows (their text is back in the
-    // composer or abandoned); rows still awaiting durability stay.
-    const entry: OptimisticEntry = { row, failed: false, baseline: durableCountRef.current, ackedLoadSeq: null }
-    optimisticRowsRef.current = [...optimisticRowsRef.current.filter((o) => !o.failed), entry]
+    const entry: OptimisticEntry = { row, failed: false, ackedLoadSeq: null }
+    optimisticRowsRef.current = [...optimisticRowsRef.current, entry]
     return entry
+  }, [])
+  // Sends whose POST has not answered yet. The owed settle load (a settle
+  // refetch invalidated by a send) starts only once they have, so it begins
+  // AFTER every acknowledgment and the ack rule above retires their rows —
+  // a replacement that raced the POST would show the row twice for a turn.
+  const inFlightSendsRef = useRef(0)
+  const settleOwedRef = useRef(false)
+
+  const loadTranscriptRef = useRef<() => Promise<void>>(async () => {})
+  const runOwedSettle = useCallback(() => {
+    if (!settleOwedRef.current) return
+    settleOwedRef.current = false
+    settleLoadFloorRef.current = loadSeqRef.current + 1
+    void loadTranscriptRef.current()
   }, [])
 
   const loadTranscript = useCallback(async () => {
@@ -252,9 +252,11 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
       // reply it carries never shows (review finding, round 2).
       if (isSettleLoad()) {
         // The obligation carries over to the replacement (a send invalidating
-        // THAT load spawns another; every send is one more, never a loop).
-        settleLoadFloorRef.current = loadSeqRef.current + 1
-        void loadTranscript()
+        // THAT load spawns another; every send is one more, never a loop) —
+        // deferred until the in-flight send has answered.
+        settleLoadFloorRef.current = null
+        settleOwedRef.current = true
+        if (inFlightSendsRef.current === 0) runOwedSettle()
       }
       return
     }
@@ -271,7 +273,8 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
       const seed = body.streamingText
       setLiveChunks((prev) => prev ?? (seed ? [{ type: 'text', content: seed }] : []))
     }
-  }, [threadKey, withOptimisticRows])
+  }, [threadKey, withOptimisticRows, runOwedSettle])
+  loadTranscriptRef.current = loadTranscript
 
   useEffect(() => {
     // Reset EVERYTHING on a thread switch — the previous thread's
@@ -282,8 +285,8 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     setLiveChunks(null)
     retainedLiveFromLoadSeqRef.current = null
     settleLoadFloorRef.current = null
+    settleOwedRef.current = false
     optimisticRowsRef.current = []
-    durableCountRef.current = 0
     setStreaming(false)
     setSendError(null)
     setQueued([])
@@ -358,6 +361,23 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     void loadTranscript()
   })
 
+  const addQueuedItem = useCallback((queuedId: string, row: ConversationMessage) => {
+    const user = row.kind === 'user' ? row : undefined
+    setQueued((current) =>
+      current.some((item) => item.id === queuedId)
+        ? current
+        : [
+            ...current,
+            {
+              id: queuedId,
+              ts: new Date().toISOString(),
+              content: user?.content ?? '',
+              ...(user?.attachments ? { attachments: user.attachments } : {}),
+            },
+          ],
+    )
+  }, [])
+
   const send = useCallback(async (content: string, attachments?: Attachment[]) => {
     const key = activeKeyRef.current
     if (!key) return
@@ -368,6 +388,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     if (streamingRef.current) {
       setSendError(null)
       let result: Awaited<ReturnType<ConversationThreadOptions<Meta, Attachment>['post']>>
+      inFlightSendsRef.current += 1
       try {
         result = await optionsRef.current.post(key, content, attachments)
       } catch (error) {
@@ -375,33 +396,22 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
           ok: false,
           error: error instanceof Error ? error.message : String(error),
         }
+      } finally {
+        inFlightSendsRef.current -= 1
       }
       if (activeKeyRef.current !== key) return
       if (!result.ok) {
         setSendError(result.error ?? `send failed (${result.status ?? 'network'})`)
+        if (inFlightSendsRef.current === 0) runOwedSettle()
         return
       }
 
       const optimistic = optionsRef.current.optimisticRow?.(content, attachments)
       const optimisticUser = optimistic?.kind === 'user' ? optimistic : undefined
+      retireFailedRows()
       if (result.queued) {
         sendSeqRef.current += 1
-        const queuedId = result.queued.id
-        setQueued((current) =>
-          current.some((item) => item.id === queuedId)
-            ? current
-            : [
-                ...current,
-                {
-                  id: queuedId,
-                  ts: new Date().toISOString(),
-                  content: optimisticUser?.content ?? content,
-                  ...(optimisticUser?.attachments
-                    ? { attachments: optimisticUser.attachments }
-                    : {}),
-                },
-              ],
-        )
+        addQueuedItem(result.queued.id, optimisticUser ?? { kind: 'user', ts: new Date().toISOString(), content })
       } else {
         sendSeqRef.current += 1
         const row = optimisticUser ?? { kind: 'user' as const, ts: new Date().toISOString(), content }
@@ -412,6 +422,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
         retainedLiveFromLoadSeqRef.current = null
         setLiveChunks([])
       }
+      if (inFlightSendsRef.current === 0) runOwedSettle()
       return
     }
     setSendError(null)
@@ -428,25 +439,42 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     // landing (or failing) after this point must not clear it.
     retainedLiveFromLoadSeqRef.current = null
     setLiveChunks([])
-    let res: { ok: boolean; status?: number; error?: string }
+    let res: Awaited<ReturnType<ConversationThreadOptions<Meta, Attachment>['post']>>
+    inFlightSendsRef.current += 1
     try {
       res = await optionsRef.current.post(key, content, attachments)
     } catch (err) {
       // pluginFetch rejects on network failure — same rollback as a
       // non-OK response, never an unhandled rejection or a stuck spinner.
       res = { ok: false, error: err instanceof Error ? err.message : String(err) }
+    } finally {
+      inFlightSendsRef.current -= 1
     }
-    if (res.ok) {
+    if (activeKeyRef.current !== key) return
+    if (res.ok && res.queued) {
+      // The server was still busy (its turn had not settled on our side yet):
+      // the message is in the QUEUE, not the transcript — show it there and
+      // take the optimistic row back; the drain's durable row arrives with
+      // the started/settle refetch.
+      optimisticRowsRef.current = optimisticRowsRef.current.filter((o) => o !== entry)
+      setMessages((current) => current.filter((m) => m !== row))
+      setStreaming(false)
+      setLiveChunks(null)
+      retireFailedRows()
+      addQueuedItem(res.queued.id, row)
+    } else if (res.ok) {
       // Acknowledged: the engine appended the row before answering, so any
       // load that starts from now on reads it — no content matching needed.
       entry.ackedLoadSeq = loadSeqRef.current + 1
-    } else if (activeKeyRef.current === key) {
+      retireFailedRows()
+    } else {
       setStreaming(false)
       setLiveChunks(null)
       setSendError(res.error ?? `send failed (${res.status ?? 'network'})`)
       entry.failed = true
     }
-  }, [addOptimisticRow])
+    if (inFlightSendsRef.current === 0) runOwedSettle()
+  }, [addOptimisticRow, addQueuedItem, retireFailedRows, runOwedSettle])
 
   const removeQueued = useCallback(async (
     id: string,
