@@ -7,7 +7,7 @@ import { describe, expect, test } from 'bun:test'
 import { decideRuntime, type RuntimeDecisionInput } from '../../../src/core/onboarding/runtime-choice'
 
 const SUPPORTED = ['openclaw', 'pi'] as const
-const base: RuntimeDecisionInput = { found: [], interactive: false, supported: SUPPORTED }
+const base: RuntimeDecisionInput = { found: [], canAsk: false, supported: SUPPORTED }
 const decide = (over: Partial<RuntimeDecisionInput>) => decideRuntime({ ...base, ...over })
 
 describe('decideRuntime', () => {
@@ -57,7 +57,7 @@ describe('decideRuntime', () => {
     })
 
     test('row 4: it is used even when that runtime was not found (the runtime step reports it)', () => {
-      expect(decide({ stored: 'openclaw', found: ['pi'], interactive: true })).toEqual({ kind: 'use', adapter: 'openclaw', source: 'existing', persist: false })
+      expect(decide({ stored: 'openclaw', found: ['pi'], canAsk: true })).toEqual({ kind: 'use', adapter: 'openclaw', source: 'existing', persist: false })
     })
 
     test('row 5: a different flag is refused and names the command that switches', () => {
@@ -75,14 +75,14 @@ describe('decideRuntime', () => {
   })
 
   describe('row 7: nothing found', () => {
-    test.each([true, false])('Pi by default, persisted (interactive=%s): there is nothing to ask about', (interactive) => {
-      expect(decide({ interactive })).toEqual({ kind: 'use', adapter: 'pi', source: 'default', persist: true })
+    test.each([true, false])('Pi by default, persisted (canAsk=%s): there is nothing to ask about', (canAsk) => {
+      expect(decide({ canAsk })).toEqual({ kind: 'use', adapter: 'pi', source: 'default', persist: true })
     })
   })
 
   describe('row 8: a person is here and something was found', () => {
     test('one found: every supported runtime is offered, the found one marked and preselected', () => {
-      expect(decide({ interactive: true, found: ['pi'] })).toEqual({
+      expect(decide({ canAsk: true, found: ['pi'] })).toEqual({
         kind: 'ask',
         choices: [{ adapter: 'openclaw', found: false }, { adapter: 'pi', found: true }],
         preselected: 'pi',
@@ -90,7 +90,7 @@ describe('decideRuntime', () => {
     })
 
     test('both found: the first in detection order is preselected', () => {
-      expect(decide({ interactive: true, found: ['openclaw', 'pi'] })).toEqual({
+      expect(decide({ canAsk: true, found: ['openclaw', 'pi'] })).toEqual({
         kind: 'ask',
         choices: [{ adapter: 'openclaw', found: true }, { adapter: 'pi', found: true }],
         preselected: 'openclaw',

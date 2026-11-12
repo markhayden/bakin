@@ -38,8 +38,12 @@ export interface RuntimeDecisionInput {
   stored?: RuntimeAdapterName
   /** Runtimes found on this machine, in the factory's fixed order. */
   found: readonly RuntimeAdapterName[]
-  /** A person is at a terminal and no flag asked for a scripted run. */
-  interactive: boolean
+  /**
+   * The caller is able to put the question to a person (a terminal, and no
+   * flag asking for a scripted run). The caller decides that; nothing here
+   * prompts.
+   */
+  canAsk: boolean
   /** Every runtime Bakin supports, in the factory's order. */
   supported: readonly RuntimeAdapterName[]
 }
@@ -113,7 +117,7 @@ export function decideRuntime(input: RuntimeDecisionInput): RuntimeDecision {
   if (found.length === 0) return { kind: 'use', adapter: DEFAULT_RUNTIME_WHEN_NONE_FOUND, source: 'default', persist: true }
 
   // 8. A person is here: let them choose, with what was found marked.
-  if (input.interactive) {
+  if (input.canAsk) {
     return {
       kind: 'ask',
       choices: supported.map((adapter) => ({ adapter, found: found.includes(adapter) })),
